@@ -1,13 +1,26 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isBtcFamilyRoute, routeAsset, tokenAsset } from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
+import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 
 const STATUS_SCHEMA_VERSION = 1;
 const RISK_BUDGET_USD = 300;
 const GATEWAY_NODE = "bob_gateway";
+
+function stripVolatileStatusFields(value) {
+  if (typeof value === "string") {
+    return value.replace(/\b[\d.]+m old\b/g, "<volatile_age>");
+  }
+  if (Array.isArray(value)) return value.map(stripVolatileStatusFields);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "generatedAt" && key !== "ageMinutes")
+      .map(([key, nested]) => [key, stripVolatileStatusFields(nested)]),
+  );
+}
 
 function latest(items) {
   return items.at(-1) || null;
@@ -729,7 +742,10 @@ export function buildDashboardStatus(input, options = {}) {
 
 export async function writeDashboardStatus(dataDir, status, fileName = "dashboard-status.json") {
   const path = join(dataDir, fileName);
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(path, `${JSON.stringify(status, null, 2)}\n`, "utf8");
-  return path;
+  return writeTextIfChanged(path, `${JSON.stringify(status, null, 2)}\n`, {
+    normalize: (contents) => {
+      if (!contents) return contents;
+      return JSON.stringify(stripVolatileStatusFields(JSON.parse(contents)));
+    },
+  });
 }

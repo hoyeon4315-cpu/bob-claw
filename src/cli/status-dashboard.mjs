@@ -101,11 +101,11 @@ async function main() {
     estimatorWalletReadinessFailures,
     shadowCycle,
   });
-  const path = await writeDashboardStatus(config.dataDir, status);
-  const dashboardPath = await writeDashboardStatus("./dashboard/public", status);
+  const output = await writeDashboardStatus(config.dataDir, status);
+  const dashboardOutput = await writeDashboardStatus("./dashboard/public", status);
 
-  console.log(`wrote=${path}`);
-  console.log(`dashboardWrote=${dashboardPath}`);
+  console.log(`${output.changed ? "wrote" : "unchanged"}=${output.path}`);
+  console.log(`${dashboardOutput.changed ? "dashboardWrote" : "dashboardUnchanged"}=${dashboardOutput.path}`);
   console.log(`severity=${status.overall.severity}`);
   console.log(`liveTrading=${status.overall.liveTrading}`);
   console.log(`shadowTrading=${status.overall.shadowTrading}`);

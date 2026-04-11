@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
+import { writeTextIfChanged } from "../lib/file-write.mjs";
 
 const OUTPUT_PATH = "docs/current-status.md";
+
+function normalizeCurrentStatusDoc(doc) {
+  return String(doc || "").replace(/^Updated: .*\n/m, "Updated: <volatile>\n");
+}
 
 function money(value) {
   if (!Number.isFinite(value)) return "n/a";
@@ -166,9 +170,10 @@ async function main() {
   ].join("\n");
 
   const outputPath = join(process.cwd(), OUTPUT_PATH);
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${doc}\n`, "utf8");
-  console.log(`wrote=${outputPath}`);
+  const result = await writeTextIfChanged(outputPath, `${doc}\n`, {
+    normalize: normalizeCurrentStatusDoc,
+  });
+  console.log(`${result.changed ? "wrote" : "unchanged"}=${outputPath}`);
 }
 
 main().catch((error) => {
