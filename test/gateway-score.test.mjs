@@ -243,3 +243,30 @@ test("DEX output quote supplies executable net edge", () => {
   assert.equal(score.executableOutputUsd, 4.9);
   assert.equal(score.executableNetEdgeUsd, -0.09999999999999964);
 });
+
+test("treasury refill costs are surfaced alongside route economics", () => {
+  const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      outputAmount: "10020",
+    }),
+    prices,
+    {
+      executionGasUsd: 0.001,
+      gasObservedAt: "2026-04-10T11:59:00.000Z",
+      now: "2026-04-10T12:00:00.000Z",
+      priceHaircutBps: 0,
+      executionRefillExpectedCostUsd: 0.03,
+      reserveReplenishmentExpectedCostUsd: 0.02,
+      effectiveSystemNetPnlUsd: -0.042,
+    },
+  );
+
+  assert.equal(score.netEdgeUsd > 0, true);
+  assert.equal(score.treasuryExecutionRefillCostUsd, 0.03);
+  assert.equal(score.treasuryReserveReplenishmentCostUsd, 0.02);
+  assert.equal(score.treasuryAdjustedNetEdgeUsd < score.netEdgeUsd, true);
+  assert.equal(score.treasuryAdjustedExecutableNetEdgeUsd, null);
+  assert.equal(score.effectiveSystemNetPnlUsd, -0.042);
+  assert.equal(score.effectiveSystemBreakEvenPct > score.treasuryAdjustedBreakEvenPct, true);
+});

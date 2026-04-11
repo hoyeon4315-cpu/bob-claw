@@ -35,6 +35,7 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     bitcoinFeeSnapshots,
     gasEstimateSnapshots,
     dexQuotes,
+    shadowObservations,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quotes"),
     readJsonl(dataDir, "estimator-wallet-readiness"),
@@ -47,6 +48,7 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     readJsonl(dataDir, "bitcoin-fee-snapshots"),
     readJsonl(dataDir, "gateway-gas-estimates"),
     readJsonl(dataDir, "dex-quotes"),
+    readJsonl(dataDir, "gateway-shadow-observations"),
   ]);
   const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
   const basePrices = latestObservedPrices && isFreshPriceSnapshot(latestObservedPrices) ? pricesFromSnapshot(latestObservedPrices) : livePrices;
@@ -78,6 +80,7 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     bitcoinFeeSnapshots,
     gasEstimateSnapshots,
     dexQuotes,
+    shadowObservations,
     routePlan,
     fundingPlan,
     nextStep,

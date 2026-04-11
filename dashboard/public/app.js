@@ -134,6 +134,24 @@ function compactAge(value) {
   return `${Math.round(minutes / 60)}시간 전`;
 }
 
+function compactMoney(value) {
+  if (!Number.isFinite(value)) return null;
+  if (value >= 1000) {
+    const compact = value / 1000;
+    const digits = compact >= 100 ? 0 : 1;
+    return `$${compact.toLocaleString("ko-KR", { minimumFractionDigits: 0, maximumFractionDigits: digits })}k`;
+  }
+  if (value >= 1) return `$${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}`;
+  return `$${value.toLocaleString("ko-KR", { maximumFractionDigits: 6 })}`;
+}
+
+function compactDeltaPct(value) {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value) < 0.005) return "~0%";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`;
+}
+
 function humanBlocker(blocker) {
   return {
     audit_blocks_live: "새 데이터 확인 중",
@@ -231,9 +249,38 @@ function renderLines(scene, positions) {
   }
 }
 
-function renderNodes(scene, positions) {
+function chainPriceCaption(priceByChain, chain) {
+  const price = priceByChain.get(chain);
+  if (!price || !Number.isFinite(price.usd)) return null;
+  return {
+    value: chain === "bitcoin" ? `${price.ticker} ${compactMoney(price.usd)}` : compactMoney(price.usd),
+    delta: chain === "bitcoin" ? "" : compactDeltaPct(price.deltaPct),
+    stale: Boolean(price.stale),
+  };
+}
+
+function chainPriceExtremes(prices) {
+  const valid = (prices || []).filter((item) => Number.isFinite(item?.usd) && !item?.stale);
+  if (valid.length < 2) return new Map();
+
+  const highest = Math.max(...valid.map((item) => item.usd));
+  const lowest = Math.min(...valid.map((item) => item.usd));
+  if (highest === lowest) return new Map();
+
+  const classes = new Map();
+  for (const item of valid) {
+    if (item.usd === highest) classes.set(item.chain, "price-high");
+    if (item.usd === lowest) classes.set(item.chain, "price-low");
+  }
+  return classes;
+}
+
+function renderNodes(scene, positions, status) {
   const layer = $("chainLayer");
   clear(layer);
+  const marketPrices = status.market?.chainWbtcPrices || [];
+  const priceByChain = new Map(marketPrices.map((item) => [item.chain, item]));
+  const priceClasses = chainPriceExtremes(marketPrices);
 
   const nodes = [gatewayNode, ...scene.displayChains];
   for (const chain of nodes) {
@@ -244,11 +291,20 @@ function renderNodes(scene, positions) {
     node.className = `chain-node ${chain === gatewayNode ? "gateway-node" : ""} ${pending ? "pending-node" : ""}`;
     node.style.left = `${(pos.x / viewBoxWidth) * 100}%`;
     node.style.top = `${(pos.y / viewBoxHeight) * 100}%`;
+    const priceInfo = chain !== gatewayNode ? chainPriceCaption(priceByChain, chain) : null;
+    const priceClass = chain !== gatewayNode ? [priceClasses.get(chain) || "", priceInfo?.stale ? "stale" : ""].filter(Boolean).join(" ") : "";
     node.innerHTML = `
       <span class="chain-pin">
         <img src="${iconFor(chain)}" alt="${labelFor(chain)} logo">
       </span>
       <strong>${labelFor(chain)}</strong>
+      ${
+        chain !== gatewayNode && priceInfo
+          ? `<span class="chain-price ${priceClass}"><span class="chain-price-value">${escapeHtml(priceInfo.value)}</span>${
+              priceInfo.delta ? `<span class="chain-price-delta">${escapeHtml(priceInfo.delta)}</span>` : ""
+            }</span>`
+          : ""
+      }
     `;
     layer.append(node);
   }
@@ -504,7 +560,7 @@ function render(status) {
   const positions = nodePositions(scene.displayChains);
   renderHeader(status);
   renderLines(scene, positions);
-  renderNodes(scene, positions);
+  renderNodes(scene, positions, status);
   renderTimeline(status);
   renderGas(status);
   renderAssetCoverage(status);

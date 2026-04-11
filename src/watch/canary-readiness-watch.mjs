@@ -1,4 +1,5 @@
 import { tokenAsset } from "../assets/tokens.mjs";
+import { STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 import { latestPriceSnapshot, priceForAssetUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { sendTelegramMessage } from "../notify/telegram.mjs";
 export { buildNextReadinessCheckArgs, planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
@@ -22,6 +23,24 @@ function latestMatching(items = [], predicate) {
     }
   }
   return latest;
+}
+
+function splitObservationSequences(observations, maxGapMs) {
+  const sequences = [];
+  let current = [];
+  let previousMs = null;
+  for (const item of observations) {
+    const itemMs = observedAtMs(item.observedAt);
+    if (itemMs === null) continue;
+    if (previousMs !== null && itemMs - previousMs > maxGapMs && current.length > 0) {
+      sequences.push(current);
+      current = [];
+    }
+    current.push(item);
+    previousMs = itemMs;
+  }
+  if (current.length > 0) sequences.push(current);
+  return sequences;
 }
 
 export function shouldRefreshGasForCanary(nextStep) {
@@ -123,6 +142,125 @@ export function planBlockedScoreRefresh(state) {
     ...base,
     reason: "score_inputs_unchanged",
     latestObservedAt: newestRelevant?.observedAt || null,
+  };
+}
+
+export function planQuoteDecayRefresh(state, options = {}) {
+  const route = state?.nextStep?.route || null;
+  const now = options.now || new Date().toISOString();
+  const windowsSeconds = (options.windowsSeconds || [5, 15, 30]).filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  const maxWindowSeconds = windowsSeconds.at(-1) || 0;
+  const base = {
+    shouldRefresh: false,
+    reason: "not_applicable",
+    routeKey: route?.routeKey || null,
+    amount: route?.amount || null,
+    latestObservedAt: null,
+    anchorObservedAt: null,
+    pendingWindowSeconds: null,
+  };
+
+  if (!route?.routeKey || !route?.amount || windowsSeconds.length === 0) return base;
+
+  const matching = (state?.shadowObservations || [])
+    .filter((item) => item.routeKey === route.routeKey && String(item.amount) === String(route.amount))
+    .sort((left, right) => observedAtMs(left.observedAt) - observedAtMs(right.observedAt));
+
+  if (matching.length === 0) {
+    return {
+      ...base,
+      shouldRefresh: true,
+      reason: "missing_decay_observation",
+    };
+  }
+
+  const sequences = splitObservationSequences(matching, maxWindowSeconds * 1000);
+  const activeSequence = sequences.at(-1) || [];
+  const anchor = activeSequence[0] || null;
+  const latest = activeSequence.at(-1) || null;
+  const anchorMs = observedAtMs(anchor?.observedAt);
+  const nowMs = observedAtMs(now);
+  const coveredWindows = new Set();
+
+  for (const item of activeSequence.slice(1)) {
+    const itemMs = observedAtMs(item.observedAt);
+    if (anchorMs === null || itemMs === null) continue;
+    const elapsedSeconds = (itemMs - anchorMs) / 1000;
+    for (const windowSeconds of windowsSeconds) {
+      if (elapsedSeconds >= windowSeconds) coveredWindows.add(windowSeconds);
+    }
+  }
+
+  const pendingWindowSeconds = windowsSeconds.find((windowSeconds) => !coveredWindows.has(windowSeconds)) || null;
+  if (!pendingWindowSeconds) {
+    return {
+      ...base,
+      reason: "decay_windows_complete",
+      latestObservedAt: latest?.observedAt || null,
+      anchorObservedAt: anchor?.observedAt || null,
+    };
+  }
+
+  if (anchorMs === null || nowMs === null || nowMs - anchorMs < pendingWindowSeconds * 1000) {
+    return {
+      ...base,
+      reason: "waiting_decay_window",
+      latestObservedAt: latest?.observedAt || null,
+      anchorObservedAt: anchor?.observedAt || null,
+      pendingWindowSeconds,
+    };
+  }
+
+  return {
+    ...base,
+    shouldRefresh: true,
+    reason: "due_decay_window",
+    latestObservedAt: latest?.observedAt || null,
+    anchorObservedAt: anchor?.observedAt || null,
+    pendingWindowSeconds,
+  };
+}
+
+export function planDexPriceRefresh(state) {
+  const route = state?.nextStep?.route || null;
+  const marketPrices = state?.dashboardStatus?.market?.chainWbtcPrices || [];
+  const marketByChain = new Map(marketPrices.map((item) => [item.chain, item]));
+  const candidateChains = [...new Set([route?.srcChain, route?.dstChain].filter(Boolean))]
+    .filter((chain) => chain !== "bitcoin" && STABLE_QUOTE_TOKENS[chain]);
+  const base = {
+    shouldRefresh: false,
+    reason: "not_applicable",
+    routeKey: route?.routeKey || null,
+    amount: route?.amount || null,
+    chains: candidateChains,
+  };
+
+  if (!route || candidateChains.length === 0) return base;
+
+  const missingChains = candidateChains.filter((chain) => !Number.isFinite(marketByChain.get(chain)?.usd));
+  const staleChains = candidateChains.filter((chain) => marketByChain.get(chain)?.stale);
+
+  if (missingChains.length > 0) {
+    return {
+      ...base,
+      shouldRefresh: true,
+      reason: "missing_chain_price",
+      chains: missingChains,
+    };
+  }
+
+  if (staleChains.length > 0) {
+    return {
+      ...base,
+      shouldRefresh: true,
+      reason: "stale_chain_price",
+      chains: staleChains,
+    };
+  }
+
+  return {
+    ...base,
+    reason: "chain_prices_fresh",
   };
 }
 

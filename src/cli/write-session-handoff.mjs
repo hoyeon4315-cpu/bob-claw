@@ -68,6 +68,21 @@ function nextFocusLine(best) {
   return null;
 }
 
+function quoteDecayLine(audit) {
+  const windows = audit?.quoteDecayWindows || [];
+  if (!windows.length) return "- Quote decay: no shadow decay windows yet";
+  const required = windows.filter((item) => [5, 15, 30].includes(item.windowSeconds));
+  if (!required.length) return "- Quote decay: no 5s/15s/30s windows yet";
+  return `- Quote decay: ${required
+    .map((item) => `${item.windowSeconds}s ${item.survivedGroups}/${item.profitableStartGroups || item.coveredGroups}`)
+    .join(" · ")}`;
+}
+
+function priceCoverageLine(market) {
+  if (!market) return "- Chain price coverage: unavailable";
+  return `- Chain price coverage: observed ${market.observedChainCount ?? 0}, stale ${market.staleChainCount ?? 0}, missing ${market.missingChainCount ?? 0}`;
+}
+
 async function main() {
   const now = new Date().toISOString();
   const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
@@ -138,6 +153,8 @@ async function main() {
     `- Candidate routes observed: ${routePlan.candidateCount}`,
     `- txReady routes: ${routePlan.txReadyCount}`,
     `- viable prep routes: ${routePlan.viableCount}`,
+    quoteDecayLine(dashboardStatus?.audit),
+    priceCoverageLine(dashboardStatus?.market),
     `- estimator wallet checked routes: ${fundingPlan.routeCount}`,
     `- estimator skipped routes: ${fundingPlan.skippedRouteCount}`,
     `- skipped reasons: ${fundingPlan.failureReasons.map((item) => `${item.reason}:${item.count}`).join(",") || "none"}`,

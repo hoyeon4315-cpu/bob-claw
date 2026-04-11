@@ -37,6 +37,44 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
       ],
       quotes: [quote(bobBase, "2026-04-10T10:00:00.000Z"), quote(baseBob, "2026-04-10T10:05:00.000Z")],
       failures: [],
+      priceSnapshots: [
+        {
+          schemaVersion: 1,
+          observedAt: "2026-04-10T11:57:00.000Z",
+          source: "test",
+          btcUsd: 72_988,
+          tokenByKey: {
+            btc: 72_988,
+            wbtc: 72_950,
+            ethereum: 2_242.72,
+            usd_stable: 1,
+          },
+          nativeByChain: {
+            bob: 2_242.72,
+            base: 2_242.72,
+          },
+        },
+      ],
+      dexQuotes: [
+        {
+          observedAt: "2026-04-10T11:58:10.000Z",
+          provider: "odos",
+          source: "gateway_dst_leg",
+          chain: "bob",
+          inputToken: WBTC_OFT,
+          inputAmount: "10000",
+          inputValueUsd: 7.295,
+        },
+        {
+          observedAt: "2026-04-10T11:58:20.000Z",
+          provider: "odos",
+          source: "gateway_dst_leg",
+          chain: "base",
+          inputToken: WBTC_OFT,
+          inputAmount: "10000",
+          inputValueUsd: 7.302,
+        },
+      ],
       gasSnapshots: [
         {
           observedAt: "2026-04-10T11:55:00.000Z",
@@ -113,6 +151,16 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
     "unichain",
   ]);
   assert.equal(status.gas.missingGatewayGasChainCount, 0);
+  assert.equal(status.market.wbtcUsd, 72_950);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").ticker, "wBTC");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").usd, 72_950);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").usd, 73_020);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").deltaPct > 0, true);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").stale, false);
+  assert.equal(status.market.observedChainCount, 2);
+  assert.equal(status.market.missingChainCount, 0);
+  assert.equal(status.market.staleChainCount, 0);
+  assert.equal(status.dataCounts.priceSnapshots, 1);
 });
 
 test("dashboard status includes Gateway visual routes with segment-specific asset traces", () => {
@@ -305,6 +353,26 @@ test("dashboard status includes read-only opportunity summary", () => {
         reason: "missing_tx_data",
       },
     ],
+    shadowObservations: [
+      {
+        observedAt: "2026-04-10T10:30:00.000Z",
+        routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
+        amount: "10000",
+        observedEdgePct: 0.012,
+        requiredEdgePct: 0.01,
+        latencyMs: 1200,
+        executionGasUsd: 0.03,
+      },
+      {
+        observedAt: "2026-04-10T10:30:08.000Z",
+        routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
+        amount: "10000",
+        observedEdgePct: 0.011,
+        requiredEdgePct: 0.01,
+        latencyMs: 1180,
+        executionGasUsd: 0.031,
+      },
+    ],
   }, { now: "2026-04-10T12:00:00.000Z" });
 
   assert.equal(status.opportunity.scoredQuotes, 2);
@@ -323,6 +391,13 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.estimatorWallet.nativeBlockedCount, 1);
   assert.equal(status.estimatorWallet.allowanceBlockedCount, 1);
   assert.equal(status.dataCounts.estimatorWalletReadiness, 1);
+  assert.equal(status.audit.sampleSource, "shadow_observations");
+  assert.equal(status.audit.shadowObservations, 2);
+  assert.equal(status.audit.latencyP95Ms, 1200);
+  assert.equal(status.audit.executionGasP95Usd, 0.031);
+  assert.equal(status.audit.quoteDecayCoveredGroups, 1);
+  assert.equal(status.audit.quoteDecayWindows.find((item) => item.windowSeconds === 5).survivedGroups, 1);
+  assert.equal(status.dataCounts.shadowObservations, 2);
 });
 
 test("dashboard status includes shadow cycle summary when available", () => {

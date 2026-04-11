@@ -1,13 +1,15 @@
 import { join } from "node:path";
-import { isBtcFamilyRoute, routeAsset, tokenAsset } from "../assets/tokens.mjs";
+import { isBtcFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
+import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 
 const STATUS_SCHEMA_VERSION = 1;
 const RISK_BUDGET_USD = 300;
 const GATEWAY_NODE = "bob_gateway";
+const CHAIN_PRICE_STALE_MINUTES = 60;
 
 function stripVolatileStatusFields(value) {
   if (typeof value === "string") {
@@ -29,6 +31,11 @@ function latest(items) {
 function minutesBetween(older, newer) {
   if (!older) return null;
   return (new Date(newer).getTime() - new Date(older).getTime()) / 60_000;
+}
+
+function pctChange(reference, value) {
+  if (!Number.isFinite(reference) || reference === 0 || !Number.isFinite(value)) return null;
+  return ((value - reference) / reference) * 100;
 }
 
 function countRecent(items, now, hours) {
@@ -296,15 +303,102 @@ function gasSummary({ gasSnapshots, gasFailures, gatewayChains, now }) {
   };
 }
 
+function impliedDexWbtcUsd(quote) {
+  if (!quote?.chain || !quote?.inputToken || !Number.isFinite(quote?.inputValueUsd)) return null;
+  const asset = tokenAsset(quote.chain, quote.inputToken);
+  if (asset.family !== "wrapped_btc" || !Number.isInteger(asset.decimals)) return null;
+  const inputAmountDecimal = unitsToDecimal(quote.inputAmount, asset.decimals);
+  if (!Number.isFinite(inputAmountDecimal) || inputAmountDecimal <= 0) return null;
+  return Math.round((quote.inputValueUsd / inputAmountDecimal) * 100) / 100;
+}
+
+function latestDexWbtcPriceByChain(dexQuotes = []) {
+  const latest = new Map();
+  for (const quote of dexQuotes) {
+    const impliedUsd = impliedDexWbtcUsd(quote);
+    if (!Number.isFinite(impliedUsd)) continue;
+    const existing = latest.get(quote.chain);
+    if (!existing || new Date(quote.observedAt || 0) > new Date(existing.observedAt || 0)) {
+      latest.set(quote.chain, {
+        chain: quote.chain,
+        ticker: "wBTC",
+        usd: impliedUsd,
+        observedAt: quote.observedAt || null,
+        source: `${quote.provider || "dex"}:${quote.source || "quote"}`,
+      });
+    }
+  }
+  return latest;
+}
+
+function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnapshots = [], dexQuotes = [], gatewayChains = [], now }) {
+  const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
+  const basePrices = latestObservedPrices ? pricesFromSnapshot(latestObservedPrices) : emptyPricesUsd();
+  const prices = overlayObservedPricesUsd(basePrices, {
+    gasSnapshots,
+    bitcoinFeeSnapshots,
+  });
+  const observedAt =
+    latestObservedPrices?.observedAt ||
+    latest(bitcoinFeeSnapshots)?.observedAt ||
+    latest(gasSnapshots)?.observedAt ||
+    null;
+  const wbtcUsd = Number.isFinite(prices.tokenByKey?.wbtc) ? prices.tokenByKey.wbtc : Number.isFinite(prices.btc) ? prices.btc : null;
+  const btcUsd = Number.isFinite(prices.btc) ? prices.btc : wbtcUsd;
+  const dexWbtcByChain = latestDexWbtcPriceByChain(dexQuotes);
+  const chainWbtcPrices = gatewayChains.map((chain) => {
+    const dexPrice = dexWbtcByChain.get(chain) || null;
+    const chainObservedAt = chain === "bitcoin" ? observedAt : dexPrice?.observedAt || null;
+    const ageMinutes = minutesBetween(chainObservedAt, now);
+    const usd = chain === "bitcoin" ? btcUsd : dexPrice?.usd ?? null;
+    return {
+      chain,
+      ticker: chain === "bitcoin" ? "BTC" : "wBTC",
+      usd,
+      observedAt: chainObservedAt,
+      ageMinutes,
+      deltaPct: chain === "bitcoin" ? null : pctChange(btcUsd, usd),
+      stale: Number.isFinite(ageMinutes) ? ageMinutes > CHAIN_PRICE_STALE_MINUTES : false,
+      source: chain === "bitcoin" ? latestObservedPrices?.source || latest(bitcoinFeeSnapshots)?.source || "observed_overlay" : dexPrice?.source || null,
+    };
+  });
+  const nonBitcoinChainPrices = chainWbtcPrices.filter((item) => item.chain !== "bitcoin");
+  const observedChainCount = nonBitcoinChainPrices.filter((item) => Number.isFinite(item.usd)).length;
+  const staleChainCount = nonBitcoinChainPrices.filter((item) => Number.isFinite(item.usd) && item.stale).length;
+  const totalChainCount = nonBitcoinChainPrices.length;
+
+  return {
+    observedAt,
+    ageMinutes: minutesBetween(observedAt, now),
+    source: latestObservedPrices?.source || latest(bitcoinFeeSnapshots)?.source || "observed_overlay",
+    btcUsd: Number.isFinite(btcUsd) ? btcUsd : null,
+    wbtcUsd: Number.isFinite(wbtcUsd) ? wbtcUsd : null,
+    chainPriceStaleMinutes: CHAIN_PRICE_STALE_MINUTES,
+    observedChainCount,
+    missingChainCount: Math.max(0, totalChainCount - observedChainCount),
+    staleChainCount,
+    chainWbtcPrices,
+  };
+}
+
 function auditSummary(audit) {
   return {
     decision: audit.decision,
     shadow: audit.shadow,
+    sampleSource: audit.sampleSource,
     firstObservedAt: audit.firstObservedAt,
     lastObservedAt: audit.lastObservedAt,
     shadowHours: audit.shadowHours,
+    hourBuckets: audit.hourBuckets,
+    latencyP50Ms: audit.latencyP50Ms,
+    latencyP95Ms: audit.latencyP95Ms,
+    executionGasP50Usd: audit.executionGasP50Usd,
+    executionGasP95Usd: audit.executionGasP95Usd,
+    quoteDecayCoveredGroups: audit.quoteDecayCoveredGroups,
+    quoteDecayWindows: audit.quoteDecayWindows,
     quotes: audit.quotes,
     activeQuotes: audit.activeQuotes,
+    shadowObservations: audit.shadowObservations,
     failures: audit.failures,
     cloudflareFailures: audit.cloudflareFailures,
     sampledRoutes: audit.sampledRoutes,
@@ -662,6 +756,7 @@ export function buildDashboardStatus(input, options = {}) {
       failures: input.failures || [],
       gasSnapshots: input.gasSnapshots || [],
       gasFailures: input.gasFailures || [],
+      shadowObservations: input.shadowObservations || [],
       now,
     },
     options.auditTargets,
@@ -681,6 +776,14 @@ export function buildDashboardStatus(input, options = {}) {
   const gas = gasSummary({
     gasSnapshots: input.gasSnapshots || [],
     gasFailures: input.gasFailures || [],
+    gatewayChains: gateway.chains,
+    now,
+  });
+  const market = marketSummary({
+    priceSnapshots: input.priceSnapshots || [],
+    gasSnapshots: input.gasSnapshots || [],
+    bitcoinFeeSnapshots: input.bitcoinFeeSnapshots || [],
+    dexQuotes: input.dexQuotes || [],
     gatewayChains: gateway.chains,
     now,
   });
@@ -706,6 +809,7 @@ export function buildDashboardStatus(input, options = {}) {
     generatedAt: now,
     overall,
     gateway,
+    market,
     gas,
     executionGas,
     estimatorWallet,
@@ -720,6 +824,7 @@ export function buildDashboardStatus(input, options = {}) {
       quoteFailures: input.failures?.length || 0,
       gasSnapshots: input.gasSnapshots?.length || 0,
       gasFailures: input.gasFailures?.length || 0,
+      priceSnapshots: input.priceSnapshots?.length || 0,
       updateSnapshots: input.updateSnapshots?.length || 0,
       updateAlerts: input.updateAlerts?.length || 0,
       dexQuotes: input.dexQuotes?.length || 0,
@@ -729,6 +834,7 @@ export function buildDashboardStatus(input, options = {}) {
       gatewayGasEstimateFailures: input.gatewayGasEstimateFailures?.length || 0,
       estimatorWalletReadiness: input.estimatorWalletReadiness?.length || 0,
       estimatorWalletReadinessFailures: input.estimatorWalletReadinessFailures?.length || 0,
+      shadowObservations: input.shadowObservations?.length || 0,
       shadowCyclePresent: shadowCycle ? 1 : 0,
     },
     exposurePolicy: {

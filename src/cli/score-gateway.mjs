@@ -4,10 +4,16 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
+import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { scoreGatewayQuote } from "../scoring/gateway-score.mjs";
+import { buildShadowOpportunityObservation, observationKey, shouldPersistShadowObservation } from "../shadow/opportunity-observation.mjs";
+import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
+import { buildTreasuryPlan } from "../treasury/planner.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 
 function latestByRouteAndAmount(quotes) {
   const latest = new Map();
@@ -86,6 +92,7 @@ function parseArgs(argv) {
     write: flags.has("--write"),
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
+    shadowRolloverMs: options["shadow-rollover-ms"] ? Number(options["shadow-rollover-ms"]) : null,
   };
 }
 
@@ -142,6 +149,47 @@ function formatMinutes(value) {
   return `${value.toFixed(1)}m`;
 }
 
+function sameAddress(left, right) {
+  return String(left || "").toLowerCase() !== "" && String(left || "").toLowerCase() === String(right || "").toLowerCase();
+}
+
+function latestInventoryForAddress(records, address) {
+  const filtered = address ? records.filter((item) => sameAddress(item.address, address)) : records;
+  return [...filtered].sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
+}
+
+function routeDemandFromQuote(quote) {
+  return [
+    { chain: quote.route.srcChain },
+    { chain: quote.route.srcChain, token: quote.route.srcToken },
+  ];
+}
+
+function routeContextFromScore(score) {
+  return {
+    routeKey: score.routeKey,
+    amount: score.amount,
+    inputUsd: score.inputUsd ?? null,
+    netEdgeUsd: score.netEdgeUsd ?? null,
+    executableNetEdgeUsd: score.executableNetEdgeUsd ?? null,
+    tradeReadiness: score.tradeReadiness ?? null,
+  };
+}
+
+function buildFundingSourcePlanForQuote({ quote, score, inventory, policy }) {
+  if (!inventory) return null;
+  const treasuryPlan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: routeDemandFromQuote(quote),
+  });
+  return buildFundingSourcePlan({
+    plan: treasuryPlan,
+    policy,
+    routeContext: routeContextFromScore(score),
+  });
+}
+
 function assetText(asset) {
   return `${asset.ticker}/${asset.decimals ?? "?"}d`;
 }
@@ -160,6 +208,8 @@ async function main() {
   const bitcoinFeeSnapshots = await readJsonl(config.dataDir, "bitcoin-fee-snapshots");
   const gasEstimateSnapshots = await readJsonl(config.dataDir, "gateway-gas-estimates");
   const gasSnapshotRecords = await readJsonl(config.dataDir, "gas-snapshots");
+  const inventoryRecords = await readJsonl(config.dataDir, "treasury-inventory");
+  const shadowObservationRecords = args.write ? await readJsonl(config.dataDir, "gateway-shadow-observations") : [];
   const latestQuotes = latestByRouteAndAmount(allQuotes);
   const routeStats = routeStatsByKey(allQuotes, failures);
   const dexOutputQuotes = latestDexOutputQuoteByRoute(dexQuotes);
@@ -174,6 +224,9 @@ async function main() {
     gasSnapshots: gasSnapshotRecords,
     bitcoinFeeSnapshots,
   });
+  const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
+  const latestInventory = latestInventoryForAddress(inventoryRecords, resolved.address);
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const tokenCache = new Map();
   const maxRouteFailureRate = 0.1;
   const selective = Boolean(args.routeKey && args.amount);
@@ -196,6 +249,7 @@ async function main() {
   }
 
   const refreshedScores = [];
+  const refreshedShadowObservations = [];
   for (const quote of quotes) {
     const snapshot = gasSnapshots.get(quote.route.srcChain);
     const [srcAsset, dstAsset] = await Promise.all([
@@ -208,21 +262,45 @@ async function main() {
       : snapshot
         ? gasUsdFromSnapshot(snapshot, prices.nativeByChain[quote.route.srcChain])
         : null;
-    refreshedScores.push(
+    const scoreBaseOptions = {
+      srcAsset,
+      dstAsset,
+      executionGasUsd,
+      executionGasSource: exactGas ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : null,
+      gasObservedAt: exactGas?.observedAt || snapshot?.observedAt || null,
+      routeStats: routeStats.get(quote.routeKey),
+      dexOutputQuote: dexOutputQuotes.get(quote.routeKey),
+      bitcoinFee,
+      requireExactExecutionGas: true,
+      maxRouteFailureRate,
+      gasBufferMultiplier: 2,
+      maxGasSnapshotAgeMinutes: 30,
+      now,
+    };
+    const preliminaryScore =
       scoreGatewayQuote(quote, prices, {
-        srcAsset,
-        dstAsset,
-        executionGasUsd,
-        executionGasSource: exactGas ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : null,
-        gasObservedAt: exactGas?.observedAt || snapshot?.observedAt || null,
-        routeStats: routeStats.get(quote.routeKey),
-        dexOutputQuote: dexOutputQuotes.get(quote.routeKey),
-        bitcoinFee,
-        requireExactExecutionGas: true,
-        maxRouteFailureRate,
-        gasBufferMultiplier: 2,
-        maxGasSnapshotAgeMinutes: 30,
+        ...scoreBaseOptions,
+      });
+    const fundingSourcePlan = buildFundingSourcePlanForQuote({
+      quote,
+      score: preliminaryScore,
+      inventory: latestInventory,
+      policy,
+    });
+    const score = scoreGatewayQuote(quote, prices, {
+      ...scoreBaseOptions,
+      executionRefillExpectedCostUsd: fundingSourcePlan?.summary?.executionRefillExpectedCostUsd ?? null,
+      reserveReplenishmentExpectedCostUsd: fundingSourcePlan?.summary?.reserveReplenishmentExpectedCostUsd ?? null,
+      effectiveSystemNetPnlUsd: fundingSourcePlan?.summary?.effectiveSystemNetPnlUsd ?? null,
+    });
+    refreshedScores.push(score);
+    refreshedShadowObservations.push(
+      buildShadowOpportunityObservation({
+        score,
+        fundingSourcePlan,
         now,
+        priceObservedAt: useObservedPrices ? latestObservedPrices?.observedAt || null : now,
+        inventoryObservedAt: latestInventory?.observedAt || null,
       }),
     );
   }
@@ -246,6 +324,20 @@ async function main() {
 
   if (args.write) {
     await writeFile(scorePath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    const store = new JsonlStore(config.dataDir);
+    const latestShadowByKey = new Map([...latestBy(shadowObservationRecords, observationKey).entries()]);
+    let appendedShadowObservations = 0;
+    for (const observation of refreshedShadowObservations) {
+      const previousObservation = latestShadowByKey.get(observationKey(observation)) || null;
+      const decision = shouldPersistShadowObservation(previousObservation, observation, {
+        maxUnchangedAgeMs: Number.isFinite(args.shadowRolloverMs) ? args.shadowRolloverMs : undefined,
+      });
+      if (!decision.shouldPersist) continue;
+      await store.append("gateway-shadow-observations", observation);
+      latestShadowByKey.set(observationKey(observation), observation);
+      appendedShadowObservations += 1;
+    }
+    result.shadowObservationAppends = appendedShadowObservations;
   }
 
   if (args.json) {
@@ -257,6 +349,9 @@ async function main() {
   console.log(`scoredQuotes=${scores.length}`);
   if (selective) {
     console.log(`selection routeKey=${args.routeKey} amount=${args.amount} refreshed=${refreshedScores.length}`);
+  }
+  if (args.write) {
+    console.log(`shadowObservations=${result.shadowObservationAppends ?? refreshedShadowObservations.length}`);
   }
   console.log(
     `summary shadowCandidates=${result.summary.shadowCandidates} insufficientData=${result.summary.insufficientData} highFailureRate=${result.summary.highFailureRate} staleGas=${result.summary.staleGas} missingDecimals=${result.summary.missingDecimals}`,
@@ -278,8 +373,12 @@ async function main() {
         `btcFee=${formatUsd(score.bitcoinFeeUsd)}`,
         `gasBuffer=${formatUsd(score.gasShockBufferUsd)}`,
         `knownCost=${formatUsd(score.knownCostUsd)}`,
+        `refillCost=${formatUsd(score.treasuryExecutionRefillCostUsd)}`,
         `netEdge=${formatUsd(score.netEdgeUsd)}`,
         `execNet=${formatUsd(score.executableNetEdgeUsd)}`,
+        `treasuryNet=${formatUsd(score.treasuryAdjustedNetEdgeUsd)}`,
+        `treasuryExecNet=${formatUsd(score.treasuryAdjustedExecutableNetEdgeUsd)}`,
+        `systemNet=${formatUsd(score.effectiveSystemNetPnlUsd)}`,
         `edge=${formatPct(score.netEdgePct)}`,
         `execEdge=${formatPct(score.executableNetEdgePct)}`,
         `failRate=${formatPct(score.routeStats?.failureRate)}`,

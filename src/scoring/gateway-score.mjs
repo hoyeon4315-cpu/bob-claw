@@ -129,8 +129,16 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     (Number.isFinite(executionGasUsd) ? executionGasUsd : 0) +
     (Number.isFinite(gasShockBufferUsd) ? gasShockBufferUsd : 0) +
     (Number.isFinite(nativeBitcoinFeeUsd) ? nativeBitcoinFeeUsd : 0);
+  const treasuryExecutionRefillCostUsd = finiteOrNull(options.executionRefillExpectedCostUsd);
+  const treasuryReserveReplenishmentCostUsd = finiteOrNull(options.reserveReplenishmentExpectedCostUsd);
+  const treasuryAdjustedKnownCostUsd = knownCostUsd + (Number.isFinite(treasuryExecutionRefillCostUsd) ? treasuryExecutionRefillCostUsd : 0);
+  const effectiveSystemKnownCostUsd =
+    treasuryAdjustedKnownCostUsd + (Number.isFinite(treasuryReserveReplenishmentCostUsd) ? treasuryReserveReplenishmentCostUsd : 0);
   const netEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - knownCostUsd : null;
   const netEdgePct = Number.isFinite(netEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? netEdgeUsd / inputUsd : null;
+  const treasuryAdjustedNetEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
+  const treasuryAdjustedNetEdgePct =
+    Number.isFinite(treasuryAdjustedNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedNetEdgeUsd / inputUsd : null;
   const dexOutputQuoteAgeMinutes = minutesBetween(dexOutputQuote?.observedAt, options.now || new Date().toISOString());
   if (dexOutputQuote && dexOutputQuoteAgeMinutes !== null && dexOutputQuoteAgeMinutes > (options.maxDexQuoteAgeMinutes ?? 30)) {
     dataGaps.push("stale_dex_output_quote");
@@ -144,6 +152,12 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const executableNetEdgeUsd = Number.isFinite(executableTokenDeltaUsd) ? executableTokenDeltaUsd - knownCostUsd : null;
   const executableNetEdgePct =
     Number.isFinite(executableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? executableNetEdgeUsd / inputUsd : null;
+  const treasuryAdjustedExecutableNetEdgeUsd =
+    Number.isFinite(executableTokenDeltaUsd) ? executableTokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
+  const treasuryAdjustedExecutableNetEdgePct =
+    Number.isFinite(treasuryAdjustedExecutableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0
+      ? treasuryAdjustedExecutableNetEdgeUsd / inputUsd
+      : null;
   const outputInputValueRatio = Number.isFinite(inputUsd) && inputUsd > 0 && Number.isFinite(outputUsd) ? outputUsd / inputUsd : null;
   if (
     Number.isFinite(outputInputValueRatio) &&
@@ -153,6 +167,18 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     dataGaps.push("implausible_quote_value_ratio");
   }
   const breakEvenPct = Number.isFinite(inputUsd) && inputUsd > 0 ? knownCostUsd / inputUsd : null;
+  const treasuryAdjustedBreakEvenPct =
+    Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedKnownCostUsd / inputUsd : null;
+  const effectiveSystemNetPnlUsd = finiteOrNull(options.effectiveSystemNetPnlUsd);
+  const effectiveSystemNetPnlPct =
+    Number.isFinite(effectiveSystemNetPnlUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? effectiveSystemNetPnlUsd / inputUsd : null;
+  const effectiveSystemBreakEvenPct =
+    Number.isFinite(inputUsd) &&
+    inputUsd > 0 &&
+    Number.isFinite(treasuryExecutionRefillCostUsd) &&
+    Number.isFinite(treasuryReserveReplenishmentCostUsd)
+      ? effectiveSystemKnownCostUsd / inputUsd
+      : null;
 
   return {
     observedAt: quote.observedAt,
@@ -176,12 +202,23 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     knownCostUsd,
     netEdgeUsd: finiteOrNull(netEdgeUsd),
     netEdgePct: finiteOrNull(netEdgePct),
+    treasuryExecutionRefillCostUsd,
+    treasuryReserveReplenishmentCostUsd,
+    treasuryAdjustedKnownCostUsd: finiteOrNull(treasuryAdjustedKnownCostUsd),
+    treasuryAdjustedNetEdgeUsd: finiteOrNull(treasuryAdjustedNetEdgeUsd),
+    treasuryAdjustedNetEdgePct: finiteOrNull(treasuryAdjustedNetEdgePct),
     executableOutputUsd: finiteOrNull(executableOutputUsd),
     executableTokenDeltaUsd: finiteOrNull(executableTokenDeltaUsd),
     executableNetEdgeUsd: finiteOrNull(executableNetEdgeUsd),
     executableNetEdgePct: finiteOrNull(executableNetEdgePct),
+    treasuryAdjustedExecutableNetEdgeUsd: finiteOrNull(treasuryAdjustedExecutableNetEdgeUsd),
+    treasuryAdjustedExecutableNetEdgePct: finiteOrNull(treasuryAdjustedExecutableNetEdgePct),
+    effectiveSystemNetPnlUsd,
+    effectiveSystemNetPnlPct: finiteOrNull(effectiveSystemNetPnlPct),
     outputInputValueRatio: finiteOrNull(outputInputValueRatio),
     breakEvenPct: finiteOrNull(breakEvenPct),
+    treasuryAdjustedBreakEvenPct: finiteOrNull(treasuryAdjustedBreakEvenPct),
+    effectiveSystemBreakEvenPct: finiteOrNull(effectiveSystemBreakEvenPct),
     gasSnapshotAgeMinutes: finiteOrNull(gasSnapshotAgeMinutes),
     estimatedTimeInSecs: quote.estimatedTimeInSecs,
     latencyMs: quote.latencyMs,

@@ -53,6 +53,7 @@ async function main() {
     failures,
     gasSnapshots,
     gasFailures,
+    priceSnapshots,
     updateSnapshots,
     updateAlerts,
     scoreSnapshot,
@@ -63,6 +64,7 @@ async function main() {
     gatewayGasEstimateFailures,
     estimatorWalletReadiness,
     estimatorWalletReadinessFailures,
+    shadowObservations,
     shadowCycle,
   ] = await Promise.all([
     readJsonl(config.dataDir, "gateway-routes"),
@@ -70,6 +72,7 @@ async function main() {
     readJsonl(config.dataDir, "gateway-quote-failures"),
     readJsonl(config.dataDir, "gas-snapshots"),
     readJsonl(config.dataDir, "gas-snapshot-failures"),
+    readJsonl(config.dataDir, "market-price-snapshots"),
     readJsonl(config.dataDir, "gateway-update-snapshots"),
     readJsonl(config.dataDir, "gateway-update-alerts"),
     readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
@@ -80,6 +83,7 @@ async function main() {
     readJsonl(config.dataDir, "gateway-gas-estimate-failures"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
+    readJsonl(config.dataDir, "gateway-shadow-observations"),
     readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json")),
   ]);
 
@@ -89,6 +93,7 @@ async function main() {
     failures,
     gasSnapshots,
     gasFailures,
+    priceSnapshots,
     updateSnapshots,
     updateAlerts,
     scoreSnapshot,
@@ -99,6 +104,7 @@ async function main() {
     gatewayGasEstimateFailures,
     estimatorWalletReadiness,
     estimatorWalletReadinessFailures,
+    shadowObservations,
     shadowCycle,
   });
   const output = await writeDashboardStatus(config.dataDir, status);

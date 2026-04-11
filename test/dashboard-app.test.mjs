@@ -15,6 +15,8 @@ function baseStatus(overrides = {}) {
       probeTotal: 10,
       ...overrides.gateway,
     },
+    audit: overrides.audit ?? { quoteDecayWindows: [] },
+    market: overrides.market ?? { chainWbtcPrices: [], observedChainCount: 0, missingChainCount: 0, staleChainCount: 0 },
     shadowCycle: overrides.shadowCycle ?? null,
   };
 }
@@ -88,6 +90,19 @@ test("update summary falls back to shadow cycle guidance when gateway is quiet",
         },
         audit: { issues: [] },
       },
+      audit: {
+        quoteDecayWindows: [
+          { windowSeconds: 5, profitableStartGroups: 1, coveredGroups: 1, survivedGroups: 1 },
+          { windowSeconds: 15, profitableStartGroups: 1, coveredGroups: 1, survivedGroups: 0 },
+          { windowSeconds: 30, profitableStartGroups: 0, coveredGroups: 0, survivedGroups: 0 },
+        ],
+      },
+      market: {
+        chainWbtcPrices: [{ chain: "base", usd: 72763 }, { chain: "ethereum", usd: 72743.12 }, { chain: "bitcoin", usd: 72823 }],
+        observedChainCount: 2,
+        missingChainCount: 6,
+        staleChainCount: 1,
+      },
     }),
     { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
   );
@@ -104,6 +119,8 @@ test("update summary falls back to shadow cycle guidance when gateway is quiet",
   assert.match(summary.body, /base->bitcoin ETH->BTC/);
   assert.match(summary.body, /알려진 비용 반영 후 순이익이 아직 음수/);
   assert.match(summary.body, /순엣지 -\$0\.83/);
+  assert.match(summary.body, /5s 1\/1 · 15s 0\/1 · 30s 0\/0/);
+  assert.match(summary.body, /체인 가격 2\/8개 · stale 1 · missing 6/);
   assert.match(summary.body, /수요 대기 refill 2건/);
 });
 

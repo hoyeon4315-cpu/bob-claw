@@ -3,13 +3,15 @@ import { test } from "node:test";
 import {
   buildNextReadinessCheckArgs,
   decisionFingerprint,
-  formatCanaryTelegramAlert,
-  formatCanaryWatchSummary,
-  planNextReadinessRefresh,
-  planBlockedScoreRefresh,
-  summarizeShadowArtifactRefresh,
-  shouldRefreshGasForCanary,
-} from "../src/watch/canary-readiness-watch.mjs";
+    formatCanaryTelegramAlert,
+    formatCanaryWatchSummary,
+    planDexPriceRefresh,
+    planNextReadinessRefresh,
+    planBlockedScoreRefresh,
+    planQuoteDecayRefresh,
+    summarizeShadowArtifactRefresh,
+    shouldRefreshGasForCanary,
+  } from "../src/watch/canary-readiness-watch.mjs";
 
 test("canary readiness summary includes decision and route", () => {
   const summary = formatCanaryWatchSummary({
@@ -307,4 +309,167 @@ test("blocked net-edge route refreshes scoring when a newer price snapshot chang
   assert.equal(plan.reason, "newer_market_inputs");
   assert.deepEqual(plan.changedInputs, ["src_price", "dst_price"]);
   assert.equal(plan.latestObservedAt, "2026-04-11T06:04:00.000Z");
+});
+
+test("quote decay refresh triggers when the next target window is due", () => {
+  const plan = planQuoteDecayRefresh(
+    {
+      nextStep: {
+        route: {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+      },
+      shadowObservations: [
+        {
+          observedAt: "2026-04-11T06:00:00.000Z",
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+        {
+          observedAt: "2026-04-11T06:00:08.000Z",
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+      ],
+    },
+    {
+      now: "2026-04-11T06:00:16.000Z",
+      windowsSeconds: [5, 15, 30],
+    },
+  );
+
+  assert.equal(plan.shouldRefresh, true);
+  assert.equal(plan.reason, "due_decay_window");
+  assert.equal(plan.pendingWindowSeconds, 15);
+  assert.equal(plan.anchorObservedAt, "2026-04-11T06:00:00.000Z");
+});
+
+test("quote decay refresh waits until the next target window arrives", () => {
+  const plan = planQuoteDecayRefresh(
+    {
+      nextStep: {
+        route: {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+      },
+      shadowObservations: [
+        {
+          observedAt: "2026-04-11T06:00:00.000Z",
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+        {
+          observedAt: "2026-04-11T06:00:08.000Z",
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+      ],
+    },
+    {
+      now: "2026-04-11T06:00:11.000Z",
+      windowsSeconds: [5, 15, 30],
+    },
+  );
+
+  assert.equal(plan.shouldRefresh, false);
+  assert.equal(plan.reason, "waiting_decay_window");
+  assert.equal(plan.pendingWindowSeconds, 15);
+});
+
+test("quote decay refresh seeds an initial observation when none exist for the route", () => {
+  const plan = planQuoteDecayRefresh(
+    {
+      nextStep: {
+        route: {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+        },
+      },
+      shadowObservations: [],
+    },
+    {
+      now: "2026-04-11T06:00:11.000Z",
+      windowsSeconds: [5, 15, 30],
+    },
+  );
+
+  assert.equal(plan.shouldRefresh, true);
+  assert.equal(plan.reason, "missing_decay_observation");
+});
+
+test("dex price refresh targets missing supported route chains", () => {
+  const plan = planDexPriceRefresh({
+    nextStep: {
+      route: {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        srcChain: "bob",
+        dstChain: "base",
+      },
+    },
+    dashboardStatus: {
+      market: {
+        chainWbtcPrices: [
+          { chain: "base", usd: null, stale: false },
+          { chain: "bob", usd: null, stale: false },
+        ],
+      },
+    },
+  });
+
+  assert.equal(plan.shouldRefresh, true);
+  assert.equal(plan.reason, "missing_chain_price");
+  assert.deepEqual(plan.chains, ["base"]);
+});
+
+test("dex price refresh skips when supported route chains are fresh", () => {
+  const plan = planDexPriceRefresh({
+    nextStep: {
+      route: {
+        routeKey: "ethereum:0x2260->base:0x0555",
+        amount: "10000",
+        srcChain: "ethereum",
+        dstChain: "base",
+      },
+    },
+    dashboardStatus: {
+      market: {
+        chainWbtcPrices: [
+          { chain: "ethereum", usd: 72_740, stale: false },
+          { chain: "base", usd: 72_763, stale: false },
+        ],
+      },
+    },
+  });
+
+  assert.equal(plan.shouldRefresh, false);
+  assert.equal(plan.reason, "chain_prices_fresh");
+  assert.deepEqual(plan.chains, ["ethereum", "base"]);
+});
+
+test("dex price refresh retriggers on stale supported chain prices", () => {
+  const plan = planDexPriceRefresh({
+    nextStep: {
+      route: {
+        routeKey: "ethereum:0x2260->base:0x0555",
+        amount: "10000",
+        srcChain: "ethereum",
+        dstChain: "base",
+      },
+    },
+    dashboardStatus: {
+      market: {
+        chainWbtcPrices: [
+          { chain: "ethereum", usd: 72_740, stale: true },
+          { chain: "base", usd: 72_763, stale: false },
+        ],
+      },
+    },
+  });
+
+  assert.equal(plan.shouldRefresh, true);
+  assert.equal(plan.reason, "stale_chain_price");
+  assert.deepEqual(plan.chains, ["ethereum"]);
 });

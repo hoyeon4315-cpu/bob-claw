@@ -22,6 +22,12 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : 24,
     amountLimitUsd: options["amount-limit-usd"] ? Number(options["amount-limit-usd"]) : null,
+    chains: options.chains
+      ? options.chains
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -81,7 +87,10 @@ async function main() {
   const store = new JsonlStore(config.dataDir);
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
   const runId = `${new Date().toISOString()}-${Math.random().toString(16).slice(2)}`;
-  const selectedLegs = dedupeLegs(quotes.flatMap(candidateLegsFromGatewayQuote)).slice(0, args.routeLimit);
+  const selectedChains = new Set(args.chains.map((item) => item.toLowerCase()));
+  const selectedLegs = dedupeLegs(quotes.flatMap(candidateLegsFromGatewayQuote))
+    .filter((leg) => selectedChains.size === 0 || selectedChains.has(String(leg.chain || "").toLowerCase()))
+    .slice(0, args.routeLimit);
   const records = [];
 
   for (const leg of selectedLegs) {

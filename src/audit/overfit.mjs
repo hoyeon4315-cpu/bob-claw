@@ -1,3 +1,5 @@
+import { summarizeQuoteDecay } from "../shadow/quote-decay.mjs";
+
 export const DEFAULT_AUDIT_TARGETS = {
   currentQuoteSchemaVersion: 2,
   minShadowHours: 168,
@@ -8,6 +10,8 @@ export const DEFAULT_AUDIT_TARGETS = {
   minHourBuckets: 24,
   maxFailureRatePct: 10,
   maxGasSnapshotAgeMinutes: 30,
+  requiredQuoteDecayWindowsSeconds: [5, 15, 30],
+  minQuoteDecayCoveredGroupsPerWindow: 1,
 };
 
 const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
@@ -31,6 +35,14 @@ function pct(numerator, denominator) {
   return (numerator / denominator) * 100;
 }
 
+function percentile(values, p) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  if (sorted.length === 1) return sorted[0];
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
 function groupBy(items, keyFn) {
   const groups = new Map();
   for (const item of items) {
@@ -43,6 +55,14 @@ function groupBy(items, keyFn) {
 
 function sortDates(items) {
   return items.map((item) => item.observedAt).filter(Boolean).sort((a, b) => new Date(a) - new Date(b));
+}
+
+function routeKeyFromShadowObservation(item) {
+  return item?.routeKey || null;
+}
+
+function amountFromShadowObservation(item) {
+  return item?.amount || null;
 }
 
 function isCloudflareFailure(failure) {
@@ -80,11 +100,13 @@ function latestBy(items, keyFn, dateFn = (item) => item.observedAt) {
 }
 
 export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS) {
+  const effectiveTargets = { ...DEFAULT_AUDIT_TARGETS, ...(targets || {}) };
   const routesRecords = input.routesRecords || [];
   const quotes = input.quotes || [];
   const failures = input.failures || [];
   const gasSnapshots = input.gasSnapshots || [];
   const gasFailures = input.gasFailures || [];
+  const shadowObservations = input.shadowObservations || [];
   const now = input.now || new Date().toISOString();
 
   const latestRoutes = routesRecords.at(-1);
@@ -93,76 +115,106 @@ export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS) {
   const bobNeighborRouteKeys = new Set(routes.filter(isBobNeighborRoute).map(routeKey));
 
   const validQuotes = quotes.filter((quote) => quote.quoteType && quote.routeKey && quote.grossOutputRatio > 0);
-  const currentSchemaQuotes = validQuotes.filter((quote) => quote.schemaVersion === targets.currentQuoteSchemaVersion);
+  const currentSchemaQuotes = validQuotes.filter((quote) => quote.schemaVersion === effectiveTargets.currentQuoteSchemaVersion);
   const activeQuotes = currentSchemaQuotes.length > 0 ? currentSchemaQuotes : validQuotes;
+  const validShadowObservations = shadowObservations.filter((item) => routeKeyFromShadowObservation(item) && item.observedAt);
+  const useShadowObservations = validShadowObservations.length > 0;
+  const activeObservationRouteKeys = new Set(validShadowObservations.map((item) => routeKeyFromShadowObservation(item)));
   const activeQuoteRouteKeys = new Set(activeQuotes.map((quote) => quote.routeKey));
-  const activeBobNeighborRouteKeys = new Set([...activeQuoteRouteKeys].filter((key) => bobNeighborRouteKeys.has(key)));
+  const sampledRouteKeys = useShadowObservations ? activeObservationRouteKeys : activeQuoteRouteKeys;
+  const activeBobNeighborRouteKeys = new Set([...sampledRouteKeys].filter((key) => bobNeighborRouteKeys.has(key)));
   const datedRecords = [...activeQuotes, ...failures].filter((item) => item.observedAt);
-  const dates = sortDates(datedRecords);
+  const dates = sortDates(useShadowObservations ? validShadowObservations : datedRecords);
   const firstObservedAt = dates[0] || null;
   const lastObservedAt = dates.at(-1) || null;
   const shadowHours = firstObservedAt && lastObservedAt ? hoursBetween(firstObservedAt, lastObservedAt) : 0;
-  const hourBuckets = new Set(datedRecords.map((item) => item.observedAt?.slice(0, 13)).filter(Boolean));
-  const routeCoveragePct = pct(activeQuoteRouteKeys.size, totalGatewayRoutes);
+  const hourBuckets = new Set((useShadowObservations ? validShadowObservations : datedRecords).map((item) => item.observedAt?.slice(0, 13)).filter(Boolean));
+  const routeCoveragePct = pct(sampledRouteKeys.size, totalGatewayRoutes);
   const bobNeighborCoveragePct = pct(activeBobNeighborRouteKeys.size, bobNeighborRouteKeys.size);
   const allAttempts = activeQuotes.length + failures.length;
   const failureRatePct = pct(failures.length, allAttempts);
   const cloudflareFailures = failures.filter(isCloudflareFailure).length;
   const legacyRecords = [...quotes, ...failures].filter((item) => !item.schemaVersion).length;
-  const quoteGroups = groupBy(activeQuotes, (quote) => quote.routeKey);
-  const candidateRoutes = [...quoteGroups.entries()].filter(([, routeQuotes]) => routeQuotes.length >= targets.minSamplesPerCandidateRoute);
-  const candidateAmountFailures = candidateRoutes.filter(([, routeQuotes]) => {
-    const amounts = new Set(routeQuotes.map((quote) => quote.amount));
-    return amounts.size < targets.minAmountLevelsPerCandidateRoute;
+  const sampleGroups = useShadowObservations
+    ? groupBy(validShadowObservations, (item) => routeKeyFromShadowObservation(item))
+    : groupBy(activeQuotes, (quote) => quote.routeKey);
+  const candidateRoutes = [...sampleGroups.entries()].filter(([, routeSamples]) => routeSamples.length >= effectiveTargets.minSamplesPerCandidateRoute);
+  const candidateAmountFailures = candidateRoutes.filter(([, routeSamples]) => {
+    const amounts = new Set(routeSamples.map((item) => (useShadowObservations ? amountFromShadowObservation(item) : item.amount)).filter(Boolean));
+    return amounts.size < effectiveTargets.minAmountLevelsPerCandidateRoute;
   });
   const latestGasByChain = latestBy(gasSnapshots, (snapshot) => snapshot.chain);
   const latestGasDates = [...latestGasByChain.values()].map((snapshot) => snapshot.observedAt).filter(Boolean);
   const maxGasAgeMinutes =
     latestGasDates.length > 0 ? Math.max(...latestGasDates.map((date) => minutesBetween(date, now))) : Infinity;
+  const latencySamples = (useShadowObservations ? validShadowObservations : activeQuotes).map((item) => item.latencyMs).filter(Number.isFinite);
+  const executionGasSamples = validShadowObservations.map((item) => item.executionGasUsd).filter(Number.isFinite);
+  const quoteDecay = summarizeQuoteDecay(validShadowObservations);
+  const quoteDecayWindows = quoteDecay.windows;
+  const requiredQuoteDecayWindows = quoteDecayWindows.filter((item) =>
+    effectiveTargets.requiredQuoteDecayWindowsSeconds.includes(item.windowSeconds),
+  );
+  const quoteDecayCoverageOk =
+    !useShadowObservations ||
+    requiredQuoteDecayWindows.every((item) => item.coveredGroups >= effectiveTargets.minQuoteDecayCoveredGroupsPerWindow);
+  const latencyP50Ms = percentile(latencySamples, 50);
+  const latencyP95Ms = percentile(latencySamples, 95);
+  const executionGasP50Usd = percentile(executionGasSamples, 50);
+  const executionGasP95Usd = percentile(executionGasSamples, 95);
 
   const checks = [
     {
       label: "shadow time window",
-      ok: shadowHours >= targets.minShadowHours,
-      detail: `${shadowHours.toFixed(2)}h observed, target ${targets.minShadowHours}h`,
+      ok: shadowHours >= effectiveTargets.minShadowHours,
+      detail: `${shadowHours.toFixed(2)}h observed, target ${effectiveTargets.minShadowHours}h`,
     },
     {
       label: "BOB-neighbor route coverage",
-      ok: bobNeighborCoveragePct >= targets.minBobNeighborCoveragePct,
-      detail: `${activeBobNeighborRouteKeys.size}/${bobNeighborRouteKeys.size} routes (${bobNeighborCoveragePct.toFixed(1)}%), target ${targets.minBobNeighborCoveragePct}%`,
+      ok: bobNeighborCoveragePct >= effectiveTargets.minBobNeighborCoveragePct,
+      detail: `${activeBobNeighborRouteKeys.size}/${bobNeighborRouteKeys.size} routes (${bobNeighborCoveragePct.toFixed(1)}%), target ${effectiveTargets.minBobNeighborCoveragePct}%`,
     },
     {
       label: "candidate sample depth",
       ok: candidateRoutes.length > 0,
-      detail: `${candidateRoutes.length} routes have >= ${targets.minSamplesPerCandidateRoute} samples`,
+      detail: `${candidateRoutes.length} routes have >= ${effectiveTargets.minSamplesPerCandidateRoute} samples`,
     },
     {
       label: "candidate amount diversity",
       ok: candidateRoutes.length > 0 && candidateAmountFailures.length === 0,
-      detail: `${candidateAmountFailures.length} candidate routes have < ${targets.minAmountLevelsPerCandidateRoute} amount levels`,
+      detail: `${candidateAmountFailures.length} candidate routes have < ${effectiveTargets.minAmountLevelsPerCandidateRoute} amount levels`,
+    },
+    {
+      label: "quote decay windows",
+      ok: quoteDecayCoverageOk,
+      detail:
+        useShadowObservations && requiredQuoteDecayWindows.length > 0
+          ? requiredQuoteDecayWindows
+              .map((item) => `${item.windowSeconds}s=${item.coveredGroups}`)
+              .join(" ")
+          : "shadow observations not active",
     },
     {
       label: "time bucket diversity",
-      ok: hourBuckets.size >= targets.minHourBuckets,
-      detail: `${hourBuckets.size} hourly buckets, target ${targets.minHourBuckets}`,
+      ok: hourBuckets.size >= effectiveTargets.minHourBuckets,
+      detail: `${hourBuckets.size} hourly buckets, target ${effectiveTargets.minHourBuckets}`,
     },
     {
       label: "failure rate",
-      ok: failureRatePct <= targets.maxFailureRatePct,
-      detail: `${failureRatePct.toFixed(1)}%, target <= ${targets.maxFailureRatePct}%`,
+      ok: failureRatePct <= effectiveTargets.maxFailureRatePct,
+      detail: `${failureRatePct.toFixed(1)}%, target <= ${effectiveTargets.maxFailureRatePct}%`,
     },
     {
       label: "fresh gas snapshots",
-      ok: maxGasAgeMinutes <= targets.maxGasSnapshotAgeMinutes,
-      detail: `${Number.isFinite(maxGasAgeMinutes) ? maxGasAgeMinutes.toFixed(1) : "n/a"}m old, target <= ${targets.maxGasSnapshotAgeMinutes}m`,
+      ok: maxGasAgeMinutes <= effectiveTargets.maxGasSnapshotAgeMinutes,
+      detail: `${Number.isFinite(maxGasAgeMinutes) ? maxGasAgeMinutes.toFixed(1) : "n/a"}m old, target <= ${effectiveTargets.maxGasSnapshotAgeMinutes}m`,
     },
   ];
 
   const warnings = [
     {
       label: "global route coverage",
-      ok: routeCoveragePct >= targets.minGlobalRouteCoveragePctForDiscovery,
-      detail: `${activeQuoteRouteKeys.size}/${totalGatewayRoutes} routes (${routeCoveragePct.toFixed(1)}%), discovery target ${targets.minGlobalRouteCoveragePctForDiscovery}%`,
+      ok: routeCoveragePct >= effectiveTargets.minGlobalRouteCoveragePctForDiscovery,
+      detail: `${activeQuoteRouteKeys.size}/${totalGatewayRoutes} routes (${routeCoveragePct.toFixed(1)}%), discovery target ${effectiveTargets.minGlobalRouteCoveragePctForDiscovery}%`,
     },
     {
       label: "legacy records",
@@ -179,37 +231,73 @@ export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS) {
       ok: gasFailures.length === 0,
       detail: `${gasFailures.length} gas snapshot failures observed`,
     },
+    {
+      label: "quote latency p95",
+      ok: Number.isFinite(latencyP95Ms),
+      detail: `${Number.isFinite(latencyP50Ms) ? latencyP50Ms.toFixed(0) : "n/a"}ms p50 · ${Number.isFinite(latencyP95Ms) ? latencyP95Ms.toFixed(0) : "n/a"}ms p95`,
+    },
+    {
+      label: "execution gas p95",
+      ok: Number.isFinite(executionGasP95Usd),
+      detail: `${Number.isFinite(executionGasP50Usd) ? executionGasP50Usd.toFixed(4) : "n/a"} USD p50 · ${Number.isFinite(executionGasP95Usd) ? executionGasP95Usd.toFixed(4) : "n/a"} USD p95`,
+    },
+    {
+      label: "quote decay coverage",
+      ok: !useShadowObservations || quoteDecay.coveredGroups > 0,
+      detail: quoteDecayWindows.map((item) => `${item.windowSeconds}s=${item.coveredGroups}`).join(" · "),
+    },
+    {
+      label: "quote decay survival",
+      ok: !useShadowObservations || quoteDecayWindows.some((item) => item.survivedGroups > 0),
+      detail: quoteDecayWindows
+        .map(
+          (item) =>
+            `${item.windowSeconds}s ${item.survivedGroups}/${item.profitableStartGroups}${
+              Number.isFinite(item.survivalRatePct) ? ` (${item.survivalRatePct.toFixed(0)}%)` : ""
+            }`,
+        )
+        .join(" · "),
+    },
   ];
 
   const liveBlocked = checks.some((check) => !check.ok);
-  const shadowAllowed = activeQuotes.length > 0 && totalGatewayRoutes > 0;
+  const shadowAllowed = (useShadowObservations ? validShadowObservations.length : activeQuotes.length) > 0 && totalGatewayRoutes > 0;
 
   return {
     decision: liveBlocked ? "LIVE_BLOCKED" : "LIVE_CANARY_REVIEW_POSSIBLE",
     shadow: shadowAllowed ? "ALLOWED" : "BLOCKED",
+    sampleSource: useShadowObservations ? "shadow_observations" : "quotes",
     firstObservedAt,
     lastObservedAt,
     quotes: quotes.length,
     activeQuotes: activeQuotes.length,
+    shadowObservations: validShadowObservations.length,
     validQuotes: validQuotes.length,
     failures: failures.length,
     cloudflareFailures,
     gasSnapshots: gasSnapshots.length,
     gasFailures: gasFailures.length,
     shadowHours,
+    hourBuckets: hourBuckets.size,
+    latencyP50Ms,
+    latencyP95Ms,
+    executionGasP50Usd,
+    executionGasP95Usd,
+    quoteDecayCoveredGroups: quoteDecay.coveredGroups,
+    quoteDecayWindows,
     totalGatewayRoutes,
-    sampledRoutes: activeQuoteRouteKeys.size,
+    sampledRoutes: sampledRouteKeys.size,
     bobNeighborRoutes: bobNeighborRouteKeys.size,
     sampledBobNeighborRoutes: activeBobNeighborRouteKeys.size,
     checks,
     warnings,
-    topSampledRoutes: [...quoteGroups.entries()]
+    topSampledRoutes: [...sampleGroups.entries()]
       .sort((a, b) => b[1].length - a[1].length)
       .slice(0, 10)
-      .map(([key, routeQuotes]) => ({
+      .map(([key, routeSamples]) => ({
         routeKey: key,
-        samples: routeQuotes.length,
-        amountLevels: new Set(routeQuotes.map((quote) => quote.amount)).size,
+        samples: routeSamples.length,
+        amountLevels: new Set(routeSamples.map((item) => (useShadowObservations ? amountFromShadowObservation(item) : item.amount)).filter(Boolean)).size,
       })),
   };
 }
@@ -220,11 +308,31 @@ export function formatAudit(audit) {
   lines.push("");
   lines.push(`decision=${audit.decision}`);
   lines.push(`shadow=${audit.shadow}`);
+  lines.push(`sampleSource=${audit.sampleSource}`);
   lines.push(`firstObservedAt=${audit.firstObservedAt || "n/a"}`);
   lines.push(`lastObservedAt=${audit.lastObservedAt || "n/a"}`);
-  lines.push(`quotes=${audit.quotes} activeQuotes=${audit.activeQuotes} validQuotes=${audit.validQuotes} failures=${audit.failures}`);
+  lines.push(
+    `quotes=${audit.quotes} activeQuotes=${audit.activeQuotes} shadowObservations=${audit.shadowObservations} validQuotes=${audit.validQuotes} failures=${audit.failures}`,
+  );
   lines.push(`cloudflareFailures=${audit.cloudflareFailures}`);
   lines.push(`gasSnapshots=${audit.gasSnapshots} gasFailures=${audit.gasFailures}`);
+  lines.push(
+    `latencyP50Ms=${Number.isFinite(audit.latencyP50Ms) ? audit.latencyP50Ms.toFixed(0) : "n/a"} latencyP95Ms=${Number.isFinite(audit.latencyP95Ms) ? audit.latencyP95Ms.toFixed(0) : "n/a"}`,
+  );
+  lines.push(
+    `executionGasP50Usd=${Number.isFinite(audit.executionGasP50Usd) ? audit.executionGasP50Usd.toFixed(4) : "n/a"} executionGasP95Usd=${Number.isFinite(audit.executionGasP95Usd) ? audit.executionGasP95Usd.toFixed(4) : "n/a"}`,
+  );
+  lines.push(`quoteDecayCoveredGroups=${audit.quoteDecayCoveredGroups}`);
+  lines.push(
+    `quoteDecayWindows=${(audit.quoteDecayWindows || [])
+      .map(
+        (item) =>
+          `${item.windowSeconds}s:${item.coveredGroups}/${item.profitableStartGroups}/${item.survivedGroups}${
+            Number.isFinite(item.survivalRatePct) ? `(${item.survivalRatePct.toFixed(0)}%)` : ""
+          }`,
+      )
+      .join(" ")}`,
+  );
   lines.push("");
 
   for (const check of audit.checks) {
@@ -253,4 +361,3 @@ export function formatAudit(audit) {
   lines.push("  quote decay checks at 5s/15s/30s/60s");
   return lines.join("\n");
 }
-

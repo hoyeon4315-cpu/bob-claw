@@ -61,6 +61,29 @@ function topRouteText(cycle) {
   ].filter(Boolean).join(" · ");
 }
 
+function marketCoverageText(status) {
+  const market = status.market || null;
+  const prices = market?.chainWbtcPrices || [];
+  if (!market || prices.length === 0) return null;
+  const observed = market.observedChainCount || 0;
+  const missing = market.missingChainCount || 0;
+  const stale = market.staleChainCount || 0;
+  const total = Math.max(prices.filter((item) => item.chain !== "bitcoin").length, observed + missing);
+  if (total <= 0) return null;
+  if (!stale && !missing) return `체인 가격 ${observed}/${total}개 관측`;
+  return `체인 가격 ${observed}/${total}개 · stale ${stale} · missing ${missing}`;
+}
+
+function quoteDecayText(status) {
+  const windows = status.audit?.quoteDecayWindows || [];
+  if (!windows.length) return null;
+  const required = windows.filter((item) => [5, 15, 30].includes(item.windowSeconds));
+  if (!required.length) return null;
+  return required
+    .map((item) => `${item.windowSeconds}s ${item.survivedGroups}/${item.profitableStartGroups || item.coveredGroups}`)
+    .join(" · ");
+}
+
 export function buildUpdateSummary(status, options = {}) {
   const now = options.now ?? Date.now();
   const hasUpdate = status.gateway.updateDetected || status.gateway.probeFailures.length;
@@ -96,6 +119,8 @@ export function buildUpdateSummary(status, options = {}) {
       : null;
     const needText = treasuryNeedText(cycle.treasury);
     const nextCheckText = readinessCheckText(cycle, now);
+    const marketText = marketCoverageText(status);
+    const decayText = quoteDecayText(status);
     const walletShortfallText =
       Number.isFinite(walletShortfall) && walletShortfall > 0
         ? `floor까지 ${money(walletShortfall)} 부족`
@@ -111,7 +136,7 @@ export function buildUpdateSummary(status, options = {}) {
           : cycle.topRoute?.tradeReadiness === "reject_no_net_edge"
             ? "순이익 기준 미달"
           : titleByMode[cycle.mode] || "현재 사이클 상태",
-      body: [auditIssue?.label || walletShortfallText || cycle.headline, needText, nextCheckText, routeText, walletText, noDemandText]
+      body: [auditIssue?.label || walletShortfallText || cycle.headline, needText, nextCheckText, decayText, marketText, routeText, walletText, noDemandText]
         .filter(Boolean)
         .join(" · "),
     };

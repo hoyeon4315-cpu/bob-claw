@@ -9,12 +9,14 @@ import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 import {
   decisionFingerprint,
-  formatCanaryWatchSummary,
-  notifyCanaryDecision,
-  planBlockedScoreRefresh,
-  summarizeShadowArtifactRefresh,
-  shouldRefreshGasForCanary,
-} from "../watch/canary-readiness-watch.mjs";
+    formatCanaryWatchSummary,
+    notifyCanaryDecision,
+    planBlockedScoreRefresh,
+    planDexPriceRefresh,
+    planQuoteDecayRefresh,
+    summarizeShadowArtifactRefresh,
+    shouldRefreshGasForCanary,
+  } from "../watch/canary-readiness-watch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -31,6 +33,9 @@ function parseArgs(argv) {
     address: options.address || null,
     intervalSeconds: options["interval-seconds"] ? Number(options["interval-seconds"]) : 60,
     readinessMaxAgeSeconds: options["readiness-max-age-seconds"] ? Number(options["readiness-max-age-seconds"]) : 300,
+    decayWindowsSeconds: options["decay-windows-seconds"]
+      ? options["decay-windows-seconds"].split(",").map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0)
+      : [5, 15, 30],
   };
 }
 
@@ -121,6 +126,27 @@ async function main() {
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     }
 
+    const dexRefresh = planDexPriceRefresh(state);
+    if (dexRefresh.shouldRefresh && dexRefresh.chains.length > 0) {
+      console.log(
+        `refresh=dex-price chains=${dexRefresh.chains.join(",")} routeKey=${dexRefresh.routeKey || "unknown"} amount=${dexRefresh.amount || "unknown"} reason=${dexRefresh.reason}`,
+      );
+      runNodeScript("src/cli/quote-dex.mjs", [`--chains=${dexRefresh.chains.join(",")}`]);
+      if (dexRefresh.routeKey && dexRefresh.amount) {
+        runNodeScript("src/cli/score-gateway.mjs", [
+          "--write",
+          `--route-key=${dexRefresh.routeKey}`,
+          `--amount=${dexRefresh.amount}`,
+        ]);
+      } else {
+        runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      }
+      refreshShadowArtifacts(args.address);
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (dexRefresh.chains.length > 0) {
+      console.log(`skip=dex-price chains=${dexRefresh.chains.join(",")} reason=${dexRefresh.reason}`);
+    }
+
     const scoreRefresh = planBlockedScoreRefresh(state);
     if (scoreRefresh.shouldRefresh) {
       console.log(
@@ -136,6 +162,27 @@ async function main() {
     } else if (scoreRefresh.routeKey) {
       console.log(
         `skip=blocked-score routeKey=${scoreRefresh.routeKey} amount=${scoreRefresh.amount} reason=${scoreRefresh.reason}`,
+      );
+    }
+
+    const decayRefresh = planQuoteDecayRefresh(state, {
+      windowsSeconds: args.decayWindowsSeconds,
+    });
+    if (decayRefresh.shouldRefresh) {
+      console.log(
+        `refresh=quote-decay routeKey=${decayRefresh.routeKey || "unknown"} amount=${decayRefresh.amount || "unknown"} window=${decayRefresh.pendingWindowSeconds || "unknown"} reason=${decayRefresh.reason}`,
+      );
+      runNodeScript("src/cli/score-gateway.mjs", [
+        "--write",
+        `--route-key=${decayRefresh.routeKey}`,
+        `--amount=${decayRefresh.amount}`,
+        "--shadow-rollover-ms=0",
+      ]);
+      refreshShadowArtifacts(args.address);
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (decayRefresh.routeKey) {
+      console.log(
+        `skip=quote-decay routeKey=${decayRefresh.routeKey} amount=${decayRefresh.amount} reason=${decayRefresh.reason}${decayRefresh.pendingWindowSeconds ? ` window=${decayRefresh.pendingWindowSeconds}` : ""}`,
       );
     }
 
