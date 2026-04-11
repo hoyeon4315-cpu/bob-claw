@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildPriceSnapshot, emptyPricesUsd, overlayObservedPricesUsd, pricesFromSnapshot } from "../src/market/prices.mjs";
+import {
+  buildPriceSnapshot,
+  emptyPricesUsd,
+  overlayObservedPricesUsd,
+  pricesFromSnapshot,
+  shouldPersistPriceSnapshot,
+} from "../src/market/prices.mjs";
 
 test("observed snapshots backfill missing btc and ethereum prices", () => {
   const prices = overlayObservedPricesUsd(emptyPricesUsd(), {
@@ -45,4 +51,70 @@ test("price snapshots round-trip into scoring price maps", () => {
   assert.equal(prices.btc, 72_988);
   assert.equal(prices.tokenByKey.wbtc, 72_950);
   assert.equal(prices.nativeByChain.bob, 2242.72);
+});
+
+test("price snapshots skip unchanged appends within the recent window", () => {
+  const previous = buildPriceSnapshot({
+    btc: 72_988,
+    tokenByKey: { btc: 72_988, wbtc: 72_988, ethereum: 2242.72 },
+    nativeByChain: { bob: 2242.72, base: 2242.72 },
+  }, {
+    observedAt: "2026-04-11T02:00:00.000Z",
+    source: "test",
+  });
+  const next = buildPriceSnapshot({
+    btc: 72_988.1,
+    tokenByKey: { btc: 72_988.1, wbtc: 72_988.1, ethereum: 2242.8 },
+    nativeByChain: { bob: 2242.8, base: 2242.8 },
+  }, {
+    observedAt: "2026-04-11T02:05:00.000Z",
+    source: "test",
+  });
+
+  assert.deepEqual(
+    shouldPersistPriceSnapshot(previous, next, {
+      now: "2026-04-11T02:05:00.000Z",
+    }),
+    { shouldPersist: false, reason: "recently_unchanged" },
+  );
+});
+
+test("price snapshots persist when unchanged data ages out or materially moves", () => {
+  const previous = buildPriceSnapshot({
+    btc: 72_988,
+    tokenByKey: { btc: 72_988, wbtc: 72_988, ethereum: 2242.72 },
+    nativeByChain: { bob: 2242.72, base: 2242.72 },
+  }, {
+    observedAt: "2026-04-11T02:00:00.000Z",
+    source: "test",
+  });
+  const staleNext = buildPriceSnapshot({
+    btc: 72_988.1,
+    tokenByKey: { btc: 72_988.1, wbtc: 72_988.1, ethereum: 2242.8 },
+    nativeByChain: { bob: 2242.8, base: 2242.8 },
+  }, {
+    observedAt: "2026-04-11T02:20:00.000Z",
+    source: "test",
+  });
+  const movedNext = buildPriceSnapshot({
+    btc: 73_500,
+    tokenByKey: { btc: 73_500, wbtc: 73_500, ethereum: 2300 },
+    nativeByChain: { bob: 2300, base: 2300 },
+  }, {
+    observedAt: "2026-04-11T02:05:00.000Z",
+    source: "test",
+  });
+
+  assert.deepEqual(
+    shouldPersistPriceSnapshot(previous, staleNext, {
+      now: "2026-04-11T02:20:00.000Z",
+    }),
+    { shouldPersist: true, reason: "stale_snapshot_rollover" },
+  );
+  assert.deepEqual(
+    shouldPersistPriceSnapshot(previous, movedNext, {
+      now: "2026-04-11T02:05:00.000Z",
+    }),
+    { shouldPersist: true, reason: "material_price_change" },
+  );
 });

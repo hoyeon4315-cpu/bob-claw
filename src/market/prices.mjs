@@ -89,6 +89,46 @@ export function isFreshPriceSnapshot(snapshot, options = {}) {
   return nowMs - observedAtMs <= maxAgeMs;
 }
 
+function numericValuesEqualWithinBps(left, right, minChangeBps) {
+  if (!Number.isFinite(left) && !Number.isFinite(right)) return true;
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  if (left === right) return true;
+  const baseline = Math.max(Math.abs(left), Math.abs(right), 1);
+  return (Math.abs(left - right) / baseline) * 10_000 < minChangeBps;
+}
+
+export function hasMaterialPriceChange(previousSnapshot, nextSnapshot, options = {}) {
+  if (!previousSnapshot) return true;
+  const minChangeBps = Number.isFinite(options.minChangeBps) ? options.minChangeBps : 5;
+  const checks = [
+    [previousSnapshot.btcUsd, nextSnapshot.btcUsd],
+    [previousSnapshot.tokenByKey?.btc, nextSnapshot.tokenByKey?.btc],
+    [previousSnapshot.tokenByKey?.wbtc, nextSnapshot.tokenByKey?.wbtc],
+    [previousSnapshot.tokenByKey?.ethereum, nextSnapshot.tokenByKey?.ethereum],
+    ...Object.keys({ ...(previousSnapshot.nativeByChain || {}), ...(nextSnapshot.nativeByChain || {}) }).map((chain) => [
+      previousSnapshot.nativeByChain?.[chain],
+      nextSnapshot.nativeByChain?.[chain],
+    ]),
+  ];
+  return checks.some(([left, right]) => !numericValuesEqualWithinBps(left, right, minChangeBps));
+}
+
+export function shouldPersistPriceSnapshot(previousSnapshot, nextSnapshot, options = {}) {
+  if (!previousSnapshot) {
+    return { shouldPersist: true, reason: "first_snapshot" };
+  }
+  if (hasMaterialPriceChange(previousSnapshot, nextSnapshot, options)) {
+    return { shouldPersist: true, reason: "material_price_change" };
+  }
+  const observedAtMs = new Date(previousSnapshot.observedAt || 0).getTime();
+  const nowMs = new Date(options.now || nextSnapshot.observedAt || Date.now()).getTime();
+  const maxUnchangedAgeMs = Number.isFinite(options.maxUnchangedAgeMs) ? options.maxUnchangedAgeMs : 900_000;
+  if (!Number.isFinite(observedAtMs) || nowMs - observedAtMs >= maxUnchangedAgeMs) {
+    return { shouldPersist: true, reason: "stale_snapshot_rollover" };
+  }
+  return { shouldPersist: false, reason: "recently_unchanged" };
+}
+
 function latestFiniteValue(items, selector) {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const value = selector(items[index]);
