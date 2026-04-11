@@ -68,7 +68,12 @@ test("update summary falls back to shadow cycle guidance when gateway is quiet",
           nextReadinessRefresh: { state: "cooldown", latestObservedAt: "2026-04-11T01:59:10.000Z", ageSeconds: 50, maxAgeSeconds: 300 },
           readinessCheckCount: 2,
         },
-        topRoute: { label: "bob->base wBTC.OFT->wBTC.OFT" },
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          tradeReadiness: "reject_no_net_edge",
+          tradeReadinessLabel: "알려진 비용 반영 후 순이익이 아직 음수",
+          tradeReadinessDetail: "순엣지 -$0.83",
+        },
         treasury: {
           estimatedWalletUsd: 25.01,
           walletValueShortfallUsd: 224.99,
@@ -97,5 +102,42 @@ test("update summary falls back to shadow cycle guidance when gateway is quiet",
   assert.match(summary.body, /약 250초 후 재점검/);
   assert.match(summary.body, /외 1개 route/);
   assert.match(summary.body, /base->bitcoin ETH->BTC/);
+  assert.match(summary.body, /알려진 비용 반영 후 순이익이 아직 음수/);
+  assert.match(summary.body, /순엣지 -\$0\.83/);
   assert.match(summary.body, /수요 대기 refill 2건/);
+});
+
+test("update summary promotes net-negative objective score blockers into the title", () => {
+  const summary = buildUpdateSummary(
+    baseStatus({
+      shadowCycle: {
+        mode: "CANARY_PREP_BLOCKED",
+        headline: "Best prepared route still fails objective score review",
+        canary: {
+          nextReadinessCheck: null,
+          nextReadinessRefresh: null,
+          readinessCheckCount: 0,
+        },
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          tradeReadiness: "reject_no_net_edge",
+          tradeReadinessLabel: "알려진 비용 반영 후 순이익이 아직 음수",
+          tradeReadinessDetail: "순엣지 -$0.83",
+        },
+        treasury: {
+          estimatedWalletUsd: 280,
+          walletValueShortfallUsd: 0,
+          noDemandBlockerCount: 0,
+          nextNeeds: [],
+        },
+        audit: { issues: [] },
+      },
+    }),
+    { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
+  );
+
+  assert.equal(summary.title, "순이익 기준 미달");
+  assert.match(summary.body, /Best prepared route still fails objective score review/);
+  assert.match(summary.body, /bob->base wBTC\.OFT->wBTC\.OFT/);
+  assert.match(summary.body, /순엣지 -\$0\.83/);
 });

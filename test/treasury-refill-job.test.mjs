@@ -73,3 +73,44 @@ test("dual wallet mode prefers reserve transfers", () => {
   assert.equal(jobs.jobs[1].executionMethod, "same_chain_token_transfer");
   assert.equal(jobs.jobs[0].fundingSource.requiresReserveState, true);
 });
+
+test("refill jobs tolerate a selection without selected source details", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const fundingSourcePlan = {
+    ...buildFundingSourcePlan({ plan: planFixture(), policy }),
+    selections: [
+      {
+        actionType: "refill_native",
+        chain: "bob",
+        asset: "ETH",
+        resourceKey: "bob:native",
+        selectionStatus: "waiting_inputs",
+        selectedMethod: "manual_funding_required",
+        selectedSource: null,
+        expectedExecutionRefillCostUsd: null,
+        expectedReserveReplenishmentCostUsd: null,
+        requiresManualFunding: true,
+        requiresReserveState: false,
+        missingInputs: ["selected_source"],
+      },
+      {
+        actionType: "refill_token",
+        chain: "bob",
+        token: "0x0555",
+        ticker: "wBTC.OFT",
+        resourceKey: "bob:0x0555",
+        selectionStatus: "ready",
+        selectedMethod: "same_chain_native_to_token_swap",
+        selectedSource: { source: "same_chain_native_balance" },
+        expectedExecutionRefillCostUsd: 0.01,
+        expectedReserveReplenishmentCostUsd: 0,
+        requiresManualFunding: false,
+        requiresReserveState: false,
+        missingInputs: [],
+      },
+    ],
+  };
+  const jobs = buildTreasuryRefillJobs({ plan: planFixture(), policy, fundingSourcePlan });
+
+  assert.equal(jobs.jobs[0].fundingSource.source, null);
+});

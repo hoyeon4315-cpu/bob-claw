@@ -97,7 +97,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
         currentDecimal: item.actualDecimal,
         targetDecimal: item.targetBalanceDecimal,
       });
-    } else if (item.status.startsWith("over_max")) {
+    } else if (item.status?.startsWith("over_max")) {
       blockers.push({
         type: "native_over_max",
         chain: item.chain,
@@ -135,7 +135,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
         currentDecimal: item.actualDecimal,
         targetDecimal: item.targetBalanceDecimal,
       });
-    } else if (item.status.startsWith("over_max")) {
+    } else if (item.status?.startsWith("over_max")) {
       blockers.push({
         type: "token_over_max",
         chain: item.chain,

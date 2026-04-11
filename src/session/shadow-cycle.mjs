@@ -231,7 +231,7 @@ export function buildShadowCycleSummary({
 
   if (nextStep?.decision === "FUND_AND_APPROVE_WALLET" || String(nextStep?.decision || "").startsWith("BLOCKED")) {
     mode = "CANARY_PREP_BLOCKED";
-    headline = "Canary prep is blocked by wallet or route prerequisites";
+    headline = nextStep?.headline || "Canary prep is blocked by wallet or route prerequisites";
   } else if (enabledRoutes.length > 0 && nextStep && !String(nextStep.decision).startsWith("BLOCKED")) {
     mode = "REVIEW_CANARY_PROGRESS";
     headline = "At least one route has positive realized review-only status";

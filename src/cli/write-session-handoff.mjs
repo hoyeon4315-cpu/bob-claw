@@ -46,6 +46,24 @@ function readinessRefreshLine(refresh) {
   return `- Refresh status: ${refresh.reason || "unknown"}`;
 }
 
+function tradeReadinessLine(best) {
+  if (!best?.tradeReadiness) return "- Objective score blocker: none";
+  if (best.tradeReadiness === "reject_no_net_edge") {
+    return Number.isFinite(best.netEdgeUsd)
+      ? `- Objective score blocker: reject_no_net_edge (net edge ${money(best.netEdgeUsd)})`
+      : "- Objective score blocker: reject_no_net_edge";
+  }
+  return `- Objective score blocker: ${best.tradeReadiness}`;
+}
+
+function nextFocusLine(best) {
+  if (!best?.tradeReadiness) return null;
+  if (best.tradeReadiness === "reject_no_net_edge") {
+    return "- Next focus: rerun quotes, gas, or token prices only when market inputs change; wallet readiness is no longer the blocker";
+  }
+  return null;
+}
+
 async function main() {
   const now = new Date().toISOString();
   const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
@@ -97,10 +115,12 @@ async function main() {
     best
       ? `- Net edge now: ${money(best.netEdgeUsd)}`
       : "- Net edge now: n/a",
+    tradeReadinessLine(best),
     nextReadinessCheck
       ? `- Next readiness check: \`${nextReadinessCheck.label}\` amount=\`${nextReadinessCheck.amount}\``
       : "- Next readiness check: none",
     readinessRefreshLine(nextReadinessRefresh),
+    nextFocusLine(best),
     "",
     "## Required Actions Before Exact Gas",
     "",

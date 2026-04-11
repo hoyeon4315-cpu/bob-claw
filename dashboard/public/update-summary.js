@@ -51,6 +51,16 @@ function readinessCheckText(cycle, now) {
   ].filter(Boolean).join(" · ");
 }
 
+function topRouteText(cycle) {
+  if (!cycle?.topRoute?.label) return "상위 경로 없음";
+  if (!cycle.topRoute.tradeReadinessLabel) return cycle.topRoute.label;
+  return [
+    cycle.topRoute.label,
+    cycle.topRoute.tradeReadinessLabel,
+    cycle.topRoute.tradeReadinessDetail,
+  ].filter(Boolean).join(" · ");
+}
+
 export function buildUpdateSummary(status, options = {}) {
   const now = options.now ?? Date.now();
   const hasUpdate = status.gateway.updateDetected || status.gateway.probeFailures.length;
@@ -80,7 +90,7 @@ export function buildUpdateSummary(status, options = {}) {
     };
     const auditIssue = cycle.audit?.issues?.[0] || null;
     const walletShortfall = cycle.treasury?.walletValueShortfallUsd;
-    const routeText = cycle.topRoute?.label ? `${cycle.topRoute.label}` : "상위 경로 없음";
+    const routeText = topRouteText(cycle);
     const walletText = Number.isFinite(cycle.treasury?.estimatedWalletUsd)
       ? `지갑 추정 ${money(cycle.treasury.estimatedWalletUsd)}`
       : null;
@@ -98,6 +108,8 @@ export function buildUpdateSummary(status, options = {}) {
         ? "운영 주소 점검 필요"
         : Number.isFinite(walletShortfall) && walletShortfall > 0
           ? "지갑 규모 보강 필요"
+          : cycle.topRoute?.tradeReadiness === "reject_no_net_edge"
+            ? "순이익 기준 미달"
           : titleByMode[cycle.mode] || "현재 사이클 상태",
       body: [auditIssue?.label || walletShortfallText || cycle.headline, needText, nextCheckText, routeText, walletText, noDemandText]
         .filter(Boolean)

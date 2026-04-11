@@ -10,7 +10,11 @@ function bigint(value) {
 }
 
 function decimalFromWei(value) {
-  return Number(bigint(value)) / 1e18;
+  const wei = bigint(value);
+  const divisor = 1_000_000_000_000_000_000n;
+  const whole = wei / divisor;
+  const remainder = wei % divisor;
+  return Number(whole) + Number(remainder) / 1e18;
 }
 
 function priceForAsset(asset, prices) {
@@ -149,8 +153,8 @@ export function buildReceiptReconciliation({
           from: transaction.from,
           to: transaction.to,
           nonce: transaction.nonce,
-          value: transaction.value.toString(),
-          valueDecimal: decimalFromWei(transaction.value),
+          value: transaction.value != null ? transaction.value.toString() : null,
+          valueDecimal: transaction.value != null ? decimalFromWei(transaction.value) : null,
         }
       : null,
     receipt: receipt

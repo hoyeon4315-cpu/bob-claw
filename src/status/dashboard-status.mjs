@@ -490,8 +490,54 @@ function humanTreasuryNeedActivation(code) {
   }[code] || code;
 }
 
+function money(value) {
+  if (!Number.isFinite(value)) return null;
+  const abs = Math.abs(value);
+  const maximumFractionDigits = abs >= 100 ? 0 : abs >= 1 ? 2 : 6;
+  return `${value < 0 ? "-" : ""}$${abs.toLocaleString("ko-KR", { maximumFractionDigits })}`;
+}
+
+function humanTradeReadiness(code, netEdgeUsd) {
+  if (!code) return { label: null, detail: null };
+  if (code === "reject_no_net_edge") {
+    return {
+      label: "알려진 비용 반영 후 순이익이 아직 음수",
+      detail: Number.isFinite(netEdgeUsd) ? `순엣지 ${money(netEdgeUsd)}` : "순엣지가 아직 음수",
+    };
+  }
+  if (code === "shadow_candidate_review_only") {
+    return {
+      label: "수동 canary 검토 가능",
+      detail: Number.isFinite(netEdgeUsd) ? `추정 순엣지 ${money(netEdgeUsd)}` : null,
+    };
+  }
+  if (code === "insufficient_data") {
+    return {
+      label: "가격 또는 가스 데이터가 아직 부족함",
+      detail: null,
+    };
+  }
+  if (code === "observe_only_slow_settlement") {
+    return {
+      label: "정산 지연이 커서 아직 관찰 전용",
+      detail: null,
+    };
+  }
+  if (code === "reject_high_failure_rate") {
+    return {
+      label: "실패율이 높아 아직 진행 불가",
+      detail: null,
+    };
+  }
+  return {
+    label: code,
+    detail: Number.isFinite(netEdgeUsd) ? `순엣지 ${money(netEdgeUsd)}` : null,
+  };
+}
+
 function shadowCycleSummary(shadowCycle, now) {
   if (!shadowCycle) return null;
+  const topRouteTradeReadiness = humanTradeReadiness(shadowCycle.topRoute?.tradeReadiness || null, shadowCycle.topRoute?.netEdgeUsd);
 
   return {
     observedAt: shadowCycle.observedAt || null,
@@ -530,6 +576,8 @@ function shadowCycleSummary(shadowCycle, now) {
           label: shadowCycle.topRoute.label || null,
           amount: shadowCycle.topRoute.amount || null,
           tradeReadiness: shadowCycle.topRoute.tradeReadiness || null,
+          tradeReadinessLabel: topRouteTradeReadiness.label,
+          tradeReadinessDetail: topRouteTradeReadiness.detail,
           netEdgeUsd: shadowCycle.topRoute.netEdgeUsd ?? null,
         }
       : null,

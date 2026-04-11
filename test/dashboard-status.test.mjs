@@ -421,6 +421,8 @@ test("dashboard status includes shadow cycle summary when available", () => {
     readinessCheckCount: 2,
   });
   assert.equal(status.shadowCycle.topRoute.label, "bob->base wBTC.OFT->wBTC.OFT");
+  assert.equal(status.shadowCycle.topRoute.tradeReadinessLabel, "알려진 비용 반영 후 순이익이 아직 음수");
+  assert.equal(status.shadowCycle.topRoute.tradeReadinessDetail, "순엣지 -$0.83");
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
   assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
   assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);

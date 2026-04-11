@@ -222,6 +222,52 @@ test("shadow cycle does not recommend readiness checks for routes missing tx pay
   assert.equal(summary.recommendedCommands.some((item) => item.includes("check:estimator-wallet")), false);
 });
 
+test("shadow cycle carries forward a specific blocked headline for net-negative routes", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      nextStep: {
+        decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+        headline: "Best prepared route still fails objective score review",
+        reasons: ["reject_no_net_edge"],
+      },
+      routePlan: {
+        topCandidates: [
+          {
+            routeKey: "bob:0x0555->base:0x0555",
+            label: "bob->base wBTC.OFT->wBTC.OFT",
+            amount: "10000",
+            viableForPrep: true,
+            tradeReadiness: "reject_no_net_edge",
+            netEdgeUsd: -0.83,
+            executableNetEdgeUsd: null,
+            prepFundingUsd: 0,
+          },
+        ],
+        candidates: [],
+      },
+    },
+    treasuryPlan: {
+      decision: "WATCH_ONLY",
+      reasons: [],
+      summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 280, walletValueFloorUsd: 250, walletValueShortfallUsd: 0, noDemandBlockerCount: 0 },
+      actions: [],
+      blockers: [],
+    },
+    fundingSourcePlan: { reasons: [], summary: {} },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: {
+      dailyRealizedPnlUsd: 0,
+      projectLossUsedUsd: 0,
+      failedGasCost24hUsd: 0,
+      consecutiveFailures: 0,
+    },
+  });
+
+  assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
+  assert.equal(summary.headline, "Best prepared route still fails objective score review");
+});
+
 test("shadow cycle summary upgrades to review mode when realized enabled routes exist", () => {
   const summary = buildShadowCycleSummary({
     canaryState: {
@@ -231,7 +277,6 @@ test("shadow cycle summary upgrades to review mode when realized enabled routes 
     treasuryPlan: {
       decision: "WATCH_ONLY",
       reasons: [],
-      blockers: [],
       summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 280, walletValueFloorUsd: 250, walletValueShortfallUsd: 0, noDemandBlockerCount: 0 },
       actions: [],
       blockers: [],
@@ -277,7 +322,6 @@ test("shadow cycle summary marks blocked canary prep explicitly", () => {
     treasuryPlan: {
       decision: "WATCH_ONLY",
       reasons: [],
-      blockers: [],
       summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 25, walletValueFloorUsd: 250, walletValueShortfallUsd: 225, noDemandBlockerCount: 0 },
       actions: [],
       blockers: [],

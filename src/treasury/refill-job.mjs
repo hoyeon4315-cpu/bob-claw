@@ -75,7 +75,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
         ? {
             selectionStatus: selection.selectionStatus,
             method: selection.selectedMethod,
-            source: selection.selectedSource.source,
+            source: selection.selectedSource?.source ?? null,
             expectedExecutionRefillCostUsd: selection.expectedExecutionRefillCostUsd,
             expectedReserveReplenishmentCostUsd: selection.expectedReserveReplenishmentCostUsd,
             requiresManualFunding: selection.requiresManualFunding,

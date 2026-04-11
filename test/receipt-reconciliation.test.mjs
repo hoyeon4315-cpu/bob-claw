@@ -138,3 +138,19 @@ test("receipt ledger summary aggregates realized records", () => {
   assert.equal(Number.isFinite(summary.summary.realizedNetPnlUsd), true);
   assert.equal(summary.routes.length, 1);
 });
+
+test("receipt reconciliation tolerates transaction objects without value", () => {
+  const record = buildReceiptReconciliation({
+    chain: "bob",
+    txHash: "0x123",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture(),
+    transaction: transactionFixture({ value: undefined }),
+    prices: pricesFixture(),
+    output: { actualOutputUnits: "10000" },
+  });
+
+  assert.equal(record.transaction.value, null);
+  assert.equal(record.transaction.valueDecimal, null);
+  assert.equal(Number.isFinite(record.realized.realizedNetPnlUsd), true);
+});
