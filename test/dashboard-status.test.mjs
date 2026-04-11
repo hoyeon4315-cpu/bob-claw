@@ -1,0 +1,326 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildDashboardStatus } from "../src/status/dashboard-status.mjs";
+
+const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+function route(srcChain, dstChain) {
+  return { srcChain, dstChain, srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+}
+
+function quote(routeValue, observedAt, amount = "10000") {
+  return {
+    schemaVersion: 2,
+    observedAt,
+    route: routeValue,
+    routeKey: `${routeValue.srcChain}:${routeValue.srcToken}->${routeValue.dstChain}:${routeValue.dstToken}`,
+    quoteType: "layerZero",
+    amount,
+    grossOutputRatio: 0.99,
+    feeRatio: 0.01,
+  };
+}
+
+test("dashboard status is dashboard-only and keeps live trading blocked", () => {
+  const now = "2026-04-10T12:00:00.000Z";
+  const bobBase = route("bob", "base");
+  const baseBob = route("base", "bob");
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 2 },
+          routes: [bobBase, baseBob],
+        },
+      ],
+      quotes: [quote(bobBase, "2026-04-10T10:00:00.000Z"), quote(baseBob, "2026-04-10T10:05:00.000Z")],
+      failures: [],
+      gasSnapshots: [
+        {
+          observedAt: "2026-04-10T11:55:00.000Z",
+          chain: "bob",
+          gasPriceWei: "1",
+          blockNumber: "10",
+          latencyMs: 100,
+          fallbackGasUnits: 250000,
+          fallbackTxUsd: 0.01,
+          nativeUsd: 1,
+        },
+        {
+          observedAt: "2026-04-10T11:55:00.000Z",
+          chain: "base",
+          gasPriceWei: "1",
+          blockNumber: "10",
+          latencyMs: 100,
+          fallbackGasUnits: 250000,
+          fallbackTxUsd: 0.01,
+          nativeUsd: 1,
+        },
+      ],
+      gasFailures: [],
+      updateSnapshots: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          snapshot: {
+            routeCount: 2,
+            chains: ["base", "bob"],
+            bobTouchingRouteKeys: ["bob:btc->base:btc", "base:btc->bob:btc"],
+            routeHash: "route-hash",
+          },
+          updateDetected: false,
+          changeReasons: [],
+          probes: [{ ok: true }, { ok: true }],
+          probeFailures: [],
+          schemaHash: "schema-hash",
+          probeHealthHash: "probe-health-hash",
+        },
+      ],
+      updateAlerts: [],
+    },
+    {
+      now,
+      auditTargets: {
+        currentQuoteSchemaVersion: 2,
+        minShadowHours: 1,
+        minBobNeighborCoveragePct: 0,
+        minGlobalRouteCoveragePctForDiscovery: 0,
+        minSamplesPerCandidateRoute: 1,
+        minAmountLevelsPerCandidateRoute: 1,
+        minHourBuckets: 1,
+        maxFailureRatePct: 10,
+        maxGasSnapshotAgeMinutes: 30,
+      },
+    },
+  );
+
+  assert.equal(status.overall.liveTrading, "BLOCKED");
+  assert.equal(status.exposurePolicy.cloudflare, "dashboard_only");
+  assert.equal(status.exposurePolicy.containsPrivateKeys, false);
+  assert.equal(status.gateway.updateDetected, false);
+  assert.equal(status.gateway.probeOk, 2);
+  assert.deepEqual(status.gateway.announcedChainCoverage.missingAnnouncedChains, [
+    "avalanche",
+    "bera",
+    "bitcoin",
+    "bsc",
+    "ethereum",
+    "optimism",
+    "sei",
+    "soneium",
+    "sonic",
+    "unichain",
+  ]);
+  assert.equal(status.gas.missingGatewayGasChainCount, 0);
+});
+
+test("dashboard status includes Gateway visual routes with segment-specific asset traces", () => {
+  const btcBob = { srcChain: "bitcoin", dstChain: "bob", srcToken: ZERO, dstToken: WBTC_OFT };
+  const bobBase = route("bob", "base");
+  const baseSonic = route("base", "sonic");
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 3, chainPairs: [{ pair: "bitcoin->bob", count: 1 }] },
+        routes: [btcBob, bobBase, baseSonic],
+      },
+    ],
+    quotes: [quote(bobBase, "2026-04-10T10:00:00.000Z"), quote(baseSonic, "2026-04-10T10:01:00.000Z")],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.gateway.flowRoutes.some((item) => item.pair === "bob->base"), true);
+  assert.equal(status.gateway.flowRoutes.some((item) => item.pair === "base->sonic"), true);
+  assert.deepEqual(status.gateway.recentFlowEvents[0].path, ["bob", "bob_gateway", "base"]);
+  assert.deepEqual(status.gateway.recentFlowEvents[1].path, ["base", "bob_gateway", "sonic"]);
+  assert.equal(status.gateway.recentFlowEvents[0].asset.ticker, "wBTC.OFT");
+  assert.equal(status.gateway.recentFlowEvents[0].asset.icon, "wbtc");
+  assert.deepEqual(status.gateway.recentFlowEvents[0].segments.map((segment) => segment.asset.ticker), ["wBTC.OFT", "wBTC.OFT"]);
+  assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bob->base").assets[0].ticker, "wBTC.OFT");
+  assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].ticker, "BTC->wBTC.OFT");
+  assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].src.ticker, "BTC");
+  assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].dst.ticker, "wBTC.OFT");
+  assert.equal(status.gateway.assetCoverage.supportedAssetCount, 2);
+  assert.equal(status.gateway.assetCoverage.sampledAssetCount, 1);
+  assert.equal(status.gateway.assetCoverage.unsampledAssets[0].ticker, "BTC->wBTC.OFT");
+  assert.equal(status.gateway.chainPairs[0].pair, "bitcoin->bob");
+});
+
+test("dashboard status surfaces update and gas blockers", () => {
+  const now = "2026-04-10T12:00:00.000Z";
+  const bobBitcoin = { srcChain: "bob", dstChain: "bitcoin", srcToken: WBTC_OFT, dstToken: ZERO };
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T09:00:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [bobBitcoin],
+      },
+    ],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [
+      {
+        observedAt: "2026-04-10T08:00:00.000Z",
+        chain: "bob",
+        gasPriceWei: "1",
+      },
+    ],
+    gasFailures: [],
+    updateSnapshots: [
+      {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        snapshot: { routeCount: 1, chains: ["bitcoin", "bob"], routeHash: "route-hash" },
+        updateDetected: true,
+        changeReasons: ["probe_health"],
+        probes: [{ ok: false }],
+        probeFailures: [{ routeKey: "bob:btc->bitcoin:btc", errorStatus: 500, errorCode: "INTERNAL_ERROR" }],
+      },
+    ],
+    updateAlerts: [{ observedAt: "2026-04-10T11:59:00.000Z", changeReasons: ["probe_health"] }],
+  }, { now });
+
+  assert.equal(status.overall.liveTrading, "BLOCKED");
+  assert.equal(status.gateway.updateDetected, true);
+  assert.equal(status.gateway.probeFailures.length, 1);
+  assert.equal(status.overall.blockers.includes("gateway_update_pending_review"), true);
+  assert.equal(status.overall.blockers.includes("gateway_probe_failures"), true);
+  assert.equal(status.overall.blockers.includes("stale_gas_snapshots"), true);
+});
+
+test("dashboard status flags gateway chains missing gas snapshots", () => {
+  const status = buildDashboardStatus({
+    routesRecords: [],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [{ observedAt: "2026-04-10T11:55:00.000Z", chain: "bob", gasPriceWei: "1" }],
+    gasFailures: [],
+    updateSnapshots: [
+      {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        snapshot: { routeCount: 2, chains: ["base", "bitcoin", "bob"], routeHash: "route-hash" },
+        updateDetected: false,
+        changeReasons: [],
+        probes: [],
+        probeFailures: [],
+      },
+    ],
+    updateAlerts: [],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.deepEqual(status.gas.missingGatewayGasChains, ["base"]);
+  assert.equal(status.overall.blockers.includes("missing_gateway_gas_snapshots"), true);
+});
+
+test("dashboard status includes read-only opportunity summary", () => {
+  const bobBase = route("bob", "base");
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [bobBase],
+      },
+    ],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+    scoreSnapshot: {
+      generatedAt: "2026-04-10T12:00:00.000Z",
+      scoredQuotes: 2,
+      summary: { shadowCandidates: 0, insufficientData: 1 },
+      scores: [
+        {
+          srcChain: "bob",
+          dstChain: "base",
+          srcAsset: { ticker: "wBTC.OFT" },
+          dstAsset: { ticker: "wBTC.OFT" },
+          tradeReadiness: "reject_no_net_edge",
+          netEdgeUsd: -0.5,
+          dataGaps: [],
+          dex: { provider: "odos" },
+        },
+        {
+          srcChain: "bitcoin",
+          dstChain: "bob",
+          srcAsset: { ticker: "BTC" },
+          dstAsset: { ticker: "wBTC.OFT" },
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: -0.1,
+          dataGaps: ["bitcoin_network_fee_not_modelled"],
+        },
+      ],
+    },
+    dexQuotes: [
+      {
+        provider: "odos",
+        observedAt: "2026-04-10T11:59:00.000Z",
+        chain: "base",
+        inputValueUsd: 7,
+        outputValueUsd: 7.01,
+        gasEstimateValueUsd: 0.01,
+        priceImpactPct: 0,
+      },
+    ],
+    dexFailures: [{ observedAt: "2026-04-10T11:58:00.000Z", provider: "odos", reason: "input_is_quote_stable" }],
+    bitcoinFeeSnapshots: [
+      {
+        observedAt: "2026-04-10T11:57:00.000Z",
+        source: "test",
+        selectedFeeRateSatVb: 4,
+        vbytes: 180,
+        estimatedFeeSats: 720,
+        estimatedFeeUsd: 0.52,
+        btcUsd: 50_000,
+        model: "estimated_single_input_single_output",
+      },
+    ],
+    estimatorWalletReadiness: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        routeKey: "bob:btc->base:btc",
+        amount: "10000",
+        srcChain: "bob",
+        dstChain: "base",
+        overallReady: false,
+        native: { ok: false },
+        token: { ok: true },
+        allowance: { ok: false },
+      },
+    ],
+    estimatorWalletReadinessFailures: [
+      {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        reason: "missing_tx_data",
+      },
+    ],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.opportunity.scoredQuotes, 2);
+  assert.equal(status.opportunity.candidateCount, 0);
+  assert.equal(status.opportunity.dexBacked, 1);
+  assert.equal(status.opportunity.rejectedNoEdge, 1);
+  assert.equal(status.opportunity.highFailureRate, 0);
+  assert.equal(status.opportunity.dataGaps[0].gap, "bitcoin_network_fee_not_modelled");
+  assert.equal(status.dex.quoteCount, 1);
+  assert.deepEqual(status.dex.quotedChains, ["base"]);
+  assert.equal(status.dex.skippedReasons[0].reason, "input_is_quote_stable");
+  assert.equal(status.bitcoinFee.latest.feeRateSatVb, 4);
+  assert.equal(status.bitcoinFee.latest.estimatedFeeUsd, 0.52);
+  assert.equal(status.dataCounts.bitcoinFeeSnapshots, 1);
+  assert.equal(status.estimatorWallet.routeCount, 1);
+  assert.equal(status.estimatorWallet.nativeBlockedCount, 1);
+  assert.equal(status.estimatorWallet.allowanceBlockedCount, 1);
+  assert.equal(status.dataCounts.estimatorWalletReadiness, 1);
+});

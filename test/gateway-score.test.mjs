@@ -1,0 +1,245 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { tokenAsset, ZERO_TOKEN } from "../src/assets/tokens.mjs";
+import { scoreGatewayQuote } from "../src/scoring/gateway-score.mjs";
+
+const USDC_ETHEREUM = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+
+const prices = {
+  btc: 50_000,
+  tokenByKey: {
+    btc: 50_000,
+    wbtc: 50_000,
+    usd_stable: 1,
+    ethereum: 3_000,
+  },
+  nativeByChain: {
+    bob: 3_000,
+    base: 3_000,
+    ethereum: 3_000,
+  },
+};
+
+function quote(route, overrides = {}) {
+  return {
+    observedAt: "2026-04-10T12:00:00.000Z",
+    route,
+    routeKey: `${route.srcChain}:${route.srcToken}->${route.dstChain}:${route.dstToken}`,
+    quoteType: "layerZero",
+    amount: "10000",
+    inputAmount: "10000",
+    outputAmount: "10000",
+    txValueWei: "0",
+    estimatedTimeInSecs: 60,
+    latencyMs: 100,
+    ...overrides,
+  };
+}
+
+test("scores cross-asset Gateway quotes with token-specific decimals", () => {
+  const route = { srcChain: "bitcoin", dstChain: "ethereum", srcToken: ZERO_TOKEN, dstToken: USDC_ETHEREUM };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "onramp",
+      inputAmount: "10000",
+      outputAmount: "5000000",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      priceHaircutBps: 0,
+    },
+  );
+
+  assert.equal(score.inputAmount, 0.0001);
+  assert.equal(score.outputAmount, 5);
+  assert.equal(score.inputUsd, 5);
+  assert.equal(score.outputUsd, 5);
+  assert.equal(score.netEdgeUsd, 0);
+  assert.equal(score.tradeReadiness, "insufficient_data");
+  assert.equal(score.dataGaps.includes("bitcoin_network_fee_not_modelled"), true);
+});
+
+test("bitcoin fee snapshot removes generic bitcoin fee gap and enters known cost", () => {
+  const route = { srcChain: "bitcoin", dstChain: "ethereum", srcToken: ZERO_TOKEN, dstToken: USDC_ETHEREUM };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "onramp",
+      inputAmount: "10000",
+      outputAmount: "5000000",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      priceHaircutBps: 0,
+      bitcoinFee: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        selectedFeeRateSatVb: 4,
+        vbytes: 180,
+        estimatedFeeSats: 720,
+        estimatedFeeUsd: 0.52,
+        model: "estimated_single_input_single_output",
+      },
+    },
+  );
+
+  assert.equal(score.dataGaps.includes("bitcoin_network_fee_not_modelled"), false);
+  assert.equal(score.bitcoinFeeUsd, 0.52);
+  assert.equal(score.knownCostUsd, 0.52);
+  assert.equal(score.netEdgeUsd, -0.52);
+  assert.equal(score.tradeReadiness, "observe_only_slow_settlement");
+});
+
+test("bridge movement with equal wrapped BTC output is rejected after gas cost", () => {
+  const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const score = scoreGatewayQuote(quote(route), prices, {
+    executionGasUsd: 0.25,
+    gasObservedAt: "2026-04-10T11:59:00.000Z",
+    now: "2026-04-10T12:00:00.000Z",
+    priceHaircutBps: 0,
+  });
+
+  assert.equal(score.inputUsd, 5);
+  assert.equal(score.outputUsd, 5);
+  assert.equal(score.knownCostUsd, 0.5);
+  assert.equal(score.netEdgeUsd, -0.5);
+  assert.equal(score.tradeReadiness, "reject_no_net_edge");
+});
+
+test("bitcoin fee snapshot is not charged to non-native-bitcoin routes", () => {
+  const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const score = scoreGatewayQuote(quote(route), prices, {
+    executionGasUsd: 0.25,
+    gasObservedAt: "2026-04-10T11:59:00.000Z",
+    now: "2026-04-10T12:00:00.000Z",
+    priceHaircutBps: 0,
+    bitcoinFee: {
+      observedAt: "2026-04-10T11:59:00.000Z",
+      selectedFeeRateSatVb: 4,
+      vbytes: 180,
+      estimatedFeeSats: 720,
+      estimatedFeeUsd: 0.52,
+      model: "estimated_single_input_single_output",
+    },
+  });
+
+  assert.equal(score.bitcoinFeeUsd, null);
+  assert.equal(score.bitcoinFee, null);
+  assert.equal(score.knownCostUsd, 0.5);
+  assert.equal(score.netEdgeUsd, -0.5);
+});
+
+test("exact execution gas requirement blocks EVM candidates when only fallback gas exists", () => {
+  const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      outputAmount: "10020",
+    }),
+    prices,
+    {
+      executionGasUsd: 0.001,
+      executionGasSource: "fallback_gas_units",
+      requireExactExecutionGas: true,
+      gasObservedAt: "2026-04-10T11:59:00.000Z",
+      now: "2026-04-10T12:00:00.000Z",
+      priceHaircutBps: 0,
+    },
+  );
+
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), true);
+  assert.equal(score.tradeReadiness, "insufficient_data");
+});
+
+test("missing decimals block net edge classification", () => {
+  const route = {
+    srcChain: "base",
+    dstChain: "bob",
+    srcToken: "0x9999999999999999999999999999999999999999",
+    dstToken: WBTC_OFT,
+  };
+  const score = scoreGatewayQuote(quote(route), prices, {
+    executionGasUsd: 0.01,
+    gasObservedAt: "2026-04-10T11:59:00.000Z",
+    now: "2026-04-10T12:00:00.000Z",
+  });
+
+  assert.equal(score.tradeReadiness, "insufficient_data");
+  assert.equal(score.dataGaps.includes("missing_src_token_decimals"), true);
+  assert.equal(score.dataGaps.includes("missing_src_token_price"), true);
+});
+
+test("implausible output value ratio blocks quote hallucinations", () => {
+  const route = { srcChain: "bitcoin", dstChain: "base", srcToken: ZERO_TOKEN, dstToken: WBTC_OFT };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "onramp",
+      inputAmount: "10000",
+      outputAmount: "6358276000000",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      priceHaircutBps: 0,
+    },
+  );
+
+  assert.equal(score.tradeReadiness, "insufficient_data");
+  assert.equal(score.dataGaps.includes("implausible_quote_value_ratio"), true);
+});
+
+test("high route failure rate blocks otherwise positive candidates", () => {
+  const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      outputAmount: "10020",
+    }),
+    prices,
+    {
+      executionGasUsd: 0.001,
+      gasObservedAt: "2026-04-10T11:59:00.000Z",
+      now: "2026-04-10T12:00:00.000Z",
+      priceHaircutBps: 0,
+      routeStats: { quoteCount: 7, failureCount: 3, failureRate: 0.3 },
+    },
+  );
+
+  assert.equal(score.netEdgeUsd > 0, true);
+  assert.equal(score.tradeReadiness, "reject_high_failure_rate");
+});
+
+test("DEX output quote supplies executable net edge", () => {
+  const route = { srcChain: "bitcoin", dstChain: "ethereum", srcToken: ZERO_TOKEN, dstToken: USDC_ETHEREUM };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "onramp",
+      inputAmount: "10000",
+      outputAmount: "5000000",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      priceHaircutBps: 0,
+      dexOutputQuote: {
+        provider: "odos",
+        observedAt: "2026-04-10T11:59:00.000Z",
+        chain: "ethereum",
+        outputTicker: "USDC",
+        outputAmount: "4990000",
+        outputValueUsd: 4.99,
+        netOutputValueUsd: 4.9,
+        gasEstimateValueUsd: 0.09,
+        priceImpactPct: 0.01,
+      },
+      now: "2026-04-10T12:00:00.000Z",
+    },
+  );
+
+  assert.equal(score.dex.provider, "odos");
+  assert.equal(score.executableOutputUsd, 4.9);
+  assert.equal(score.executableNetEdgeUsd, -0.09999999999999964);
+});

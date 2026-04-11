@@ -1,0 +1,36 @@
+{
+  "name": "bob-claw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BOB Gateway / Instant Swap verification harness before any live trading.",
+  "scripts": {
+    "verify:gateway": "node src/cli/verify-gateway.mjs",
+    "verify:gateway:once": "node src/cli/verify-gateway.mjs --once",
+    "verify:gateway:bob-neighbors": "node src/cli/verify-gateway.mjs --bob-neighbors --one-per-chain-pair --amounts=10000",
+    "verify:gateway:btc-routes": "node src/cli/verify-gateway.mjs --btc-routes --one-per-chain-pair --amounts=10000",
+    "verify:gateway:asset-coverage": "node src/cli/verify-gateway.mjs --asset-coverage --amounts=10000 --route-limit=12 --retry-minimum",
+    "inventory:gateway": "node src/cli/inventory-gateway.mjs",
+    "gas:snapshot": "node src/cli/gas-snapshot.mjs",
+    "estimate:gateway-gas": "node src/cli/estimate-gateway-gas.mjs",
+    "check:estimator-wallet": "node src/cli/check-estimator-wallet.mjs",
+    "plan:estimator-wallet": "node src/cli/plan-estimator-wallet.mjs",
+    "plan:canary-routes": "node src/cli/plan-canary-routes.mjs",
+    "plan:canary-next-step": "node src/cli/plan-canary-next-step.mjs",
+    "advance:canary": "node src/cli/advance-canary.mjs",
+    "write:session-handoff": "node src/cli/write-session-handoff.mjs",
+    "bitcoin:fees": "node src/cli/bitcoin-fee-snapshot.mjs",
+    "quote:dex": "node src/cli/quote-dex.mjs",
+    "report:gateway": "node src/cli/report-gateway.mjs",
+    "score:gateway": "node src/cli/score-gateway.mjs --write",
+    "audit:overfit": "node src/cli/audit-overfit.mjs",
+    "watch:gateway-updates": "node src/cli/watch-gateway-updates.mjs",
+    "status:dashboard": "node src/cli/status-dashboard.mjs",
+    "dashboard:serve": "python3 -m http.server 8787 --directory dashboard/public",
+    "test": "node --test",
+    "check": "node --check src/cli/verify-gateway.mjs && node --check src/cli/report-gateway.mjs && node --check src/cli/inventory-gateway.mjs && node --check src/cli/quote-dex.mjs && node --check src/cli/score-gateway.mjs && node --check src/cli/gas-snapshot.mjs && node --check src/cli/estimate-gateway-gas.mjs && node --check src/cli/check-estimator-wallet.mjs && node --check src/cli/plan-estimator-wallet.mjs && node --check src/cli/plan-canary-routes.mjs && node --check src/cli/plan-canary-next-step.mjs && node --check src/cli/advance-canary.mjs && node --check src/cli/write-session-handoff.mjs && node --check src/cli/bitcoin-fee-snapshot.mjs && node --check src/cli/audit-overfit.mjs && node --check src/cli/watch-gateway-updates.mjs && node --check src/cli/status-dashboard.mjs && node --check dashboard/public/app.js && node --check dashboard/public/scene-model.js && node --check src/assets/tokens.mjs && node --check src/assets/erc20-metadata.mjs && node --check src/audit/overfit.mjs && node --check src/watch/gateway-update-watch.mjs && node --check src/bitcoin/fees.mjs && node --check src/dex/odos.mjs && node --check src/evm/account-state.mjs && node --check src/estimator/funding-plan.mjs && node --check src/estimator/canary-route-plan.mjs && node --check src/estimator/canary-next-step.mjs && node --check src/estimator/route-filter.mjs && node --check src/gateway/client.mjs && node --check src/lib/jsonl-store.mjs && node --check src/lib/jsonl-read.mjs && node --check src/market/prices.mjs && node --check src/scoring/gateway-score.mjs && node --check src/chains/registry.mjs && node --check src/chains/gateway-announced.mjs && node --check src/gas/rpc-gas.mjs && node --check src/notify/telegram.mjs && node --check src/status/dashboard-status.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

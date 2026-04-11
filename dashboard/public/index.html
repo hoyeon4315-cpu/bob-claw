@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>BOB Claw</title>
+    <link rel="icon" href="./favicon.ico">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="stage" aria-label="BOB Gateway asset flow map">
+        <div class="stage-top">
+          <div class="brand-lockup">
+            <img class="brand-mascot" src="./assets/branding/bob-claw-mascot.jpg" alt="BOB Claw mascot">
+            <div>
+              <p class="eyebrow">BOB Claw</p>
+              <h1>Gateway Flow Map</h1>
+            </div>
+          </div>
+          <div class="live-pill">
+            <span class="live-dot"></span>
+            <span id="liveCopy">연결 중</span>
+          </div>
+        </div>
+
+        <div class="map-wrap">
+          <svg id="flowSvg" class="flow-svg" viewBox="0 0 1000 620" preserveAspectRatio="none" role="img" aria-label="BOB Gateway route map"></svg>
+          <div id="chainLayer" class="chain-layer"></div>
+          <div id="pulseLayer" class="pulse-layer"></div>
+          <div class="map-caption">
+            <strong id="routeHeadline">BTC -> BOB -> 체인</strong>
+            <span id="routeSubline">경로를 불러오고 있습니다.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="info-grid">
+        <article class="panel panel-wide">
+          <div class="panel-title">
+            <h2>Recent Activity</h2>
+            <span id="traceCount" class="chip">0</span>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
+            <h2>가스와 가격</h2>
+            <span id="gasFreshness" class="chip">확인 중</span>
+          </div>
+          <div id="gasGrid" class="mini-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
+            <h2>Asset Coverage</h2>
+            <span id="assetCoverageCount" class="chip">0/0</span>
+          </div>
+          <div id="assetCoverageGrid" class="asset-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
+            <h2>Opportunity Watch</h2>
+            <span id="opportunityBadge" class="chip">0 clean</span>
+          </div>
+          <div class="opportunity-copy">
+            <strong id="opportunityTitle">No clean edge yet</strong>
+            <p id="opportunityBody">Waiting for fresh quotes and costs.</p>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
+            <h2>업데이트</h2>
+            <span id="updateBadge" class="chip">확인 중</span>
+          </div>
+          <div class="update-copy">
+            <strong id="updateTitle">상태 확인 중</strong>
+            <p id="updateBody">새로운 경로와 응답 변화를 기다리고 있습니다.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
