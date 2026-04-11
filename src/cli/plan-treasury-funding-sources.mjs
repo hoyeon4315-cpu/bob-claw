@@ -88,7 +88,9 @@ async function main() {
     console.log(`reasons=${fundingSourcePlan.reasons.join(",")}`);
   }
   console.log(`selectionCount=${fundingSourcePlan.summary.selectionCount}`);
-  console.log(`executionRefillExpectedCostUsd=${fundingSourcePlan.summary.executionRefillExpectedCostUsd.toFixed(4)}`);
+  console.log(
+    `executionRefillExpectedCostUsd=${Number.isFinite(fundingSourcePlan.summary.executionRefillExpectedCostUsd) ? fundingSourcePlan.summary.executionRefillExpectedCostUsd.toFixed(4) : "n/a"}`,
+  );
   console.log(
     `effectiveSystemNetPnlUsd=${Number.isFinite(fundingSourcePlan.summary.effectiveSystemNetPnlUsd) ? fundingSourcePlan.summary.effectiveSystemNetPnlUsd.toFixed(4) : "n/a"}`,
   );

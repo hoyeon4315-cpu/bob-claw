@@ -13,6 +13,7 @@ function deterministicJobId(payload) {
 
 export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null }) {
   const requiresManualReview = plan.decision === "REVIEW_REFILL_PLAN";
+  const refillPolicy = policy.refillPolicy || {};
   const resolvedFundingSourcePlan = fundingSourcePlan || buildFundingSourcePlan({ plan, policy });
   const selectionByKey = new Map((resolvedFundingSourcePlan.selections || []).map((item) => [item.resourceKey, item]));
   const jobs = (plan.actions || []).map((action) => {
@@ -60,11 +61,11 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       targetAmountDecimal: action.refillAmountDecimal,
       estimatedAssetValueUsd: action.refillEstimatedUsd ?? null,
       policy: {
-        activeChainRequired: policy.refillPolicy.requireActiveChain,
-        routeDemandRequired: policy.refillPolicy.requireRouteDemandSignal,
-        maxSingleRefillCostUsd: policy.refillPolicy.maxSingleRefillCostUsd,
-        skipIfWalletValueBelowUsd: policy.refillPolicy.skipIfWalletValueBelowUsd,
-        maxPendingJobs: policy.refillPolicy.maxPendingJobs,
+        activeChainRequired: refillPolicy.requireActiveChain,
+        routeDemandRequired: refillPolicy.requireRouteDemandSignal,
+        maxSingleRefillCostUsd: refillPolicy.maxSingleRefillCostUsd,
+        skipIfWalletValueBelowUsd: refillPolicy.skipIfWalletValueBelowUsd,
+        maxPendingJobs: refillPolicy.maxPendingJobs,
       },
       constraints: {
         requireEmergencyStopClear: true,

@@ -1,7 +1,18 @@
 import { createHash } from "node:crypto";
 
+function stableSerialize(value) {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(",")}}`;
+}
+
 function deterministicId(payload) {
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 20);
+  return createHash("sha256").update(stableSerialize(payload)).digest("hex").slice(0, 20);
 }
 
 export function latestExecutionEvent(events = [], jobId) {
@@ -18,7 +29,7 @@ export function canStartExecution(events = [], jobId, { force = false } = {}) {
   if (force) {
     return { ok: true, reason: "force_override", latest };
   }
-  if (["submitted", "confirmed", "failed", "dry_run_planned"].includes(latest.status)) {
+  if (["submitted", "confirmed", "failed", "dry_run_planned", "planned"].includes(latest.status)) {
     return { ok: false, reason: `job_already_${latest.status}`, latest };
   }
   return { ok: true, reason: null, latest };

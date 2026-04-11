@@ -214,7 +214,7 @@ export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS) {
     {
       label: "global route coverage",
       ok: routeCoveragePct >= effectiveTargets.minGlobalRouteCoveragePctForDiscovery,
-      detail: `${activeQuoteRouteKeys.size}/${totalGatewayRoutes} routes (${routeCoveragePct.toFixed(1)}%), discovery target ${effectiveTargets.minGlobalRouteCoveragePctForDiscovery}%`,
+      detail: `${sampledRouteKeys.size}/${totalGatewayRoutes} routes (${routeCoveragePct.toFixed(1)}%), discovery target ${effectiveTargets.minGlobalRouteCoveragePctForDiscovery}%`,
     },
     {
       label: "legacy records",

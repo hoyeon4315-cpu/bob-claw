@@ -184,7 +184,7 @@ async function main() {
     "- This repo is safe to back up publicly only if you are comfortable exposing source; operational secrets are ignored by git.",
     "- Prefer a private GitHub repo for backup.",
     "",
-  ].join("\n");
+  ].filter((line) => line != null).join("\n");
 
   const outputPath = join(process.cwd(), OUTPUT_PATH);
   const result = await writeTextIfChanged(outputPath, `${doc}\n`, {

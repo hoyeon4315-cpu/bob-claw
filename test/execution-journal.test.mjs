@@ -38,6 +38,19 @@ test("execution journal blocks duplicate starts without force", () => {
   assert.equal(gate.reason, "job_already_dry_run_planned");
 });
 
+test("execution journal blocks duplicate planned starts outside dry run", () => {
+  const planned = buildExecutionAttemptEvent({
+    job: jobFixture(),
+    mode: "live",
+    guards: { blocked: false, reasons: [], mode: "live" },
+    observedAt: "2026-04-11T05:00:00.000Z",
+  });
+  const gate = canStartExecution([planned], "job-123");
+
+  assert.equal(gate.ok, false);
+  assert.equal(gate.reason, "job_already_planned");
+});
+
 test("execution journal allows force override", () => {
   const submitted = buildExecutionSubmissionEvent({
     job: jobFixture(),
@@ -87,4 +100,19 @@ test("latest execution event returns the newest event for a job", () => {
   });
 
   assert.equal(latestExecutionEvent([older, newer], "job-123").status, "submitted");
+});
+
+test("execution attempt ids stay stable across object key order", () => {
+  const first = buildExecutionAttemptEvent({
+    job: { ...jobFixture(), constraints: { requireEmergencyStopClear: true, alpha: 1 } },
+    guards: { blocked: false, reasons: [], mode: "dry_run" },
+    observedAt: "2026-04-11T05:00:00.000Z",
+  });
+  const second = buildExecutionAttemptEvent({
+    job: { ...jobFixture(), constraints: { alpha: 1, requireEmergencyStopClear: true } },
+    guards: { blocked: false, reasons: [], mode: "dry_run" },
+    observedAt: "2026-04-11T05:00:00.000Z",
+  });
+
+  assert.equal(first.attemptId, second.attemptId);
 });

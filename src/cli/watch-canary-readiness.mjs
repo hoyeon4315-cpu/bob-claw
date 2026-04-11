@@ -131,7 +131,11 @@ async function main() {
       console.log(
         `refresh=dex-price chains=${dexRefresh.chains.join(",")} routeKey=${dexRefresh.routeKey || "unknown"} amount=${dexRefresh.amount || "unknown"} reason=${dexRefresh.reason}`,
       );
-      runNodeScript("src/cli/quote-dex.mjs", [`--chains=${dexRefresh.chains.join(",")}`]);
+      runNodeScript("src/cli/quote-dex.mjs", [
+        `--chains=${dexRefresh.chains.join(",")}`,
+        ...(dexRefresh.routeKey ? [`--route-key=${dexRefresh.routeKey}`] : []),
+        ...(dexRefresh.amount ? [`--amount=${dexRefresh.amount}`] : []),
+      ]);
       if (dexRefresh.routeKey && dexRefresh.amount) {
         runNodeScript("src/cli/score-gateway.mjs", [
           "--write",
