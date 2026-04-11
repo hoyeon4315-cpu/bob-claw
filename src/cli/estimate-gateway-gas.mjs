@@ -65,7 +65,10 @@ function skipReason(quote) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const store = new JsonlStore(config.dataDir);
-  const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+  const prices = await getCoinGeckoPricesUsd().catch((error) => {
+    console.warn(`warning: failed to fetch USD prices, gas USD estimates may be unavailable: ${error.message}`);
+    return emptyPricesUsd();
+  });
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
   const selectedQuotes = quotes
     .filter((quote) => quote.route?.srcChain !== "bitcoin")
