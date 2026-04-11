@@ -120,7 +120,11 @@ async function main() {
       console.log(
         `action=refresh-blocked-score routeKey=${scoreRefresh.routeKey || "unknown"} amount=${scoreRefresh.amount || "unknown"} reason=${scoreRefresh.reason} inputs=${scoreRefresh.changedInputs.join(",") || "unknown"}`,
       );
-      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", [
+        "--write",
+        `--route-key=${scoreRefresh.routeKey}`,
+        `--amount=${scoreRefresh.amount}`,
+      ]);
       if (scoreOutput) console.log(scoreOutput);
       refreshShadowArtifacts(args.address);
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { config } from "../config/env.mjs";
@@ -73,10 +73,58 @@ function latestByRouteAndAmountMap(items) {
 
 function parseArgs(argv) {
   const flags = new Set(argv);
+  const options = Object.fromEntries(
+    argv
+      .filter((arg) => arg.startsWith("--") && arg.includes("="))
+      .map((arg) => {
+        const [key, ...valueParts] = arg.slice(2).split("=");
+        return [key, valueParts.join("=")];
+      }),
+  );
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
+    routeKey: options["route-key"] || null,
+    amount: options.amount || null,
   };
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function sortScores(scores) {
+  return [...scores].sort((a, b) => (b.netEdgeUsd ?? -Infinity) - (a.netEdgeUsd ?? -Infinity) || a.routeKey.localeCompare(b.routeKey));
+}
+
+function summarizeScores(scores, maxRouteFailureRate) {
+  return {
+    shadowCandidates: scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length,
+    dexBacked: scores.filter((score) => score.dex).length,
+    insufficientData: scores.filter((score) => score.tradeReadiness === "insufficient_data").length,
+    highFailureRate: scores.filter((score) => (score.routeStats?.failureRate ?? 0) > maxRouteFailureRate).length,
+    staleGas: scores.filter((score) => score.dataGaps.includes("stale_src_gas_snapshot")).length,
+    missingDecimals: scores.filter(
+      (score) => score.dataGaps.includes("missing_src_token_decimals") || score.dataGaps.includes("missing_dst_token_decimals"),
+    ).length,
+  };
+}
+
+function selectionKey(routeKey, amount) {
+  return `${routeKey}|${amount}`;
+}
+
+function mergeScores(existingScores, refreshedScores, routeKey, amount) {
+  const key = selectionKey(routeKey, amount);
+  return [
+    ...(existingScores || []).filter((score) => selectionKey(score.routeKey, score.amount) !== key),
+    ...refreshedScores,
+  ];
 }
 
 function formatUsd(value) {
@@ -100,14 +148,18 @@ function assetText(asset) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if ((args.routeKey && !args.amount) || (!args.routeKey && args.amount)) {
+    throw new Error("Pass both --route-key and --amount together for selective scoring");
+  }
   const now = new Date().toISOString();
+  const scorePath = join(config.dataDir, "gateway-scores.json");
   const allQuotes = await readJsonl(config.dataDir, "gateway-quotes");
   const failures = await readJsonl(config.dataDir, "gateway-quote-failures");
   const dexQuotes = await readJsonl(config.dataDir, "dex-quotes");
   const bitcoinFeeSnapshots = await readJsonl(config.dataDir, "bitcoin-fee-snapshots");
   const gasEstimateSnapshots = await readJsonl(config.dataDir, "gateway-gas-estimates");
   const gasSnapshotRecords = await readJsonl(config.dataDir, "gas-snapshots");
-  const quotes = latestByRouteAndAmount(allQuotes);
+  const latestQuotes = latestByRouteAndAmount(allQuotes);
   const routeStats = routeStatsByKey(allQuotes, failures);
   const dexOutputQuotes = latestDexOutputQuoteByRoute(dexQuotes);
   const gasEstimates = latestByRouteAndAmountMap(gasEstimateSnapshots);
@@ -120,6 +172,16 @@ async function main() {
   });
   const tokenCache = new Map();
   const maxRouteFailureRate = 0.1;
+  const selective = Boolean(args.routeKey && args.amount);
+  const previousSnapshot = selective && args.write ? await readJsonIfExists(scorePath) : null;
+  const quotes =
+    selective && previousSnapshot
+      ? latestQuotes.filter((quote) => quote.routeKey === args.routeKey && String(quote.amount) === String(args.amount))
+      : latestQuotes;
+
+  if (selective && quotes.length === 0) {
+    throw new Error(`No latest quote found for route ${args.routeKey} amount=${args.amount}`);
+  }
 
   async function resolveCached(chain, token) {
     const key = `${chain}:${String(token).toLowerCase()}`;
@@ -129,7 +191,7 @@ async function main() {
     return tokenCache.get(key);
   }
 
-  const scores = [];
+  const refreshedScores = [];
   for (const quote of quotes) {
     const snapshot = gasSnapshots.get(quote.route.srcChain);
     const [srcAsset, dstAsset] = await Promise.all([
@@ -142,7 +204,7 @@ async function main() {
       : snapshot
         ? gasUsdFromSnapshot(snapshot, prices.nativeByChain[quote.route.srcChain])
         : null;
-    scores.push(
+    refreshedScores.push(
       scoreGatewayQuote(quote, prices, {
         srcAsset,
         dstAsset,
@@ -161,7 +223,11 @@ async function main() {
     );
   }
 
-  scores.sort((a, b) => (b.netEdgeUsd ?? -Infinity) - (a.netEdgeUsd ?? -Infinity) || a.routeKey.localeCompare(b.routeKey));
+  const scores = sortScores(
+    selective && previousSnapshot
+      ? mergeScores(previousSnapshot.scores || [], refreshedScores, args.routeKey, args.amount)
+      : refreshedScores,
+  );
 
   const result = {
     schemaVersion: 1,
@@ -169,22 +235,12 @@ async function main() {
     priceObservedAt: now,
     btcUsd: prices.btc,
     scoredQuotes: scores.length,
-    summary: {
-      shadowCandidates: scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length,
-      dexBacked: scores.filter((score) => score.dex).length,
-      insufficientData: scores.filter((score) => score.tradeReadiness === "insufficient_data").length,
-      highFailureRate: scores.filter((score) => (score.routeStats?.failureRate ?? 0) > maxRouteFailureRate).length,
-      staleGas: scores.filter((score) => score.dataGaps.includes("stale_src_gas_snapshot")).length,
-      missingDecimals: scores.filter(
-        (score) => score.dataGaps.includes("missing_src_token_decimals") || score.dataGaps.includes("missing_dst_token_decimals"),
-      ).length,
-    },
+    summary: summarizeScores(scores, maxRouteFailureRate),
     scores,
   };
 
   if (args.write) {
-    const path = join(config.dataDir, "gateway-scores.json");
-    await writeFile(path, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    await writeFile(scorePath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
   }
 
   if (args.json) {
@@ -194,11 +250,14 @@ async function main() {
 
   console.log(`btcUsd=${prices.btc}`);
   console.log(`scoredQuotes=${scores.length}`);
+  if (selective) {
+    console.log(`selection routeKey=${args.routeKey} amount=${args.amount} refreshed=${refreshedScores.length}`);
+  }
   console.log(
     `summary shadowCandidates=${result.summary.shadowCandidates} insufficientData=${result.summary.insufficientData} highFailureRate=${result.summary.highFailureRate} staleGas=${result.summary.staleGas} missingDecimals=${result.summary.missingDecimals}`,
   );
 
-  for (const score of scores) {
+  for (const score of selective ? refreshedScores : scores) {
     console.log(
       [
         `${score.srcChain}->${score.dstChain}`,
