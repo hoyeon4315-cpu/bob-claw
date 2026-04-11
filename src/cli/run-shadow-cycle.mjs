@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
@@ -13,7 +13,7 @@ import { buildTreasuryRefillJobs } from "../treasury/refill-job.mjs";
 import { buildDefaultRoutePerformancePolicy, buildRoutePerformanceRanking } from "../risk/route-performance.mjs";
 import { buildExecutionRiskState } from "../risk/execution-gate.mjs";
 import { buildInventoryConsistencyAudit, resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
-import { buildRouteDemandFromCanaryState, buildShadowCycleSummary } from "../session/shadow-cycle.mjs";
+import { buildRouteDemandFromCanaryState, buildShadowCycleSummary, stripVolatileShadowCycleFields } from "../session/shadow-cycle.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -115,8 +115,13 @@ async function main() {
 
   if (args.write) {
     const path = join(config.dataDir, "shadow-cycle-latest.json");
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+    const result = await writeTextIfChanged(path, `${JSON.stringify(summary, null, 2)}\n`, {
+      normalize: (contents) => {
+        if (!contents) return contents;
+        return JSON.stringify(stripVolatileShadowCycleFields(JSON.parse(contents)));
+      },
+    });
+    console.log(`${result.changed ? "wrote" : "unchanged"}=${result.path}`);
   }
 
   if (args.json) {

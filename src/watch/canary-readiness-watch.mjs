@@ -140,6 +140,37 @@ export function formatCanaryWatchSummary(nextStep) {
   return lines.join("\n");
 }
 
+function parseStructuredOutput(output) {
+  const summary = {};
+  for (const line of String(output || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) continue;
+    const key = trimmed.slice(0, separator);
+    const value = trimmed.slice(separator + 1);
+    if (!(key in summary)) summary[key] = value;
+  }
+  return summary;
+}
+
+function summarizeWriteState(summary, wroteKey, unchangedKey) {
+  if (summary[wroteKey]) return "refresh";
+  if (summary[unchangedKey]) return "skip";
+  return "unknown";
+}
+
+export function summarizeShadowArtifactRefresh({ priceOutput = "", shadowOutput = "", dashboardOutput = "" } = {}) {
+  const price = parseStructuredOutput(priceOutput);
+  const shadow = parseStructuredOutput(shadowOutput);
+  const dashboard = parseStructuredOutput(dashboardOutput);
+  const priceState = price.failed ? "failed" : price.wrote ? `refresh:${price.reason || "updated"}` : price.skipped ? `skip:${price.skipped}` : "unknown";
+  const shadowState = summarizeWriteState(shadow, "wrote", "unchanged");
+  const localDashboardState = summarizeWriteState(dashboard, "wrote", "unchanged");
+  const publicDashboardState = summarizeWriteState(dashboard, "dashboardWrote", "dashboardUnchanged");
+  return `refresh=shadow-artifacts price=${priceState} shadow=${shadowState} dashboard=${localDashboardState}/${publicDashboardState}`;
+}
+
 export function formatCanaryTelegramAlert(nextStep) {
   const lines = [
     "BOB Claw canary update",

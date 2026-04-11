@@ -12,6 +12,7 @@ import {
   formatCanaryWatchSummary,
   notifyCanaryDecision,
   planBlockedScoreRefresh,
+  summarizeShadowArtifactRefresh,
   shouldRefreshGasForCanary,
 } from "../watch/canary-readiness-watch.mjs";
 
@@ -52,16 +53,17 @@ function runNodeScript(script, args = []) {
 }
 
 function refreshShadowArtifacts(address) {
+  let priceOutput = "";
   try {
-    const priceOutput = runNodeScript("src/cli/price-snapshot.mjs");
-    if (priceOutput) console.log(priceOutput);
+    priceOutput = runNodeScript("src/cli/price-snapshot.mjs");
   } catch (error) {
-    console.log("action=price-snapshot-failed");
+    priceOutput = "failed=price_snapshot";
+    console.log("refresh=shadow-artifacts price=failed");
     if (error.stderr) console.log(error.stderr.trim());
   }
-  runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write", `--address=${address}`]);
-  const output = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
-  if (output) console.log(output);
+  const shadowOutput = runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write", `--address=${address}`]);
+  const dashboardOutput = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+  console.log(summarizeShadowArtifactRefresh({ priceOutput, shadowOutput, dashboardOutput }));
 }
 
 async function readJsonIfExists(path) {
@@ -100,24 +102,21 @@ async function main() {
     if (readinessRefresh.args && readinessRefresh.shouldRefresh) {
       const routeKey = readinessRefresh.args.find((item) => item.startsWith("--route-key="))?.slice("--route-key=".length) || "unknown";
       const amount = readinessRefresh.args.find((item) => item.startsWith("--amount="))?.slice("--amount=".length) || "unknown";
-      console.log(`action=refresh-wallet-readiness routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason}`);
-      const output = runNodeScript("src/cli/check-estimator-wallet.mjs", readinessRefresh.args);
-      if (output) console.log(output);
+      console.log(`refresh=wallet-readiness routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason}`);
+      runNodeScript("src/cli/check-estimator-wallet.mjs", readinessRefresh.args);
       refreshShadowArtifacts(args.address);
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (readinessRefresh.args) {
       const routeKey = readinessRefresh.args.find((item) => item.startsWith("--route-key="))?.slice("--route-key=".length) || "unknown";
       const amount = readinessRefresh.args.find((item) => item.startsWith("--amount="))?.slice("--amount=".length) || "unknown";
       const ageSeconds = Number.isFinite(readinessRefresh.ageMs) ? Math.round(readinessRefresh.ageMs / 1000) : "unknown";
-      console.log(`action=skip-wallet-readiness-refresh routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason} ageSeconds=${ageSeconds}`);
+      console.log(`skip=wallet-readiness routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason} ageSeconds=${ageSeconds}`);
     }
 
     if (shouldRefreshGasForCanary(state.nextStep)) {
-      console.log("action=refresh-stale-gas-and-rescore");
-      const gasOutput = runNodeScript("src/cli/gas-snapshot.mjs");
-      if (gasOutput) console.log(gasOutput);
-      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
-      if (scoreOutput) console.log(scoreOutput);
+      console.log("refresh=stale-gas-and-rescore");
+      runNodeScript("src/cli/gas-snapshot.mjs");
+      runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
       refreshShadowArtifacts(args.address);
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     }
@@ -125,19 +124,18 @@ async function main() {
     const scoreRefresh = planBlockedScoreRefresh(state);
     if (scoreRefresh.shouldRefresh) {
       console.log(
-        `action=refresh-blocked-score routeKey=${scoreRefresh.routeKey || "unknown"} amount=${scoreRefresh.amount || "unknown"} reason=${scoreRefresh.reason} inputs=${scoreRefresh.changedInputs.join(",") || "unknown"}`,
+        `refresh=blocked-score routeKey=${scoreRefresh.routeKey || "unknown"} amount=${scoreRefresh.amount || "unknown"} reason=${scoreRefresh.reason} inputs=${scoreRefresh.changedInputs.join(",") || "unknown"}`,
       );
-      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", [
+      runNodeScript("src/cli/score-gateway.mjs", [
         "--write",
         `--route-key=${scoreRefresh.routeKey}`,
         `--amount=${scoreRefresh.amount}`,
       ]);
-      if (scoreOutput) console.log(scoreOutput);
       refreshShadowArtifacts(args.address);
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (scoreRefresh.routeKey) {
       console.log(
-        `action=skip-blocked-score-refresh routeKey=${scoreRefresh.routeKey} amount=${scoreRefresh.amount} reason=${scoreRefresh.reason}`,
+        `skip=blocked-score routeKey=${scoreRefresh.routeKey} amount=${scoreRefresh.amount} reason=${scoreRefresh.reason}`,
       );
     }
 
@@ -157,9 +155,8 @@ async function main() {
     runNodeScript("src/cli/write-session-handoff.mjs");
 
     if (state.nextStep.decision === "RUN_EXACT_GAS" || state.nextStep.decision === "RERUN_SCORING") {
-      console.log("action=advance-canary");
-      const output = runNodeScript("src/cli/advance-canary.mjs", [`--address=${args.address}`]);
-      if (output) console.log(output);
+      console.log("advance=canary");
+      runNodeScript("src/cli/advance-canary.mjs", [`--address=${args.address}`]);
       runNodeScript("src/cli/write-session-handoff.mjs");
       return;
     }

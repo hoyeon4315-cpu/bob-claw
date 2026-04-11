@@ -194,6 +194,12 @@ function summarizeTreasuryNeeds(treasuryPlan, routePlan) {
     .slice(0, 3);
 }
 
+export function stripVolatileShadowCycleFields(summary) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) return summary;
+  const { observedAt, ...stable } = summary;
+  return stable;
+}
+
 export function buildRouteDemandFromCanaryState(routePlan) {
   return (routePlan?.topCandidates || [])
     .filter((item) => item.viableForPrep)

@@ -7,6 +7,7 @@ import {
   formatCanaryWatchSummary,
   planNextReadinessRefresh,
   planBlockedScoreRefresh,
+  summarizeShadowArtifactRefresh,
   shouldRefreshGasForCanary,
 } from "../src/watch/canary-readiness-watch.mjs";
 
@@ -21,6 +22,20 @@ test("canary readiness summary includes decision and route", () => {
   assert.match(summary, /decision=FUND_AND_APPROVE_WALLET/);
   assert.match(summary, /route=bob->base wBTC.OFT->wBTC.OFT amount=10000/);
   assert.match(summary, /reasons=native,token,allowance/);
+});
+
+test("shadow artifact refresh summary keeps watcher logs concise", () => {
+  const summary = summarizeShadowArtifactRefresh({
+    priceOutput: "skipped=recently_unchanged\nobservedAt=2026-04-11T07:00:00.000Z\nbtcUsd=80000\n",
+    shadowOutput: "unchanged=data/shadow-cycle-latest.json\n",
+    dashboardOutput: [
+      "unchanged=data/dashboard-status.json",
+      "dashboardUnchanged=dashboard/public/dashboard-status.json",
+      "severity=warn",
+    ].join("\n"),
+  });
+
+  assert.equal(summary, "refresh=shadow-artifacts price=skip:recently_unchanged shadow=skip dashboard=skip/skip");
 });
 
 test("telegram alert formats canary decision updates", () => {
