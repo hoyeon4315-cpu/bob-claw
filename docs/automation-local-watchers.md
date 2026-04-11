@@ -37,6 +37,31 @@ Recommended early schedule:
 - hourly during initial shadow mode
 - every 6 hours after route behavior is stable
 
+### Canary Readiness Watcher
+
+Command:
+
+```bash
+npm run watch:canary-readiness
+```
+
+Detects:
+
+- estimator wallet readiness moving from blocked to ready
+- the best canary route changing
+- the next canary decision changing
+
+Actions:
+
+- rewrites `docs/current-status.md`
+- sends a Telegram message when the canary decision changes, if Telegram is configured
+- runs `npm run advance:canary` automatically when the decision advances past wallet funding
+
+Recommended schedule:
+
+- every 1-5 minutes while waiting for wallet funding
+- run continuously on the Mac mini during canary-prep phase
+
 ### Gas Snapshot Watcher
 
 Command:

@@ -1,14 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { config } from "../config/env.mjs";
-import { determineCanaryNextStep } from "../estimator/canary-next-step.mjs";
-import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
-import { buildEstimatorFundingPlan } from "../estimator/funding-plan.mjs";
-import { readJsonl } from "../lib/jsonl-read.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -24,38 +18,6 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     address: options.address || config.estimateFrom,
   };
-}
-
-async function readJsonIfExists(path) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
-
-async function loadState(address) {
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, prices] = await Promise.all([
-    readJsonl(config.dataDir, "gateway-quotes"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
-    readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
-    getCoinGeckoPricesUsd().catch(() => null),
-  ]);
-
-  const routePlan = buildCanaryRoutePlan(
-    {
-      quotes,
-      scores: scoreSnapshot?.scores || [],
-      readinessRecords,
-      readinessFailures,
-    },
-    { address, prices },
-  );
-  const fundingPlan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address });
-  const nextStep = determineCanaryNextStep({ routePlan, fundingPlan });
-  return { routePlan, fundingPlan, nextStep };
 }
 
 function runNodeScript(script, args = []) {
@@ -106,7 +68,7 @@ function printStep(step, prefix = "current") {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const initial = await loadState(args.address);
+  const initial = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
   let next = initial.nextStep;
 
   if (args.json) {
@@ -115,7 +77,7 @@ async function main() {
       let route = activeRoute(next);
       if (next.decision === "RUN_EXACT_GAS") {
         runNodeScript("src/cli/check-estimator-wallet.mjs", routeArgs(args.address, route));
-        const refreshed = await loadState(args.address);
+        const refreshed = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
         next = refreshed.nextStep;
         output.afterWalletCheck = next;
         route = activeRoute(next, route);
@@ -141,7 +103,7 @@ async function main() {
 
   if (next.decision === "RUN_EXACT_GAS") {
     runNodeScript("src/cli/check-estimator-wallet.mjs", routeArgs(args.address, route));
-    const afterWalletCheck = await loadState(args.address);
+    const afterWalletCheck = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     next = afterWalletCheck.nextStep;
     printStep(next, "afterWalletCheck");
     route = activeRoute(next, route);
@@ -152,7 +114,7 @@ async function main() {
 
   runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
   runNodeScript("src/cli/status-dashboard.mjs");
-  const finalState = await loadState(args.address);
+  const finalState = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
   printStep(finalState.nextStep, "final");
 }
 

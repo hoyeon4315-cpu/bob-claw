@@ -7,6 +7,7 @@ This repo is a verification harness for BOB Gateway / Instant Swap ideas. It is 
 Useful commands:
 
 - `npm run advance:canary`
+- `npm run watch:canary-readiness`
 - `npm run plan:canary-next-step`
 - `npm run plan:canary-routes`
 - `npm run plan:estimator-wallet`

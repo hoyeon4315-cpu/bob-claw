@@ -1,13 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { config } from "../config/env.mjs";
-import { determineCanaryNextStep } from "../estimator/canary-next-step.mjs";
-import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
-import { buildEstimatorFundingPlan } from "../estimator/funding-plan.mjs";
-import { readJsonl } from "../lib/jsonl-read.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -25,15 +19,6 @@ function parseArgs(argv) {
   };
 }
 
-async function readJsonIfExists(path) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
-
 function formatAmount(value, ticker) {
   if (!Number.isFinite(value)) return `unknown ${ticker}`;
   return `${value.toLocaleString("en-US", { maximumFractionDigits: value >= 1 ? 6 : 12 })} ${ticker}`;
@@ -41,25 +26,7 @@ function formatAmount(value, ticker) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, prices] = await Promise.all([
-    readJsonl(config.dataDir, "gateway-quotes"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
-    readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
-    getCoinGeckoPricesUsd().catch(() => null),
-  ]);
-
-  const routePlan = buildCanaryRoutePlan(
-    {
-      quotes,
-      scores: scoreSnapshot?.scores || [],
-      readinessRecords,
-      readinessFailures,
-    },
-    { address: args.address, prices },
-  );
-  const fundingPlan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address: args.address });
-  const next = determineCanaryNextStep({ routePlan, fundingPlan });
+  const { nextStep: next } = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
 
   if (args.json) {
     console.log(JSON.stringify(next, null, 2));

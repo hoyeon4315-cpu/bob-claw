@@ -1,24 +1,11 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { config } from "../config/env.mjs";
-import { determineCanaryNextStep } from "../estimator/canary-next-step.mjs";
-import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
-import { buildEstimatorFundingPlan } from "../estimator/funding-plan.mjs";
-import { readJsonl } from "../lib/jsonl-read.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 
 const OUTPUT_PATH = "docs/current-status.md";
-
-async function readJsonIfExists(path) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
 
 function money(value) {
   if (!Number.isFinite(value)) return "n/a";
@@ -46,21 +33,10 @@ function linesForActions(actions = []) {
 
 async function main() {
   const now = new Date().toISOString();
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, dashboardStatus, prices] = await Promise.all([
-    readJsonl(config.dataDir, "gateway-quotes"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
-    readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
-    readJsonIfExists(join(config.dataDir, "dashboard-status.json")),
-    getCoinGeckoPricesUsd().catch(() => null),
-  ]);
-
-  const routePlan = buildCanaryRoutePlan(
-    { quotes, scores: scoreSnapshot?.scores || [], readinessRecords, readinessFailures },
-    { address: config.estimateFrom, prices },
-  );
-  const fundingPlan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address: config.estimateFrom });
-  const next = determineCanaryNextStep({ routePlan, fundingPlan });
+  const { routePlan, fundingPlan, nextStep: next, dashboardStatus } = await loadCanaryState({
+    address: config.estimateFrom,
+    dataDir: config.dataDir,
+  });
   const best = next.route || routePlan.topCandidates?.[0] || null;
 
   const doc = [
