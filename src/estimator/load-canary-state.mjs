@@ -23,7 +23,18 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     configuredAddress: config.estimateFrom,
     dataDir,
   });
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, dashboardStatus, livePrices, gasSnapshots, bitcoinFeeSnapshots] = await Promise.all([
+  const [
+    quotes,
+    readinessRecords,
+    readinessFailures,
+    scoreSnapshot,
+    dashboardStatus,
+    livePrices,
+    gasSnapshots,
+    bitcoinFeeSnapshots,
+    gasEstimateSnapshots,
+    dexQuotes,
+  ] = await Promise.all([
     readJsonl(dataDir, "gateway-quotes"),
     readJsonl(dataDir, "estimator-wallet-readiness"),
     readJsonl(dataDir, "estimator-wallet-readiness-failures"),
@@ -32,6 +43,8 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     getCoinGeckoPricesUsd().catch(() => emptyPricesUsd()),
     readJsonl(dataDir, "gas-snapshots"),
     readJsonl(dataDir, "bitcoin-fee-snapshots"),
+    readJsonl(dataDir, "gateway-gas-estimates"),
+    readJsonl(dataDir, "dex-quotes"),
   ]);
   const prices = overlayObservedPricesUsd(livePrices, { gasSnapshots, bitcoinFeeSnapshots });
 
@@ -56,6 +69,10 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     scoreSnapshot,
     dashboardStatus,
     prices,
+    gasSnapshots,
+    bitcoinFeeSnapshots,
+    gasEstimateSnapshots,
+    dexQuotes,
     routePlan,
     fundingPlan,
     nextStep,

@@ -1,6 +1,6 @@
 # Local Watchers
 
-Last updated: 2026-04-10
+Last updated: 2026-04-11
 
 ## Principle
 
@@ -56,6 +56,7 @@ Actions:
 - refreshes only the `shadowCycle.canary.nextReadinessCheck` route with `npm run check:estimator-wallet`
 - skips that selective refresh when the same route+amount already has a fresh recent readiness observation
 - refreshes gas snapshots and reruns scoring automatically when the canary is blocked only by stale source-chain gas
+- reruns `npm run score:gateway -- --write` when the best blocked route is `reject_no_net_edge` and a newer quote, exact gas, dex quote, or fee input arrives
 - reruns `shadow-cycle` immediately after that selective readiness refresh
 - rebuilds `data/dashboard-status.json` and `dashboard/public/dashboard-status.json` after each watcher refresh
 - rewrites `docs/current-status.md`

@@ -11,6 +11,7 @@ import {
   decisionFingerprint,
   formatCanaryWatchSummary,
   notifyCanaryDecision,
+  planBlockedScoreRefresh,
   shouldRefreshGasForCanary,
 } from "../watch/canary-readiness-watch.mjs";
 
@@ -104,6 +105,31 @@ async function main() {
       console.log(`action=skip-wallet-readiness-refresh routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason} ageSeconds=${ageSeconds}`);
     }
 
+    if (shouldRefreshGasForCanary(state.nextStep)) {
+      console.log("action=refresh-stale-gas-and-rescore");
+      const gasOutput = runNodeScript("src/cli/gas-snapshot.mjs");
+      if (gasOutput) console.log(gasOutput);
+      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      if (scoreOutput) console.log(scoreOutput);
+      refreshShadowArtifacts(args.address);
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    }
+
+    const scoreRefresh = planBlockedScoreRefresh(state);
+    if (scoreRefresh.shouldRefresh) {
+      console.log(
+        `action=refresh-blocked-score routeKey=${scoreRefresh.routeKey || "unknown"} amount=${scoreRefresh.amount || "unknown"} reason=${scoreRefresh.reason} inputs=${scoreRefresh.changedInputs.join(",") || "unknown"}`,
+      );
+      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      if (scoreOutput) console.log(scoreOutput);
+      refreshShadowArtifacts(args.address);
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (scoreRefresh.routeKey) {
+      console.log(
+        `action=skip-blocked-score-refresh routeKey=${scoreRefresh.routeKey} amount=${scoreRefresh.amount} reason=${scoreRefresh.reason}`,
+      );
+    }
+
     const fingerprint = decisionFingerprint(state.nextStep);
     const changed = previousFingerprint !== fingerprint;
 
@@ -115,16 +141,6 @@ async function main() {
         chatId: config.telegramChatId,
         nextStep: state.nextStep,
       }).catch(() => null);
-    }
-
-    if (shouldRefreshGasForCanary(state.nextStep)) {
-      console.log("action=refresh-stale-gas-and-rescore");
-      const gasOutput = runNodeScript("src/cli/gas-snapshot.mjs");
-      if (gasOutput) console.log(gasOutput);
-      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
-      if (scoreOutput) console.log(scoreOutput);
-      refreshShadowArtifacts(args.address);
-      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     }
 
     runNodeScript("src/cli/write-session-handoff.mjs");

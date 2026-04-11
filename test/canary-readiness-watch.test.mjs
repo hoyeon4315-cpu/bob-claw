@@ -6,6 +6,7 @@ import {
   formatCanaryTelegramAlert,
   formatCanaryWatchSummary,
   planNextReadinessRefresh,
+  planBlockedScoreRefresh,
   shouldRefreshGasForCanary,
 } from "../src/watch/canary-readiness-watch.mjs";
 
@@ -153,4 +154,88 @@ test("stale gas only blocker triggers gas refresh loop", () => {
     }),
     false,
   );
+});
+
+test("blocked net-edge route refreshes scoring when a newer route input exists", () => {
+  const plan = planBlockedScoreRefresh({
+    nextStep: {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      route: {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        srcChain: "bob",
+        dstChain: "base",
+      },
+      reasons: ["reject_no_net_edge"],
+    },
+    scoreSnapshot: {
+      generatedAt: "2026-04-11T06:00:00.000Z",
+    },
+    quotes: [
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        observedAt: "2026-04-11T06:04:00.000Z",
+      },
+    ],
+    gasEstimateSnapshots: [],
+    dexQuotes: [],
+    gasSnapshots: [
+      {
+        chain: "bob",
+        observedAt: "2026-04-11T05:55:00.000Z",
+      },
+    ],
+    bitcoinFeeSnapshots: [],
+  });
+
+  assert.equal(plan.shouldRefresh, true);
+  assert.equal(plan.reason, "newer_market_inputs");
+  assert.deepEqual(plan.changedInputs, ["quote"]);
+  assert.equal(plan.latestObservedAt, "2026-04-11T06:04:00.000Z");
+});
+
+test("blocked net-edge route skips rescoring when score inputs are unchanged", () => {
+  const plan = planBlockedScoreRefresh({
+    nextStep: {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      route: {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        srcChain: "bob",
+        dstChain: "base",
+      },
+      reasons: ["reject_no_net_edge"],
+    },
+    scoreSnapshot: {
+      generatedAt: "2026-04-11T06:00:00.000Z",
+    },
+    quotes: [
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        observedAt: "2026-04-11T05:59:00.000Z",
+      },
+    ],
+    gasEstimateSnapshots: [
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        observedAt: "2026-04-11T05:58:00.000Z",
+      },
+    ],
+    dexQuotes: [],
+    gasSnapshots: [
+      {
+        chain: "bob",
+        observedAt: "2026-04-11T05:57:00.000Z",
+      },
+    ],
+    bitcoinFeeSnapshots: [],
+  });
+
+  assert.equal(plan.shouldRefresh, false);
+  assert.equal(plan.reason, "score_inputs_unchanged");
+  assert.deepEqual(plan.changedInputs, []);
+  assert.equal(plan.latestObservedAt, "2026-04-11T05:59:00.000Z");
 });
