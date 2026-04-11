@@ -52,6 +52,13 @@ function runNodeScript(script, args = []) {
 }
 
 function refreshShadowArtifacts(address) {
+  try {
+    const priceOutput = runNodeScript("src/cli/price-snapshot.mjs");
+    if (priceOutput) console.log(priceOutput);
+  } catch (error) {
+    console.log("action=price-snapshot-failed");
+    if (error.stderr) console.log(error.stderr.trim());
+  }
   runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write", `--address=${address}`]);
   const output = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
   if (output) console.log(output);

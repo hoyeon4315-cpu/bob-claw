@@ -1,3 +1,5 @@
+import { tokenAsset } from "../assets/tokens.mjs";
+import { latestPriceSnapshot, priceForAssetUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { sendTelegramMessage } from "../notify/telegram.mjs";
 export { buildNextReadinessCheckArgs, planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 
@@ -59,6 +61,14 @@ export function planBlockedScoreRefresh(state) {
     };
   }
 
+  const matchedScore = (state?.scoreSnapshot?.scores || []).find(
+    (item) => item.routeKey === route.routeKey && String(item.amount) === String(route.amount),
+  ) || null;
+  const latestObservedPrices = latestPriceSnapshot(state?.priceSnapshots || []);
+  const snapshotPrices = latestObservedPrices ? pricesFromSnapshot(latestObservedPrices) : null;
+  const srcAsset = route.srcChain && route.srcToken ? tokenAsset(route.srcChain, route.srcToken) : null;
+  const dstAsset = route.dstChain && route.dstToken ? tokenAsset(route.dstChain, route.dstToken) : null;
+
   const latestQuote = latestMatching(state?.quotes, (item) => item.routeKey === route.routeKey && String(item.amount) === String(route.amount));
   const latestExactGas = latestMatching(
     state?.gasEstimateSnapshots,
@@ -86,6 +96,17 @@ export function planBlockedScoreRefresh(state) {
       return scoreObservedAtMs !== null && itemMs !== null && itemMs > scoreObservedAtMs;
     })
     .sort((left, right) => observedAtMs(right.observedAt) - observedAtMs(left.observedAt));
+  if (latestObservedPrices && matchedScore?.price && observedAtMs(latestObservedPrices.observedAt) > scoreObservedAtMs) {
+    const srcPriceChanged = priceForAssetUsd(srcAsset, snapshotPrices) !== matchedScore.price.srcRawUsd;
+    const dstPriceChanged = priceForAssetUsd(dstAsset, snapshotPrices) !== matchedScore.price.dstRawUsd;
+    if (srcPriceChanged) {
+      changedInputs.push({ type: "src_price", observedAt: latestObservedPrices.observedAt });
+    }
+    if (dstPriceChanged) {
+      changedInputs.push({ type: "dst_price", observedAt: latestObservedPrices.observedAt });
+    }
+    changedInputs.sort((left, right) => observedAtMs(right.observedAt) - observedAtMs(left.observedAt));
+  }
   const newestRelevant = [...relevantInputs].sort((left, right) => observedAtMs(right.observedAt) - observedAtMs(left.observedAt))[0] || null;
 
   if (changedInputs.length > 0) {

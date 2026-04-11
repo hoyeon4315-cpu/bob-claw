@@ -6,7 +6,7 @@ import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { config } from "../config/env.mjs";
 import { gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd, overlayObservedPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { scoreGatewayQuote } from "../scoring/gateway-score.mjs";
 
 function latestByRouteAndAmount(quotes) {
@@ -156,6 +156,7 @@ async function main() {
   const allQuotes = await readJsonl(config.dataDir, "gateway-quotes");
   const failures = await readJsonl(config.dataDir, "gateway-quote-failures");
   const dexQuotes = await readJsonl(config.dataDir, "dex-quotes");
+  const priceSnapshots = await readJsonl(config.dataDir, "market-price-snapshots");
   const bitcoinFeeSnapshots = await readJsonl(config.dataDir, "bitcoin-fee-snapshots");
   const gasEstimateSnapshots = await readJsonl(config.dataDir, "gateway-gas-estimates");
   const gasSnapshotRecords = await readJsonl(config.dataDir, "gas-snapshots");
@@ -165,8 +166,11 @@ async function main() {
   const gasEstimates = latestByRouteAndAmountMap(gasEstimateSnapshots);
   const gasSnapshots = latestBy(gasSnapshotRecords, (snapshot) => snapshot.chain);
   const bitcoinFee = bitcoinFeeSnapshots.at(-1) || null;
-  const livePrices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
-  const prices = overlayObservedPricesUsd(livePrices, {
+  const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
+  const useObservedPrices = latestObservedPrices && isFreshPriceSnapshot(latestObservedPrices, { now });
+  const livePrices = useObservedPrices ? null : await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+  const basePrices = useObservedPrices ? pricesFromSnapshot(latestObservedPrices) : livePrices;
+  const prices = overlayObservedPricesUsd(basePrices, {
     gasSnapshots: gasSnapshotRecords,
     bitcoinFeeSnapshots,
   });
@@ -232,7 +236,8 @@ async function main() {
   const result = {
     schemaVersion: 1,
     generatedAt: now,
-    priceObservedAt: now,
+    priceObservedAt: useObservedPrices ? latestObservedPrices.observedAt : now,
+    priceSource: useObservedPrices ? latestObservedPrices.source || "snapshot" : "live_fetch",
     btcUsd: prices.btc,
     scoredQuotes: scores.length,
     summary: summarizeScores(scores, maxRouteFailureRate),

@@ -34,6 +34,61 @@ export function emptyPricesUsd() {
   };
 }
 
+export function buildPriceSnapshot(prices, options = {}) {
+  const empty = emptyPricesUsd();
+  return {
+    schemaVersion: 1,
+    observedAt: options.observedAt || new Date().toISOString(),
+    source: options.source || "market_api",
+    btcUsd: Number.isFinite(prices?.btc) ? prices.btc : null,
+    tokenByKey: {
+      ...empty.tokenByKey,
+      ...(prices?.tokenByKey || {}),
+    },
+    nativeByChain: {
+      ...empty.nativeByChain,
+      ...(prices?.nativeByChain || {}),
+    },
+  };
+}
+
+export function pricesFromSnapshot(snapshot) {
+  const empty = emptyPricesUsd();
+  return {
+    btc: Number.isFinite(snapshot?.btcUsd) ? snapshot.btcUsd : null,
+    tokenByKey: {
+      ...empty.tokenByKey,
+      ...(snapshot?.tokenByKey || {}),
+    },
+    nativeByChain: {
+      ...empty.nativeByChain,
+      ...(snapshot?.nativeByChain || {}),
+    },
+  };
+}
+
+export function latestPriceSnapshot(priceSnapshots = []) {
+  let latest = null;
+  let latestMs = null;
+  for (const snapshot of priceSnapshots) {
+    const observedAtMs = new Date(snapshot?.observedAt || 0).getTime();
+    if (!Number.isFinite(observedAtMs)) continue;
+    if (latestMs === null || observedAtMs > latestMs) {
+      latest = snapshot;
+      latestMs = observedAtMs;
+    }
+  }
+  return latest;
+}
+
+export function isFreshPriceSnapshot(snapshot, options = {}) {
+  const observedAtMs = new Date(snapshot?.observedAt || 0).getTime();
+  if (!Number.isFinite(observedAtMs)) return false;
+  const nowMs = new Date(options.now || Date.now()).getTime();
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) ? options.maxAgeMs : 300_000;
+  return nowMs - observedAtMs <= maxAgeMs;
+}
+
 function latestFiniteValue(items, selector) {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const value = selector(items[index]);
@@ -79,6 +134,13 @@ export function overlayObservedPricesUsd(prices, options = {}) {
   if (!Number.isFinite(next.tokenByKey.usd_stable)) next.tokenByKey.usd_stable = 1;
 
   return next;
+}
+
+export function priceForAssetUsd(asset, prices) {
+  if (!asset?.priceKey) return null;
+  if (asset.priceKey === "btc") return prices?.btc ?? prices?.tokenByKey?.btc ?? null;
+  if (asset.priceKey === "usd_stable") return prices?.tokenByKey?.usd_stable ?? 1;
+  return prices?.tokenByKey?.[asset.priceKey] ?? prices?.nativeByChain?.[asset.priceKey] ?? null;
 }
 
 async function fetchCoinbaseSpotUsd(symbol) {

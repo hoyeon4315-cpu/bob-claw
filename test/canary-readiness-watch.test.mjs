@@ -239,3 +239,57 @@ test("blocked net-edge route skips rescoring when score inputs are unchanged", (
   assert.deepEqual(plan.changedInputs, []);
   assert.equal(plan.latestObservedAt, "2026-04-11T05:59:00.000Z");
 });
+
+test("blocked net-edge route refreshes scoring when a newer price snapshot changes the route price", () => {
+  const plan = planBlockedScoreRefresh({
+    nextStep: {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      route: {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        srcChain: "bob",
+        dstChain: "base",
+        srcToken: "0x0555",
+        dstToken: "0x0555",
+      },
+      reasons: ["reject_no_net_edge"],
+    },
+    scoreSnapshot: {
+      generatedAt: "2026-04-11T06:00:00.000Z",
+      scores: [
+        {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+          price: {
+            srcRawUsd: 50_000,
+            dstRawUsd: 50_000,
+          },
+        },
+      ],
+    },
+    priceSnapshots: [
+      {
+        observedAt: "2026-04-11T06:04:00.000Z",
+        btcUsd: 50_500,
+        tokenByKey: {
+          btc: 50_500,
+          wbtc: 50_500,
+        },
+        nativeByChain: {
+          bob: 3000,
+          base: 3000,
+        },
+      },
+    ],
+    quotes: [],
+    gasEstimateSnapshots: [],
+    dexQuotes: [],
+    gasSnapshots: [],
+    bitcoinFeeSnapshots: [],
+  });
+
+  assert.equal(plan.shouldRefresh, true);
+  assert.equal(plan.reason, "newer_market_inputs");
+  assert.deepEqual(plan.changedInputs, ["src_price", "dst_price"]);
+  assert.equal(plan.latestObservedAt, "2026-04-11T06:04:00.000Z");
+});

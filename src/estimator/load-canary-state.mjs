@@ -6,7 +6,7 @@ import { determineCanaryNextStep } from "./canary-next-step.mjs";
 import { buildCanaryRoutePlan } from "./canary-route-plan.mjs";
 import { buildEstimatorFundingPlan } from "./funding-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd, overlayObservedPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 
 export async function readJsonIfExists(path) {
   try {
@@ -29,6 +29,7 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     readinessFailures,
     scoreSnapshot,
     dashboardStatus,
+    priceSnapshots,
     livePrices,
     gasSnapshots,
     bitcoinFeeSnapshots,
@@ -40,13 +41,16 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     readJsonl(dataDir, "estimator-wallet-readiness-failures"),
     readJsonIfExists(join(dataDir, "gateway-scores.json")),
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
+    readJsonl(dataDir, "market-price-snapshots"),
     getCoinGeckoPricesUsd().catch(() => emptyPricesUsd()),
     readJsonl(dataDir, "gas-snapshots"),
     readJsonl(dataDir, "bitcoin-fee-snapshots"),
     readJsonl(dataDir, "gateway-gas-estimates"),
     readJsonl(dataDir, "dex-quotes"),
   ]);
-  const prices = overlayObservedPricesUsd(livePrices, { gasSnapshots, bitcoinFeeSnapshots });
+  const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
+  const basePrices = latestObservedPrices && isFreshPriceSnapshot(latestObservedPrices) ? pricesFromSnapshot(latestObservedPrices) : livePrices;
+  const prices = overlayObservedPricesUsd(basePrices, { gasSnapshots, bitcoinFeeSnapshots });
 
   const routePlan = buildCanaryRoutePlan(
     {
@@ -68,6 +72,7 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     readinessFailures,
     scoreSnapshot,
     dashboardStatus,
+    priceSnapshots,
     prices,
     gasSnapshots,
     bitcoinFeeSnapshots,
