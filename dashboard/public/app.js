@@ -8,6 +8,7 @@ import {
   viewBoxHeight,
   viewBoxWidth,
 } from "./scene-model.js";
+import { buildUpdateSummary } from "./update-summary.js";
 
 const statusUrl = "./dashboard-status.json";
 const svgNs = "http://www.w3.org/2000/svg";
@@ -135,7 +136,7 @@ function compactAge(value) {
 
 function humanBlocker(blocker) {
   return {
-    audit_blocks_live: "관찰 데이터 축적 중",
+    audit_blocks_live: "새 데이터 확인 중",
     gateway_update_pending_review: "새 경로 확인 중",
     gateway_probe_failures: "일부 경로 응답 불안정",
     missing_gateway_gas_snapshots: "일부 체인 가스 확인 필요",
@@ -484,28 +485,17 @@ function renderOpportunity(status) {
 }
 
 function renderUpdate(status) {
-  const hasUpdate = status.gateway.updateDetected || status.gateway.probeFailures.length;
-  const missingAnnounced = status.gateway.announcedChainCoverage?.missingAnnouncedChains || [];
-  $("updateBadge").textContent = hasUpdate || missingAnnounced.length ? "확인 필요" : "조용함";
-  if (hasUpdate) {
-    $("updateTitle").textContent = "새 움직임 확인 중";
-    $("updateBody").textContent = `${status.gateway.changeReasons.join(", ") || "경로 상태 변화"} · ${compactAge(status.gateway.observedAt)}`;
-    return;
-  }
-  if (missingAnnounced.length) {
-    $("updateTitle").textContent = "API route gap";
-    $("updateBody").textContent = `${missingAnnounced.map(labelFor).join(" · ")} announced, not live yet`;
-    return;
-  }
-  $("updateTitle").textContent = "새 업데이트 없음";
-  $("updateBody").textContent = `${status.gateway.routeCount}개 경로 · ${status.gateway.probeOk}/${status.gateway.probeTotal} probe · ${compactAge(status.gateway.observedAt)}`;
+  const summary = buildUpdateSummary(status);
+  $("updateBadge").textContent = summary.badge;
+  $("updateTitle").textContent = summary.title;
+  $("updateBody").textContent = summary.body;
 }
 
 function renderHeader(status) {
   const chains = status.gateway.chains?.length || 0;
   $("liveCopy").textContent = `자동 갱신 · ${compactAge(status.generatedAt)}`;
-  $("routeHeadline").textContent = `BOB Gateway 중심 · ${chains}개 체인`;
-  $("routeSubline").textContent = status.overall.blockers.length ? humanBlocker(status.overall.blockers[0]) : "실시간 경로 관찰 중";
+  $("routeHeadline").textContent = `BTC -> BOB -> ${chains}개 체인`;
+  $("routeSubline").textContent = status.gateway.updateDetected ? "새 경로 변화 확인 중" : "실시간 경로 관찰 중";
 }
 
 function render(status) {

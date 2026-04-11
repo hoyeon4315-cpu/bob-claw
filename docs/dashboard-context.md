@@ -114,6 +114,16 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `estimatorWallet.readyCount`
 - `estimatorWallet.nativeBlockedCount`
 - `estimatorWallet.allowanceBlockedCount`
+- `shadowCycle.mode`
+- `shadowCycle.headline`
+- `shadowCycle.canary.nextReadinessCheck`
+- `shadowCycle.canary.nextReadinessRefresh`
+- `shadowCycle.audit.issueCount`
+- `shadowCycle.audit.issues[].label`
+- `shadowCycle.topRoute.label`
+- `shadowCycle.treasury.estimatedWalletUsd`
+- `shadowCycle.treasury.nextNeeds`
+  includes activation labels for why a refill candidate is still waiting
 - `bitcoinFee.latest`
 - `opportunity.scoredQuotes`
 - `opportunity.candidateCount`

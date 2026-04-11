@@ -324,3 +324,122 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.estimatorWallet.allowanceBlockedCount, 1);
   assert.equal(status.dataCounts.estimatorWalletReadiness, 1);
 });
+
+test("dashboard status includes shadow cycle summary when available", () => {
+  const status = buildDashboardStatus({
+    routesRecords: [],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+    shadowCycle: {
+      observedAt: "2026-04-10T11:59:00.000Z",
+      mode: "SHADOW_ONLY",
+      headline: "Collect more shadow and realized data",
+      blockers: ["no_realized_enabled_routes"],
+      canary: {
+        decision: "RERUN_SCORING",
+        nextReadinessCheck: {
+          label: "base->bitcoin ETH->BTC",
+          amount: "1787455313617158",
+          srcChain: "base",
+          srcTicker: "ETH",
+          dstChain: "bitcoin",
+          dstTicker: "BTC",
+        },
+        nextReadinessRefresh: {
+          state: "cooldown",
+          reason: "fresh_recent_check",
+          latestObservedAt: "2026-04-10T11:58:30.000Z",
+          ageSeconds: 90,
+          maxAgeSeconds: 300,
+        },
+        readinessCheckCount: 2,
+      },
+      topRoute: {
+        label: "bob->base wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        tradeReadiness: "reject_no_net_edge",
+        netEdgeUsd: -0.83,
+      },
+      treasury: {
+        decision: "BLOCKED",
+        estimatedWalletUsd: 25.01,
+        walletValueFloorUsd: 250,
+        walletValueShortfallUsd: 224.99,
+        noDemandBlockerCount: 2,
+        nextNeeds: [
+          {
+            state: "waiting_demand",
+            chain: "base",
+            ticker: "ETH",
+            refillAmountDecimal: 0.0032,
+            refillEstimatedUsd: 7.11,
+            activation: {
+              code: "awaiting_wallet_readiness_check",
+              routeLabel: "base->bitcoin ETH->BTC",
+              candidateCount: 2,
+            },
+          },
+        ],
+      },
+      audit: {
+        address: {
+          consistent: false,
+          issues: ["configured_address_stale_vs_resolved_cycle_address"],
+        },
+        inventory: {
+          consistent: true,
+          issues: [],
+        },
+      },
+    },
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.shadowCycle.mode, "SHADOW_ONLY");
+  assert.equal(status.shadowCycle.blockerCount, 1);
+  assert.equal(status.shadowCycle.canaryDecision, "RERUN_SCORING");
+  assert.deepEqual(status.shadowCycle.canary, {
+    decision: "RERUN_SCORING",
+    nextReadinessCheck: {
+      label: "base->bitcoin ETH->BTC",
+      amount: "1787455313617158",
+      srcChain: "base",
+      srcTicker: "ETH",
+      dstChain: "bitcoin",
+      dstTicker: "BTC",
+    },
+    nextReadinessRefresh: {
+      state: "cooldown",
+      reason: "fresh_recent_check",
+      latestObservedAt: "2026-04-10T11:58:30.000Z",
+      ageSeconds: 90,
+      maxAgeSeconds: 300,
+    },
+    readinessCheckCount: 2,
+  });
+  assert.equal(status.shadowCycle.topRoute.label, "bob->base wBTC.OFT->wBTC.OFT");
+  assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
+  assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
+  assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);
+  assert.deepEqual(status.shadowCycle.treasury.nextNeeds[0], {
+    state: "waiting_demand",
+    chain: "base",
+    ticker: "ETH",
+    refillAmountDecimal: 0.0032,
+    refillEstimatedUsd: 7.11,
+    activation: {
+      code: "awaiting_wallet_readiness_check",
+      label: "지갑 준비 점검이 더 필요함",
+      routeLabel: "base->bitcoin ETH->BTC",
+      candidateCount: 2,
+    },
+  });
+  assert.equal(status.shadowCycle.audit.addressConsistent, false);
+  assert.equal(status.shadowCycle.audit.inventoryConsistent, true);
+  assert.equal(status.shadowCycle.audit.issueCount, 1);
+  assert.equal(status.shadowCycle.audit.issues[0].label, "기본 지갑 설정이 최신 운영 주소와 다름");
+  assert.equal(status.dataCounts.shadowCyclePresent, 1);
+});

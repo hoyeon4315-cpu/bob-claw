@@ -465,6 +465,114 @@ function estimatorWalletSummary({ estimatorWalletReadiness = [], estimatorWallet
   };
 }
 
+function humanShadowCycleAuditIssue(issue) {
+  return {
+    configured_address_stale_vs_resolved_cycle_address: "기본 지갑 설정이 최신 운영 주소와 다름",
+    explicit_address_differs_from_latest_inventory: "지정한 주소와 최신 운영 지갑이 다름",
+    latest_inventory_and_wallet_readiness_addresses_differ: "지갑 준비 기록과 재고 주소가 다름",
+    resolved_address_differs_from_latest_inventory: "현재 사이클 주소와 최신 재고 주소가 다름",
+    resolved_address_differs_from_latest_wallet_readiness: "현재 사이클 주소와 준비 점검 주소가 다름",
+    inventory_snapshot_missing: "지갑 재고 스냅샷이 없음",
+    inventory_snapshot_address_mismatch: "지갑 재고 스냅샷 주소가 다름",
+    inventory_summary_value_mismatch: "지갑 평가값과 보유 자산 합계가 다름",
+  }[issue] || issue;
+}
+
+function humanTreasuryNeedActivation(code) {
+  return {
+    demand_active_now: "현재 수요 기준 보강 가능",
+    awaiting_wallet_readiness_check: "지갑 준비 점검이 더 필요함",
+    awaiting_wallet_readiness_retry: "지갑 준비 재점검이 필요함",
+    awaiting_tx_payload: "실행 payload 확인이 더 필요함",
+    awaiting_score_gap_clear: "점수 데이터 공백 해소가 필요함",
+    awaiting_route_viability: "경로 적합성 확인이 더 필요함",
+    no_candidate_route: "해당 체인 수요 후보가 아직 없음",
+  }[code] || code;
+}
+
+function shadowCycleSummary(shadowCycle, now) {
+  if (!shadowCycle) return null;
+
+  return {
+    observedAt: shadowCycle.observedAt || null,
+    ageMinutes: minutesBetween(shadowCycle.observedAt, now),
+    mode: shadowCycle.mode || null,
+    headline: shadowCycle.headline || null,
+    blockerCount: shadowCycle.blockers?.length || 0,
+    canaryDecision: shadowCycle.canary?.decision || null,
+    canary: shadowCycle.canary
+      ? {
+          decision: shadowCycle.canary.decision || null,
+          nextReadinessCheck: shadowCycle.canary.nextReadinessCheck
+            ? {
+                label: shadowCycle.canary.nextReadinessCheck.label || null,
+                amount: shadowCycle.canary.nextReadinessCheck.amount || null,
+                srcChain: shadowCycle.canary.nextReadinessCheck.srcChain || null,
+                srcTicker: shadowCycle.canary.nextReadinessCheck.srcTicker || null,
+                dstChain: shadowCycle.canary.nextReadinessCheck.dstChain || null,
+                dstTicker: shadowCycle.canary.nextReadinessCheck.dstTicker || null,
+              }
+            : null,
+          nextReadinessRefresh: shadowCycle.canary.nextReadinessRefresh
+            ? {
+                state: shadowCycle.canary.nextReadinessRefresh.state || null,
+                reason: shadowCycle.canary.nextReadinessRefresh.reason || null,
+                latestObservedAt: shadowCycle.canary.nextReadinessRefresh.latestObservedAt || null,
+                ageSeconds: shadowCycle.canary.nextReadinessRefresh.ageSeconds ?? null,
+                maxAgeSeconds: shadowCycle.canary.nextReadinessRefresh.maxAgeSeconds ?? null,
+              }
+            : null,
+          readinessCheckCount: shadowCycle.canary.readinessCheckCount ?? 0,
+        }
+      : null,
+    topRoute: shadowCycle.topRoute
+      ? {
+          label: shadowCycle.topRoute.label || null,
+          amount: shadowCycle.topRoute.amount || null,
+          tradeReadiness: shadowCycle.topRoute.tradeReadiness || null,
+          netEdgeUsd: shadowCycle.topRoute.netEdgeUsd ?? null,
+        }
+      : null,
+    treasury: shadowCycle.treasury
+      ? {
+          decision: shadowCycle.treasury.decision || null,
+          estimatedWalletUsd: shadowCycle.treasury.estimatedWalletUsd ?? null,
+          walletValueFloorUsd: shadowCycle.treasury.walletValueFloorUsd ?? null,
+          walletValueShortfallUsd: shadowCycle.treasury.walletValueShortfallUsd ?? null,
+          noDemandBlockerCount: shadowCycle.treasury.noDemandBlockerCount ?? 0,
+          nextNeeds: (shadowCycle.treasury.nextNeeds || []).map((item) => ({
+            state: item.state || null,
+            chain: item.chain || null,
+            ticker: item.ticker || null,
+            refillAmountDecimal: item.refillAmountDecimal ?? null,
+            refillEstimatedUsd: item.refillEstimatedUsd ?? null,
+            activation: item.activation
+              ? {
+                  code: item.activation.code || null,
+                  label: humanTreasuryNeedActivation(item.activation.code),
+                  routeLabel: item.activation.routeLabel || null,
+                  candidateCount: item.activation.candidateCount ?? 0,
+                }
+              : null,
+          })),
+        }
+      : null,
+    audit: {
+      addressConsistent: shadowCycle.audit?.address?.consistent ?? null,
+      inventoryConsistent: shadowCycle.audit?.inventory?.consistent ?? null,
+      issueCount:
+        (shadowCycle.audit?.address?.issues?.length || 0) + (shadowCycle.audit?.inventory?.issues?.length || 0),
+      issues: [
+        ...(shadowCycle.audit?.address?.issues || []),
+        ...(shadowCycle.audit?.inventory?.issues || []),
+      ].map((issue) => ({
+        code: issue,
+        label: humanShadowCycleAuditIssue(issue),
+      })),
+    },
+  };
+}
+
 function decideOverall({ audit, gateway, gas }) {
   const blockers = [];
   if (audit.decision !== "LIVE_CANARY_REVIEW_POSSIBLE") blockers.push("audit_blocks_live");
@@ -530,6 +638,7 @@ export function buildDashboardStatus(input, options = {}) {
     estimatorWalletReadinessFailures: input.estimatorWalletReadinessFailures || [],
     now,
   });
+  const shadowCycle = shadowCycleSummary(input.shadowCycle || null, now);
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -539,6 +648,7 @@ export function buildDashboardStatus(input, options = {}) {
     gas,
     executionGas,
     estimatorWallet,
+    shadowCycle,
     bitcoinFee,
     opportunity,
     dex,
@@ -558,6 +668,7 @@ export function buildDashboardStatus(input, options = {}) {
       gatewayGasEstimateFailures: input.gatewayGasEstimateFailures?.length || 0,
       estimatorWalletReadiness: input.estimatorWalletReadiness?.length || 0,
       estimatorWalletReadinessFailures: input.estimatorWalletReadinessFailures?.length || 0,
+      shadowCyclePresent: shadowCycle ? 1 : 0,
     },
     exposurePolicy: {
       cloudflare: "dashboard_only",

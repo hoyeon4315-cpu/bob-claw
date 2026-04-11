@@ -31,7 +31,7 @@ export function getChainRpcUrls(chainName, fallback) {
 export const config = {
   gatewayApiBase: getEnv("BOB_GATEWAY_API_BASE", "https://gateway-api-mainnet.gobob.xyz"),
   verifyRecipient: getEnv("BOB_CLAW_VERIFY_RECIPIENT", "0x000000000000000000000000000000000000dEaD"),
-  estimateFrom: getEnv("BOB_CLAW_ESTIMATE_FROM", getEnv("BOB_CLAW_VERIFY_RECIPIENT", "0x000000000000000000000000000000000000dEaD")),
+  estimateFrom: getEnv("BOB_CLAW_ESTIMATE_FROM", null),
   verifyBtcRecipient: getEnv("BOB_CLAW_VERIFY_BTC_RECIPIENT", "1BitcoinEaterAddressDontSendf59kuE"),
   sampleSats: getCsvEnv("BOB_CLAW_SAMPLE_SATS", "10000,25000,50000,100000,150000"),
   slippageBps: String(getNumberEnv("BOB_CLAW_SLIPPAGE_BPS", 50)),

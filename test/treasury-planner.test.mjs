@@ -104,6 +104,9 @@ test("planner emits refill actions for active route-demand items", () => {
   assert.equal(plan.actions[1].type, "refill_token");
   assert.equal(plan.observations.some((item) => item.type === "allowance_zero"), true);
   assert.equal(plan.reasons.includes("wallet_value_below_refill_floor"), true);
+  assert.equal(plan.summary.walletValueFloorUsd, 250);
+  assert.equal(plan.summary.walletValueShortfallUsd, 233.3);
+  assert.equal(plan.summary.noDemandBlockerCount, 0);
 });
 
 test("planner blocks token refill without demand signal", () => {
@@ -116,5 +119,8 @@ test("planner blocks token refill without demand signal", () => {
 
   assert.equal(plan.blockers.some((item) => item.type === "native_refill_blocked_no_demand"), true);
   assert.equal(plan.blockers.some((item) => item.type === "token_refill_blocked_no_demand"), true);
+  assert.equal(plan.blockers.find((item) => item.type === "native_refill_blocked_no_demand").refillAmountDecimal, 0.004);
+  assert.equal(plan.blockers.find((item) => item.type === "token_refill_blocked_no_demand").refillEstimatedUsd, 17.5);
   assert.equal(plan.actions.length, 0);
+  assert.equal(plan.summary.noDemandBlockerCount, 2);
 });

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
@@ -18,7 +19,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
   };
 }
 
@@ -31,9 +32,10 @@ function formatDecimal(value, ticker) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
-  const inventory = await scanTreasuryInventory({ policy, address: args.address, prices });
+  const inventory = await scanTreasuryInventory({ policy, address: resolved.address, prices });
   const store = new JsonlStore(config.dataDir);
   await store.append("treasury-inventory", inventory);
 

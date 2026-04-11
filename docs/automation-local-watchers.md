@@ -53,6 +53,11 @@ Detects:
 
 Actions:
 
+- refreshes only the `shadowCycle.canary.nextReadinessCheck` route with `npm run check:estimator-wallet`
+- skips that selective refresh when the same route+amount already has a fresh recent readiness observation
+- refreshes gas snapshots and reruns scoring automatically when the canary is blocked only by stale source-chain gas
+- reruns `shadow-cycle` immediately after that selective readiness refresh
+- rebuilds `data/dashboard-status.json` and `dashboard/public/dashboard-status.json` after each watcher refresh
 - rewrites `docs/current-status.md`
 - sends a Telegram message when the canary decision changes, if Telegram is configured
 - runs `npm run advance:canary` automatically when the decision advances past wallet funding

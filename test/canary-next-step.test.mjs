@@ -78,3 +78,52 @@ test("next step blocks when best candidate is not viable for prep", () => {
   assert.equal(next.decision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
   assert.equal(next.reasons.includes("missing_tx_data"), true);
 });
+
+test("next step reruns exact gas when stale gas is the only blocker", () => {
+  const next = determineCanaryNextStep({
+    routePlan: {
+      topCandidates: [
+        {
+          routeKey: "bob:token->base:token",
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          srcChain: "bob",
+          viableForPrep: false,
+          txReady: true,
+          prepBlockers: [],
+          scoreDisqualifiers: ["stale_src_gas_snapshot"],
+          readinessFailureReason: null,
+        },
+      ],
+    },
+    fundingPlan: { chains: [] },
+  });
+
+  assert.equal(next.decision, "RUN_EXACT_GAS");
+  assert.equal(next.actions[0].type, "estimate_exact_gas");
+  assert.deepEqual(next.reasons, ["stale_src_gas_snapshot"]);
+});
+
+test("next step blocks after exact gas when objective score still rejects the route", () => {
+  const next = determineCanaryNextStep({
+    routePlan: {
+      topCandidates: [
+        {
+          routeKey: "bob:token->base:token",
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          srcChain: "bob",
+          viableForPrep: true,
+          txReady: true,
+          exactGasDone: true,
+          prepBlockers: [],
+          tradeReadiness: "reject_no_net_edge",
+        },
+      ],
+    },
+    fundingPlan: { chains: [] },
+  });
+
+  assert.equal(next.decision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
+  assert.deepEqual(next.reasons, ["reject_no_net_edge"]);
+});

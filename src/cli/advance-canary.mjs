@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -16,13 +21,14 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
   };
 }
 
 function runNodeScript(script, args = []) {
-  const result = spawnSync(process.execPath, [script, ...args], {
+  const result = spawnSync(process.execPath, [resolve(ROOT, script), ...args], {
     cwd: process.cwd(),
+    env: process.env,
     encoding: "utf8",
   });
   if (result.status !== 0) {
@@ -68,6 +74,8 @@ function printStep(step, prefix = "current") {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  args.address = resolved.address;
   const initial = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
   let next = initial.nextStep;
 
@@ -89,7 +97,7 @@ async function main() {
       runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
       runNodeScript("src/cli/status-dashboard.mjs");
       output.ran.push("score-gateway", "status-dashboard");
-      output.final = (await loadState(args.address)).nextStep;
+      output.final = (await loadCanaryState({ address: args.address, dataDir: config.dataDir })).nextStep;
     }
     console.log(JSON.stringify(output, null, 2));
     return;

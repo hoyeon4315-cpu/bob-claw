@@ -94,6 +94,8 @@ export function buildCanaryRoutePlan(
       const score = scoreByKey.get(key) || null;
       const readiness = readinessByKey.get(key) || null;
       const readinessFailure = failureByKey.get(key) || null;
+      const srcAsset = tokenAsset(quote.route.srcChain, quote.route.srcToken);
+      const dstAsset = tokenAsset(quote.route.dstChain, quote.route.dstToken);
       const blockers = routePrepBlockers(readiness);
       const scoreDisqualifiers = disqualifyingGaps(score);
       const txReady = Boolean(quote.txTo && quote.txData);
@@ -113,6 +115,10 @@ export function buildCanaryRoutePlan(
         label: routeLabel(quote),
         srcChain: quote.route.srcChain,
         dstChain: quote.route.dstChain,
+        srcToken: quote.route.srcToken,
+        dstToken: quote.route.dstToken,
+        srcTicker: srcAsset.ticker,
+        dstTicker: dstAsset.ticker,
         quoteType: quote.quoteType,
         txReady,
         exactGasDone,

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
 import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
@@ -38,11 +39,12 @@ async function main() {
   const latestJobs = [...latestBy(jobs, (item) => item.jobId).values()];
   const job = latestJobs.find((item) => item.jobId === args.jobId);
   if (!job) throw new Error(`Job not found: ${args.jobId}`);
+  const resolved = await resolveOperationalAddress({ explicitAddress: job.address || null, dataDir: config.dataDir });
 
   const treasuryPolicy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const inventory = await scanTreasuryInventory({
     policy: treasuryPolicy,
-    address: job.address || config.estimateFrom,
+    address: resolved.address,
     prices,
   });
 

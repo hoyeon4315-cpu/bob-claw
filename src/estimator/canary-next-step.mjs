@@ -63,6 +63,28 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
   }
 
   if (!best.viableForPrep) {
+    const staleGasOnly =
+      best.txReady &&
+      !best.prepBlockers?.length &&
+      !best.readinessFailureReason &&
+      (best.scoreDisqualifiers || []).length > 0 &&
+      (best.scoreDisqualifiers || []).every((reason) => reason === "stale_src_gas_snapshot");
+    if (staleGasOnly) {
+      return {
+        decision: "RUN_EXACT_GAS",
+        headline: "Rerun exact gas for the best route after stale gas data",
+        route: best,
+        actions: [
+          {
+            type: "estimate_exact_gas",
+            routeKey: best.routeKey,
+            amount: best.amount,
+            chain: best.srcChain,
+          },
+        ],
+        reasons: ["stale_src_gas_snapshot"],
+      };
+    }
     return {
       decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
       headline: "No viable route is ready for canary prep",
@@ -100,6 +122,26 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
         },
       ],
       reasons: ["exact_src_execution_gas_not_estimated"],
+    };
+  }
+
+  if (best.tradeReadiness === "shadow_candidate_review_only") {
+    return {
+      decision: "REVIEW_CANARY_CANDIDATE",
+      headline: "Best route is prepared for manual canary review",
+      route: best,
+      actions: [],
+      reasons: [],
+    };
+  }
+
+  if (best.tradeReadiness) {
+    return {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      headline: "Best prepared route still fails objective score review",
+      route: best,
+      actions: [],
+      reasons: [best.tradeReadiness],
     };
   }
 

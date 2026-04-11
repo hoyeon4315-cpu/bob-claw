@@ -39,3 +39,29 @@ npm run status:dashboard
 ```
 
 Then verify mobile and desktop with Playwright as described in `docs/dashboard-context.md`.
+
+## Cloudflare Pages
+
+Use a dedicated Cloudflare account for this dashboard so other dashboards stay untouched.
+
+Set these environment variables first:
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_TOKEN=...
+BOB_CLAW_CF_PAGES_PROJECT=...
+```
+
+Create the Pages project once:
+
+```bash
+npm run deploy:dashboard:cloudflare -- --create-project
+```
+
+Deploy updates to the same stable `pages.dev` address later:
+
+```bash
+npm run deploy:dashboard:cloudflare
+```
+
+This deploy flow uses a repo-local `.cloudflare/` state directory and does not depend on or modify your global Wrangler login.

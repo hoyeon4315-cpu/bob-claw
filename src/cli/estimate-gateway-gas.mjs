@@ -2,6 +2,7 @@
 
 import { EVM_CHAINS } from "../chains/registry.mjs";
 import { config, getChainRpcUrls } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { classifyGasEstimateError, estimateGas, gasUsdFromSnapshot, getGasSnapshot } from "../gas/rpc-gas.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -23,7 +24,7 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : 12,
-    from: options.from || config.estimateFrom,
+    from: options.from || null,
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
   };
@@ -64,6 +65,8 @@ function skipReason(quote) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.from, dataDir: config.dataDir });
+  args.from = resolved.address;
   const store = new JsonlStore(config.dataDir);
   const prices = await getCoinGeckoPricesUsd().catch((error) => {
     console.warn(`warning: failed to fetch USD prices, gas USD estimates may be unavailable: ${error.message}`);

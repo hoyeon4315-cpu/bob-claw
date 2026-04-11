@@ -1,9 +1,18 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
-import { decisionFingerprint, formatCanaryWatchSummary, notifyCanaryDecision } from "../watch/canary-readiness-watch.mjs";
+import {
+  decisionFingerprint,
+  formatCanaryWatchSummary,
+  notifyCanaryDecision,
+  shouldRefreshGasForCanary,
+} from "../watch/canary-readiness-watch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -17,8 +26,9 @@ function parseArgs(argv) {
   );
   return {
     once: flags.has("--once"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
     intervalSeconds: options["interval-seconds"] ? Number(options["interval-seconds"]) : 60,
+    readinessMaxAgeSeconds: options["readiness-max-age-seconds"] ? Number(options["readiness-max-age-seconds"]) : 300,
   };
 }
 
@@ -40,13 +50,60 @@ function runNodeScript(script, args = []) {
   return result.stdout.trim();
 }
 
+function refreshShadowArtifacts(address) {
+  runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write", `--address=${address}`]);
+  const output = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+  if (output) console.log(output);
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  args.address = resolved.address;
   const intervalMs = Number.isFinite(args.intervalSeconds) && args.intervalSeconds > 0 ? args.intervalSeconds * 1000 : 60_000;
+  const readinessMaxAgeMs =
+    Number.isFinite(args.readinessMaxAgeSeconds) && args.readinessMaxAgeSeconds >= 0 ? args.readinessMaxAgeSeconds * 1000 : 300_000;
   let previousFingerprint = null;
+  const shadowCyclePath = join(config.dataDir, "shadow-cycle-latest.json");
 
   while (true) {
-    const state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    refreshShadowArtifacts(args.address);
+    const shadowCycle = await readJsonIfExists(shadowCyclePath);
+    let state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    const readinessRefresh = planNextReadinessRefresh(
+      {
+        shadowCycle,
+        readinessRecords: state.readinessRecords,
+        readinessFailures: state.readinessFailures,
+        address: args.address,
+      },
+      { maxAgeMs: readinessMaxAgeMs },
+    );
+
+    if (readinessRefresh.args && readinessRefresh.shouldRefresh) {
+      const routeKey = readinessRefresh.args.find((item) => item.startsWith("--route-key="))?.slice("--route-key=".length) || "unknown";
+      const amount = readinessRefresh.args.find((item) => item.startsWith("--amount="))?.slice("--amount=".length) || "unknown";
+      console.log(`action=refresh-wallet-readiness routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason}`);
+      const output = runNodeScript("src/cli/check-estimator-wallet.mjs", readinessRefresh.args);
+      if (output) console.log(output);
+      refreshShadowArtifacts(args.address);
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (readinessRefresh.args) {
+      const routeKey = readinessRefresh.args.find((item) => item.startsWith("--route-key="))?.slice("--route-key=".length) || "unknown";
+      const amount = readinessRefresh.args.find((item) => item.startsWith("--amount="))?.slice("--amount=".length) || "unknown";
+      const ageSeconds = Number.isFinite(readinessRefresh.ageMs) ? Math.round(readinessRefresh.ageMs / 1000) : "unknown";
+      console.log(`action=skip-wallet-readiness-refresh routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason} ageSeconds=${ageSeconds}`);
+    }
+
     const fingerprint = decisionFingerprint(state.nextStep);
     const changed = previousFingerprint !== fingerprint;
 
@@ -58,6 +115,16 @@ async function main() {
         chatId: config.telegramChatId,
         nextStep: state.nextStep,
       }).catch(() => null);
+    }
+
+    if (shouldRefreshGasForCanary(state.nextStep)) {
+      console.log("action=refresh-stale-gas-and-rescore");
+      const gasOutput = runNodeScript("src/cli/gas-snapshot.mjs");
+      if (gasOutput) console.log(gasOutput);
+      const scoreOutput = runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      if (scoreOutput) console.log(scoreOutput);
+      refreshShadowArtifacts(args.address);
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     }
 
     runNodeScript("src/cli/write-session-handoff.mjs");

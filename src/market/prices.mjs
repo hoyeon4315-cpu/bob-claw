@@ -17,6 +17,8 @@ const TOKEN_PRICE_IDS = {
   xaut: "tether-gold",
 };
 
+const ETH_LIKE_CHAINS = ["ethereum", "base", "bob", "soneium", "unichain"];
+
 export function emptyPricesUsd() {
   return {
     btc: null,
@@ -30,6 +32,53 @@ export function emptyPricesUsd() {
     },
     nativeByChain: Object.fromEntries(Object.keys(PRICE_IDS).filter((key) => key !== "btc").map((chain) => [chain, null])),
   };
+}
+
+function latestFiniteValue(items, selector) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const value = selector(items[index]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+export function overlayObservedPricesUsd(prices, options = {}) {
+  const gasSnapshots = options.gasSnapshots || [];
+  const bitcoinFeeSnapshots = options.bitcoinFeeSnapshots || [];
+  const next = {
+    btc: prices?.btc ?? null,
+    tokenByKey: { ...(prices?.tokenByKey || {}) },
+    nativeByChain: { ...(prices?.nativeByChain || {}) },
+  };
+
+  const observedBtc = latestFiniteValue(bitcoinFeeSnapshots, (item) => item?.btcUsd);
+  if (!Number.isFinite(next.btc)) next.btc = observedBtc;
+  if (!Number.isFinite(next.tokenByKey.btc)) next.tokenByKey.btc = next.btc;
+  if (!Number.isFinite(next.tokenByKey.wbtc)) next.tokenByKey.wbtc = next.btc;
+
+  for (let index = gasSnapshots.length - 1; index >= 0; index -= 1) {
+    const snapshot = gasSnapshots[index];
+    if (!snapshot?.chain || !Number.isFinite(snapshot.nativeUsd)) continue;
+    if (!Number.isFinite(next.nativeByChain[snapshot.chain])) {
+      next.nativeByChain[snapshot.chain] = snapshot.nativeUsd;
+    }
+  }
+
+  const observedEthereum = latestFiniteValue(gasSnapshots, (item) =>
+    ETH_LIKE_CHAINS.includes(item?.chain) ? item?.nativeUsd : null,
+  );
+  if (!Number.isFinite(next.tokenByKey.ethereum)) {
+    next.tokenByKey.ethereum = Number.isFinite(next.nativeByChain.ethereum) ? next.nativeByChain.ethereum : observedEthereum;
+  }
+  for (const chain of ETH_LIKE_CHAINS) {
+    if (!Number.isFinite(next.nativeByChain[chain]) && Number.isFinite(next.tokenByKey.ethereum)) {
+      next.nativeByChain[chain] = next.tokenByKey.ethereum;
+    }
+  }
+
+  if (!Number.isFinite(next.tokenByKey.usd_stable)) next.tokenByKey.usd_stable = 1;
+
+  return next;
 }
 
 async function fetchCoinbaseSpotUsd(symbol) {

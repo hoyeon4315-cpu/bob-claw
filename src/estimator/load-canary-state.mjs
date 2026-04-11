@@ -1,11 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { determineCanaryNextStep } from "./canary-next-step.mjs";
 import { buildCanaryRoutePlan } from "./canary-route-plan.mjs";
 import { buildEstimatorFundingPlan } from "./funding-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd, overlayObservedPricesUsd } from "../market/prices.mjs";
 
 export async function readJsonIfExists(path) {
   try {
@@ -16,15 +17,23 @@ export async function readJsonIfExists(path) {
   }
 }
 
-export async function loadCanaryState({ address = config.estimateFrom, dataDir = config.dataDir } = {}) {
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, dashboardStatus, prices] = await Promise.all([
+export async function loadCanaryState({ address = null, dataDir = config.dataDir } = {}) {
+  const resolved = await resolveOperationalAddress({
+    explicitAddress: address,
+    configuredAddress: config.estimateFrom,
+    dataDir,
+  });
+  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, dashboardStatus, livePrices, gasSnapshots, bitcoinFeeSnapshots] = await Promise.all([
     readJsonl(dataDir, "gateway-quotes"),
     readJsonl(dataDir, "estimator-wallet-readiness"),
     readJsonl(dataDir, "estimator-wallet-readiness-failures"),
     readJsonIfExists(join(dataDir, "gateway-scores.json")),
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
-    getCoinGeckoPricesUsd().catch(() => null),
+    getCoinGeckoPricesUsd().catch(() => emptyPricesUsd()),
+    readJsonl(dataDir, "gas-snapshots"),
+    readJsonl(dataDir, "bitcoin-fee-snapshots"),
   ]);
+  const prices = overlayObservedPricesUsd(livePrices, { gasSnapshots, bitcoinFeeSnapshots });
 
   const routePlan = buildCanaryRoutePlan(
     {
@@ -33,13 +42,14 @@ export async function loadCanaryState({ address = config.estimateFrom, dataDir =
       readinessRecords,
       readinessFailures,
     },
-    { address, prices },
+    { address: resolved.address, prices },
   );
-  const fundingPlan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address });
+  const fundingPlan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address: resolved.address });
   const nextStep = determineCanaryNextStep({ routePlan, fundingPlan });
 
   return {
-    address,
+    address: resolved.address,
+    addressSource: resolved.source,
     quotes,
     readinessRecords,
     readinessFailures,

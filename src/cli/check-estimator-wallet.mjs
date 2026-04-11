@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { readErc20Allowance, readErc20Balance, readNativeBalance, summarizeRequirement } from "../evm/account-state.mjs";
 import { getGasSnapshot } from "../gas/rpc-gas.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -24,7 +25,7 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : 12,
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
   };
@@ -56,6 +57,8 @@ function skipReason(quote) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  args.address = resolved.address;
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
   const store = new JsonlStore(config.dataDir);
   const runId = `${new Date().toISOString()}-${Math.random().toString(16).slice(2)}`;

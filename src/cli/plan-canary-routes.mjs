@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
@@ -19,7 +20,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
     limit: options.limit ? Number(options.limit) : 5,
   };
 }
@@ -40,6 +41,7 @@ function formatUsd(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
   const [quotes, readinessRecords, readinessFailures, scoreSnapshot, prices] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
@@ -56,7 +58,7 @@ async function main() {
       readinessFailures,
     },
     {
-      address: args.address,
+      address: resolved.address,
       prices,
       limit: args.limit,
     },

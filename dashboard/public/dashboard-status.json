@@ -1,13 +1,12 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-11T02:31:16.460Z",
+  "generatedAt": "2026-04-11T06:52:56.723Z",
   "overall": {
     "severity": "blocked",
     "liveTrading": "BLOCKED",
     "shadowTrading": "ALLOWED",
     "blockers": [
-      "audit_blocks_live",
-      "stale_gas_snapshots"
+      "audit_blocks_live"
     ],
     "riskBudgetUsd": 300,
     "lossLimitUsd": 300,
@@ -15,7 +14,7 @@
   },
   "gateway": {
     "observedAt": "2026-04-10T09:30:03.359Z",
-    "ageMinutes": 1021.21835,
+    "ageMinutes": 1282.8894,
     "routeCount": 113,
     "chainCount": 10,
     "chains": [
@@ -8293,130 +8292,139 @@
     ],
     "missingGatewayGasChains": [],
     "missingGatewayGasChainCount": 0,
-    "staleChainCount30m": 9,
-    "recentFailureCount24h": 1,
+    "staleChainCount30m": 0,
+    "recentFailureCount24h": 10,
     "chains": [
       {
         "chain": "avalanche",
-        "observedAt": "2026-04-11T01:47:13.505Z",
-        "ageMinutes": 44.04925,
-        "gasPriceWei": "52026333",
-        "blockNumber": 82633070,
-        "latencyMs": 322,
+        "observedAt": "2026-04-11T06:50:04.479Z",
+        "ageMinutes": 2.8707333333333334,
+        "gasPriceWei": "56874523",
+        "blockNumber": 82650594,
+        "latencyMs": 349,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.00012620547859140002,
-        "nativeUsd": 9.33
+        "fallbackTxUsd": 0.0001372268490944,
+        "nativeUsd": 9.28
       },
       {
         "chain": "base",
-        "observedAt": "2026-04-11T01:47:13.749Z",
-        "ageMinutes": 44.045183333333334,
+        "observedAt": "2026-04-11T06:50:04.727Z",
+        "ageMinutes": 2.8666,
         "gasPriceWei": "6000000",
-        "blockNumber": 44541343,
-        "latencyMs": 242,
+        "blockNumber": 44550428,
+        "latencyMs": 246,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0034986431999999997,
-        "nativeUsd": 2242.72
+        "fallbackTxUsd": 0.0034871928000000003,
+        "nativeUsd": 2235.38
       },
       {
         "chain": "bera",
-        "observedAt": "2026-04-11T01:47:14.663Z",
-        "ageMinutes": 44.02995,
-        "gasPriceWei": "3354",
-        "blockNumber": 19428658,
-        "latencyMs": 914,
+        "observedAt": "2026-04-11T06:50:05.682Z",
+        "ageMinutes": 2.8506833333333335,
+        "gasPriceWei": "100051",
+        "blockNumber": 19437743,
+        "latencyMs": 954,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 3.616219074e-10,
-        "nativeUsd": 0.414685
+        "fallbackTxUsd": 1.0852341873099999e-8,
+        "nativeUsd": 0.417185
       },
       {
         "chain": "bob",
-        "observedAt": "2026-04-11T01:47:14.850Z",
-        "ageMinutes": 44.026833333333336,
+        "observedAt": "2026-04-11T06:50:05.983Z",
+        "ageMinutes": 2.845666666666667,
         "gasPriceWei": "1000252",
-        "blockNumber": 31505023,
-        "latencyMs": 186,
+        "blockNumber": 31514109,
+        "latencyMs": 301,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0005832541430144,
-        "nativeUsd": 2242.72
+        "fallbackTxUsd": 0.0005813452620976001,
+        "nativeUsd": 2235.38
       },
       {
         "chain": "bsc",
-        "observedAt": "2026-04-11T01:47:15.047Z",
-        "ageMinutes": 44.02355,
+        "observedAt": "2026-04-11T06:50:06.195Z",
+        "ageMinutes": 2.8421333333333334,
         "gasPriceWei": "50000000",
-        "blockNumber": 91825993,
-        "latencyMs": 196,
+        "blockNumber": 91866325,
+        "latencyMs": 211,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.00785655,
-        "nativeUsd": 604.35
+        "fallbackTxUsd": 0.007875920000000002,
+        "nativeUsd": 605.84
       },
       {
         "chain": "ethereum",
-        "observedAt": "2026-04-11T01:47:15.396Z",
-        "ageMinutes": 44.01773333333333,
-        "gasPriceWei": "45172797",
-        "blockNumber": 24853303,
-        "latencyMs": 349,
+        "observedAt": "2026-04-11T06:50:06.564Z",
+        "ageMinutes": 2.8359833333333335,
+        "gasPriceWei": "51164919",
+        "blockNumber": 24854810,
+        "latencyMs": 368,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.026340583174838398,
-        "nativeUsd": 2242.72
+        "fallbackTxUsd": 0.0297369895248972,
+        "nativeUsd": 2235.38
       },
       {
         "chain": "soneium",
-        "observedAt": "2026-04-11T01:47:15.741Z",
-        "ageMinutes": 44.01198333333333,
-        "gasPriceWei": "1000400",
-        "blockNumber": 21368642,
-        "latencyMs": 344,
+        "observedAt": "2026-04-11T06:50:07.021Z",
+        "ageMinutes": 2.8283666666666667,
+        "gasPriceWei": "1000391",
+        "blockNumber": 21377727,
+        "latencyMs": 457,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0005833404428799999,
-        "nativeUsd": 2242.72
+        "fallbackTxUsd": 0.0005814260487308,
+        "nativeUsd": 2235.38
       },
       {
         "chain": "sonic",
-        "observedAt": "2026-04-11T01:47:16.327Z",
-        "ageMinutes": 44.00221666666667,
+        "observedAt": "2026-04-11T06:50:07.806Z",
+        "ageMinutes": 2.8152833333333334,
         "gasPriceWei": "55000000000",
-        "blockNumber": 67000661,
-        "latencyMs": 586,
+        "blockNumber": 67010570,
+        "latencyMs": 784,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.000598612729,
-        "nativeUsd": 0.04186103
+        "fallbackTxUsd": 0.000597589564,
+        "nativeUsd": 0.04178948
       },
       {
         "chain": "unichain",
-        "observedAt": "2026-04-11T01:47:16.578Z",
-        "ageMinutes": 43.99803333333333,
+        "observedAt": "2026-04-11T06:50:08.173Z",
+        "ageMinutes": 2.8091666666666666,
         "gasPriceWei": "1500000",
-        "blockNumber": 45123674,
-        "latencyMs": 251,
+        "blockNumber": 45141846,
+        "latencyMs": 366,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0008746607999999999,
-        "nativeUsd": 2242.72
+        "fallbackTxUsd": 0.0008717982000000001,
+        "nativeUsd": 2235.38
       }
     ],
     "lastFailure": {
-      "observedAt": "2026-04-10T09:10:09.078Z",
-      "chain": "bera",
+      "observedAt": "2026-04-11T06:49:30.503Z",
+      "chain": "unichain",
       "error": {
-        "name": "TypeError",
-        "message": "fetch failed"
+        "name": "RpcFallbackError",
+        "message": "All RPC endpoints failed for chain: unichain",
+        "attempts": [
+          {
+            "rpcUrl": "https://mainnet.unichain.org",
+            "name": "TypeError",
+            "message": "fetch failed",
+            "code": null,
+            "data": null
+          }
+        ]
       }
     }
   },
   "executionGas": {
-    "estimateCount": 1,
+    "estimateCount": 2,
     "failureCount": 8,
-    "recentEstimateCount24h": 1,
+    "recentEstimateCount24h": 2,
     "recentFailureCount24h": 8,
     "latestEstimate": {
-      "observedAt": "2026-04-11T01:45:05.733Z",
-      "ageMinutes": 46.178783333333335,
+      "observedAt": "2026-04-11T06:51:18.082Z",
+      "ageMinutes": 1.6440166666666667,
       "srcChain": "bob",
       "dstChain": "base",
       "gasUnits": 347508,
-      "estimatedGasUsd": 0.0007794691664229994,
+      "estimatedGasUsd": 0.0007773644752344426,
       "source": "eth_estimateGas"
     },
     "failureReasons": [
@@ -8437,10 +8445,10 @@
     "nativeBlockedCount": 0,
     "tokenBlockedCount": 0,
     "allowanceBlockedCount": 0,
-    "recentFailureCount24h": 7,
+    "recentFailureCount24h": 8,
     "latestCheck": {
-      "observedAt": "2026-04-11T01:47:13.591Z",
-      "ageMinutes": 44.04781666666667,
+      "observedAt": "2026-04-11T06:51:17.545Z",
+      "ageMinutes": 1.6529666666666667,
       "srcChain": "bob",
       "dstChain": "base",
       "overallReady": true,
@@ -8451,14 +8459,75 @@
     "failureReasons": [
       {
         "reason": "missing_tx_data",
-        "count": 7
+        "count": 8
       }
     ]
+  },
+  "shadowCycle": {
+    "observedAt": "2026-04-11T06:52:56.632Z",
+    "ageMinutes": 0.0015166666666666666,
+    "mode": "CANARY_PREP_BLOCKED",
+    "headline": "Canary prep is blocked by wallet or route prerequisites",
+    "blockerCount": 5,
+    "canaryDecision": "BLOCKED_NO_VIABLE_PREP_ROUTE",
+    "canary": {
+      "decision": "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      "nextReadinessCheck": null,
+      "nextReadinessRefresh": null,
+      "readinessCheckCount": 0
+    },
+    "topRoute": {
+      "label": "bob->base wBTC.OFT->wBTC.OFT",
+      "amount": "10000",
+      "tradeReadiness": "reject_no_net_edge",
+      "netEdgeUsd": -0.8296335961737035
+    },
+    "treasury": {
+      "decision": "BLOCKED",
+      "estimatedWalletUsd": 25.016652970991096,
+      "walletValueFloorUsd": 250,
+      "walletValueShortfallUsd": 224.9833470290089,
+      "noDemandBlockerCount": 2,
+      "nextNeeds": [
+        {
+          "state": "waiting_demand",
+          "chain": "base",
+          "ticker": "wBTC.OFT",
+          "refillAmountDecimal": 0.0003,
+          "refillEstimatedUsd": 21.887099999999997,
+          "activation": {
+            "code": "awaiting_tx_payload",
+            "label": "실행 payload 확인이 더 필요함",
+            "routeLabel": "base->bitcoin wBTC.OFT->BTC",
+            "candidateCount": 4
+          }
+        },
+        {
+          "state": "waiting_demand",
+          "chain": "base",
+          "ticker": "ETH",
+          "refillAmountDecimal": 0.003167180249411857,
+          "refillEstimatedUsd": 7.1065823872353135,
+          "activation": {
+            "code": "awaiting_tx_payload",
+            "label": "실행 payload 확인이 더 필요함",
+            "routeLabel": "base->bitcoin ETH->BTC",
+            "candidateCount": 7
+          }
+        }
+      ]
+    },
+    "audit": {
+      "addressConsistent": true,
+      "inventoryConsistent": true,
+      "issueCount": 0,
+      "issues": []
+    }
   },
   "bitcoinFee": {
     "latest": {
       "observedAt": "2026-04-10T18:50:40.365Z",
-      "ageMinutes": 460.60158333333334,
+      "ageMinutes": 722.2726333333334,
       "source": "https://mempool.space/api",
       "feeRateSatVb": 4,
       "vbytes": 180,
@@ -8470,14 +8539,14 @@
     "snapshotCount": 1
   },
   "opportunity": {
-    "generatedAt": "2026-04-11T01:48:28.688Z",
+    "generatedAt": "2026-04-11T06:51:18.149Z",
     "scoredQuotes": 63,
     "candidateCount": 0,
     "dexBacked": 4,
     "rejectedNoEdge": 1,
     "highFailureRate": 10,
     "insufficientData": 50,
-    "bestNetEdgeUsd": 462706.8268323598,
+    "bestNetEdgeUsd": 461589.76104539196,
     "bestRoute": {
       "srcChain": "bitcoin",
       "dstChain": "base",
@@ -8492,14 +8561,6 @@
       {
         "gap": "exact_src_execution_gas_not_estimated",
         "count": 45
-      },
-      {
-        "gap": "missing_src_execution_gas",
-        "count": 9
-      },
-      {
-        "gap": "missing_tx_value_native_price",
-        "count": 8
       },
       {
         "gap": "stale_dex_output_quote",
@@ -8600,8 +8661,8 @@
       },
       {
         "label": "fresh gas snapshots",
-        "ok": false,
-        "detail": "44.0m old, target <= 30m"
+        "ok": true,
+        "detail": "2.9m old, target <= 30m"
       }
     ],
     "warnings": [
@@ -8623,7 +8684,7 @@
       {
         "label": "gas snapshot failures",
         "ok": false,
-        "detail": "1 gas snapshot failures observed"
+        "detail": "10 gas snapshot failures observed"
       }
     ],
     "blockers": [
@@ -8632,8 +8693,7 @@
       "candidate sample depth",
       "candidate amount diversity",
       "time bucket diversity",
-      "failure rate",
-      "fresh gas snapshots"
+      "failure rate"
     ],
     "warningLabels": [
       "global route coverage",
@@ -8698,17 +8758,18 @@
     "routesRecords": 13,
     "quotes": 81,
     "quoteFailures": 12,
-    "gasSnapshots": 71,
-    "gasFailures": 1,
+    "gasSnapshots": 80,
+    "gasFailures": 10,
     "updateSnapshots": 7,
     "updateAlerts": 4,
     "dexQuotes": 9,
     "dexFailures": 9,
     "bitcoinFeeSnapshots": 1,
-    "gatewayGasEstimates": 1,
+    "gatewayGasEstimates": 2,
     "gatewayGasEstimateFailures": 8,
-    "estimatorWalletReadiness": 10,
-    "estimatorWalletReadinessFailures": 7
+    "estimatorWalletReadiness": 11,
+    "estimatorWalletReadinessFailures": 8,
+    "shadowCyclePresent": 1
   },
   "exposurePolicy": {
     "cloudflare": "dashboard_only",

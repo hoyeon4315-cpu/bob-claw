@@ -82,6 +82,8 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
           asset: item.asset,
           currentDecimal: item.actualDecimal,
           targetDecimal: item.targetBalanceDecimal,
+          refillAmountDecimal: item.refillToTargetDecimal,
+          refillEstimatedUsd: item.refillEstimatedUsd,
         });
         continue;
       }
@@ -115,8 +117,11 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
           type: "token_refill_blocked_no_demand",
           chain: item.chain,
           ticker: item.ticker,
+          token: item.token,
           currentDecimal: item.actualDecimal,
           targetDecimal: item.targetBalanceDecimal,
+          refillAmountDecimal: item.refillToTargetDecimal,
+          refillEstimatedUsd: item.refillEstimatedUsd,
         });
         continue;
       }
@@ -166,6 +171,12 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
     .map((item) => item.refillEstimatedUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
+  const walletValueFloorUsd = policy.refillPolicy.skipIfWalletValueBelowUsd;
+  const walletValueShortfallUsd =
+    Number.isFinite(enriched.summary.estimatedWalletUsd) && Number.isFinite(walletValueFloorUsd)
+      ? Math.max(0, walletValueFloorUsd - enriched.summary.estimatedWalletUsd)
+      : null;
+  const noDemandBlockerCount = blockers.filter((item) => String(item.type || "").endsWith("_blocked_no_demand")).length;
 
   const totalPending = actions.length;
   const budgetBlocked =
@@ -214,6 +225,9 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
       observationCount: observations.length,
       refillEstimatedUsd,
       estimatedWalletUsd: enriched.summary.estimatedWalletUsd,
+      walletValueFloorUsd,
+      walletValueShortfallUsd,
+      noDemandBlockerCount,
     },
     inventory: enriched,
   };

@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildDashboardStatus, writeDashboardStatus } from "../status/dashboard-status.mjs";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 async function readJsonIfExists(path) {
   try {
@@ -15,7 +19,34 @@ async function readJsonIfExists(path) {
   }
 }
 
+function parseArgs(argv) {
+  const flags = new Set(argv);
+  return {
+    skipShadowCycle: flags.has("--skip-shadow-cycle"),
+  };
+}
+
+function runNodeScript(script, args = []) {
+  const result = spawnSync(process.execPath, [resolve(ROOT, script), ...args], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    const error = new Error(`Command failed: node ${script} ${args.join(" ")}`.trim());
+    error.stdout = result.stdout;
+    error.stderr = result.stderr;
+    throw error;
+  }
+  return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.skipShadowCycle) {
+    runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write"]);
+  }
+
   const [
     routesRecords,
     quotes,
@@ -32,6 +63,7 @@ async function main() {
     gatewayGasEstimateFailures,
     estimatorWalletReadiness,
     estimatorWalletReadinessFailures,
+    shadowCycle,
   ] = await Promise.all([
     readJsonl(config.dataDir, "gateway-routes"),
     readJsonl(config.dataDir, "gateway-quotes"),
@@ -48,6 +80,7 @@ async function main() {
     readJsonl(config.dataDir, "gateway-gas-estimate-failures"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
+    readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json")),
   ]);
 
   const status = buildDashboardStatus({
@@ -66,6 +99,7 @@ async function main() {
     gatewayGasEstimateFailures,
     estimatorWalletReadiness,
     estimatorWalletReadinessFailures,
+    shadowCycle,
   });
   const path = await writeDashboardStatus(config.dataDir, status);
   const dashboardPath = await writeDashboardStatus("./dashboard/public", status);
@@ -79,6 +113,7 @@ async function main() {
   console.log(`gatewayUpdateDetected=${status.gateway.updateDetected}`);
   console.log(`probeOk=${status.gateway.probeOk}/${status.gateway.probeTotal}`);
   console.log(`auditDecision=${status.audit.decision}`);
+  console.log(`shadowCycleMode=${status.shadowCycle?.mode || "none"}`);
   console.log(`blockers=${status.overall.blockers.join(",") || "none"}`);
 }
 

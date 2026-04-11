@@ -1,4 +1,12 @@
 import { sendTelegramMessage } from "../notify/telegram.mjs";
+export { buildNextReadinessCheckArgs, planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
+
+export function shouldRefreshGasForCanary(nextStep) {
+  if (!nextStep) return false;
+  if (nextStep.decision !== "BLOCKED_NO_VIABLE_PREP_ROUTE") return false;
+  const reasons = nextStep.reasons || [];
+  return reasons.length > 0 && reasons.every((reason) => reason === "stale_src_gas_snapshot");
+}
 
 export function formatCanaryWatchSummary(nextStep) {
   const lines = [

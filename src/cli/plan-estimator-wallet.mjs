@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { buildEstimatorFundingPlan } from "../estimator/funding-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 
@@ -16,7 +17,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
   };
 }
 
@@ -56,11 +57,12 @@ function printChain(chainPlan) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
   const [readinessRecords, readinessFailures] = await Promise.all([
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
   ]);
-  const plan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address: args.address });
+  const plan = buildEstimatorFundingPlan({ readinessRecords, readinessFailures }, { address: resolved.address });
 
   if (args.json) {
     console.log(JSON.stringify(plan, null, 2));
