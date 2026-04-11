@@ -8,6 +8,7 @@ import {
   viewBoxHeight,
   viewBoxWidth,
 } from "./scene-model.js";
+import { chainPriceExtremes, referenceMarketPrice, routeSublineText } from "./market-display.js";
 import { buildUpdateSummary } from "./update-summary.js";
 
 const statusUrl = "./dashboard-status.json";
@@ -249,30 +250,23 @@ function renderLines(scene, positions) {
   }
 }
 
-function chainPriceCaption(priceByChain, chain) {
+function chainPriceCaption(priceByChain, chain, referencePrice) {
   const price = priceByChain.get(chain);
-  if (!price || !Number.isFinite(price.usd)) return null;
-  return {
-    value: chain === "bitcoin" ? `${price.ticker} ${compactMoney(price.usd)}` : compactMoney(price.usd),
-    delta: chain === "bitcoin" ? "" : compactDeltaPct(price.deltaPct),
-    stale: Boolean(price.stale),
-  };
-}
-
-function chainPriceExtremes(prices) {
-  const valid = (prices || []).filter((item) => Number.isFinite(item?.usd) && !item?.stale);
-  if (valid.length < 2) return new Map();
-
-  const highest = Math.max(...valid.map((item) => item.usd));
-  const lowest = Math.min(...valid.map((item) => item.usd));
-  if (highest === lowest) return new Map();
-
-  const classes = new Map();
-  for (const item of valid) {
-    if (item.usd === highest) classes.set(item.chain, "price-high");
-    if (item.usd === lowest) classes.set(item.chain, "price-low");
+  if (price && Number.isFinite(price.usd)) {
+    return {
+      value: chain === "bitcoin" ? `${price.ticker} ${compactMoney(price.usd)}` : compactMoney(price.usd),
+      delta: chain === "bitcoin" ? "" : compactDeltaPct(price.deltaPct),
+      stale: Boolean(price.stale),
+      variant: "observed",
+    };
   }
-  return classes;
+  if (chain === "bitcoin" || !referencePrice || !Number.isFinite(referencePrice.usd)) return null;
+  return {
+    value: compactMoney(referencePrice.usd),
+    delta: `기준 ${referencePrice.ticker}`,
+    stale: Boolean(referencePrice.stale),
+    variant: "reference",
+  };
 }
 
 function renderNodes(scene, positions, status) {
@@ -281,6 +275,7 @@ function renderNodes(scene, positions, status) {
   const marketPrices = status.market?.chainWbtcPrices || [];
   const priceByChain = new Map(marketPrices.map((item) => [item.chain, item]));
   const priceClasses = chainPriceExtremes(marketPrices);
+  const referencePrice = referenceMarketPrice(status.market);
 
   const nodes = [gatewayNode, ...scene.displayChains];
   for (const chain of nodes) {
@@ -291,8 +286,13 @@ function renderNodes(scene, positions, status) {
     node.className = `chain-node ${chain === gatewayNode ? "gateway-node" : ""} ${pending ? "pending-node" : ""}`;
     node.style.left = `${(pos.x / viewBoxWidth) * 100}%`;
     node.style.top = `${(pos.y / viewBoxHeight) * 100}%`;
-    const priceInfo = chain !== gatewayNode ? chainPriceCaption(priceByChain, chain) : null;
-    const priceClass = chain !== gatewayNode ? [priceClasses.get(chain) || "", priceInfo?.stale ? "stale" : ""].filter(Boolean).join(" ") : "";
+    const priceInfo = chain !== gatewayNode ? chainPriceCaption(priceByChain, chain, referencePrice) : null;
+    const priceClass =
+      chain !== gatewayNode
+        ? [priceClasses.get(chain) || "", priceInfo?.stale ? "stale" : "", priceInfo?.variant === "reference" ? "price-reference" : ""]
+            .filter(Boolean)
+            .join(" ")
+        : "";
     node.innerHTML = `
       <span class="chain-pin">
         <img src="${iconFor(chain)}" alt="${labelFor(chain)} logo">
@@ -551,7 +551,7 @@ function renderHeader(status) {
   const chains = status.gateway.chains?.length || 0;
   $("liveCopy").textContent = `자동 갱신 · ${compactAge(status.generatedAt)}`;
   $("routeHeadline").textContent = `BTC -> BOB -> ${chains}개 체인`;
-  $("routeSubline").textContent = status.gateway.updateDetected ? "새 경로 변화 확인 중" : "실시간 경로 관찰 중";
+  $("routeSubline").textContent = routeSublineText(status);
 }
 
 function render(status) {

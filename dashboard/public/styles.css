@@ -262,6 +262,10 @@ h2 {
   color: var(--red);
 }
 
+.chain-price.price-reference {
+  color: var(--blue);
+}
+
 .chain-price.stale {
   opacity: 0.45;
 }

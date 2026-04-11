@@ -1,4 +1,5 @@
 import { labelFor } from "./scene-model.js";
+import { marketCoverage } from "./market-display.js";
 
 function money(value) {
   if (!Number.isFinite(value)) return "-";
@@ -65,10 +66,7 @@ function marketCoverageText(status) {
   const market = status.market || null;
   const prices = market?.chainWbtcPrices || [];
   if (!market || prices.length === 0) return null;
-  const observed = market.observedChainCount || 0;
-  const missing = market.missingChainCount || 0;
-  const stale = market.staleChainCount || 0;
-  const total = Math.max(prices.filter((item) => item.chain !== "bitcoin").length, observed + missing);
+  const { observed, missing, stale, total } = marketCoverage(market);
   if (total <= 0) return null;
   if (!stale && !missing) return `체인 가격 ${observed}/${total}개 관측`;
   return `체인 가격 ${observed}/${total}개 · stale ${stale} · missing ${missing}`;
