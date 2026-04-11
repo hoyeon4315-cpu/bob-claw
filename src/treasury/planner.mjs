@@ -141,7 +141,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
     }
   }
 
-  for (const item of enriched.allowances) {
+  for (const item of enriched.allowances || []) {
     if (item.status === "over_cap") {
       blockers.push({
         type: "allowance_over_cap",

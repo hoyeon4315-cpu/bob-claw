@@ -53,6 +53,7 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
     const min = decimalToUnits(item.minBalance, item.decimals);
     const target = decimalToUnits(item.targetBalance, item.decimals);
     const max = decimalToUnits(item.maxBalance, item.decimals);
+    const priceUsd = priceForAsset(chain, item.token, prices);
     const status = bandStatus({
       actual,
       min,
@@ -61,7 +62,7 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       active: activeChains.has(chain),
       enabled: item.enabled,
     });
-    const refillToTarget = actual < target ? (target - actual).toString() : "0";
+    const refillToTarget = actual < target ? target - actual : 0n;
     return {
       chain,
       enabled: item.enabled,
@@ -76,10 +77,10 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       targetBalanceDecimal: Number(item.targetBalance),
       maxBalance: max.toString(),
       maxBalanceDecimal: Number(item.maxBalance),
-      refillToTarget,
+      refillToTarget: refillToTarget.toString(),
       refillToTargetDecimal: unitsToDecimal(refillToTarget, item.decimals),
-      priceUsd: priceForAsset(chain, item.token, prices),
-      estimatedUsd: usdValueFromUnits(actual, item.decimals, priceForAsset(chain, item.token, prices)),
+      priceUsd,
+      estimatedUsd: usdValueFromUnits(actual, item.decimals, priceUsd),
       status,
       rationale: item.rationale,
       rpcUrl: nativeBalances[chain]?.rpcUrl || null,
@@ -92,6 +93,7 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
     const min = decimalToUnits(item.minBalance, item.decimals);
     const target = decimalToUnits(item.targetBalance, item.decimals);
     const max = decimalToUnits(item.maxBalance, item.decimals);
+    const priceUsd = priceForAsset(item.chain, item.token, prices);
     const status = bandStatus({
       actual,
       min,
@@ -100,7 +102,7 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       active: activeChains.has(item.chain),
       enabled: item.enabled,
     });
-    const refillToTarget = actual < target ? (target - actual).toString() : "0";
+    const refillToTarget = actual < target ? target - actual : 0n;
     return {
       chain: item.chain,
       enabled: item.enabled,
@@ -115,10 +117,10 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       targetBalanceDecimal: Number(item.targetBalance),
       maxBalance: max.toString(),
       maxBalanceDecimal: Number(item.maxBalance),
-      refillToTarget,
+      refillToTarget: refillToTarget.toString(),
       refillToTargetDecimal: unitsToDecimal(refillToTarget, item.decimals),
-      priceUsd: priceForAsset(item.chain, item.token, prices),
-      estimatedUsd: usdValueFromUnits(actual, item.decimals, priceForAsset(item.chain, item.token, prices)),
+      priceUsd,
+      estimatedUsd: usdValueFromUnits(actual, item.decimals, priceUsd),
       status,
       rationale: item.rationale,
       rpcUrl: tokenBalances[key]?.rpcUrl || null,
