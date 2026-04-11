@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
+import { activeRoute, routeArgs, scoringArgsForStep } from "./advance-canary-helpers.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -38,14 +39,6 @@ function runNodeScript(script, args = []) {
     throw error;
   }
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
-}
-
-function routeArgs(address, route) {
-  return [`--address=${address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`];
-}
-
-function activeRoute(step, fallbackRoute = null) {
-  return step?.route || fallbackRoute || null;
 }
 
 function printStep(step, prefix = "current") {
@@ -94,7 +87,7 @@ async function main() {
           output.ran.push("estimate-gateway-gas");
         }
       }
-      runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      runNodeScript("src/cli/score-gateway.mjs", scoringArgsForStep(next, route));
       runNodeScript("src/cli/status-dashboard.mjs");
       output.ran.push("score-gateway", "status-dashboard");
       output.final = (await loadCanaryState({ address: args.address, dataDir: config.dataDir })).nextStep;
@@ -120,7 +113,7 @@ async function main() {
     runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
   }
 
-  runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+  runNodeScript("src/cli/score-gateway.mjs", scoringArgsForStep(next, route));
   runNodeScript("src/cli/status-dashboard.mjs");
   const finalState = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
   printStep(finalState.nextStep, "final");
