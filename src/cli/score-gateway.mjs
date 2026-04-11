@@ -3,6 +3,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
+import { isBtcFamilyRoute, tokenAsset } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
@@ -11,6 +12,7 @@ import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { scoreGatewayQuote } from "../scoring/gateway-score.mjs";
 import { buildShadowOpportunityObservation, observationKey, shouldPersistShadowObservation } from "../shadow/opportunity-observation.mjs";
+import { matchesRouteSelection } from "../estimator/route-filter.mjs";
 import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
@@ -92,6 +94,12 @@ function parseArgs(argv) {
     write: flags.has("--write"),
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
+    touchChains: options["touch-chains"]
+      ? options["touch-chains"].split(",").map((item) => item.trim()).filter(Boolean)
+      : [],
+    dstChains: options["dst-chains"]
+      ? options["dst-chains"].split(",").map((item) => item.trim()).filter(Boolean)
+      : [],
     shadowRolloverMs: options["shadow-rollover-ms"] ? Number(options["shadow-rollover-ms"]) : null,
   };
 }
@@ -126,10 +134,10 @@ function selectionKey(routeKey, amount) {
   return `${routeKey}|${amount}`;
 }
 
-function mergeScores(existingScores, refreshedScores, routeKey, amount) {
-  const key = selectionKey(routeKey, amount);
+function mergeScores(existingScores, refreshedScores, replacedKeys) {
+  const replaceSet = new Set(replacedKeys);
   return [
-    ...(existingScores || []).filter((score) => selectionKey(score.routeKey, score.amount) !== key),
+    ...(existingScores || []).filter((score) => !replaceSet.has(selectionKey(score.routeKey, score.amount))),
     ...refreshedScores,
   ];
 }
@@ -147,6 +155,17 @@ function formatPct(value) {
 function formatMinutes(value) {
   if (!Number.isFinite(value)) return "n/a";
   return `${value.toFixed(1)}m`;
+}
+
+function isDexAffectedDstRoute(quote, dstChains = []) {
+  if (!quote?.route?.dstChain || !dstChains.includes(quote.route.dstChain)) return false;
+  return tokenAsset(quote.route.dstChain, quote.route.dstToken).family === "wrapped_btc";
+}
+
+function isTouchedBtcFamilyRoute(quote, touchChains = []) {
+  if (!quote?.route || touchChains.length === 0) return false;
+  if (!isBtcFamilyRoute(quote.route)) return false;
+  return touchChains.includes(quote.route.srcChain) || touchChains.includes(quote.route.dstChain);
 }
 
 function sameAddress(left, right) {
@@ -199,6 +218,12 @@ async function main() {
   if ((args.routeKey && !args.amount) || (!args.routeKey && args.amount)) {
     throw new Error("Pass both --route-key and --amount together for selective scoring");
   }
+  if (args.routeKey && (args.dstChains.length > 0 || args.touchChains.length > 0)) {
+    throw new Error("Use either exact route selection or chain selection, not both");
+  }
+  if (args.dstChains.length > 0 && args.touchChains.length > 0) {
+    throw new Error("Use either --dst-chains or --touch-chains, not both");
+  }
   const now = new Date().toISOString();
   const scorePath = join(config.dataDir, "gateway-scores.json");
   const allQuotes = await readJsonl(config.dataDir, "gateway-quotes");
@@ -229,14 +254,25 @@ async function main() {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const tokenCache = new Map();
   const maxRouteFailureRate = 0.1;
-  const selective = Boolean(args.routeKey && args.amount);
+  const selective = Boolean((args.routeKey && args.amount) || args.dstChains.length > 0 || args.touchChains.length > 0);
   const previousSnapshot = selective && args.write ? await readJsonIfExists(scorePath) : null;
-  const quotes =
-    selective && previousSnapshot
-      ? latestQuotes.filter((quote) => quote.routeKey === args.routeKey && String(quote.amount) === String(args.amount))
-      : latestQuotes;
+  const selectionFilters = {
+    routeKey: args.routeKey,
+    amount: args.amount,
+    touchChains: args.touchChains,
+    dstChains: args.dstChains,
+  };
+  const quotes = selective
+    ? latestQuotes
+        .filter((quote) => matchesRouteSelection(quote, selectionFilters))
+        .filter((quote) => {
+          if (args.dstChains.length > 0) return isDexAffectedDstRoute(quote, args.dstChains);
+          if (args.touchChains.length > 0) return isTouchedBtcFamilyRoute(quote, args.touchChains);
+          return true;
+        })
+    : latestQuotes;
 
-  if (selective && quotes.length === 0) {
+  if (args.routeKey && args.amount && quotes.length === 0) {
     throw new Error(`No latest quote found for route ${args.routeKey} amount=${args.amount}`);
   }
 
@@ -307,7 +343,11 @@ async function main() {
 
   const scores = sortScores(
     selective && previousSnapshot
-      ? mergeScores(previousSnapshot.scores || [], refreshedScores, args.routeKey, args.amount)
+      ? mergeScores(
+          previousSnapshot.scores || [],
+          refreshedScores,
+          quotes.map((quote) => selectionKey(quote.routeKey, quote.amount)),
+        )
       : refreshedScores,
   );
 
@@ -348,7 +388,13 @@ async function main() {
   console.log(`btcUsd=${prices.btc}`);
   console.log(`scoredQuotes=${scores.length}`);
   if (selective) {
-    console.log(`selection routeKey=${args.routeKey} amount=${args.amount} refreshed=${refreshedScores.length}`);
+    if (args.routeKey) {
+      console.log(`selection routeKey=${args.routeKey} amount=${args.amount} refreshed=${refreshedScores.length}`);
+    } else if (args.touchChains.length > 0) {
+      console.log(`selection touchChains=${args.touchChains.join(",")} refreshed=${refreshedScores.length}`);
+    } else {
+      console.log(`selection dstChains=${args.dstChains.join(",")} refreshed=${refreshedScores.length}`);
+    }
   }
   if (args.write) {
     console.log(`shadowObservations=${result.shadowObservationAppends ?? refreshedShadowObservations.length}`);

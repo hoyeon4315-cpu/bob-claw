@@ -154,13 +154,74 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.market.wbtcUsd, 72_950);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").ticker, "wBTC");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").usd, 72_950);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "dex_quote_observed");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").quoteable, false);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").usd, 73_020);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").deltaPct > 0, true);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").stale, false);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").coverageReason, "dex_quote_observed");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").quoteable, true);
   assert.equal(status.market.observedChainCount, 2);
   assert.equal(status.market.missingChainCount, 0);
   assert.equal(status.market.staleChainCount, 0);
   assert.equal(status.dataCounts.priceSnapshots, 1);
+});
+
+test("dashboard status records chain price coverage reasons for missing dex observations", () => {
+  const avalancheBob = route("avalanche", "bob");
+  const bobSonic = route("bob", "sonic");
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 2 },
+        routes: [avalancheBob, bobSonic],
+      },
+    ],
+    quotes: [
+      quote(avalancheBob, "2026-04-10T11:58:10.000Z", "10000", "10000", "9990"),
+      quote(bobSonic, "2026-04-10T11:58:20.000Z", "10000", "10000", "9990"),
+    ],
+    failures: [],
+    dexQuotes: [],
+    dexFailures: [
+      {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        provider: "odos",
+        source: "gateway_src_leg",
+        chain: "avalanche",
+        token: WBTC_OFT,
+        amount: "10000",
+        reason: "odos_quote_failed",
+      },
+    ],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [
+      {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        snapshot: {
+          routeCount: 2,
+          chains: ["avalanche", "bob", "sonic"],
+          bobTouchingRouteKeys: [],
+          routeHash: "route-hash",
+        },
+        updateDetected: false,
+        changeReasons: [],
+        probes: [{ ok: true }],
+        probeFailures: [],
+        schemaHash: "schema-hash",
+        probeHealthHash: "probe-health-hash",
+      },
+    ],
+    updateAlerts: [],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "avalanche").coverageReason, "odos_quote_failed");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "avalanche").quoteable, true);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "sonic").coverageReason, "eligible_quote_not_run");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "sonic").quoteable, true);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "odos_chain_not_supported");
 });
 
 test("dashboard status includes Gateway visual routes with segment-specific asset traces", () => {
@@ -381,6 +442,21 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.opportunity.rejectedNoEdge, 1);
   assert.equal(status.opportunity.highFailureRate, 0);
   assert.equal(status.opportunity.dataGaps[0].gap, "bitcoin_network_fee_not_modelled");
+  assert.equal(status.strategy.profitModel, "non_directional_edge_only");
+  assert.equal(status.strategy.directionalBtcAccumulationCountsAsProfit, false);
+  assert.equal(status.strategy.liveExecutionBlocked, true);
+  assert.equal(status.strategy.bestStablecoinRoute, null);
+  assert.equal(typeof status.strategy.dexEnvironment.monitoredRouteCount, "number");
+  assert.equal(typeof status.strategy.dexRouteFocus.loopObservableCount, "number");
+  assert.equal(typeof status.strategy.dexRouteUniverse.fullyMeasurableRouteCount, "number");
+  assert.equal(typeof status.strategy.edgeViability.measuredLoopCount, "number");
+  assert.equal(typeof status.strategy.edgeViability.policyReadyCount, "number");
+  assert.equal(typeof status.strategy.edgeViability.verdict?.code, "string");
+  assert.equal(status.strategy.crossAssetArbitrage.entryCount, 0);
+  assert.equal(status.strategy.crossAssetArbitrage.exitCount, 0);
+  assert.equal(status.strategy.crossAssetArbitrage.bestLoop, null);
+  assert.equal(status.strategy.edgeResearch.routeCount, 2);
+  assert.equal(status.strategy.edgeResearch.bestCandidate.classification, "no_edge");
   assert.equal(status.dex.quoteCount, 1);
   assert.deepEqual(status.dex.quotedChains, ["base"]);
   assert.equal(status.dex.skippedReasons[0].reason, "input_is_quote_stable");
@@ -471,6 +547,26 @@ test("dashboard status includes shadow cycle summary when available", () => {
         },
       },
     },
+    advanceCanary: {
+      observedAt: "2026-04-10T11:59:00.000Z",
+      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      actionCount: 4,
+      actions: ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"],
+      initial: {
+        decision: "RUN_EXACT_GAS",
+        headline: "Run exact gas estimate",
+        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        reasons: ["stale_src_gas_snapshot"],
+      },
+      final: {
+        decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+        headline: "Best prepared route still fails objective score review",
+        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        reasons: ["reject_no_net_edge"],
+      },
+    },
   }, { now: "2026-04-10T12:00:00.000Z" });
 
   assert.equal(status.shadowCycle.mode, "SHADOW_ONLY");
@@ -519,4 +615,8 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.audit.issueCount, 1);
   assert.equal(status.shadowCycle.audit.issues[0].label, "기본 지갑 설정이 최신 운영 주소와 다름");
   assert.equal(status.dataCounts.shadowCyclePresent, 1);
+  assert.equal(status.canaryAdvance.initial.decision, "RUN_EXACT_GAS");
+  assert.equal(status.canaryAdvance.final.decision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
+  assert.deepEqual(status.canaryAdvance.actions, ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"]);
+  assert.equal(status.dataCounts.advanceCanaryPresent, 1);
 });

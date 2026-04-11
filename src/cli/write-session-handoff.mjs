@@ -5,6 +5,25 @@ import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { buildCanaryInputSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
+import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
+import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
+import { buildDexRouteFocusSummary } from "../strategy/dex-route-focus.mjs";
+import { buildDexGatewayArbitrageSummary } from "../strategy/dex-gateway-arbitrage.mjs";
+import { buildDexRouteUniverseSummary } from "../strategy/dex-route-universe.mjs";
+import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strategy/edge-viability.mjs";
+import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
+import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
+import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import {
+  planCanaryInputRefresh,
+  describeBlockedScoreRefreshSelection,
+  planBlockedScoreRefresh,
+  planDexGatewayCoverageRefresh,
+  planDexPriceRefresh,
+  planGasRefresh,
+  planQuoteDecayRefresh,
+} from "../watch/canary-readiness-watch.mjs";
 
 const OUTPUT_PATH = "docs/current-status.md";
 
@@ -73,7 +92,9 @@ function quoteDecayLine(audit) {
   if (!windows.length) return "- Quote decay: no shadow decay windows yet";
   const required = windows.filter((item) => [5, 15, 30].includes(item.windowSeconds));
   if (!required.length) return "- Quote decay: no 5s/15s/30s windows yet";
-  return `- Quote decay: ${required
+  const withCoverage = required.filter((item) => (item.profitableStartGroups || item.coveredGroups || 0) > 0);
+  if (!withCoverage.length) return "- Quote decay: collecting initial decay samples";
+  return `- Quote decay: ${withCoverage
     .map((item) => `${item.windowSeconds}s ${item.survivedGroups}/${item.profitableStartGroups || item.coveredGroups}`)
     .join(" · ")}`;
 }
@@ -83,16 +104,357 @@ function priceCoverageLine(market) {
   return `- Chain price coverage: observed ${market.observedChainCount ?? 0}, stale ${market.staleChainCount ?? 0}, missing ${market.missingChainCount ?? 0}`;
 }
 
+function coverageReasonLabel(reason) {
+  return {
+    dex_quote_observed: "observed",
+    btc_spot_reference: "BTC spot reference",
+    odos_chain_not_supported: "DEX unsupported",
+    stable_quote_token_missing: "quote token missing",
+    eligible_quote_not_run: "awaiting quote refresh",
+    wrapped_btc_leg_not_sampled: "awaiting sample",
+    odos_quote_failed: "recent quote failed",
+    input_is_quote_stable: "stable pair skipped",
+  }[reason || ""] || String(reason || "unknown");
+}
+
+function quoteableCoverageLine(market) {
+  const prices = market?.chainWbtcPrices || [];
+  const observed = prices.filter((item) => item?.quoteable && Number.isFinite(item?.usd)).map((item) => item.chain);
+  const missing = prices
+    .filter((item) => item?.quoteable && !Number.isFinite(item?.usd))
+    .map((item) => `${item.chain}:${coverageReasonLabel(item.coverageReason)}`);
+  const unsupported = prices
+    .filter((item) => item?.chain !== "bitcoin" && !item?.quoteable)
+    .map((item) => `${item.chain}:${coverageReasonLabel(item.coverageReason)}`);
+  return [
+    `- Quoteable chains observed: ${observed.join(",") || "none"}`,
+    `- Quoteable chains missing: ${missing.join(",") || "none"}`,
+    `- Non-quoteable chains: ${unsupported.join(",") || "none"}`,
+  ];
+}
+
+function watcherReasonLabel(kind, reason) {
+  return {
+    canaryInputs: {
+      stale_canary_route_inputs: "current canary route inputs are stale",
+      missing_canary_route_inputs: "current canary route inputs are missing",
+      canary_route_inputs_fresh: "current canary route inputs are fresh",
+      no_active_canary_route: "no active canary route",
+      not_applicable: "canary input refresh not needed right now",
+    },
+    gasRefresh: {
+      stale_src_gas_snapshot: "source gas snapshot is stale",
+      not_stale_src_gas_blocked: "gas freshness is not the active blocker",
+      route_missing: "route information is missing",
+      src_chain_not_supported: "source chain is not an EVM gas snapshot target",
+      not_applicable: "gas refresh not needed right now",
+    },
+    dexRefresh: {
+      missing_chain_price: "current canary route chain price is missing",
+      stale_chain_price: "current canary route chain price is stale",
+      missing_gateway_chain_price: "quoteable gateway chain price is missing",
+      stale_gateway_chain_price: "quoteable gateway chain price is stale",
+      chain_prices_fresh: "observed chain prices are fresh",
+      not_applicable: "dex refresh not needed right now",
+    },
+    blockedScore: {
+      newer_market_inputs: "new market inputs arrived after the score snapshot",
+      score_inputs_unchanged: "no new score inputs arrived",
+      score_missing: "score snapshot is missing",
+      not_net_edge_blocked: "blocker is not net edge",
+      not_applicable: "blocked-score refresh not needed right now",
+    },
+    quoteDecay: {
+      missing_decay_observation: "no decay observations yet",
+      waiting_decay_window: "next decay window has not opened yet",
+      due_decay_window: "next decay window is due now",
+      decay_windows_complete: "baseline decay windows are already covered",
+      not_applicable: "quote-decay refresh not needed right now",
+    },
+    gatewayCoverage: {
+      missing_gateway_focus_quotes: "fully measurable route still needs a Gateway probe",
+      gateway_focus_covered: "focus shortlist already has Gateway coverage",
+      no_fully_measurable_routes: "no fully measurable DEX route subset yet",
+      not_applicable: "gateway coverage refresh not needed right now",
+    },
+  }[kind]?.[reason] || reason || "unknown";
+}
+
+function gasRefreshLine(refresh) {
+  if (!refresh?.routeKey) return "- Gas refresh watcher: no route selected";
+  if (refresh.shouldRefresh) {
+    return `- Gas refresh watcher: refresh ${refresh.chains.join(",") || "source-chain"} and rerun ${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("gasRefresh", refresh.reason)})`;
+  }
+  return `- Gas refresh watcher: skip ${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("gasRefresh", refresh.reason)})`;
+}
+
+function changedInputLabel(type) {
+  return {
+    quote: "gateway quote",
+    exact_gas: "exact gas",
+    dex_quote: "DEX quote",
+    src_gas_snapshot: "source gas snapshot",
+    bitcoin_fee: "bitcoin fee",
+    src_price: "source price",
+    dst_price: "destination price",
+    score_missing: "missing score snapshot",
+  }[type] || type;
+}
+
+function dexRefreshTargetCount(refresh, state) {
+  const scores = state?.scoreSnapshot?.scores || [];
+  if (refresh?.routeKey && refresh?.amount) {
+    return scores.filter((item) => item.routeKey === refresh.routeKey && String(item.amount) === String(refresh.amount)).length;
+  }
+  return scores.filter((item) => refresh?.chains?.includes(item.dstChain) && item?.dstAsset?.family === "wrapped_btc").length;
+}
+
+function dexRefreshLine(refresh, state) {
+  if (!refresh?.chains?.length) return "- DEX refresh watcher: no eligible chain set";
+  const targetCount = dexRefreshTargetCount(refresh, state);
+  const targetText = Number.isFinite(targetCount) ? `; rescoring ${targetCount} wrapped-BTC route(s)` : "";
+  if (refresh.shouldRefresh) {
+    const scope = refresh.routeKey && refresh.amount ? `route ${refresh.routeKey} amount=${refresh.amount}` : `dst chains ${refresh.chains.join(",")}`;
+    return `- DEX refresh watcher: refresh ${scope}${targetText} (${watcherReasonLabel("dexRefresh", refresh.reason)})`;
+  }
+  return `- DEX refresh watcher: skip ${refresh.chains.join(",")}${targetText} (${watcherReasonLabel("dexRefresh", refresh.reason)})`;
+}
+
+function blockedScoreLine(refresh) {
+  if (!refresh?.routeKey) return "- Blocked-score watcher: no route selected";
+  const selection = describeBlockedScoreRefreshSelection(refresh, {
+    srcChain: refresh.srcChain,
+    dstChain: refresh.dstChain,
+  });
+  const scopeText = selection.scope === "touch_chains" ? `touching ${selection.chains.join(",")}; ` : "";
+  const inputs = refresh.changedInputs.map(changedInputLabel).join(", ") || "inputs unknown";
+  if (refresh.shouldRefresh) {
+    return `- Blocked-score watcher: rerun ${scopeText}${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("blockedScore", refresh.reason)}; ${inputs})`;
+  }
+  return `- Blocked-score watcher: skip ${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("blockedScore", refresh.reason)})`;
+}
+
+function quoteDecayRefreshLine(refresh) {
+  if (!refresh?.routeKey) return "- Quote-decay watcher: no route selected";
+  if (refresh.shouldRefresh) {
+    return `- Quote-decay watcher: refresh ${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("quoteDecay", refresh.reason)}; window ${refresh.pendingWindowSeconds || "n/a"}s)`;
+  }
+  return `- Quote-decay watcher: skip ${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("quoteDecay", refresh.reason)}${refresh.pendingWindowSeconds ? `; window ${refresh.pendingWindowSeconds}s` : ""})`;
+}
+
+function canaryInputRefreshLine(refresh) {
+  if (!refresh?.routeKey) return "- Canary input watcher: no active canary route";
+  const inputs = refresh.inputKeys?.join(",") || "none";
+  if (refresh.shouldRefresh) {
+    return `- Canary input watcher: refresh ${refresh.routeKey} amount=${refresh.amount} inputs=${inputs} (${watcherReasonLabel("canaryInputs", refresh.reason)})`;
+  }
+  return `- Canary input watcher: skip ${refresh.routeKey} amount=${refresh.amount} (${watcherReasonLabel("canaryInputs", refresh.reason)})`;
+}
+
+function gatewayCoverageLine(refresh) {
+  if (!refresh?.targetRouteCount) return "- Gateway coverage watcher: no fully measurable route shortlist yet";
+  const targets = (refresh.targetRoutes || []).map((item) => item.routeKey).join(", ") || "none";
+  const chains = refresh.touchChains?.join(",") || "none";
+  if (refresh.shouldRefresh) {
+    return `- Gateway coverage watcher: probe ${refresh.targetRouteCount} focus route(s) (${targets}) and rescore chains ${chains} (${watcherReasonLabel("gatewayCoverage", refresh.reason)})`;
+  }
+  return `- Gateway coverage watcher: skip ${refresh.targetRouteCount} focus route(s) (${watcherReasonLabel("gatewayCoverage", refresh.reason)})`;
+}
+
+function lastAdvanceLine(advance) {
+  if (!advance) return "- Last canary advance: none recorded";
+  const actions = (advance.actions || []).join(", ") || "no_actions";
+  const initial = advance.initial?.decision || "unknown";
+  const final = advance.final?.decision || "unknown";
+  const route = advance.final?.routeLabel || advance.initial?.routeLabel || "no_route";
+  return `- Last canary advance: ${route} (${initial} -> ${final}; actions ${actions})`;
+}
+
+function freshnessText(name, item) {
+  const ageText = Number.isFinite(item?.ageMinutes) ? `${item.ageMinutes.toFixed(1)}m` : "n/a";
+  return `${name} ${item?.state || "unknown"}${item?.state === "fresh" || item?.state === "stale" ? ` (${ageText})` : ""}`;
+}
+
+function canaryInputsLines(summary) {
+  if (!summary) return ["- Route input freshness: no active canary route"];
+  return [
+    `- Route input freshness: ${[
+      freshnessText("quote", summary.gatewayQuote),
+      freshnessText("exactGas", summary.exactGas),
+      freshnessText("srcGas", summary.srcGas),
+      freshnessText("dex", summary.dexQuote),
+      freshnessText("btcFee", summary.bitcoinFee),
+      freshnessText("market", summary.marketSnapshot),
+    ].join(" · ")}`,
+    `- Route input blockers: ${summary.blockers.join(",") || "none"}${summary.scoreDataGaps?.length ? `; score gaps ${summary.scoreDataGaps.join(",")}` : ""}`,
+  ];
+}
+
+function checklistLines(checklist) {
+  return [
+    `- Completed so far: ${checklist?.completed?.join(" · ") || "none yet"}`,
+    `- Remaining steps: ${checklist?.remaining?.join(" · ") || "none"}`,
+  ];
+}
+
+function executionStageLines(summary) {
+  return [
+    `- Manual canary review: ${summary.reviewStage}${summary.reviewReasons.length ? ` (${summary.reviewReasons.join(",")})` : ""}`,
+    `- Live execution: ${summary.liveStage}${summary.auditDecision ? `; audit=${summary.auditDecision}` : ""}${summary.liveReasons.length ? ` (${summary.liveReasons.join(",")})` : ""}`,
+  ];
+}
+
+function stableRouteCandidates(scores = []) {
+  return scores
+    .filter((score) => score?.srcAsset?.family === "stablecoin" || score?.dstAsset?.family === "stablecoin")
+    .sort(
+      (left, right) =>
+        (right.executableNetEdgeUsd ?? right.netEdgeUsd ?? Number.NEGATIVE_INFINITY) -
+          (left.executableNetEdgeUsd ?? left.netEdgeUsd ?? Number.NEGATIVE_INFINITY) ||
+        String(left.routeKey).localeCompare(String(right.routeKey)),
+    );
+}
+
+function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], routes = [], routesObservedAt = null, quotes = []) {
+  const bestStable = stableRouteCandidates(scores)[0] || null;
+  const crossAsset = buildCrossAssetArbitrageSummary({ scores });
+  const dexEnvironment = buildDexEnvironmentSummary({ dexQuotes });
+  const dexRouteFocus = buildDexRouteFocusSummary({ routes, quotes, scoreSnapshot: { scores }, dexQuotes });
+  const dexGateway = buildDexGatewayArbitrageSummary({ scoreSnapshot: { scores }, dexQuotes });
+  const dexRouteUniverse = buildDexRouteUniverseSummary({ routes, observedAt: routesObservedAt });
+  const edgeViability = buildEdgeViabilitySummary({ scoreSnapshot: { scores }, dexQuotes });
+  const edgeViabilityVerdict = buildEdgeViabilityVerdict({ edgeViability, dexRouteFocus });
+  const edgeResearch = buildEdgeResearchSummary({ scoreSnapshot: { scores }, shadowObservations });
+  const noEdgePersistence = buildNoEdgePersistenceSummary({ scoreSnapshot: { scores }, dexQuotes });
+  return [
+    "- Strategy note: BTC-family transfer by itself is usually loss-making after Gateway fee, gas, and slippage.",
+    "- Strategy note: the actionable target is a local executable BTC/stable dislocation that beats total movement cost.",
+    "- Strategy note: BTC accumulation from a long-term bullish view is directional inventory exposure, not arbitrage profit, so it must not unlock canary or live execution by itself.",
+    `- Strong-edge research: definite=${edgeResearch.definiteEdgeCandidateCount} multiLevel=${edgeResearch.multiLevelCandidateCount} missingDecay=${edgeResearch.missingDecayCoverageCount + edgeResearch.missingDecaySurvivalCount} singleLevel=${edgeResearch.singleLevelOnlyCount} noEdge=${edgeResearch.noEdgeCount} outliers=${edgeResearch.outlierCount}`,
+    `- DEX route universe: btcFamily=${dexRouteUniverse.btcFamilyRouteCount} fullyMeasurable=${dexRouteUniverse.fullyMeasurableRouteCount} singleGap=${dexRouteUniverse.singleProviderGapCount} doubleGap=${dexRouteUniverse.doubleProviderGapCount}`,
+    `- DEX focus shortlist: loopObservable=${dexRouteFocus.loopObservableCount} partial=${dexRouteFocus.partialLoopMeasurementCount} missingGatewayQuote=${dexRouteFocus.missingGatewayQuoteCount}`,
+    `- Edge viability: measured=${edgeViability.measuredLoopCount} positive=${edgeViability.positiveMeasuredCount} policyReady=${edgeViability.policyReadyCount} medianGap=${money(edgeViability.medianGapToPolicyUsd)}`,
+    `- Edge verdict: ${edgeViabilityVerdict.label}${edgeViabilityVerdict.detail ? ` (${edgeViabilityVerdict.detail})` : ""}`,
+    `- No-edge persistence: durable=${noEdgePersistence.durableNoEdgeRouteCount} belowPolicy=${noEdgePersistence.belowPolicyRouteCount} nearPolicy=${noEdgePersistence.nearPolicyRouteCount} positiveBelow=${noEdgePersistence.positiveButBelowPolicyRouteCount}`,
+    dexRouteUniverse.topGapChain
+      ? `- Largest DEX coverage gap chain: \`${dexRouteUniverse.topGapChain.chain}\` routeCount=${dexRouteUniverse.topGapChain.routeCount}`
+      : "- Largest DEX coverage gap chain: none observed",
+    dexRouteFocus.bestRoute
+      ? `- Best DEX focus route now: \`${dexRouteFocus.bestRoute.routeKey}\` class=\`${dexRouteFocus.bestRoute.classification}\` gatewayQuotes=${dexRouteFocus.bestRoute.gatewayQuoteCount} entryQuotes=${dexRouteFocus.bestRoute.entryQuoteCount} exitQuotes=${dexRouteFocus.bestRoute.exitQuoteCount} bestExec=${money(dexRouteFocus.bestRoute.bestExecutableNetEdgeUsd)}`
+      : "- Best DEX focus route now: none observed",
+    `- DEX environment drift: monitored=${dexEnvironment.monitoredRouteCount} staleLegs=${dexEnvironment.staleLegCount} unstableLegs=${dexEnvironment.unstableLegCount} thinLiquidityLegs=${dexEnvironment.thinLiquidityLegCount} singleSampleLegs=${dexEnvironment.singleSampleLegCount}`,
+    dexEnvironment.topRiskRoute
+      ? `- Top DEX environment risk: \`${dexEnvironment.topRiskRoute.routeKey}\` amount=\`${dexEnvironment.topRiskRoute.amount}\` class=\`${dexEnvironment.topRiskRoute.classification}\` staleLegs=${dexEnvironment.topRiskRoute.staleLegCount} unstableLegs=${dexEnvironment.topRiskRoute.unstableLegCount} thinLiquidityLegs=${dexEnvironment.topRiskRoute.thinLiquidityLegCount} singleSampleLegs=${dexEnvironment.topRiskRoute.singleSampleLegCount}`
+      : "- Top DEX environment risk: none observed",
+    edgeResearch.bestCandidate
+      ? `- Best research route now: \`${edgeResearch.bestCandidate.routeKey}\` class=\`${edgeResearch.bestCandidate.classification}\` profitableLevels=${edgeResearch.bestCandidate.profitableLevels}/${edgeResearch.bestCandidate.amountLevels} bestNet=${money(edgeResearch.bestCandidate.bestNetEdgeUsd)}`
+      : "- Best research route now: none observed",
+    `- Measured DEX+Gateway coverage: bothDexSupported=${dexGateway.bothDexSupportedRouteCount} executable=${dexGateway.executableLoopCount} measuredNet=${dexGateway.measuredNetLoopCount} exact=${dexGateway.exactAmountMatchCount} profitable=${dexGateway.profitableExactCount}`,
+    edgeViability.closestLoop
+      ? `- Closest route to policy gate: \`${edgeViability.closestLoop.routeKey}\` amount=\`${edgeViability.closestLoop.amount}\` net=${money(edgeViability.closestLoop.measuredLoopNetUsd)} gapToPolicy=${money(edgeViability.closestLoop.gapToPolicyUsd)} target=${money(edgeViability.closestLoop.requiredNetProfitUsd)}`
+      : "- Closest route to policy gate: none observed",
+    noEdgePersistence.bestRoute
+      ? `- Best persistence route now: \`${noEdgePersistence.bestRoute.routeKey}\` class=\`${noEdgePersistence.bestRoute.classification}\` measuredLevels=${noEdgePersistence.bestRoute.measuredLevelCount} minGap=${money(noEdgePersistence.bestRoute.minGapToPolicyUsd)} bestNet=${money(noEdgePersistence.bestRoute.bestMeasuredLoopNetUsd)}`
+      : "- Best persistence route now: none observed",
+    dexGateway.bestLoop
+      ? `- Best measured DEX+Gateway loop: \`${dexGateway.bestLoop.routeKey}\` netEdge=${money(dexGateway.bestLoop.measuredLoopNetUsd)} amountGap=${((dexGateway.bestLoop.amountGapPct || 0) * 100).toFixed(2)}%`
+      : dexGateway.closestLoop
+        ? `- Closest measured DEX+Gateway loop: \`${dexGateway.closestLoop.routeKey}\` netEdge=${money(dexGateway.closestLoop.measuredLoopNetUsd)} amountGap=${((dexGateway.closestLoop.amountGapPct || 0) * 100).toFixed(2)}% blockers=${dexGateway.closestLoop.blockers.join(",") || "none"}`
+        : "- Best measured DEX+Gateway loop: none observed",
+    bestStable
+      ? `- Best stablecoin-related route now: \`${bestStable.routeKey}\` amount=\`${bestStable.amount}\` readiness=\`${bestStable.tradeReadiness}\` netEdge=${money(bestStable.executableNetEdgeUsd ?? bestStable.netEdgeUsd)}`
+      : "- Best stablecoin-related route now: none observed",
+    crossAsset.bestLoop
+      ? `- Best closed stable->BTC->stable loop: \`${crossAsset.bestLoop.entryRouteKey}\` + \`${crossAsset.bestLoop.exitRouteKey}\` netEdge=${money(crossAsset.bestLoop.loopNetEdgeUsd)}`
+      : "- Best closed stable->BTC->stable loop: none matched yet",
+    crossAsset.closestLoop && !crossAsset.bestLoop
+      ? `- Closest loop blocker: amount gap ${(crossAsset.closestLoop.amountGapPct * 100).toFixed(2)}% on \`${crossAsset.closestLoop.entryRouteKey}\` + \`${crossAsset.closestLoop.exitRouteKey}\``
+      : null,
+  ];
+}
+
+function profitabilityLines(summary) {
+  if (!summary) return ["- Profitability summary unavailable"];
+  return [
+    `- Tested closed loops: ${summary.measuredClosedLoopCount}`,
+    `- Profitable closed loops: ${summary.profitableClosedLoopCount}`,
+    `- Loop-observable routes: ${summary.loopObservableRouteCount}`,
+    `- Missing focus Gateway quotes: ${summary.missingGatewayQuoteCount}`,
+    `- Profit verdict: ${summary.verdictLabel || "unknown"}${summary.verdictDetail ? ` (${summary.verdictDetail})` : ""}`,
+    summary.canaryTradeReadiness
+      ? `- Current canary route: ${summary.canaryTradeReadiness}${Number.isFinite(summary.canaryNetEdgeUsd) ? ` net=${money(summary.canaryNetEdgeUsd)}` : ""}`
+      : "- Current canary route: unavailable",
+    summary.closestPolicyRoute
+      ? `- Closest route to policy: \`${summary.closestPolicyRoute.routeKey}\` amount=\`${summary.closestPolicyRoute.amount}\` net=${money(summary.closestPolicyRoute.netUsd)} gap=${money(summary.closestPolicyRoute.gapToPolicyUsd)} target=${money(summary.closestPolicyRoute.targetUsd)}`
+      : "- Closest route to policy: none observed",
+    summary.bestStablecoinRoute
+      ? `- Best stablecoin route tested: \`${summary.bestStablecoinRoute.routeKey}\` amount=\`${summary.bestStablecoinRoute.amount}\` readiness=\`${summary.bestStablecoinRoute.tradeReadiness}\` net=${money(summary.bestStablecoinRoute.netUsd)}`
+      : "- Best stablecoin route tested: none observed",
+    `- Durable no-edge routes: ${summary.durableNoEdgeRouteCount}`,
+  ];
+}
+
 async function main() {
   const now = new Date().toISOString();
   const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
-  const { routePlan, fundingPlan, nextStep: next, dashboardStatus } = await loadCanaryState({
+  const state = await loadCanaryState({
     address: resolved.address,
     dataDir: config.dataDir,
   });
+  const { routePlan, fundingPlan, nextStep: next, dashboardStatus } = state;
+  const canaryInputs = buildCanaryInputSummary(state);
   const best = next.route || routePlan.topCandidates?.[0] || null;
+  const checklist = buildCanaryStageChecklist({
+    route: best,
+    nextStep: next,
+    inputSummary: canaryInputs,
+    shadowCycle: dashboardStatus?.shadowCycle || null,
+    advanceCanary: dashboardStatus?.canaryAdvance || null,
+  });
+  const executionStage = buildExecutionStageSummary({
+    nextStep: next,
+    dashboardStatus,
+  });
   const nextReadinessCheck = dashboardStatus?.shadowCycle?.canary?.nextReadinessCheck || null;
   const nextReadinessRefresh = dashboardStatus?.shadowCycle?.canary?.nextReadinessRefresh || null;
+  const gasRefresh = planGasRefresh(state);
+  const canaryInputRefresh = planCanaryInputRefresh(state);
+  const dexRefresh = planDexPriceRefresh(state);
+  const blockedScoreRefresh = planBlockedScoreRefresh(state);
+  blockedScoreRefresh.srcChain = next.route?.srcChain || null;
+  blockedScoreRefresh.dstChain = next.route?.dstChain || null;
+  const decayRefresh = planQuoteDecayRefresh(state);
+  const gatewayCoverageRefresh = planDexGatewayCoverageRefresh(state);
+  const profitabilityDexRouteFocus = buildDexRouteFocusSummary({
+    routes: state?.routesRecords?.at(-1)?.routes || [],
+    quotes: state?.quotes || [],
+    scoreSnapshot: state?.scoreSnapshot || null,
+    dexQuotes: state?.dexQuotes || [],
+  });
+  const profitabilityDexGateway = buildDexGatewayArbitrageSummary({
+    scoreSnapshot: state?.scoreSnapshot || null,
+    dexQuotes: state?.dexQuotes || [],
+  });
+  const profitabilityEdgeViability = buildEdgeViabilitySummary({
+    scoreSnapshot: state?.scoreSnapshot || null,
+    dexQuotes: state?.dexQuotes || [],
+  });
+  const profitabilityNoEdgePersistence = buildNoEdgePersistenceSummary({
+    scoreSnapshot: state?.scoreSnapshot || null,
+    dexQuotes: state?.dexQuotes || [],
+  });
+  const profitabilityEdgeVerdict = buildEdgeViabilityVerdict({
+    edgeViability: profitabilityEdgeViability,
+    dexRouteFocus: profitabilityDexRouteFocus,
+  });
+  const profitabilitySummary = buildProfitabilitySummary({
+    scoreSnapshot: state?.scoreSnapshot || null,
+    dexRouteFocus: profitabilityDexRouteFocus,
+    dexGatewayArbitrage: profitabilityDexGateway,
+    edgeViability: { ...profitabilityEdgeViability, verdict: profitabilityEdgeVerdict },
+    noEdgePersistence: profitabilityNoEdgePersistence,
+    canaryInputs,
+  });
 
   const doc = [
     "# Current Status",
@@ -113,6 +475,11 @@ async function main() {
     `- Headline: ${next.headline}`,
     `- Live trading: \`${dashboardStatus?.overall?.liveTrading || "BLOCKED"}\``,
     `- Shadow trading: \`${dashboardStatus?.overall?.shadowTrading || "ALLOWED"}\``,
+    "",
+    "## Progress Snapshot",
+    "",
+    ...checklistLines(checklist),
+    ...executionStageLines(executionStage),
     "",
     "## Best Route Right Now",
     "",
@@ -153,8 +520,30 @@ async function main() {
     `- Candidate routes observed: ${routePlan.candidateCount}`,
     `- txReady routes: ${routePlan.txReadyCount}`,
     `- viable prep routes: ${routePlan.viableCount}`,
+    "",
+    "## Profitability Summary",
+    "",
+    ...profitabilityLines(profitabilitySummary),
+    "",
+    ...strategyLines(
+      state?.scoreSnapshot?.scores || [],
+      state?.shadowObservations || [],
+      state?.dexQuotes || [],
+      state?.routesRecords?.at(-1)?.routes || [],
+      state?.routesRecords?.at(-1)?.observedAt || null,
+      state?.quotes || [],
+    ),
     quoteDecayLine(dashboardStatus?.audit),
     priceCoverageLine(dashboardStatus?.market),
+    ...quoteableCoverageLine(dashboardStatus?.market),
+    lastAdvanceLine(dashboardStatus?.canaryAdvance),
+    ...canaryInputsLines(canaryInputs),
+    canaryInputRefreshLine(canaryInputRefresh),
+    gasRefreshLine(gasRefresh),
+    dexRefreshLine(dexRefresh, state),
+    gatewayCoverageLine(gatewayCoverageRefresh),
+    blockedScoreLine(blockedScoreRefresh),
+    quoteDecayRefreshLine(decayRefresh),
     `- estimator wallet checked routes: ${fundingPlan.routeCount}`,
     `- estimator skipped routes: ${fundingPlan.skippedRouteCount}`,
     `- skipped reasons: ${fundingPlan.failureReasons.map((item) => `${item.reason}:${item.count}`).join(",") || "none"}`,

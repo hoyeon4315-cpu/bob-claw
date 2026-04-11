@@ -17,6 +17,7 @@ function baseStatus(overrides = {}) {
     },
     audit: overrides.audit ?? { quoteDecayWindows: [] },
     market: overrides.market ?? { chainWbtcPrices: [], observedChainCount: 0, missingChainCount: 0, staleChainCount: 0 },
+    watchers: overrides.watchers ?? null,
     shadowCycle: overrides.shadowCycle ?? null,
   };
 }
@@ -114,6 +115,17 @@ test("update summary falls back to shadow cycle guidance when gateway is quiet",
         missingChainCount: 7,
         staleChainCount: 1,
       },
+      watchers: {
+        gasRefresh: { shouldRefresh: false },
+        dexRefresh: { shouldRefresh: false, chains: ["avalanche", "base"], chainCount: 2 },
+        blockedScore: { shouldRefresh: false },
+        quoteDecay: {
+          shouldRefresh: true,
+          pendingWindowSeconds: 5,
+          routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+          reasonLabel: "다음 decay 측정 창이 열려 재확인 가능",
+        },
+      },
     }),
     { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
   );
@@ -130,9 +142,12 @@ test("update summary falls back to shadow cycle guidance when gateway is quiet",
   assert.match(summary.body, /base->bitcoin ETH->BTC/);
   assert.match(summary.body, /알려진 비용 반영 후 순이익이 아직 음수/);
   assert.match(summary.body, /순엣지 -\$0\.83/);
-  assert.match(summary.body, /5s 1\/1 · 15s 0\/1 · 30s 0\/0/);
+  assert.match(summary.body, /5s 1\/1 · 15s 0\/1/);
+  assert.doesNotMatch(summary.body, /30s 0\/0/);
+  assert.match(summary.body, /bob->base wBTC\.OFT->wBTC\.OFT · decay 5s 재확인 대기 · 다음 decay 측정 창이 열려 재확인 가능/);
   assert.match(summary.body, /체인 가격 2\/9개 · stale 1 · missing 7/);
   assert.match(summary.body, /수요 대기 refill 2건/);
+  assert.equal(summary.body.match(/bob->base wBTC\.OFT->wBTC\.OFT/g)?.length, 1);
 });
 
 test("update summary promotes net-negative objective score blockers into the title", () => {
@@ -168,4 +183,169 @@ test("update summary promotes net-negative objective score blockers into the tit
   assert.match(summary.body, /Best prepared route still fails objective score review/);
   assert.match(summary.body, /bob->base wBTC\.OFT->wBTC\.OFT/);
   assert.match(summary.body, /순엣지 -\$0\.83/);
+});
+
+test("update summary prefers active cycle guidance over static announced-chain gaps", () => {
+  const summary = buildUpdateSummary(
+    baseStatus({
+      gateway: {
+        announcedChainCoverage: { missingAnnouncedChains: ["optimism", "sei"] },
+      },
+      shadowCycle: {
+        mode: "CANARY_PREP_BLOCKED",
+        headline: "Best prepared route still fails objective score review",
+        canary: {
+          nextReadinessCheck: null,
+          nextReadinessRefresh: null,
+          readinessCheckCount: 0,
+        },
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          tradeReadiness: "reject_no_net_edge",
+          tradeReadinessLabel: "알려진 비용 반영 후 순이익이 아직 음수",
+          tradeReadinessDetail: "순엣지 -$0.83",
+        },
+        treasury: {
+          estimatedWalletUsd: 280,
+          walletValueShortfallUsd: 0,
+          noDemandBlockerCount: 0,
+          nextNeeds: [],
+        },
+        audit: { issues: [] },
+      },
+    }),
+    { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
+  );
+
+  assert.equal(summary.title, "순이익 기준 미달");
+  assert.doesNotMatch(summary.body, /announced, not live yet/);
+});
+
+test("update summary prioritizes source gas refresh ahead of later watcher work", () => {
+  const summary = buildUpdateSummary(
+    baseStatus({
+      shadowCycle: {
+        mode: "CANARY_PREP_BLOCKED",
+        headline: "Best prepared route still fails objective score review",
+        canary: {
+          nextReadinessCheck: null,
+          nextReadinessRefresh: null,
+          readinessCheckCount: 0,
+        },
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          tradeReadiness: "insufficient_data",
+          tradeReadinessLabel: "source gas snapshot이 오래됨",
+          tradeReadinessDetail: "base gas age 44m",
+        },
+        treasury: {
+          estimatedWalletUsd: 280,
+          walletValueShortfallUsd: 0,
+          noDemandBlockerCount: 0,
+          nextNeeds: [],
+        },
+        audit: { issues: [] },
+      },
+      watchers: {
+        gasRefresh: {
+          shouldRefresh: true,
+          chains: ["base"],
+          targetRouteCount: 1,
+          routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+          reasonLabel: "source 체인 gas가 오래되어 다시 확인 필요",
+        },
+        dexRefresh: { shouldRefresh: true, chains: ["base"], chainCount: 1, targetRouteCount: 1, reasonLabel: "관측 중인 체인 가격이 모두 최신 상태" },
+        blockedScore: { shouldRefresh: false },
+        quoteDecay: { shouldRefresh: false },
+      },
+    }),
+    { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
+  );
+
+  assert.match(summary.body, /bob->base wBTC\.OFT->wBTC\.OFT · Base gas 재확인 · route 1개 다시 계산 · source 체인 gas가 오래되어 다시 확인 필요/);
+});
+
+test("update summary shows touched-chain rescoring scope for blocked score refresh", () => {
+  const summary = buildUpdateSummary(
+    baseStatus({
+      shadowCycle: {
+        mode: "CANARY_PREP_BLOCKED",
+        headline: "Best prepared route still fails objective score review",
+        canary: {
+          nextReadinessCheck: null,
+          nextReadinessRefresh: null,
+          readinessCheckCount: 0,
+        },
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          tradeReadiness: "reject_no_net_edge",
+          tradeReadinessLabel: "알려진 비용 반영 후 순이익이 아직 음수",
+          tradeReadinessDetail: "순엣지 -$0.83",
+        },
+        treasury: {
+          estimatedWalletUsd: 280,
+          walletValueShortfallUsd: 0,
+          noDemandBlockerCount: 0,
+          nextNeeds: [],
+        },
+        audit: { issues: [] },
+      },
+      watchers: {
+        gasRefresh: { shouldRefresh: false },
+        dexRefresh: { shouldRefresh: false },
+        blockedScore: {
+          shouldRefresh: true,
+          scope: "touch_chains",
+          chains: ["bob", "base"],
+          targetRouteCount: 3,
+          routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+          changedInputLabels: ["source 가격 변경", "destination 가격 변경"],
+        },
+        quoteDecay: { shouldRefresh: false },
+      },
+    }),
+    { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
+  );
+
+  assert.match(summary.body, /bob->base wBTC\.OFT->wBTC\.OFT · BOB Mainnet · Base BTC route 3개 다시 계산 · source 가격 변경 · destination 가격 변경/);
+});
+
+test("update summary uses plain decay copy when no decay coverage exists yet", () => {
+  const summary = buildUpdateSummary(
+    baseStatus({
+      shadowCycle: {
+        mode: "SHADOW_ONLY",
+        headline: "Collect more shadow data",
+        canary: {
+          nextReadinessCheck: null,
+          nextReadinessRefresh: null,
+          readinessCheckCount: 0,
+        },
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          tradeReadiness: "reject_no_net_edge",
+          tradeReadinessLabel: "알려진 비용 반영 후 순이익이 아직 음수",
+          tradeReadinessDetail: "순엣지 -$0.83",
+        },
+        treasury: {
+          estimatedWalletUsd: 280,
+          walletValueShortfallUsd: 0,
+          noDemandBlockerCount: 0,
+          nextNeeds: [],
+        },
+        audit: { issues: [] },
+      },
+      audit: {
+        quoteDecayWindows: [
+          { windowSeconds: 5, profitableStartGroups: 0, coveredGroups: 0, survivedGroups: 0 },
+          { windowSeconds: 15, profitableStartGroups: 0, coveredGroups: 0, survivedGroups: 0 },
+          { windowSeconds: 30, profitableStartGroups: 0, coveredGroups: 0, survivedGroups: 0 },
+        ],
+      },
+    }),
+    { now: new Date("2026-04-11T02:00:00.000Z").getTime() },
+  );
+
+  assert.match(summary.body, /decay 샘플 축적 중/);
+  assert.doesNotMatch(summary.body, /5s 0\/0/);
 });

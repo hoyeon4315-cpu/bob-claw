@@ -8,6 +8,14 @@ test("Odos support gate maps native EVM token and rejects unsupported chains", (
   assert.equal(native.ok, true);
   assert.equal(native.inputToken, ODOS_NATIVE_TOKEN);
 
+  const sonic = canQuoteWithOdos("sonic", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c");
+  assert.equal(sonic.ok, true);
+  assert.equal(sonic.outputToken.ticker, "USDC");
+
+  const unichain = canQuoteWithOdos("unichain", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c");
+  assert.equal(unichain.ok, true);
+  assert.equal(unichain.outputToken.ticker, "USDC");
+
   const unsupported = canQuoteWithOdos("bob", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c");
   assert.equal(unsupported.ok, false);
   assert.equal(unsupported.reason, "odos_chain_not_supported");

@@ -52,11 +52,12 @@ function readinessCheckText(cycle, now) {
   ].filter(Boolean).join(" · ");
 }
 
-function topRouteText(cycle) {
+function topRouteText(cycle, options = {}) {
+  const includeLabel = options.includeLabel !== false;
   if (!cycle?.topRoute?.label) return "상위 경로 없음";
   if (!cycle.topRoute.tradeReadinessLabel) return cycle.topRoute.label;
   return [
-    cycle.topRoute.label,
+    includeLabel ? cycle.topRoute.label : null,
     cycle.topRoute.tradeReadinessLabel,
     cycle.topRoute.tradeReadinessDetail,
   ].filter(Boolean).join(" · ");
@@ -77,9 +78,49 @@ function quoteDecayText(status) {
   if (!windows.length) return null;
   const required = windows.filter((item) => [5, 15, 30].includes(item.windowSeconds));
   if (!required.length) return null;
-  return required
+  const withCoverage = required.filter((item) => (item.profitableStartGroups || item.coveredGroups || 0) > 0);
+  if (!withCoverage.length) return "decay 샘플 축적 중";
+  return withCoverage
     .map((item) => `${item.windowSeconds}s ${item.survivedGroups}/${item.profitableStartGroups || item.coveredGroups}`)
     .join(" · ");
+}
+
+function watcherText(status) {
+  const watchers = status.watchers || null;
+  if (!watchers) return null;
+  if (watchers.gasRefresh?.shouldRefresh) {
+    const route = watchers.gasRefresh.routeLabel || "상위 route";
+    const chains = (watchers.gasRefresh.chains || []).slice(0, 2).map((chain) => labelFor(chain)).join(" · ");
+    return [
+      route,
+      `${chains || "source"} gas 재확인`,
+      Number.isFinite(watchers.gasRefresh.targetRouteCount) ? `route ${watchers.gasRefresh.targetRouteCount}개 다시 계산` : null,
+      watchers.gasRefresh.reasonLabel || null,
+    ].filter(Boolean).join(" · ");
+  }
+  if (watchers.dexRefresh?.shouldRefresh) {
+    const chains = (watchers.dexRefresh.chains || []).slice(0, 3).map((chain) => labelFor(chain)).join(" · ");
+    const extraChains = Math.max(0, (watchers.dexRefresh.chainCount || watchers.dexRefresh.chains?.length || 0) - 3);
+    return [
+      `DEX 가격 ${chains || `${watchers.dexRefresh.chainCount || 0}개 체인`}${extraChains > 0 ? ` 외 ${extraChains}개 체인` : ""} 재확인`,
+      Number.isFinite(watchers.dexRefresh.targetRouteCount) ? `BTC route ${watchers.dexRefresh.targetRouteCount}개 다시 계산` : null,
+      watchers.dexRefresh.reasonLabel || null,
+    ].filter(Boolean).join(" · ");
+  }
+  if (watchers.blockedScore?.shouldRefresh) {
+    const route = watchers.blockedScore.routeLabel || "상위 route";
+    const chains = (watchers.blockedScore.chains || []).slice(0, 2).map((chain) => labelFor(chain)).join(" · ");
+    const scopeText = watchers.blockedScore.scope === "touch_chains"
+      ? `${chains || "연관 체인"} BTC route ${watchers.blockedScore.targetRouteCount || 0}개 다시 계산`
+      : "점수 다시 계산 대기";
+    return [route, scopeText, ...(watchers.blockedScore.changedInputLabels || [])].filter(Boolean).join(" · ");
+  }
+  if (watchers.quoteDecay?.shouldRefresh) {
+    const route = watchers.quoteDecay.routeLabel || "상위 route";
+    const window = watchers.quoteDecay.pendingWindowSeconds;
+    return [route, `decay ${window || "n/a"}s 재확인 대기`, watchers.quoteDecay.reasonLabel || null].filter(Boolean).join(" · ");
+  }
+  return null;
 }
 
 export function buildUpdateSummary(status, options = {}) {
@@ -93,13 +134,6 @@ export function buildUpdateSummary(status, options = {}) {
       body: `${status.gateway.changeReasons.join(", ") || "경로 상태 변화"} · ${compactAge(status.gateway.observedAt, now)}`,
     };
   }
-  if (missingAnnounced.length) {
-    return {
-      badge: "확인 필요",
-      title: "API route gap",
-      body: `${missingAnnounced.map(labelFor).join(" · ")} announced, not live yet`,
-    };
-  }
 
   const cycle = status.shadowCycle;
   if (cycle?.mode) {
@@ -111,7 +145,6 @@ export function buildUpdateSummary(status, options = {}) {
     };
     const auditIssue = cycle.audit?.issues?.[0] || null;
     const walletShortfall = cycle.treasury?.walletValueShortfallUsd;
-    const routeText = topRouteText(cycle);
     const walletText = Number.isFinite(cycle.treasury?.estimatedWalletUsd)
       ? `지갑 추정 ${money(cycle.treasury.estimatedWalletUsd)}`
       : null;
@@ -119,6 +152,9 @@ export function buildUpdateSummary(status, options = {}) {
     const nextCheckText = readinessCheckText(cycle, now);
     const marketText = marketCoverageText(status);
     const decayText = quoteDecayText(status);
+    const watcher = watcherText(status);
+    const watcherMentionsTopRoute = Boolean(watcher && cycle.topRoute?.label && watcher.includes(cycle.topRoute.label));
+    const routeText = topRouteText(cycle, { includeLabel: !watcherMentionsTopRoute });
     const walletShortfallText =
       Number.isFinite(walletShortfall) && walletShortfall > 0
         ? `floor까지 ${money(walletShortfall)} 부족`
@@ -134,9 +170,17 @@ export function buildUpdateSummary(status, options = {}) {
           : cycle.topRoute?.tradeReadiness === "reject_no_net_edge"
             ? "순이익 기준 미달"
           : titleByMode[cycle.mode] || "현재 사이클 상태",
-      body: [auditIssue?.label || walletShortfallText || cycle.headline, needText, nextCheckText, decayText, marketText, routeText, walletText, noDemandText]
+      body: [auditIssue?.label || walletShortfallText || cycle.headline, watcher, needText, nextCheckText, decayText, marketText, routeText, walletText, noDemandText]
         .filter(Boolean)
         .join(" · "),
+    };
+  }
+
+  if (missingAnnounced.length) {
+    return {
+      badge: "확인 필요",
+      title: "API route gap",
+      body: `${missingAnnounced.map(labelFor).join(" · ")} announced, not live yet`,
     };
   }
 

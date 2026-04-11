@@ -14,3 +14,27 @@ export function scoringArgsForStep(step, fallbackRoute = null) {
   }
   return ["--write"];
 }
+
+export function summarizeStep(step) {
+  return {
+    decision: step?.decision || null,
+    headline: step?.headline || null,
+    routeLabel: step?.route?.label || null,
+    routeKey: step?.route?.routeKey || null,
+    amount: step?.route?.amount || null,
+    reasons: step?.reasons || [],
+  };
+}
+
+export function buildAdvanceSummary({ address, initialStep, afterWalletCheckStep = null, finalStep = null, actions = [] }) {
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    address: address || null,
+    actionCount: actions.length,
+    actions,
+    initial: summarizeStep(initialStep),
+    afterWalletCheck: afterWalletCheckStep ? summarizeStep(afterWalletCheckStep) : null,
+    final: finalStep ? summarizeStep(finalStep) : null,
+  };
+}

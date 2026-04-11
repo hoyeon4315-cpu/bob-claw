@@ -2,9 +2,18 @@ import { join } from "node:path";
 import { isBtcFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
+import { ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
+import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
+import { buildDexRouteFocusSummary } from "../strategy/dex-route-focus.mjs";
+import { buildDexGatewayArbitrageSummary } from "../strategy/dex-gateway-arbitrage.mjs";
+import { buildDexRouteUniverseSummary } from "../strategy/dex-route-universe.mjs";
+import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strategy/edge-viability.mjs";
+import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
+import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 
 const STATUS_SCHEMA_VERSION = 1;
 const RISK_BUDGET_USD = 300;
@@ -312,6 +321,69 @@ function impliedDexWbtcUsd(quote) {
   return Math.round((quote.inputValueUsd / inputAmountDecimal) * 100) / 100;
 }
 
+function isPositiveAmount(value) {
+  try {
+    return BigInt(value) > 0n;
+  } catch {
+    return false;
+  }
+}
+
+function latestDexWbtcFailureByChain(dexFailures = []) {
+  const latest = new Map();
+  for (const failure of dexFailures) {
+    if (!failure?.chain || !failure?.token) continue;
+    if (tokenAsset(failure.chain, failure.token).family !== "wrapped_btc") continue;
+    const existing = latest.get(failure.chain);
+    if (!existing || new Date(failure.observedAt || 0) > new Date(existing.observedAt || 0)) {
+      latest.set(failure.chain, failure);
+    }
+  }
+  return latest;
+}
+
+function latestGatewayWrappedBtcLegByChain(quotes = []) {
+  const latest = new Map();
+  for (const quote of quotes) {
+    const legs = [
+      {
+        chain: quote?.route?.srcChain,
+        token: quote?.route?.srcToken,
+        amount: quote?.inputAmount || quote?.amount,
+        observedAt: quote?.observedAt || null,
+      },
+      {
+        chain: quote?.route?.dstChain,
+        token: quote?.route?.dstToken,
+        amount: quote?.outputAmount || quote?.amount,
+        observedAt: quote?.observedAt || null,
+      },
+    ];
+    for (const leg of legs) {
+      if (!leg.chain || !leg.token || !isPositiveAmount(leg.amount)) continue;
+      if (tokenAsset(leg.chain, leg.token).family !== "wrapped_btc") continue;
+      const existing = latest.get(leg.chain);
+      if (!existing || new Date(leg.observedAt || 0) > new Date(existing.observedAt || 0)) {
+        latest.set(leg.chain, {
+          observedAt: leg.observedAt,
+          token: leg.token,
+        });
+      }
+    }
+  }
+  return latest;
+}
+
+function dexCoverageReason(chain, { dexPrice, latestFailure, sampledWrappedBtcLeg }) {
+  if (chain === "bitcoin") return "btc_spot_reference";
+  if (Number.isFinite(dexPrice?.usd)) return "dex_quote_observed";
+  if (!ODOS_CHAIN_IDS[chain]) return "odos_chain_not_supported";
+  if (!STABLE_QUOTE_TOKENS[chain]) return "stable_quote_token_missing";
+  if (latestFailure?.reason) return latestFailure.reason;
+  if (sampledWrappedBtcLeg) return "eligible_quote_not_run";
+  return "wrapped_btc_leg_not_sampled";
+}
+
 function latestDexWbtcPriceByChain(dexQuotes = []) {
   const latest = new Map();
   for (const quote of dexQuotes) {
@@ -331,7 +403,7 @@ function latestDexWbtcPriceByChain(dexQuotes = []) {
   return latest;
 }
 
-function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnapshots = [], dexQuotes = [], gatewayChains = [], now }) {
+function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnapshots = [], dexQuotes = [], dexFailures = [], quotes = [], gatewayChains = [], now }) {
   const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
   const basePrices = latestObservedPrices ? pricesFromSnapshot(latestObservedPrices) : emptyPricesUsd();
   const prices = overlayObservedPricesUsd(basePrices, {
@@ -346,8 +418,12 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
   const wbtcUsd = Number.isFinite(prices.tokenByKey?.wbtc) ? prices.tokenByKey.wbtc : Number.isFinite(prices.btc) ? prices.btc : null;
   const btcUsd = Number.isFinite(prices.btc) ? prices.btc : wbtcUsd;
   const dexWbtcByChain = latestDexWbtcPriceByChain(dexQuotes);
+  const dexWbtcFailureByChain = latestDexWbtcFailureByChain(dexFailures);
+  const latestWrappedBtcLegByChain = latestGatewayWrappedBtcLegByChain(quotes);
   const chainWbtcPrices = gatewayChains.map((chain) => {
     const dexPrice = dexWbtcByChain.get(chain) || null;
+    const latestFailure = dexWbtcFailureByChain.get(chain) || null;
+    const sampledWrappedBtcLeg = latestWrappedBtcLegByChain.get(chain) || null;
     const chainObservedAt = chain === "bitcoin" ? observedAt : dexPrice?.observedAt || null;
     const ageMinutes = minutesBetween(chainObservedAt, now);
     const usd = chain === "bitcoin" ? btcUsd : dexPrice?.usd ?? null;
@@ -360,6 +436,10 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
       deltaPct: chain === "bitcoin" ? null : pctChange(btcUsd, usd),
       stale: Number.isFinite(ageMinutes) ? ageMinutes > CHAIN_PRICE_STALE_MINUTES : false,
       source: chain === "bitcoin" ? latestObservedPrices?.source || latest(bitcoinFeeSnapshots)?.source || "observed_overlay" : dexPrice?.source || null,
+      quoteable: chain !== "bitcoin" && Boolean(ODOS_CHAIN_IDS[chain] && STABLE_QUOTE_TOKENS[chain]),
+      coverageReason: dexCoverageReason(chain, { dexPrice, latestFailure, sampledWrappedBtcLeg }),
+      coverageObservedAt: sampledWrappedBtcLeg?.observedAt || null,
+      coverageFailure: latestFailure?.reason || null,
     };
   });
   const nonBitcoinChainPrices = chainWbtcPrices.filter((item) => item.chain !== "bitcoin");
@@ -451,6 +531,65 @@ function opportunitySummary(scoreSnapshot) {
     dataGaps: [...dataGaps.entries()]
       .map(([gap, count]) => ({ gap, count }))
       .sort((left, right) => right.count - left.count || left.gap.localeCompare(right.gap)),
+  };
+}
+
+function bestStablecoinRoute(scoreSnapshot) {
+  const scores = scoreSnapshot?.scores || [];
+  return [...scores]
+    .filter((score) => score?.srcAsset?.family === "stablecoin" || score?.dstAsset?.family === "stablecoin")
+    .sort(
+      (left, right) =>
+        (right.executableNetEdgeUsd ?? right.netEdgeUsd ?? Number.NEGATIVE_INFINITY) -
+          (left.executableNetEdgeUsd ?? left.netEdgeUsd ?? Number.NEGATIVE_INFINITY) ||
+        String(left.routeKey).localeCompare(String(right.routeKey)),
+    )[0] || null;
+}
+
+function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = null, shadowObservations = [], dexQuotes = [], quotes = [], routes = [], routesObservedAt = null }) {
+  const bestStable = bestStablecoinRoute(scoreSnapshot);
+  const crossAssetArbitrage = buildCrossAssetArbitrageSummary(scoreSnapshot);
+  const dexEnvironment = buildDexEnvironmentSummary({ dexQuotes });
+  const dexRouteFocus = buildDexRouteFocusSummary({ routes, quotes, scoreSnapshot, dexQuotes });
+  const dexGatewayArbitrage = buildDexGatewayArbitrageSummary({ scoreSnapshot, dexQuotes });
+  const dexRouteUniverse = buildDexRouteUniverseSummary({ routes, observedAt: routesObservedAt });
+  const edgeViability = buildEdgeViabilitySummary({ scoreSnapshot, dexQuotes });
+  const edgeResearch = buildEdgeResearchSummary({ scoreSnapshot, shadowObservations });
+  const noEdgePersistence = buildNoEdgePersistenceSummary({ scoreSnapshot, dexQuotes });
+  const edgeViabilityVerdict = buildEdgeViabilityVerdict({ edgeViability, dexRouteFocus });
+  const topTradeReadiness = shadowCycle?.topRoute?.tradeReadiness || null;
+  return {
+    profitModel: "non_directional_edge_only",
+    directionalBtcAccumulationCountsAsProfit: false,
+    boundaryNote:
+      "Long-term BTC appreciation may be a discretionary thesis, but it does not count as route profit or canary readiness.",
+    manualCanaryReviewReady: topTradeReadiness === "shadow_candidate_review_only",
+    liveExecutionBlocked: overall?.liveTrading !== "ALLOWED",
+    crossAssetArbitrage,
+    dexEnvironment,
+    dexRouteFocus,
+    dexGatewayArbitrage,
+    dexRouteUniverse,
+    edgeViability: {
+      ...edgeViability,
+      verdict: edgeViabilityVerdict,
+    },
+    edgeResearch,
+    noEdgePersistence,
+    bestStablecoinRoute: bestStable
+      ? {
+          routeKey: bestStable.routeKey,
+          amount: bestStable.amount,
+          srcChain: bestStable.srcChain,
+          dstChain: bestStable.dstChain,
+          srcTicker: bestStable.srcAsset?.ticker || null,
+          dstTicker: bestStable.dstAsset?.ticker || null,
+          tradeReadiness: bestStable.tradeReadiness || null,
+          netEdgeUsd: bestStable.netEdgeUsd ?? null,
+          executableNetEdgeUsd: bestStable.executableNetEdgeUsd ?? null,
+          dataGaps: bestStable.dataGaps || [],
+        }
+      : null,
   };
 }
 
@@ -728,6 +867,44 @@ function shadowCycleSummary(shadowCycle, now) {
   };
 }
 
+function advanceCanarySummary(advanceCanary, now) {
+  if (!advanceCanary) return null;
+  return {
+    observedAt: advanceCanary.observedAt || null,
+    ageMinutes: minutesBetween(advanceCanary.observedAt, now),
+    address: advanceCanary.address || null,
+    actionCount: advanceCanary.actionCount ?? (advanceCanary.actions?.length || 0),
+    actions: advanceCanary.actions || [],
+    initial: advanceCanary.initial
+      ? {
+          decision: advanceCanary.initial.decision || null,
+          headline: advanceCanary.initial.headline || null,
+          routeLabel: advanceCanary.initial.routeLabel || null,
+          amount: advanceCanary.initial.amount || null,
+          reasons: advanceCanary.initial.reasons || [],
+        }
+      : null,
+    afterWalletCheck: advanceCanary.afterWalletCheck
+      ? {
+          decision: advanceCanary.afterWalletCheck.decision || null,
+          headline: advanceCanary.afterWalletCheck.headline || null,
+          routeLabel: advanceCanary.afterWalletCheck.routeLabel || null,
+          amount: advanceCanary.afterWalletCheck.amount || null,
+          reasons: advanceCanary.afterWalletCheck.reasons || [],
+        }
+      : null,
+    final: advanceCanary.final
+      ? {
+          decision: advanceCanary.final.decision || null,
+          headline: advanceCanary.final.headline || null,
+          routeLabel: advanceCanary.final.routeLabel || null,
+          amount: advanceCanary.final.amount || null,
+          reasons: advanceCanary.final.reasons || [],
+        }
+      : null,
+  };
+}
+
 function decideOverall({ audit, gateway, gas }) {
   const blockers = [];
   if (audit.decision !== "LIVE_CANARY_REVIEW_POSSIBLE") blockers.push("audit_blocks_live");
@@ -784,6 +961,8 @@ export function buildDashboardStatus(input, options = {}) {
     gasSnapshots: input.gasSnapshots || [],
     bitcoinFeeSnapshots: input.bitcoinFeeSnapshots || [],
     dexQuotes: input.dexQuotes || [],
+    dexFailures: input.dexFailures || [],
+    quotes: input.quotes || [],
     gatewayChains: gateway.chains,
     now,
   });
@@ -803,6 +982,17 @@ export function buildDashboardStatus(input, options = {}) {
     now,
   });
   const shadowCycle = shadowCycleSummary(input.shadowCycle || null, now);
+  const canaryAdvance = advanceCanarySummary(input.advanceCanary || null, now);
+  const strategy = strategySummary({
+    scoreSnapshot: input.scoreSnapshot || null,
+    shadowCycle,
+    overall,
+    shadowObservations: input.shadowObservations || [],
+    dexQuotes: input.dexQuotes || [],
+    quotes: input.quotes || [],
+    routes: latestRoutesRecord?.routes || [],
+    routesObservedAt: latestRoutesRecord?.observedAt || null,
+  });
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -814,6 +1004,8 @@ export function buildDashboardStatus(input, options = {}) {
     executionGas,
     estimatorWallet,
     shadowCycle,
+    canaryAdvance,
+    strategy,
     bitcoinFee,
     opportunity,
     dex,
@@ -836,6 +1028,7 @@ export function buildDashboardStatus(input, options = {}) {
       estimatorWalletReadinessFailures: input.estimatorWalletReadinessFailures?.length || 0,
       shadowObservations: input.shadowObservations?.length || 0,
       shadowCyclePresent: shadowCycle ? 1 : 0,
+      advanceCanaryPresent: canaryAdvance ? 1 : 0,
     },
     exposurePolicy: {
       cloudflare: "dashboard_only",

@@ -20,6 +20,46 @@ function dedupeReasons(reasons) {
   return [...new Set(reasons.filter(Boolean))];
 }
 
+function canaryVariantKey(route) {
+  if (!route?.routeKey) return null;
+  return variantKey(route.routeKey, route.amount);
+}
+
+function buildRouteCanaryContext(key, canaryProgress) {
+  const currentVariantKey = canaryVariantKey(canaryProgress?.currentRoute);
+  const lastAdvanceVariantKey = canaryVariantKey(canaryProgress?.lastAdvance);
+  const isCurrentTopRoute = key === currentVariantKey;
+  const isLastAdvanceRoute = key === lastAdvanceVariantKey;
+  if (!isCurrentTopRoute && !isLastAdvanceRoute) return null;
+
+  return {
+    isCurrentTopRoute,
+    isLastAdvanceRoute,
+    currentRoute: isCurrentTopRoute
+      ? {
+          tradeReadiness: canaryProgress.currentRoute?.tradeReadiness || null,
+          routeBlockers: canaryProgress.currentRoute?.routeBlockers || [],
+          scoreDataGaps: canaryProgress.currentRoute?.scoreDataGaps || [],
+          blockingInputs: canaryProgress.currentRoute?.blockingInputs || [],
+          inputStates: canaryProgress.currentRoute?.inputStates || null,
+        }
+      : null,
+    lastAdvance: isLastAdvanceRoute && canaryProgress?.lastAdvance
+      ? {
+          observedAt: canaryProgress.lastAdvance.observedAt || null,
+          ageMinutes: canaryProgress.lastAdvance.ageMinutes ?? null,
+          routeLabel: canaryProgress.lastAdvance.routeLabel || null,
+          initialDecision: canaryProgress.lastAdvance.initialDecision || null,
+          afterWalletCheckDecision: canaryProgress.lastAdvance.afterWalletCheckDecision || null,
+          finalDecision: canaryProgress.lastAdvance.finalDecision || null,
+          finalReasons: canaryProgress.lastAdvance.finalReasons || [],
+          actionCount: canaryProgress.lastAdvance.actionCount ?? 0,
+          actions: canaryProgress.lastAdvance.actions || [],
+        }
+      : null,
+  };
+}
+
 export function buildDefaultRoutePerformancePolicy() {
   return {
     schemaVersion: 1,
@@ -93,6 +133,7 @@ export function buildRoutePerformanceRanking({
   scores = [],
   quotes = [],
   quoteFailures = [],
+  canaryProgress = null,
   policy = buildDefaultRoutePerformancePolicy(),
   now = new Date().toISOString(),
 }) {
@@ -107,6 +148,7 @@ export function buildRoutePerformanceRanking({
     ...quoteGroups.keys(),
     ...failureGroups.keys(),
     ...scoredVariants.keys(),
+    ...[canaryVariantKey(canaryProgress?.currentRoute), canaryVariantKey(canaryProgress?.lastAdvance)].filter(Boolean),
   ]);
 
   const routes = [...variantKeys].map((key) => {
@@ -135,7 +177,13 @@ export function buildRoutePerformanceRanking({
       .filter(Number.isFinite)
       .reduce((sum, value) => sum + value, 0);
     const routeP95LossUsd = percentile(realizedLosses, 95) || 0;
-    const routeInfo = score || receiptsForKey[0]?.routeContext || null;
+    const routeCanaryContext = buildRouteCanaryContext(key, canaryProgress);
+    const canaryRouteInfo = routeCanaryContext?.isCurrentTopRoute
+      ? canaryProgress?.currentRoute
+      : routeCanaryContext?.isLastAdvanceRoute
+        ? canaryProgress?.lastAdvance
+        : null;
+    const routeInfo = score || receiptsForKey[0]?.routeContext || canaryRouteInfo || null;
     const classification = classifyRoute({
       policy,
       realizedSampleCount,
@@ -174,6 +222,7 @@ export function buildRoutePerformanceRanking({
       medianFillDriftBps: median(fillDrifts),
       enabledState: classification.enabledState,
       rejectionReasons: classification.rejectionReasons,
+      canaryContext: routeCanaryContext,
     };
   });
 
@@ -197,6 +246,7 @@ export function buildRoutePerformanceRanking({
       enabledCount: routes.filter((item) => item.enabledState === "enabled_review_only").length,
       disabledCount: routes.filter((item) => item.enabledState !== "enabled_review_only").length,
       realizedRouteCount: routes.filter((item) => item.realizedSampleCount > 0).length,
+      canaryProgress,
     },
     routes,
   };

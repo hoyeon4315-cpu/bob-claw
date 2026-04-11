@@ -52,6 +52,21 @@ If Instant Swap is not live, not accessible by API, too slow, too expensive, or 
 5. Leverage, perps, martingale, aggressive rebalancing
    - Forbidden for this project.
 
+## Strategy Boundary
+
+Two ideas must stay separate:
+
+1. Non-directional arbitrage / route edge
+   - The route must be expected to make money immediately after all known fees, gas, slippage, and rebalance costs.
+   - This is the only path that may unlock canary review or live expansion.
+
+2. Directional BTC accumulation
+   - "I may end up with more BTC later because BTC could rise over time" is a market-view thesis, not an arbitrage thesis.
+   - It may be a valid discretionary investment belief, but it is not objective proof that a Gateway route is profitable.
+   - It must not be counted as route profit, expected net profit, realized route PnL, or canary readiness.
+
+For BOB Claw, every route must first clear the non-directional profitability test before any later directional view is considered.
+
 ## Architecture
 
 ```text

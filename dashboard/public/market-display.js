@@ -9,6 +9,26 @@ function compactMoney(value) {
   return `$${value.toLocaleString("ko-KR", { maximumFractionDigits: 6 })}`;
 }
 
+function compactDeltaPct(value) {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value) < 0.005) return "~0%";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`;
+}
+
+function coverageDetail(reason) {
+  return {
+    dex_quote_observed: "",
+    btc_spot_reference: "BTC 현물 기준",
+    odos_chain_not_supported: "DEX 미지원",
+    stable_quote_token_missing: "quote 토큰 필요",
+    eligible_quote_not_run: "실측 대기",
+    wrapped_btc_leg_not_sampled: "실측 대기",
+    odos_quote_failed: "최근 quote 실패",
+    input_is_quote_stable: "stable pair 제외",
+  }[reason || ""] || "실측 대기";
+}
+
 export function marketCoverage(market = {}) {
   const prices = market?.chainWbtcPrices || [];
   const nonBitcoin = prices.filter((item) => item?.chain !== "bitcoin");
@@ -30,6 +50,27 @@ export function referenceMarketPrice(market = {}) {
     ticker: "wBTC",
     usd: market.wbtcUsd,
     stale: Number.isFinite(ageMinutes) && Number.isFinite(staleMinutes) ? ageMinutes > staleMinutes : false,
+  };
+}
+
+export function chainPriceCaption(price, chain, market = {}) {
+  const referencePrice = referenceMarketPrice(market);
+  if (price && Number.isFinite(price.usd)) {
+    return {
+      value: chain === "bitcoin" ? `${price.ticker} ${compactMoney(price.usd)}` : compactMoney(price.usd),
+      delta: chain === "bitcoin" ? "" : compactDeltaPct(price.deltaPct),
+      note: "",
+      stale: Boolean(price.stale),
+      variant: "observed",
+    };
+  }
+  if (chain === "bitcoin" || !referencePrice || !Number.isFinite(referencePrice.usd)) return null;
+  return {
+    value: compactMoney(referencePrice.usd),
+    delta: `기준 ${referencePrice.ticker}`,
+    note: coverageDetail(price?.coverageReason),
+    stale: Boolean(referencePrice.stale),
+    variant: "reference",
   };
 }
 
@@ -60,4 +101,3 @@ export function routeSublineText(status = {}) {
   if (coverage.stale > 0) parts.push(`stale ${coverage.stale}`);
   return parts.join(" · ");
 }
-

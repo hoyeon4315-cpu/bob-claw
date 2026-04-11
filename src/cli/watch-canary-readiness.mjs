@@ -8,15 +8,32 @@ import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 import {
+  buildCanaryInputRefreshDexArgs,
+  buildCanaryInputRefreshExactGasArgs,
+  buildCanaryInputRefreshGasSnapshotArgs,
+  buildCanaryInputRefreshScoringArgs,
+  buildCanaryInputRefreshVerifyArgs,
+  buildBlockedScoreRefreshScoringArgs,
+  buildDexGatewayCoverageDexQuoteArgs,
+  buildDexGatewayCoverageScoringArgs,
+  buildDexGatewayCoverageVerifyArgs,
+  buildDexEnvironmentRefreshQuoteArgs,
+  buildGasRefreshScoringArgs,
+  buildGasRefreshSnapshotArgs,
+  buildDexRefreshScoringArgs,
+  describeBlockedScoreRefreshSelection,
   decisionFingerprint,
-    formatCanaryWatchSummary,
-    notifyCanaryDecision,
-    planBlockedScoreRefresh,
-    planDexPriceRefresh,
-    planQuoteDecayRefresh,
-    summarizeShadowArtifactRefresh,
-    shouldRefreshGasForCanary,
-  } from "../watch/canary-readiness-watch.mjs";
+  formatCanaryWatchSummary,
+  notifyCanaryDecision,
+  planCanaryInputRefresh,
+  planBlockedScoreRefresh,
+  planDexEnvironmentRefresh,
+  planDexGatewayCoverageRefresh,
+  planDexPriceRefresh,
+  planGasRefresh,
+  planQuoteDecayRefresh,
+  summarizeShadowArtifactRefresh,
+} from "../watch/canary-readiness-watch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -57,14 +74,16 @@ function runNodeScript(script, args = []) {
   return result.stdout.trim();
 }
 
-function refreshShadowArtifacts(address) {
-  let priceOutput = "";
-  try {
-    priceOutput = runNodeScript("src/cli/price-snapshot.mjs");
-  } catch (error) {
-    priceOutput = "failed=price_snapshot";
-    console.log("refresh=shadow-artifacts price=failed");
-    if (error.stderr) console.log(error.stderr.trim());
+function refreshShadowArtifacts(address, options = {}) {
+  let priceOutput = "skipped=not_requested";
+  if (!options.skipPriceSnapshot) {
+    try {
+      priceOutput = runNodeScript("src/cli/price-snapshot.mjs");
+    } catch (error) {
+      priceOutput = "failed=price_snapshot";
+      console.log("refresh=shadow-artifacts price=failed");
+      if (error.stderr) console.log(error.stderr.trim());
+    }
   }
   const shadowOutput = runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write", `--address=${address}`]);
   const dashboardOutput = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
@@ -109,7 +128,7 @@ async function main() {
       const amount = readinessRefresh.args.find((item) => item.startsWith("--amount="))?.slice("--amount=".length) || "unknown";
       console.log(`refresh=wallet-readiness routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason}`);
       runNodeScript("src/cli/check-estimator-wallet.mjs", readinessRefresh.args);
-      refreshShadowArtifacts(args.address);
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (readinessRefresh.args) {
       const routeKey = readinessRefresh.args.find((item) => item.startsWith("--route-key="))?.slice("--route-key=".length) || "unknown";
@@ -118,12 +137,51 @@ async function main() {
       console.log(`skip=wallet-readiness routeKey=${routeKey} amount=${amount} reason=${readinessRefresh.reason} ageSeconds=${ageSeconds}`);
     }
 
-    if (shouldRefreshGasForCanary(state.nextStep)) {
-      console.log("refresh=stale-gas-and-rescore");
-      runNodeScript("src/cli/gas-snapshot.mjs");
-      runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
-      refreshShadowArtifacts(args.address);
+    const canaryInputRefresh = planCanaryInputRefresh(state);
+    if (canaryInputRefresh.shouldRefresh) {
+      console.log(
+        `refresh=canary-inputs routeKey=${canaryInputRefresh.routeKey || "unknown"} amount=${canaryInputRefresh.amount || "unknown"} inputs=${canaryInputRefresh.inputKeys.join(",") || "none"} reason=${canaryInputRefresh.reason}`,
+      );
+      if (canaryInputRefresh.inputKeys.includes("market")) {
+        runNodeScript("src/cli/price-snapshot.mjs");
+      }
+      if (canaryInputRefresh.inputKeys.includes("gateway_quote")) {
+        runNodeScript("src/cli/verify-gateway.mjs", buildCanaryInputRefreshVerifyArgs(canaryInputRefresh) || []);
+      }
+      if (canaryInputRefresh.inputKeys.includes("src_gas")) {
+        runNodeScript("src/cli/gas-snapshot.mjs", buildCanaryInputRefreshGasSnapshotArgs(canaryInputRefresh) || []);
+      }
+      if (canaryInputRefresh.inputKeys.includes("exact_gas")) {
+        runNodeScript("src/cli/estimate-gateway-gas.mjs", buildCanaryInputRefreshExactGasArgs(canaryInputRefresh, args.address) || []);
+      }
+      if (canaryInputRefresh.inputKeys.includes("dex_quote")) {
+        runNodeScript("src/cli/quote-dex.mjs", buildCanaryInputRefreshDexArgs(canaryInputRefresh) || []);
+      }
+      if (canaryInputRefresh.inputKeys.includes("bitcoin_fee")) {
+        runNodeScript("src/cli/bitcoin-fee-snapshot.mjs");
+      }
+      runNodeScript("src/cli/score-gateway.mjs", buildCanaryInputRefreshScoringArgs(canaryInputRefresh));
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (canaryInputRefresh.routeKey) {
+      console.log(
+        `skip=canary-inputs routeKey=${canaryInputRefresh.routeKey} amount=${canaryInputRefresh.amount} reason=${canaryInputRefresh.reason}`,
+      );
+    }
+
+    const gasRefresh = planGasRefresh(state);
+    if (gasRefresh.shouldRefresh) {
+      console.log(
+        `refresh=stale-gas chains=${gasRefresh.chains.join(",")} routeKey=${gasRefresh.routeKey || "unknown"} amount=${gasRefresh.amount || "unknown"} reason=${gasRefresh.reason}`,
+      );
+      runNodeScript("src/cli/gas-snapshot.mjs", buildGasRefreshSnapshotArgs(gasRefresh));
+      runNodeScript("src/cli/score-gateway.mjs", buildGasRefreshScoringArgs(gasRefresh));
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (gasRefresh.routeKey) {
+      console.log(
+        `skip=stale-gas chains=${gasRefresh.chains.join(",") || "none"} routeKey=${gasRefresh.routeKey} amount=${gasRefresh.amount} reason=${gasRefresh.reason}`,
+      );
     }
 
     const dexRefresh = planDexPriceRefresh(state);
@@ -136,32 +194,60 @@ async function main() {
         ...(dexRefresh.routeKey ? [`--route-key=${dexRefresh.routeKey}`] : []),
         ...(dexRefresh.amount ? [`--amount=${dexRefresh.amount}`] : []),
       ]);
-      if (dexRefresh.routeKey && dexRefresh.amount) {
-        runNodeScript("src/cli/score-gateway.mjs", [
-          "--write",
-          `--route-key=${dexRefresh.routeKey}`,
-          `--amount=${dexRefresh.amount}`,
-        ]);
-      } else {
-        runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
-      }
-      refreshShadowArtifacts(args.address);
+      runNodeScript("src/cli/score-gateway.mjs", buildDexRefreshScoringArgs(dexRefresh));
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (dexRefresh.chains.length > 0) {
       console.log(`skip=dex-price chains=${dexRefresh.chains.join(",")} reason=${dexRefresh.reason}`);
     }
 
+    const gatewayCoverageRefresh = planDexGatewayCoverageRefresh(state);
+    if (gatewayCoverageRefresh.shouldRefresh && gatewayCoverageRefresh.targetRouteCount > 0) {
+      console.log(
+        `refresh=gateway-coverage reason=${gatewayCoverageRefresh.reason} targets=${gatewayCoverageRefresh.targetRouteCount} chains=${gatewayCoverageRefresh.touchChains.join(",") || "none"}`,
+      );
+      for (const target of gatewayCoverageRefresh.targetRoutes) {
+        console.log(`refresh=gateway-coverage-route routeKey=${target.routeKey} class=${target.classification}`);
+        runNodeScript("src/cli/verify-gateway.mjs", buildDexGatewayCoverageVerifyArgs(target, gatewayCoverageRefresh));
+        runNodeScript("src/cli/quote-dex.mjs", buildDexGatewayCoverageDexQuoteArgs(target));
+      }
+      runNodeScript("src/cli/score-gateway.mjs", buildDexGatewayCoverageScoringArgs(gatewayCoverageRefresh));
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (gatewayCoverageRefresh.targetRouteCount > 0) {
+      console.log(
+        `skip=gateway-coverage reason=${gatewayCoverageRefresh.reason} targets=${gatewayCoverageRefresh.targetRouteCount}`,
+      );
+    }
+
+    const dexEnvironmentRefresh = planDexEnvironmentRefresh(state);
+    if (dexEnvironmentRefresh.shouldRefresh) {
+      console.log(
+        `refresh=dex-environment routeKey=${dexEnvironmentRefresh.routeKey || "unknown"} amount=${dexEnvironmentRefresh.amount || "unknown"} class=${dexEnvironmentRefresh.classification || "unknown"} reason=${dexEnvironmentRefresh.reason} targets=${dexEnvironmentRefresh.targetRouteCount || 0}`,
+      );
+      runNodeScript("src/cli/quote-dex.mjs", buildDexEnvironmentRefreshQuoteArgs(dexEnvironmentRefresh));
+      runNodeScript(
+        "src/cli/score-gateway.mjs",
+        dexEnvironmentRefresh.routeKey && dexEnvironmentRefresh.amount
+          ? ["--write", `--route-key=${dexEnvironmentRefresh.routeKey}`, `--amount=${dexEnvironmentRefresh.amount}`]
+          : ["--write"],
+      );
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
+      state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+    } else if (dexEnvironmentRefresh.routeKey || dexEnvironmentRefresh.targetRouteCount > 0) {
+      console.log(
+        `skip=dex-environment routeKey=${dexEnvironmentRefresh.routeKey || "unknown"} amount=${dexEnvironmentRefresh.amount || "unknown"} class=${dexEnvironmentRefresh.classification || "unknown"} reason=${dexEnvironmentRefresh.reason}`,
+      );
+    }
+
     const scoreRefresh = planBlockedScoreRefresh(state);
     if (scoreRefresh.shouldRefresh) {
+      const blockedSelection = describeBlockedScoreRefreshSelection(scoreRefresh, state.nextStep?.route || null);
       console.log(
-        `refresh=blocked-score routeKey=${scoreRefresh.routeKey || "unknown"} amount=${scoreRefresh.amount || "unknown"} reason=${scoreRefresh.reason} inputs=${scoreRefresh.changedInputs.join(",") || "unknown"}`,
+        `refresh=blocked-score scope=${blockedSelection.scope} chains=${blockedSelection.chains.join(",") || "none"} routeKey=${scoreRefresh.routeKey || "unknown"} amount=${scoreRefresh.amount || "unknown"} reason=${scoreRefresh.reason} inputs=${scoreRefresh.changedInputs.join(",") || "unknown"}`,
       );
-      runNodeScript("src/cli/score-gateway.mjs", [
-        "--write",
-        `--route-key=${scoreRefresh.routeKey}`,
-        `--amount=${scoreRefresh.amount}`,
-      ]);
-      refreshShadowArtifacts(args.address);
+      runNodeScript("src/cli/score-gateway.mjs", buildBlockedScoreRefreshScoringArgs(scoreRefresh, state.nextStep?.route || null));
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (scoreRefresh.routeKey) {
       console.log(
@@ -182,7 +268,7 @@ async function main() {
         `--amount=${decayRefresh.amount}`,
         "--shadow-rollover-ms=0",
       ]);
-      refreshShadowArtifacts(args.address);
+      refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (decayRefresh.routeKey) {
       console.log(
@@ -208,7 +294,6 @@ async function main() {
     if (state.nextStep.decision === "RUN_EXACT_GAS" || state.nextStep.decision === "RERUN_SCORING") {
       console.log("advance=canary");
       runNodeScript("src/cli/advance-canary.mjs", [`--address=${args.address}`]);
-      runNodeScript("src/cli/write-session-handoff.mjs");
       return;
     }
 

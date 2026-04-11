@@ -18,7 +18,7 @@ export const ODOS_CHAIN_IDS = {
 export const STABLE_QUOTE_TOKENS = {
   avalanche: {
     ticker: "USDC",
-    token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6",
+    token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
     decimals: 6,
   },
   base: {
@@ -34,6 +34,16 @@ export const STABLE_QUOTE_TOKENS = {
   ethereum: {
     ticker: "USDC",
     token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    decimals: 6,
+  },
+  sonic: {
+    ticker: "USDC",
+    token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+    decimals: 6,
+  },
+  unichain: {
+    ticker: "USDC",
+    token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
     decimals: 6,
   },
 };
@@ -125,17 +135,31 @@ export class OdosClient {
   }
 }
 
-export function normalizeOdosQuote({ chain, source, amount, inputToken, outputToken, outputTicker, outputDecimals, result }) {
+export function normalizeOdosQuote({
+  chain,
+  source,
+  amount,
+  inputToken,
+  outputToken,
+  inputTicker = null,
+  inputDecimals = null,
+  outputTicker,
+  outputDecimals,
+  quoteType = "token_to_stable",
+  result,
+}) {
   const body = result.body;
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     provider: "odos",
-    quoteType: "token_to_stable",
+    quoteType,
     source,
     chain,
     chainId: ODOS_CHAIN_IDS[chain],
     inputToken,
+    inputTicker,
+    inputDecimals,
     outputToken,
     outputTicker,
     outputDecimals,

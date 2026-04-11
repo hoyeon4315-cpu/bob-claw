@@ -17,33 +17,33 @@ export async function readJsonIfExists(path) {
   }
 }
 
-export async function loadCanaryState({ address = null, dataDir = config.dataDir } = {}) {
+export async function loadCanaryState({ address = null, dataDir = config.dataDir, getLivePrices = getCoinGeckoPricesUsd, now = null } = {}) {
   const resolved = await resolveOperationalAddress({
     explicitAddress: address,
     configuredAddress: config.estimateFrom,
     dataDir,
   });
   const [
+    routesRecords,
     quotes,
     readinessRecords,
     readinessFailures,
     scoreSnapshot,
     dashboardStatus,
     priceSnapshots,
-    livePrices,
     gasSnapshots,
     bitcoinFeeSnapshots,
     gasEstimateSnapshots,
     dexQuotes,
     shadowObservations,
   ] = await Promise.all([
+    readJsonl(dataDir, "gateway-routes"),
     readJsonl(dataDir, "gateway-quotes"),
     readJsonl(dataDir, "estimator-wallet-readiness"),
     readJsonl(dataDir, "estimator-wallet-readiness-failures"),
     readJsonIfExists(join(dataDir, "gateway-scores.json")),
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
     readJsonl(dataDir, "market-price-snapshots"),
-    getCoinGeckoPricesUsd().catch(() => emptyPricesUsd()),
     readJsonl(dataDir, "gas-snapshots"),
     readJsonl(dataDir, "bitcoin-fee-snapshots"),
     readJsonl(dataDir, "gateway-gas-estimates"),
@@ -51,7 +51,9 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
     readJsonl(dataDir, "gateway-shadow-observations"),
   ]);
   const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
-  const basePrices = latestObservedPrices && isFreshPriceSnapshot(latestObservedPrices) ? pricesFromSnapshot(latestObservedPrices) : livePrices;
+  const useObservedPrices = latestObservedPrices && isFreshPriceSnapshot(latestObservedPrices, now ? { now } : {});
+  const livePrices = useObservedPrices ? null : await getLivePrices().catch(() => emptyPricesUsd());
+  const basePrices = useObservedPrices ? pricesFromSnapshot(latestObservedPrices) : livePrices;
   const prices = overlayObservedPricesUsd(basePrices, { gasSnapshots, bitcoinFeeSnapshots });
 
   const routePlan = buildCanaryRoutePlan(
@@ -69,6 +71,7 @@ export async function loadCanaryState({ address = null, dataDir = config.dataDir
   return {
     address: resolved.address,
     addressSource: resolved.source,
+    routesRecords,
     quotes,
     readinessRecords,
     readinessFailures,

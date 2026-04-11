@@ -123,3 +123,46 @@ test("route performance ignores treasury refill receipts without route context",
 
   assert.equal(ranking.summary.routeVariantCount, 0);
 });
+
+test("route performance attaches canary progress to the current top route and last advance route", () => {
+  const ranking = buildRoutePerformanceRanking({
+    receiptRecords: [],
+    quotes: [quote({ routeKey: "bob:0x4->base:0x4" })],
+    quoteFailures: [],
+    scores: [score({ routeKey: "bob:0x4->base:0x4", tradeReadiness: "reject_no_net_edge", netEdgeUsd: -0.2 })],
+    canaryProgress: {
+      currentRoute: {
+        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+        routeKey: "bob:0x4->base:0x4",
+        amount: "10000",
+        tradeReadiness: "reject_no_net_edge",
+        routeBlockers: ["reject_no_net_edge"],
+        scoreDataGaps: ["stale_dex_output_quote"],
+        blockingInputs: [{ key: "market", state: "stale", ageMinutes: 40, observedAt: "2026-04-11T01:20:00.000Z" }],
+        inputStates: {
+          market: { state: "stale", ageMinutes: 40, observedAt: "2026-04-11T01:20:00.000Z" },
+        },
+      },
+      lastAdvance: {
+        observedAt: "2026-04-11T01:30:00.000Z",
+        ageMinutes: 30,
+        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+        routeKey: "bob:0x4->base:0x4",
+        amount: "10000",
+        initialDecision: "RUN_EXACT_GAS",
+        afterWalletCheckDecision: "RERUN_SCORING",
+        finalDecision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+        finalReasons: ["reject_no_net_edge"],
+        actionCount: 3,
+        actions: ["check-estimator-wallet", "score-gateway", "status-dashboard"],
+      },
+    },
+    policy: buildDefaultRoutePerformancePolicy(),
+  });
+
+  assert.equal(ranking.summary.canaryProgress.currentRoute.routeKey, "bob:0x4->base:0x4");
+  assert.equal(ranking.routes[0].canaryContext.isCurrentTopRoute, true);
+  assert.equal(ranking.routes[0].canaryContext.isLastAdvanceRoute, true);
+  assert.deepEqual(ranking.routes[0].canaryContext.currentRoute.blockingInputs.map((item) => item.key), ["market"]);
+  assert.equal(ranking.routes[0].canaryContext.lastAdvance.finalDecision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
+});

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chainPriceExtremes, marketCoverage, referenceMarketPrice, routeSublineText } from "../dashboard/public/market-display.js";
+import { chainPriceCaption, chainPriceExtremes, marketCoverage, referenceMarketPrice, routeSublineText } from "../dashboard/public/market-display.js";
 
 test("market coverage is derived from chain prices instead of cached counters", () => {
   const coverage = marketCoverage({
@@ -66,4 +66,36 @@ test("price extremes still highlight high and low chains when every observed quo
 
   assert.equal(classes.get("bitcoin"), "price-high");
   assert.equal(classes.get("ethereum"), "price-low");
+});
+
+test("missing quoteable chains show reference price with wait-state note", () => {
+  const caption = chainPriceCaption(
+    { chain: "sonic", usd: null, coverageReason: "eligible_quote_not_run" },
+    "sonic",
+    { wbtcUsd: 72_663, ageMinutes: 10, chainPriceStaleMinutes: 60 },
+  );
+
+  assert.deepEqual(caption, {
+    value: "$72.7k",
+    delta: "기준 wBTC",
+    note: "실측 대기",
+    stale: false,
+    variant: "reference",
+  });
+});
+
+test("unsupported chains show reference price with unsupported note", () => {
+  const caption = chainPriceCaption(
+    { chain: "bob", usd: null, coverageReason: "odos_chain_not_supported" },
+    "bob",
+    { wbtcUsd: 72_663, ageMinutes: 10, chainPriceStaleMinutes: 60 },
+  );
+
+  assert.deepEqual(caption, {
+    value: "$72.7k",
+    delta: "기준 wBTC",
+    note: "DEX 미지원",
+    stale: false,
+    variant: "reference",
+  });
 });

@@ -40,6 +40,7 @@ function parseArgs(argv) {
     srcChain: options["src-chain"] || null,
     dstChain: options["dst-chain"] || null,
     chain: options.chain || null,
+    routeKey: options["route-key"] || null,
     amounts: options.amounts ? options.amounts.split(",").map((item) => item.trim()).filter(Boolean) : null,
   };
 }
@@ -126,7 +127,7 @@ function dedupeOnePerAssetPair(routes) {
 
 function selectRoutes(routes, args) {
   let selected;
-  const hasRouteFilter = args.srcChain || args.dstChain || args.chain;
+  const hasRouteFilter = args.routeKey || args.srcChain || args.dstChain || args.chain;
   if (args.allRoutes || hasRouteFilter) {
     selected = routes;
   } else if (args.assetCoverage) {
@@ -147,6 +148,9 @@ function selectRoutes(routes, args) {
   }
   if (args.chain) {
     selected = selected.filter((route) => includesChain(route, args.chain));
+  }
+  if (args.routeKey) {
+    selected = selected.filter((route) => routeKey(route) === args.routeKey);
   }
   if (args.onePerChainPair) {
     selected = dedupeOnePerChainPair(selected);

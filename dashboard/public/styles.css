@@ -254,6 +254,13 @@ h2 {
   opacity: 0.9;
 }
 
+.chain-price-note {
+  display: block;
+  font-size: 7px;
+  font-weight: 700;
+  opacity: 0.78;
+}
+
 .chain-price.price-high {
   color: var(--green);
 }

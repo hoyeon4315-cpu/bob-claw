@@ -116,6 +116,13 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `estimatorWallet.allowanceBlockedCount`
 - `shadowCycle.mode`
 - `shadowCycle.headline`
+- `canaryAdvance`
+- `canaryInputs`
+- `strategy.profitModel`
+- `strategy.directionalBtcAccumulationCountsAsProfit`
+- `strategy.bestStablecoinRoute`
+- `strategy.crossAssetArbitrage`
+- `strategy.edgeResearch`
 - `shadowCycle.canary.nextReadinessCheck`
 - `shadowCycle.canary.nextReadinessRefresh`
 - `shadowCycle.audit.issueCount`
@@ -134,6 +141,21 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `dex.recentQuotes24h`
 - `dex.recentFailures24h`
 - `dex.quotedChains`
+- `watchers.dexRefresh`
+- `watchers.blockedScore`
+- `watchers.quoteDecay`
+- `watchers.gasRefresh`
+- `watchers.gasRefresh.reasonLabel`
+- `watchers.gasRefresh.targetRouteCount`
+- `watchers.dexRefresh.reasonLabel`
+- `watchers.dexRefresh.targetRouteCount`
+- `watchers.dexRefresh.targetRoutes`
+- `watchers.blockedScore.changedInputLabels`
+- `watchers.blockedScore.scope`
+- `watchers.blockedScore.chains`
+- `watchers.blockedScore.targetRouteCount`
+- `watchers.blockedScore.targetRoutes`
+- `watchers.quoteDecay.reasonLabel`
 
 Do not remove or rename these fields without updating `dashboard/public/app.js` and `test/dashboard-status.test.mjs`.
 

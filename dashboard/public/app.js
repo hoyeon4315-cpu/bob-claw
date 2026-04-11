@@ -8,7 +8,7 @@ import {
   viewBoxHeight,
   viewBoxWidth,
 } from "./scene-model.js";
-import { chainPriceExtremes, referenceMarketPrice, routeSublineText } from "./market-display.js";
+import { chainPriceCaption, chainPriceExtremes, routeSublineText } from "./market-display.js";
 import { buildUpdateSummary } from "./update-summary.js";
 
 const statusUrl = "./dashboard-status.json";
@@ -146,13 +146,6 @@ function compactMoney(value) {
   return `$${value.toLocaleString("ko-KR", { maximumFractionDigits: 6 })}`;
 }
 
-function compactDeltaPct(value) {
-  if (!Number.isFinite(value)) return "";
-  if (Math.abs(value) < 0.005) return "~0%";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`;
-}
-
 function humanBlocker(blocker) {
   return {
     audit_blocks_live: "새 데이터 확인 중",
@@ -250,32 +243,12 @@ function renderLines(scene, positions) {
   }
 }
 
-function chainPriceCaption(priceByChain, chain, referencePrice) {
-  const price = priceByChain.get(chain);
-  if (price && Number.isFinite(price.usd)) {
-    return {
-      value: chain === "bitcoin" ? `${price.ticker} ${compactMoney(price.usd)}` : compactMoney(price.usd),
-      delta: chain === "bitcoin" ? "" : compactDeltaPct(price.deltaPct),
-      stale: Boolean(price.stale),
-      variant: "observed",
-    };
-  }
-  if (chain === "bitcoin" || !referencePrice || !Number.isFinite(referencePrice.usd)) return null;
-  return {
-    value: compactMoney(referencePrice.usd),
-    delta: `기준 ${referencePrice.ticker}`,
-    stale: Boolean(referencePrice.stale),
-    variant: "reference",
-  };
-}
-
 function renderNodes(scene, positions, status) {
   const layer = $("chainLayer");
   clear(layer);
   const marketPrices = status.market?.chainWbtcPrices || [];
   const priceByChain = new Map(marketPrices.map((item) => [item.chain, item]));
   const priceClasses = chainPriceExtremes(marketPrices);
-  const referencePrice = referenceMarketPrice(status.market);
 
   const nodes = [gatewayNode, ...scene.displayChains];
   for (const chain of nodes) {
@@ -286,7 +259,7 @@ function renderNodes(scene, positions, status) {
     node.className = `chain-node ${chain === gatewayNode ? "gateway-node" : ""} ${pending ? "pending-node" : ""}`;
     node.style.left = `${(pos.x / viewBoxWidth) * 100}%`;
     node.style.top = `${(pos.y / viewBoxHeight) * 100}%`;
-    const priceInfo = chain !== gatewayNode ? chainPriceCaption(priceByChain, chain, referencePrice) : null;
+    const priceInfo = chain !== gatewayNode ? chainPriceCaption(priceByChain.get(chain) || null, chain, status.market) : null;
     const priceClass =
       chain !== gatewayNode
         ? [priceClasses.get(chain) || "", priceInfo?.stale ? "stale" : "", priceInfo?.variant === "reference" ? "price-reference" : ""]
@@ -302,6 +275,8 @@ function renderNodes(scene, positions, status) {
         chain !== gatewayNode && priceInfo
           ? `<span class="chain-price ${priceClass}"><span class="chain-price-value">${escapeHtml(priceInfo.value)}</span>${
               priceInfo.delta ? `<span class="chain-price-delta">${escapeHtml(priceInfo.delta)}</span>` : ""
+            }${
+              priceInfo.note ? `<span class="chain-price-note">${escapeHtml(priceInfo.note)}</span>` : ""
             }</span>`
           : ""
       }
