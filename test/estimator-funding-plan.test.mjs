@@ -91,7 +91,11 @@ test("funding plan aggregates highest shortfall per chain, token, and allowance"
   assert.equal(plan.chains.length, 1);
   assert.equal(plan.chains[0].native.shortfall, "1300");
   assert.equal(plan.chains[0].tokens[0].shortfall, "20000");
+  assert.equal(plan.chains[0].tokens[0].actual, "5000");
+  assert.equal(plan.chains[0].tokens[0].actualDecimal, 0.00005);
   assert.equal(plan.chains[0].allowances[0].shortfall, "20000");
+  assert.equal(plan.chains[0].allowances[0].actual, "5000");
+  assert.equal(plan.chains[0].allowances[0].actualDecimal, 0.00005);
 });
 
 test("funding plan keeps ready routes and filters by address", () => {
@@ -157,4 +161,6 @@ test("funding plan keeps ready routes and filters by address", () => {
   assert.equal(plan.blockedRouteCount, 0);
   assert.equal(plan.chains[0].routes[0].overallReady, true);
   assert.equal(plan.chains[0].native.shortfall, "0");
+  assert.equal(plan.chains[0].tokens[0].actual, "10000");
+  assert.equal(plan.chains[0].allowances[0].actual, "10000");
 });

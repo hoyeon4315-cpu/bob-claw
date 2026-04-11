@@ -20,7 +20,7 @@ function summarizeRequirementState(source, asset) {
     token: source.token || asset.token,
     ticker: asset.ticker,
     decimals: asset.decimals,
-    actual: source.actual,
+    actual: source.actual ?? source.balance ?? source.allowance ?? "0",
     required: source.required,
     shortfall: source.shortfall,
     ok: source.ok,

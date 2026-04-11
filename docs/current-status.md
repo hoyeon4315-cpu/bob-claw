@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-11T00:09:09.362Z
+Updated: 2026-04-11T00:14:06.144Z
 
 ## Start Here
 
@@ -33,8 +33,9 @@ Updated: 2026-04-11T00:09:09.362Z
 
 ## Objective Verification
 
-- `npm run check` passed
-- `npm test` passed
+- This file does not execute validation by itself.
+- Rerun `npm run check` before acting on code changes.
+- Rerun `npm test` before acting on behavior assumptions.
 - Candidate routes observed: 46
 - txReady routes: 1
 - viable prep routes: 1

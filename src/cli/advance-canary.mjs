@@ -76,6 +76,10 @@ function routeArgs(address, route) {
   return [`--address=${address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`];
 }
 
+function activeRoute(step, fallbackRoute = null) {
+  return step?.route || fallbackRoute || null;
+}
+
 function printStep(step, prefix = "current") {
   console.log(`${prefix}Decision=${step.decision}`);
   console.log(`${prefix}Headline=${step.headline}`);
@@ -108,12 +112,13 @@ async function main() {
   if (args.json) {
     const output = { initial: next, ran: [] };
     if (next.decision === "RUN_EXACT_GAS" || next.decision === "RERUN_SCORING") {
-      const route = next.route;
+      let route = activeRoute(next);
       if (next.decision === "RUN_EXACT_GAS") {
         runNodeScript("src/cli/check-estimator-wallet.mjs", routeArgs(args.address, route));
         const refreshed = await loadState(args.address);
         next = refreshed.nextStep;
         output.afterWalletCheck = next;
+        route = activeRoute(next, route);
         if (next.decision === "RUN_EXACT_GAS") {
           runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
           output.ran.push("estimate-gateway-gas");
@@ -131,7 +136,7 @@ async function main() {
   printStep(next, "current");
 
   if (next.decision === "FUND_AND_APPROVE_WALLET" || next.decision.startsWith("BLOCKED")) return;
-  const route = next.route;
+  let route = activeRoute(next);
   if (!route) return;
 
   if (next.decision === "RUN_EXACT_GAS") {
@@ -139,6 +144,7 @@ async function main() {
     const afterWalletCheck = await loadState(args.address);
     next = afterWalletCheck.nextStep;
     printStep(next, "afterWalletCheck");
+    route = activeRoute(next, route);
     if (next.decision !== "RUN_EXACT_GAS") return;
 
     runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
