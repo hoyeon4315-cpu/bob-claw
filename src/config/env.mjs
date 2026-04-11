@@ -37,6 +37,8 @@ export const config = {
   slippageBps: String(getNumberEnv("BOB_CLAW_SLIPPAGE_BPS", 50)),
   requestDelayMs: getNumberEnv("BOB_CLAW_REQUEST_DELAY_MS", 1500),
   dataDir: getEnv("BOB_CLAW_DATA_DIR", "./data"),
+  liveModeFlagPath: getEnv("BOB_CLAW_LIVE_MODE_FLAG", "./state/live-mode.enabled"),
+  emergencyStopFlagPath: getEnv("BOB_CLAW_EMERGENCY_STOP_FLAG", "./state/emergency-stop"),
   telegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
   telegramChatId: getEnv("TELEGRAM_CHAT_ID", ""),
 };

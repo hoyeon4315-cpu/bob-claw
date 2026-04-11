@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-11T00:18:06.743Z
+Updated: 2026-04-11T01:48:28.476Z
 
 ## Start Here
 
@@ -11,8 +11,8 @@ Updated: 2026-04-11T00:18:06.743Z
 ## Current Phase
 
 - Phase: canary-prep gating before exact gas
-- Decision: `FUND_AND_APPROVE_WALLET`
-- Headline: Fund and approve the estimator wallet before exact gas
+- Decision: `RERUN_SCORING`
+- Headline: Rerun route scoring with exact gas
 - Live trading: `BLOCKED`
 - Shadow trading: `ALLOWED`
 
@@ -20,16 +20,14 @@ Updated: 2026-04-11T00:18:06.743Z
 
 - Route: `bob->base wBTC.OFT->wBTC.OFT`
 - Route key: `bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c` amount=`10000`
-- txReady=true exactGasDone=false viableForPrep=true
-- Input value: $7.34
-- Prep funding estimate: $8.11
-- Net edge now: $-0.8355
+- txReady=true exactGasDone=true viableForPrep=true
+- Input value: $7.31
+- Prep funding estimate: $0.0000
+- Net edge now: $-0.8322
 
 ## Required Actions Before Exact Gas
 
-- fund 0.000353300213 ETH on bob
-- fund 0.0001 wBTC.OFT on bob
-- approve 0.0001 wBTC.OFT for spender 0x0555E30da8f98308EdB960aa94C0Db47230d2B9c on bob
+- rerun scoring for bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000
 
 ## Objective Verification
 
@@ -40,8 +38,8 @@ Updated: 2026-04-11T00:18:06.743Z
 - txReady routes: 1
 - viable prep routes: 1
 - estimator wallet checked routes: 1
-- estimator skipped routes: 7
-- skipped reasons: missing_tx_data:7
+- estimator skipped routes: 0
+- skipped reasons: none
 
 ## Next Command Order After Funding
 

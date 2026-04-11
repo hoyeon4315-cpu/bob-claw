@@ -1,0 +1,244 @@
+import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { ZERO_TOKEN } from "../assets/tokens.mjs";
+
+function finiteOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function bigint(value) {
+  return BigInt(value || 0);
+}
+
+function decimalFromWei(value) {
+  return Number(bigint(value)) / 1e18;
+}
+
+function priceForAsset(asset, prices) {
+  if (!asset) return null;
+  if (asset.isNative) return prices?.nativeByChain?.[asset.chain] ?? null;
+  if (asset.priceKey === "btc") return prices?.btc ?? prices?.tokenByKey?.btc ?? null;
+  if (asset.priceKey === "usd_stable") return 1;
+  return prices?.tokenByKey?.[asset.priceKey] ?? prices?.nativeByChain?.[asset.priceKey] ?? null;
+}
+
+function expectedNetPnl(routeContext) {
+  if (!routeContext) return null;
+  return Number.isFinite(routeContext.executableNetEdgeUsd) ? routeContext.executableNetEdgeUsd : routeContext.netEdgeUsd;
+}
+
+function expectedOutputUsd(routeContext) {
+  if (!routeContext) return null;
+  return Number.isFinite(routeContext.executableOutputUsd) ? routeContext.executableOutputUsd : routeContext.outputUsd;
+}
+
+function outputAssetFromContext(routeContext, output) {
+  if (output?.chain && output?.token) {
+    return tokenAsset(output.chain, output.token);
+  }
+  if (routeContext?.dstAsset) {
+    return tokenAsset(routeContext.dstAsset.chain, routeContext.dstAsset.token, routeContext.dstAsset);
+  }
+  return null;
+}
+
+function inputAssetFromContext(routeContext) {
+  if (!routeContext?.srcAsset) return null;
+  return tokenAsset(routeContext.srcAsset.chain, routeContext.srcAsset.token, routeContext.srcAsset);
+}
+
+function nativeAsset(chain) {
+  return tokenAsset(chain, ZERO_TOKEN);
+}
+
+function actualOutputUsd({ routeContext, output, prices }) {
+  if (Number.isFinite(output?.actualOutputUsd)) return output.actualOutputUsd;
+  if (output?.actualOutputUnits === undefined || output?.actualOutputUnits === null) return null;
+  const asset = outputAssetFromContext(routeContext, output);
+  if (!asset || !Number.isInteger(asset.decimals)) return null;
+  const amount = unitsToDecimal(output.actualOutputUnits, asset.decimals);
+  const unitPrice = Number.isFinite(output?.priceUsd)
+    ? output.priceUsd
+    : Number.isFinite(routeContext?.price?.dstRawUsd)
+      ? routeContext.price.dstRawUsd
+      : priceForAsset(asset, prices);
+  if (!Number.isFinite(amount) || !Number.isFinite(unitPrice)) return null;
+  return amount * unitPrice;
+}
+
+function actualTxValueUsd({ chain, transaction, routeContext, prices }) {
+  if (transaction && transaction.value !== undefined && transaction.value !== null) {
+    const priceUsd = priceForAsset(nativeAsset(chain), prices);
+    if (!Number.isFinite(priceUsd)) return null;
+    return decimalFromWei(transaction.value) * priceUsd;
+  }
+  return Number.isFinite(routeContext?.nativeCostUsd) ? routeContext.nativeCostUsd : null;
+}
+
+function receiptGasUsd({ chain, receipt, prices }) {
+  if (!receipt) return null;
+  const gasUsed = bigint(receipt.gasUsed);
+  const effectiveGasPrice = bigint(receipt.effectiveGasPrice);
+  const priceUsd = priceForAsset(nativeAsset(chain), prices);
+  if (!Number.isFinite(priceUsd)) return null;
+  return (Number(gasUsed * effectiveGasPrice) / 1e18) * priceUsd;
+}
+
+function outputDriftBps(actualUsd, expectedUsd) {
+  if (!Number.isFinite(actualUsd) || !Number.isFinite(expectedUsd) || expectedUsd === 0) return null;
+  return ((actualUsd - expectedUsd) / expectedUsd) * 10_000;
+}
+
+function gasDriftPct(actualGasUsd, expectedGasUsd) {
+  if (!Number.isFinite(actualGasUsd) || !Number.isFinite(expectedGasUsd) || expectedGasUsd === 0) return null;
+  return (actualGasUsd - expectedGasUsd) / expectedGasUsd;
+}
+
+function reconciliationStatus({ receipt, actualOutputValueUsd }) {
+  if (Number(receipt?.status) === 0) return "failed";
+  if (Number.isFinite(actualOutputValueUsd)) return "reconciled";
+  return "pending_output";
+}
+
+export function buildReceiptReconciliation({
+  kind = "route_execution",
+  chain,
+  txHash,
+  routeContext = null,
+  receipt,
+  transaction = null,
+  output = {},
+  prices = null,
+  observedAt,
+}) {
+  const actualGasCostUsd = receiptGasUsd({ chain, receipt, prices });
+  const actualTxValueCostUsd = actualTxValueUsd({ chain, transaction, routeContext, prices });
+  const actualOutputValueUsd = actualOutputUsd({ routeContext, output, prices });
+  const actualKnownCostUsd =
+    (Number.isFinite(actualGasCostUsd) ? actualGasCostUsd : 0) + (Number.isFinite(actualTxValueCostUsd) ? actualTxValueCostUsd : 0);
+  const expectedInputUsd = routeContext?.inputUsd ?? null;
+  const realizedNetPnlUsd =
+    Number(receipt?.status) === 0
+      ? finiteOrNull(-actualKnownCostUsd)
+      : Number.isFinite(expectedInputUsd) && Number.isFinite(actualOutputValueUsd)
+        ? finiteOrNull(actualOutputValueUsd - expectedInputUsd - actualKnownCostUsd)
+        : null;
+
+  return {
+    schemaVersion: 1,
+    observedAt: observedAt || new Date().toISOString(),
+    kind,
+    chain,
+    txHash,
+    reconciliationStatus: reconciliationStatus({ receipt, actualOutputValueUsd }),
+    routeContext: routeContext
+      ? {
+          routeKey: routeContext.routeKey,
+          amount: routeContext.amount,
+          srcChain: routeContext.srcChain,
+          dstChain: routeContext.dstChain,
+          tradeReadiness: routeContext.tradeReadiness ?? null,
+          estimatedInputUsd: routeContext.inputUsd ?? null,
+          estimatedOutputUsd: expectedOutputUsd(routeContext),
+          estimatedNetPnlUsd: expectedNetPnl(routeContext),
+          estimatedExecutionGasUsd: routeContext.executionGasUsd ?? null,
+          estimatedNativeCostUsd: routeContext.nativeCostUsd ?? null,
+        }
+      : null,
+    transaction: transaction
+      ? {
+          from: transaction.from,
+          to: transaction.to,
+          nonce: transaction.nonce,
+          value: transaction.value.toString(),
+          valueDecimal: decimalFromWei(transaction.value),
+        }
+      : null,
+    receipt: receipt
+      ? {
+          status: Number(receipt.status),
+          blockNumber: receipt.blockNumber,
+          gasUsed: receipt.gasUsed.toString(),
+          effectiveGasPrice: receipt.effectiveGasPrice.toString(),
+          from: receipt.from,
+          to: receipt.to,
+        }
+      : null,
+    output: {
+      asset: outputAssetFromContext(routeContext, output),
+      actualOutputUnits: output.actualOutputUnits != null ? String(output.actualOutputUnits) : null,
+      actualOutputUsd: finiteOrNull(actualOutputValueUsd),
+      explicitOutputPriceUsd: finiteOrNull(output.priceUsd),
+    },
+    realized: {
+      actualTxValueUsd: finiteOrNull(actualTxValueCostUsd),
+      receiptGasUsd: finiteOrNull(actualGasCostUsd),
+      actualKnownCostUsd: finiteOrNull(actualKnownCostUsd),
+      realizedNetPnlUsd,
+      realizedFillVsEstimateBps: outputDriftBps(actualOutputValueUsd, expectedOutputUsd(routeContext)),
+      gasDriftUsd:
+        Number.isFinite(actualGasCostUsd) && Number.isFinite(routeContext?.executionGasUsd)
+          ? actualGasCostUsd - routeContext.executionGasUsd
+          : null,
+      gasDriftPct: gasDriftPct(actualGasCostUsd, routeContext?.executionGasUsd),
+    },
+    flags: {
+      failed: Number(receipt?.status) === 0,
+      missingActualOutput: Number(receipt?.status) !== 0 && !Number.isFinite(actualOutputValueUsd),
+      estimatedPositiveButRealizedNegative:
+        Number.isFinite(expectedNetPnl(routeContext)) &&
+        expectedNetPnl(routeContext) > 0 &&
+        Number.isFinite(realizedNetPnlUsd) &&
+        realizedNetPnlUsd < 0,
+    },
+  };
+}
+
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+export function buildReceiptLedgerSummary(records = []) {
+  const reconciled = records.filter((item) => item.reconciliationStatus === "reconciled");
+  const failed = records.filter((item) => item.reconciliationStatus === "failed");
+  const pendingOutput = records.filter((item) => item.reconciliationStatus === "pending_output");
+  const realizedValues = reconciled.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
+  const gasValues = records.map((item) => item.realized?.receiptGasUsd).filter(Number.isFinite);
+  const driftValues = reconciled.map((item) => item.realized?.realizedFillVsEstimateBps).filter(Number.isFinite);
+  const routeGroups = new Map();
+
+  for (const item of records) {
+    const key = item.routeContext?.routeKey || "__unknown__";
+    if (!routeGroups.has(key)) routeGroups.set(key, []);
+    routeGroups.get(key).push(item);
+  }
+
+  return {
+    schemaVersion: 1,
+    summary: {
+      recordCount: records.length,
+      reconciledCount: reconciled.length,
+      failedCount: failed.length,
+      pendingOutputCount: pendingOutput.length,
+      realizedNetPnlUsd: realizedValues.reduce((sum, value) => sum + value, 0),
+      medianRealizedNetPnlUsd: median(realizedValues),
+      failedGasCostUsd: failed.map((item) => item.realized?.actualKnownCostUsd).filter(Number.isFinite).reduce((sum, value) => sum + value, 0),
+      totalReceiptGasUsd: gasValues.reduce((sum, value) => sum + value, 0),
+      medianFillDriftBps: median(driftValues),
+    },
+    routes: [...routeGroups.entries()].map(([routeKey, items]) => {
+      const routeRealized = items.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
+      return {
+        routeKey: routeKey === "__unknown__" ? null : routeKey,
+        count: items.length,
+        reconciledCount: items.filter((item) => item.reconciliationStatus === "reconciled").length,
+        failedCount: items.filter((item) => item.reconciliationStatus === "failed").length,
+        realizedNetPnlUsd: routeRealized.reduce((sum, value) => sum + value, 0),
+        medianRealizedNetPnlUsd: median(routeRealized),
+      };
+    }),
+  };
+}

@@ -5,7 +5,7 @@ import { config, getChainRpcUrls } from "../config/env.mjs";
 import { classifyGasEstimateError, estimateGas, gasUsdFromSnapshot, getGasSnapshot } from "../gas/rpc-gas.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { matchesRouteSelection } from "../estimator/route-filter.mjs";
 
 const SCHEMA_VERSION = 1;
@@ -65,7 +65,7 @@ function skipReason(quote) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const store = new JsonlStore(config.dataDir);
-  const prices = await getCoinGeckoPricesUsd();
+  const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
   const selectedQuotes = quotes
     .filter((quote) => quote.route?.srcChain !== "bitcoin")

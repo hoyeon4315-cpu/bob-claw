@@ -4,7 +4,7 @@ import { config, getChainRpcUrls } from "../config/env.mjs";
 import { EVM_CHAINS } from "../chains/registry.mjs";
 import { getGasSnapshot, gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 
 const SCHEMA_VERSION = 1;
 
@@ -15,7 +15,7 @@ function formatUsd(value) {
 
 async function main() {
   const store = new JsonlStore(config.dataDir);
-  const prices = await getCoinGeckoPricesUsd();
+  const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const runId = `${new Date().toISOString()}-${Math.random().toString(16).slice(2)}`;
 
   for (const chain of Object.keys(EVM_CHAINS).sort()) {

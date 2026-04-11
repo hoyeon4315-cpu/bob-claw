@@ -7,6 +7,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { matchesRouteSelection } from "../estimator/route-filter.mjs";
+import { requiresAllowanceForQuote } from "../estimator/wallet-readiness.mjs";
 
 const SCHEMA_VERSION = 1;
 
@@ -122,13 +123,14 @@ async function main() {
     let tokenRequirement = null;
     let allowanceRequirement = null;
     if (!srcAsset.isNative) {
+      const needsAllowance = requiresAllowanceForQuote(quote);
       const [tokenState, allowanceState] = await Promise.all([
         tokenBalance(quote.route.srcChain, quote.route.srcToken),
-        allowance(quote.route.srcChain, quote.route.srcToken, quote.txTo),
+        needsAllowance ? allowance(quote.route.srcChain, quote.route.srcToken, quote.txTo) : Promise.resolve(null),
       ]);
       const inputUnits = BigInt(quote.inputAmount);
       tokenRequirement = summarizeRequirement(tokenState.balance, inputUnits);
-      allowanceRequirement = summarizeRequirement(allowanceState.allowance, inputUnits);
+      allowanceRequirement = needsAllowance ? summarizeRequirement(allowanceState.allowance, inputUnits) : null;
     }
 
     const record = {

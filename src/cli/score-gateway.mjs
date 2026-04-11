@@ -6,7 +6,7 @@ import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { config } from "../config/env.mjs";
 import { gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { scoreGatewayQuote } from "../scoring/gateway-score.mjs";
 
 function latestByRouteAndAmount(quotes) {
@@ -112,7 +112,7 @@ async function main() {
   const gasEstimates = latestByRouteAndAmountMap(gasEstimateSnapshots);
   const gasSnapshots = latestBy(await readJsonl(config.dataDir, "gas-snapshots"), (snapshot) => snapshot.chain);
   const bitcoinFee = bitcoinFeeSnapshots.at(-1) || null;
-  const prices = await getCoinGeckoPricesUsd();
+  const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const tokenCache = new Map();
   const maxRouteFailureRate = 0.1;
 

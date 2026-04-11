@@ -1,0 +1,140 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+import { buildReceiptLedgerSummary, buildReceiptReconciliation } from "../src/ledger/receipt-reconciliation.mjs";
+
+function pricesFixture() {
+  return {
+    btc: 73000,
+    nativeByChain: {
+      bob: 2200,
+      base: 2200,
+    },
+    tokenByKey: {
+      btc: 73000,
+      usd_stable: 1,
+    },
+  };
+}
+
+function routeContextFixture(overrides = {}) {
+  return {
+    routeKey: "bob:0x0555->base:0x0555",
+    amount: "10000",
+    srcChain: "bob",
+    dstChain: "base",
+    inputUsd: 7.3,
+    outputUsd: 7.28,
+    executableOutputUsd: null,
+    netEdgeUsd: -0.83,
+    executableNetEdgeUsd: null,
+    executionGasUsd: 0.001,
+    nativeCostUsd: 0.79,
+    tradeReadiness: "reject_no_net_edge",
+    srcAsset: {
+      chain: "bob",
+      token: WBTC_OFT_TOKEN,
+      ticker: "wBTC.OFT",
+      decimals: 8,
+      priceKey: "btc",
+      isNative: false,
+    },
+    dstAsset: {
+      chain: "base",
+      token: WBTC_OFT_TOKEN,
+      ticker: "wBTC.OFT",
+      decimals: 8,
+      priceKey: "btc",
+      isNative: false,
+    },
+    price: {
+      dstRawUsd: 73000,
+    },
+    ...overrides,
+  };
+}
+
+function receiptFixture(overrides = {}) {
+  return {
+    status: 1,
+    blockNumber: 123,
+    gasUsed: 300000n,
+    effectiveGasPrice: 1_000_000n,
+    from: "0xfrom",
+    to: "0xto",
+    ...overrides,
+  };
+}
+
+function transactionFixture(overrides = {}) {
+  return {
+    from: "0xfrom",
+    to: "0xto",
+    nonce: 1,
+    value: 100000000000000n,
+    ...overrides,
+  };
+}
+
+test("receipt reconciliation computes realized pnl for successful route execution", () => {
+  const record = buildReceiptReconciliation({
+    chain: "bob",
+    txHash: "0xabc",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture(),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+    output: {
+      actualOutputUnits: "10000",
+    },
+  });
+
+  assert.equal(record.reconciliationStatus, "reconciled");
+  assert.equal(Number.isFinite(record.realized.receiptGasUsd), true);
+  assert.equal(Number.isFinite(record.realized.actualKnownCostUsd), true);
+  assert.equal(Number.isFinite(record.realized.realizedNetPnlUsd), true);
+  assert.equal(record.flags.failed, false);
+  assert.equal(record.output.asset.ticker, "wBTC.OFT");
+});
+
+test("receipt reconciliation records failed transaction cost even without output", () => {
+  const record = buildReceiptReconciliation({
+    chain: "bob",
+    txHash: "0xdef",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture({ status: 0 }),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+  });
+
+  assert.equal(record.reconciliationStatus, "failed");
+  assert.equal(record.flags.failed, true);
+  assert.equal(record.realized.realizedNetPnlUsd < 0, true);
+});
+
+test("receipt ledger summary aggregates realized records", () => {
+  const success = buildReceiptReconciliation({
+    chain: "bob",
+    txHash: "0x1",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture(),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+    output: { actualOutputUnits: "10000" },
+  });
+  const failed = buildReceiptReconciliation({
+    chain: "bob",
+    txHash: "0x2",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture({ status: 0 }),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+  });
+  const summary = buildReceiptLedgerSummary([success, failed]);
+
+  assert.equal(summary.summary.recordCount, 2);
+  assert.equal(summary.summary.reconciledCount, 1);
+  assert.equal(summary.summary.failedCount, 1);
+  assert.equal(Number.isFinite(summary.summary.realizedNetPnlUsd), true);
+  assert.equal(summary.routes.length, 1);
+});
