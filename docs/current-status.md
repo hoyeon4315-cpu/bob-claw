@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-12T01:36:08.559Z
+Updated: 2026-04-12T01:45:31.616Z
 
 ## Start Here
 
@@ -122,7 +122,7 @@ Updated: 2026-04-12T01:36:08.559Z
 - BTC watchlist missing from live routes: FBTC, LBTC, solvBTC, SolvBTC.BBN, tBTC, xSolvBTC
 - BTC watchlist unknown addresses: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
 - Last canary advance: bob->base wBTC.OFT->wBTC.OFT (BLOCKED_NO_VIABLE_PREP_ROUTE -> BLOCKED_NO_VIABLE_PREP_ROUTE; actions no_actions)
-- Route input freshness: quote stale (78.6m) · exactGas stale (96.8m) · srcGas stale (78.1m) · dex stale (80.3m) · btcFee not_needed · market stale (70.8m)
+- Route input freshness: quote stale (88.0m) · exactGas stale (106.2m) · srcGas stale (87.5m) · dex stale (89.7m) · btcFee not_needed · market stale (80.2m)
 - Route input blockers: reject_no_net_edge
 - Canary input watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 inputs=gateway_quote,exact_gas,src_gas,dex_quote,market (current canary route inputs are stale)
 - Gas refresh watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (gas freshness is not the active blocker)
