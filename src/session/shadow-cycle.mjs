@@ -1,5 +1,6 @@
 import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { summarizeShadowCandidateEvidence } from "./shadow-evidence.mjs";
+import { buildShadowRefreshQueue } from "./shadow-refresh-queue.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
 
 function dedupe(values) {
@@ -410,6 +411,11 @@ export function buildShadowCycleSummary({
   const nextReadinessCheck = readinessChecks[0] || null;
   const nextReadinessRefresh = summarizeNextReadinessRefresh(canaryState, nextReadinessCheck);
   const enabledRoutes = routePerformance?.routes?.filter((item) => item.enabledState === "enabled_review_only") || [];
+  const shadowActions = summarizeShadowActions(canaryState?.routePlan, { address: canaryState?.address || null });
+  const strategyPlans = buildStrategyRefreshPlans({
+    crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
+    btcProxySpreads: strategy?.btcProxySpreads || null,
+  });
 
   const blockers = dedupe([
     ...(nextStep?.reasons || []),
@@ -432,6 +438,17 @@ export function buildShadowCycleSummary({
     mode = "SHADOW_REVIEW_ONLY";
     headline = "Estimated route quality exists, but realized evidence is still missing";
   }
+
+  const refreshQueue = buildShadowRefreshQueue({
+    address: canaryState?.address || null,
+    nextReadinessCheck,
+    shadowActions,
+    strategyPlans,
+    mode,
+    enabledRouteCount: enabledRoutes.length,
+    treasuryDecision: treasuryPlan?.decision || null,
+    fundingReasonCount: fundingSourcePlan?.reasons?.length || 0,
+  });
 
   return {
     schemaVersion: 1,
@@ -459,11 +476,9 @@ export function buildShadowCycleSummary({
         scores: scoreSnapshot?.scores || [],
       },
     ),
-    strategyPlans: buildStrategyRefreshPlans({
-      crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
-      btcProxySpreads: strategy?.btcProxySpreads || null,
-    }),
-    shadowActions: summarizeShadowActions(canaryState?.routePlan, { address: canaryState?.address || null }),
+    strategyPlans,
+    shadowActions,
+    refreshQueue,
     canary: nextStep
       ? {
           decision: nextStep.decision,
@@ -489,6 +504,7 @@ export function buildShadowCycleSummary({
     funding: fundingSourcePlan
       ? {
           selectionCount: fundingSourcePlan.summary?.selectionCount ?? 0,
+          reasonCount: fundingSourcePlan.reasons?.length ?? 0,
           executionRefillExpectedCostUsd: fundingSourcePlan.summary?.executionRefillExpectedCostUsd ?? null,
           reserveReplenishmentExpectedCostUsd: fundingSourcePlan.summary?.reserveReplenishmentExpectedCostUsd ?? null,
           effectiveSystemNetPnlUsd: fundingSourcePlan.summary?.effectiveSystemNetPnlUsd ?? null,
@@ -517,19 +533,7 @@ export function buildShadowCycleSummary({
       : null,
     blockers,
     recommendedCommands: dedupe([
-      nextReadinessCheck ? readinessCommand(canaryState?.address || null, nextReadinessCheck) : null,
-      buildStrategyRefreshPlans({
-        crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
-        btcProxySpreads: strategy?.btcProxySpreads || null,
-      }).stableLoop.command,
-      buildStrategyRefreshPlans({
-        crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
-        btcProxySpreads: strategy?.btcProxySpreads || null,
-      }).proxySpread.command,
-      mode === "CANARY_PREP_BLOCKED" ? "npm run advance:canary" : null,
-      enabledRoutes.length === 0 ? "npm run report:route-performance -- --write" : null,
-      treasuryPlan?.decision === "BLOCKED" || treasuryPlan?.decision === "REVIEW_REFILL_PLAN" ? "npm run plan:treasury-actions -- --json" : null,
-      fundingSourcePlan?.reasons?.length ? "npm run plan:treasury-funding-sources -- --json" : null,
+      ...refreshQueue.map((item) => item.command),
     ]),
   };
 }

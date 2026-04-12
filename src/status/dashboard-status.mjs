@@ -960,6 +960,22 @@ function shadowCycleSummary(shadowCycle, now) {
           proxySpread: shadowCycle.strategyPlans.proxySpread || null,
         }
       : null,
+    refreshQueue: (shadowCycle.refreshQueue || []).map((item) => ({
+      rank: item.rank ?? null,
+      priority: item.priority ?? null,
+      kind: item.kind || null,
+      scope: item.scope || null,
+      code: item.code || null,
+      label: item.label || null,
+      reason: item.reason || null,
+      command: item.command || null,
+      routeKey: item.routeKey || null,
+      routeLabel: item.routeLabel || null,
+      amount: item.amount || null,
+      routeKeys: item.routeKeys || [],
+      chains: item.chains || [],
+      proxyGroup: item.proxyGroup || null,
+    })),
     shadowActions: (shadowCycle.shadowActions || []).map((item) => ({
       role: item.role || null,
       roleLabel: humanShadowRosterRole(item.role || null),

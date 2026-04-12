@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-12T02:05:57.202Z
+Updated: 2026-04-12T02:20:56.769Z
 
 ## Start Here
 
@@ -66,6 +66,17 @@ Updated: 2026-04-12T02:05:57.202Z
 - prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 - prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 
+## Refresh Queue
+
+- rank=1 priority=100 scope=canary next=check_wallet_readiness reason=scheduled_readiness_check route=`base->avalanche wBTC.OFT->wBTC.OFT` amount=`100000` command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=100000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- rank=2 priority=90 scope=prep_candidate next=check_wallet_readiness reason=wallet_not_checked route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- rank=3 priority=90 scope=prep_candidate next=check_wallet_readiness reason=wallet_not_checked route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- rank=4 priority=90 scope=prep_candidate next=check_wallet_readiness reason=wallet_not_checked route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- rank=5 priority=88 scope=stable_loop next=expand_amount_ladder reason=amount_mismatch command=`npm run quote:dex -- --route-key=base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 --include-stable-entry`
+- rank=6 priority=86 scope=proxy_spread next=expand_amount_ladder reason=partial_amount_match proxyGroup=`wbtc` chains=avalanche,base,ethereum,bsc,sonic,unichain command=`npm run quote:dex -- --chains=avalanche,base,ethereum,bsc,sonic,unichain --include-stable-entry --route-limit=64`
+- rank=7 priority=45 scope=canary next=advance_canary reason=canary_prep_blocked command=`npm run advance:canary`
+- rank=8 priority=35 scope=route_performance next=report_route_performance reason=no_realized_enabled_routes command=`npm run report:route-performance -- --write`
+
 ## Profitability Summary
 
 - Overfit audit: LIVE_BLOCKED · sample=shadow_observations · horizon=12.4h · buckets=7
@@ -126,7 +137,7 @@ Updated: 2026-04-12T02:05:57.202Z
 - BTC watchlist missing from live routes: FBTC, LBTC, solvBTC, SolvBTC.BBN, tBTC, xSolvBTC
 - BTC watchlist unknown addresses: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
 - Last canary advance: bob->base wBTC.OFT->wBTC.OFT (BLOCKED_NO_VIABLE_PREP_ROUTE -> BLOCKED_NO_VIABLE_PREP_ROUTE; actions no_actions)
-- Route input freshness: quote stale (108.5m) · exactGas stale (126.7m) · srcGas stale (108.0m) · dex stale (110.1m) · btcFee not_needed · market stale (100.6m)
+- Route input freshness: quote stale (123.4m) · exactGas stale (141.6m) · srcGas stale (122.9m) · dex stale (125.1m) · btcFee not_needed · market stale (115.6m)
 - Route input blockers: reject_no_net_edge
 - Canary input watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 inputs=gateway_quote,exact_gas,src_gas,dex_quote,market (current canary route inputs are stale)
 - Gas refresh watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (gas freshness is not the active blocker)

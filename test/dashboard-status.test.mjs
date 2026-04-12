@@ -627,6 +627,40 @@ test("dashboard status includes shadow cycle summary when available", () => {
           chains: [],
         },
       },
+      refreshQueue: [
+        {
+          rank: 1,
+          priority: 100,
+          kind: "canary_readiness",
+          scope: "canary",
+          code: "check_wallet_readiness",
+          label: "refresh canary readiness",
+          reason: "fresh_recent_check",
+          command: "npm run check:estimator-wallet -- --route-key=base:eth->bitcoin:btc --amount=1787455313617158 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+          routeKey: "base:eth->bitcoin:btc",
+          routeLabel: "base->bitcoin ETH->BTC",
+          amount: "1787455313617158",
+          routeKeys: [],
+          chains: [],
+          proxyGroup: null,
+        },
+        {
+          rank: 2,
+          priority: 35,
+          kind: "ops",
+          scope: "route_performance",
+          code: "report_route_performance",
+          label: "refresh route performance report",
+          reason: "no_realized_enabled_routes",
+          command: "npm run report:route-performance -- --write",
+          routeKey: null,
+          routeLabel: null,
+          amount: null,
+          routeKeys: [],
+          chains: [],
+          proxyGroup: null,
+        },
+      ],
       treasury: {
         decision: "BLOCKED",
         estimatedWalletUsd: 25.01,
@@ -721,6 +755,9 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowActions[1].command.includes("check:estimator-wallet"), true);
   assert.equal(status.shadowCycle.strategyPlans.stableLoop.nextAction, "collect_stable_loop_coverage");
   assert.equal(status.shadowCycle.strategyPlans.proxySpread.nextAction, "watch_proxy_surface");
+  assert.equal(status.shadowCycle.refreshQueue[0].scope, "canary");
+  assert.equal(status.shadowCycle.refreshQueue[0].code, "check_wallet_readiness");
+  assert.equal(status.shadowCycle.refreshQueue[1].command, "npm run report:route-performance -- --write");
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
   assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
   assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);

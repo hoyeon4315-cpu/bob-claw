@@ -241,6 +241,20 @@ function shadowActionLines(routePlan, address) {
   });
 }
 
+function refreshQueueLines(refreshQueue = []) {
+  if (!refreshQueue.length) return ["- none"];
+  return refreshQueue.map((item) => {
+    const targets = item.routeLabel
+      ? ` route=\`${item.routeLabel}\``
+      : item.proxyGroup
+        ? ` proxyGroup=\`${item.proxyGroup}\``
+        : "";
+    const amount = item.amount ? ` amount=\`${item.amount}\`` : "";
+    const chains = item.chains?.length ? ` chains=${item.chains.join(",")}` : "";
+    return `- rank=${item.rank ?? "n/a"} priority=${item.priority ?? "n/a"} scope=${item.scope || "unknown"} next=${item.code || "unknown"} reason=${item.reason || "unknown"}${targets}${amount}${chains}${item.command ? ` command=\`${item.command}\`` : ""}`;
+  });
+}
+
 function watcherReasonLabel(kind, reason) {
   return {
     canaryInputs: {
@@ -709,6 +723,10 @@ async function main() {
     "## Shadow Actions",
     "",
     ...shadowActionLines(routePlan, resolved.address),
+    "",
+    "## Refresh Queue",
+    "",
+    ...refreshQueueLines(dashboardStatus?.shadowCycle?.refreshQueue || []),
     "",
     "## Profitability Summary",
     "",

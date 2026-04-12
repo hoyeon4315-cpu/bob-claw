@@ -501,4 +501,13 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
   );
   assert.equal(summary.strategyPlans.stableLoop.nextAction, "collect_stable_loop_coverage");
   assert.equal(summary.strategyPlans.proxySpread.nextAction, "watch_proxy_surface");
+  assert.deepEqual(
+    summary.refreshQueue.map((item) => [item.rank, item.scope, item.code]),
+    [
+      [1, "tx_ready_shadow", "check_wallet_readiness"],
+      [2, "tx_ready_shadow", "check_wallet_readiness"],
+      [3, "canary", "advance_canary"],
+      [4, "route_performance", "report_route_performance"],
+    ],
+  );
 });
