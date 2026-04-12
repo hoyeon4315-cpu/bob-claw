@@ -940,3 +940,28 @@ h2 {
 .quote-lag-stat-row strong {
   font-variant-numeric: tabular-nums;
 }
+
+/* BTC Volatility panel */
+.vol-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.vol-hero strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.vol-change {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.vol-change.up { color: #16a34a; }
+.vol-change.down { color: #dc2626; }
+.vol-indicators {
+  display: flex;
+  gap: 10px;
+  font-size: 1.25rem;
+  margin-bottom: 10px;
+}

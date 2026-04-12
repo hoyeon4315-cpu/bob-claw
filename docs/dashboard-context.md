@@ -158,6 +158,14 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `watchers.blockedScore.targetRoutes`
 - `watchers.quoteDecay.reasonLabel`
 - `gateway.btcWatchlist`
+- `dexSpread.btcSpotUsd`
+- `dexSpread.btcChange24hPct`
+- `dexSpread.alerts`
+- `dexSpread.spreadPct`
+- `dexSpread.observedAt`
+- `dexSpread.summary.sampleCount`
+- `dexSpread.summary.spread.min`
+- `dexSpread.summary.spread.max`
 
 Do not remove or rename these fields without updating `dashboard/public/app.js` and `test/dashboard-status.test.mjs`.
 

@@ -152,6 +152,39 @@
 
         <article class="panel">
           <div class="panel-title">
+            <h2>BTC 변동성 추적</h2>
+            <span id="volBadge" class="chip">대기 중</span>
+          </div>
+          <div class="vol-hero">
+            <strong id="volPrice">—</strong>
+            <span id="volChange" class="vol-change">—</span>
+          </div>
+          <div class="vol-indicators">
+            <span id="volAlertIcon" title="알림 상태">✅</span>
+            <span id="volTurboIcon" title="터보 모드" style="display:none">🔥</span>
+          </div>
+          <div class="quote-lag-stats">
+            <div class="quote-lag-stat-row">
+              <span>수집 샘플</span>
+              <strong id="volSamples">0</strong>
+            </div>
+            <div class="quote-lag-stat-row">
+              <span>스프레드 범위</span>
+              <strong id="volSpreadRange">—</strong>
+            </div>
+            <div class="quote-lag-stat-row">
+              <span>데이터 신선도</span>
+              <strong id="volFreshness">—</strong>
+            </div>
+            <div class="quote-lag-stat-row">
+              <span>알림</span>
+              <strong id="volAlertDetail">없음</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
             <h2>업데이트</h2>
             <span id="updateBadge" class="chip">확인 중</span>
           </div>

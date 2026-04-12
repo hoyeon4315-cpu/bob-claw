@@ -666,6 +666,66 @@ function renderUpdate(status) {
   $("overfitBody").textContent = overfit.body;
 }
 
+function renderSystemStatus(status) {
+  const ds = status.dexSpread;
+  const badge = $("volBadge");
+  const priceEl = $("volPrice");
+  const changeEl = $("volChange");
+  const alertIcon = $("volAlertIcon");
+  const turboIcon = $("volTurboIcon");
+  const samplesEl = $("volSamples");
+  const spreadRangeEl = $("volSpreadRange");
+  const freshnessEl = $("volFreshness");
+  const alertDetailEl = $("volAlertDetail");
+
+  if (!ds || ds.btcSpotUsd == null) {
+    badge.textContent = "대기 중";
+    priceEl.textContent = "—";
+    changeEl.textContent = "";
+    return;
+  }
+
+  // BTC price + 24h change
+  priceEl.textContent = `$${Math.round(ds.btcSpotUsd).toLocaleString()}`;
+  const pct = ds.btcChange24hPct ?? 0;
+  const sign = pct >= 0 ? "+" : "";
+  changeEl.textContent = `${sign}${pct.toFixed(2)}%`;
+  changeEl.className = `vol-change ${pct >= 0 ? "up" : "down"}`;
+
+  // Alerts
+  const alerts = ds.alerts || [];
+  const hasAlert = alerts.length > 0;
+  alertIcon.textContent = hasAlert ? "🚨" : "✅";
+  alertDetailEl.textContent = hasAlert
+    ? alerts.map(a => a.type || a.label || "alert").join(", ")
+    : "없음";
+
+  // Turbo: show if spread is very wide (> 0.5%)
+  const turboActive = ds.spreadPct > 0.5;
+  turboIcon.style.display = turboActive ? "inline" : "none";
+
+  // Badge
+  badge.textContent = hasAlert ? "🚨 변동" : turboActive ? "🔥 터보" : "✅ 안정";
+
+  // Samples
+  const sc = ds.summary?.sampleCount ?? 1;
+  samplesEl.textContent = sc.toLocaleString();
+
+  // Spread range
+  const sp = ds.summary?.spread;
+  spreadRangeEl.textContent = sp
+    ? `${sp.min.toFixed(3)}% – ${sp.max.toFixed(3)}%`
+    : "—";
+
+  // Freshness
+  if (ds.observedAt) {
+    const ageMin = Math.round((Date.now() - new Date(ds.observedAt).getTime()) / 60000);
+    freshnessEl.textContent = ageMin < 1 ? "방금 전" : `${ageMin}분 전`;
+  } else {
+    freshnessEl.textContent = "—";
+  }
+}
+
 function renderHeader(status) {
   const chains = status.gateway.chains?.length || 0;
   $("liveCopy").textContent = `자동 갱신 · ${compactAge(status.generatedAt)}`;
@@ -686,6 +746,7 @@ function render(status) {
   renderOpportunity(status);
   renderQuoteLag(status);
   renderDexSpread(status);
+  renderSystemStatus(status);
   renderUpdate(status);
   const mapWidth = document.querySelector(".map-wrap")?.clientWidth || null;
   lastMapWidth = mapWidth;

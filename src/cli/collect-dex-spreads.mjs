@@ -355,6 +355,9 @@ function parseArgs(argv) {
   const kv = Object.fromEntries(argv.filter(a => a.includes("=")).map(a => a.split("=")));
   return {
     interval: parseInt(kv["--interval"] || "90", 10),
+    turboInterval: parseInt(kv["--turbo-interval"] || "30", 10),
+    turboThreshold: parseFloat(kv["--turbo-threshold"] || "1.5"),
+    turboDuration: parseInt(kv["--turbo-duration"] || "1800", 10),
     refreshDashboard: flags.has("--refresh-dashboard"),
     once: flags.has("--once"),
     json: flags.has("--json"),
@@ -415,23 +418,49 @@ async function main() {
   }
 
   const totalTokens = CHAIN_CONFIGS.reduce((n, c) => n + c.tokens.length, 0);
-  console.log(`DEX Spread Collector v2 — ${CHAIN_CONFIGS.length} chains, ${totalTokens} tokens, interval ${args.interval}s`);
+  console.log(`DEX Spread Collector v3 — ${CHAIN_CONFIGS.length} chains, ${totalTokens} tokens`);
+  console.log(`  normal: ${args.interval}s | turbo: ${args.turboInterval}s | trigger: ${args.turboThreshold}% BTC move | duration: ${args.turboDuration}s`);
   for (const c of CHAIN_CONFIGS) {
     console.log(`  ${c.chain}: ${c.tokens.map(t => t.symbol).join(", ")}`);
   }
   console.log(`  Probe size: ${PROBE_BTC} BTC → USDC\n`);
 
   let cycles = 0;
+  let anchorPrice = null;
+  let turboUntil = 0;
+  const SENTINEL_MS = 30_000; // check BTC price every 30s between probes
+
   while (true) {
+    const inTurbo = Date.now() < turboUntil;
+    const currentInterval = inTurbo ? args.turboInterval : args.interval;
+
     try {
       const sample = await collectOneSample();
       cycles++;
+
+      // Update anchor from sample
+      if (sample.btcSpotUsd) {
+        if (!anchorPrice) anchorPrice = sample.btcSpotUsd;
+      }
+
+      const mode = inTurbo ? "🔥 TURBO" : "📊 NORMAL";
       printSample(sample);
       const { sampleCount, summary } = await persistSample(sample);
-      console.log(`  → #${cycles} saved (${sampleCount} total)`);
+      console.log(`  → ${mode} #${cycles} saved (${sampleCount} total) next in ${currentInterval}s`);
       if (summary) {
         console.log(`  summary: spread avg=${summary.spread.mean.toFixed(3)}% max=${summary.spread.max.toFixed(3)}%  LBTC prem avg=${summary.lbtcPremium.mean.toFixed(3)}%`);
       }
+      if (inTurbo) {
+        const remaining = Math.round((turboUntil - Date.now()) / 1000);
+        console.log(`  🔥 turbo ${remaining}s remaining`);
+      }
+
+      // Check alerts for turbo trigger
+      if (sample.alerts?.some(a => a.type === "btc_volatile" || a.type === "lbtc_spread")) {
+        turboUntil = Math.max(turboUntil, Date.now() + args.turboDuration * 1000);
+        console.log(`  🔥 TURBO activated! BTC event or LBTC spread alert. Collecting every ${args.turboInterval}s for ${args.turboDuration}s`);
+      }
+
       if (args.refreshDashboard) {
         const ok = refreshDashboard();
         if (!ok) console.log("  ⚠ dashboard refresh failed");
@@ -439,7 +468,34 @@ async function main() {
     } catch (err) {
       console.error(`  ✗ cycle error: ${err.message}`);
     }
-    await new Promise(r => setTimeout(r, args.interval * 1000));
+
+    // Sentinel loop: check BTC price between probes
+    const probeDeadline = Date.now() + currentInterval * 1000;
+    while (Date.now() < probeDeadline) {
+      const sleepMs = Math.min(SENTINEL_MS, probeDeadline - Date.now());
+      if (sleepMs <= 0) break;
+      await new Promise(r => setTimeout(r, sleepMs));
+
+      if (anchorPrice && !inTurbo) {
+        try {
+          // Quick price check using Binance (no cache)
+          const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", { signal: AbortSignal.timeout(5_000) });
+          const d = await r.json();
+          const nowPrice = parseFloat(d.price);
+          if (Number.isFinite(nowPrice)) {
+            const movePct = ((nowPrice - anchorPrice) / anchorPrice) * 100;
+            if (Math.abs(movePct) >= args.turboThreshold) {
+              turboUntil = Date.now() + args.turboDuration * 1000;
+              console.log(`\n  🔥 SENTINEL: BTC ${movePct >= 0 ? "+" : ""}${movePct.toFixed(2)}% ($${anchorPrice.toFixed(0)} → $${nowPrice.toFixed(0)}) — TURBO ON!`);
+              anchorPrice = nowPrice;
+              break; // immediately start next probe
+            }
+          }
+        } catch {
+          // Non-critical
+        }
+      }
+    }
   }
 }
 
