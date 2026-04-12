@@ -21,6 +21,19 @@ function summarizeResult(result) {
   lines.push(`removedChains=${result.diff.removedChains.join(",") || "none"}`);
   lines.push(`probeOk=${result.probes.filter((probe) => probe.ok).length}/${result.probes.length}`);
   lines.push(`probeFailures=${result.probeFailures.length}`);
+
+  if (result.diff.addedRoutes.length > 0) {
+    lines.push("");
+    lines.push("--- Scan recommendations for new routes ---");
+    const routeArgs = result.diff.addedRoutes.slice(0, 10).map((rk) => `--route-key="${rk}"`);
+    for (const arg of routeArgs) {
+      lines.push(`  npm run scan:quote-surface -- ${arg}`);
+    }
+    if (result.diff.addedRoutes.length > 10) {
+      lines.push(`  ... and ${result.diff.addedRoutes.length - 10} more`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -60,6 +73,10 @@ function buildAlertRecord(result) {
       latencyMs: probe.latencyMs || null,
       shape: probe.shape || null,
       error: probe.error || null,
+    })),
+    scanRecommendations: result.diff.addedRoutes.slice(0, 20).map((rk) => ({
+      routeKey: rk,
+      command: `npm run scan:quote-surface -- --route-key="${rk}"`,
     })),
   };
 }
