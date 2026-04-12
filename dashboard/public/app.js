@@ -593,6 +593,54 @@ function renderQuoteLag(status) {
       : "—";
 }
 
+function renderDexSpread(status) {
+  const ds = status.dexSpread;
+  const badge = $("dexSpreadBadge");
+  const title = $("dexSpreadTitle");
+  const body = $("dexSpreadBody");
+  const tokensEl = $("dexSpreadTokens");
+  const maxEl = $("dexSpreadMax");
+  const lbtcEl = $("dexSpreadLbtc");
+  const samplesEl = $("dexSpreadSamples");
+  const bestEl = $("dexSpreadBest");
+
+  if (!ds || !ds.tokens) {
+    badge.textContent = "대기 중";
+    title.textContent = "Base BTC 토큰 스프레드";
+    body.textContent = "npm run collect:dex-spreads 로 수집을 시작하세요.";
+    tokensEl.innerHTML = "";
+    return;
+  }
+
+  const ageMin = ds.observedAt
+    ? Math.round((Date.now() - new Date(ds.observedAt).getTime()) / 60000)
+    : null;
+  const freshLabel = ageMin !== null ? `${ageMin}분 전` : "";
+
+  const isWide = ds.spreadPct > 0.3;
+  badge.textContent = isWide ? "🟢 스프레드 확대" : "측정 중";
+  title.textContent = `스프레드 ${ds.spreadPct.toFixed(3)}% · LBTC +${(ds.lbtcPremiumPct || 0).toFixed(3)}%`;
+  body.textContent = `${ds.probeBtc} BTC 기준 · ${freshLabel}`;
+
+  const tokens = ds.tokens.filter(t => !t.error);
+  tokens.sort((a, b) => (b.netUsdc || 0) - (a.netUsdc || 0));
+  tokensEl.innerHTML = tokens.map(t => {
+    const net = `$${t.netUsdc.toFixed(2)}`;
+    const imp = t.impact != null ? `${t.impact.toFixed(3)}%` : "—";
+    const isTop = t.symbol === ds.bestToken;
+    return `<div class="lag-probe${isTop ? " probe-best" : ""}">
+      <span class="lag-probe-label">${t.symbol}</span>
+      <span class="lag-probe-lag">${net}</span>
+      <span class="lag-probe-net">${imp} imp</span>
+    </div>`;
+  }).join("");
+
+  maxEl.textContent = `${ds.spreadPct.toFixed(3)}%${ds.summary?.spread?.max != null ? ` (max ${ds.summary.spread.max.toFixed(3)}%)` : ""}`;
+  lbtcEl.textContent = ds.lbtcPremiumPct != null ? `${ds.lbtcPremiumPct.toFixed(3)}%` : "—";
+  samplesEl.textContent = ds.summary?.sampleCount?.toLocaleString() || "1";
+  bestEl.textContent = ds.bestToken || "—";
+}
+
 function renderUpdate(status) {
   const summary = buildUpdateSummary(status);
   $("updateBadge").textContent = summary.badge;
@@ -623,6 +671,7 @@ function render(status) {
   renderAssetCoverage(status);
   renderOpportunity(status);
   renderQuoteLag(status);
+  renderDexSpread(status);
   renderUpdate(status);
   const mapWidth = document.querySelector(".map-wrap")?.clientWidth || null;
   lastMapWidth = mapWidth;

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-12T07:48:56.535Z",
+  "generatedAt": "2026-04-12T08:37:22.593Z",
   "overall": {
     "severity": "blocked",
     "liveTrading": "BLOCKED",
@@ -15,7 +15,7 @@
   },
   "gateway": {
     "observedAt": "2026-04-10T09:30:03.359Z",
-    "ageMinutes": 2778.886266666667,
+    "ageMinutes": 2827.3205666666668,
     "routeCount": 113,
     "chainCount": 10,
     "chains": [
@@ -8400,7 +8400,7 @@
   },
   "market": {
     "observedAt": "2026-04-12T06:21:35.848Z",
-    "ageMinutes": 87.34478333333334,
+    "ageMinutes": 135.77908333333335,
     "source": "coingecko_or_fallback",
     "btcUsd": 71706,
     "wbtcUsd": 71522,
@@ -8414,7 +8414,7 @@
         "ticker": "wBTC",
         "usd": 73028.77,
         "observedAt": "2026-04-12T00:25:26.424Z",
-        "ageMinutes": 443.50185,
+        "ageMinutes": 491.93615,
         "deltaPct": 1.8447131341868241,
         "stale": true,
         "source": "odos:gateway_dst_leg",
@@ -8428,7 +8428,7 @@
         "ticker": "wBTC",
         "usd": 71561.81,
         "observedAt": "2026-04-12T06:22:13.852Z",
-        "ageMinutes": 86.71138333333333,
+        "ageMinutes": 135.14568333333332,
         "deltaPct": -0.20108498591471052,
         "stale": true,
         "source": "odos:gateway_dst_leg",
@@ -8456,7 +8456,7 @@
         "ticker": "BTC",
         "usd": 71706,
         "observedAt": "2026-04-12T06:21:35.848Z",
-        "ageMinutes": 87.34478333333334,
+        "ageMinutes": 135.77908333333335,
         "deltaPct": null,
         "stale": true,
         "source": "coingecko_or_fallback",
@@ -8484,7 +8484,7 @@
         "ticker": "wBTC",
         "usd": 72879.76,
         "observedAt": "2026-04-11T23:54:22.006Z",
-        "ageMinutes": 474.57548333333335,
+        "ageMinutes": 523.0097833333333,
         "deltaPct": 1.6369062561012953,
         "stale": true,
         "source": "odos:gateway_dst_leg",
@@ -8498,7 +8498,7 @@
         "ticker": "wBTC",
         "usd": 72898.26,
         "observedAt": "2026-04-11T23:37:23.606Z",
-        "ageMinutes": 491.54881666666665,
+        "ageMinutes": 539.9831166666667,
         "deltaPct": 1.6627060497029464,
         "stale": true,
         "source": "odos:gateway_src_leg",
@@ -8526,7 +8526,7 @@
         "ticker": "wBTC",
         "usd": 72832.9,
         "observedAt": "2026-04-11T23:54:10.855Z",
-        "ageMinutes": 474.7613333333333,
+        "ageMinutes": 523.1956333333334,
         "deltaPct": 1.571556076200031,
         "stale": true,
         "source": "odos:gateway_dst_leg",
@@ -8540,7 +8540,7 @@
         "ticker": "wBTC",
         "usd": 72974.49,
         "observedAt": "2026-04-11T23:54:00.232Z",
-        "ageMinutes": 474.9383833333333,
+        "ageMinutes": 523.3726833333334,
         "deltaPct": 1.7690151451761431,
         "stale": true,
         "source": "odos:gateway_dst_leg",
@@ -8572,7 +8572,7 @@
       {
         "chain": "avalanche",
         "observedAt": "2026-04-12T00:17:58.623Z",
-        "ageMinutes": 450.9652,
+        "ageMinutes": 499.3995,
         "gasPriceWei": "55129849",
         "blockNumber": 82711075,
         "latencyMs": 302,
@@ -8583,7 +8583,7 @@
       {
         "chain": "base",
         "observedAt": "2026-04-12T00:17:58.874Z",
-        "ageMinutes": 450.9610166666667,
+        "ageMinutes": 499.39531666666664,
         "gasPriceWei": "6000000",
         "blockNumber": 44581865,
         "latencyMs": 249,
@@ -8594,7 +8594,7 @@
       {
         "chain": "bera",
         "observedAt": "2026-04-12T00:17:59.781Z",
-        "ageMinutes": 450.9459,
+        "ageMinutes": 499.3802,
         "gasPriceWei": "100055",
         "blockNumber": 19469180,
         "latencyMs": 906,
@@ -8605,7 +8605,7 @@
       {
         "chain": "bob",
         "observedAt": "2026-04-12T00:17:59.966Z",
-        "ageMinutes": 450.94281666666666,
+        "ageMinutes": 499.37711666666667,
         "gasPriceWei": "1000252",
         "blockNumber": 31545546,
         "latencyMs": 184,
@@ -8616,7 +8616,7 @@
       {
         "chain": "bsc",
         "observedAt": "2026-04-12T00:18:00.168Z",
-        "ageMinutes": 450.93945,
+        "ageMinutes": 499.37375,
         "gasPriceWei": "50000000",
         "blockNumber": 92005885,
         "latencyMs": 201,
@@ -8627,7 +8627,7 @@
       {
         "chain": "ethereum",
         "observedAt": "2026-04-12T00:18:00.502Z",
-        "ageMinutes": 450.9338833333333,
+        "ageMinutes": 499.3681833333333,
         "gasPriceWei": "137729029",
         "blockNumber": 24860030,
         "latencyMs": 333,
@@ -8638,7 +8638,7 @@
       {
         "chain": "soneium",
         "observedAt": "2026-04-12T00:18:00.970Z",
-        "ageMinutes": 450.92608333333334,
+        "ageMinutes": 499.36038333333335,
         "gasPriceWei": "1000287",
         "blockNumber": 21409164,
         "latencyMs": 468,
@@ -8649,7 +8649,7 @@
       {
         "chain": "sonic",
         "observedAt": "2026-04-12T00:18:01.784Z",
-        "ageMinutes": 450.91251666666665,
+        "ageMinutes": 499.34681666666665,
         "gasPriceWei": "55000000000",
         "blockNumber": 67046759,
         "latencyMs": 813,
@@ -8660,7 +8660,7 @@
       {
         "chain": "unichain",
         "observedAt": "2026-04-12T00:18:02.416Z",
-        "ageMinutes": 450.9019833333333,
+        "ageMinutes": 499.3362833333333,
         "gasPriceWei": "1500000",
         "blockNumber": 45204719,
         "latencyMs": 631,
@@ -8694,7 +8694,7 @@
     "recentFailureCount24h": 2,
     "latestEstimate": {
       "observedAt": "2026-04-11T23:59:18.013Z",
-      "ageMinutes": 469.64203333333336,
+      "ageMinutes": 518.0763333333333,
       "srcChain": "bob",
       "dstChain": "base",
       "gasUnits": 347508,
@@ -8722,7 +8722,7 @@
     "recentFailureCount24h": 0,
     "latestCheck": {
       "observedAt": "2026-04-12T05:57:44.036Z",
-      "ageMinutes": 111.20831666666666,
+      "ageMinutes": 159.64261666666667,
       "srcChain": "base",
       "dstChain": "soneium",
       "overallReady": false,
@@ -8738,8 +8738,8 @@
     ]
   },
   "shadowCycle": {
-    "observedAt": "2026-04-12T07:31:41.061Z",
-    "ageMinutes": 17.2579,
+    "observedAt": "2026-04-12T08:31:40.179Z",
+    "ageMinutes": 5.7069,
     "mode": "SHADOW_ONLY",
     "headline": "Collect more shadow and realized data",
     "blockerCount": 5,
@@ -8758,7 +8758,7 @@
         "state": "ready_now",
         "reason": "stale_check",
         "latestObservedAt": "2026-04-11T06:42:31.637Z",
-        "ageSeconds": 89349,
+        "ageSeconds": 92949,
         "maxAgeSeconds": 300
       },
       "readinessCheckCount": 3
@@ -9550,7 +9550,7 @@
   },
   "canaryAdvance": {
     "observedAt": "2026-04-11T23:42:42.024Z",
-    "ageMinutes": 486.24185,
+    "ageMinutes": 534.67615,
     "address": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
     "actionCount": 0,
     "actions": [],
@@ -10394,7 +10394,7 @@
     },
     "dexEnvironment": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-12T07:48:56.547Z",
+      "generatedAt": "2026-04-12T08:37:22.604Z",
       "policy": {
         "maxLegAgeMinutes": 30,
         "minRepeatedSamples": 2,
@@ -10434,7 +10434,7 @@
             "outputTicker": "USDC",
             "quoteCount": 2,
             "latestObservedAt": "2026-04-12T00:17:34.811Z",
-            "ageMinutes": 451.36226666666664,
+            "ageMinutes": 499.79655,
             "latestExecutionUsdPerBtc": 72956.31160401244,
             "executionRangePct": 0.005032211270375919,
             "latestGasUsd": 0.00695104539240243,
@@ -10453,7 +10453,7 @@
             "outputTicker": "Token",
             "quoteCount": 3,
             "latestObservedAt": "2026-04-12T00:17:35.383Z",
-            "ageMinutes": 451.35273333333333,
+            "ageMinutes": 499.78701666666666,
             "latestExecutionUsdPerBtc": 72918.36872648417,
             "executionRangePct": 0.011104087172930053,
             "latestGasUsd": 0.0005460397204479308,
@@ -10472,7 +10472,7 @@
             "outputTicker": "wBTC.OFT",
             "quoteCount": 3,
             "latestObservedAt": "2026-04-12T00:17:36.816Z",
-            "ageMinutes": 451.32885,
+            "ageMinutes": 499.7631333333333,
             "latestExecutionUsdPerBtc": 72973.22317677208,
             "executionRangePct": 0.005919126204728932,
             "latestGasUsd": 0.00500759087664308,
@@ -10508,7 +10508,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-12T00:17:34.811Z",
-              "ageMinutes": 451.36226666666664,
+              "ageMinutes": 499.79655,
               "latestExecutionUsdPerBtc": 72956.31160401244,
               "executionRangePct": 0.005032211270375919,
               "latestGasUsd": 0.00695104539240243,
@@ -10527,7 +10527,7 @@
               "outputTicker": "Token",
               "quoteCount": 3,
               "latestObservedAt": "2026-04-12T00:17:35.383Z",
-              "ageMinutes": 451.35273333333333,
+              "ageMinutes": 499.78701666666666,
               "latestExecutionUsdPerBtc": 72918.36872648417,
               "executionRangePct": 0.011104087172930053,
               "latestGasUsd": 0.0005460397204479308,
@@ -10546,7 +10546,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 3,
               "latestObservedAt": "2026-04-12T00:17:36.816Z",
-              "ageMinutes": 451.32885,
+              "ageMinutes": 499.7631333333333,
               "latestExecutionUsdPerBtc": 72973.22317677208,
               "executionRangePct": 0.005919126204728932,
               "latestGasUsd": 0.00500759087664308,
@@ -10581,7 +10581,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-12T00:25:24.397Z",
-              "ageMinutes": 443.53583333333336,
+              "ageMinutes": 491.9701166666667,
               "latestExecutionUsdPerBtc": 73074.4488678549,
               "executionRangePct": 0.005766949942252347,
               "latestGasUsd": 0.00542681750832387,
@@ -10600,7 +10600,7 @@
               "outputTicker": "Token",
               "quoteCount": 3,
               "latestObservedAt": "2026-04-12T00:25:26.424Z",
-              "ageMinutes": 443.50205,
+              "ageMinutes": 491.9363333333333,
               "latestExecutionUsdPerBtc": 72992.20866976264,
               "executionRangePct": 0.011703558441078574,
               "latestGasUsd": 0.00019875969360571958,
@@ -10619,7 +10619,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 3,
               "latestObservedAt": "2026-04-12T00:25:29.010Z",
-              "ageMinutes": 443.45895,
+              "ageMinutes": 491.89323333333334,
               "latestExecutionUsdPerBtc": 73048.78316072848,
               "executionRangePct": 0.005635261526798767,
               "latestGasUsd": 0.006533280897309954,
@@ -10654,7 +10654,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:28:31.045Z",
-              "ageMinutes": 1040.4250333333334,
+              "ageMinutes": 1088.8593166666667,
               "latestExecutionUsdPerBtc": 72656.62311687956,
               "executionRangePct": null,
               "latestGasUsd": 0.007346727266063029,
@@ -10673,7 +10673,7 @@
               "outputTicker": "Token",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:06.089Z",
-              "ageMinutes": 785.8409666666666,
+              "ageMinutes": 834.27525,
               "latestExecutionUsdPerBtc": 73395.33450788014,
               "executionRangePct": 0.011714080385107012,
               "latestGasUsd": 0.0004627053096962648,
@@ -10692,7 +10692,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:28:37.973Z",
-              "ageMinutes": 1040.3095666666666,
+              "ageMinutes": 1088.74385,
               "latestExecutionUsdPerBtc": 72638.64406756755,
               "executionRangePct": null,
               "latestGasUsd": 0.006936708933595292,
@@ -10727,7 +10727,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:28:54.599Z",
-              "ageMinutes": 1040.0324666666668,
+              "ageMinutes": 1088.46675,
               "latestExecutionUsdPerBtc": 72632.45328153463,
               "executionRangePct": null,
               "latestGasUsd": 0.007346844076919753,
@@ -10746,7 +10746,7 @@
               "outputTicker": "Token",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:49.288Z",
-              "ageMinutes": 785.1209833333334,
+              "ageMinutes": 833.5552666666666,
               "latestExecutionUsdPerBtc": 73378.69246384867,
               "executionRangePct": 0.01141887593134174,
               "latestGasUsd": 0.0006554322837723161,
@@ -10765,7 +10765,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:28:59.875Z",
-              "ageMinutes": 1039.9445333333333,
+              "ageMinutes": 1088.3788166666666,
               "latestExecutionUsdPerBtc": 72646.33651227073,
               "executionRangePct": null,
               "latestGasUsd": 0.004903873850029738,
@@ -10800,7 +10800,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:28:50.288Z",
-              "ageMinutes": 1040.1043166666666,
+              "ageMinutes": 1088.5386,
               "latestExecutionUsdPerBtc": 72646.7908163684,
               "executionRangePct": null,
               "latestGasUsd": 0.007346918014704125,
@@ -10819,7 +10819,7 @@
               "outputTicker": "Token",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:47.001Z",
-              "ageMinutes": 785.1591,
+              "ageMinutes": 833.5933833333333,
               "latestExecutionUsdPerBtc": 73384.75966296645,
               "executionRangePct": 0.011540645472859653,
               "latestGasUsd": 0.0008937771081807555,
@@ -10838,7 +10838,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:28:53.680Z",
-              "ageMinutes": 1040.0477833333334,
+              "ageMinutes": 1088.4820666666667,
               "latestExecutionUsdPerBtc": 72639.00822292625,
               "executionRangePct": null,
               "latestGasUsd": 0.006936867162024069,
@@ -10873,7 +10873,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:59.006Z",
-              "ageMinutes": 1038.9590166666667,
+              "ageMinutes": 1087.3933,
               "latestExecutionUsdPerBtc": 72594.9886046443,
               "executionRangePct": null,
               "latestGasUsd": 0.0053138855572799825,
@@ -10892,7 +10892,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:41.510Z",
-              "ageMinutes": 785.2506166666667,
+              "ageMinutes": 833.6849,
               "latestExecutionUsdPerBtc": 73253.30120254213,
               "executionRangePct": 0.01084538684287697,
               "latestGasUsd": 0.014509059974718633,
@@ -10911,7 +10911,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:30:02.941Z",
-              "ageMinutes": 1038.8934333333334,
+              "ageMinutes": 1087.3277166666667,
               "latestExecutionUsdPerBtc": 72650.46359347423,
               "executionRangePct": null,
               "latestGasUsd": 0.004903802470970943,
@@ -10946,7 +10946,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:31.727Z",
-              "ageMinutes": 1039.4136666666666,
+              "ageMinutes": 1087.84795,
               "latestExecutionUsdPerBtc": 72672.74088527283,
               "executionRangePct": null,
               "latestGasUsd": 0.007346871836095779,
@@ -10965,7 +10965,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:25.940Z",
-              "ageMinutes": 785.5101166666667,
+              "ageMinutes": 833.9444,
               "latestExecutionUsdPerBtc": 73311.29966786812,
               "executionRangePct": 0.00986711135066059,
               "latestGasUsd": 0.014509030376296667,
@@ -10984,7 +10984,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:39.826Z",
-              "ageMinutes": 1039.2786833333332,
+              "ageMinutes": 1087.7129666666667,
               "latestExecutionUsdPerBtc": 72649.80575249733,
               "executionRangePct": null,
               "latestGasUsd": 0.00693684071790734,
@@ -11019,7 +11019,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:23.222Z",
-              "ageMinutes": 1039.5554166666666,
+              "ageMinutes": 1087.9897,
               "latestExecutionUsdPerBtc": 72666.44811417282,
               "executionRangePct": null,
               "latestGasUsd": 0.0073468269864519695,
@@ -11038,7 +11038,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:00.115Z",
-              "ageMinutes": 785.9405333333333,
+              "ageMinutes": 834.3748166666667,
               "latestExecutionUsdPerBtc": 73315.25878584443,
               "executionRangePct": 0.009940330953707572,
               "latestGasUsd": 0.018861775945256863,
@@ -11057,7 +11057,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:29.076Z",
-              "ageMinutes": 1039.45785,
+              "ageMinutes": 1087.8921333333333,
               "latestExecutionUsdPerBtc": 72648.18592786901,
               "executionRangePct": null,
               "latestGasUsd": 0.006936777281251543,
@@ -11092,7 +11092,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:52.407Z",
-              "ageMinutes": 1039.069,
+              "ageMinutes": 1087.5032833333332,
               "latestExecutionUsdPerBtc": 72642.41197968155,
               "executionRangePct": null,
               "latestGasUsd": 0.007346824721610721,
@@ -11111,7 +11111,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:39.353Z",
-              "ageMinutes": 785.2865666666667,
+              "ageMinutes": 833.72085,
               "latestExecutionUsdPerBtc": 73317.16570453998,
               "executionRangePct": 0.010539850951248495,
               "latestGasUsd": 0.0142341812716675,
@@ -11130,7 +11130,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:57.191Z",
-              "ageMinutes": 1038.9892666666667,
+              "ageMinutes": 1087.42355,
               "latestExecutionUsdPerBtc": 72646.13803002278,
               "executionRangePct": null,
               "latestGasUsd": 0.006936801577188249,
@@ -11165,7 +11165,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:42.938Z",
-              "ageMinutes": 1039.2268166666668,
+              "ageMinutes": 1087.6611,
               "latestExecutionUsdPerBtc": 72656.70270023498,
               "executionRangePct": null,
               "latestGasUsd": 0.007346839604375154,
@@ -11184,7 +11184,7 @@
               "outputTicker": "USDC",
               "quoteCount": 2,
               "latestObservedAt": "2026-04-11T18:43:32.631Z",
-              "ageMinutes": 785.3986,
+              "ageMinutes": 833.8328833333334,
               "latestExecutionUsdPerBtc": 73353.03966364787,
               "executionRangePct": 0.010649101702351603,
               "latestGasUsd": 0.014509030376296667,
@@ -11203,7 +11203,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-11T14:29:49.639Z",
-              "ageMinutes": 1039.1151333333332,
+              "ageMinutes": 1087.5494166666667,
               "latestExecutionUsdPerBtc": 72650.45592627644,
               "executionRangePct": null,
               "latestGasUsd": 0.006936815629351966,
@@ -12923,7 +12923,7 @@
     },
     "btcProxySpreads": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-12T07:48:56.544Z",
+      "generatedAt": "2026-04-12T08:37:22.602Z",
       "amountTolerancePct": 0.02,
       "maxQuoteAgeMinutes": 30,
       "proxyTicker": null,
@@ -12931,8 +12931,8 @@
       "sellQuoteCount": 45,
       "buyFreshCount": 0,
       "sellFreshCount": 0,
-      "freshestQuoteAgeMinutes": 86.71153333333334,
-      "stalestQuoteAgeMinutes": 1071.7812333333334,
+      "freshestQuoteAgeMinutes": 135.14583333333334,
+      "stalestQuoteAgeMinutes": 1120.2155333333333,
       "observedBuyProxyGroupCount": 1,
       "observedSellProxyGroupCount": 1,
       "observedBuyProxyCoverage": [
@@ -13003,8 +13003,8 @@
             "sonic",
             "unichain"
           ],
-          "freshestBuyAgeMinutes": 443.4589,
-          "freshestSellAgeMinutes": 86.71153333333334,
+          "freshestBuyAgeMinutes": 491.8932,
+          "freshestSellAgeMinutes": 135.14583333333334,
           "nextAction": "expand_amount_ladder",
           "reason": "partial_amount_match"
         }
@@ -13029,8 +13029,8 @@
           "sonic",
           "unichain"
         ],
-        "freshestBuyAgeMinutes": 443.4589,
-        "freshestSellAgeMinutes": 86.71153333333334,
+        "freshestBuyAgeMinutes": 491.8932,
+        "freshestSellAgeMinutes": 135.14583333333334,
         "nextAction": "expand_amount_ladder",
         "reason": "partial_amount_match"
       },
@@ -14207,7 +14207,7 @@
   },
   "prelive": {
     "schemaVersion": 1,
-    "generatedAt": "2026-04-12T07:48:56.556Z",
+    "generatedAt": "2026-04-12T08:37:22.613Z",
     "liveTradingPolicy": "BLOCKED",
     "currentStage": "shadow_replay",
     "shadowReplay": {
@@ -14237,7 +14237,7 @@
     },
     "forkExecution": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-12T07:48:56.556Z",
+      "generatedAt": "2026-04-12T08:37:22.613Z",
       "planCount": 1,
       "submittedCount": 0,
       "submissionFailureCount": 0,
@@ -14266,7 +14266,7 @@
     },
     "executionAudit": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-12T07:48:56.556Z",
+      "generatedAt": "2026-04-12T08:37:22.613Z",
       "status": "complete",
       "blockers": [],
       "missingRecordCount": 0,
@@ -14447,7 +14447,7 @@
       }
     },
     "reviewPackage": {
-      "generatedAt": "2026-04-12T07:48:56.535Z",
+      "generatedAt": "2026-04-12T08:37:22.593Z",
       "packageStatus": "not_ready_for_manual_review",
       "readyForManualReview": false,
       "currentStage": "shadow_replay",
@@ -14478,7 +14478,7 @@
   "bitcoinFee": {
     "latest": {
       "observedAt": "2026-04-10T18:50:40.365Z",
-      "ageMinutes": 2218.2695,
+      "ageMinutes": 2266.7038,
       "source": "https://mempool.space/api",
       "feeRateSatVb": 4,
       "vbytes": 180,
@@ -14667,7 +14667,7 @@
       {
         "label": "fresh gas snapshots",
         "ok": false,
-        "detail": "451.0m old, target <= 30m"
+        "detail": "499.4m old, target <= 30m"
       }
     ],
     "warnings": [
@@ -14776,17 +14776,17 @@
   },
   "quoteLag": {
     "schemaVersion": 1,
-    "generatedAt": "2026-04-12T07:48:56.107Z",
-    "sampleCount": 12,
+    "generatedAt": "2026-04-12T08:36:44.147Z",
+    "sampleCount": 21,
     "oldestSampleAt": "2026-04-12T07:24:31.639Z",
-    "latestSampleAt": "2026-04-12T07:48:43.063Z",
+    "latestSampleAt": "2026-04-12T08:36:29.784Z",
     "btcPriceRange": {
       "min": 71644,
       "max": 71773.935
     },
     "lagStats": {
       "maxEdgePct": 0.1545,
-      "avgEdgePct": -0.1435,
+      "avgEdgePct": -0.1409,
       "p95EdgePct": 0.1535,
       "maxEdgeUsd": 0.22,
       "profitableSampleCount": 0,
@@ -14795,39 +14795,39 @@
     "probeStats": [
       {
         "label": "BTC→BOB wBTC.OFT",
-        "sampleCount": 12,
-        "successRate": 0.9167,
+        "sampleCount": 21,
+        "successRate": 0.9524,
         "avgEdgePct": 0.1528,
         "maxEdgePct": 0.1545,
         "profitableCount": 0
       },
       {
         "label": "ETH USDT→BTC (buy)",
-        "sampleCount": 12,
-        "successRate": 1,
-        "avgEdgePct": -0.1906,
+        "sampleCount": 21,
+        "successRate": 0.9524,
+        "avgEdgePct": -0.189,
         "maxEdgePct": -0.1016,
         "profitableCount": 0
       },
       {
         "label": "Base USDC→BTC (buy)",
-        "sampleCount": 12,
+        "sampleCount": 21,
         "successRate": 1,
-        "avgEdgePct": -0.2471,
-        "maxEdgePct": -0.2062,
+        "avgEdgePct": -0.2456,
+        "maxEdgePct": -0.1999,
         "profitableCount": 0
       },
       {
         "label": "BTC→Base USDC (sell)",
-        "sampleCount": 12,
+        "sampleCount": 21,
         "successRate": 1,
-        "avgEdgePct": -0.4077,
+        "avgEdgePct": -0.4112,
         "maxEdgePct": -0.3773,
         "profitableCount": 0
       },
       {
         "label": "BOB→Base wBTC.OFT",
-        "sampleCount": 12,
+        "sampleCount": 21,
         "successRate": 1,
         "avgEdgePct": 0,
         "maxEdgePct": 0,
@@ -14836,6 +14836,104 @@
     ],
     "verdict": "no_profitable_dislocations",
     "collectionStatus": "running"
+  },
+  "dexSpread": {
+    "schemaVersion": 1,
+    "observedAt": "2026-04-12T08:37:07.405Z",
+    "probeBtc": 0.005,
+    "chain": "base",
+    "chainId": 8453,
+    "tokens": [
+      {
+        "symbol": "LBTC",
+        "issuer": "Lombard",
+        "usdcOut": 359.392505,
+        "gasUsd": 0.005265426065775144,
+        "netUsdc": 359.38723957393427,
+        "impact": 0,
+        "impliedBtcPrice": 71878.501,
+        "latencyMs": 4377,
+        "blockNumber": 44596838
+      },
+      {
+        "symbol": "cbBTC",
+        "issuer": "Coinbase",
+        "usdcOut": 358.658007,
+        "gasUsd": 0.003782873464101553,
+        "netUsdc": 358.6542241265359,
+        "impact": 0,
+        "impliedBtcPrice": 71731.6014,
+        "latencyMs": 2554,
+        "blockNumber": 44596841
+      },
+      {
+        "symbol": "tBTC",
+        "issuer": "Threshold",
+        "usdcOut": 358.366028,
+        "gasUsd": 0.007278370319617915,
+        "netUsdc": 358.35874962968035,
+        "impact": 0,
+        "impliedBtcPrice": 71673.20559999999,
+        "latencyMs": 2931,
+        "blockNumber": 44596844
+      }
+    ],
+    "ranked": [
+      "LBTC",
+      "cbBTC",
+      "tBTC"
+    ],
+    "bestToken": "LBTC",
+    "worstToken": "tBTC",
+    "spreadUsd": 1.0285,
+    "spreadPct": 0.287,
+    "lbtcPremiumUsd": 0.733,
+    "lbtcPremiumPct": 0.2044,
+    "pairSpreads": [
+      {
+        "buy": "cbBTC",
+        "sell": "LBTC",
+        "spreadUsd": 0.733,
+        "spreadPct": 0.2044
+      },
+      {
+        "buy": "tBTC",
+        "sell": "LBTC",
+        "spreadUsd": 1.0285,
+        "spreadPct": 0.287
+      },
+      {
+        "buy": "tBTC",
+        "sell": "cbBTC",
+        "spreadUsd": 0.2955,
+        "spreadPct": 0.0825
+      }
+    ],
+    "errors": 0,
+    "summary": {
+      "sampleCount": 3,
+      "timeRange": {
+        "from": "2026-04-12T08:34:13.218Z",
+        "to": "2026-04-12T08:37:07.405Z"
+      },
+      "spread": {
+        "current": 0.287,
+        "mean": 0.2933,
+        "max": 0.2976,
+        "min": 0.287
+      },
+      "lbtcPremium": {
+        "current": 0.2044,
+        "mean": 0.2068,
+        "max": 0.2117,
+        "min": 0.2044
+      },
+      "bestToken": {
+        "counts": {
+          "LBTC": 3
+        }
+      }
+    }
   },
   "dataCounts": {
     "routesRecords": 33,
@@ -14878,7 +14976,7 @@
     "routeKey": "bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
     "amount": "10000",
     "scoreObservedAt": "2026-04-12T06:22:56.541Z",
-    "scoreAgeMinutes": 85.9999,
+    "scoreAgeMinutes": 134.4342,
     "scoreTradeReadiness": "insufficient_data",
     "scoreDataGaps": [
       "stale_src_gas_snapshot",
@@ -14890,22 +14988,22 @@
     "gatewayQuote": {
       "state": "stale",
       "observedAt": "2026-04-12T06:20:56.814Z",
-      "ageMinutes": 87.99535
+      "ageMinutes": 136.42965
     },
     "exactGas": {
       "state": "stale",
       "observedAt": "2026-04-11T23:59:18.013Z",
-      "ageMinutes": 469.64203333333336
+      "ageMinutes": 518.0763333333333
     },
     "srcGas": {
       "state": "stale",
       "observedAt": "2026-04-12T00:17:59.966Z",
-      "ageMinutes": 450.94281666666666
+      "ageMinutes": 499.37711666666667
     },
     "dexQuote": {
       "state": "stale",
       "observedAt": "2026-04-12T00:15:49.845Z",
-      "ageMinutes": 453.1115
+      "ageMinutes": 501.5458
     },
     "bitcoinFee": {
       "state": "not_needed",
@@ -14915,7 +15013,7 @@
     "marketSnapshot": {
       "state": "stale",
       "observedAt": "2026-04-12T06:21:35.848Z",
-      "ageMinutes": 87.34478333333334
+      "ageMinutes": 135.77908333333335
     }
   },
   "watchers": {

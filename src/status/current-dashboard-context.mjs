@@ -28,6 +28,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     shadowRefreshBatches,
     preliveEvidenceCampaigns,
     quoteLagLatest,
+    dexSpreadLatest,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -46,6 +47,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonl(dataDir, "shadow-refresh-batches"),
     readJsonl(dataDir, "prelive-evidence-campaigns"),
     readJsonIfExists(join(dataDir, "quote-lag-latest.json")),
+    readJsonIfExists(join(dataDir, "dex-spread-latest.json")),
   ]);
 
   const dashboardStatus = buildDashboardStatus({
@@ -77,6 +79,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     shadowRefreshBatches,
     preliveEvidenceCampaigns,
     quoteLagLatest,
+    dexSpreadLatest,
   });
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;

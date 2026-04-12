@@ -1279,6 +1279,9 @@ export function buildDashboardStatus(input, options = {}) {
   // Quote lag dry-run summary (from collect-quote-lag collector)
   const quoteLag = input.quoteLagLatest || null;
 
+  // DEX spread monitor (from collect-dex-spreads collector)
+  const dexSpread = input.dexSpreadLatest || null;
+
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
     generatedAt: now,
@@ -1297,6 +1300,7 @@ export function buildDashboardStatus(input, options = {}) {
     dex,
     audit: auditStatus,
     quoteLag,
+    dexSpread,
     dataCounts: {
       routesRecords: input.routesRecords?.length || 0,
       quotes: input.quotes?.length || 0,
