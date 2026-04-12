@@ -829,6 +829,15 @@ function humanTradeReadiness(code, netEdgeUsd) {
   };
 }
 
+function humanShadowRosterRole(role) {
+  return {
+    active_canary: "현재 canary",
+    prep_candidate: "대안 prep 후보",
+    tx_ready_shadow: "payload 확보 shadow 후보",
+    research_candidate: "연구 후보",
+  }[role] || role;
+}
+
 function shadowCycleSummary(shadowCycle, now) {
   if (!shadowCycle) return null;
   const topRouteTradeReadiness = humanTradeReadiness(shadowCycle.topRoute?.tradeReadiness || null, shadowCycle.topRoute?.netEdgeUsd);
@@ -875,6 +884,32 @@ function shadowCycleSummary(shadowCycle, now) {
           netEdgeUsd: shadowCycle.topRoute.netEdgeUsd ?? null,
         }
       : null,
+    shadowRoster: {
+      candidateCount: shadowCycle.shadowRoster?.candidateCount ?? 0,
+      viableCount: shadowCycle.shadowRoster?.viableCount ?? 0,
+      txReadyCount: shadowCycle.shadowRoster?.txReadyCount ?? 0,
+      candidates: (shadowCycle.shadowRoster?.candidates || []).map((item) => {
+        const readiness = humanTradeReadiness(item.tradeReadiness || null, item.netEdgeUsd);
+        return {
+          role: item.role || null,
+          roleLabel: humanShadowRosterRole(item.role || null),
+          label: item.label || null,
+          amount: item.amount || null,
+          srcChain: item.srcChain || null,
+          dstChain: item.dstChain || null,
+          viableForPrep: Boolean(item.viableForPrep),
+          txReady: Boolean(item.txReady),
+          tradeReadiness: item.tradeReadiness || null,
+          tradeReadinessLabel: readiness.label,
+          tradeReadinessDetail: readiness.detail,
+          prepFundingUsd: item.prepFundingUsd ?? null,
+          netEdgeUsd: item.netEdgeUsd ?? null,
+          prepBlockers: item.prepBlockers || [],
+          scoreDisqualifiers: item.scoreDisqualifiers || [],
+          readinessFailureReason: item.readinessFailureReason || null,
+        };
+      }),
+    },
     treasury: shadowCycle.treasury
       ? {
           decision: shadowCycle.treasury.decision || null,

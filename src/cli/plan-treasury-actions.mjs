@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
@@ -36,6 +37,11 @@ async function readJsonIfExists(path) {
     if (error.code === "ENOENT") return null;
     throw error;
   }
+}
+
+export function formatPlanValue(value, { digits = null, fallback = "n/a" } = {}) {
+  if (!Number.isFinite(value)) return fallback;
+  return Number.isInteger(digits) && digits >= 0 ? value.toFixed(digits) : String(value);
 }
 
 async function main() {
@@ -95,12 +101,12 @@ async function main() {
     console.log(`reasons=${plan.reasons.join(",")}`);
   }
   console.log(`inventorySource=${!args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan"}`);
-  console.log(`refillEstimatedUsd=${plan.summary.refillEstimatedUsd.toFixed(4)}`);
-  console.log(`estimatedWalletUsd=${plan.summary.estimatedWalletUsd.toFixed(4)}`);
+  console.log(`refillEstimatedUsd=${formatPlanValue(plan.summary.refillEstimatedUsd, { digits: 4 })}`);
+  console.log(`estimatedWalletUsd=${formatPlanValue(plan.summary.estimatedWalletUsd, { digits: 4 })}`);
 
   for (const action of plan.actions) {
     console.log(
-      `${action.type} ${action.chain} ${action.asset || action.ticker} amount=${action.refillAmountDecimal} estimatedUsd=${action.refillEstimatedUsd ?? "n/a"}`,
+      `${action.type} ${action.chain} ${action.asset || action.ticker} amount=${formatPlanValue(action.refillAmountDecimal)} estimatedUsd=${formatPlanValue(action.refillEstimatedUsd, { digits: 4 })}`,
     );
   }
   for (const blocker of plan.blockers) {
@@ -111,7 +117,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

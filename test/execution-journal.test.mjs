@@ -6,6 +6,7 @@ import {
   buildExecutionSubmissionEvent,
   canStartExecution,
   latestExecutionEvent,
+  stableSerialize,
 } from "../src/execution/journal.mjs";
 
 function jobFixture() {
@@ -115,4 +116,10 @@ test("execution attempt ids stay stable across object key order", () => {
   });
 
   assert.equal(first.attemptId, second.attemptId);
+});
+
+test("stableSerialize preserves undefined values deterministically", () => {
+  assert.equal(stableSerialize(undefined), '"__undefined__"');
+  assert.equal(stableSerialize([undefined, null]), '["__undefined__",null]');
+  assert.equal(stableSerialize({ beta: undefined, alpha: 1 }), '{"alpha":1,"beta":"__undefined__"}');
 });

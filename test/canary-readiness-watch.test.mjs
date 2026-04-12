@@ -11,6 +11,7 @@ import {
   buildDexGatewayCoverageScoringArgs,
   buildDexGatewayCoverageVerifyArgs,
   buildDexEnvironmentRefreshQuoteArgs,
+  buildQuoteDecayRefreshScoringArgs,
   describeBlockedScoreRefreshSelection,
   buildGasRefreshScoringArgs,
   buildGasRefreshSnapshotArgs,
@@ -580,6 +581,23 @@ test("quote decay refresh seeds an initial observation when none exist for the r
 
   assert.equal(plan.shouldRefresh, true);
   assert.equal(plan.reason, "missing_decay_observation");
+});
+
+test("quote decay scoring args stay selective only when route and amount are present", () => {
+  assert.deepEqual(
+    buildQuoteDecayRefreshScoringArgs({
+      routeKey: "bob:0x0555->base:0x0555",
+      amount: "10000",
+    }),
+    ["--write", "--route-key=bob:0x0555->base:0x0555", "--amount=10000", "--shadow-rollover-ms=0"],
+  );
+  assert.deepEqual(
+    buildQuoteDecayRefreshScoringArgs({
+      routeKey: null,
+      amount: "10000",
+    }),
+    ["--write", "--shadow-rollover-ms=0"],
+  );
 });
 
 test("dex price refresh targets missing supported route chains", () => {

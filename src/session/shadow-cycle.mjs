@@ -209,6 +209,38 @@ export function buildRouteDemandFromCanaryState(routePlan) {
     ]);
 }
 
+function shadowRosterRole(candidate, index) {
+  if (index === 0) return "active_canary";
+  if (candidate?.viableForPrep) return "prep_candidate";
+  if (candidate?.txReady) return "tx_ready_shadow";
+  return "research_candidate";
+}
+
+function summarizeShadowRoster(routePlan, limit = 5) {
+  const candidates = (routePlan?.topCandidates || []).slice(0, limit);
+  return {
+    candidateCount: routePlan?.candidateCount ?? candidates.length,
+    viableCount: routePlan?.viableCount ?? candidates.filter((item) => item?.viableForPrep).length,
+    txReadyCount: routePlan?.txReadyCount ?? candidates.filter((item) => item?.txReady).length,
+    candidates: candidates.map((candidate, index) => ({
+      role: shadowRosterRole(candidate, index),
+      routeKey: candidate.routeKey,
+      label: candidate.label,
+      amount: candidate.amount,
+      srcChain: candidate.srcChain || null,
+      dstChain: candidate.dstChain || null,
+      viableForPrep: Boolean(candidate.viableForPrep),
+      txReady: Boolean(candidate.txReady),
+      tradeReadiness: candidate.tradeReadiness || null,
+      prepFundingUsd: candidate.prepFundingUsd ?? null,
+      netEdgeUsd: candidate.netEdgeUsd ?? null,
+      prepBlockers: candidate.prepBlockers || [],
+      scoreDisqualifiers: candidate.scoreDisqualifiers || [],
+      readinessFailureReason: candidate.readinessFailureReason || null,
+    })),
+  };
+}
+
 export function buildShadowCycleSummary({
   canaryState,
   treasuryPlan,
@@ -263,6 +295,7 @@ export function buildShadowCycleSummary({
           prepFundingUsd: topRoute.prepFundingUsd,
         }
       : null,
+    shadowRoster: summarizeShadowRoster(canaryState?.routePlan),
     canary: nextStep
       ? {
           decision: nextStep.decision,

@@ -308,6 +308,18 @@ export function planQuoteDecayRefresh(state, options = {}) {
   };
 }
 
+export function buildQuoteDecayRefreshScoringArgs(refresh) {
+  if (refresh?.routeKey && refresh?.amount) {
+    return [
+      "--write",
+      `--route-key=${refresh.routeKey}`,
+      `--amount=${refresh.amount}`,
+      "--shadow-rollover-ms=0",
+    ];
+  }
+  return ["--write", "--shadow-rollover-ms=0"];
+}
+
 export function planDexPriceRefresh(state) {
   const route = state?.nextStep?.route || null;
   const marketPrices = state?.dashboardStatus?.market?.chainWbtcPrices || [];

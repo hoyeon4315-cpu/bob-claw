@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { formatPlanValue } from "../src/cli/plan-treasury-actions.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -66,4 +67,10 @@ test("plan treasury actions uses stored inventory snapshot by default", async ()
   assert.equal(output.inventorySource, "stored_snapshot");
   assert.equal(output.blockers[0].type, "native_refill_blocked_no_demand");
   assert.equal(Math.abs(output.blockers[0].refillEstimatedUsd - 6.6) < 1e-9, true);
+});
+
+test("plan treasury output formatter guards non-finite values", () => {
+  assert.equal(formatPlanValue(1.23456, { digits: 4 }), "1.2346");
+  assert.equal(formatPlanValue(Infinity, { digits: 4 }), "n/a");
+  assert.equal(formatPlanValue(NaN), "n/a");
 });

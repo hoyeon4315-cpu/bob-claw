@@ -21,6 +21,7 @@ import {
   buildGasRefreshScoringArgs,
   buildGasRefreshSnapshotArgs,
   buildDexRefreshScoringArgs,
+  buildQuoteDecayRefreshScoringArgs,
   describeBlockedScoreRefreshSelection,
   decisionFingerprint,
   formatCanaryWatchSummary,
@@ -262,12 +263,7 @@ async function main() {
       console.log(
         `refresh=quote-decay routeKey=${decayRefresh.routeKey || "unknown"} amount=${decayRefresh.amount || "unknown"} window=${decayRefresh.pendingWindowSeconds || "unknown"} reason=${decayRefresh.reason}`,
       );
-      runNodeScript("src/cli/score-gateway.mjs", [
-        "--write",
-        `--route-key=${decayRefresh.routeKey}`,
-        `--amount=${decayRefresh.amount}`,
-        "--shadow-rollover-ms=0",
-      ]);
+      runNodeScript("src/cli/score-gateway.mjs", buildQuoteDecayRefreshScoringArgs(decayRefresh));
       refreshShadowArtifacts(args.address, { skipPriceSnapshot: true });
       state = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     } else if (decayRefresh.routeKey) {

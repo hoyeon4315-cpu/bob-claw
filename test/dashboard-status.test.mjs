@@ -525,6 +525,43 @@ test("dashboard status includes shadow cycle summary when available", () => {
         tradeReadiness: "reject_no_net_edge",
         netEdgeUsd: -0.83,
       },
+      shadowRoster: {
+        candidateCount: 3,
+        viableCount: 1,
+        txReadyCount: 2,
+        candidates: [
+          {
+            role: "active_canary",
+            label: "bob->base wBTC.OFT->wBTC.OFT",
+            amount: "10000",
+            srcChain: "bob",
+            dstChain: "base",
+            viableForPrep: true,
+            txReady: true,
+            tradeReadiness: "reject_no_net_edge",
+            prepFundingUsd: 0,
+            netEdgeUsd: -0.83,
+            prepBlockers: [],
+            scoreDisqualifiers: [],
+            readinessFailureReason: null,
+          },
+          {
+            role: "tx_ready_shadow",
+            label: "ethereum->base WBTC->wBTC.OFT",
+            amount: "10000",
+            srcChain: "ethereum",
+            dstChain: "base",
+            viableForPrep: false,
+            txReady: true,
+            tradeReadiness: "insufficient_data",
+            prepFundingUsd: 4.2,
+            netEdgeUsd: 64.77,
+            prepBlockers: ["native", "token", "allowance"],
+            scoreDisqualifiers: [],
+            readinessFailureReason: null,
+          },
+        ],
+      },
       treasury: {
         decision: "BLOCKED",
         estimatedWalletUsd: 25.01,
@@ -604,6 +641,10 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.topRoute.label, "bob->base wBTC.OFT->wBTC.OFT");
   assert.equal(status.shadowCycle.topRoute.tradeReadinessLabel, "알려진 비용 반영 후 순이익이 아직 음수");
   assert.equal(status.shadowCycle.topRoute.tradeReadinessDetail, "순엣지 -$0.83");
+  assert.equal(status.shadowCycle.shadowRoster.candidateCount, 3);
+  assert.equal(status.shadowCycle.shadowRoster.candidates[0].roleLabel, "현재 canary");
+  assert.equal(status.shadowCycle.shadowRoster.candidates[1].roleLabel, "payload 확보 shadow 후보");
+  assert.equal(status.shadowCycle.shadowRoster.candidates[1].tradeReadinessLabel, "가격 또는 가스 데이터가 아직 부족함");
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
   assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
   assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SOLVBTC_TOKEN, ZERO_TOKEN, WBTC_OFT_TOKEN, classifyGatewayAssetUniverse, isBtcFamilyRoute } from "../src/assets/tokens.mjs";
+import { SOLVBTC_TOKEN, ZERO_TOKEN, WBTC_OFT_TOKEN, classifyGatewayAssetUniverse, isBtcFamilyRoute, tokenAsset } from "../src/assets/tokens.mjs";
 import { buildDexRouteUniverseSummary } from "../src/strategy/dex-route-universe.mjs";
 
 test("dex route universe separates fully measurable BTC-family routes from provider gaps", () => {
@@ -44,12 +44,14 @@ test("dex route universe separates fully measurable BTC-family routes from provi
 });
 
 test("btc family route classification includes solvBTC as wrapped BTC proxy", () => {
+  assert.equal(SOLVBTC_TOKEN, "0x3b86ad95859b6ab773f55f8d94b4b9d443ee931f");
+  assert.equal(tokenAsset("base", SOLVBTC_TOKEN).decimals, 18);
   assert.equal(
     isBtcFamilyRoute({
       srcChain: "bitcoin",
       dstChain: "base",
       srcToken: ZERO_TOKEN,
-      dstToken: "0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189",
+      dstToken: SOLVBTC_TOKEN,
     }),
     true,
   );

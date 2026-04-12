@@ -2,7 +2,7 @@ export const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
 export const WBTC_OFT_TOKEN = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 export const ETHEREUM_WBTC_TOKEN = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 export const UNI_BTC_TOKEN = "0x236f8c0a61dA474dB21B693fB2ea7AAB0c803894";
-export const SOLVBTC_TOKEN = "0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189";
+export const SOLVBTC_TOKEN = "0x3b86ad95859b6ab773f55f8d94b4b9d443ee931f";
 
 const NATIVE_ASSETS = {
   bitcoin: { ticker: "BTC", family: "btc", icon: "btc", decimals: 8, priceKey: "btc" },
@@ -27,7 +27,7 @@ const TOKEN_DEFINITIONS = new Map(
     ["0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 18, priceKey: "usd_stable" }],
     ["0x55d398326f99059fF775485246999027B3197955", { ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 18, priceKey: "usd_stable" }],
     ["0xdAC17F958D2ee523a2206206994597C13D831ec7", { ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" }],
-    [SOLVBTC_TOKEN, { ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: null, priceKey: "btc" }],
+    [SOLVBTC_TOKEN, { ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: 18, priceKey: "btc" }],
     ["0x2170Ed0880ac9A755fd29B2688956BD959F933F8", { ticker: "ETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" }],
     ["0x45804880De22913dAFE09f4980848ECE6EcbAf78", { ticker: "PAXG", family: "other", icon: "paxg", decimals: 18, priceKey: "paxg" }],
     ["0x68749665FF8D2d112Fa859AA293F07A622782F38", { ticker: "XAUT", family: "other", icon: "xaut", decimals: 6, priceKey: "xaut" }],

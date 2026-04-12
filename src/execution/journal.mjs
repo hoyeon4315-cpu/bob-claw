@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-function stableSerialize(value) {
+export function stableSerialize(value) {
+  if (value === undefined) {
+    return JSON.stringify("__undefined__");
+  }
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }

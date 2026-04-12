@@ -178,6 +178,24 @@ function buildBtcWatchlistFallbackSummary(routes = []) {
   };
 }
 
+function shadowRosterLines(routePlan) {
+  const candidates = (routePlan?.topCandidates || []).slice(0, 5);
+  if (!candidates.length) return ["- none"];
+  return candidates.map((candidate, index) => {
+    const role =
+      index === 0 ? "active_canary" :
+      candidate?.viableForPrep ? "prep_candidate" :
+      candidate?.txReady ? "tx_ready_shadow" :
+      "research_candidate";
+    const blockers = [
+      ...(candidate.prepBlockers || []).map((item) => `prep:${item}`),
+      ...(candidate.scoreDisqualifiers || []).map((item) => `score:${item}`),
+      ...(candidate.readinessFailureReason ? [`readiness:${candidate.readinessFailureReason}`] : []),
+    ];
+    return `- ${role} route=\`${candidate.label}\` amount=\`${candidate.amount}\` txReady=${Boolean(candidate.txReady)} viableForPrep=${Boolean(candidate.viableForPrep)} net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} blockers=${blockers.join(",") || "none"}`;
+  });
+}
+
 function watcherReasonLabel(kind, reason) {
   return {
     canaryInputs: {
@@ -605,6 +623,10 @@ async function main() {
     `- Candidate routes observed: ${routePlan.candidateCount}`,
     `- txReady routes: ${routePlan.txReadyCount}`,
     `- viable prep routes: ${routePlan.viableCount}`,
+    "",
+    "## Shadow Roster",
+    "",
+    ...shadowRosterLines(routePlan),
     "",
     "## Profitability Summary",
     "",

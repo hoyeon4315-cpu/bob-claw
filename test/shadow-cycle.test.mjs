@@ -340,3 +340,77 @@ test("shadow cycle summary marks blocked canary prep explicitly", () => {
   assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
   assert.equal(summary.canary.decision, "FUND_AND_APPROVE_WALLET");
 });
+
+test("shadow cycle summary includes a multi-shadow roster", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      nextStep: { decision: "BLOCKED_NO_VIABLE_PREP_ROUTE", reasons: ["reject_no_net_edge"] },
+      routePlan: {
+        candidateCount: 4,
+        viableCount: 1,
+        txReadyCount: 3,
+        topCandidates: [
+          {
+            routeKey: "bob:0x0555->base:0x0555",
+            label: "bob->base wBTC.OFT->wBTC.OFT",
+            amount: "10000",
+            srcChain: "bob",
+            dstChain: "base",
+            viableForPrep: true,
+            txReady: true,
+            tradeReadiness: "reject_no_net_edge",
+            prepFundingUsd: 0,
+            netEdgeUsd: -0.84,
+            prepBlockers: [],
+            scoreDisqualifiers: [],
+          },
+          {
+            routeKey: "ethereum:0x2260->base:0x0555",
+            label: "ethereum->base WBTC->wBTC.OFT",
+            amount: "10000",
+            srcChain: "ethereum",
+            dstChain: "base",
+            viableForPrep: false,
+            txReady: true,
+            tradeReadiness: "insufficient_data",
+            prepFundingUsd: 4.2,
+            netEdgeUsd: 64.77,
+            prepBlockers: ["native", "token", "allowance"],
+            scoreDisqualifiers: [],
+          },
+          {
+            routeKey: "base:0x0555->avalanche:0x0555",
+            label: "base->avalanche wBTC.OFT->wBTC.OFT",
+            amount: "150000",
+            srcChain: "base",
+            dstChain: "avalanche",
+            viableForPrep: false,
+            txReady: true,
+            tradeReadiness: "insufficient_data",
+            prepFundingUsd: 0.3,
+            netEdgeUsd: null,
+            prepBlockers: ["wallet_not_checked"],
+            scoreDisqualifiers: [],
+          },
+        ],
+      },
+    },
+    treasuryPlan: { decision: "WATCH_ONLY", reasons: [], summary: {}, actions: [], blockers: [] },
+    fundingSourcePlan: { reasons: [], summary: {} },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: { dailyRealizedPnlUsd: 0, projectLossUsedUsd: 0, failedGasCost24hUsd: 0, consecutiveFailures: 0 },
+  });
+
+  assert.equal(summary.shadowRoster.candidateCount, 4);
+  assert.equal(summary.shadowRoster.viableCount, 1);
+  assert.equal(summary.shadowRoster.txReadyCount, 3);
+  assert.deepEqual(
+    summary.shadowRoster.candidates.map((item) => [item.role, item.label]),
+    [
+      ["active_canary", "bob->base wBTC.OFT->wBTC.OFT"],
+      ["tx_ready_shadow", "ethereum->base WBTC->wBTC.OFT"],
+      ["tx_ready_shadow", "base->avalanche wBTC.OFT->wBTC.OFT"],
+    ],
+  );
+});
