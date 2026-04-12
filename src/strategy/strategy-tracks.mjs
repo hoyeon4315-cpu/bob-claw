@@ -1,17 +1,46 @@
+function hasBlockingSignals(blockers = []) {
+  return Array.isArray(blockers) && blockers.length > 0;
+}
+
+function firstMatching(blockers = [], matcher) {
+  return (blockers || []).find((item) => matcher(String(item || ""))) || null;
+}
+
 function chooseStableLoopAction({ crossAssetArbitrage, bestStablecoinRoute }) {
-  if (crossAssetArbitrage?.bestLoop) {
+  const bestLoop = crossAssetArbitrage?.bestLoop || null;
+  const bestLoopBlockers = bestLoop?.blockers || [];
+  if (bestLoop && !hasBlockingSignals(bestLoopBlockers) && bestLoop.loopNetEdgeUsd > 0) {
     return {
       status: "candidate_loop",
       nextActionCode: "validate_loop_durability",
-      reason: "best_closed_loop_observed",
+      reason: "positive_closed_loop_observed",
+    };
+  }
+  if (bestLoop) {
+    const blocker = firstMatching(bestLoopBlockers, Boolean) || "best_loop_not_ready";
+    return {
+      status: "blocked_loop",
+      nextActionCode:
+        blocker === "amount_mismatch"
+          ? "expand_amount_ladder"
+          : blocker.includes("stale") || blocker.includes("insufficient_data")
+            ? "refresh_stable_loop_quotes"
+            : "clear_loop_readiness",
+      reason: blocker,
     };
   }
   if (crossAssetArbitrage?.closestLoop) {
     const blockers = crossAssetArbitrage.closestLoop.blockers || [];
+    const blocker = blockers[0] || "closest_loop_not_ready";
     return {
       status: "blocked_loop",
-      nextActionCode: blockers.includes("amount_mismatch") ? "expand_amount_ladder" : "refresh_stable_loop_quotes",
-      reason: blockers[0] || "closest_loop_not_ready",
+      nextActionCode:
+        blocker === "amount_mismatch"
+          ? "expand_amount_ladder"
+          : blocker.includes("stale") || blocker.includes("insufficient_data")
+            ? "refresh_stable_loop_quotes"
+            : "clear_loop_readiness",
+      reason: blocker,
     };
   }
   if (bestStablecoinRoute) {
@@ -30,7 +59,15 @@ function chooseStableLoopAction({ crossAssetArbitrage, bestStablecoinRoute }) {
 
 function chooseProxySpreadAction(btcProxySpreads) {
   const best = btcProxySpreads?.bestRebalanceOpportunity || null;
-  if (best?.policyReadyAfterRebalance) {
+  const blockers = best?.blockers || [];
+  if (btcProxySpreads?.overfitAssessment && btcProxySpreads.overfitAssessment !== "coverage_ok") {
+    return {
+      status: "thin_coverage",
+      nextActionCode: "collect_more_proxy_quotes",
+      reason: btcProxySpreads.overfitRisks?.[0] || btcProxySpreads.overfitAssessment,
+    };
+  }
+  if (best?.policyReadyAfterRebalance && !hasBlockingSignals(blockers)) {
     return {
       status: "candidate_spread",
       nextActionCode: "validate_proxy_durability",
@@ -44,17 +81,23 @@ function chooseProxySpreadAction(btcProxySpreads) {
       reason: "unmatched_observed_proxy_groups",
     };
   }
-  if (btcProxySpreads?.overfitAssessment && btcProxySpreads.overfitAssessment !== "coverage_ok") {
+  if (best) {
+    const blocker = firstMatching(blockers, Boolean) || "rebalance_surface_not_ready";
     return {
-      status: "thin_coverage",
-      nextActionCode: "collect_more_proxy_quotes",
-      reason: btcProxySpreads.overfitRisks?.[0] || btcProxySpreads.overfitAssessment,
+      status: "blocked_spread",
+      nextActionCode:
+        blocker === "amount_mismatch"
+          ? "expand_amount_ladder"
+          : blocker.includes("missing_rebalance") || blocker.includes("insufficient_data") || blocker.includes("stale")
+            ? "refresh_proxy_quotes"
+            : "watch_proxy_surface",
+      reason: blocker,
     };
   }
   return {
-    status: best ? "watching" : "unobserved",
+    status: "unobserved",
     nextActionCode: "watch_proxy_surface",
-    reason: best ? (best.blockers?.[0] || "watch_surface") : "no_proxy_surface",
+    reason: "no_proxy_surface",
   };
 }
 
