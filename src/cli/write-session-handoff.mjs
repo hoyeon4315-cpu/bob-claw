@@ -474,10 +474,16 @@ function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], rou
     crossAsset.bestLoop
       ? `- Best closed stable->BTC->stable loop: \`${crossAsset.bestLoop.entryRouteKey}\` + \`${crossAsset.bestLoop.exitRouteKey}\` netEdge=${money(crossAsset.bestLoop.loopNetEdgeUsd)}`
       : "- Best closed stable->BTC->stable loop: none matched yet",
+    crossAsset.bestAmountLadderPair
+      ? `- Stable amount ladder: pair=\`${crossAsset.bestAmountLadderPair.entryRouteKey}\` + \`${crossAsset.bestAmountLadderPair.exitRouteKey}\` entryLevels=${crossAsset.bestAmountLadderPair.entryAmountLevelCount} exitLevels=${crossAsset.bestAmountLadderPair.exitAmountLevelCount} exact=${crossAsset.bestAmountLadderPair.exactMatchCount} closestGap=${Number.isFinite(crossAsset.bestAmountLadderPair.closestAmountGapPct) ? `${(crossAsset.bestAmountLadderPair.closestAmountGapPct * 100).toFixed(2)}%` : "n/a"}`
+      : "- Stable amount ladder: no paired stable/BTC ladder yet",
     crossAsset.closestLoop && !crossAsset.bestLoop
       ? `- Closest loop blocker: amount gap ${(crossAsset.closestLoop.amountGapPct * 100).toFixed(2)}% on \`${crossAsset.closestLoop.entryRouteKey}\` + \`${crossAsset.closestLoop.exitRouteKey}\``
       : null,
     `- Proxy spread surface: buyQuotes=${btcProxySpreads.buyQuoteCount} sellQuotes=${btcProxySpreads.sellQuoteCount} opportunities=${btcProxySpreads.opportunityCount} policyReady=${btcProxySpreads.policyReadyCount} overfit=${btcProxySpreads.overfitAssessment}`,
+    btcProxySpreads.nextCoverageTarget
+      ? `- Proxy coverage target: group=\`${btcProxySpreads.nextCoverageTarget.proxyGroup}\` next=\`${btcProxySpreads.nextCoverageTarget.nextAction}\` reason=\`${btcProxySpreads.nextCoverageTarget.reason}\` buyLevels=${btcProxySpreads.nextCoverageTarget.buyAmountLevelCount} sellLevels=${btcProxySpreads.nextCoverageTarget.sellAmountLevelCount} matchedLevels=${btcProxySpreads.nextCoverageTarget.matchedAmountLevelCount}`
+      : "- Proxy coverage target: none",
     ...strategyTracks.tracks
       .filter((item) => item.kind === "stable_loop" || item.kind === "proxy_spread")
       .map((item) => `- Strategy track ${item.kind}: label=\`${item.label || "none"}\` status=\`${item.status}\` next=\`${item.nextActionCode}\` reason=\`${item.reason || "none"}\``),

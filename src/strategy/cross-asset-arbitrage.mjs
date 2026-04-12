@@ -49,6 +49,10 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function amountLevelKey(value) {
+  return String(value ?? "");
+}
+
 function amountGapPct(entry, exit) {
   if (!Number.isFinite(entry?.outputAmount) || !Number.isFinite(exit?.inputAmount) || entry.outputAmount <= 0) return null;
   return Math.abs(exit.inputAmount - entry.outputAmount) / entry.outputAmount;
@@ -107,6 +111,69 @@ function summarizeLoop(entry, exit, tolerancePct) {
   };
 }
 
+function ladderPairKey(loop) {
+  return `${loop.entryRouteKey}|${loop.exitRouteKey}`;
+}
+
+function buildAmountLadderCoverage(loops = []) {
+  const coverage = new Map();
+  for (const loop of loops) {
+    const key = ladderPairKey(loop);
+    const entryLevel = amountLevelKey(loop.entryAmount);
+    const exitLevel = amountLevelKey(loop.exitAmount);
+    const current = coverage.get(key) || {
+      pairKey: key,
+      entryRouteKey: loop.entryRouteKey,
+      exitRouteKey: loop.exitRouteKey,
+      entryAmounts: new Set(),
+      exitAmounts: new Set(),
+      observedPairCount: 0,
+      exactMatchCount: 0,
+      positiveLoopCount: 0,
+      closestAmountGapPct: null,
+      blockerCounts: new Map(),
+    };
+    current.entryAmounts.add(entryLevel);
+    current.exitAmounts.add(exitLevel);
+    current.observedPairCount += 1;
+    if (loop.exactAmountMatch) current.exactMatchCount += 1;
+    if (Number.isFinite(loop.loopNetEdgeUsd) && loop.loopNetEdgeUsd > 0) current.positiveLoopCount += 1;
+    if (Number.isFinite(loop.amountGapPct)) {
+      current.closestAmountGapPct =
+        current.closestAmountGapPct === null
+          ? loop.amountGapPct
+          : Math.min(current.closestAmountGapPct, loop.amountGapPct);
+    }
+    for (const blocker of loop.blockers || []) {
+      current.blockerCounts.set(blocker, (current.blockerCounts.get(blocker) || 0) + 1);
+    }
+    coverage.set(key, current);
+  }
+
+  return [...coverage.values()]
+    .map((item) => ({
+      pairKey: item.pairKey,
+      entryRouteKey: item.entryRouteKey,
+      exitRouteKey: item.exitRouteKey,
+      entryAmountLevelCount: item.entryAmounts.size,
+      exitAmountLevelCount: item.exitAmounts.size,
+      observedPairCount: item.observedPairCount,
+      exactMatchCount: item.exactMatchCount,
+      positiveLoopCount: item.positiveLoopCount,
+      closestAmountGapPct: finite(item.closestAmountGapPct),
+      blockerCounts: [...item.blockerCounts.entries()]
+        .map(([blocker, count]) => ({ blocker, count }))
+        .sort((left, right) => right.count - left.count || String(left.blocker).localeCompare(String(right.blocker))),
+    }))
+    .sort(
+      (left, right) =>
+        right.exactMatchCount - left.exactMatchCount ||
+        (left.closestAmountGapPct ?? Number.POSITIVE_INFINITY) - (right.closestAmountGapPct ?? Number.POSITIVE_INFINITY) ||
+        right.observedPairCount - left.observedPairCount ||
+        String(left.entryRouteKey).localeCompare(String(right.entryRouteKey)),
+    );
+}
+
 export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
   const scores = scoreSnapshot?.scores || [];
   const tolerancePct = Number.isFinite(options.amountTolerancePct) ? options.amountTolerancePct : 0.02;
@@ -127,6 +194,7 @@ export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
       (left.amountGapPct ?? Number.POSITIVE_INFINITY) - (right.amountGapPct ?? Number.POSITIVE_INFINITY) ||
       String(left.entryRouteKey).localeCompare(String(right.entryRouteKey)),
   );
+  const amountLadderCoverage = buildAmountLadderCoverage(exactAssetPairs);
 
   return {
     schemaVersion: 1,
@@ -140,6 +208,9 @@ export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
     profitableClosedLoopCount: exactAssetPairs.filter(
       (item) => item.exactAmountMatch && item.closedLoop && Number.isFinite(item.loopNetEdgeUsd) && item.loopNetEdgeUsd > 0,
     ).length,
+    amountLadderPairCount: amountLadderCoverage.length,
+    amountLadderCoverage,
+    bestAmountLadderPair: amountLadderCoverage[0] || null,
     bestLoop: exactAssetPairs.find((item) => item.exactAmountMatch && item.closedLoop) || null,
     closestLoop: exactAssetPairs[0] || null,
     loops: exactAssetPairs.slice(0, 10),

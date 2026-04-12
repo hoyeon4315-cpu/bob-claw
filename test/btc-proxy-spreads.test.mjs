@@ -193,3 +193,78 @@ test("btc proxy spread summary separates observed proxy coverage from matched op
   assert.deepEqual(summary.unmatchedObservedProxyGroups, ["solvbtc"]);
   assert.equal(summary.observedSellProxyCoverage.some((item) => item.proxyGroup === "solvbtc"), true);
 });
+
+test("btc proxy spread summary prioritizes amount-ladder expansion before stale-candidate promotion", () => {
+  const summary = buildBtcProxySpreadSummary({
+    dexQuotes: [
+      {
+        observedAt: "2026-04-12T00:00:00.000Z",
+        quoteType: "stable_to_token",
+        source: "gateway_src_entry_leg",
+        chain: "base",
+        inputToken: USDC_BASE,
+        inputTicker: "USDC",
+        outputToken: WBTC_OFT,
+        outputTicker: "wBTC.OFT",
+        targetTokenAmount: "10000",
+        outputAmount: "10010",
+        inputValueUsd: 7.0,
+        gasEstimateValueUsd: 0.01,
+      },
+      {
+        observedAt: "2026-04-12T00:00:01.000Z",
+        quoteType: "stable_to_token",
+        source: "gateway_src_entry_leg",
+        chain: "base",
+        inputToken: USDC_BASE,
+        inputTicker: "USDC",
+        outputToken: WBTC_OFT,
+        outputTicker: "wBTC.OFT",
+        targetTokenAmount: "25000",
+        outputAmount: "25010",
+        inputValueUsd: 17.0,
+        gasEstimateValueUsd: 0.01,
+      },
+      {
+        observedAt: "2026-04-12T00:00:02.000Z",
+        quoteType: "token_to_stable",
+        source: "gateway_dst_leg",
+        chain: "sonic",
+        inputToken: WBTC_OFT,
+        inputTicker: "wBTC.OFT",
+        outputToken: USDC_BASE,
+        outputTicker: "USDC",
+        inputAmount: "10000",
+        netOutputValueUsd: 7.25,
+        gasEstimateValueUsd: 0.01,
+      },
+    ],
+    routes: [
+      {
+        srcChain: "base",
+        dstChain: "sonic",
+        srcToken: WBTC_OFT,
+        dstToken: WBTC_OFT,
+      },
+    ],
+    scoreSnapshot: {
+      scores: [
+        {
+          routeKey: "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          amount: "10000",
+          knownCostUsd: 0.12,
+          tradeReadiness: "shadow_candidate_review_only",
+          dataGaps: [],
+        },
+      ],
+    },
+  }, { now: "2026-04-12T00:10:00.000Z" });
+
+  assert.equal(summary.coverageTargetCount >= 1, true);
+  assert.equal(summary.nextCoverageTarget.proxyGroup, "wbtc");
+  assert.equal(summary.nextCoverageTarget.nextAction, "expand_amount_ladder");
+  assert.equal(summary.nextCoverageTarget.reason, "partial_amount_match");
+  assert.equal(summary.nextCoverageTarget.buyAmountLevelCount, 2);
+  assert.equal(summary.nextCoverageTarget.sellAmountLevelCount, 1);
+  assert.equal(summary.nextCoverageTarget.matchedAmountLevelCount, 1);
+});

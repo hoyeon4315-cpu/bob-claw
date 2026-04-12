@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-12T01:53:44.350Z
+Updated: 2026-04-12T02:00:22.725Z
 
 ## Start Here
 
@@ -109,10 +109,12 @@ Updated: 2026-04-12T01:53:44.350Z
 - Best measured DEX+Gateway loop: `ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c` netEdge=$64.77 amountGap=1.77%
 - Best stablecoin-related route now: `base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000` amount=`4022463` readiness=`insufficient_data` netEdge=$-1.3555
 - Best closed stable->BTC->stable loop: none matched yet
+- Stable amount ladder: pair=`base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000` + `bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` entryLevels=1 exitLevels=1 exact=0 closestGap=127.38%
 - Closest loop blocker: amount gap 127.38% on `base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000` + `bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 - Proxy spread surface: buyQuotes=11 sellQuotes=45 opportunities=55 policyReady=0 overfit=high_overfit_risk
+- Proxy coverage target: group=`wbtc` next=`expand_amount_ladder` reason=`partial_amount_match` buyLevels=5 sellLevels=17 matchedLevels=5
 - Strategy track stable_loop: label=`base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 + bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` status=`blocked_loop` next=`expand_amount_ladder` reason=`amount_mismatch`
-- Strategy track proxy_spread: label=`avalanche->unichain wBTC.OFT` status=`thin_coverage` next=`collect_more_proxy_quotes` reason=`thin_buy_quote_coverage`
+- Strategy track proxy_spread: label=`avalanche->unichain wBTC.OFT` status=`thin_coverage` next=`expand_amount_ladder` reason=`partial_amount_match`
 - Quote decay: 5s 3/4 · 15s 3/4 · 30s 3/4
 - Chain price coverage: observed 6, stale 6, missing 3
 - Quoteable chains observed: avalanche,base,bsc,ethereum,sonic,unichain
@@ -122,7 +124,7 @@ Updated: 2026-04-12T01:53:44.350Z
 - BTC watchlist missing from live routes: FBTC, LBTC, solvBTC, SolvBTC.BBN, tBTC, xSolvBTC
 - BTC watchlist unknown addresses: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
 - Last canary advance: bob->base wBTC.OFT->wBTC.OFT (BLOCKED_NO_VIABLE_PREP_ROUTE -> BLOCKED_NO_VIABLE_PREP_ROUTE; actions no_actions)
-- Route input freshness: quote stale (96.2m) · exactGas stale (114.4m) · srcGas stale (95.7m) · dex stale (97.9m) · btcFee not_needed · market stale (88.4m)
+- Route input freshness: quote stale (102.9m) · exactGas stale (121.1m) · srcGas stale (102.4m) · dex stale (104.5m) · btcFee not_needed · market stale (95.1m)
 - Route input blockers: reject_no_net_edge
 - Canary input watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 inputs=gateway_quote,exact_gas,src_gas,dex_quote,market (current canary route inputs are stale)
 - Gas refresh watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (gas freshness is not the active blocker)

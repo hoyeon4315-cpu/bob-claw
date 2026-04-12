@@ -60,11 +60,17 @@ function chooseStableLoopAction({ crossAssetArbitrage, bestStablecoinRoute }) {
 function chooseProxySpreadAction(btcProxySpreads) {
   const best = btcProxySpreads?.bestRebalanceOpportunity || null;
   const blockers = best?.blockers || [];
+  const nextCoverageTarget = btcProxySpreads?.nextCoverageTarget || null;
   if (btcProxySpreads?.overfitAssessment && btcProxySpreads.overfitAssessment !== "coverage_ok") {
     return {
       status: "thin_coverage",
-      nextActionCode: "collect_more_proxy_quotes",
-      reason: btcProxySpreads.overfitRisks?.[0] || btcProxySpreads.overfitAssessment,
+      nextActionCode:
+        nextCoverageTarget?.nextAction === "expand_amount_ladder"
+          ? "expand_amount_ladder"
+          : nextCoverageTarget?.nextAction === "refresh_stale_quotes"
+            ? "refresh_proxy_quotes"
+            : "collect_more_proxy_quotes",
+      reason: nextCoverageTarget?.reason || btcProxySpreads.overfitRisks?.[0] || btcProxySpreads.overfitAssessment,
     };
   }
   if (best?.policyReadyAfterRebalance && !hasBlockingSignals(blockers)) {

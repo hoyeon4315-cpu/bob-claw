@@ -458,7 +458,9 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.strategy.crossAssetArbitrage.entryCount, 0);
   assert.equal(status.strategy.crossAssetArbitrage.exitCount, 0);
   assert.equal(status.strategy.crossAssetArbitrage.bestLoop, null);
+  assert.equal(typeof status.strategy.crossAssetArbitrage.amountLadderPairCount, "number");
   assert.equal(typeof status.strategy.btcProxySpreads.opportunityCount, "number");
+  assert.equal(status.strategy.btcProxySpreads.nextCoverageTarget !== undefined, true);
   assert.equal(status.strategy.strategyTracks.trackCount >= 2, true);
   assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "stable_loop"), true);
   assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "proxy_spread"), true);

@@ -50,10 +50,15 @@ function buildObservedProxyCoverage(quotes, side) {
     const asset = tokenAsset(quote.chain, side === "buy" ? quote.outputToken : quote.inputToken);
     const proxyGroup = proxyGroupKey(asset);
     if (!proxyGroup) continue;
-    const entry = coverage.get(proxyGroup) || { proxyGroup, quoteCount: 0, chains: new Set(), tickers: new Set() };
+    const amountLevel = side === "buy" ? quote.targetTokenAmount : quote.inputAmount;
+    const entry = coverage.get(proxyGroup) || { proxyGroup, quoteCount: 0, chains: new Set(), tickers: new Set(), amounts: new Set(), latestObservedAt: null };
     entry.quoteCount += 1;
     entry.chains.add(quote.chain);
     entry.tickers.add(asset.ticker);
+    if (amountLevel) entry.amounts.add(String(amountLevel));
+    if (!entry.latestObservedAt || minutesBetween(entry.latestObservedAt, quote.observedAt) >= 0) {
+      entry.latestObservedAt = quote.observedAt;
+    }
     coverage.set(proxyGroup, entry);
   }
 
@@ -62,7 +67,9 @@ function buildObservedProxyCoverage(quotes, side) {
       proxyGroup: entry.proxyGroup,
       quoteCount: entry.quoteCount,
       chainCount: entry.chains.size,
+      amountLevelCount: entry.amounts.size,
       tickers: [...entry.tickers].sort(),
+      latestObservedAt: entry.latestObservedAt,
     }))
     .sort((left, right) => right.quoteCount - left.quoteCount || String(left.proxyGroup).localeCompare(String(right.proxyGroup)));
 }
@@ -190,6 +197,91 @@ function summarizeOpportunity({ buyQuote, sellQuote, routeMaps, policy, amountTo
   };
 }
 
+function buildCoverageTargets({ buyQuotes, sellQuotes, opportunities, maxQuoteAgeMinutes, now }) {
+  const groups = new Map();
+  function ensure(proxyGroup) {
+    const existing = groups.get(proxyGroup) || {
+      proxyGroup,
+      buyAmounts: new Set(),
+      sellAmounts: new Set(),
+      matchedAmounts: new Set(),
+      buyChainCount: new Set(),
+      sellChainCount: new Set(),
+      latestBuyObservedAt: null,
+      latestSellObservedAt: null,
+    };
+    groups.set(proxyGroup, existing);
+    return existing;
+  }
+
+  for (const quote of buyQuotes) {
+    const asset = tokenAsset(quote.chain, quote.outputToken);
+    const proxyGroup = proxyGroupKey(asset);
+    if (!proxyGroup) continue;
+    const entry = ensure(proxyGroup);
+    if (quote.targetTokenAmount) entry.buyAmounts.add(String(quote.targetTokenAmount));
+    entry.buyChainCount.add(quote.chain);
+    if (!entry.latestBuyObservedAt || minutesBetween(entry.latestBuyObservedAt, quote.observedAt) >= 0) entry.latestBuyObservedAt = quote.observedAt;
+  }
+  for (const quote of sellQuotes) {
+    const asset = tokenAsset(quote.chain, quote.inputToken);
+    const proxyGroup = proxyGroupKey(asset);
+    if (!proxyGroup) continue;
+    const entry = ensure(proxyGroup);
+    if (quote.inputAmount) entry.sellAmounts.add(String(quote.inputAmount));
+    entry.sellChainCount.add(quote.chain);
+    if (!entry.latestSellObservedAt || minutesBetween(entry.latestSellObservedAt, quote.observedAt) >= 0) entry.latestSellObservedAt = quote.observedAt;
+  }
+  for (const opportunity of opportunities) {
+    const entry = ensure(opportunity.proxyGroup);
+    if (opportunity.amount) entry.matchedAmounts.add(String(opportunity.amount));
+  }
+
+  return [...groups.values()]
+    .map((item) => {
+      const freshestBuyAgeMinutes = finite(minutesBetween(item.latestBuyObservedAt, now));
+      const freshestSellAgeMinutes = finite(minutesBetween(item.latestSellObservedAt, now));
+      let nextAction = "watch_surface";
+      let reason = "coverage_ok";
+      if (item.buyAmounts.size === 0 || item.sellAmounts.size === 0) {
+        nextAction = "expand_missing_side";
+        reason = item.buyAmounts.size === 0 ? "missing_buy_side" : "missing_sell_side";
+      } else if (
+        item.matchedAmounts.size === 0 ||
+        item.buyAmounts.size > item.matchedAmounts.size ||
+        item.sellAmounts.size > item.matchedAmounts.size
+      ) {
+        nextAction = "expand_amount_ladder";
+        reason = item.matchedAmounts.size === 0 ? "no_matched_amount_levels" : "partial_amount_match";
+      } else if (
+        (Number.isFinite(freshestBuyAgeMinutes) && freshestBuyAgeMinutes > maxQuoteAgeMinutes) ||
+        (Number.isFinite(freshestSellAgeMinutes) && freshestSellAgeMinutes > maxQuoteAgeMinutes)
+      ) {
+        nextAction = "refresh_stale_quotes";
+        reason = "stale_proxy_quotes";
+      }
+      return {
+        proxyGroup: item.proxyGroup,
+        buyAmountLevelCount: item.buyAmounts.size,
+        sellAmountLevelCount: item.sellAmounts.size,
+        matchedAmountLevelCount: item.matchedAmounts.size,
+        buyChainCount: item.buyChainCount.size,
+        sellChainCount: item.sellChainCount.size,
+        freshestBuyAgeMinutes,
+        freshestSellAgeMinutes,
+        nextAction,
+        reason,
+      };
+    })
+    .sort(
+      (left, right) =>
+        String(left.nextAction).localeCompare(String(right.nextAction)) ||
+        left.matchedAmountLevelCount - right.matchedAmountLevelCount ||
+        (left.freshestBuyAgeMinutes ?? Number.POSITIVE_INFINITY) - (right.freshestBuyAgeMinutes ?? Number.POSITIVE_INFINITY) ||
+        String(left.proxyGroup).localeCompare(String(right.proxyGroup)),
+    );
+}
+
 export function buildBtcProxySpreadSummary({ dexQuotes = [], routes = [], scoreSnapshot = null } = {}, options = {}) {
   const policy = {
     ...buildDefaultRiskPolicy(),
@@ -275,6 +367,13 @@ export function buildBtcProxySpreadSummary({ dexQuotes = [], routes = [], scoreS
     overfitRisks.length >= 3 ? "high_overfit_risk" :
     overfitRisks.length >= 1 ? "moderate_overfit_risk" :
     "coverage_ok";
+  const coverageTargets = buildCoverageTargets({
+    buyQuotes,
+    sellQuotes,
+    opportunities,
+    maxQuoteAgeMinutes,
+    now,
+  });
 
   return {
     schemaVersion: 1,
@@ -301,6 +400,9 @@ export function buildBtcProxySpreadSummary({ dexQuotes = [], routes = [], scoreS
     policyReadyCount: opportunities.filter((item) => item.policyReadyAfterRebalance).length,
     overfitAssessment,
     overfitRisks,
+    coverageTargetCount: coverageTargets.length,
+    coverageTargets,
+    nextCoverageTarget: coverageTargets.find((item) => item.nextAction !== "watch_surface") || coverageTargets[0] || null,
     bestRawOpportunity:
       [...opportunities].sort(
         (left, right) =>

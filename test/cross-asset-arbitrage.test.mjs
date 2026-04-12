@@ -95,3 +95,77 @@ test("cross-asset arbitrage reports closest loop when BTC amount does not match"
   assert.equal(summary.closestLoop.exitRouteKey, "bitcoin:0xbtc->base:0xusdc");
   assert.equal(summary.closestLoop.blockers.includes("amount_mismatch"), true);
 });
+
+test("cross-asset arbitrage tracks amount ladder coverage across stable loop pairs", () => {
+  const summary = buildCrossAssetArbitrageSummary({
+    generatedAt: "2026-04-11T13:00:00.000Z",
+    scores: [
+      {
+        routeKey: "base:0xusdc->bitcoin:0xbtc",
+        amount: "4000000",
+        srcChain: "base",
+        dstChain: "bitcoin",
+        srcAsset: { ticker: "USDC", family: "stablecoin", token: "0xusdc" },
+        dstAsset: { ticker: "BTC", family: "btc", token: "0xbtc" },
+        inputAmount: 4,
+        outputAmount: 0.00005,
+        inputUsd: 4.05,
+        outputUsd: 3.7,
+        knownCostUsd: 0.1,
+        tradeReadiness: "insufficient_data",
+        dataGaps: [],
+      },
+      {
+        routeKey: "base:0xusdc->bitcoin:0xbtc",
+        amount: "8000000",
+        srcChain: "base",
+        dstChain: "bitcoin",
+        srcAsset: { ticker: "USDC", family: "stablecoin", token: "0xusdc" },
+        dstAsset: { ticker: "BTC", family: "btc", token: "0xbtc" },
+        inputAmount: 8,
+        outputAmount: 0.0001,
+        inputUsd: 8.05,
+        outputUsd: 7.4,
+        knownCostUsd: 0.12,
+        tradeReadiness: "insufficient_data",
+        dataGaps: [],
+      },
+      {
+        routeKey: "bitcoin:0xbtc->base:0xusdc",
+        amount: "5000",
+        srcChain: "bitcoin",
+        dstChain: "base",
+        srcAsset: { ticker: "BTC", family: "btc", token: "0xbtc" },
+        dstAsset: { ticker: "USDC", family: "stablecoin", token: "0xusdc" },
+        inputAmount: 0.00005,
+        outputAmount: 3.6,
+        inputUsd: 3.7,
+        outputUsd: 3.6,
+        knownCostUsd: 0.1,
+        tradeReadiness: "shadow_candidate_review_only",
+        dataGaps: [],
+      },
+      {
+        routeKey: "bitcoin:0xbtc->base:0xusdc",
+        amount: "10000",
+        srcChain: "bitcoin",
+        dstChain: "base",
+        srcAsset: { ticker: "BTC", family: "btc", token: "0xbtc" },
+        dstAsset: { ticker: "USDC", family: "stablecoin", token: "0xusdc" },
+        inputAmount: 0.0001,
+        outputAmount: 7.5,
+        inputUsd: 7.4,
+        outputUsd: 7.5,
+        knownCostUsd: 0.1,
+        tradeReadiness: "shadow_candidate_review_only",
+        dataGaps: [],
+      },
+    ],
+  });
+
+  assert.equal(summary.amountLadderPairCount, 1);
+  assert.equal(summary.bestAmountLadderPair.entryAmountLevelCount, 2);
+  assert.equal(summary.bestAmountLadderPair.exitAmountLevelCount, 2);
+  assert.equal(summary.bestAmountLadderPair.exactMatchCount, 2);
+  assert.equal(summary.bestAmountLadderPair.positiveLoopCount, 1);
+});

@@ -24,6 +24,11 @@ test("strategy tracks stay conservative for blocked stable loops and overfit pro
       },
       overfitAssessment: "high_overfit_risk",
       overfitRisks: ["all_quotes_stale"],
+      nextCoverageTarget: {
+        proxyGroup: "wbtc",
+        nextAction: "expand_amount_ladder",
+        reason: "partial_amount_match",
+      },
       unmatchedObservedProxyGroups: [],
     },
   });
@@ -35,8 +40,8 @@ test("strategy tracks stay conservative for blocked stable loops and overfit pro
   assert.equal(stableLoop.nextActionCode, "refresh_stable_loop_quotes");
   assert.equal(stableLoop.reason, "entry_stale_dex_output_quote");
   assert.equal(proxySpread.status, "thin_coverage");
-  assert.equal(proxySpread.nextActionCode, "collect_more_proxy_quotes");
-  assert.equal(proxySpread.reason, "all_quotes_stale");
+  assert.equal(proxySpread.nextActionCode, "expand_amount_ladder");
+  assert.equal(proxySpread.reason, "partial_amount_match");
 });
 
 test("strategy tracks only promote blocker-free durable candidates", () => {
