@@ -929,6 +929,26 @@ function shadowCycleSummary(shadowCycle, now) {
           prepBlockers: item.prepBlockers || [],
           scoreDisqualifiers: item.scoreDisqualifiers || [],
           readinessFailureReason: item.readinessFailureReason || null,
+          evidence: item.evidence
+            ? {
+                quoteSampleCount: item.evidence.quoteSampleCount ?? 0,
+                quoteFailureCount: item.evidence.quoteFailureCount ?? 0,
+                quoteAttemptCount: item.evidence.quoteAttemptCount ?? 0,
+                quoteSuccessRate: item.evidence.quoteSuccessRate ?? null,
+                quoteLatencyP50Ms: item.evidence.quoteLatencyP50Ms ?? null,
+                quoteLatencyP95Ms: item.evidence.quoteLatencyP95Ms ?? null,
+                shadowObservationCount: item.evidence.shadowObservationCount ?? 0,
+                latestQuoteObservedAt: item.evidence.latestQuoteObservedAt || null,
+                latestFailureObservedAt: item.evidence.latestFailureObservedAt || null,
+                latestObservationObservedAt: item.evidence.latestObservationObservedAt || null,
+                latestObservedEdgeUsd: item.evidence.latestObservedEdgeUsd ?? null,
+                latestKnownCostUsd: item.evidence.latestKnownCostUsd ?? null,
+                latestExecutionGasUsd: item.evidence.latestExecutionGasUsd ?? null,
+                latestRouteFailureRate: item.evidence.latestRouteFailureRate ?? null,
+                latestTradeReadiness: item.evidence.latestTradeReadiness || null,
+                rejectionReasons: item.evidence.rejectionReasons || [],
+              }
+            : null,
         };
       }),
     },

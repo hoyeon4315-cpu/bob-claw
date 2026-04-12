@@ -103,6 +103,10 @@ async function main() {
     refillJobs,
     routePerformance,
     riskState,
+    quotes,
+    quoteFailures,
+    shadowObservations: canaryState?.shadowObservations || [],
+    scoreSnapshot,
   });
   summary.address = {
     resolved: address,

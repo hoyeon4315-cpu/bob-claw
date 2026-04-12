@@ -543,14 +543,35 @@ test("dashboard status includes shadow cycle summary when available", () => {
             viableForPrep: true,
             txReady: true,
             tradeReadiness: "reject_no_net_edge",
-            prepFundingUsd: 0,
-            netEdgeUsd: -0.83,
-            prepBlockers: [],
-            scoreDisqualifiers: [],
-            readinessFailureReason: null,
+          prepFundingUsd: 0,
+          netEdgeUsd: -0.83,
+          prepBlockers: [],
+          scoreDisqualifiers: [],
+          readinessFailureReason: null,
+          evidence: {
+            quoteSampleCount: 2,
+            quoteFailureCount: 1,
+            quoteAttemptCount: 3,
+            quoteSuccessRate: 2 / 3,
+            quoteLatencyP50Ms: 420,
+            quoteLatencyP95Ms: 680,
+            shadowObservationCount: 2,
+            latestQuoteObservedAt: "2026-04-10T11:57:00.000Z",
+            latestFailureObservedAt: "2026-04-10T11:58:00.000Z",
+            latestObservationObservedAt: "2026-04-10T11:59:00.000Z",
+            latestObservedEdgeUsd: -0.83,
+            latestKnownCostUsd: 0.21,
+            latestExecutionGasUsd: 0.03,
+            latestRouteFailureRate: 0.25,
+            latestTradeReadiness: "reject_no_net_edge",
+            rejectionReasons: [
+              { reason: "reject_no_net_edge", count: 2 },
+              { reason: "stale_dex_output_quote", count: 1 },
+            ],
           },
-          {
-            role: "tx_ready_shadow",
+        },
+        {
+          role: "tx_ready_shadow",
             label: "ethereum->base WBTC->wBTC.OFT",
             amount: "10000",
             srcChain: "ethereum",
@@ -667,6 +688,11 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].roleLabel, "현재 canary");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].roleLabel, "payload 확보 shadow 후보");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].tradeReadinessLabel, "가격 또는 가스 데이터가 아직 부족함");
+  assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteSampleCount, 2);
+  assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteFailureCount, 1);
+  assert.equal(Number(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteSuccessRate.toFixed(3)), 0.667);
+  assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.latestKnownCostUsd, 0.21);
+  assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.rejectionReasons[0].reason, "reject_no_net_edge");
   assert.equal(status.shadowCycle.shadowActions[0].actionLabel, "신선한 입력 대기");
   assert.equal(status.shadowCycle.shadowActions[1].actionLabel, "지갑 준비 점검");
   assert.equal(status.shadowCycle.shadowActions[1].command.includes("check:estimator-wallet"), true);

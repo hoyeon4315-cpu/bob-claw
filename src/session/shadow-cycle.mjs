@@ -1,4 +1,5 @@
 import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
+import { summarizeShadowCandidateEvidence } from "./shadow-evidence.mjs";
 
 function dedupe(values) {
   return [...new Set(values.filter(Boolean))];
@@ -302,7 +303,7 @@ function shadowRosterRole(candidate, index) {
   return "research_candidate";
 }
 
-function summarizeShadowRoster(routePlan, limit = 5) {
+function summarizeShadowRoster(routePlan, evidenceInput = {}, limit = 5) {
   const candidates = (routePlan?.topCandidates || []).slice(0, limit);
   return {
     candidateCount: routePlan?.candidateCount ?? candidates.length,
@@ -323,6 +324,13 @@ function summarizeShadowRoster(routePlan, limit = 5) {
       prepBlockers: candidate.prepBlockers || [],
       scoreDisqualifiers: candidate.scoreDisqualifiers || [],
       readinessFailureReason: candidate.readinessFailureReason || null,
+      evidence: summarizeShadowCandidateEvidence({
+        candidate,
+        quotes: evidenceInput.quotes || [],
+        quoteFailures: evidenceInput.quoteFailures || [],
+        shadowObservations: evidenceInput.shadowObservations || [],
+        scores: evidenceInput.scores || [],
+      }),
     })),
   };
 }
@@ -354,6 +362,10 @@ export function buildShadowCycleSummary({
   refillJobs,
   routePerformance,
   riskState,
+  quotes = [],
+  quoteFailures = [],
+  shadowObservations = [],
+  scoreSnapshot = null,
 }) {
   const nextStep = canaryState?.nextStep || null;
   const topRoute = canaryState?.routePlan?.topCandidates?.[0] || null;
@@ -401,7 +413,15 @@ export function buildShadowCycleSummary({
           prepFundingUsd: topRoute.prepFundingUsd,
         }
       : null,
-    shadowRoster: summarizeShadowRoster(canaryState?.routePlan),
+    shadowRoster: summarizeShadowRoster(
+      canaryState?.routePlan,
+      {
+        quotes,
+        quoteFailures,
+        shadowObservations,
+        scores: scoreSnapshot?.scores || [],
+      },
+    ),
     shadowActions: summarizeShadowActions(canaryState?.routePlan, { address: canaryState?.address || null }),
     canary: nextStep
       ? {

@@ -6,6 +6,7 @@ import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildCanaryInputSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
@@ -18,6 +19,7 @@ import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
+import { summarizeShadowCandidateEvidence } from "../session/shadow-evidence.mjs";
 import { shadowActionForCandidate } from "../session/shadow-cycle.mjs";
 import {
   planCanaryInputRefresh,
@@ -181,7 +183,17 @@ function buildBtcWatchlistFallbackSummary(routes = []) {
   };
 }
 
-function shadowRosterLines(routePlan) {
+function formatRate(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function compactReasons(reasons = []) {
+  if (!reasons.length) return "none";
+  return reasons.map((item) => `${item.reason}:${item.count}`).join(",");
+}
+
+function shadowRosterLines(routePlan, evidenceInput = {}) {
   const candidates = (routePlan?.topCandidates || []).slice(0, 5);
   if (!candidates.length) return ["- none"];
   return candidates.map((candidate, index) => {
@@ -195,7 +207,14 @@ function shadowRosterLines(routePlan) {
       ...(candidate.scoreDisqualifiers || []).map((item) => `score:${item}`),
       ...(candidate.readinessFailureReason ? [`readiness:${candidate.readinessFailureReason}`] : []),
     ];
-    return `- ${role} route=\`${candidate.label}\` amount=\`${candidate.amount}\` txReady=${Boolean(candidate.txReady)} viableForPrep=${Boolean(candidate.viableForPrep)} net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} blockers=${blockers.join(",") || "none"}`;
+    const evidence = summarizeShadowCandidateEvidence({
+      candidate,
+      quotes: evidenceInput.quotes || [],
+      quoteFailures: evidenceInput.quoteFailures || [],
+      shadowObservations: evidenceInput.shadowObservations || [],
+      scores: evidenceInput.scores || [],
+    });
+    return `- ${role} route=\`${candidate.label}\` amount=\`${candidate.amount}\` txReady=${Boolean(candidate.txReady)} viableForPrep=${Boolean(candidate.viableForPrep)} net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} blockers=${blockers.join(",") || "none"} evidence=shadow:${evidence?.shadowObservationCount ?? 0} quotes:${evidence?.quoteSampleCount ?? 0}/${evidence?.quoteAttemptCount ?? 0} success:${formatRate(evidence?.quoteSuccessRate)} p95:${evidence?.quoteLatencyP95Ms ?? "n/a"}ms fee:${money(evidence?.latestKnownCostUsd)} reasons:${compactReasons(evidence?.rejectionReasons || [])}`;
   });
 }
 
@@ -531,6 +550,7 @@ async function main() {
     address: resolved.address,
     dataDir: config.dataDir,
   });
+  const quoteFailures = await readJsonl(config.dataDir, "gateway-quote-failures");
   const { routePlan, fundingPlan, nextStep: next, dashboardStatus } = state;
   const canaryInputs = buildCanaryInputSummary(state);
   const btcWatchlist = dashboardStatus?.gateway?.btcWatchlist || buildBtcWatchlistFallbackSummary(state?.routesRecords?.at(-1)?.routes || []);
@@ -655,7 +675,12 @@ async function main() {
     "",
     "## Shadow Roster",
     "",
-    ...shadowRosterLines(routePlan),
+    ...shadowRosterLines(routePlan, {
+      quotes: state?.quotes || [],
+      quoteFailures,
+      shadowObservations: state?.shadowObservations || [],
+      scores: state?.scoreSnapshot?.scores || [],
+    }),
     "",
     "## Shadow Actions",
     "",

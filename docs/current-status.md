@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-12T01:45:31.616Z
+Updated: 2026-04-12T01:53:44.350Z
 
 ## Start Here
 
@@ -52,11 +52,11 @@ Updated: 2026-04-12T01:45:31.616Z
 
 ## Shadow Roster
 
-- active_canary route=`bob->base wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.8473 prepFunding=$0.0000 blockers=none
-- prep_candidate route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6105 prepFunding=$0.0000 blockers=prep:wallet_not_checked
-- prep_candidate route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6423 prepFunding=$0.0000 blockers=prep:wallet_not_checked
-- prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.5623 prepFunding=$0.0000 blockers=prep:wallet_not_checked
-- prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-1.7433 prepFunding=$0.0000 blockers=prep:wallet_not_checked
+- active_canary route=`bob->base wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.8473 prepFunding=$0.0000 blockers=none evidence=shadow:31 quotes:14/14 success:100.0% p95:775ms fee:$0.8107 reasons:reject_effective_system_pnl:31,reject_treasury_execution_refill_cost:31,reject_no_net_edge:18,insufficient_data:13,stale_dex_output_quote:10
+- prep_candidate route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6105 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:1 quotes:1/1 success:100.0% p95:3129ms fee:$0.5740 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
+- prep_candidate route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6423 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:1 quotes:1/1 success:100.0% p95:569ms fee:$0.6057 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
+- prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.5623 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:1 quotes:1/1 success:100.0% p95:565ms fee:$0.5258 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
+- prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-1.7433 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:6 quotes:2/2 success:100.0% p95:1879ms fee:$1.71 reasons:exact_src_execution_gas_not_estimated:6,insufficient_data:6,reject_effective_system_pnl:6,reject_treasury_execution_refill_cost:6,treasury_bootstrap_native_required:6
 
 ## Shadow Actions
 
@@ -122,7 +122,7 @@ Updated: 2026-04-12T01:45:31.616Z
 - BTC watchlist missing from live routes: FBTC, LBTC, solvBTC, SolvBTC.BBN, tBTC, xSolvBTC
 - BTC watchlist unknown addresses: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
 - Last canary advance: bob->base wBTC.OFT->wBTC.OFT (BLOCKED_NO_VIABLE_PREP_ROUTE -> BLOCKED_NO_VIABLE_PREP_ROUTE; actions no_actions)
-- Route input freshness: quote stale (88.0m) · exactGas stale (106.2m) · srcGas stale (87.5m) · dex stale (89.7m) · btcFee not_needed · market stale (80.2m)
+- Route input freshness: quote stale (96.2m) · exactGas stale (114.4m) · srcGas stale (95.7m) · dex stale (97.9m) · btcFee not_needed · market stale (88.4m)
 - Route input blockers: reject_no_net_edge
 - Canary input watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 inputs=gateway_quote,exact_gas,src_gas,dex_quote,market (current canary route inputs are stale)
 - Gas refresh watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (gas freshness is not the active blocker)

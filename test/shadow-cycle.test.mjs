@@ -404,6 +404,65 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
     refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
     routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
     riskState: { dailyRealizedPnlUsd: 0, projectLossUsedUsd: 0, failedGasCost24hUsd: 0, consecutiveFailures: 0 },
+    quotes: [
+      {
+        observedAt: "2026-04-12T00:10:00.000Z",
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        latencyMs: 420,
+      },
+      {
+        observedAt: "2026-04-12T00:11:00.000Z",
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        latencyMs: 680,
+      },
+    ],
+    quoteFailures: [
+      {
+        observedAt: "2026-04-12T00:12:00.000Z",
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+      },
+    ],
+    shadowObservations: [
+      {
+        observedAt: "2026-04-12T00:13:00.000Z",
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        observedEdgeUsd: -0.84,
+        knownCostUsd: 0.19,
+        executionGasUsd: 0.02,
+        routeFailureRate: 0.2,
+        tradeReadiness: "reject_no_net_edge",
+        rejectionReasons: ["reject_no_net_edge", "stale_dex_output_quote"],
+      },
+      {
+        observedAt: "2026-04-12T00:14:00.000Z",
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "10000",
+        observedEdgeUsd: -0.81,
+        knownCostUsd: 0.21,
+        executionGasUsd: 0.03,
+        routeFailureRate: 0.25,
+        tradeReadiness: "reject_no_net_edge",
+        rejectionReasons: ["reject_no_net_edge"],
+      },
+    ],
+    scoreSnapshot: {
+      scores: [
+        {
+          observedAt: "2026-04-12T00:14:30.000Z",
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+          tradeReadiness: "reject_no_net_edge",
+          knownCostUsd: 0.22,
+          executionGasUsd: 0.03,
+          routeStats: { failureRate: 0.25 },
+          dataGaps: [],
+        },
+      ],
+    },
   });
 
   assert.equal(summary.shadowRoster.candidateCount, 4);
@@ -423,6 +482,19 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
       ["bob->base wBTC.OFT->wBTC.OFT", "wait_for_fresh_inputs"],
       ["ethereum->base WBTC->wBTC.OFT", "check_wallet_readiness"],
       ["base->avalanche wBTC.OFT->wBTC.OFT", "check_wallet_readiness"],
+    ],
+  );
+  assert.equal(summary.shadowRoster.candidates[0].evidence.quoteSampleCount, 2);
+  assert.equal(summary.shadowRoster.candidates[0].evidence.quoteFailureCount, 1);
+  assert.equal(Number(summary.shadowRoster.candidates[0].evidence.quoteSuccessRate.toFixed(3)), 0.667);
+  assert.equal(summary.shadowRoster.candidates[0].evidence.quoteLatencyP95Ms, 680);
+  assert.equal(summary.shadowRoster.candidates[0].evidence.shadowObservationCount, 2);
+  assert.equal(summary.shadowRoster.candidates[0].evidence.latestKnownCostUsd, 0.21);
+  assert.deepEqual(
+    summary.shadowRoster.candidates[0].evidence.rejectionReasons.map((item) => [item.reason, item.count]),
+    [
+      ["reject_no_net_edge", 2],
+      ["stale_dex_output_quote", 1],
     ],
   );
 });
