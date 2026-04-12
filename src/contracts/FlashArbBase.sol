@@ -60,6 +60,7 @@ contract FlashArbBase is IFlashLoanSimpleReceiver {
     address public owner;
     bool public stopped;
     uint256 public minProfitBps; // e.g., 30 = 0.30%
+    uint256 private _locked; // reentrancy guard
 
     event ArbExecuted(uint256 borrowed, uint256 profit, uint256 gasUsed);
     event EmergencyStop(address indexed by);
@@ -72,6 +73,13 @@ contract FlashArbBase is IFlashLoanSimpleReceiver {
     modifier notStopped() {
         require(!stopped, "emergency stopped");
         _;
+    }
+
+    modifier nonReentrant() {
+        require(_locked == 0, "reentrant call");
+        _locked = 1;
+        _;
+        _locked = 0;
     }
 
     constructor(uint256 _minProfitBps) {
@@ -119,7 +127,7 @@ contract FlashArbBase is IFlashLoanSimpleReceiver {
         uint256 premium,
         address initiator,
         bytes calldata params
-    ) external override returns (bool) {
+    ) external override nonReentrant returns (bool) {
         uint256 gasStart = gasleft();
 
         // Verify caller is Aave pool

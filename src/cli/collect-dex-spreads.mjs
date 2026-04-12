@@ -438,9 +438,9 @@ async function main() {
       const sample = await collectOneSample();
       cycles++;
 
-      // Update anchor from sample
+      // Update anchor from sample — reset each normal cycle to track baseline
       if (sample.btcSpotUsd) {
-        if (!anchorPrice) anchorPrice = sample.btcSpotUsd;
+        if (!anchorPrice || !inTurbo) anchorPrice = sample.btcSpotUsd;
       }
 
       const mode = inTurbo ? "🔥 TURBO" : "📊 NORMAL";
@@ -469,17 +469,23 @@ async function main() {
       console.error(`  ✗ cycle error: ${err.message}`);
     }
 
-    // Sentinel loop: check BTC price between probes
+    // Sentinel loop: check BTC price between probes (with backoff on errors)
     const probeDeadline = Date.now() + currentInterval * 1000;
+    let sentinelBackoffMs = 0;
     while (Date.now() < probeDeadline) {
-      const sleepMs = Math.min(SENTINEL_MS, probeDeadline - Date.now());
+      const sleepMs = Math.min(SENTINEL_MS + sentinelBackoffMs, probeDeadline - Date.now());
       if (sleepMs <= 0) break;
       await new Promise(r => setTimeout(r, sleepMs));
 
       if (anchorPrice && !inTurbo) {
         try {
-          // Quick price check using Binance (no cache)
           const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", { signal: AbortSignal.timeout(5_000) });
+          if (r.status === 429 || r.status === 418) {
+            sentinelBackoffMs = Math.min((sentinelBackoffMs || 5_000) * 2, 120_000);
+            console.log(`  ⚠ Binance rate limit — backing off ${(sentinelBackoffMs / 1000).toFixed(0)}s`);
+            continue;
+          }
+          sentinelBackoffMs = 0; // reset on success
           const d = await r.json();
           const nowPrice = parseFloat(d.price);
           if (Number.isFinite(nowPrice)) {
@@ -492,7 +498,7 @@ async function main() {
             }
           }
         } catch {
-          // Non-critical
+          sentinelBackoffMs = Math.min((sentinelBackoffMs || 5_000) * 2, 60_000);
         }
       }
     }
