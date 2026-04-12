@@ -8,3 +8,8 @@ coverage/
 .playwright-cli/
 .cloudflare/
 .wrangler/
+
+# Foundry
+lib/
+out/
+cache/
