@@ -1276,6 +1276,9 @@ export function buildDashboardStatus(input, options = {}) {
     },
   };
 
+  // Quote lag dry-run summary (from collect-quote-lag collector)
+  const quoteLag = input.quoteLagLatest || null;
+
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
     generatedAt: now,
@@ -1293,6 +1296,7 @@ export function buildDashboardStatus(input, options = {}) {
     opportunity,
     dex,
     audit: auditStatus,
+    quoteLag,
     dataCounts: {
       routesRecords: input.routesRecords?.length || 0,
       quotes: input.quotes?.length || 0,

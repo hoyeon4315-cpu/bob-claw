@@ -523,6 +523,78 @@ function renderOpportunity(status) {
       : `${quotePrefix} · ${rejected} rejected by net cost`;
 }
 
+function renderQuoteLag(status) {
+  const lag = status.quoteLag;
+  const badge = $("quoteLagBadge");
+  const title = $("quoteLagTitle");
+  const body = $("quoteLagBody");
+  const probesEl = $("quoteLagProbes");
+  const samplesEl = $("quoteLagSamples");
+  const maxEl = $("quoteLagMax");
+  const profitableEl = $("quoteLagProfitable");
+  const priceRangeEl = $("quoteLagPriceRange");
+
+  if (!lag || lag.sampleCount === 0) {
+    badge.textContent = "대기 중";
+    title.textContent = "호가 지연 측정 대기";
+    body.textContent = "npm run collect:quote-lag 으로 수집을 시작하세요.";
+    probesEl.innerHTML = "";
+    samplesEl.textContent = "0";
+    maxEl.textContent = "—";
+    profitableEl.textContent = "0건";
+    priceRangeEl.textContent = "—";
+    return;
+  }
+
+  // Badge
+  const verdictMap = {
+    profitable_dislocations_found: "🟢 기회 발견",
+    no_profitable_dislocations: "측정 중",
+    no_data: "대기 중",
+  };
+  badge.textContent = verdictMap[lag.verdict] || lag.verdict;
+
+  // Title + body
+  const ageMin = lag.latestSampleAt
+    ? Math.round((Date.now() - new Date(lag.latestSampleAt).getTime()) / 60000)
+    : null;
+  const freshLabel = ageMin !== null ? `${ageMin}분 전 갱신` : "";
+
+  if (lag.verdict === "profitable_dislocations_found") {
+    title.textContent = `수익 기회 ${lag.lagStats.profitableSampleCount}건 발견!`;
+    body.textContent = `최대 지연 ${lag.lagStats.maxLagPct}% · ${lag.sampleCount}건 수집 · ${freshLabel}`;
+  } else {
+    title.textContent = `호가 지연 측정 중`;
+    body.textContent = `${lag.sampleCount}건 수집 · 최대 ${lag.lagStats.maxLagPct ?? 0}% 지연 · ${freshLabel}`;
+  }
+
+  // Per-probe cards
+  const probeStats = lag.probeStats || [];
+  probesEl.innerHTML = probeStats
+    .map((p) => {
+      const lagStr = p.maxLagPct !== null ? `${p.maxLagPct > 0 ? "+" : ""}${p.maxLagPct.toFixed(3)}%` : "n/a";
+      const netClass = p.profitableCount > 0 ? "positive" : "negative";
+      const profLabel = p.profitableCount > 0 ? `🟢 ${p.profitableCount}건` : "—";
+      return `<div class="lag-probe">
+        <span class="lag-probe-label">${p.label}</span>
+        <span class="lag-probe-lag">${lagStr}</span>
+        <span class="lag-probe-net ${netClass}">${profLabel}</span>
+      </div>`;
+    })
+    .join("");
+
+  // Stats
+  samplesEl.textContent = lag.sampleCount.toLocaleString();
+  maxEl.textContent = lag.lagStats.maxLagPct !== null ? `${lag.lagStats.maxLagPct}%` : "—";
+  profitableEl.textContent = `${lag.lagStats.profitableSampleCount}건 (${lag.lagStats.profitableSamplePct}%)`;
+
+  const pr = lag.btcPriceRange;
+  priceRangeEl.textContent =
+    pr.min !== null && pr.max !== null
+      ? `$${pr.min.toLocaleString()} – $${pr.max.toLocaleString()}`
+      : "—";
+}
+
 function renderUpdate(status) {
   const summary = buildUpdateSummary(status);
   $("updateBadge").textContent = summary.badge;
@@ -552,6 +624,7 @@ function render(status) {
   renderGas(status);
   renderAssetCoverage(status);
   renderOpportunity(status);
+  renderQuoteLag(status);
   renderUpdate(status);
   const mapWidth = document.querySelector(".map-wrap")?.clientWidth || null;
   lastMapWidth = mapWidth;
