@@ -22,6 +22,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { sendTelegramMessage } from "../notify/telegram.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DATA_DIR = config.dataDir || join(ROOT, "data");
@@ -301,6 +302,12 @@ async function main() {
         netPct: r.netPct,
         totalLatencyMs: r.totalLatencyMs,
       });
+      // Telegram alert (non-blocking)
+      sendTelegramMessage({
+        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        chatId: process.env.TELEGRAM_CHAT_ID,
+        text: `🔔 BOB Claw Alert\n${r.label}\nNet: $${r.netProfit.toFixed(2)} (${(r.netPct).toFixed(3)}%)\nGas: $${r.totalGas.toFixed(3)}\nCapital: $${args.capital} | Flash: ${args.flashFeePct}%`,
+      }).catch(() => {});
     }
 
     renderDashboard(args, session, routes, cycleDurationMs);
