@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-12T07:28:57.380Z",
+  "scenarios": [
+    {
+      "crashPct": 1,
+      "minCapitalUsd": 1949,
+      "netProfitUsd": "9.75",
+      "maxConsecutiveLosses": 0,
+      "feasibleWith300": false
+    },
+    {
+      "crashPct": 1.5,
+      "minCapitalUsd": 260,
+      "netProfitUsd": "1.30",
+      "maxConsecutiveLosses": 1,
+      "feasibleWith300": true
+    },
+    {
+      "crashPct": 2,
+      "minCapitalUsd": 140,
+      "netProfitUsd": "0.71",
+      "maxConsecutiveLosses": 2,
+      "feasibleWith300": true
+    },
+    {
+      "crashPct": 3,
+      "minCapitalUsd": 73,
+      "netProfitUsd": "0.38",
+      "maxConsecutiveLosses": 2,
+      "feasibleWith300": true
+    },
+    {
+      "crashPct": 5,
+      "minCapitalUsd": 37,
+      "netProfitUsd": "0.19",
+      "maxConsecutiveLosses": 3,
+      "feasibleWith300": true
+    }
+  ],
+  "practicalAssessment": {
+    "budgetUsd": 300,
+    "viableAtCrashPct": 2,
+    "minTradeAtViable": 150,
+    "marginalAtCrashPct": 1.5,
+    "minTradeAtMarginal": 278,
+    "maxLossPerTrade": 2.56,
+    "canaryLossesPerDay": 1,
+    "estimatedMonthlyTrades": "2-3",
+    "estimatedMonthlyRevenue": "$4.88-7.32",
+    "estimatedMonthlyReturn": "1.6-2.4%"
+  },
+  "verdict": "MARGINALLY_VIABLE — depends on unproven Gateway lag behavior during volatility",
+  "keyUnknowns": [
+    "Does Gateway lag during 2%+ BTC moves?",
+    "Does Gateway honor quoted price for 6-9 min settlement?",
+    "Does Gateway have dynamic slippage that kills the trade?"
+  ]
+}

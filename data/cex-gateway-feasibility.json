@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-12T07:28:16.977Z",
+  "title": "CEX-Gateway Hybrid Arbitrage Feasibility",
+  "concept": {
+    "description": "Use CEX (Binance/Bybit) as price oracle + hedge, Gateway as execution venue",
+    "flow": [
+      "1. Monitor CEX BTC price feed (websocket, <100ms latency)",
+      "2. When CEX price diverges from Gateway quote by >threshold:",
+      "3a. If CEX BTC dropped: Sell BTC via Gateway at stale high price",
+      "3b. If CEX BTC pumped: Buy BTC via Gateway at stale low price",
+      "4. Simultaneously hedge on CEX (buy/sell spot or futures)",
+      "5. Close hedge after Gateway settlement (6-9 min)"
+    ]
+  },
+  "advantages": [
+    "CEX gives sub-second price discovery — much faster than CoinGecko 30s cache",
+    "CEX hedge eliminates directional risk during 6-9 min Gateway settlement",
+    "CEX spot fees: 0.10% (Binance VIP0) vs Gateway 0.42% — but Gateway is the lagging side",
+    "No need to time the market — just monitor the spread"
+  ],
+  "costs": {
+    "cexSpotFee": 0.1,
+    "cexFuturesFee": 0.04,
+    "gatewayStructuralCost": 0.42,
+    "gatewayExecCost": 1.5,
+    "btcWithdrawalFee": 0.0001,
+    "totalRoundTripPct": 0.52
+  },
+  "problems": [
+    "CEX requires KYC and separate capital allocation (not ring-fenced)",
+    "CEX withdrawal to fund Gateway takes 30-60 min (not instant)",
+    "Hedging on futures requires margin — exposes to liquidation risk",
+    "Our $300 budget cannot be split between CEX+Gateway effectively",
+    "BTC withdrawal from CEX costs ~$7.16 — kills small trades",
+    "AGENTS.md prohibits leverage, perps — futures hedge is not allowed",
+    "LLM cannot be in execution decision path — but CEX API integration needed"
+  ],
+  "blockers": [
+    "AGENTS.md: No leverage, no perps — eliminates futures hedge",
+    "AGENTS.md: No unlimited approvals — limits CEX integration",
+    "$300 budget: cannot split between CEX ($150 min) + Gateway ($150)",
+    "BTC withdrawal fee ($7.16) makes sub-$500 trades unviable",
+    "No CEX account or API keys provisioned"
+  ],
+  "verdict": {
+    "feasible": false,
+    "reason": "Project rules (no perps, no leverage) and budget constraints ($300) make CEX-Gateway hybrid unviable. BTC withdrawal fee alone ($7.16) is 2.4% of a $300 position. Without futures hedge, directional risk during 6-9 min settlement is too high.",
+    "alternativeNeeded": true
+  }
+}
