@@ -344,6 +344,7 @@ test("shadow cycle summary marks blocked canary prep explicitly", () => {
 test("shadow cycle summary includes a multi-shadow roster", () => {
   const summary = buildShadowCycleSummary({
     canaryState: {
+      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       nextStep: { decision: "BLOCKED_NO_VIABLE_PREP_ROUTE", reasons: ["reject_no_net_edge"] },
       routePlan: {
         candidateCount: 4,
@@ -358,6 +359,7 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
             dstChain: "base",
             viableForPrep: true,
             txReady: true,
+            exactGasDone: true,
             tradeReadiness: "reject_no_net_edge",
             prepFundingUsd: 0,
             netEdgeUsd: -0.84,
@@ -372,6 +374,7 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
             dstChain: "base",
             viableForPrep: false,
             txReady: true,
+            exactGasDone: false,
             tradeReadiness: "insufficient_data",
             prepFundingUsd: 4.2,
             netEdgeUsd: 64.77,
@@ -386,6 +389,7 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
             dstChain: "avalanche",
             viableForPrep: false,
             txReady: true,
+            exactGasDone: true,
             tradeReadiness: "insufficient_data",
             prepFundingUsd: 0.3,
             netEdgeUsd: null,
@@ -411,6 +415,14 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
       ["active_canary", "bob->base wBTC.OFT->wBTC.OFT"],
       ["tx_ready_shadow", "ethereum->base WBTC->wBTC.OFT"],
       ["tx_ready_shadow", "base->avalanche wBTC.OFT->wBTC.OFT"],
+    ],
+  );
+  assert.deepEqual(
+    summary.shadowActions.map((item) => [item.label, item.code]),
+    [
+      ["bob->base wBTC.OFT->wBTC.OFT", "wait_for_fresh_inputs"],
+      ["ethereum->base WBTC->wBTC.OFT", "check_wallet_readiness"],
+      ["base->avalanche wBTC.OFT->wBTC.OFT", "check_wallet_readiness"],
     ],
   );
 });

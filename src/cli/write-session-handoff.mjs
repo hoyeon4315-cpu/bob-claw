@@ -16,6 +16,7 @@ import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strateg
 import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import { shadowActionForCandidate } from "../session/shadow-cycle.mjs";
 import {
   planCanaryInputRefresh,
   describeBlockedScoreRefreshSelection,
@@ -193,6 +194,21 @@ function shadowRosterLines(routePlan) {
       ...(candidate.readinessFailureReason ? [`readiness:${candidate.readinessFailureReason}`] : []),
     ];
     return `- ${role} route=\`${candidate.label}\` amount=\`${candidate.amount}\` txReady=${Boolean(candidate.txReady)} viableForPrep=${Boolean(candidate.viableForPrep)} net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} blockers=${blockers.join(",") || "none"}`;
+  });
+}
+
+function shadowActionLines(routePlan, address) {
+  const candidates = (routePlan?.topCandidates || []).slice(0, 5);
+  if (!candidates.length) return ["- none"];
+  return candidates.map((candidate, index) => {
+    const role =
+      index === 0 ? "active_canary" :
+      candidate?.viableForPrep ? "prep_candidate" :
+      candidate?.txReady ? "tx_ready_shadow" :
+      "research_candidate";
+    const action = shadowActionForCandidate(candidate, { address });
+    if (!action) return `- ${role} route=\`${candidate.label}\` next=none`;
+    return `- ${role} route=\`${candidate.label}\` next=${action.code} reason=${action.reason || "unknown"}${action.command ? ` command=\`${action.command}\`` : ""}`;
   });
 }
 
@@ -627,6 +643,10 @@ async function main() {
     "## Shadow Roster",
     "",
     ...shadowRosterLines(routePlan),
+    "",
+    "## Shadow Actions",
+    "",
+    ...shadowActionLines(routePlan, resolved.address),
     "",
     "## Profitability Summary",
     "",

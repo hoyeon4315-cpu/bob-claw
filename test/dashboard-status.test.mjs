@@ -562,6 +562,24 @@ test("dashboard status includes shadow cycle summary when available", () => {
           },
         ],
       },
+      shadowActions: [
+        {
+          role: "active_canary",
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          code: "wait_for_fresh_inputs",
+          reason: "reject_no_net_edge",
+          command: null,
+        },
+        {
+          role: "tx_ready_shadow",
+          label: "ethereum->base WBTC->wBTC.OFT",
+          amount: "10000",
+          code: "check_wallet_readiness",
+          reason: "native",
+          command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+        },
+      ],
       treasury: {
         decision: "BLOCKED",
         estimatedWalletUsd: 25.01,
@@ -645,6 +663,9 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].roleLabel, "현재 canary");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].roleLabel, "payload 확보 shadow 후보");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].tradeReadinessLabel, "가격 또는 가스 데이터가 아직 부족함");
+  assert.equal(status.shadowCycle.shadowActions[0].actionLabel, "신선한 입력 대기");
+  assert.equal(status.shadowCycle.shadowActions[1].actionLabel, "지갑 준비 점검");
+  assert.equal(status.shadowCycle.shadowActions[1].command.includes("check:estimator-wallet"), true);
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
   assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
   assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);

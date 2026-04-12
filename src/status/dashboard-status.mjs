@@ -838,6 +838,18 @@ function humanShadowRosterRole(role) {
   }[role] || role;
 }
 
+function humanShadowAction(code) {
+  return {
+    capture_tx_payload: "route payload 확보",
+    check_wallet_readiness: "지갑 준비 점검",
+    refresh_exact_gas: "정확 가스 재측정",
+    refresh_dex_and_score: "DEX 레그 갱신 후 재점수화",
+    wait_for_fresh_inputs: "신선한 입력 대기",
+    review_candidate: "수동 검토",
+    rescore_candidate: "후보 재점수화",
+  }[code] || code;
+}
+
 function shadowCycleSummary(shadowCycle, now) {
   if (!shadowCycle) return null;
   const topRouteTradeReadiness = humanTradeReadiness(shadowCycle.topRoute?.tradeReadiness || null, shadowCycle.topRoute?.netEdgeUsd);
@@ -910,6 +922,16 @@ function shadowCycleSummary(shadowCycle, now) {
         };
       }),
     },
+    shadowActions: (shadowCycle.shadowActions || []).map((item) => ({
+      role: item.role || null,
+      roleLabel: humanShadowRosterRole(item.role || null),
+      label: item.label || null,
+      amount: item.amount || null,
+      code: item.code || null,
+      actionLabel: humanShadowAction(item.code || null),
+      reason: item.reason || null,
+      command: item.command || null,
+    })),
     treasury: shadowCycle.treasury
       ? {
           decision: shadowCycle.treasury.decision || null,

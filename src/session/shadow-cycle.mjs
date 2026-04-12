@@ -160,6 +160,92 @@ function readinessCommand(address, check) {
   return `npm run check:estimator-wallet -- --route-key=${check.routeKey} --amount=${check.amount}${addressArg}`;
 }
 
+function verifyRouteCommand(candidate) {
+  if (!candidate?.routeKey || !candidate?.amount) return null;
+  return `npm run verify:gateway -- --route-key=${candidate.routeKey} --amounts=${candidate.amount}`;
+}
+
+function exactGasCommand(address, candidate) {
+  if (!candidate?.routeKey || !candidate?.amount) return null;
+  const fromArg = address ? ` --from=${address}` : "";
+  return `npm run estimate:gateway-gas -- --route-key=${candidate.routeKey} --amount=${candidate.amount}${fromArg}`;
+}
+
+function dexRefreshCommand(candidate) {
+  if (!candidate?.routeKey || !candidate?.amount) return null;
+  return `npm run quote:dex -- --route-key=${candidate.routeKey} --amount=${candidate.amount} --include-stable-entry && npm run score:gateway -- --write --route-key=${candidate.routeKey} --amount=${candidate.amount}`;
+}
+
+function scoreRefreshCommand(candidate) {
+  if (!candidate?.routeKey || !candidate?.amount) return null;
+  return `npm run score:gateway -- --write --route-key=${candidate.routeKey} --amount=${candidate.amount}`;
+}
+
+export function shadowActionForCandidate(candidate, { address = null } = {}) {
+  if (!candidate?.routeKey || !candidate?.amount) return null;
+
+  if (!candidate.txReady) {
+    return {
+      code: "capture_tx_payload",
+      label: "capture route payload",
+      reason: "missing_tx_data",
+      command: verifyRouteCommand(candidate),
+    };
+  }
+
+  if (candidate.prepBlockers?.includes("wallet_not_checked") || candidate.readinessFailureReason || (candidate.prepBlockers || []).length > 0) {
+    return {
+      code: "check_wallet_readiness",
+      label: "refresh wallet readiness",
+      reason: candidate.readinessFailureReason || candidate.prepBlockers?.[0] || "wallet_not_checked",
+      command: readinessCommand(address, candidate),
+    };
+  }
+
+  if (!candidate.exactGasDone || candidate.scoreDisqualifiers?.includes("stale_src_gas_snapshot")) {
+    return {
+      code: "refresh_exact_gas",
+      label: "refresh exact gas",
+      reason: candidate.scoreDisqualifiers?.includes("stale_src_gas_snapshot") ? "stale_src_gas_snapshot" : "exact_src_execution_gas_not_estimated",
+      command: exactGasCommand(address, candidate),
+    };
+  }
+
+  if (candidate.tradeReadiness === "insufficient_data") {
+    return {
+      code: "refresh_dex_and_score",
+      label: "refresh DEX legs and rescore",
+      reason: "insufficient_data",
+      command: dexRefreshCommand(candidate),
+    };
+  }
+
+  if (candidate.tradeReadiness === "reject_no_net_edge") {
+    return {
+      code: "wait_for_fresh_inputs",
+      label: "wait for fresher market inputs",
+      reason: "reject_no_net_edge",
+      command: null,
+    };
+  }
+
+  if (candidate.tradeReadiness === "shadow_candidate_review_only") {
+    return {
+      code: "review_candidate",
+      label: "manual review candidate",
+      reason: "shadow_candidate_review_only",
+      command: scoreRefreshCommand(candidate),
+    };
+  }
+
+  return {
+    code: "rescore_candidate",
+    label: "rescore candidate",
+    reason: candidate.tradeReadiness || "unknown",
+    command: scoreRefreshCommand(candidate),
+  };
+}
+
 function summarizeNextReadinessRefresh(canaryState, nextReadinessCheck) {
   if (!nextReadinessCheck) return null;
   const refresh = planNextReadinessRefresh(
@@ -241,6 +327,26 @@ function summarizeShadowRoster(routePlan, limit = 5) {
   };
 }
 
+function summarizeShadowActions(routePlan, { address = null, limit = 4 } = {}) {
+  return (routePlan?.topCandidates || [])
+    .slice(0, limit)
+    .map((candidate, index) => {
+      const nextAction = shadowActionForCandidate(candidate, { address });
+      if (!nextAction) return null;
+      return {
+        role: shadowRosterRole(candidate, index),
+        routeKey: candidate.routeKey,
+        label: candidate.label,
+        amount: candidate.amount,
+        code: nextAction.code,
+        actionLabel: nextAction.label,
+        reason: nextAction.reason,
+        command: nextAction.command,
+      };
+    })
+    .filter(Boolean);
+}
+
 export function buildShadowCycleSummary({
   canaryState,
   treasuryPlan,
@@ -296,6 +402,7 @@ export function buildShadowCycleSummary({
         }
       : null,
     shadowRoster: summarizeShadowRoster(canaryState?.routePlan),
+    shadowActions: summarizeShadowActions(canaryState?.routePlan, { address: canaryState?.address || null }),
     canary: nextStep
       ? {
           decision: nextStep.decision,
