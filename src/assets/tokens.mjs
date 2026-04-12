@@ -2,6 +2,7 @@ export const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
 export const WBTC_OFT_TOKEN = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 export const ETHEREUM_WBTC_TOKEN = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 export const UNI_BTC_TOKEN = "0x236f8c0a61dA474dB21B693fB2ea7AAB0c803894";
+export const SOLVBTC_TOKEN = "0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189";
 
 const NATIVE_ASSETS = {
   bitcoin: { ticker: "BTC", family: "btc", icon: "btc", decimals: 8, priceKey: "btc" },
@@ -26,14 +27,78 @@ const TOKEN_DEFINITIONS = new Map(
     ["0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 18, priceKey: "usd_stable" }],
     ["0x55d398326f99059fF775485246999027B3197955", { ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 18, priceKey: "usd_stable" }],
     ["0xdAC17F958D2ee523a2206206994597C13D831ec7", { ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" }],
-    ["0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189", { ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: null, priceKey: "btc" }],
+    [SOLVBTC_TOKEN, { ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: null, priceKey: "btc" }],
     ["0x2170Ed0880ac9A755fd29B2688956BD959F933F8", { ticker: "ETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" }],
     ["0x45804880De22913dAFE09f4980848ECE6EcbAf78", { ticker: "PAXG", family: "other", icon: "paxg", decimals: 18, priceKey: "paxg" }],
     ["0x68749665FF8D2d112Fa859AA293F07A622782F38", { ticker: "XAUT", family: "other", icon: "xaut", decimals: 6, priceKey: "xaut" }],
   ].map(([token, metadata]) => [normalizeToken(token), metadata]),
 );
 
-export const BTC_FAMILY_TOKENS = new Set([ZERO_TOKEN, WBTC_OFT_TOKEN, ETHEREUM_WBTC_TOKEN, UNI_BTC_TOKEN].map(normalizeToken));
+export const BTC_FAMILY_TOKENS = new Set(
+  [
+    ZERO_TOKEN,
+    ...[...TOKEN_DEFINITIONS.entries()]
+      .filter(([, metadata]) => metadata.family === "wrapped_btc")
+      .map(([token]) => token),
+  ].map(normalizeToken),
+);
+
+const WATCH_SOURCES = Object.freeze({
+  gatewayApi: {
+    kind: "gateway_api",
+    label: "BOB Gateway API overview",
+    url: "https://docs.gobob.xyz/api-reference/overview",
+  },
+  bobRepo: {
+    kind: "bob_github",
+    label: "bob-collective/bob",
+    url: "https://github.com/bob-collective/bob",
+  },
+  xverseEarn: {
+    kind: "official_blog",
+    label: "BOB introduces 1-click Bitcoin DeFi to Xverse Earn",
+    url: "https://www.gobob.xyz/blog/bob-introduces-1-click-bitcoin-defi-to-xverse-earn",
+  },
+  pellSpotlight: {
+    kind: "official_blog",
+    label: "BOB Ecosystem Spotlight #02 - Pell",
+    url: "https://blog.gobob.xyz/posts/bob-ecosystem-spotlight-02----pell",
+  },
+  btcToWbtc: {
+    kind: "official_blog",
+    label: "BOB launches 1-Click native BTC <-> wBTC.OFT transfers",
+    url: "https://www.gobob.xyz/blog/btc-to-wbtc",
+  },
+  btcOpportunities: {
+    kind: "official_blog",
+    label: "Latest Bitcoin DeFi opportunities on BOB - November 2025",
+    url: "https://www.gobob.xyz/blog/latest-bitcoin-defi-opportunities-on-bob-november-2025",
+  },
+  hybridYield: {
+    kind: "official_blog",
+    label: "BOB launches hybrid BTC yield products",
+    url: "https://www.gobob.xyz/es/blog/bob-launches-hybrid-btc-yield-products-ushering-in-a-new-era-of-bitcoin-defi",
+  },
+});
+
+export const BTC_WATCHLIST = Object.freeze(
+  [
+    { ticker: "BTC", chain: "bitcoin", token: ZERO_TOKEN, status: "observed_live", source: WATCH_SOURCES.gatewayApi },
+    { ticker: "wBTC.OFT", token: WBTC_OFT_TOKEN, status: "observed_live", source: WATCH_SOURCES.btcToWbtc },
+    { ticker: "WBTC", chain: "ethereum", token: ETHEREUM_WBTC_TOKEN, status: "observed_live", source: WATCH_SOURCES.pellSpotlight },
+    { ticker: "uniBTC", chain: "bob", token: UNI_BTC_TOKEN, status: "observed_live", source: WATCH_SOURCES.xverseEarn },
+    { ticker: "solvBTC", chain: "base", token: SOLVBTC_TOKEN, status: "observed_live", source: WATCH_SOURCES.xverseEarn },
+    { ticker: "xSolvBTC", chain: "bob", token: null, status: "ecosystem_watch", source: WATCH_SOURCES.btcToWbtc },
+    { ticker: "tBTC", chain: "bob", token: null, status: "ecosystem_watch", source: WATCH_SOURCES.pellSpotlight },
+    { ticker: "FBTC", chain: "bob", token: null, status: "ecosystem_watch", source: WATCH_SOURCES.btcOpportunities },
+    { ticker: "LBTC", chain: "bob", token: null, status: "ecosystem_watch", source: WATCH_SOURCES.hybridYield },
+    { ticker: "SolvBTC.BBN", chain: "bob", token: null, status: "ecosystem_watch", source: WATCH_SOURCES.pellSpotlight },
+  ].map((item) => ({
+    ...item,
+    token: item.token ? normalizeToken(item.token) : null,
+    matchTicker: String(item.ticker || "").toLowerCase(),
+  })),
+);
 
 export function normalizeToken(token) {
   return String(token || "").toLowerCase();
@@ -80,13 +145,86 @@ export function routeAsset(route) {
   };
 }
 
+export function isBtcLikeAsset(asset) {
+  return asset?.family === "btc" || asset?.family === "wrapped_btc";
+}
+
 export function assetPairKey(route) {
   const asset = routeAsset(route);
   return asset.ticker;
 }
 
 export function isBtcFamilyRoute(route) {
-  return BTC_FAMILY_TOKENS.has(normalizeToken(route.srcToken)) && BTC_FAMILY_TOKENS.has(normalizeToken(route.dstToken));
+  return isBtcLikeAsset(tokenAsset(route?.srcChain, route?.srcToken)) && isBtcLikeAsset(tokenAsset(route?.dstChain, route?.dstToken));
+}
+
+export function classifyGatewayAssetUniverse(routes = []) {
+  const observedAssets = new Map();
+
+  for (const route of routes || []) {
+    for (const [chain, token] of [
+      [route?.srcChain, route?.srcToken],
+      [route?.dstChain, route?.dstToken],
+    ]) {
+      const key = `${chain}:${normalizeToken(token)}`;
+      if (observedAssets.has(key)) continue;
+      const asset = tokenAsset(chain, token);
+      observedAssets.set(key, {
+        chain,
+        token,
+        ticker: asset.ticker,
+        family: asset.family,
+        isKnown: asset.family !== "other" || asset.ticker !== "Token" || isZeroToken(token),
+      });
+    }
+  }
+
+  const observed = [...observedAssets.values()].sort(
+    (left, right) =>
+      String(left.chain).localeCompare(String(right.chain)) ||
+      String(left.ticker).localeCompare(String(right.ticker)) ||
+      String(left.token).localeCompare(String(right.token)),
+  );
+
+  const observedBtcLikeAssets = observed.filter((asset) => isBtcLikeAsset(asset));
+  const unknownAssets = observed.filter((asset) => !asset.isKnown && !isZeroToken(asset.token));
+  const watchlistObserved = [];
+  const watchlistMissing = [];
+
+  for (const item of BTC_WATCHLIST) {
+    const matched = observed.find((asset) => {
+      if (item.chain && asset.chain !== item.chain) return false;
+      if (item.token && normalizeToken(asset.token) !== item.token) return false;
+      if (!item.token && String(asset.ticker || "").toLowerCase() !== item.matchTicker) return false;
+      return true;
+    });
+
+    const record = {
+      ticker: item.ticker,
+      chain: item.chain || null,
+      token: item.token,
+      status: item.status,
+      source: item.source || null,
+    };
+
+    if (matched) {
+      watchlistObserved.push({
+        ...record,
+        observedToken: matched.token,
+        observedFamily: matched.family,
+      });
+    } else {
+      watchlistMissing.push(record);
+    }
+  }
+
+  return {
+    observedAssets: observed,
+    observedBtcLikeAssets,
+    unknownAssets,
+    watchlistObserved,
+    watchlistMissing,
+  };
 }
 
 export function unitsToDecimal(units, decimals) {

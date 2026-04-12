@@ -177,9 +177,42 @@ async function main() {
   console.log(`enabledReviewOnly=${ranking.summary.enabledCount}`);
   console.log(`disabled=${ranking.summary.disabledCount}`);
   console.log(`withRealizedData=${ranking.summary.realizedRouteCount}`);
+  if (dashboardStatus?.audit) {
+    console.log(
+      `overfitDecision=${dashboardStatus.audit.decision} sample=${dashboardStatus.audit.sampleSource} horizonHours=${Number.isFinite(dashboardStatus.audit.shadowHours) ? dashboardStatus.audit.shadowHours.toFixed(2) : "n/a"} hourBuckets=${dashboardStatus.audit.hourBuckets ?? "n/a"}`,
+    );
+    console.log(`overfitBlockers=${dashboardStatus.audit.blockers.join(",") || "none"}`);
+    console.log(`overfitWarnings=${dashboardStatus.audit.warningLabels.join(",") || "none"}`);
+    console.log(
+      `overfitRunway shadowHoursRemaining=${Number.isFinite(dashboardStatus.audit.remainingShadowHours) ? dashboardStatus.audit.remainingShadowHours.toFixed(2) : "n/a"} targetShadowHours=${dashboardStatus.audit.targetShadowHours ?? "n/a"} hourBucketsRemaining=${dashboardStatus.audit.remainingHourBuckets ?? "n/a"} targetHourBuckets=${dashboardStatus.audit.targetHourBuckets ?? "n/a"}`,
+    );
+    console.log(
+      `overfitETA shadowWindowReadyAt=${dashboardStatus.audit.earliestShadowWindowReadyAt || "n/a"} hourBucketsReadyAt=${dashboardStatus.audit.earliestHourBucketReadyAt || "n/a"} timeGateReadyAt=${dashboardStatus.audit.earliestTimeGateReadyAt || "n/a"}`,
+    );
+  }
   console.log("strategyNote=btc_family_transfer_alone_is_not_arbitrage");
   console.log("strategyTarget=local_executable_btc_stable_dislocation_must_beat_total_movement_cost");
   console.log("strategyBoundary=directional_btc_accumulation_is_not_counted_as_arbitrage_profit");
+  if (dashboardStatus?.gateway?.btcWatchlist) {
+    const watchlist = dashboardStatus.gateway.btcWatchlist;
+    console.log(`btcWatchlistObserved=${watchlist.observedTickers.join(",") || "none"}`);
+    console.log(`btcWatchlistMissing=${watchlist.missingTickers.join(",") || "none"}`);
+    console.log(
+      `btcWatchlistUnknown=${watchlist.unknownAssets.map((item) => `${item.chain}:${item.token}`).join(",") || "none"}`,
+    );
+  }
+  if (dashboardStatus?.strategy?.canarySelectionGap) {
+    const gap = dashboardStatus.strategy.canarySelectionGap;
+    console.log(
+      `canarySelectionGap=${gap.selectionCode} current=${gap.currentCanary.routeKey} measured=${gap.measuredLeader.routeKey}`,
+    );
+    console.log(`canarySelectionReasons=${gap.reasonLabels.join(" | ") || "none"}`);
+    console.log(`canarySelectionBlockers=${gap.blockerLabels.join(",") || "none"}`);
+    console.log(`canarySelectionReview=${gap.reviewPlan?.actionLabels?.join(" -> ") || "none"}`);
+    if (gap.hypothesisGuard) {
+      console.log(`canarySelectionHypothesis=${gap.hypothesisGuard}`);
+    }
+  }
 
   if (ranking.summary.canaryProgress?.currentRoute) {
     const current = ranking.summary.canaryProgress.currentRoute;

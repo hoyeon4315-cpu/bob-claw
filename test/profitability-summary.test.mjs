@@ -56,6 +56,36 @@ test("profitability summary condenses measured routes into a readable snapshot",
       amount: "10000",
       scoreTradeReadiness: "reject_no_net_edge",
     },
+    routePlan: {
+      topCandidates: [
+        {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          viableForPrep: true,
+        },
+      ],
+      candidates: [
+        {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          viableForPrep: true,
+          txReady: true,
+          exactGasDone: true,
+        },
+        {
+          routeKey: "ethereum:0x2260->unichain:0x0555",
+          amount: "10000",
+          label: "ethereum->unichain WBTC->wBTC.OFT",
+          viableForPrep: false,
+          txReady: true,
+          exactGasDone: false,
+          prepBlockers: ["wallet_not_checked"],
+          scoreDisqualifiers: ["stale_src_gas_snapshot"],
+        },
+      ],
+    },
   });
 
   assert.equal(summary.measuredClosedLoopCount, 49);
@@ -63,5 +93,11 @@ test("profitability summary condenses measured routes into a readable snapshot",
   assert.equal(summary.verdictCode, "measured_no_edge");
   assert.equal(summary.canaryTradeReadiness, "reject_no_net_edge");
   assert.equal(summary.bestStablecoinRoute.routeKey, "base:0x8335->bitcoin:0x0000");
+  assert.equal(summary.canarySelectionGap.measuredLeader.routeKey, "base:0x0555->unichain:0x0555");
+  assert.deepEqual(summary.canarySelectionGap.reviewPlan.actionLabels, [
+    "selective route scoring",
+    "status dashboard refresh",
+  ]);
+  assert.equal(summary.canarySelectionGap.hypothesisGuard, null);
   assert.equal(summary.durableNoEdgeRouteCount, 10);
 });

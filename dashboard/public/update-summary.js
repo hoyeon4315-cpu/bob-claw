@@ -17,6 +17,24 @@ function compactAge(value, now = Date.now()) {
   return `${Math.round(minutes / 60)}시간 전`;
 }
 
+function compactFuture(value, now = Date.now()) {
+  if (!value) return null;
+  const seconds = Math.max(0, Math.round((new Date(value).getTime() - now) / 1000));
+  if (seconds < 60) return "곧";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `약 ${minutes}분 후`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `약 ${hours}시간 후`;
+  const days = Math.round(hours / 24);
+  return `약 ${days}일 후`;
+}
+
+function shortSchedule(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function treasuryNeedText(treasury) {
   const topNeed = treasury?.nextNeeds?.[0];
   if (!topNeed) return null;
@@ -85,6 +103,20 @@ function quoteDecayText(status) {
     .join(" · ");
 }
 
+function timeGateText(status, now) {
+  const audit = status.audit || null;
+  if (!audit || audit.decision !== "LIVE_BLOCKED") return null;
+  const blockers = audit.blockers || [];
+  const hasTimeGateBlocker = blockers.includes("shadow time window") || blockers.includes("time bucket diversity");
+  if (!hasTimeGateBlocker || !audit.earliestTimeGateReadyAt) return null;
+  return [
+    `관찰 시간 최소치 ${shortSchedule(audit.earliestTimeGateReadyAt)} 예상`,
+    compactFuture(audit.earliestTimeGateReadyAt, now),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function watcherText(status) {
   const watchers = status.watchers || null;
   if (!watchers) return null;
@@ -123,6 +155,18 @@ function watcherText(status) {
   return null;
 }
 
+function canaryGapText(status) {
+  const gap = status.strategy?.canarySelectionGap || null;
+  if (!gap?.measuredLeader?.label) return null;
+  const blockers = (gap.blockerLabels || []).slice(0, 2);
+  const extra = Math.max(0, (gap.blockerLabels?.length || 0) - blockers.length);
+  return [
+    `측정상 ${gap.measuredLeader.label}는 더 좋아 보임`,
+    blockers.join(" · "),
+    extra > 0 ? `외 ${extra}개 blocker` : null,
+  ].filter(Boolean).join(" · ");
+}
+
 export function buildUpdateSummary(status, options = {}) {
   const now = options.now ?? Date.now();
   const hasUpdate = status.gateway.updateDetected || status.gateway.probeFailures.length;
@@ -152,7 +196,9 @@ export function buildUpdateSummary(status, options = {}) {
     const nextCheckText = readinessCheckText(cycle, now);
     const marketText = marketCoverageText(status);
     const decayText = quoteDecayText(status);
+    const timeGate = timeGateText(status, now);
     const watcher = watcherText(status);
+    const gapText = canaryGapText(status);
     const watcherMentionsTopRoute = Boolean(watcher && cycle.topRoute?.label && watcher.includes(cycle.topRoute.label));
     const routeText = topRouteText(cycle, { includeLabel: !watcherMentionsTopRoute });
     const walletShortfallText =
@@ -170,7 +216,7 @@ export function buildUpdateSummary(status, options = {}) {
           : cycle.topRoute?.tradeReadiness === "reject_no_net_edge"
             ? "순이익 기준 미달"
           : titleByMode[cycle.mode] || "현재 사이클 상태",
-      body: [auditIssue?.label || walletShortfallText || cycle.headline, watcher, needText, nextCheckText, decayText, marketText, routeText, walletText, noDemandText]
+      body: [auditIssue?.label || walletShortfallText || cycle.headline, watcher, needText, nextCheckText, timeGate, decayText, marketText, gapText, routeText, walletText, noDemandText]
         .filter(Boolean)
         .join(" · "),
     };

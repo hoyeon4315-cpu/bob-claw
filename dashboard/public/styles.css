@@ -581,6 +581,54 @@ h2 {
   gap: 8px;
 }
 
+.watchlist-copy {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.watchlist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.watchlist-head strong {
+  font-size: 14px;
+}
+
+.chip-inline {
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.watchlist-row {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  background: #fafbf7;
+  border-left: 3px solid var(--blue);
+  padding: 7px 9px;
+}
+
+.watchlist-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.watchlist-row strong {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .asset-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -618,18 +666,33 @@ h2 {
 }
 
 .opportunity-copy,
-.update-copy {
+.update-copy,
+.overfit-copy {
   background: #fafbf7;
   padding: 12px;
-  min-height: 150px;
 }
 
 .opportunity-copy {
   border-left: 3px solid var(--green);
+  min-height: 150px;
 }
 
 .update-copy {
   border-left: 3px solid var(--blue);
+  min-height: 96px;
+}
+
+.overfit-copy {
+  margin-top: 10px;
+  border-left: 3px solid var(--red);
+  min-height: 86px;
+}
+
+.overfit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 @keyframes liveBeat {

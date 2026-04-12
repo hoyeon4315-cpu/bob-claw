@@ -166,3 +166,51 @@ test("route performance attaches canary progress to the current top route and la
   assert.deepEqual(ranking.routes[0].canaryContext.currentRoute.blockingInputs.map((item) => item.key), ["market"]);
   assert.equal(ranking.routes[0].canaryContext.lastAdvance.finalDecision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
 });
+
+test("route performance treats failed realized outcomes as part of expectancy metrics", () => {
+  const ranking = buildRoutePerformanceRanking({
+    receiptRecords: [
+      receipt({ routeKey: "bob:0x5->base:0x5", status: "failed", pnl: -0.12, observedAt: "2026-04-11T02:00:00.000Z" }),
+      receipt({ routeKey: "bob:0x5->base:0x5", status: "failed", pnl: -0.15, observedAt: "2026-04-11T03:00:00.000Z" }),
+      receipt({ routeKey: "bob:0x5->base:0x5", status: "failed", pnl: -0.11, observedAt: "2026-04-11T04:00:00.000Z" }),
+    ],
+    quotes: [quote({ routeKey: "bob:0x5->base:0x5" })],
+    quoteFailures: [],
+    scores: [score({ routeKey: "bob:0x5->base:0x5" })],
+    policy: buildDefaultRoutePerformancePolicy(),
+  });
+
+  assert.equal(ranking.routes[0].realizedSampleCount, 3);
+  assert.equal(ranking.routes[0].realizedOutcomeCount, 3);
+  assert.equal(ranking.routes[0].enabledState, "disabled_negative_realized_expectancy");
+  assert.equal(ranking.routes[0].rejectionReasons.includes("negative_realized_median"), true);
+  assert.equal(ranking.routes[0].rejectionReasons.includes("low_realized_win_rate"), true);
+  assert.equal(ranking.routes[0].rejectionReasons.includes("insufficient_realized_samples"), false);
+});
+
+test("route performance sorts disabled routes stably after enabled routes", () => {
+  const ranking = buildRoutePerformanceRanking({
+    receiptRecords: [receipt({ routeKey: "bob:0xa->base:0xa", pnl: 0.5, observedAt: "2026-04-11T02:00:00.000Z" })],
+    quotes: [
+      quote({ routeKey: "bob:0x6->base:0x6" }),
+      quote({ routeKey: "bob:0x7->base:0x7" }),
+      quote({ routeKey: "bob:0xa->base:0xa" }),
+      quote({ routeKey: "bob:0xa->base:0xa", latencyMs: 600 }),
+      quote({ routeKey: "bob:0xa->base:0xa", latencyMs: 700 }),
+    ],
+    quoteFailures: [],
+    scores: [
+      score({ routeKey: "bob:0x6->base:0x6" }),
+      score({ routeKey: "bob:0x7->base:0x7" }),
+      score({ routeKey: "bob:0xa->base:0xa" }),
+    ],
+    policy: buildDefaultRoutePerformancePolicy(),
+  });
+
+  assert.deepEqual(
+    ranking.routes.map((item) => item.routeKey),
+    ["bob:0xa->base:0xa", "bob:0x6->base:0x6", "bob:0x7->base:0x7"],
+  );
+  assert.equal(ranking.routes[1].enabledState, "disabled_no_realized_data");
+  assert.equal(ranking.routes[2].enabledState, "disabled_no_realized_data");
+});

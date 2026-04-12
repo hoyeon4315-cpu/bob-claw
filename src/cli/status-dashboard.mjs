@@ -10,6 +10,7 @@ import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildCanaryInputSummary } from "../status/canary-inputs.mjs";
 import { buildDashboardStatus, writeDashboardStatus } from "../status/dashboard-status.mjs";
+import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import {
   planCanaryInputRefresh,
   describeBlockedScoreRefreshSelection,
@@ -336,6 +337,12 @@ async function main() {
   const watchState = await loadCanaryState({ address: resolved.address, dataDir: config.dataDir });
   watchState.dashboardStatus = status;
   status.canaryInputs = buildCanaryInputSummary(watchState, { now: status.generatedAt });
+  status.strategy.canarySelectionGap = buildCanarySelectionGap({
+    routePlan: watchState.routePlan,
+    edgeViability: status.strategy.edgeViability,
+    canaryInputs: status.canaryInputs,
+    scoreSnapshot: scoreSnapshot || null,
+  });
   status.watchers = buildPublicWatchers(watchState);
   const output = await writeDashboardStatus(config.dataDir, status);
   const dashboardOutput = await writeDashboardStatus("./dashboard/public", status);

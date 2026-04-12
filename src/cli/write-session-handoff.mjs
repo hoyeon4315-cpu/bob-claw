@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import { classifyGatewayAssetUniverse } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
@@ -99,6 +100,28 @@ function quoteDecayLine(audit) {
     .join(" · ")}`;
 }
 
+function overfitAuditLines(audit) {
+  if (!audit) return ["- Overfit audit: unavailable"];
+  const blockers = audit.blockers?.join(", ") || "none";
+  const warnings = audit.warningLabels?.join(", ") || "none";
+  const lines = [
+    `- Overfit audit: ${audit.decision} · sample=${audit.sampleSource || "unknown"} · horizon=${Number.isFinite(audit.shadowHours) ? `${audit.shadowHours.toFixed(1)}h` : "n/a"} · buckets=${audit.hourBuckets ?? "n/a"}`,
+    `- Overfit blockers: ${blockers}`,
+    `- Overfit warnings: ${warnings}`,
+  ];
+  if (Number.isFinite(audit.remainingShadowHours) || Number.isFinite(audit.remainingHourBuckets)) {
+    lines.push(
+      `- Overfit runway: ${Number.isFinite(audit.remainingShadowHours) ? `${audit.remainingShadowHours.toFixed(1)}h remaining to ${audit.targetShadowHours}h` : "shadow runway n/a"} · ${Number.isFinite(audit.remainingHourBuckets) ? `${audit.remainingHourBuckets} hourly buckets remaining to ${audit.targetHourBuckets}` : "bucket runway n/a"}`,
+    );
+  }
+  if (audit.earliestShadowWindowReadyAt || audit.earliestHourBucketReadyAt || audit.earliestTimeGateReadyAt) {
+    lines.push(
+      `- Overfit time ETA: shadow window ${audit.earliestShadowWindowReadyAt || "n/a"} · bucket diversity ${audit.earliestHourBucketReadyAt || "n/a"} · earliest time-gate pass ${audit.earliestTimeGateReadyAt || "n/a"}`,
+    );
+  }
+  return lines;
+}
+
 function priceCoverageLine(market) {
   if (!market) return "- Chain price coverage: unavailable";
   return `- Chain price coverage: observed ${market.observedChainCount ?? 0}, stale ${market.staleChainCount ?? 0}, missing ${market.missingChainCount ?? 0}`;
@@ -131,6 +154,28 @@ function quoteableCoverageLine(market) {
     `- Quoteable chains missing: ${missing.join(",") || "none"}`,
     `- Non-quoteable chains: ${unsupported.join(",") || "none"}`,
   ];
+}
+
+function btcWatchlistLines(summary) {
+  if (!summary) return ["- BTC watchlist coverage: unavailable"];
+  return [
+    `- BTC watchlist observed live: ${summary.observedTickers?.join(", ") || "none"}`,
+    `- BTC watchlist missing from live routes: ${summary.missingTickers?.join(", ") || "none"}`,
+    `- BTC watchlist unknown addresses: ${summary.unknownAssets?.map((item) => `${item.chain}:${item.token}`).join(", ") || "none"}`,
+  ];
+}
+
+function buildBtcWatchlistFallbackSummary(routes = []) {
+  const assetUniverse = classifyGatewayAssetUniverse(routes);
+  const uniqueTickers = (items = []) => [...new Set(items.map((item) => item.ticker).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return {
+    observedTickers: uniqueTickers(assetUniverse.watchlistObserved),
+    missingTickers: uniqueTickers(assetUniverse.watchlistMissing),
+    unknownAssets: assetUniverse.unknownAssets.map((item) => ({
+      chain: item.chain,
+      token: item.token,
+    })),
+  };
 }
 
 function watcherReasonLabel(kind, reason) {
@@ -375,6 +420,29 @@ function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], rou
 
 function profitabilityLines(summary) {
   if (!summary) return ["- Profitability summary unavailable"];
+  const reviewPlan = summary.canarySelectionGap?.reviewPlan || null;
+  const reviewCommands = reviewPlan
+    ? [
+        reviewPlan.actionCodes.includes("check_wallet_readiness")
+          ? `npm run check:estimator-wallet -- --route-key="${reviewPlan.routeKey}" --amount="${reviewPlan.amount}"`
+          : null,
+        reviewPlan.actionCodes.includes("refresh_exact_gas")
+          ? `npm run estimate:gateway-gas -- --route-key="${reviewPlan.routeKey}" --amount="${reviewPlan.amount}"`
+          : null,
+        reviewPlan.actionCodes.includes("refresh_dex_quote")
+          ? `npm run quote:dex -- --route-key="${reviewPlan.routeKey}" --amount="${reviewPlan.amount}"`
+          : null,
+        reviewPlan.actionCodes.includes("refresh_market_snapshot")
+          ? "npm run price:snapshot"
+          : null,
+        reviewPlan.actionCodes.includes("rerun_route_scoring")
+          ? `npm run score:gateway -- --write --route-key="${reviewPlan.routeKey}" --amount="${reviewPlan.amount}"`
+          : null,
+        reviewPlan.actionCodes.includes("refresh_public_status")
+          ? "npm run status:dashboard"
+          : null,
+      ].filter(Boolean)
+    : [];
   return [
     `- Tested closed loops: ${summary.measuredClosedLoopCount}`,
     `- Profitable closed loops: ${summary.profitableClosedLoopCount}`,
@@ -390,6 +458,21 @@ function profitabilityLines(summary) {
     summary.bestStablecoinRoute
       ? `- Best stablecoin route tested: \`${summary.bestStablecoinRoute.routeKey}\` amount=\`${summary.bestStablecoinRoute.amount}\` readiness=\`${summary.bestStablecoinRoute.tradeReadiness}\` net=${money(summary.bestStablecoinRoute.netUsd)}`
       : "- Best stablecoin route tested: none observed",
+    summary.canarySelectionGap
+      ? `- Measured leader under review: \`${summary.canarySelectionGap.measuredLeader.routeKey}\` amount=\`${summary.canarySelectionGap.measuredLeader.amount}\` measured=${money(summary.canarySelectionGap.measuredLeader.measuredNetUsd)} readiness=\`${summary.canarySelectionGap.measuredLeader.tradeReadiness || "unknown"}\``
+      : null,
+    summary.canarySelectionGap
+      ? `- Why it is not the canary: ${summary.canarySelectionGap.reasonLabels.join("; ")}${summary.canarySelectionGap.blockerLabels.length ? ` | blockers: ${summary.canarySelectionGap.blockerLabels.join(", ")}` : ""}`
+      : null,
+    reviewPlan?.actionLabels?.length
+      ? `- Revalidation order for measured leader: ${reviewPlan.actionLabels.join(" -> ")}`
+      : null,
+    reviewCommands.length
+      ? `- Revalidation commands: ${reviewCommands.join(" && ")}`
+      : null,
+    summary.canarySelectionGap?.hypothesisGuard
+      ? `- Hypothesis guard: ${summary.canarySelectionGap.hypothesisGuard}`
+      : null,
     `- Durable no-edge routes: ${summary.durableNoEdgeRouteCount}`,
   ];
 }
@@ -403,6 +486,7 @@ async function main() {
   });
   const { routePlan, fundingPlan, nextStep: next, dashboardStatus } = state;
   const canaryInputs = buildCanaryInputSummary(state);
+  const btcWatchlist = dashboardStatus?.gateway?.btcWatchlist || buildBtcWatchlistFallbackSummary(state?.routesRecords?.at(-1)?.routes || []);
   const best = next.route || routePlan.topCandidates?.[0] || null;
   const checklist = buildCanaryStageChecklist({
     route: best,
@@ -454,6 +538,7 @@ async function main() {
     edgeViability: { ...profitabilityEdgeViability, verdict: profitabilityEdgeVerdict },
     noEdgePersistence: profitabilityNoEdgePersistence,
     canaryInputs,
+    routePlan,
   });
 
   const doc = [
@@ -465,7 +550,7 @@ async function main() {
     "",
     "- Read this file first in a shallow session.",
     "- Main command: `npm run advance:canary`",
-    "- Safe status refresh: `npm run score:gateway -- --write && npm run status:dashboard`",
+    "- Safe status refresh: `npm run audit:overfit && npm run score:gateway -- --write && npm run status:dashboard`",
     "",
     "## Current Phase",
     "",
@@ -523,6 +608,8 @@ async function main() {
     "",
     "## Profitability Summary",
     "",
+    ...overfitAuditLines(dashboardStatus?.audit),
+    "",
     ...profitabilityLines(profitabilitySummary),
     "",
     ...strategyLines(
@@ -536,6 +623,7 @@ async function main() {
     quoteDecayLine(dashboardStatus?.audit),
     priceCoverageLine(dashboardStatus?.market),
     ...quoteableCoverageLine(dashboardStatus?.market),
+    ...btcWatchlistLines(btcWatchlist),
     lastAdvanceLine(dashboardStatus?.canaryAdvance),
     ...canaryInputsLines(canaryInputs),
     canaryInputRefreshLine(canaryInputRefresh),

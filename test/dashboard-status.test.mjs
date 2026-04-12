@@ -258,6 +258,9 @@ test("dashboard status includes Gateway visual routes with segment-specific asse
   assert.equal(status.gateway.assetCoverage.supportedAssetCount, 2);
   assert.equal(status.gateway.assetCoverage.sampledAssetCount, 1);
   assert.equal(status.gateway.assetCoverage.unsampledAssets[0].ticker, "BTC->wBTC.OFT");
+  assert.deepEqual(status.gateway.btcWatchlist.observedTickers, ["BTC", "wBTC.OFT"]);
+  assert.equal(status.gateway.btcWatchlist.missingTickers.includes("xSolvBTC"), true);
+  assert.equal(status.gateway.btcWatchlist.watchlistMissing.find((item) => item.ticker === "xSolvBTC").source.label, "BOB launches 1-Click native BTC <-> wBTC.OFT transfers");
   assert.equal(status.gateway.chainPairs[0].pair, "bitcoin->bob");
 });
 
@@ -469,6 +472,13 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.dataCounts.estimatorWalletReadiness, 1);
   assert.equal(status.audit.sampleSource, "shadow_observations");
   assert.equal(status.audit.shadowObservations, 2);
+  assert.equal(status.audit.targetShadowHours, 168);
+  assert.equal(status.audit.remainingShadowHours > 167, true);
+  assert.equal(status.audit.targetHourBuckets, 24);
+  assert.equal(status.audit.remainingHourBuckets, 23);
+  assert.equal(status.audit.earliestShadowWindowReadyAt, "2026-04-17T10:30:00.000Z");
+  assert.equal(status.audit.earliestHourBucketReadyAt, "2026-04-11T09:00:00.000Z");
+  assert.equal(status.audit.earliestTimeGateReadyAt, "2026-04-17T10:30:00.000Z");
   assert.equal(status.audit.latencyP95Ms, 1200);
   assert.equal(status.audit.executionGasP95Usd, 0.031);
   assert.equal(status.audit.quoteDecayCoveredGroups, 1);

@@ -67,7 +67,7 @@ export function buildDexRouteFocusSummary({ routes = [], quotes = [], scoreSnaps
               (finite(right.executableNetEdgeUsd) ?? finite(right.netEdgeUsd) ?? Number.NEGATIVE_INFINITY) -
                 (finite(left.executableNetEdgeUsd) ?? finite(left.netEdgeUsd) ?? Number.NEGATIVE_INFINITY) ||
               String(left.amount).localeCompare(String(right.amount)),
-          )[0]?.tradeReadiness || null,
+          )[0]?.tradeReadiness ?? null,
     };
     return {
       ...summary,

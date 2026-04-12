@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { isBtcFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { classifyGatewayAssetUniverse, isBtcFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
 import { ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
@@ -226,6 +226,46 @@ function buildAssetCoverage(routes, quotes, failures) {
   };
 }
 
+function buildBtcWatchlistSummary(routes = []) {
+  const assetUniverse = classifyGatewayAssetUniverse(routes);
+  const uniqueTickers = (items = []) => [...new Set(items.map((item) => item.ticker).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+  return {
+    observedCount: assetUniverse.observedBtcLikeAssets.length,
+    observedTickers: uniqueTickers(assetUniverse.watchlistObserved),
+    missingWatchCount: assetUniverse.watchlistMissing.length,
+    missingTickers: uniqueTickers(assetUniverse.watchlistMissing),
+    unknownAssetCount: assetUniverse.unknownAssets.length,
+    watchlistObserved: assetUniverse.watchlistObserved.map((item) => ({
+      ticker: item.ticker,
+      chain: item.chain || null,
+      status: item.status,
+      source: item.source
+        ? {
+            label: item.source.label,
+            url: item.source.url,
+          }
+        : null,
+    })),
+    watchlistMissing: assetUniverse.watchlistMissing.map((item) => ({
+      ticker: item.ticker,
+      chain: item.chain || null,
+      status: item.status,
+      source: item.source
+        ? {
+            label: item.source.label,
+            url: item.source.url,
+          }
+        : null,
+    })),
+    unknownAssets: assetUniverse.unknownAssets.map((item) => ({
+      chain: item.chain,
+      token: item.token,
+      ticker: item.ticker,
+    })),
+  };
+}
+
 function gatewaySummary({ latestRoutesRecord, latestUpdateSnapshot, latestUpdateAlert, updateAlerts, quotes, failures, now }) {
   const snapshot = latestUpdateSnapshot?.snapshot || null;
   const routes = latestRoutesRecord?.routes || [];
@@ -251,6 +291,7 @@ function gatewaySummary({ latestRoutesRecord, latestUpdateSnapshot, latestUpdate
     flowRoutes,
     recentFlowEvents: buildRecentFlowEvents(quotes || []),
     assetCoverage: buildAssetCoverage(routes, quotes || [], failures || []),
+    btcWatchlist: buildBtcWatchlistSummary(routes),
     schemaHash: latestUpdateSnapshot?.schemaHash || null,
     probeHealthHash: latestUpdateSnapshot?.probeHealthHash || null,
     probeOk,
@@ -470,6 +511,13 @@ function auditSummary(audit) {
     lastObservedAt: audit.lastObservedAt,
     shadowHours: audit.shadowHours,
     hourBuckets: audit.hourBuckets,
+    targetShadowHours: audit.targetShadowHours,
+    remainingShadowHours: audit.remainingShadowHours,
+    targetHourBuckets: audit.targetHourBuckets,
+    remainingHourBuckets: audit.remainingHourBuckets,
+    earliestShadowWindowReadyAt: audit.earliestShadowWindowReadyAt,
+    earliestHourBucketReadyAt: audit.earliestHourBucketReadyAt,
+    earliestTimeGateReadyAt: audit.earliestTimeGateReadyAt,
     latencyP50Ms: audit.latencyP50Ms,
     latencyP95Ms: audit.latencyP95Ms,
     executionGasP50Usd: audit.executionGasP50Usd,

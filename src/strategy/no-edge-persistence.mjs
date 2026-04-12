@@ -104,6 +104,7 @@ export function buildNoEdgePersistenceSummary({ scoreSnapshot = null, dexQuotes 
     nearPolicyRouteCount: routes.filter((item) => item.classification === "near_policy_route").length,
     positiveButBelowPolicyRouteCount: routes.filter((item) => item.classification === "positive_but_below_policy_route").length,
     policyReadyRouteCount: routes.filter((item) => item.classification === "policy_ready_route").length,
+    insufficientRouteEvidenceCount: routes.filter((item) => item.classification === "insufficient_route_evidence").length,
     bestRoute: routes[0] || null,
     routes: routes.slice(0, 10),
   };

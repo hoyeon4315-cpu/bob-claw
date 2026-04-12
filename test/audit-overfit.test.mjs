@@ -48,6 +48,11 @@ test("audit blocks live trading for shallow, short-lived data", () => {
   assert.equal(audit.decision, "LIVE_BLOCKED");
   assert.equal(audit.shadow, "ALLOWED");
   assert.equal(audit.checks.find((check) => check.label === "shadow time window").ok, false);
+  assert.equal(audit.remainingShadowHours, 168);
+  assert.equal(audit.remainingHourBuckets, 23);
+  assert.equal(audit.earliestShadowWindowReadyAt, "2026-04-17T00:00:00.000Z");
+  assert.equal(audit.earliestHourBucketReadyAt, "2026-04-10T23:00:00.000Z");
+  assert.equal(audit.earliestTimeGateReadyAt, "2026-04-17T00:00:00.000Z");
 });
 
 test("audit allows canary review for broad, deep, fresh shadow data", () => {
@@ -76,6 +81,11 @@ test("audit allows canary review for broad, deep, fresh shadow data", () => {
 
   assert.equal(audit.decision, "LIVE_CANARY_REVIEW_POSSIBLE");
   assert.equal(audit.checks.every((check) => check.ok), true);
+  assert.equal(audit.remainingShadowHours, 0);
+  assert.equal(audit.remainingHourBuckets, 0);
+  assert.equal(audit.earliestShadowWindowReadyAt, "2026-04-09T23:59:00.000Z");
+  assert.equal(audit.earliestHourBucketReadyAt, "2026-04-09T23:59:00.000Z");
+  assert.equal(audit.earliestTimeGateReadyAt, "2026-04-09T23:59:00.000Z");
 });
 
 test("audit prefers shadow observations for depth and amount diversity gates", () => {
@@ -209,4 +219,42 @@ test("audit summarizes quote decay coverage and survival windows from shadow obs
   );
   assert.equal(audit.checks.find((check) => check.label === "quote decay windows").ok, true);
   assert.equal(audit.warnings.find((warning) => warning.label === "quote decay survival").ok, true);
+});
+
+test("audit defaults to the latest quote schema version for quotes and failures", () => {
+  const routes = makeRoutes(2);
+  const [routeA, routeB] = routes;
+  const audit = buildOverfitAudit(
+    {
+      now: "2026-04-10T02:00:00.000Z",
+      routesRecords: [{ observedAt: "2026-04-10T00:00:00.000Z", routes, summary: { totalRoutes: routes.length } }],
+      quotes: [
+        { ...makeQuote(routeA, "2026-04-10T00:00:00.000Z"), schemaVersion: 2 },
+        { ...makeQuote(routeA, "2026-04-10T01:00:00.000Z"), schemaVersion: 3 },
+        { ...makeQuote(routeB, "2026-04-10T01:30:00.000Z"), schemaVersion: 3 },
+      ],
+      failures: [
+        { schemaVersion: 2, observedAt: "2026-04-10T00:30:00.000Z", routeKey: makeRouteKey(routeA), error: { details: {} } },
+        { schemaVersion: 3, observedAt: "2026-04-10T01:45:00.000Z", routeKey: makeRouteKey(routeB), error: { details: {} } },
+      ],
+      gasSnapshots: [{ observedAt: "2026-04-10T01:55:00.000Z", chain: "bob" }],
+      gasFailures: [],
+    },
+    {
+      minShadowHours: 0,
+      minBobNeighborCoveragePct: 0,
+      minGlobalRouteCoveragePctForDiscovery: 0,
+      minSamplesPerCandidateRoute: 1,
+      minAmountLevelsPerCandidateRoute: 1,
+      minHourBuckets: 1,
+      maxFailureRatePct: 40,
+      maxGasSnapshotAgeMinutes: 30,
+      requiredQuoteDecayWindowsSeconds: [],
+    },
+  );
+
+  assert.equal(audit.quotes, 3);
+  assert.equal(audit.failures, 2);
+  assert.equal(audit.activeFailures, 1);
+  assert.equal(audit.checks.find((check) => check.label === "failure rate").detail, "33.3%, target <= 40%");
 });

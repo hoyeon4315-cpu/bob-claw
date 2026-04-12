@@ -84,4 +84,16 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(typeof publicStatus.watchers?.gatewayCoverage?.reasonLabel, "string");
   assert.equal(typeof publicStatus.watchers?.gatewayCoverage?.targetRouteCount, "number");
   assert.equal(Array.isArray(publicStatus.watchers?.gatewayCoverage?.targetRoutes), true);
+  assert.equal(Array.isArray(publicStatus.gateway?.btcWatchlist?.observedTickers), true);
+  assert.equal(Array.isArray(publicStatus.gateway?.btcWatchlist?.missingTickers), true);
+  assert.equal(typeof publicStatus.gateway?.btcWatchlist?.unknownAssetCount, "number");
+  assert.equal(
+    publicStatus.strategy?.canarySelectionGap == null || typeof publicStatus.strategy?.canarySelectionGap?.selectionCode === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.strategy?.canarySelectionGap == null ||
+      Array.isArray(publicStatus.strategy?.canarySelectionGap?.reviewPlan?.actionLabels),
+    true,
+  );
 });

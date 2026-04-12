@@ -84,6 +84,7 @@ test("no-edge persistence marks repeatedly negative routes as durable no-edge", 
 
   assert.equal(summary.routeCount, 1);
   assert.equal(summary.durableNoEdgeRouteCount, 1);
+  assert.equal(summary.insufficientRouteEvidenceCount, 0);
   assert.equal(summary.bestRoute.classification, "durable_no_edge_route");
   assert.equal(summary.bestRoute.measuredLevelCount, 3);
 });

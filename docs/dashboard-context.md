@@ -121,6 +121,7 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `strategy.profitModel`
 - `strategy.directionalBtcAccumulationCountsAsProfit`
 - `strategy.bestStablecoinRoute`
+- `strategy.canarySelectionGap`
 - `strategy.crossAssetArbitrage`
 - `strategy.edgeResearch`
 - `shadowCycle.canary.nextReadinessCheck`
@@ -156,6 +157,7 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `watchers.blockedScore.targetRouteCount`
 - `watchers.blockedScore.targetRoutes`
 - `watchers.quoteDecay.reasonLabel`
+- `gateway.btcWatchlist`
 
 Do not remove or rename these fields without updating `dashboard/public/app.js` and `test/dashboard-status.test.mjs`.
 

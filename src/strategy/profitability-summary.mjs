@@ -1,3 +1,5 @@
+import { buildCanarySelectionGap } from "./canary-selection-gap.mjs";
+
 function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
@@ -21,11 +23,18 @@ export function buildProfitabilitySummary({
   edgeViability = null,
   noEdgePersistence = null,
   canaryInputs = null,
+  routePlan = null,
 } = {}) {
   const bestStable = bestStablecoinRoute(scoreSnapshot);
   const bestMeasured = edgeViability?.bestMeasuredLoop || null;
   const closestPolicy = edgeViability?.closestLoop || null;
   const verdict = edgeViability?.verdict || null;
+  const canarySelectionGap = buildCanarySelectionGap({
+    routePlan,
+    edgeViability,
+    canaryInputs,
+    scoreSnapshot,
+  });
 
   return {
     schemaVersion: 1,
@@ -65,6 +74,18 @@ export function buildProfitabilitySummary({
           amount: bestStable.amount,
           tradeReadiness: bestStable.tradeReadiness || null,
           netUsd: finite(bestStable.executableNetEdgeUsd ?? bestStable.netEdgeUsd),
+        }
+      : null,
+    canarySelectionGap: canarySelectionGap
+      ? {
+          selectionCode: canarySelectionGap.selectionCode,
+          selectionLabel: canarySelectionGap.selectionLabel,
+          reasonLabels: canarySelectionGap.reasonLabels,
+          blockerLabels: canarySelectionGap.blockerLabels,
+          reviewPlan: canarySelectionGap.reviewPlan,
+          hypothesisGuard: canarySelectionGap.hypothesisGuard,
+          currentCanary: canarySelectionGap.currentCanary,
+          measuredLeader: canarySelectionGap.measuredLeader,
         }
       : null,
     durableNoEdgeRouteCount: noEdgePersistence?.durableNoEdgeRouteCount || 0,

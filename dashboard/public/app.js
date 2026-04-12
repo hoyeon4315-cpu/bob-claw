@@ -9,7 +9,9 @@ import {
   viewBoxWidth,
 } from "./scene-model.js";
 import { chainPriceCaption, chainPriceExtremes, routeSublineText } from "./market-display.js";
+import { buildOverfitDisplay } from "./overfit-display.js";
 import { buildUpdateSummary } from "./update-summary.js";
+import { buildWatchlistDisplay } from "./watchlist-display.js";
 
 const statusUrl = "./dashboard-status.json";
 const svgNs = "http://www.w3.org/2000/svg";
@@ -482,6 +484,12 @@ function renderAssetCoverage(status) {
     `;
     grid.append(row);
   }
+
+  const watchlist = buildWatchlistDisplay(status.gateway?.btcWatchlist || null);
+  $("btcWatchlistBadge").textContent = watchlist.badge;
+  $("btcWatchlistObserved").textContent = watchlist.observedText;
+  $("btcWatchlistMissing").textContent = watchlist.missingText;
+  $("btcWatchlistUnknown").textContent = watchlist.unknownText;
 }
 
 function renderOpportunity(status) {
@@ -520,6 +528,10 @@ function renderUpdate(status) {
   $("updateBadge").textContent = summary.badge;
   $("updateTitle").textContent = summary.title;
   $("updateBody").textContent = summary.body;
+  const overfit = buildOverfitDisplay(status.audit || null);
+  $("overfitBadge").textContent = overfit.badge;
+  $("overfitTitle").textContent = overfit.title;
+  $("overfitBody").textContent = overfit.body;
 }
 
 function renderHeader(status) {

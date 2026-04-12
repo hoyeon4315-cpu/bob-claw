@@ -36,6 +36,24 @@ test("quote-dex candidate selection can narrow to a specific route and amount", 
   assert.equal(legs[0].chain, "base");
 });
 
+test("quote-dex direct route selection returns both legs for the latest matching quote", () => {
+  const routeA = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const quotes = [
+    quote(routeA, "2026-04-11T00:00:00.000Z", "10000", "10000", "9990"),
+    quote(routeA, "2026-04-11T00:02:00.000Z", "10000", "10000", "9980"),
+  ];
+
+  const legs = selectCandidateLegs(quotes, {
+    routeKey: quotes[0].routeKey,
+    amount: "10000",
+  });
+
+  assert.deepEqual(
+    legs.map((item) => `${item.source}:${item.chain}:${item.amount}`),
+    ["gateway_src_leg:bob:10000", "gateway_dst_leg:base:9980"],
+  );
+});
+
 test("quote-dex candidate selection prioritizes supported chain coverage before duplicate route amounts", () => {
   const avalancheBob = { srcChain: "avalanche", dstChain: "bob", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
   const ethereumBob = { srcChain: "ethereum", dstChain: "bob", srcToken: WBTC_OFT, dstToken: WBTC_OFT };

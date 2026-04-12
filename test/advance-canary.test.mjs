@@ -62,3 +62,18 @@ test("advance canary summary captures initial, after-wallet-check, and final dec
   assert.equal(summary.final.decision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
   assert.equal(summary.final.routeLabel, "bob->base wBTC.OFT->wBTC.OFT");
 });
+
+test("advance canary summary preserves a zero amount instead of coercing it to null", () => {
+  const summary = buildAdvanceSummary({
+    address: "0xabc",
+    initialStep: {
+      decision: "RUN_EXACT_GAS",
+      headline: "Run exact gas estimate",
+      route: { label: "zero-route", routeKey: "bob:0x0->base:0x0", amount: 0 },
+      reasons: [],
+    },
+    actions: [],
+  });
+
+  assert.equal(summary.initial.amount, 0);
+});

@@ -21,7 +21,7 @@ export function summarizeStep(step) {
     headline: step?.headline || null,
     routeLabel: step?.route?.label || null,
     routeKey: step?.route?.routeKey || null,
-    amount: step?.route?.amount || null,
+    amount: step?.route?.amount ?? null,
     reasons: step?.reasons || [],
   };
 }

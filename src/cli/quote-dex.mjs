@@ -217,6 +217,26 @@ export function selectCandidateLegs(
 ) {
   const selectedChains = new Set((chains || []).map((item) => String(item).toLowerCase()));
   const scoresByKey = scoreMap(scoreSnapshot);
+  const directMatches = [...quotes]
+    .filter((quote) => !routeKey || quote.routeKey === routeKey)
+    .filter((quote) => !amount || String(quote.amount) === String(amount))
+    .sort((left, right) => observedAtMs(right.observedAt) - observedAtMs(left.observedAt));
+  const directSelection = routeKey && amount ? directMatches.slice(0, 1) : directMatches;
+
+  if (directSelection.length > 0 && (routeKey || amount)) {
+    return dedupeLegs([
+      ...directSelection.flatMap(candidateLegsFromGatewayQuote),
+      ...(includeStableEntry
+        ? directSelection
+            .map((quote) => stableEntryLegFromGatewayQuote(quote, { scoresByKey, stableEntryBufferBps, prices }))
+            .filter(Boolean)
+        : []),
+    ])
+      .filter((leg) => selectedChains.size === 0 || selectedChains.has(String(leg.chain || "").toLowerCase()))
+      .sort((left, right) => observedAtMs(right.gatewayObservedAt) - observedAtMs(left.gatewayObservedAt))
+      .slice(0, routeLimit);
+  }
+
   const allLegs = [
     ...quotes.flatMap(candidateLegsFromGatewayQuote),
     ...(includeStableEntry

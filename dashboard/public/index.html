@@ -59,6 +59,24 @@
             <span id="assetCoverageCount" class="chip">0/0</span>
           </div>
           <div id="assetCoverageGrid" class="asset-grid"></div>
+          <div class="watchlist-copy">
+            <div class="watchlist-head">
+              <strong>BTC Watchlist</strong>
+              <span id="btcWatchlistBadge" class="chip chip-inline">0 live · 0 watch</span>
+            </div>
+            <div class="watchlist-row">
+              <span>Live</span>
+              <strong id="btcWatchlistObserved">none</strong>
+            </div>
+            <div class="watchlist-row">
+              <span>Watch</span>
+              <strong id="btcWatchlistMissing">none</strong>
+            </div>
+            <div class="watchlist-row">
+              <span>Unknown</span>
+              <strong id="btcWatchlistUnknown">none</strong>
+            </div>
+          </div>
         </article>
 
         <article class="panel">
@@ -80,6 +98,13 @@
           <div class="update-copy">
             <strong id="updateTitle">상태 확인 중</strong>
             <p id="updateBody">새로운 경로와 응답 변화를 기다리고 있습니다.</p>
+          </div>
+          <div class="overfit-copy">
+            <div class="overfit-head">
+              <strong id="overfitTitle">과적합 점검 대기</strong>
+              <span id="overfitBadge" class="chip chip-inline">점검 대기</span>
+            </div>
+            <p id="overfitBody">anti-overfit audit 결과를 기다리는 중</p>
           </div>
         </article>
       </section>

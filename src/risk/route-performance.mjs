@@ -74,6 +74,7 @@ export function buildDefaultRoutePerformancePolicy() {
 function classifyRoute({
   policy,
   realizedSampleCount,
+  realizedOutcomeCount,
   realizedMedianPnlUsd,
   realizedTotalPnlUsd,
   realizedWinRate,
@@ -84,11 +85,11 @@ function classifyRoute({
   const reasons = [];
 
   if (realizedSampleCount === 0) reasons.push("no_realized_data");
-  if (realizedSampleCount > 0 && realizedSampleCount < policy.minRealizedSamples) reasons.push("insufficient_realized_samples");
-  if (realizedSampleCount >= policy.minRealizedSamples && !(realizedMedianPnlUsd > 0)) reasons.push("negative_realized_median");
-  if (realizedSampleCount >= policy.minRealizedSamples && !(realizedTotalPnlUsd > 0)) reasons.push("non_positive_realized_total");
-  if (realizedSampleCount >= policy.minRealizedSamples && !(realizedWinRate >= policy.minWinRate)) reasons.push("low_realized_win_rate");
-  if (realizedSampleCount >= policy.minRealizedSamples && routeP95LossUsd > policy.maxRouteP95LossUsd) reasons.push("loss_tail_too_large");
+  if (realizedSampleCount > 0 && realizedOutcomeCount < policy.minRealizedSamples) reasons.push("insufficient_realized_samples");
+  if (realizedOutcomeCount >= policy.minRealizedSamples && !(realizedMedianPnlUsd > 0)) reasons.push("negative_realized_median");
+  if (realizedOutcomeCount >= policy.minRealizedSamples && !(realizedTotalPnlUsd > 0)) reasons.push("non_positive_realized_total");
+  if (realizedOutcomeCount >= policy.minRealizedSamples && !(realizedWinRate >= policy.minWinRate)) reasons.push("low_realized_win_rate");
+  if (realizedOutcomeCount >= policy.minRealizedSamples && routeP95LossUsd > policy.maxRouteP95LossUsd) reasons.push("loss_tail_too_large");
   if (Number.isFinite(quoteFailureRate) && quoteFailureRate > policy.maxQuoteFailureRate) reasons.push("quote_failure_rate_too_high");
   if (
     policy.requireCurrentNonRejectedReadiness &&
@@ -159,9 +160,9 @@ export function buildRoutePerformanceRanking({
     const reconciled = receiptsForKey.filter((item) => item.reconciliationStatus === "reconciled");
     const failed = receiptsForKey.filter((item) => item.reconciliationStatus === "failed");
     const pendingOutput = receiptsForKey.filter((item) => item.reconciliationStatus === "pending_output");
-    const realizedPnls = reconciled.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
-    const realizedLosses = reconciled
-      .map((item) => item.realized?.realizedNetPnlUsd)
+    const settledReceipts = [...reconciled, ...failed];
+    const realizedPnls = settledReceipts.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
+    const realizedLosses = realizedPnls
       .filter((value) => Number.isFinite(value) && value < 0)
       .map((value) => Math.abs(value));
     const fillDrifts = reconciled.map((item) => item.realized?.realizedFillVsEstimateBps).filter(Number.isFinite);
@@ -169,13 +170,11 @@ export function buildRoutePerformanceRanking({
     const knownCostValues = [score?.knownCostUsd].filter(Number.isFinite);
     const quoteFailureRate = quotesForKey.length + failuresForKey.length > 0 ? failuresForKey.length / (quotesForKey.length + failuresForKey.length) : null;
     const realizedSampleCount = reconciled.length + failed.length;
+    const realizedOutcomeCount = realizedPnls.length;
     const realizedWinRate =
-      realizedPnls.length > 0 ? realizedPnls.filter((value) => value > 0).length / realizedPnls.length : 0;
+      realizedOutcomeCount > 0 ? realizedPnls.filter((value) => value > 0).length / realizedOutcomeCount : 0;
     const realizedMedianPnlUsd = median(realizedPnls);
-    const realizedTotalPnlUsd = realizedPnls.reduce((sum, value) => sum + value, 0) + failed
-      .map((item) => item.realized?.realizedNetPnlUsd)
-      .filter(Number.isFinite)
-      .reduce((sum, value) => sum + value, 0);
+    const realizedTotalPnlUsd = realizedPnls.reduce((sum, value) => sum + value, 0);
     const routeP95LossUsd = percentile(realizedLosses, 95) || 0;
     const routeCanaryContext = buildRouteCanaryContext(key, canaryProgress);
     const canaryRouteInfo = routeCanaryContext?.isCurrentTopRoute
@@ -187,6 +186,7 @@ export function buildRoutePerformanceRanking({
     const classification = classifyRoute({
       policy,
       realizedSampleCount,
+      realizedOutcomeCount,
       realizedMedianPnlUsd,
       realizedTotalPnlUsd,
       realizedWinRate,
@@ -212,6 +212,7 @@ export function buildRoutePerformanceRanking({
       quoteLatencyP50Ms: percentile(latencyValues, 50),
       quoteLatencyP95Ms: percentile(latencyValues, 95),
       realizedSampleCount,
+      realizedOutcomeCount,
       reconciledCount: reconciled.length,
       failedCount: failed.length,
       pendingOutputCount: pendingOutput.length,
@@ -227,7 +228,9 @@ export function buildRoutePerformanceRanking({
   });
 
   routes.sort((left, right) => {
-    const enabledRank = left.enabledState === right.enabledState ? 0 : left.enabledState === "enabled_review_only" ? -1 : 1;
+    const leftEnabled = left.enabledState === "enabled_review_only";
+    const rightEnabled = right.enabledState === "enabled_review_only";
+    const enabledRank = leftEnabled === rightEnabled ? 0 : leftEnabled ? -1 : 1;
     if (enabledRank !== 0) return enabledRank;
     const leftMedian = Number.isFinite(left.realizedMedianPnlUsd) ? left.realizedMedianPnlUsd : Number.NEGATIVE_INFINITY;
     const rightMedian = Number.isFinite(right.realizedMedianPnlUsd) ? right.realizedMedianPnlUsd : Number.NEGATIVE_INFINITY;
