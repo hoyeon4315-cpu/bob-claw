@@ -1,12 +1,18 @@
 # Current Status
 
-Updated: 2026-04-12T02:20:56.769Z
+Updated: 2026-04-12T06:01:04.243Z
 
 ## Start Here
 
 - Read this file first in a shallow session.
 - Main command: `npm run advance:canary`
+- Queue preview: `npm run run:shadow-refresh-queue -- --limit=3`
+- Batch preview: `npm run run:shadow-refresh-batch -- --limit=1`
+- Evidence campaign preview: `npm run run:prelive-evidence-campaign`
 - Safe status refresh: `npm run audit:overfit && npm run score:gateway -- --write && npm run status:dashboard`
+- Pre-live readiness refresh: `npm run report:prelive-readiness -- --write`
+- Review package refresh: `npm run build:prelive-review-package -- --write`
+- Fork execution planning: `npm run plan:prelive-fork-execution -- --source=objective --write`
 
 ## Current Phase
 
@@ -33,7 +39,7 @@ Updated: 2026-04-12T02:20:56.769Z
 - Prep funding estimate: $0.0000
 - Net edge now: $-0.8473
 - Objective score blocker: reject_no_net_edge (net edge $-0.8473)
-- Next readiness check: `base->avalanche wBTC.OFT->wBTC.OFT` amount=`100000`
+- Next readiness check: `base->bob wBTC.OFT->wBTC.OFT` amount=`10000`
 - Refresh status: ready to rerun the next wallet readiness check now
 - Next focus: rerun quotes, gas, or token prices only when market inputs change; wallet readiness is no longer the blocker
 
@@ -56,7 +62,7 @@ Updated: 2026-04-12T02:20:56.769Z
 - prep_candidate route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6105 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:3129ms fee:$0.5740 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
 - prep_candidate route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6423 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:569ms fee:$0.6057 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
 - prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.5623 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:565ms fee:$0.5258 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
-- prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-1.7433 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=evidence_accumulating evidence=shadow:6 quotes:2/2 success:100.0% p95:1879ms fee:$1.71 reasons:exact_src_execution_gas_not_estimated:6,insufficient_data:6,reject_effective_system_pnl:6,reject_treasury_execution_refill_cost:6,treasury_bootstrap_native_required:6
+- prep_candidate route=`bera->avalanche wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6024 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:774ms fee:$0.5659 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
 
 ## Shadow Actions
 
@@ -64,18 +70,86 @@ Updated: 2026-04-12T02:20:56.769Z
 - prep_candidate route=`avalanche->bsc wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 - prep_candidate route=`avalanche->sonic wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 - prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
-- prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- prep_candidate route=`bera->avalanche wBTC.OFT->wBTC.OFT` next=check_wallet_readiness reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 
 ## Refresh Queue
 
-- rank=1 priority=100 scope=canary next=check_wallet_readiness reason=scheduled_readiness_check route=`base->avalanche wBTC.OFT->wBTC.OFT` amount=`100000` command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=100000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- rank=1 priority=100 scope=canary next=check_wallet_readiness reason=scheduled_readiness_check route=`base->bob wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 - rank=2 priority=90 scope=prep_candidate next=check_wallet_readiness reason=wallet_not_checked route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 - rank=3 priority=90 scope=prep_candidate next=check_wallet_readiness reason=wallet_not_checked route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
 - rank=4 priority=90 scope=prep_candidate next=check_wallet_readiness reason=wallet_not_checked route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
-- rank=5 priority=88 scope=stable_loop next=expand_amount_ladder reason=amount_mismatch command=`npm run quote:dex -- --route-key=base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 --include-stable-entry`
-- rank=6 priority=86 scope=proxy_spread next=expand_amount_ladder reason=partial_amount_match proxyGroup=`wbtc` chains=avalanche,base,ethereum,bsc,sonic,unichain command=`npm run quote:dex -- --chains=avalanche,base,ethereum,bsc,sonic,unichain --include-stable-entry --route-limit=64`
-- rank=7 priority=45 scope=canary next=advance_canary reason=canary_prep_blocked command=`npm run advance:canary`
-- rank=8 priority=35 scope=route_performance next=report_route_performance reason=no_realized_enabled_routes command=`npm run report:route-performance -- --write`
+- rank=5 priority=89 scope=execution_review next=check_wallet_readiness reason=native route=`ethereum->base WBTC->wBTC.OFT` amount=`10000` command=`npm run check:estimator-wallet -- --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- rank=6 priority=88 scope=stable_loop next=expand_amount_ladder reason=amount_mismatch command=`npm run quote:dex -- --route-key=base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 --include-stable-entry`
+- rank=7 priority=86 scope=proxy_spread next=expand_amount_ladder reason=partial_amount_match proxyGroup=`wbtc` chains=avalanche,base,ethereum,bsc,sonic,unichain command=`npm run quote:dex -- --chains=avalanche,base,ethereum,bsc,sonic,unichain --include-stable-entry --route-limit=64`
+- rank=8 priority=84 scope=strategy_discovery next=validate_route_durability reason=policy_ready_measured_loop route=`ethereum->unichain WBTC->wBTC.OFT` amount=`10000` command=`npm run verify:gateway -- --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amounts=10000 && npm run quote:dex -- --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --include-stable-entry && npm run score:gateway -- --write --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000`
+
+## Refresh Queue Execution
+
+- Summary: runs=0 success=0 failed=0 preview=0 invalid=0 latest=none
+- Recent executions: none
+
+## Refresh Batch Loop
+
+- Summary: runs=11 success=11 failed=0 blocked=0 invalid=0 latest=succeeded stopReason=none
+- Batch: mode=`execute` status=`succeeded` selected=1 queueSuccess=1 queueFailure=0 followUpFailure=0 stopReason=none breakerBlocked=false
+- Batch: mode=`execute` status=`succeeded` selected=1 queueSuccess=1 queueFailure=0 followUpFailure=0 stopReason=none breakerBlocked=false
+- Batch: mode=`execute` status=`succeeded` selected=1 queueSuccess=1 queueFailure=0 followUpFailure=0 stopReason=none breakerBlocked=false
+- Batch: mode=`execute` status=`succeeded` selected=1 queueSuccess=1 queueFailure=0 followUpFailure=0 stopReason=none breakerBlocked=false
+- Batch: mode=`execute` status=`succeeded` selected=1 queueSuccess=1 queueFailure=0 followUpFailure=0 stopReason=none breakerBlocked=false
+
+## Objective Plans
+
+- Execution review: route=`ethereum->base WBTC->wBTC.OFT` amount=`10000` status=`measured_hypothesis_under_review` next=`check_wallet_readiness` blockers=native,token,allowance,stale_src_gas_snapshot,exact_src_execution_gas_not_estimated,stale_dex_output_quote
+- Execution review rationale: current canary is the only viable prep route; measured leader is not viable for prep yet; measured leader still needs exact gas; measured leader still needs wallet readiness checks; measured leader is still marked insufficient_data; measured leader still has score data gaps
+- Execution review command: `npm run check:estimator-wallet -- --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Discovery candidate: route=`ethereum->unichain WBTC->wBTC.OFT` amount=`10000` source=`secondary_measured_loop` status=`policy_ready_measured_loop` next=`validate_route_durability` reason=`policy_ready_measured_loop`
+- Discovery command: `npm run verify:gateway -- --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amounts=10000 && npm run quote:dex -- --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --include-stable-entry && npm run score:gateway -- --write --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000`
+
+## Pre-live Readiness
+
+- Current stage: `shadow_replay`
+- Shadow replay: `shadow_replay_blocked` blockers=audit:LIVE_BLOCKED,manual_canary_review_not_ready audit=LIVE_BLOCKED policyReady=6
+- Mechanical simulation: `mechanical_simulation_blocked` success=0/50 failures=0 blockers=shadow_replay_not_ready,needs_50_more_successful_simulations
+- Fork execution: `fork_execution_blocked` planned=1 submitted=0 confirmed=0/3 failures=0 blockers=mechanical_simulation_not_ready,needs_3_more_confirmed_fork_cycles
+- Execution audit: `complete` missingRecords=0 blockers=none
+- Tiny live canary review: `tiny_canary_blocked` blockers=shadow_replay_not_ready,mechanical_simulation_not_ready,fork_execution_not_ready livePolicy=`BLOCKED`
+- Pre-live commands: `npm run run:prelive-evidence-campaign` or `npm run run:prelive-simulations -- --source=objective --write` && `npm run plan:prelive-fork-execution -- --source=objective --write` && `npm run report:prelive-readiness -- --write` && `npm run build:prelive-review-package -- --write` && `npm run status:dashboard`
+- Latest fork plan: route=`ethereum->base WBTC->wBTC.OFT` amount=`10000` status=`planned` source=`objective_execution_review`
+- Recent execution transition: kind=`fork_plan` status=`planned` route=`ethereum->base WBTC->wBTC.OFT` amount=`10000`
+- Queue follow-up: rank=1 scope=canary label=`base->bob wBTC.OFT->wBTC.OFT` reason=scheduled_readiness_check command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Queue follow-up: rank=2 scope=prep_candidate label=`avalanche->bsc wBTC.OFT->wBTC.OFT` reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Queue follow-up: rank=3 scope=prep_candidate label=`avalanche->sonic wBTC.OFT->wBTC.OFT` reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Queue follow-up: rank=4 scope=prep_candidate label=`avalanche->unichain wBTC.OFT->wBTC.OFT` reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+
+## Tiny Live Review Package
+
+- Summary: status=`not_ready_for_manual_review` review=`NOT_READY_FOR_MANUAL_CANARY_REVIEW` live=`LIVE_EXECUTION_BLOCKED` stage=`shadow_replay` blockers=shadow_replay_not_ready,mechanical_simulation_not_ready,fork_execution_not_ready,reject_no_net_edge
+- Manual review candidate: route=`bob->base wBTC.OFT->wBTC.OFT` amount=`10000` readiness=`reject_no_net_edge` net=$-0.8473 prepFunding=$0.0000 txReady=true viableForPrep=true
+- Candidate inputs: quote stale (343.6m) · exactGas stale (361.8m) · srcGas stale (343.1m) · dex stale (345.2m) · btcFee not_needed · market stale (335.8m)
+- Candidate blockers: reject_no_net_edge
+- Candidate evidence: shadow=31 quotes=14/14 success=100.0% p95=775ms routeFailure=3.8%
+- Measured leader review: route=`ethereum->base WBTC->wBTC.OFT` amount=`10000` readiness=`insufficient_data` measured=$64.77 executable=$64.97 next=`check_wallet_readiness`
+- Leader review rationale: current canary is the only viable prep route; measured leader is not viable for prep yet; measured leader still needs exact gas; measured leader still needs wallet readiness checks; measured leader is still marked insufficient_data; measured leader still has score data gaps | blockers: native gas balance missing, source token balance missing, allowance approval missing, source gas snapshot stale, exact execution gas pending, DEX output quote stale
+- Review checklist: completed=top canary route selected · tx payload captured · wallet readiness cleared · exact gas captured remaining=refresh stale/missing inputs (gateway quote, exact gas, source gas, DEX quote, market) · clear objective blocker (reject_no_net_edge) · advance canary beyond BLOCKED_NO_VIABLE_PREP_ROUTE
+- Review transition: kind=`fork_plan` status=`planned` route=`ethereum->base WBTC->wBTC.OFT` amount=`10000`
+- Review follow-up: rank=1 scope=canary label=`base->bob wBTC.OFT->wBTC.OFT` reason=scheduled_readiness_check command=`npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Review follow-up: rank=2 scope=prep_candidate label=`avalanche->bsc wBTC.OFT->wBTC.OFT` reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Review follow-up: rank=3 scope=prep_candidate label=`avalanche->sonic wBTC.OFT->wBTC.OFT` reason=wallet_not_checked command=`npm run check:estimator-wallet -- --route-key=avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4`
+- Guardrail: Mechanical simulation uses RPC estimation and eth_call only; it is not realized execution proof.
+- Guardrail: Pre-live execution audit requires plan, submission, receipt, and journal records to stay in sync.
+- Guardrail: Fork execution requires an external signer and never stores private keys in planner or dashboard code.
+- Guardrail: liveTrading remains BLOCKED until architecture review and explicit canary approval.
+
+## Pre-live Evidence Campaign
+
+- Summary: status=`awaiting_manual` reviewPackage=`not_ready_for_manual_review` stage=`shadow_replay` ready=0 manual=1 blocked=3 done=1
+- Evidence progress: simulations=0/50 forkConfirmed=0/3 refreshRuns=11
+- Next campaign action: code=`execute_refresh_batch` status=`blocked` reason=shadow_replay_policy_gate
+- Campaign action: code=`execute_refresh_batch` status=`blocked` automated=true reason=shadow_replay_policy_gate
+- Campaign action: code=`collect_simulation_evidence` status=`blocked` automated=true reason=shadow_replay_not_ready
+- Campaign action: code=`prepare_fork_cycle` status=`done` automated=true reason=fork_plan_already_open
+- Campaign action: code=`submit_fork_cycle` status=`manual` automated=false reason=external_signer_required command=`npm run submit:prelive-fork-execution -- --plan-id="0048cc0e464adf8909f2" --signed-tx="<signedTx>" --rpc-url="<forkRpcUrl>"`
+- Campaign action: code=`reconcile_fork_cycle` status=`blocked` automated=false reason=fork_submission_required_first
 
 ## Profitability Summary
 
@@ -126,6 +200,7 @@ Updated: 2026-04-12T02:20:56.769Z
 - Proxy coverage target: group=`wbtc` next=`expand_amount_ladder` reason=`partial_amount_match` buyLevels=5 sellLevels=17 matchedLevels=5
 - Stable loop refresh command: `npm run quote:dex -- --route-key=base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 --include-stable-entry`
 - Proxy spread refresh command: `npm run quote:dex -- --chains=avalanche,base,ethereum,bsc,sonic,unichain --include-stable-entry --route-limit=64`
+- Objective discovery plan: route=`ethereum->unichain WBTC->wBTC.OFT` amount=`10000` next=`validate_route_durability` reason=`policy_ready_measured_loop`
 - Strategy track stable_loop: label=`base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 + bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` status=`blocked_loop` next=`expand_amount_ladder` reason=`amount_mismatch`
 - Strategy track proxy_spread: label=`avalanche->unichain wBTC.OFT` status=`thin_coverage` next=`expand_amount_ladder` reason=`partial_amount_match`
 - Quote decay: 5s 3/4 · 15s 3/4 · 30s 3/4
@@ -137,7 +212,7 @@ Updated: 2026-04-12T02:20:56.769Z
 - BTC watchlist missing from live routes: FBTC, LBTC, solvBTC, SolvBTC.BBN, tBTC, xSolvBTC
 - BTC watchlist unknown addresses: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
 - Last canary advance: bob->base wBTC.OFT->wBTC.OFT (BLOCKED_NO_VIABLE_PREP_ROUTE -> BLOCKED_NO_VIABLE_PREP_ROUTE; actions no_actions)
-- Route input freshness: quote stale (123.4m) · exactGas stale (141.6m) · srcGas stale (122.9m) · dex stale (125.1m) · btcFee not_needed · market stale (115.6m)
+- Route input freshness: quote stale (343.6m) · exactGas stale (361.8m) · srcGas stale (343.1m) · dex stale (345.2m) · btcFee not_needed · market stale (335.8m)
 - Route input blockers: reject_no_net_edge
 - Canary input watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 inputs=gateway_quote,exact_gas,src_gas,dex_quote,market (current canary route inputs are stale)
 - Gas refresh watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (gas freshness is not the active blocker)
@@ -145,7 +220,7 @@ Updated: 2026-04-12T02:20:56.769Z
 - Gateway coverage watcher: no fully measurable route shortlist yet
 - Blocked-score watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (no new score inputs arrived)
 - Quote-decay watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (next decay window is due now; window 5s)
-- estimator wallet checked routes: 14
+- estimator wallet checked routes: 25
 - estimator skipped routes: 1
 - skipped reasons: missing_tx_data:1
 
@@ -166,6 +241,23 @@ Updated: 2026-04-12T02:20:56.769Z
 - `src/estimator/canary-next-step.mjs`
 - `src/estimator/canary-route-plan.mjs`
 - `src/estimator/funding-plan.mjs`
+- `src/prelive/execution-sim.mjs`
+- `src/prelive/fork-execution.mjs`
+- `src/prelive/readiness.mjs`
+- `src/prelive/review-package.mjs`
+- `src/prelive/evidence-campaign.mjs`
+- `src/cli/run-prelive-simulations.mjs`
+- `src/cli/report-prelive-readiness.mjs`
+- `src/cli/build-prelive-review-package.mjs`
+- `src/cli/run-prelive-evidence-campaign.mjs`
+- `src/cli/plan-prelive-fork-execution.mjs`
+- `src/cli/submit-prelive-fork-execution.mjs`
+- `src/cli/reconcile-prelive-fork-execution.mjs`
+- `src/strategy/objective-plans.mjs`
+- `src/session/shadow-refresh-runner.mjs`
+- `src/cli/run-shadow-refresh-queue.mjs`
+- `src/session/shadow-refresh-batch.mjs`
+- `src/cli/run-shadow-refresh-batch.mjs`
 - `docs/current-status.md`
 
 ## Backup Note

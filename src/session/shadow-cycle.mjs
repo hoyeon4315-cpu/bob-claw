@@ -1,6 +1,7 @@
 import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { summarizeShadowCandidateEvidence } from "./shadow-evidence.mjs";
 import { buildShadowRefreshQueue } from "./shadow-refresh-queue.mjs";
+import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
 
 function dedupe(values) {
@@ -416,6 +417,13 @@ export function buildShadowCycleSummary({
     crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
     btcProxySpreads: strategy?.btcProxySpreads || null,
   });
+  const objectivePlans = buildObjectivePlans({
+    routePlan: canaryState?.routePlan || null,
+    scoreSnapshot,
+    shadowObservations,
+    dexQuotes: canaryState?.dexQuotes || [],
+    address: canaryState?.address || null,
+  });
 
   const blockers = dedupe([
     ...(nextStep?.reasons || []),
@@ -443,6 +451,7 @@ export function buildShadowCycleSummary({
     address: canaryState?.address || null,
     nextReadinessCheck,
     shadowActions,
+    objectivePlans,
     strategyPlans,
     mode,
     enabledRouteCount: enabledRoutes.length,
@@ -476,6 +485,7 @@ export function buildShadowCycleSummary({
         scores: scoreSnapshot?.scores || [],
       },
     ),
+    objectivePlans,
     strategyPlans,
     shadowActions,
     refreshQueue,

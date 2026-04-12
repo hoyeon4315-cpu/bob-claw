@@ -54,6 +54,28 @@ function strategyLabel(kind, nextAction) {
   return labels[kind]?.[nextAction] || `${kind}:${nextAction || "unknown"}`;
 }
 
+function executionReviewPriority(plan) {
+  return {
+    check_wallet_readiness: 89,
+    refresh_exact_gas: 87,
+    refresh_dex_quote: 85,
+    refresh_market_snapshot: 84,
+    rerun_route_scoring: 83,
+    refresh_public_status: 40,
+  }[plan?.nextActionCode] ?? 82;
+}
+
+function discoveryPlanPriority(plan) {
+  return {
+    validate_route_durability: 84,
+    collect_decay_survival: 82,
+    collect_decay_coverage: 81,
+    refresh_partial_loop_measurement: 79,
+    repeat_route_measurement: 77,
+    refresh_public_status: 40,
+  }[plan?.nextActionCode] ?? 75;
+}
+
 function compareQueueItems(left, right) {
   if (left.priority !== right.priority) return right.priority - left.priority;
   const leftScope = `${left.scope || ""}:${left.code || ""}:${left.routeKey || left.kind || ""}`;
@@ -120,6 +142,45 @@ function strategyQueueItems(strategyPlans = null) {
   return items;
 }
 
+function objectivePlanQueueItems(objectivePlans = null) {
+  if (!objectivePlans) return [];
+  const items = [];
+  if (objectivePlans.executionReview?.command) {
+    items.push({
+      priority: executionReviewPriority(objectivePlans.executionReview),
+      kind: "objective_plan",
+      scope: "execution_review",
+      code: objectivePlans.executionReview.nextActionCode || null,
+      label: objectivePlans.executionReview.nextActionLabel || "review measured route",
+      reason: objectivePlans.executionReview.blockers?.[0] || objectivePlans.executionReview.selectionCode || null,
+      command: objectivePlans.executionReview.command || null,
+      routeKey: objectivePlans.executionReview.routeKey || null,
+      routeLabel: objectivePlans.executionReview.label || null,
+      amount: objectivePlans.executionReview.amount || null,
+      status: objectivePlans.executionReview.status || null,
+      selectionCode: objectivePlans.executionReview.selectionCode || null,
+    });
+  }
+  if (objectivePlans.discovery?.command) {
+    items.push({
+      priority: discoveryPlanPriority(objectivePlans.discovery),
+      kind: "objective_plan",
+      scope: "strategy_discovery",
+      code: objectivePlans.discovery.nextActionCode || null,
+      label: objectivePlans.discovery.nextActionLabel || "refresh discovery route",
+      reason: objectivePlans.discovery.reason || objectivePlans.discovery.selectionCode || null,
+      command: objectivePlans.discovery.command || null,
+      routeKey: objectivePlans.discovery.routeKey || null,
+      routeLabel: objectivePlans.discovery.label || null,
+      amount: objectivePlans.discovery.amount || null,
+      status: objectivePlans.discovery.status || null,
+      selectionCode: objectivePlans.discovery.selectionCode || null,
+      source: objectivePlans.discovery.source || null,
+    });
+  }
+  return items;
+}
+
 function supplementalQueueItems({
   mode = null,
   enabledRouteCount = 0,
@@ -179,6 +240,7 @@ export function buildShadowRefreshQueue({
   address = null,
   nextReadinessCheck = null,
   shadowActions = [],
+  objectivePlans = null,
   strategyPlans = null,
   mode = null,
   enabledRouteCount = 0,
@@ -189,6 +251,7 @@ export function buildShadowRefreshQueue({
   const resolvedAddress = address || shadowCycle?.address?.resolved || null;
   const resolvedNextReadinessCheck = nextReadinessCheck || shadowCycle?.canary?.nextReadinessCheck || null;
   const resolvedShadowActions = shadowActions.length ? shadowActions : shadowCycle?.shadowActions || [];
+  const resolvedObjectivePlans = objectivePlans || shadowCycle?.objectivePlans || null;
   const resolvedStrategyPlans = strategyPlans || shadowCycle?.strategyPlans || null;
   const resolvedMode = mode || shadowCycle?.mode || null;
   const resolvedEnabledRouteCount = enabledRouteCount || shadowCycle?.routePerformance?.enabledCount || 0;
@@ -209,6 +272,7 @@ export function buildShadowRefreshQueue({
       amount: resolvedNextReadinessCheck?.amount || null,
     },
     ...shadowActionQueueItems(resolvedShadowActions),
+    ...objectivePlanQueueItems(resolvedObjectivePlans),
     ...strategyQueueItems(resolvedStrategyPlans),
     ...supplementalQueueItems({
       mode: resolvedMode,

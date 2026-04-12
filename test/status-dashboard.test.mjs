@@ -51,7 +51,32 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
 
   assert.equal(typeof shadowCycle.mode, "string");
   assert.equal(publicStatus.dataCounts.shadowCyclePresent, 1);
+  assert.equal(publicStatus.dataCounts.preliveSimulationRuns, 0);
+  assert.equal(publicStatus.dataCounts.preliveForkPlans, 0);
+  assert.equal(publicStatus.dataCounts.shadowRefreshExecutions, 0);
+  assert.equal(publicStatus.dataCounts.shadowRefreshBatches, 0);
   assert.equal(publicStatus.shadowCycle.mode, shadowCycle.mode);
+  assert.equal(typeof publicStatus.shadowCycle?.refreshExecution?.runCount, "number");
+  assert.equal(Array.isArray(publicStatus.shadowCycle?.refreshExecution?.recentExecutions), true);
+  assert.equal(typeof publicStatus.shadowCycle?.refreshBatch?.runCount, "number");
+  assert.equal(Array.isArray(publicStatus.shadowCycle?.refreshBatch?.recentBatches), true);
+  assert.equal(typeof publicStatus.prelive?.currentStage, "string");
+  assert.equal(typeof publicStatus.prelive?.shadowReplay?.status, "string");
+  assert.equal(typeof publicStatus.prelive?.mechanicalSimulation?.targetSuccessCount, "number");
+  assert.equal(typeof publicStatus.prelive?.forkExecution?.targetConfirmedCount, "number");
+  assert.equal(typeof publicStatus.prelive?.executionAudit?.status, "string");
+  assert.equal(Array.isArray(publicStatus.prelive?.executionAudit?.recentTransitions), true);
+  assert.equal(typeof publicStatus.prelive?.tinyLiveCanary?.status, "string");
+  assert.equal(typeof publicStatus.prelive?.reviewPackage?.packageStatus, "string");
+  assert.equal(typeof publicStatus.prelive?.reviewPackage?.readyForManualReview, "boolean");
+  assert.equal(Array.isArray(publicStatus.prelive?.reviewPackage?.reviewBlockers), true);
+  assert.equal(
+    publicStatus.prelive?.evidenceCampaign?.latestStatus == null ||
+      typeof publicStatus.prelive?.evidenceCampaign?.latestStatus === "string",
+    true,
+  );
+  assert.equal(typeof publicStatus.prelive?.evidenceCampaign?.runCount, "number");
+  assert.equal(typeof publicStatus.prelive?.evidenceCampaign?.current?.overallStatus, "string");
   if (publicStatus.canaryInputs) {
     assert.equal(typeof publicStatus.canaryInputs.routeLabel, "string");
     assert.equal(typeof publicStatus.canaryInputs.gatewayQuote?.state, "string");
@@ -96,4 +121,17 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
       Array.isArray(publicStatus.strategy?.canarySelectionGap?.reviewPlan?.actionLabels),
     true,
   );
+  assert.equal(
+    publicStatus.strategy?.objectivePlans == null ||
+      publicStatus.strategy?.objectivePlans?.executionReview == null ||
+      typeof publicStatus.strategy?.objectivePlans?.executionReview?.nextActionCode === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.shadowCycle?.objectivePlans == null ||
+      publicStatus.shadowCycle?.objectivePlans?.discovery == null ||
+      typeof publicStatus.shadowCycle?.objectivePlans?.discovery?.nextActionCode === "string",
+    true,
+  );
+  assert.equal(typeof publicStatus.dataCounts?.preliveReviewPackagePresent, "number");
 });

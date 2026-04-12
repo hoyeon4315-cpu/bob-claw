@@ -116,6 +116,65 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
         },
       ],
       updateAlerts: [],
+      preliveSimulationRuns: [
+        {
+          observedAt: "2026-04-10T11:50:00.000Z",
+          status: "simulated_ok",
+        },
+      ],
+      preliveForkPlan: {
+        plans: [
+          {
+            observedAt: "2026-04-10T11:51:00.000Z",
+            planId: "plan-1",
+            routeLabel: "bob->base",
+            routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
+            amount: "10000",
+            status: "planned",
+            selectionSource: "objective",
+          },
+        ],
+      },
+      preliveForkSubmissions: [],
+      preliveForkReceipts: [],
+      shadowRefreshBatches: [
+        {
+          observedAt: "2026-04-10T11:52:00.000Z",
+          batchId: "batch-1",
+          mode: "execute",
+          batchStatus: "succeeded",
+          stopReason: null,
+          selectedCount: 1,
+          queueResults: [{ executionStatus: "succeeded" }],
+          followUps: [],
+          circuitBreaker: { blocked: false },
+        },
+      ],
+      preliveEvidenceCampaigns: [
+        {
+          observedAt: "2026-04-10T11:53:00.000Z",
+          campaignId: "campaign-1",
+          mode: "execute",
+          finalStatus: "ready",
+          stopReason: null,
+          finalCampaign: {
+            currentStage: "shadow_replay",
+            nextAction: {
+              code: "execute_refresh_batch",
+              status: "ready",
+            },
+            readyActionCount: 1,
+            blockedActionCount: 2,
+            manualActionCount: 0,
+            simulation: {
+              successRemaining: 50,
+            },
+            forkExecution: {
+              successRemaining: 3,
+            },
+          },
+        },
+      ],
     },
     {
       now,
@@ -164,6 +223,20 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.market.observedChainCount, 2);
   assert.equal(status.market.missingChainCount, 0);
   assert.equal(status.market.staleChainCount, 0);
+  assert.equal(status.prelive.liveTradingPolicy, "BLOCKED");
+  assert.equal(typeof status.prelive.currentStage, "string");
+  assert.equal(typeof status.prelive.forkExecution.status, "string");
+  assert.equal(typeof status.prelive.executionAudit.status, "string");
+  assert.equal(status.prelive.executionAudit.recentTransitions.length, 1);
+  assert.equal(status.prelive.forkExecution.planCount, 1);
+  assert.equal(status.shadowCycle == null || typeof status.shadowCycle.refreshBatch?.runCount === "number", true);
+  assert.equal(status.shadowCycle == null || typeof status.shadowCycle.refreshBatch?.latestStatus === "string", true);
+  assert.equal(status.prelive.evidenceCampaign.runCount, 1);
+  assert.equal(status.prelive.evidenceCampaign.latestStatus, "ready");
+  assert.equal(status.dataCounts.preliveSimulationRuns, 1);
+  assert.equal(status.dataCounts.preliveForkPlans, 1);
+  assert.equal(status.dataCounts.shadowRefreshBatches, 1);
+  assert.equal(status.dataCounts.preliveEvidenceCampaigns, 1);
   assert.equal(status.dataCounts.priceSnapshots, 1);
 });
 
@@ -501,6 +574,19 @@ test("dashboard status includes shadow cycle summary when available", () => {
     gasFailures: [],
     updateSnapshots: [],
     updateAlerts: [],
+    shadowRefreshExecutions: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        rank: 1,
+        scope: "canary",
+        code: "check_wallet_readiness",
+        routeLabel: "base->bitcoin ETH->BTC",
+        amount: "1787455313617158",
+        executionStatus: "succeeded",
+        stepCount: 1,
+        steps: [{ script: "check:estimator-wallet", exitCode: 0 }],
+      },
+    ],
     shadowCycle: {
       observedAt: "2026-04-10T11:59:00.000Z",
       mode: "SHADOW_ONLY",
@@ -627,6 +713,67 @@ test("dashboard status includes shadow cycle summary when available", () => {
           chains: [],
         },
       },
+      objectivePlans: {
+        executionReview: {
+          status: "measured_hypothesis_under_review",
+          selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
+          selectionLabel: "Measured leader stays review-only until readiness and fresh-input blockers clear.",
+          routeKey: "ethereum:0x2260->base:0x0555",
+          label: "ethereum->base WBTC->wBTC.OFT",
+          amount: "10000",
+          tradeReadiness: "insufficient_data",
+          measuredNetUsd: 64.77,
+          scoreNetUsd: -1.01,
+          executableNetUsd: 64.99,
+          blockers: ["wallet_not_checked", "stale_src_gas_snapshot"],
+          blockerLabels: ["wallet readiness check pending", "source gas snapshot stale"],
+          reasonLabels: [
+            "current canary is the only viable prep route",
+            "measured leader is not viable for prep yet",
+          ],
+          nextActionCode: "check_wallet_readiness",
+          nextActionLabel: "wallet readiness check",
+          command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+          stepCount: 4,
+          steps: [
+            {
+              code: "check_wallet_readiness",
+              label: "wallet readiness check",
+              command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+            },
+          ],
+          hypothesisGuard: "Positive measured edge is still a hypothesis until wallet, gas, and exact execution inputs are all fresh.",
+        },
+        discovery: {
+          source: "secondary_measured_loop",
+          sourceLabel: "secondary measured loop",
+          status: "missing_decay_survival",
+          selectionCode: "secondary_measured_loop",
+          selectionLabel: "Use the next measured loop to widen objective route discovery without promoting it to canary prematurely.",
+          routeKey: "base:0x0555->unichain:0x0555",
+          label: "base->unichain wBTC.OFT->wBTC.OFT",
+          amount: "25000",
+          classification: "missing_decay_survival",
+          measuredNetUsd: 0.72,
+          gapToPolicyUsd: 0,
+          requiredNetProfitUsd: 0.3,
+          bestNetEdgeUsd: 1.2,
+          profitableLevels: 2,
+          amountLevels: 2,
+          nextActionCode: "collect_decay_survival",
+          nextActionLabel: "collect decay survival samples",
+          reason: "missing_decay_survival",
+          command: "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
+          stepCount: 2,
+          steps: [
+            {
+              code: "collect_decay_survival",
+              label: "collect decay survival samples",
+              command: "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
+            },
+          ],
+        },
+      },
       refreshQueue: [
         {
           rank: 1,
@@ -646,6 +793,25 @@ test("dashboard status includes shadow cycle summary when available", () => {
         },
         {
           rank: 2,
+          priority: 89,
+          kind: "objective_plan",
+          scope: "execution_review",
+          code: "check_wallet_readiness",
+          label: "wallet readiness check",
+          reason: "wallet_not_checked",
+          command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+          routeKey: "ethereum:0x2260->base:0x0555",
+          routeLabel: "ethereum->base WBTC->wBTC.OFT",
+          amount: "10000",
+          routeKeys: [],
+          chains: [],
+          proxyGroup: null,
+          status: "measured_hypothesis_under_review",
+          selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
+          source: null,
+        },
+        {
+          rank: 3,
           priority: 35,
           kind: "ops",
           scope: "route_performance",
@@ -755,9 +921,14 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowActions[1].command.includes("check:estimator-wallet"), true);
   assert.equal(status.shadowCycle.strategyPlans.stableLoop.nextAction, "collect_stable_loop_coverage");
   assert.equal(status.shadowCycle.strategyPlans.proxySpread.nextAction, "watch_proxy_surface");
+  assert.equal(status.shadowCycle.objectivePlans.executionReview.nextActionCode, "check_wallet_readiness");
+  assert.equal(status.shadowCycle.objectivePlans.discovery.nextActionCode, "collect_decay_survival");
   assert.equal(status.shadowCycle.refreshQueue[0].scope, "canary");
   assert.equal(status.shadowCycle.refreshQueue[0].code, "check_wallet_readiness");
-  assert.equal(status.shadowCycle.refreshQueue[1].command, "npm run report:route-performance -- --write");
+  assert.equal(status.shadowCycle.refreshQueue[1].selectionCode, "prefer_viable_prep_route_over_measured_hypothesis");
+  assert.equal(status.shadowCycle.refreshQueue[2].command, "npm run report:route-performance -- --write");
+  assert.equal(status.strategy.objectivePlans.executionReview.routeKey, "ethereum:0x2260->base:0x0555");
+  assert.equal(status.strategy.objectivePlans.discovery.source, "secondary_measured_loop");
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
   assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
   assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);
@@ -778,7 +949,10 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.audit.inventoryConsistent, true);
   assert.equal(status.shadowCycle.audit.issueCount, 1);
   assert.equal(status.shadowCycle.audit.issues[0].label, "기본 지갑 설정이 최신 운영 주소와 다름");
+  assert.equal(status.shadowCycle.refreshExecution.runCount, 1);
+  assert.equal(status.shadowCycle.refreshExecution.recentExecutions[0].executionStatus, "succeeded");
   assert.equal(status.dataCounts.shadowCyclePresent, 1);
+  assert.equal(status.dataCounts.shadowRefreshExecutions, 1);
   assert.equal(status.canaryAdvance.initial.decision, "RUN_EXACT_GAS");
   assert.equal(status.canaryAdvance.final.decision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
   assert.deepEqual(status.canaryAdvance.actions, ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"]);

@@ -19,6 +19,46 @@ export function formatGatewayUpdateAlert(result) {
   return lines.join("\n");
 }
 
+function shortHash(value) {
+  if (!value) return null;
+  const text = String(value);
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-6)}`;
+}
+
+export function formatPreliveForkExecutionAlert({ phase, plan = null, submission = null, receipt = null, audit = null }) {
+  const lines = [
+    "BOB Claw pre-live execution",
+    `phase: ${phase || "unknown"}`,
+  ];
+  const route = plan?.routeLabel || submission?.routeLabel || receipt?.routeLabel || plan?.routeKey || submission?.routeKey || receipt?.routeKey;
+  const amount = plan?.amount || submission?.amount || receipt?.amount;
+  const environment = plan?.targetEnvironment || submission?.targetEnvironment || receipt?.targetEnvironment || "external_signed_fork";
+  if (route) lines.push(`route: ${route}`);
+  if (amount) lines.push(`amount: ${amount}`);
+  lines.push(`environment: ${environment}`);
+  if (submission) {
+    lines.push(`submission: ${submission.submissionStatus || "unknown"}`);
+    if (submission.reason) lines.push(`submissionReason: ${submission.reason}`);
+    if (submission.txHash) lines.push(`txHash: ${shortHash(submission.txHash)}`);
+  }
+  if (receipt) {
+    lines.push(`receipt: ${receipt.reconciliationStatus || "unknown"}`);
+    lines.push(`failed: ${Boolean(receipt.flags?.failed)}`);
+    if (Number.isFinite(receipt.realized?.actualKnownCostUsd)) {
+      lines.push(`actualKnownCostUsd: ${receipt.realized.actualKnownCostUsd.toFixed(6)}`);
+    }
+    if (Number.isFinite(receipt.realized?.realizedNetPnlUsd)) {
+      lines.push(`realizedNetPnlUsd: ${receipt.realized.realizedNetPnlUsd.toFixed(6)}`);
+    }
+  }
+  if (audit) {
+    lines.push(`records: ${audit.status} missing=${audit.missingRecordCount}`);
+  }
+  lines.push("liveTrading: still blocked until explicit canary approval");
+  return lines.join("\n");
+}
+
 export async function sendTelegramMessage({ botToken, chatId, text, fetchImpl = fetch }) {
   if (!botToken || !chatId) {
     return { sent: false, skipped: true, reason: "telegram_not_configured" };

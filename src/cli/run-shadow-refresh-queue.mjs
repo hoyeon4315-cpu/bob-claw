@@ -1,0 +1,134 @@
+#!/usr/bin/env node
+
+import { join } from "node:path";
+import { config } from "../config/env.mjs";
+import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
+import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
+import { buildShadowRefreshExecutionSummary, executeRefreshQueueItem } from "../session/shadow-refresh-runner.mjs";
+
+function parseArgs(argv) {
+  const flags = new Set(argv);
+  const options = Object.fromEntries(
+    argv
+      .filter((arg) => arg.startsWith("--") && arg.includes("="))
+      .map((arg) => {
+        const [key, ...valueParts] = arg.slice(2).split("=");
+        return [key, valueParts.join("=")];
+      }),
+  );
+  return {
+    json: flags.has("--json"),
+    write: flags.has("--write"),
+    execute: flags.has("--execute"),
+    rank: options.rank ? Number(options.rank) : null,
+    limit: options.limit ? Number(options.limit) : 1,
+    scope: options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [],
+  };
+}
+
+function stripVolatile(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const { generatedAt, latestObservedAt, ...stable } = value;
+  return stable;
+}
+
+async function loadRefreshPlan() {
+  const existing = await readJsonIfExists(join(config.dataDir, "shadow-refresh-plan.json"));
+  if (existing?.items?.length) return existing;
+  const shadowCycle = await readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json"));
+  if (!shadowCycle) {
+    throw new Error("Missing shadow cycle snapshot. Run npm run run:shadow-cycle -- --write first.");
+  }
+  const items = buildShadowRefreshQueue({ shadowCycle, limit: 8 });
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    shadowCycleObservedAt: shadowCycle.observedAt || null,
+    itemCount: items.length,
+    items,
+  };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const plan = await loadRefreshPlan();
+  let items = plan.items || [];
+  if (Number.isFinite(args.rank)) {
+    items = items.filter((item) => item.rank === args.rank);
+  }
+  if (args.scope.length) {
+    items = items.filter((item) => args.scope.includes(item.scope));
+  }
+  const safeLimit = Number.isFinite(args.limit) && args.limit > 0 ? Math.round(args.limit) : 1;
+  items = items.slice(0, safeLimit);
+
+  const records = [];
+  if (args.execute || args.json || items.length) {
+    for (const item of items) {
+      records.push(await executeRefreshQueueItem(item, { execute: args.execute }));
+    }
+  }
+
+  if (args.execute) {
+    const store = new JsonlStore(config.dataDir);
+    for (const record of records) {
+      await store.append("shadow-refresh-executions", record);
+    }
+  }
+
+  const allRecords = args.execute || args.write ? await readJsonl(config.dataDir, "shadow-refresh-executions") : [];
+  const persistedSummary = buildShadowRefreshExecutionSummary(allRecords);
+
+  if (args.write || args.execute) {
+    const outputPath = join(config.dataDir, "shadow-refresh-execution-summary.json");
+    await writeTextIfChanged(outputPath, `${JSON.stringify(persistedSummary, null, 2)}\n`, {
+      normalize: (contents) => {
+        if (!contents) return contents;
+        return JSON.stringify(stripVolatile(JSON.parse(contents)));
+      },
+    });
+  }
+
+  const summary = args.execute ? persistedSummary : buildShadowRefreshExecutionSummary(records);
+
+  const output = {
+    mode: args.execute ? "execute" : "preview",
+    selectedCount: items.length,
+    records,
+    summary,
+    persistedSummary,
+  };
+
+  if (args.json) {
+    console.log(JSON.stringify(output, null, 2));
+    return;
+  }
+
+  console.log(`mode=${output.mode}`);
+  console.log(`selectedCount=${output.selectedCount}`);
+  for (const record of records) {
+    console.log(
+      [
+        `rank=${record.rank ?? "n/a"}`,
+        `scope=${record.scope || "unknown"}`,
+        `code=${record.code || "unknown"}`,
+        `status=${record.executionStatus || "unknown"}`,
+        record.routeLabel ? `route=${record.routeLabel}` : null,
+        record.amount ? `amount=${record.amount}` : null,
+        record.invalidReason ? `reason=${record.invalidReason}` : null,
+        record.steps?.length ? `scripts=${record.steps.map((step) => step.script).join(",")}` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+  console.log(`executionSummary runs=${summary.runCount} success=${summary.successCount} failed=${summary.failureCount} preview=${summary.previewCount} invalid=${summary.invalidCount}`);
+}
+
+main().catch((error) => {
+  console.error(error.stack || error.message);
+  process.exitCode = 1;
+});

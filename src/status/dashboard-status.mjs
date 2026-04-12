@@ -6,6 +6,10 @@ import { ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
+import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaign.mjs";
+import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.mjs";
+import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-runner.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
@@ -628,6 +632,7 @@ function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = n
     edgeResearch,
     noEdgePersistence,
     btcProxySpreads,
+    objectivePlans: shadowCycle?.objectivePlans || null,
     strategyTracks: buildStrategyTracksSummary({
       shadowCycle,
       bestStablecoinRoute: bestStable,
@@ -862,6 +867,8 @@ function humanShadowAction(code) {
 
 function shadowCycleSummary(shadowCycle, now) {
   if (!shadowCycle) return null;
+  const refreshBatch = buildShadowRefreshBatchSummary(shadowCycle.refreshBatches || [], now);
+  const refreshExecution = buildShadowRefreshExecutionSummary(shadowCycle.refreshExecutions || [], now);
   const topRouteTradeReadiness = humanTradeReadiness(shadowCycle.topRoute?.tradeReadiness || null, shadowCycle.topRoute?.netEdgeUsd);
 
   return {
@@ -960,6 +967,58 @@ function shadowCycleSummary(shadowCycle, now) {
           proxySpread: shadowCycle.strategyPlans.proxySpread || null,
         }
       : null,
+    objectivePlans: shadowCycle.objectivePlans
+      ? {
+          executionReview: shadowCycle.objectivePlans.executionReview
+            ? {
+                status: shadowCycle.objectivePlans.executionReview.status || null,
+                selectionCode: shadowCycle.objectivePlans.executionReview.selectionCode || null,
+                selectionLabel: shadowCycle.objectivePlans.executionReview.selectionLabel || null,
+                routeKey: shadowCycle.objectivePlans.executionReview.routeKey || null,
+                routeLabel: shadowCycle.objectivePlans.executionReview.label || null,
+                amount: shadowCycle.objectivePlans.executionReview.amount || null,
+                tradeReadiness: shadowCycle.objectivePlans.executionReview.tradeReadiness || null,
+                measuredNetUsd: shadowCycle.objectivePlans.executionReview.measuredNetUsd ?? null,
+                scoreNetUsd: shadowCycle.objectivePlans.executionReview.scoreNetUsd ?? null,
+                executableNetUsd: shadowCycle.objectivePlans.executionReview.executableNetUsd ?? null,
+                blockers: shadowCycle.objectivePlans.executionReview.blockers || [],
+                blockerLabels: shadowCycle.objectivePlans.executionReview.blockerLabels || [],
+                reasonLabels: shadowCycle.objectivePlans.executionReview.reasonLabels || [],
+                nextActionCode: shadowCycle.objectivePlans.executionReview.nextActionCode || null,
+                nextActionLabel: shadowCycle.objectivePlans.executionReview.nextActionLabel || null,
+                command: shadowCycle.objectivePlans.executionReview.command || null,
+                stepCount: shadowCycle.objectivePlans.executionReview.stepCount ?? 0,
+                steps: shadowCycle.objectivePlans.executionReview.steps || [],
+                hypothesisGuard: shadowCycle.objectivePlans.executionReview.hypothesisGuard || null,
+              }
+            : null,
+          discovery: shadowCycle.objectivePlans.discovery
+            ? {
+                source: shadowCycle.objectivePlans.discovery.source || null,
+                sourceLabel: shadowCycle.objectivePlans.discovery.sourceLabel || null,
+                status: shadowCycle.objectivePlans.discovery.status || null,
+                selectionCode: shadowCycle.objectivePlans.discovery.selectionCode || null,
+                selectionLabel: shadowCycle.objectivePlans.discovery.selectionLabel || null,
+                routeKey: shadowCycle.objectivePlans.discovery.routeKey || null,
+                routeLabel: shadowCycle.objectivePlans.discovery.label || null,
+                amount: shadowCycle.objectivePlans.discovery.amount || null,
+                classification: shadowCycle.objectivePlans.discovery.classification || null,
+                measuredNetUsd: shadowCycle.objectivePlans.discovery.measuredNetUsd ?? null,
+                gapToPolicyUsd: shadowCycle.objectivePlans.discovery.gapToPolicyUsd ?? null,
+                requiredNetProfitUsd: shadowCycle.objectivePlans.discovery.requiredNetProfitUsd ?? null,
+                bestNetEdgeUsd: shadowCycle.objectivePlans.discovery.bestNetEdgeUsd ?? null,
+                profitableLevels: shadowCycle.objectivePlans.discovery.profitableLevels ?? null,
+                amountLevels: shadowCycle.objectivePlans.discovery.amountLevels ?? null,
+                nextActionCode: shadowCycle.objectivePlans.discovery.nextActionCode || null,
+                nextActionLabel: shadowCycle.objectivePlans.discovery.nextActionLabel || null,
+                reason: shadowCycle.objectivePlans.discovery.reason || null,
+                command: shadowCycle.objectivePlans.discovery.command || null,
+                stepCount: shadowCycle.objectivePlans.discovery.stepCount ?? 0,
+                steps: shadowCycle.objectivePlans.discovery.steps || [],
+              }
+            : null,
+        }
+      : null,
     refreshQueue: (shadowCycle.refreshQueue || []).map((item) => ({
       rank: item.rank ?? null,
       priority: item.priority ?? null,
@@ -975,7 +1034,32 @@ function shadowCycleSummary(shadowCycle, now) {
       routeKeys: item.routeKeys || [],
       chains: item.chains || [],
       proxyGroup: item.proxyGroup || null,
+      status: item.status || null,
+      selectionCode: item.selectionCode || null,
+      source: item.source || null,
     })),
+    refreshExecution: {
+      runCount: refreshExecution.runCount,
+      successCount: refreshExecution.successCount,
+      failureCount: refreshExecution.failureCount,
+      previewCount: refreshExecution.previewCount,
+      invalidCount: refreshExecution.invalidCount,
+      latestObservedAt: refreshExecution.latestObservedAt,
+      latestStatus: refreshExecution.latestStatus,
+      recentExecutions: refreshExecution.recentExecutions,
+    },
+    refreshBatch: {
+      runCount: refreshBatch.runCount,
+      successCount: refreshBatch.successCount,
+      failureCount: refreshBatch.failureCount,
+      blockedCount: refreshBatch.blockedCount,
+      invalidCount: refreshBatch.invalidCount,
+      latestObservedAt: refreshBatch.latestObservedAt,
+      latestStatus: refreshBatch.latestStatus,
+      latestMode: refreshBatch.latestMode,
+      latestStopReason: refreshBatch.latestStopReason,
+      recentBatches: refreshBatch.recentBatches,
+    },
     shadowActions: (shadowCycle.shadowActions || []).map((item) => ({
       role: item.role || null,
       roleLabel: humanShadowRosterRole(item.role || null),
@@ -1140,7 +1224,16 @@ export function buildDashboardStatus(input, options = {}) {
     estimatorWalletReadinessFailures: input.estimatorWalletReadinessFailures || [],
     now,
   });
-  const shadowCycle = shadowCycleSummary(input.shadowCycle || null, now);
+  const shadowCycle = shadowCycleSummary(
+    input.shadowCycle
+      ? {
+          ...input.shadowCycle,
+          refreshExecutions: input.shadowRefreshExecutions || [],
+          refreshBatches: input.shadowRefreshBatches || [],
+        }
+      : null,
+    now,
+  );
   const canaryAdvance = advanceCanarySummary(input.advanceCanary || null, now);
   const strategy = strategySummary({
     scoreSnapshot: input.scoreSnapshot || null,
@@ -1152,6 +1245,36 @@ export function buildDashboardStatus(input, options = {}) {
     routes: latestRoutesRecord?.routes || [],
     routesObservedAt: latestRoutesRecord?.observedAt || null,
   });
+  const preliveBase = buildPreliveReadinessSummary({
+    overall,
+    audit: auditStatus,
+    shadowCycle,
+    strategy,
+    simulationRuns: input.preliveSimulationRuns || [],
+    forkExecutionPlans: input.preliveForkPlan?.plans || [],
+    forkExecutionSubmissions: input.preliveForkSubmissions || [],
+    forkExecutionReceipts: input.preliveForkReceipts || [],
+    executionEvents: input.executionEvents || [],
+  });
+  const evidenceCampaign = buildPreliveEvidenceCampaignSummary(input.preliveEvidenceCampaigns || [], now);
+  const prelive = {
+    ...preliveBase,
+    evidenceCampaign: {
+      runCount: evidenceCampaign.runCount,
+      previewCount: evidenceCampaign.previewCount,
+      readyCount: evidenceCampaign.readyCount,
+      reviewReadyCount: evidenceCampaign.reviewReadyCount,
+      awaitingManualCount: evidenceCampaign.awaitingManualCount,
+      blockedCount: evidenceCampaign.blockedCount,
+      failureCount: evidenceCampaign.failureCount,
+      latestObservedAt: evidenceCampaign.latestObservedAt,
+      latestStatus: evidenceCampaign.latestStatus,
+      latestMode: evidenceCampaign.latestMode,
+      latestStopReason: evidenceCampaign.latestStopReason,
+      nextAction: evidenceCampaign.nextAction,
+      recentCampaigns: evidenceCampaign.recentCampaigns,
+    },
+  };
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1165,6 +1288,7 @@ export function buildDashboardStatus(input, options = {}) {
     shadowCycle,
     canaryAdvance,
     strategy,
+    prelive,
     bitcoinFee,
     opportunity,
     dex,
@@ -1186,6 +1310,14 @@ export function buildDashboardStatus(input, options = {}) {
       estimatorWalletReadiness: input.estimatorWalletReadiness?.length || 0,
       estimatorWalletReadinessFailures: input.estimatorWalletReadinessFailures?.length || 0,
       shadowObservations: input.shadowObservations?.length || 0,
+      preliveSimulationRuns: input.preliveSimulationRuns?.length || 0,
+      preliveForkPlans: input.preliveForkPlan?.plans?.length || 0,
+      preliveForkSubmissions: input.preliveForkSubmissions?.length || 0,
+      preliveForkReceipts: input.preliveForkReceipts?.length || 0,
+      executionJournalEvents: input.executionEvents?.length || 0,
+      shadowRefreshExecutions: input.shadowRefreshExecutions?.length || 0,
+      shadowRefreshBatches: input.shadowRefreshBatches?.length || 0,
+      preliveEvidenceCampaigns: input.preliveEvidenceCampaigns?.length || 0,
       shadowCyclePresent: shadowCycle ? 1 : 0,
       advanceCanaryPresent: canaryAdvance ? 1 : 0,
     },

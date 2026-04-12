@@ -23,15 +23,40 @@ test("shadow refresh queue prioritizes canary readiness, strategy coverage, and 
       },
       {
         role: "tx_ready_shadow",
-        routeKey: "ethereum:0x2260->base:0x0555",
-        label: "ethereum->base WBTC->wBTC.OFT",
+        routeKey: "avalanche:0x0555->bsc:0x0555",
+        label: "avalanche->bsc wBTC.OFT->wBTC.OFT",
         amount: "10000",
         code: "check_wallet_readiness",
         actionLabel: "refresh wallet readiness",
         reason: "native",
-        command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+        command: "npm run check:estimator-wallet -- --route-key=avalanche:0x0555->bsc:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
       },
     ],
+    objectivePlans: {
+      executionReview: {
+        routeKey: "ethereum:0x2260->base:0x0555",
+        label: "ethereum->base WBTC->wBTC.OFT",
+        amount: "10000",
+        status: "measured_hypothesis_under_review",
+        selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
+        blockers: ["wallet_not_checked"],
+        nextActionCode: "check_wallet_readiness",
+        nextActionLabel: "wallet readiness check",
+        command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      },
+      discovery: {
+        routeKey: "base:0x0555->unichain:0x0555",
+        label: "base->unichain wBTC.OFT->wBTC.OFT",
+        amount: "25000",
+        source: "secondary_measured_loop",
+        status: "missing_decay_survival",
+        selectionCode: "secondary_measured_loop",
+        reason: "missing_decay_survival",
+        nextActionCode: "collect_decay_survival",
+        nextActionLabel: "collect decay survival samples",
+        command: "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
+      },
+    },
     strategyPlans: {
       stableLoop: {
         kind: "stable_loop",
@@ -60,14 +85,16 @@ test("shadow refresh queue prioritizes canary readiness, strategy coverage, and 
     [
       [1, "canary", "check_wallet_readiness"],
       [2, "tx_ready_shadow", "check_wallet_readiness"],
-      [3, "stable_loop", "expand_amount_ladder"],
-      [4, "proxy_spread", "expand_amount_ladder"],
-      [5, "canary", "advance_canary"],
-      [6, "route_performance", "report_route_performance"],
-      [7, "treasury", "plan_treasury_actions"],
-      [8, "funding", "plan_treasury_funding_sources"],
+      [3, "execution_review", "check_wallet_readiness"],
+      [4, "stable_loop", "expand_amount_ladder"],
+      [5, "proxy_spread", "expand_amount_ladder"],
+      [6, "strategy_discovery", "collect_decay_survival"],
+      [7, "canary", "advance_canary"],
+      [8, "route_performance", "report_route_performance"],
     ],
   );
-  assert.equal(queue[2].command, "npm run quote:dex -- --route-key=base:0xusdc->bitcoin:0xbtc --include-stable-entry");
-  assert.equal(queue[3].proxyGroup, "wbtc");
+  assert.equal(queue[2].command.includes("ethereum:0x2260->base:0x0555"), true);
+  assert.equal(queue[3].command, "npm run quote:dex -- --route-key=base:0xusdc->bitcoin:0xbtc --include-stable-entry");
+  assert.equal(queue[4].proxyGroup, "wbtc");
+  assert.equal(queue[5].command.includes("verify:gateway"), true);
 });

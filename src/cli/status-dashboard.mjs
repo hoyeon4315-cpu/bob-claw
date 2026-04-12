@@ -1,16 +1,11 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
-import { resolveOperationalAddress } from "../config/operational-address.mjs";
-import { loadCanaryState } from "../estimator/load-canary-state.mjs";
-import { readJsonl } from "../lib/jsonl-read.mjs";
-import { buildCanaryInputSummary } from "../status/canary-inputs.mjs";
-import { buildDashboardStatus, writeDashboardStatus } from "../status/dashboard-status.mjs";
-import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
+import { writeDashboardStatus } from "../status/dashboard-status.mjs";
+import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 import {
   planCanaryInputRefresh,
   describeBlockedScoreRefreshSelection,
@@ -23,15 +18,6 @@ import {
 } from "../watch/canary-readiness-watch.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-
-async function readJsonIfExists(path) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -270,79 +256,10 @@ async function main() {
     runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write"]);
   }
 
-  const [
-    routesRecords,
-    quotes,
-    failures,
-    gasSnapshots,
-    gasFailures,
-    priceSnapshots,
-    updateSnapshots,
-    updateAlerts,
-    scoreSnapshot,
-    dexQuotes,
-    dexFailures,
-    bitcoinFeeSnapshots,
-    gatewayGasEstimates,
-    gatewayGasEstimateFailures,
-    estimatorWalletReadiness,
-    estimatorWalletReadinessFailures,
-    shadowObservations,
-    shadowCycle,
-    advanceCanary,
-  ] = await Promise.all([
-    readJsonl(config.dataDir, "gateway-routes"),
-    readJsonl(config.dataDir, "gateway-quotes"),
-    readJsonl(config.dataDir, "gateway-quote-failures"),
-    readJsonl(config.dataDir, "gas-snapshots"),
-    readJsonl(config.dataDir, "gas-snapshot-failures"),
-    readJsonl(config.dataDir, "market-price-snapshots"),
-    readJsonl(config.dataDir, "gateway-update-snapshots"),
-    readJsonl(config.dataDir, "gateway-update-alerts"),
-    readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
-    readJsonl(config.dataDir, "dex-quotes"),
-    readJsonl(config.dataDir, "dex-quote-failures"),
-    readJsonl(config.dataDir, "bitcoin-fee-snapshots"),
-    readJsonl(config.dataDir, "gateway-gas-estimates"),
-    readJsonl(config.dataDir, "gateway-gas-estimate-failures"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness"),
-    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
-    readJsonl(config.dataDir, "gateway-shadow-observations"),
-    readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json")),
-    readJsonIfExists(join(config.dataDir, "advance-canary-latest.json")),
-  ]);
-
-  const status = buildDashboardStatus({
-    routesRecords,
-    quotes,
-    failures,
-    gasSnapshots,
-    gasFailures,
-    priceSnapshots,
-    updateSnapshots,
-    updateAlerts,
-    scoreSnapshot,
-    dexQuotes,
-    dexFailures,
-    bitcoinFeeSnapshots,
-    gatewayGasEstimates,
-    gatewayGasEstimateFailures,
-    estimatorWalletReadiness,
-    estimatorWalletReadinessFailures,
-    shadowObservations,
-    shadowCycle,
-    advanceCanary,
-  });
-  const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
-  const watchState = await loadCanaryState({ address: resolved.address, dataDir: config.dataDir });
+  const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
+  const status = context.dashboardStatus;
+  const watchState = context.state;
   watchState.dashboardStatus = status;
-  status.canaryInputs = buildCanaryInputSummary(watchState, { now: status.generatedAt });
-  status.strategy.canarySelectionGap = buildCanarySelectionGap({
-    routePlan: watchState.routePlan,
-    edgeViability: status.strategy.edgeViability,
-    canaryInputs: status.canaryInputs,
-    scoreSnapshot: scoreSnapshot || null,
-  });
   status.watchers = buildPublicWatchers(watchState);
   const output = await writeDashboardStatus(config.dataDir, status);
   const dashboardOutput = await writeDashboardStatus("./dashboard/public", status);
@@ -357,6 +274,8 @@ async function main() {
   console.log(`probeOk=${status.gateway.probeOk}/${status.gateway.probeTotal}`);
   console.log(`auditDecision=${status.audit.decision}`);
   console.log(`shadowCycleMode=${status.shadowCycle?.mode || "none"}`);
+  console.log(`preliveStage=${status.prelive?.currentStage || "none"}`);
+  console.log(`reviewPackageStatus=${status.prelive?.reviewPackage?.packageStatus || "none"}`);
   console.log(`blockers=${status.overall.blockers.join(",") || "none"}`);
 }
 
