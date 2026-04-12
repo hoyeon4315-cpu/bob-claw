@@ -435,7 +435,12 @@ function parseArgs(argv) {
   return {
     once: flags.has("--once"),
     json: flags.has("--json"),
+    adaptive: flags.has("--adaptive"),
+    refreshDashboard: flags.has("--refresh-dashboard"),
     interval: options.interval ? Number(options.interval) : 300,
+    turboInterval: options["turbo-interval"] ? Number(options["turbo-interval"]) : 30,
+    turboThresholdPct: options["turbo-threshold"] ? Number(options["turbo-threshold"]) : 0.5,
+    turboDuration: options["turbo-duration"] ? Number(options["turbo-duration"]) : 1800, // 30 min
   };
 }
 
@@ -461,6 +466,29 @@ function printSample(record) {
   console.log(`  ── ${summary.successCount}/${summary.probeCount} ok, maxEdge=${summary.maxEdgePct ?? "n/a"}%, profitable=${summary.profitableCount}`);
 }
 
+// ── Dashboard refresh ─────────────────────────────────────────────────────────
+
+async function refreshDashboard() {
+  const { spawnSync } = await import("node:child_process");
+  const { dirname, resolve } = await import("node:path");
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const result = spawnSync(process.execPath, [resolve(root, "src/cli/status-dashboard.mjs"), "--skip-shadow-cycle"], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  return result.status === 0;
+}
+
+// ── Adaptive frequency ───────────────────────────────────────────────────────
+
+function detectTurbo(lastPrice, currentPrice, thresholdPct) {
+  if (!Number.isFinite(lastPrice) || !Number.isFinite(currentPrice)) return false;
+  const changePct = Math.abs((currentPrice - lastPrice) / lastPrice) * 100;
+  return changePct >= thresholdPct;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -468,6 +496,7 @@ async function main() {
 
   if (args.once) {
     const { record, summary } = await collectOneSample();
+    if (args.refreshDashboard) await refreshDashboard();
     if (args.json) {
       console.log(JSON.stringify({ record, summary }, null, 2));
     } else {
@@ -477,22 +506,58 @@ async function main() {
   }
 
   // Continuous mode
-  const intervalMs = args.interval * 1000;
-  console.log(`quote-lag collector: sampling every ${args.interval}s (Ctrl-C to stop)`);
+  const normalMs = args.interval * 1000;
+  const turboMs = args.turboInterval * 1000;
+  let lastBtcPrice = null;
+  let turboUntil = 0; // timestamp when turbo mode expires
+
+  const modeLabel = args.adaptive ? "adaptive" : "fixed";
+  console.log(`quote-lag collector: ${modeLabel} mode, normal=${args.interval}s` +
+    (args.adaptive ? `, turbo=${args.turboInterval}s @ ${args.turboThresholdPct}% move` : "") +
+    (args.refreshDashboard ? ", dashboard refresh ON" : "") +
+    " (Ctrl-C to stop)");
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       const { record } = await collectOneSample();
+      const currentPrice = record.btcMarketUsd;
+
+      // Check for turbo trigger
+      if (args.adaptive && lastBtcPrice !== null) {
+        const triggered = detectTurbo(lastBtcPrice, currentPrice, args.turboThresholdPct);
+        if (triggered) {
+          const changePct = ((currentPrice - lastBtcPrice) / lastBtcPrice * 100).toFixed(2);
+          turboUntil = Date.now() + args.turboDuration * 1000;
+          console.log(`  🔥 TURBO: BTC moved ${changePct}% ($${lastBtcPrice.toFixed(0)} → $${currentPrice.toFixed(0)}), fast sampling for ${args.turboDuration}s`);
+        }
+      }
+      lastBtcPrice = currentPrice;
+
       if (args.json) {
         console.log(JSON.stringify(record));
       } else {
-        printSample(record);
+        const inTurbo = Date.now() < turboUntil;
+        if (inTurbo) {
+          const remaining = Math.round((turboUntil - Date.now()) / 1000);
+          printSample(record);
+          console.log(`  🔥 TURBO mode (${remaining}s remaining)`);
+        } else {
+          printSample(record);
+        }
+      }
+
+      // Refresh dashboard after each sample
+      if (args.refreshDashboard) {
+        const ok = await refreshDashboard();
+        if (!ok && !args.json) console.log("  ⚠ dashboard refresh failed");
       }
     } catch (error) {
       console.error(`[error] ${error.message}`);
     }
-    await sleep(intervalMs);
+
+    const inTurbo = Date.now() < turboUntil;
+    await sleep(inTurbo ? turboMs : normalMs);
   }
 }
 
