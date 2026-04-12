@@ -606,7 +606,7 @@ function renderDexSpread(status) {
 
   if (!ds || !ds.tokens) {
     badge.textContent = "대기 중";
-    title.textContent = "Base BTC 토큰 스프레드";
+    title.textContent = "Multi-Chain BTC 스프레드";
     body.textContent = "npm run collect:dex-spreads 로 수집을 시작하세요.";
     tokensEl.innerHTML = "";
     return;
@@ -616,22 +616,24 @@ function renderDexSpread(status) {
     ? Math.round((Date.now() - new Date(ds.observedAt).getTime()) / 60000)
     : null;
   const freshLabel = ageMin !== null ? `${ageMin}분 전` : "";
+  const chainCount = ds.chainCount || 1;
 
   const isWide = ds.spreadPct > 0.3;
   badge.textContent = isWide ? "🟢 스프레드 확대" : "측정 중";
-  title.textContent = `스프레드 ${ds.spreadPct.toFixed(3)}% · LBTC +${(ds.lbtcPremiumPct || 0).toFixed(3)}%`;
-  body.textContent = `${ds.probeBtc} BTC 기준 · ${freshLabel}`;
+  title.textContent = `${chainCount}체인 스프레드 ${ds.spreadPct.toFixed(3)}% · LBTC +${(ds.lbtcPremiumPct || 0).toFixed(3)}%`;
+  body.textContent = `${ds.probeBtc} BTC 기준 · ${ds.tokenCount || 0}개 토큰 · ${freshLabel}`;
 
-  const tokens = ds.tokens.filter(t => !t.error);
+  const tokens = (ds.tokens || []).filter(t => !t.error && t.impact < 10);
   tokens.sort((a, b) => (b.netUsdc || 0) - (a.netUsdc || 0));
   tokensEl.innerHTML = tokens.map(t => {
     const net = `$${t.netUsdc.toFixed(2)}`;
-    const imp = t.impact != null ? `${t.impact.toFixed(3)}%` : "—";
-    const isTop = t.symbol === ds.bestToken;
+    const chain = t.chain || "base";
+    const gas = `$${t.gasUsd.toFixed(3)}`;
+    const isTop = `${t.chain}:${t.symbol}` === ds.bestToken || t.symbol === ds.bestToken;
     return `<div class="lag-probe${isTop ? " probe-best" : ""}">
-      <span class="lag-probe-label">${t.symbol}</span>
+      <span class="lag-probe-label">${chain}:${t.symbol}</span>
       <span class="lag-probe-lag">${net}</span>
-      <span class="lag-probe-net">${imp} imp</span>
+      <span class="lag-probe-net">gas ${gas}</span>
     </div>`;
   }).join("");
 
