@@ -86,6 +86,34 @@ const PROBE_BTC = 0.005;
 const ODOS_API = "https://api.odos.xyz";
 const CALL_DELAY_MS = 2500;
 
+// Alert thresholds
+const ALERT_LBTC_SPREAD_PCT = 0.40;
+const ALERT_CROSS_CHAIN_SPREAD_PCT = 0.80;
+
+// ── BTC spot price helper (CoinGecko) ────────────────────────────────────────
+
+let _btcSpotCache = { price: null, change24h: null, fetchedAt: 0 };
+
+async function fetchBtcSpot() {
+  // Cache for 60s to avoid rate limits
+  if (Date.now() - _btcSpotCache.fetchedAt < 60_000 && _btcSpotCache.price) {
+    return _btcSpotCache;
+  }
+  try {
+    const url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT";
+    const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    const data = await r.json();
+    _btcSpotCache = {
+      price: parseFloat(data.lastPrice) || null,
+      change24h: parseFloat(data.priceChangePercent) || null,
+      fetchedAt: Date.now(),
+    };
+  } catch {
+    // Keep stale cache on error
+  }
+  return _btcSpotCache;
+}
+
 // ── Memory-efficient JSONL tail reader ───────────────────────────────────────
 
 async function readJsonlTail(filePath, maxLines = 2016) {
@@ -143,6 +171,9 @@ export async function collectOneSample() {
   const ts = new Date().toISOString();
   const allResults = [];
   let errors = 0;
+
+  // Fetch BTC spot price (non-blocking, cached)
+  const btcSpot = await fetchBtcSpot();
 
   for (const chainCfg of CHAIN_CONFIGS) {
     for (const token of chainCfg.tokens) {
@@ -221,12 +252,26 @@ export async function collectOneSample() {
   }
   crossChainPairs.sort((a, b) => b.spreadPct - a.spreadPct);
 
+  // Detect alerts
+  const alerts = [];
+  if (lbtcPremiumPct != null && Math.abs(lbtcPremiumPct) >= ALERT_LBTC_SPREAD_PCT) {
+    alerts.push({ type: "lbtc_spread", value: lbtcPremiumPct, threshold: ALERT_LBTC_SPREAD_PCT });
+  }
+  if (spreadPct >= ALERT_CROSS_CHAIN_SPREAD_PCT) {
+    alerts.push({ type: "cross_chain_spread", value: spreadPct, threshold: ALERT_CROSS_CHAIN_SPREAD_PCT });
+  }
+  if (btcSpot.change24h != null && Math.abs(btcSpot.change24h) >= 3) {
+    alerts.push({ type: "btc_volatile", value: btcSpot.change24h, threshold: 3 });
+  }
+
   return {
     schemaVersion: SCHEMA_VERSION,
     observedAt: ts,
     probeBtc: PROBE_BTC,
     chainCount: CHAIN_CONFIGS.length,
     tokenCount: allResults.length,
+    btcSpotUsd: btcSpot.price,
+    btcChange24hPct: btcSpot.change24h != null ? +btcSpot.change24h.toFixed(2) : null,
     tokens: allResults,
     ranked: priced.map(r => `${r.chain}:${r.symbol}`),
     bestToken: best ? `${best.chain}:${best.symbol}` : null,
@@ -237,6 +282,7 @@ export async function collectOneSample() {
     lbtcPremiumPct: lbtcPremiumPct != null ? +lbtcPremiumPct.toFixed(4) : null,
     chainSummaries,
     crossChainPairs: crossChainPairs.slice(0, 5),
+    alerts,
     errors,
   };
 }
@@ -316,7 +362,8 @@ function parseArgs(argv) {
 }
 
 function printSample(sample) {
-  console.log(`\n─── DEX Spread Probe @ ${sample.observedAt.slice(11, 19)} (${sample.chainCount} chains, ${sample.tokenCount} tokens) ──`);
+  const btcTag = sample.btcSpotUsd ? ` BTC=$${sample.btcSpotUsd.toLocaleString()} (${sample.btcChange24hPct >= 0 ? "+" : ""}${sample.btcChange24hPct}%)` : "";
+  console.log(`\n─── DEX Spread Probe @ ${sample.observedAt.slice(11, 19)} (${sample.chainCount} chains, ${sample.tokenCount} tokens)${btcTag} ──`);
   let lastChain = "";
   for (const t of sample.tokens) {
     if (t.chain !== lastChain) { console.log(`  [${t.chain}]`); lastChain = t.chain; }
@@ -335,6 +382,16 @@ function printSample(sample) {
   console.log(`  ── cross-chain spread: ${sp}%  LBTC premium: ${lp}%  best: ${sample.bestToken}  errors: ${sample.errors}`);
   if (sample.crossChainPairs?.length) {
     console.log(`  ── top pairs: ${sample.crossChainPairs.slice(0, 3).map(p => `${p.sell}→${p.buy} ${p.spreadPct.toFixed(3)}%`).join(" | ")}`);
+  }
+
+  // Alert output
+  if (sample.alerts?.length) {
+    console.log(`  ╔════════════════════════════════════════════╗`);
+    for (const a of sample.alerts) {
+      const val = typeof a.value === "number" ? a.value.toFixed(3) + "%" : a.value;
+      console.log(`  ║ 🚨 ALERT: ${a.type} = ${val} (threshold: ${a.threshold}%) ║`);
+    }
+    console.log(`  ╚════════════════════════════════════════════╝`);
   }
 }
 

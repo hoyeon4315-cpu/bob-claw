@@ -618,10 +618,13 @@ function renderDexSpread(status) {
   const freshLabel = ageMin !== null ? `${ageMin}분 전` : "";
   const chainCount = ds.chainCount || 1;
 
+  const hasAlert = ds.alerts?.length > 0;
   const isWide = ds.spreadPct > 0.3;
-  badge.textContent = isWide ? "🟢 스프레드 확대" : "측정 중";
+  badge.textContent = hasAlert ? "🚨 알림" : isWide ? "🟢 스프레드 확대" : "측정 중";
+
+  const btcTag = ds.btcSpotUsd ? ` · BTC $${Math.round(ds.btcSpotUsd).toLocaleString()} (${ds.btcChange24hPct >= 0 ? "+" : ""}${ds.btcChange24hPct}%)` : "";
   title.textContent = `${chainCount}체인 스프레드 ${ds.spreadPct.toFixed(3)}% · LBTC +${(ds.lbtcPremiumPct || 0).toFixed(3)}%`;
-  body.textContent = `${ds.probeBtc} BTC 기준 · ${ds.tokenCount || 0}개 토큰 · ${freshLabel}`;
+  body.textContent = `${ds.probeBtc} BTC 기준 · ${ds.tokenCount || 0}개 토큰 · ${freshLabel}${btcTag}`;
 
   const tokens = (ds.tokens || []).filter(t => !t.error && t.impact < 10);
   tokens.sort((a, b) => (b.netUsdc || 0) - (a.netUsdc || 0));
@@ -636,6 +639,15 @@ function renderDexSpread(status) {
       <span class="lag-probe-net">gas ${gas}</span>
     </div>`;
   }).join("");
+
+  // Alert banner
+  if (hasAlert) {
+    const alertHtml = ds.alerts.map(a => {
+      const val = typeof a.value === "number" ? a.value.toFixed(3) + "%" : a.value;
+      return `<div style="color:#ff4444;font-weight:bold;padding:4px 0">🚨 ${a.type}: ${val}</div>`;
+    }).join("");
+    tokensEl.insertAdjacentHTML("afterbegin", alertHtml);
+  }
 
   maxEl.textContent = `${ds.spreadPct.toFixed(3)}%${ds.summary?.spread?.max != null ? ` (max ${ds.summary.spread.max.toFixed(3)}%)` : ""}`;
   lbtcEl.textContent = ds.lbtcPremiumPct != null ? `${ds.lbtcPremiumPct.toFixed(3)}%` : "—";
