@@ -19,12 +19,23 @@
  */
 
 import { resolve, dirname, join } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { sendTelegramMessage } from "../notify/telegram.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+// Load .env for Telegram credentials
+const _envPath = join(ROOT, ".env");
+if (existsSync(_envPath)) {
+  for (const line of readFileSync(_envPath, "utf8").split("\n")) {
+    const t = line.trim(); if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("="); if (eq < 0) continue;
+    const k = t.slice(0, eq).trim(), v = t.slice(eq + 1).trim();
+    if (!process.env[k]) process.env[k] = v;
+  }
+}
 const DATA_DIR = config.dataDir || join(ROOT, "data");
 
 const ODOS_API = "https://api.odos.xyz";

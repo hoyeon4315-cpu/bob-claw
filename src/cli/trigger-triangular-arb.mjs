@@ -26,6 +26,7 @@ import { execFile } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { canaryCheck, recordTradeResult } from "../risk/canary-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DATA_DIR = config.dataDir || join(ROOT, "data");
@@ -397,6 +398,14 @@ async function runCycle(args, store, session) {
     console.log(`           The assembled calldata has been logged for external review.`);
   }
 
+  // Record result in canary session log
+  await recordTradeResult({
+    profit: best.netProfit,
+    route: best.label,
+    txHash: null,
+    dryRun: !args.live,
+  });
+
   session.triggerCount++;
   return { cycleDurationMs: Date.now() - cycleStart };
 }
@@ -415,6 +424,17 @@ async function main() {
   }
 
   const mode = args.live ? "BLOCKED" : args.simulate ? "simulate" : "dry-run";
+  const canaryMode = args.live ? "canary" : "normal";
+
+  // Canary guard pre-flight check
+  {
+    const guard = await canaryCheck({ mode: canaryMode, tradeProfit: 0, dryRun: !args.live });
+    if (!guard.allowed) {
+      console.error(`🛑 Canary guard blocked startup: ${guard.reason} (daily P&L: $${guard.dailyPnl.toFixed(2)}, consecutive fails: ${guard.consecFails})`);
+      process.exitCode = 1;
+      return;
+    }
+  }
 
   console.log("╔════════════════════════════════════════════════════════════╗");
   console.log(`║  🎯 Triangular Arb Trigger — ${mode.toUpperCase().padEnd(10)}                    ║`);
@@ -441,6 +461,15 @@ async function main() {
     }
 
     session.cycles++;
+
+    // Per-cycle canary guard check
+    {
+      const guard = await canaryCheck({ mode: canaryMode, tradeProfit: 0, dryRun: !args.live });
+      if (!guard.allowed) {
+        console.error(`\n[${ts()}] 🛑 Canary guard halted: ${guard.reason} (daily P&L: $${guard.dailyPnl.toFixed(2)}, consecutive fails: ${guard.consecFails})`);
+        break;
+      }
+    }
 
     try {
       const { cycleDurationMs } = await runCycle(args, store, session);
