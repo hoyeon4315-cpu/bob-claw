@@ -6,6 +6,7 @@ import { ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
 import { buildDexRouteFocusSummary } from "../strategy/dex-route-focus.mjs";
@@ -14,6 +15,7 @@ import { buildDexRouteUniverseSummary } from "../strategy/dex-route-universe.mjs
 import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strategy/edge-viability.mjs";
 import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
+import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 
 const STATUS_SCHEMA_VERSION = 1;
 const RISK_BUDGET_USD = 300;
@@ -596,6 +598,7 @@ function bestStablecoinRoute(scoreSnapshot) {
 
 function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = null, shadowObservations = [], dexQuotes = [], quotes = [], routes = [], routesObservedAt = null }) {
   const bestStable = bestStablecoinRoute(scoreSnapshot);
+  const btcProxySpreads = buildBtcProxySpreadSummary({ dexQuotes, routes, scoreSnapshot });
   const crossAssetArbitrage = buildCrossAssetArbitrageSummary(scoreSnapshot);
   const dexEnvironment = buildDexEnvironmentSummary({ dexQuotes });
   const dexRouteFocus = buildDexRouteFocusSummary({ routes, quotes, scoreSnapshot, dexQuotes });
@@ -624,6 +627,13 @@ function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = n
     },
     edgeResearch,
     noEdgePersistence,
+    btcProxySpreads,
+    strategyTracks: buildStrategyTracksSummary({
+      shadowCycle,
+      bestStablecoinRoute: bestStable,
+      crossAssetArbitrage,
+      btcProxySpreads,
+    }),
     bestStablecoinRoute: bestStable
       ? {
           routeKey: bestStable.routeKey,

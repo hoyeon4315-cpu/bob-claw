@@ -7,6 +7,7 @@ import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildCanaryInputSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
+import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
 import { buildDexRouteFocusSummary } from "../strategy/dex-route-focus.mjs";
@@ -16,6 +17,7 @@ import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strateg
 import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { shadowActionForCandidate } from "../session/shadow-cycle.mjs";
 import {
   planCanaryInputRefresh,
@@ -396,6 +398,7 @@ function stableRouteCandidates(scores = []) {
 
 function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], routes = [], routesObservedAt = null, quotes = []) {
   const bestStable = stableRouteCandidates(scores)[0] || null;
+  const btcProxySpreads = buildBtcProxySpreadSummary({ dexQuotes, routes, scoreSnapshot: { scores } });
   const crossAsset = buildCrossAssetArbitrageSummary({ scores });
   const dexEnvironment = buildDexEnvironmentSummary({ dexQuotes });
   const dexRouteFocus = buildDexRouteFocusSummary({ routes, quotes, scoreSnapshot: { scores }, dexQuotes });
@@ -405,6 +408,12 @@ function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], rou
   const edgeViabilityVerdict = buildEdgeViabilityVerdict({ edgeViability, dexRouteFocus });
   const edgeResearch = buildEdgeResearchSummary({ scoreSnapshot: { scores }, shadowObservations });
   const noEdgePersistence = buildNoEdgePersistenceSummary({ scoreSnapshot: { scores }, dexQuotes });
+  const strategyTracks = buildStrategyTracksSummary({
+    shadowCycle: { topRoute: null, shadowActions: [] },
+    bestStablecoinRoute: bestStable,
+    crossAssetArbitrage: crossAsset,
+    btcProxySpreads,
+  });
   return [
     "- Strategy note: BTC-family transfer by itself is usually loss-making after Gateway fee, gas, and slippage.",
     "- Strategy note: the actionable target is a local executable BTC/stable dislocation that beats total movement cost.",
@@ -449,6 +458,10 @@ function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], rou
     crossAsset.closestLoop && !crossAsset.bestLoop
       ? `- Closest loop blocker: amount gap ${(crossAsset.closestLoop.amountGapPct * 100).toFixed(2)}% on \`${crossAsset.closestLoop.entryRouteKey}\` + \`${crossAsset.closestLoop.exitRouteKey}\``
       : null,
+    `- Proxy spread surface: buyQuotes=${btcProxySpreads.buyQuoteCount} sellQuotes=${btcProxySpreads.sellQuoteCount} opportunities=${btcProxySpreads.opportunityCount} policyReady=${btcProxySpreads.policyReadyCount} overfit=${btcProxySpreads.overfitAssessment}`,
+    ...strategyTracks.tracks
+      .filter((item) => item.kind === "stable_loop" || item.kind === "proxy_spread")
+      .map((item) => `- Strategy track ${item.kind}: label=\`${item.label || "none"}\` status=\`${item.status}\` next=\`${item.nextActionCode}\` reason=\`${item.reason || "none"}\``),
   ];
 }
 

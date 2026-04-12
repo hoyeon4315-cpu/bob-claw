@@ -458,6 +458,10 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.strategy.crossAssetArbitrage.entryCount, 0);
   assert.equal(status.strategy.crossAssetArbitrage.exitCount, 0);
   assert.equal(status.strategy.crossAssetArbitrage.bestLoop, null);
+  assert.equal(typeof status.strategy.btcProxySpreads.opportunityCount, "number");
+  assert.equal(status.strategy.strategyTracks.trackCount >= 2, true);
+  assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "stable_loop"), true);
+  assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "proxy_spread"), true);
   assert.equal(status.strategy.edgeResearch.routeCount, 2);
   assert.equal(status.strategy.edgeResearch.bestCandidate.classification, "no_edge");
   assert.equal(status.dex.quoteCount, 1);
