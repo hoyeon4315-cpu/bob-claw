@@ -5,11 +5,26 @@ import { GatewayClient } from "../gateway/client.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = 1;
+
+// ── Memory-efficient JSONL tail reader ──────────────────────────────────────
+
+async function readJsonlTail(filePath, maxLines) {
+  try {
+    const raw = await readFile(filePath, "utf8");
+    const lines = raw.trim().split("\n").filter(Boolean);
+    const tail = lines.slice(-maxLines);
+    return tail.map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 // ── Probe routes — lowest-haircut from scan ─────────────────────────────────
 
@@ -410,8 +425,12 @@ export async function collectOneSample(options = {}) {
   // 4. Persist
   await store.append("quote-lag-samples", record);
 
-  // 5. Update latest summary from all historical samples
-  const allSamples = await readJsonl(config.dataDir, "quote-lag-samples");
+  // 5. Update latest summary from recent samples (tail read for memory efficiency)
+  const MAX_SUMMARY_SAMPLES = 2016; // ~7 days at 5min intervals
+  const allSamples = await readJsonlTail(
+    join(config.dataDir, "quote-lag-samples.jsonl"),
+    MAX_SUMMARY_SAMPLES,
+  );
   const summary = buildLagSummary(allSamples);
   const latestPath = join(config.dataDir, "quote-lag-latest.json");
   await mkdir(config.dataDir, { recursive: true });
@@ -481,12 +500,16 @@ async function refreshDashboard() {
   return result.status === 0;
 }
 
-// ── Adaptive frequency ───────────────────────────────────────────────────────
+// ── Lightweight price sentinel ────────────────────────────────────────────────
 
-function detectTurbo(lastPrice, currentPrice, thresholdPct) {
-  if (!Number.isFinite(lastPrice) || !Number.isFinite(currentPrice)) return false;
-  const changePct = Math.abs((currentPrice - lastPrice) / lastPrice) * 100;
-  return changePct >= thresholdPct;
+async function fetchBtcPriceQuick() {
+  const response = await fetch(
+    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+    { signal: AbortSignal.timeout(5_000) },
+  );
+  if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
+  const body = await response.json();
+  return body.bitcoin?.usd ?? null;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -505,49 +528,89 @@ async function main() {
     return;
   }
 
-  // Continuous mode
-  const normalMs = args.interval * 1000;
-  const turboMs = args.turboInterval * 1000;
-  let lastBtcPrice = null;
-  let turboUntil = 0; // timestamp when turbo mode expires
+  // ── 2-tier adaptive loop ───────────────────────────────────────────────────
+  // Tier 1: price sentinel — lightweight CoinGecko check every watchInterval (30s)
+  // Tier 2: full Gateway probe — fires on normal cadence OR when price moves >threshold
+  //
+  // This keeps memory low while catching volatility windows.
+  // CoinGecko check: ~300ms, ~0 memory. Gateway 5-probe: ~5-10s, ~2MB transient.
 
-  const modeLabel = args.adaptive ? "adaptive" : "fixed";
-  console.log(`quote-lag collector: ${modeLabel} mode, normal=${args.interval}s` +
-    (args.adaptive ? `, turbo=${args.turboInterval}s @ ${args.turboThresholdPct}% move` : "") +
-    (args.refreshDashboard ? ", dashboard refresh ON" : "") +
-    " (Ctrl-C to stop)");
+  const normalProbeMs = args.interval * 1000;        // 300s between full probes
+  const turboProbeMs = args.turboInterval * 1000;     // 30s between full probes in turbo
+  const watchMs = Math.min(30_000, turboProbeMs);     // sentinel checks every 30s
+  let anchorPrice = null;     // price at last full probe
+  let lastFullProbe = 0;      // timestamp of last full probe
+  let turboUntil = 0;         // timestamp when turbo expires
+  let sentinelTick = 0;
+
+  console.log(`quote-lag collector: 2-tier adaptive`);
+  console.log(`  sentinel: ${watchMs / 1000}s  |  probe normal: ${args.interval}s  |  probe turbo: ${args.turboInterval}s`);
+  console.log(`  turbo trigger: ${args.turboThresholdPct}% move  |  turbo duration: ${args.turboDuration}s`);
+  if (args.refreshDashboard) console.log("  dashboard auto-refresh: ON");
+  console.log("  Ctrl-C to stop\n");
+
+  // Run first full probe immediately
+  try {
+    const { record } = await collectOneSample();
+    anchorPrice = record.btcMarketUsd;
+    lastFullProbe = Date.now();
+    printSample(record);
+    if (args.refreshDashboard) await refreshDashboard();
+  } catch (error) {
+    console.error(`[error] ${error.message}`);
+  }
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    try {
-      const { record } = await collectOneSample();
-      const currentPrice = record.btcMarketUsd;
+    await sleep(watchMs);
+    sentinelTick += 1;
 
-      // Check for turbo trigger
-      if (args.adaptive && lastBtcPrice !== null) {
-        const triggered = detectTurbo(lastBtcPrice, currentPrice, args.turboThresholdPct);
-        if (triggered) {
-          const changePct = ((currentPrice - lastBtcPrice) / lastBtcPrice * 100).toFixed(2);
+    const inTurbo = Date.now() < turboUntil;
+    const probeIntervalMs = inTurbo ? turboProbeMs : normalProbeMs;
+    const timeSinceProbe = Date.now() - lastFullProbe;
+    let shouldProbe = timeSinceProbe >= probeIntervalMs;
+
+    // Sentinel: quick price check
+    try {
+      const price = await fetchBtcPriceQuick();
+      if (Number.isFinite(price) && Number.isFinite(anchorPrice)) {
+        const movePct = ((price - anchorPrice) / anchorPrice) * 100;
+
+        // Log sentinel tick compactly — every tick in turbo, every 2nd in normal
+        if (inTurbo || sentinelTick % 2 === 0) {
+          const mode = inTurbo ? "🔥" : "👁";
+          console.log(`  ${mode} $${price.toLocaleString()} (${movePct >= 0 ? "+" : ""}${movePct.toFixed(3)}% vs anchor)`);
+        }
+
+        if (Math.abs(movePct) >= args.turboThresholdPct) {
           turboUntil = Date.now() + args.turboDuration * 1000;
-          console.log(`  🔥 TURBO: BTC moved ${changePct}% ($${lastBtcPrice.toFixed(0)} → $${currentPrice.toFixed(0)}), fast sampling for ${args.turboDuration}s`);
+          shouldProbe = true;
+          console.log(`  🔥 TURBO triggered: BTC ${movePct >= 0 ? "+" : ""}${movePct.toFixed(2)}% ($${anchorPrice.toFixed(0)} → $${price.toFixed(0)})`);
         }
       }
-      lastBtcPrice = currentPrice;
+    } catch {
+      // Sentinel failure is non-critical — just wait for next tick
+    }
+
+    if (!shouldProbe) continue;
+
+    // Full Gateway probe
+    try {
+      const { record } = await collectOneSample();
+      anchorPrice = record.btcMarketUsd;
+      lastFullProbe = Date.now();
+      sentinelTick = 0;
 
       if (args.json) {
         console.log(JSON.stringify(record));
       } else {
-        const inTurbo = Date.now() < turboUntil;
+        printSample(record);
         if (inTurbo) {
           const remaining = Math.round((turboUntil - Date.now()) / 1000);
-          printSample(record);
           console.log(`  🔥 TURBO mode (${remaining}s remaining)`);
-        } else {
-          printSample(record);
         }
       }
 
-      // Refresh dashboard after each sample
       if (args.refreshDashboard) {
         const ok = await refreshDashboard();
         if (!ok && !args.json) console.log("  ⚠ dashboard refresh failed");
@@ -555,9 +618,6 @@ async function main() {
     } catch (error) {
       console.error(`[error] ${error.message}`);
     }
-
-    const inTurbo = Date.now() < turboUntil;
-    await sleep(inTurbo ? turboMs : normalMs);
   }
 }
 
