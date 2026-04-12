@@ -19,6 +19,7 @@ import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
+import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
 import { summarizeShadowCandidateEvidence } from "../session/shadow-evidence.mjs";
 import { shadowActionForCandidate } from "../session/shadow-cycle.mjs";
 import {
@@ -214,7 +215,14 @@ function shadowRosterLines(routePlan, evidenceInput = {}) {
       shadowObservations: evidenceInput.shadowObservations || [],
       scores: evidenceInput.scores || [],
     });
-    return `- ${role} route=\`${candidate.label}\` amount=\`${candidate.amount}\` txReady=${Boolean(candidate.txReady)} viableForPrep=${Boolean(candidate.viableForPrep)} net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} blockers=${blockers.join(",") || "none"} evidence=shadow:${evidence?.shadowObservationCount ?? 0} quotes:${evidence?.quoteSampleCount ?? 0}/${evidence?.quoteAttemptCount ?? 0} success:${formatRate(evidence?.quoteSuccessRate)} p95:${evidence?.quoteLatencyP95Ms ?? "n/a"}ms fee:${money(evidence?.latestKnownCostUsd)} reasons:${compactReasons(evidence?.rejectionReasons || [])}`;
+    const priority =
+      (evidence?.shadowObservationCount || 0) === 0 ? "no_shadow_evidence" :
+      (evidence?.quoteAttemptCount || 0) < 2 ? "thin_quote_samples" :
+      Number.isFinite(evidence?.quoteSuccessRate) && evidence.quoteSuccessRate < 0.8 ? "low_quote_success_rate" :
+      (evidence?.shadowObservationCount || 0) < 3 ? "thin_shadow_observations" :
+      Number.isFinite(evidence?.quoteLatencyP95Ms) && evidence.quoteLatencyP95Ms > 2000 ? "high_quote_latency" :
+      "evidence_accumulating";
+    return `- ${role} route=\`${candidate.label}\` amount=\`${candidate.amount}\` txReady=${Boolean(candidate.txReady)} viableForPrep=${Boolean(candidate.viableForPrep)} net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} blockers=${blockers.join(",") || "none"} priority=${priority} evidence=shadow:${evidence?.shadowObservationCount ?? 0} quotes:${evidence?.quoteSampleCount ?? 0}/${evidence?.quoteAttemptCount ?? 0} success:${formatRate(evidence?.quoteSuccessRate)} p95:${evidence?.quoteLatencyP95Ms ?? "n/a"}ms fee:${money(evidence?.latestKnownCostUsd)} reasons:${compactReasons(evidence?.rejectionReasons || [])}`;
   });
 }
 
@@ -433,6 +441,10 @@ function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], rou
     crossAssetArbitrage: crossAsset,
     btcProxySpreads,
   });
+  const strategyPlans = buildStrategyRefreshPlans({
+    crossAssetArbitrage: crossAsset,
+    btcProxySpreads,
+  });
   return [
     "- Strategy note: BTC-family transfer by itself is usually loss-making after Gateway fee, gas, and slippage.",
     "- Strategy note: the actionable target is a local executable BTC/stable dislocation that beats total movement cost.",
@@ -484,6 +496,12 @@ function strategyLines(scores = [], shadowObservations = [], dexQuotes = [], rou
     btcProxySpreads.nextCoverageTarget
       ? `- Proxy coverage target: group=\`${btcProxySpreads.nextCoverageTarget.proxyGroup}\` next=\`${btcProxySpreads.nextCoverageTarget.nextAction}\` reason=\`${btcProxySpreads.nextCoverageTarget.reason}\` buyLevels=${btcProxySpreads.nextCoverageTarget.buyAmountLevelCount} sellLevels=${btcProxySpreads.nextCoverageTarget.sellAmountLevelCount} matchedLevels=${btcProxySpreads.nextCoverageTarget.matchedAmountLevelCount}`
       : "- Proxy coverage target: none",
+    strategyPlans.stableLoop?.command
+      ? `- Stable loop refresh command: \`${strategyPlans.stableLoop.command}\``
+      : null,
+    strategyPlans.proxySpread?.command
+      ? `- Proxy spread refresh command: \`${strategyPlans.proxySpread.command}\``
+      : null,
     ...strategyTracks.tracks
       .filter((item) => item.kind === "stable_loop" || item.kind === "proxy_spread")
       .map((item) => `- Strategy track ${item.kind}: label=\`${item.label || "none"}\` status=\`${item.status}\` next=\`${item.nextActionCode}\` reason=\`${item.reason || "none"}\``),

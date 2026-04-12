@@ -545,12 +545,14 @@ test("dashboard status includes shadow cycle summary when available", () => {
             viableForPrep: true,
             txReady: true,
             tradeReadiness: "reject_no_net_edge",
-          prepFundingUsd: 0,
-          netEdgeUsd: -0.83,
-          prepBlockers: [],
-          scoreDisqualifiers: [],
-          readinessFailureReason: null,
-          evidence: {
+            prepFundingUsd: 0,
+            netEdgeUsd: -0.83,
+            prepBlockers: [],
+            scoreDisqualifiers: [],
+            readinessFailureReason: null,
+            shadowPriorityScore: 10,
+            shadowPriorityReason: "evidence_accumulating",
+            evidence: {
             quoteSampleCount: 2,
             quoteFailureCount: 1,
             quoteAttemptCount: 3,
@@ -586,6 +588,8 @@ test("dashboard status includes shadow cycle summary when available", () => {
             prepBlockers: ["native", "token", "allowance"],
             scoreDisqualifiers: [],
             readinessFailureReason: null,
+            shadowPriorityScore: 100,
+            shadowPriorityReason: "no_shadow_evidence",
           },
         ],
       },
@@ -607,6 +611,22 @@ test("dashboard status includes shadow cycle summary when available", () => {
           command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
         },
       ],
+      strategyPlans: {
+        stableLoop: {
+          kind: "stable_loop",
+          nextAction: "collect_stable_loop_coverage",
+          reason: "no_paired_stable_loop_ladder",
+          command: null,
+          routeKeys: [],
+        },
+        proxySpread: {
+          kind: "proxy_spread",
+          nextAction: "watch_proxy_surface",
+          reason: "no_proxy_target",
+          command: null,
+          chains: [],
+        },
+      },
       treasury: {
         decision: "BLOCKED",
         estimatedWalletUsd: 25.01,
@@ -690,6 +710,7 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].roleLabel, "현재 canary");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].roleLabel, "payload 확보 shadow 후보");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].tradeReadinessLabel, "가격 또는 가스 데이터가 아직 부족함");
+  assert.equal(status.shadowCycle.shadowRoster.candidates[1].shadowPriorityReason, "no_shadow_evidence");
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteSampleCount, 2);
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteFailureCount, 1);
   assert.equal(Number(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteSuccessRate.toFixed(3)), 0.667);
@@ -698,6 +719,8 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowActions[0].actionLabel, "신선한 입력 대기");
   assert.equal(status.shadowCycle.shadowActions[1].actionLabel, "지갑 준비 점검");
   assert.equal(status.shadowCycle.shadowActions[1].command.includes("check:estimator-wallet"), true);
+  assert.equal(status.shadowCycle.strategyPlans.stableLoop.nextAction, "collect_stable_loop_coverage");
+  assert.equal(status.shadowCycle.strategyPlans.proxySpread.nextAction, "watch_proxy_surface");
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);
   assert.equal(status.shadowCycle.treasury.walletValueShortfallUsd, 224.99);
   assert.equal(status.shadowCycle.treasury.noDemandBlockerCount, 2);

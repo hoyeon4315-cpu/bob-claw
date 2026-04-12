@@ -1,5 +1,6 @@
 import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { summarizeShadowCandidateEvidence } from "./shadow-evidence.mjs";
+import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
 
 function dedupe(values) {
   return [...new Set(values.filter(Boolean))];
@@ -51,6 +52,17 @@ function candidatePriority(candidate) {
   if (!candidate.txReady) return 3;
   if (candidate.scoreDisqualifiers?.length) return 4;
   return 5;
+}
+
+function evidencePriority(candidate, evidence) {
+  if (!candidate) return { score: -1, reason: "no_candidate" };
+  if (!evidence) return { score: 100, reason: "no_shadow_evidence" };
+  if ((evidence.shadowObservationCount || 0) === 0) return { score: 90, reason: "no_shadow_evidence" };
+  if ((evidence.quoteAttemptCount || 0) < 2) return { score: 80, reason: "thin_quote_samples" };
+  if (Number.isFinite(evidence.quoteSuccessRate) && evidence.quoteSuccessRate < 0.8) return { score: 70, reason: "low_quote_success_rate" };
+  if ((evidence.shadowObservationCount || 0) < 3) return { score: 60, reason: "thin_shadow_observations" };
+  if (Number.isFinite(evidence.quoteLatencyP95Ms) && evidence.quoteLatencyP95Ms > 2_000) return { score: 50, reason: "high_quote_latency" };
+  return { score: 10, reason: "evidence_accumulating" };
 }
 
 function summarizeNeedActivation(routePlan, need) {
@@ -304,12 +316,39 @@ function shadowRosterRole(candidate, index) {
 }
 
 function summarizeShadowRoster(routePlan, evidenceInput = {}, limit = 5) {
-  const candidates = (routePlan?.topCandidates || []).slice(0, limit);
+  const topCandidates = routePlan?.topCandidates || [];
+  const activeCandidate = topCandidates[0] || null;
+  const shadowCandidates = topCandidates.slice(1).map((candidate) => {
+    const evidence = summarizeShadowCandidateEvidence({
+      candidate,
+      quotes: evidenceInput.quotes || [],
+      quoteFailures: evidenceInput.quoteFailures || [],
+      shadowObservations: evidenceInput.shadowObservations || [],
+      scores: evidenceInput.scores || [],
+    });
+    const priority = evidencePriority(candidate, evidence);
+    return { candidate, evidence, priority };
+  });
+  shadowCandidates.sort((left, right) =>
+    right.priority.score - left.priority.score ||
+    candidatePriority(left.candidate) - candidatePriority(right.candidate) ||
+    String(left.candidate.amount).localeCompare(String(right.candidate.amount)),
+  );
+  const ordered = [activeCandidate, ...shadowCandidates.map((item) => item.candidate)].filter(Boolean).slice(0, limit);
   return {
-    candidateCount: routePlan?.candidateCount ?? candidates.length,
-    viableCount: routePlan?.viableCount ?? candidates.filter((item) => item?.viableForPrep).length,
-    txReadyCount: routePlan?.txReadyCount ?? candidates.filter((item) => item?.txReady).length,
-    candidates: candidates.map((candidate, index) => ({
+    candidateCount: routePlan?.candidateCount ?? ordered.length,
+    viableCount: routePlan?.viableCount ?? ordered.filter((item) => item?.viableForPrep).length,
+    txReadyCount: routePlan?.txReadyCount ?? ordered.filter((item) => item?.txReady).length,
+    candidates: ordered.map((candidate, index) => {
+      const evidence = summarizeShadowCandidateEvidence({
+        candidate,
+        quotes: evidenceInput.quotes || [],
+        quoteFailures: evidenceInput.quoteFailures || [],
+        shadowObservations: evidenceInput.shadowObservations || [],
+        scores: evidenceInput.scores || [],
+      });
+      const priority = evidencePriority(candidate, evidence);
+      return ({
       role: shadowRosterRole(candidate, index),
       routeKey: candidate.routeKey,
       label: candidate.label,
@@ -324,14 +363,11 @@ function summarizeShadowRoster(routePlan, evidenceInput = {}, limit = 5) {
       prepBlockers: candidate.prepBlockers || [],
       scoreDisqualifiers: candidate.scoreDisqualifiers || [],
       readinessFailureReason: candidate.readinessFailureReason || null,
-      evidence: summarizeShadowCandidateEvidence({
-        candidate,
-        quotes: evidenceInput.quotes || [],
-        quoteFailures: evidenceInput.quoteFailures || [],
-        shadowObservations: evidenceInput.shadowObservations || [],
-        scores: evidenceInput.scores || [],
-      }),
-    })),
+      shadowPriorityScore: priority.score,
+      shadowPriorityReason: priority.reason,
+      evidence,
+    });
+    }),
   };
 }
 
@@ -366,6 +402,7 @@ export function buildShadowCycleSummary({
   quoteFailures = [],
   shadowObservations = [],
   scoreSnapshot = null,
+  strategy = null,
 }) {
   const nextStep = canaryState?.nextStep || null;
   const topRoute = canaryState?.routePlan?.topCandidates?.[0] || null;
@@ -422,6 +459,10 @@ export function buildShadowCycleSummary({
         scores: scoreSnapshot?.scores || [],
       },
     ),
+    strategyPlans: buildStrategyRefreshPlans({
+      crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
+      btcProxySpreads: strategy?.btcProxySpreads || null,
+    }),
     shadowActions: summarizeShadowActions(canaryState?.routePlan, { address: canaryState?.address || null }),
     canary: nextStep
       ? {
@@ -477,6 +518,14 @@ export function buildShadowCycleSummary({
     blockers,
     recommendedCommands: dedupe([
       nextReadinessCheck ? readinessCommand(canaryState?.address || null, nextReadinessCheck) : null,
+      buildStrategyRefreshPlans({
+        crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
+        btcProxySpreads: strategy?.btcProxySpreads || null,
+      }).stableLoop.command,
+      buildStrategyRefreshPlans({
+        crossAssetArbitrage: strategy?.crossAssetArbitrage || null,
+        btcProxySpreads: strategy?.btcProxySpreads || null,
+      }).proxySpread.command,
       mode === "CANARY_PREP_BLOCKED" ? "npm run advance:canary" : null,
       enabledRoutes.length === 0 ? "npm run report:route-performance -- --write" : null,
       treasuryPlan?.decision === "BLOCKED" || treasuryPlan?.decision === "REVIEW_REFILL_PLAN" ? "npm run plan:treasury-actions -- --json" : null,

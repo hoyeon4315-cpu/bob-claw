@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-04-12T02:00:22.725Z
+Updated: 2026-04-12T02:05:57.202Z
 
 ## Start Here
 
@@ -52,11 +52,11 @@ Updated: 2026-04-12T02:00:22.725Z
 
 ## Shadow Roster
 
-- active_canary route=`bob->base wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.8473 prepFunding=$0.0000 blockers=none evidence=shadow:31 quotes:14/14 success:100.0% p95:775ms fee:$0.8107 reasons:reject_effective_system_pnl:31,reject_treasury_execution_refill_cost:31,reject_no_net_edge:18,insufficient_data:13,stale_dex_output_quote:10
-- prep_candidate route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6105 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:1 quotes:1/1 success:100.0% p95:3129ms fee:$0.5740 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
-- prep_candidate route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6423 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:1 quotes:1/1 success:100.0% p95:569ms fee:$0.6057 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
-- prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.5623 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:1 quotes:1/1 success:100.0% p95:565ms fee:$0.5258 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
-- prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-1.7433 prepFunding=$0.0000 blockers=prep:wallet_not_checked evidence=shadow:6 quotes:2/2 success:100.0% p95:1879ms fee:$1.71 reasons:exact_src_execution_gas_not_estimated:6,insufficient_data:6,reject_effective_system_pnl:6,reject_treasury_execution_refill_cost:6,treasury_bootstrap_native_required:6
+- active_canary route=`bob->base wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.8473 prepFunding=$0.0000 blockers=none priority=evidence_accumulating evidence=shadow:31 quotes:14/14 success:100.0% p95:775ms fee:$0.8107 reasons:reject_effective_system_pnl:31,reject_treasury_execution_refill_cost:31,reject_no_net_edge:18,insufficient_data:13,stale_dex_output_quote:10
+- prep_candidate route=`avalanche->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6105 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:3129ms fee:$0.5740 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
+- prep_candidate route=`avalanche->sonic wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.6423 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:569ms fee:$0.6057 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
+- prep_candidate route=`avalanche->unichain wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-0.5623 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=thin_quote_samples evidence=shadow:1 quotes:1/1 success:100.0% p95:565ms fee:$0.5258 reasons:exact_src_execution_gas_not_estimated:1,insufficient_data:1,reject_effective_system_pnl:1,reject_treasury_execution_refill_cost:1
+- prep_candidate route=`base->bsc wBTC.OFT->wBTC.OFT` amount=`10000` txReady=true viableForPrep=true net=$-1.7433 prepFunding=$0.0000 blockers=prep:wallet_not_checked priority=evidence_accumulating evidence=shadow:6 quotes:2/2 success:100.0% p95:1879ms fee:$1.71 reasons:exact_src_execution_gas_not_estimated:6,insufficient_data:6,reject_effective_system_pnl:6,reject_treasury_execution_refill_cost:6,treasury_bootstrap_native_required:6
 
 ## Shadow Actions
 
@@ -113,6 +113,8 @@ Updated: 2026-04-12T02:00:22.725Z
 - Closest loop blocker: amount gap 127.38% on `base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000` + `bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 - Proxy spread surface: buyQuotes=11 sellQuotes=45 opportunities=55 policyReady=0 overfit=high_overfit_risk
 - Proxy coverage target: group=`wbtc` next=`expand_amount_ladder` reason=`partial_amount_match` buyLevels=5 sellLevels=17 matchedLevels=5
+- Stable loop refresh command: `npm run quote:dex -- --route-key=base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 --include-stable-entry`
+- Proxy spread refresh command: `npm run quote:dex -- --chains=avalanche,base,ethereum,bsc,sonic,unichain --include-stable-entry --route-limit=64`
 - Strategy track stable_loop: label=`base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000 + bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` status=`blocked_loop` next=`expand_amount_ladder` reason=`amount_mismatch`
 - Strategy track proxy_spread: label=`avalanche->unichain wBTC.OFT` status=`thin_coverage` next=`expand_amount_ladder` reason=`partial_amount_match`
 - Quote decay: 5s 3/4 · 15s 3/4 · 30s 3/4
@@ -124,7 +126,7 @@ Updated: 2026-04-12T02:00:22.725Z
 - BTC watchlist missing from live routes: FBTC, LBTC, solvBTC, SolvBTC.BBN, tBTC, xSolvBTC
 - BTC watchlist unknown addresses: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
 - Last canary advance: bob->base wBTC.OFT->wBTC.OFT (BLOCKED_NO_VIABLE_PREP_ROUTE -> BLOCKED_NO_VIABLE_PREP_ROUTE; actions no_actions)
-- Route input freshness: quote stale (102.9m) · exactGas stale (121.1m) · srcGas stale (102.4m) · dex stale (104.5m) · btcFee not_needed · market stale (95.1m)
+- Route input freshness: quote stale (108.5m) · exactGas stale (126.7m) · srcGas stale (108.0m) · dex stale (110.1m) · btcFee not_needed · market stale (100.6m)
 - Route input blockers: reject_no_net_edge
 - Canary input watcher: refresh bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 inputs=gateway_quote,exact_gas,src_gas,dex_quote,market (current canary route inputs are stale)
 - Gas refresh watcher: skip bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (gas freshness is not the active blocker)

@@ -14,6 +14,8 @@ import { buildDefaultRoutePerformancePolicy, buildRoutePerformanceRanking } from
 import { buildExecutionRiskState } from "../risk/execution-gate.mjs";
 import { buildInventoryConsistencyAudit, resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { buildRouteDemandFromCanaryState, buildShadowCycleSummary, stripVolatileShadowCycleFields } from "../session/shadow-cycle.mjs";
+import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
+import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -107,6 +109,14 @@ async function main() {
     quoteFailures,
     shadowObservations: canaryState?.shadowObservations || [],
     scoreSnapshot,
+    strategy: {
+      crossAssetArbitrage: buildCrossAssetArbitrageSummary(scoreSnapshot || null),
+      btcProxySpreads: buildBtcProxySpreadSummary({
+        dexQuotes: canaryState?.dexQuotes || [],
+        routes: canaryState?.routesRecords?.at(-1)?.routes || [],
+        scoreSnapshot: scoreSnapshot || null,
+      }),
+    },
   });
   summary.address = {
     resolved: address,

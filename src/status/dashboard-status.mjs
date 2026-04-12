@@ -929,6 +929,8 @@ function shadowCycleSummary(shadowCycle, now) {
           prepBlockers: item.prepBlockers || [],
           scoreDisqualifiers: item.scoreDisqualifiers || [],
           readinessFailureReason: item.readinessFailureReason || null,
+          shadowPriorityScore: item.shadowPriorityScore ?? null,
+          shadowPriorityReason: item.shadowPriorityReason || null,
           evidence: item.evidence
             ? {
                 quoteSampleCount: item.evidence.quoteSampleCount ?? 0,
@@ -952,6 +954,12 @@ function shadowCycleSummary(shadowCycle, now) {
         };
       }),
     },
+    strategyPlans: shadowCycle.strategyPlans
+      ? {
+          stableLoop: shadowCycle.strategyPlans.stableLoop || null,
+          proxySpread: shadowCycle.strategyPlans.proxySpread || null,
+        }
+      : null,
     shadowActions: (shadowCycle.shadowActions || []).map((item) => ({
       role: item.role || null,
       roleLabel: humanShadowRosterRole(item.role || null),

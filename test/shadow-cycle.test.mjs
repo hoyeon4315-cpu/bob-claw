@@ -472,8 +472,8 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
     summary.shadowRoster.candidates.map((item) => [item.role, item.label]),
     [
       ["active_canary", "bob->base wBTC.OFT->wBTC.OFT"],
-      ["tx_ready_shadow", "ethereum->base WBTC->wBTC.OFT"],
       ["tx_ready_shadow", "base->avalanche wBTC.OFT->wBTC.OFT"],
+      ["tx_ready_shadow", "ethereum->base WBTC->wBTC.OFT"],
     ],
   );
   assert.deepEqual(
@@ -484,6 +484,8 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
       ["base->avalanche wBTC.OFT->wBTC.OFT", "check_wallet_readiness"],
     ],
   );
+  assert.equal(summary.shadowRoster.candidates[1].shadowPriorityReason, "no_shadow_evidence");
+  assert.equal(summary.shadowRoster.candidates[2].shadowPriorityReason, "no_shadow_evidence");
   assert.equal(summary.shadowRoster.candidates[0].evidence.quoteSampleCount, 2);
   assert.equal(summary.shadowRoster.candidates[0].evidence.quoteFailureCount, 1);
   assert.equal(Number(summary.shadowRoster.candidates[0].evidence.quoteSuccessRate.toFixed(3)), 0.667);
@@ -497,4 +499,6 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
       ["stale_dex_output_quote", 1],
     ],
   );
+  assert.equal(summary.strategyPlans.stableLoop.nextAction, "collect_stable_loop_coverage");
+  assert.equal(summary.strategyPlans.proxySpread.nextAction, "watch_proxy_surface");
 });

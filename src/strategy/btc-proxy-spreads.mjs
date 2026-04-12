@@ -267,6 +267,8 @@ function buildCoverageTargets({ buyQuotes, sellQuotes, opportunities, maxQuoteAg
         matchedAmountLevelCount: item.matchedAmounts.size,
         buyChainCount: item.buyChainCount.size,
         sellChainCount: item.sellChainCount.size,
+        buyChains: [...item.buyChainCount].sort(),
+        sellChains: [...item.sellChainCount].sort(),
         freshestBuyAgeMinutes,
         freshestSellAgeMinutes,
         nextAction,
