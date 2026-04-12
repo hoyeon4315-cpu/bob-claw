@@ -34,8 +34,10 @@ test("computeLag btc_wrap: zero fee gives 0% lag", () => {
   const result = computeLag(probe, payload, "onramp", 70000);
 
   assert.equal(result.lagPct, 0);
+  assert.equal(result.edgePct, 0);
   assert.equal(result.gatewayImpliedPriceUsd, 70000);
   assert.equal(result.lagUsd, 0);
+  assert.equal(result.edgeUsd, 0);
 });
 
 test("computeLag btc_wrap: 0.5% haircut gives negative lag", () => {
@@ -45,11 +47,11 @@ test("computeLag btc_wrap: 0.5% haircut gives negative lag", () => {
     amount: "200000",
     execCostUsd: 2.37,
   };
-  // 200000 sats in, 199000 sats out => 0.5% less
   const payload = { inputAmount: "200000", outputAmount: "199000" };
   const result = computeLag(probe, payload, "onramp", 70000);
 
   assert.equal(result.lagPct, -0.5);
+  assert.equal(result.edgePct, -0.5); // btc_wrap: edgePct = lagPct
   assert.equal(result.gatewayImpliedPriceUsd, 69650);
 });
 
@@ -64,10 +66,11 @@ test("computeLag btc_wrap: output > input gives positive lag", () => {
   const result = computeLag(probe, payload, "onramp", 70000);
 
   assert.equal(result.lagPct, 0.2);
+  assert.equal(result.edgePct, 0.2);
   assert.equal(result.gatewayImpliedPriceUsd, 70140);
 });
 
-// ── computeLag for stablecoin→BTC (btc_swap offramp) ─────────────────────────
+// ── computeLag for stablecoin→BTC (btc_swap offramp, buying side) ────────────
 
 test("computeLag btc_swap USDC→BTC: fair price gives 0% lag", () => {
   const probe = {
@@ -76,17 +79,14 @@ test("computeLag btc_swap USDC→BTC: fair price gives 0% lag", () => {
     amount: "250000000",
     execCostUsd: 0.10,
   };
-  // Send $250 USDC (250_000_000 in 6-dec), receive sats worth $250 at market
-  // At BTC=$70000, $250 = 0.00357143 BTC = 357143 sats
-  // gatewayBtcPrice = (250_000_000/1e6) / (357143/1e8) = 250 / 0.00357143 ≈ 70000
   const payload = { inputAmount: "250000000", outputAmount: "357143" };
   const result = computeLag(probe, payload, "offramp", 70000);
 
-  // 250/0.00357143 ≈ 69999.86 — close to 70000
   assert.ok(Math.abs(result.lagPct) < 0.001, `lagPct should be ~0%, got ${result.lagPct}%`);
+  assert.ok(Math.abs(result.edgePct) < 0.001, `edgePct should be ~0%, got ${result.edgePct}%`);
 });
 
-test("computeLag btc_swap USDC→BTC: fewer sats means gateway prices BTC higher", () => {
+test("computeLag btc_swap USDC→BTC: fewer sats means gateway prices BTC higher (bad for buyer)", () => {
   const probe = {
     routeKey: "base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000",
     family: "btc_swap",
@@ -94,13 +94,30 @@ test("computeLag btc_swap USDC→BTC: fewer sats means gateway prices BTC higher
     execCostUsd: 0.10,
   };
   // Send $250, receive fewer sats than fair => gateway prices BTC higher
-  // At BTC=$70000 fair = 357143 sats. If we only get 350000 sats:
-  // gatewayBtcPrice = 250 / 0.0035 = 71428.57
   const payload = { inputAmount: "250000000", outputAmount: "350000" };
   const result = computeLag(probe, payload, "offramp", 70000);
 
   assert.ok(result.lagPct > 2, `lagPct should be positive (gateway prices BTC higher), got ${result.lagPct}%`);
+  assert.ok(result.edgePct < -2, `edgePct should be NEGATIVE (buying at premium is bad), got ${result.edgePct}%`);
   assert.ok(result.gatewayImpliedPriceUsd > 70000);
+});
+
+// ── computeLag for BTC→stablecoin (btc_swap onramp, selling side) ────────────
+
+test("computeLag btc_swap BTC→USDC: gateway overpricing BTC is good for seller", () => {
+  const probe = {
+    routeKey: "bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    family: "btc_swap",
+    amount: "350000",
+    execCostUsd: 1.50,
+  };
+  // Send 350000 sats, receive $250 USDC (implies BTC = $71428.57, market $70000)
+  const payload = { inputAmount: "350000", outputAmount: "250000000" };
+  const result = computeLag(probe, payload, "onramp", 70000);
+
+  assert.ok(result.lagPct > 0, `lagPct should be positive, got ${result.lagPct}%`);
+  assert.ok(result.edgePct > 0, `edgePct should be POSITIVE (selling at premium is good), got ${result.edgePct}%`);
+  assert.equal(result.edgePct, result.lagPct); // sell side: edge = lag
 });
 
 // ── computeLag edge cases ────────────────────────────────────────────────────
@@ -116,7 +133,9 @@ test("computeLag returns nulls for zero output", () => {
 
   assert.equal(result.gatewayImpliedPriceUsd, null);
   assert.equal(result.lagPct, null);
+  assert.equal(result.edgePct, null);
   assert.equal(result.lagUsd, null);
+  assert.equal(result.edgeUsd, null);
 });
 
 // ── buildLagSummary ──────────────────────────────────────────────────────────
@@ -125,7 +144,7 @@ test("buildLagSummary returns no_data for empty array", () => {
   const summary = buildLagSummary([]);
   assert.equal(summary.sampleCount, 0);
   assert.equal(summary.verdict, "no_data");
-  assert.equal(summary.lagStats.maxLagPct, null);
+  assert.equal(summary.lagStats.maxEdgePct, null);
 });
 
 test("buildLagSummary computes stats from one sample", () => {
@@ -137,15 +156,15 @@ test("buildLagSummary computes stats from one sample", () => {
         {
           label: "BTC→BOB wBTC.OFT",
           success: true,
-          lagPct: 0.172,
-          lagUsd: 0.25,
+          edgePct: 0.172,
+          edgeUsd: 0.25,
           profitable: false,
         },
         {
-          label: "Base USDC→BTC",
+          label: "Base USDC→BTC (buy)",
           success: true,
-          lagPct: -0.05,
-          lagUsd: -0.04,
+          edgePct: -0.378,
+          edgeUsd: -0.95,
           profitable: false,
         },
       ],
@@ -156,7 +175,7 @@ test("buildLagSummary computes stats from one sample", () => {
   assert.equal(summary.sampleCount, 1);
   assert.equal(summary.btcPriceRange.min, 71706);
   assert.equal(summary.btcPriceRange.max, 71706);
-  assert.equal(summary.lagStats.maxLagPct, 0.172);
+  assert.equal(summary.lagStats.maxEdgePct, 0.172);
   assert.equal(summary.lagStats.profitableSampleCount, 0);
   assert.equal(summary.verdict, "no_profitable_dislocations");
   assert.equal(summary.probeStats.length, 2);
@@ -164,7 +183,7 @@ test("buildLagSummary computes stats from one sample", () => {
   const wbtcStat = summary.probeStats.find((s) => s.label === "BTC→BOB wBTC.OFT");
   assert.equal(wbtcStat.sampleCount, 1);
   assert.equal(wbtcStat.successRate, 1);
-  assert.equal(wbtcStat.maxLagPct, 0.172);
+  assert.equal(wbtcStat.maxEdgePct, 0.172);
 });
 
 test("buildLagSummary detects profitable dislocations", () => {
@@ -173,7 +192,7 @@ test("buildLagSummary detects profitable dislocations", () => {
       observedAt: "2026-04-12T07:05:00Z",
       btcMarketUsd: 71706,
       probes: [
-        { label: "BTC→BOB wBTC.OFT", success: true, lagPct: 5.0, lagUsd: 7.17, profitable: true },
+        { label: "BTC→BOB wBTC.OFT", success: true, edgePct: 5.0, edgeUsd: 7.17, profitable: true },
       ],
     },
   ];
@@ -189,51 +208,67 @@ test("buildLagSummary handles failed probes gracefully", () => {
       observedAt: "2026-04-12T07:05:00Z",
       btcMarketUsd: 71706,
       probes: [
-        { label: "BTC→BOB wBTC.OFT", success: false, lagPct: null, lagUsd: null, profitable: false },
-        { label: "Base USDC→BTC", success: true, lagPct: 0.1, lagUsd: 0.07, profitable: false },
+        { label: "BTC→BOB wBTC.OFT", success: false, edgePct: null, edgeUsd: null, profitable: false },
+        { label: "Base USDC→BTC (buy)", success: true, edgePct: -0.378, edgeUsd: -0.95, profitable: false },
       ],
     },
   ];
   const summary = buildLagSummary(samples);
 
-  assert.equal(summary.lagStats.maxLagPct, 0.1);
+  assert.equal(summary.lagStats.maxEdgePct, -0.378);
   const wbtcStat = summary.probeStats.find((s) => s.label === "BTC→BOB wBTC.OFT");
   assert.equal(wbtcStat.successRate, 0);
-  assert.equal(wbtcStat.avgLagPct, null);
+  assert.equal(wbtcStat.avgEdgePct, null);
 });
 
 // ── Profitable detection logic ───────────────────────────────────────────────
 
-test("profitable is true only when lagUsd exceeds execCostUsd", () => {
-  // Simulate: lagUsd = $5, execCost = $2.37 → net $2.63 → profitable
+test("profitable is true only when edgeUsd exceeds execCostUsd", () => {
   const probe = {
     routeKey: "bitcoin:0x0000000000000000000000000000000000000000->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
     family: "btc_wrap",
     amount: "100000000",
     execCostUsd: 2.37,
   };
-  // 1 BTC in, 1.001 BTC out at market $70000 → lagUsd ≈ $70
+  // 1 BTC in, 1.001 BTC out at market $70000 → edgeUsd ≈ $70
   const payload = { inputAmount: "100000000", outputAmount: "100100000" };
   const lag = computeLag(probe, payload, "onramp", 70000);
 
-  assert.ok(lag.lagPct > 0, "lagPct should be positive");
-  assert.ok(lag.lagUsd > 2.37, `lagUsd (${lag.lagUsd}) should exceed exec cost ($2.37)`);
+  assert.ok(lag.edgePct > 0, "edgePct should be positive");
+  assert.ok(lag.edgeUsd > 2.37, `edgeUsd (${lag.edgeUsd}) should exceed exec cost ($2.37)`);
 
-  const netAfterExec = lag.lagUsd - probe.execCostUsd;
+  const netAfterExec = lag.edgeUsd - probe.execCostUsd;
   assert.ok(netAfterExec > 0, "net after exec should be positive");
 });
 
-test("profitable is false when lagUsd is below execCostUsd", () => {
+test("profitable is false when edgeUsd is below execCostUsd", () => {
   const probe = {
     routeKey: "bitcoin:0x0000000000000000000000000000000000000000->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
     family: "btc_wrap",
     amount: "200000",
     execCostUsd: 2.37,
   };
-  // Tiny positive lag: 200000 → 200010 sats (0.005%)
   const payload = { inputAmount: "200000", outputAmount: "200010" };
   const lag = computeLag(probe, payload, "onramp", 70000);
 
-  assert.ok(lag.lagPct > 0, "lagPct should be positive");
-  assert.ok(lag.lagUsd < 2.37, `lagUsd (${lag.lagUsd}) should be below exec cost ($2.37)`);
+  assert.ok(lag.edgePct > 0, "edgePct should be positive");
+  assert.ok(lag.edgeUsd < 2.37, `edgeUsd (${lag.edgeUsd}) should be below exec cost ($2.37)`);
+});
+
+test("stablecoin→BTC: positive lag yields negative edge (not profitable)", () => {
+  const probe = {
+    routeKey: "base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000",
+    family: "btc_swap",
+    amount: "250000000",
+    execCostUsd: 0.10,
+  };
+  // Gateway gives 347638 sats for $250 — implies BTC=$71914, market=$71643
+  const payload = { inputAmount: "250000000", outputAmount: "347638" };
+  const result = computeLag(probe, payload, "offramp", 71643);
+
+  assert.ok(result.lagPct > 0, "lagPct positive — Gateway overprices BTC");
+  assert.ok(result.edgePct < 0, "edgePct negative — buying at premium is bad");
+  // netAfterExec should be negative
+  const net = result.edgeUsd - probe.execCostUsd;
+  assert.ok(net < 0, `net (${net}) should be negative for buy-at-premium`);
 });

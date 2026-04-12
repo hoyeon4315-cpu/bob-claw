@@ -546,7 +546,6 @@ function renderQuoteLag(status) {
     return;
   }
 
-  // Badge
   const verdictMap = {
     profitable_dislocations_found: "🟢 기회 발견",
     no_profitable_dislocations: "측정 중",
@@ -554,39 +553,38 @@ function renderQuoteLag(status) {
   };
   badge.textContent = verdictMap[lag.verdict] || lag.verdict;
 
-  // Title + body
   const ageMin = lag.latestSampleAt
     ? Math.round((Date.now() - new Date(lag.latestSampleAt).getTime()) / 60000)
     : null;
   const freshLabel = ageMin !== null ? `${ageMin}분 전 갱신` : "";
+  const ls = lag.lagStats;
 
   if (lag.verdict === "profitable_dislocations_found") {
-    title.textContent = `수익 기회 ${lag.lagStats.profitableSampleCount}건 발견!`;
-    body.textContent = `최대 지연 ${lag.lagStats.maxLagPct}% · ${lag.sampleCount}건 수집 · ${freshLabel}`;
+    title.textContent = `수익 기회 ${ls.profitableSampleCount}건 발견!`;
+    body.textContent = `최대 엣지 ${ls.maxEdgePct}% · ${lag.sampleCount}건 수집 · ${freshLabel}`;
   } else {
-    title.textContent = `호가 지연 측정 중`;
-    body.textContent = `${lag.sampleCount}건 수집 · 최대 ${lag.lagStats.maxLagPct ?? 0}% 지연 · ${freshLabel}`;
+    title.textContent = "호가 지연 측정 중";
+    body.textContent = `${lag.sampleCount}건 수집 · 최대 엣지 ${ls.maxEdgePct ?? 0}% · ${freshLabel}`;
   }
 
-  // Per-probe cards
   const probeStats = lag.probeStats || [];
   probesEl.innerHTML = probeStats
     .map((p) => {
-      const lagStr = p.maxLagPct !== null ? `${p.maxLagPct > 0 ? "+" : ""}${p.maxLagPct.toFixed(3)}%` : "n/a";
+      const edgeVal = p.maxEdgePct ?? p.maxLagPct;
+      const edgeStr = edgeVal !== null ? `${edgeVal > 0 ? "+" : ""}${edgeVal.toFixed(3)}%` : "n/a";
       const netClass = p.profitableCount > 0 ? "positive" : "negative";
       const profLabel = p.profitableCount > 0 ? `🟢 ${p.profitableCount}건` : "—";
       return `<div class="lag-probe">
         <span class="lag-probe-label">${p.label}</span>
-        <span class="lag-probe-lag">${lagStr}</span>
+        <span class="lag-probe-lag">${edgeStr}</span>
         <span class="lag-probe-net ${netClass}">${profLabel}</span>
       </div>`;
     })
     .join("");
 
-  // Stats
   samplesEl.textContent = lag.sampleCount.toLocaleString();
-  maxEl.textContent = lag.lagStats.maxLagPct !== null ? `${lag.lagStats.maxLagPct}%` : "—";
-  profitableEl.textContent = `${lag.lagStats.profitableSampleCount}건 (${lag.lagStats.profitableSamplePct}%)`;
+  maxEl.textContent = ls.maxEdgePct !== null ? `${ls.maxEdgePct}%` : (ls.maxLagPct !== null ? `${ls.maxLagPct}%` : "—");
+  profitableEl.textContent = `${ls.profitableSampleCount}건 (${ls.profitableSamplePct}%)`;
 
   const pr = lag.btcPriceRange;
   priceRangeEl.textContent =

@@ -23,17 +23,25 @@ const PROBE_ROUTES = [
   },
   {
     routeKey: "ethereum:0xdAC17F958D2ee523a2206206994597C13D831ec7->bitcoin:0x0000000000000000000000000000000000000000",
-    label: "ETH USDT→BTC",
+    label: "ETH USDT→BTC (buy)",
     family: "btc_swap",
     amount: "250000000",
     execCostUsd: 5.39,
   },
   {
     routeKey: "base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000",
-    label: "Base USDC→BTC",
+    label: "Base USDC→BTC (buy)",
     family: "btc_swap",
     amount: "250000000",
     execCostUsd: 0.10,
+  },
+  // Reverse direction — sell BTC for stablecoins (profitable when Gateway lags during crash)
+  {
+    routeKey: "bitcoin:0x0000000000000000000000000000000000000000->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    label: "BTC→Base USDC (sell)",
+    family: "btc_swap",
+    amount: "350000",
+    execCostUsd: 1.50,
   },
   {
     routeKey: "bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
@@ -87,65 +95,66 @@ function extractAmountStr(field) {
 /**
  * Compute the gateway implied BTC price and lag vs market.
  *
- * For onramp BTC→wrapped-BTC (btc_wrap): both sides are in sats (8 dec),
- *   effectiveRate = output / input (~1.0), gatewayImpliedPrice = effectiveRate * marketPrice.
- *
- * For offramp stablecoin→BTC (btc_swap): input is stablecoin, output is sats,
- *   gatewayBtcPrice = (input / inputDecimals) / (output / 1e8).
- *
- * For layerZero wrapped→wrapped (btc_wrap EVM→EVM): same denomination,
- *   effectiveRate = output / input, gatewayImpliedPrice = effectiveRate * marketPrice.
+ * lagPct = (gatewayImplied - market) / market — raw price discrepancy.
+ * edgePct = directional benefit to the executor of THIS route:
+ *   - btc_wrap / BTC→stable: edgePct = lagPct (positive lag = good for us)
+ *   - stable→BTC: edgePct = -lagPct (positive lag = Gateway overprices BTC = we overpay)
  */
 export function computeLag(probe, quotePayload, quoteType, btcMarketUsd) {
   const inputAmount = BigInt(extractAmountStr(quotePayload.inputAmount) || probe.amount);
   const outputAmount = BigInt(extractAmountStr(quotePayload.outputAmount) || "0");
 
   if (outputAmount === 0n) {
-    return { gatewayImpliedPriceUsd: null, lagPct: null, lagUsd: null };
+    return { gatewayImpliedPriceUsd: null, lagPct: null, edgePct: null, lagUsd: null, edgeUsd: null };
   }
 
   const inputNum = Number(inputAmount);
   const outputNum = Number(outputAmount);
   let gatewayImpliedPriceUsd;
+  let buyingSide = false; // true when executor sends stablecoins and receives BTC
 
   if (probe.family === "btc_wrap") {
-    // Both sides BTC-denominated (8 decimals). effectiveRate ≈ 1.0 minus fees.
     const effectiveRate = outputNum / inputNum;
     gatewayImpliedPriceUsd = effectiveRate * btcMarketUsd;
   } else if (probe.family === "btc_swap") {
     const parsed = parseRouteKey(probe.routeKey);
-    if (!parsed) return { gatewayImpliedPriceUsd: null, lagPct: null, lagUsd: null };
+    if (!parsed) return { gatewayImpliedPriceUsd: null, lagPct: null, edgePct: null, lagUsd: null, edgeUsd: null };
 
     if (parsed.srcChain === "bitcoin") {
-      // BTC→stablecoin: input sats, output stablecoin (6 dec)
+      // BTC→stablecoin: we sell BTC, receive USD
       const btcSent = inputNum / 1e8;
       const usdReceived = outputNum / 1e6;
       gatewayImpliedPriceUsd = usdReceived / btcSent;
     } else if (parsed.dstChain === "bitcoin") {
-      // Stablecoin→BTC: input stablecoin (6 dec), output sats
+      // Stablecoin→BTC: we buy BTC, send USD
       const usdSent = inputNum / 1e6;
       const btcReceived = outputNum / 1e8;
       gatewayImpliedPriceUsd = usdSent / btcReceived;
+      buyingSide = true;
     } else {
-      return { gatewayImpliedPriceUsd: null, lagPct: null, lagUsd: null };
+      return { gatewayImpliedPriceUsd: null, lagPct: null, edgePct: null, lagUsd: null, edgeUsd: null };
     }
   } else {
-    // Fallback: treat as same-denomination transfer
     const effectiveRate = outputNum / inputNum;
     gatewayImpliedPriceUsd = effectiveRate * btcMarketUsd;
   }
 
   const lagPct = ((gatewayImpliedPriceUsd - btcMarketUsd) / btcMarketUsd) * 100;
-  // lagUsd: dollar impact for this specific probe amount, normalised to 1 BTC worth
+  // edgePct: positive = good for the executor of this route
+  const edgePct = buyingSide ? -lagPct : lagPct;
+
   const probeValueBtc = probe.family === "btc_swap"
-    ? inputNum / 1e6 / btcMarketUsd  // stablecoin input
-    : inputNum / 1e8;                 // sats input
+    ? (buyingSide ? inputNum / 1e6 / btcMarketUsd : inputNum / 1e8)
+    : inputNum / 1e8;
   const lagUsd = (lagPct / 100) * btcMarketUsd * probeValueBtc;
+  const edgeUsd = (edgePct / 100) * btcMarketUsd * probeValueBtc;
 
   return {
     gatewayImpliedPriceUsd: round(gatewayImpliedPriceUsd, 2),
     lagPct: round(lagPct, 4),
+    edgePct: round(edgePct, 4),
     lagUsd: round(lagUsd, 2),
+    edgeUsd: round(edgeUsd, 2),
   };
 }
 
@@ -175,10 +184,10 @@ export function buildLagSummary(samples) {
       latestSampleAt: null,
       btcPriceRange: { min: null, max: null },
       lagStats: {
-        maxLagPct: null,
-        avgLagPct: null,
-        p95LagPct: null,
-        maxLagUsd: null,
+        maxEdgePct: null,
+        avgEdgePct: null,
+        p95EdgePct: null,
+        maxEdgeUsd: null,
         profitableSampleCount: 0,
         profitableSamplePct: 0,
       },
@@ -190,9 +199,9 @@ export function buildLagSummary(samples) {
 
   const btcPrices = samples.map((s) => s.btcMarketUsd).filter(Number.isFinite);
   const allProbes = samples.flatMap((s) => s.probes || []);
-  const successProbes = allProbes.filter((p) => p.success && Number.isFinite(p.lagPct));
-  const lagPcts = successProbes.map((p) => p.lagPct).sort((a, b) => a - b);
-  const lagUsds = successProbes.map((p) => p.lagUsd).filter(Number.isFinite);
+  const successProbes = allProbes.filter((p) => p.success && Number.isFinite(p.edgePct ?? p.lagPct));
+  const edgePcts = successProbes.map((p) => p.edgePct ?? p.lagPct).sort((a, b) => a - b);
+  const edgeUsds = successProbes.map((p) => p.edgeUsd ?? p.lagUsd).filter(Number.isFinite);
   const profitableSamples = samples.filter(
     (s) => (s.probes || []).some((p) => p.profitable),
   );
@@ -201,13 +210,14 @@ export function buildLagSummary(samples) {
   const labelMap = new Map();
   for (const probe of allProbes) {
     if (!labelMap.has(probe.label)) {
-      labelMap.set(probe.label, { successes: 0, total: 0, lags: [], profitableCount: 0 });
+      labelMap.set(probe.label, { successes: 0, total: 0, edges: [], profitableCount: 0 });
     }
     const entry = labelMap.get(probe.label);
     entry.total += 1;
     if (probe.success) {
       entry.successes += 1;
-      if (Number.isFinite(probe.lagPct)) entry.lags.push(probe.lagPct);
+      const edge = probe.edgePct ?? probe.lagPct;
+      if (Number.isFinite(edge)) entry.edges.push(edge);
     }
     if (probe.profitable) entry.profitableCount += 1;
   }
@@ -216,8 +226,8 @@ export function buildLagSummary(samples) {
     label,
     sampleCount: entry.total,
     successRate: entry.total > 0 ? round(entry.successes / entry.total, 4) : 0,
-    avgLagPct: entry.lags.length > 0 ? round(entry.lags.reduce((a, b) => a + b, 0) / entry.lags.length, 4) : null,
-    maxLagPct: entry.lags.length > 0 ? round(Math.max(...entry.lags), 4) : null,
+    avgEdgePct: entry.edges.length > 0 ? round(entry.edges.reduce((a, b) => a + b, 0) / entry.edges.length, 4) : null,
+    maxEdgePct: entry.edges.length > 0 ? round(Math.max(...entry.edges), 4) : null,
     profitableCount: entry.profitableCount,
   }));
 
@@ -234,10 +244,10 @@ export function buildLagSummary(samples) {
       max: btcPrices.length > 0 ? Math.max(...btcPrices) : null,
     },
     lagStats: {
-      maxLagPct: lagPcts.length > 0 ? round(Math.max(...lagPcts), 4) : null,
-      avgLagPct: lagPcts.length > 0 ? round(lagPcts.reduce((a, b) => a + b, 0) / lagPcts.length, 4) : null,
-      p95LagPct: percentile(lagPcts, 95),
-      maxLagUsd: lagUsds.length > 0 ? round(Math.max(...lagUsds), 2) : null,
+      maxEdgePct: edgePcts.length > 0 ? round(Math.max(...edgePcts), 4) : null,
+      avgEdgePct: edgePcts.length > 0 ? round(edgePcts.reduce((a, b) => a + b, 0) / edgePcts.length, 4) : null,
+      p95EdgePct: percentile(edgePcts, 95),
+      maxEdgeUsd: edgeUsds.length > 0 ? round(Math.max(...edgeUsds), 2) : null,
       profitableSampleCount: profitableSamples.length,
       profitableSamplePct: samples.length > 0 ? round((profitableSamples.length / samples.length) * 100, 2) : 0,
     },
@@ -324,8 +334,8 @@ export async function collectOneSample(options = {}) {
       const payload = extractQuotePayload(quoteResult.body);
       const lag = computeLag(probe, payload, quoteType, btcMarketUsd);
 
-      const netAfterExecUsd = Number.isFinite(lag.lagUsd)
-        ? round(lag.lagUsd - probe.execCostUsd, 2)
+      const netAfterExecUsd = Number.isFinite(lag.edgeUsd)
+        ? round(lag.edgeUsd - probe.execCostUsd, 2)
         : null;
       const profitable = Number.isFinite(netAfterExecUsd) && netAfterExecUsd > 0;
 
@@ -341,7 +351,9 @@ export async function collectOneSample(options = {}) {
         gatewayImpliedPriceUsd: lag.gatewayImpliedPriceUsd,
         marketPriceUsd: btcMarketUsd,
         lagPct: lag.lagPct,
+        edgePct: lag.edgePct,
         lagUsd: lag.lagUsd,
+        edgeUsd: lag.edgeUsd,
         execCostUsd: probe.execCostUsd,
         netAfterExecUsd,
         profitable,
@@ -375,9 +387,9 @@ export async function collectOneSample(options = {}) {
 
   // 3. Build sample record
   const successCount = probes.filter((p) => p.success).length;
-  const successProbes = probes.filter((p) => p.success && Number.isFinite(p.lagPct));
-  const lagPcts = successProbes.map((p) => p.lagPct);
-  const lagUsds = successProbes.map((p) => p.lagUsd).filter(Number.isFinite);
+  const successProbes = probes.filter((p) => p.success && Number.isFinite(p.edgePct));
+  const edgePcts = successProbes.map((p) => p.edgePct);
+  const edgeUsds = successProbes.map((p) => p.edgeUsd).filter(Number.isFinite);
   const profitableCount = probes.filter((p) => p.profitable).length;
 
   const record = {
@@ -388,8 +400,8 @@ export async function collectOneSample(options = {}) {
     summary: {
       probeCount: probes.length,
       successCount,
-      maxLagPct: lagPcts.length > 0 ? round(Math.max(...lagPcts), 4) : null,
-      maxLagUsd: lagUsds.length > 0 ? round(Math.max(...lagUsds), 2) : null,
+      maxEdgePct: edgePcts.length > 0 ? round(Math.max(...edgePcts), 4) : null,
+      maxEdgeUsd: edgeUsds.length > 0 ? round(Math.max(...edgeUsds), 2) : null,
       profitableCount,
       btcVolatility1h: null,
     },
@@ -439,14 +451,14 @@ function printSample(record) {
 
   for (const probe of record.probes) {
     const status = probe.success ? "✓" : "✗";
-    const lag = Number.isFinite(probe.lagPct) ? `${probe.lagPct > 0 ? "+" : ""}${probe.lagPct.toFixed(3)}%` : "n/a";
+    const edge = Number.isFinite(probe.edgePct) ? `${probe.edgePct > 0 ? "+" : ""}${probe.edgePct.toFixed(3)}%` : "n/a";
     const net = Number.isFinite(probe.netAfterExecUsd) ? `$${probe.netAfterExecUsd.toFixed(2)}` : "n/a";
     const flag = probe.profitable ? " 🟢" : "";
-    console.log(`  ${status} ${probe.label.padEnd(22)} lag=${lag.padStart(8)}  net=${net.padStart(8)}${flag}`);
+    console.log(`  ${status} ${probe.label.padEnd(26)} edge=${edge.padStart(8)}  net=${net.padStart(8)}${flag}`);
   }
 
   const { summary } = record;
-  console.log(`  ── ${summary.successCount}/${summary.probeCount} ok, maxLag=${summary.maxLagPct ?? "n/a"}%, profitable=${summary.profitableCount}`);
+  console.log(`  ── ${summary.successCount}/${summary.probeCount} ok, maxEdge=${summary.maxEdgePct ?? "n/a"}%, profitable=${summary.profitableCount}`);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
