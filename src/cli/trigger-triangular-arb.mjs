@@ -13,6 +13,7 @@ import {
   trianglePermutations,
 } from "../flash/triangle-profiles.mjs";
 
+import { sendTelegramMessage } from "../notify/telegram.mjs";
 import { readFileSync, existsSync } from "node:fs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -142,9 +143,11 @@ async function odosAssemble(pathId, userAddr) {
   };
 }
 
+const CAST_BIN = join(process.env.HOME || "", ".foundry", "bin", "cast");
+
 function castCall(contractAddr, signature, callArgs, rpcUrl) {
   return new Promise((resolve, reject) => {
-    execFile("cast", ["call", contractAddr, signature, ...callArgs, "--rpc-url", rpcUrl], { timeout: 30_000 }, (error, stdout, stderr) => {
+    execFile(CAST_BIN, ["call", contractAddr, signature, ...callArgs, "--rpc-url", rpcUrl, "--from", "0x96262be63aa687563789225c2fe898c27a3b0ae4"], { timeout: 30_000 }, (error, stdout, stderr) => {
       if (error) return reject(new Error(stderr || error.message));
       resolve(stdout.trim());
     });
@@ -350,6 +353,28 @@ async function runCycle(args, profile, datasetNames, store, session) {
     action: args.live ? "BLOCKED" : "dry-run",
   });
   console.log(`\n[${ts()}] 📝 Logged to data/${datasetNames.triggerLogName}.jsonl`);
+
+  // Send Telegram alert for opportunities
+  try {
+    const envPath = join(ROOT, ".env");
+    let botToken, chatId;
+    if (existsSync(envPath)) {
+      const envText = readFileSync(envPath, "utf8");
+      botToken = envText.match(/TELEGRAM_BOT_TOKEN=(.+)/)?.[1]?.trim();
+      chatId = envText.match(/TELEGRAM_CHAT_ID=(.+)/)?.[1]?.trim();
+    }
+    if (botToken && chatId) {
+      const emoji = simulation?.ok ? "✅" : "🎯";
+      const text = [
+        `${emoji} *Arb Opportunity Found*`,
+        `Route: \`${best.label}\``,
+        `Spread: +${best.spreadPct.toFixed(3)}% | Net: $${best.netProfit.toFixed(2)}`,
+        `Gas: $${best.totalGas.toFixed(3)} | Capital: $${args.capital}`,
+        simulation ? `Sim: ${simulation.ok ? "✅ PASS" : "❌ " + (simulation.error || "").slice(0, 60)}` : "Mode: dry-run",
+      ].join("\n");
+      await sendTelegramMessage({ botToken, chatId, text });
+    }
+  } catch (_) { /* don't block on telegram failure */ }
 
   if (args.live) {
     console.log(`\n[${ts()}] 🚫 LIVE MODE BLOCKED — liveTrading=BLOCKED per safety policy.`);

@@ -53,7 +53,9 @@ echo "🔑 주소 확인..."
 DERIVED=$($CAST wallet address --private-key "$PK" 2>&1)
 echo "   지갑: $DERIVED"
 
-if [ "${DERIVED,,}" != "${WALLET,,}" ]; then
+DERIVED_LOWER=$(echo "$DERIVED" | tr '[:upper:]' '[:lower:]')
+WALLET_LOWER=$(echo "$WALLET" | tr '[:upper:]' '[:lower:]')
+if [ "$DERIVED_LOWER" != "$WALLET_LOWER" ]; then
   echo "   ⚠️  예상 지갑($WALLET)과 다름"
   read -p "   계속하시겠습니까? (y/n): " CONT
   if [ "$CONT" != "y" ]; then exit 0; fi
@@ -71,6 +73,7 @@ echo "🚀 배포 중... (30초 소요)"
 RESULT=$($FORGE create src/contracts/BalancerFlashArb.sol:BalancerFlashArb \
   --rpc-url $RPC \
   --private-key "$PK" \
+  --broadcast \
   --constructor-args $WALLET 2>&1)
 
 echo "$RESULT"
