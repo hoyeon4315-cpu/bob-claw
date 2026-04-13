@@ -82,9 +82,9 @@ try {
     `${process.env.HOME}/.foundry/bin/forge create src/contracts/BalancerFlashArb.sol:BalancerFlashArb ` +
     `--rpc-url https://mainnet.base.org ` +
     `--private-key ${pk} ` +
-    `--constructor-args 0x96262be63aa687563789225c2fe898c27a3b0ae4`,
+    `--constructor-args 300000`,
     { cwd: process.cwd(), timeout: 120000, stdio: ['pipe', 'pipe', 'pipe'] }
-  ).toString();
+  ).toString().replace(new RegExp(pk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '***REDACTED***');
   
   console.log(result);
   

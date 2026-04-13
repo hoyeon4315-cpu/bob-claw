@@ -74,7 +74,7 @@ RESULT=$($FORGE create src/contracts/BalancerFlashArb.sol:BalancerFlashArb \
   --rpc-url $RPC \
   --private-key "$PK" \
   --broadcast \
-  --constructor-args $WALLET 2>&1)
+  --constructor-args 300000 2>&1)
 
 echo "$RESULT"
 

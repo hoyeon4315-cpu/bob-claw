@@ -75,9 +75,9 @@ try {
     `${FORGE} create src/contracts/BalancerFlashArb.sol:BalancerFlashArb ` +
     `--rpc-url ${RPC} ` +
     `--private-key ${privateKey} ` +
-    `--constructor-args ${WALLET}`,
+    `--constructor-args 300000`,
     { cwd: process.cwd(), timeout: 120000 }
-  ).toString();
+  ).toString().replace(new RegExp(privateKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '***REDACTED***');
   console.log(deployOutput);
 } catch (e) {
   console.error('❌ Deployment failed:', e.stderr?.toString() || e.message);
