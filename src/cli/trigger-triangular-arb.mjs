@@ -462,7 +462,7 @@ async function main() {
 
     session.cycles++;
 
-    // Per-cycle canary guard check
+    // Per-cycle canary guard check (tradeProfit=0 = pre-check, profit enforced on-chain)
     {
       const guard = await canaryCheck({ mode: canaryMode, tradeProfit: 0, dryRun: !args.live });
       if (!guard.allowed) {

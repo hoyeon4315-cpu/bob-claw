@@ -80,8 +80,11 @@ export async function canaryCheck({ mode = "canary", tradeProfit = 0, dryRun = t
     return { allowed: false, reason: "daily_loss_cap_reached", dailyPnl, consecFails };
   }
 
-  // Per-trade minimum profit (skip for dry-run logging)
-  if (!dryRun && tradeProfit < policy.minNetProfitUsd) {
+  // Per-trade minimum profit check.
+  // NOTE: tradeProfit=0 is passed for pre-cycle checks (profit unknown yet).
+  // Actual profit enforcement happens on-chain in BalancerFlashArb.sol (minProfitUsdc).
+  // This gate only blocks trades with a known negative expected value.
+  if (!dryRun && tradeProfit !== 0 && tradeProfit < policy.minNetProfitUsd) {
     return { allowed: false, reason: "below_min_profit", dailyPnl, consecFails };
   }
 

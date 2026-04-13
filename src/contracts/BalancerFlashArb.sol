@@ -155,22 +155,22 @@ contract BalancerFlashArb {
         // Step 2: Swap USDC → tokenA via Odos
         IERC20(USDC).approve(ODOS_ROUTER, amount);
         (bool ok1,) = ODOS_ROUTER.call(swap1);
+        IERC20(USDC).approve(ODOS_ROUTER, 0); // Always revoke before require
         require(ok1, "swap1 failed");
-        IERC20(USDC).approve(ODOS_ROUTER, 0);
 
         // Step 3: Swap tokenA → tokenB via Odos
         uint256 balA = IERC20(tokenA).balanceOf(address(this));
         IERC20(tokenA).approve(ODOS_ROUTER, balA);
         (bool ok2,) = ODOS_ROUTER.call(swap2);
+        IERC20(tokenA).approve(ODOS_ROUTER, 0); // Always revoke before require
         require(ok2, "swap2 failed");
-        IERC20(tokenA).approve(ODOS_ROUTER, 0);
 
         // Step 4: Swap tokenB → USDC via Odos
         uint256 balB = IERC20(tokenB).balanceOf(address(this));
         IERC20(tokenB).approve(ODOS_ROUTER, balB);
         (bool ok3,) = ODOS_ROUTER.call(swap3);
+        IERC20(tokenB).approve(ODOS_ROUTER, 0); // Always revoke before require
         require(ok3, "swap3 failed");
-        IERC20(tokenB).approve(ODOS_ROUTER, 0);
 
         // Step 5: Verify profit
         uint256 usdcBalance = IERC20(USDC).balanceOf(address(this));
