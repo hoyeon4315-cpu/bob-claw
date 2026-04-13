@@ -38,7 +38,20 @@ function parseArgs(argv) {
   };
 }
 
-const ODOS_SOURCE_BLACKLIST = ["Synthetix", "Kwenta", "Redstone"];
+// Only route through proven AMMs — oracle-based DEXes give phantom quotes
+const ODOS_SOURCE_WHITELIST = [
+  "Uniswap V2", "Uniswap V3", "Uniswap V4",
+  "Aerodrome", "Aerodrome SlipStream",
+  "Curve", "Curve V2",
+  "SushiSwap", "SushiSwap V3",
+  "BaseSwap", "BaseSwap V3",
+  "PancakeSwap V2", "PancakeSwap V3",
+  "Maverick V2",
+  "Balancer V2", "Balancer V3",
+  "DODO", "Velodrome", "Velodrome V2",
+  "WooFi", "KyberSwap", "TraderJoe",
+  "AlienBase", "DackieSwap",
+];
 
 async function odosQuote(chainId, inputAddr, inputAmount, outputAddr) {
   const body = {
@@ -49,7 +62,7 @@ async function odosQuote(chainId, inputAddr, inputAmount, outputAddr) {
     slippageLimitPercent: 0.5,
     disableRFQs: true,
     compact: true,
-    sourceBlacklist: ODOS_SOURCE_BLACKLIST,
+    sourceWhitelist: ODOS_SOURCE_WHITELIST,
   };
   const start = Date.now();
   const response = await fetch(`${ODOS_API}/sor/quote/v3`, {
