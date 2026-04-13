@@ -130,7 +130,11 @@ async function odosAssemble(pathId, userAddr) {
     signal: AbortSignal.timeout(15_000),
   });
   const latencyMs = Date.now() - start;
-  if (!response.ok) return { ok: false, error: `HTTP ${response.status}`, latencyMs };
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try { const b = await response.json(); detail += ` - ${b.detail || b.message || JSON.stringify(b).slice(0, 120)}`; } catch (_) {}
+    return { ok: false, error: detail, latencyMs };
+  }
   const data = await response.json();
   if (!data.transaction?.data) return { ok: false, error: "no calldata in response", latencyMs };
   return {
@@ -288,9 +292,28 @@ async function runCycle(args, profile, datasetNames, store, session) {
   const best = profitable[0];
   console.log(`\n[${ts()}] ✅ OPPORTUNITY: ${best.label}`);
   console.log(`           Spread: ${fmtPct(best.spreadPct)} | Net: ${fmtUsd(best.netProfit)} | Gas: ${fmtUsd(best.totalGas)}`);
-  console.log(`\n[${ts()}] 📦 Assembling Odos calldata...`);
 
-  const assembly = await assembleRoute(best, contractAddr);
+  // Re-quote the best route with fresh pathIds (old ones expire after ~60s)
+  console.log(`\n[${ts()}] 🔄 Re-quoting ${best.label} for fresh pathIds...`);
+  const freshRoute = await quoteTriangularRoute(profile, best.tokenA, best.tokenB, args.capital, args.flashFeePct, contractAddr);
+  if (!freshRoute.ok || freshRoute.netProfit < args.minProfit) {
+    console.log(`[${ts()}] ❌ Re-quote no longer profitable: ${freshRoute.ok ? fmtUsd(freshRoute.netProfit) : freshRoute.error}`);
+    await store.append(datasetNames.triggerLogName, {
+      observedAt: new Date().toISOString(),
+      profileId: profile.id,
+      profileLabel: profile.label,
+      cycle: session.cycles,
+      phase: "requote_failed",
+      route: best.label,
+      netProfit: freshRoute.ok ? freshRoute.netProfit : null,
+      action: "requote_unprofitable",
+    });
+    return { cycleDurationMs: Date.now() - cycleStart };
+  }
+  console.log(`[${ts()}] ✅ Fresh quote: Net ${fmtUsd(freshRoute.netProfit)}`);
+
+  console.log(`\n[${ts()}] 📦 Assembling Odos calldata...`);
+  const assembly = await assembleRoute(freshRoute, contractAddr);
   if (!assembly.ok) {
     console.log(`[${ts()}] ❌ Assemble failed: ${assembly.error}`);
     await store.append(datasetNames.triggerLogName, {
