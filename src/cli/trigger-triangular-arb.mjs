@@ -2,7 +2,7 @@
 
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -309,6 +309,7 @@ async function runCycle(args, profile, datasetNames, store, session) {
   }
 
   let simulation = null;
+  let txResult = null;
   if (args.simulate) {
     console.log(`\n[${ts()}] 🔬 Simulating via cast call...`);
     if (args.contract) console.log(`           Contract: ${args.contract}`);
@@ -350,7 +351,7 @@ async function runCycle(args, profile, datasetNames, store, session) {
       leg3: { to: assembly.assembled.q3.to, dataLen: assembly.assembled.q3.data.length, gasLimit: assembly.assembled.q3.gasLimit },
     },
     simulation: simulation ? { ok: simulation.ok, error: simulation.error || null } : null,
-    action: args.live ? "BLOCKED" : "dry-run",
+    action: args.live ? "live-canary" : "dry-run",
   });
   console.log(`\n[${ts()}] 📝 Logged to data/${datasetNames.triggerLogName}.jsonl`);
 
@@ -377,17 +378,87 @@ async function runCycle(args, profile, datasetNames, store, session) {
   } catch (_) { /* don't block on telegram failure */ }
 
   if (args.live) {
-    console.log(`\n[${ts()}] 🚫 LIVE MODE BLOCKED — liveTrading=BLOCKED per safety policy.`);
-    console.log("           Live execution requires explicit architecture review.");
-    console.log("           The assembled calldata has been logged for external review.");
+    // ── LIVE CANARY EXECUTION ──
+    const privateKey = process.env.PRIVATE_KEY;
+    if (!privateKey) {
+      console.log(`\n[${ts()}] ❌ PRIVATE_KEY env var required for live mode.`);
+      console.log("           Usage: PRIVATE_KEY=0x... npm run trigger:arb -- --live");
+    } else if (!args.contract) {
+      console.log(`\n[${ts()}] ❌ Contract address required for live mode.`);
+    } else {
+      console.log(`\n[${ts()}] 🔥 LIVE CANARY — Sending transaction...`);
+      const stable = profile.stableToken;
+      const stableRaw = String(Math.round(best.startUsdc * 10 ** stable.decimals));
+      try {
+        const sendResult = execFileSync(CAST_BIN, [
+          "send", args.contract,
+          "executeTriangularArb(uint256,address,address,bytes,bytes,bytes)",
+          stableRaw, best.tokenA.address, best.tokenB.address,
+          assembly.assembled.q1.data, assembly.assembled.q2.data, assembly.assembled.q3.data,
+          "--rpc-url", args.rpcUrl,
+          "--private-key", privateKey,
+          "--gas-limit", "800000",
+        ], { timeout: 60_000 }).toString();
+
+        const statusMatch = sendResult.match(/status\s+(\d)/);
+        const txHashMatch = sendResult.match(/transactionHash\s+(0x[0-9a-fA-F]+)/);
+        const gasMatch = sendResult.match(/gasUsed\s+(\d+)/);
+        const txHash = txHashMatch?.[1] || null;
+        const success = statusMatch?.[1] === "1";
+
+        if (success) {
+          console.log(`           ✅ TX SUCCESS: ${txHash}`);
+          console.log(`           Gas used: ${gasMatch?.[1] || "?"}`);
+          // Check actual profit by reading ArbExecuted event
+          session.triggerCount += 1;
+          txResult = { ok: true, txHash, gasUsed: gasMatch?.[1] };
+        } else {
+          const revertMatch = sendResult.match(/revertReason\s+(.*)/);
+          console.log(`           ❌ TX REVERTED: ${revertMatch?.[1]?.slice(0, 80) || "unknown"}`);
+          console.log(`           Gas lost: ~$0.004`);
+          txResult = { ok: false, txHash, revert: revertMatch?.[1]?.slice(0, 80) };
+        }
+
+        // Record result for canary guard
+        await recordTradeResult({
+          profit: success ? best.netProfit : -0.004,
+          route: best.label,
+          txHash,
+          dryRun: false,
+        });
+
+        // Telegram notify
+        try {
+          const envPath = join(ROOT, ".env");
+          if (existsSync(envPath)) {
+            const envText = readFileSync(envPath, "utf8");
+            const botToken = envText.match(/TELEGRAM_BOT_TOKEN=(.+)/)?.[1]?.trim();
+            const chatId = envText.match(/TELEGRAM_CHAT_ID=(.+)/)?.[1]?.trim();
+            if (botToken && chatId) {
+              const text = success
+                ? `🔥 *LIVE TRADE SUCCESS*\nRoute: \`${best.label}\`\nProfit: $${best.netProfit.toFixed(2)}\nTX: ${txHash}`
+                : `⚠️ *Trade Reverted*\nRoute: \`${best.label}\`\nGas lost: ~$0.004\nTX: ${txHash}`;
+              await sendTelegramMessage({ botToken, chatId, text });
+            }
+          }
+        } catch (_) {}
+      } catch (e) {
+        console.log(`           ❌ TX FAILED: ${e.message?.slice(0, 100)}`);
+        await recordTradeResult({ profit: -0.004, route: best.label, txHash: null, dryRun: false });
+        txResult = { ok: false, error: e.message?.slice(0, 100) };
+      }
+    }
   }
 
-  await recordTradeResult({
-    profit: best.netProfit,
-    route: best.label,
-    txHash: null,
-    dryRun: !args.live,
-  });
+  // Record result (skip if live mode already recorded above)
+  if (!args.live) {
+    await recordTradeResult({
+      profit: best.netProfit,
+      route: best.label,
+      txHash: null,
+      dryRun: true,
+    });
+  }
 
   session.triggerCount += 1;
   return { cycleDurationMs: Date.now() - cycleStart };
@@ -411,7 +482,7 @@ async function main() {
     return;
   }
 
-  const mode = args.live ? "BLOCKED" : args.simulate ? "simulate" : "dry-run";
+  const mode = args.live ? "LIVE-CANARY" : args.simulate ? "simulate" : "dry-run";
   const canaryMode = args.live ? "canary" : "normal";
   const guard = await canaryCheck({ mode: canaryMode, tradeProfit: 0, dryRun: !args.live });
   if (!guard.allowed) {

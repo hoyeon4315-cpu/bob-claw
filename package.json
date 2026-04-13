@@ -58,6 +58,7 @@
     "flash:dryrun": "node src/cli/flash-arb-dryrun.mjs",
     "monitor:triangular": "node src/cli/monitor-triangular-alerts.mjs",
     "trigger:arb": "node src/cli/trigger-triangular-arb.mjs",
+    "canary:live": "bash src/cli/canary-live.sh",
     "canary:status": "node src/cli/canary-status.mjs",
     "analyze:volatility": "node src/cli/analyze-volatility-correlation.mjs",
     "analyze:thresholds": "node src/cli/analyze-threshold-sensitivity.mjs",
