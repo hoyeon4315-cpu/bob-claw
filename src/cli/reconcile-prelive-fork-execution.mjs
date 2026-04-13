@@ -11,7 +11,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { formatPreliveForkExecutionAlert, sendTelegramMessage } from "../notify/telegram.mjs";
 import { buildPreliveExecutionAudit } from "../prelive/execution-audit.mjs";
-import { buildForkExecutionJob } from "../prelive/fork-execution.mjs";
+import { buildForkExecutionJob, buildForkOutputResolutionCommand, buildForkOutputRequirements } from "../prelive/fork-execution.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -115,6 +115,17 @@ async function main() {
     targetEnvironment: plan.targetEnvironment,
   };
   await store.append("prelive-fork-receipts", receiptRecord);
+  const outputResolution = receiptRecord.reconciliationStatus === "pending_output"
+    ? {
+        required: true,
+        requirements: buildForkOutputRequirements(plan),
+        command: buildForkOutputResolutionCommand(plan, txHash),
+      }
+    : {
+        required: false,
+        requirements: null,
+        command: null,
+      };
 
   const reconciled = buildExecutionReconciliationEvent({
     job: buildForkExecutionJob(plan),
@@ -144,7 +155,7 @@ async function main() {
   });
 
   if (args.json) {
-    console.log(JSON.stringify({ receiptRecord, executionEvents: appended, audit, telegram: telegramResult }, null, 2));
+    console.log(JSON.stringify({ receiptRecord, outputResolution, executionEvents: appended, audit, telegram: telegramResult }, null, 2));
     return;
   }
 
@@ -154,6 +165,10 @@ async function main() {
   console.log(`executionStatus=${reconciled.status}`);
   console.log(`actualKnownCostUsd=${Number.isFinite(receiptRecord.realized.actualKnownCostUsd) ? receiptRecord.realized.actualKnownCostUsd.toFixed(6) : "n/a"}`);
   console.log(`realizedNetPnlUsd=${Number.isFinite(receiptRecord.realized.realizedNetPnlUsd) ? receiptRecord.realized.realizedNetPnlUsd.toFixed(6) : "n/a"}`);
+  if (outputResolution.required) {
+    console.log(`outputResolution=required`);
+    console.log(`outputResolutionCommand=${outputResolution.command}`);
+  }
   console.log(`telegram=${telegramResult.sent ? "sent" : `skipped:${telegramResult.reason}`}`);
 }
 

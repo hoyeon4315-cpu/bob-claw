@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDefaultRoutePerformancePolicy, buildRoutePerformanceRanking } from "../src/risk/route-performance.mjs";
 
-function receipt({ routeKey, amount = "10000", status = "reconciled", pnl = 0.5, observedAt }) {
+function receipt({
+  routeKey,
+  amount = "10000",
+  status = "reconciled",
+  pnl = 0.5,
+  estimatedNetPnlUsd = 0.5,
+  estimatedOutputUsd = 10.5,
+  actualOutputUsd = 10.55,
+  estimatedExecutionGasUsd = 0.1,
+  receiptGasUsd = 0.11,
+  gasDriftUsd = 0.01,
+  fillDriftBps = 10,
+  estimatedPositiveRealizedNegative = false,
+  observedAt,
+}) {
   return {
     observedAt,
     reconciliationStatus: status,
@@ -11,10 +25,21 @@ function receipt({ routeKey, amount = "10000", status = "reconciled", pnl = 0.5,
       amount,
       srcChain: "bob",
       dstChain: "base",
+      estimatedNetPnlUsd,
+      estimatedOutputUsd,
+      estimatedExecutionGasUsd,
+    },
+    output: {
+      actualOutputUsd: status === "reconciled" ? actualOutputUsd : null,
     },
     realized: {
       realizedNetPnlUsd: pnl,
-      realizedFillVsEstimateBps: 10,
+      realizedFillVsEstimateBps: fillDriftBps,
+      receiptGasUsd,
+      gasDriftUsd,
+    },
+    flags: {
+      estimatedPositiveButRealizedNegative: estimatedPositiveRealizedNegative,
     },
   };
 }
@@ -36,7 +61,14 @@ function failure({ routeKey, amount = "10000" }) {
   };
 }
 
-function score({ routeKey, amount = "10000", tradeReadiness = "shadow_candidate_review_only", netEdgeUsd = 0.5 }) {
+function score({
+  routeKey,
+  amount = "10000",
+  tradeReadiness = "shadow_candidate_review_only",
+  netEdgeUsd = 0.5,
+  executableNetEdgeUsd = netEdgeUsd,
+  effectiveSystemNetPnlUsd = null,
+}) {
   return {
     observedAt: "2026-04-11T01:10:00.000Z",
     routeKey,
@@ -45,7 +77,8 @@ function score({ routeKey, amount = "10000", tradeReadiness = "shadow_candidate_
     dstChain: "base",
     tradeReadiness,
     netEdgeUsd,
-    executableNetEdgeUsd: netEdgeUsd,
+    executableNetEdgeUsd,
+    effectiveSystemNetPnlUsd,
     knownCostUsd: 0.2,
   };
 }
@@ -84,6 +117,74 @@ test("route performance disables routes with insufficient realized samples", () 
 
   assert.equal(ranking.routes[0].enabledState, "disabled_insufficient_realized_samples");
   assert.equal(ranking.routes[0].rejectionReasons.includes("insufficient_realized_samples"), true);
+});
+
+test("route performance surfaces receipt-estimated versus realized deltas", () => {
+  const ranking = buildRoutePerformanceRanking({
+    receiptRecords: [
+      receipt({
+        routeKey: "bob:0x2a->base:0x2a",
+        pnl: 0.3,
+        estimatedNetPnlUsd: 0.6,
+        estimatedOutputUsd: 10.8,
+        actualOutputUsd: 10.55,
+        estimatedExecutionGasUsd: 0.1,
+        receiptGasUsd: 0.12,
+        gasDriftUsd: 0.02,
+        observedAt: "2026-04-11T02:00:00.000Z",
+      }),
+      receipt({
+        routeKey: "bob:0x2a->base:0x2a",
+        pnl: 0.35,
+        estimatedNetPnlUsd: 0.65,
+        estimatedOutputUsd: 10.85,
+        actualOutputUsd: 10.6,
+        estimatedExecutionGasUsd: 0.1,
+        receiptGasUsd: 0.13,
+        gasDriftUsd: 0.03,
+        observedAt: "2026-04-11T03:00:00.000Z",
+      }),
+      receipt({
+        routeKey: "bob:0x2a->base:0x2a",
+        pnl: 0.4,
+        estimatedNetPnlUsd: 0.7,
+        estimatedOutputUsd: 10.9,
+        actualOutputUsd: 10.65,
+        estimatedExecutionGasUsd: 0.1,
+        receiptGasUsd: 0.14,
+        gasDriftUsd: 0.04,
+        observedAt: "2026-04-11T04:00:00.000Z",
+      }),
+    ],
+    quotes: [quote({ routeKey: "bob:0x2a->base:0x2a", latencyMs: 400 })],
+    quoteFailures: [],
+    scores: [
+      score({
+        routeKey: "bob:0x2a->base:0x2a",
+        netEdgeUsd: 0.75,
+        executableNetEdgeUsd: 0.7,
+        effectiveSystemNetPnlUsd: 0.5,
+      }),
+    ],
+    policy: buildDefaultRoutePerformancePolicy(),
+  });
+
+  const route = ranking.routes[0];
+  assert.equal(route.currentEffectiveSystemNetPnlUsd, 0.5);
+  assert.equal(route.receiptEstimatedSampleCount, 3);
+  assert.equal(route.receiptEstimatedMedianNetPnlUsd, 0.65);
+  assert.equal(route.receiptEstimatedTotalNetPnlUsd, 1.95);
+  assert.equal(route.medianNetDriftUsd, -0.3);
+  assert.equal(route.totalNetDriftUsd, -0.9);
+  assert.equal(route.receiptEstimatedMedianOutputUsd, 10.85);
+  assert.equal(route.realizedMedianOutputUsd, 10.6);
+  assert.equal(route.medianOutputDriftUsd, -0.25);
+  assert.equal(route.receiptEstimatedMedianExecutionGasUsd, 0.1);
+  assert.equal(route.realizedMedianExecutionGasUsd, 0.13);
+  assert.equal(route.medianGasDriftUsd, 0.03);
+  assert.equal(route.totalGasDriftUsd, 0.09);
+  assert.equal(ranking.summary.receiptComparableRouteCount, 1);
+  assert.equal(ranking.summary.negativeMedianNetDriftRouteCount, 1);
 });
 
 test("route performance disables routes with negative expectancy or high quote failures", () => {

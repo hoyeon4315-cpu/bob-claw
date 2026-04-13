@@ -30,12 +30,20 @@ async function main() {
   console.log(`pendingOutputCount=${summary.summary.pendingOutputCount}`);
   console.log(`realizedNetPnlUsd=${formatUsd(summary.summary.realizedNetPnlUsd)}`);
   console.log(`medianRealizedNetPnlUsd=${formatUsd(summary.summary.medianRealizedNetPnlUsd)}`);
+  console.log(`totalEstimatedNetPnlUsd=${formatUsd(summary.summary.totalEstimatedNetPnlUsd)}`);
+  console.log(`medianEstimatedNetPnlUsd=${formatUsd(summary.summary.medianEstimatedNetPnlUsd)}`);
+  console.log(`totalNetDriftUsd=${formatUsd(summary.summary.totalNetDriftUsd)}`);
+  console.log(`medianNetDriftUsd=${formatUsd(summary.summary.medianNetDriftUsd)}`);
   console.log(`failedGasCostUsd=${formatUsd(summary.summary.failedGasCostUsd)}`);
+  console.log(`totalExecutionGasDriftUsd=${formatUsd(summary.summary.totalExecutionGasDriftUsd)}`);
+  console.log(`medianExecutionGasDriftUsd=${formatUsd(summary.summary.medianExecutionGasDriftUsd)}`);
+  console.log(`medianOutputDriftUsd=${formatUsd(summary.summary.medianOutputDriftUsd)}`);
   console.log(`medianFillDriftBps=${Number.isFinite(summary.summary.medianFillDriftBps) ? summary.summary.medianFillDriftBps.toFixed(2) : "n/a"}`);
+  console.log(`estimatedPositiveRealizedNegativeCount=${summary.summary.estimatedPositiveRealizedNegativeCount}`);
 
   for (const route of summary.routes) {
     console.log(
-      `${route.routeKey || "unknown"} count=${route.count} reconciled=${route.reconciledCount} failed=${route.failedCount} realizedNetPnlUsd=${formatUsd(route.realizedNetPnlUsd)}`,
+      `${route.routeKey || "unknown"} count=${route.count} reconciled=${route.reconciledCount} failed=${route.failedCount} realizedNetPnlUsd=${formatUsd(route.realizedNetPnlUsd)} estimatedNetPnlUsd=${formatUsd(route.totalEstimatedNetPnlUsd)} netDriftUsd=${formatUsd(route.totalNetDriftUsd)} gasDriftUsd=${formatUsd(route.totalExecutionGasDriftUsd)} estPosRealNeg=${route.estimatedPositiveRealizedNegativeCount}`,
     );
   }
 }

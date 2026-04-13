@@ -103,6 +103,7 @@ export function buildDefaultTreasuryPolicy() {
       canaryStartUsdMin: 20,
       canaryStartUsdMax: 50,
       maxIdleCapitalPerChainUsd: 60,
+      fragmentationDragPct: 0.005,
       maxRefillCost24hUsd: 3,
     },
     supportedChains: Object.keys(nativeBalances),

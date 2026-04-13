@@ -958,3 +958,147 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.deepEqual(status.canaryAdvance.actions, ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"]);
   assert.equal(status.dataCounts.advanceCanaryPresent, 1);
 });
+
+test("dashboard status adds manual memos for refresh, review, and treasury follow-up", () => {
+  const bobBase = route("bob", "base");
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [bobBase],
+      },
+    ],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+    scoreSnapshot: {
+      generatedAt: "2026-04-10T10:00:00.000Z",
+      scoredQuotes: 1,
+      summary: { shadowCandidates: 0, insufficientData: 1 },
+      scores: [],
+    },
+    shadowCycle: {
+      observedAt: "2026-04-10T10:05:00.000Z",
+      mode: "shadow",
+      objectivePlans: {
+        executionReview: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          blockers: ["token"],
+          blockerLabels: ["source token needed"],
+          command: "npm run run:execution-review -- --execute --write --continue-on-error",
+        },
+      },
+      treasury: {
+        decision: "BLOCKED",
+        walletValueShortfallUsd: 225,
+        nextNeeds: [
+          {
+            chain: "base",
+            ticker: "ETH",
+            refillAmountDecimal: 0.003,
+            refillEstimatedUsd: 6.25,
+          },
+        ],
+      },
+    },
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.manualMemos.length, 3);
+  assert.equal(status.manualMemos[0].id, "refresh_inputs");
+  assert.equal(status.manualMemos[0].command, "npm run watch:canary-readiness");
+  assert.equal(status.manualMemos[1].id, "execution_review");
+  assert.equal(status.manualMemos[1].whenLabel, "자금 준비 후");
+  assert.equal(status.manualMemos[2].id, "treasury_check");
+  assert.equal(status.manualMemos[2].command, "npm run plan:treasury-actions -- --json");
+});
+
+test("dashboard status includes pnl and trade history summaries", () => {
+  const bobBase = route("bob", "base");
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [bobBase],
+      },
+    ],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+    scoreSnapshot: {
+      generatedAt: "2026-04-10T11:59:00.000Z",
+      scoredQuotes: 1,
+      summary: { shadowCandidates: 0, insufficientData: 0 },
+      scores: [
+        {
+          srcChain: "bob",
+          dstChain: "base",
+          srcAsset: { ticker: "wBTC.OFT" },
+          dstAsset: { ticker: "wBTC.OFT" },
+          tradeReadiness: "shadow_candidate_review_only",
+          netEdgeUsd: 0.42,
+          dataGaps: [],
+        },
+      ],
+    },
+    shadowCycle: {
+      observedAt: "2026-04-10T11:58:30.000Z",
+      topRoute: {
+        label: "bob->base wBTC.OFT->wBTC.OFT",
+        tradeReadiness: "shadow_candidate_review_only",
+        netEdgeUsd: 0.42,
+      },
+      objectivePlans: {
+        executionReview: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          executableNetUsd: 0.35,
+          nextActionLabel: "refresh_dex_and_score",
+        },
+      },
+    },
+    executionEvents: [
+      {
+        observedAt: "2026-04-10T11:59:30.000Z",
+        eventType: "execution_reconciled",
+        status: "confirmed",
+        chain: "base",
+        txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        realized: { realizedNetPnlUsd: 0.18 },
+      },
+    ],
+    receiptReconciliations: [
+      {
+        observedAt: "2026-04-10T11:59:20.000Z",
+        chain: "base",
+        txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        reconciliationStatus: "reconciled",
+        routeContext: {
+          routeKey: "bob:0x0555->base:0x0555",
+          amount: "10000",
+          estimatedNetPnlUsd: 0.22,
+        },
+        realized: {
+          realizedNetPnlUsd: 0.18,
+          receiptGasUsd: 0.02,
+        },
+      },
+    ],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.pnl.paper.valueUsd, 0.42);
+  assert.equal(status.pnl.estimated.valueUsd, 0.35);
+  assert.equal(status.pnl.realized.valueUsd, 0.18);
+  assert.equal(status.pnl.realized.tradeCount, 1);
+  assert.equal(status.tradeHistory.count, 1);
+  assert.equal(status.tradeHistory.items[0].statusLabel, "체결 확인");
+  assert.equal(status.tradeHistory.items[0].chainLabel, "Base");
+  assert.equal(status.tradeHistory.items[0].realizedNetPnlUsd, 0.18);
+});

@@ -187,6 +187,12 @@ test("prelive review package stays blocked while canary and prelive gates are no
   assert.equal(reviewPackage.manualReviewCandidate.evidence.shadowObservationCount, 31);
   assert.equal(reviewPackage.measuredLeaderReview.routeKey, "ethereum:0x2260->base:0x0555");
   assert.equal(reviewPackage.reviewBlockers.includes("shadow_replay_not_ready"), true);
+  assert.equal(reviewPackage.tinyCanaryAdmission.decision, "NO_GO");
+  assert.equal(reviewPackage.tinyCanaryAdmission.blockers.includes("shadow_replay_not_ready"), true);
+  assert.equal(reviewPackage.remediationPlan.overallStatus, "ready");
+  assert.equal(reviewPackage.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --limit=1");
+  assert.equal(reviewPackage.remediationPlan.nextAction.code, "refresh_src_gas");
+  assert.equal(reviewPackage.remediationPlan.items.some((item) => item.code === "check_wallet_readiness"), true);
   assert.equal(reviewPackage.operatorChecklist.remaining.some((item) => item.includes("clear objective blocker")), true);
   assert.equal(reviewPackage.antiOverfitCaveats.some((item) => item.includes("does not grant execution permission")), true);
 });
@@ -306,9 +312,14 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(reviewPackage.packageStatus, "ready_for_manual_review");
   assert.equal(reviewPackage.reviewDecision, "READY_FOR_MANUAL_CANARY_REVIEW");
   assert.deepEqual(reviewPackage.reviewBlockers, []);
+  assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(reviewPackage.tinyCanaryAdmission.constraints.canaryDailyLossCapUsd, 5);
   assert.equal(reviewPackage.manualReviewCandidate.routeLabel, "base->unichain wBTC.OFT->wBTC.OFT");
   assert.equal(summary.readyForManualReview, true);
   assert.equal(summary.packageStatus, "ready_for_manual_review");
+  assert.equal(summary.tinyCanaryAdmissionDecision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(summary.remediationPlan.overallStatus, "clear");
+  assert.equal(summary.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --limit=1");
   assert.equal(summary.simulationSuccessCount, 50);
   assert.equal(summary.forkConfirmedCount, 3);
 });

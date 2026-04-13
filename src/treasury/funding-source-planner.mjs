@@ -51,6 +51,14 @@ const METHOD_PROFILES = {
   },
 };
 
+function finite(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function sumFinite(values = []) {
+  return values.filter(Number.isFinite).reduce((sum, value) => sum + value, 0);
+}
+
 function normalized(value) {
   return String(value || "").toLowerCase();
 }
@@ -225,6 +233,42 @@ function chooseCandidate(candidates) {
   })[0];
 }
 
+function preferredRouteNetUsd(routeContext = null) {
+  return finite(routeContext?.executableNetEdgeUsd) ?? finite(routeContext?.netEdgeUsd);
+}
+
+function estimateExpectedFailureCostUsd({ routeContext = null, summary = null }) {
+  const failureRate = Math.max(0, finite(routeContext?.routeFailureRate) ?? 0);
+  if (!(failureRate > 0)) return 0;
+  const failureExposureUsd = sumFinite([
+    routeContext?.knownCostUsd,
+    summary?.executionRefillExpectedCostUsd,
+    summary?.reserveReplenishmentExpectedCostUsd,
+  ]);
+  return failureExposureUsd * failureRate;
+}
+
+function estimateCapitalFragmentationDrag({ selections = [], routeContext = null, policy }) {
+  const maxIdleCapitalPerChainUsd = finite(policy?.capital?.maxIdleCapitalPerChainUsd) ?? Number.POSITIVE_INFINITY;
+  const fragmentationDragPct = finite(policy?.capital?.fragmentationDragPct) ?? 0.005;
+  const fragmentedCapitalUsd = sumFinite(
+    selections.map((item) => {
+      const estimatedAssetValueUsd = finite(item?.estimatedAssetValueUsd);
+      if (!Number.isFinite(estimatedAssetValueUsd)) return null;
+      return Math.min(estimatedAssetValueUsd, maxIdleCapitalPerChainUsd);
+    }),
+  );
+  const routeInputUsd = finite(routeContext?.inputUsd);
+  const strandedCapitalUsd = Number.isFinite(routeInputUsd)
+    ? Math.max(0, fragmentedCapitalUsd - routeInputUsd)
+    : fragmentedCapitalUsd;
+  return {
+    fragmentedCapitalUsd,
+    strandedCapitalUsd,
+    capitalFragmentationDragUsd: fragmentedCapitalUsd > 0 ? strandedCapitalUsd * fragmentationDragPct : 0,
+  };
+}
+
 export function buildFundingSourceCandidates(action, plan, policy) {
   const candidates = [];
   if (policy.walletMode === "dual_wallet") {
@@ -289,6 +333,21 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
   summary.reserveReplenishmentExpectedCostUsd = reserveReplenishmentKnown
     ? reserveCosts.reduce((sum, value) => sum + value, 0)
     : null;
+  const canModelSystemCosts = reserveReplenishmentKnown || selections.length === 0;
+  const {
+    fragmentedCapitalUsd,
+    strandedCapitalUsd,
+    capitalFragmentationDragUsd,
+  } = routeContext
+    ? estimateCapitalFragmentationDrag({ selections, routeContext, policy })
+    : { fragmentedCapitalUsd: null, strandedCapitalUsd: null, capitalFragmentationDragUsd: null };
+  const expectedFailureCostUsd = routeContext && canModelSystemCosts
+    ? estimateExpectedFailureCostUsd({ routeContext, summary })
+    : null;
+  summary.fragmentedCapitalUsd = fragmentedCapitalUsd;
+  summary.strandedCapitalUsd = strandedCapitalUsd;
+  summary.expectedFailureCostUsd = expectedFailureCostUsd;
+  summary.capitalFragmentationDragUsd = capitalFragmentationDragUsd;
 
   const reasons = [];
   if (selections.some((item) => item.requiresReserveState)) reasons.push("reserve_state_unmodelled");
@@ -297,12 +356,15 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
   if (selections.some((item) => item.missingInputs.includes("bootstrap_native_required"))) reasons.push("bootstrap_native_required");
 
   let effectiveSystemNetPnlUsd = null;
-  if (Number.isFinite(routeContext?.netEdgeUsd)) {
-    if (reserveReplenishmentKnown) {
+  const routeBaseNetUsd = preferredRouteNetUsd(routeContext);
+  if (Number.isFinite(routeBaseNetUsd)) {
+    if (canModelSystemCosts) {
       effectiveSystemNetPnlUsd =
-        routeContext.netEdgeUsd - summary.executionRefillExpectedCostUsd - summary.reserveReplenishmentExpectedCostUsd;
-    } else if (selections.length === 0) {
-      effectiveSystemNetPnlUsd = routeContext.netEdgeUsd;
+        routeBaseNetUsd -
+        summary.executionRefillExpectedCostUsd -
+        (summary.reserveReplenishmentExpectedCostUsd || 0) -
+        (expectedFailureCostUsd || 0) -
+        (capitalFragmentationDragUsd || 0);
     }
   }
 
@@ -319,6 +381,8 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
           prepFundingUsd: routeContext.prepFundingUsd ?? null,
           netEdgeUsd: routeContext.netEdgeUsd ?? null,
           executableNetEdgeUsd: routeContext.executableNetEdgeUsd ?? null,
+          knownCostUsd: routeContext.knownCostUsd ?? null,
+          routeFailureRate: routeContext.routeFailureRate ?? null,
           tradeReadiness: routeContext.tradeReadiness ?? null,
         }
       : null,

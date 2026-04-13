@@ -12,6 +12,14 @@ function median(values) {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function sum(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function delta(actual, expected) {
+  return Number.isFinite(actual) && Number.isFinite(expected) ? actual - expected : null;
+}
+
 function variantKey(routeKey, amount) {
   return `${routeKey}|${String(amount ?? "")}`;
 }
@@ -166,6 +174,18 @@ export function buildRoutePerformanceRanking({
       .filter((value) => Number.isFinite(value) && value < 0)
       .map((value) => Math.abs(value));
     const fillDrifts = reconciled.map((item) => item.realized?.realizedFillVsEstimateBps).filter(Number.isFinite);
+    const receiptEstimatedPnls = settledReceipts.map((item) => item.routeContext?.estimatedNetPnlUsd).filter(Number.isFinite);
+    const receiptNetDrifts = settledReceipts
+      .map((item) => delta(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
+      .filter(Number.isFinite);
+    const receiptEstimatedOutputs = reconciled.map((item) => item.routeContext?.estimatedOutputUsd).filter(Number.isFinite);
+    const realizedOutputs = reconciled.map((item) => item.output?.actualOutputUsd).filter(Number.isFinite);
+    const outputDriftsUsd = reconciled
+      .map((item) => delta(item.output?.actualOutputUsd, item.routeContext?.estimatedOutputUsd))
+      .filter(Number.isFinite);
+    const receiptEstimatedGasValues = settledReceipts.map((item) => item.routeContext?.estimatedExecutionGasUsd).filter(Number.isFinite);
+    const realizedGasValues = settledReceipts.map((item) => item.realized?.receiptGasUsd).filter(Number.isFinite);
+    const gasDriftsUsd = settledReceipts.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
     const latencyValues = quotesForKey.map((item) => item.latencyMs).filter(Number.isFinite);
     const knownCostValues = [score?.knownCostUsd].filter(Number.isFinite);
     const quoteFailureRate = quotesForKey.length + failuresForKey.length > 0 ? failuresForKey.length / (quotesForKey.length + failuresForKey.length) : null;
@@ -202,6 +222,7 @@ export function buildRoutePerformanceRanking({
       srcChain: routeInfo?.srcChain || null,
       dstChain: routeInfo?.dstChain || null,
       currentTradeReadiness: score?.tradeReadiness || null,
+      currentEffectiveSystemNetPnlUsd: score?.effectiveSystemNetPnlUsd ?? null,
       currentEstimatedNetEdgeUsd: score?.netEdgeUsd ?? null,
       currentExecutableNetEdgeUsd: score?.executableNetEdgeUsd ?? null,
       currentKnownCostUsd: median(knownCostValues),
@@ -220,7 +241,20 @@ export function buildRoutePerformanceRanking({
       realizedTotalPnlUsd,
       realizedMedianPnlUsd,
       routeP95LossUsd,
+      receiptEstimatedSampleCount: receiptEstimatedPnls.length,
+      receiptEstimatedTotalNetPnlUsd: receiptEstimatedPnls.length ? sum(receiptEstimatedPnls) : null,
+      receiptEstimatedMedianNetPnlUsd: median(receiptEstimatedPnls),
+      medianNetDriftUsd: median(receiptNetDrifts),
+      totalNetDriftUsd: receiptNetDrifts.length ? sum(receiptNetDrifts) : null,
+      receiptEstimatedMedianOutputUsd: median(receiptEstimatedOutputs),
+      realizedMedianOutputUsd: median(realizedOutputs),
+      medianOutputDriftUsd: median(outputDriftsUsd),
+      receiptEstimatedMedianExecutionGasUsd: median(receiptEstimatedGasValues),
+      realizedMedianExecutionGasUsd: median(realizedGasValues),
+      medianGasDriftUsd: median(gasDriftsUsd),
+      totalGasDriftUsd: gasDriftsUsd.length ? sum(gasDriftsUsd) : null,
       medianFillDriftBps: median(fillDrifts),
+      estimatedPositiveRealizedNegativeCount: settledReceipts.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
       enabledState: classification.enabledState,
       rejectionReasons: classification.rejectionReasons,
       canaryContext: routeCanaryContext,
@@ -249,6 +283,9 @@ export function buildRoutePerformanceRanking({
       enabledCount: routes.filter((item) => item.enabledState === "enabled_review_only").length,
       disabledCount: routes.filter((item) => item.enabledState !== "enabled_review_only").length,
       realizedRouteCount: routes.filter((item) => item.realizedSampleCount > 0).length,
+      receiptComparableRouteCount: routes.filter((item) => item.receiptEstimatedSampleCount > 0).length,
+      negativeMedianNetDriftRouteCount: routes.filter((item) => Number.isFinite(item.medianNetDriftUsd) && item.medianNetDriftUsd < 0).length,
+      estimatedPositiveRealizedNegativeCount: routes.reduce((total, item) => total + (item.estimatedPositiveRealizedNegativeCount || 0), 0),
       canaryProgress,
     },
     routes,

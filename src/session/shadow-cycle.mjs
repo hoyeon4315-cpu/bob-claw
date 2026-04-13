@@ -1,8 +1,13 @@
 import { planNextReadinessRefresh } from "../estimator/readiness-refresh.mjs";
 import { summarizeShadowCandidateEvidence } from "./shadow-evidence.mjs";
 import { buildShadowRefreshQueue } from "./shadow-refresh-queue.mjs";
+import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
+import { buildEdgeViabilitySummary } from "../strategy/edge-viability.mjs";
+import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
+import { buildPivotDecisionSummary, buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
+import { shellQuote } from "../lib/shell-quote.mjs";
 
 function dedupe(values) {
   return [...new Set(values.filter(Boolean))];
@@ -171,29 +176,29 @@ function summarizeReadinessChecks(routePlan, treasuryPlan) {
 
 function readinessCommand(address, check) {
   if (!check?.routeKey || !check?.amount) return null;
-  const addressArg = address ? ` --address=${address}` : "";
-  return `npm run check:estimator-wallet -- --route-key=${check.routeKey} --amount=${check.amount}${addressArg}`;
+  const addressArg = address ? ` --address=${shellQuote(address)}` : "";
+  return `npm run check:estimator-wallet -- --route-key=${shellQuote(check.routeKey)} --amount=${shellQuote(check.amount)}${addressArg}`;
 }
 
 function verifyRouteCommand(candidate) {
   if (!candidate?.routeKey || !candidate?.amount) return null;
-  return `npm run verify:gateway -- --route-key=${candidate.routeKey} --amounts=${candidate.amount}`;
+  return `npm run verify:gateway -- --route-key=${shellQuote(candidate.routeKey)} --amounts=${shellQuote(candidate.amount)}`;
 }
 
 function exactGasCommand(address, candidate) {
   if (!candidate?.routeKey || !candidate?.amount) return null;
-  const fromArg = address ? ` --from=${address}` : "";
-  return `npm run estimate:gateway-gas -- --route-key=${candidate.routeKey} --amount=${candidate.amount}${fromArg}`;
+  const fromArg = address ? ` --from=${shellQuote(address)}` : "";
+  return `npm run estimate:gateway-gas -- --route-key=${shellQuote(candidate.routeKey)} --amount=${shellQuote(candidate.amount)}${fromArg}`;
 }
 
 function dexRefreshCommand(candidate) {
   if (!candidate?.routeKey || !candidate?.amount) return null;
-  return `npm run quote:dex -- --route-key=${candidate.routeKey} --amount=${candidate.amount} --include-stable-entry && npm run score:gateway -- --write --route-key=${candidate.routeKey} --amount=${candidate.amount}`;
+  return `npm run quote:dex -- --route-key=${shellQuote(candidate.routeKey)} --amount=${shellQuote(candidate.amount)} --include-stable-entry && npm run score:gateway -- --write --route-key=${shellQuote(candidate.routeKey)} --amount=${shellQuote(candidate.amount)}`;
 }
 
 function scoreRefreshCommand(candidate) {
   if (!candidate?.routeKey || !candidate?.amount) return null;
-  return `npm run score:gateway -- --write --route-key=${candidate.routeKey} --amount=${candidate.amount}`;
+  return `npm run score:gateway -- --write --route-key=${shellQuote(candidate.routeKey)} --amount=${shellQuote(candidate.amount)}`;
 }
 
 export function shadowActionForCandidate(candidate, { address = null } = {}) {
@@ -424,6 +429,32 @@ export function buildShadowCycleSummary({
     dexQuotes: canaryState?.dexQuotes || [],
     address: canaryState?.address || null,
   });
+  const edgeViability = buildEdgeViabilitySummary({
+    scoreSnapshot,
+    dexQuotes: canaryState?.dexQuotes || [],
+  });
+  const edgeResearch = buildEdgeResearchSummary({
+    scoreSnapshot,
+    shadowObservations,
+  });
+  const noEdgePersistence = buildNoEdgePersistenceSummary({
+    scoreSnapshot,
+    dexQuotes: canaryState?.dexQuotes || [],
+  });
+  const economicsAudit = buildRouteEconomicsAudit({
+    scoreSnapshot,
+    routePlan: canaryState?.routePlan || null,
+    edgeViability,
+    edgeResearch,
+    noEdgePersistence,
+    quotes,
+    quoteFailures,
+    shadowObservations,
+  });
+  const pivotDecision = buildPivotDecisionSummary({
+    economicsAudit,
+    objectivePlans,
+  });
 
   const blockers = dedupe([
     ...(nextStep?.reasons || []),
@@ -486,6 +517,7 @@ export function buildShadowCycleSummary({
       },
     ),
     objectivePlans,
+    pivotDecision,
     strategyPlans,
     shadowActions,
     refreshQueue,
@@ -543,6 +575,7 @@ export function buildShadowCycleSummary({
       : null,
     blockers,
     recommendedCommands: dedupe([
+      pivotDecision?.command,
       ...refreshQueue.map((item) => item.command),
     ]),
   };

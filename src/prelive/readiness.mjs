@@ -114,6 +114,9 @@ export function buildPreliveReadinessSummary({
   if (forkExecution.confirmedCount < targetForkConfirmedCount) {
     forkExecutionBlockers.push(`needs_${targetForkConfirmedCount - forkExecution.confirmedCount}_more_confirmed_fork_cycles`);
   }
+  if (forkExecution.pendingOutputCount > 0) {
+    forkExecutionBlockers.push("fork_output_resolution_required");
+  }
   if (forkExecution.submissionFailureCount > 0) {
     forkExecutionBlockers.push("fork_submission_failures_present");
   }
@@ -140,6 +143,9 @@ export function buildPreliveReadinessSummary({
   }
   if (!forkExecution.ready) {
     tinyCanaryBlockers.push("fork_execution_not_ready");
+  }
+  if (forkExecution.pendingOutputCount > 0) {
+    tinyCanaryBlockers.push("fork_output_resolution_required");
   }
   if (overall?.liveTrading !== "BLOCKED") {
     tinyCanaryBlockers.push("live_policy_state_changed");

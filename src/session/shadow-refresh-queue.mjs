@@ -1,11 +1,13 @@
+import { shellQuote } from "../lib/shell-quote.mjs";
+
 function dedupe(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
 function readinessCommand(address, check) {
   if (!check?.routeKey || !check?.amount) return null;
-  const addressArg = address ? ` --address=${address}` : "";
-  return `npm run check:estimator-wallet -- --route-key=${check.routeKey} --amount=${check.amount}${addressArg}`;
+  const addressArg = address ? ` --address=${shellQuote(address)}` : "";
+  return `npm run check:estimator-wallet -- --route-key=${shellQuote(check.routeKey)} --amount=${shellQuote(check.amount)}${addressArg}`;
 }
 
 function shadowActionPriority(action) {

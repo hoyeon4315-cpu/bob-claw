@@ -1,6 +1,6 @@
 export const gatewayNode = "bob_gateway";
 export const viewBoxWidth = 1000;
-export const viewBoxHeight = 620;
+export const viewBoxHeight = 1000;
 export const trailLimit = 18;
 
 export const chainMeta = {

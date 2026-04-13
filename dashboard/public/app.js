@@ -8,7 +8,7 @@ import {
   viewBoxHeight,
   viewBoxWidth,
 } from "./scene-model.js";
-import { chainPriceCaption, chainPriceExtremes, routeSublineText } from "./market-display.js";
+import { chainPriceCaption, chainPriceExtremes, referenceMarketPrice } from "./market-display.js";
 import { buildOverfitDisplay } from "./overfit-display.js";
 import { buildUpdateSummary } from "./update-summary.js";
 import { buildWatchlistDisplay } from "./watchlist-display.js";
@@ -148,6 +148,12 @@ function compactMoney(value) {
   return `$${value.toLocaleString("ko-KR", { maximumFractionDigits: 6 })}`;
 }
 
+function signedPct(value, digits = 2) {
+  if (!Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toLocaleString("ko-KR", { maximumFractionDigits: digits })}%`;
+}
+
 function humanBlocker(blocker) {
   return {
     audit_blocks_live: "새 데이터 확인 중",
@@ -185,13 +191,12 @@ function nodePositions(chains) {
   const positions = { [gatewayNode]: { x: viewBoxWidth / 2, y: viewBoxHeight / 2 } };
   const sorted = orderedChains(chains);
   const { width, compact } = mapMetrics();
-  const radiusX = compact ? (width <= 390 ? 340 : 350) : 355;
-  const radiusY = compact ? (width <= 390 ? 205 : 220) : 235;
+  const radius = compact ? (width <= 390 ? 320 : 350) : 390;
   sorted.forEach((chain, index) => {
     const angle = Math.PI + (index / Math.max(sorted.length, 1)) * Math.PI * 2;
     positions[chain] = {
-      x: positions[gatewayNode].x + Math.cos(angle) * radiusX,
-      y: positions[gatewayNode].y + Math.sin(angle) * radiusY,
+      x: positions[gatewayNode].x + Math.cos(angle) * radius,
+      y: positions[gatewayNode].y + Math.sin(angle) * radius,
     };
   });
   return positions;
@@ -391,7 +396,7 @@ function renderTimeline(status) {
   if (!events.length) {
     const empty = document.createElement("div");
     empty.className = "trace";
-    empty.textContent = "최근 흐름을 기다리는 중";
+    empty.textContent = "최근 흐름이 아직 없습니다.";
     timeline.append(empty);
     return;
   }
@@ -407,7 +412,7 @@ function renderTimeline(status) {
         <strong>${labelFor(src)} -> BOB Gateway -> ${labelFor(dst)}</strong>
         <span>${compactAge(event.observedAt)} · ${assetRouteText(event.asset)} · ${amountText(event.inputAmount || event.amount)} -> ${amountText(event.outputAmount)}</span>
       </div>
-      <span>${event.direction === "btc_out" ? "BTC out" : event.direction === "btc_in" ? "BTC in" : "route"}</span>
+      <span>${event.direction === "btc_out" ? "BTC 이동" : event.direction === "btc_in" ? "BTC 복귀" : "체인 흐름"}</span>
     `;
     timeline.append(item);
   }
@@ -454,6 +459,96 @@ function renderGas(status) {
   }
 }
 
+function renderPnl(status) {
+  const pnl = status.pnl || {};
+  const grid = $("pnlGrid");
+  clear(grid);
+  const realized = pnl.realized?.valueUsd;
+  $("pnlBadge").textContent = Number.isFinite(realized)
+    ? `${realized >= 0 ? "+" : ""}${money(realized)}`
+    : pnl.estimated?.valueUsd != null
+      ? "추정치"
+      : "대기 중";
+
+  const cards = [
+    {
+      label: "Paper",
+      title: Number.isFinite(pnl.paper?.valueUsd) ? money(pnl.paper.valueUsd) : "—",
+      detail: pnl.paper?.detail || "관측 데이터 대기",
+      subline: pnl.paper?.routeLabel || "관측 기준 없음",
+      tone: "paper",
+    },
+    {
+      label: "Estimated",
+      title: Number.isFinite(pnl.estimated?.valueUsd) ? money(pnl.estimated.valueUsd) : "—",
+      detail: pnl.estimated?.detail || "검토 경로 대기",
+      subline: pnl.estimated?.routeLabel || "실행 검토 없음",
+      tone: "estimated",
+    },
+    {
+      label: "Realized",
+      title: Number.isFinite(realized) ? money(realized) : "—",
+      detail: pnl.realized?.detail || "아직 receipt 기록 없음",
+      subline:
+        Number.isFinite(pnl.realized?.tradeCount) || Number.isFinite(pnl.realized?.failedCount)
+          ? `확정 ${pnl.realized?.tradeCount || 0} · 실패 ${pnl.realized?.failedCount || 0}`
+          : "실현 기록 대기",
+      tone: "realized",
+    },
+  ];
+
+  for (const item of cards) {
+    const card = document.createElement("div");
+    card.className = `pnl-card ${item.tone}`;
+    card.innerHTML = `
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <p>${escapeHtml(item.detail)}</p>
+      <small>${escapeHtml(item.subline)}</small>
+    `;
+    grid.append(card);
+  }
+}
+
+function renderTradeHistory(status) {
+  const tradeHistory = status.tradeHistory || {};
+  const items = tradeHistory.items || [];
+  $("tradeHistoryBadge").textContent = `${items.length}건`;
+  const list = $("tradeHistory");
+  clear(list);
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "trade-item trade-empty";
+    empty.innerHTML = `
+      <strong>아직 실제 거래 기록이 없습니다</strong>
+      <span>receipt 또는 실행 이벤트가 생기면 최근 기록이 여기에 표시됩니다.</span>
+    `;
+    list.append(empty);
+    return;
+  }
+
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = `trade-item ${item.status || "pending"}`;
+    row.innerHTML = `
+      <div class="trade-item-main">
+        <strong>${escapeHtml(item.statusLabel || "기록")}</strong>
+        <span>${escapeHtml(item.chainLabel || item.chain || "chain")} · ${compactAge(item.observedAt)}</span>
+      </div>
+      <div class="trade-item-meta">
+        <span>${escapeHtml(item.routeLabel || item.txHashShort || "route pending")}</span>
+        <span>${item.amount ? `${escapeHtml(amountText(item.amount))} sats` : "amount pending"}</span>
+      </div>
+      <div class="trade-item-pnl">
+        <strong>${Number.isFinite(item.realizedNetPnlUsd) ? money(item.realizedNetPnlUsd) : Number.isFinite(item.estimatedNetPnlUsd) ? money(item.estimatedNetPnlUsd) : "—"}</strong>
+        <span>${Number.isFinite(item.realizedNetPnlUsd) ? "realized" : Number.isFinite(item.estimatedNetPnlUsd) ? "estimated" : "pending"}</span>
+      </div>
+    `;
+    list.append(row);
+  }
+}
+
 function renderAssetCoverage(status) {
   const coverage = status.gateway.assetCoverage || {};
   const sampled = coverage.sampledAssetCount || 0;
@@ -495,17 +590,17 @@ function renderAssetCoverage(status) {
 function renderOpportunity(status) {
   const opportunity = status.opportunity || {};
   const candidates = opportunity.candidateCount || 0;
-  $("opportunityBadge").textContent = `${candidates} clean`;
+  $("opportunityBadge").textContent = `후보 ${candidates}`;
   const hasScores = (opportunity.scoredQuotes || 0) > 0;
   if (!hasScores) {
-    $("opportunityTitle").textContent = "No score yet";
-    $("opportunityBody").textContent = "Waiting for fresh quotes and costs.";
+    $("opportunityTitle").textContent = "아직 점수화 전입니다";
+    $("opportunityBody").textContent = "신선한 호가와 비용 데이터를 기다리는 중입니다.";
     return;
   }
 
   if (candidates > 0) {
-    $("opportunityTitle").textContent = "Review candidate found";
-    $("opportunityBody").textContent = `${candidates} route${candidates === 1 ? "" : "s"} need manual review before any canary.`;
+    $("opportunityTitle").textContent = "수동 검토 후보가 있습니다";
+    $("opportunityBody").textContent = `${candidates}개 경로를 사람이 다시 확인한 뒤 다음 단계로 넘기면 됩니다.`;
     return;
   }
 
@@ -514,13 +609,53 @@ function renderOpportunity(status) {
   const highFailure = opportunity.highFailureRate || 0;
   const dexQuotes = status.dex?.recentQuotes24h || 0;
   const dexBacked = opportunity.dexBacked || 0;
-  const quotePrefix = dexQuotes ? `${opportunity.scoredQuotes} gateway · ${dexBacked}/${dexQuotes} DEX matched` : `${opportunity.scoredQuotes} quotes`;
-  $("opportunityTitle").textContent = "No clean edge yet";
+  const quotePrefix = dexQuotes ? `${opportunity.scoredQuotes} gateway · ${dexBacked}/${dexQuotes} DEX 확인` : `${opportunity.scoredQuotes} quotes`;
+  $("opportunityTitle").textContent = "아직 깨끗한 엣지는 없습니다";
   $("opportunityBody").textContent = topGap
     ? `${quotePrefix} · ${humanGap(topGap.gap)}`
     : highFailure
-      ? `${quotePrefix} · ${highFailure} unstable routes`
-      : `${quotePrefix} · ${rejected} rejected by net cost`;
+      ? `${quotePrefix} · 불안정 경로 ${highFailure}개`
+      : `${quotePrefix} · 비용 반영 후 제외 ${rejected}개`;
+}
+
+function renderManualMemos(status) {
+  const memos = status.manualMemos || [];
+  const levelLabel = {
+    now: "바로 보기",
+    next: "다음 확인",
+    later: "나중 점검",
+  };
+  $("manualMemoBadge").textContent = `${memos.length}개`;
+  const list = $("manualMemos");
+  clear(list);
+
+  if (!memos.length) {
+    const empty = document.createElement("div");
+    empty.className = "memo-card memo-empty";
+    empty.innerHTML = `
+      <strong>중요한 수동 메모 없음</strong>
+      <p>다음 확인이 필요해지면 여기서 바로 볼 수 있습니다.</p>
+    `;
+    list.append(empty);
+    return;
+  }
+
+  for (const memo of memos) {
+    const item = document.createElement("div");
+    item.className = "memo-card";
+    item.innerHTML = `
+      <div class="memo-top">
+        <span class="memo-when">${escapeHtml(memo.whenLabel || "다음 확인 때")}</span>
+        <span class="memo-level">${escapeHtml(levelLabel[memo.level] || "다음 확인")}</span>
+      </div>
+      <strong>${escapeHtml(memo.title || "메모")}</strong>
+      <p>${escapeHtml(memo.summary || "")}</p>
+      ${memo.detail ? `<div class="memo-detail">${escapeHtml(memo.detail)}</div>` : ""}
+      ${memo.command ? `<div class="memo-row"><span>명령</span><code>${escapeHtml(memo.command)}</code></div>` : ""}
+      ${memo.prompt ? `<div class="memo-row"><span>프롬프트</span><code>${escapeHtml(memo.prompt)}</code></div>` : ""}
+    `;
+    list.append(item);
+  }
 }
 
 function renderQuoteLag(status) {
@@ -727,10 +862,28 @@ function renderSystemStatus(status) {
 }
 
 function renderHeader(status) {
-  const chains = status.gateway.chains?.length || 0;
   $("liveCopy").textContent = `자동 갱신 · ${compactAge(status.generatedAt)}`;
-  $("routeHeadline").textContent = `BTC -> BOB -> ${chains}개 체인`;
-  $("routeSubline").textContent = routeSublineText(status);
+
+  const memos = status.manualMemos || [];
+  const recentEvents = status.gateway?.recentFlowEvents || [];
+  const reference = referenceMarketPrice(status.market || {});
+  const btcChange = status.dexSpread?.btcChange24hPct ?? null;
+  const walletUsd = status.shadowCycle?.treasury?.estimatedWalletUsd;
+  const chains = status.gateway.chains?.length || 0;
+  const headlineCopy = [];
+  if (Number.isFinite(walletUsd)) headlineCopy.push(`지갑 추정 ${money(walletUsd)}`);
+  if (memos.length) headlineCopy.push(`중요 메모 ${memos.length}건`);
+  if (status.shadowCycle?.headline) headlineCopy.push(status.shadowCycle.headline);
+  $("stageSummaryCopy").textContent = headlineCopy.join(" · ") || "실시간 흐름과 다음 확인 메모를 보고 있습니다.";
+
+  $("heroRoutes").textContent = `${status.gateway.routeCount || 0}`;
+  $("heroRoutesSub").textContent = `${chains}개 체인`;
+  $("heroPrice").textContent = reference?.usd ? money(reference.usd) : "—";
+  $("heroPriceSub").textContent = Number.isFinite(btcChange) ? `24h ${signedPct(btcChange)}` : "24h 확인 중";
+  $("heroActivity").textContent = `${recentEvents.length}`;
+  $("heroActivitySub").textContent = recentEvents.length ? `최근 ${Math.min(recentEvents.length, 5)}개` : "흐름 대기";
+  $("heroMemos").textContent = `${memos.length}`;
+  $("heroMemosSub").textContent = memos[0]?.whenLabel || "다음 확인";
 }
 
 function render(status) {
@@ -740,10 +893,13 @@ function render(status) {
   renderHeader(status);
   renderLines(scene, positions);
   renderNodes(scene, positions, status);
+  renderPnl(status);
+  renderTradeHistory(status);
   renderTimeline(status);
   renderGas(status);
   renderAssetCoverage(status);
   renderOpportunity(status);
+  renderManualMemos(status);
   renderQuoteLag(status);
   renderDexSpread(status);
   renderSystemStatus(status);
@@ -760,7 +916,8 @@ async function loadStatus() {
     render(await response.json());
   } catch {
     $("liveCopy").textContent = "상태 파일 대기 중";
-    $("routeSubline").textContent = "다음 갱신을 기다리고 있습니다.";
+    const summary = $("stageSummaryCopy");
+    if (summary) summary.textContent = "다음 갱신을 기다리고 있습니다.";
   }
 }
 

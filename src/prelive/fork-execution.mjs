@@ -35,6 +35,57 @@ function buildRouteContext(score = null) {
   };
 }
 
+function routeKey(record = null) {
+  return record?.routeKey || record?.routeContext?.routeKey || null;
+}
+
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function sum(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function driftUsd(actualValue, expectedValue) {
+  if (!Number.isFinite(actualValue) || !Number.isFinite(expectedValue)) return null;
+  return actualValue - expectedValue;
+}
+
+export function buildForkOutputRequirements(plan = null) {
+  return {
+    needsActualOutputUnits: true,
+    needsOutputAsset: !(plan?.routeContext?.dstAsset?.chain && plan?.routeContext?.dstAsset?.token),
+    needsOutputPriceUsd: !Number.isFinite(plan?.routeContext?.price?.dstRawUsd),
+    outputChain: plan?.routeContext?.dstAsset?.chain || plan?.dstChain || null,
+    outputToken: plan?.routeContext?.dstAsset?.token || null,
+    outputPriceUsd: Number.isFinite(plan?.routeContext?.price?.dstRawUsd) ? plan.routeContext.price.dstRawUsd : null,
+  };
+}
+
+export function buildForkOutputResolutionCommand(plan = null, txHash = "<txHash>") {
+  if (!plan?.planId) return null;
+  const requirements = buildForkOutputRequirements(plan);
+  const command = [
+    `npm run reconcile:prelive-fork-execution -- --plan-id="${plan.planId}"`,
+    `--tx-hash="${txHash || "<txHash>"}"`,
+    `--rpc-url="<forkRpcUrl>"`,
+    `--actual-output-units="<actualOutputUnits>"`,
+  ];
+  if (requirements.needsOutputAsset) {
+    command.push(`--output-chain="${requirements.outputChain || "<outputChain>"}"`);
+    command.push(`--output-token="${requirements.outputToken || "<outputToken>"}"`);
+  }
+  if (requirements.needsOutputPriceUsd) {
+    command.push(`--output-price-usd="${requirements.outputPriceUsd ?? "<outputPriceUsd>"}"`);
+  }
+  return command.join(" ");
+}
+
 function latestByPlanId(records = []) {
   const latest = new Map();
   for (const record of records) {
@@ -60,6 +111,7 @@ export function buildForkExecutionPlan({
   if (!quote?.txTo) blockers.push("missing_tx_to");
   if (!quote?.txData) blockers.push("missing_tx_data");
   const plannedAt = now;
+  const routeContext = buildRouteContext(selection?.score || null);
   const planId = deterministicId({
     type: "prelive_fork_plan",
     routeKey: selection?.routeKey || quote?.routeKey || null,
@@ -89,7 +141,7 @@ export function buildForkExecutionPlan({
     selectionReason: selection?.reason || null,
     selectionCode: selection?.code || selection?.score?.tradeReadiness || null,
     queueRank: selection?.queueRank ?? null,
-    routeContext: buildRouteContext(selection?.score || null),
+    routeContext,
     transaction: {
       from: address || null,
       to: quote?.txTo || null,
@@ -112,6 +164,14 @@ export function buildForkExecutionPlan({
           plan: `npm run plan:prelive-fork-execution -- --route-key="${selection?.routeKey || quote?.routeKey}" --amount="${selection?.amount || quote?.amount}" --write`,
           submit: `npm run submit:prelive-fork-execution -- --plan-id="${planId}" --signed-tx="<signedTx>" --rpc-url="<forkRpcUrl>"`,
           reconcile: `npm run reconcile:prelive-fork-execution -- --plan-id="${planId}" --tx-hash="<txHash>" --rpc-url="<forkRpcUrl>"`,
+          resolveOutput: buildForkOutputResolutionCommand(
+            {
+              planId,
+              dstChain: quote?.route?.dstChain || null,
+              routeContext,
+            },
+            "<txHash>",
+          ),
         },
   };
 }
@@ -144,14 +204,32 @@ export function buildForkExecutionSummary({
   const latestPlans = latestByPlanId(plans);
   const latestSubmissions = latestByPlanId(submissions);
   const latestReceipts = latestByPlanId(receipts);
+  const plansById = new Map(latestPlans.map((item) => [item.planId, item]));
   const submittedCount = latestSubmissions.filter((item) => item.submissionStatus === "submitted").length;
   const submissionFailureCount = latestSubmissions.filter((item) => item.submissionStatus === "failed").length;
   const confirmedCount = latestReceipts.filter((item) => item.reconciliationStatus === "reconciled").length;
   const failedCount = latestReceipts.filter((item) => item.reconciliationStatus === "failed").length;
   const pendingOutputCount = latestReceipts.filter((item) => item.reconciliationStatus === "pending_output").length;
+  const settledReceipts = latestReceipts.filter(
+    (item) => item.reconciliationStatus === "reconciled" || item.reconciliationStatus === "failed",
+  );
+  const realizedNetPnlValues = settledReceipts.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
+  const netDriftValues = settledReceipts
+    .map((item) => driftUsd(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
+    .filter(Number.isFinite);
+  const gasDriftValues = settledReceipts.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
+  const fillDriftValues = latestReceipts
+    .filter((item) => item.reconciliationStatus === "reconciled")
+    .map((item) => item.realized?.realizedFillVsEstimateBps)
+    .filter(Number.isFinite);
   const latestPlan = [...latestPlans].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
   const latestSubmission = [...latestSubmissions].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
   const latestReceipt = [...latestReceipts].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
+  const latestPendingOutput = [...latestReceipts]
+    .filter((item) => item.reconciliationStatus === "pending_output")
+    .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
+  const latestPendingOutputPlan = latestPendingOutput ? plansById.get(latestPendingOutput.planId) || latestPendingOutput : null;
+  const latestPendingOutputRequirements = latestPendingOutputPlan ? buildForkOutputRequirements(latestPendingOutputPlan) : null;
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -161,6 +239,13 @@ export function buildForkExecutionSummary({
     confirmedCount,
     failedCount,
     pendingOutputCount,
+    realizedSampleCount: realizedNetPnlValues.length,
+    realizedNetPnlUsd: realizedNetPnlValues.length ? sum(realizedNetPnlValues) : null,
+    medianRealizedNetPnlUsd: median(realizedNetPnlValues),
+    medianNetDriftUsd: median(netDriftValues),
+    medianExecutionGasDriftUsd: median(gasDriftValues),
+    medianFillDriftBps: median(fillDriftValues),
+    estimatedPositiveRealizedNegativeCount: settledReceipts.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
     targetConfirmedCount,
     successRemaining: Math.max(0, targetConfirmedCount - confirmedCount),
     latestPlan: latestPlan
@@ -190,6 +275,21 @@ export function buildForkExecutionSummary({
           amount: latestReceipt.amount || null,
           reconciliationStatus: latestReceipt.reconciliationStatus,
           failed: Boolean(latestReceipt.flags?.failed),
+        }
+      : null,
+    latestPendingOutput: latestPendingOutput
+      ? {
+          observedAt: latestPendingOutput.observedAt,
+          planId: latestPendingOutput.planId || null,
+          routeLabel: routeLabel(latestPendingOutputPlan || latestPendingOutput),
+          routeKey: routeKey(latestPendingOutputPlan || latestPendingOutput),
+          amount: latestPendingOutput.amount || latestPendingOutputPlan?.amount || null,
+          txHash: latestPendingOutput.txHash || null,
+          outputRequirements: latestPendingOutputRequirements,
+          resolutionCommand: buildForkOutputResolutionCommand(
+            latestPendingOutputPlan,
+            latestPendingOutput.txHash || "<txHash>",
+          ),
         }
       : null,
   };

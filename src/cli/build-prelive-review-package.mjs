@@ -46,6 +46,27 @@ async function main() {
   console.log(`reviewBlockers=${report.reviewBlockers.join(",") || "none"}`);
   console.log(`liveDecision=${report.liveDecision}`);
   console.log(`liveBlockers=${report.liveBlockers.join(",") || "none"}`);
+  if (report.tinyCanaryAdmission) {
+    console.log(`tinyCanaryAdmission=${report.tinyCanaryAdmission.decision}`);
+    console.log(`tinyCanaryAdmissionStatus=${report.tinyCanaryAdmission.status}`);
+    console.log(`tinyCanaryAdmissionBlockers=${report.tinyCanaryAdmission.blockers.join(",") || "none"}`);
+  }
+  if (report.remediationPlan) {
+    console.log(
+      `admissionRemediation=${report.remediationPlan.overallStatus} ready=${report.remediationPlan.readyCount} manual=${report.remediationPlan.manualCount} blocked=${report.remediationPlan.blockedCount}`,
+    );
+    console.log(`admissionRemediationRunner=${report.remediationPlan.runnerCommand || "n/a"}`);
+    if (report.remediationPlan.nextAction) {
+      console.log(
+        `admissionRemediationNext=${report.remediationPlan.nextAction.code || "unknown"} status=${report.remediationPlan.nextAction.status || "unknown"} command=${report.remediationPlan.nextAction.command || "n/a"}`,
+      );
+    }
+    for (const item of report.remediationPlan.items.slice(0, 3)) {
+      console.log(
+        `admissionRemediationItem rank=${item.rank ?? "n/a"} status=${item.status || "unknown"} code=${item.code || "unknown"} reason=${item.reason || "none"} command=${item.command || "n/a"}`,
+      );
+    }
+  }
   if (report.manualReviewCandidate) {
     console.log(`candidate=${report.manualReviewCandidate.routeLabel} amount=${report.manualReviewCandidate.amount} readiness=${report.manualReviewCandidate.tradeReadiness}`);
   }

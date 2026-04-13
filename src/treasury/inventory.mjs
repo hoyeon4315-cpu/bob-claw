@@ -1,4 +1,6 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { getChainRpcUrls } from "../config/env.mjs";
+import { EVM_CHAINS } from "../chains/registry.mjs";
 import { readErc20Allowance, readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
   decimalToUnits,
@@ -43,6 +45,13 @@ function usdValueFromUnits(value, decimals, priceUsd) {
   const amount = unitsToDecimal(value, decimals);
   if (!Number.isFinite(amount) || !Number.isFinite(priceUsd)) return null;
   return amount * priceUsd;
+}
+
+function chainConfig(chain) {
+  return {
+    ...EVM_CHAINS[chain],
+    rpcUrls: getChainRpcUrls(chain, EVM_CHAINS[chain]?.rpcUrls || [EVM_CHAINS[chain]?.rpcUrl].filter(Boolean)),
+  };
 }
 
 export function buildTreasuryInventory({ policy, address, nativeBalances = {}, tokenBalances = {}, allowances = {}, prices = null, observedAt }) {
@@ -180,18 +189,21 @@ export async function scanTreasuryInventory({ policy, address, prices = null, fe
   const allowanceItems = policy.allowanceCaps || [];
 
   const nativeEntries = await Promise.all(
-    supportedChains.map(async (chain) => [chain, await readNativeBalance(chain, address, { fetchImpl })]),
+    supportedChains.map(async (chain) => [chain, await readNativeBalance(chain, address, { fetchImpl, chainConfig: chainConfig(chain) })]),
   );
   const tokenEntries = await Promise.all(
     tokenItems.map(async (item) => [
       `${item.chain}:${normalizedAddress(item.token)}`,
-      await readErc20Balance(item.chain, item.token, address, { fetchImpl }),
+      await readErc20Balance(item.chain, item.token, address, { fetchImpl, chainConfig: chainConfig(item.chain) }),
     ]),
   );
   const allowanceEntries = await Promise.all(
     allowanceItems.map(async (item) => [
       `${item.chain}:${normalizedAddress(item.token)}:${normalizedAddress(item.spender)}`,
-      await readErc20Allowance(item.chain, item.token, address, item.spender, { fetchImpl }),
+      await readErc20Allowance(item.chain, item.token, address, item.spender, {
+        fetchImpl,
+        chainConfig: chainConfig(item.chain),
+      }),
     ]),
   );
 

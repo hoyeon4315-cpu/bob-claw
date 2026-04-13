@@ -1,6 +1,7 @@
 import { buildCanarySelectionGap } from "./canary-selection-gap.mjs";
 import { buildEdgeResearchSummary } from "./edge-research.mjs";
 import { buildEdgeViabilitySummary } from "./edge-viability.mjs";
+import { shellQuote } from "../lib/shell-quote.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -63,29 +64,29 @@ function routeRefreshActionLabel(action) {
 
 function readinessCommand(address, routeKey, amount) {
   if (!routeKey || !amount) return null;
-  const addressArg = address ? ` --address=${address}` : "";
-  return `npm run check:estimator-wallet -- --route-key=${routeKey} --amount=${amount}${addressArg}`;
+  const addressArg = address ? ` --address=${shellQuote(address)}` : "";
+  return `npm run check:estimator-wallet -- --route-key=${shellQuote(routeKey)} --amount=${shellQuote(amount)}${addressArg}`;
 }
 
 function exactGasCommand(address, routeKey, amount) {
   if (!routeKey || !amount) return null;
-  const fromArg = address ? ` --from=${address}` : "";
-  return `npm run estimate:gateway-gas -- --route-key=${routeKey} --amount=${amount}${fromArg}`;
+  const fromArg = address ? ` --from=${shellQuote(address)}` : "";
+  return `npm run estimate:gateway-gas -- --route-key=${shellQuote(routeKey)} --amount=${shellQuote(amount)}${fromArg}`;
 }
 
 function dexQuoteCommand(routeKey, amount) {
   if (!routeKey || !amount) return null;
-  return `npm run quote:dex -- --route-key=${routeKey} --amount=${amount} --include-stable-entry`;
+  return `npm run quote:dex -- --route-key=${shellQuote(routeKey)} --amount=${shellQuote(amount)} --include-stable-entry`;
 }
 
 function scoreCommand(routeKey, amount) {
   if (!routeKey || !amount) return null;
-  return `npm run score:gateway -- --write --route-key=${routeKey} --amount=${amount}`;
+  return `npm run score:gateway -- --write --route-key=${shellQuote(routeKey)} --amount=${shellQuote(amount)}`;
 }
 
 function verifyGatewayCommand(routeKey, amount) {
   if (!routeKey || !amount) return null;
-  return `npm run verify:gateway -- --route-key=${routeKey} --amounts=${amount}`;
+  return `npm run verify:gateway -- --route-key=${shellQuote(routeKey)} --amounts=${shellQuote(amount)}`;
 }
 
 function routeMeasurementCommand(routeKey, amount) {

@@ -63,7 +63,11 @@ test("single wallet funding source planner prefers same-chain swaps with bootstr
     routeContext: {
       routeKey: "bob:0x0555->base:0x0555",
       amount: "10000",
+      inputUsd: 10,
+      knownCostUsd: 0.2,
       netEdgeUsd: 1.5,
+      executableNetEdgeUsd: 1.4,
+      routeFailureRate: 0.1,
       tradeReadiness: "shadow_candidate_review_only",
     },
   });
@@ -75,8 +79,11 @@ test("single wallet funding source planner prefers same-chain swaps with bootstr
   assert.equal(funding.selections[1].selectedMethod, "same_chain_native_to_token_swap");
   assert.equal(funding.selections[1].selectionStatus, "ready");
   assert.equal(funding.reasons.includes("reserve_replenishment_unmodelled"), false);
+  assert.equal(funding.summary.expectedFailureCostUsd > 0, true);
+  assert.equal(funding.summary.capitalFragmentationDragUsd > 0, true);
+  assert.equal(funding.summary.strandedCapitalUsd > 0, true);
   assert.equal(Number.isFinite(funding.summary.effectiveSystemNetPnlUsd), true);
-  assert.equal(funding.summary.effectiveSystemNetPnlUsd < 1.5, true);
+  assert.equal(funding.summary.effectiveSystemNetPnlUsd < 1.4, true);
 });
 
 test("dual wallet funding source planner prefers reserve transfers but marks reserve state as unmodelled", () => {
@@ -87,7 +94,11 @@ test("dual wallet funding source planner prefers reserve transfers but marks res
     routeContext: {
       routeKey: "bob:0x0555->base:0x0555",
       amount: "10000",
+      inputUsd: 10,
+      knownCostUsd: 0.2,
       netEdgeUsd: 1.5,
+      executableNetEdgeUsd: 1.4,
+      routeFailureRate: 0.1,
       tradeReadiness: "shadow_candidate_review_only",
     },
   });

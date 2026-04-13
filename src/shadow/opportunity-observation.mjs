@@ -61,6 +61,8 @@ export function buildShadowOpportunityObservation({ score, fundingSourcePlan = n
     treasuryAdjustedNetEdgeUsd: finiteOrNull(score.treasuryAdjustedNetEdgeUsd),
     treasuryAdjustedExecutableNetEdgeUsd: finiteOrNull(score.treasuryAdjustedExecutableNetEdgeUsd),
     effectiveSystemNetPnlUsd: finiteOrNull(score.effectiveSystemNetPnlUsd),
+    expectedFailureCostUsd: finiteOrNull(score.expectedFailureCostUsd),
+    capitalFragmentationDragUsd: finiteOrNull(score.capitalFragmentationDragUsd),
     inputUsd: finiteOrNull(score.inputUsd),
     outputUsd: finiteOrNull(score.outputUsd),
     executionGasUsd: finiteOrNull(score.executionGasUsd),

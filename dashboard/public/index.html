@@ -15,8 +15,9 @@
           <div class="brand-lockup">
             <img class="brand-mascot" src="./assets/branding/bob-claw-mascot.jpg" alt="BOB Claw mascot">
             <div>
-              <p class="eyebrow">BOB Claw</p>
+              <p class="eyebrow">BOB Gateway Radar</p>
               <h1>Gateway Flow Map</h1>
+              <p id="stageSummaryCopy" class="stage-summary-copy">실시간 흐름과 다음 확인 메모를 불러오는 중입니다.</p>
             </div>
           </div>
           <div class="live-pill">
@@ -26,12 +27,31 @@
         </div>
 
         <div class="map-wrap">
-          <svg id="flowSvg" class="flow-svg" viewBox="0 0 1000 620" preserveAspectRatio="none" role="img" aria-label="BOB Gateway route map"></svg>
+          <svg id="flowSvg" class="flow-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" role="img" aria-label="BOB Gateway route map"></svg>
           <div id="chainLayer" class="chain-layer"></div>
           <div id="pulseLayer" class="pulse-layer"></div>
-          <div class="map-caption">
-            <strong id="routeHeadline">BTC -> BOB -> 체인</strong>
-            <span id="routeSubline">경로를 불러오고 있습니다.</span>
+        </div>
+
+        <div class="hero-strip" aria-label="dashboard summary">
+          <div class="hero-card">
+            <span>라이브 경로</span>
+            <strong id="heroRoutes">0</strong>
+            <small id="heroRoutesSub">Gateway routes</small>
+          </div>
+          <div class="hero-card">
+            <span>BTC 기준가</span>
+            <strong id="heroPrice">—</strong>
+            <small id="heroPriceSub">24h 변화 확인 중</small>
+          </div>
+          <div class="hero-card">
+            <span>최근 움직임</span>
+            <strong id="heroActivity">0</strong>
+            <small id="heroActivitySub">recent traces</small>
+          </div>
+          <div class="hero-card">
+            <span>중요 메모</span>
+            <strong id="heroMemos">0</strong>
+            <small id="heroMemosSub">다음 수동 확인</small>
           </div>
         </div>
       </section>
@@ -39,7 +59,23 @@
       <section class="info-grid">
         <article class="panel panel-wide">
           <div class="panel-title">
-            <h2>Recent Activity</h2>
+            <h2>PnL</h2>
+            <span id="pnlBadge" class="chip">대기 중</span>
+          </div>
+          <div id="pnlGrid" class="pnl-grid"></div>
+        </article>
+
+        <article class="panel panel-wide">
+          <div class="panel-title">
+            <h2>거래 기록</h2>
+            <span id="tradeHistoryBadge" class="chip">0건</span>
+          </div>
+          <div id="tradeHistory" class="trade-history"></div>
+        </article>
+
+        <article class="panel panel-wide">
+          <div class="panel-title">
+            <h2>최근 흐름</h2>
             <span id="traceCount" class="chip">0</span>
           </div>
           <div id="timeline" class="timeline"></div>
@@ -55,7 +91,7 @@
 
         <article class="panel">
           <div class="panel-title">
-            <h2>Asset Coverage</h2>
+            <h2>자산 커버리지</h2>
             <span id="assetCoverageCount" class="chip">0/0</span>
           </div>
           <div id="assetCoverageGrid" class="asset-grid"></div>
@@ -81,7 +117,7 @@
 
         <article class="panel">
           <div class="panel-title">
-            <h2>Opportunity Watch</h2>
+            <h2>기회 관찰</h2>
             <span id="opportunityBadge" class="chip">0 clean</span>
           </div>
           <div class="opportunity-copy">
@@ -92,7 +128,15 @@
 
         <article class="panel panel-wide">
           <div class="panel-title">
-            <h2>Quote Lag Test</h2>
+            <h2>중요 메모</h2>
+            <span id="manualMemoBadge" class="chip">0개</span>
+          </div>
+          <div id="manualMemos" class="memo-list"></div>
+        </article>
+
+        <article class="panel panel-wide">
+          <div class="panel-title">
+            <h2>Quote Lag</h2>
             <span id="quoteLagBadge" class="chip">대기 중</span>
           </div>
           <div class="quote-lag-copy">
@@ -122,7 +166,7 @@
 
         <article class="panel panel-wide">
           <div class="panel-title">
-            <h2>DEX Spread Monitor</h2>
+            <h2>DEX 스프레드</h2>
             <span id="dexSpreadBadge" class="chip">대기 중</span>
           </div>
           <div class="dex-spread-copy">

@@ -22,6 +22,8 @@ test("shadow opportunity observation is always non-tradeable and carries reason 
       netEdgeUsd: 0.02,
       executableNetEdgeUsd: -0.01,
       effectiveSystemNetPnlUsd: -0.06,
+      expectedFailureCostUsd: 0.01,
+      capitalFragmentationDragUsd: 0.02,
       inputUsd: 10,
       outputUsd: 10.02,
       routeStats: { failureRate: 0.08 },
@@ -47,6 +49,8 @@ test("shadow opportunity observation is always non-tradeable and carries reason 
   assert.equal(observation.rejectionReasons.includes("reject_no_net_edge"), true);
   assert.equal(observation.rejectionReasons.includes("reject_treasury_execution_refill_cost"), true);
   assert.equal(observation.rejectionReasons.includes("treasury_reserve_replenishment_unmodelled"), true);
+  assert.equal(observation.expectedFailureCostUsd, 0.01);
+  assert.equal(observation.capitalFragmentationDragUsd, 0.02);
 });
 
 test("shadow opportunity observations skip unchanged rewrites inside the recent window", () => {

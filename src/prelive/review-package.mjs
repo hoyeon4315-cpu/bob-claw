@@ -1,4 +1,6 @@
 import { buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
+import { buildAdmissionRemediationPlan, summarizeAdmissionRemediationPlan } from "./admission-remediation.mjs";
+import { buildTinyCanaryAdmission } from "./tiny-canary-admission.mjs";
 
 function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
@@ -148,13 +150,17 @@ export function buildPreliveReviewPackage({
     executionReview: dashboardStatus?.shadowCycle?.objectivePlans?.executionReview || null,
   });
   const prelive = dashboardStatus?.prelive || {};
-  const readyForManualReview = Boolean(prelive?.tinyLiveCanary?.ready) && executionStage.reviewStage === "READY_FOR_MANUAL_CANARY_REVIEW";
-  const reviewBlockers = readyForManualReview
-    ? []
-    : unique([...(prelive?.tinyLiveCanary?.blockers || []), ...(executionStage.reviewReasons || [])]);
+  const tinyCanaryAdmission = buildTinyCanaryAdmission({
+    prelive,
+    executionStage,
+    manualReviewCandidate,
+    overall: dashboardStatus?.overall || null,
+  });
+  const readyForManualReview = tinyCanaryAdmission.decision === "GO_FOR_MANUAL_APPROVAL";
+  const reviewBlockers = readyForManualReview ? [] : tinyCanaryAdmission.blockers;
   const liveBlockers = unique([...(executionStage.liveReasons || []), ...(dashboardStatus?.overall?.blockers || [])]);
 
-  return {
+  const reviewPackage = {
     schemaVersion: 1,
     generatedAt,
     reviewScope: "tiny_live_canary",
@@ -165,6 +171,11 @@ export function buildPreliveReviewPackage({
     reviewBlockers,
     liveDecision: executionStage.liveStage,
     liveBlockers,
+    tinyCanaryAdmission,
+    pivotDecision:
+      dashboardStatus?.strategy?.pivotDecision ||
+      dashboardStatus?.shadowCycle?.pivotDecision ||
+      null,
     liveTradingPolicy: prelive?.liveTradingPolicy || dashboardStatus?.overall?.liveTrading || "BLOCKED",
     decisionContext: {
       currentDecision: nextStep?.decision || dashboardStatus?.canaryAdvance?.final?.decision || dashboardStatus?.shadowCycle?.canaryDecision || null,
@@ -201,6 +212,26 @@ export function buildPreliveReviewPackage({
             confirmedCount: prelive.forkExecution.confirmedCount ?? 0,
             targetConfirmedCount: prelive.forkExecution.targetConfirmedCount ?? 0,
             failedCount: prelive.forkExecution.failedCount ?? 0,
+            pendingOutputCount: prelive.forkExecution.pendingOutputCount ?? 0,
+            realizedSampleCount: prelive.forkExecution.realizedSampleCount ?? 0,
+            realizedNetPnlUsd: prelive.forkExecution.realizedNetPnlUsd ?? null,
+            medianRealizedNetPnlUsd: prelive.forkExecution.medianRealizedNetPnlUsd ?? null,
+            medianNetDriftUsd: prelive.forkExecution.medianNetDriftUsd ?? null,
+            medianExecutionGasDriftUsd: prelive.forkExecution.medianExecutionGasDriftUsd ?? null,
+            medianFillDriftBps: prelive.forkExecution.medianFillDriftBps ?? null,
+            estimatedPositiveRealizedNegativeCount: prelive.forkExecution.estimatedPositiveRealizedNegativeCount ?? 0,
+            latestPendingOutput: prelive.forkExecution.latestPendingOutput
+              ? {
+                  observedAt: prelive.forkExecution.latestPendingOutput.observedAt || null,
+                  planId: prelive.forkExecution.latestPendingOutput.planId || null,
+                  routeLabel: prelive.forkExecution.latestPendingOutput.routeLabel || null,
+                  routeKey: prelive.forkExecution.latestPendingOutput.routeKey || null,
+                  amount: prelive.forkExecution.latestPendingOutput.amount || null,
+                  txHash: prelive.forkExecution.latestPendingOutput.txHash || null,
+                  outputRequirements: prelive.forkExecution.latestPendingOutput.outputRequirements || null,
+                  resolutionCommand: prelive.forkExecution.latestPendingOutput.resolutionCommand || null,
+                }
+              : null,
           }
         : null,
       executionAudit: prelive?.executionAudit
@@ -219,6 +250,11 @@ export function buildPreliveReviewPackage({
       readyForManualReview,
     }),
   };
+  reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
+    reviewPackage,
+    address,
+  });
+  return reviewPackage;
 }
 
 export function summarizePreliveReviewPackage(reviewPackage = null) {
@@ -232,6 +268,11 @@ export function summarizePreliveReviewPackage(reviewPackage = null) {
     reviewBlockers: reviewPackage.reviewBlockers || [],
     liveDecision: reviewPackage.liveDecision || null,
     liveBlockers: reviewPackage.liveBlockers || [],
+    tinyCanaryAdmissionDecision: reviewPackage.tinyCanaryAdmission?.decision || null,
+    tinyCanaryAdmissionStatus: reviewPackage.tinyCanaryAdmission?.status || null,
+    tinyCanaryAdmissionBlockers: reviewPackage.tinyCanaryAdmission?.blockers || [],
+    tinyCanaryAdmissionNextActionCode: reviewPackage.tinyCanaryAdmission?.nextActionCode || null,
+    remediationPlan: summarizeAdmissionRemediationPlan(reviewPackage.remediationPlan || null),
     routeLabel: reviewPackage.manualReviewCandidate?.routeLabel || null,
     routeKey: reviewPackage.manualReviewCandidate?.routeKey || null,
     amount: reviewPackage.manualReviewCandidate?.amount || null,

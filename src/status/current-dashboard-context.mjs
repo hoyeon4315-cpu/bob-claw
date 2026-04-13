@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
+import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
 import { buildPreliveEvidenceCampaign, summarizePreliveEvidenceCampaign } from "../prelive/evidence-campaign.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
@@ -23,12 +24,14 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     preliveForkPlan,
     preliveForkSubmissions,
     preliveForkReceipts,
+    receiptReconciliations,
     executionEvents,
     shadowRefreshExecutions,
     shadowRefreshBatches,
     preliveEvidenceCampaigns,
     quoteLagLatest,
     dexSpreadLatest,
+    thresholdSensitivity,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -42,12 +45,14 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonIfExists(join(dataDir, "prelive-fork-plan.json")),
     readJsonl(dataDir, "prelive-fork-submissions"),
     readJsonl(dataDir, "prelive-fork-receipts"),
+    readJsonl(dataDir, "receipt-reconciliations"),
     readJsonl(dataDir, "execution-journal"),
     readJsonl(dataDir, "shadow-refresh-executions"),
     readJsonl(dataDir, "shadow-refresh-batches"),
     readJsonl(dataDir, "prelive-evidence-campaigns"),
     readJsonIfExists(join(dataDir, "quote-lag-latest.json")),
     readJsonIfExists(join(dataDir, "dex-spread-latest.json")),
+    readJsonIfExists(join(dataDir, "threshold-sensitivity.json")),
   ]);
 
   const dashboardStatus = buildDashboardStatus({
@@ -74,12 +79,14 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     preliveForkPlan,
     preliveForkSubmissions,
     preliveForkReceipts,
+    receiptReconciliations,
     executionEvents,
     shadowRefreshExecutions,
     shadowRefreshBatches,
     preliveEvidenceCampaigns,
     quoteLagLatest,
     dexSpreadLatest,
+    thresholdSensitivity,
   });
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
@@ -108,6 +115,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     forkExecutionSubmissions: preliveForkSubmissions,
     forkExecutionReceipts: preliveForkReceipts,
   });
+  reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
+    reviewPackage,
+    evidenceCampaign,
+    address: state.address,
+  });
+  dashboardStatus.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatus.prelive.evidenceCampaign = {
     ...dashboardStatus.prelive.evidenceCampaign,
     nextAction: dashboardStatus.prelive.evidenceCampaign?.nextAction || evidenceCampaign.nextAction,
@@ -135,6 +148,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       preliveForkPlan,
       preliveForkSubmissions,
       preliveForkReceipts,
+      receiptReconciliations,
       executionEvents,
       shadowRefreshExecutions,
       shadowRefreshBatches,

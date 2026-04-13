@@ -1,0 +1,18 @@
+
+> bob-claw@0.1.0 verify:gateway
+> node src/cli/verify-gateway.mjs --route-key=ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599- --amounts=10000
+
+Gateway routes: 113
+Top chain pairs:
+  bitcoin->ethereum: 6
+  ethereum->bitcoin: 6
+  base->bitcoin: 4
+  bitcoin->base: 4
+  bitcoin->bsc: 4
+  bsc->bitcoin: 4
+  bitcoin->bob: 2
+  avalanche->base: 1
+  avalanche->bera: 1
+  avalanche->bitcoin: 1
+  avalanche->bob: 1
+  avalanche->bsc: 1

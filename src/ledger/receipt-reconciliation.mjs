@@ -5,6 +5,10 @@ function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function sum(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
 function bigint(value) {
   return BigInt(value || 0);
 }
@@ -95,6 +99,11 @@ function outputDriftBps(actualUsd, expectedUsd) {
 function gasDriftPct(actualGasUsd, expectedGasUsd) {
   if (!Number.isFinite(actualGasUsd) || !Number.isFinite(expectedGasUsd) || expectedGasUsd === 0) return null;
   return (actualGasUsd - expectedGasUsd) / expectedGasUsd;
+}
+
+function driftUsd(actualValue, expectedValue) {
+  if (!Number.isFinite(actualValue) || !Number.isFinite(expectedValue)) return null;
+  return actualValue - expectedValue;
 }
 
 function reconciliationStatus({ receipt, actualOutputValueUsd }) {
@@ -209,9 +218,18 @@ export function buildReceiptLedgerSummary(records = []) {
   const reconciled = records.filter((item) => item.reconciliationStatus === "reconciled");
   const failed = records.filter((item) => item.reconciliationStatus === "failed");
   const pendingOutput = records.filter((item) => item.reconciliationStatus === "pending_output");
+  const settled = [...reconciled, ...failed];
   const realizedValues = reconciled.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
   const gasValues = records.map((item) => item.realized?.receiptGasUsd).filter(Number.isFinite);
   const driftValues = reconciled.map((item) => item.realized?.realizedFillVsEstimateBps).filter(Number.isFinite);
+  const estimatedNetValues = settled.map((item) => item.routeContext?.estimatedNetPnlUsd).filter(Number.isFinite);
+  const netDriftValues = settled
+    .map((item) => driftUsd(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
+    .filter(Number.isFinite);
+  const outputDriftValues = reconciled
+    .map((item) => driftUsd(item.output?.actualOutputUsd, item.routeContext?.estimatedOutputUsd))
+    .filter(Number.isFinite);
+  const gasDriftValues = settled.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
   const routeGroups = new Map();
 
   for (const item of records) {
@@ -232,9 +250,27 @@ export function buildReceiptLedgerSummary(records = []) {
       failedGasCostUsd: failed.map((item) => item.realized?.actualKnownCostUsd).filter(Number.isFinite).reduce((sum, value) => sum + value, 0),
       totalReceiptGasUsd: gasValues.reduce((sum, value) => sum + value, 0),
       medianFillDriftBps: median(driftValues),
+      totalEstimatedNetPnlUsd: estimatedNetValues.length ? sum(estimatedNetValues) : null,
+      medianEstimatedNetPnlUsd: median(estimatedNetValues),
+      totalNetDriftUsd: netDriftValues.length ? sum(netDriftValues) : null,
+      medianNetDriftUsd: median(netDriftValues),
+      medianOutputDriftUsd: median(outputDriftValues),
+      totalExecutionGasDriftUsd: gasDriftValues.length ? sum(gasDriftValues) : null,
+      medianExecutionGasDriftUsd: median(gasDriftValues),
+      estimatedPositiveRealizedNegativeCount: settled.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
     },
     routes: [...routeGroups.entries()].map(([routeKey, items]) => {
       const routeRealized = items.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
+      const routeSettled = items.filter((item) => item.reconciliationStatus === "reconciled" || item.reconciliationStatus === "failed");
+      const routeEstimatedNet = routeSettled.map((item) => item.routeContext?.estimatedNetPnlUsd).filter(Number.isFinite);
+      const routeNetDrift = routeSettled
+        .map((item) => driftUsd(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
+        .filter(Number.isFinite);
+      const routeOutputDrift = items
+        .filter((item) => item.reconciliationStatus === "reconciled")
+        .map((item) => driftUsd(item.output?.actualOutputUsd, item.routeContext?.estimatedOutputUsd))
+        .filter(Number.isFinite);
+      const routeGasDrift = routeSettled.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
       return {
         routeKey: routeKey === "__unknown__" ? null : routeKey,
         count: items.length,
@@ -242,6 +278,14 @@ export function buildReceiptLedgerSummary(records = []) {
         failedCount: items.filter((item) => item.reconciliationStatus === "failed").length,
         realizedNetPnlUsd: routeRealized.reduce((sum, value) => sum + value, 0),
         medianRealizedNetPnlUsd: median(routeRealized),
+        totalEstimatedNetPnlUsd: routeEstimatedNet.length ? sum(routeEstimatedNet) : null,
+        medianEstimatedNetPnlUsd: median(routeEstimatedNet),
+        totalNetDriftUsd: routeNetDrift.length ? sum(routeNetDrift) : null,
+        medianNetDriftUsd: median(routeNetDrift),
+        medianOutputDriftUsd: median(routeOutputDrift),
+        totalExecutionGasDriftUsd: routeGasDrift.length ? sum(routeGasDrift) : null,
+        medianExecutionGasDriftUsd: median(routeGasDrift),
+        estimatedPositiveRealizedNegativeCount: routeSettled.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
       };
     }),
   };

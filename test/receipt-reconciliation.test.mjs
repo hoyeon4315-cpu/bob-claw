@@ -136,7 +136,13 @@ test("receipt ledger summary aggregates realized records", () => {
   assert.equal(summary.summary.reconciledCount, 1);
   assert.equal(summary.summary.failedCount, 1);
   assert.equal(Number.isFinite(summary.summary.realizedNetPnlUsd), true);
+  assert.equal(Number.isFinite(summary.summary.totalEstimatedNetPnlUsd), true);
+  assert.equal(Number.isFinite(summary.summary.totalNetDriftUsd), true);
+  assert.equal(Number.isFinite(summary.summary.totalExecutionGasDriftUsd), true);
   assert.equal(summary.routes.length, 1);
+  assert.equal(Number.isFinite(summary.routes[0].totalEstimatedNetPnlUsd), true);
+  assert.equal(Number.isFinite(summary.routes[0].totalNetDriftUsd), true);
+  assert.equal(Number.isFinite(summary.routes[0].totalExecutionGasDriftUsd), true);
 });
 
 test("receipt reconciliation tolerates transaction objects without value", () => {

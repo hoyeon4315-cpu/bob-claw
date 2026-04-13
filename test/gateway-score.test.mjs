@@ -258,15 +258,21 @@ test("treasury refill costs are surfaced alongside route economics", () => {
       priceHaircutBps: 0,
       executionRefillExpectedCostUsd: 0.03,
       reserveReplenishmentExpectedCostUsd: 0.02,
-      effectiveSystemNetPnlUsd: -0.042,
+      expectedFailureCostUsd: 0.01,
+      capitalFragmentationDragUsd: 0.02,
+      effectiveSystemNetPnlUsd: -0.072,
     },
   );
 
   assert.equal(score.netEdgeUsd > 0, true);
   assert.equal(score.treasuryExecutionRefillCostUsd, 0.03);
   assert.equal(score.treasuryReserveReplenishmentCostUsd, 0.02);
+  assert.equal(score.expectedFailureCostUsd, 0.01);
+  assert.equal(score.capitalFragmentationDragUsd, 0.02);
   assert.equal(score.treasuryAdjustedNetEdgeUsd < score.netEdgeUsd, true);
   assert.equal(score.treasuryAdjustedExecutableNetEdgeUsd, null);
-  assert.equal(score.effectiveSystemNetPnlUsd, -0.042);
+  assert.equal(score.effectiveSystemKnownCostUsd > score.treasuryAdjustedKnownCostUsd, true);
+  assert.equal(score.effectiveSystemNetPnlUsd, -0.072);
   assert.equal(score.effectiveSystemBreakEvenPct > score.treasuryAdjustedBreakEvenPct, true);
+  assert.equal(score.tradeReadiness, "reject_no_net_edge");
 });

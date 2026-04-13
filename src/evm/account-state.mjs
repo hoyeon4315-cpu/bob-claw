@@ -9,6 +9,16 @@ function uniqueRpcUrls(chainConfig) {
   return [...new Set([...(chainConfig?.rpcUrls || []), chainConfig?.rpcUrl].filter(Boolean))];
 }
 
+function resolveChainConfig(chain, options = {}) {
+  const base = options.chainConfig || EVM_CHAINS[chain];
+  if (!base) return null;
+  return {
+    ...base,
+    ...(options.rpcUrl ? { rpcUrl: options.rpcUrl } : {}),
+    ...(options.rpcUrls?.length ? { rpcUrls: options.rpcUrls } : {}),
+  };
+}
+
 function padHex(value, bytes = 32) {
   const normalized = String(value || "").replace(/^0x/i, "").toLowerCase();
   return normalized.padStart(bytes * 2, "0");
@@ -40,7 +50,8 @@ async function rpc(url, method, params = [], { fetchImpl = fetch } = {}) {
 }
 
 async function firstSuccess(chain, executor) {
-  const chainConfig = EVM_CHAINS[chain];
+  const options = arguments[2] || {};
+  const chainConfig = resolveChainConfig(chain, options);
   if (!chainConfig) {
     throw new Error(`No RPC config for chain: ${chain}`);
   }
@@ -62,7 +73,7 @@ export async function readNativeBalance(chain, address, options = {}) {
   return firstSuccess(chain, async (rpcUrl) => ({
     rpcUrl,
     balanceWei: decodeBigInt(await rpc(rpcUrl, "eth_getBalance", [address, "latest"], options)),
-  }));
+  }), options);
 }
 
 export async function readErc20Balance(chain, token, owner, options = {}) {
@@ -70,7 +81,7 @@ export async function readErc20Balance(chain, token, owner, options = {}) {
   return firstSuccess(chain, async (rpcUrl) => ({
     rpcUrl,
     balance: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: token, data }, "latest"], options)),
-  }));
+  }), options);
 }
 
 export async function readErc20Allowance(chain, token, owner, spender, options = {}) {
@@ -78,7 +89,7 @@ export async function readErc20Allowance(chain, token, owner, spender, options =
   return firstSuccess(chain, async (rpcUrl) => ({
     rpcUrl,
     allowance: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: token, data }, "latest"], options)),
-  }));
+  }), options);
 }
 
 export function summarizeRequirement(actual, required) {

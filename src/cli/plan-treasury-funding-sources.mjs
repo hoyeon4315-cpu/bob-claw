@@ -11,6 +11,7 @@ import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
 import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
+import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -24,6 +25,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
+    refreshInventory: flags.has("--refresh-inventory"),
     address: options.address || null,
   };
 }
@@ -40,9 +42,17 @@ async function readJsonIfExists(path) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  const context = await resolveShadowCycleContext({
+    dataDir: config.dataDir,
+    explicitAddress: resolved.address,
+    configuredAddress: config.estimateFrom,
+  });
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
-  const inventory = await scanTreasuryInventory({ policy, address: resolved.address, prices });
+  const inventory =
+    !args.refreshInventory && context.inventorySnapshot
+      ? context.inventorySnapshot
+      : await scanTreasuryInventory({ policy, address: resolved.address, prices });
   const [quotes, readinessRecords, readinessFailures, scoreSnapshot] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
@@ -76,11 +86,15 @@ async function main() {
   const fundingSourcePlan = buildFundingSourcePlan({ plan, policy, routeContext });
 
   if (args.json) {
-    console.log(JSON.stringify(fundingSourcePlan, null, 2));
+    console.log(JSON.stringify({
+      ...fundingSourcePlan,
+      inventorySource: !args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan",
+    }, null, 2));
     return;
   }
 
   console.log(`decision=${fundingSourcePlan.decision}`);
+  console.log(`inventorySource=${!args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan"}`);
   if (fundingSourcePlan.routeContext?.routeKey) {
     console.log(`routeKey=${fundingSourcePlan.routeContext.routeKey}`);
   }

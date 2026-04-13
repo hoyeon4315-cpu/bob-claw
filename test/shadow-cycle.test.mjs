@@ -150,7 +150,7 @@ test("shadow cycle summary stays in shadow mode when no realized routes are enab
   });
   assert.equal(
     summary.recommendedCommands[0],
-    "npm run check:estimator-wallet -- --route-key=base:0x0555->bob:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    'npm run check:estimator-wallet -- --route-key="base:0x0555->bob:0x0555" --amount="10000" --address="0x96262be63aa687563789225c2fe898c27a3b0ae4"',
   );
 });
 
@@ -339,6 +339,141 @@ test("shadow cycle summary marks blocked canary prep explicitly", () => {
 
   assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
   assert.equal(summary.canary.decision, "FUND_AND_APPROVE_WALLET");
+});
+
+test("shadow cycle summary surfaces pivot decision from route economics audit", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      nextStep: {
+        decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+        headline: "Best prepared route still fails objective score review",
+        reasons: ["reject_no_net_edge"],
+      },
+      routePlan: {
+        topCandidates: [
+          {
+            routeKey: "base:0x0555->unichain:0x0555",
+            label: "base->unichain wBTC.OFT->wBTC.OFT",
+            amount: "10000",
+            srcChain: "base",
+            dstChain: "unichain",
+            viableForPrep: true,
+            txReady: true,
+            exactGasDone: true,
+            tradeReadiness: "reject_no_net_edge",
+            netEdgeUsd: -0.6,
+            executableNetEdgeUsd: -0.6,
+            prepFundingUsd: 0,
+            prepBlockers: [],
+            scoreDisqualifiers: [],
+          },
+        ],
+        candidates: [],
+      },
+      dexQuotes: [
+        {
+          source: "gateway_src_entry_leg",
+          gatewayRouteKey: "base:0x0555->unichain:0x0555",
+          gatewayAmount: "10000",
+          observedAt: "2026-04-12T00:00:01.000Z",
+          outputAmount: "10000",
+          inputValueUsd: 7.4,
+          gasEstimateValueUsd: 0.05,
+        },
+        {
+          source: "gateway_src_entry_leg",
+          gatewayRouteKey: "base:0x0555->unichain:0x0555",
+          gatewayAmount: "25000",
+          observedAt: "2026-04-12T00:00:01.000Z",
+          outputAmount: "25000",
+          inputValueUsd: 18.3,
+          gasEstimateValueUsd: 0.05,
+        },
+        {
+          source: "gateway_src_entry_leg",
+          gatewayRouteKey: "base:0x0555->unichain:0x0555",
+          gatewayAmount: "50000",
+          observedAt: "2026-04-12T00:00:01.000Z",
+          outputAmount: "50000",
+          inputValueUsd: 36.5,
+          gasEstimateValueUsd: 0.05,
+        },
+      ],
+    },
+    treasuryPlan: {
+      decision: "WATCH_ONLY",
+      reasons: [],
+      summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 280, walletValueFloorUsd: 250, walletValueShortfallUsd: 0, noDemandBlockerCount: 0 },
+      actions: [],
+      blockers: [],
+    },
+    fundingSourcePlan: { reasons: [], summary: {} },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: {
+      dailyRealizedPnlUsd: 0,
+      projectLossUsedUsd: 0,
+      failedGasCost24hUsd: 0,
+      consecutiveFailures: 0,
+    },
+    scoreSnapshot: {
+      generatedAt: "2026-04-12T00:00:00.000Z",
+      scores: [
+        {
+          routeKey: "base:0x0555->unichain:0x0555",
+          amount: "10000",
+          srcChain: "base",
+          dstChain: "unichain",
+          srcAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+          dstAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+          executableOutputUsd: 7.0,
+          knownCostUsd: 0.2,
+          netEdgeUsd: -0.6,
+          executableNetEdgeUsd: -0.6,
+          effectiveSystemNetPnlUsd: -0.7,
+          tradeReadiness: "reject_no_net_edge",
+          dataGaps: [],
+          routeStats: { failureRate: 0.01 },
+        },
+        {
+          routeKey: "base:0x0555->unichain:0x0555",
+          amount: "25000",
+          srcChain: "base",
+          dstChain: "unichain",
+          srcAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+          dstAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+          executableOutputUsd: 17.1,
+          knownCostUsd: 0.2,
+          netEdgeUsd: -1.0,
+          executableNetEdgeUsd: -1.0,
+          effectiveSystemNetPnlUsd: -1.1,
+          tradeReadiness: "reject_no_net_edge",
+          dataGaps: [],
+          routeStats: { failureRate: 0.01 },
+        },
+        {
+          routeKey: "base:0x0555->unichain:0x0555",
+          amount: "50000",
+          srcChain: "base",
+          dstChain: "unichain",
+          srcAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+          dstAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+          executableOutputUsd: 34.8,
+          knownCostUsd: 0.2,
+          netEdgeUsd: -1.7,
+          executableNetEdgeUsd: -1.7,
+          effectiveSystemNetPnlUsd: -1.9,
+          tradeReadiness: "reject_no_net_edge",
+          dataGaps: [],
+          routeStats: { failureRate: 0.01 },
+        },
+      ],
+    },
+  });
+
+  assert.equal(summary.pivotDecision.decisionCode, "pivot_within_current_thesis");
+  assert.equal(summary.pivotDecision.currentCanaryVerdict, "drop");
+  assert.equal(summary.pivotDecision.command, null);
 });
 
 test("shadow cycle summary includes a multi-shadow roster", () => {

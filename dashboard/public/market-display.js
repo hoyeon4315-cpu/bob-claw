@@ -91,13 +91,13 @@ export function chainPriceExtremes(prices = []) {
 }
 
 export function routeSublineText(status = {}) {
-  if (status.gateway?.updateDetected) return "새 경로 변화 확인 중";
+  if (status.gateway?.updateDetected) return "새 경로 변화가 보여서 흐름을 다시 확인하는 중";
 
   const coverage = marketCoverage(status.market);
   const reference = referenceMarketPrice(status.market);
   const parts = [];
   if (coverage.total > 0) parts.push(`체인 실측 ${coverage.observed}/${coverage.total}`);
-  if (reference) parts.push(`기준 ${reference.ticker} ${compactMoney(reference.usd)}`);
-  if (coverage.stale > 0) parts.push(`stale ${coverage.stale}`);
-  return parts.join(" · ");
+  if (reference) parts.push(`${reference.ticker} 기준 ${compactMoney(reference.usd)}`);
+  if (coverage.stale > 0) parts.push(`오래된 가격 ${coverage.stale}`);
+  return parts.join(" · ") || "플로우맵에 들어올 최신 데이터를 기다리는 중";
 }

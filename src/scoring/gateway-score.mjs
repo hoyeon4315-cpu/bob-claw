@@ -59,14 +59,26 @@ function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
 
-function classifyQuote({ quote, dataGaps, netEdgeUsd, netEdgePct, executableNetEdgeUsd, executableNetEdgePct, options }) {
+function classifyQuote({
+  quote,
+  dataGaps,
+  netEdgeUsd,
+  netEdgePct,
+  executableNetEdgeUsd,
+  executableNetEdgePct,
+  effectiveSystemNetPnlUsd,
+  effectiveSystemNetPnlPct,
+  options,
+}) {
   if (dataGaps.length > 0) return "insufficient_data";
   if ((options.routeStats?.failureRate ?? 0) > (options.maxRouteFailureRate ?? 0.1)) return "reject_high_failure_rate";
   if (quote.quoteType === "offramp") return "observe_only_expensive_exit";
   if (quote.quoteType === "onramp") return "observe_only_slow_settlement";
   if (quote.quoteType !== "layerZero") return "unknown_quote_type";
-  const candidateNetEdgeUsd = Number.isFinite(executableNetEdgeUsd) ? executableNetEdgeUsd : netEdgeUsd;
-  const candidateNetEdgePct = Number.isFinite(executableNetEdgePct) ? executableNetEdgePct : netEdgePct;
+  const candidateNetEdgeUsd =
+    finiteOrNull(effectiveSystemNetPnlUsd) ?? finiteOrNull(executableNetEdgeUsd) ?? finiteOrNull(netEdgeUsd);
+  const candidateNetEdgePct =
+    finiteOrNull(effectiveSystemNetPnlPct) ?? finiteOrNull(executableNetEdgePct) ?? finiteOrNull(netEdgePct);
   if (!Number.isFinite(candidateNetEdgeUsd) || !Number.isFinite(candidateNetEdgePct)) return "insufficient_data";
   if (candidateNetEdgeUsd <= 0) return "reject_no_net_edge";
   if (candidateNetEdgeUsd < (options.minProfitUsd ?? 1)) return "reject_below_min_profit";
@@ -131,9 +143,16 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     (Number.isFinite(nativeBitcoinFeeUsd) ? nativeBitcoinFeeUsd : 0);
   const treasuryExecutionRefillCostUsd = finiteOrNull(options.executionRefillExpectedCostUsd);
   const treasuryReserveReplenishmentCostUsd = finiteOrNull(options.reserveReplenishmentExpectedCostUsd);
+  const expectedFailureCostUsd = finiteOrNull(options.expectedFailureCostUsd);
+  const capitalFragmentationDragUsd = finiteOrNull(options.capitalFragmentationDragUsd);
   const treasuryAdjustedKnownCostUsd = knownCostUsd + (Number.isFinite(treasuryExecutionRefillCostUsd) ? treasuryExecutionRefillCostUsd : 0);
   const effectiveSystemKnownCostUsd =
-    treasuryAdjustedKnownCostUsd + (Number.isFinite(treasuryReserveReplenishmentCostUsd) ? treasuryReserveReplenishmentCostUsd : 0);
+    Number.isFinite(treasuryExecutionRefillCostUsd) &&
+    Number.isFinite(treasuryReserveReplenishmentCostUsd) &&
+    Number.isFinite(expectedFailureCostUsd) &&
+    Number.isFinite(capitalFragmentationDragUsd)
+      ? treasuryAdjustedKnownCostUsd + treasuryReserveReplenishmentCostUsd + expectedFailureCostUsd + capitalFragmentationDragUsd
+      : null;
   const netEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - knownCostUsd : null;
   const netEdgePct = Number.isFinite(netEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? netEdgeUsd / inputUsd : null;
   const treasuryAdjustedNetEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
@@ -169,14 +188,17 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const breakEvenPct = Number.isFinite(inputUsd) && inputUsd > 0 ? knownCostUsd / inputUsd : null;
   const treasuryAdjustedBreakEvenPct =
     Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedKnownCostUsd / inputUsd : null;
-  const effectiveSystemNetPnlUsd = finiteOrNull(options.effectiveSystemNetPnlUsd);
+  const effectiveSystemNetPnlUsd = finiteOrNull(options.effectiveSystemNetPnlUsd) ??
+    (Number.isFinite(tokenDeltaUsd) && Number.isFinite(effectiveSystemKnownCostUsd) ? tokenDeltaUsd - effectiveSystemKnownCostUsd : null);
   const effectiveSystemNetPnlPct =
     Number.isFinite(effectiveSystemNetPnlUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? effectiveSystemNetPnlUsd / inputUsd : null;
   const effectiveSystemBreakEvenPct =
     Number.isFinite(inputUsd) &&
     inputUsd > 0 &&
     Number.isFinite(treasuryExecutionRefillCostUsd) &&
-    Number.isFinite(treasuryReserveReplenishmentCostUsd)
+    Number.isFinite(treasuryReserveReplenishmentCostUsd) &&
+    Number.isFinite(expectedFailureCostUsd) &&
+    Number.isFinite(capitalFragmentationDragUsd)
       ? effectiveSystemKnownCostUsd / inputUsd
       : null;
 
@@ -204,6 +226,8 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     netEdgePct: finiteOrNull(netEdgePct),
     treasuryExecutionRefillCostUsd,
     treasuryReserveReplenishmentCostUsd,
+    expectedFailureCostUsd,
+    capitalFragmentationDragUsd,
     treasuryAdjustedKnownCostUsd: finiteOrNull(treasuryAdjustedKnownCostUsd),
     treasuryAdjustedNetEdgeUsd: finiteOrNull(treasuryAdjustedNetEdgeUsd),
     treasuryAdjustedNetEdgePct: finiteOrNull(treasuryAdjustedNetEdgePct),
@@ -213,6 +237,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     executableNetEdgePct: finiteOrNull(executableNetEdgePct),
     treasuryAdjustedExecutableNetEdgeUsd: finiteOrNull(treasuryAdjustedExecutableNetEdgeUsd),
     treasuryAdjustedExecutableNetEdgePct: finiteOrNull(treasuryAdjustedExecutableNetEdgePct),
+    effectiveSystemKnownCostUsd: finiteOrNull(effectiveSystemKnownCostUsd),
     effectiveSystemNetPnlUsd,
     effectiveSystemNetPnlPct: finiteOrNull(effectiveSystemNetPnlPct),
     outputInputValueRatio: finiteOrNull(outputInputValueRatio),
@@ -258,6 +283,16 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
           ageMinutes: finiteOrNull(dexOutputQuoteAgeMinutes),
         }
       : null,
-    tradeReadiness: classifyQuote({ quote, dataGaps, netEdgeUsd, netEdgePct, executableNetEdgeUsd, executableNetEdgePct, options }),
+    tradeReadiness: classifyQuote({
+      quote,
+      dataGaps,
+      netEdgeUsd,
+      netEdgePct,
+      executableNetEdgeUsd,
+      executableNetEdgePct,
+      effectiveSystemNetPnlUsd,
+      effectiveSystemNetPnlPct,
+      options,
+    }),
   };
 }

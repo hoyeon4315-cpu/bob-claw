@@ -3,6 +3,8 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildDefaultRoutePerformancePolicy, buildRoutePerformanceRanking } from "../risk/route-performance.mjs";
 import { buildCanaryProgressSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
@@ -14,6 +16,7 @@ import { buildDexRouteUniverseSummary } from "../strategy/dex-route-universe.mjs
 import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strategy/edge-viability.mjs";
 import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
+import { buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -53,7 +56,13 @@ function printRoute(route) {
     `  realizedMedian=${formatUsd(route.realizedMedianPnlUsd)} realizedTotal=${formatUsd(route.realizedTotalPnlUsd)} p95Loss=${formatUsd(route.routeP95LossUsd)} fillDrift=${Number.isFinite(route.medianFillDriftBps) ? route.medianFillDriftBps.toFixed(2) : "n/a"}bps`,
   );
   console.log(
-    `  currentNet=${formatUsd(route.currentEstimatedNetEdgeUsd)} execNet=${formatUsd(route.currentExecutableNetEdgeUsd)} knownCost=${formatUsd(route.currentKnownCostUsd)} latencyP50=${route.quoteLatencyP50Ms ?? "n/a"} latencyP95=${route.quoteLatencyP95Ms ?? "n/a"}`,
+    `  receiptEstimateMedian=${formatUsd(route.receiptEstimatedMedianNetPnlUsd)} receiptEstimateTotal=${formatUsd(route.receiptEstimatedTotalNetPnlUsd)} netDriftMedian=${formatUsd(route.medianNetDriftUsd)} netDriftTotal=${formatUsd(route.totalNetDriftUsd)} estPosRealNeg=${route.estimatedPositiveRealizedNegativeCount ?? 0}`,
+  );
+  console.log(
+    `  outputEstimateMedian=${formatUsd(route.receiptEstimatedMedianOutputUsd)} outputRealizedMedian=${formatUsd(route.realizedMedianOutputUsd)} outputDriftMedian=${formatUsd(route.medianOutputDriftUsd)} gasEstimateMedian=${formatUsd(route.receiptEstimatedMedianExecutionGasUsd)} gasRealizedMedian=${formatUsd(route.realizedMedianExecutionGasUsd)}`,
+  );
+  console.log(
+    `  gasDriftMedian=${formatUsd(route.medianGasDriftUsd)} gasDriftTotal=${formatUsd(route.totalGasDriftUsd)} currentSystemNet=${formatUsd(route.currentEffectiveSystemNetPnlUsd)} currentNet=${formatUsd(route.currentEstimatedNetEdgeUsd)} execNet=${formatUsd(route.currentExecutableNetEdgeUsd)} knownCost=${formatUsd(route.currentKnownCostUsd)} latencyP50=${route.quoteLatencyP50Ms ?? "n/a"} latencyP95=${route.quoteLatencyP95Ms ?? "n/a"}`,
   );
   if (route.rejectionReasons.length) {
     console.log(`  reasons=${route.rejectionReasons.join(",")}`);
@@ -86,7 +95,7 @@ function bestStablecoinRoute(scores = []) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [receiptRecords, quotes, quoteFailures, scoreSnapshot, dashboardStatus, advanceCanary, shadowObservations, dexQuotes, routeRecords] = await Promise.all([
+  const [receiptRecords, quotes, quoteFailures, scoreSnapshot, dashboardStatus, advanceCanary, shadowObservations, dexQuotes, routeRecords, readinessRecords, readinessFailures, resolved] = await Promise.all([
     readJsonl(config.dataDir, "receipt-reconciliations"),
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "gateway-quote-failures"),
@@ -96,6 +105,9 @@ async function main() {
     readJsonl(config.dataDir, "gateway-shadow-observations"),
     readJsonl(config.dataDir, "dex-quotes"),
     readJsonl(config.dataDir, "gateway-routes"),
+    readJsonl(config.dataDir, "estimator-wallet-readiness"),
+    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
+    resolveOperationalAddress({ dataDir: config.dataDir }),
   ]);
 
   const canaryProgress = buildCanaryProgressSummary({
@@ -152,6 +164,28 @@ async function main() {
   const edgeViabilityVerdict = buildEdgeViabilityVerdict({ edgeViability, dexRouteFocus });
   const edgeResearch = buildEdgeResearchSummary({ scoreSnapshot: scoreSnapshot || null, shadowObservations });
   const noEdgePersistence = buildNoEdgePersistenceSummary({ scoreSnapshot: scoreSnapshot || null, dexQuotes });
+  const routePlan = buildCanaryRoutePlan(
+    {
+      quotes,
+      scores: scoreSnapshot?.scores || [],
+      readinessRecords,
+      readinessFailures,
+    },
+    {
+      address: resolved.address,
+      limit: 8,
+    },
+  );
+  const economicsAudit = buildRouteEconomicsAudit({
+    scoreSnapshot: scoreSnapshot || null,
+    routePlan,
+    edgeViability,
+    edgeResearch,
+    noEdgePersistence,
+    quotes,
+    quoteFailures,
+    shadowObservations,
+  });
 
   const ranking = buildRoutePerformanceRanking({
     receiptRecords,
@@ -165,11 +199,11 @@ async function main() {
   if (args.write) {
     const path = join(config.dataDir, "route-performance.json");
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, `${JSON.stringify(ranking, null, 2)}\n`, "utf8");
+    await writeFile(path, `${JSON.stringify({ ...ranking, economicsAudit }, null, 2)}\n`, "utf8");
   }
 
   if (args.json) {
-    console.log(JSON.stringify(ranking, null, 2));
+    console.log(JSON.stringify({ ...ranking, economicsAudit }, null, 2));
     return;
   }
 
@@ -177,6 +211,9 @@ async function main() {
   console.log(`enabledReviewOnly=${ranking.summary.enabledCount}`);
   console.log(`disabled=${ranking.summary.disabledCount}`);
   console.log(`withRealizedData=${ranking.summary.realizedRouteCount}`);
+  console.log(`withReceiptEstimate=${ranking.summary.receiptComparableRouteCount}`);
+  console.log(`negativeMedianNetDriftRoutes=${ranking.summary.negativeMedianNetDriftRouteCount}`);
+  console.log(`estimatedPositiveRealizedNegativeReceipts=${ranking.summary.estimatedPositiveRealizedNegativeCount}`);
   if (dashboardStatus?.audit) {
     console.log(
       `overfitDecision=${dashboardStatus.audit.decision} sample=${dashboardStatus.audit.sampleSource} horizonHours=${Number.isFinite(dashboardStatus.audit.shadowHours) ? dashboardStatus.audit.shadowHours.toFixed(2) : "n/a"} hourBuckets=${dashboardStatus.audit.hourBuckets ?? "n/a"}`,
@@ -248,6 +285,29 @@ async function main() {
   console.log(
     `noEdgePersistence durable=${noEdgePersistence.durableNoEdgeRouteCount} belowPolicy=${noEdgePersistence.belowPolicyRouteCount} nearPolicy=${noEdgePersistence.nearPolicyRouteCount} positiveBelow=${noEdgePersistence.positiveButBelowPolicyRouteCount}`,
   );
+  console.log(
+    `economicsAudit strategy=${economicsAudit.summary.strategyDecisionCode} candidateContinue=${economicsAudit.summary.candidateCounts.continue} candidateObserveOnly=${economicsAudit.summary.candidateCounts.observeOnly} candidateDrop=${economicsAudit.summary.candidateCounts.drop} continueWhileSystemNegative=${economicsAudit.summary.candidateCounts.continueWhileSystemNegative} familyContinue=${economicsAudit.summary.familyCounts.continue} familyObserveOnly=${economicsAudit.summary.familyCounts.observeOnly} familyDrop=${economicsAudit.summary.familyCounts.drop}`,
+  );
+  if (economicsAudit.summary.currentCanary) {
+    console.log(
+      `economicsCurrentCanary verdict=${economicsAudit.summary.currentCanary.verdict} reason=${economicsAudit.summary.currentCanary.verdictReasonCode} route=${economicsAudit.summary.currentCanary.routeKey} amount=${economicsAudit.summary.currentCanary.amount}`,
+    );
+  }
+  if (economicsAudit.summary.measuredLeader) {
+    console.log(
+      `economicsMeasuredLeader verdict=${economicsAudit.summary.measuredLeader.verdict} reason=${economicsAudit.summary.measuredLeader.verdictReasonCode} route=${economicsAudit.summary.measuredLeader.routeKey} amount=${economicsAudit.summary.measuredLeader.amount}`,
+    );
+  }
+  for (const candidate of economicsAudit.candidateAudits.slice(0, 5)) {
+    console.log(
+      `economicsCandidate roles=${candidate.roles.join("+")} verdict=${candidate.verdict} reason=${candidate.verdictReasonCode} route=${candidate.routeKey} amount=${candidate.amount} systemNet=${formatUsd(candidate.effectiveSystemNetPnlUsd)} measuredNet=${formatUsd(candidate.measuredLoopNetUsd)} shadow=${candidate.evidence?.shadowObservationCount ?? 0} success=${formatPct(candidate.evidence?.quoteSuccessRate)} blockers=${candidate.blockers.join(",") || "none"}`,
+    );
+  }
+  for (const family of economicsAudit.routeFamilyAudits.slice(0, 5)) {
+    console.log(
+      `economicsFamily verdict=${family.verdict} reason=${family.verdictReasonCode} route=${family.routeKey} loopClass=${family.loopClassification || "none"} edgeClass=${family.edgeResearchClassification || "none"} bestMeasured=${formatUsd(family.bestMeasuredLoopNetUsd)} gap=${formatUsd(family.minGapToPolicyUsd)}`,
+    );
+  }
   const bestStable = bestStablecoinRoute(scoreSnapshot?.scores || []);
   if (bestStable) {
     console.log(

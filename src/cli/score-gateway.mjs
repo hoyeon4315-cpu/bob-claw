@@ -113,8 +113,21 @@ async function readJsonIfExists(path) {
   }
 }
 
+function preferredScoreUsd(score) {
+  return (
+    score.effectiveSystemNetPnlUsd ??
+    score.treasuryAdjustedExecutableNetEdgeUsd ??
+    score.executableNetEdgeUsd ??
+    score.treasuryAdjustedNetEdgeUsd ??
+    score.netEdgeUsd ??
+    Number.NEGATIVE_INFINITY
+  );
+}
+
 function sortScores(scores) {
-  return [...scores].sort((a, b) => (b.netEdgeUsd ?? -Infinity) - (a.netEdgeUsd ?? -Infinity) || a.routeKey.localeCompare(b.routeKey));
+  return [...scores].sort(
+    (a, b) => preferredScoreUsd(b) - preferredScoreUsd(a) || a.routeKey.localeCompare(b.routeKey),
+  );
 }
 
 function summarizeScores(scores, maxRouteFailureRate) {
@@ -191,6 +204,8 @@ function routeContextFromScore(score) {
     inputUsd: score.inputUsd ?? null,
     netEdgeUsd: score.netEdgeUsd ?? null,
     executableNetEdgeUsd: score.executableNetEdgeUsd ?? null,
+    knownCostUsd: score.knownCostUsd ?? null,
+    routeFailureRate: score.routeStats?.failureRate ?? null,
     tradeReadiness: score.tradeReadiness ?? null,
   };
 }
@@ -327,6 +342,8 @@ async function main() {
       ...scoreBaseOptions,
       executionRefillExpectedCostUsd: fundingSourcePlan?.summary?.executionRefillExpectedCostUsd ?? null,
       reserveReplenishmentExpectedCostUsd: fundingSourcePlan?.summary?.reserveReplenishmentExpectedCostUsd ?? null,
+      expectedFailureCostUsd: fundingSourcePlan?.summary?.expectedFailureCostUsd ?? null,
+      capitalFragmentationDragUsd: fundingSourcePlan?.summary?.capitalFragmentationDragUsd ?? null,
       effectiveSystemNetPnlUsd: fundingSourcePlan?.summary?.effectiveSystemNetPnlUsd ?? null,
     });
     refreshedScores.push(score);
@@ -424,6 +441,8 @@ async function main() {
         `execNet=${formatUsd(score.executableNetEdgeUsd)}`,
         `treasuryNet=${formatUsd(score.treasuryAdjustedNetEdgeUsd)}`,
         `treasuryExecNet=${formatUsd(score.treasuryAdjustedExecutableNetEdgeUsd)}`,
+        `failureDrag=${formatUsd(score.expectedFailureCostUsd)}`,
+        `fragmentationDrag=${formatUsd(score.capitalFragmentationDragUsd)}`,
         `systemNet=${formatUsd(score.effectiveSystemNetPnlUsd)}`,
         `edge=${formatPct(score.netEdgePct)}`,
         `execEdge=${formatPct(score.executableNetEdgePct)}`,

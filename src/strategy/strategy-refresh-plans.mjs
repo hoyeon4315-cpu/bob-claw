@@ -1,10 +1,12 @@
+import { shellQuote } from "../lib/shell-quote.mjs";
+
 function dedupe(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
 function routeQuoteCommand(routeKey, { includeStableEntry = false } = {}) {
   if (!routeKey) return null;
-  return `npm run quote:dex -- --route-key=${routeKey}${includeStableEntry ? " --include-stable-entry" : ""}`;
+  return `npm run quote:dex -- --route-key=${shellQuote(routeKey)}${includeStableEntry ? " --include-stable-entry" : ""}`;
 }
 
 function chainQuoteCommand(chains = [], { includeStableEntry = false, routeLimit = 48 } = {}) {

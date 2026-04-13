@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-12T08:48:58.205Z",
+  "generatedAt": "2026-04-12T20:41:08.177Z",
   "chain": "base",
   "chainId": 8453,
   "tokens": [
@@ -10,1240 +10,210 @@
   "policyMinPct": 0.5,
   "sweeps": [
     {
-      "amountUsd": 50,
-      "results": [
-        {
-          "label": "USDC→LBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 50,
-          "endUsdc": 50.028547,
-          "grossProfit": 0.028547,
-          "totalGas": 0.012965,
-          "netProfit": 0.015582,
-          "netPct": 0.0312,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "69558",
-              "gasUsd": 0.0063390076069322334,
-              "impact": 0.06463413402061406
-            },
-            {
-              "step": "LBTC→cbBTC",
-              "outAmount": "69701",
-              "gasUsd": 0.0028438127798795713,
-              "impact": 0.20262552739725273
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "50028547",
-              "gasUsd": 0.003782606662824787,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 9955
-        },
-        {
-          "label": "USDC→LBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 50,
-          "endUsdc": 50.040079,
-          "grossProfit": 0.040079,
-          "totalGas": 0.018891,
-          "netProfit": 0.021188,
-          "netPct": 0.0424,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "69552",
-              "gasUsd": 0.005806527715361555,
-              "impact": 0.7546117542662029
-            },
-            {
-              "step": "LBTC→tBTC",
-              "outAmount": "697700828144395",
-              "gasUsd": 0.007818755118425296,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "50040079",
-              "gasUsd": 0.005265485845855777,
-              "impact": 0.8968358500000109
-            }
-          ],
-          "totalLatencyMs": 6607
-        },
-        {
-          "label": "USDC→cbBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 50,
-          "endUsdc": 50.030868,
-          "grossProfit": 0.030868,
-          "totalGas": 0.012966,
-          "netProfit": 0.017902,
-          "netPct": 0.0358,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "69714",
-              "gasUsd": 0.004856568430668177,
-              "impact": 0.1541651930501954
-            },
-            {
-              "step": "cbBTC→LBTC",
-              "outAmount": "69556",
-              "gasUsd": 0.0028439895448524417,
-              "impact": 0.06746877319589054
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "50030868",
-              "gasUsd": 0.0052653909953335335,
-              "impact": 0.20549499315068498
-            }
-          ],
-          "totalLatencyMs": 9655
-        },
-        {
-          "label": "USDC→cbBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 50,
-          "endUsdc": 50.047694,
-          "grossProfit": 0.047694,
-          "totalGas": 0.012028,
-          "netProfit": 0.035666,
-          "netPct": 0.0713,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "69714",
-              "gasUsd": 0.004856682879384774,
-              "impact": 0.15416519305019252
-            },
-            {
-              "step": "cbBTC→tBTC",
-              "outAmount": "697683074600865",
-              "gasUsd": 0.0028442975758563947,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "50047694",
-              "gasUsd": 0.0043272679034768065,
-              "impact": 0.8995664176511269
-            }
-          ],
-          "totalLatencyMs": 4634
-        },
-        {
-          "label": "USDC→tBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 50,
-          "endUsdc": 50.02385,
-          "grossProfit": 0.02385,
-          "totalGas": 0.017958,
-          "netProfit": 0.005892,
-          "netPct": 0.0118,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "697098278683330",
-              "gasUsd": 0.004875000210265004,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→LBTC",
-              "outAmount": "69544",
-              "gasUsd": 0.007816700594461722,
-              "impact": 1.4396609355932177
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "50023850",
-              "gasUsd": 0.005265939957831973,
-              "impact": 0.22271176712329926
-            }
-          ],
-          "totalLatencyMs": 4823
-        },
-        {
-          "label": "USDC→tBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 50,
-          "endUsdc": 50.007319,
-          "grossProfit": 0.007319,
-          "totalGas": 0.011503,
-          "netProfit": -0.004184,
-          "netPct": -0.0084,
-          "profitable": false,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "697271569183521",
-              "gasUsd": 0.004875047520776683,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→cbBTC",
-              "outAmount": "69662",
-              "gasUsd": 0.00284483559758159,
-              "impact": 0.9578089000000028
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "50007319",
-              "gasUsd": 0.0037834949906012895,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 5362
-        }
-      ],
-      "profitable": 5,
-      "best": "USDC→cbBTC→tBTC→USDC",
-      "bestPct": 0.0713
-    },
-    {
-      "amountUsd": 100,
-      "results": [
-        {
-          "label": "USDC→LBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 100,
-          "endUsdc": 100.074066,
-          "grossProfit": 0.074066,
-          "totalGas": 0.012968,
-          "netProfit": 0.061098,
-          "netPct": 0.0611,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "139106",
-              "gasUsd": 0.006340385304756541,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→cbBTC",
-              "outAmount": "139391",
-              "gasUsd": 0.002844583581188467,
-              "impact": 0.21012166438357474
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "100074066",
-              "gasUsd": 0.0037833616706513242,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 6442
-        },
-        {
-          "label": "USDC→LBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 100,
-          "endUsdc": 100.070863,
-          "grossProfit": 0.070863,
-          "totalGas": 0.019963,
-          "netProfit": 0.0509,
-          "netPct": 0.0509,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "139106",
-              "gasUsd": 0.006340292952221772,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→tBTC",
-              "outAmount": "1395104635218231",
-              "gasUsd": 0.008355947229604022,
-              "impact": 0.22179466591783795
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "100070863",
-              "gasUsd": 0.005266456297087473,
-              "impact": 0.9179525249999841
-            }
-          ],
-          "totalLatencyMs": 10027
-        },
-        {
-          "label": "USDC→cbBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 100,
-          "endUsdc": 100.077555,
-          "grossProfit": 0.077555,
-          "totalGas": 0.012969,
-          "netProfit": 0.064586,
-          "netPct": 0.0646,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "139421",
-              "gasUsd": 0.004857535433876754,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→LBTC",
-              "outAmount": "139105",
-              "gasUsd": 0.0028448072953514546,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "100077555",
-              "gasUsd": 0.005266308164821533,
-              "impact": 0.2108390273972662
-            }
-          ],
-          "totalLatencyMs": 12463
-        },
-        {
-          "label": "USDC→cbBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 100,
-          "endUsdc": 100.112994,
-          "grossProfit": 0.112994,
-          "totalGas": 0.018218,
-          "netProfit": 0.094776,
-          "netPct": 0.0948,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "139421",
-              "gasUsd": 0.004857616121212724,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→tBTC",
-              "outAmount": "1395480087103657",
-              "gasUsd": 0.008093539245071701,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "100112994",
-              "gasUsd": 0.005266438339323473,
-              "impact": 0.8912874750000167
-            }
-          ],
-          "totalLatencyMs": 15960
-        },
-        {
-          "label": "USDC→tBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 100,
-          "endUsdc": 100.167759,
-          "grossProfit": 0.167759,
-          "totalGas": 0.019425,
-          "netProfit": 0.148334,
-          "netPct": 0.1483,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "1395119801326815",
-              "gasUsd": 0.006340693565761432,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→LBTC",
-              "outAmount": "139198",
-              "gasUsd": 0.007817433462705069,
-              "impact": 1.1944907538200553
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "100167759",
-              "gasUsd": 0.005266656821551219,
-              "impact": 0.1441244417808297
-            }
-          ],
-          "totalLatencyMs": 9710
-        },
-        {
-          "label": "USDC→tBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 100,
-          "endUsdc": 100.119736,
-          "grossProfit": 0.119736,
-          "totalGas": 0.014983,
-          "netProfit": 0.104753,
-          "netPct": 0.1048,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "1395266392945097",
-              "gasUsd": 0.0063406225686427715,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→cbBTC",
-              "outAmount": "139397",
-              "gasUsd": 0.002845386126424498,
-              "impact": 0.9064642999999933
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "100119736",
-              "gasUsd": 0.005796557867849955,
-              "impact": 2.1134309781828214e-14
-            }
-          ],
-          "totalLatencyMs": 7558
-        }
-      ],
-      "profitable": 6,
-      "best": "USDC→tBTC→LBTC→USDC",
-      "bestPct": 0.1483
-    },
-    {
-      "amountUsd": 150,
-      "results": [
-        {
-          "label": "USDC→LBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 150,
-          "endUsdc": 150.124052,
-          "grossProfit": 0.124052,
-          "totalGas": 0.01297,
-          "netProfit": 0.111082,
-          "netPct": 0.0741,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "208615",
-              "gasUsd": 0.006340986413274284,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→cbBTC",
-              "outAmount": "209042",
-              "gasUsd": 0.002845078051548439,
-              "impact": 0.0031833615560669026
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "150124052",
-              "gasUsd": 0.0037839029207532727,
-              "impact": 1.4094850765546944e-14
-            }
-          ],
-          "totalLatencyMs": 6432
-        },
-        {
-          "label": "USDC→LBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 150,
-          "endUsdc": 150.101981,
-          "grossProfit": 0.101981,
-          "totalGas": 0.019964,
-          "netProfit": 0.082017,
-          "netPct": 0.0547,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "208615",
-              "gasUsd": 0.0063408176165460645,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→tBTC",
-              "outAmount": "2092357971965631",
-              "gasUsd": 0.00835665657328102,
-              "impact": 0.0007073253270511103
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "150101981",
-              "gasUsd": 0.005266983778521578,
-              "impact": 0.9321302999999923
-            }
-          ],
-          "totalLatencyMs": 6083
-        },
-        {
-          "label": "USDC→cbBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 150,
-          "endUsdc": 150.156025,
-          "grossProfit": 0.156025,
-          "totalGas": 0.01297,
-          "netProfit": 0.143055,
-          "netPct": 0.0954,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "209122",
-              "gasUsd": 0.004858031467870437,
-              "impact": 0.03583608247424307
-            },
-            {
-              "step": "cbBTC→LBTC",
-              "outAmount": "208648",
-              "gasUsd": 0.002845106183400021,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "150156025",
-              "gasUsd": 0.005266615882231299,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 8464
-        },
-        {
-          "label": "USDC→cbBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 150,
-          "endUsdc": 150.132307,
-          "grossProfit": 0.132307,
-          "totalGas": 0.014446,
-          "netProfit": 0.117861,
-          "netPct": 0.0786,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "209100",
-              "gasUsd": 0.00485692884769557,
-              "impact": 0.04660341752578932
-            },
-            {
-              "step": "cbBTC→tBTC",
-              "outAmount": "2092624294957121",
-              "gasUsd": 0.0028440930182002037,
-              "impact": 0.24808186577181018
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "150132307",
-              "gasUsd": 0.006745364431878114,
-              "impact": 0.2659646857142807
-            }
-          ],
-          "totalLatencyMs": 7342
-        },
-        {
-          "label": "USDC→tBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 150,
-          "endUsdc": 150.185969,
-          "grossProfit": 0.185969,
-          "totalGas": 0.021766,
-          "netProfit": 0.164203,
-          "netPct": 0.1095,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "2092472996318257",
-              "gasUsd": 0.006339064285495699,
-              "impact": 0.2552940201342271
-            },
-            {
-              "step": "tBTC→LBTC",
-              "outAmount": "208745",
-              "gasUsd": 0.008148835156204907,
-              "impact": 0.8261138409090978
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "150185969",
-              "gasUsd": 0.007277850586548015,
-              "impact": 0.16931570319634273
-            }
-          ],
-          "totalLatencyMs": 9312
-        },
-        {
-          "label": "USDC→tBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 150,
-          "endUsdc": 150.104949,
-          "grossProfit": 0.104949,
-          "totalGas": 0.015311,
-          "netProfit": 0.089638,
-          "netPct": 0.0598,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "2092436201671278",
-              "gasUsd": 0.006672088649248229,
-              "impact": 0.2570479597315395
-            },
-            {
-              "step": "tBTC→cbBTC",
-              "outAmount": "209050",
-              "gasUsd": 0.0028440253162755405,
-              "impact": 0.9284263166666645
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "150104949",
-              "gasUsd": 0.00579483645688795,
-              "impact": 1.4096783625039759e-14
-            }
-          ],
-          "totalLatencyMs": 5464
-        }
-      ],
-      "profitable": 6,
-      "best": "USDC→tBTC→LBTC→USDC",
-      "bestPct": 0.1095
-    },
-    {
-      "amountUsd": 200,
-      "results": [
-        {
-          "label": "USDC→LBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 200,
-          "endUsdc": 200.116065,
-          "grossProfit": 0.116065,
-          "totalGas": 0.014978,
-          "netProfit": 0.101087,
-          "netPct": 0.0505,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "277995",
-              "gasUsd": 0.006871917904172089,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→cbBTC",
-              "outAmount": "278619",
-              "gasUsd": 0.0028438571414295794,
-              "impact": 0.07145113285713299
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "200116065",
-              "gasUsd": 0.005262216588881691,
-              "impact": 0.018401611838984394
-            }
-          ],
-          "totalLatencyMs": 8740
-        },
-        {
-          "label": "USDC→LBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 200,
-          "endUsdc": 200.141552,
-          "grossProfit": 0.141552,
-          "totalGas": 0.020644,
-          "netProfit": 0.120908,
-          "netPct": 0.0605,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "277995",
-              "gasUsd": 0.006872059579047068,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→tBTC",
-              "outAmount": "2789162165912236",
-              "gasUsd": 0.0070262990303046205,
-              "impact": 0.09031349356847787
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "200141552",
-              "gasUsd": 0.006745312628239904,
-              "impact": 0.804244528813036
-            }
-          ],
-          "totalLatencyMs": 9835
-        },
-        {
-          "label": "USDC→cbBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 200,
-          "endUsdc": 200.129364,
-          "grossProfit": 0.129364,
-          "totalGas": 0.015383,
-          "netProfit": 0.113981,
-          "netPct": 0.057,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "278712",
-              "gasUsd": 0.005794982403177413,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→LBTC",
-              "outAmount": "278026",
-              "gasUsd": 0.0028433341158643,
-              "impact": 0
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "200129364",
-              "gasUsd": 0.0067443582032004476,
-              "impact": 0.06904144801305939
-            }
-          ],
-          "totalLatencyMs": 19004
-        },
-        {
-          "label": "USDC→cbBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 200,
-          "endUsdc": 200.266198,
-          "grossProfit": 0.266198,
-          "totalGas": 0.018078,
-          "netProfit": 0.24812,
-          "netPct": 0.1241,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "278775",
-              "gasUsd": 0.005793900716586646,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→tBTC",
-              "outAmount": "2790966048393859",
-              "gasUsd": 0.0055398384474254015,
-              "impact": 0.023768611958751146
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "200266198",
-              "gasUsd": 0.006744167567648343,
-              "impact": 0.7463106779980946
-            }
-          ],
-          "totalLatencyMs": 8913
-        },
-        {
-          "label": "USDC→tBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 200,
-          "endUsdc": 200.376537,
-          "grossProfit": 0.376537,
-          "totalGas": 0.022117,
-          "netProfit": 0.35442,
-          "netPct": 0.1772,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "2790577160328733",
-              "gasUsd": 0.007558007753682663,
-              "impact": 0.03802050678056423
-            },
-            {
-              "step": "tBTC→LBTC",
-              "outAmount": "278363",
-              "gasUsd": 0.007814979925776067,
-              "impact": 1.3275631774193555
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "200376537",
-              "gasUsd": 0.006744225867197196,
-              "impact": 0.03082834315589676
-            }
-          ],
-          "totalLatencyMs": 11825
-        },
-        {
-          "label": "USDC→tBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 200,
-          "endUsdc": 200.204431,
-          "grossProfit": 0.204431,
-          "totalGas": 0.015058,
-          "netProfit": 0.189373,
-          "netPct": 0.0947,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "2790577160328314",
-              "gasUsd": 0.007558024871120419,
-              "impact": 0.038020506795610864
-            },
-            {
-              "step": "tBTC→cbBTC",
-              "outAmount": "278795",
-              "gasUsd": 0.002843442643243931,
-              "impact": 0.7483026166666784
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "200204431",
-              "gasUsd": 0.004656043517753896,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 8003
-        }
-      ],
-      "profitable": 6,
-      "best": "USDC→tBTC→LBTC→USDC",
-      "bestPct": 0.1772
-    },
-    {
       "amountUsd": 250,
       "results": [
         {
           "label": "USDC→LBTC→cbBTC→USDC",
           "ok": true,
           "startUsdc": 250,
-          "endUsdc": 250.202648,
-          "grossProfit": 0.202648,
-          "totalGas": 0.015309,
-          "netProfit": 0.187339,
-          "netPct": 0.0749,
+          "endUsdc": 250.017218,
+          "grossProfit": 0.017218,
+          "totalGas": 0.015392,
+          "netProfit": 0.001826,
+          "netPct": 0.0007,
           "profitable": true,
           "meetsPolicy": false,
           "steps": [
             {
               "step": "USDC→LBTC",
-              "outAmount": "347647",
-              "gasUsd": 0.006871343058732487,
-              "impact": 0.7745796038961057
+              "outAmount": "350374",
+              "gasUsd": 0.0068195169426652795,
+              "impact": 0.9633130333333331
             },
             {
               "step": "LBTC→cbBTC",
-              "outAmount": "348426",
-              "gasUsd": 0.0028434285590920503,
+              "outAmount": "351191",
+              "gasUsd": 0.002821920626126577,
               "impact": 0
             },
             {
               "step": "cbBTC→USDC",
-              "outAmount": "250202648",
-              "gasUsd": 0.005594477189571337,
+              "outAmount": "250017218",
+              "gasUsd": 0.00575095323776141,
               "impact": 0
             }
           ],
-          "totalLatencyMs": 7105
+          "totalLatencyMs": 6938
         },
         {
           "label": "USDC→LBTC→tBTC→USDC",
           "ok": true,
           "startUsdc": 250,
-          "endUsdc": 250.195781,
-          "grossProfit": 0.195781,
-          "totalGas": 0.021308,
-          "netProfit": 0.174473,
-          "netPct": 0.0698,
+          "endUsdc": 250.05007,
+          "grossProfit": 0.05007,
+          "totalGas": 0.022323,
+          "netProfit": 0.027747,
+          "netPct": 0.0111,
           "profitable": true,
           "meetsPolicy": false,
           "steps": [
             {
               "step": "USDC→LBTC",
-              "outAmount": "347644",
-              "gasUsd": 0.00687124403058333,
-              "impact": 0.7753703571428548
+              "outAmount": "350404",
+              "gasUsd": 0.006820060937382411,
+              "impact": 0.9547509166666674
             },
             {
               "step": "LBTC→tBTC",
-              "outAmount": "3487956881531198",
-              "gasUsd": 0.007358408115923777,
+              "outAmount": "3515938764748314",
+              "gasUsd": 0.008279470687771214,
               "impact": 0
             },
             {
               "step": "tBTC→USDC",
-              "outAmount": "250195781",
-              "gasUsd": 0.007077990397735415,
+              "outAmount": "250050070",
+              "gasUsd": 0.007223052225174975,
               "impact": 0
             }
           ],
-          "totalLatencyMs": 6215
+          "totalLatencyMs": 4624
         },
         {
           "label": "USDC→cbBTC→LBTC→USDC",
           "ok": true,
           "startUsdc": 250,
-          "endUsdc": 250.16702,
-          "grossProfit": 0.16702,
-          "totalGas": 0.015717,
-          "netProfit": 0.151303,
-          "netPct": 0.0605,
+          "endUsdc": 250.195726,
+          "grossProfit": 0.195726,
+          "totalGas": 0.015796,
+          "netProfit": 0.17993,
+          "netPct": 0.072,
           "profitable": true,
           "meetsPolicy": false,
           "steps": [
             {
               "step": "USDC→cbBTC",
-              "outAmount": "348537",
-              "gasUsd": 0.005794765479413337,
-              "impact": 1.69266924200201e-14
+              "outAmount": "351300",
+              "gasUsd": 0.00575125291843472,
+              "impact": 0
             },
             {
               "step": "cbBTC→LBTC",
-              "outAmount": "347680",
-              "gasUsd": 0.002844251639583251,
-              "impact": 0.7652212662337754
+              "outAmount": "350403",
+              "gasUsd": 0.0028223843085024903,
+              "impact": 0.9550286083333374
             },
             {
               "step": "LBTC→USDC",
-              "outAmount": "250167020",
-              "gasUsd": 0.0070780441577306475,
-              "impact": 0.0422486677599134
+              "outAmount": "250195726",
+              "gasUsd": 0.007222844259892492,
+              "impact": 0
             }
           ],
-          "totalLatencyMs": 5546
+          "totalLatencyMs": 6153
         },
         {
           "label": "USDC→cbBTC→tBTC→USDC",
           "ok": true,
           "startUsdc": 250,
-          "endUsdc": 250.260126,
-          "grossProfit": 0.260126,
-          "totalGas": 0.018747,
-          "netProfit": 0.241379,
-          "netPct": 0.0966,
+          "endUsdc": 250.146314,
+          "grossProfit": 0.146314,
+          "totalGas": 0.017008,
+          "netProfit": 0.129306,
+          "netPct": 0.0517,
           "profitable": true,
           "meetsPolicy": false,
           "steps": [
             {
               "step": "USDC→cbBTC",
-              "outAmount": "348559",
-              "gasUsd": 0.005794978100450144,
-              "impact": 0
+              "outAmount": "351200",
+              "gasUsd": 0.00696198291812746,
+              "impact": 0.000736451018730583
             },
             {
               "step": "cbBTC→tBTC",
-              "outAmount": "3489232315455575",
-              "gasUsd": 0.005873964174072593,
-              "impact": 0.029163840515343094
+              "outAmount": "3514895054942266",
+              "gasUsd": 0.0028220994083860136,
+              "impact": 0
             },
             {
               "step": "tBTC→USDC",
-              "outAmount": "250260126",
-              "gasUsd": 0.0070783090255465,
-              "impact": 0.6834938017198264
+              "outAmount": "250146314",
+              "gasUsd": 0.007223673523670184,
+              "impact": 0
             }
           ],
-          "totalLatencyMs": 7491
+          "totalLatencyMs": 8608
         },
         {
           "label": "USDC→tBTC→LBTC→USDC",
           "ok": true,
           "startUsdc": 250,
-          "endUsdc": 250.463706,
-          "grossProfit": 0.463706,
-          "totalGas": 0.024607,
-          "netProfit": 0.439099,
-          "netPct": 0.1756,
+          "endUsdc": 250.27148,
+          "grossProfit": 0.27148,
+          "totalGas": 0.036326,
+          "netProfit": 0.235154,
+          "netPct": 0.0941,
           "profitable": true,
           "meetsPolicy": false,
           "steps": [
             {
               "step": "USDC→tBTC",
-              "outAmount": "3489997758511436",
-              "gasUsd": 0.007892615702125934,
-              "impact": 0.007232947009617834
+              "outAmount": "3513956851975473",
+              "gasUsd": 0.013397568831543508,
+              "impact": 0
             },
             {
               "step": "tBTC→LBTC",
-              "outAmount": "348144",
-              "gasUsd": 0.008149351744637033,
-              "impact": 0.6325732467532449
+              "outAmount": "350210",
+              "gasUsd": 0.008303218480113912,
+              "impact": 1.009439449999985
             },
             {
               "step": "LBTC→USDC",
-              "outAmount": "250463706",
-              "gasUsd": 0.0085649399015239,
+              "outAmount": "250271480",
+              "gasUsd": 0.014625350660935591,
               "impact": 0
             }
           ],
-          "totalLatencyMs": 8286
+          "totalLatencyMs": 9742
         },
         {
           "label": "USDC→tBTC→cbBTC→USDC",
           "ok": true,
           "startUsdc": 250,
-          "endUsdc": 250.23096,
-          "grossProfit": 0.23096,
-          "totalGas": 0.025131,
-          "netProfit": 0.205829,
-          "netPct": 0.0823,
+          "endUsdc": 250.113048,
+          "grossProfit": 0.113048,
+          "totalGas": 0.015407,
+          "netProfit": 0.097641,
+          "netPct": 0.0391,
           "profitable": true,
           "meetsPolicy": false,
           "steps": [
             {
               "step": "USDC→tBTC",
-              "outAmount": "3489997758512068",
-              "gasUsd": 0.00789266563621464,
-              "impact": 0.007232946991543941
+              "outAmount": "3510670159730509",
+              "gasUsd": 0.006826023323645939,
+              "impact": 0
             },
             {
               "step": "tBTC→cbBTC",
-              "outAmount": "348672",
-              "gasUsd": 0.0028448197967087248,
-              "impact": 0.6977935666666715
+              "outAmount": "350708",
+              "gasUsd": 0.0028249230845281024,
+              "impact": 0.11776021333332731
             },
             {
               "step": "cbBTC→USDC",
-              "outAmount": "250230960",
-              "gasUsd": 0.0143936388007738,
+              "outAmount": "250113048",
+              "gasUsd": 0.00575622676445759,
               "impact": 0
             }
           ],
-          "totalLatencyMs": 5944
+          "totalLatencyMs": 6595
         }
       ],
       "profitable": 6,
       "best": "USDC→tBTC→LBTC→USDC",
-      "bestPct": 0.1756
-    },
-    {
-      "amountUsd": 300,
-      "results": [
-        {
-          "label": "USDC→LBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 300,
-          "endUsdc": 300.123028,
-          "grossProfit": 0.123028,
-          "totalGas": 0.024662,
-          "netProfit": 0.098366,
-          "netPct": 0.0328,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "417538",
-              "gasUsd": 0.006872484598293653,
-              "impact": 0.2567951250000115
-            },
-            {
-              "step": "LBTC→cbBTC",
-              "outAmount": "418472",
-              "gasUsd": 0.0028446971771061012,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "300123028",
-              "gasUsd": 0.014944816274496385,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 9856
-        },
-        {
-          "label": "USDC→LBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 300,
-          "endUsdc": 300.128433,
-          "grossProfit": 0.128433,
-          "totalGas": 0.027578,
-          "netProfit": 0.100855,
-          "netPct": 0.0336,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→LBTC",
-              "outAmount": "417551",
-              "gasUsd": 0.00687127709791241,
-              "impact": 0.253614456521727
-            },
-            {
-              "step": "LBTC→tBTC",
-              "outAmount": "4189049346066364",
-              "gasUsd": 0.0073591140317842245,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "300128433",
-              "gasUsd": 0.01334723097232863,
-              "impact": 0.5994690977218768
-            }
-          ],
-          "totalLatencyMs": 7259
-        },
-        {
-          "label": "USDC→cbBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 300,
-          "endUsdc": 300.130807,
-          "grossProfit": 0.130807,
-          "totalGas": 0.019017,
-          "netProfit": 0.11179,
-          "netPct": 0.0373,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "418598",
-              "gasUsd": 0.005793777342950404,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→LBTC",
-              "outAmount": "417568",
-              "gasUsd": 0.0028440927998015855,
-              "impact": 0.2495380760869553
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "300130807",
-              "gasUsd": 0.010378656695562809,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 9020
-        },
-        {
-          "label": "USDC→cbBTC→tBTC→USDC",
-          "ok": true,
-          "startUsdc": 300,
-          "endUsdc": 300.301953,
-          "grossProfit": 0.301953,
-          "totalGas": 0.02208,
-          "netProfit": 0.279873,
-          "netPct": 0.0933,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→cbBTC",
-              "outAmount": "418593",
-              "gasUsd": 0.007643266101198219,
-              "impact": 0.0010683561895372315
-            },
-            {
-              "step": "cbBTC→tBTC",
-              "outAmount": "4190129044175965",
-              "gasUsd": 0.007359309109532101,
-              "impact": 0
-            },
-            {
-              "step": "tBTC→USDC",
-              "outAmount": "300301953",
-              "gasUsd": 0.0070770661064103665,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 9299
-        },
-        {
-          "label": "USDC→tBTC→LBTC→USDC",
-          "ok": true,
-          "startUsdc": 300,
-          "endUsdc": 300.409469,
-          "grossProfit": 0.409469,
-          "totalGas": 0.023114,
-          "netProfit": 0.386355,
-          "netPct": 0.1288,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "4189447222101790",
-              "gasUsd": 0.007890633617405713,
-              "impact": 0.04256225757556806
-            },
-            {
-              "step": "tBTC→LBTC",
-              "outAmount": "417834",
-              "gasUsd": 0.008146692421358051,
-              "impact": 0.18609417934783765
-            },
-            {
-              "step": "LBTC→USDC",
-              "outAmount": "300409469",
-              "gasUsd": 0.007076543026358419,
-              "impact": 0
-            }
-          ],
-          "totalLatencyMs": 6923
-        },
-        {
-          "label": "USDC→tBTC→cbBTC→USDC",
-          "ok": true,
-          "startUsdc": 300,
-          "endUsdc": 300.267192,
-          "grossProfit": 0.267192,
-          "totalGas": 0.01633,
-          "netProfit": 0.250862,
-          "netPct": 0.0836,
-          "profitable": true,
-          "meetsPolicy": false,
-          "steps": [
-            {
-              "step": "USDC→tBTC",
-              "outAmount": "4189660481986246",
-              "gasUsd": 0.007891059331269748,
-              "impact": 0.03747401788823592
-            },
-            {
-              "step": "tBTC→cbBTC",
-              "outAmount": "418572",
-              "gasUsd": 0.0028447224437233186,
-              "impact": 0
-            },
-            {
-              "step": "cbBTC→USDC",
-              "outAmount": "300267192",
-              "gasUsd": 0.005594534939856642,
-              "impact": 0.018006277861224454
-            }
-          ],
-          "totalLatencyMs": 6911
-        }
-      ],
-      "profitable": 6,
-      "best": "USDC→tBTC→LBTC→USDC",
-      "bestPct": 0.1288
+      "bestPct": 0.0941
     }
   ]
 }

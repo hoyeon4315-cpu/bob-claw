@@ -162,3 +162,83 @@ test("prelive readiness pauses at fork execution after mechanical proof", () => 
   assert.equal(summary.forkExecution.blockers.includes("no_fork_execution_plan"), true);
   assert.equal(summary.tinyLiveCanary.blockers.includes("fork_execution_not_ready"), true);
 });
+
+test("prelive readiness blocks on unresolved pending fork output", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_CANARY_REVIEW_POSSIBLE",
+    },
+    shadowCycle: {
+      objectivePlans: {
+        executionReview: {
+          routeKey: "ethereum:btc->base:btc",
+        },
+      },
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: true,
+      edgeViability: {
+        policyReadyCount: 1,
+      },
+    },
+    simulationRuns: [
+      { observedAt: "2026-04-12T10:00:00.000Z", status: "simulated_ok" },
+      { observedAt: "2026-04-12T10:05:00.000Z", status: "simulated_ok" },
+    ],
+    forkExecutionPlans: [
+      {
+        observedAt: "2026-04-12T10:06:00.000Z",
+        planId: "plan-1",
+        routeLabel: "ethereum->base",
+        routeKey: "ethereum:btc->base:btc",
+        amount: "10000",
+        dstChain: "base",
+        routeContext: {
+          routeKey: "ethereum:btc->base:btc",
+          dstAsset: { chain: "base", token: "0x0555" },
+          price: { dstRawUsd: 73000 },
+        },
+      },
+    ],
+    forkExecutionSubmissions: [
+      {
+        observedAt: "2026-04-12T10:07:00.000Z",
+        planId: "plan-1",
+        submissionStatus: "submitted",
+        txHash: "0xabc",
+      },
+    ],
+    forkExecutionReceipts: [
+      {
+        observedAt: "2026-04-12T10:08:00.000Z",
+        planId: "plan-1",
+        routeLabel: "ethereum->base",
+        amount: "10000",
+        txHash: "0xabc",
+        reconciliationStatus: "pending_output",
+        routeContext: {
+          routeKey: "ethereum:btc->base:btc",
+          dstAsset: { chain: "base", token: "0x0555" },
+          price: { dstRawUsd: 73000 },
+        },
+        flags: { failed: false },
+      },
+    ],
+    executionEvents: [
+      { observedAt: "2026-04-12T10:07:00.000Z", jobId: "plan-1", status: "submitted", executionMethod: "external_signed_raw_tx", txHash: "0xabc" },
+      { observedAt: "2026-04-12T10:08:00.000Z", jobId: "plan-1", status: "pending_output", executionMethod: "external_signed_raw_tx", txHash: "0xabc" },
+    ],
+    targetSimulationSuccessCount: 2,
+    targetForkConfirmedCount: 1,
+  });
+
+  assert.equal(summary.currentStage, "fork_execution");
+  assert.equal(summary.forkExecution.pendingOutputCount, 1);
+  assert.equal(summary.forkExecution.blockers.includes("fork_output_resolution_required"), true);
+  assert.equal(summary.tinyLiveCanary.blockers.includes("fork_output_resolution_required"), true);
+  assert.equal(summary.forkExecution.latestPendingOutput.planId, "plan-1");
+});

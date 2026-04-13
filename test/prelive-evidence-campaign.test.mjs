@@ -140,6 +140,86 @@ test("evidence campaign switches to awaiting manual when fork plan is ready for 
   assert.equal(campaign.actions[4].status, "blocked");
 });
 
+test("evidence campaign routes pending output into manual resolution before new fork cycles", () => {
+  const campaign = buildPreliveEvidenceCampaign({
+    reviewPackage: {
+      packageStatus: "not_ready_for_manual_review",
+      readyForManualReview: false,
+      currentStage: "fork_execution",
+      queueFollowUps: [],
+      preliveEvidence: {
+        shadowReplay: {
+          blockers: [],
+        },
+        mechanicalSimulation: {
+          targetSuccessCount: 2,
+        },
+        forkExecution: {
+          targetConfirmedCount: 2,
+        },
+      },
+    },
+    simulationRuns: [
+      { observedAt: "2026-04-12T10:00:00.000Z", status: "simulated_ok" },
+      { observedAt: "2026-04-12T10:05:00.000Z", status: "simulated_ok" },
+    ],
+    forkExecutionPlans: [
+      {
+        observedAt: "2026-04-12T10:06:00.000Z",
+        planId: "plan-1",
+        status: "planned",
+        routeLabel: "ethereum->base",
+        dstChain: "base",
+        routeContext: {
+          routeKey: "ethereum:btc->base:btc",
+          dstAsset: { chain: "base", token: "0x0555" },
+          price: { dstRawUsd: 73000 },
+        },
+        commands: {
+          submit: 'npm run submit:prelive-fork-execution -- --plan-id="plan-1" --signed-tx="<signedTx>" --rpc-url="<forkRpcUrl>"',
+          reconcile: 'npm run reconcile:prelive-fork-execution -- --plan-id="plan-1" --tx-hash="<txHash>" --rpc-url="<forkRpcUrl>"',
+          resolveOutput:
+            'npm run reconcile:prelive-fork-execution -- --plan-id="plan-1" --tx-hash="<txHash>" --rpc-url="<forkRpcUrl>" --actual-output-units="<actualOutputUnits>"',
+        },
+      },
+    ],
+    forkExecutionSubmissions: [
+      {
+        observedAt: "2026-04-12T10:07:00.000Z",
+        planId: "plan-1",
+        submissionStatus: "submitted",
+        txHash: "0xabc",
+      },
+    ],
+    forkExecutionReceipts: [
+      {
+        observedAt: "2026-04-12T10:08:00.000Z",
+        planId: "plan-1",
+        routeLabel: "ethereum->base",
+        amount: "10000",
+        txHash: "0xabc",
+        reconciliationStatus: "pending_output",
+        routeContext: {
+          routeKey: "ethereum:btc->base:btc",
+          dstAsset: { chain: "base", token: "0x0555" },
+          price: { dstRawUsd: 73000 },
+        },
+        flags: { failed: false },
+      },
+    ],
+  });
+
+  assert.equal(campaign.overallStatus, "awaiting_manual");
+  assert.equal(campaign.actions[2].code, "prepare_fork_cycle");
+  assert.equal(campaign.actions[2].status, "done");
+  assert.equal(campaign.actions[2].reason, "fork_output_pending_resolution");
+  assert.equal(campaign.actions[3].status, "done");
+  assert.equal(campaign.actions[4].status, "manual");
+  assert.equal(campaign.actions[4].reason, "fork_output_resolution_required");
+  assert.match(campaign.actions[4].command, /actual-output-units/);
+  assert.equal(campaign.forkExecution.pendingOutputCount, 1);
+});
+
 test("evidence campaign executes automated actions and follow-up refresh commands", async () => {
   const calls = [];
   const record = await executePreliveEvidenceCampaign({

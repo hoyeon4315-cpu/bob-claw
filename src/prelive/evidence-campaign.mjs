@@ -109,6 +109,7 @@ export function buildPreliveEvidenceCampaign({
     receipts: forkExecutionReceipts,
     targetConfirmedCount: targetForkConfirmedCount,
   });
+  const pendingOutputCycle = forkSummary.latestPendingOutput || null;
   const plannedCycle = openPlannedCycle(forkExecutionPlans, forkExecutionSubmissions, forkExecutionReceipts);
   const submittedCycle = openSubmittedCycle(forkExecutionSubmissions, forkExecutionReceipts);
   const shadowReplayBlockers = shadowReplay?.blockers || [];
@@ -197,7 +198,19 @@ export function buildPreliveEvidenceCampaign({
           },
         }),
     forkSummary.successRemaining > 0
-      ? plannedCycle || submittedCycle
+      ? pendingOutputCycle
+        ? action({
+            code: "prepare_fork_cycle",
+            label: "prepare fork cycle",
+            status: "done",
+            automated: true,
+            reason: "fork_output_pending_resolution",
+            details: {
+              planId: pendingOutputCycle.planId,
+              txHash: pendingOutputCycle.txHash || null,
+            },
+          })
+        : plannedCycle || submittedCycle
         ? action({
             code: "prepare_fork_cycle",
             label: "prepare fork cycle",
@@ -248,7 +261,19 @@ export function buildPreliveEvidenceCampaign({
           },
         }),
     forkSummary.successRemaining > 0
-      ? submittedCycle
+      ? pendingOutputCycle
+        ? action({
+            code: "submit_fork_cycle",
+            label: "submit fork cycle",
+            status: "done",
+            automated: false,
+            reason: "fork_output_pending_resolution",
+            details: {
+              planId: pendingOutputCycle.planId,
+              txHash: pendingOutputCycle.txHash || null,
+            },
+          })
+        : submittedCycle
         ? action({
             code: "submit_fork_cycle",
             label: "submit fork cycle",
@@ -289,7 +314,21 @@ export function buildPreliveEvidenceCampaign({
           reason: "fork_target_reached",
         }),
     forkSummary.successRemaining > 0
-      ? submittedCycle
+      ? pendingOutputCycle
+        ? action({
+            code: "reconcile_fork_cycle",
+            label: "reconcile fork cycle",
+            status: "manual",
+            automated: false,
+            reason: "fork_output_resolution_required",
+            command: pendingOutputCycle.resolutionCommand || null,
+            details: {
+              planId: pendingOutputCycle.planId,
+              txHash: pendingOutputCycle.txHash || null,
+              outputRequirements: pendingOutputCycle.outputRequirements || null,
+            },
+          })
+        : submittedCycle
         ? action({
             code: "reconcile_fork_cycle",
             label: "reconcile fork cycle",
@@ -376,6 +415,8 @@ export function buildPreliveEvidenceCampaign({
       planCount: forkSummary.planCount,
       submittedCount: forkSummary.submittedCount,
       failedCount: forkSummary.failedCount,
+      pendingOutputCount: forkSummary.pendingOutputCount,
+      latestPendingOutput: forkSummary.latestPendingOutput,
     },
     refreshBatch: {
       runCount: shadowRefreshBatchSummary?.runCount ?? 0,

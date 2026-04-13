@@ -14,11 +14,11 @@ function routeIdentity(score) {
 }
 
 function preferredNetUsd(score) {
-  return finite(score?.executableNetEdgeUsd) ?? finite(score?.netEdgeUsd);
+  return finite(score?.effectiveSystemNetPnlUsd) ?? finite(score?.executableNetEdgeUsd) ?? finite(score?.netEdgeUsd);
 }
 
 function preferredNetPct(score) {
-  return finite(score?.executableNetEdgePct) ?? finite(score?.netEdgePct);
+  return finite(score?.effectiveSystemNetPnlPct) ?? finite(score?.executableNetEdgePct) ?? finite(score?.netEdgePct);
 }
 
 function groupBy(items, keyFn) {

@@ -159,6 +159,10 @@ async function main() {
     console.log(`inventoryAuditIssues=${summary.audit.inventory.issues.join(",")}`);
   }
   console.log(`canaryDecision=${summary.canary?.decision || "n/a"}`);
+  console.log(`pivotDecision=${summary.pivotDecision?.decisionCode || "n/a"}`);
+  if (summary.pivotDecision?.command) {
+    console.log(`pivotCommand=${summary.pivotDecision.command}`);
+  }
   console.log(`treasuryDecision=${summary.treasury?.decision || "n/a"}`);
   console.log(`enabledRoutes=${summary.routePerformance?.enabledCount ?? 0}`);
   console.log(`realizedRouteCount=${summary.routePerformance?.realizedRouteCount ?? 0}`);

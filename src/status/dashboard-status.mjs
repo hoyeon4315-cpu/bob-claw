@@ -10,6 +10,7 @@ import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaign.mjs";
 import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.mjs";
 import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-runner.mjs";
+import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
@@ -25,6 +26,7 @@ const STATUS_SCHEMA_VERSION = 1;
 const RISK_BUDGET_USD = 300;
 const GATEWAY_NODE = "bob_gateway";
 const CHAIN_PRICE_STALE_MINUTES = 60;
+const DECISION_INPUT_STALE_MINUTES = 30;
 
 function stripVolatileStatusFields(value) {
   if (typeof value === "string") {
@@ -46,6 +48,15 @@ function latest(items) {
 function minutesBetween(older, newer) {
   if (!older) return null;
   return (new Date(newer).getTime() - new Date(older).getTime()) / 60_000;
+}
+
+function freshnessStatus(observedAt, now, staleAfterMinutes = DECISION_INPUT_STALE_MINUTES) {
+  const ageMinutes = minutesBetween(observedAt, now);
+  return {
+    observedAt: observedAt || null,
+    ageMinutes: Number.isFinite(ageMinutes) ? ageMinutes : null,
+    stale: Number.isFinite(ageMinutes) ? ageMinutes > staleAfterMinutes : true,
+  };
 }
 
 function pctChange(reference, value) {
@@ -547,7 +558,7 @@ function auditSummary(audit) {
   };
 }
 
-function opportunitySummary(scoreSnapshot) {
+function opportunitySummary(scoreSnapshot, now) {
   const scores = scoreSnapshot?.scores || [];
   const candidateCount = scoreSnapshot?.summary?.shadowCandidates ?? scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length;
   const rejectedNoEdge = scores.filter((score) => score.tradeReadiness === "reject_no_net_edge").length;
@@ -565,6 +576,10 @@ function opportunitySummary(scoreSnapshot) {
 
   return {
     generatedAt: scoreSnapshot?.generatedAt || null,
+    ageMinutes: minutesBetween(scoreSnapshot?.generatedAt || null, now),
+    stale: Number.isFinite(minutesBetween(scoreSnapshot?.generatedAt || null, now))
+      ? minutesBetween(scoreSnapshot?.generatedAt || null, now) > DECISION_INPUT_STALE_MINUTES
+      : true,
     scoredQuotes: scoreSnapshot?.scoredQuotes || scores.length,
     candidateCount,
     dexBacked: scoreSnapshot?.summary?.dexBacked ?? scores.filter((score) => score.dex).length,
@@ -585,6 +600,83 @@ function opportunitySummary(scoreSnapshot) {
     dataGaps: [...dataGaps.entries()]
       .map(([gap, count]) => ({ gap, count }))
       .sort((left, right) => right.count - left.count || left.gap.localeCompare(right.gap)),
+  };
+}
+
+function decisionInputsSummary({ scoreSnapshot = null, shadowCycle = null, quoteLagLatest = null, dexSpreadLatest = null, now }) {
+  const score = freshnessStatus(scoreSnapshot?.generatedAt || null, now);
+  const cycle = freshnessStatus(shadowCycle?.generatedAt || shadowCycle?.observedAt || null, now);
+  const quoteLag = freshnessStatus(quoteLagLatest?.generatedAt || quoteLagLatest?.observedAt || null, now);
+  const dexSpread = freshnessStatus(dexSpreadLatest?.generatedAt || dexSpreadLatest?.observedAt || null, now);
+  const warnings = [];
+
+  if (score.stale) warnings.push("stale_score_snapshot");
+  if (cycle.stale) warnings.push("stale_shadow_cycle");
+
+  const scoreVsCycleLagMinutes =
+    Number.isFinite(score.ageMinutes) && Number.isFinite(cycle.ageMinutes)
+      ? Math.abs(score.ageMinutes - cycle.ageMinutes)
+      : null;
+  if (Number.isFinite(scoreVsCycleLagMinutes) && scoreVsCycleLagMinutes > DECISION_INPUT_STALE_MINUTES) {
+    warnings.push("score_shadow_cycle_age_skew");
+  }
+
+  return {
+    staleAfterMinutes: DECISION_INPUT_STALE_MINUTES,
+    scoreSnapshot: score,
+    shadowCycle: cycle,
+    quoteLag,
+    dexSpread,
+    scoreVsShadowCycleLagMinutes: scoreVsCycleLagMinutes,
+    warnings,
+  };
+}
+
+function thresholdItem(items = [], label) {
+  return (items || []).find((item) => item.label === label) || null;
+}
+
+function researchSignalsSummary(thresholdSensitivity = null, now) {
+  if (!thresholdSensitivity) return null;
+
+  const effectiveCurrent = thresholdItem(thresholdSensitivity.gateway?.effectiveSystemSummary, "current");
+  const executableCurrent = thresholdItem(thresholdSensitivity.gateway?.executableSummary, "current");
+  const executableResearch = thresholdItem(thresholdSensitivity.gateway?.executableSummary, "looser_0.05usd_0.05pct");
+  const triangleCurrent = thresholdItem(thresholdSensitivity.triangularArb, "current");
+  const triangleResearch = thresholdItem(thresholdSensitivity.triangularArb, "looser_0.05usd_0.05pct");
+
+  return {
+    generatedAt: thresholdSensitivity.generatedAt || null,
+    ageMinutes: minutesBetween(thresholdSensitivity.generatedAt || null, now),
+    scoreObservedAt: thresholdSensitivity.scoreObservedAt || null,
+    gateway: {
+      effectiveCurrentPassCount: effectiveCurrent?.passCount ?? 0,
+      effectiveCurrentNoMajorGapCount: effectiveCurrent?.passWithoutMajorGap ?? 0,
+      executableCurrentPassCount: executableCurrent?.passCount ?? 0,
+      executableCurrentNoMajorGapCount: executableCurrent?.passWithoutMajorGap ?? 0,
+      executableResearchPassCount: executableResearch?.passCount ?? 0,
+      executableResearchNoMajorGapCount: executableResearch?.passWithoutMajorGap ?? 0,
+    },
+    triangularArb: {
+      currentPassCount: triangleCurrent?.passCount ?? 0,
+      researchPassCount: triangleResearch?.passCount ?? 0,
+      bestResearchNetPct: triangleResearch?.bestRoute?.netPct ?? null,
+      bestResearchNetProfitUsd: triangleResearch?.bestRoute?.netProfitUsd ?? null,
+    },
+    researchThreshold: {
+      minProfitUsd: 0.05,
+      minProfitPct: 0.0005,
+      label: "research_only",
+    },
+    livePolicyInterpretation: {
+      liveReadySignal: (effectiveCurrent?.passCount || 0) > 0 && (effectiveCurrent?.passWithoutMajorGap || 0) > 0,
+      researchOnlySignal:
+        (triangleResearch?.passCount || 0) > 0 ||
+        ((executableResearch?.passCount || 0) > 0 && (executableResearch?.passWithoutMajorGap || 0) === 0),
+      note:
+        "Research signals may justify more measurement, but they do not change canary or live policy until freshness and execution gaps are cleared.",
+    },
+    conclusions: thresholdSensitivity.conclusion || [],
   };
 }
 
@@ -620,6 +712,7 @@ function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = n
       "Long-term BTC appreciation may be a discretionary thesis, but it does not count as route profit or canary readiness.",
     manualCanaryReviewReady: topTradeReadiness === "shadow_candidate_review_only",
     liveExecutionBlocked: overall?.liveTrading !== "ALLOWED",
+    pivotDecision: shadowCycle?.pivotDecision || null,
     crossAssetArbitrage,
     dexEnvironment,
     dexRouteFocus,
@@ -806,6 +899,37 @@ function money(value) {
   return `${value < 0 ? "-" : ""}$${abs.toLocaleString("ko-KR", { maximumFractionDigits })}`;
 }
 
+function amountLabel(value) {
+  if (value == null) return null;
+  try {
+    return `${BigInt(value).toLocaleString("ko-KR")} sats`;
+  } catch {
+    return String(value);
+  }
+}
+
+function shortChainLabel(chain) {
+  if (!chain) return null;
+  return chain === "bob" ? "BOB" : chain === "bitcoin" ? "BTC" : chainMetaLabel(chain);
+}
+
+function chainMetaLabel(chain) {
+  return {
+    avalanche: "Avalanche",
+    base: "Base",
+    bera: "Berachain",
+    bitcoin: "Bitcoin",
+    bob: "BOB",
+    bsc: "BNB",
+    ethereum: "Ethereum",
+    optimism: "Optimism",
+    sei: "Sei",
+    soneium: "Soneium",
+    sonic: "Sonic",
+    unichain: "Unichain",
+  }[chain] || chain;
+}
+
 function humanTradeReadiness(code, netEdgeUsd) {
   if (!code) return { label: null, detail: null };
   if (code === "reject_no_net_edge") {
@@ -863,6 +987,205 @@ function humanShadowAction(code) {
     review_candidate: "수동 검토",
     rescore_candidate: "후보 재점수화",
   }[code] || code;
+}
+
+function humanExecutionStatus(status) {
+  return {
+    confirmed: "체결 확인",
+    submitted: "제출됨",
+    failed: "실패",
+    pending_output: "출력 확인 중",
+    planned: "예정",
+    dry_run_planned: "드라이런",
+  }[status] || status || "대기";
+}
+
+function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [] }) {
+  const executionReview = shadowCycle?.objectivePlans?.executionReview || null;
+  const receiptLedger = buildReceiptLedgerSummary(receiptRecords || []);
+  return {
+    paper: {
+      valueUsd: opportunity?.bestNetEdgeUsd ?? shadowCycle?.topRoute?.netEdgeUsd ?? null,
+      label: "관측 기준",
+      routeLabel: shadowCycle?.topRoute?.label || null,
+      detail:
+        shadowCycle?.topRoute?.tradeReadinessLabel ||
+        (Number.isFinite(opportunity?.bestNetEdgeUsd) ? "현재 상위 관측 경로 기준" : "아직 관측 중"),
+    },
+    estimated: {
+      valueUsd:
+        executionReview?.executableNetUsd ??
+        executionReview?.scoreNetUsd ??
+        executionReview?.measuredNetUsd ??
+        null,
+      label: "검토 경로 기준",
+      routeLabel: executionReview?.routeLabel || null,
+      detail: executionReview?.nextActionLabel || executionReview?.tradeReadiness || "다음 실행 검토 대기",
+    },
+    realized: {
+      valueUsd: receiptLedger.summary.realizedNetPnlUsd ?? null,
+      label: "receipt 기준",
+      tradeCount: receiptLedger.summary.reconciledCount ?? 0,
+      failedCount: receiptLedger.summary.failedCount ?? 0,
+      detail:
+        (receiptLedger.summary.recordCount || 0) > 0
+          ? `확정 ${receiptLedger.summary.reconciledCount || 0}건 · 실패 ${receiptLedger.summary.failedCount || 0}건`
+          : "아직 receipt 기록 없음",
+    },
+  };
+}
+
+function tradeHistorySummary({ executionEvents = [], receiptRecords = [], preliveForkReceipts = [], now }) {
+  const receiptByTxHash = new Map(
+    (receiptRecords || [])
+      .filter((item) => item?.txHash)
+      .map((item) => [String(item.txHash).toLowerCase(), item]),
+  );
+  const forkItems = (preliveForkReceipts || []).map((item) => ({
+    observedAt: item.observedAt || null,
+    status: item.reconciliationStatus === "reconciled" ? "confirmed" : item.reconciliationStatus === "failed" ? "failed" : "pending_output",
+    kind: "fork",
+    chain: item.chain || null,
+    txHash: item.txHash || null,
+    routeLabel: item.routeLabel || item.routeKey || null,
+    amount: item.amount || null,
+    realizedNetPnlUsd: item.realized?.realizedNetPnlUsd ?? null,
+    estimatedNetPnlUsd: item.routeContext?.estimatedNetPnlUsd ?? null,
+  }));
+  const eventItems = (executionEvents || []).map((event) => {
+    const receipt = event.txHash ? receiptByTxHash.get(String(event.txHash).toLowerCase()) : null;
+    return {
+      observedAt: event.observedAt || null,
+      status: event.status || null,
+      kind: event.eventType || "execution",
+      chain: event.chain || null,
+      txHash: event.txHash || null,
+      routeLabel: receipt?.routeContext?.routeKey || event.resourceKey || event.jobId || null,
+      amount: receipt?.routeContext?.amount || null,
+      realizedNetPnlUsd: event.realized?.realizedNetPnlUsd ?? receipt?.realized?.realizedNetPnlUsd ?? null,
+      estimatedNetPnlUsd: receipt?.routeContext?.estimatedNetPnlUsd ?? null,
+    };
+  });
+  const merged = [...forkItems, ...eventItems]
+    .filter((item) => item.observedAt)
+    .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))
+    .slice(0, 6)
+    .map((item, index) => ({
+      id: `${item.txHash || item.kind || "event"}-${index}`,
+      observedAt: item.observedAt,
+      ageMinutes: minutesBetween(item.observedAt, now),
+      status: item.status,
+      statusLabel: humanExecutionStatus(item.status),
+      chain: item.chain || null,
+      chainLabel: chainMetaLabel(item.chain),
+      kind: item.kind,
+      routeLabel: item.routeLabel || null,
+      amount: item.amount || null,
+      txHash: item.txHash || null,
+      txHashShort: item.txHash ? `${item.txHash.slice(0, 6)}…${item.txHash.slice(-4)}` : null,
+      realizedNetPnlUsd: item.realizedNetPnlUsd ?? null,
+      estimatedNetPnlUsd: item.estimatedNetPnlUsd ?? null,
+    }));
+
+  const latest = merged[0] || null;
+  return {
+    count: merged.length,
+    latestObservedAt: latest?.observedAt || null,
+    latestStatus: latest?.status || null,
+    items: merged,
+  };
+}
+
+function buildManualMemos({ decisionInputs = null, shadowCycle = null, prelive = null }) {
+  const memos = [];
+
+  if (decisionInputs?.warnings?.length) {
+    const staleParts = [];
+    if (decisionInputs.warnings.includes("stale_score_snapshot")) staleParts.push("score");
+    if (decisionInputs.warnings.includes("stale_shadow_cycle")) staleParts.push("shadow cycle");
+    if (decisionInputs.warnings.includes("score_shadow_cycle_age_skew")) staleParts.push("판정 시점 차이");
+    memos.push({
+      id: "refresh_inputs",
+      level: "now",
+      title: "데이터 갱신 메모",
+      whenLabel: "지금",
+      summary: "판정에 쓰는 입력이 오래돼서 먼저 새로고침이 필요합니다.",
+      detail: staleParts.length ? `${staleParts.join(" · ")} 확인 필요` : "판정 입력 다시 측정 필요",
+      command: "npm run watch:canary-readiness",
+      prompt: "현재 stale input만 갱신하고 dashboard 상태를 다시 만들어줘.",
+    });
+  }
+
+  const executionReview = shadowCycle?.objectivePlans?.executionReview || null;
+  if (executionReview) {
+    const blockerText = executionReview.blockerLabels?.length
+      ? executionReview.blockerLabels.slice(0, 2).join(" · ")
+      : executionReview.nextActionLabel || executionReview.tradeReadiness || "다음 단계 점검";
+    const whenLabel = executionReview.blockers?.some((item) => ["native", "token", "allowance"].includes(item))
+      ? "자금 준비 후"
+      : decisionInputs?.warnings?.length
+        ? "데이터 갱신 뒤"
+        : "다음 수동 점검 때";
+    memos.push({
+      id: "execution_review",
+      level: "next",
+      title: "수동 재검증 메모",
+      whenLabel,
+      summary: executionReview.routeLabel
+        ? `${executionReview.routeLabel}${executionReview.amount ? ` · ${amountLabel(executionReview.amount)}` : ""}`
+        : "Measured leader 다시 확인",
+      detail: blockerText,
+      command: executionReview.command || "npm run run:execution-review -- --execute --write --continue-on-error",
+      prompt: executionReview.routeLabel
+        ? `현재 measured leader ${executionReview.routeLabel}를 다시 점검하고 blocker와 다음 액션만 정리해줘.`
+        : "현재 measured leader를 다시 점검하고 blocker와 다음 액션만 정리해줘.",
+    });
+  }
+
+  const treasury = shadowCycle?.treasury || null;
+  const nextNeed = treasury?.nextNeeds?.[0] || null;
+  if (treasury && (treasury.decision === "BLOCKED" || nextNeed)) {
+    const refillAmountLabel =
+      Number.isFinite(nextNeed?.refillAmountDecimal) && nextNeed?.ticker
+        ? `${nextNeed.refillAmountDecimal.toLocaleString("ko-KR", { maximumFractionDigits: 6 })} ${nextNeed.ticker}`
+        : null;
+    const refillCostLabel = Number.isFinite(nextNeed?.refillEstimatedUsd) ? money(nextNeed.refillEstimatedUsd) : null;
+    const walletShortfallLabel = Number.isFinite(treasury.walletValueShortfallUsd) ? money(treasury.walletValueShortfallUsd) : null;
+    memos.push({
+      id: "treasury_check",
+      level: "later",
+      title: "가스 준비 메모",
+      whenLabel: walletShortfallLabel ? "수동 충전 전" : "다음 준비 때",
+      summary: nextNeed?.chain && nextNeed?.ticker
+        ? `${nextNeed.chain} ${nextNeed.ticker} 준비 상태 확인`
+        : "지갑 준비 상태 다시 확인",
+      detail:
+        [
+          refillAmountLabel,
+          refillCostLabel ? `예상 ${refillCostLabel}` : null,
+          walletShortfallLabel ? `지갑 기준 부족 ${walletShortfallLabel}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "다음 refill 필요 금액 확인",
+      command: "npm run plan:treasury-actions -- --json",
+      prompt: "현재 treasury blocker와 다음 refill 필요 금액만 짧게 정리해줘.",
+    });
+  }
+
+  if (!memos.length && prelive?.evidenceCampaign?.nextAction) {
+    memos.push({
+      id: "prelive_next_action",
+      level: "next",
+      title: "다음 검증 메모",
+      whenLabel: "다음 검토 때",
+      summary: prelive.evidenceCampaign.nextAction.label || "다음 prelive 단계 확인",
+      detail: prelive.evidenceCampaign.latestStatus || "현재 검증 상태 점검",
+      command: "npm run status:dashboard",
+      prompt: "현재 prelive 다음 단계와 막힌 이유만 짧게 정리해줘.",
+    });
+  }
+
+  return memos.slice(0, 3);
 }
 
 function shadowCycleSummary(shadowCycle, now) {
@@ -1019,6 +1342,26 @@ function shadowCycleSummary(shadowCycle, now) {
             : null,
         }
       : null,
+    pivotDecision: shadowCycle.pivotDecision
+      ? {
+          decisionCode: shadowCycle.pivotDecision.decisionCode || null,
+          decisionLabel: shadowCycle.pivotDecision.decisionLabel || null,
+          status: shadowCycle.pivotDecision.status || null,
+          focusRouteKey: shadowCycle.pivotDecision.focusRouteKey || null,
+          focusRouteLabel: shadowCycle.pivotDecision.focusRouteLabel || null,
+          focusAmount: shadowCycle.pivotDecision.focusAmount || null,
+          nextActionCode: shadowCycle.pivotDecision.nextActionCode || null,
+          nextActionLabel: shadowCycle.pivotDecision.nextActionLabel || null,
+          command: shadowCycle.pivotDecision.command || null,
+          currentCanaryVerdict: shadowCycle.pivotDecision.currentCanaryVerdict || null,
+          currentCanaryReasonCode: shadowCycle.pivotDecision.currentCanaryReasonCode || null,
+          measuredLeaderVerdict: shadowCycle.pivotDecision.measuredLeaderVerdict || null,
+          measuredLeaderReasonCode: shadowCycle.pivotDecision.measuredLeaderReasonCode || null,
+          candidateCounts: shadowCycle.pivotDecision.candidateCounts || null,
+          familyCounts: shadowCycle.pivotDecision.familyCounts || null,
+          evidenceCounts: shadowCycle.pivotDecision.evidenceCounts || null,
+        }
+      : null,
     refreshQueue: (shadowCycle.refreshQueue || []).map((item) => ({
       rank: item.rank ?? null,
       priority: item.priority ?? null,
@@ -1148,19 +1491,25 @@ function advanceCanarySummary(advanceCanary, now) {
   };
 }
 
-function decideOverall({ audit, gateway, gas }) {
+function decideOverall({ audit, gateway, gas, decisionInputs = null }) {
   const blockers = [];
+  const warnings = [];
   if (audit.decision !== "LIVE_CANARY_REVIEW_POSSIBLE") blockers.push("audit_blocks_live");
   if (gateway.updateDetected) blockers.push("gateway_update_pending_review");
   if (gateway.probeFailures.length > 0) blockers.push("gateway_probe_failures");
   if (gas.missingGatewayGasChainCount > 0) blockers.push("missing_gateway_gas_snapshots");
   if (gas.staleChainCount30m > 0) blockers.push("stale_gas_snapshots");
+  if (decisionInputs?.warnings?.includes("stale_score_snapshot")) warnings.push("stale_score_snapshot");
+  if (decisionInputs?.warnings?.includes("stale_shadow_cycle")) warnings.push("stale_shadow_cycle");
+  if (decisionInputs?.warnings?.includes("score_shadow_cycle_age_skew")) warnings.push("decision_input_age_skew");
 
   return {
     severity: blockers.length > 0 ? "blocked" : "review",
     liveTrading: "BLOCKED",
     shadowTrading: audit.shadow,
     blockers,
+    warnings,
+    decisionConfidence: warnings.length > 0 ? "low" : "normal",
     riskBudgetUsd: RISK_BUDGET_USD,
     lossLimitUsd: RISK_BUDGET_USD,
     capitalRule: "Only a ring-fenced wallet capped near USD 300 may be used in a future canary.",
@@ -1210,8 +1559,15 @@ export function buildDashboardStatus(input, options = {}) {
     now,
   });
   const auditStatus = auditSummary(audit);
-  const overall = decideOverall({ audit: auditStatus, gateway, gas });
-  const opportunity = opportunitySummary(input.scoreSnapshot || null);
+  const decisionInputs = decisionInputsSummary({
+    scoreSnapshot: input.scoreSnapshot || null,
+    shadowCycle: input.shadowCycle || null,
+    quoteLagLatest: input.quoteLagLatest || null,
+    dexSpreadLatest: input.dexSpreadLatest || null,
+    now,
+  });
+  const overall = decideOverall({ audit: auditStatus, gateway, gas, decisionInputs });
+  const opportunity = opportunitySummary(input.scoreSnapshot || null, now);
   const dex = dexSummary({ dexQuotes: input.dexQuotes || [], dexFailures: input.dexFailures || [], now });
   const bitcoinFee = bitcoinFeeSummary({ bitcoinFeeSnapshots: input.bitcoinFeeSnapshots || [], now });
   const executionGas = executionGasSummary({
@@ -1281,6 +1637,19 @@ export function buildDashboardStatus(input, options = {}) {
 
   // DEX spread monitor (from collect-dex-spreads collector)
   const dexSpread = input.dexSpreadLatest || null;
+  const researchSignals = researchSignalsSummary(input.thresholdSensitivity || null, now);
+  const pnl = pnlSummary({
+    opportunity,
+    shadowCycle,
+    receiptRecords: input.receiptReconciliations || [],
+  });
+  const tradeHistory = tradeHistorySummary({
+    executionEvents: input.executionEvents || [],
+    receiptRecords: input.receiptReconciliations || [],
+    preliveForkReceipts: input.preliveForkReceipts || [],
+    now,
+  });
+  const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive });
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1297,6 +1666,11 @@ export function buildDashboardStatus(input, options = {}) {
     prelive,
     bitcoinFee,
     opportunity,
+    pnl,
+    tradeHistory,
+    decisionInputs,
+    researchSignals,
+    manualMemos,
     dex,
     audit: auditStatus,
     quoteLag,
@@ -1322,6 +1696,7 @@ export function buildDashboardStatus(input, options = {}) {
       preliveForkPlans: input.preliveForkPlan?.plans?.length || 0,
       preliveForkSubmissions: input.preliveForkSubmissions?.length || 0,
       preliveForkReceipts: input.preliveForkReceipts?.length || 0,
+      receiptReconciliations: input.receiptReconciliations?.length || 0,
       executionJournalEvents: input.executionEvents?.length || 0,
       shadowRefreshExecutions: input.shadowRefreshExecutions?.length || 0,
       shadowRefreshBatches: input.shadowRefreshBatches?.length || 0,

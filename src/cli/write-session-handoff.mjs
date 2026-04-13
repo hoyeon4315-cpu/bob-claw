@@ -7,6 +7,7 @@ import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
+import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
 import { buildPreliveEvidenceCampaign } from "../prelive/evidence-campaign.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveReviewPackage } from "../prelive/review-package.mjs";
@@ -22,6 +23,7 @@ import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import { buildPivotDecisionSummary, buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
 import { summarizeShadowCandidateEvidence } from "../session/shadow-evidence.mjs";
@@ -544,6 +546,30 @@ function preliveReviewPackageLines(reviewPackage = null) {
   const lines = [
     `- Summary: status=\`${reviewPackage.packageStatus || "unknown"}\` review=\`${reviewPackage.reviewDecision || "unknown"}\` live=\`${reviewPackage.liveDecision || "unknown"}\` stage=\`${reviewPackage.currentStage || "unknown"}\` blockers=${reviewPackage.reviewBlockers.join(",") || "none"}`,
   ];
+  if (reviewPackage.tinyCanaryAdmission) {
+    lines.push(
+      `- Tiny canary admission: decision=\`${reviewPackage.tinyCanaryAdmission.decision || "unknown"}\` status=\`${reviewPackage.tinyCanaryAdmission.status || "unknown"}\` blockers=${reviewPackage.tinyCanaryAdmission.blockers.join(",") || "none"} next=\`${reviewPackage.tinyCanaryAdmission.nextActionCode || "none"}\``,
+    );
+  }
+  if (reviewPackage.remediationPlan) {
+    lines.push(
+      `- Admission remediation: status=\`${reviewPackage.remediationPlan.overallStatus || "unknown"}\` ready=${reviewPackage.remediationPlan.readyCount ?? 0} manual=${reviewPackage.remediationPlan.manualCount ?? 0} blocked=${reviewPackage.remediationPlan.blockedCount ?? 0}`,
+    );
+    if (reviewPackage.remediationPlan.runnerCommand) {
+      lines.push(`- Admission remediation runner: \`${reviewPackage.remediationPlan.runnerCommand}\``);
+    }
+    if (reviewPackage.remediationPlan.nextAction) {
+      lines.push(
+        `- Admission next action: \`${reviewPackage.remediationPlan.nextAction.code || "unknown"}\` status=\`${reviewPackage.remediationPlan.nextAction.status || "unknown"}\`${reviewPackage.remediationPlan.nextAction.command ? ` command=\`${reviewPackage.remediationPlan.nextAction.command}\`` : ""}`,
+      );
+    }
+    lines.push(
+      ...(reviewPackage.remediationPlan.items || []).slice(0, 3).map(
+        (entry) =>
+          `- Admission remediation item: rank=${entry.rank ?? "n/a"} status=\`${entry.status || "unknown"}\` code=\`${entry.code || "unknown"}\` reason=${entry.reason || "none"}${entry.command ? ` command=\`${entry.command}\`` : ""}`,
+      ),
+    );
+  }
   if (candidate) {
     lines.push(
       `- Manual review candidate: route=\`${candidate.routeLabel || candidate.routeKey || "unknown"}\` amount=\`${candidate.amount || "n/a"}\` readiness=\`${candidate.tradeReadiness || "unknown"}\` net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} txReady=${candidate.txReady} viableForPrep=${candidate.viableForPrep}`,
@@ -560,6 +586,11 @@ function preliveReviewPackageLines(reviewPackage = null) {
         ].join(" · ")}`,
       );
     }
+    if (reviewPackage.tinyCanaryAdmission?.constraints) {
+      lines.push(
+        `- Admission constraints: livePolicy=\`${reviewPackage.tinyCanaryAdmission.constraints.liveTradingPolicy || "unknown"}\` ring=\`${reviewPackage.tinyCanaryAdmission.constraints.riskBudgetUsd || "n/a"}\` dailyLoss=\`${reviewPackage.tinyCanaryAdmission.constraints.canaryDailyLossCapUsd || "n/a"}\` walletFloor=\`${reviewPackage.tinyCanaryAdmission.constraints.canaryWalletFloorUsd || "n/a"}\` minProfit=\`${reviewPackage.tinyCanaryAdmission.constraints.minNetProfitUsd || "n/a"}\` minEdge=\`${reviewPackage.tinyCanaryAdmission.constraints.minNetProfitPct || "n/a"}\``,
+      );
+    }
     lines.push(
       `- Candidate blockers: ${candidate.blockerReasons.join(",") || "none"}${candidate.scoreDataGaps?.length ? `; score gaps ${candidate.scoreDataGaps.join(",")}` : ""}`,
     );
@@ -574,6 +605,11 @@ function preliveReviewPackageLines(reviewPackage = null) {
       `- Measured leader review: route=\`${leader.routeLabel || leader.routeKey || "unknown"}\` amount=\`${leader.amount || "n/a"}\` readiness=\`${leader.tradeReadiness || "unknown"}\` measured=${money(leader.measuredNetUsd)} executable=${money(leader.executableNetUsd)} next=\`${leader.nextActionCode || "none"}\``,
     );
     lines.push(`- Leader review rationale: ${leader.reasons.join("; ") || "none"}${leader.blockers.length ? ` | blockers: ${leader.blockers.join(", ")}` : ""}`);
+  }
+  if (reviewPackage.pivotDecision) {
+    lines.push(
+      `- Pivot gate: decision=\`${reviewPackage.pivotDecision.decisionCode || "unknown"}\` status=\`${reviewPackage.pivotDecision.status || "unknown"}\` currentCanary=\`${reviewPackage.pivotDecision.currentCanaryVerdict || "n/a"}\` measuredLeader=\`${reviewPackage.pivotDecision.measuredLeaderVerdict || "n/a"}\``,
+    );
   }
   lines.push(
     `- Review checklist: completed=${reviewPackage.operatorChecklist?.completed?.join(" · ") || "none"} remaining=${reviewPackage.operatorChecklist?.remaining?.join(" · ") || "none"}`,
@@ -615,6 +651,20 @@ function preliveEvidenceCampaignLines(campaign = null) {
     ),
   );
   return lines;
+}
+
+function pivotDecisionLines(pivotDecision = null) {
+  if (!pivotDecision) return ["- Pivot decision unavailable"];
+  return [
+    `- Pivot decision: \`${pivotDecision.decisionCode || "unknown"}\` ${pivotDecision.decisionLabel || ""}`.trim(),
+    `- Pivot status: \`${pivotDecision.status || "unknown"}\` currentCanary=\`${pivotDecision.currentCanaryVerdict || "n/a"}\` measuredLeader=\`${pivotDecision.measuredLeaderVerdict || "n/a"}\``,
+    pivotDecision.focusRouteKey
+      ? `- Pivot focus route: \`${pivotDecision.focusRouteLabel || pivotDecision.focusRouteKey}\` amount=\`${pivotDecision.focusAmount || "n/a"}\``
+      : "- Pivot focus route: none",
+    pivotDecision.nextActionCode
+      ? `- Pivot next action: \`${pivotDecision.nextActionCode}\`${pivotDecision.command ? ` command=\`${pivotDecision.command}\`` : ""}`
+      : "- Pivot next action: none",
+  ];
 }
 
 function checklistLines(checklist) {
@@ -861,6 +911,10 @@ async function main() {
     scoreSnapshot: state?.scoreSnapshot || null,
     dexQuotes: state?.dexQuotes || [],
   });
+  const profitabilityEdgeResearch = buildEdgeResearchSummary({
+    scoreSnapshot: state?.scoreSnapshot || null,
+    shadowObservations: state?.shadowObservations || [],
+  });
   const profitabilityNoEdgePersistence = buildNoEdgePersistenceSummary({
     scoreSnapshot: state?.scoreSnapshot || null,
     dexQuotes: state?.dexQuotes || [],
@@ -886,6 +940,20 @@ async function main() {
     dexQuotes: state?.dexQuotes || [],
     address: resolved.address,
   });
+  const economicsAudit = buildRouteEconomicsAudit({
+    scoreSnapshot: state?.scoreSnapshot || null,
+    routePlan,
+    edgeViability: profitabilityEdgeViability,
+    edgeResearch: profitabilityEdgeResearch,
+    noEdgePersistence: profitabilityNoEdgePersistence,
+    quotes: state?.quotes || [],
+    quoteFailures,
+    shadowObservations: state?.shadowObservations || [],
+  });
+  const pivotDecision = buildPivotDecisionSummary({
+    economicsAudit,
+    objectivePlans,
+  });
   const prelive = buildPreliveReadinessSummary({
     overall: dashboardStatus?.overall || {},
     audit: dashboardStatus?.audit || null,
@@ -902,6 +970,16 @@ async function main() {
       ...dashboardStatus,
       canaryInputs,
       prelive,
+      strategy: {
+        ...(dashboardStatus?.strategy || {}),
+        pivotDecision,
+      },
+      shadowCycle: dashboardStatus?.shadowCycle
+        ? {
+            ...dashboardStatus.shadowCycle,
+            pivotDecision,
+          }
+        : dashboardStatus?.shadowCycle,
     },
     canaryInputs,
     canarySelectionGap: profitabilitySummary.canarySelectionGap || null,
@@ -917,6 +995,11 @@ async function main() {
     forkExecutionPlans: preliveForkPlan?.plans || [],
     forkExecutionSubmissions: preliveForkSubmissions,
     forkExecutionReceipts: preliveForkReceipts,
+  });
+  reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
+    reviewPackage,
+    evidenceCampaign,
+    address: resolved.address,
   });
 
   const doc = [
@@ -1018,6 +1101,10 @@ async function main() {
     "## Objective Plans",
     "",
     ...objectivePlanLines(objectivePlans),
+    "",
+    "## Pivot Gate",
+    "",
+    ...pivotDecisionLines(pivotDecision),
     "",
     "## Pre-live Readiness",
     "",
