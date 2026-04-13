@@ -90,6 +90,9 @@ async function isEmergencyStopped() {
   }
 }
 
+// Oracle-based DEXes that revert when price feed is stale at execution time
+const ODOS_SOURCE_BLACKLIST = ["Synthetix", "Kwenta", "Redstone"];
+
 async function odosQuote(chainId, inputAddr, inputAmount, outputAddr, userAddr) {
   const body = {
     chainId,
@@ -99,6 +102,7 @@ async function odosQuote(chainId, inputAddr, inputAmount, outputAddr, userAddr) 
     slippageLimitPercent: 0.5,
     disableRFQs: true,
     compact: true,
+    sourceBlacklist: ODOS_SOURCE_BLACKLIST,
   };
   const start = Date.now();
   const response = await fetch(`${ODOS_API}/sor/quote/v3`, {
