@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildOverfitAudit } from "../src/audit/overfit.mjs";
+import { buildEthFamilyOverfitAudit, buildOverfitAudit } from "../src/audit/overfit.mjs";
 
 const BTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 function makeRoutes(count = 20) {
   const routes = [];
@@ -257,4 +258,49 @@ test("audit defaults to the latest quote schema version for quotes and failures"
   assert.equal(audit.failures, 2);
   assert.equal(audit.activeFailures, 1);
   assert.equal(audit.checks.find((check) => check.label === "failure rate").detail, "33.3%, target <= 40%");
+});
+
+test("eth-family audit blocks single stable route surfaces as overfit risk", () => {
+  const route = { srcChain: "base", dstChain: "ethereum", srcToken: ZERO, dstToken: ZERO };
+  const audit = buildEthFamilyOverfitAudit(
+    {
+      now: "2026-04-13T00:10:00.000Z",
+      routesRecords: [
+        { observedAt: "2026-04-10T00:00:00.000Z", routes: [route], summary: { totalRoutes: 1 } },
+        { observedAt: "2026-04-11T00:00:00.000Z", routes: [route], summary: { totalRoutes: 1 } },
+        { observedAt: "2026-04-13T00:00:00.000Z", routes: [route], summary: { totalRoutes: 1 } },
+      ],
+      quotes: [],
+      shadowObservations: [
+        { observedAt: "2026-04-11T00:00:00.000Z", routeKey: `base:${ZERO}->ethereum:${ZERO}`, amount: "10000", latencyMs: 900, executionGasUsd: 0.03 },
+        { observedAt: "2026-04-12T02:00:00.000Z", routeKey: `base:${ZERO}->ethereum:${ZERO}`, amount: "25000", latencyMs: 1200, executionGasUsd: 0.05 },
+      ],
+      failures: [],
+      gasSnapshots: [
+        { observedAt: "2026-04-13T00:05:00.000Z", chain: "base" },
+        { observedAt: "2026-04-13T00:06:00.000Z", chain: "ethereum" },
+      ],
+      gasFailures: [],
+    },
+    {
+      minShadowHours: 0,
+      minFocusRouteCoveragePct: 0,
+      minGlobalRouteCoveragePctForDiscovery: 0,
+      minSamplesPerCandidateRoute: 2,
+      minCandidateRoutes: 1,
+      minAmountLevelsPerCandidateRoute: 2,
+      minHourBuckets: 1,
+      maxFailureRatePct: 100,
+      maxGasSnapshotAgeMinutes: 60,
+      requiredQuoteDecayWindowsSeconds: [],
+      minStableRoutes: 2,
+      minStableRoutePresencePct: 80,
+      recentSnapshotCount: 3,
+    },
+  );
+
+  assert.equal(audit.auditLabel, "ETH-family Overfit Audit");
+  assert.equal(audit.decision, "LIVE_BLOCKED");
+  assert.equal(audit.persistence.stableRouteCount, 1);
+  assert.equal(audit.checks.find((check) => check.label === "stable ETH-family routes").ok, false);
 });

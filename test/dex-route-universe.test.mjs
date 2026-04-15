@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SOLVBTC_TOKEN, ZERO_TOKEN, WBTC_OFT_TOKEN, classifyGatewayAssetUniverse, isBtcFamilyRoute, tokenAsset } from "../src/assets/tokens.mjs";
-import { buildDexRouteUniverseSummary } from "../src/strategy/dex-route-universe.mjs";
+import { buildDexRouteUniverseSummary, buildEthRouteUniverseSummary } from "../src/strategy/dex-route-universe.mjs";
 
 test("dex route universe separates fully measurable BTC-family routes from provider gaps", () => {
   const summary = buildDexRouteUniverseSummary({
@@ -94,4 +94,35 @@ test("gateway asset watchlist distinguishes observed btc wrappers from missing w
     "BOB introduces 1-click Bitcoin DeFi to Xverse Earn",
   );
   assert.deepEqual(summary.unknownAssets.map((item) => item.token), ["0x9999999999999999999999999999999999999999"]);
+});
+
+test("eth route universe isolates pure ETH-family routes from broader ETH-related inventory", () => {
+  const summary = buildEthRouteUniverseSummary({
+    observedAt: "2026-04-11T14:00:00.000Z",
+    routes: [
+      {
+        srcChain: "base",
+        dstChain: "ethereum",
+        srcToken: ZERO_TOKEN,
+        dstToken: ZERO_TOKEN,
+      },
+      {
+        srcChain: "bitcoin",
+        dstChain: "base",
+        srcToken: ZERO_TOKEN,
+        dstToken: ZERO_TOKEN,
+      },
+      {
+        srcChain: "base",
+        dstChain: "bob",
+        srcToken: WBTC_OFT_TOKEN,
+        dstToken: WBTC_OFT_TOKEN,
+      },
+    ],
+  });
+
+  assert.equal(summary.family, "eth");
+  assert.equal(summary.ethFamilyRouteCount, 1);
+  assert.equal(summary.fullyMeasurableRouteCount, 1);
+  assert.equal(summary.fullyMeasurableRoutes[0].routeKey, `base:${ZERO_TOKEN}->ethereum:${ZERO_TOKEN}`);
 });

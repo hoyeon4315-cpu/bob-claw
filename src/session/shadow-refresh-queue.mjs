@@ -183,6 +183,53 @@ function objectivePlanQueueItems(objectivePlans = null) {
   return items;
 }
 
+function chainNamesFromPairs(pairs = []) {
+  return dedupe(
+    pairs.flatMap((pair) =>
+      String(pair || "")
+        .split("->")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function ethFamilyQueueItems(ethFamilyWatch = null) {
+  if (!ethFamilyWatch?.surfaceChanged) return [];
+  const addedRoutes = dedupe(ethFamilyWatch?.addedRoutes || []);
+  const scanCommands = addedRoutes
+    .slice(0, 2)
+    .map((routeKey) => `npm run scan:quote-surface -- --route-key=${shellQuote(routeKey)}`);
+  const command = [
+    ...scanCommands,
+    "npm run analyze:ethereum-routes -- --write",
+    "npm run audit:eth-family-overfit",
+    "npm run status:dashboard",
+  ].join(" && ");
+  const displayPairs = dedupe([
+    ...(ethFamilyWatch?.addedChainPairs || []),
+    ...(ethFamilyWatch?.chainPairs || []),
+  ]);
+  return [
+    {
+      priority: 91,
+      kind: "eth_family_watch",
+      scope: "eth_family_watch",
+      code: "collect_eth_family_evidence",
+      label: "collect ETH-family evidence",
+      reason: addedRoutes.length
+        ? "eth_family_surface_added"
+        : (ethFamilyWatch?.removedRoutes || []).length
+          ? "eth_family_surface_removed"
+          : "eth_family_surface_changed",
+      command,
+      routeLabel: displayPairs[0] ? `ETH-family watch ${displayPairs[0]}` : "ETH-family watch",
+      routeKeys: addedRoutes,
+      chains: chainNamesFromPairs(displayPairs),
+    },
+  ];
+}
+
 function supplementalQueueItems({
   mode = null,
   enabledRouteCount = 0,
@@ -244,6 +291,7 @@ export function buildShadowRefreshQueue({
   shadowActions = [],
   objectivePlans = null,
   strategyPlans = null,
+  ethFamilyWatch = null,
   mode = null,
   enabledRouteCount = 0,
   treasuryDecision = null,
@@ -255,6 +303,7 @@ export function buildShadowRefreshQueue({
   const resolvedShadowActions = shadowActions.length ? shadowActions : shadowCycle?.shadowActions || [];
   const resolvedObjectivePlans = objectivePlans || shadowCycle?.objectivePlans || null;
   const resolvedStrategyPlans = strategyPlans || shadowCycle?.strategyPlans || null;
+  const resolvedEthFamilyWatch = ethFamilyWatch || shadowCycle?.ethFamilyWatch || null;
   const resolvedMode = mode || shadowCycle?.mode || null;
   const resolvedEnabledRouteCount = enabledRouteCount || shadowCycle?.routePerformance?.enabledCount || 0;
   const resolvedTreasuryDecision = treasuryDecision || shadowCycle?.treasury?.decision || null;
@@ -276,6 +325,7 @@ export function buildShadowRefreshQueue({
     ...shadowActionQueueItems(resolvedShadowActions),
     ...objectivePlanQueueItems(resolvedObjectivePlans),
     ...strategyQueueItems(resolvedStrategyPlans),
+    ...ethFamilyQueueItems(resolvedEthFamilyWatch),
     ...supplementalQueueItems({
       mode: resolvedMode,
       enabledRouteCount: resolvedEnabledRouteCount,

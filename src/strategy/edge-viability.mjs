@@ -1,5 +1,6 @@
 import { buildDefaultRiskPolicy } from "../risk/policy.mjs";
 import { buildDexGatewayLoops } from "./dex-gateway-arbitrage.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../risk/ethereum-l1-policy.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -16,6 +17,10 @@ function median(values) {
 function requiredNetProfitUsd(loop, policy) {
   const percentFloorUsd = Number.isFinite(loop?.entryStableUsd) ? loop.entryStableUsd * policy.minNetProfitPct : null;
   return Math.max(policy.minNetProfitUsd, percentFloorUsd || 0);
+}
+
+function isPolicyBlockedLoop(loop) {
+  return (loop?.blockers || []).includes(`gateway_${ETHEREUM_L1_PHASE_DISABLED_REASON}`);
 }
 
 function enrichLoop(loop, policy) {
@@ -55,34 +60,38 @@ export function buildEdgeViabilitySummary({ scoreSnapshot = null, dexQuotes = []
   const measuredLoops = loops
     .filter((loop) => Number.isFinite(loop.measuredLoopNetUsd))
     .map((loop) => enrichLoop(loop, policy));
+  const eligibleLoops = measuredLoops.filter((loop) => !isPolicyBlockedLoop(loop));
+  const blockedLoops = measuredLoops.filter(isPolicyBlockedLoop);
 
-  const sortable = [...measuredLoops].sort(
+  const sortable = [...eligibleLoops].sort(
     (left, right) =>
       (left.gapToPolicyUsd ?? Number.POSITIVE_INFINITY) - (right.gapToPolicyUsd ?? Number.POSITIVE_INFINITY) ||
       (right.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) - (left.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) ||
       String(left.routeKey).localeCompare(String(right.routeKey)),
   );
-  const gapSamples = measuredLoops.map((loop) => loop.gapToPolicyUsd).filter(Number.isFinite);
-  const positiveMeasuredCount = measuredLoops.filter((loop) => (loop.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) > 0).length;
-  const policyReadyCount = measuredLoops.filter((loop) => (loop.gapToPolicyUsd ?? Number.POSITIVE_INFINITY) <= 0).length;
+  const gapSamples = eligibleLoops.map((loop) => loop.gapToPolicyUsd).filter(Number.isFinite);
+  const positiveMeasuredCount = eligibleLoops.filter((loop) => (loop.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) > 0).length;
+  const policyReadyCount = eligibleLoops.filter((loop) => (loop.gapToPolicyUsd ?? Number.POSITIVE_INFINITY) <= 0).length;
 
   return {
     schemaVersion: 1,
     generatedAt: scoreSnapshot?.generatedAt || null,
     minNetProfitUsd: policy.minNetProfitUsd,
     minNetProfitPct: policy.minNetProfitPct,
-    measuredLoopCount: measuredLoops.length,
+    measuredLoopCount: eligibleLoops.length,
+    policyBlockedLoopCount: blockedLoops.length,
     positiveMeasuredCount,
     policyReadyCount,
     medianGapToPolicyUsd: median(gapSamples),
     closestLoop: sortable[0] || null,
     bestMeasuredLoop:
-      [...measuredLoops].sort(
+      [...eligibleLoops].sort(
         (left, right) =>
           (right.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) - (left.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) ||
           String(left.routeKey).localeCompare(String(right.routeKey)),
       )[0] || null,
     loops: sortable.slice(0, 10),
+    blockedLoops: blockedLoops.slice(0, 5),
   };
 }
 

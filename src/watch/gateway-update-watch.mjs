@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isEthFamilyRoute } from "../assets/tokens.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
 
 const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
@@ -23,6 +24,15 @@ function stableJson(value) {
 
 function uniqueSorted(items) {
   return [...new Set(items)].sort();
+}
+
+function sortedSetDiff(previousItems = [], currentItems = []) {
+  const previous = new Set(previousItems || []);
+  const current = new Set(currentItems || []);
+  return {
+    added: [...current].filter((item) => !previous.has(item)).sort(),
+    removed: [...previous].filter((item) => !current.has(item)).sort(),
+  };
 }
 
 function tokenKey(route) {
@@ -70,15 +80,21 @@ export function buildRouteSnapshot(routes) {
   const chainPairs = uniqueSorted(routes.map((route) => `${route.srcChain}->${route.dstChain}`));
   const tokenPairs = uniqueSorted(routes.map(tokenKey));
   const bobTouchingRouteKeys = routeKeys.filter((key) => key.includes("bob:") || key.includes("->bob:"));
+  const ethFamilyRoutes = routes.filter(isEthFamilyRoute);
+  const ethFamilyRouteKeys = uniqueSorted(ethFamilyRoutes.map(routeKey));
+  const ethFamilyChainPairs = uniqueSorted(ethFamilyRoutes.map((route) => `${route.srcChain}->${route.dstChain}`));
 
   return {
     routeCount: routes.length,
+    ethFamilyRouteCount: ethFamilyRouteKeys.length,
     chains,
     tokens,
     chainPairs,
     tokenPairs,
     routeKeys,
     bobTouchingRouteKeys,
+    ethFamilyRouteKeys,
+    ethFamilyChainPairs,
     routeHash: sha256(routeKeys.join("\n")),
     chainHash: sha256(chains.join("\n")),
     tokenHash: sha256(tokens.join("\n")),
@@ -97,21 +113,24 @@ export function diffSnapshots(previous, current) {
       removedChains: [],
       addedTokens: current.tokens,
       removedTokens: [],
+      addedEthFamilyRoutes: current.ethFamilyRouteKeys || [],
+      removedEthFamilyRoutes: [],
+      addedEthFamilyChainPairs: current.ethFamilyChainPairs || [],
+      removedEthFamilyChainPairs: [],
     };
   }
 
-  const prevRoutes = new Set(previous.routeKeys || []);
-  const currRoutes = new Set(current.routeKeys || []);
-  const prevChains = new Set(previous.chains || []);
-  const currChains = new Set(current.chains || []);
-  const prevTokens = new Set(previous.tokens || []);
-  const currTokens = new Set(current.tokens || []);
-  const addedRoutes = [...currRoutes].filter((item) => !prevRoutes.has(item)).sort();
-  const removedRoutes = [...prevRoutes].filter((item) => !currRoutes.has(item)).sort();
-  const addedChains = [...currChains].filter((item) => !prevChains.has(item)).sort();
-  const removedChains = [...prevChains].filter((item) => !currChains.has(item)).sort();
-  const addedTokens = [...currTokens].filter((item) => !prevTokens.has(item)).sort();
-  const removedTokens = [...prevTokens].filter((item) => !currTokens.has(item)).sort();
+  const { added: addedRoutes, removed: removedRoutes } = sortedSetDiff(previous.routeKeys, current.routeKeys);
+  const { added: addedChains, removed: removedChains } = sortedSetDiff(previous.chains, current.chains);
+  const { added: addedTokens, removed: removedTokens } = sortedSetDiff(previous.tokens, current.tokens);
+  const { added: addedEthFamilyRoutes, removed: removedEthFamilyRoutes } = sortedSetDiff(
+    previous.ethFamilyRouteKeys,
+    current.ethFamilyRouteKeys,
+  );
+  const { added: addedEthFamilyChainPairs, removed: removedEthFamilyChainPairs } = sortedSetDiff(
+    previous.ethFamilyChainPairs,
+    current.ethFamilyChainPairs,
+  );
 
   return {
     changed:
@@ -125,6 +144,10 @@ export function diffSnapshots(previous, current) {
     removedChains,
     addedTokens,
     removedTokens,
+    addedEthFamilyRoutes,
+    removedEthFamilyRoutes,
+    addedEthFamilyChainPairs,
+    removedEthFamilyChainPairs,
   };
 }
 
@@ -285,8 +308,10 @@ export async function runGatewayUpdateWatch({
   );
   const schemaDiff = diffSchemaShapes(previousSchemaShapes, schemaShapes, previousSchemaHash, schemaHash);
   const probeHealthDiff = diffProbeHealth(previousProbeHealthHash, probeHealthHash);
+  const ethFamilySurfaceChanged = diff.addedEthFamilyRoutes.length > 0 || diff.removedEthFamilyRoutes.length > 0;
   const changeReasons = [
     diff.changed ? "route_inventory" : null,
+    ethFamilySurfaceChanged ? "eth_family_surface" : null,
     schemaDiff.changed ? "quote_schema" : null,
     probeHealthDiff.changed ? "probe_health" : null,
   ].filter(Boolean);
@@ -305,6 +330,15 @@ export async function runGatewayUpdateWatch({
     schemaHash,
     probeHealthHash,
     routesLatencyMs: routesResult.latencyMs,
+    ethFamily: {
+      routeCount: snapshot.ethFamilyRouteCount || 0,
+      chainPairs: snapshot.ethFamilyChainPairs || [],
+      surfaceChanged: ethFamilySurfaceChanged,
+      addedRoutes: diff.addedEthFamilyRoutes,
+      removedRoutes: diff.removedEthFamilyRoutes,
+      addedChainPairs: diff.addedEthFamilyChainPairs,
+      removedChainPairs: diff.removedEthFamilyChainPairs,
+    },
     updateDetected: changeReasons.length > 0,
   };
 }

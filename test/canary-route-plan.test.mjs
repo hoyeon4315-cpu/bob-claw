@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildCanaryRoutePlan } from "../src/estimator/canary-route-plan.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-policy.mjs";
 
 const ADDRESS = "0x000000000000000000000000000000000000dEaD";
 const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
@@ -111,4 +112,30 @@ test("canary route plan blocks missing tx data and score outliers", () => {
   assert.equal(plan.topCandidates[0].txReady, true);
   assert.deepEqual(plan.topCandidates[0].scoreDisqualifiers, ["implausible_quote_value_ratio"]);
   assert.equal(plan.topCandidates[1].readinessFailureReason, "missing_tx_data");
+});
+
+test("canary route plan marks Ethereum L1 scores as disqualified for prep", () => {
+  const ethRouteKey = `base:${WBTC_OFT}->ethereum:${WBTC_OFT}`;
+  const plan = buildCanaryRoutePlan(
+    {
+      quotes: [
+        quote({ routeKey: `bob:${WBTC_OFT}->base:${WBTC_OFT}`, srcChain: "bob", dstChain: "base" }),
+        quote({ routeKey: ethRouteKey, srcChain: "base", dstChain: "ethereum" }),
+      ],
+      scores: [
+        score({ routeKey: `bob:${WBTC_OFT}->base:${WBTC_OFT}` }),
+        {
+          ...score({ routeKey: ethRouteKey, srcChain: "base", dstChain: "ethereum" }),
+          tradeReadiness: ETHEREUM_L1_PHASE_DISABLED_REASON,
+        },
+      ],
+      readinessRecords: [],
+      readinessFailures: [],
+    },
+    { address: ADDRESS, prices: { nativeByChain: { base: 1800, bob: 1800 } } },
+  );
+
+  assert.equal(plan.viableCount, 1);
+  assert.equal(plan.topCandidates[1].viableForPrep, false);
+  assert.equal(plan.topCandidates[1].scoreDisqualifiers.includes(ETHEREUM_L1_PHASE_DISABLED_REASON), true);
 });

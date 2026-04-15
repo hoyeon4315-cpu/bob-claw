@@ -4,6 +4,7 @@ export function formatGatewayUpdateAlert(result) {
     `observedAt: ${result.observedAt}`,
     `reasons: ${result.changeReasons.join(",") || "none"}`,
     `routeCount: ${result.snapshot.routeCount}`,
+    `ethFamilyRoutes: ${result.ethFamily?.routeCount || 0}`,
     `chains: ${result.snapshot.chains.join(",")}`,
     `addedRoutes: ${result.diff.addedRoutes.length}`,
     `removedRoutes: ${result.diff.removedRoutes.length}`,
@@ -11,8 +12,20 @@ export function formatGatewayUpdateAlert(result) {
     `probeFailures: ${result.probeFailures.length}`,
   ];
 
+  if ((result.diff?.addedEthFamilyRoutes?.length || 0) > 0 || (result.diff?.removedEthFamilyRoutes?.length || 0) > 0) {
+    const addedEthFamilyRoutes = result.diff?.addedEthFamilyRoutes?.length || 0;
+    const removedEthFamilyRoutes = result.diff?.removedEthFamilyRoutes?.length || 0;
+    lines.push(
+      `ethFamilySurface: +${addedEthFamilyRoutes} / -${removedEthFamilyRoutes}`,
+    );
+  }
+
   for (const failure of result.probeFailures.slice(0, 3)) {
     lines.push(`failure: ${failure.routeKey} ${failure.errorStatus || "no_status"} ${failure.errorCode || ""}`.trim());
+  }
+
+  if ((result.diff?.addedEthFamilyRoutes?.length || 0) > 0) {
+    lines.push("next: scan new ETH-family routes, then run analyze:ethereum-routes and audit:eth-family-overfit");
   }
 
   lines.push("liveTrading: still blocked until audit gates pass");

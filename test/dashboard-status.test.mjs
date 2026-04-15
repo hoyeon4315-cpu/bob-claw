@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDashboardStatus } from "../src/status/dashboard-status.mjs";
+import { trustedOdosQuote } from "./helpers/trusted-odos-quote.mjs";
 
 const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -65,15 +66,14 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
           inputAmount: "10000",
           inputValueUsd: 7.295,
         },
-        {
+        trustedOdosQuote({
           observedAt: "2026-04-10T11:58:20.000Z",
-          provider: "odos",
           source: "gateway_dst_leg",
           chain: "base",
           inputToken: WBTC_OFT,
           inputAmount: "10000",
           inputValueUsd: 7.302,
-        },
+        }),
       ],
       gasSnapshots: [
         {
@@ -103,9 +103,22 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
           observedAt: "2026-04-10T11:59:00.000Z",
           snapshot: {
             routeCount: 2,
+            ethFamilyRouteCount: 1,
+            ethFamilyChainPairs: ["base->ethereum"],
             chains: ["base", "bob"],
             bobTouchingRouteKeys: ["bob:btc->base:btc", "base:btc->bob:btc"],
             routeHash: "route-hash",
+          },
+          diff: {
+            addedEthFamilyRoutes: ["base:0x0->ethereum:0x0"],
+            removedEthFamilyRoutes: [],
+          },
+          ethFamily: {
+            routeCount: 1,
+            surfaceChanged: true,
+            chainPairs: ["base->ethereum"],
+            addedChainPairs: ["base->ethereum"],
+            removedChainPairs: [],
           },
           updateDetected: false,
           changeReasons: [],
@@ -192,11 +205,16 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
     },
   );
 
+  assert.equal(status.schemaVersion, 2);
   assert.equal(status.overall.liveTrading, "BLOCKED");
   assert.equal(status.exposurePolicy.cloudflare, "dashboard_only");
   assert.equal(status.exposurePolicy.containsPrivateKeys, false);
   assert.equal(status.gateway.updateDetected, false);
   assert.equal(status.gateway.probeOk, 2);
+  assert.equal(status.gateway.ethFamilyWatch.routeCount, 1);
+  assert.equal(status.gateway.ethFamilyWatch.surfaceChanged, true);
+  assert.equal(status.gateway.ethFamilyWatch.addedRoutesCount, 1);
+  assert.deepEqual(status.gateway.ethFamilyWatch.chainPairs, ["base->ethereum"]);
   assert.deepEqual(status.gateway.announcedChainCoverage.missingAnnouncedChains, [
     "avalanche",
     "bera",
@@ -212,16 +230,16 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.gas.missingGatewayGasChainCount, 0);
   assert.equal(status.market.wbtcUsd, 72_950);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").ticker, "wBTC");
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").usd, 72_950);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "dex_quote_observed");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").usd, null);
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "odos_chain_not_supported");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").quoteable, false);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").usd, 73_020);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").deltaPct > 0, true);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").stale, false);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").coverageReason, "dex_quote_observed");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").quoteable, true);
-  assert.equal(status.market.observedChainCount, 2);
-  assert.equal(status.market.missingChainCount, 0);
+  assert.equal(status.market.observedChainCount, 1);
+  assert.equal(status.market.missingChainCount, 1);
   assert.equal(status.market.staleChainCount, 0);
   assert.equal(status.prelive.liveTradingPolicy, "BLOCKED");
   assert.equal(typeof status.prelive.currentStage, "string");
@@ -238,6 +256,11 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.dataCounts.shadowRefreshBatches, 1);
   assert.equal(status.dataCounts.preliveEvidenceCampaigns, 1);
   assert.equal(status.dataCounts.priceSnapshots, 1);
+  assert.equal(status.strategy.pivotPlan.budgetScenarios.length, 2);
+  assert.equal(status.strategy.yieldShadowBook.topProfile.id, "research_pilot");
+  assert.equal(typeof status.strategy.proxySpreadCoveragePlan.planCount, "number");
+  assert.equal(status.strategy.strategySnapshot.activeBudgetUsd, 300);
+  assert.equal(status.strategy.strategySnapshot.topPivot.id, "gateway_base_btc_yield");
 });
 
 test("dashboard status records chain price coverage reasons for missing dex observations", () => {
@@ -446,15 +469,14 @@ test("dashboard status includes read-only opportunity summary", () => {
       ],
     },
     dexQuotes: [
-      {
-        provider: "odos",
+      trustedOdosQuote({
         observedAt: "2026-04-10T11:59:00.000Z",
         chain: "base",
         inputValueUsd: 7,
         outputValueUsd: 7.01,
         gasEstimateValueUsd: 0.01,
         priceImpactPct: 0,
-      },
+      }),
     ],
     dexFailures: [{ observedAt: "2026-04-10T11:58:00.000Z", provider: "odos", reason: "input_is_quote_stable" }],
     bitcoinFeeSnapshots: [
@@ -539,6 +561,9 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "proxy_spread"), true);
   assert.equal(status.strategy.edgeResearch.routeCount, 2);
   assert.equal(status.strategy.edgeResearch.bestCandidate.classification, "no_edge");
+  assert.equal(status.strategy.pivotPlan.topRecommendation.id, "gateway_base_btc_yield");
+  assert.equal(status.strategy.pivotPlan.currentBudgetUsd, 300);
+  assert.equal(status.strategy.pivotPlan.pivots.some((item) => item.id === "btc_proxy_spreads"), true);
   assert.equal(status.dex.quoteCount, 1);
   assert.deepEqual(status.dex.quotedChains, ["base"]);
   assert.equal(status.dex.skippedReasons[0].reason, "input_is_quote_stable");
@@ -1015,6 +1040,153 @@ test("dashboard status adds manual memos for refresh, review, and treasury follo
   assert.equal(status.manualMemos[1].whenLabel, "자금 준비 후");
   assert.equal(status.manualMemos[2].id, "treasury_check");
   assert.equal(status.manualMemos[2].command, "npm run plan:treasury-actions -- --json");
+});
+
+test("dashboard status adds ETH-family evidence memo when a new ETH surface appears", () => {
+  const bobBase = route("bob", "base");
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [bobBase],
+      },
+    ],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [
+      {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        snapshot: {
+          routeCount: 1,
+          ethFamilyRouteCount: 1,
+          ethFamilyChainPairs: ["base->ethereum"],
+          chains: ["base", "bob", "ethereum"],
+          bobTouchingRouteKeys: ["bob:btc->base:btc"],
+          routeHash: "route-hash",
+        },
+        diff: {
+          addedEthFamilyRoutes: ["base:0x0->ethereum:0x0"],
+          removedEthFamilyRoutes: [],
+        },
+        ethFamily: {
+          routeCount: 1,
+          surfaceChanged: true,
+          chainPairs: ["base->ethereum"],
+          addedChainPairs: ["base->ethereum"],
+          removedChainPairs: [],
+        },
+        updateDetected: true,
+        changeReasons: ["eth_family_surface"],
+        probes: [{ ok: true }],
+        probeFailures: [],
+        schemaHash: "schema-hash",
+        probeHealthHash: "probe-health-hash",
+      },
+    ],
+    updateAlerts: [],
+    scoreSnapshot: {
+      generatedAt: "2026-04-10T10:00:00.000Z",
+      scoredQuotes: 0,
+      summary: { shadowCandidates: 0, insufficientData: 0 },
+      scores: [],
+    },
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  const memo = status.manualMemos.find((item) => item.id === "eth_family_surface");
+  assert.equal(Boolean(memo), true);
+  assert.match(memo.command, /audit:eth-family-overfit/);
+  assert.match(memo.summary, /base->ethereum/);
+});
+
+test("dashboard status exposes ETH profitability and ETH strategy track when ETH-family quotes are measurable", () => {
+  const ethRoute = { srcChain: "base", dstChain: "ethereum", srcToken: ZERO, dstToken: ZERO };
+  const status = buildDashboardStatus({
+    routesRecords: [
+      {
+        observedAt: "2026-04-07T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [ethRoute],
+      },
+      {
+        observedAt: "2026-04-09T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [ethRoute],
+      },
+      {
+        observedAt: "2026-04-10T11:58:00.000Z",
+        summary: { totalRoutes: 1 },
+        routes: [ethRoute],
+      },
+    ],
+    quotes: [
+      {
+        schemaVersion: 2,
+        observedAt: "2026-04-10T11:59:00.000Z",
+        route: ethRoute,
+        routeKey: `base:${ZERO}->ethereum:${ZERO}`,
+        quoteType: "layerZero",
+        amount: "10000",
+        grossOutputRatio: 0.99,
+        feeRatio: 0.01,
+      },
+    ],
+    failures: [],
+    dexQuotes: [
+      trustedOdosQuote({
+        observedAt: "2026-04-10T11:58:10.000Z",
+        source: "gateway_src_entry_leg",
+        chain: "base",
+        gatewayRouteKey: `base:${ZERO}->ethereum:${ZERO}`,
+        gatewayAmount: "10000",
+        inputTicker: "USDC",
+        outputTicker: "ETH",
+        inputValueUsd: 7.4,
+        gasEstimateValueUsd: 0.03,
+        outputAmount: "2000000000000000",
+      }),
+      trustedOdosQuote({
+        observedAt: "2026-04-10T11:58:20.000Z",
+        source: "gateway_dst_leg",
+        chain: "ethereum",
+        gatewayRouteKey: `base:${ZERO}->ethereum:${ZERO}`,
+        gatewayAmount: "10000",
+        inputTicker: "ETH",
+        outputTicker: "USDC",
+        inputValueUsd: 7.83,
+      }),
+    ],
+    scoreSnapshot: {
+      generatedAt: "2026-04-10T12:00:00.000Z",
+      scores: [
+        {
+          observedAt: "2026-04-10T11:59:30.000Z",
+          routeKey: `base:${ZERO}->ethereum:${ZERO}`,
+          srcChain: "base",
+          srcToken: ZERO,
+          dstChain: "ethereum",
+          dstToken: ZERO,
+          srcAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
+          dstAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
+          amount: "10000",
+          inputAmount: 0.002,
+          tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+          netEdgeUsd: -0.1,
+          executableOutputUsd: 7.83,
+          executableNetEdgeUsd: -0.05,
+          knownCostUsd: 0.2,
+        },
+      ],
+    },
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.strategy.ethProfitability.routeCount, 1);
+  assert.equal(status.strategy.ethProfitability.gatewayRouteCount, 1);
+  assert.equal(status.strategy.ethProfitability.recommendationCode, "observe_only_until_fee_review");
+  assert.equal(status.strategy.ethProfitability.followUpActionCode, "hold_eth_policy_review");
+  assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "eth_family_loop"), true);
 });
 
 test("dashboard status includes pnl and trade history summaries", () => {

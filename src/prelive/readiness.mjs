@@ -2,13 +2,16 @@ import { buildPreliveExecutionAudit } from "./execution-audit.mjs";
 import { buildForkExecutionSummary } from "./fork-execution.mjs";
 
 function queueActionLines(shadowCycle = null, limit = 4) {
-  return (shadowCycle?.refreshQueue || []).slice(0, limit).map((item) => ({
+  return (shadowCycle?.refreshQueue || [])
+    .filter((item) => item?.scope !== "eth_family_watch")
+    .slice(0, limit)
+    .map((item) => ({
     rank: item.rank ?? null,
     scope: item.scope || null,
     label: item.routeLabel || item.routeKey || item.scope || "refresh",
     reason: item.reason || item.code || null,
     command: item.command || null,
-  }));
+    }));
 }
 
 function phaseStatus({ ready, blockers, readyCode, inProgressCode, blockedCode }) {

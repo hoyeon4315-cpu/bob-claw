@@ -59,3 +59,61 @@ test("run shadow cycle skips rewriting when only observedAt changes", async () =
   const summary = JSON.parse(await readFile(join(dataDir, "shadow-cycle-latest.json"), "utf8"));
   assert.equal(typeof summary.mode, "string");
 });
+
+test("run shadow cycle includes latest ETH-family watch snapshot in queue output", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-shadow-cycle-eth-watch-"));
+  const dataDir = join(cwd, "data");
+
+  await writeJsonl(dataDir, "treasury-inventory", [
+    {
+      observedAt: "2026-04-11T02:03:25.161Z",
+      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      supportedChains: ["bob"],
+      activeChains: ["bob"],
+      native: [],
+      tokens: [],
+      allowances: [],
+      summary: {
+        estimatedWalletUsd: 25.01,
+      },
+    },
+  ]);
+  await writeJsonl(dataDir, "gateway-update-snapshots", [
+    {
+      observedAt: "2026-04-12T12:00:00.000Z",
+      ethFamily: {
+        routeCount: 1,
+        surfaceChanged: true,
+        addedRoutes: ["base:0xeth->bob:0xeth"],
+        removedRoutes: [],
+        chainPairs: ["base->bob"],
+        addedChainPairs: ["base->bob"],
+        removedChainPairs: [],
+      },
+      diff: {
+        addedEthFamilyRoutes: ["base:0xeth->bob:0xeth"],
+        removedEthFamilyRoutes: [],
+        addedEthFamilyChainPairs: ["base->bob"],
+        removedEthFamilyChainPairs: [],
+      },
+      snapshot: {
+        ethFamilyRouteCount: 1,
+        ethFamilyChainPairs: ["base->bob"],
+      },
+    },
+  ]);
+
+  const result = spawnSync(process.execPath, [join(ROOT, "src/cli/run-shadow-cycle.mjs"), "--write"], {
+    cwd,
+    env: {
+      ...process.env,
+      BOB_CLAW_DATA_DIR: dataDir,
+    },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const summary = JSON.parse(await readFile(join(dataDir, "shadow-cycle-latest.json"), "utf8"));
+  assert.equal(summary.ethFamilyWatch.surfaceChanged, true);
+  assert.equal(summary.refreshQueue[0].scope, "eth_family_watch");
+});

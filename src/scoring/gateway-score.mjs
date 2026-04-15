@@ -1,4 +1,5 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON, isEthereumL1Route } from "../risk/ethereum-l1-policy.mjs";
 
 export const BTC_DECIMALS = 8;
 
@@ -70,6 +71,9 @@ function classifyQuote({
   effectiveSystemNetPnlPct,
   options,
 }) {
+  if (!options.allowEthereumL1Routes && isEthereumL1Route(quote?.route)) {
+    return ETHEREUM_L1_PHASE_DISABLED_REASON;
+  }
   if (dataGaps.length > 0) return "insufficient_data";
   if ((options.routeStats?.failureRate ?? 0) > (options.maxRouteFailureRate ?? 0.1)) return "reject_high_failure_rate";
   if (quote.quoteType === "offramp") return "observe_only_expensive_exit";

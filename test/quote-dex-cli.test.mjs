@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { selectCandidateLegs } from "../src/cli/quote-dex.mjs";
 
 const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 function quote(route, observedAt, amount, inputAmount, outputAmount) {
   return {
@@ -106,5 +107,31 @@ test("quote-dex can include stable entry legs for wrapped BTC routes when score 
   assert.equal(entry.chain, "base");
   assert.equal(entry.inputToken, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
   assert.equal(entry.outputToken, WBTC_OFT);
+  assert.equal(entry.targetTokenAmount, "10000");
+});
+
+test("quote-dex can include stable entry legs for ETH-family routes when score input usd is known", () => {
+  const baseBase = { srcChain: "base", dstChain: "ethereum", srcToken: ZERO, dstToken: ZERO };
+  const legs = selectCandidateLegs([
+    quote(baseBase, "2026-04-11T00:00:00.000Z", "10000", "10000", "9990"),
+  ], {
+    includeStableEntry: true,
+    routeLimit: 8,
+    scoreSnapshot: {
+      scores: [
+        {
+          routeKey: `${baseBase.srcChain}:${baseBase.srcToken}->${baseBase.dstChain}:${baseBase.dstToken}`,
+          amount: "10000",
+          inputUsd: 7.25,
+        },
+      ],
+    },
+  });
+
+  assert.equal(legs.some((item) => item.source === "gateway_src_entry_leg"), true);
+  const entry = legs.find((item) => item.source === "gateway_src_entry_leg");
+  assert.equal(entry.chain, "base");
+  assert.equal(entry.inputToken, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  assert.equal(entry.outputToken, ZERO);
   assert.equal(entry.targetTokenAmount, "10000");
 });

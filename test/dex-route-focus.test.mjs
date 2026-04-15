@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
-import { buildDexRouteFocusSummary } from "../src/strategy/dex-route-focus.mjs";
+import { buildDexRouteFocusSummary, buildEthRouteFocusSummary } from "../src/strategy/dex-route-focus.mjs";
+import { trustedOdosQuote } from "./helpers/trusted-odos-quote.mjs";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 test("dex route focus ranks fully measurable routes by how close they are to observable loops", () => {
   const routeKey = `ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->base:${WBTC_OFT_TOKEN}`;
@@ -26,9 +29,9 @@ test("dex route focus ranks fully measurable routes by how close they are to obs
       ],
     },
     dexQuotes: [
-      { gatewayRouteKey: routeKey, source: "gateway_src_entry_leg" },
-      { gatewayRouteKey: routeKey, source: "gateway_dst_leg" },
-      { gatewayRouteKey: partialRouteKey, source: "gateway_src_entry_leg" },
+      trustedOdosQuote({ chain: "ethereum", gatewayRouteKey: routeKey, source: "gateway_src_entry_leg" }),
+      trustedOdosQuote({ chain: "base", gatewayRouteKey: routeKey, source: "gateway_dst_leg" }),
+      trustedOdosQuote({ chain: "ethereum", gatewayRouteKey: partialRouteKey, source: "gateway_src_entry_leg" }),
     ],
   });
 
@@ -40,4 +43,36 @@ test("dex route focus ranks fully measurable routes by how close they are to obs
   assert.equal(summary.bestRoute.classification, "loop_observable");
   assert.equal(summary.routes[1].routeKey, partialRouteKey);
   assert.equal(summary.routes[2].routeKey, missingRouteKey);
+});
+
+test("eth route focus tracks pure ETH-family loop observability separately", () => {
+  const routeKey = `base:${ZERO}->ethereum:${ZERO}`;
+  const partialRouteKey = `ethereum:${ZERO}->base:${ZERO}`;
+  const summary = buildEthRouteFocusSummary({
+    routes: [
+      { srcChain: "base", dstChain: "ethereum", srcToken: ZERO, dstToken: ZERO },
+      { srcChain: "ethereum", dstChain: "base", srcToken: ZERO, dstToken: ZERO },
+      { srcChain: "bitcoin", dstChain: "base", srcToken: ZERO, dstToken: ZERO },
+    ],
+    quotes: [
+      { routeKey, amount: "10000" },
+      { routeKey: partialRouteKey, amount: "10000" },
+    ],
+    scoreSnapshot: {
+      scores: [
+        { routeKey, amount: "10000", netEdgeUsd: -0.3, executableNetEdgeUsd: -0.1, tradeReadiness: "observe_only_ethereum_l1_phase_disabled" },
+        { routeKey: partialRouteKey, amount: "10000", netEdgeUsd: -0.4, executableNetEdgeUsd: null, tradeReadiness: "observe_only_ethereum_l1_phase_disabled" },
+      ],
+    },
+    dexQuotes: [
+      trustedOdosQuote({ chain: "base", gatewayRouteKey: routeKey, source: "gateway_src_entry_leg" }),
+      trustedOdosQuote({ chain: "ethereum", gatewayRouteKey: routeKey, source: "gateway_dst_leg" }),
+      trustedOdosQuote({ chain: "ethereum", gatewayRouteKey: partialRouteKey, source: "gateway_src_entry_leg" }),
+    ],
+  });
+
+  assert.equal(summary.fullyMeasurableRouteCount, 2);
+  assert.equal(summary.loopObservableCount, 1);
+  assert.equal(summary.partialLoopMeasurementCount, 1);
+  assert.equal(summary.bestRoute.routeKey, routeKey);
 });

@@ -3,8 +3,17 @@ import { config } from "../config/env.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
+import { buildConnectedRefreshPackage, summarizeConnectedRefreshPackage } from "../prelive/connected-refresh-package.mjs";
+import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
+import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
+import { buildExecutionRunbook, summarizeExecutionRunbook } from "../prelive/execution-runbook.mjs";
 import { buildPreliveEvidenceCampaign, summarizePreliveEvidenceCampaign } from "../prelive/evidence-campaign.mjs";
+import { buildExactRouteForkPackage, summarizeExactRouteForkPackage } from "../prelive/exact-route-fork-package.mjs";
+import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } from "../prelive/operational-judgment-review.mjs";
+import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
+import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
+import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
@@ -28,10 +37,15 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     executionEvents,
     shadowRefreshExecutions,
     shadowRefreshBatches,
+    connectedRefreshRuns,
+    currentRoutePrelivePasses,
     preliveEvidenceCampaigns,
     quoteLagLatest,
     dexSpreadLatest,
     thresholdSensitivity,
+    triangleArtifacts,
+    destinationAllocationPlan,
+    destinationPromotionGate,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -49,10 +63,15 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonl(dataDir, "execution-journal"),
     readJsonl(dataDir, "shadow-refresh-executions"),
     readJsonl(dataDir, "shadow-refresh-batches"),
+    readJsonl(dataDir, "connected-refresh-runs"),
+    readJsonl(dataDir, "current-route-prelive-passes"),
     readJsonl(dataDir, "prelive-evidence-campaigns"),
     readJsonIfExists(join(dataDir, "quote-lag-latest.json")),
     readJsonIfExists(join(dataDir, "dex-spread-latest.json")),
     readJsonIfExists(join(dataDir, "threshold-sensitivity.json")),
+    readTriangleArtifacts(dataDir),
+    readJsonIfExists(join(dataDir, "destination-allocation-plan.json")),
+    readJsonIfExists(join(dataDir, "destination-promotion-gate.json")),
   ]);
 
   const dashboardStatus = buildDashboardStatus({
@@ -83,10 +102,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     executionEvents,
     shadowRefreshExecutions,
     shadowRefreshBatches,
+    connectedRefreshRuns,
+    currentRoutePrelivePasses,
     preliveEvidenceCampaigns,
     quoteLagLatest,
     dexSpreadLatest,
     thresholdSensitivity,
+    triangleArtifacts,
   });
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
@@ -97,6 +119,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     scoreSnapshot: state.scoreSnapshot || null,
   });
   dashboardStatus.strategy.canarySelectionGap = canarySelectionGap;
+  const strategySnapshot = buildStrategySnapshot({
+    dashboardStatus,
+    state,
+    triangleArtifacts,
+  });
+  dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
   const reviewPackage = buildPreliveReviewPackage({
     dashboardStatus,
     canaryInputs,
@@ -104,6 +132,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     nextStep: state.nextStep,
     advanceCanary: dashboardStatus.canaryAdvance || null,
     address: state.address,
+    strategySnapshot: dashboardStatus.strategy.strategySnapshot,
+    destinationAllocationPlan,
+    destinationPromotionGate,
   });
   dashboardStatus.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatus.dataCounts.preliveReviewPackagePresent = dashboardStatus.prelive.reviewPackage ? 1 : 0;
@@ -120,6 +151,71 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     evidenceCampaign,
     address: state.address,
   });
+  const connectedRefreshPackage = buildConnectedRefreshPackage({
+    dashboardStatus,
+    canaryInputs,
+    reviewPackage,
+    nextStep: state.nextStep,
+    address: state.address,
+  });
+  const executionRunbook = buildExecutionRunbook({
+    dashboardStatus,
+    reviewPackage,
+    strategySnapshot,
+    canaryInputs,
+    nextStep: state.nextStep,
+    forkPlan: preliveForkPlan,
+    address: state.address,
+  });
+  const exactRouteForkPackage = buildExactRouteForkPackage({
+    dashboardStatus,
+    canaryInputs,
+    reviewPackage,
+    nextStep: state.nextStep,
+    forkPlan: preliveForkPlan,
+    simulationRuns: preliveSimulationRuns,
+    submissions: preliveForkSubmissions,
+    receipts: preliveForkReceipts,
+    connectedRefreshPackage,
+  });
+  dashboardStatus.prelive.executionRunbook = summarizeExecutionRunbook(executionRunbook);
+  const preliveValidation = buildPreliveValidationReport({
+    dashboardStatus,
+    strategySnapshot,
+    executionRunbook,
+    reviewPackage,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+  });
+  dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
+  const operationalJudgmentReview = buildOperationalJudgmentReview({
+    dashboardStatus,
+    strategySnapshot,
+    reviewPackage,
+    executionRunbook,
+    preliveValidation,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+  });
+  dashboardStatus.prelive.connectedRefresh = summarizeConnectedRefreshPackage(connectedRefreshPackage);
+  dashboardStatus.prelive.connectedRefreshExecution = buildConnectedRefreshExecutionSummary(
+    connectedRefreshRuns,
+    dashboardStatus.generatedAt,
+  );
+  dashboardStatus.prelive.currentRoutePrelivePass = buildCurrentRoutePrelivePassSummary(
+    currentRoutePrelivePasses,
+    dashboardStatus.generatedAt,
+  );
+  dashboardStatus.prelive.exactRouteForkPackage = summarizeExactRouteForkPackage(exactRouteForkPackage);
+  dashboardStatus.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+  reviewPackage.strategySnapshot = dashboardStatus.strategy.strategySnapshot;
+  reviewPackage.executionRunbook = dashboardStatus.prelive.executionRunbook;
+  reviewPackage.preliveValidation = dashboardStatus.prelive.validation;
+  reviewPackage.connectedRefreshPackage = connectedRefreshPackage;
+  reviewPackage.connectedRefreshExecution = dashboardStatus.prelive.connectedRefreshExecution;
+  reviewPackage.currentRoutePrelivePass = dashboardStatus.prelive.currentRoutePrelivePass;
+  reviewPackage.exactRouteForkPackage = exactRouteForkPackage;
+  reviewPackage.operationalJudgmentReview = operationalJudgmentReview;
   dashboardStatus.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatus.prelive.evidenceCampaign = {
     ...dashboardStatus.prelive.evidenceCampaign,
@@ -135,6 +231,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     canarySelectionGap,
     reviewPackage,
     evidenceCampaign,
+    strategySnapshot,
+    connectedRefreshPackage,
+    executionRunbook,
+    exactRouteForkPackage,
+    preliveValidation,
+    operationalJudgmentReview,
+    triangleArtifacts,
     artifacts: {
       quoteFailures,
       gasFailures,
@@ -152,7 +255,18 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       executionEvents,
       shadowRefreshExecutions,
       shadowRefreshBatches,
+      connectedRefreshRuns,
+      currentRoutePrelivePasses,
       preliveEvidenceCampaigns,
+      strategySnapshot,
+      connectedRefreshPackage,
+      executionRunbook,
+      exactRouteForkPackage,
+      preliveValidation,
+      operationalJudgmentReview,
+      destinationAllocationPlan,
+      destinationPromotionGate,
+      triangleArtifacts,
     },
   };
 }

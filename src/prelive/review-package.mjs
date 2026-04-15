@@ -103,6 +103,9 @@ function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview 
   return unique([
     ...(dashboardStatus?.prelive?.notes || []),
     measuredLeaderReview?.hypothesisGuard || null,
+    dashboardStatus?.gateway?.ethFamilyWatch?.routeCount > 0
+      ? "ETH-family routes stay observe-only until route persistence, amount diversity, and ETH-family overfit audit all clear."
+      : null,
     !readyForManualReview
       ? "Do not promote any route to canary or live execution while review blockers, stale inputs, or missing pre-live evidence remain."
       : null,
@@ -115,6 +118,112 @@ function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview 
   ]);
 }
 
+function buildEthFamilyObservation(dashboardStatus = null) {
+  const watch = dashboardStatus?.gateway?.ethFamilyWatch || null;
+  if (!watch) return null;
+  const routeCount = Number(watch.routeCount || 0);
+  const surfaceChanged = Boolean(watch.surfaceChanged);
+  const addedChainPairs = watch.addedChainPairs || [];
+  const removedChainPairs = watch.removedChainPairs || [];
+  const command = "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard";
+
+  return {
+    routeCount,
+    surfaceChanged,
+    addedRoutesCount: Number(watch.addedRoutesCount || 0),
+    removedRoutesCount: Number(watch.removedRoutesCount || 0),
+    chainPairs: watch.chainPairs || [],
+    addedChainPairs,
+    removedChainPairs,
+    status: routeCount <= 0 ? "idle" : surfaceChanged ? "ready_for_evidence" : "monitoring",
+    reason: routeCount <= 0 ? "no_eth_family_surface" : surfaceChanged ? "eth_family_surface_changed" : "eth_family_surface_present",
+    nextAction:
+      routeCount > 0 && surfaceChanged
+        ? {
+            code: "collect_eth_family_evidence",
+            label: "collect ETH family evidence",
+            command,
+          }
+        : null,
+  };
+}
+
+function buildEthFamilyProfitability(dashboardStatus = null) {
+  const profitability = dashboardStatus?.strategy?.ethProfitability || null;
+  if (
+    !profitability ||
+    (
+      !profitability.bestMeasuredRoute &&
+      !profitability.bestResearchRoute &&
+      !profitability.closestPolicyRoute &&
+      (profitability.gatewayRouteCount || 0) <= 0 &&
+      (profitability.routeCount || 0) <= 0
+    )
+  ) {
+    return null;
+  }
+  return {
+    gatewayRouteCount: profitability.gatewayRouteCount ?? 0,
+    routeCount: profitability.routeCount ?? 0,
+    measuredClosedLoopCount: profitability.measuredClosedLoopCount ?? 0,
+    profitableClosedLoopCount: profitability.profitableClosedLoopCount ?? 0,
+    loopObservableRouteCount: profitability.loopObservableRouteCount ?? 0,
+    stableRouteCount: profitability.stableRouteCount ?? 0,
+    policyBlockedCount: profitability.policyBlockedCount ?? 0,
+    verdictCode: profitability.verdictCode || null,
+    verdictLabel: profitability.verdictLabel || null,
+    verdictDetail: profitability.verdictDetail || null,
+    recommendationCode: profitability.recommendationCode || null,
+    recommendationLabel: profitability.recommendationLabel || null,
+    recommendationDetail: profitability.recommendationDetail || null,
+    bestMeasuredRoute: profitability.bestMeasuredRoute || null,
+    closestPolicyRoute: profitability.closestPolicyRoute || null,
+    bestResearchRoute: profitability.bestResearchRoute || null,
+    followUpActionCode: profitability.followUpActionCode || null,
+    followUpActionLabel: profitability.followUpActionLabel || null,
+    followUpCommand: profitability.followUpCommand || null,
+    overfitRisks: profitability.overfitRisks || [],
+  };
+}
+
+function summarizeDestinationAllocator({ destinationAllocationPlan = null, destinationPromotionGate = null } = {}) {
+  if (!destinationAllocationPlan && !destinationPromotionGate) return null;
+  const topActive = destinationAllocationPlan?.activePlan?.[0] || null;
+  const topReviewOnly =
+    destinationAllocationPlan?.summary?.topReviewOnly?.[0] || destinationPromotionGate?.summary?.topReviewOnly?.[0] || null;
+  return {
+    promotableCount: destinationPromotionGate?.summary?.promotableCount ?? destinationAllocationPlan?.summary?.promotableCount ?? 0,
+    allocationReadyCount:
+      destinationPromotionGate?.summary?.allocationReadyCount ?? destinationAllocationPlan?.summary?.allocationReadyCount ?? 0,
+    reviewOnlyCount:
+      destinationPromotionGate?.summary?.reviewOnlyCount ?? destinationAllocationPlan?.summary?.reviewOnlyCount ?? 0,
+    activeAllocationCount: destinationAllocationPlan?.summary?.activeAllocationCount ?? 0,
+    planningAllocationCount: destinationAllocationPlan?.summary?.planningAllocationCount ?? 0,
+    topActiveCandidate: topActive
+      ? {
+          templateId: topActive.templateId || null,
+          chain: topActive.chain || null,
+          familyId: topActive.familyId || null,
+          label: topActive.label || null,
+          estimatedNetBps: topActive.estimatedNetBps ?? null,
+          estimatedNetUsd: topActive.estimatedNetUsd ?? null,
+        }
+      : null,
+    topReviewOnlyCandidate: topReviewOnly
+      ? {
+          templateId: topReviewOnly.templateId || null,
+          chain: topReviewOnly.chain || null,
+          familyId: topReviewOnly.familyId || null,
+          label: topReviewOnly.label || null,
+          blockers: topReviewOnly.blockers || topReviewOnly.allocationGate?.blockers || [],
+          nextAction: topReviewOnly.nextAction || topReviewOnly.allocationGate?.nextAction || null,
+        }
+      : null,
+    note:
+      "Destination allocator candidates are research and manual-review inputs only; they do not authorize route execution or live trading.",
+  };
+}
+
 export function buildPreliveReviewPackage({
   dashboardStatus = null,
   canaryInputs = null,
@@ -122,6 +231,14 @@ export function buildPreliveReviewPackage({
   nextStep = null,
   advanceCanary = null,
   address = null,
+  strategySnapshot = null,
+  executionRunbook = null,
+  preliveValidation = null,
+  connectedRefreshPackage = null,
+  exactRouteForkPackage = null,
+  operationalJudgmentReview = null,
+  destinationAllocationPlan = null,
+  destinationPromotionGate = null,
   now = null,
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
@@ -156,6 +273,8 @@ export function buildPreliveReviewPackage({
     manualReviewCandidate,
     overall: dashboardStatus?.overall || null,
   });
+  const ethFamilyObservation = buildEthFamilyObservation(dashboardStatus);
+  const ethFamilyProfitability = buildEthFamilyProfitability(dashboardStatus);
   const readyForManualReview = tinyCanaryAdmission.decision === "GO_FOR_MANUAL_APPROVAL";
   const reviewBlockers = readyForManualReview ? [] : tinyCanaryAdmission.blockers;
   const liveBlockers = unique([...(executionStage.liveReasons || []), ...(dashboardStatus?.overall?.blockers || [])]);
@@ -176,6 +295,18 @@ export function buildPreliveReviewPackage({
       dashboardStatus?.strategy?.pivotDecision ||
       dashboardStatus?.shadowCycle?.pivotDecision ||
       null,
+    pivotPlan: dashboardStatus?.strategy?.pivotPlan || null,
+    yieldShadowBook: dashboardStatus?.strategy?.yieldShadowBook || null,
+    proxySpreadCoveragePlan: dashboardStatus?.strategy?.proxySpreadCoveragePlan || null,
+    destinationAllocator: summarizeDestinationAllocator({ destinationAllocationPlan, destinationPromotionGate }),
+    strategySnapshot: strategySnapshot || dashboardStatus?.strategy?.strategySnapshot || null,
+    executionRunbook: executionRunbook || dashboardStatus?.prelive?.executionRunbook || null,
+    preliveValidation: preliveValidation || dashboardStatus?.prelive?.validation || null,
+    connectedRefreshPackage,
+    connectedRefreshExecution: dashboardStatus?.prelive?.connectedRefreshExecution || null,
+    currentRoutePrelivePass: dashboardStatus?.prelive?.currentRoutePrelivePass || null,
+    exactRouteForkPackage,
+    operationalJudgmentReview,
     liveTradingPolicy: prelive?.liveTradingPolicy || dashboardStatus?.overall?.liveTrading || "BLOCKED",
     decisionContext: {
       currentDecision: nextStep?.decision || dashboardStatus?.canaryAdvance?.final?.decision || dashboardStatus?.shadowCycle?.canaryDecision || null,
@@ -184,6 +315,8 @@ export function buildPreliveReviewPackage({
     },
     manualReviewCandidate,
     measuredLeaderReview,
+    ethFamilyObservation,
+    ethFamilyProfitability,
     operatorChecklist: checklist,
     preliveEvidence: {
       shadowReplay: prelive?.shadowReplay
@@ -283,5 +416,66 @@ export function summarizePreliveReviewPackage(reviewPackage = null) {
     forkTargetCount: reviewPackage.preliveEvidence?.forkExecution?.targetConfirmedCount ?? 0,
     recentTransitionCount: reviewPackage.recentTransitions?.length || 0,
     queueFollowUpCount: reviewPackage.queueFollowUps?.length || 0,
+    pivotTopRecommendationId: reviewPackage.pivotPlan?.topRecommendation?.id || null,
+    pivotTopRecommendationLabel: reviewPackage.pivotPlan?.topRecommendation?.label || null,
+    pivotTopRecommendationStatus: reviewPackage.pivotPlan?.topRecommendation?.status || null,
+    pivotCurrentBudgetUsd: reviewPackage.pivotPlan?.currentBudgetUsd ?? null,
+    pivotObservedCapitalFloorUsd: reviewPackage.pivotPlan?.topRecommendation?.observedCapitalFloorUsd ?? null,
+    pivotResearchPilotMinimumUsd: reviewPackage.pivotPlan?.topRecommendation?.researchPilotMinimumUsd ?? null,
+    pivotPlanningBudgetScenarios: reviewPackage.pivotPlan?.budgetScenarios || [],
+    yieldTopProfileId: reviewPackage.yieldShadowBook?.topProfile?.id || null,
+    yieldTopProfileCapitalRequiredUsd: reviewPackage.yieldShadowBook?.topProfile?.capitalRequiredUsd ?? null,
+    proxyCoverageNextAction: reviewPackage.proxySpreadCoveragePlan?.nextAction || null,
+    proxyCoverageNextProxyGroup: reviewPackage.proxySpreadCoveragePlan?.nextProxyGroup || null,
+    destinationAllocatorPromotableCount: reviewPackage.destinationAllocator?.promotableCount ?? 0,
+    destinationAllocatorAllocationReadyCount: reviewPackage.destinationAllocator?.allocationReadyCount ?? 0,
+    destinationAllocatorReviewOnlyCount: reviewPackage.destinationAllocator?.reviewOnlyCount ?? 0,
+    destinationAllocatorTopActiveTemplateId: reviewPackage.destinationAllocator?.topActiveCandidate?.templateId || null,
+    destinationAllocatorTopReviewOnlyTemplateId: reviewPackage.destinationAllocator?.topReviewOnlyCandidate?.templateId || null,
+    strategySnapshotStrategyCount: reviewPackage.strategySnapshot?.implementedStrategyCount ?? 0,
+    strategySnapshotTopImplementedId: reviewPackage.strategySnapshot?.topImplementedStrategy?.id || null,
+    executionRunbookCurrentStage: reviewPackage.executionRunbook?.currentStageId || null,
+    executionRunbookNextStageId: reviewPackage.executionRunbook?.nextStageId || null,
+    executionRunbookNextActionCode: reviewPackage.executionRunbook?.nextActionCode || null,
+    executionRunbookForkPlanId: reviewPackage.executionRunbook?.exactRouteForkPlanId || null,
+    executionRunbookForkPlanStatus: reviewPackage.executionRunbook?.exactRouteForkPlanStatus || null,
+    preliveValidationStatus: reviewPackage.preliveValidation?.validationStatus || null,
+    preliveValidationNextActionCode: reviewPackage.preliveValidation?.nextActionCode || null,
+    connectedRefreshStatus: reviewPackage.connectedRefreshPackage?.status || null,
+    connectedRefreshRequiredCount:
+      reviewPackage.connectedRefreshPackage?.summary?.requiredRefreshCount ??
+      reviewPackage.connectedRefreshPackage?.requiredRefreshCount ??
+      0,
+    connectedRefreshNextActionCode:
+      reviewPackage.connectedRefreshPackage?.summary?.nextActionCode ||
+      reviewPackage.connectedRefreshPackage?.nextActionCode ||
+      reviewPackage.connectedRefreshPackage?.nextAction?.code ||
+      null,
+    connectedRefreshExecutionRunCount: reviewPackage.connectedRefreshExecution?.runCount ?? 0,
+    connectedRefreshExecutionPreviewCount: reviewPackage.connectedRefreshExecution?.previewCount ?? 0,
+    connectedRefreshExecutionSuccessCount: reviewPackage.connectedRefreshExecution?.successCount ?? 0,
+    connectedRefreshExecutionFailureCount: reviewPackage.connectedRefreshExecution?.failureCount ?? 0,
+    connectedRefreshExecutionLatestStatus: reviewPackage.connectedRefreshExecution?.latestStatus || null,
+    currentRoutePrelivePassRunCount: reviewPackage.currentRoutePrelivePass?.runCount ?? 0,
+    currentRoutePrelivePassPreviewCount: reviewPackage.currentRoutePrelivePass?.previewCount ?? 0,
+    currentRoutePrelivePassLatestStatus: reviewPackage.currentRoutePrelivePass?.latestStatus || null,
+    currentRoutePrelivePassNextActionCode: reviewPackage.currentRoutePrelivePass?.nextAction?.code || null,
+    exactRouteForkPackageStatus: reviewPackage.exactRouteForkPackage?.status || null,
+    exactRouteForkPackagePlanId:
+      reviewPackage.exactRouteForkPackage?.plan?.planId ||
+      reviewPackage.exactRouteForkPackage?.planId ||
+      null,
+    exactRouteForkEconomicStatus:
+      reviewPackage.exactRouteForkPackage?.readiness?.economicStatus ||
+      reviewPackage.exactRouteForkPackage?.economicStatus ||
+      null,
+    operationalJudgmentStatus: reviewPackage.operationalJudgmentReview?.status || null,
+    operationalJudgmentIssueCount:
+      reviewPackage.operationalJudgmentReview?.issueCount ??
+      reviewPackage.operationalJudgmentReview?.issues?.length ??
+      0,
+    ethFamilyVerdictCode: reviewPackage.ethFamilyProfitability?.verdictCode || null,
+    ethFamilyRecommendationCode: reviewPackage.ethFamilyProfitability?.recommendationCode || null,
+    ethFamilyRouteCount: reviewPackage.ethFamilyProfitability?.routeCount ?? 0,
   };
 }

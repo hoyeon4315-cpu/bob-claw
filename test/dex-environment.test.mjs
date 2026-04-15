@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDexEnvironmentSummary } from "../src/strategy/dex-environment.mjs";
+import { trustedOdosQuote } from "./helpers/trusted-odos-quote.mjs";
 
 test("dex environment flags stale, thin-liquidity, and single-sample BTC execution legs", () => {
   const summary = buildDexEnvironmentSummary({
     now: "2026-04-11T14:30:00.000Z",
     dexQuotes: [
-      {
+      trustedOdosQuote({
         observedAt: "2026-04-11T13:00:00.000Z",
         source: "gateway_src_entry_leg",
         chain: "base",
@@ -23,8 +24,8 @@ test("dex environment flags stale, thin-liquidity, and single-sample BTC executi
         priceImpactPct: 0.2,
         gatewayRouteKey: "base:0xwbtc->bitcoin:0xbtc",
         gatewayAmount: "10000",
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-11T13:10:00.000Z",
         source: "gateway_src_entry_leg",
         chain: "base",
@@ -41,8 +42,8 @@ test("dex environment flags stale, thin-liquidity, and single-sample BTC executi
         priceImpactPct: 0.3,
         gatewayRouteKey: "base:0xwbtc->bitcoin:0xbtc",
         gatewayAmount: "10000",
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-11T14:25:00.000Z",
         source: "gateway_src_entry_leg",
         chain: "ethereum",
@@ -59,7 +60,7 @@ test("dex environment flags stale, thin-liquidity, and single-sample BTC executi
         priceImpactPct: 12,
         gatewayRouteKey: "ethereum:0xwbtc->bitcoin:0xbtc",
         gatewayAmount: "10000",
-      },
+      }),
     ],
   });
 

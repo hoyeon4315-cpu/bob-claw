@@ -82,3 +82,38 @@ test("tiny canary admission blocks on stale inputs and readiness blockers", () =
   assert.equal(admission.blockers.includes("missing_exact_gas"), true);
   assert.equal(admission.blockers.includes("stale_dex_quote"), true);
 });
+
+test("tiny canary admission treats blocked DEX coverage as a blocker", () => {
+  const admission = buildTinyCanaryAdmission({
+    prelive: {
+      tinyLiveCanary: {
+        ready: false,
+        blockers: [],
+      },
+    },
+    executionStage: {
+      reviewStage: "READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewReasons: [],
+    },
+    manualReviewCandidate: {
+      routeKey: "avalanche:0x0555->bera:0x0555",
+      routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
+      amount: "10000",
+      tradeReadiness: "shadow_candidate_review_only",
+      inputFreshness: {
+        gatewayQuote: { state: "fresh" },
+        exactGas: { state: "fresh" },
+        srcGas: { state: "fresh" },
+        dexQuote: { state: "blocked" },
+        bitcoinFee: { state: "not_needed" },
+        marketSnapshot: { state: "fresh" },
+      },
+    },
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+  });
+
+  assert.equal(admission.decision, "NO_GO");
+  assert.equal(admission.blockers.includes("blocked_dex_quote"), true);
+});

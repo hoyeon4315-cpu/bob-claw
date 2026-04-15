@@ -54,7 +54,7 @@ test("route subline replaces the old live-watch copy with coverage and reference
     },
   });
 
-  assert.equal(text, "체인 실측 2/3 · 기준 wBTC $72.7k · stale 1");
+  assert.equal(text, "체인 실측 2/3 · wBTC 기준 $72.7k · 오래된 가격 1");
 });
 
 test("price extremes still highlight high and low chains when every observed quote is stale", () => {

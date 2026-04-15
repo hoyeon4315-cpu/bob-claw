@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { tokenAsset, ZERO_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, tokenAsset, ZERO_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-policy.mjs";
 import { scoreGatewayQuote } from "../src/scoring/gateway-score.mjs";
 
 const USDC_ETHEREUM = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -50,6 +51,7 @@ test("scores cross-asset Gateway quotes with token-specific decimals", () => {
       srcAsset: tokenAsset(route.srcChain, route.srcToken),
       dstAsset: tokenAsset(route.dstChain, route.dstToken),
       priceHaircutBps: 0,
+      allowEthereumL1Routes: true,
     },
   );
 
@@ -75,6 +77,7 @@ test("bitcoin fee snapshot removes generic bitcoin fee gap and enters known cost
       srcAsset: tokenAsset(route.srcChain, route.srcToken),
       dstAsset: tokenAsset(route.dstChain, route.dstToken),
       priceHaircutBps: 0,
+      allowEthereumL1Routes: true,
       bitcoinFee: {
         observedAt: "2026-04-10T11:59:00.000Z",
         selectedFeeRateSatVb: 4,
@@ -209,6 +212,40 @@ test("high route failure rate blocks otherwise positive candidates", () => {
 
   assert.equal(score.netEdgeUsd > 0, true);
   assert.equal(score.tradeReadiness, "reject_high_failure_rate");
+});
+
+test("ethereum L1 routes stay observe-only by default until explicitly approved", () => {
+  const route = { srcChain: "ethereum", dstChain: "base", srcToken: ETHEREUM_WBTC_TOKEN, dstToken: WBTC_OFT };
+  const blocked = scoreGatewayQuote(
+    quote(route, {
+      outputAmount: "10220",
+    }),
+    prices,
+    {
+      executionGasUsd: 0.001,
+      gasObservedAt: "2026-04-10T11:59:00.000Z",
+      now: "2026-04-10T12:00:00.000Z",
+      priceHaircutBps: 0,
+      minProfitUsd: 0.1,
+    },
+  );
+  const approved = scoreGatewayQuote(
+    quote(route, {
+      outputAmount: "10220",
+    }),
+    prices,
+    {
+      executionGasUsd: 0.001,
+      gasObservedAt: "2026-04-10T11:59:00.000Z",
+      now: "2026-04-10T12:00:00.000Z",
+      priceHaircutBps: 0,
+      minProfitUsd: 0.1,
+      allowEthereumL1Routes: true,
+    },
+  );
+
+  assert.equal(blocked.tradeReadiness, ETHEREUM_L1_PHASE_DISABLED_REASON);
+  assert.equal(approved.tradeReadiness, "shadow_candidate_review_only");
 });
 
 test("DEX output quote supplies executable net edge", () => {

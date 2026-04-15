@@ -57,6 +57,7 @@ test("canary input summary captures fresh and stale inputs for the active route"
         {
           source: "gateway_dst_leg",
           gatewayRouteKey: "bob:0x0555->base:0x0555",
+          gatewayAmount: "10000",
           observedAt: "2026-04-11T11:15:00.000Z",
         },
       ],
@@ -145,6 +146,63 @@ test("canary progress summary bundles current input blockers with last advance s
   assert.deepEqual(progress.lastAdvance.finalReasons, ["reject_no_net_edge"]);
 });
 
+test("canary input summary marks structurally unsupported DEX coverage as blocked", () => {
+  const summary = buildCanaryInputSummary(
+    {
+      nextStep: {
+        route: {
+          label: "avalanche->bera wBTC.OFT->wBTC.OFT",
+          routeKey: "avalanche:0x0555->bera:0x0555",
+          amount: "10000",
+          srcChain: "avalanche",
+          dstChain: "bera",
+          tradeReadiness: "reject_no_net_edge",
+        },
+        reasons: ["reject_no_net_edge"],
+      },
+      scoreSnapshot: {
+        generatedAt: "2026-04-11T12:00:00.000Z",
+        scores: [
+          {
+            routeKey: "avalanche:0x0555->bera:0x0555",
+            amount: "10000",
+            tradeReadiness: "reject_no_net_edge",
+            executionGasSource: "eth_estimateGas",
+            dataGaps: ["missing_dex_output_quote"],
+          },
+        ],
+      },
+      quotes: [],
+      gasEstimateSnapshots: [],
+      gasSnapshots: [],
+      dexQuotes: [],
+      dexFailures: [
+        {
+          source: "gateway_dst_leg",
+          gatewayRouteKey: "avalanche:0x0555->bera:0x0555",
+          gatewayAmount: "10000",
+          reason: "odos_chain_not_supported",
+          observedAt: "2026-04-11T11:58:00.000Z",
+        },
+        {
+          source: "gateway_src_entry_leg",
+          gatewayRouteKey: "avalanche:0x0555->bera:0x0555",
+          gatewayAmount: "10000",
+          reason: "odos_quote_failed",
+          observedAt: "2026-04-11T11:59:00.000Z",
+        },
+      ],
+      bitcoinFeeSnapshots: [],
+      priceSnapshots: [],
+    },
+    { now: "2026-04-11T12:00:00.000Z" },
+  );
+
+  assert.equal(summary.dexQuote.state, "blocked");
+  assert.equal(summary.dexQuote.failureReason, "odos_chain_not_supported");
+  assert.deepEqual(summary.dexQuote.failureReasons, ["odos_quote_failed", "odos_chain_not_supported"]);
+});
+
 test("canary stage checklist shows completed and remaining stages conservatively", () => {
   const checklist = buildCanaryStageChecklist({
     route: {
@@ -213,4 +271,26 @@ test("execution stage summary separates manual canary review from live execution
   assert.equal(summary.liveStage, "LIVE_EXECUTION_BLOCKED");
   assert.equal(summary.auditDecision, "LIVE_BLOCKED");
   assert.deepEqual(summary.liveReasons, ["audit_blocks_live", "stale_gas_snapshots"]);
+});
+
+test("canary stage checklist separates blocked inputs from refreshable inputs", () => {
+  const checklist = buildCanaryStageChecklist({
+    route: {
+      label: "avalanche->bera wBTC.OFT->wBTC.OFT",
+    },
+    inputSummary: {
+      routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
+      gatewayQuote: { state: "fresh" },
+      exactGas: { state: "fresh" },
+      srcGas: { state: "fresh" },
+      dexQuote: { state: "blocked", failureReason: "odos_chain_not_supported" },
+      bitcoinFee: { state: "not_needed" },
+      marketSnapshot: { state: "stale" },
+    },
+  });
+
+  assert.deepEqual(checklist.remaining, [
+    "refresh stale/missing inputs (market)",
+    "resolve blocked inputs (DEX quote)",
+  ]);
 });

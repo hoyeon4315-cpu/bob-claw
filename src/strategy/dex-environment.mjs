@@ -1,4 +1,5 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
 
 function observedAtMs(value) {
   const ms = new Date(value || 0).getTime();
@@ -156,7 +157,7 @@ export function buildDexEnvironmentSummary({ dexQuotes = [], now = new Date().to
     maxPriceImpactPct: 3,
     ...options,
   };
-  const relevantQuotes = (dexQuotes || []).filter((quote) => {
+  const relevantQuotes = filterTrustedExecutableDexQuotes(dexQuotes).filter((quote) => {
     const inputAsset = tokenAsset(quote?.chain, quote?.inputToken);
     const outputAsset = tokenAsset(quote?.chain, quote?.outputToken);
     return btcFamily(inputAsset) || btcFamily(outputAsset);

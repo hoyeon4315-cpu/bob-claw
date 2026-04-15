@@ -3,14 +3,20 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
-import { canQuoteWithOdos, normalizeOdosQuote, OdosClient, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
+import {
+  canQuoteWithOdos,
+  normalizeOdosQuote,
+  odosRoutingConfig,
+  OdosClient,
+  STABLE_QUOTE_TOKENS,
+} from "../dex/odos.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readFile } from "node:fs/promises";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { isBtcLikeAsset, isEthLikeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const DEFAULT_STABLE_ENTRY_BUFFER_BPS = 100;
 
 function parseArgs(argv) {
@@ -25,6 +31,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
+    allowUnsafeSources: flags.has("--allow-unsafe-sources"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : 24,
     amountLimitUsd: options["amount-limit-usd"] ? Number(options["amount-limit-usd"]) : null,
     routeKey: options["route-key"] || null,
@@ -111,7 +118,7 @@ function estimateStableEntryAmountUnits({ quote, score, stableEntryBufferBps, pr
 function stableEntryLegFromGatewayQuote(quote, { scoresByKey, stableEntryBufferBps, prices }) {
   const stable = STABLE_QUOTE_TOKENS[quote?.route?.srcChain];
   const outputAsset = tokenAsset(quote?.route?.srcChain, quote?.route?.srcToken);
-  if (!stable || !["btc", "wrapped_btc"].includes(outputAsset.family)) return null;
+  if (!stable || (!isBtcLikeAsset(outputAsset) && !isEthLikeAsset(outputAsset))) return null;
   const amount = estimateStableEntryAmountUnits({
     quote,
     score: scoresByKey.get(scoreKey(quote.routeKey, quote.amount)) || null,
@@ -171,6 +178,10 @@ function isWrappedBtcLeg(leg) {
   return tokenAsset(leg.chain, leg.outputToken || leg.inputToken).family === "wrapped_btc";
 }
 
+function isEthLikeLeg(leg) {
+  return isEthLikeAsset(tokenAsset(leg.chain, leg.outputToken || leg.inputToken));
+}
+
 function appendLeg(selection, seen, leg, routeLimit) {
   if (!leg || selection.length >= routeLimit) return;
   const key = [
@@ -193,7 +204,11 @@ function prioritizeLegsForCoverage(legs, { routeLimit }) {
   const coveredChains = new Set();
 
   for (const leg of ordered) {
-    if (!isWrappedBtcLeg(leg) || !canQuoteWithOdos(leg.chain, leg.inputToken, { token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token }).ok || coveredChains.has(leg.chain)) continue;
+    if (
+      !(isWrappedBtcLeg(leg) || isEthLikeLeg(leg)) ||
+      !canQuoteWithOdos(leg.chain, leg.inputToken, { token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token }).ok ||
+      coveredChains.has(leg.chain)
+    ) continue;
     appendLeg(selection, seen, leg, routeLimit);
     coveredChains.add(leg.chain);
   }
@@ -272,6 +287,7 @@ async function main() {
   for (const leg of selectedLegs) {
     const inputAsset = tokenAsset(leg.chain, leg.inputToken);
     const outputAsset = tokenAsset(leg.chain, leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token);
+    const routing = odosRoutingConfig(leg.chain, { allowUnsafe: args.allowUnsafeSources });
     const support = canQuoteWithOdos(leg.chain, leg.inputToken, {
       token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token,
       ticker: outputAsset.ticker,
@@ -291,6 +307,10 @@ async function main() {
         gatewayRouteKey: leg.gatewayRouteKey,
         gatewayAmount: leg.gatewayAmount,
         targetTokenAmount: leg.targetTokenAmount || null,
+        sourceWhitelist: routing.sourceWhitelist,
+        sourceBlacklist: routing.sourceBlacklist,
+        routingMode: routing.routingMode,
+        executionTrust: routing.executionTrust,
         ok: false,
         reason: support.reason,
       };
@@ -312,6 +332,8 @@ async function main() {
         amount: leg.amount,
         userAddr: config.verifyRecipient,
         slippageLimitPercent: Number(config.slippageBps) / 100,
+        sourceWhitelist: routing.sourceWhitelist,
+        sourceBlacklist: routing.sourceBlacklist,
       });
       const record = {
         ...normalizeOdosQuote({
@@ -326,6 +348,8 @@ async function main() {
           outputDecimals: support.outputToken.decimals,
           quoteType: leg.quoteType,
           result,
+          sourceWhitelist: routing.sourceWhitelist,
+          sourceBlacklist: routing.sourceBlacklist,
         }),
         runId,
         gatewayRouteKey: leg.gatewayRouteKey,
@@ -346,6 +370,7 @@ async function main() {
             `gasUsd=${record.gasEstimateValueUsd ?? "n/a"}`,
             `target=${record.targetTokenAmount ?? "n/a"}`,
             `impact=${record.priceImpactPct ?? "n/a"}`,
+            `trust=${record.executionTrust}`,
             `latency=${record.latencyMs}ms`,
           ].join(" "),
         );
@@ -364,6 +389,10 @@ async function main() {
         gatewayRouteKey: leg.gatewayRouteKey,
         gatewayAmount: leg.gatewayAmount,
         targetTokenAmount: leg.targetTokenAmount || null,
+        sourceWhitelist: routing.sourceWhitelist,
+        sourceBlacklist: routing.sourceBlacklist,
+        routingMode: routing.routingMode,
+        executionTrust: routing.executionTrust,
         ok: false,
         reason: "odos_quote_failed",
         error: {

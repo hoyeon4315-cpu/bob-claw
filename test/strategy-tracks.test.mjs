@@ -89,3 +89,35 @@ test("strategy tracks only promote blocker-free durable candidates", () => {
   assert.equal(proxySpread.status, "candidate_spread");
   assert.equal(proxySpread.nextActionCode, "validate_proxy_durability");
 });
+
+test("strategy tracks include an ETH-family observe-only research track when ETH evidence exists", () => {
+  const summary = buildStrategyTracksSummary({
+    ethProfitability: {
+      gatewayRouteCount: 3,
+      routeCount: 1,
+      measuredClosedLoopCount: 1,
+      profitableClosedLoopCount: 0,
+      verdictCode: "positive_but_below_policy",
+      recommendationCode: "collect_more_eth_evidence",
+      bestMeasuredRoute: {
+        routeKey: "base:0x0->ethereum:0x0",
+        amount: "10000",
+      },
+      bestResearchRoute: {
+        routeKey: "base:0x0->ethereum:0x0",
+        amount: "10000",
+      },
+      followUpActionCode: "collect_eth_family_evidence",
+      followUpCommand: "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
+    },
+  });
+
+  const ethTrack = summary.tracks.find((item) => item.kind === "eth_family_loop");
+
+  assert.equal(Boolean(ethTrack), true);
+  assert.equal(ethTrack.label, "base:0x0->ethereum:0x0");
+  assert.equal(ethTrack.status, "thin_coverage");
+  assert.equal(ethTrack.nextActionCode, "collect_eth_family_evidence");
+  assert.equal(ethTrack.reason, "collect_more_eth_evidence");
+  assert.match(ethTrack.command, /audit:eth-family-overfit/);
+});

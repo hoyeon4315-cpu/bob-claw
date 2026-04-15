@@ -34,6 +34,59 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
       },
     },
   ]);
+  await writeJsonl(dataDir, "connected-refresh-runs", [
+    {
+      observedAt: "2026-04-11T02:00:00.000Z",
+      runId: "run-execute",
+      mode: "execute",
+      executionStatus: "succeeded",
+      selectedRefreshCount: 5,
+      selectedReevaluationCount: 2,
+      finalPackage: {
+        summary: {
+          requiredRefreshCount: 0,
+        },
+        nextAction: {
+          code: "advance_canary",
+        },
+      },
+    },
+    {
+      observedAt: "2026-04-11T02:05:00.000Z",
+      runId: "run-preview",
+      mode: "preview",
+      executionStatus: "preview",
+      selectedRefreshCount: 1,
+      selectedReevaluationCount: 0,
+      stopReason: "remaining_refresh_steps_before_reevaluation",
+      packageSnapshot: {
+        summary: {
+          requiredRefreshCount: 5,
+        },
+        nextAction: {
+          code: "refresh_gateway_quote",
+        },
+      },
+    },
+  ]);
+  await writeJsonl(dataDir, "current-route-prelive-passes", [
+    {
+      observedAt: "2026-04-11T02:10:00.000Z",
+      runId: "pass-preview",
+      mode: "preview",
+      executionStatus: "preview",
+      finalStatus: "connected_refresh_required",
+      nextAction: {
+        code: "execute_connected_refresh",
+      },
+      initialPass: {
+        nextAction: {
+          code: "execute_connected_refresh",
+          command: "npm run run:connected-refresh-package -- --execute",
+        },
+      },
+    },
+  ]);
 
   const result = spawnSync(process.execPath, [join(ROOT, "src/cli/status-dashboard.mjs")], {
     cwd,
@@ -70,6 +123,57 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(typeof publicStatus.prelive?.reviewPackage?.packageStatus, "string");
   assert.equal(typeof publicStatus.prelive?.reviewPackage?.readyForManualReview, "boolean");
   assert.equal(Array.isArray(publicStatus.prelive?.reviewPackage?.reviewBlockers), true);
+  assert.equal(
+    publicStatus.prelive?.connectedRefresh == null || typeof publicStatus.prelive?.connectedRefresh?.status === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.connectedRefresh == null || typeof publicStatus.prelive?.connectedRefresh?.requiredRefreshCount === "number",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.connectedRefresh == null ||
+      typeof publicStatus.prelive?.connectedRefresh?.runnerExecuteCommand === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.connectedRefreshExecution == null ||
+      typeof publicStatus.prelive?.connectedRefreshExecution?.runCount === "number",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.connectedRefreshExecution == null ||
+      typeof publicStatus.prelive?.connectedRefreshExecution?.latestStatus === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.currentRoutePrelivePass == null ||
+      typeof publicStatus.prelive?.currentRoutePrelivePass?.runCount === "number",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.currentRoutePrelivePass == null ||
+      typeof publicStatus.prelive?.currentRoutePrelivePass?.latestStatus === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.exactRouteForkPackage == null || typeof publicStatus.prelive?.exactRouteForkPackage?.status === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.exactRouteForkPackage == null || typeof publicStatus.prelive?.exactRouteForkPackage?.technicalStatus === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.operationalJudgmentReview == null ||
+      typeof publicStatus.prelive?.operationalJudgmentReview?.status === "string",
+    true,
+  );
+  assert.equal(
+    publicStatus.prelive?.operationalJudgmentReview == null ||
+      typeof publicStatus.prelive?.operationalJudgmentReview?.issueCount === "number",
+    true,
+  );
   assert.equal(
     publicStatus.prelive?.evidenceCampaign?.latestStatus == null ||
       typeof publicStatus.prelive?.evidenceCampaign?.latestStatus === "string",
@@ -134,4 +238,6 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
     true,
   );
   assert.equal(typeof publicStatus.dataCounts?.preliveReviewPackagePresent, "number");
+  assert.equal(typeof publicStatus.dataCounts?.connectedRefreshRuns, "number");
+  assert.equal(typeof publicStatus.dataCounts?.currentRoutePrelivePasses, "number");
 });

@@ -220,6 +220,86 @@ test("evidence campaign routes pending output into manual resolution before new 
   assert.equal(campaign.forkExecution.pendingOutputCount, 1);
 });
 
+test("evidence campaign prioritizes ETH-family evidence collection when a new ETH surface appears", () => {
+  const campaign = buildPreliveEvidenceCampaign({
+    reviewPackage: {
+      packageStatus: "not_ready_for_manual_review",
+      readyForManualReview: false,
+      currentStage: "shadow_replay",
+      queueFollowUps: [],
+      ethFamilyObservation: {
+        routeCount: 2,
+        surfaceChanged: true,
+        addedRoutesCount: 2,
+        removedRoutesCount: 0,
+        addedChainPairs: ["base->ethereum"],
+        nextAction: {
+          code: "collect_eth_family_evidence",
+          label: "collect ETH family evidence",
+          command: "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
+        },
+      },
+      preliveEvidence: {
+        shadowReplay: {
+          blockers: ["audit:LIVE_BLOCKED"],
+        },
+        mechanicalSimulation: {
+          targetSuccessCount: 50,
+        },
+        forkExecution: {
+          targetConfirmedCount: 3,
+        },
+      },
+    },
+    simulationRuns: [],
+    forkExecutionPlans: [],
+    forkExecutionSubmissions: [],
+    forkExecutionReceipts: [],
+  });
+
+  assert.equal(campaign.overallStatus, "ready");
+  assert.equal(campaign.actions[0].code, "collect_eth_family_evidence");
+  assert.equal(campaign.actions[0].status, "ready");
+  assert.match(campaign.actions[0].command, /audit:eth-family-overfit/);
+  assert.equal(campaign.nextAction.code, "collect_eth_family_evidence");
+  assert.equal(campaign.ethFamilyObservation.routeCount, 2);
+});
+
+test("evidence campaign executes ETH-family evidence action through whitelisted scripts only", async () => {
+  const calls = [];
+  const record = await executePreliveEvidenceCampaign({
+    campaign: {
+      overallStatus: "ready",
+      actions: [
+        {
+          code: "collect_eth_family_evidence",
+          label: "collect ETH family evidence",
+          status: "ready",
+          automated: true,
+          command: "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
+        },
+      ],
+    },
+    execute: true,
+    followUpCommands: [],
+    runCommand: async ({ step }) => {
+      calls.push(step.script);
+      return {
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        durationMs: 5,
+        stdout: "ok",
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(record.executionStatus, "succeeded");
+  assert.equal(record.actionResults.length, 1);
+  assert.deepEqual(calls, ["analyze:ethereum-routes", "audit:eth-family-overfit", "status:dashboard"]);
+});
+
 test("evidence campaign executes automated actions and follow-up refresh commands", async () => {
   const calls = [];
   const record = await executePreliveEvidenceCampaign({

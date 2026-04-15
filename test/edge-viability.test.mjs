@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../src/strategy/edge-viability.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-policy.mjs";
+import { trustedOdosQuote } from "./helpers/trusted-odos-quote.mjs";
 
 test("edge viability quantifies the closest measured loop to the policy gate", () => {
   const summary = buildEdgeViabilitySummary({
@@ -17,7 +19,7 @@ test("edge viability quantifies the closest measured loop to the policy gate", (
           inputAmount: "10000",
           executableOutputUsd: 7.2,
           knownCostUsd: 0.2,
-          tradeReadiness: "insufficient_data",
+          tradeReadiness: ETHEREUM_L1_PHASE_DISABLED_REASON,
           dataGaps: [],
           routeStats: { failureRate: 0 },
         },
@@ -38,34 +40,37 @@ test("edge viability quantifies the closest measured loop to the policy gate", (
       ],
     },
     dexQuotes: [
-      {
+      trustedOdosQuote({
         source: "gateway_src_entry_leg",
+        chain: "ethereum",
         gatewayRouteKey: "ethereum:0x2260->unichain:0x0555",
         gatewayAmount: "10000",
         observedAt: "2026-04-12T00:00:01.000Z",
         outputAmount: "10000",
         inputValueUsd: 7.1,
         gasEstimateValueUsd: 0.05,
-      },
-      {
+      }),
+      trustedOdosQuote({
         source: "gateway_src_entry_leg",
+        chain: "base",
         gatewayRouteKey: "base:0x0555->sonic:0x0555",
         gatewayAmount: "10000",
         observedAt: "2026-04-12T00:00:01.000Z",
         outputAmount: "10000",
         inputValueUsd: 7.4,
         gasEstimateValueUsd: 0.05,
-      },
+      }),
     ],
   });
 
-  assert.equal(summary.measuredLoopCount, 2);
+  assert.equal(summary.measuredLoopCount, 1);
+  assert.equal(summary.policyBlockedLoopCount, 1);
   assert.equal(summary.positiveMeasuredCount, 0);
   assert.equal(summary.policyReadyCount, 0);
-  assert.equal(summary.closestLoop.routeKey, "ethereum:0x2260->unichain:0x0555");
+  assert.equal(summary.closestLoop.routeKey, "base:0x0555->sonic:0x0555");
   assert.equal(summary.closestLoop.requiredNetProfitUsd, 0.3);
-  assert.equal(Number(summary.closestLoop.gapToPolicyUsd.toFixed(2)), 0.45);
-  assert.equal(Number(summary.medianGapToPolicyUsd.toFixed(2)), 0.7);
+  assert.equal(Number(summary.closestLoop.gapToPolicyUsd.toFixed(2)), 0.95);
+  assert.equal(Number(summary.medianGapToPolicyUsd.toFixed(2)), 0.95);
 });
 
 test("edge viability verdict distinguishes incomplete coverage from measured no-edge", () => {

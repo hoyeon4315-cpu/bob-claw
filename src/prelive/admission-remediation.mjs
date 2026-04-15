@@ -34,16 +34,16 @@ function compareItems(left, right) {
 }
 
 function dedupeItems(items = []) {
-  const byCommand = new Map();
+  const byIdentity = new Map();
   for (const item of items) {
-    if (!item?.command) continue;
-    const key = item.command;
-    const existing = byCommand.get(key);
+    if (!item) continue;
+    const key = item.command || `${item.status || "unknown"}:${item.code || ""}:${item.reason || ""}`;
+    const existing = byIdentity.get(key);
     if (!existing || compareItems(item, existing) < 0) {
-      byCommand.set(key, item);
+      byIdentity.set(key, item);
     }
   }
-  return [...byCommand.values()].sort(compareItems).map((item, index) => ({
+  return [...byIdentity.values()].sort(compareItems).map((item, index) => ({
     ...item,
     rank: index + 1,
   }));
@@ -111,7 +111,7 @@ function refreshStatusCommand() {
   return DEFAULT_ADMISSION_REMEDIATION_FOLLOW_UP_COMMANDS.join(" && ");
 }
 
-function staleInputItems(reviewPackage = null, address = null) {
+function inputItems(reviewPackage = null, address = null) {
   const candidate = reviewPackage?.manualReviewCandidate || null;
   const routeKey = candidate?.routeKey || null;
   const routeLabel = candidate?.routeLabel || null;
@@ -151,6 +151,7 @@ function staleInputItems(reviewPackage = null, address = null) {
       field: "dexQuote",
       stale: "stale_dex_quote",
       missing: "missing_dex_quote",
+      blocked: "blocked_dex_quote",
       priority: 93,
       code: "refresh_dex_quote",
       label: "refresh DEX quote and score",
@@ -179,7 +180,24 @@ function staleInputItems(reviewPackage = null, address = null) {
   return mapping
     .flatMap((entry) => {
       const state = inputFreshness[entry.field]?.state || null;
-      if (state !== "stale" && state !== "missing") return [];
+      if (state !== "stale" && state !== "missing" && state !== "blocked") return [];
+      if (state === "blocked") {
+        return [
+          item({
+            priority: entry.priority,
+            code: `hold_${entry.field}`,
+            label: `hold on blocked ${entry.label.toLowerCase()}`,
+            status: "blocked",
+            reason: entry.blocked || `blocked_${entry.field}`,
+            command: null,
+            resolves: [entry.blocked || `blocked_${entry.field}`],
+            routeKey,
+            routeLabel,
+            amount,
+            source: "candidate_inputs",
+          }),
+        ];
+      }
       return [
         item({
           priority: entry.priority,
@@ -195,8 +213,7 @@ function staleInputItems(reviewPackage = null, address = null) {
           source: "candidate_inputs",
         }),
       ];
-    })
-    .filter((entry) => entry.command);
+    });
 }
 
 function measuredLeaderItem(reviewPackage = null) {
@@ -266,7 +283,7 @@ export function buildAdmissionRemediationPlan({
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
   const evidenceItems = evidenceCampaignItems(evidenceCampaign);
   const items = dedupeItems([
-    ...staleInputItems(reviewPackage, address),
+    ...inputItems(reviewPackage, address),
     ...measuredLeaderItem(reviewPackage),
     ...(evidenceItems.some((entry) => entry.code === "execute_refresh_batch") ? [] : queueFollowUpItems(reviewPackage)),
     ...evidenceItems,

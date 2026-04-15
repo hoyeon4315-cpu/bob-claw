@@ -149,6 +149,10 @@ export function isBtcLikeAsset(asset) {
   return asset?.family === "btc" || asset?.family === "wrapped_btc";
 }
 
+export function isEthLikeAsset(asset) {
+  return asset?.priceKey === "ethereum" && (asset?.ticker === "ETH" || asset?.family === "native_or_wrapped");
+}
+
 export function assetPairKey(route) {
   const asset = routeAsset(route);
   return asset.ticker;
@@ -156,6 +160,10 @@ export function assetPairKey(route) {
 
 export function isBtcFamilyRoute(route) {
   return isBtcLikeAsset(tokenAsset(route?.srcChain, route?.srcToken)) && isBtcLikeAsset(tokenAsset(route?.dstChain, route?.dstToken));
+}
+
+export function isEthFamilyRoute(route) {
+  return isEthLikeAsset(tokenAsset(route?.srcChain, route?.srcToken)) && isEthLikeAsset(tokenAsset(route?.dstChain, route?.dstToken));
 }
 
 export function classifyGatewayAssetUniverse(routes = []) {

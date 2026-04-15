@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildObjectivePlans } from "../src/strategy/objective-plans.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-policy.mjs";
 
 test("objective plans build execution review and discovery candidates from measured routes", () => {
   const plans = buildObjectivePlans({
@@ -34,7 +35,7 @@ test("objective plans build execution review and discovery candidates from measu
           exactGasDone: false,
           prepBlockers: ["wallet_not_checked"],
           scoreDisqualifiers: ["stale_src_gas_snapshot"],
-          tradeReadiness: "insufficient_data",
+          tradeReadiness: ETHEREUM_L1_PHASE_DISABLED_REASON,
         },
       ],
     },
@@ -64,7 +65,7 @@ test("objective plans build execution review and discovery candidates from measu
           dstChain: "base",
           srcAsset: { ticker: "WBTC" },
           dstAsset: { ticker: "wBTC.OFT" },
-          tradeReadiness: "insufficient_data",
+          tradeReadiness: ETHEREUM_L1_PHASE_DISABLED_REASON,
           netEdgeUsd: -1.01,
           executableNetEdgeUsd: 64.99,
           dataGaps: ["stale_src_gas_snapshot", "exact_src_execution_gas_not_estimated"],
@@ -125,11 +126,7 @@ test("objective plans build execution review and discovery candidates from measu
     },
   });
 
-  assert.equal(plans.executionReview.status, "measured_hypothesis_under_review");
-  assert.equal(plans.executionReview.routeKey, "ethereum:0x2260->base:0x0555");
-  assert.equal(plans.executionReview.nextActionCode, "check_wallet_readiness");
-  assert.match(plans.executionReview.command, /check:estimator-wallet/);
-  assert.equal(plans.executionReview.stepCount >= 2, true);
+  assert.equal(plans.executionReview, null);
 
   assert.equal(plans.discovery.source, "secondary_measured_loop");
   assert.equal(plans.discovery.routeKey, "base:0x0555->unichain:0x0555");

@@ -1,4 +1,4 @@
-import { isBtcFamilyRoute, routeAsset } from "../assets/tokens.mjs";
+import { isBtcFamilyRoute, isEthFamilyRoute, routeAsset } from "../assets/tokens.mjs";
 import { canQuoteWithOdos, ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 
 function routeKey(route) {
@@ -21,7 +21,6 @@ function exitSupport(route) {
 }
 
 function blockerSummary(route) {
-  if (!isBtcFamilyRoute(route)) return { classification: "non_btc_family_route", blockers: ["non_btc_family_route"] };
   const entry = entrySupport(route);
   const exit = exitSupport(route);
   const blockers = [];
@@ -57,9 +56,11 @@ function chainGapItems(routes) {
   return items;
 }
 
-export function buildDexRouteUniverseSummary({ routes = [], observedAt = null } = {}) {
-  const btcRoutes = (routes || []).filter(isBtcFamilyRoute);
-  const analyzed = btcRoutes.map((route) => {
+export function buildDexRouteUniverseSummary({ routes = [], observedAt = null } = {}, options = {}) {
+  const routeFilter = options.routeFilter || isBtcFamilyRoute;
+  const familyLabel = options.familyLabel || "btc";
+  const familyRoutes = (routes || []).filter(routeFilter);
+  const analyzed = familyRoutes.map((route) => {
     const summary = blockerSummary(route);
     return {
       routeKey: routeKey(route),
@@ -71,16 +72,17 @@ export function buildDexRouteUniverseSummary({ routes = [], observedAt = null } 
     };
   });
 
-  const gapChains = chainGapItems(btcRoutes);
+  const gapChains = chainGapItems(familyRoutes);
   const fullyMeasurable = analyzed.filter((item) => item.classification === "fully_measurable_loop_candidate");
   const singleGap = analyzed.filter((item) => item.classification === "single_provider_gap");
   const doubleGap = analyzed.filter((item) => item.classification === "double_provider_gap");
 
-  return {
+  const summary = {
     schemaVersion: 1,
     observedAt,
+    family: familyLabel,
     totalRoutes: routes.length,
-    btcFamilyRouteCount: btcRoutes.length,
+    familyRouteCount: familyRoutes.length,
     fullyMeasurableRouteCount: fullyMeasurable.length,
     singleProviderGapCount: singleGap.length,
     doubleProviderGapCount: doubleGap.length,
@@ -95,5 +97,17 @@ export function buildDexRouteUniverseSummary({ routes = [], observedAt = null } 
         : null,
     fullyMeasurableRoutes: fullyMeasurable.slice(0, 10),
     gapRoutes: [...singleGap, ...doubleGap].slice(0, 10),
+  };
+  if (familyLabel === "btc") {
+    summary.btcFamilyRouteCount = familyRoutes.length;
+  }
+  return summary;
+}
+
+export function buildEthRouteUniverseSummary(args = {}) {
+  const summary = buildDexRouteUniverseSummary(args, { routeFilter: isEthFamilyRoute, familyLabel: "eth" });
+  return {
+    ...summary,
+    ethFamilyRouteCount: summary.familyRouteCount,
   };
 }

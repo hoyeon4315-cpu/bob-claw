@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canQuoteWithOdos, normalizeOdosQuote, ODOS_NATIVE_TOKEN } from "../src/dex/odos.mjs";
+import {
+  canQuoteWithOdos,
+  isTrustedExecutableDexQuote,
+  normalizeOdosQuote,
+  ODOS_NATIVE_TOKEN,
+  odosSafeSourceWhitelist,
+} from "../src/dex/odos.mjs";
 import { ZERO_TOKEN } from "../src/assets/tokens.mjs";
 
 test("Odos support gate maps native EVM token and rejects unsupported chains", () => {
@@ -30,6 +36,7 @@ test("Odos quote normalization stores executable quote fields", () => {
     outputToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     outputTicker: "USDC",
     outputDecimals: 6,
+    sourceWhitelist: odosSafeSourceWhitelist("base"),
     result: {
       latencyMs: 123,
       body: {
@@ -53,4 +60,6 @@ test("Odos quote normalization stores executable quote fields", () => {
   assert.equal(record.outputAmount, "7282809");
   assert.equal(record.gasEstimateValueUsd, 0.0053);
   assert.equal(record.pathId, "path");
+  assert.equal(record.executionTrust, "safe_whitelist");
+  assert.equal(isTrustedExecutableDexQuote(record), true);
 });

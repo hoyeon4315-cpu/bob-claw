@@ -6,6 +6,7 @@ import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { isBtcFamilyRoute, tokenAsset } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
 import { gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
@@ -54,13 +55,14 @@ function routeStatsByKey(quotes, failures) {
   return stats;
 }
 
-function latestDexOutputQuoteByRoute(dexQuotes) {
+function latestDexOutputQuoteByRouteAndAmount(dexQuotes) {
   const latest = new Map();
-  for (const quote of dexQuotes) {
-    if (quote.source !== "gateway_dst_leg" || !quote.gatewayRouteKey) continue;
-    const existing = latest.get(quote.gatewayRouteKey);
+  for (const quote of filterTrustedExecutableDexQuotes(dexQuotes)) {
+    if (quote.source !== "gateway_dst_leg" || !quote.gatewayRouteKey || !quote.gatewayAmount) continue;
+    const key = selectionKey(quote.gatewayRouteKey, quote.gatewayAmount);
+    const existing = latest.get(key);
     if (!existing || new Date(quote.observedAt) > new Date(existing.observedAt)) {
-      latest.set(quote.gatewayRouteKey, quote);
+      latest.set(key, quote);
     }
   }
   return latest;
@@ -252,7 +254,7 @@ async function main() {
   const shadowObservationRecords = args.write ? await readJsonl(config.dataDir, "gateway-shadow-observations") : [];
   const latestQuotes = latestByRouteAndAmount(allQuotes);
   const routeStats = routeStatsByKey(allQuotes, failures);
-  const dexOutputQuotes = latestDexOutputQuoteByRoute(dexQuotes);
+  const dexOutputQuotes = latestDexOutputQuoteByRouteAndAmount(dexQuotes);
   const gasEstimates = latestByRouteAndAmountMap(gasEstimateSnapshots);
   const gasSnapshots = latestBy(gasSnapshotRecords, (snapshot) => snapshot.chain);
   const bitcoinFee = bitcoinFeeSnapshots.at(-1) || null;
@@ -318,9 +320,10 @@ async function main() {
       dstAsset,
       executionGasUsd,
       executionGasSource: exactGas ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : null,
+      allowEthereumL1Routes: config.approveEthereumL1Routes,
       gasObservedAt: exactGas?.observedAt || snapshot?.observedAt || null,
       routeStats: routeStats.get(quote.routeKey),
-      dexOutputQuote: dexOutputQuotes.get(quote.routeKey),
+      dexOutputQuote: dexOutputQuotes.get(selectionKey(quote.routeKey, quote.amount)),
       bitcoinFee,
       requireExactExecutionGas: true,
       maxRouteFailureRate,

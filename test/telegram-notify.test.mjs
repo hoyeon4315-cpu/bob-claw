@@ -13,9 +13,10 @@ test("telegram sender skips cleanly when not configured", async () => {
 test("gateway update telegram alert includes reason and live block reminder", () => {
   const text = formatGatewayUpdateAlert({
     observedAt: "2026-04-10T00:00:00.000Z",
-    changeReasons: ["probe_health"],
+    changeReasons: ["probe_health", "eth_family_surface"],
     snapshot: { routeCount: 113, chains: ["bob", "base"] },
-    diff: { addedRoutes: [], removedRoutes: [] },
+    ethFamily: { routeCount: 1 },
+    diff: { addedRoutes: [], removedRoutes: [], addedEthFamilyRoutes: ["base:0x0->ethereum:0x0"], removedEthFamilyRoutes: [] },
     probes: [{ ok: true }, { ok: false }],
     probeFailures: [
       {
@@ -27,6 +28,9 @@ test("gateway update telegram alert includes reason and live block reminder", ()
   });
 
   assert.match(text, /reasons: probe_health/);
+  assert.match(text, /ethFamilyRoutes: 1/);
+  assert.match(text, /ethFamilySurface: \+1 \/ -0/);
+  assert.match(text, /audit:eth-family-overfit/);
   assert.match(text, /probeOk: 1\/2/);
   assert.match(text, /liveTrading: still blocked/);
 });

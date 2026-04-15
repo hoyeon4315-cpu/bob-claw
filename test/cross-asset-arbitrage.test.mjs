@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildCrossAssetArbitrageSummary } from "../src/strategy/cross-asset-arbitrage.mjs";
+import {
+  buildCrossAssetArbitrageSummary,
+  buildEthCrossAssetArbitrageSummary,
+} from "../src/strategy/cross-asset-arbitrage.mjs";
 
 test("cross-asset arbitrage identifies profitable closed stable-btc-stable loops", () => {
   const summary = buildCrossAssetArbitrageSummary({
@@ -168,4 +171,48 @@ test("cross-asset arbitrage tracks amount ladder coverage across stable loop pai
   assert.equal(summary.bestAmountLadderPair.exitAmountLevelCount, 2);
   assert.equal(summary.bestAmountLadderPair.exactMatchCount, 2);
   assert.equal(summary.bestAmountLadderPair.positiveLoopCount, 1);
+});
+
+test("cross-asset arbitrage can summarize mixed stable-eth-stable loops", () => {
+  const summary = buildEthCrossAssetArbitrageSummary({
+    generatedAt: "2026-04-11T13:00:00.000Z",
+    scores: [
+      {
+        routeKey: "base:0xusdc->base:0xweth",
+        amount: "250000000",
+        srcChain: "base",
+        dstChain: "base",
+        srcAsset: { ticker: "USDC", family: "stablecoin", token: "0xusdc" },
+        dstAsset: { ticker: "WETH", family: "native_or_wrapped", token: "0xweth", priceKey: "ethereum" },
+        inputAmount: 250,
+        outputAmount: 0.1,
+        inputUsd: 250,
+        outputUsd: 252,
+        knownCostUsd: 0.4,
+        tradeReadiness: "shadow_candidate_review_only",
+        dataGaps: [],
+      },
+      {
+        routeKey: "base:0xweth->base:0xusdc",
+        amount: "100000000000000000",
+        srcChain: "base",
+        dstChain: "base",
+        srcAsset: { ticker: "WETH", family: "native_or_wrapped", token: "0xweth", priceKey: "ethereum" },
+        dstAsset: { ticker: "USDC", family: "stablecoin", token: "0xusdc" },
+        inputAmount: 0.1,
+        outputAmount: 255,
+        inputUsd: 252,
+        outputUsd: 255,
+        knownCostUsd: 0.3,
+        tradeReadiness: "shadow_candidate_review_only",
+        dataGaps: [],
+      },
+    ],
+  });
+
+  assert.equal(summary.assetFamily, "eth");
+  assert.equal(summary.exactAssetPairCount, 1);
+  assert.equal(summary.profitableClosedLoopCount, 1);
+  assert.equal(summary.bestLoop.closedLoop, true);
+  assert.equal(summary.bestLoop.loopNetEdgeUsd > 0, true);
 });

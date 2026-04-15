@@ -98,3 +98,32 @@ test("shadow refresh queue prioritizes canary readiness, strategy coverage, and 
   assert.equal(queue[4].proxyGroup, "wbtc");
   assert.equal(queue[5].command.includes("verify:gateway"), true);
 });
+
+test("shadow refresh queue adds ETH-family observe-only evidence when surface changes", () => {
+  const queue = buildShadowRefreshQueue({
+    ethFamilyWatch: {
+      observedAt: "2026-04-12T12:00:00.000Z",
+      routeCount: 2,
+      surfaceChanged: true,
+      addedRoutes: [
+        "base:0xeth->bob:0xeth",
+        "unichain:0xeth->base:0xeth",
+      ],
+      removedRoutes: [],
+      chainPairs: ["base->bob", "unichain->base"],
+      addedChainPairs: ["base->bob", "unichain->base"],
+      removedChainPairs: [],
+    },
+  });
+
+  assert.equal(queue[0].scope, "eth_family_watch");
+  assert.equal(queue[0].code, "collect_eth_family_evidence");
+  assert.equal(queue[0].reason, "eth_family_surface_added");
+  assert.equal(queue[0].routeLabel, "ETH-family watch base->bob");
+  assert.deepEqual(queue[0].chains, ["base", "bob", "unichain"]);
+  assert.equal(queue[0].routeKeys.length, 2);
+  assert.equal(queue[0].command.includes("scan:quote-surface"), true);
+  assert.equal(queue[0].command.includes("analyze:ethereum-routes"), true);
+  assert.equal(queue[0].command.includes("audit:eth-family-overfit"), true);
+  assert.equal(queue[0].command.includes("status:dashboard"), true);
+});

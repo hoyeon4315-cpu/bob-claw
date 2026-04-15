@@ -177,6 +177,103 @@ test("score gateway selectively refreshes one route and preserves unrelated scor
   assert.equal(untouched.observedAt, iso(-240_000));
 });
 
+test("score gateway matches trusted destination-leg dex quotes by route and amount", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-score-gateway-dex-amount-"));
+  const dataDir = join(cwd, "data");
+  const now = Date.now();
+  const iso = (offsetMs) => new Date(now + offsetMs).toISOString();
+  const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const routeKey = `${route.srcChain}:${route.srcToken}->${route.dstChain}:${route.dstToken}`;
+
+  await writeJsonl(dataDir, "gateway-quotes", [
+    quote({ observedAt: iso(-60_000), route, amount: "10000", inputAmount: "10000", outputAmount: "9000" }),
+    quote({ observedAt: iso(-50_000), route, amount: "25000", inputAmount: "25000", outputAmount: "22500" }),
+  ]);
+  await writeJsonl(dataDir, "gateway-quote-failures", []);
+  await writeJsonl(dataDir, "dex-quotes", [
+    {
+      observedAt: iso(-55_000),
+      provider: "mockdex",
+      quoteType: "token_to_stable",
+      source: "gateway_dst_leg",
+      chain: "base",
+      gatewayRouteKey: routeKey,
+      gatewayAmount: "10000",
+      outputTicker: "USDC",
+      outputAmount: "6200000",
+      outputValueUsd: 6.2,
+      netOutputValueUsd: 6.18,
+      gasEstimateValueUsd: 0.02,
+    },
+    {
+      observedAt: iso(-40_000),
+      provider: "mockdex",
+      quoteType: "token_to_stable",
+      source: "gateway_dst_leg",
+      chain: "base",
+      gatewayRouteKey: routeKey,
+      gatewayAmount: "25000",
+      outputTicker: "USDC",
+      outputAmount: "99000000",
+      outputValueUsd: 99,
+      netOutputValueUsd: 98.98,
+      gasEstimateValueUsd: 0.02,
+    },
+  ]);
+  await writeJsonl(dataDir, "bitcoin-fee-snapshots", [
+    {
+      observedAt: iso(-120_000),
+      btcUsd: 50000,
+    },
+  ]);
+  await writeJsonl(dataDir, "gateway-gas-estimates", [
+    { observedAt: iso(-90_000), routeKey, amount: "10000", estimatedGasUsd: 0.001 },
+    { observedAt: iso(-90_000), routeKey, amount: "25000", estimatedGasUsd: 0.001 },
+  ]);
+  await writeJsonl(dataDir, "gas-snapshots", [
+    { observedAt: iso(-120_000), chain: "bob", nativeUsd: 3000, gasPriceWei: "1000000000", fallbackGasUnits: 21000 },
+    { observedAt: iso(-120_000), chain: "base", nativeUsd: 3000, gasPriceWei: "1000000000", fallbackGasUnits: 21000 },
+  ]);
+  await writeFile(
+    join(dataDir, "gateway-scores.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: iso(-150_000),
+      priceObservedAt: iso(-150_000),
+      btcUsd: 50000,
+      scoredQuotes: 2,
+      summary: { shadowCandidates: 0, dexBacked: 0, insufficientData: 0, highFailureRate: 0, staleGas: 0, missingDecimals: 0 },
+      scores: [
+        { routeKey, amount: "10000", netEdgeUsd: -0.5, tradeReadiness: "reject_no_net_edge", dataGaps: [], routeStats: { failureRate: 0 }, dex: null, observedAt: iso(-180_000) },
+        { routeKey, amount: "25000", netEdgeUsd: -0.4, tradeReadiness: "reject_no_net_edge", dataGaps: [], routeStats: { failureRate: 0 }, dex: null, observedAt: iso(-170_000) },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, "src/cli/score-gateway.mjs"), "--write", `--route-key=${routeKey}`, "--amount=10000"],
+    {
+      cwd,
+      env: { ...process.env, BOB_CLAW_DATA_DIR: dataDir },
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const snapshot = JSON.parse(await readFile(join(dataDir, "gateway-scores.json"), "utf8"));
+  const refreshed = snapshot.scores.find((item) => item.routeKey === routeKey && item.amount === "10000");
+  const untouched = snapshot.scores.find((item) => item.routeKey === routeKey && item.amount === "25000");
+
+  assert.equal(refreshed.dex.outputAmount, "6200000");
+  assert.equal(refreshed.dex.outputValueUsd, 6.2);
+  assert.equal(refreshed.dex.netOutputValueUsd, 6.18);
+  assert.equal(refreshed.executableOutputUsd, 6.18);
+  assert.equal(untouched.observedAt, iso(-170_000));
+});
+
 test("score gateway selectively refreshes destination-chain routes and preserves unrelated scores", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-score-gateway-chains-"));
   const dataDir = join(cwd, "data");

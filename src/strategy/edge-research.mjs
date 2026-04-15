@@ -1,4 +1,5 @@
 import { summarizeQuoteDecay } from "../shadow/quote-decay.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON, ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION } from "../risk/ethereum-l1-policy.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -52,6 +53,7 @@ function routeDecaySummary(routeKey, observations, requiredWindows) {
 }
 
 function classify(summary, policy) {
+  if (summary.ethereumL1PolicyBlocked) return ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION;
   if (summary.hasImplausibleOutlier) return "reject_outlier";
   if (summary.profitableLevels === 0) return "no_edge";
   if (summary.maxFailureRate > policy.maxFailureRate) return "failure_rate_too_high";
@@ -87,6 +89,7 @@ function routeSummary(routeKey, scores, observations, policy) {
     bestNetEdgePct: Number.isFinite(bestNetEdgePct) ? bestNetEdgePct : null,
     maxFailureRate: ordered.reduce((max, score) => Math.max(max, score.routeStats?.failureRate ?? 0), 0),
     hasImplausibleOutlier: ordered.some((score) => (score.dataGaps || []).includes("implausible_quote_value_ratio")),
+    ethereumL1PolicyBlocked: ordered.some((score) => score?.tradeReadiness === ETHEREUM_L1_PHASE_DISABLED_REASON),
     profitableAmounts: profitable.map((score) => score.amount),
     decay,
   };
@@ -116,7 +119,8 @@ export function buildEdgeResearchSummary({ scoreSnapshot = null, shadowObservati
     single_level_only: 4,
     failure_rate_too_high: 5,
     no_edge: 6,
-    reject_outlier: 7,
+    [ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION]: 7,
+    reject_outlier: 8,
   };
   routes.sort(
     (left, right) =>
@@ -137,8 +141,9 @@ export function buildEdgeResearchSummary({ scoreSnapshot = null, shadowObservati
     singleLevelOnlyCount: routes.filter((item) => item.classification === "single_level_only").length,
     highFailureRouteCount: routes.filter((item) => item.classification === "failure_rate_too_high").length,
     noEdgeCount: routes.filter((item) => item.classification === "no_edge").length,
+    policyBlockedCount: routes.filter((item) => item.classification === ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION).length,
     outlierCount: routes.filter((item) => item.classification === "reject_outlier").length,
-    bestCandidate: routes.find((item) => item.classification !== "reject_outlier") || null,
+    bestCandidate: routes.find((item) => ![ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION, "reject_outlier"].includes(item.classification)) || null,
     routes: routes.slice(0, 10),
   };
 }

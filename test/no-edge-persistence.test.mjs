@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildNoEdgePersistenceSummary } from "../src/strategy/no-edge-persistence.mjs";
+import { trustedOdosQuote } from "./helpers/trusted-odos-quote.mjs";
 
 test("no-edge persistence marks repeatedly negative routes as durable no-edge", () => {
   const summary = buildNoEdgePersistenceSummary({
@@ -52,33 +53,36 @@ test("no-edge persistence marks repeatedly negative routes as durable no-edge", 
       ],
     },
     dexQuotes: [
-      {
+      trustedOdosQuote({
         source: "gateway_src_entry_leg",
+        chain: "base",
         gatewayRouteKey: "base:0x0555->unichain:0x0555",
         gatewayAmount: "10000",
         observedAt: "2026-04-12T00:00:01.000Z",
         outputAmount: "10000",
         inputValueUsd: 7.4,
         gasEstimateValueUsd: 0.05,
-      },
-      {
+      }),
+      trustedOdosQuote({
         source: "gateway_src_entry_leg",
+        chain: "base",
         gatewayRouteKey: "base:0x0555->unichain:0x0555",
         gatewayAmount: "25000",
         observedAt: "2026-04-12T00:00:01.000Z",
         outputAmount: "25000",
         inputValueUsd: 18.3,
         gasEstimateValueUsd: 0.05,
-      },
-      {
+      }),
+      trustedOdosQuote({
         source: "gateway_src_entry_leg",
+        chain: "base",
         gatewayRouteKey: "base:0x0555->unichain:0x0555",
         gatewayAmount: "50000",
         observedAt: "2026-04-12T00:00:01.000Z",
         outputAmount: "50000",
         inputValueUsd: 36.5,
         gasEstimateValueUsd: 0.05,
-      },
+      }),
     ],
   });
 

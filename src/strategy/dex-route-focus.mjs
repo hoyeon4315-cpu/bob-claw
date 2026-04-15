@@ -1,4 +1,5 @@
-import { buildDexRouteUniverseSummary } from "./dex-route-universe.mjs";
+import { buildDexRouteUniverseSummary, buildEthRouteUniverseSummary } from "./dex-route-universe.mjs";
+import { filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -33,12 +34,14 @@ const CLASSIFICATION_RANK = {
   missing_gateway_quote: 2,
 };
 
-export function buildDexRouteFocusSummary({ routes = [], quotes = [], scoreSnapshot = null, dexQuotes = [] } = {}) {
-  const universe = buildDexRouteUniverseSummary({ routes });
+export function buildDexRouteFocusSummary({ routes = [], quotes = [], scoreSnapshot = null, dexQuotes = [] } = {}, options = {}) {
+  const universeBuilder = options.universeBuilder || buildDexRouteUniverseSummary;
+  const universeArgs = options.universeArgs || {};
+  const universe = universeBuilder({ routes, ...universeArgs });
   const focusRoutes = universe.fullyMeasurableRoutes || [];
   const quotesByRoute = groupBy(quotes, (item) => item.routeKey);
   const scoresByRoute = groupBy(scoreSnapshot?.scores || [], (item) => item.routeKey);
-  const dexByRoute = groupBy(dexQuotes, (item) => item.gatewayRouteKey);
+  const dexByRoute = groupBy(filterTrustedExecutableDexQuotes(dexQuotes), (item) => item.gatewayRouteKey);
 
   const routesWithState = focusRoutes.map((route) => {
     const gatewayQuotes = quotesByRoute.get(route.routeKey) || [];
@@ -93,4 +96,10 @@ export function buildDexRouteFocusSummary({ routes = [], quotes = [], scoreSnaps
     bestRoute: routesWithState[0] || null,
     routes: routesWithState.slice(0, 10),
   };
+}
+
+export function buildEthRouteFocusSummary(args = {}) {
+  return buildDexRouteFocusSummary(args, {
+    universeBuilder: buildEthRouteUniverseSummary,
+  });
 }

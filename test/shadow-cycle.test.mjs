@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildRouteDemandFromCanaryState, buildShadowCycleSummary } from "../src/session/shadow-cycle.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-policy.mjs";
 
 test("route demand is extracted only from viable canary candidates", () => {
   const routeDemand = buildRouteDemandFromCanaryState({
@@ -222,6 +223,49 @@ test("shadow cycle does not recommend readiness checks for routes missing tx pay
   assert.equal(summary.recommendedCommands.some((item) => item.includes("check:estimator-wallet")), false);
 });
 
+test("shadow cycle carries ETH-family watch state into refresh planning", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      nextStep: { decision: "RERUN_SCORING", reasons: [] },
+      routePlan: {
+        topCandidates: [],
+        candidates: [],
+      },
+    },
+    treasuryPlan: {
+      decision: "WATCH_ONLY",
+      reasons: [],
+      summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 280, walletValueFloorUsd: 250, walletValueShortfallUsd: 0, noDemandBlockerCount: 0 },
+      actions: [],
+      blockers: [],
+    },
+    fundingSourcePlan: { reasons: [], summary: {} },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: {
+      dailyRealizedPnlUsd: 0,
+      projectLossUsedUsd: 0,
+      failedGasCost24hUsd: 0,
+      consecutiveFailures: 0,
+    },
+    ethFamilyWatch: {
+      observedAt: "2026-04-12T12:00:00.000Z",
+      routeCount: 1,
+      surfaceChanged: true,
+      addedRoutes: ["base:0xeth->bob:0xeth"],
+      removedRoutes: [],
+      chainPairs: ["base->bob"],
+      addedChainPairs: ["base->bob"],
+      removedChainPairs: [],
+    },
+  });
+
+  assert.equal(summary.ethFamilyWatch.surfaceChanged, true);
+  assert.equal(summary.ethFamilyWatch.routeCount, 1);
+  assert.equal(summary.refreshQueue[0].scope, "eth_family_watch");
+  assert.equal(summary.recommendedCommands.some((item) => item.includes("analyze:ethereum-routes")), true);
+});
+
 test("shadow cycle carries forward a specific blocked headline for net-negative routes", () => {
   const summary = buildShadowCycleSummary({
     canaryState: {
@@ -266,6 +310,86 @@ test("shadow cycle carries forward a specific blocked headline for net-negative 
 
   assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
   assert.equal(summary.headline, "Best prepared route still fails objective score review");
+});
+
+test("shadow cycle holds Ethereum L1 candidates in policy review instead of chasing readiness work", () => {
+  const policyBlocked = {
+    routeKey: "ethereum:0x2260->base:0x0555",
+    label: "ethereum->base WBTC->wBTC.OFT",
+    amount: "10000",
+    srcChain: "ethereum",
+    dstChain: "base",
+    srcTicker: "WBTC",
+    dstTicker: "wBTC.OFT",
+    viableForPrep: false,
+    txReady: true,
+    prepBlockers: ["wallet_not_checked"],
+    scoreDisqualifiers: [ETHEREUM_L1_PHASE_DISABLED_REASON],
+    tradeReadiness: ETHEREUM_L1_PHASE_DISABLED_REASON,
+    prepFundingUsd: null,
+    netEdgeUsd: null,
+    executableNetEdgeUsd: null,
+  };
+  const eligible = {
+    routeKey: "base:0x0555->bob:0x0555",
+    label: "base->bob wBTC.OFT->wBTC.OFT",
+    amount: "10000",
+    srcChain: "base",
+    dstChain: "bob",
+    srcTicker: "wBTC.OFT",
+    dstTicker: "wBTC.OFT",
+    viableForPrep: false,
+    txReady: true,
+    prepBlockers: ["wallet_not_checked"],
+    scoreDisqualifiers: [],
+    tradeReadiness: "insufficient_data",
+    prepFundingUsd: null,
+    netEdgeUsd: null,
+    executableNetEdgeUsd: null,
+  };
+
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      nextStep: {
+        decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+        headline: "No viable route is ready for canary prep",
+        reasons: [ETHEREUM_L1_PHASE_DISABLED_REASON],
+      },
+      routePlan: {
+        topCandidates: [policyBlocked, eligible],
+        candidates: [policyBlocked, eligible],
+      },
+      readinessRecords: [],
+      readinessFailures: [],
+      dexQuotes: [],
+    },
+    treasuryPlan: {
+      decision: "WATCH_ONLY",
+      reasons: [],
+      summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 280, walletValueFloorUsd: 250, walletValueShortfallUsd: 0, noDemandBlockerCount: 0 },
+      actions: [],
+      blockers: [],
+    },
+    fundingSourcePlan: { reasons: [], summary: {} },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: {
+      dailyRealizedPnlUsd: 0,
+      projectLossUsedUsd: 0,
+      failedGasCost24hUsd: 0,
+      consecutiveFailures: 0,
+    },
+    quotes: [],
+    quoteFailures: [],
+    shadowObservations: [],
+    scoreSnapshot: { scores: [] },
+    strategy: {},
+  });
+
+  assert.equal(summary.shadowActions[0].code, "hold_policy_review");
+  assert.equal(summary.shadowActions[0].reason, ETHEREUM_L1_PHASE_DISABLED_REASON);
+  assert.equal(summary.canary.nextReadinessCheck.routeKey, "base:0x0555->bob:0x0555");
 });
 
 test("shadow cycle summary upgrades to review mode when realized enabled routes exist", () => {

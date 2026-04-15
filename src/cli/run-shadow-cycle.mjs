@@ -35,6 +35,20 @@ function parseArgs(argv) {
   };
 }
 
+function summarizeEthFamilyWatch(snapshot = null) {
+  if (!snapshot) return null;
+  return {
+    observedAt: snapshot.observedAt || null,
+    routeCount: Number(snapshot?.ethFamily?.routeCount ?? snapshot?.snapshot?.ethFamilyRouteCount ?? 0),
+    surfaceChanged: Boolean(snapshot?.ethFamily?.surfaceChanged),
+    addedRoutes: snapshot?.ethFamily?.addedRoutes || snapshot?.diff?.addedEthFamilyRoutes || [],
+    removedRoutes: snapshot?.ethFamily?.removedRoutes || snapshot?.diff?.removedEthFamilyRoutes || [],
+    chainPairs: snapshot?.ethFamily?.chainPairs || snapshot?.snapshot?.ethFamilyChainPairs || [],
+    addedChainPairs: snapshot?.ethFamily?.addedChainPairs || snapshot?.diff?.addedEthFamilyChainPairs || [],
+    removedChainPairs: snapshot?.ethFamily?.removedChainPairs || snapshot?.diff?.removedEthFamilyChainPairs || [],
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const context = await resolveShadowCycleContext({
@@ -78,13 +92,15 @@ async function main() {
     fundingSourcePlan,
   });
 
-  const [receiptRecords, executionEvents, quotes, quoteFailures, scoreSnapshot] = await Promise.all([
+  const [receiptRecords, executionEvents, quotes, quoteFailures, scoreSnapshot, updateSnapshots] = await Promise.all([
     readJsonl(config.dataDir, "receipt-reconciliations"),
     readJsonl(config.dataDir, "execution-journal"),
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "gateway-quote-failures"),
     readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
+    readJsonl(config.dataDir, "gateway-update-snapshots"),
   ]);
+  const ethFamilyWatch = summarizeEthFamilyWatch(updateSnapshots.at(-1) || null);
 
   const routePerformance = buildRoutePerformanceRanking({
     receiptRecords,
@@ -117,6 +133,7 @@ async function main() {
         scoreSnapshot: scoreSnapshot || null,
       }),
     },
+    ethFamilyWatch,
   });
   summary.address = {
     resolved: address,

@@ -1,5 +1,6 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../risk/ethereum-l1-policy.mjs";
 
 const DISQUALIFYING_SCORE_GAPS = new Set([
   "implausible_quote_value_ratio",
@@ -53,6 +54,14 @@ function disqualifyingGaps(score) {
   return (score?.dataGaps || []).filter((gap) => DISQUALIFYING_SCORE_GAPS.has(gap));
 }
 
+function disqualifyingScoreReasons(score) {
+  const reasons = disqualifyingGaps(score);
+  if (score?.tradeReadiness === ETHEREUM_L1_PHASE_DISABLED_REASON) {
+    reasons.push(ETHEREUM_L1_PHASE_DISABLED_REASON);
+  }
+  return [...new Set(reasons)];
+}
+
 function routeLabel(quote) {
   const src = tokenAsset(quote.route.srcChain, quote.route.srcToken);
   const dst = tokenAsset(quote.route.dstChain, quote.route.dstToken);
@@ -97,7 +106,7 @@ export function buildCanaryRoutePlan(
       const srcAsset = tokenAsset(quote.route.srcChain, quote.route.srcToken);
       const dstAsset = tokenAsset(quote.route.dstChain, quote.route.dstToken);
       const blockers = routePrepBlockers(readiness);
-      const scoreDisqualifiers = disqualifyingGaps(score);
+      const scoreDisqualifiers = disqualifyingScoreReasons(score);
       const txReady = Boolean(quote.txTo && quote.txData);
       const exactGasDone = score?.executionGasSource === "eth_estimateGas";
       const nativeUsd = nativeShortfallUsd(readiness, prices);

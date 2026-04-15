@@ -1,6 +1,7 @@
 import { tokenAsset } from "../assets/tokens.mjs";
 import { buildDefaultRiskPolicy } from "../risk/policy.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
+import { filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -44,6 +45,20 @@ function proxyGroupKey(asset) {
     .toLowerCase();
 }
 
+function sortAmountLevels(values = []) {
+  return [...values]
+    .map((value) => String(value))
+    .sort((left, right) => {
+      try {
+        const a = BigInt(left);
+        const b = BigInt(right);
+        return a < b ? -1 : a > b ? 1 : 0;
+      } catch {
+        return String(left).localeCompare(String(right));
+      }
+    });
+}
+
 function buildObservedProxyCoverage(quotes, side) {
   const coverage = new Map();
   for (const quote of quotes) {
@@ -68,6 +83,8 @@ function buildObservedProxyCoverage(quotes, side) {
       quoteCount: entry.quoteCount,
       chainCount: entry.chains.size,
       amountLevelCount: entry.amounts.size,
+      chains: [...entry.chains].sort(),
+      amountLevels: sortAmountLevels([...entry.amounts]),
       tickers: [...entry.tickers].sort(),
       latestObservedAt: entry.latestObservedAt,
     }))
@@ -79,7 +96,7 @@ function routeKey(route) {
 }
 
 function buildSellQuotes(dexQuotes = []) {
-  const relevant = dexQuotes.filter((quote) => {
+  const relevant = filterTrustedExecutableDexQuotes(dexQuotes).filter((quote) => {
     const asset = tokenAsset(quote?.chain, quote?.inputToken);
     return quote?.quoteType === "token_to_stable" && asset.family === "wrapped_btc";
   });
@@ -87,7 +104,7 @@ function buildSellQuotes(dexQuotes = []) {
 }
 
 function buildBuyQuotes(dexQuotes = []) {
-  const relevant = dexQuotes.filter((quote) => {
+  const relevant = filterTrustedExecutableDexQuotes(dexQuotes).filter((quote) => {
     const asset = tokenAsset(quote?.chain, quote?.outputToken);
     return quote?.quoteType === "stable_to_token" && asset.family === "wrapped_btc" && quote?.targetTokenAmount;
   });
@@ -265,6 +282,9 @@ function buildCoverageTargets({ buyQuotes, sellQuotes, opportunities, maxQuoteAg
         buyAmountLevelCount: item.buyAmounts.size,
         sellAmountLevelCount: item.sellAmounts.size,
         matchedAmountLevelCount: item.matchedAmounts.size,
+        buyAmountLevels: sortAmountLevels([...item.buyAmounts]),
+        sellAmountLevels: sortAmountLevels([...item.sellAmounts]),
+        matchedAmountLevels: sortAmountLevels([...item.matchedAmounts]),
         buyChainCount: item.buyChainCount.size,
         sellChainCount: item.sellChainCount.size,
         buyChains: [...item.buyChainCount].sort(),

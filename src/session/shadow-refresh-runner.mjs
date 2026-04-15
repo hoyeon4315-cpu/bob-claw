@@ -2,12 +2,15 @@ import { spawn } from "node:child_process";
 
 export const DEFAULT_ALLOWED_QUEUE_SCRIPTS = new Set([
   "advance:canary",
+  "analyze:ethereum-routes",
+  "audit:eth-family-overfit",
   "check:estimator-wallet",
   "estimate:gateway-gas",
   "plan:prelive-fork-execution",
   "plan:treasury-actions",
   "plan:treasury-funding-sources",
   "price:snapshot",
+  "scan:quote-surface",
   "quote:dex",
   "report:prelive-readiness",
   "report:route-performance",

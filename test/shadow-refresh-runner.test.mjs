@@ -38,6 +38,26 @@ test("refresh queue item previews without executing", async () => {
   assert.equal(record.steps[0].script, "check:estimator-wallet");
 });
 
+test("refresh runner previews ETH-family observe-only queue commands", async () => {
+  const record = await executeRefreshQueueItem({
+    rank: 1,
+    scope: "eth_family_watch",
+    code: "collect_eth_family_evidence",
+    routeLabel: "ETH-family watch base->bob",
+    command:
+      'npm run scan:quote-surface -- --route-key="base:0xeth->bob:0xeth" && npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard',
+  });
+
+  assert.equal(record.executionStatus, "preview");
+  assert.equal(record.stepCount, 4);
+  assert.deepEqual(record.steps.map((step) => step.script), [
+    "scan:quote-surface",
+    "analyze:ethereum-routes",
+    "audit:eth-family-overfit",
+    "status:dashboard",
+  ]);
+});
+
 test("refresh queue item executes sequential steps and stops on failure", async () => {
   const calls = [];
   const record = await executeRefreshQueueItem(

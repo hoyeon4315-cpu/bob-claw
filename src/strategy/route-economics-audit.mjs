@@ -23,8 +23,8 @@ const EDGE_RESEARCH_REASON_LABELS = {
 
 const CANDIDATE_REASON_LABELS = {
   candidate_review_only: "route-level score is already review-only after current costs",
-  measured_loop_positive: "closed-loop measurement is positive, so the route should keep moving through evidence review",
-  measured_positive_but_system_negative: "closed-loop measurement is positive, but effective system PnL is still negative after treasury costs",
+  measured_loop_positive: "route-level edge is positive, so the route should keep moving through evidence review",
+  measured_positive_but_system_negative: "route-level edge is positive, but effective system PnL is still negative after treasury costs",
   prep_ready_but_negative: "prep-ready baseline route is still economically negative and should not be promoted",
   durable_no_edge_family: "route family already shows durable no-edge evidence",
   thin_shadow_evidence: "shadow evidence is still too thin to make a stronger call",
@@ -237,11 +237,13 @@ function familyVerdictFromEdgeResearch(route = null) {
   };
 }
 
-function strongerVerdict(left, right) {
-  const rank = { continue: 0, observe_only: 1, drop: 2 };
-  if (!left) return right;
-  if (!right) return left;
-  return (rank[right.verdict] ?? 99) < (rank[left.verdict] ?? 99) ? right : left;
+function selectFamilyVerdict(loopVerdict, edgeVerdict) {
+  if (loopVerdict?.reasonCode === "durable_no_edge_route") return loopVerdict;
+  if (loopVerdict?.verdict === "continue") return loopVerdict;
+  if (edgeVerdict?.verdict === "continue") return edgeVerdict;
+  if (loopVerdict?.verdict === "drop") return loopVerdict;
+  if (edgeVerdict?.verdict === "drop") return edgeVerdict;
+  return loopVerdict || edgeVerdict || null;
 }
 
 function buildRouteFamilyAudits({ noEdgePersistence = null, edgeResearch = null } = {}) {
@@ -254,7 +256,7 @@ function buildRouteFamilyAudits({ noEdgePersistence = null, edgeResearch = null 
     const edgeRoute = edgeResearchByRoute.get(routeKey) || null;
     const loopVerdict = familyVerdictFromLoop(noEdgeRoute?.classification || null);
     const edgeVerdict = familyVerdictFromEdgeResearch(edgeRoute);
-    const selectedVerdict = strongerVerdict(loopVerdict, edgeVerdict);
+    const selectedVerdict = selectFamilyVerdict(loopVerdict, edgeVerdict);
 
     return {
       routeKey,
@@ -306,7 +308,11 @@ function classifyCandidateAudit({ candidate, score, measuredLoop, evidence, rout
     };
   }
 
-  if (Number.isFinite(measuredLoop?.measuredLoopNetUsd) && measuredLoop.measuredLoopNetUsd > 0) {
+  const measuredLeaderPositive =
+    roles.includes("measured_leader") &&
+    ((Number.isFinite(score?.executableNetEdgeUsd) && score.executableNetEdgeUsd > 0) ||
+      (Number.isFinite(score?.netEdgeUsd) && score.netEdgeUsd > 0));
+  if ((Number.isFinite(measuredLoop?.measuredLoopNetUsd) && measuredLoop.measuredLoopNetUsd > 0) || measuredLeaderPositive) {
     if (Number.isFinite(score?.effectiveSystemNetPnlUsd) && score.effectiveSystemNetPnlUsd <= 0) {
       return {
         verdict: "continue",
@@ -354,18 +360,32 @@ function classifyCandidateAudit({ candidate, score, measuredLoop, evidence, rout
   };
 }
 
-function strategyDecision(familyAudits = []) {
+function strategyDecision({ familyAudits = [], candidateAudits = [] } = {}) {
   if (familyAudits.some((item) => item.verdict === "continue")) {
     return {
       code: "keep_researching",
-      label: "Keep researching within the current BOB Gateway / BTC thesis",
+      label: "Keep researching within the current BOB Gateway thesis",
+    };
+  }
+
+  if (
+    candidateAudits.some(
+      (item) =>
+        item.roles.includes("measured_leader") &&
+        item.verdict === "continue" &&
+        item.routeFamilyVerdict !== "drop",
+    )
+  ) {
+    return {
+      code: "keep_researching",
+      label: "Keep researching within the current BOB Gateway thesis",
     };
   }
 
   if (familyAudits.length > 0 && familyAudits.every((item) => item.verdict === "drop")) {
     return {
       code: "pivot_within_current_thesis",
-      label: "Pivot within the current thesis instead of forcing the current candidates",
+      label: "Pivot within the current thesis instead of forcing the current route families",
     };
   }
 
@@ -594,7 +614,7 @@ export function buildRouteEconomicsAudit({
   };
   const currentCanary = candidateAudits.find((item) => item.roles.includes("active_canary")) || null;
   const measuredLeader = candidateAudits.find((item) => item.roles.includes("measured_leader")) || null;
-  const decision = strategyDecision(routeFamilyAudits);
+  const decision = strategyDecision({ familyAudits: routeFamilyAudits, candidateAudits });
 
   return {
     schemaVersion: 1,

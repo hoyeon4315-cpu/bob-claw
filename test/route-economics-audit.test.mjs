@@ -441,7 +441,7 @@ test("pivot decision summary reuses economics audit strategy with objective plan
     economicsAudit: {
       summary: {
         strategyDecisionCode: "pivot_within_current_thesis",
-        strategyDecisionLabel: "Pivot within the current thesis instead of forcing the current candidates",
+        strategyDecisionLabel: "Pivot within the current thesis instead of forcing the current route families",
         currentCanary: {
           routeKey: "bob:0x0555->base:0x0555",
           amount: "10000",

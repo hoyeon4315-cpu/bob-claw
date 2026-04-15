@@ -276,6 +276,31 @@ async function main() {
   console.log(`shadowCycleMode=${status.shadowCycle?.mode || "none"}`);
   console.log(`preliveStage=${status.prelive?.currentStage || "none"}`);
   console.log(`reviewPackageStatus=${status.prelive?.reviewPackage?.packageStatus || "none"}`);
+  if (status.prelive?.connectedRefresh) {
+    console.log(
+      `connectedRefresh=${status.prelive.connectedRefresh.status || "none"} required=${status.prelive.connectedRefresh.requiredRefreshCount ?? 0} next=${status.prelive.connectedRefresh.nextActionCode || "none"}`,
+    );
+  }
+  if (status.prelive?.connectedRefreshExecution) {
+    console.log(
+      `connectedRefreshExecution=runs:${status.prelive.connectedRefreshExecution.runCount ?? 0} preview:${status.prelive.connectedRefreshExecution.previewCount ?? 0} success:${status.prelive.connectedRefreshExecution.successCount ?? 0} latest:${status.prelive.connectedRefreshExecution.latestStatus || "none"}`,
+    );
+  }
+  if (status.prelive?.currentRoutePrelivePass) {
+    console.log(
+      `currentRoutePrelivePass=runs:${status.prelive.currentRoutePrelivePass.runCount ?? 0} preview:${status.prelive.currentRoutePrelivePass.previewCount ?? 0} latest:${status.prelive.currentRoutePrelivePass.latestStatus || "none"} next:${status.prelive.currentRoutePrelivePass.nextAction?.code || "none"}`,
+    );
+  }
+  if (status.prelive?.exactRouteForkPackage) {
+    console.log(
+      `exactRouteFork=${status.prelive.exactRouteForkPackage.status || "none"} technical=${status.prelive.exactRouteForkPackage.technicalStatus || "n/a"} economic=${status.prelive.exactRouteForkPackage.economicStatus || "n/a"}`,
+    );
+  }
+  if (status.prelive?.operationalJudgmentReview) {
+    console.log(
+      `operationalJudgment=${status.prelive.operationalJudgmentReview.status || "none"} issues=${status.prelive.operationalJudgmentReview.issueCount ?? 0}`,
+    );
+  }
   console.log(`blockers=${status.overall.blockers.join(",") || "none"}`);
 }
 

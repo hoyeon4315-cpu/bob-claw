@@ -5,6 +5,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { odosSafeSourceWhitelist } from "../dex/odos.mjs";
 import {
   getTriangleProfile,
   triangleDatasetNames,
@@ -38,21 +39,6 @@ function parseArgs(argv) {
   };
 }
 
-// Only route through proven AMMs — oracle-based DEXes give phantom quotes
-const ODOS_SOURCE_WHITELIST = [
-  "Uniswap V2", "Uniswap V3", "Uniswap V4",
-  "Aerodrome", "Aerodrome SlipStream",
-  "Curve", "Curve V2",
-  "SushiSwap", "SushiSwap V3",
-  "BaseSwap", "BaseSwap V3",
-  "PancakeSwap V2", "PancakeSwap V3",
-  "Maverick V2",
-  "Balancer V2", "Balancer V3",
-  "DODO", "Velodrome", "Velodrome V2",
-  "WooFi", "KyberSwap", "TraderJoe",
-  "AlienBase", "DackieSwap",
-];
-
 async function odosQuote(chainId, inputAddr, inputAmount, outputAddr) {
   const body = {
     chainId,
@@ -62,8 +48,9 @@ async function odosQuote(chainId, inputAddr, inputAmount, outputAddr) {
     slippageLimitPercent: 0.5,
     disableRFQs: true,
     compact: true,
-    sourceWhitelist: ODOS_SOURCE_WHITELIST,
   };
+  const sourceWhitelist = odosSafeSourceWhitelist("base");
+  if (sourceWhitelist) body.sourceWhitelist = sourceWhitelist;
   const start = Date.now();
   const response = await fetch(`${ODOS_API}/sor/quote/v3`, {
     method: "POST",

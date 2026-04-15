@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildEdgeResearchSummary } from "../src/strategy/edge-research.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON, ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION } from "../src/risk/ethereum-l1-policy.mjs";
 
 test("edge research rejects implausible positive outliers and keeps strong multi-level candidates separate", () => {
   const summary = buildEdgeResearchSummary({
@@ -100,4 +101,28 @@ test("edge research upgrades to multi-level candidate when profitable levels and
 
   assert.equal(summary.multiLevelCandidateCount, 1);
   assert.equal(summary.bestCandidate.classification, "multi_level_candidate");
+});
+
+test("edge research keeps Ethereum L1 routes out of best-candidate promotion", () => {
+  const summary = buildEdgeResearchSummary({
+    scoreSnapshot: {
+      generatedAt: "2026-04-11T13:00:00.000Z",
+      scores: [
+        {
+          routeKey: "ethereum:0x2260->base:0x0555",
+          amount: "10000",
+          executableNetEdgeUsd: 1.2,
+          executableNetEdgePct: 0.02,
+          tradeReadiness: ETHEREUM_L1_PHASE_DISABLED_REASON,
+          dataGaps: [],
+          routeStats: { failureRate: 0 },
+        },
+      ],
+    },
+    shadowObservations: [],
+  });
+
+  assert.equal(summary.policyBlockedCount, 1);
+  assert.equal(summary.bestCandidate, null);
+  assert.equal(summary.routes[0].classification, ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION);
 });

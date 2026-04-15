@@ -107,11 +107,91 @@ function chooseProxySpreadAction(btcProxySpreads) {
   };
 }
 
+function chooseEthFamilyAction(ethProfitability = null) {
+  if (!ethProfitability) {
+    return {
+      status: "unobserved",
+      nextActionCode: "watch_eth_family_surface",
+      reason: "no_eth_analysis",
+    };
+  }
+
+  if (ethProfitability.recommendationCode === "no_eth_routes_observed" || ethProfitability.recommendationCode === "no_multichain_eth_family_surface") {
+    return {
+      status: "unobserved",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: ethProfitability.recommendationCode,
+    };
+  }
+
+  if (ethProfitability.recommendationCode === "observe_only_until_fee_review") {
+    return {
+      status: "observe_only",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: ethProfitability.recommendationCode,
+    };
+  }
+
+  if (
+    ethProfitability.recommendationCode === "eth_family_surface_not_persistent" ||
+    ethProfitability.recommendationCode === "collect_more_eth_evidence"
+  ) {
+    return {
+      status: "thin_coverage",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: ethProfitability.recommendationCode,
+    };
+  }
+
+  if (
+    ethProfitability.recommendationCode === "eth_family_provider_gaps" ||
+    ethProfitability.recommendationCode === "collect_eth_family_loop_quotes" ||
+    ethProfitability.recommendationCode === "collect_eth_family_entry_quotes"
+  ) {
+    return {
+      status: "blocked_loop",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: ethProfitability.recommendationCode,
+    };
+  }
+
+  if (ethProfitability.verdictCode === "policy_ready") {
+    return {
+      status: "candidate_loop",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: "policy_ready_eth_family_loop",
+    };
+  }
+
+  if (ethProfitability.verdictCode === "positive_but_below_policy" || ethProfitability.verdictCode === "near_policy") {
+    return {
+      status: "blocked_loop",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: ethProfitability.verdictCode,
+    };
+  }
+
+  if (ethProfitability.bestResearchRoute) {
+    return {
+      status: "route_only",
+      nextActionCode: ethProfitability.followUpActionCode,
+      reason: ethProfitability.recommendationCode || ethProfitability.verdictCode || "eth_family_route_only",
+    };
+  }
+
+  return {
+    status: "observe_only",
+    nextActionCode: ethProfitability.followUpActionCode,
+    reason: ethProfitability.recommendationCode || ethProfitability.verdictCode || "eth_family_observe_only",
+  };
+}
+
 export function buildStrategyTracksSummary({
   shadowCycle = null,
   bestStablecoinRoute = null,
   crossAssetArbitrage = null,
   btcProxySpreads = null,
+  ethProfitability = null,
 } = {}) {
   const tracks = [];
   const activeCanary = shadowCycle?.topRoute || null;
@@ -172,6 +252,30 @@ export function buildStrategyTracksSummary({
     reason: proxyAction.reason,
     command: null,
   });
+
+  if (
+    ethProfitability &&
+    (
+      (ethProfitability.gatewayRouteCount || 0) > 0 ||
+      (ethProfitability.routeCount || 0) > 0 ||
+      ethProfitability.bestMeasuredRoute ||
+      ethProfitability.bestResearchRoute
+    )
+  ) {
+    const ethAction = chooseEthFamilyAction(ethProfitability);
+    tracks.push({
+      kind: "eth_family_loop",
+      label:
+        ethProfitability.bestMeasuredRoute?.routeKey ||
+        ethProfitability.bestResearchRoute?.routeKey ||
+        "ETH family surface",
+      amount: ethProfitability.bestMeasuredRoute?.amount || ethProfitability.bestResearchRoute?.amount || null,
+      status: ethAction.status,
+      nextActionCode: ethAction.nextActionCode,
+      reason: ethAction.reason,
+      command: ethProfitability.followUpCommand || null,
+    });
+  }
 
   return {
     trackCount: tracks.filter((item) => item.label || item.kind).length,

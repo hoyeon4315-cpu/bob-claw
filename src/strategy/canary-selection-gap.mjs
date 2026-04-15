@@ -2,9 +2,17 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function preferredLeaderNetUsd(score) {
+  return finite(score?.executableNetEdgeUsd) ?? finite(score?.netEdgeUsd) ?? finite(score?.effectiveSystemNetPnlUsd);
+}
+
 function sameRouteVariant(left, right) {
   if (!left?.routeKey || !right?.routeKey) return false;
   return left.routeKey === right.routeKey && String(left.amount) === String(right.amount);
+}
+
+function sameRoute(left, right) {
+  return Boolean(left?.routeKey) && Boolean(right?.routeKey) && left.routeKey === right.routeKey;
 }
 
 function routeLabel(route) {
@@ -88,15 +96,25 @@ function reviewActions({ blockers = [], measuredCandidate = null, measuredScore 
   return [...new Set(actions)];
 }
 
+function fallbackScoredLeader(scoreSnapshot, currentCanary) {
+  const candidates = (scoreSnapshot?.scores || [])
+    .filter((item) => item?.routeKey && !sameRoute(item, currentCanary))
+    .filter((item) => (preferredLeaderNetUsd(item) ?? Number.NEGATIVE_INFINITY) > 0)
+    .sort(
+      (left, right) =>
+        (preferredLeaderNetUsd(right) ?? Number.NEGATIVE_INFINITY) - (preferredLeaderNetUsd(left) ?? Number.NEGATIVE_INFINITY) ||
+        String(left.routeKey).localeCompare(String(right.routeKey)) ||
+        String(left.amount).localeCompare(String(right.amount)),
+    );
+  return candidates[0] || null;
+}
+
 export function buildCanarySelectionGap({
   routePlan = null,
   edgeViability = null,
   canaryInputs = null,
   scoreSnapshot = null,
 } = {}) {
-  const measuredLeader = edgeViability?.closestLoop || edgeViability?.bestMeasuredLoop || null;
-  if (!measuredLeader?.routeKey) return null;
-
   const currentCanary = canaryInputs?.routeKey
     ? {
         routeKey: canaryInputs.routeKey,
@@ -105,7 +123,12 @@ export function buildCanarySelectionGap({
         tradeReadiness: canaryInputs.scoreTradeReadiness || null,
       }
     : routePlan?.topCandidates?.[0] || null;
-  if (!currentCanary?.routeKey || sameRouteVariant(currentCanary, measuredLeader)) return null;
+  const measuredLeader =
+    edgeViability?.closestLoop ||
+    edgeViability?.bestMeasuredLoop ||
+    fallbackScoredLeader(scoreSnapshot, currentCanary) ||
+    null;
+  if (!currentCanary?.routeKey || !measuredLeader?.routeKey || sameRoute(currentCanary, measuredLeader)) return null;
 
   const scores = scoreSnapshot?.scores || [];
   const measuredScore = scores.find(

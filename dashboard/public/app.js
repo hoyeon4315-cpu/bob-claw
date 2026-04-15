@@ -178,6 +178,92 @@ function humanGap(gap) {
   }[gap] || gap;
 }
 
+function fallbackCodeLabel(value, fallback = "—") {
+  if (!value) return fallback;
+  return String(value).replaceAll("_", " ");
+}
+
+function humanLiveState(liveTrading, shadowTrading) {
+  if (liveTrading === "ALLOWED") return "공식 live가 열려 있습니다.";
+  if (liveTrading === "BLOCKED" && shadowTrading === "ALLOWED") return "공식 live는 막혀 있고 shadow 관찰만 열려 있습니다.";
+  if (liveTrading === "BLOCKED") return "공식 live는 아직 막혀 있습니다.";
+  return "공식 운영 상태를 확인하는 중입니다.";
+}
+
+function humanPreliveStage(stage) {
+  return {
+    shadow_replay: "shadow replay",
+    mechanical_simulation: "mechanical simulation",
+    fork_execution: "fork execution",
+    tiny_canary: "tiny canary",
+  }[stage] || fallbackCodeLabel(stage);
+}
+
+function humanValidationStatus(status) {
+  return {
+    ready_for_manual_review: "수동 검토 가능",
+    blocked: "막힘",
+    in_progress: "진행 중",
+  }[status] || fallbackCodeLabel(status);
+}
+
+function humanNextAction(code) {
+  return {
+    refresh_gateway_quote: "Gateway quote 다시 확인",
+    refresh_dex_quote: "DEX quote 다시 확인",
+    hold_dex_quote: "DEX quote 변화 전까지 보류",
+    execute_refresh_batch: "안전한 refresh batch 진행",
+    wait_for_fresh_inputs: "입력 freshness 다시 확인",
+    build_deterministic_yield_shadow_book: "yield 장부 종이 검증",
+    expand_amount_ladder: "amount ladder 다시 수집",
+    watch_eth_family_surface: "ETH 표면 계속 관찰",
+  }[code] || fallbackCodeLabel(code);
+}
+
+function humanReasonCode(code) {
+  return {
+    reject_no_net_edge: "순엣지 미달",
+    blocked_no_net_edge: "순엣지 미달",
+    blocked_nonrefreshable_input: "구조적 입력 blocker",
+    network_refresh_required: "새 측정 없이는 판단 불가",
+    odos_chain_not_supported: "목적지 DEX quote 미지원",
+    odos_quote_failed: "DEX quote 실패 누적",
+    amount_mismatch: "금액 단위 불일치",
+    thin_coverage: "표본 얇음",
+    measured_below_policy: "정책 미달",
+    analysis_only: "분석 전용",
+    unobserved: "관찰 부족",
+  }[code] || fallbackCodeLabel(code);
+}
+
+function humanStrategyStatus(status) {
+  return {
+    candidate_for_validation: "검증 후보",
+    measured_below_policy: "정책 미달",
+    thin_coverage: "표본 얇음",
+    pre_execution_blueprint: "실행 전 설계",
+    blocked_policy_or_overfit: "과적합/정책 차단",
+    blocked_current_surface: "현재 표면 대기",
+    research_only: "연구 전용",
+    analysis_only: "분석 전용",
+    unobserved: "관찰 부족",
+  }[status] || fallbackCodeLabel(status);
+}
+
+function humanStrategyLabel(id, fallback) {
+  return {
+    gateway_base_btc_yield: "Base BTC 수익 루트",
+    btc_proxy_spreads: "BTC 프록시 스프레드",
+    stablecoin_entry_exit_loops: "BTC-스테이블 진입/이탈 루프",
+    triangular_flash_btc: "BTC 삼각/flash 표면",
+    gateway_wrapped_btc_loops: "Gateway wrapped BTC 루프",
+    eth_family_gateway: "ETH 계열 Gateway",
+    eth_mixed_stable_loops: "ETH-스테이블 혼합 루프",
+    eth_dex_spread_mixed: "ETH mixed spread",
+    eth_mixed_flash: "ETH mixed flash",
+  }[id] || fallback || fallbackCodeLabel(id);
+}
+
 function mapMetrics() {
   const map = document.querySelector(".map-wrap");
   const width = map?.clientWidth || window.innerWidth || 390;
@@ -618,6 +704,163 @@ function renderOpportunity(status) {
       : `${quotePrefix} · 비용 반영 후 제외 ${rejected}개`;
 }
 
+function renderOfficialState(status) {
+  const overall = status.overall || {};
+  const prelive = status.prelive || {};
+  const validation = prelive.validation || {};
+  const connectedRefresh = prelive.connectedRefresh || {};
+  const canary = status.canaryInputs || {};
+  const routeLabel = canary.routeLabel || connectedRefresh.routeLabel || "—";
+  const stage = validation.currentStageId || prelive.currentStage || status.strategy?.strategySnapshot?.preliveStage || null;
+  const nextActionCode = connectedRefresh.nextActionCode || validation.nextActionCode || null;
+  const blockerBits = [];
+  if (canary.blockers?.[0]) blockerBits.push(humanReasonCode(canary.blockers[0]));
+  if (canary.dexQuote?.state === "blocked") {
+    const dexReason = canary.dexQuote.failureReason || canary.dexQuote.failureReasons?.[0] || "blocked_nonrefreshable_input";
+    const dexLabel = humanReasonCode(dexReason);
+    if (!blockerBits.includes(dexLabel)) blockerBits.push(dexLabel);
+  }
+  const blockerText = blockerBits.join(" · ") || humanReasonCode(connectedRefresh.status || validation.validationStatus);
+  const boundaryText =
+    overall.liveTrading === "ALLOWED"
+      ? "자동 실행 권한은 별도 아키텍처 검토 대상입니다."
+      : "실험 tx, PnL, 최근 흐름이 보여도 공식 live 승인과는 별개입니다.";
+
+  $("officialStateBadge").textContent = overall.liveTrading === "ALLOWED" ? "공식 live" : "공식 live 차단";
+  $("officialStateTitle").textContent =
+    overall.liveTrading === "ALLOWED" ? "공식 운영 상태가 열려 있습니다" : "공식 상태는 아직 prelive 관찰 단계입니다";
+  $("officialStateBody").textContent = [
+    humanLiveState(overall.liveTrading, overall.shadowTrading),
+    routeLabel !== "—" ? `현재 canary는 ${routeLabel}입니다.` : null,
+    blockerText ? `지금은 ${blockerText} 때문에 더 밀지 않습니다.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  $("officialStateStage").textContent = humanPreliveStage(stage);
+  $("officialStateValidation").textContent = humanValidationStatus(validation.validationStatus);
+  $("officialStateRoute").textContent = routeLabel;
+  $("officialStateNext").textContent = humanNextAction(nextActionCode);
+  $("officialStateGuard").textContent = overall.liveTrading === "ALLOWED" ? "운영 중" : "live ≠ 실험";
+  $("officialStateBlocker").textContent = blockerText || "추가 blocker 확인 중";
+  $("officialStateBoundary").textContent = boundaryText;
+}
+
+function renderStrategyMap(status) {
+  const snapshot = status.strategy?.strategySnapshot || {};
+  const reviewPackage = status.prelive?.reviewPackage || {};
+  const implemented = snapshot.implementedStrategyCount || 0;
+  const belowPolicy = snapshot.measuredBelowPolicyCount || 0;
+  const promotable = reviewPackage.destinationAllocatorPromotableCount ?? 0;
+  const ready = reviewPackage.destinationAllocatorAllocationReadyCount ?? 0;
+  const reviewOnly = reviewPackage.destinationAllocatorReviewOnlyCount ?? 0;
+  const topImplemented = snapshot.topImplementedStrategy || null;
+  const topPivot = snapshot.topPivot || null;
+  const topImplementedText = topImplemented
+    ? `${humanStrategyLabel(topImplemented.id, topImplemented.label)} · ${humanStrategyStatus(topImplemented.status)}`
+    : "대표 구현 전략 집계 대기";
+  const topPivotText = topPivot
+    ? `${humanStrategyLabel(topPivot.id, topPivot.label)}${
+        Number.isFinite(topPivot.researchPilotMinimumUsd) ? ` · pilot ${money(topPivot.researchPilotMinimumUsd)}` : ""
+      }`
+    : "다음 연구 축 집계 대기";
+  const budgetParts = [
+    Number.isFinite(snapshot.activeBudgetUsd) ? `live ring ${money(snapshot.activeBudgetUsd)}` : null,
+    Number.isFinite(snapshot.planningBudgetUsd) ? `planning ${money(snapshot.planningBudgetUsd)}` : null,
+  ].filter(Boolean);
+
+  $("strategyMapBadge").textContent = implemented ? `${implemented}개 전략` : "전략 대기";
+  $("strategyMapTitle").textContent = "native BTC는 여러 레일과 allocator 후보로 분기됩니다";
+  $("strategyMapBody").textContent = [
+    "wrapped BTC · stablecoin · ETH-like 레일을 추적합니다.",
+    promotable || ready
+      ? `allocator 후보 ${promotable}개 중 실제 ready는 ${ready}개만 남겨 둡니다.`
+      : implemented
+        ? `${implemented}개 전략을 계속 관찰 중입니다.`
+        : null,
+    budgetParts.length ? budgetParts.join(" · ") : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  $("strategyMapImplemented").textContent = `${implemented}`;
+  $("strategyMapBelowPolicy").textContent = `${belowPolicy}`;
+  $("strategyMapPromotable").textContent = `${promotable}`;
+  $("strategyMapReady").textContent = `${ready}`;
+  $("strategyMapFocusBadge").textContent = promotable ? `ready ${ready}/${promotable}` : "manual review";
+  $("strategyMapTopImplemented").textContent = topImplementedText;
+  $("strategyMapTopPivot").textContent = topPivotText;
+  $("strategyMapReviewOnly").textContent = `${reviewOnly}개 review-only · 수동 검토 전용`;
+}
+
+function pivotBadgeLabel(top) {
+  return {
+    pre_execution_blueprint: "다음 연구 축",
+    candidate_for_validation: "재검토 후보",
+    blocked_policy_or_overfit: "과적합 점검",
+    research_only: "측정 보강",
+    blocked_current_surface: "표면 대기",
+  }[top?.status] || "연구 중";
+}
+
+function pivotTitle(top) {
+  return {
+    gateway_base_btc_yield: "Base 수익 루트를 먼저 설계 중",
+    btc_proxy_spreads: "BTC 재고 차이를 다시 재는 중",
+    stablecoin_entry_exit_loops: "BTC-스테이블 루프를 다시 맞추는 중",
+    triangular_flash_btc: "삼각 / flash 표면을 다시 확인 중",
+    gateway_wrapped_btc_loops: "기존 Gateway 루프는 잠시 보류",
+  }[top?.id] || top?.label || "다음 연구 축";
+}
+
+function pivotBody(plan, top) {
+  if (!top) return "현재 표면과 필요 자본을 다시 분리해서 보고 있습니다.";
+  if (top.id === "gateway_base_btc_yield") {
+    const pilot = money(top.researchPilotMinimumUsd);
+    const defaultSplit = money(top.defaultDualSleeveMinimumUsd);
+    return `작은 종이 실험은 ${pilot}부터, 기본 분산 구상은 ${defaultSplit} 정도가 필요합니다.`;
+  }
+  if (top.id === "btc_proxy_spreads") {
+    return Number.isFinite(top.observedCapitalFloorUsd)
+      ? `관측된 차이는 ${money(top.observedCapitalFloorUsd)} 전후에서 보였지만, 표본이 얇아 바로 올릴 수 없습니다.`
+      : "차이는 보이지만 샘플 폭과 재검증이 먼저입니다.";
+  }
+  if (top.id === "stablecoin_entry_exit_loops") {
+    return "진입과 청산 금액 단위가 아직 맞지 않아 장부부터 다시 맞춰야 합니다.";
+  }
+  if (top.id === "triangular_flash_btc") {
+    return "최근 flash 결과가 음수라서 최신 표면을 다시 모으는 일이 먼저입니다.";
+  }
+  if (top.id === "gateway_wrapped_btc_loops") {
+    return "정확히 닫힌 루프가 아직 없어 자본 기준보다 측정 품질이 먼저입니다.";
+  }
+  return plan?.budgetNote || "현재 표면과 필요 자본을 다시 분리해서 보고 있습니다.";
+}
+
+function pivotNextLabel(top) {
+  return {
+    gateway_base_btc_yield: "수익 장부부터 종이로 검증",
+    btc_proxy_spreads: "amount ladder 다시 수집",
+    stablecoin_entry_exit_loops: "진입·청산 금액 단위 다시 맞추기",
+    triangular_flash_btc: "최신 flash 샘플 다시 수집",
+    gateway_wrapped_btc_loops: "닫힌 루프 검증 다시 돌리기",
+  }[top?.id] || top?.nextActionLabel || "다음 수동 확인 대기";
+}
+
+function renderPivotPlan(status) {
+  const plan = status.strategy?.pivotPlan || null;
+  const top = plan?.topRecommendation || null;
+  $("pivotBadge").textContent = pivotBadgeLabel(top);
+  $("pivotTitle").textContent = pivotTitle(top);
+  $("pivotBody").textContent = pivotBody(plan, top);
+  $("pivotBudget").textContent = money(plan?.currentBudgetUsd);
+  $("pivotCapital").textContent = Number.isFinite(top?.observedCapitalFloorUsd) ? money(top.observedCapitalFloorUsd) : "—";
+  $("pivotPilot").textContent = Number.isFinite(top?.researchPilotMinimumUsd)
+    ? money(top.researchPilotMinimumUsd)
+    : Number.isFinite(top?.defaultDualSleeveMinimumUsd)
+      ? money(top.defaultDualSleeveMinimumUsd)
+      : "—";
+  $("pivotNext").textContent = pivotNextLabel(top);
+}
+
 function renderManualMemos(status) {
   const memos = status.manualMemos || [];
   const levelLabel = {
@@ -899,6 +1142,9 @@ function render(status) {
   renderGas(status);
   renderAssetCoverage(status);
   renderOpportunity(status);
+  renderOfficialState(status);
+  renderStrategyMap(status);
+  renderPivotPlan(status);
   renderManualMemos(status);
   renderQuoteLag(status);
   renderDexSpread(status);

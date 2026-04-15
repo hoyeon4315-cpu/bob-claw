@@ -73,6 +73,51 @@ async function main() {
   if (report.measuredLeaderReview) {
     console.log(`measuredLeader=${report.measuredLeaderReview.routeLabel || report.measuredLeaderReview.routeKey} next=${report.measuredLeaderReview.nextActionCode || "none"}`);
   }
+  if (report.strategySnapshot) {
+    console.log(
+      `strategySnapshot=${report.strategySnapshot.implementedStrategyCount || 0} top=${report.strategySnapshot.topImplementedStrategy?.id || "n/a"} pivot=${report.strategySnapshot.topPivot?.id || "n/a"}`,
+    );
+  }
+  if (report.executionRunbook) {
+    console.log(
+      `executionRunbook=${report.executionRunbook.currentStageId || "n/a"} next=${report.executionRunbook.nextStageId || "n/a"} action=${report.executionRunbook.nextActionCode || "none"}`,
+    );
+    if (report.executionRunbook.exactRouteForkPlanStatus || report.executionRunbook.exactRouteForkPlanId) {
+      console.log(
+        `executionRunbookForkPlan=${report.executionRunbook.exactRouteForkPlanStatus || "n/a"} planId=${report.executionRunbook.exactRouteForkPlanId || "n/a"} submit=${report.executionRunbook.exactRouteForkSubmitCommand || "n/a"}`,
+      );
+    }
+  }
+  if (report.preliveValidation) {
+    console.log(
+      `preliveValidation=${report.preliveValidation.validationStatus || "n/a"} next=${report.preliveValidation.nextActionCode || "none"}`,
+    );
+  }
+  if (report.connectedRefreshPackage) {
+    console.log(
+      `connectedRefresh=${report.connectedRefreshPackage.status || "n/a"} required=${report.connectedRefreshPackage.summary?.requiredRefreshCount ?? report.connectedRefreshPackage.requiredRefreshCount ?? 0} next=${report.connectedRefreshPackage.summary?.nextActionCode || report.connectedRefreshPackage.nextAction?.code || "none"}`,
+    );
+  }
+  if (report.connectedRefreshExecution) {
+    console.log(
+      `connectedRefreshExecution=runs:${report.connectedRefreshExecution.runCount ?? 0} preview:${report.connectedRefreshExecution.previewCount ?? 0} success:${report.connectedRefreshExecution.successCount ?? 0} latest=${report.connectedRefreshExecution.latestStatus || "none"}`,
+    );
+  }
+  if (report.currentRoutePrelivePass) {
+    console.log(
+      `currentRoutePrelivePass=runs:${report.currentRoutePrelivePass.runCount ?? 0} preview:${report.currentRoutePrelivePass.previewCount ?? 0} latest=${report.currentRoutePrelivePass.latestStatus || "none"} next=${report.currentRoutePrelivePass.nextAction?.code || "none"}`,
+    );
+  }
+  if (report.exactRouteForkPackage) {
+    console.log(
+      `exactRouteForkPackage=${report.exactRouteForkPackage.status || "n/a"} planId=${report.exactRouteForkPackage.plan?.planId || report.exactRouteForkPackage.planId || "n/a"} economic=${report.exactRouteForkPackage.readiness?.economicStatus || report.exactRouteForkPackage.economicStatus || "n/a"}`,
+    );
+  }
+  if (report.operationalJudgmentReview) {
+    console.log(
+      `operationalJudgment=${report.operationalJudgmentReview.status || "n/a"} issues=${report.operationalJudgmentReview.issueCount ?? 0} next=${report.operationalJudgmentReview.nextAction?.code || report.operationalJudgmentReview.nextActionCode || "none"}`,
+    );
+  }
   console.log(
     `simulationProgress=${report.preliveEvidence?.mechanicalSimulation?.successCount || 0}/${report.preliveEvidence?.mechanicalSimulation?.targetSuccessCount || 0}`,
   );

@@ -8,6 +8,7 @@ import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildPivotDecisionSummary, buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
 import { shellQuote } from "../lib/shell-quote.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON, hasEthereumL1PhaseBlock } from "../risk/ethereum-l1-policy.mjs";
 
 function dedupe(values) {
   return [...new Set(values.filter(Boolean))];
@@ -54,6 +55,7 @@ function compareTreasuryNeeds(left, right) {
 function candidatePriority(candidate) {
   if (!candidate) return 99;
   if (candidate.viableForPrep) return 0;
+  if (hasEthereumL1PhaseBlock(candidate)) return 6;
   if (candidate.prepBlockers?.includes("wallet_not_checked")) return 1;
   if (candidate.readinessFailureReason) return 2;
   if (!candidate.txReady) return 3;
@@ -97,6 +99,13 @@ function summarizeNeedActivation(routePlan, need) {
   if (top.viableForPrep) {
     return {
       code: "demand_active_now",
+      candidateCount: candidates.length,
+      routeLabel: top.label,
+    };
+  }
+  if (hasEthereumL1PhaseBlock(top)) {
+    return {
+      code: "awaiting_policy_review",
       candidateCount: candidates.length,
       routeLabel: top.label,
     };
@@ -155,6 +164,7 @@ function summarizeReadinessChecks(routePlan, treasuryPlan) {
   );
   return (routePlan?.candidates || [])
     .filter((candidate) => candidate.prepBlockers?.includes("wallet_not_checked") && candidate.txReady)
+    .filter((candidate) => !hasEthereumL1PhaseBlock(candidate))
     .sort((left, right) => {
       const leftPreferred = preferredChains.has(left.srcChain) ? 1 : 0;
       const rightPreferred = preferredChains.has(right.srcChain) ? 1 : 0;
@@ -203,6 +213,15 @@ function scoreRefreshCommand(candidate) {
 
 export function shadowActionForCandidate(candidate, { address = null } = {}) {
   if (!candidate?.routeKey || !candidate?.amount) return null;
+
+  if (hasEthereumL1PhaseBlock(candidate)) {
+    return {
+      code: "hold_policy_review",
+      label: "hold for Ethereum L1 fee review",
+      reason: ETHEREUM_L1_PHASE_DISABLED_REASON,
+      command: null,
+    };
+  }
 
   if (!candidate.txReady) {
     return {
@@ -410,6 +429,7 @@ export function buildShadowCycleSummary({
   shadowObservations = [],
   scoreSnapshot = null,
   strategy = null,
+  ethFamilyWatch = null,
 }) {
   const nextStep = canaryState?.nextStep || null;
   const topRoute = canaryState?.routePlan?.topCandidates?.[0] || null;
@@ -484,6 +504,7 @@ export function buildShadowCycleSummary({
     shadowActions,
     objectivePlans,
     strategyPlans,
+    ethFamilyWatch,
     mode,
     enabledRouteCount: enabledRoutes.length,
     treasuryDecision: treasuryPlan?.decision || null,
@@ -521,6 +542,18 @@ export function buildShadowCycleSummary({
     strategyPlans,
     shadowActions,
     refreshQueue,
+    ethFamilyWatch: ethFamilyWatch
+      ? {
+          observedAt: ethFamilyWatch.observedAt || null,
+          routeCount: Number.isFinite(ethFamilyWatch.routeCount) ? ethFamilyWatch.routeCount : 0,
+          surfaceChanged: Boolean(ethFamilyWatch.surfaceChanged),
+          addedRoutes: dedupe(ethFamilyWatch.addedRoutes || []),
+          removedRoutes: dedupe(ethFamilyWatch.removedRoutes || []),
+          chainPairs: dedupe(ethFamilyWatch.chainPairs || []),
+          addedChainPairs: dedupe(ethFamilyWatch.addedChainPairs || []),
+          removedChainPairs: dedupe(ethFamilyWatch.removedChainPairs || []),
+        }
+      : null,
     canary: nextStep
       ? {
           decision: nextStep.decision,

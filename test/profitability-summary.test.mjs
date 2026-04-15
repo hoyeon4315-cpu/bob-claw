@@ -86,6 +86,82 @@ test("profitability summary condenses measured routes into a readable snapshot",
         },
       ],
     },
+    ethAnalysis: {
+      capability: {
+        gatewayRouteCount: 3,
+        ethFamilyRouteCount: 1,
+      },
+      scores: {
+        policyBlockedCount: 1,
+        bestOpenResearchRoute: {
+          routeKey: "base:0x0->ethereum:0x0",
+          tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+          executableNetEdgeUsd: -0.04,
+        },
+      },
+      recommendation: {
+        code: "collect_more_eth_evidence",
+        label: "Collect more ETH evidence first",
+        detail: "Sample breadth is still too thin.",
+      },
+      ethFamily: {
+        overfit: {
+          risks: ["thin_quote_samples"],
+        },
+        persistence: {
+          stableRouteCount: 1,
+        },
+        routeUniverse: {
+          fullyMeasurableRouteCount: 1,
+        },
+        routeFocus: {
+          loopObservableCount: 1,
+          bestRoute: {
+            routeKey: "base:0x0->ethereum:0x0",
+            classification: "loop_observable",
+            bestTradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+            bestExecutableNetEdgeUsd: -0.04,
+            amountLevels: ["10000"],
+            amountLevelCount: 1,
+          },
+        },
+        gatewayArbitrage: {
+          measuredNetLoopCount: 1,
+          profitableExactCount: 0,
+          closestLoop: {
+            routeKey: "base:0x0->ethereum:0x0",
+            amount: "10000",
+            measuredLoopNetUsd: -0.12,
+            gapToPolicyUsd: 0.42,
+            requiredNetProfitUsd: 0.3,
+            blockers: ["non_positive_loop_net_edge"],
+          },
+        },
+        viability: {
+          bestMeasuredLoop: {
+            routeKey: "base:0x0->ethereum:0x0",
+            amount: "10000",
+            measuredLoopNetUsd: -0.12,
+            gapToPolicyUsd: 0.42,
+            requiredNetProfitUsd: 0.3,
+            blockers: ["non_positive_loop_net_edge"],
+          },
+          closestLoop: {
+            routeKey: "base:0x0->ethereum:0x0",
+            amount: "10000",
+            measuredLoopNetUsd: -0.12,
+            gapToPolicyUsd: 0.42,
+            requiredNetProfitUsd: 0.3,
+            blockers: ["non_positive_loop_net_edge"],
+          },
+        },
+        verdict: {
+          code: "positive_but_below_policy",
+          label: "positive but still below policy",
+          detail: "Measured loops are still below the policy floor.",
+        },
+      },
+    },
   });
 
   assert.equal(summary.measuredClosedLoopCount, 49);
@@ -100,4 +176,12 @@ test("profitability summary condenses measured routes into a readable snapshot",
   ]);
   assert.equal(summary.canarySelectionGap.hypothesisGuard, null);
   assert.equal(summary.durableNoEdgeRouteCount, 10);
+  assert.equal(summary.ethFamily.routeCount, 1);
+  assert.equal(summary.ethFamily.gatewayRouteCount, 3);
+  assert.equal(summary.ethFamily.measuredClosedLoopCount, 1);
+  assert.equal(summary.ethFamily.verdictCode, "positive_but_below_policy");
+  assert.equal(summary.ethFamily.recommendationCode, "collect_more_eth_evidence");
+  assert.equal(summary.ethFamily.bestMeasuredRoute.routeKey, "base:0x0->ethereum:0x0");
+  assert.equal(summary.ethFamily.followUpActionCode, "collect_eth_family_evidence");
+  assert.match(summary.ethFamily.followUpCommand, /analyze:ethereum-routes/);
 });

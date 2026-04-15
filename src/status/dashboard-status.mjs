@@ -1,16 +1,19 @@
 import { join } from "node:path";
-import { classifyGatewayAssetUniverse, isBtcFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { classifyGatewayAssetUniverse, isBtcFamilyRoute, isEthFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
-import { ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
+import { filterTrustedExecutableDexQuotes, ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaign.mjs";
+import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
+import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
 import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.mjs";
 import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-runner.mjs";
 import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
+import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
@@ -19,10 +22,15 @@ import { buildDexGatewayArbitrageSummary } from "../strategy/dex-gateway-arbitra
 import { buildDexRouteUniverseSummary } from "../strategy/dex-route-universe.mjs";
 import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strategy/edge-viability.mjs";
 import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
+import { buildEthereumRouteAnalysis } from "../strategy/ethereum-route-analysis.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
+import { buildEthProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
+import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "../strategy/proxy-spread-coverage-plan.mjs";
+import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 
-const STATUS_SCHEMA_VERSION = 1;
+const STATUS_SCHEMA_VERSION = 2;
 const RISK_BUDGET_USD = 300;
 const GATEWAY_NODE = "bob_gateway";
 const CHAIN_PRICE_STALE_MINUTES = 60;
@@ -288,6 +296,10 @@ function gatewaySummary({ latestRoutesRecord, latestUpdateSnapshot, latestUpdate
   const routes = latestRoutesRecord?.routes || [];
   const chains = snapshot?.chains || routeChains(routes);
   const routeCount = snapshot?.routeCount || latestRoutesRecord?.summary?.totalRoutes || routes.length || 0;
+  const ethFamilyRouteCount =
+    latestUpdateSnapshot?.ethFamily?.routeCount ??
+    snapshot?.ethFamilyRouteCount ??
+    routes.filter(isEthFamilyRoute).length;
   const probeOk = latestUpdateSnapshot?.probes?.filter((probe) => probe.ok).length || 0;
   const probeTotal = latestUpdateSnapshot?.probes?.length || 0;
   const probeFailures = latestUpdateSnapshot?.probeFailures || [];
@@ -301,6 +313,15 @@ function gatewaySummary({ latestRoutesRecord, latestUpdateSnapshot, latestUpdate
     chains,
     announcedChainCoverage: compareAnnouncedGatewayChains(chains),
     bobTouchingRouteCount: snapshot?.bobTouchingRouteKeys?.length || null,
+    ethFamilyWatch: {
+      routeCount: ethFamilyRouteCount,
+      surfaceChanged: Boolean(latestUpdateSnapshot?.ethFamily?.surfaceChanged),
+      addedRoutesCount: latestUpdateSnapshot?.diff?.addedEthFamilyRoutes?.length || 0,
+      removedRoutesCount: latestUpdateSnapshot?.diff?.removedEthFamilyRoutes?.length || 0,
+      chainPairs: latestUpdateSnapshot?.ethFamily?.chainPairs || snapshot?.ethFamilyChainPairs || [],
+      addedChainPairs: latestUpdateSnapshot?.ethFamily?.addedChainPairs || [],
+      removedChainPairs: latestUpdateSnapshot?.ethFamily?.removedChainPairs || [],
+    },
     updateDetected: Boolean(latestUpdateSnapshot?.updateDetected),
     changeReasons: latestUpdateSnapshot?.changeReasons || [],
     routeHash: snapshot?.routeHash || null,
@@ -325,6 +346,7 @@ function gatewaySummary({ latestRoutesRecord, latestUpdateSnapshot, latestUpdate
           observedAt: latestUpdateAlert.observedAt,
           changeReasons: latestUpdateAlert.changeReasons || [],
           routeCount: latestUpdateAlert.routeCount || null,
+          ethFamily: latestUpdateAlert.ethFamily || null,
           routeDiff: latestUpdateAlert.routeDiff || null,
           schemaDiff: latestUpdateAlert.schemaDiff || null,
           probeHealthDiff: latestUpdateAlert.probeHealthDiff || null,
@@ -444,7 +466,7 @@ function dexCoverageReason(chain, { dexPrice, latestFailure, sampledWrappedBtcLe
 
 function latestDexWbtcPriceByChain(dexQuotes = []) {
   const latest = new Map();
-  for (const quote of dexQuotes) {
+  for (const quote of filterTrustedExecutableDexQuotes(dexQuotes)) {
     const impliedUsd = impliedDexWbtcUsd(quote);
     if (!Number.isFinite(impliedUsd)) continue;
     const existing = latest.get(quote.chain);
@@ -692,18 +714,40 @@ function bestStablecoinRoute(scoreSnapshot) {
     )[0] || null;
 }
 
-function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = null, shadowObservations = [], dexQuotes = [], quotes = [], routes = [], routesObservedAt = null }) {
+function strategySummary({
+  scoreSnapshot = null,
+  shadowCycle = null,
+  overall = null,
+  shadowObservations = [],
+  dexQuotes = [],
+  quotes = [],
+  failures = [],
+  routes = [],
+  routeRecords = [],
+  routesObservedAt = null,
+}) {
+  const trustedDexQuotes = filterTrustedExecutableDexQuotes(dexQuotes);
   const bestStable = bestStablecoinRoute(scoreSnapshot);
-  const btcProxySpreads = buildBtcProxySpreadSummary({ dexQuotes, routes, scoreSnapshot });
+  const btcProxySpreads = buildBtcProxySpreadSummary({ dexQuotes: trustedDexQuotes, routes, scoreSnapshot });
   const crossAssetArbitrage = buildCrossAssetArbitrageSummary(scoreSnapshot);
-  const dexEnvironment = buildDexEnvironmentSummary({ dexQuotes });
-  const dexRouteFocus = buildDexRouteFocusSummary({ routes, quotes, scoreSnapshot, dexQuotes });
-  const dexGatewayArbitrage = buildDexGatewayArbitrageSummary({ scoreSnapshot, dexQuotes });
+  const dexEnvironment = buildDexEnvironmentSummary({ dexQuotes: trustedDexQuotes });
+  const dexRouteFocus = buildDexRouteFocusSummary({ routes, quotes, scoreSnapshot, dexQuotes: trustedDexQuotes });
+  const dexGatewayArbitrage = buildDexGatewayArbitrageSummary({ scoreSnapshot, dexQuotes: trustedDexQuotes });
   const dexRouteUniverse = buildDexRouteUniverseSummary({ routes, observedAt: routesObservedAt });
-  const edgeViability = buildEdgeViabilitySummary({ scoreSnapshot, dexQuotes });
+  const edgeViability = buildEdgeViabilitySummary({ scoreSnapshot, dexQuotes: trustedDexQuotes });
   const edgeResearch = buildEdgeResearchSummary({ scoreSnapshot, shadowObservations });
-  const noEdgePersistence = buildNoEdgePersistenceSummary({ scoreSnapshot, dexQuotes });
+  const noEdgePersistence = buildNoEdgePersistenceSummary({ scoreSnapshot, dexQuotes: trustedDexQuotes });
   const edgeViabilityVerdict = buildEdgeViabilityVerdict({ edgeViability, dexRouteFocus });
+  const ethAnalysis = buildEthereumRouteAnalysis({
+    routesRecord: routeRecords.at(-1) || (routes.length ? { observedAt: routesObservedAt, routes } : null),
+    routeRecords,
+    quotes,
+    failures,
+    dexQuotes: trustedDexQuotes,
+    scores: scoreSnapshot?.scores || [],
+    shadowObservations,
+  });
+  const ethProfitability = buildEthProfitabilitySummary(ethAnalysis);
   const topTradeReadiness = shadowCycle?.topRoute?.tradeReadiness || null;
   return {
     profitModel: "non_directional_edge_only",
@@ -725,12 +769,14 @@ function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = n
     edgeResearch,
     noEdgePersistence,
     btcProxySpreads,
+    ethProfitability,
     objectivePlans: shadowCycle?.objectivePlans || null,
     strategyTracks: buildStrategyTracksSummary({
       shadowCycle,
       bestStablecoinRoute: bestStable,
       crossAssetArbitrage,
       btcProxySpreads,
+      ethProfitability,
     }),
     bestStablecoinRoute: bestStable
       ? {
@@ -750,10 +796,11 @@ function strategySummary({ scoreSnapshot = null, shadowCycle = null, overall = n
 }
 
 function dexSummary({ dexQuotes = [], dexFailures = [], now }) {
-  const latestQuote = latest(dexQuotes);
-  const recentQuotes24h = countRecent(dexQuotes, now, 24);
+  const trustedDexQuotes = filterTrustedExecutableDexQuotes(dexQuotes);
+  const latestQuote = latest(trustedDexQuotes);
+  const recentQuotes24h = countRecent(trustedDexQuotes, now, 24);
   const recentFailures24h = countRecent(dexFailures, now, 24);
-  const quotedChains = [...new Set(dexQuotes.map((quote) => quote.chain).filter(Boolean))].sort();
+  const quotedChains = [...new Set(trustedDexQuotes.map((quote) => quote.chain).filter(Boolean))].sort();
   const skippedReasons = new Map();
   for (const failure of dexFailures) {
     const reason = failure.reason || "unknown";
@@ -762,7 +809,8 @@ function dexSummary({ dexQuotes = [], dexFailures = [], now }) {
 
   return {
     provider: dexQuotes.at(-1)?.provider || dexFailures.at(-1)?.provider || "odos",
-    quoteCount: dexQuotes.length,
+    quoteCount: trustedDexQuotes.length,
+    rawQuoteCount: dexQuotes.length,
     failureCount: dexFailures.length,
     recentQuotes24h,
     recentFailures24h,
@@ -1096,7 +1144,7 @@ function tradeHistorySummary({ executionEvents = [], receiptRecords = [], preliv
   };
 }
 
-function buildManualMemos({ decisionInputs = null, shadowCycle = null, prelive = null }) {
+function buildManualMemos({ decisionInputs = null, shadowCycle = null, prelive = null, gateway = null }) {
   const memos = [];
 
   if (decisionInputs?.warnings?.length) {
@@ -1113,6 +1161,21 @@ function buildManualMemos({ decisionInputs = null, shadowCycle = null, prelive =
       detail: staleParts.length ? `${staleParts.join(" · ")} 확인 필요` : "판정 입력 다시 측정 필요",
       command: "npm run watch:canary-readiness",
       prompt: "현재 stale input만 갱신하고 dashboard 상태를 다시 만들어줘.",
+    });
+  }
+
+  if (gateway?.ethFamilyWatch?.surfaceChanged) {
+    const addedPairs = gateway.ethFamilyWatch.addedChainPairs || [];
+    const pairLabel = (addedPairs.length ? addedPairs : gateway.ethFamilyWatch.chainPairs || []).slice(0, 2).join(" · ");
+    memos.push({
+      id: "eth_family_surface",
+      level: "now",
+      title: "ETH 경로 관측 메모",
+      whenLabel: "지금",
+      summary: pairLabel ? `새 ETH 경로 ${pairLabel}` : "새 ETH family 경로 관측",
+      detail: "새 경로가 보여도 바로 실행하지 말고 route 스캔과 ETH 전용 감사부터 다시 갱신합니다.",
+      command: "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
+      prompt: "새 ETH-family route surface를 다시 확인하고 analyze/audit 결과와 blocker만 짧게 정리해줘.",
     });
   }
 
@@ -1591,21 +1654,23 @@ export function buildDashboardStatus(input, options = {}) {
     now,
   );
   const canaryAdvance = advanceCanarySummary(input.advanceCanary || null, now);
-  const strategy = strategySummary({
+  const strategyBase = strategySummary({
     scoreSnapshot: input.scoreSnapshot || null,
     shadowCycle,
     overall,
     shadowObservations: input.shadowObservations || [],
     dexQuotes: input.dexQuotes || [],
     quotes: input.quotes || [],
+    failures: input.failures || [],
     routes: latestRoutesRecord?.routes || [],
+    routeRecords: input.routesRecords || [],
     routesObservedAt: latestRoutesRecord?.observedAt || null,
   });
   const preliveBase = buildPreliveReadinessSummary({
     overall,
     audit: auditStatus,
     shadowCycle,
-    strategy,
+    strategy: strategyBase,
     simulationRuns: input.preliveSimulationRuns || [],
     forkExecutionPlans: input.preliveForkPlan?.plans || [],
     forkExecutionSubmissions: input.preliveForkSubmissions || [],
@@ -1613,8 +1678,40 @@ export function buildDashboardStatus(input, options = {}) {
     executionEvents: input.executionEvents || [],
   });
   const evidenceCampaign = buildPreliveEvidenceCampaignSummary(input.preliveEvidenceCampaigns || [], now);
+  const connectedRefreshExecution = buildConnectedRefreshExecutionSummary(input.connectedRefreshRuns || [], now);
+  const currentRoutePrelivePass = buildCurrentRoutePrelivePassSummary(input.currentRoutePrelivePasses || [], now);
   const prelive = {
     ...preliveBase,
+    connectedRefreshExecution: {
+      runCount: connectedRefreshExecution.runCount,
+      previewCount: connectedRefreshExecution.previewCount,
+      successCount: connectedRefreshExecution.successCount,
+      partialCount: connectedRefreshExecution.partialCount,
+      noopCount: connectedRefreshExecution.noopCount,
+      failureCount: connectedRefreshExecution.failureCount,
+      latestObservedAt: connectedRefreshExecution.latestObservedAt,
+      latestStatus: connectedRefreshExecution.latestStatus,
+      latestMode: connectedRefreshExecution.latestMode,
+      latestStopReason: connectedRefreshExecution.latestStopReason,
+      nextAction: connectedRefreshExecution.nextAction,
+      remainingRefreshCount: connectedRefreshExecution.remainingRefreshCount,
+      recentRuns: connectedRefreshExecution.recentRuns,
+    },
+    currentRoutePrelivePass: {
+      runCount: currentRoutePrelivePass.runCount,
+      previewCount: currentRoutePrelivePass.previewCount,
+      readyForSignerCount: currentRoutePrelivePass.readyForSignerCount,
+      provenCount: currentRoutePrelivePass.provenCount,
+      blockedCount: currentRoutePrelivePass.blockedCount,
+      partialCount: currentRoutePrelivePass.partialCount,
+      failureCount: currentRoutePrelivePass.failureCount,
+      latestObservedAt: currentRoutePrelivePass.latestObservedAt,
+      latestStatus: currentRoutePrelivePass.latestStatus,
+      latestMode: currentRoutePrelivePass.latestMode,
+      latestStopReason: currentRoutePrelivePass.latestStopReason,
+      nextAction: currentRoutePrelivePass.nextAction,
+      recentRuns: currentRoutePrelivePass.recentRuns,
+    },
     evidenceCampaign: {
       runCount: evidenceCampaign.runCount,
       previewCount: evidenceCampaign.previewCount,
@@ -1631,6 +1728,43 @@ export function buildDashboardStatus(input, options = {}) {
       recentCampaigns: evidenceCampaign.recentCampaigns,
     },
   };
+  const pivotPlan = buildStrategyPivotPlan({
+    dashboardStatus: {
+      generatedAt: now,
+      overall,
+      prelive,
+      strategy: strategyBase,
+    },
+    state: {
+      scoreSnapshot: input.scoreSnapshot || null,
+    },
+    triangleArtifacts: input.triangleArtifacts || {},
+  });
+  const yieldShadowBook = buildYieldShadowBook({ pivotPlan });
+  const proxySpreadCoveragePlan = buildProxySpreadCoveragePlan({
+    proxySpreadSummary: strategyBase.btcProxySpreads || null,
+    now,
+  });
+  const strategy = {
+    ...strategyBase,
+    pivotPlan: summarizeStrategyPivotPlan(pivotPlan),
+    yieldShadowBook: summarizeYieldShadowBook(yieldShadowBook),
+    proxySpreadCoveragePlan: summarizeProxySpreadCoveragePlan(proxySpreadCoveragePlan),
+  };
+  const strategySnapshot = buildStrategySnapshot({
+    dashboardStatus: {
+      generatedAt: now,
+      overall,
+      prelive,
+      strategy,
+    },
+    state: {
+      scoreSnapshot: input.scoreSnapshot || null,
+    },
+    triangleArtifacts: input.triangleArtifacts || {},
+    now,
+  });
+  strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
 
   // Quote lag dry-run summary (from collect-quote-lag collector)
   const quoteLag = input.quoteLagLatest || null;
@@ -1649,7 +1783,7 @@ export function buildDashboardStatus(input, options = {}) {
     preliveForkReceipts: input.preliveForkReceipts || [],
     now,
   });
-  const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive });
+  const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1700,6 +1834,8 @@ export function buildDashboardStatus(input, options = {}) {
       executionJournalEvents: input.executionEvents?.length || 0,
       shadowRefreshExecutions: input.shadowRefreshExecutions?.length || 0,
       shadowRefreshBatches: input.shadowRefreshBatches?.length || 0,
+      connectedRefreshRuns: input.connectedRefreshRuns?.length || 0,
+      currentRoutePrelivePasses: input.currentRoutePrelivePasses?.length || 0,
       preliveEvidenceCampaigns: input.preliveEvidenceCampaigns?.length || 0,
       shadowCyclePresent: shadowCycle ? 1 : 0,
       advanceCanaryPresent: canaryAdvance ? 1 : 0,

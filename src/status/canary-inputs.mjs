@@ -1,5 +1,20 @@
 import { isFreshPriceSnapshot, latestPriceSnapshot } from "../market/prices.mjs";
 
+const DEX_ROUTE_BLOCKED_FAILURE_REASONS = new Set([
+  "odos_chain_not_supported",
+  "stable_quote_token_missing",
+  "input_token_not_evm",
+]);
+
+const ROUTE_DEX_FAILURE_SOURCES = new Set([
+  "gateway_dst_leg",
+  "gateway_src_entry_leg",
+]);
+
+function unique(values = []) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function observedAtMs(value) {
   if (!value) return null;
   const parsed = new Date(value).getTime();
@@ -26,6 +41,15 @@ function latestMatching(items = [], predicate) {
     }
   }
   return latest;
+}
+
+function latestRelevantDexFailures(dexFailures = [], route = null) {
+  if (!route?.routeKey || !route?.amount) return [];
+  return [...(dexFailures || [])]
+    .filter((item) => item?.gatewayRouteKey === route.routeKey)
+    .filter((item) => String(item?.gatewayAmount) === String(route.amount))
+    .filter((item) => ROUTE_DEX_FAILURE_SOURCES.has(item?.source))
+    .sort((left, right) => (observedAtMs(right?.observedAt) || 0) - (observedAtMs(left?.observedAt) || 0));
 }
 
 function freshnessSummary({ observedAt = null, now, maxAgeMinutes = null, required = true, available = true } = {}) {
@@ -87,6 +111,8 @@ function normalizeInputStates(summary) {
         state: summary[field]?.state || "unknown",
         observedAt: summary[field]?.observedAt || null,
         ageMinutes: Number.isFinite(summary[field]?.ageMinutes) ? summary[field].ageMinutes : null,
+        failureReason: summary[field]?.failureReason || null,
+        failureReasons: summary[field]?.failureReasons || [],
       },
     ]),
   );
@@ -96,11 +122,63 @@ function blockingInputs(summary) {
   const inputStates = normalizeInputStates(summary);
   if (!inputStates) return [];
   return Object.entries(inputStates)
-    .filter(([, value]) => value.state === "missing" || value.state === "stale")
+    .filter(([, value]) => value.state === "missing" || value.state === "stale" || value.state === "blocked")
     .map(([key, value]) => ({
       key,
       ...value,
     }));
+}
+
+function dexQuoteSummary({ state = null, route = null, now = null } = {}) {
+  const latestDexQuote = latestMatching(
+    state?.dexQuotes,
+    (item) =>
+      item.source === "gateway_dst_leg" &&
+      item.gatewayRouteKey === route.routeKey &&
+      String(item.gatewayAmount) === String(route.amount),
+  );
+  if (latestDexQuote) {
+    return {
+      ...freshnessSummary({
+        observedAt: latestDexQuote.observedAt || null,
+        now,
+        maxAgeMinutes: 30,
+      }),
+      failureReason: null,
+      failureReasons: [],
+    };
+  }
+
+  const failures = latestRelevantDexFailures(state?.dexFailures, route);
+  const structuralFailure = failures.find((item) => DEX_ROUTE_BLOCKED_FAILURE_REASONS.has(item?.reason)) || null;
+  const latestFailure = failures[0] || null;
+  if (structuralFailure) {
+    return {
+      state: "blocked",
+      observedAt: structuralFailure.observedAt || null,
+      ageMinutes: ageMinutes(structuralFailure.observedAt || null, now),
+      failureReason: structuralFailure.reason || null,
+      failureReasons: unique(failures.map((item) => item?.reason)),
+    };
+  }
+
+  if (latestFailure) {
+    return {
+      state: "missing",
+      observedAt: latestFailure.observedAt || null,
+      ageMinutes: ageMinutes(latestFailure.observedAt || null, now),
+      failureReason: latestFailure.reason || null,
+      failureReasons: unique(failures.map((item) => item?.reason)),
+    };
+  }
+
+  return {
+    state: "missing",
+    observedAt: null,
+    ageMinutes: null,
+    failureReason: null,
+    failureReasons: [],
+  };
 }
 
 function lastAdvanceRoute(advanceCanary) {
@@ -163,9 +241,18 @@ export function buildCanaryStageChecklist({ route = null, nextStep = null, input
   }
   if (route?.exactGasDone) completed.push("exact gas captured");
 
-  const blockingInputsList = blockingInputs(inputSummary).map((item) => inputLabel(item.key));
-  if (blockingInputsList.length > 0) {
-    remaining.push(`refresh stale/missing inputs (${blockingInputsList.join(", ")})`);
+  const blockingInputItems = blockingInputs(inputSummary);
+  const refreshableInputsList = blockingInputItems
+    .filter((item) => item.state === "missing" || item.state === "stale")
+    .map((item) => inputLabel(item.key));
+  const blockedInputsList = blockingInputItems
+    .filter((item) => item.state === "blocked")
+    .map((item) => inputLabel(item.key));
+  if (refreshableInputsList.length > 0) {
+    remaining.push(`refresh stale/missing inputs (${refreshableInputsList.join(", ")})`);
+  }
+  if (blockedInputsList.length > 0) {
+    remaining.push(`resolve blocked inputs (${blockedInputsList.join(", ")})`);
   }
 
   if (nextStep?.decision === "FUND_AND_APPROVE_WALLET") {
@@ -228,10 +315,6 @@ export function buildCanaryInputSummary(state, options = {}) {
     state?.gasEstimateSnapshots,
     (item) => item.routeKey === route.routeKey && String(item.amount) === String(route.amount),
   );
-  const latestDexQuote = latestMatching(
-    state?.dexQuotes,
-    (item) => item.source === "gateway_dst_leg" && item.gatewayRouteKey === route.routeKey,
-  );
   const latestSrcGas = latestMatching(state?.gasSnapshots, (item) => item.chain === route.srcChain);
   const latestBitcoinFee =
     route.srcChain === "bitcoin" || route.dstChain === "bitcoin"
@@ -270,11 +353,7 @@ export function buildCanaryInputSummary(state, options = {}) {
       maxAgeMinutes: 30,
       required: route.srcChain !== "bitcoin",
     }),
-    dexQuote: freshnessSummary({
-      observedAt: latestDexQuote?.observedAt || null,
-      now,
-      maxAgeMinutes: 30,
-    }),
+    dexQuote: dexQuoteSummary({ state, route, now }),
     bitcoinFee: freshnessSummary({
       observedAt: latestBitcoinFee?.observedAt || null,
       now,

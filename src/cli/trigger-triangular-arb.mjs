@@ -7,6 +7,7 @@ import { access, constants } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { canaryCheck, recordTradeResult } from "../risk/canary-guard.mjs";
+import { odosSafeSourceWhitelist } from "../dex/odos.mjs";
 import {
   getTriangleProfile,
   triangleDatasetNames,
@@ -90,22 +91,6 @@ async function isEmergencyStopped() {
   }
 }
 
-// Only route through proven AMMs — oracle-based DEXes (e.g. 0x1300cf84) give
-// phantom quotes that always revert on-chain due to stale getBidAndAskPrice().
-const ODOS_SOURCE_WHITELIST = [
-  "Uniswap V2", "Uniswap V3", "Uniswap V4",
-  "Aerodrome", "Aerodrome SlipStream",
-  "Curve", "Curve V2",
-  "SushiSwap", "SushiSwap V3",
-  "BaseSwap", "BaseSwap V3",
-  "PancakeSwap V2", "PancakeSwap V3",
-  "Maverick V2",
-  "Balancer V2", "Balancer V3",
-  "DODO", "Velodrome", "Velodrome V2",
-  "WooFi", "KyberSwap", "TraderJoe",
-  "AlienBase", "DackieSwap",
-];
-
 async function odosQuote(chainId, inputAddr, inputAmount, outputAddr, userAddr) {
   const body = {
     chainId,
@@ -115,8 +100,9 @@ async function odosQuote(chainId, inputAddr, inputAmount, outputAddr, userAddr) 
     slippageLimitPercent: 0.5,
     disableRFQs: true,
     compact: true,
-    sourceWhitelist: ODOS_SOURCE_WHITELIST,
   };
+  const sourceWhitelist = odosSafeSourceWhitelist("base");
+  if (sourceWhitelist) body.sourceWhitelist = sourceWhitelist;
   const start = Date.now();
   const response = await fetch(`${ODOS_API}/sor/quote/v3`, {
     method: "POST",

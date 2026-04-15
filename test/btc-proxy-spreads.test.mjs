@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildBtcProxySpreadSummary } from "../src/strategy/btc-proxy-spreads.mjs";
+import { trustedOdosQuote } from "./helpers/trusted-odos-quote.mjs";
 
 const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 const WBTC = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
@@ -12,7 +13,7 @@ const USDC_AVAX = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E";
 test("btc proxy spread summary reports profitable inventory spread and rebalance-adjusted spread", () => {
   const summary = buildBtcProxySpreadSummary({
     dexQuotes: [
-      {
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:00.000Z",
         quoteType: "stable_to_token",
         source: "gateway_src_entry_leg",
@@ -25,8 +26,8 @@ test("btc proxy spread summary reports profitable inventory spread and rebalance
         outputAmount: "10120",
         inputValueUsd: 7.05,
         gasEstimateValueUsd: 0.02,
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:01.000Z",
         quoteType: "token_to_stable",
         source: "gateway_dst_leg",
@@ -38,7 +39,7 @@ test("btc proxy spread summary reports profitable inventory spread and rebalance
         inputAmount: "10000",
         netOutputValueUsd: 7.6,
         gasEstimateValueUsd: 0.01,
-      },
+      }),
     ],
     routes: [
       {
@@ -82,7 +83,7 @@ test("btc proxy spread summary reports profitable inventory spread and rebalance
 test("btc proxy spread summary reports blockers when amount coverage or rebalance data is missing", () => {
   const summary = buildBtcProxySpreadSummary({
     dexQuotes: [
-      {
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:00.000Z",
         quoteType: "stable_to_token",
         source: "gateway_src_entry_leg",
@@ -95,8 +96,8 @@ test("btc proxy spread summary reports blockers when amount coverage or rebalanc
         outputAmount: "9799",
         inputValueUsd: 7.3,
         gasEstimateValueUsd: 0.03,
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:01.000Z",
         quoteType: "token_to_stable",
         source: "gateway_dst_leg",
@@ -108,7 +109,7 @@ test("btc proxy spread summary reports blockers when amount coverage or rebalanc
         inputAmount: "10000",
         netOutputValueUsd: 7.2,
         gasEstimateValueUsd: 0.01,
-      },
+      }),
     ],
     routes: [],
     scoreSnapshot: { scores: [] },
@@ -125,7 +126,7 @@ test("btc proxy spread summary reports blockers when amount coverage or rebalanc
 test("btc proxy spread summary separates observed proxy coverage from matched opportunity coverage", () => {
   const summary = buildBtcProxySpreadSummary({
     dexQuotes: [
-      {
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:00.000Z",
         quoteType: "stable_to_token",
         source: "gateway_src_entry_leg",
@@ -138,8 +139,8 @@ test("btc proxy spread summary separates observed proxy coverage from matched op
         outputAmount: "10050",
         inputValueUsd: 7.1,
         gasEstimateValueUsd: 0.02,
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:01.000Z",
         quoteType: "token_to_stable",
         source: "gateway_dst_leg",
@@ -151,8 +152,8 @@ test("btc proxy spread summary separates observed proxy coverage from matched op
         inputAmount: "10000",
         netOutputValueUsd: 7.3,
         gasEstimateValueUsd: 0.01,
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:02.000Z",
         quoteType: "token_to_stable",
         source: "gateway_dst_leg",
@@ -164,7 +165,7 @@ test("btc proxy spread summary separates observed proxy coverage from matched op
         inputAmount: "10000",
         netOutputValueUsd: 7.25,
         gasEstimateValueUsd: 0.01,
-      },
+      }),
     ],
     routes: [
       {
@@ -197,7 +198,7 @@ test("btc proxy spread summary separates observed proxy coverage from matched op
 test("btc proxy spread summary prioritizes amount-ladder expansion before stale-candidate promotion", () => {
   const summary = buildBtcProxySpreadSummary({
     dexQuotes: [
-      {
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:00.000Z",
         quoteType: "stable_to_token",
         source: "gateway_src_entry_leg",
@@ -210,8 +211,8 @@ test("btc proxy spread summary prioritizes amount-ladder expansion before stale-
         outputAmount: "10010",
         inputValueUsd: 7.0,
         gasEstimateValueUsd: 0.01,
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:01.000Z",
         quoteType: "stable_to_token",
         source: "gateway_src_entry_leg",
@@ -224,8 +225,8 @@ test("btc proxy spread summary prioritizes amount-ladder expansion before stale-
         outputAmount: "25010",
         inputValueUsd: 17.0,
         gasEstimateValueUsd: 0.01,
-      },
-      {
+      }),
+      trustedOdosQuote({
         observedAt: "2026-04-12T00:00:02.000Z",
         quoteType: "token_to_stable",
         source: "gateway_dst_leg",
@@ -237,7 +238,7 @@ test("btc proxy spread summary prioritizes amount-ladder expansion before stale-
         inputAmount: "10000",
         netOutputValueUsd: 7.25,
         gasEstimateValueUsd: 0.01,
-      },
+      }),
     ],
     routes: [
       {

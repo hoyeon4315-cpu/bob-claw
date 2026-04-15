@@ -1,5 +1,5 @@
-import { unitsToDecimal } from "../assets/tokens.mjs";
-import { ODOS_CHAIN_IDS } from "../dex/odos.mjs";
+import { isBtcLikeAsset, isEthLikeAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { filterTrustedExecutableDexQuotes, ODOS_CHAIN_IDS } from "../dex/odos.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -7,7 +7,7 @@ function finite(value) {
 
 function latestEntryQuotes(dexQuotes = []) {
   const latest = new Map();
-  for (const quote of dexQuotes) {
+  for (const quote of filterTrustedExecutableDexQuotes(dexQuotes)) {
     if (quote?.source !== "gateway_src_entry_leg" || !quote?.gatewayRouteKey || !quote?.gatewayAmount) continue;
     const key = `${quote.gatewayRouteKey}|${quote.gatewayAmount}`;
     const existing = latest.get(key);
@@ -30,7 +30,7 @@ function loopBlockers({ score, exactAmountMatch, measuredLoopNetUsd, hasEntryQuo
   if (!Number.isFinite(score?.executableOutputUsd)) blockers.push("missing_destination_exit_quote");
   if (Number.isFinite(score?.routeStats?.failureRate) && score.routeStats.failureRate > 0.1) blockers.push("high_failure_rate");
   for (const gap of score?.dataGaps || []) blockers.push(`gateway_${gap}`);
-  if (score?.tradeReadiness === "observe_only_expensive_exit" || score?.tradeReadiness === "observe_only_slow_settlement") {
+  if (score?.tradeReadiness && String(score.tradeReadiness).startsWith("observe_only_")) {
     blockers.push(`gateway_${score.tradeReadiness}`);
   }
   if (!(measuredLoopNetUsd > 0)) blockers.push("non_positive_loop_net_edge");
@@ -94,13 +94,18 @@ function summarizeLoop(score, entryQuote, amountTolerancePct) {
   };
 }
 
-function eligible(score) {
-  return ["btc", "wrapped_btc"].includes(score?.srcAsset?.family) && ["btc", "wrapped_btc"].includes(score?.dstAsset?.family);
+function eligibleBtc(score) {
+  return isBtcLikeAsset(score?.srcAsset) && isBtcLikeAsset(score?.dstAsset);
+}
+
+function eligibleEth(score) {
+  return isEthLikeAsset(score?.srcAsset) && isEthLikeAsset(score?.dstAsset);
 }
 
 export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = {}, options = {}) {
   const amountTolerancePct = Number.isFinite(options.amountTolerancePct) ? options.amountTolerancePct : 0.02;
-  const scores = (scoreSnapshot?.scores || []).filter(eligible);
+  const scoreFilter = options.scoreFilter || eligibleBtc;
+  const scores = (scoreSnapshot?.scores || []).filter(scoreFilter);
   const entryQuotes = latestEntryQuotes(dexQuotes);
   const loops = scores.map((score) => summarizeLoop(score, entryQuotes.get(`${score.routeKey}|${score.amount}`) || null, amountTolerancePct));
 
@@ -138,4 +143,18 @@ export function buildDexGatewayArbitrageSummary({ scoreSnapshot = null, dexQuote
     closestLoop: loops[0] || null,
     loops: loops.slice(0, 10),
   };
+}
+
+export function buildEthGatewayLoops(args = {}, options = {}) {
+  return buildDexGatewayLoops(args, {
+    ...options,
+    scoreFilter: eligibleEth,
+  });
+}
+
+export function buildEthGatewayArbitrageSummary(args = {}, options = {}) {
+  return buildDexGatewayArbitrageSummary(args, {
+    ...options,
+    scoreFilter: eligibleEth,
+  });
 }

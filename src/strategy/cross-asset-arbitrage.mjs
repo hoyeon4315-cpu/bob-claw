@@ -1,3 +1,5 @@
+import { isEthLikeAsset } from "../assets/tokens.mjs";
+
 function parseRouteKey(routeKey) {
   const text = String(routeKey || "");
   const [left, right] = text.split("->");
@@ -37,12 +39,22 @@ function sameAsset(left, right) {
   );
 }
 
-function isStableToBtc(score) {
-  return score?.srcAsset?.family === "stablecoin" && ["btc", "wrapped_btc"].includes(score?.dstAsset?.family);
+function isBtcLikeAsset(asset) {
+  return ["btc", "wrapped_btc"].includes(asset?.family);
 }
 
-function isBtcToStable(score) {
-  return ["btc", "wrapped_btc"].includes(score?.srcAsset?.family) && score?.dstAsset?.family === "stablecoin";
+function resolveAssetPredicate(options = {}) {
+  if (typeof options.assetPredicate === "function") return options.assetPredicate;
+  if (options.assetFamily === "eth") return isEthLikeAsset;
+  return isBtcLikeAsset;
+}
+
+function isStableToAsset(score, assetPredicate) {
+  return score?.srcAsset?.family === "stablecoin" && assetPredicate(score?.dstAsset);
+}
+
+function isAssetToStable(score, assetPredicate) {
+  return assetPredicate(score?.srcAsset) && score?.dstAsset?.family === "stablecoin";
 }
 
 function finite(value) {
@@ -174,11 +186,12 @@ function buildAmountLadderCoverage(loops = []) {
     );
 }
 
-export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
+export function buildAssetFamilyCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
   const scores = scoreSnapshot?.scores || [];
   const tolerancePct = Number.isFinite(options.amountTolerancePct) ? options.amountTolerancePct : 0.02;
-  const entries = scores.filter(isStableToBtc);
-  const exits = scores.filter(isBtcToStable);
+  const assetPredicate = resolveAssetPredicate(options);
+  const entries = scores.filter((score) => isStableToAsset(score, assetPredicate));
+  const exits = scores.filter((score) => isAssetToStable(score, assetPredicate));
   const exactAssetPairs = [];
 
   for (const entry of entries) {
@@ -199,6 +212,7 @@ export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
   return {
     schemaVersion: 1,
     generatedAt: scoreSnapshot?.generatedAt || null,
+    assetFamily: options.assetFamily || "btc",
     amountTolerancePct: tolerancePct,
     entryCount: entries.length,
     exitCount: exits.length,
@@ -215,4 +229,20 @@ export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
     closestLoop: exactAssetPairs[0] || null,
     loops: exactAssetPairs.slice(0, 10),
   };
+}
+
+export function buildCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
+  return buildAssetFamilyCrossAssetArbitrageSummary(scoreSnapshot, {
+    ...options,
+    assetFamily: "btc",
+    assetPredicate: options.assetPredicate || isBtcLikeAsset,
+  });
+}
+
+export function buildEthCrossAssetArbitrageSummary(scoreSnapshot, options = {}) {
+  return buildAssetFamilyCrossAssetArbitrageSummary(scoreSnapshot, {
+    ...options,
+    assetFamily: "eth",
+    assetPredicate: options.assetPredicate || isEthLikeAsset,
+  });
 }

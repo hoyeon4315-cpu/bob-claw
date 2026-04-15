@@ -10,6 +10,8 @@ export const DEFAULT_PRELIVE_EVIDENCE_FOLLOW_UP_COMMANDS = [
 ];
 
 export const DEFAULT_PRELIVE_EVIDENCE_ALLOWED_SCRIPTS = new Set([
+  "analyze:ethereum-routes",
+  "audit:eth-family-overfit",
   "run:shadow-refresh-batch",
   "run:prelive-simulations",
   "plan:prelive-fork-execution",
@@ -118,8 +120,27 @@ export function buildPreliveEvidenceCampaign({
   const refreshExecutionProven = (shadowRefreshBatchSummary?.runCount ?? 0) > 0;
   const refreshPlateauBlocked =
     queueFollowUps.length > 0 && refreshExecutionProven && isShadowReplayPolicyGate(shadowReplayBlockers);
+  const ethFamilyObservation = reviewPackage?.ethFamilyObservation || null;
+  const ethFamilySurfaceAction =
+    ethFamilyObservation?.nextAction && ethFamilyObservation?.surfaceChanged
+      ? action({
+          code: ethFamilyObservation.nextAction.code,
+          label: ethFamilyObservation.nextAction.label,
+          status: "ready",
+          automated: true,
+          reason: ethFamilyObservation.reason || "eth_family_surface_changed",
+          command: ethFamilyObservation.nextAction.command || null,
+          details: {
+            routeCount: ethFamilyObservation.routeCount ?? 0,
+            addedRoutesCount: ethFamilyObservation.addedRoutesCount ?? 0,
+            removedRoutesCount: ethFamilyObservation.removedRoutesCount ?? 0,
+            addedChainPairs: ethFamilyObservation.addedChainPairs || [],
+          },
+        })
+      : null;
 
   const actions = [
+    ...(ethFamilySurfaceAction ? [ethFamilySurfaceAction] : []),
     queueFollowUps.length
       ? refreshPlateauBlocked
         ? action({
@@ -424,6 +445,18 @@ export function buildPreliveEvidenceCampaign({
       latestStopReason: shadowRefreshBatchSummary?.latestStopReason || null,
       queueFollowUpCount: queueFollowUps.length,
     },
+    ethFamilyObservation: ethFamilyObservation
+      ? {
+          status: ethFamilyObservation.status || null,
+          reason: ethFamilyObservation.reason || null,
+          routeCount: ethFamilyObservation.routeCount ?? 0,
+          surfaceChanged: Boolean(ethFamilyObservation.surfaceChanged),
+          addedRoutesCount: ethFamilyObservation.addedRoutesCount ?? 0,
+          removedRoutesCount: ethFamilyObservation.removedRoutesCount ?? 0,
+          chainPairs: ethFamilyObservation.chainPairs || [],
+          addedChainPairs: ethFamilyObservation.addedChainPairs || [],
+        }
+      : null,
     nextAction: nextAction
       ? {
           code: nextAction.code,
@@ -455,6 +488,7 @@ export function summarizePreliveEvidenceCampaign(campaign = null) {
     forkTargetCount: campaign.forkExecution?.targetConfirmedCount ?? 0,
     forkRemaining: campaign.forkExecution?.successRemaining ?? 0,
     refreshRunCount: campaign.refreshBatch?.runCount ?? 0,
+    ethFamilyObservation: campaign.ethFamilyObservation || null,
     nextAction: campaign.nextAction || null,
   };
 }
@@ -590,6 +624,8 @@ export function buildPreliveEvidenceCampaignSummary(records = [], now = new Date
         manualActionCount: campaign?.manualActionCount ?? 0,
         simulationRemaining: campaign?.simulation?.successRemaining ?? 0,
         forkRemaining: campaign?.forkExecution?.successRemaining ?? 0,
+        ethFamilyRouteCount: campaign?.ethFamilyObservation?.routeCount ?? 0,
+        ethFamilySurfaceChanged: Boolean(campaign?.ethFamilyObservation?.surfaceChanged),
       };
     }),
   };

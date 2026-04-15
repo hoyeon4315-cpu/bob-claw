@@ -79,9 +79,9 @@ echo ""
 # Run single canary trade
 PRIVATE_KEY="$RAW_KEY" node "$ROOT/src/cli/trigger-triangular-arb.mjs" \
   --live --once \
-  --contract "$CONTRACT" \
-  --capital 1000 \
-  --min-profit 0.10
+  --contract="$CONTRACT" \
+  --capital=1000 \
+  --min-profit=0.10
 
 echo ""
 echo "╔══════════════════════════════════════╗"

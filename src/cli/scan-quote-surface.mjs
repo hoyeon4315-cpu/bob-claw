@@ -93,6 +93,7 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : null,
+    routeKeys: options["route-key"] ? options["route-key"].split(",").map((value) => value.trim()).filter(Boolean) : null,
     family: options.family || null,
     chains: options.chains ? options.chains.split(",").map((c) => c.trim()).filter(Boolean) : null,
   };
@@ -111,6 +112,7 @@ export async function scanQuoteSurface(options = {}) {
     prices: injectedPrices = null,
     usdLadder = DEFAULT_USD_LADDER,
     routeLimit = null,
+    routeKeyFilter = null,
     familyFilter = null,
     chainsFilter = null,
     requestDelayMs = config.requestDelayMs,
@@ -138,6 +140,10 @@ export async function scanQuoteSurface(options = {}) {
 
   if (familyFilter) {
     routes = routes.filter((r) => r._family === familyFilter);
+  }
+  if (routeKeyFilter?.length) {
+    const routeKeySet = new Set(routeKeyFilter);
+    routes = routes.filter((r) => routeKeySet.has(r._routeKey));
   }
   if (chainsFilter && chainsFilter.length > 0) {
     const chainSet = new Set(chainsFilter);
@@ -400,6 +406,7 @@ async function main() {
 
   const result = await scanQuoteSurface({
     routeLimit: args.routeLimit,
+    routeKeyFilter: args.routeKeys,
     familyFilter: args.family,
     chainsFilter: args.chains,
     onProgress: args.json ? null : printRouteProgress,

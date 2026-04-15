@@ -28,6 +28,24 @@ test("route diff detects added and removed routes", () => {
   assert.equal(diff.addedChains.includes("sonic"), true);
 });
 
+test("route diff isolates ETH-family additions separately from broader route inventory changes", () => {
+  const zero = "0x0000000000000000000000000000000000000000";
+  const oldRoutes = [{ srcChain: "bob", dstChain: "base", srcToken: BTC, dstToken: BTC }];
+  const newRoutes = [
+    { srcChain: "bob", dstChain: "base", srcToken: BTC, dstToken: BTC },
+    { srcChain: "base", dstChain: "ethereum", srcToken: zero, dstToken: zero },
+  ];
+
+  const snapshot = buildRouteSnapshot(newRoutes);
+  const diff = diffSnapshots(buildRouteSnapshot(oldRoutes), snapshot);
+
+  assert.equal(snapshot.ethFamilyRouteCount, 1);
+  assert.deepEqual(snapshot.ethFamilyChainPairs, ["base->ethereum"]);
+  assert.deepEqual(diff.addedEthFamilyRoutes, [`base:${zero}->ethereum:${zero}`]);
+  assert.deepEqual(diff.addedEthFamilyChainPairs, ["base->ethereum"]);
+  assert.deepEqual(diff.removedEthFamilyRoutes, []);
+});
+
 test("route diff stays quiet for identical snapshots", () => {
   const routes = [
     { srcChain: "bob", dstChain: "base", srcToken: BTC, dstToken: BTC },

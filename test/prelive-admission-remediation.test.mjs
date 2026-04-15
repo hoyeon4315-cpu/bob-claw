@@ -98,3 +98,31 @@ test("admission remediation plan prefers evidence-campaign execution over raw qu
   assert.equal(summary.nextAction.code, "execute_refresh_batch");
   assert.equal(summary.items[0].command.includes("run:shadow-refresh-batch"), true);
 });
+
+test("admission remediation plan preserves blocked DEX input as a hold action", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        blockers: ["blocked_dex_quote"],
+      },
+      manualReviewCandidate: {
+        routeKey: "avalanche:0x0555->bera:0x0555",
+        routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        inputFreshness: {
+          gatewayQuote: { state: "fresh" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "blocked" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.overallStatus, "blocked");
+  assert.equal(plan.nextAction.code, "hold_dexQuote");
+  assert.equal(plan.nextAction.command, null);
+  assert.equal(plan.items.some((item) => item.reason === "blocked_dex_quote"), true);
+});

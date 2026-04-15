@@ -4,6 +4,7 @@ import {
   classifyRouteFamily,
   usdToTokenAmount,
   buildScanSummary,
+  scanQuoteSurface,
 } from "../src/cli/scan-quote-surface.mjs";
 
 const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
@@ -158,4 +159,42 @@ test("buildScanSummary handles all-failure ladder gracefully", () => {
   assert.equal(summary.worstHaircutPct, null);
   assert.equal(summary.medianLatencyMs, null);
   assert.equal(summary.policyViable, false);
+});
+
+test("scanQuoteSurface narrows scanning to explicit route keys", async () => {
+  const routes = [
+    { srcChain: "ethereum", dstChain: "bsc", srcToken: ZERO_TOKEN, dstToken: ETH_BSC },
+    { srcChain: "base", dstChain: "ethereum", srcToken: USDC_BASE, dstToken: USDT_ETH },
+  ];
+  const requestedRoutes = [];
+  const result = await scanQuoteSurface({
+    client: {
+      async getRoutes() {
+        return { body: routes };
+      },
+      async getQuote(params) {
+        requestedRoutes.push(`${params.srcChain}:${params.srcToken}->${params.dstChain}:${params.dstToken}`);
+        return {
+          latencyMs: 25,
+          body: {
+            inputAmount: { amount: params.amount },
+            outputAmount: { amount: params.amount },
+            estimatedTimeInSecs: 30,
+            tx: { value: "0" },
+          },
+        };
+      },
+    },
+    store: {
+      async append() {},
+    },
+    prices: { btc: null, tokenByKey: { ethereum: 2500, usd_stable: 1 }, nativeByChain: {} },
+    routeKeyFilter: [`ethereum:${ZERO_TOKEN}->bsc:${ETH_BSC}`],
+    usdLadder: [25],
+    requestDelayMs: 0,
+  });
+
+  assert.equal(result.scannedRoutes, 1);
+  assert.equal(result.records[0].routeKey, `ethereum:${ZERO_TOKEN}->bsc:${ETH_BSC}`);
+  assert.deepEqual(requestedRoutes, [`ethereum:${ZERO_TOKEN}->bsc:${ETH_BSC}`]);
 });

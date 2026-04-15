@@ -205,6 +205,36 @@ test("prelive review package becomes review-ready once canary and prelive gates 
         liveTrading: "BLOCKED",
         blockers: [],
       },
+      strategy: {
+        pivotPlan: {
+          currentBudgetUsd: 300,
+          budgetNote: "USD 300 is the configured safety budget and loss cap.",
+          budgetScenarios: [
+            { budgetUsd: 300, label: "current_live_ring", planningOnly: false },
+            { budgetUsd: 1000, label: "planning_scenario_1000", planningOnly: true },
+          ],
+          topRecommendation: {
+            id: "gateway_base_btc_yield",
+            label: "Gateway-funded BTC yield on Base",
+            status: "pre_execution_blueprint",
+            researchPilotMinimumUsd: 105,
+            defaultDualSleeveMinimumUsd: 338.33,
+            nextActionCode: "build_deterministic_yield_shadow_book",
+            nextActionLabel: "build deterministic yield shadow book",
+          },
+          pivots: [],
+        },
+        yieldShadowBook: {
+          topProfile: {
+            id: "research_pilot",
+            capitalRequiredUsd: 105,
+          },
+        },
+        proxySpreadCoveragePlan: {
+          nextAction: "expand_amount_ladder",
+          nextProxyGroup: "wbtc",
+        },
+      },
       shadowCycle: {
         canaryDecision: "REVIEW_CANARY_CANDIDATE",
         headline: "Route is prepared for manual canary review",
@@ -305,6 +335,25 @@ test("prelive review package becomes review-ready once canary and prelive gates 
       },
     },
     address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    strategySnapshot: {
+      implementedStrategyCount: 9,
+      candidateForValidationCount: 0,
+      topImplementedStrategy: {
+        id: "stablecoin_entry_exit_loops",
+      },
+      topPivot: {
+        id: "gateway_base_btc_yield",
+      },
+    },
+    executionRunbook: {
+      currentStageId: "tiny_live_canary_review",
+      nextStageId: "manual_canary_review",
+      nextActionCode: "manual_canary_review_only",
+    },
+    preliveValidation: {
+      validationStatus: "ready_for_manual_review",
+      nextActionCode: "manual_canary_review_only",
+    },
   });
 
   const summary = summarizePreliveReviewPackage(reviewPackage);
@@ -322,4 +371,127 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(summary.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --limit=1");
   assert.equal(summary.simulationSuccessCount, 50);
   assert.equal(summary.forkConfirmedCount, 3);
+  assert.equal(reviewPackage.pivotPlan.topRecommendation.id, "gateway_base_btc_yield");
+  assert.equal(summary.pivotTopRecommendationId, "gateway_base_btc_yield");
+  assert.equal(summary.pivotResearchPilotMinimumUsd, 105);
+  assert.equal(summary.pivotPlanningBudgetScenarios.length, 2);
+  assert.equal(summary.yieldTopProfileId, "research_pilot");
+  assert.equal(summary.proxyCoverageNextProxyGroup, "wbtc");
+  assert.equal(summary.strategySnapshotTopImplementedId, "stablecoin_entry_exit_loops");
+  assert.equal(summary.executionRunbookNextActionCode, "manual_canary_review_only");
+  assert.equal(summary.preliveValidationStatus, "ready_for_manual_review");
+});
+
+test("prelive review package carries ETH profitability as observe-only review context", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-12T12:00:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: [],
+      },
+      strategy: {
+        ethProfitability: {
+          gatewayRouteCount: 3,
+          routeCount: 1,
+          measuredClosedLoopCount: 1,
+          profitableClosedLoopCount: 0,
+          loopObservableRouteCount: 1,
+          stableRouteCount: 1,
+          policyBlockedCount: 1,
+          verdictCode: "positive_but_below_policy",
+          verdictLabel: "positive but still below policy",
+          verdictDetail: "Measured loops are still below policy.",
+          recommendationCode: "collect_more_eth_evidence",
+          recommendationLabel: "Collect more ETH evidence first",
+          recommendationDetail: "Sample breadth is still too thin.",
+          bestMeasuredRoute: {
+            routeKey: "base:0x0->ethereum:0x0",
+            amount: "10000",
+            netUsd: -0.12,
+            gapToPolicyUsd: 0.42,
+            targetUsd: 0.3,
+          },
+          closestPolicyRoute: {
+            routeKey: "base:0x0->ethereum:0x0",
+            amount: "10000",
+            netUsd: -0.12,
+            gapToPolicyUsd: 0.42,
+            targetUsd: 0.3,
+          },
+          bestResearchRoute: {
+            routeKey: "base:0x0->ethereum:0x0",
+            amount: "10000",
+            classification: "loop_observable",
+            tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+            netUsd: -0.04,
+          },
+          followUpActionCode: "collect_eth_family_evidence",
+          followUpActionLabel: "collect ETH family evidence",
+          followUpCommand: "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
+          overfitRisks: ["thin_quote_samples"],
+        },
+      },
+      shadowCycle: {
+        objectivePlans: {},
+        shadowRoster: {
+          candidates: [],
+        },
+      },
+      prelive: {
+        currentStage: "shadow_replay",
+        liveTradingPolicy: "BLOCKED",
+        notes: [],
+        shadowReplay: {
+          status: "shadow_replay_blocked",
+          blockers: ["audit:LIVE_BLOCKED"],
+          auditDecision: "LIVE_BLOCKED",
+          policyReadyMeasuredRoutes: 0,
+        },
+        mechanicalSimulation: {
+          status: "mechanical_simulation_blocked",
+          blockers: ["shadow_replay_not_ready"],
+          successCount: 0,
+          targetSuccessCount: 50,
+          failureCount: 0,
+        },
+        forkExecution: {
+          status: "fork_execution_blocked",
+          blockers: ["mechanical_simulation_not_ready"],
+          planCount: 0,
+          submittedCount: 0,
+          confirmedCount: 0,
+          targetConfirmedCount: 3,
+          failedCount: 0,
+        },
+        executionAudit: {
+          status: "complete",
+          blockers: [],
+          missingRecordCount: 0,
+          recentTransitions: [],
+        },
+        tinyLiveCanary: {
+          ready: false,
+          status: "tiny_canary_blocked",
+          blockers: ["shadow_replay_not_ready"],
+        },
+        nextActions: [],
+      },
+      canaryAdvance: {
+        final: {
+          decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+          headline: "Review-only",
+        },
+      },
+    },
+  });
+
+  const summary = summarizePreliveReviewPackage(reviewPackage);
+
+  assert.equal(reviewPackage.ethFamilyProfitability.recommendationCode, "collect_more_eth_evidence");
+  assert.equal(reviewPackage.ethFamilyProfitability.routeCount, 1);
+  assert.equal(reviewPackage.ethFamilyProfitability.followUpActionCode, "collect_eth_family_evidence");
+  assert.equal(summary.ethFamilyVerdictCode, "positive_but_below_policy");
+  assert.equal(summary.ethFamilyRecommendationCode, "collect_more_eth_evidence");
+  assert.equal(summary.ethFamilyRouteCount, 1);
 });

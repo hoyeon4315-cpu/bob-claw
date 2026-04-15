@@ -2,6 +2,7 @@ import { buildCanarySelectionGap } from "./canary-selection-gap.mjs";
 import { buildEdgeResearchSummary } from "./edge-research.mjs";
 import { buildEdgeViabilitySummary } from "./edge-viability.mjs";
 import { shellQuote } from "../lib/shell-quote.mjs";
+import { ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION, hasEthereumL1PhaseBlock } from "../risk/ethereum-l1-policy.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -115,6 +116,8 @@ function buildExecutionReviewPlan({ routePlan = null, canaryInputs = null, score
     scoreSnapshot,
   });
   if (!gap?.measuredLeader?.routeKey || !gap.reviewPlan?.actionCodes?.length) return null;
+  const measuredScore = bestScoreForRoute(scoreSnapshot, gap.measuredLeader.routeKey, gap.measuredLeader.amount);
+  if (hasEthereumL1PhaseBlock(measuredScore)) return null;
 
   const steps = gap.reviewPlan.actionCodes
     .map((code) => {
@@ -186,6 +189,7 @@ function discoveryPriority(classification) {
     partial_loop_measurement: 5,
     loop_observable: 6,
     no_edge: 7,
+    [ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION]: 98,
   }[classification] ?? 99;
 }
 
@@ -329,7 +333,7 @@ function buildDiscoveryPlan({
 
   const currentCanary = currentCanarySelection({ routePlan, canaryInputs });
   const researchRoute = (edgeResearch?.routes || [])
-    .filter((item) => !["no_edge", "failure_rate_too_high", "reject_outlier"].includes(item.classification))
+    .filter((item) => !["no_edge", "failure_rate_too_high", "reject_outlier", ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION].includes(item.classification))
     .filter((item) => item.routeKey !== currentCanary?.routeKey)
     .filter((item) => item.routeKey !== executionReview?.routeKey)
     .sort(

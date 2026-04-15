@@ -5,12 +5,21 @@ import { classifyGatewayAssetUniverse } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
+import { buildConnectedRefreshPackage, summarizeConnectedRefreshPackage } from "../prelive/connected-refresh-package.mjs";
+import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
+import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
+import { buildExecutionRunbook, summarizeExecutionRunbook } from "../prelive/execution-runbook.mjs";
 import { buildPreliveEvidenceCampaign } from "../prelive/evidence-campaign.mjs";
+import { buildExactRouteForkPackage, summarizeExactRouteForkPackage } from "../prelive/exact-route-fork-package.mjs";
+import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } from "../prelive/operational-judgment-review.mjs";
+import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveReviewPackage } from "../prelive/review-package.mjs";
+import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildCanaryInputSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
@@ -20,9 +29,13 @@ import { buildDexGatewayArbitrageSummary } from "../strategy/dex-gateway-arbitra
 import { buildDexRouteUniverseSummary } from "../strategy/dex-route-universe.mjs";
 import { buildEdgeViabilitySummary, buildEdgeViabilityVerdict } from "../strategy/edge-viability.mjs";
 import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
+import { buildEthereumRouteAnalysis } from "../strategy/ethereum-route-analysis.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
-import { buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import { buildEthProfitabilitySummary, buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
+import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
+import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "../strategy/proxy-spread-coverage-plan.mjs";
+import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildPivotDecisionSummary, buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
@@ -606,10 +619,29 @@ function preliveReviewPackageLines(reviewPackage = null) {
     );
     lines.push(`- Leader review rationale: ${leader.reasons.join("; ") || "none"}${leader.blockers.length ? ` | blockers: ${leader.blockers.join(", ")}` : ""}`);
   }
+  if (reviewPackage.ethFamilyProfitability) {
+    lines.push(
+      `- ETH-family profitability: routes=${reviewPackage.ethFamilyProfitability.routeCount ?? 0} measured=${reviewPackage.ethFamilyProfitability.measuredClosedLoopCount ?? 0} profitable=${reviewPackage.ethFamilyProfitability.profitableClosedLoopCount ?? 0} verdict=\`${reviewPackage.ethFamilyProfitability.verdictCode || "unknown"}\``,
+    );
+    lines.push(
+      `- ETH-family recommendation: \`${reviewPackage.ethFamilyProfitability.recommendationCode || "unknown"}\`${reviewPackage.ethFamilyProfitability.followUpCommand ? ` command=\`${reviewPackage.ethFamilyProfitability.followUpCommand}\`` : ""}`,
+    );
+  }
   if (reviewPackage.pivotDecision) {
     lines.push(
       `- Pivot gate: decision=\`${reviewPackage.pivotDecision.decisionCode || "unknown"}\` status=\`${reviewPackage.pivotDecision.status || "unknown"}\` currentCanary=\`${reviewPackage.pivotDecision.currentCanaryVerdict || "n/a"}\` measuredLeader=\`${reviewPackage.pivotDecision.measuredLeaderVerdict || "n/a"}\``,
     );
+  }
+  if (reviewPackage.pivotPlan?.topRecommendation) {
+    const top = reviewPackage.pivotPlan.topRecommendation;
+    lines.push(
+      `- Pivot review context: top=\`${top.id || "unknown"}\` status=\`${top.status || "unknown"}\` budget=${money(reviewPackage.pivotPlan.currentBudgetUsd)} next=\`${top.nextActionCode || "none"}\``,
+    );
+    if (Number.isFinite(top.observedCapitalFloorUsd) || Number.isFinite(top.researchPilotMinimumUsd)) {
+      lines.push(
+        `- Pivot capital context: observedFloor=${money(top.observedCapitalFloorUsd)} researchPilot=${money(top.researchPilotMinimumUsd)} defaultSplit=${money(top.defaultDualSleeveMinimumUsd)}`,
+      );
+    }
   }
   lines.push(
     `- Review checklist: completed=${reviewPackage.operatorChecklist?.completed?.join(" · ") || "none"} remaining=${reviewPackage.operatorChecklist?.remaining?.join(" · ") || "none"}`,
@@ -667,6 +699,294 @@ function pivotDecisionLines(pivotDecision = null) {
   ];
 }
 
+function pivotPlanLines(pivotPlan = null) {
+  if (!pivotPlan?.topRecommendation) return ["- Pivot plan unavailable"];
+  const top = pivotPlan.topRecommendation;
+  const budgetScenarioLine =
+    pivotPlan.budgetScenarios?.length
+      ? `- Planning budgets: ${pivotPlan.budgetScenarios
+          .map((scenario) => `${money(scenario.budgetUsd)}${scenario.planningOnly ? "(planning only)" : "(active ring)"}`)
+          .join(" | ")}`
+      : null;
+  const lines = [
+    `- Pivot budget: current=${money(pivotPlan.currentBudgetUsd)} note=${pivotPlan.budgetNote || "n/a"}`,
+    `- Top recommendation: \`${top.id || "unknown"}\` label=\`${top.label || "unknown"}\` status=\`${top.status || "unknown"}\` reason=\`${top.reason || "unknown"}\``,
+  ];
+  if (budgetScenarioLine) lines.push(budgetScenarioLine);
+  if (Number.isFinite(top.observedCapitalFloorUsd) || Number.isFinite(top.researchPilotMinimumUsd)) {
+    lines.push(
+      `- Capital guide: observedFloor=${money(top.observedCapitalFloorUsd)} researchPilot=${money(top.researchPilotMinimumUsd)} defaultSplit=${money(top.defaultDualSleeveMinimumUsd)}`,
+    );
+  }
+  if (top.nextActionCode || top.nextActionLabel) {
+    lines.push(`- Pivot next action: \`${top.nextActionCode || "unknown"}\` ${top.nextActionLabel || ""}`.trim());
+  }
+  lines.push(
+    ...(pivotPlan.pivots || [])
+      .slice(1, 3)
+      .map(
+        (item) =>
+          `- Alternate pivot: \`${item.id || "unknown"}\` status=\`${item.status || "unknown"}\` label=\`${item.label || "unknown"}\`${Number.isFinite(item.observedCapitalFloorUsd) ? ` observedFloor=${money(item.observedCapitalFloorUsd)}` : ""}`,
+      ),
+  );
+  return lines;
+}
+
+function yieldShadowBookLines(summary = null, profiles = []) {
+  if (!summary?.topProfile) return ["- Yield shadow book unavailable"];
+  const top = summary.topProfile;
+  const budgetScenarioLine =
+    summary.budgetScenarios?.length
+      ? `- Yield budget scenarios: ${summary.budgetScenarios
+          .map((scenario) => `${money(scenario.budgetUsd)} readyProfiles=${scenario.readyProfileCount}${scenario.planningOnly ? "(planning)" : "(active)"}`)
+          .join(" | ")}`
+      : null;
+  const lines = [
+    `- Yield book: status=\`${summary.bookStatus || "unknown"}\` profiles=${summary.profileCount ?? 0} withinBudget=${summary.withinBudgetCount ?? 0} currentBudget=${money(summary.currentBudgetUsd)}`,
+    `- Top paper profile: \`${top.id || "unknown"}\` label=\`${top.label || "unknown"}\` status=\`${top.status || "unknown"}\` capital=${money(top.capitalRequiredUsd)} paperDaily(5%)=${money(top.paperDailyBaseScenarioUsd)} paper30d(5%)=${money(top.paperThirtyDayBaseScenarioUsd)}`,
+  ];
+  if (budgetScenarioLine) lines.push(budgetScenarioLine);
+  if (top.nextActionCode || top.nextActionLabel) {
+    lines.push(`- Yield next action: \`${top.nextActionCode || "unknown"}\` ${top.nextActionLabel || ""}`.trim());
+  }
+  lines.push(
+    ...profiles
+      .filter((profile) => profile.id !== top.id)
+      .slice(0, 2)
+      .map(
+        (profile) =>
+          `- Yield profile: \`${profile.id}\` status=\`${profile.status || "unknown"}\` capital=${money(profile.capitalRequiredUsd)} budgetGap=${money(profile.budgetGapUsd)}`,
+      ),
+  );
+  return lines;
+}
+
+function proxyCoveragePlanLines(summary = null, entries = []) {
+  if (!summary?.nextAction && !entries.length) return ["- Proxy coverage plan unavailable"];
+  const top = entries.find((entry) => entry.nextAction !== "watch_surface") || entries[0] || null;
+  const lines = [
+    `- Proxy coverage: overfit=\`${summary?.overfitAssessment || "unknown"}\` plans=${summary?.planCount ?? entries.length} actionable=${summary?.actionableCount ?? 0} quota=${summary?.totalQuoteQuotaNeeded ?? 0}`,
+  ];
+  if (top) {
+    lines.push(
+      `- Next proxy target: proxy=\`${top.proxyGroup || "unknown"}\` action=\`${top.nextAction || "unknown"}\` reason=\`${top.reason || "unknown"}\` priority=\`${top.priority || "unknown"}\` quota=${top.quoteQuotaNeeded ?? 0}`,
+    );
+    if (top.executionCommand) {
+      lines.push(`- Proxy coverage command: \`${top.executionCommand}\``);
+    }
+  }
+  lines.push(
+    ...entries
+      .filter((entry) => !top || `${entry.proxyGroup}|${entry.nextAction}|${entry.reason}` !== `${top.proxyGroup}|${top.nextAction}|${top.reason}`)
+      .slice(0, 2)
+      .map(
+        (entry) =>
+          `- Alternate proxy target: proxy=\`${entry.proxyGroup || "unknown"}\` action=\`${entry.nextAction || "unknown"}\` quota=${entry.quoteQuotaNeeded ?? 0} amounts=${entry.targetAmountLevels?.join(",") || "none"}`,
+      ),
+  );
+  return lines;
+}
+
+function strategySnapshotLines(summary = null, snapshot = null) {
+  if (!summary?.topPivot && !summary?.topImplementedStrategy) return ["- Strategy snapshot unavailable"];
+  const lines = [
+    `- Strategy snapshot: implemented=${summary.implementedStrategyCount ?? 0} candidates=${summary.candidateForValidationCount ?? 0} activeBudget=${money(summary.activeBudgetUsd)} planningBudget=${money(summary.planningBudgetUsd)}`,
+    `- Top implemented strategy: \`${summary.topImplementedStrategy?.id || "unknown"}\` status=\`${summary.topImplementedStrategy?.status || "unknown"}\` reason=\`${summary.topImplementedStrategy?.reason || "unknown"}\``,
+    `- Top pivot: \`${summary.topPivot?.id || "unknown"}\` status=\`${summary.topPivot?.status || "unknown"}\` pilot=${money(summary.topPivot?.researchPilotMinimumUsd)}`,
+  ];
+  if (summary.topAction?.code || summary.topAction?.command) {
+    lines.push(`- Strategy next action: \`${summary.topAction?.code || "unknown"}\`${summary.topAction?.command ? ` command=\`${summary.topAction.command}\`` : ""}`);
+  }
+  if (summary.capitalExpansionReview) {
+    lines.push(
+      `- Capital expansion: active=${money(summary.capitalExpansionReview.activeLaneBudgetUsd)} planning=${money(summary.capitalExpansionReview.planningLaneBudgetUsd)} planningTop=\`${summary.capitalExpansionReview.planningTopImplementedId || "unknown"}\`/\`${summary.capitalExpansionReview.planningTopPivotId || "unknown"}\` approvalRequired=${summary.capitalExpansionReview.approvalRequiredForPlanningLane}`,
+    );
+  }
+  lines.push(
+    ...(snapshot?.implementedStrategies || [])
+      .slice(0, 3)
+      .map(
+        (entry) =>
+          `- Strategy lane: \`${entry.id || "unknown"}\` status=\`${entry.status || "unknown"}\`${entry.capitalGuidance?.minimumCapitalUsd ? ` floor=${money(entry.capitalGuidance.minimumCapitalUsd)}` : ""}`,
+      ),
+  );
+  return lines;
+}
+
+function executionRunbookLines(summary = null, runbook = null) {
+  if (!summary?.currentStageId && !runbook?.stages?.length) return ["- Execution runbook unavailable"];
+  const lines = [
+    `- Runbook: currentStage=\`${summary?.currentStageId || "unknown"}\` completed=${summary?.completeCount ?? 0}/${summary?.stageCount ?? runbook?.stages?.length ?? 0} blocked=${summary?.blockedCount ?? 0} reviewReady=${Boolean(summary?.readyForManualReview)}`,
+  ];
+  if (summary?.nextActionCode || summary?.nextActionCommand) {
+    lines.push(`- Runbook next action: \`${summary.nextActionCode || "unknown"}\`${summary.nextActionCommand ? ` command=\`${summary.nextActionCommand}\`` : ""}`);
+  }
+  if (summary?.exactRouteForkPlanStatus || summary?.exactRouteForkPlanId) {
+    lines.push(
+      `- Exact-route fork plan: status=\`${summary.exactRouteForkPlanStatus || "unknown"}\` planId=\`${summary.exactRouteForkPlanId || "n/a"}\`${summary.exactRouteForkSubmitCommand ? ` submit=\`${summary.exactRouteForkSubmitCommand}\`` : ""}`,
+    );
+  }
+  lines.push(
+    ...((runbook?.stages || []).map(
+      (stage) =>
+        `- Stage: \`${stage.id}\` state=\`${stage.state || "unknown"}\` status=\`${stage.status || "unknown"}\` blockers=${stage.blockers?.slice(0, 3).join(",") || "none"}`,
+    )),
+  );
+  return lines;
+}
+
+function preliveValidationLines(summary = null) {
+  if (!summary?.validationStatus) return ["- Pre-live validation unavailable"];
+  return [
+    `- Validation: status=\`${summary.validationStatus}\` readiness=${summary.readinessPct ?? 0}% blockers=${summary.blockerCount ?? 0} warnings=${summary.warningCount ?? 0}`,
+    `- Validation next step: stage=\`${summary.nextStageId || "unknown"}\` action=\`${summary.nextActionCode || "unknown"}\`${summary.nextActionCommand ? ` command=\`${summary.nextActionCommand}\`` : ""}`,
+    `- Validation headline: topStrategy=\`${summary.topImplementedStrategyId || "unknown"}\` topPivot=\`${summary.topPivotId || "unknown"}\``,
+  ];
+}
+
+function connectedRefreshLines(summary = null) {
+  if (!summary?.status) return ["- Connected refresh package unavailable"];
+  return [
+    `- Connected refresh: status=\`${summary.status}\` route=\`${summary.routeLabel || summary.routeKey || "unknown"}\` amount=\`${summary.amount || "n/a"}\` required=${summary.requiredRefreshCount ?? 0}`,
+    `- Refresh next step: action=\`${summary.nextActionCode || "unknown"}\`${summary.nextActionCommand ? ` command=\`${summary.nextActionCommand}\`` : ""}`,
+    `- Refresh runner: preview=\`${summary.runnerPreviewCommand || "n/a"}\` execute=\`${summary.runnerExecuteCommand || "n/a"}\``,
+    `- Refresh chain: ${summary.fullCommandChain ? `\`${summary.fullCommandChain}\`` : "n/a"}`,
+  ];
+}
+
+function connectedRefreshExecutionLines(summary = null) {
+  if (!summary) return ["- Connected refresh execution summary unavailable"];
+  return [
+    `- Refresh execution: runs=${summary.runCount ?? 0} preview=${summary.previewCount ?? 0} success=${summary.successCount ?? 0} partial=${summary.partialCount ?? 0} failed=${summary.failureCount ?? 0} latest=\`${summary.latestStatus || "none"}\``,
+    `- Refresh execution next: action=\`${summary.nextAction?.code || "unknown"}\`${summary.nextAction?.command ? ` command=\`${summary.nextAction.command}\`` : ""}`,
+  ];
+}
+
+function currentRoutePrelivePassLines(summary = null) {
+  if (!summary) return ["- Current-route pre-live pass summary unavailable"];
+  return [
+    `- Current-route pre-live pass: runs=${summary.runCount ?? 0} preview=${summary.previewCount ?? 0} readyForSigner=${summary.readyForSignerCount ?? 0} blocked=${summary.blockedCount ?? 0} partial=${summary.partialCount ?? 0} failed=${summary.failureCount ?? 0} latest=\`${summary.latestStatus || "none"}\``,
+    `- Current-route pass next: action=\`${summary.nextAction?.code || "unknown"}\`${summary.nextAction?.command ? ` command=\`${summary.nextAction.command}\`` : ""}`,
+  ];
+}
+
+function exactRouteForkPackageLines(summary = null) {
+  if (!summary?.status) return ["- Exact-route fork package unavailable"];
+  return [
+    `- Exact-route fork package: status=\`${summary.status}\` planId=\`${summary.planId || "n/a"}\` route=\`${summary.routeLabel || summary.routeKey || "unknown"}\` amount=\`${summary.amount || "n/a"}\``,
+    `- Fork readiness split: technical=\`${summary.technicalStatus || "unknown"}\` economic=\`${summary.economicStatus || "unknown"}\``,
+    `- Fork evidence: simulation=${summary.simulationSuccessCount ?? 0}/${summary.simulationTargetCount ?? 0} fork=${summary.forkConfirmedCount ?? 0}/${summary.forkTargetCount ?? 0}`,
+    `- Fork next step: action=\`${summary.nextActionCode || "unknown"}\`${summary.nextActionCommand ? ` command=\`${summary.nextActionCommand}\`` : ""}`,
+  ];
+}
+
+function operationalJudgmentLines(summary = null, review = null) {
+  if (!summary?.status) return ["- Operational judgment review unavailable"];
+  const lines = [
+    `- Operational judgment: status=\`${summary.status}\` issues=${summary.issueCount ?? 0} high=${summary.highSeverityCount ?? 0} medium=${summary.mediumSeverityCount ?? 0}`,
+    `- Judgment next step: action=\`${summary.nextActionCode || "unknown"}\`${summary.nextActionCommand ? ` command=\`${summary.nextActionCommand}\`` : ""}`,
+  ];
+  lines.push(
+    ...((review?.issues || []).slice(0, 3).map(
+      (entry) => `- Judgment issue: \`${entry.code}\` severity=\`${entry.severity}\` headline=${entry.headline}`,
+    )),
+  );
+  return lines;
+}
+
+function onePageExecutionBriefLines({
+  dashboardStatus = null,
+  next = null,
+  best = null,
+  address = null,
+  pivotPlan = null,
+  yieldShadow = null,
+  proxyCoverage = null,
+  strategySnapshot = null,
+  executionRunbook = null,
+  preliveValidation = null,
+  connectedRefreshPackage = null,
+  connectedRefreshExecution = null,
+  exactRouteForkPackage = null,
+  operationalJudgmentReview = null,
+} = {}) {
+  const yieldTop = yieldShadow?.topProfile || null;
+  const pivotTop = pivotPlan?.topRecommendation || null;
+  const pilot = yieldShadow?.profiles?.find((item) => item.id === "research_pilot") || null;
+  const diversified = yieldShadow?.profiles?.find((item) => item.id === "diversified_single_sleeve") || null;
+  const defaultSplit = yieldShadow?.profiles?.find((item) => item.id === "default_dual_sleeve") || null;
+  const activeBudget = pivotPlan?.budgetScenarios?.find((scenario) => !scenario.planningOnly) || null;
+  const expansionBudget = pivotPlan?.budgetScenarios?.find((scenario) => scenario.planningOnly) || null;
+  const defaultSplitExpansionFit =
+    defaultSplit?.budgetScenarios?.find((scenario) => scenario.budgetUsd === expansionBudget?.budgetUsd)?.fitsBudget ?? null;
+  const exactGasCommand =
+    best?.routeKey && best?.amount && address
+      ? `npm run estimate:gateway-gas -- --from="${address}" --route-key="${best.routeKey}" --amount="${best.amount}"`
+      : null;
+  const lines = [
+    `- Status: live=\`${dashboardStatus?.overall?.liveTrading || "BLOCKED"}\` shadow=\`${dashboardStatus?.overall?.shadowTrading || "ALLOWED"}\` next=\`${next?.decision || "unknown"}\``,
+    `- Strategy pack: implemented=${strategySnapshot?.implementedStrategyCount ?? 0} top=\`${strategySnapshot?.topImplementedStrategy?.id || "unknown"}\` pivot=\`${strategySnapshot?.topPivot?.id || "unknown"}\``,
+    `- Pivot headline: \`${pivotTop?.id || "unknown"}\` capital pilot=${money(yieldTop?.capitalRequiredUsd)} next=\`${yieldTop?.nextActionCode || pivotTop?.nextActionCode || "unknown"}\``,
+    `- Budget lanes: active=${money(activeBudget?.budgetUsd)} planning=${money(expansionBudget?.budgetUsd)} defaultYieldFitsPlanning=${
+      defaultSplitExpansionFit === true ? "yes" : defaultSplitExpansionFit === false ? "no" : "n/a"
+    }`,
+    `- Yield paper lanes: pilot=${money(pilot?.capitalRequiredUsd)} diversified=${money(diversified?.capitalRequiredUsd)} default=${money(defaultSplit?.capitalRequiredUsd)}`,
+  ];
+  lines.push(
+    `- Proxy lane: proxy=\`${proxyCoverage?.nextProxyGroup || "unknown"}\` action=\`${proxyCoverage?.nextAction || "unknown"}\` quota=${proxyCoverage?.nextQuoteQuotaNeeded ?? 0}`,
+  );
+  lines.push(
+    best?.routeKey
+      ? `- Canary lane: route=\`${best.label || best.routeKey}\` amount=\`${best.amount || "n/a"}\`${exactGasCommand ? ` exactGas=\`${exactGasCommand}\`` : ""}`
+      : "- Canary lane: no active route",
+  );
+  lines.push(
+    `- Validation: status=\`${preliveValidation?.validationStatus || "unknown"}\` nextStage=\`${executionRunbook?.nextStageId || "unknown"}\` nextAction=\`${preliveValidation?.nextActionCode || executionRunbook?.nextActionCode || "unknown"}\``,
+  );
+  if (connectedRefreshPackage?.status) {
+    lines.push(
+      `- Connected refresh: status=\`${connectedRefreshPackage.status}\` required=${connectedRefreshPackage.requiredRefreshCount ?? 0} next=\`${connectedRefreshPackage.nextActionCode || "unknown"}\``,
+    );
+  }
+  if (connectedRefreshExecution) {
+    lines.push(
+      `- Refresh runner state: runs=${connectedRefreshExecution.runCount ?? 0} preview=${connectedRefreshExecution.previewCount ?? 0} latest=\`${connectedRefreshExecution.latestStatus || "none"}\` remaining=${connectedRefreshExecution.remainingRefreshCount ?? "n/a"}`,
+    );
+  }
+  lines.push(`- Connected pre-live pass: \`npm run run:current-route-prelive-pass -- --execute\``);
+  lines.push(`- Current-route pass report: \`npm run report:current-route-prelive-pass -- --write\``);
+  if (executionRunbook?.exactRouteForkPlanStatus || executionRunbook?.exactRouteForkPlanId) {
+    lines.push(
+      `- Fork prep: exactPlan=\`${executionRunbook?.exactRouteForkPlanStatus || "unknown"}\` planId=\`${executionRunbook?.exactRouteForkPlanId || "n/a"}\``,
+    );
+  }
+  if (exactRouteForkPackage?.status) {
+    lines.push(
+      `- Exact-route fork split: status=\`${exactRouteForkPackage.status}\` technical=\`${exactRouteForkPackage.technicalStatus || "unknown"}\` economic=\`${exactRouteForkPackage.economicStatus || "unknown"}\``,
+    );
+  }
+  if (operationalJudgmentReview?.status) {
+    lines.push(
+      `- Judgment review: status=\`${operationalJudgmentReview.status}\` issues=${operationalJudgmentReview.issueCount ?? 0} high=${operationalJudgmentReview.highSeverityCount ?? 0}`,
+    );
+  }
+  lines.push("- Safe local command order:");
+  lines.push("-   1) `npm run report:strategy-snapshot -- --write`");
+  lines.push("-   2) `npm run report:connected-refresh-package -- --write`");
+  lines.push("-   3) `npm run report:execution-runbook -- --write`");
+  lines.push("-   4) `npm run report:exact-route-fork-package -- --write`");
+  lines.push("-   5) `npm run validate:prelive-readiness -- --write`");
+  lines.push("-   6) `npm run report:operational-judgment-review -- --write`");
+  lines.push("-   7) `npm run report:yield-shadow-book -- --write && npm run report:proxy-spread-coverage -- --write`");
+  lines.push("-   8) `npm run audit:overfit && npm run score:gateway -- --write && npm run status:dashboard`");
+  lines.push("-   9) `npm run write:session-handoff`");
+  if (proxyCoverage?.nextCommand) {
+    lines.push(`- Networked operator runtime only: \`${proxyCoverage.nextCommand}\``);
+  }
+  lines.push("- Decision lock: keep live execution blocked; treat all new samples as research until policy and anti-overfit gates clear.");
+  return lines;
+}
+
 function checklistLines(checklist) {
   return [
     `- Completed so far: ${checklist?.completed?.join(" · ") || "none yet"}`,
@@ -702,6 +1022,7 @@ function strategyLines(
   routePlan = null,
   canaryInputs = null,
   address = null,
+  ethProfitability = null,
 ) {
   const bestStable = stableRouteCandidates(scores)[0] || null;
   const btcProxySpreads = buildBtcProxySpreadSummary({ dexQuotes, routes, scoreSnapshot: { scores } });
@@ -727,6 +1048,7 @@ function strategyLines(
     bestStablecoinRoute: bestStable,
     crossAssetArbitrage: crossAsset,
     btcProxySpreads,
+    ethProfitability,
   });
   const strategyPlans = buildStrategyRefreshPlans({
     crossAssetArbitrage: crossAsset,
@@ -793,8 +1115,8 @@ function strategyLines(
       ? `- Objective discovery plan: route=\`${objectivePlans.discovery.label || objectivePlans.discovery.routeKey}\` amount=\`${objectivePlans.discovery.amount}\` next=\`${objectivePlans.discovery.nextActionCode}\` reason=\`${objectivePlans.discovery.reason}\``
       : null,
     ...strategyTracks.tracks
-      .filter((item) => item.kind === "stable_loop" || item.kind === "proxy_spread")
-      .map((item) => `- Strategy track ${item.kind}: label=\`${item.label || "none"}\` status=\`${item.status}\` next=\`${item.nextActionCode}\` reason=\`${item.reason || "none"}\``),
+      .filter((item) => item.kind === "stable_loop" || item.kind === "proxy_spread" || item.kind === "eth_family_loop")
+      .map((item) => `- Strategy track ${item.kind}: label=\`${item.label || "none"}\` status=\`${item.status}\` next=\`${item.nextActionCode}\` reason=\`${item.reason || "none"}\`${item.command ? ` command=\`${item.command}\`` : ""}`),
   ];
 }
 
@@ -838,6 +1160,30 @@ function profitabilityLines(summary) {
     summary.bestStablecoinRoute
       ? `- Best stablecoin route tested: \`${summary.bestStablecoinRoute.routeKey}\` amount=\`${summary.bestStablecoinRoute.amount}\` readiness=\`${summary.bestStablecoinRoute.tradeReadiness}\` net=${money(summary.bestStablecoinRoute.netUsd)}`
       : "- Best stablecoin route tested: none observed",
+    summary.ethFamily
+      ? `- ETH-family routes: ${summary.ethFamily.routeCount} family / ${summary.ethFamily.gatewayRouteCount} ETH-related gateway routes; measurable=${summary.ethFamily.fullyMeasurableRouteCount} loopObservable=${summary.ethFamily.loopObservableRouteCount} stable=${summary.ethFamily.stableRouteCount}`
+      : null,
+    summary.ethFamily
+      ? `- ETH-family loops: measured=${summary.ethFamily.measuredClosedLoopCount} profitable=${summary.ethFamily.profitableClosedLoopCount} policyBlocked=${summary.ethFamily.policyBlockedCount}`
+      : null,
+    summary.ethFamily
+      ? `- ETH-family loop verdict: ${summary.ethFamily.verdictLabel || "unknown"}${summary.ethFamily.verdictDetail ? ` (${summary.ethFamily.verdictDetail})` : ""}`
+      : null,
+    summary.ethFamily
+      ? `- ETH-family recommendation: ${summary.ethFamily.recommendationLabel || "unknown"}${summary.ethFamily.recommendationDetail ? ` (${summary.ethFamily.recommendationDetail})` : ""}`
+      : null,
+    summary.ethFamily?.closestPolicyRoute
+      ? `- Closest ETH-family route to policy: \`${summary.ethFamily.closestPolicyRoute.routeKey}\` amount=\`${summary.ethFamily.closestPolicyRoute.amount}\` net=${money(summary.ethFamily.closestPolicyRoute.netUsd)} gap=${money(summary.ethFamily.closestPolicyRoute.gapToPolicyUsd)} target=${money(summary.ethFamily.closestPolicyRoute.targetUsd)}`
+      : "- Closest ETH-family route to policy: none observed",
+    summary.ethFamily?.bestResearchRoute
+      ? `- Best ETH-family research route: \`${summary.ethFamily.bestResearchRoute.routeKey}\` class=\`${summary.ethFamily.bestResearchRoute.classification || "unknown"}\` readiness=\`${summary.ethFamily.bestResearchRoute.tradeReadiness || "unknown"}\` net=${money(summary.ethFamily.bestResearchRoute.netUsd)}`
+      : "- Best ETH-family research route: none observed",
+    summary.ethFamily?.followUpActionCode
+      ? `- ETH-family next action: \`${summary.ethFamily.followUpActionCode}\`${summary.ethFamily.followUpCommand ? ` command=\`${summary.ethFamily.followUpCommand}\`` : ""}`
+      : null,
+    summary.ethFamily
+      ? `- ETH-family overfit risks: ${summary.ethFamily.overfitRisks.join(",") || "none"}`
+      : null,
     summary.canarySelectionGap
       ? `- Measured leader under review: \`${summary.canarySelectionGap.measuredLeader.routeKey}\` amount=\`${summary.canarySelectionGap.measuredLeader.amount}\` measured=${money(summary.canarySelectionGap.measuredLeader.measuredNetUsd)} readiness=\`${summary.canarySelectionGap.measuredLeader.tradeReadiness || "unknown"}\``
       : null,
@@ -866,12 +1212,14 @@ async function main() {
   });
   const quoteFailures = await readJsonl(config.dataDir, "gateway-quote-failures");
   const preliveSimulationRuns = await readJsonl(config.dataDir, "prelive-simulation-runs");
+  const connectedRefreshRuns = await readJsonl(config.dataDir, "connected-refresh-runs");
   const [preliveForkPlan, preliveForkSubmissions, preliveForkReceipts] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "prelive-fork-plan.json")),
     readJsonl(config.dataDir, "prelive-fork-submissions"),
     readJsonl(config.dataDir, "prelive-fork-receipts"),
   ]);
   const executionEvents = await readJsonl(config.dataDir, "execution-journal");
+  const triangleArtifacts = await readTriangleArtifacts(config.dataDir);
   const { routePlan, fundingPlan, nextStep: next, dashboardStatus } = state;
   const canaryInputs = buildCanaryInputSummary(state);
   const btcWatchlist = dashboardStatus?.gateway?.btcWatchlist || buildBtcWatchlistFallbackSummary(state?.routesRecords?.at(-1)?.routes || []);
@@ -923,6 +1271,15 @@ async function main() {
     edgeViability: profitabilityEdgeViability,
     dexRouteFocus: profitabilityDexRouteFocus,
   });
+  const profitabilityEthAnalysis = buildEthereumRouteAnalysis({
+    routeRecords: state?.routesRecords || [],
+    quotes: state?.quotes || [],
+    failures: quoteFailures,
+    dexQuotes: state?.dexQuotes || [],
+    scores: state?.scoreSnapshot?.scores || [],
+    shadowObservations: state?.shadowObservations || [],
+  });
+  const ethProfitability = buildEthProfitabilitySummary(profitabilityEthAnalysis);
   const profitabilitySummary = buildProfitabilitySummary({
     scoreSnapshot: state?.scoreSnapshot || null,
     dexRouteFocus: profitabilityDexRouteFocus,
@@ -931,6 +1288,12 @@ async function main() {
     noEdgePersistence: profitabilityNoEdgePersistence,
     canaryInputs,
     routePlan,
+    ethAnalysis: profitabilityEthAnalysis,
+  });
+  const proxySpreadSummary = buildBtcProxySpreadSummary({
+    dexQuotes: state?.dexQuotes || [],
+    routes: state?.routesRecords?.at(-1)?.routes || [],
+    scoreSnapshot: state?.scoreSnapshot || null,
   });
   const objectivePlans = buildObjectivePlans({
     routePlan,
@@ -965,27 +1328,66 @@ async function main() {
     forkExecutionReceipts: preliveForkReceipts,
     executionEvents,
   });
-  const reviewPackage = buildPreliveReviewPackage({
+  const pivotPlan = buildStrategyPivotPlan({
     dashboardStatus: {
       ...dashboardStatus,
-      canaryInputs,
+      generatedAt: now,
       prelive,
       strategy: {
         ...(dashboardStatus?.strategy || {}),
-        pivotDecision,
+        objectivePlans,
+        ethProfitability,
       },
-      shadowCycle: dashboardStatus?.shadowCycle
-        ? {
-            ...dashboardStatus.shadowCycle,
-            pivotDecision,
-          }
-        : dashboardStatus?.shadowCycle,
     },
+    state,
+    triangleArtifacts,
+  });
+  const pivotPlanSummary = summarizeStrategyPivotPlan(pivotPlan);
+  const yieldShadowBook = buildYieldShadowBook({ pivotPlan });
+  const yieldShadowSummary = summarizeYieldShadowBook(yieldShadowBook);
+  const proxyCoveragePlan = buildProxySpreadCoveragePlan({ proxySpreadSummary });
+  const proxyCoverageSummary = summarizeProxySpreadCoveragePlan(proxyCoveragePlan);
+  const dashboardStatusForExecutionPack = {
+    ...dashboardStatus,
+    canaryInputs,
+    prelive,
+    strategy: {
+      ...(dashboardStatus?.strategy || {}),
+      pivotDecision,
+      pivotPlan: pivotPlanSummary,
+      yieldShadowBook: yieldShadowSummary,
+      proxySpreadCoveragePlan: proxyCoverageSummary,
+      ethProfitability,
+    },
+    shadowCycle: dashboardStatus?.shadowCycle
+      ? {
+          ...dashboardStatus.shadowCycle,
+          pivotDecision,
+        }
+      : dashboardStatus?.shadowCycle,
+  };
+  const strategySnapshot = buildStrategySnapshot({
+    dashboardStatus: dashboardStatusForExecutionPack,
+    state,
+    triangleArtifacts,
+    now,
+  });
+  const strategySnapshotSummary = summarizeStrategySnapshot(strategySnapshot);
+  const dashboardStatusWithSnapshot = {
+    ...dashboardStatusForExecutionPack,
+    strategy: {
+      ...dashboardStatusForExecutionPack.strategy,
+      strategySnapshot: strategySnapshotSummary,
+    },
+  };
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: dashboardStatusWithSnapshot,
     canaryInputs,
     canarySelectionGap: profitabilitySummary.canarySelectionGap || null,
     nextStep: next,
     advanceCanary: dashboardStatus?.canaryAdvance || null,
     address: resolved.address,
+    strategySnapshot: strategySnapshotSummary,
     now,
   });
   const evidenceCampaign = buildPreliveEvidenceCampaign({
@@ -1001,6 +1403,69 @@ async function main() {
     evidenceCampaign,
     address: resolved.address,
   });
+  const connectedRefreshPackage = buildConnectedRefreshPackage({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    canaryInputs,
+    reviewPackage,
+    nextStep: next,
+    address: resolved.address,
+    now,
+  });
+  const connectedRefreshSummary = summarizeConnectedRefreshPackage(connectedRefreshPackage);
+  const connectedRefreshExecutionSummary = buildConnectedRefreshExecutionSummary(connectedRefreshRuns, now);
+  const currentRoutePrelivePassRuns = await readJsonl(config.dataDir, "current-route-prelive-passes");
+  const currentRoutePrelivePassSummary = buildCurrentRoutePrelivePassSummary(currentRoutePrelivePassRuns, now);
+  const executionRunbook = buildExecutionRunbook({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    reviewPackage,
+    strategySnapshot,
+    canaryInputs,
+    nextStep: next,
+    forkPlan: preliveForkPlan,
+    address: resolved.address,
+    now,
+  });
+  const executionRunbookSummary = summarizeExecutionRunbook(executionRunbook);
+  const exactRouteForkPackage = buildExactRouteForkPackage({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    canaryInputs,
+    reviewPackage,
+    nextStep: next,
+    forkPlan: preliveForkPlan,
+    simulationRuns: preliveSimulationRuns,
+    submissions: preliveForkSubmissions,
+    receipts: preliveForkReceipts,
+    connectedRefreshPackage,
+    now,
+  });
+  const exactRouteForkSummary = summarizeExactRouteForkPackage(exactRouteForkPackage);
+  const preliveValidation = buildPreliveValidationReport({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    strategySnapshot,
+    executionRunbook,
+    reviewPackage,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+    now,
+  });
+  const preliveValidationSummary = summarizePreliveValidationReport(preliveValidation);
+  const operationalJudgmentReview = buildOperationalJudgmentReview({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    strategySnapshot,
+    reviewPackage,
+    executionRunbook,
+    preliveValidation,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+    now,
+  });
+  const operationalJudgmentSummary = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+  reviewPackage.strategySnapshot = strategySnapshotSummary;
+  reviewPackage.executionRunbook = executionRunbookSummary;
+  reviewPackage.preliveValidation = preliveValidationSummary;
+  reviewPackage.connectedRefreshPackage = connectedRefreshPackage;
+  reviewPackage.exactRouteForkPackage = exactRouteForkPackage;
+  reviewPackage.operationalJudgmentReview = operationalJudgmentReview;
 
   const doc = [
     "# Current Status",
@@ -1011,13 +1476,73 @@ async function main() {
     "",
     "- Read this file first in a shallow session.",
     "- Main command: `npm run advance:canary`",
+    "- Decision-pack refresh: `npm run build:prelive-decision-pack`",
     "- Queue preview: `npm run run:shadow-refresh-queue -- --limit=3`",
     "- Batch preview: `npm run run:shadow-refresh-batch -- --limit=1`",
     "- Evidence campaign preview: `npm run run:prelive-evidence-campaign`",
     "- Safe status refresh: `npm run audit:overfit && npm run score:gateway -- --write && npm run status:dashboard`",
+    "- Pivot plan refresh: `npm run report:pivot-plan -- --write`",
+    "- Strategy snapshot refresh: `npm run report:strategy-snapshot -- --write`",
+    "- Connected refresh pack: `npm run report:connected-refresh-package -- --write`",
+    "- Current-route pass report: `npm run report:current-route-prelive-pass -- --write`",
+    "- Connected pre-live pass: `npm run run:current-route-prelive-pass -- --execute`",
+    "- Execution runbook refresh: `npm run report:execution-runbook -- --write`",
+    "- Exact-route fork pack: `npm run report:exact-route-fork-package -- --write`",
+    "- Yield shadow book refresh: `npm run report:yield-shadow-book -- --write`",
+    "- Proxy coverage refresh: `npm run report:proxy-spread-coverage -- --write`",
     "- Pre-live readiness refresh: `npm run report:prelive-readiness -- --write`",
+    "- Pre-live validation refresh: `npm run validate:prelive-readiness -- --write`",
+    "- Operational judgment refresh: `npm run report:operational-judgment-review -- --write`",
     "- Review package refresh: `npm run build:prelive-review-package -- --write`",
     "- Fork execution planning: `npm run plan:prelive-fork-execution -- --source=objective --write`",
+    "",
+    "## One-page Execution Brief",
+    "",
+    ...onePageExecutionBriefLines({
+      dashboardStatus,
+      next,
+      best,
+      address: resolved.address,
+      pivotPlan: pivotPlanSummary,
+      yieldShadow: {
+        ...yieldShadowSummary,
+        profiles: yieldShadowBook.profiles || [],
+      },
+      proxyCoverage: proxyCoverageSummary,
+      strategySnapshot: strategySnapshotSummary,
+      executionRunbook: executionRunbookSummary,
+      preliveValidation: preliveValidationSummary,
+      connectedRefreshPackage: connectedRefreshSummary,
+      connectedRefreshExecution: connectedRefreshExecutionSummary,
+      exactRouteForkPackage: exactRouteForkSummary,
+      operationalJudgmentReview: operationalJudgmentSummary,
+    }),
+    "",
+    "## Strategy Snapshot",
+    "",
+    ...strategySnapshotLines(strategySnapshotSummary, strategySnapshot),
+    "",
+    "## Execution Runbook",
+    "",
+    ...executionRunbookLines(executionRunbookSummary, executionRunbook),
+    "",
+    "## Pre-live Validation",
+    "",
+    ...preliveValidationLines(preliveValidationSummary),
+    "",
+    "## Connected Refresh Package",
+    "",
+    ...connectedRefreshLines(connectedRefreshSummary),
+    ...connectedRefreshExecutionLines(connectedRefreshExecutionSummary),
+    ...currentRoutePrelivePassLines(currentRoutePrelivePassSummary),
+    "",
+    "## Exact-route Fork Package",
+    "",
+    ...exactRouteForkPackageLines(exactRouteForkSummary),
+    "",
+    "## Operational Judgment Review",
+    "",
+    ...operationalJudgmentLines(operationalJudgmentSummary, operationalJudgmentReview),
     "",
     "## Current Phase",
     "",
@@ -1106,6 +1631,18 @@ async function main() {
     "",
     ...pivotDecisionLines(pivotDecision),
     "",
+    "## Pivot Plan",
+    "",
+    ...pivotPlanLines(pivotPlanSummary),
+    "",
+    "## Yield Shadow Book",
+    "",
+    ...yieldShadowBookLines(yieldShadowSummary, yieldShadowBook.profiles || []),
+    "",
+    "## Proxy Coverage Plan",
+    "",
+    ...proxyCoveragePlanLines(proxyCoverageSummary, proxyCoveragePlan.plan || []),
+    "",
     "## Pre-live Readiness",
     "",
     ...preliveLines(prelive),
@@ -1134,6 +1671,7 @@ async function main() {
       routePlan,
       canaryInputs,
       resolved.address,
+      ethProfitability,
     ),
     quoteDecayLine(dashboardStatus?.audit),
     priceCoverageLine(dashboardStatus?.market),
@@ -1173,6 +1711,12 @@ async function main() {
     "- `src/prelive/readiness.mjs`",
     "- `src/prelive/review-package.mjs`",
     "- `src/prelive/evidence-campaign.mjs`",
+    "- `src/strategy/pivot-plan.mjs`",
+    "- `src/ledger/yield-shadow-book.mjs`",
+    "- `src/strategy/proxy-spread-coverage-plan.mjs`",
+    "- `src/cli/report-pivot-plan.mjs`",
+    "- `src/cli/report-yield-shadow-book.mjs`",
+    "- `src/cli/report-proxy-spread-coverage-plan.mjs`",
     "- `src/cli/run-prelive-simulations.mjs`",
     "- `src/cli/report-prelive-readiness.mjs`",
     "- `src/cli/build-prelive-review-package.mjs`",

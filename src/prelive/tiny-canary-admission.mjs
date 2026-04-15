@@ -18,6 +18,7 @@ function inputBlockers(inputFreshness = null) {
     const state = inputFreshness[field]?.state || null;
     if (state === "stale") return [`stale_${code}`];
     if (state === "missing") return [`missing_${code}`];
+    if (state === "blocked") return [`blocked_${code}`];
     return [];
   });
 }
