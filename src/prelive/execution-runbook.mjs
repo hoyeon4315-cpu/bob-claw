@@ -89,7 +89,15 @@ function cloneAction(action = null) {
   };
 }
 
+function strategyCandidateNextAction(reviewPackage = null) {
+  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForManualReview) return null;
+  return cloneAction(reviewPackage?.remediationPlan?.nextAction || candidate?.nextAction || null);
+}
+
 function shadowNextAction({ reviewPackage = null, problems = [], route = null, address = null } = {}) {
+  const strategyAction = strategyCandidateNextAction(reviewPackage);
+  if (strategyAction) return strategyAction;
   const refreshableProblem = problems.find((problem) => problem.state === "missing" || problem.state === "stale") || null;
   const blockedProblem = problems.find((problem) => problem.state === "blocked") || null;
   if (!refreshableProblem && blockedProblem) {
@@ -191,6 +199,8 @@ function reviewNextAction(reviewPackage = null) {
       manualStep: "Keep liveTrading BLOCKED and review the candidate manually before any architecture change.",
     };
   }
+  const strategyAction = strategyCandidateNextAction(reviewPackage);
+  if (strategyAction) return strategyAction;
   if (reviewPackage?.remediationPlan?.nextAction) {
     return cloneAction(reviewPackage.remediationPlan.nextAction);
   }

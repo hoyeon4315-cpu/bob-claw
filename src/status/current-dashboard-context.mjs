@@ -13,12 +13,20 @@ import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } fr
 import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
+import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocator-core.mjs";
+import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
+import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
+import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
+import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
+import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
+import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 
 export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
+  const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
   const [
     quoteFailures,
@@ -46,6 +54,15 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     triangleArtifacts,
     destinationAllocationPlan,
     destinationPromotionGate,
+    overfitAuditArtifact,
+    gasSlippageVariance,
+    laneReclassification,
+    strategyResearchBoard,
+    secondaryStrategyScaffolds,
+    flashFloorDecision,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    wrappedBtcLoopOosEvidence,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -72,8 +89,18 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readTriangleArtifacts(dataDir),
     readJsonIfExists(join(dataDir, "destination-allocation-plan.json")),
     readJsonIfExists(join(dataDir, "destination-promotion-gate.json")),
+    readJsonIfExists(join(dataDir, "overfit-audit-latest.json")),
+    readJsonIfExists(join(dataDir, "gas-slippage-variance-latest.json")),
+    readJsonIfExists(join(dataDir, "lane-reclassification.json")),
+    readJsonIfExists(join(dataDir, "strategy-research-board.json")),
+    readJsonIfExists(join(dataDir, "secondary-strategy-scaffolds.json")),
+    readJsonIfExists(join(dataDir, "flash-floor-decision.json")),
+    readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-slice.json")),
+    readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
+    readJsonIfExists(join(dataDir, "wrapped-btc-loop-oos-evidence.json")),
   ]);
 
+  const executorRuntime = await loadExecutorRuntime({ now });
   const dashboardStatus = buildDashboardStatus({
     routesRecords: state.routesRecords || [],
     quotes: state.quotes || [],
@@ -109,7 +136,8 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     dexSpreadLatest,
     thresholdSensitivity,
     triangleArtifacts,
-  });
+    executorRuntime,
+  }, { now });
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
   const canarySelectionGap = buildCanarySelectionGap({
@@ -123,7 +151,65 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     dashboardStatus,
     state,
     triangleArtifacts,
+    phase1Revalidation: {
+      overfitAuditArtifact,
+      gasSlippageVariance,
+      laneReclassification,
+    },
+    strategyResearchBoard,
+    secondaryStrategyScaffolds,
   });
+  const protocolTrustTiers = buildProtocolTrustTiers({
+    wrappedBtcLendingLoopSlice,
+    secondaryStrategyScaffolds,
+    now: dashboardStatus.generatedAt,
+  });
+  const searchComplexityBudgets = buildSearchComplexityBudgets({
+    secondaryStrategyScaffolds,
+    now: dashboardStatus.generatedAt,
+  });
+  const phase3StrategyValidation = buildPhase3StrategyValidation({
+    laneReclassification,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    wrappedBtcLoopOosEvidence,
+    secondaryStrategyScaffolds,
+    protocolTrustTiers,
+    resolveTrustTierDecision,
+    searchComplexityBudgets,
+    resolveSearchComplexityBudget,
+    now: dashboardStatus.generatedAt,
+  });
+  const protocolMarketWatchers = buildProtocolMarketWatchers({
+    dashboardStatus,
+    quoteLagLatest,
+    dexSpreadLatest,
+    wrappedBtcLendingLoopSlice,
+    phase3Validation: phase3StrategyValidation,
+    protocolTrustTiers,
+    secondaryStrategyScaffolds,
+    now: dashboardStatus.generatedAt,
+  });
+  const allocatorCore = buildAllocatorCore({
+    strategySnapshot,
+    phase3Validation: phase3StrategyValidation,
+    wrappedBtcLendingLoopSlice,
+    secondaryStrategyScaffolds,
+    protocolMarketWatchers,
+    now: dashboardStatus.generatedAt,
+  });
+  strategySnapshot.summary.phase3ValidationCount = phase3StrategyValidation.summary?.validationCount ?? 0;
+  strategySnapshot.summary.phase3PassedCount = phase3StrategyValidation.summary?.passedCount ?? 0;
+  strategySnapshot.summary.phase3TopBlockedId = phase3StrategyValidation.summary?.topBlockedId || null;
+  strategySnapshot.summary.allocatorCandidateCount = allocatorCore.summary?.candidateCount ?? 0;
+  strategySnapshot.summary.allocatorTopPlanningCandidateId = allocatorCore.summary?.topPlanningCandidateId || null;
+  strategySnapshot.summary.trustTierRecordedCount = protocolTrustTiers.summary?.recordedCount ?? 0;
+  strategySnapshot.summary.watcherBlockedCount = protocolMarketWatchers.summary?.blockedCount ?? 0;
+  strategySnapshot.summary.watcherTopBlockedId = protocolMarketWatchers.summary?.topBlockedId || null;
+  strategySnapshot.planningLayers.protocolTrustTiers = summarizeProtocolTrustTiers(protocolTrustTiers);
+  strategySnapshot.planningLayers.phase3StrategyValidation = summarizePhase3StrategyValidation(phase3StrategyValidation);
+  strategySnapshot.planningLayers.allocatorCore = summarizeAllocatorCore(allocatorCore);
+  strategySnapshot.planningLayers.protocolMarketWatchers = summarizeProtocolMarketWatchers(protocolMarketWatchers);
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
   const reviewPackage = buildPreliveReviewPackage({
     dashboardStatus,
@@ -133,6 +219,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     advanceCanary: dashboardStatus.canaryAdvance || null,
     address: state.address,
     strategySnapshot: dashboardStatus.strategy.strategySnapshot,
+    wrappedBtcLendingLoopSlice,
+    phase3Validation: phase3StrategyValidation,
+    protocolMarketWatchers,
     destinationAllocationPlan,
     destinationPromotionGate,
   });
@@ -188,6 +277,21 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     exactRouteForkPackage,
   });
   dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
+  const milestoneValidationGates = buildMilestoneValidationGates({
+    phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
+    strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
+    flashFloorDecision,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    preliveValidation,
+    now: dashboardStatus.generatedAt,
+  });
+  strategySnapshot.summary.milestoneOverallStatus = milestoneValidationGates.summary?.overallStatus || null;
+  strategySnapshot.summary.milestoneNextGateId = milestoneValidationGates.summary?.nextGateId || null;
+  strategySnapshot.planningLayers.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
+  strategySnapshot.artifacts.source.push({ kind: "milestone_validation_gates", path: "data/milestone-validation-gates.json" });
+  dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
+  dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   const operationalJudgmentReview = buildOperationalJudgmentReview({
     dashboardStatus,
     strategySnapshot,
@@ -267,6 +371,20 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       destinationAllocationPlan,
       destinationPromotionGate,
       triangleArtifacts,
+      overfitAuditArtifact,
+      gasSlippageVariance,
+      laneReclassification,
+      strategyResearchBoard,
+      secondaryStrategyScaffolds,
+      phase3StrategyValidation,
+      allocatorCore,
+      protocolTrustTiers,
+      protocolMarketWatchers,
+      flashFloorDecision,
+      wrappedBtcLendingLoopSlice,
+      wrappedBtcLoopDryRun,
+      wrappedBtcLoopOosEvidence,
+      milestoneValidationGates,
     },
   };
 }

@@ -40,7 +40,7 @@ test("tiny canary admission returns go-for-manual-approval when all gates clear"
   assert.equal(admission.status, "manual_approval_required");
   assert.deepEqual(admission.blockers, []);
   assert.equal(admission.nextActionCode, "manual_approval_required");
-  assert.equal(admission.constraints.canaryDailyLossCapUsd, 5);
+  assert.equal(admission.constraints.dailyLossCapUsd, null);
 });
 
 test("tiny canary admission blocks on stale inputs and readiness blockers", () => {
@@ -116,4 +116,73 @@ test("tiny canary admission treats blocked DEX coverage as a blocker", () => {
 
   assert.equal(admission.decision, "NO_GO");
   assert.equal(admission.blockers.includes("blocked_dex_quote"), true);
+});
+
+test("tiny canary admission supports strategy-level candidates", () => {
+  const blocked = buildTinyCanaryAdmission({
+    prelive: {
+      tinyLiveCanary: {
+        ready: false,
+        blockers: ["shadow_replay_not_ready"],
+      },
+    },
+    executionStage: {
+      reviewStage: "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewReasons: ["reject_no_net_edge"],
+    },
+    manualReviewCandidate: {
+      candidateType: "strategy",
+      candidateId: "wrapped-btc-loop-base-moonwell",
+      candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      amount: "300",
+      amountUnit: "usd_cap",
+      perTradeCapUsd: 300,
+      tradeReadiness: "strategy_evidence_blocked",
+      evidenceBlockers: ["signer_backed_oos_receipts_missing"],
+      reviewReady: false,
+      preliveReady: false,
+      nextAction: {
+        code: "collect_wrapped_btc_loop_oos_receipts",
+        command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+      },
+    },
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+  });
+
+  assert.equal(blocked.decision, "NO_GO");
+  assert.equal(blocked.blockers.includes("signer_backed_oos_receipts_missing"), true);
+  assert.equal(blocked.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+
+  const ready = buildTinyCanaryAdmission({
+    prelive: {
+      tinyLiveCanary: {
+        ready: false,
+        blockers: [],
+      },
+    },
+    executionStage: {
+      reviewStage: "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewReasons: [],
+    },
+    manualReviewCandidate: {
+      candidateType: "strategy",
+      candidateId: "wrapped-btc-loop-base-moonwell",
+      candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      amount: "300",
+      amountUnit: "usd_cap",
+      perTradeCapUsd: 300,
+      tradeReadiness: "strategy_candidate_review_only",
+      evidenceBlockers: [],
+      reviewReady: true,
+      preliveReady: true,
+    },
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+  });
+
+  assert.equal(ready.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(ready.candidate.candidateType, "strategy");
 });

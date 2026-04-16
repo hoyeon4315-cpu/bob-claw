@@ -46,6 +46,12 @@ async function main() {
 
   console.log(`currentStage=${report.currentStage}`);
   console.log(`liveTradingPolicy=${report.liveTradingPolicy}`);
+  console.log(
+    `primaryLane=${report.reviewPackage?.candidateLabel || report.reviewPackage?.candidateId || "n/a"} priority=primary status=${report.reviewPackage?.tradeReadiness || "n/a"} next=${report.reviewPackage?.tinyCanaryAdmissionNextActionCode || report.validation?.nextActionCode || "n/a"}`,
+  );
+  console.log(
+    `exactRouteLane=${(report.currentRoutePrelivePass?.provenCount ?? 0) > 0 ? "passed" : "blocked"} priority=secondary stop=${report.currentRoutePrelivePass?.latestStopReason || "n/a"} economic=${report.exactRouteForkPackage?.economicStatus || report.validation?.exactRouteForkEconomicStatus || "n/a"} next=${report.currentRoutePrelivePass?.nextAction?.code || "n/a"}`,
+  );
   console.log(`shadowReplay=${report.shadowReplay.status}`);
   console.log(`shadowReplayBlockers=${report.shadowReplay.blockers.join(",") || "none"}`);
   console.log(`mechanicalSimulation=${report.mechanicalSimulation.status}`);

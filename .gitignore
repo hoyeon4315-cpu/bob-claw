@@ -5,6 +5,8 @@ data/
 dist/
 coverage/
 *.log
+logs/
+state/
 .playwright-cli/
 .cloudflare/
 .wrangler/

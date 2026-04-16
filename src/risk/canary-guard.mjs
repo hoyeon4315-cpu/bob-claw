@@ -66,24 +66,24 @@ export async function canaryCheck({ mode = "canary", tradeProfit = 0, dryRun = t
   const dailyPnl = todayRecords.reduce((sum, r) => sum + (r.profit ?? 0), 0);
   const consecFails = countConsecutiveFailures(records);
 
-  const dailyLimit = mode === "canary"
-    ? policy.canaryDailyLossCapUsd
-    : policy.normalDailyLossCapUsd;
+  const dailyLimit = policy.dailyLossCapUsd;
 
   // Max consecutive failures
   if (consecFails >= policy.maxConsecutiveFailures) {
     return { allowed: false, reason: "max_consecutive_failures", dailyPnl, consecFails };
   }
 
-  // Daily loss cap (check if adding this trade would breach it)
-  if (dailyPnl <= -dailyLimit) {
+  // Daily loss cap (check if adding this trade would breach it).
+  // Skip when no project-level cap is configured (operator runs per-strategy).
+  if (Number.isFinite(dailyLimit) && dailyPnl <= -dailyLimit) {
     return { allowed: false, reason: "daily_loss_cap_reached", dailyPnl, consecFails };
   }
 
   // Per-trade minimum profit check.
   // NOTE: tradeProfit=0 is passed for pre-cycle checks (profit unknown yet).
   // Actual profit enforcement happens on-chain in BalancerFlashArb.sol (minProfitUsdc).
-  // This gate only blocks trades with a known negative expected value.
+  // This gate only blocks trades whose expected value is below the policy floor.
+  // With minNetProfitUsd=0 (current default), only strictly-negative tradeProfit blocks.
   if (!dryRun && tradeProfit !== 0 && tradeProfit < policy.minNetProfitUsd) {
     return { allowed: false, reason: "below_min_profit", dailyPnl, consecFails };
   }
@@ -119,11 +119,8 @@ export async function getCanaryStatus() {
   const consecFails = countConsecutiveFailures(records);
   const tradesTotal = todayRecords.length;
 
-  // Infer mode from recent activity — default to canary
   const mode = "canary";
-  const dailyLimit = mode === "canary"
-    ? policy.canaryDailyLossCapUsd
-    : policy.normalDailyLossCapUsd;
+  const dailyLimit = policy.dailyLossCapUsd;
 
   return {
     mode,

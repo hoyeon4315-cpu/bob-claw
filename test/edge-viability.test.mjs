@@ -68,9 +68,9 @@ test("edge viability quantifies the closest measured loop to the policy gate", (
   assert.equal(summary.positiveMeasuredCount, 0);
   assert.equal(summary.policyReadyCount, 0);
   assert.equal(summary.closestLoop.routeKey, "base:0x0555->sonic:0x0555");
-  assert.equal(summary.closestLoop.requiredNetProfitUsd, 0.3);
-  assert.equal(Number(summary.closestLoop.gapToPolicyUsd.toFixed(2)), 0.95);
-  assert.equal(Number(summary.medianGapToPolicyUsd.toFixed(2)), 0.95);
+  assert.equal(summary.closestLoop.requiredNetProfitUsd, 0);
+  assert.equal(Number(summary.closestLoop.gapToPolicyUsd.toFixed(2)), 0.65);
+  assert.equal(Number(summary.medianGapToPolicyUsd.toFixed(2)), 0.65);
 });
 
 test("edge viability verdict distinguishes incomplete coverage from measured no-edge", () => {

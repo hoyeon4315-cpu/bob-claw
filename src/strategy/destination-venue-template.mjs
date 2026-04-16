@@ -9,6 +9,7 @@ function recommendedInputMode(strategy = {}) {
 }
 
 function templateForStrategy(chain, strategy) {
+  const gate = strategy.gate ?? {};
   return {
     templateId: `${chain.chain}:${strategy.familyId}`,
     chain: chain.chain,
@@ -16,7 +17,7 @@ function templateForStrategy(chain, strategy) {
     label: strategy.label,
     category: strategy.category,
     actionType: strategy.actionType ?? null,
-    gateStatus: strategy.gate.status,
+    gateStatus: gate.status ?? "unknown",
     evidenceTier: strategy.evidenceTier,
     overfitRisk: strategy.overfitRisk,
     scoring: strategy.scoring,
@@ -48,8 +49,8 @@ function templateForStrategy(chain, strategy) {
       allowlistDecision: null,
     },
     blockers: strategy.blockerTags || [],
-    nextAction: strategy.gate.nextAction,
-    notes: strategy.gate.reasons || [],
+    nextAction: gate.nextAction ?? null,
+    notes: gate.reasons || [],
   };
 }
 
@@ -57,7 +58,7 @@ export function buildDestinationVenueTemplate({ gates = null } = {}) {
   const generatedAt = gates?.generatedAt || new Date().toISOString();
   const chains = (gates?.chains || []).map((chain) => {
     const templates = (chain.strategies || [])
-      .filter((strategy) => ["research_only", "ready_for_venue_scoring"].includes(strategy.gate.status))
+      .filter((strategy) => ["research_only", "ready_for_venue_scoring"].includes(strategy.gate?.status))
       .map((strategy) => templateForStrategy(chain, strategy));
 
     return {

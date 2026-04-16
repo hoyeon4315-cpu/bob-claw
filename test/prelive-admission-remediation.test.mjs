@@ -126,3 +126,45 @@ test("admission remediation plan preserves blocked DEX input as a hold action", 
   assert.equal(plan.nextAction.command, null);
   assert.equal(plan.items.some((item) => item.reason === "blocked_dex_quote"), true);
 });
+
+test("admission remediation plan prioritizes strategy-candidate receipts over blocked exact-route refreshes", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      readyForManualReview: false,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        amount: "300",
+        blockerReasons: ["signer_backed_oos_receipts_missing"],
+        evidenceBlockers: ["signer_backed_oos_receipts_missing"],
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+      tinyCanaryAdmission: {
+        blockers: ["signer_backed_oos_receipts_missing", "stale_gateway_quote"],
+      },
+      manualReviewCandidate: {
+        routeKey: "bob:0x0555->base:0x0555",
+        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        inputFreshness: {
+          gatewayQuote: { state: "stale" },
+          exactGas: { state: "stale" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "fresh" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.nextAction.code, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(plan.nextAction.command, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+  assert.equal(plan.items[0].code, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), true);
+  assert.equal(plan.items.some((item) => item.code === "refresh_exact_gas"), true);
+});

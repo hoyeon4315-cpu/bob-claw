@@ -19,6 +19,13 @@ function stripVolatile(value) {
   return stable;
 }
 
+function preliveValidationOutputPaths(dataDir) {
+  return [
+    join(dataDir, "prelive-validation-latest.json"),
+    join(dataDir, "prelive-validation.json"),
+  ];
+}
+
 function money(value) {
   if (!Number.isFinite(value)) return "n/a";
   return `$${value.toFixed(2)}`;
@@ -30,13 +37,14 @@ async function main() {
   const report = context.preliveValidation;
 
   if (args.write) {
-    const outputPath = join(config.dataDir, "prelive-validation-latest.json");
-    await writeTextIfChanged(outputPath, `${JSON.stringify(report, null, 2)}\n`, {
-      normalize: (contents) => {
-        if (!contents) return contents;
-        return JSON.stringify(stripVolatile(JSON.parse(contents)));
-      },
-    });
+    for (const outputPath of preliveValidationOutputPaths(config.dataDir)) {
+      await writeTextIfChanged(outputPath, `${JSON.stringify(report, null, 2)}\n`, {
+        normalize: (contents) => {
+          if (!contents) return contents;
+          return JSON.stringify(stripVolatile(JSON.parse(contents)));
+        },
+      });
+    }
   }
 
   if (args.json) {

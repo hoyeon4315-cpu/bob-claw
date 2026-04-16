@@ -189,6 +189,106 @@ test("prelive validation flips to manual review ready when all stages are comple
   assert.equal(report.readinessPct, 100);
 });
 
+test("prelive validation prefers the strategy candidate next action over blocked route hold", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: blockedDashboardStatus(),
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        {
+          id: "shadow_replay",
+          complete: false,
+          blockers: ["blocked_dex_quote"],
+          nextAction: {
+            code: "hold_dex_quote",
+            label: "hold on blocked DEX quote",
+            command: null,
+          },
+        },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 0,
+        blockedCount: 1,
+        readyForManualReview: false,
+        nextStageId: "shadow_replay",
+        nextActionCode: "hold_dex_quote",
+        nextActionCommand: null,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: false,
+      reviewBlockers: ["signer_backed_oos_receipts_missing"],
+      liveBlockers: [],
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_evidence_blocked",
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          label: "collect wrapped loop OOS receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+    },
+  });
+
+  assert.equal(report.summary.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(report.summary.nextActionCommand, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+});
+
+test("prelive validation can lift the strategy remediation next action from the review package", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: blockedDashboardStatus(),
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        {
+          id: "shadow_replay",
+          complete: false,
+          blockers: ["stale_gateway_quote"],
+          nextAction: {
+            code: "refresh_gateway_quote",
+            label: "refresh gateway quote",
+            command: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
+          },
+        },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 0,
+        blockedCount: 1,
+        readyForManualReview: false,
+        nextStageId: "shadow_replay",
+        nextActionCode: "refresh_gateway_quote",
+        nextActionCommand: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: false,
+      reviewBlockers: ["signer_backed_oos_receipts_missing"],
+      liveBlockers: [],
+      remediationPlan: {
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          label: "collect wrapped btc loop oos receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_evidence_blocked",
+      },
+    },
+  });
+
+  assert.equal(report.summary.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(report.summary.nextActionCommand, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+});
+
 test("prelive validation follows blocked current-route hold before queued refresh batch", () => {
   const runbook = buildExecutionRunbook({
     dashboardStatus: blockedDashboardStatus(),

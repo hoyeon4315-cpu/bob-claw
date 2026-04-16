@@ -39,7 +39,7 @@ async function main() {
     );
   }
 
-  for (const item of policy.tokenInventories) {
+  for (const item of policy.tokenInventories ?? []) {
     console.log(
       [
         `${item.chain}`,

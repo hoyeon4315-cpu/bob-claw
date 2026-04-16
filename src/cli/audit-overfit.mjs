@@ -1,20 +1,40 @@
 #!/usr/bin/env node
 
+import { join } from "node:path";
 import { config } from "../config/env.mjs";
-import { buildOverfitAudit, formatAudit } from "../audit/overfit.mjs";
-import { readJsonl } from "../lib/jsonl-read.mjs";
+import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
+import { buildOverfitAuditArtifact } from "../strategy/phase1-revalidation.mjs";
+import { formatAudit } from "../audit/overfit.mjs";
+
+function parseArgs(argv) {
+  const flags = new Set(argv);
+  return {
+    json: flags.has("--json"),
+    write: flags.has("--write"),
+  };
+}
 
 async function main() {
-  const [routesRecords, quotes, failures, gasSnapshots, gasFailures, shadowObservations] = await Promise.all([
-    readJsonl(config.dataDir, "gateway-routes"),
-    readJsonl(config.dataDir, "gateway-quotes"),
-    readJsonl(config.dataDir, "gateway-quote-failures"),
-    readJsonl(config.dataDir, "gas-snapshots"),
-    readJsonl(config.dataDir, "gas-snapshot-failures"),
-    readJsonl(config.dataDir, "gateway-shadow-observations"),
-  ]);
+  const args = parseArgs(process.argv.slice(2));
+  const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
+  const audit = context.dashboardStatus?.audit || null;
+  const artifact = buildOverfitAuditArtifact({
+    audit,
+    strategySnapshot: context.strategySnapshot,
+    now: context.dashboardStatus?.generatedAt || new Date().toISOString(),
+  });
 
-  const audit = buildOverfitAudit({ routesRecords, quotes, failures, gasSnapshots, gasFailures, shadowObservations });
+  if (args.write) {
+    const outputPath = join(config.dataDir, "overfit-audit-latest.json");
+    await writeTextIfChanged(outputPath, `${JSON.stringify(artifact, null, 2)}\n`);
+  }
+
+  if (args.json) {
+    console.log(JSON.stringify(artifact, null, 2));
+    return;
+  }
+
   console.log(formatAudit(audit));
 }
 

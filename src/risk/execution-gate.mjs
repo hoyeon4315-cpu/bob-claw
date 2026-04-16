@@ -10,6 +10,28 @@ function minutesAgo(timestamp, now) {
   return (new Date(now).getTime() - new Date(timestamp).getTime()) / 60_000;
 }
 
+function strategyPolicyFromJob(job = {}) {
+  return job.strategyPolicy || job.strategyConfig || null;
+}
+
+function isLeverageStrategy(job = {}, strategyPolicy = null) {
+  if (strategyPolicy?.isLeverage === true) return true;
+  const actionType = String(strategyPolicy?.actionType || job?.actionType || "").toLowerCase();
+  const strategyType = String(strategyPolicy?.strategyType || job?.strategyType || "").toLowerCase();
+  return actionType.includes("leverage") || actionType.includes("lending_loop") || strategyType.includes("leverage");
+}
+
+function missingLeverageFields(strategyPolicy = null) {
+  return [
+    "perTradeCapUsd",
+    "healthFactorMin",
+    "liquidationBufferPct",
+    "unwindTriggerHealthFactor",
+    "maxLoopIterations",
+    "maxLtvPct",
+  ].filter((field) => !isFiniteNumber(strategyPolicy?.[field]));
+}
+
 function latestTerminalStatuses(events = []) {
   return [...events]
     .filter((item) => ["confirmed", "failed"].includes(item.status))
@@ -67,17 +89,22 @@ export function buildExecutionRiskDecision({
   const blockers = [];
   const reviews = [];
   const warnings = [];
-  const dailyLossCapUsd = mode === "live" ? riskPolicy.canaryDailyLossCapUsd : riskPolicy.normalDailyLossCapUsd;
+  const dailyLossCapUsd = riskPolicy.dailyLossCapUsd;
   const effectiveNetPnlUsd = job.systemEconomics?.effectiveSystemNetPnlUsd;
   const routeNetPnlUsd = isFiniteNumber(job.systemEconomics?.routeExecutableNetEdgeUsd)
     ? job.systemEconomics.routeExecutableNetEdgeUsd
     : job.systemEconomics?.routeNetEdgeUsd;
   const routeInputUsd = job.systemEconomics?.routeInputUsd ?? null;
+  const strategyPolicy = strategyPolicyFromJob(job);
+  const strategyId = strategyPolicy?.id || job.strategyId || job.strategyLabel || null;
+  const perTradeCapUsd = strategyPolicy?.perTradeCapUsd ?? null;
+  const leverageStrategy = isLeverageStrategy(job, strategyPolicy);
+  const leverageMissingFields = leverageStrategy ? missingLeverageFields(strategyPolicy) : [];
 
-  if (riskState.projectLossUsedUsd >= riskPolicy.projectLossCapUsd) {
+  if (isFiniteNumber(riskPolicy.projectLossCapUsd) && riskState.projectLossUsedUsd >= riskPolicy.projectLossCapUsd) {
     blockers.push("project_loss_cap_reached");
   }
-  if (riskState.dailyRealizedPnlUsd <= -dailyLossCapUsd) {
+  if (isFiniteNumber(dailyLossCapUsd) && riskState.dailyRealizedPnlUsd <= -dailyLossCapUsd) {
     blockers.push("daily_loss_cap_reached");
   }
   if (riskState.failedGasCost24hUsd >= riskPolicy.maxFailedGasCost24hUsd) {
@@ -86,8 +113,41 @@ export function buildExecutionRiskDecision({
   if (riskState.consecutiveFailures >= riskPolicy.maxConsecutiveFailures) {
     blockers.push("max_consecutive_failures_reached");
   }
-  if (mode === "live" && isFiniteNumber(riskState.walletEstimatedUsd) && riskState.walletEstimatedUsd < riskPolicy.canaryWalletFloorUsd) {
+  if (mode === "live" && isFiniteNumber(riskPolicy.canaryWalletFloorUsd) && isFiniteNumber(riskState.walletEstimatedUsd) && riskState.walletEstimatedUsd < riskPolicy.canaryWalletFloorUsd) {
     blockers.push("wallet_floor_breached");
+  }
+  if (mode === "live" && strategyId && !strategyPolicy) {
+    blockers.push("strategy_policy_missing");
+  }
+  if (mode === "live" && (strategyPolicy || strategyId) && !isFiniteNumber(perTradeCapUsd)) {
+    blockers.push("strategy_per_trade_cap_missing");
+  }
+  if (mode === "live" && isFiniteNumber(perTradeCapUsd) && isFiniteNumber(routeInputUsd) && routeInputUsd > perTradeCapUsd) {
+    blockers.push("strategy_per_trade_cap_exceeded");
+  }
+  if (mode === "live" && leverageStrategy && riskPolicy.leverage?.allowed === false) {
+    blockers.push("leverage_policy_disabled");
+  }
+  if (mode === "live" && leverageStrategy && leverageMissingFields.length > 0) {
+    blockers.push("leverage_policy_fields_missing");
+  }
+  if (
+    mode === "live" &&
+    leverageStrategy &&
+    isFiniteNumber(strategyPolicy?.currentHealthFactor) &&
+    isFiniteNumber(strategyPolicy?.healthFactorMin) &&
+    strategyPolicy.currentHealthFactor < strategyPolicy.healthFactorMin
+  ) {
+    blockers.push("health_factor_below_min");
+  }
+  if (
+    mode === "live" &&
+    leverageStrategy &&
+    isFiniteNumber(strategyPolicy?.currentLiquidationBufferPct) &&
+    isFiniteNumber(strategyPolicy?.liquidationBufferPct) &&
+    strategyPolicy.currentLiquidationBufferPct < strategyPolicy.liquidationBufferPct
+  ) {
+    blockers.push("liquidation_buffer_below_min");
   }
 
   const ageMinutes = minutesAgo(job.createdAt || job.observedAt || now, now);
@@ -120,12 +180,20 @@ export function buildExecutionRiskDecision({
   if (isFiniteNumber(effectiveNetPnlUsd) && effectiveNetPnlUsd <= 0) {
     blockers.push("system_net_pnl_non_positive");
   }
-  if (isFiniteNumber(effectiveNetPnlUsd) && effectiveNetPnlUsd > 0 && effectiveNetPnlUsd < riskPolicy.minNetProfitUsd) {
+  // Profit-floor checks only apply when the policy actually sets a positive
+  // floor. minNetProfitUsd === 0 is the new default — any strictly-positive
+  // net PnL is allowed (`<= 0` is already caught above).
+  if (
+    isFiniteNumber(effectiveNetPnlUsd) &&
+    effectiveNetPnlUsd > 0 &&
+    riskPolicy.minNetProfitUsd > 0 &&
+    effectiveNetPnlUsd < riskPolicy.minNetProfitUsd
+  ) {
     blockers.push("system_net_pnl_below_min_profit");
   }
   if (isFiniteNumber(routeInputUsd) && routeInputUsd > 0 && isFiniteNumber(effectiveNetPnlUsd)) {
     const edgePct = effectiveNetPnlUsd / routeInputUsd;
-    if (edgePct < riskPolicy.minNetProfitPct) {
+    if (riskPolicy.minNetProfitPct > 0 && edgePct < riskPolicy.minNetProfitPct) {
       blockers.push("system_net_pnl_below_min_edge");
     }
   } else if (!isFiniteNumber(routeInputUsd) && isFiniteNumber(routeNetPnlUsd) && routeNetPnlUsd <= 0) {
@@ -151,6 +219,11 @@ export function buildExecutionRiskDecision({
       walletEstimatedUsd: riskState.walletEstimatedUsd,
       effectiveSystemNetPnlUsd: effectiveNetPnlUsd ?? null,
       routeNetPnlUsd: routeNetPnlUsd ?? null,
+      routeInputUsd: routeInputUsd ?? null,
+      strategyId,
+      strategyPerTradeCapUsd: perTradeCapUsd ?? null,
+      leverageStrategy,
+      missingLeverageFields: leverageMissingFields,
       ageMinutes,
     },
   };

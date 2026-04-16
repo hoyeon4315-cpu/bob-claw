@@ -26,6 +26,10 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error.stack || error.message);
+  if (error instanceof Error) {
+    console.error(error.stack || error.message);
+  } else {
+    console.error(String(error));
+  }
   process.exitCode = 1;
 });

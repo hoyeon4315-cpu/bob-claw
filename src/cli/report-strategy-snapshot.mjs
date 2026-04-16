@@ -49,6 +49,14 @@ async function main() {
   const topPivot = context.dashboardStatus?.strategy?.strategySnapshot?.topPivot || null;
   const topAction = context.dashboardStatus?.strategy?.strategySnapshot?.topAction || null;
   const capitalExpansion = context.dashboardStatus?.strategy?.strategySnapshot?.capitalExpansionReview || null;
+  const phase1Revalidation = context.dashboardStatus?.strategy?.strategySnapshot?.phase1Revalidation || null;
+  const researchBoard = context.dashboardStatus?.strategy?.strategySnapshot?.researchBoard || null;
+  const secondaryScaffolds = context.dashboardStatus?.strategy?.strategySnapshot?.secondaryStrategyScaffolds || null;
+  const phase3Validation = context.dashboardStatus?.strategy?.strategySnapshot?.phase3StrategyValidation || null;
+  const allocatorCore = context.dashboardStatus?.strategy?.strategySnapshot?.allocatorCore || null;
+  const protocolTrustTiers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolTrustTiers || null;
+  const protocolMarketWatchers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolMarketWatchers || null;
+  const milestoneValidation = context.dashboardStatus?.strategy?.strategySnapshot?.milestoneValidationGates || null;
 
   console.log(`implementedStrategies=${summary.implementedStrategyCount ?? 0}`);
   console.log(`candidateForValidation=${summary.candidateForValidationCount ?? 0}`);
@@ -67,6 +75,44 @@ async function main() {
   console.log(`topPivot=${topPivot?.id || "n/a"} status=${topPivot?.status || "n/a"}`);
   console.log(`yieldTopProfile=${summary.yieldTopProfileId || "n/a"}`);
   console.log(`proxyCoverageNext=${summary.proxyCoverageNextAction || "n/a"}`);
+  if (phase1Revalidation) {
+    console.log(
+      `phase1 overfit=${phase1Revalidation.overfitDecision || "n/a"} clearsNewFloor=${phase1Revalidation.clearsNewFloorCount ?? 0} varianceReadyRoutes=${phase1Revalidation.varianceReadyRouteCount ?? 0} candidateForValidation=${phase1Revalidation.candidateForValidationCount ?? 0}`,
+    );
+  }
+  if (researchBoard) {
+    console.log(
+      `research candidates=${researchBoard.candidateCount ?? 0} top=${researchBoard.topCandidate?.id || "n/a"} next=${researchBoard.nextAction?.code || "n/a"}`,
+    );
+  }
+  if (secondaryScaffolds) {
+    console.log(
+      `secondary scaffolds=${secondaryScaffolds.scaffoldCount ?? 0} top=${secondaryScaffolds.topScaffold?.id || "n/a"} next=${secondaryScaffolds.nextAction?.code || "n/a"}`,
+    );
+  }
+  if (phase3Validation) {
+    console.log(
+      `phase3 validations=${phase3Validation.validationCount ?? 0} passed=${phase3Validation.passedCount ?? 0} topBlocked=${phase3Validation.topBlocked?.id || "n/a"} next=${phase3Validation.nextAction?.code || "n/a"}`,
+    );
+  }
+  if (allocatorCore) {
+    console.log(
+      `allocator candidates=${allocatorCore.candidateCount ?? 0} active=${allocatorCore.activeAllocationCount ?? 0} planning=${allocatorCore.planningCandidateCount ?? 0} top=${allocatorCore.topPlanningCandidate?.id || "n/a"}`,
+    );
+  }
+  if (protocolTrustTiers) {
+    console.log(`trustTiers recorded=${protocolTrustTiers.recordedCount ?? 0} reviewRequired=${protocolTrustTiers.reviewRequiredCount ?? 0}`);
+  }
+  if (protocolMarketWatchers) {
+    console.log(
+      `watchers blocked=${protocolMarketWatchers.blockedCount ?? 0} observe=${protocolMarketWatchers.observeCount ?? 0} top=${protocolMarketWatchers.topBlocked?.id || "n/a"} next=${protocolMarketWatchers.nextAction?.code || "n/a"}`,
+    );
+  }
+  if (milestoneValidation) {
+    console.log(
+      `milestones overall=${milestoneValidation.overallStatus || "n/a"} passed=${milestoneValidation.passedCount ?? 0}/${milestoneValidation.gateCount ?? 0} next=${milestoneValidation.nextGate?.id || "n/a"}`,
+    );
+  }
   console.log(`nextAction=${topAction?.code || "n/a"} command=${topAction?.command || "n/a"}`);
 }
 

@@ -20,7 +20,23 @@ function warningsFor(strategySummary = null, dashboardStatus = null) {
   ]);
 }
 
+function candidateNextAction(reviewPackage = null) {
+  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  if (candidate?.candidateType === "strategy" && !reviewPackage?.readyForManualReview) {
+    const action = reviewPackage?.remediationPlan?.nextAction || candidate?.nextAction || null;
+    if (!action) return null;
+    return {
+      code: action.code || null,
+      label: action.label || null,
+      command: action.command || null,
+    };
+  }
+  return null;
+}
+
 function nextActionFrom(runbook = null, reviewPackage = null) {
+  const strategyCandidateAction = candidateNextAction(reviewPackage);
+  if (strategyCandidateAction) return strategyCandidateAction;
   const nextStage = runbook?.stages?.find((stage) => !stage.complete) || null;
   if (nextStage?.nextAction) {
     return {
@@ -71,6 +87,7 @@ export function buildPreliveValidationReport({
   const readinessPct = stageCount > 0 ? round((completeCount / stageCount) * 100) : 0;
   const readyForManualReview = Boolean(reviewPackage?.readyForManualReview || runbookSummary?.readyForManualReview);
   const validationStatus = readyForManualReview ? "ready_for_manual_review" : blockers.length ? "blocked" : "in_progress";
+  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
 
   return {
     schemaVersion: 1,
@@ -106,12 +123,15 @@ export function buildPreliveValidationReport({
       pivotId: strategySummary?.topPivot?.id || null,
       yieldTopProfileId: strategySummary?.yieldTopProfileId || null,
     },
-    manualReviewCandidate: reviewPackage?.manualReviewCandidate
+    manualReviewCandidate: candidate
       ? {
-          routeKey: reviewPackage.manualReviewCandidate.routeKey || null,
-          routeLabel: reviewPackage.manualReviewCandidate.routeLabel || null,
-          amount: reviewPackage.manualReviewCandidate.amount || null,
-          tradeReadiness: reviewPackage.manualReviewCandidate.tradeReadiness || null,
+          candidateType: candidate.candidateType || "route",
+          candidateId: candidate.candidateId || candidate.routeKey || null,
+          candidateLabel: candidate.candidateLabel || candidate.routeLabel || null,
+          routeKey: candidate.routeKey || null,
+          routeLabel: candidate.routeLabel || null,
+          amount: candidate.amount || null,
+          tradeReadiness: candidate.tradeReadiness || null,
         }
       : null,
     blockers,
@@ -119,7 +139,7 @@ export function buildPreliveValidationReport({
     nextAction,
     notes: [
       "Validation summarizes pre-live readiness only; it does not authorize live execution.",
-      "A planning budget lane does not replace the active USD 300 ring-fence.",
+      "A planning budget lane does not replace runtime gates, per-strategy caps, or measured positive-EV requirements.",
       "Treat all positive paper or measured signals as research until policy, decay, and pre-live gates all clear.",
     ],
   };

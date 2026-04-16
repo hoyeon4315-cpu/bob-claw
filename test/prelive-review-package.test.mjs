@@ -362,7 +362,7 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(reviewPackage.reviewDecision, "READY_FOR_MANUAL_CANARY_REVIEW");
   assert.deepEqual(reviewPackage.reviewBlockers, []);
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_MANUAL_APPROVAL");
-  assert.equal(reviewPackage.tinyCanaryAdmission.constraints.canaryDailyLossCapUsd, 5);
+  assert.equal(reviewPackage.tinyCanaryAdmission.constraints.dailyLossCapUsd, null);
   assert.equal(reviewPackage.manualReviewCandidate.routeLabel, "base->unichain wBTC.OFT->wBTC.OFT");
   assert.equal(summary.readyForManualReview, true);
   assert.equal(summary.packageStatus, "ready_for_manual_review");
@@ -380,6 +380,106 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(summary.strategySnapshotTopImplementedId, "stablecoin_entry_exit_loops");
   assert.equal(summary.executionRunbookNextActionCode, "manual_canary_review_only");
   assert.equal(summary.preliveValidationStatus, "ready_for_manual_review");
+});
+
+test("prelive review package can promote wrapped loop as the primary live candidate when the route path is structurally blocked", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-15T19:00:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: [],
+      },
+      shadowCycle: {
+        canaryDecision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+        headline: "Current exact route is structurally blocked",
+        topRoute: {
+          label: "avalanche->bera wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          tradeReadiness: "reject_no_net_edge",
+          netEdgeUsd: -0.4,
+        },
+      },
+      prelive: {
+        currentStage: "shadow_replay",
+        liveTradingPolicy: "BLOCKED",
+        tinyLiveCanary: {
+          ready: false,
+          blockers: ["shadow_replay_not_ready"],
+        },
+      },
+    },
+    canaryInputs: {
+      routeKey: "avalanche:0x0555->bera:0x0555",
+      routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
+      amount: "10000",
+      scoreTradeReadiness: "reject_no_net_edge",
+      blockers: ["reject_no_net_edge"],
+      gatewayQuote: { state: "fresh" },
+      exactGas: { state: "fresh" },
+      srcGas: { state: "fresh" },
+      dexQuote: { state: "blocked" },
+      bitcoinFee: { state: "not_required" },
+      marketSnapshot: { state: "fresh" },
+    },
+    nextStep: {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      headline: "Current exact route is structurally blocked",
+      reasons: ["reject_no_net_edge", "blocked_dex_quote"],
+      route: {
+        routeKey: "avalanche:0x0555->bera:0x0555",
+        label: "avalanche->bera wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        tradeReadiness: "reject_no_net_edge",
+      },
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        label: "Wrapped BTC lending loop (Base / Moonwell)",
+        strategyType: "leverage_lending_loop",
+        protocol: "moonwell",
+        chain: "base",
+        perTradeCapUsd: 300,
+      },
+      dryRunSummary: {
+        dryRunReceiptRecorded: true,
+        autoUnwindPassCount: 2,
+      },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          blockers: ["signer_backed_oos_receipts_missing"],
+          evidence: { oosEvidenceStatus: "simulated_window_ready" },
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts", command: "npm run ingest:wrapped-btc-loop-receipt -- --write" },
+        },
+      ],
+    },
+    protocolMarketWatchers: {
+      watchers: [
+        {
+          id: "wrapped_btc_loop_market_watch",
+          blockers: ["signer_backed_oos_receipts_missing"],
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts", command: "npm run ingest:wrapped-btc-loop-receipt -- --write" },
+        },
+      ],
+    },
+  });
+  const summary = summarizePreliveReviewPackage(reviewPackage);
+
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "wrapped-btc-loop-base-moonwell");
+  assert.equal(reviewPackage.tinyCanaryAdmission.candidate.candidateType, "strategy");
+  assert.equal(reviewPackage.tinyCanaryAdmission.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(reviewPackage.remediationPlan.nextAction.code, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(reviewPackage.remediationPlan.nextAction.command, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+  assert.equal(reviewPackage.remediationPlan.items.some((item) => item.code === "hold_dexQuote"), true);
+  assert.equal(summary.candidateType, "strategy");
+  assert.equal(summary.remediationPlan.nextAction.code, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(summary.remediationPlan.nextAction.command, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+  assert.equal(reviewPackage.readyForManualReview, false);
 });
 
 test("prelive review package carries ETH profitability as observe-only review context", () => {

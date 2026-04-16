@@ -140,7 +140,7 @@ test("strategy pivot plan explains the USD 300 budget and builds a deterministic
   assert.equal(plan.currentSystem.liveTrading, "BLOCKED");
   assert.equal(plan.currentSystem.riskBudgetUsd, 300);
   assert.equal(plan.budgetAssessment.currentBudgetUsd, 300);
-  assert.match(plan.budgetAssessment.explanation[0], /safety budget/i);
+  assert.match(plan.budgetAssessment.explanation[0], /per-strategy/i);
   assert.deepEqual(
     plan.budgetAssessment.budgetScenarios.map((scenario) => [scenario.budgetUsd, scenario.planningOnly]),
     [

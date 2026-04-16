@@ -260,6 +260,13 @@ export class OdosClient {
     return this.#postJson("/sor/quote/v3", body);
   }
 
+  async assemble({ pathId, userAddr }) {
+    return this.#postJson("/sor/assemble", {
+      pathId,
+      userAddr,
+    });
+  }
+
   async #getJson(path) {
     const startedAt = Date.now();
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -352,5 +359,19 @@ export function normalizeOdosQuote({
     routingMode: routing.routingMode,
     executionTrust: routing.executionTrust,
     latencyMs: result.latencyMs,
+  };
+}
+
+export function attachOdosAssembly(quote, result) {
+  const transaction = result?.body?.transaction || {};
+  const txData = transaction.data || null;
+  return {
+    ...quote,
+    txTo: transaction.to || null,
+    txData,
+    txValueWei: String(transaction.value ?? "0"),
+    txGasLimit: transaction.gas ?? transaction.gasLimit ?? null,
+    txDataBytes: txData ? Math.max(0, (txData.length - 2) / 2) : null,
+    assembleLatencyMs: result?.latencyMs ?? null,
   };
 }

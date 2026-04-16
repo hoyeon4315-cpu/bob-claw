@@ -22,7 +22,8 @@ function researchAdjustment(item = {}) {
 }
 
 function priority(item = {}, researchItem = null) {
-  const baseScore = Number(item.score || 0);
+  const parsedScore = Number(item.score);
+  const baseScore = Number.isFinite(parsedScore) ? parsedScore : 0;
   const missingPenalty = neededFields(item).length * 0.005;
   const chainBoost = {
     base: 0.03,

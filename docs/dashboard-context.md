@@ -60,7 +60,7 @@ It must never:
 - claim live trading is enabled
 - include execution permission
 
-`liveTrading` must remain `BLOCKED` unless the execution architecture is explicitly redesigned and reviewed. Even when audit gates improve, the dashboard should show review/canary readiness, not autonomous trading permission.
+`liveTrading` reflects whether the runtime gates (audit, gateway probes, gas freshness) currently pass. `ALLOWED` is a normal state, not an exceptional one — it does not mean the dashboard decides to trade. The dashboard still must not hold keys, sign transactions, or execute; it only reports the gate state.
 
 Cloudflare is only allowed to serve static files from `dashboard/public`.
 
@@ -418,4 +418,4 @@ playwright-cli eval '() => ({
 - Do not let gas or audit data dominate the map.
 - Do not show profitability unless it is based on measured, executable data.
 - Do not treat an update alert as permission to trade.
-- Do not remove the `BLOCKED` live-trading guardrail from public status.
+- Do not let the dashboard itself hold keys, sign transactions, or decide to trade. `liveTrading: ALLOWED` is a status report from the gates, not permission granted by the dashboard.

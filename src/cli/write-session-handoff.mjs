@@ -35,6 +35,7 @@ import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildEthProfitabilitySummary, buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
 import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
 import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "../strategy/proxy-spread-coverage-plan.mjs";
+import { buildWrappedBtcLoopReceiptGuide } from "../strategy/wrapped-btc-lending-loop-dry-run.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildPivotDecisionSummary, buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
@@ -554,7 +555,7 @@ function canaryInputsLines(summary) {
 
 function preliveReviewPackageLines(reviewPackage = null) {
   if (!reviewPackage) return ["- Review package unavailable"];
-  const candidate = reviewPackage.manualReviewCandidate || null;
+  const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.manualReviewCandidate || null;
   const leader = reviewPackage.measuredLeaderReview || null;
   const lines = [
     `- Summary: status=\`${reviewPackage.packageStatus || "unknown"}\` review=\`${reviewPackage.reviewDecision || "unknown"}\` live=\`${reviewPackage.liveDecision || "unknown"}\` stage=\`${reviewPackage.currentStage || "unknown"}\` blockers=${reviewPackage.reviewBlockers.join(",") || "none"}`,
@@ -575,6 +576,11 @@ function preliveReviewPackageLines(reviewPackage = null) {
       lines.push(
         `- Admission next action: \`${reviewPackage.remediationPlan.nextAction.code || "unknown"}\` status=\`${reviewPackage.remediationPlan.nextAction.status || "unknown"}\`${reviewPackage.remediationPlan.nextAction.command ? ` command=\`${reviewPackage.remediationPlan.nextAction.command}\`` : ""}`,
       );
+      if (reviewPackage.remediationPlan.nextAction.code === "collect_wrapped_btc_loop_oos_receipts") {
+        const receiptGuide = buildWrappedBtcLoopReceiptGuide();
+        lines.push(`- Wrapped-loop receipt template: \`${receiptGuide.sampleCommand}\``);
+        lines.push(`- Wrapped-loop receipt fields: ${receiptGuide.requiredFields.join(", ")}`);
+      }
     }
     lines.push(
       ...(reviewPackage.remediationPlan.items || []).slice(0, 3).map(
@@ -585,7 +591,7 @@ function preliveReviewPackageLines(reviewPackage = null) {
   }
   if (candidate) {
     lines.push(
-      `- Manual review candidate: route=\`${candidate.routeLabel || candidate.routeKey || "unknown"}\` amount=\`${candidate.amount || "n/a"}\` readiness=\`${candidate.tradeReadiness || "unknown"}\` net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} txReady=${candidate.txReady} viableForPrep=${candidate.viableForPrep}`,
+      `- Manual review candidate: target=\`${candidate.candidateLabel || candidate.routeLabel || candidate.candidateId || candidate.routeKey || "unknown"}\` amount=\`${candidate.amount || "n/a"}\` readiness=\`${candidate.tradeReadiness || "unknown"}\` net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} txReady=${candidate.txReady} viableForPrep=${candidate.viableForPrep}`,
     );
     if (candidate.inputFreshness) {
       lines.push(
@@ -601,7 +607,7 @@ function preliveReviewPackageLines(reviewPackage = null) {
     }
     if (reviewPackage.tinyCanaryAdmission?.constraints) {
       lines.push(
-        `- Admission constraints: livePolicy=\`${reviewPackage.tinyCanaryAdmission.constraints.liveTradingPolicy || "unknown"}\` ring=\`${reviewPackage.tinyCanaryAdmission.constraints.riskBudgetUsd || "n/a"}\` dailyLoss=\`${reviewPackage.tinyCanaryAdmission.constraints.canaryDailyLossCapUsd || "n/a"}\` walletFloor=\`${reviewPackage.tinyCanaryAdmission.constraints.canaryWalletFloorUsd || "n/a"}\` minProfit=\`${reviewPackage.tinyCanaryAdmission.constraints.minNetProfitUsd || "n/a"}\` minEdge=\`${reviewPackage.tinyCanaryAdmission.constraints.minNetProfitPct || "n/a"}\``,
+        `- Admission constraints: livePolicy=\`${reviewPackage.tinyCanaryAdmission.constraints.liveTradingPolicy || "unknown"}\` ring=\`${reviewPackage.tinyCanaryAdmission.constraints.riskBudgetUsd ?? "n/a"}\` dailyLoss=\`${reviewPackage.tinyCanaryAdmission.constraints.dailyLossCapUsd ?? "n/a"}\` walletFloor=\`${reviewPackage.tinyCanaryAdmission.constraints.canaryWalletFloorUsd ?? "n/a"}\` minProfit=\`${reviewPackage.tinyCanaryAdmission.constraints.minNetProfitUsd ?? "n/a"}\` minEdge=\`${reviewPackage.tinyCanaryAdmission.constraints.minNetProfitPct ?? "n/a"}\``,
       );
     }
     lines.push(

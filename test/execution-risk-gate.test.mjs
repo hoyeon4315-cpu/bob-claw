@@ -107,7 +107,15 @@ test("risk gate blocks jobs when economics or limits fail", () => {
         { observedAt: "2026-04-11T06:05:00.000Z", status: "failed" },
       ],
     }),
-    riskPolicy: buildDefaultRiskPolicy(),
+    // Override the default policy with explicit caps so this test still
+    // exercises the "gate enforces limits when configured" path. The project
+    // default no longer sets these caps.
+    riskPolicy: {
+      ...buildDefaultRiskPolicy(),
+      projectLossCapUsd: 300,
+      dailyLossCapUsd: 5,
+      canaryWalletFloorUsd: 250,
+    },
     mode: "live",
     now: "2026-04-11T06:10:00.000Z",
   });
@@ -149,4 +157,111 @@ test("risk gate returns review for conditional/manual funding without hard block
   assert.equal(decision.reviews.includes("reserve_state_unmodelled"), true);
   assert.equal(decision.reviews.includes("manual_funding_dependency"), true);
   assert.equal(decision.reviews.includes("bootstrap_native_required"), true);
+});
+
+test("live risk gate blocks strategy jobs without a declared per-trade cap", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      strategyId: "wrapped-btc-loop",
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "BLOCKED");
+  assert.equal(decision.blockers.includes("strategy_policy_missing"), true);
+  assert.equal(decision.blockers.includes("strategy_per_trade_cap_missing"), true);
+});
+
+test("live risk gate blocks when strategy per-trade cap is exceeded", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      strategyPolicy: {
+        id: "wrapped-btc-loop",
+        perTradeCapUsd: 5,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "BLOCKED");
+  assert.equal(decision.blockers.includes("strategy_per_trade_cap_exceeded"), true);
+});
+
+test("live risk gate blocks leverage jobs with missing unwind and health controls", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      strategyPolicy: {
+        id: "wrapped-btc-loop",
+        isLeverage: true,
+        perTradeCapUsd: 25,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "BLOCKED");
+  assert.equal(decision.blockers.includes("leverage_policy_fields_missing"), true);
+  assert.deepEqual(decision.metrics.missingLeverageFields, [
+    "healthFactorMin",
+    "liquidationBufferPct",
+    "unwindTriggerHealthFactor",
+    "maxLoopIterations",
+    "maxLtvPct",
+  ]);
+});
+
+test("live risk gate blocks leverage jobs when current health buffers are already breached", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      strategyPolicy: {
+        id: "wrapped-btc-loop",
+        isLeverage: true,
+        perTradeCapUsd: 25,
+        healthFactorMin: 1.35,
+        liquidationBufferPct: 12,
+        unwindTriggerHealthFactor: 1.3,
+        maxLoopIterations: 4,
+        maxLtvPct: 62,
+        currentHealthFactor: 1.29,
+        currentLiquidationBufferPct: 9,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "BLOCKED");
+  assert.equal(decision.blockers.includes("health_factor_below_min"), true);
+  assert.equal(decision.blockers.includes("liquidation_buffer_below_min"), true);
 });

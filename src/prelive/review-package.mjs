@@ -14,6 +14,14 @@ function sameCandidate(candidate, canaryInputs) {
   return false;
 }
 
+function validationById(report = null, id = null) {
+  return (report?.validations || []).find((item) => item.id === id) || null;
+}
+
+function watcherById(report = null, id = null) {
+  return (report?.watchers || []).find((item) => item.id === id) || null;
+}
+
 function matchedCanaryCandidate(dashboardStatus = null, canaryInputs = null) {
   return (dashboardStatus?.shadowCycle?.shadowRoster?.candidates || []).find((candidate) => sameCandidate(candidate, canaryInputs)) || null;
 }
@@ -74,6 +82,78 @@ function buildManualReviewCandidate({ dashboardStatus = null, canaryInputs = nul
   };
 }
 
+function inputStates(inputFreshness = null) {
+  if (!inputFreshness) return [];
+  return Object.values(inputFreshness)
+    .map((item) => item?.state || null)
+    .filter(Boolean);
+}
+
+function isRouteStructurallyBlocked(candidate = null) {
+  const tradeReadiness = String(candidate?.tradeReadiness || "");
+  return (
+    tradeReadiness.startsWith("reject_") ||
+    (candidate?.blockerReasons || []).some((item) => String(item || "").startsWith("reject_")) ||
+    inputStates(candidate?.inputFreshness).includes("blocked")
+  );
+}
+
+function isRouteReviewReady(candidate = null) {
+  return (
+    ["shadow_candidate_review_only", "review_only_canary_candidate"].includes(candidate?.tradeReadiness) &&
+    !inputStates(candidate?.inputFreshness).includes("blocked")
+  );
+}
+
+function buildWrappedLoopLiveCandidate({
+  wrappedBtcLendingLoopSlice = null,
+  phase3Validation = null,
+  protocolMarketWatchers = null,
+} = {}) {
+  const strategy = wrappedBtcLendingLoopSlice?.strategy || null;
+  if (!strategy?.id) return null;
+  const validation = validationById(phase3Validation, "wrapped_btc_loop_validation");
+  const watcher = watcherById(protocolMarketWatchers, "wrapped_btc_loop_market_watch");
+  const blockerReasons = unique([...(validation?.blockers || []), ...(watcher?.blockers || [])]);
+  const perTradeCapUsd = strategy?.perTradeCapUsd ?? null;
+  const reviewReady = blockerReasons.length === 0 && wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true;
+  return {
+    candidateType: "strategy",
+    candidateId: strategy.id,
+    candidateLabel: strategy.label || strategy.id,
+    routeKey: null,
+    routeLabel: null,
+    address: null,
+    amount: Number.isFinite(perTradeCapUsd) ? String(perTradeCapUsd) : null,
+    amountUnit: "usd_cap",
+    perTradeCapUsd,
+    tradeReadiness: reviewReady ? "strategy_candidate_review_only" : "strategy_evidence_blocked",
+    viableForPrep: reviewReady,
+    txReady: reviewReady,
+    blockerReasons,
+    evidenceBlockers: blockerReasons,
+    inputFreshness: null,
+    nextAction: watcher?.nextAction || validation?.nextAction || null,
+    reviewReady,
+    preliveReady: reviewReady,
+    evidence: {
+      strategyId: strategy.id,
+      strategyType: strategy.strategyType || null,
+      chain: strategy.chain || null,
+      protocol: strategy.protocol || null,
+      dryRunReceiptRecorded: wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true,
+      autoUnwindPassCount: wrappedBtcLendingLoopSlice?.dryRunSummary?.autoUnwindPassCount ?? 0,
+      oosEvidenceStatus: validation?.evidence?.oosEvidenceStatus || null,
+    },
+  };
+}
+
+function selectPrimaryLiveCandidate({ manualReviewCandidate = null, wrappedLoopLiveCandidate = null } = {}) {
+  if (isRouteReviewReady(manualReviewCandidate)) return manualReviewCandidate;
+  if (isRouteStructurallyBlocked(manualReviewCandidate) && wrappedLoopLiveCandidate) return wrappedLoopLiveCandidate;
+  return manualReviewCandidate || wrappedLoopLiveCandidate || null;
+}
+
 function buildMeasuredLeaderReview({ canarySelectionGap = null, executionReview = null } = {}) {
   const measuredLeader = canarySelectionGap?.measuredLeader || null;
   const reviewPlan = canarySelectionGap?.reviewPlan || null;
@@ -116,6 +196,25 @@ function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview 
       ? "The measured leader and the current canary can diverge; keep them separate until the measured leader clears objective review."
       : null,
   ]);
+}
+
+function buildStrategyCandidateChecklist(candidate = null) {
+  if (candidate?.candidateType !== "strategy") return null;
+  const blockerReasons = candidate?.blockerReasons || [];
+  return {
+    completed: unique([
+      "primary live strategy selected",
+      Number.isFinite(candidate?.perTradeCapUsd) ? "per-trade cap declared" : null,
+      candidate?.evidence?.dryRunReceiptRecorded ? "dry-run receipt recorded" : null,
+      (candidate?.evidence?.autoUnwindPassCount || 0) > 0 ? "auto-unwind path simulated" : null,
+    ]),
+    remaining: unique([
+      blockerReasons.includes("signer_backed_oos_receipts_missing") ? "ingest signer-backed wrapped-loop receipts" : null,
+      blockerReasons.length ? `clear strategy evidence blockers (${blockerReasons.join(",")})` : null,
+      "submit signer/executor-backed canary and reconcile receipts",
+      "manual approval before live canary",
+    ]),
+  };
 }
 
 function buildEthFamilyObservation(dashboardStatus = null) {
@@ -237,6 +336,9 @@ export function buildPreliveReviewPackage({
   connectedRefreshPackage = null,
   exactRouteForkPackage = null,
   operationalJudgmentReview = null,
+  wrappedBtcLendingLoopSlice = null,
+  phase3Validation = null,
+  protocolMarketWatchers = null,
   destinationAllocationPlan = null,
   destinationPromotionGate = null,
   now = null,
@@ -262,6 +364,16 @@ export function buildPreliveReviewPackage({
     nextStep,
     address,
   });
+  const wrappedLoopLiveCandidate = buildWrappedLoopLiveCandidate({
+    wrappedBtcLendingLoopSlice,
+    phase3Validation,
+    protocolMarketWatchers,
+  });
+  const primaryLiveCandidate = selectPrimaryLiveCandidate({
+    manualReviewCandidate,
+    wrappedLoopLiveCandidate,
+  });
+  const strategyChecklist = buildStrategyCandidateChecklist(primaryLiveCandidate);
   const measuredLeaderReview = buildMeasuredLeaderReview({
     canarySelectionGap,
     executionReview: dashboardStatus?.shadowCycle?.objectivePlans?.executionReview || null,
@@ -270,7 +382,7 @@ export function buildPreliveReviewPackage({
   const tinyCanaryAdmission = buildTinyCanaryAdmission({
     prelive,
     executionStage,
-    manualReviewCandidate,
+    manualReviewCandidate: primaryLiveCandidate || manualReviewCandidate,
     overall: dashboardStatus?.overall || null,
   });
   const ethFamilyObservation = buildEthFamilyObservation(dashboardStatus);
@@ -313,11 +425,12 @@ export function buildPreliveReviewPackage({
       headline: nextStep?.headline || dashboardStatus?.canaryAdvance?.final?.headline || dashboardStatus?.shadowCycle?.headline || null,
       reasons: nextStep?.reasons || [],
     },
+    primaryLiveCandidate,
     manualReviewCandidate,
     measuredLeaderReview,
     ethFamilyObservation,
     ethFamilyProfitability,
-    operatorChecklist: checklist,
+    operatorChecklist: strategyChecklist || checklist,
     preliveEvidence: {
       shadowReplay: prelive?.shadowReplay
         ? {
@@ -392,6 +505,7 @@ export function buildPreliveReviewPackage({
 
 export function summarizePreliveReviewPackage(reviewPackage = null) {
   if (!reviewPackage) return null;
+  const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.manualReviewCandidate || null;
   return {
     generatedAt: reviewPackage.generatedAt || null,
     packageStatus: reviewPackage.packageStatus || null,
@@ -406,10 +520,13 @@ export function summarizePreliveReviewPackage(reviewPackage = null) {
     tinyCanaryAdmissionBlockers: reviewPackage.tinyCanaryAdmission?.blockers || [],
     tinyCanaryAdmissionNextActionCode: reviewPackage.tinyCanaryAdmission?.nextActionCode || null,
     remediationPlan: summarizeAdmissionRemediationPlan(reviewPackage.remediationPlan || null),
-    routeLabel: reviewPackage.manualReviewCandidate?.routeLabel || null,
-    routeKey: reviewPackage.manualReviewCandidate?.routeKey || null,
-    amount: reviewPackage.manualReviewCandidate?.amount || null,
-    tradeReadiness: reviewPackage.manualReviewCandidate?.tradeReadiness || null,
+    candidateType: candidate?.candidateType || (candidate ? "route" : null),
+    candidateId: candidate?.candidateId || candidate?.routeKey || null,
+    candidateLabel: candidate?.candidateLabel || candidate?.routeLabel || null,
+    routeLabel: candidate?.routeLabel || null,
+    routeKey: candidate?.routeKey || null,
+    amount: candidate?.amount || null,
+    tradeReadiness: candidate?.tradeReadiness || null,
     simulationSuccessCount: reviewPackage.preliveEvidence?.mechanicalSimulation?.successCount ?? 0,
     simulationTargetCount: reviewPackage.preliveEvidence?.mechanicalSimulation?.targetSuccessCount ?? 0,
     forkConfirmedCount: reviewPackage.preliveEvidence?.forkExecution?.confirmedCount ?? 0,

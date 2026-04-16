@@ -145,14 +145,13 @@ function buildPolicyContext({ dashboardStatus = null, riskPolicy, treasuryPolicy
     liveTrading: dashboardStatus?.overall?.liveTrading || "BLOCKED",
     preliveStage: dashboardStatus?.prelive?.currentStage || null,
     riskBudgetUsd: round(treasuryPolicy.capital.riskBudgetUsd),
-    projectLossCapUsd: round(riskPolicy.projectLossCapUsd),
-    normalDailyLossCapUsd: round(riskPolicy.normalDailyLossCapUsd),
-    canaryDailyLossCapUsd: round(riskPolicy.canaryDailyLossCapUsd),
+    projectLossCapUsd: riskPolicy.projectLossCapUsd == null ? null : round(riskPolicy.projectLossCapUsd),
+    dailyLossCapUsd: riskPolicy.dailyLossCapUsd == null ? null : round(riskPolicy.dailyLossCapUsd),
     minNetProfitUsd: round(riskPolicy.minNetProfitUsd),
     minNetProfitPct: round(riskPolicy.minNetProfitPct, 6),
-    canaryWalletFloorUsd: round(riskPolicy.canaryWalletFloorUsd),
+    canaryWalletFloorUsd: riskPolicy.canaryWalletFloorUsd == null ? null : round(riskPolicy.canaryWalletFloorUsd),
     activeChains: treasuryPolicy.activeChains || [],
-    ethereumL1: "observe_only_until_reapproved",
+    ethereumL1: "allowed_when_positive_ev",
   };
 }
 
@@ -512,12 +511,11 @@ function buildBudgetAssessment({ riskPolicy, treasuryPolicy, pivots = [], planni
   return {
     currentBudgetUsd: round(budgetUsd),
     budgetScenarios,
-    projectLossCapUsd: round(riskPolicy.projectLossCapUsd),
+    projectLossCapUsd: riskPolicy.projectLossCapUsd == null ? null : round(riskPolicy.projectLossCapUsd),
     explanation: [
-      "USD 300 is the configured safety budget and loss cap, not a claim that every viable strategy should naturally fit inside USD 300.",
-      "Only strategies with measured, repeatable edge should earn a larger bankroll; unproven edge should not pull the capital ceiling upward.",
-      "External pivots may have a higher default operating floor than the current ring-fence even when a tiny research pilot still fits inside it.",
-      "USD 1000 may be evaluated as a planning scenario, but it does not replace the active USD 300 live ring-fence until evidence justifies expansion.",
+      "Capital sizing is per-strategy: each strategy declares its own per-trade and daily caps; there is no project-wide loss cap by default.",
+      "Only strategies with measured, repeatable edge should earn a larger allocation; unproven edge should not pull the allocation upward.",
+      "Planning-budget scenarios are evaluation tools and do not themselves authorize larger operating capital.",
     ],
     pivotCapitalReview: pivots.map((pivot) => ({
       id: pivot.id,

@@ -67,8 +67,11 @@ async function main() {
       );
     }
   }
-  if (report.manualReviewCandidate) {
-    console.log(`candidate=${report.manualReviewCandidate.routeLabel} amount=${report.manualReviewCandidate.amount} readiness=${report.manualReviewCandidate.tradeReadiness}`);
+  const candidate = report.primaryLiveCandidate || report.manualReviewCandidate || null;
+  if (candidate) {
+    console.log(
+      `candidate=${candidate.candidateLabel || candidate.routeLabel || candidate.routeKey || candidate.candidateId} amount=${candidate.amount || "n/a"} readiness=${candidate.tradeReadiness}`,
+    );
   }
   if (report.measuredLeaderReview) {
     console.log(`measuredLeader=${report.measuredLeaderReview.routeLabel || report.measuredLeaderReview.routeKey} next=${report.measuredLeaderReview.nextActionCode || "none"}`);

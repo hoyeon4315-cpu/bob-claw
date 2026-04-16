@@ -5,19 +5,43 @@ export class GatewayClient {
   }
 
   async getRoutes() {
-    return this.#getJson("/v1/get-routes");
+    return this.#requestJson("/v1/get-routes");
   }
 
   async getQuote(params) {
     const query = new URLSearchParams(params);
-    return this.#getJson(`/v1/get-quote?${query.toString()}`);
+    return this.#requestJson(`/v1/get-quote?${query.toString()}`);
   }
 
-  async #getJson(path) {
+  async createOrder(quote) {
+    return this.#requestJson("/v1/create-order", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(quote),
+    });
+  }
+
+  async registerTx(payload) {
+    return this.#requestJson("/v1/register-tx", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async #requestJson(path, init = {}) {
     const startedAt = Date.now();
     const url = `${this.baseUrl}${path}`;
     const response = await this.fetchImpl(url, {
-      headers: { accept: "application/json" },
+      ...init,
+      headers: {
+        accept: "application/json",
+        ...(init.headers || {}),
+      },
       signal: AbortSignal.timeout(20_000),
     });
     const latencyMs = Date.now() - startedAt;

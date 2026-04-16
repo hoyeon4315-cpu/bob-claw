@@ -8,9 +8,9 @@ function byTemplateId(items = []) {
 }
 
 function measurementMode(item = {}) {
-  if (item.category === "yield" && item.familyId.includes("lending")) return "lending_snapshot";
-  if (item.category === "yield" && item.familyId.includes("lp")) return "lp_snapshot";
-  if (item.category === "yield" && item.familyId.includes("yield")) return "vault_snapshot";
+  if (item.category === "yield" && item.familyId?.includes("lending")) return "lending_snapshot";
+  if (item.category === "yield" && item.familyId?.includes("lp")) return "lp_snapshot";
+  if (item.category === "yield" && item.familyId?.includes("yield")) return "vault_snapshot";
   if (item.category === "arbitrage") return "spread_snapshot";
   return "manual_snapshot";
 }

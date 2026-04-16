@@ -1,368 +1,96 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="light">
-    <title>BOB Claw</title>
+    <meta name="color-scheme" content="dark">
+    <title>BOB CLAW</title>
     <link rel="icon" href="./favicon.ico">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <main class="shell">
-      <section class="stage" aria-label="BOB Gateway asset flow map">
-        <div class="stage-top">
-          <div class="brand-lockup">
-            <img class="brand-mascot" src="./assets/branding/bob-claw-mascot.jpg" alt="BOB Claw mascot">
-            <div>
-              <p class="eyebrow">BOB Gateway Radar</p>
-              <h1>Gateway Flow Map</h1>
-              <p id="stageSummaryCopy" class="stage-summary-copy">실시간 흐름과 다음 확인 메모를 불러오는 중입니다.</p>
-            </div>
-          </div>
-          <div class="live-pill">
-            <span class="live-dot"></span>
-            <span id="liveCopy">연결 중</span>
+    <main class="dashboard-shell">
+      <section class="hero-banner" aria-label="BOB CLAW banner">
+        <div class="brand-lockup">
+          <img class="brand-mascot" src="./assets/branding/bob-claw-mascot.jpg" alt="BOB CLAW mascot">
+          <div class="brand-copy">
+            <p class="eyebrow">Gateway Strategy Map</p>
+            <h1>BOB CLAW</h1>
+            <p id="heroSummary" class="hero-summary">Loading the latest public route map.</p>
           </div>
         </div>
-
-        <div class="map-wrap">
-          <svg id="flowSvg" class="flow-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" role="img" aria-label="BOB Gateway route map"></svg>
-          <div id="chainLayer" class="chain-layer"></div>
-          <div id="pulseLayer" class="pulse-layer"></div>
-        </div>
-
-        <div class="hero-strip" aria-label="dashboard summary">
-          <div class="hero-card">
-            <span>라이브 경로</span>
-            <strong id="heroRoutes">0</strong>
-            <small id="heroRoutesSub">Gateway routes</small>
-          </div>
-          <div class="hero-card">
-            <span>BTC 기준가</span>
-            <strong id="heroPrice">—</strong>
-            <small id="heroPriceSub">24h 변화 확인 중</small>
-          </div>
-          <div class="hero-card">
-            <span>최근 움직임</span>
-            <strong id="heroActivity">0</strong>
-            <small id="heroActivitySub">recent traces</small>
-          </div>
-          <div class="hero-card">
-            <span>중요 메모</span>
-            <strong id="heroMemos">0</strong>
-            <small id="heroMemosSub">다음 수동 확인</small>
-          </div>
-        </div>
+        <div id="heroPills" class="hero-pills" aria-label="current state"></div>
       </section>
 
-      <section class="info-grid">
-        <article class="panel panel-wide">
-          <div class="panel-title">
-            <h2>PnL</h2>
-            <span id="pnlBadge" class="chip">대기 중</span>
+      <section class="map-stage" aria-label="BOB CLAW routing map">
+        <div class="stage-topline">
+          <div class="topline-copy">
+            <span class="topline-label">What This View Shows</span>
+            <strong id="stageHeadline">Native BTC moving through BOB Gateway into the current strategy rails.</strong>
           </div>
-          <div id="pnlGrid" class="pnl-grid"></div>
-        </article>
+          <div class="topline-meta">
+            <span id="stageMeta" class="meta-pill">Refreshing</span>
+          </div>
+        </div>
 
-        <article class="panel panel-wide">
-          <div class="panel-title">
-            <h2>거래 기록</h2>
-            <span id="tradeHistoryBadge" class="chip">0건</span>
-          </div>
-          <div id="tradeHistory" class="trade-history"></div>
-        </article>
+        <div id="mapBoard" class="map-board">
+          <svg id="flowLayer" class="flow-layer" aria-hidden="true"></svg>
 
-        <article class="panel panel-wide">
-          <div class="panel-title">
-            <h2>최근 흐름</h2>
-            <span id="traceCount" class="chip">0</span>
-          </div>
-          <div id="timeline" class="timeline"></div>
-        </article>
+          <div class="map-grid">
+            <div class="source-column">
+              <article id="sourceNode" class="map-node source-node" data-node="source">
+                <div class="node-head">
+                  <span class="node-kicker">Starting Asset</span>
+                  <span class="status-pill tone-btc">Bitcoin</span>
+                </div>
+                <div class="node-title-row">
+                  <span class="token-stack token-stack-large" id="sourceTokens"></span>
+                  <div>
+                    <h2>Native BTC</h2>
+                    <p>All mapped lanes begin with real BTC before the Gateway decides where the asset family should land.</p>
+                  </div>
+                </div>
+                <div class="node-footer">
+                  <span id="sourceCoverage" class="micro-note">Loading chain coverage.</span>
+                </div>
+              </article>
+            </div>
 
-        <article class="panel">
-          <div class="panel-title">
-            <h2>가스와 가격</h2>
-            <span id="gasFreshness" class="chip">확인 중</span>
-          </div>
-          <div id="gasGrid" class="mini-grid"></div>
-        </article>
+            <div class="gateway-column">
+              <article id="gatewayNode" class="map-node gateway-node" data-node="gateway">
+                <div class="gateway-ring"></div>
+                <div class="node-head">
+                  <span class="node-kicker">Central Router</span>
+                  <span id="gatewayState" class="status-pill tone-gateway">Loading</span>
+                </div>
+                <div class="node-title-row">
+                  <span class="protocol-mark protocol-mark-large" id="gatewayMark"></span>
+                  <div>
+                    <h2>BOB Gateway</h2>
+                    <p>BTC is converted here, then routed into wrapped BTC, stablecoin, or ETH-like rails across supported chains.</p>
+                  </div>
+                </div>
+                <div class="gateway-metrics" id="gatewayMetrics"></div>
+              </article>
+            </div>
 
-        <article class="panel">
-          <div class="panel-title">
-            <h2>자산 커버리지</h2>
-            <span id="assetCoverageCount" class="chip">0/0</span>
+            <div id="railColumn" class="rail-column" aria-live="polite"></div>
           </div>
-          <div id="assetCoverageGrid" class="asset-grid"></div>
-          <div class="watchlist-copy">
-            <div class="watchlist-head">
-              <strong>BTC Watchlist</strong>
-              <span id="btcWatchlistBadge" class="chip chip-inline">0 live · 0 watch</span>
-            </div>
-            <div class="watchlist-row">
-              <span>Live</span>
-              <strong id="btcWatchlistObserved">none</strong>
-            </div>
-            <div class="watchlist-row">
-              <span>Watch</span>
-              <strong id="btcWatchlistMissing">none</strong>
-            </div>
-            <div class="watchlist-row">
-              <span>Unknown</span>
-              <strong id="btcWatchlistUnknown">none</strong>
-            </div>
-          </div>
-        </article>
+        </div>
 
-        <article class="panel">
-          <div class="panel-title">
-            <h2>기회 관찰</h2>
-            <span id="opportunityBadge" class="chip">0 clean</span>
+        <div class="stage-footer">
+          <div class="legend-row">
+            <span class="legend-dot tone-blocked"></span>
+            <span>Blocked</span>
+            <span class="legend-dot tone-watch"></span>
+            <span>Measured but not ready</span>
+            <span class="legend-dot tone-observe"></span>
+            <span>Observation only</span>
+            <span class="legend-dot tone-blueprint"></span>
+            <span>Blueprint</span>
           </div>
-          <div class="opportunity-copy">
-            <strong id="opportunityTitle">No clean edge yet</strong>
-            <p id="opportunityBody">Waiting for fresh quotes and costs.</p>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-title">
-            <h2>운영 상태</h2>
-            <span id="officialStateBadge" class="chip">확인 중</span>
-          </div>
-          <div class="opportunity-copy">
-            <strong id="officialStateTitle">공식 상태를 불러오는 중입니다</strong>
-            <p id="officialStateBody">live, prelive, active blocker를 안전한 상태 요약으로 정리합니다.</p>
-          </div>
-          <div class="quote-lag-stats">
-            <div class="quote-lag-stat-row">
-              <span>현재 단계</span>
-              <strong id="officialStateStage">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>검증 상태</span>
-              <strong id="officialStateValidation">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>Active route</span>
-              <strong id="officialStateRoute">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>다음 액션</span>
-              <strong id="officialStateNext">—</strong>
-            </div>
-          </div>
-          <div class="watchlist-copy">
-            <div class="watchlist-head">
-              <strong>읽는 법</strong>
-              <span id="officialStateGuard" class="chip chip-inline">live ≠ 실험</span>
-            </div>
-            <div class="watchlist-row">
-              <span>막힘</span>
-              <strong id="officialStateBlocker">—</strong>
-            </div>
-            <div class="watchlist-row">
-              <span>경계</span>
-              <strong id="officialStateBoundary">—</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-title">
-            <h2>전략 지도</h2>
-            <span id="strategyMapBadge" class="chip">0개 전략</span>
-          </div>
-          <div class="opportunity-copy">
-            <strong id="strategyMapTitle">native BTC 전략 지형을 불러오는 중입니다</strong>
-            <p id="strategyMapBody">wrapped BTC, stablecoin, ETH-like 레일과 allocator 후보를 안전한 요약으로 표시합니다.</p>
-          </div>
-          <div class="quote-lag-stats">
-            <div class="quote-lag-stat-row">
-              <span>구현 전략</span>
-              <strong id="strategyMapImplemented">0</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>정책 미달</span>
-              <strong id="strategyMapBelowPolicy">0</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>Promotable</span>
-              <strong id="strategyMapPromotable">0</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>Ready</span>
-              <strong id="strategyMapReady">0</strong>
-            </div>
-          </div>
-          <div class="watchlist-copy">
-            <div class="watchlist-head">
-              <strong>현재 초점</strong>
-              <span id="strategyMapFocusBadge" class="chip chip-inline">manual review</span>
-            </div>
-            <div class="watchlist-row">
-              <span>대표</span>
-              <strong id="strategyMapTopImplemented">—</strong>
-            </div>
-            <div class="watchlist-row">
-              <span>Pivot</span>
-              <strong id="strategyMapTopPivot">—</strong>
-            </div>
-            <div class="watchlist-row">
-              <span>검토</span>
-              <strong id="strategyMapReviewOnly">—</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-title">
-            <h2>Pivot Watch</h2>
-            <span id="pivotBadge" class="chip">연구 중</span>
-          </div>
-          <div class="opportunity-copy">
-            <strong id="pivotTitle">다음 연구 축을 정리하는 중입니다</strong>
-            <p id="pivotBody">현재 표면과 필요 자본을 다시 분리해서 보고 있습니다.</p>
-          </div>
-          <div class="quote-lag-stats">
-            <div class="quote-lag-stat-row">
-              <span>현재 예산</span>
-              <strong id="pivotBudget">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>관측 floor</span>
-              <strong id="pivotCapital">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>연구 pilot</span>
-              <strong id="pivotPilot">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>다음 확인</span>
-              <strong id="pivotNext">—</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel panel-wide">
-          <div class="panel-title">
-            <h2>중요 메모</h2>
-            <span id="manualMemoBadge" class="chip">0개</span>
-          </div>
-          <div id="manualMemos" class="memo-list"></div>
-        </article>
-
-        <article class="panel panel-wide">
-          <div class="panel-title">
-            <h2>Quote Lag</h2>
-            <span id="quoteLagBadge" class="chip">대기 중</span>
-          </div>
-          <div class="quote-lag-copy">
-            <strong id="quoteLagTitle">호가 지연 측정 대기</strong>
-            <p id="quoteLagBody">수집기를 시작하면 실시간으로 결과를 표시합니다.</p>
-          </div>
-          <div id="quoteLagProbes" class="quote-lag-probes"></div>
-          <div class="quote-lag-stats">
-            <div class="quote-lag-stat-row">
-              <span>수집 샘플</span>
-              <strong id="quoteLagSamples">0</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>최대 지연</span>
-              <strong id="quoteLagMax">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>수익 기회</span>
-              <strong id="quoteLagProfitable">0건</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>BTC 가격 범위</span>
-              <strong id="quoteLagPriceRange">—</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel panel-wide">
-          <div class="panel-title">
-            <h2>DEX 스프레드</h2>
-            <span id="dexSpreadBadge" class="chip">대기 중</span>
-          </div>
-          <div class="dex-spread-copy">
-            <strong id="dexSpreadTitle">Multi-Chain BTC 스프레드</strong>
-            <p id="dexSpreadBody">수집기를 시작하면 7체인 실시간 스프레드를 표시합니다.</p>
-          </div>
-          <div id="dexSpreadTokens" class="dex-spread-tokens"></div>
-          <div class="quote-lag-stats">
-            <div class="quote-lag-stat-row">
-              <span>Max Spread</span>
-              <strong id="dexSpreadMax">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>LBTC Premium</span>
-              <strong id="dexSpreadLbtc">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>수집 샘플</span>
-              <strong id="dexSpreadSamples">0</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>Best Token</span>
-              <strong id="dexSpreadBest">—</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-title">
-            <h2>BTC 변동성 추적</h2>
-            <span id="volBadge" class="chip">대기 중</span>
-          </div>
-          <div class="vol-hero">
-            <strong id="volPrice">—</strong>
-            <span id="volChange" class="vol-change">—</span>
-          </div>
-          <div class="vol-indicators">
-            <span id="volAlertIcon" title="알림 상태">✅</span>
-            <span id="volTurboIcon" title="터보 모드" style="display:none">🔥</span>
-          </div>
-          <div class="quote-lag-stats">
-            <div class="quote-lag-stat-row">
-              <span>수집 샘플</span>
-              <strong id="volSamples">0</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>스프레드 범위</span>
-              <strong id="volSpreadRange">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>데이터 신선도</span>
-              <strong id="volFreshness">—</strong>
-            </div>
-            <div class="quote-lag-stat-row">
-              <span>알림</span>
-              <strong id="volAlertDetail">없음</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-title">
-            <h2>업데이트</h2>
-            <span id="updateBadge" class="chip">확인 중</span>
-          </div>
-          <div class="update-copy">
-            <strong id="updateTitle">상태 확인 중</strong>
-            <p id="updateBody">새로운 경로와 응답 변화를 기다리고 있습니다.</p>
-          </div>
-          <div class="overfit-copy">
-            <div class="overfit-head">
-              <strong id="overfitTitle">과적합 점검 대기</strong>
-              <span id="overfitBadge" class="chip chip-inline">점검 대기</span>
-            </div>
-            <p id="overfitBody">anti-overfit audit 결과를 기다리는 중</p>
-          </div>
-        </article>
+          <p id="safetyLine" class="safety-line">This map is read-only and does not grant live execution.</p>
+        </div>
       </section>
     </main>
 

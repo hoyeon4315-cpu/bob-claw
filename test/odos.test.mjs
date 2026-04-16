@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  attachOdosAssembly,
   canQuoteWithOdos,
   isTrustedExecutableDexQuote,
   normalizeOdosQuote,
@@ -62,4 +63,41 @@ test("Odos quote normalization stores executable quote fields", () => {
   assert.equal(record.pathId, "path");
   assert.equal(record.executionTrust, "safe_whitelist");
   assert.equal(isTrustedExecutableDexQuote(record), true);
+});
+
+test("Odos assembly attachment surfaces executable tx fields", () => {
+  const quote = normalizeOdosQuote({
+    chain: "base",
+    source: "wrapped_btc_loop_swap",
+    amount: "1000000",
+    inputToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    outputToken: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    outputTicker: "cbBTC",
+    outputDecimals: 8,
+    sourceWhitelist: odosSafeSourceWhitelist("base"),
+    result: {
+      latencyMs: 12,
+      body: {
+        outAmounts: ["1332"],
+        pathId: "path",
+      },
+    },
+  });
+  const executable = attachOdosAssembly(quote, {
+    latencyMs: 15,
+    body: {
+      transaction: {
+        to: "0x0000000000000000000000000000000000000001",
+        data: "0x1234",
+        value: "0",
+        gas: 123456,
+      },
+    },
+  });
+
+  assert.equal(executable.txTo, "0x0000000000000000000000000000000000000001");
+  assert.equal(executable.txData, "0x1234");
+  assert.equal(executable.txValueWei, "0");
+  assert.equal(executable.txGasLimit, 123456);
+  assert.equal(executable.txDataBytes, 2);
 });

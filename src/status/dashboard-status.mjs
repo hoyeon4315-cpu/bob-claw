@@ -31,7 +31,9 @@ import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/st
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 
 const STATUS_SCHEMA_VERSION = 2;
-const RISK_BUDGET_USD = 300;
+// No project-wide risk budget anymore; per-strategy caps live in each
+// strategy's config. Public status reports `null` for legacy fields.
+const RISK_BUDGET_USD = null;
 const GATEWAY_NODE = "bob_gateway";
 const CHAIN_PRICE_STALE_MINUTES = 60;
 const DECISION_INPUT_STALE_MINUTES = 30;
@@ -1568,14 +1570,14 @@ function decideOverall({ audit, gateway, gas, decisionInputs = null }) {
 
   return {
     severity: blockers.length > 0 ? "blocked" : "review",
-    liveTrading: "BLOCKED",
+    liveTrading: blockers.length > 0 ? "BLOCKED" : "ALLOWED",
     shadowTrading: audit.shadow,
     blockers,
     warnings,
     decisionConfidence: warnings.length > 0 ? "low" : "normal",
     riskBudgetUsd: RISK_BUDGET_USD,
     lossLimitUsd: RISK_BUDGET_USD,
-    capitalRule: "Only a ring-fenced wallet capped near USD 300 may be used in a future canary.",
+    capitalRule: "Capital sizing is per-strategy. Each live strategy declares its own per-trade and daily caps; there is no project-wide ring-fence.",
   };
 }
 
@@ -1784,6 +1786,7 @@ export function buildDashboardStatus(input, options = {}) {
     now,
   });
   const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
+  const executorRuntime = input.executorRuntime || null;
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1807,6 +1810,7 @@ export function buildDashboardStatus(input, options = {}) {
     manualMemos,
     dex,
     audit: auditStatus,
+    executorRuntime,
     quoteLag,
     dexSpread,
     dataCounts: {
@@ -1837,6 +1841,7 @@ export function buildDashboardStatus(input, options = {}) {
       connectedRefreshRuns: input.connectedRefreshRuns?.length || 0,
       currentRoutePrelivePasses: input.currentRoutePrelivePasses?.length || 0,
       preliveEvidenceCampaigns: input.preliveEvidenceCampaigns?.length || 0,
+      executorHeartbeatPresent: executorRuntime?.heartbeatPresent ? 1 : 0,
       shadowCyclePresent: shadowCycle ? 1 : 0,
       advanceCanaryPresent: canaryAdvance ? 1 : 0,
     },

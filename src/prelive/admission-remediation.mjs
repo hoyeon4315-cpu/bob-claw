@@ -26,6 +26,21 @@ function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function primaryCandidate(reviewPackage = null) {
+  return reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+}
+
+function routeCandidate(reviewPackage = null) {
+  const candidate = primaryCandidate(reviewPackage);
+  if (candidate?.candidateType !== "strategy") return candidate;
+  if (reviewPackage?.manualReviewCandidate?.candidateType === "strategy") return null;
+  return reviewPackage?.manualReviewCandidate || null;
+}
+
+function humanizeCode(code = null) {
+  return code ? code.replace(/_/g, " ") : null;
+}
+
 function compareItems(left, right) {
   if ((left.priority ?? 0) !== (right.priority ?? 0)) {
     return (right.priority ?? 0) - (left.priority ?? 0);
@@ -112,7 +127,7 @@ function refreshStatusCommand() {
 }
 
 function inputItems(reviewPackage = null, address = null) {
-  const candidate = reviewPackage?.manualReviewCandidate || null;
+  const candidate = routeCandidate(reviewPackage);
   const routeKey = candidate?.routeKey || null;
   const routeLabel = candidate?.routeLabel || null;
   const amount = candidate?.amount || null;
@@ -216,6 +231,29 @@ function inputItems(reviewPackage = null, address = null) {
     });
 }
 
+function strategyCandidateItems(reviewPackage = null) {
+  const candidate = primaryCandidate(reviewPackage);
+  if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForManualReview) return [];
+  const blockers = unique([...(candidate?.blockerReasons || []), ...(candidate?.evidenceBlockers || [])]);
+  const nextAction = candidate?.nextAction || null;
+  if (!nextAction?.code && blockers.length === 0) return [];
+  return [
+    item({
+      priority: 110,
+      code: nextAction?.code || "clear_strategy_candidate_blockers",
+      label: nextAction?.label || humanizeCode(nextAction?.code) || candidate?.candidateLabel || "advance primary strategy candidate",
+      status: nextAction?.command ? "ready" : "manual",
+      reason: blockers[0] || candidate?.tradeReadiness || null,
+      command: nextAction?.command || null,
+      blockers,
+      resolves: blockers,
+      routeLabel: candidate?.candidateLabel || null,
+      amount: candidate?.amount || null,
+      source: "primary_strategy_candidate",
+    }),
+  ];
+}
+
 function measuredLeaderItem(reviewPackage = null) {
   const measuredLeader = reviewPackage?.measuredLeaderReview || null;
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
@@ -283,6 +321,7 @@ export function buildAdmissionRemediationPlan({
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
   const evidenceItems = evidenceCampaignItems(evidenceCampaign);
   const items = dedupeItems([
+    ...strategyCandidateItems(reviewPackage),
     ...inputItems(reviewPackage, address),
     ...measuredLeaderItem(reviewPackage),
     ...(evidenceItems.some((entry) => entry.code === "execute_refresh_batch") ? [] : queueFollowUpItems(reviewPackage)),

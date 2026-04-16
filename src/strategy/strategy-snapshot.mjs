@@ -1,7 +1,14 @@
 import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
 import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "./pivot-plan.mjs";
 import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "./proxy-spread-coverage-plan.mjs";
+import { summarizeAllocatorCore } from "./allocator-core.mjs";
 import { buildCapitalExpansionReview, summarizeCapitalExpansionReview } from "./capital-expansion-review.mjs";
+import { summarizePhase1Revalidation } from "./phase1-revalidation.mjs";
+import { summarizePhase3StrategyValidation } from "./phase3-strategy-validation.mjs";
+import { summarizeProtocolMarketWatchers } from "./protocol-market-watchers.mjs";
+import { summarizeProtocolTrustTiers } from "./protocol-trust-tiers.mjs";
+import { summarizeSecondaryStrategyScaffolds } from "./secondary-strategy-scaffolds.mjs";
+import { summarizeStrategyResearchBoard } from "./strategy-research-board.mjs";
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
 
 function round(value, digits = 2) {
@@ -153,7 +160,19 @@ function topAction({ topPivot = null, topImplemented = null, proxyCoverageSummar
   return null;
 }
 
-export function buildStrategySnapshot({ dashboardStatus = null, state = {}, triangleArtifacts = {}, now = null } = {}) {
+export function buildStrategySnapshot({
+  dashboardStatus = null,
+  state = {},
+  triangleArtifacts = {},
+  phase1Revalidation = null,
+  phase3StrategyValidation = null,
+  allocatorCore = null,
+  protocolTrustTiers = null,
+  protocolMarketWatchers = null,
+  strategyResearchBoard = null,
+  secondaryStrategyScaffolds = null,
+  now = null,
+} = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
   const catalog = buildStrategyCatalog({ dashboardStatus, state, triangleArtifacts });
   const pivotPlan = buildStrategyPivotPlan({ dashboardStatus, state, triangleArtifacts });
@@ -197,7 +216,7 @@ export function buildStrategySnapshot({ dashboardStatus = null, state = {}, tria
     preliveStage: dashboardStatus?.prelive?.currentStage || null,
     activeBudgetUsd: pivotPlanSummary?.currentBudgetUsd ?? null,
     budgetScenarios: pivotPlanSummary?.budgetScenarios || [],
-    ethereumL1: pivotPlan?.currentSystem?.ethereumL1 || "observe_only_until_reapproved",
+    ethereumL1: pivotPlan?.currentSystem?.ethereumL1 || "allowed_when_positive_ev",
   };
   const capitalExpansionReview = buildCapitalExpansionReview({
     currentSystem,
@@ -208,6 +227,13 @@ export function buildStrategySnapshot({ dashboardStatus = null, state = {}, tria
     now: generatedAt,
   });
   const capitalExpansionSummary = summarizeCapitalExpansionReview(capitalExpansionReview);
+  const phase1RevalidationSummary = summarizePhase1Revalidation(phase1Revalidation || {});
+  const phase3StrategyValidationSummary = summarizePhase3StrategyValidation(phase3StrategyValidation || null);
+  const allocatorCoreSummary = summarizeAllocatorCore(allocatorCore || null);
+  const protocolTrustTiersSummary = summarizeProtocolTrustTiers(protocolTrustTiers || null);
+  const protocolMarketWatchersSummary = summarizeProtocolMarketWatchers(protocolMarketWatchers || null);
+  const strategyResearchSummary = summarizeStrategyResearchBoard(strategyResearchBoard || null);
+  const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
 
   return {
     schemaVersion: 1,
@@ -235,6 +261,21 @@ export function buildStrategySnapshot({ dashboardStatus = null, state = {}, tria
       capitalExpansionPlanningLaneBudgetUsd: capitalExpansionSummary?.planningLaneBudgetUsd ?? null,
       capitalExpansionPlanningTopImplementedId: capitalExpansionSummary?.planningTopImplementedId || null,
       capitalExpansionPlanningTopPivotId: capitalExpansionSummary?.planningTopPivotId || null,
+      phase1ClearsNewFloorCount: phase1RevalidationSummary?.clearsNewFloorCount ?? 0,
+      phase1NeedsVarianceMeasurementCount: phase1RevalidationSummary?.needsVarianceMeasurementCount ?? 0,
+      phase1CandidateForValidationCount: phase1RevalidationSummary?.candidateForValidationCount ?? 0,
+      researchCandidateCount: strategyResearchSummary?.candidateCount ?? 0,
+      researchTopCandidateId: strategyResearchSummary?.topCandidate?.id || null,
+      secondaryScaffoldCount: secondaryScaffoldsSummary?.scaffoldCount ?? 0,
+      secondaryTopScaffoldId: secondaryScaffoldsSummary?.topScaffold?.id || null,
+      phase3ValidationCount: phase3StrategyValidationSummary?.validationCount ?? 0,
+      phase3PassedCount: phase3StrategyValidationSummary?.passedCount ?? 0,
+      phase3TopBlockedId: phase3StrategyValidationSummary?.topBlocked?.id || null,
+      allocatorCandidateCount: allocatorCoreSummary?.candidateCount ?? 0,
+      allocatorTopPlanningCandidateId: allocatorCoreSummary?.topPlanningCandidate?.id || null,
+      trustTierRecordedCount: protocolTrustTiersSummary?.recordedCount ?? 0,
+      watcherBlockedCount: protocolMarketWatchersSummary?.blockedCount ?? 0,
+      watcherTopBlockedId: protocolMarketWatchersSummary?.topBlocked?.id || null,
     },
     implementedStatusCounts: countByStatus(implementedStrategies),
     pivotStatusCounts: countByStatus(pivotOpportunities),
@@ -245,6 +286,13 @@ export function buildStrategySnapshot({ dashboardStatus = null, state = {}, tria
       yieldShadowBook: yieldShadowSummary,
       proxySpreadCoveragePlan: proxyCoverageSummary,
       capitalExpansionReview,
+      phase1Revalidation: phase1RevalidationSummary,
+      phase3StrategyValidation: phase3StrategyValidationSummary,
+      allocatorCore: allocatorCoreSummary,
+      protocolTrustTiers: protocolTrustTiersSummary,
+      protocolMarketWatchers: protocolMarketWatchersSummary,
+      strategyResearchBoard: strategyResearchSummary,
+      secondaryStrategyScaffolds: secondaryScaffoldsSummary,
     },
     artifacts: {
       source: [
@@ -252,13 +300,22 @@ export function buildStrategySnapshot({ dashboardStatus = null, state = {}, tria
         { kind: "strategy_pivot_plan", path: "data/strategy-pivot-plan.json" },
         { kind: "yield_shadow_book", path: "data/yield-shadow-book-latest.json" },
         { kind: "proxy_spread_coverage_plan", path: "data/proxy-spread-coverage-plan-latest.json" },
+        { kind: "overfit_audit", path: "data/overfit-audit-latest.json" },
+        { kind: "gas_slippage_variance", path: "data/gas-slippage-variance-latest.json" },
+        { kind: "lane_reclassification", path: "data/lane-reclassification.json" },
+        { kind: "phase3_strategy_validation", path: "data/phase3-strategy-validation.json" },
+        { kind: "allocator_core", path: "data/allocator-core.json" },
+        { kind: "protocol_trust_tiers", path: "data/protocol-trust-tiers.json" },
+        { kind: "protocol_market_watchers", path: "data/protocol-market-watchers.json" },
+        { kind: "strategy_research_board", path: "data/strategy-research-board.json" },
+        { kind: "secondary_strategy_scaffolds", path: "data/secondary-strategy-scaffolds.json" },
       ],
       generated: [{ kind: "strategy_snapshot", path: "data/strategy-snapshot.json" }],
     },
     notes: [
       "This snapshot preserves the implemented strategy families and planning layers in one machine-readable artifact.",
-      "USD 300 remains the active live ring-fence. Any larger budget lane is planning-only until explicit policy redesign.",
-      "The capital expansion review reprioritizes 300 vs 1000 budget lanes without changing live authorization.",
+      "Live promotion depends on runtime gates, measured positive EV outside variance, and declared per-strategy caps rather than a repo-wide ring-fence.",
+      "The capital expansion review reprioritizes active versus planning lanes without granting live authorization on its own.",
       "No strategy in this snapshot grants live execution permission while liveTrading stays BLOCKED.",
     ],
   };
@@ -304,5 +361,13 @@ export function summarizeStrategySnapshot(snapshot = null) {
     yieldTopProfileId: snapshot.summary?.yieldTopProfileId || null,
     proxyCoverageNextAction: snapshot.summary?.proxyCoverageNextAction || null,
     capitalExpansionReview: summarizeCapitalExpansionReview(snapshot.planningLayers?.capitalExpansionReview || null),
+    phase1Revalidation: snapshot.planningLayers?.phase1Revalidation || null,
+    phase3StrategyValidation: snapshot.planningLayers?.phase3StrategyValidation || null,
+    allocatorCore: snapshot.planningLayers?.allocatorCore || null,
+    protocolTrustTiers: snapshot.planningLayers?.protocolTrustTiers || null,
+    protocolMarketWatchers: snapshot.planningLayers?.protocolMarketWatchers || null,
+    researchBoard: snapshot.planningLayers?.strategyResearchBoard || null,
+    secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
+    milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
   };
 }

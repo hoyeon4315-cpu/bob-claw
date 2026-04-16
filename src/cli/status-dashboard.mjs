@@ -273,6 +273,11 @@ async function main() {
   console.log(`gatewayUpdateDetected=${status.gateway.updateDetected}`);
   console.log(`probeOk=${status.gateway.probeOk}/${status.gateway.probeTotal}`);
   console.log(`auditDecision=${status.audit.decision}`);
+  if (status.executorRuntime) {
+    console.log(
+      `executorRuntime=${status.executorRuntime.runtimeStatus || "unknown"} watchdog=${status.executorRuntime.watchdog?.status || "unknown"} socket=${status.executorRuntime.signerSocketPresent ? "present" : "missing"} ageMs=${status.executorRuntime.watchdog?.ageMs ?? "n/a"}`,
+    );
+  }
   console.log(`shadowCycleMode=${status.shadowCycle?.mode || "none"}`);
   console.log(`preliveStage=${status.prelive?.currentStage || "none"}`);
   console.log(`reviewPackageStatus=${status.prelive?.reviewPackage?.packageStatus || "none"}`);

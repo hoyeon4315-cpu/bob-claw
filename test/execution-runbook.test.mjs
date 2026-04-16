@@ -197,3 +197,38 @@ test("execution runbook prioritizes blocked current-route hold over queued remed
   assert.equal(runbook.stages[0].nextAction.code, "hold_dex_quote");
   assert.equal(runbook.stages[0].nextAction.command, null);
 });
+
+test("execution runbook prioritizes strategy-candidate remediation over stale exact-route refreshes", () => {
+  const runbook = buildExecutionRunbook({
+    dashboardStatus: dashboardStatusFixture(),
+    reviewPackage: {
+      ...reviewPackageFixture(),
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_evidence_blocked",
+        blockerReasons: ["signer_backed_oos_receipts_missing"],
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+      remediationPlan: {
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          label: "collect wrapped btc loop oos receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+    },
+    strategySnapshot: strategySnapshotFixture(),
+    canaryInputs: canaryInputsFixture(),
+    nextStep: nextStepFixture(),
+  });
+
+  assert.equal(runbook.summary.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(runbook.summary.nextActionCommand, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+  assert.equal(runbook.stages[0].nextAction.code, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(runbook.stages[0].blockers.includes("stale_gateway_quote"), true);
+});

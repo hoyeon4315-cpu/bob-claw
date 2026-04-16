@@ -188,6 +188,24 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
           },
         },
       ],
+      executorRuntime: {
+        heartbeatPath: "./state/executor-heartbeat.json",
+        observedAt: "2026-04-10T11:59:30.000Z",
+        heartbeatPresent: true,
+        pid: 12345,
+        signerSocketPath: "./state/executor-signer.sock",
+        signerSocketPresent: true,
+        signerStatus: "listening",
+        lastCommand: "health",
+        watchdog: {
+          status: "healthy",
+          stale: false,
+          ageMs: 30_000,
+          ttlMs: 60_000,
+        },
+        runtimeStatus: "healthy",
+        available: true,
+      },
     },
     {
       now,
@@ -247,6 +265,8 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(typeof status.prelive.executionAudit.status, "string");
   assert.equal(status.prelive.executionAudit.recentTransitions.length, 1);
   assert.equal(status.prelive.forkExecution.planCount, 1);
+  assert.equal(status.executorRuntime.runtimeStatus, "healthy");
+  assert.equal(status.executorRuntime.signerSocketPresent, true);
   assert.equal(status.shadowCycle == null || typeof status.shadowCycle.refreshBatch?.runCount === "number", true);
   assert.equal(status.shadowCycle == null || typeof status.shadowCycle.refreshBatch?.latestStatus === "string", true);
   assert.equal(status.prelive.evidenceCampaign.runCount, 1);
@@ -256,6 +276,7 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.dataCounts.shadowRefreshBatches, 1);
   assert.equal(status.dataCounts.preliveEvidenceCampaigns, 1);
   assert.equal(status.dataCounts.priceSnapshots, 1);
+  assert.equal(status.dataCounts.executorHeartbeatPresent, 1);
   assert.equal(status.strategy.pivotPlan.budgetScenarios.length, 2);
   assert.equal(status.strategy.yieldShadowBook.topProfile.id, "research_pilot");
   assert.equal(typeof status.strategy.proxySpreadCoveragePlan.planCount, "number");
