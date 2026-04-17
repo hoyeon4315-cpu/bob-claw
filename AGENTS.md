@@ -118,3 +118,29 @@ Every executor, capital mover, and strategy module fits this architecture. Same 
   - Strategy catalog dispatch is now implemented and was executed once in strongest-safe-mode form: 8/8 catalog lanes ran successfully, with `liveEligible=0`, so the batch fell back to shadow/analysis/dry-run rather than forcing live.
   - Native BTC onramp execution is now wired as `quote -> create-order -> Gateway PSBT -> BTC signer -> register-tx`; current live preview for signer address `bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546` stops at Gateway `INSUFFICIENT_CONFIRMED_FUNDS`, so the blocker is confirmed BTC inventory, not missing executor code.
   - Reusable EVM Gateway BTC-family consolidation is now implemented as `executor:gateway-btc-consolidation`: `quote -> estimateGas -> explicit gasLimit buffer -> signer intent`. Current Avalanche `wBTC.OFT -> Base wBTC.OFT` preview reaches live quote successfully and then blocks at gas preflight with `execution_reverted`, which is the correct real-world signal when the source wallet no longer has a valid executable transfer path.
+
+## graphify
+
+지식 그래프: `src/graphify-out/` (앱 코드, 기본) + `graphify-out/` (레포 전체, 보조).
+post-commit / post-checkout git 훅이 자동으로 그래프를 갱신한다. 수동 `graphify update`는 훅 실패 시에만.
+
+### 사용 판단 (토큰 절감 목적, 객관 트리거)
+
+**graphify 먼저 쓸 것** — 벤치 3~10x 절감:
+- "X가 무엇에 연결?"·"이 함수의 호출자"·"이 모듈의 이웃" → `python3 -m graphify query "질문" --graph src/graphify-out/graph.json`
+- 단일 심볼 관계 설명 → `python3 -m graphify explain "심볼명" --graph src/graphify-out/graph.json`
+- 두 개념 간 경로 추적 → `python3 -m graphify path "A" "B" --graph src/graphify-out/graph.json`
+- 아키텍처 전반 훑기 → `src/graphify-out/GRAPH_REPORT.md`
+- 루트 스크립트·vendored 코드 → `graphify-out/GRAPH_REPORT.md`
+- **3개 이상 파일 읽을 것 같으면 먼저 `graphify query`로 관련 노드만 추려 읽을 파일 수를 줄인다**
+
+**graphify 쓰지 말 것** — 요약으로 정확성 손실:
+- 정확 수치·인용·버전 문자열 추출
+- `docs/research/*` 및 .md 문서 질문 (그래프는 .mjs/.js AST만, 문서 노드 없음)
+- 버그 원인·로직 분석·주석 의도 파악
+- 수정 대상 파일은 반드시 원문 읽기
+
+### 운영
+- 기본 그래프: `src/graphify-out/graph.json` (연결성 99.5%). 루트 그래프는 테스트/vendored 섬 포함으로 92% — 보조용.
+- 허브에 제네릭 이름(`slice()`, `sort()`, `main()`) 있음 → 질의 시 파일 경로 필터 권장.
+- 훅 상태: `python3 -m graphify hook status`.
