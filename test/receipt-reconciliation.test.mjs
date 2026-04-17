@@ -81,7 +81,9 @@ test("receipt reconciliation computes realized pnl for successful route executio
     chain: "bob",
     txHash: "0xabc",
     routeContext: routeContextFixture(),
-    receipt: receiptFixture(),
+    receipt: receiptFixture({
+      gasCostWei: "600000000000",
+    }),
     transaction: transactionFixture(),
     prices: pricesFixture(),
     output: {
@@ -93,8 +95,11 @@ test("receipt reconciliation computes realized pnl for successful route executio
   assert.equal(Number.isFinite(record.realized.receiptGasUsd), true);
   assert.equal(Number.isFinite(record.realized.actualKnownCostUsd), true);
   assert.equal(Number.isFinite(record.realized.realizedNetPnlUsd), true);
+  assert.equal(Number.isInteger(record.realized.realizedNetPnlSats), true);
   assert.equal(record.flags.failed, false);
   assert.equal(record.output.asset.ticker, "wBTC.OFT");
+  assert.equal(record.pricing.btcUsd, 73000);
+  assert.equal(record.receipt.gasCostWei, "600000000000");
 });
 
 test("receipt reconciliation records failed transaction cost even without output", () => {

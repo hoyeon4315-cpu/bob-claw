@@ -8,6 +8,7 @@ const DEFAULT_PROFIT_SATS_PATHS = Object.freeze([
   "realized.grossProfitSats",
   "realized.realizedGrossProfitSats",
   "realized.realizedNetProfitSats",
+  "realized.realizedNetPnlSats",
   "realized.realizedBtcProfitSats",
   "realized.realizedNetCarrySats",
   "realized.netProfitSats",
@@ -15,6 +16,7 @@ const DEFAULT_PROFIT_SATS_PATHS = Object.freeze([
   "grossProfitSats",
   "realizedGrossProfitSats",
   "realizedNetProfitSats",
+  "realizedNetPnlSats",
   "realizedBtcProfitSats",
   "realizedNetCarrySats",
   "netProfitSats",
@@ -172,15 +174,59 @@ function latestBtcUsd(receiptStore, config) {
   return btcUsdFromSnapshot(latest);
 }
 
+function btcUsdFromRecord(record) {
+  return firstFinitePathValue(record, [
+    "pricing.btcUsd",
+    "priceSnapshot.btcUsd",
+    "marketPriceSnapshot.btcUsd",
+    "btcUsd",
+  ]);
+}
+
+function btcUsdForRecord(record, marketPriceSnapshots = [], config = {}) {
+  const directRecordPrice = btcUsdFromRecord(record);
+  if (Number.isFinite(directRecordPrice)) return directRecordPrice;
+
+  const observedAtMs = latestTimestampMs([record]);
+  let winner = null;
+  let winnerDistance = Number.POSITIVE_INFINITY;
+  let winnerTs = Number.POSITIVE_INFINITY;
+  for (const snapshot of marketPriceSnapshots) {
+    const btcUsd = btcUsdFromSnapshot(snapshot);
+    const snapshotMs = latestTimestampMs([snapshot]);
+    if (!Number.isFinite(btcUsd) || !Number.isFinite(snapshotMs)) continue;
+    const distance = Number.isFinite(observedAtMs)
+      ? Math.abs(snapshotMs - observedAtMs)
+      : 0;
+    if (
+      distance < winnerDistance ||
+      (distance === winnerDistance && snapshotMs < winnerTs)
+    ) {
+      winner = btcUsd;
+      winnerDistance = distance;
+      winnerTs = snapshotMs;
+    }
+  }
+  if (Number.isFinite(winner)) return winner;
+  const configBtcUsd =
+    finiteNumber(config?.btcUsd) ??
+    finiteNumber(config?.prices?.btc) ??
+    finiteNumber(config?.priceSnapshot?.btcUsd) ??
+    btcUsdFromSnapshot(config?.priceSnapshot);
+  if (Number.isFinite(configBtcUsd)) return configBtcUsd;
+  return latestBtcUsd({ marketPriceSnapshots }, config);
+}
+
 function usdToSats(usdValue, btcUsd) {
   if (!Number.isFinite(usdValue) || !Number.isFinite(btcUsd) || btcUsd <= 0) return null;
   return roundSats((usdValue / btcUsd) * BTC_SATS);
 }
 
-function profitSatsFromRecord(record, btcUsd, config) {
+function profitSatsFromRecord(record, marketPriceSnapshots, config) {
   const direct = firstFinitePathValue(record, config?.profitSatsPaths || DEFAULT_PROFIT_SATS_PATHS);
   if (Number.isFinite(direct)) return roundSats(direct);
   const projectedUsd = firstFinitePathValue(record, config?.profitUsdPaths || DEFAULT_PROFIT_USD_PATHS);
+  const btcUsd = btcUsdForRecord(record, marketPriceSnapshots, config);
   return usdToSats(projectedUsd, btcUsd);
 }
 
@@ -455,8 +501,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
   const rolling = rollingBounds(latestObservedMs, config);
 
   const profitRecords = allRecords
-    .map((record) => ({ record, sats: profitSatsFromRecord(record, btcUsd, config), observedAtMs: latestTimestampMs([record]) }))
-    .filter((item) => Number.isFinite(item.sats) && item.sats > 0);
+    .map((record) => ({
+      record,
+      sats: profitSatsFromRecord(record, store.marketPriceSnapshots, config),
+      observedAtMs: latestTimestampMs([record]),
+    }))
+    .filter((item) => !isPaybackRecord(item.record, markers) && Number.isFinite(item.sats) && item.sats > 0);
 
   const paybackRecords = allRecords
     .map((record) => ({

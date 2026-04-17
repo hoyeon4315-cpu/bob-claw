@@ -1,6 +1,8 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { ZERO_TOKEN } from "../assets/tokens.mjs";
 
+const BTC_SATS = 100_000_000;
+
 function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
@@ -21,12 +23,25 @@ function decimalFromWei(value) {
   return Number(whole) + Number(remainder) / 1e18;
 }
 
+function integerOrNull(value) {
+  return Number.isFinite(value) ? Math.round(value) : null;
+}
+
 function priceForAsset(asset, prices) {
   if (!asset) return null;
   if (asset.isNative) return prices?.nativeByChain?.[asset.chain] ?? null;
   if (asset.priceKey === "btc") return prices?.btc ?? prices?.tokenByKey?.btc ?? null;
   if (asset.priceKey === "usd_stable") return 1;
   return prices?.tokenByKey?.[asset.priceKey] ?? prices?.nativeByChain?.[asset.priceKey] ?? null;
+}
+
+function btcUsdPrice(prices) {
+  return prices?.btc ?? prices?.tokenByKey?.btc ?? null;
+}
+
+function usdToSats(valueUsd, btcUsd) {
+  if (!Number.isFinite(valueUsd) || !Number.isFinite(btcUsd) || btcUsd <= 0) return null;
+  return (valueUsd / btcUsd) * BTC_SATS;
 }
 
 function expectedNetPnl(routeContext) {
@@ -84,11 +99,13 @@ function actualTxValueUsd({ chain, transaction, routeContext, prices }) {
 
 function receiptGasUsd({ chain, receipt, prices }) {
   if (!receipt) return null;
-  const gasUsed = bigint(receipt.gasUsed);
-  const effectiveGasPrice = bigint(receipt.effectiveGasPrice);
+  const gasCostWei =
+    receipt.gasCostWei !== undefined && receipt.gasCostWei !== null
+      ? bigint(receipt.gasCostWei)
+      : bigint(receipt.gasUsed) * bigint(receipt.effectiveGasPrice);
   const priceUsd = priceForAsset(nativeAsset(chain), prices);
   if (!Number.isFinite(priceUsd)) return null;
-  return (Number(gasUsed * effectiveGasPrice) / 1e18) * priceUsd;
+  return (Number(gasCostWei) / 1e18) * priceUsd;
 }
 
 function outputDriftBps(actualUsd, expectedUsd) {
@@ -128,6 +145,7 @@ export function buildReceiptReconciliation({
   const actualOutputValueUsd = actualOutputUsd({ routeContext, output, prices });
   const actualKnownCostUsd =
     (Number.isFinite(actualGasCostUsd) ? actualGasCostUsd : 0) + (Number.isFinite(actualTxValueCostUsd) ? actualTxValueCostUsd : 0);
+  const btcUsd = btcUsdPrice(prices);
   const expectedInputUsd = routeContext?.inputUsd ?? null;
   const realizedNetPnlUsd =
     Number(receipt?.status) === 0
@@ -135,6 +153,7 @@ export function buildReceiptReconciliation({
       : Number.isFinite(expectedInputUsd) && Number.isFinite(actualOutputValueUsd)
         ? finiteOrNull(actualOutputValueUsd - expectedInputUsd - actualKnownCostUsd)
         : null;
+  const realizedNetPnlSats = integerOrNull(usdToSats(realizedNetPnlUsd, btcUsd));
 
   return {
     schemaVersion: 1,
@@ -172,10 +191,14 @@ export function buildReceiptReconciliation({
           blockNumber: receipt.blockNumber,
           gasUsed: receipt.gasUsed.toString(),
           effectiveGasPrice: receipt.effectiveGasPrice.toString(),
+          gasCostWei: receipt.gasCostWei != null ? receipt.gasCostWei.toString() : null,
           from: receipt.from,
           to: receipt.to,
         }
       : null,
+    pricing: {
+      btcUsd: finiteOrNull(btcUsd),
+    },
     output: {
       asset: outputAssetFromContext(routeContext, output),
       actualOutputUnits: output.actualOutputUnits != null ? String(output.actualOutputUnits) : null,
@@ -187,6 +210,8 @@ export function buildReceiptReconciliation({
       receiptGasUsd: finiteOrNull(actualGasCostUsd),
       actualKnownCostUsd: finiteOrNull(actualKnownCostUsd),
       realizedNetPnlUsd,
+      realizedNetPnlSats,
+      realizedNetProfitSats: realizedNetPnlSats,
       realizedFillVsEstimateBps: outputDriftBps(actualOutputValueUsd, expectedOutputUsd(routeContext)),
       gasDriftUsd:
         Number.isFinite(actualGasCostUsd) && Number.isFinite(routeContext?.executionGasUsd)

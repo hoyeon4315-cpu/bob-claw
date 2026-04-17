@@ -80,6 +80,33 @@ test("payback accumulator projects usd receipts and inventory into sats determin
   assert.equal(first.kpi.roundTripEfficiency_period, 1);
 });
 
+test("payback accumulator uses record pricing before newer market snapshots", () => {
+  const auditLogLines = [
+    {
+      timestamp: "2026-04-16T01:00:00.000Z",
+      pricing: {
+        btcUsd: 100_000,
+      },
+      realized: {
+        realizedNetPnlUsd: 10,
+      },
+    },
+  ];
+
+  const receiptStore = {
+    marketPriceSnapshots: [
+      {
+        observedAt: "2026-04-17T00:00:00.000Z",
+        btcUsd: 50_000,
+      },
+    ],
+  };
+
+  const snapshot = snapshotPaybackAccumulator(auditLogLines, receiptStore, {});
+  assert.equal(snapshot.grossProfitSats_period, 10_000);
+  assert.equal(snapshot.pendingDeferredSats, 10_000);
+});
+
 test("payback accumulator computes documented KPI formulas from rolling capital and settled payback", () => {
   const auditLogLines = [
     {
@@ -187,4 +214,40 @@ test("payback accumulator only counts delivered payback when three-way receipt i
   });
 
   assert.equal(snapshot.paidBackSats_lifetime, 4_200);
+});
+
+test("payback accumulator excludes delivered payback receipts from gross profit", () => {
+  const deliveredPayback = {
+    timestamp: "2026-04-16T01:00:00.000Z",
+    strategyId: "gateway-btc-offramp",
+    settlementStatus: "delivered",
+    pricing: {
+      btcUsd: 100_000,
+    },
+    realized: {
+      realizedNetPnlUsd: 10,
+    },
+    signerResult: {
+      broadcast: {
+        txHash: "0xpayback",
+      },
+    },
+    metadata: {
+      gatewayOrderId: "order-123",
+    },
+    destinationProof: {
+      status: "delivered",
+      observedDelta: "4200",
+      txid: "btc123",
+    },
+  };
+
+  const snapshot = snapshotPaybackAccumulator([deliveredPayback], {}, {
+    paybackStrategyIds: ["gateway-btc-offramp"],
+    paybackIntentTypes: ["gateway_btc_offramp"],
+  });
+
+  assert.equal(snapshot.grossProfitSats_period, 0);
+  assert.equal(snapshot.paidBackSats_lifetime, 4_200);
+  assert.equal(snapshot.pendingDeferredSats, 0);
 });

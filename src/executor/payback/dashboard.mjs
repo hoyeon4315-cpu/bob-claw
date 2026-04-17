@@ -1,0 +1,158 @@
+import snapshotPaybackAccumulator from "./accumulator.mjs";
+import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
+import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
+
+function normalizeTimestamp(value) {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function finiteNumber(value) {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeRecords(items = []) {
+  return Array.isArray(items) ? items.filter((item) => item && typeof item === "object") : [];
+}
+
+function readPath(target, path) {
+  if (!target || typeof target !== "object") return undefined;
+  return path.split(".").reduce((value, segment) => (value == null ? undefined : value[segment]), target);
+}
+
+function firstPresent(target, paths = []) {
+  for (const path of paths) {
+    const value = readPath(target, path);
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+function firstFinite(target, paths = []) {
+  for (const path of paths) {
+    const value = finiteNumber(readPath(target, path));
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function allRecordsForPayback(auditLogLines = [], receiptStore = {}) {
+  return [
+    ...normalizeRecords(auditLogLines),
+    ...Object.values(receiptStore).filter(Array.isArray).flatMap((items) => normalizeRecords(items)),
+  ];
+}
+
+function threeWayPaybackReceipt(record) {
+  return {
+    sourceTxHash: firstPresent(record, [
+      "signerResult.broadcast.txHash",
+      "broadcast.txHash",
+      "receipt.hash",
+      "txHash",
+    ]),
+    gatewayOrderId: firstPresent(record, [
+      "metadata.gatewayOrderId",
+      "plan.intent.metadata.gatewayOrderId",
+      "plan.order.orderId",
+      "order.orderId",
+      "gatewayOrderId",
+    ]),
+    bitcoinTxid: firstPresent(record, [
+      "destinationProof.txid",
+      "destinationProof.bitcoinTxid",
+      "metadata.bitcoinTxid",
+      "payback.bitcoinTxid",
+      "bitcoinTxid",
+    ]),
+  };
+}
+
+function paybackSettlementTimestamp(record) {
+  return firstPresent(record, [
+    "destinationProof.observedAt",
+    "settledAt",
+    "observedAt",
+  ]);
+}
+
+function deliveredPaybackRecord(records = []) {
+  let winner = null;
+  let winnerMs = -1;
+  for (const record of records) {
+    const strategyId =
+      record?.strategyId ??
+      record?.plan?.strategyId ??
+      record?.intent?.strategyId ??
+      record?.signerResult?.signed?.strategyId ??
+      null;
+    const intentType =
+      record?.intent?.intentType ??
+      record?.plan?.intent?.intentType ??
+      null;
+    if (strategyId !== GATEWAY_BTC_OFFRAMP_STRATEGY_ID && intentType !== "gateway_btc_offramp") continue;
+    if (record?.settlementStatus !== "delivered" && record?.destinationProof?.status !== "delivered") continue;
+    const receipt = threeWayPaybackReceipt(record);
+    if (!receipt.sourceTxHash || !receipt.gatewayOrderId || !receipt.bitcoinTxid) continue;
+    const observedAtMs = normalizeTimestamp(paybackSettlementTimestamp(record));
+    if (observedAtMs != null && observedAtMs >= winnerMs) {
+      winner = record;
+      winnerMs = observedAtMs;
+    }
+  }
+  return winner;
+}
+
+export async function buildPaybackDashboardSlice({
+  dataDir,
+  logsDir,
+  now = new Date().toISOString(),
+  auditLogLines = null,
+  receiptStore = null,
+} = {}) {
+  const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
+  const resolvedReceiptStore = receiptStore || await loadLivePaybackReceiptStore({ dataDir });
+  const snapshot = snapshotPaybackAccumulator(resolvedAuditLogLines, resolvedReceiptStore, {
+    paybackStrategyIds: [GATEWAY_BTC_OFFRAMP_STRATEGY_ID],
+    paybackIntentTypes: ["gateway_btc_offramp"],
+  });
+  const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
+  return {
+    schemaVersion: 1,
+    observedAt: now,
+    lastPaybackSettledAt: paybackSettlementTimestamp(latestDelivered),
+    lastPaybackSettledSats:
+      firstFinite(latestDelivered, [
+        "destinationProof.observedDelta",
+        "payback.settledBalanceDeltaSats",
+        "realized.settledBalanceDeltaSats",
+        "settledBalanceDeltaSats",
+      ]),
+    accumulatorPendingSats: snapshot.pendingDeferredSats,
+    grossProfitSatsPeriod: snapshot.grossProfitSats_period,
+    paidBackSatsLifetime: snapshot.paidBackSats_lifetime,
+    kpi: {
+      byrRolling12m: snapshot.kpi?.byr_rolling12m ?? 0,
+      cgRolling12m: snapshot.kpi?.cg_rolling12m ?? 0,
+      tbrRolling12m: snapshot.kpi?.tbr_rolling12m ?? 0,
+      roundTripEfficiencyPeriod: snapshot.kpi?.roundTripEfficiency_period ?? 0,
+      daysToBreakeven: snapshot.kpi?.daysToBreakeven ?? 0,
+    },
+    dataSources: {
+      auditLogCount: normalizeRecords(resolvedAuditLogLines).length,
+      receiptReconciliationCount: normalizeRecords(resolvedReceiptStore.receiptReconciliations).length,
+      liveWrappedLoopReceiptCount:
+        normalizeRecords(resolvedReceiptStore.wrappedBtcLoopReceipts).length +
+        normalizeRecords(resolvedReceiptStore.wrappedBtcLoopLiveProofs).length,
+      treasuryInventoryCount: normalizeRecords(resolvedReceiptStore.treasuryInventory).length,
+      marketPriceSnapshotCount: normalizeRecords(resolvedReceiptStore.marketPriceSnapshots).length,
+    },
+  };
+}
