@@ -181,7 +181,7 @@ test("canary input summary marks structurally unsupported DEX coverage as blocke
           source: "gateway_dst_leg",
           gatewayRouteKey: "avalanche:0x0555->bera:0x0555",
           gatewayAmount: "10000",
-          reason: "odos_chain_not_supported",
+          reason: "no_supported_router_for_chain:80094",
           observedAt: "2026-04-11T11:58:00.000Z",
         },
         {
@@ -199,8 +199,57 @@ test("canary input summary marks structurally unsupported DEX coverage as blocke
   );
 
   assert.equal(summary.dexQuote.state, "blocked");
-  assert.equal(summary.dexQuote.failureReason, "odos_chain_not_supported");
-  assert.deepEqual(summary.dexQuote.failureReasons, ["odos_quote_failed", "odos_chain_not_supported"]);
+  assert.equal(summary.dexQuote.failureReason, "no_supported_router_for_chain:80094");
+  assert.deepEqual(summary.dexQuote.failureReasons, ["odos_quote_failed", "no_supported_router_for_chain:80094"]);
+});
+
+test("canary input summary preserves fresh exact-gas failure evidence", () => {
+  const summary = buildCanaryInputSummary(
+    {
+      nextStep: {
+        route: {
+          label: "avalanche->ethereum wBTC.OFT->WBTC",
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          srcChain: "avalanche",
+          dstChain: "ethereum",
+          tradeReadiness: "insufficient_data",
+        },
+        reasons: ["token"],
+      },
+      scoreSnapshot: {
+        generatedAt: "2026-04-11T12:00:00.000Z",
+        scores: [
+          {
+            routeKey: "avalanche:0x0555->ethereum:0x2260",
+            amount: "10000",
+            tradeReadiness: "insufficient_data",
+            executionGasSource: null,
+            dataGaps: ["exact_src_execution_gas_not_estimated"],
+          },
+        ],
+      },
+      quotes: [],
+      gasEstimateSnapshots: [],
+      gasEstimateFailures: [
+        {
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          observedAt: "2026-04-11T11:58:00.000Z",
+          reason: "execution_reverted",
+        },
+      ],
+      gasSnapshots: [],
+      dexQuotes: [],
+      bitcoinFeeSnapshots: [],
+      priceSnapshots: [],
+    },
+    { now: "2026-04-11T12:00:00.000Z" },
+  );
+
+  assert.equal(summary.exactGas.state, "fresh");
+  assert.equal(summary.exactGas.failureReason, "execution_reverted");
+  assert.deepEqual(summary.exactGas.failureReasons, ["execution_reverted"]);
 });
 
 test("canary stage checklist shows completed and remaining stages conservatively", () => {
@@ -283,7 +332,7 @@ test("canary stage checklist separates blocked inputs from refreshable inputs", 
       gatewayQuote: { state: "fresh" },
       exactGas: { state: "fresh" },
       srcGas: { state: "fresh" },
-      dexQuote: { state: "blocked", failureReason: "odos_chain_not_supported" },
+      dexQuote: { state: "blocked", failureReason: "no_supported_router_for_chain:80094" },
       bitcoinFee: { state: "not_needed" },
       marketSnapshot: { state: "stale" },
     },

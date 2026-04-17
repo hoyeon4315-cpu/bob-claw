@@ -12,8 +12,7 @@ test("live readiness refresh plan rebuilds the full wrapped-loop packet in order
   assert.deepEqual(
     plan.map((step) => step.script),
     [
-      "src/cli/gas-snapshot.mjs",
-      "src/cli/status-dashboard.mjs",
+      "src/cli/run-current-route-prelive-pass.mjs",
       "src/cli/report-strategy-snapshot.mjs",
       "src/cli/report-phase3-strategy-validation.mjs",
       "src/cli/report-allocator-core.mjs",
@@ -28,13 +27,13 @@ test("live readiness refresh plan rebuilds the full wrapped-loop packet in order
       "src/cli/write-session-handoff.mjs",
     ],
   );
-  assert.deepEqual(plan[0].args, []);
-  assert.deepEqual(plan[1].args, ["--skip-shadow-cycle"]);
+  assert.deepEqual(plan[0].args, ["--execute", "--continue-on-failure"]);
+  assert.deepEqual(plan[1].args, ["--write"]);
   assert.deepEqual(plan[2].args, ["--write"]);
   assert.deepEqual(plan.at(-1).args, []);
   assert.equal(
     summarizeLiveReadinessRefreshPlan(plan)[0],
-    "node src/cli/gas-snapshot.mjs",
+    "node src/cli/run-current-route-prelive-pass.mjs --execute --continue-on-failure",
   );
 });
 

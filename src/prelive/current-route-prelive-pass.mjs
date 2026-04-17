@@ -18,6 +18,8 @@ export const DEFAULT_CURRENT_ROUTE_PRELIVE_ALLOWED_SCRIPTS = new Set([
 
 export const DEFAULT_CURRENT_ROUTE_PRELIVE_SYNC_COMMAND =
   "npm run build:prelive-decision-pack && npm run status:dashboard -- --skip-shadow-cycle";
+export const DEFAULT_CURRENT_ROUTE_CONNECTED_REFRESH_COMMAND =
+  "npm run run:connected-refresh-package -- --execute --continue-on-failure";
 
 function routeFromContext(context = null) {
   const route =
@@ -124,7 +126,7 @@ function nextActionForPass({ route = null, connectedRefresh = null, exactRouteFo
     return {
       code: "execute_connected_refresh",
       label: "execute connected refresh package",
-      command: "npm run run:connected-refresh-package -- --execute",
+      command: DEFAULT_CURRENT_ROUTE_CONNECTED_REFRESH_COMMAND,
     };
   }
   if ((connectedRefresh?.blockedInputCount || 0) > 0) {
@@ -207,7 +209,7 @@ export function buildCurrentRoutePrelivePass({ context = null, simulationLimit =
             : (connectedRefresh.blockedInputCount || 0) > 0
               ? "blocked"
               : "done",
-        command: "npm run run:connected-refresh-package -- --execute",
+        command: DEFAULT_CURRENT_ROUTE_CONNECTED_REFRESH_COMMAND,
         reason:
           (connectedRefresh.requiredRefreshCount || 0) > 0
             ? connectedRefresh.status || "connected_refresh_required"
@@ -422,7 +424,7 @@ export async function executeCurrentRoutePrelivePass({
       {
         code: "execute_connected_refresh",
         label: "execute connected refresh package",
-        command: "npm run run:connected-refresh-package -- --execute",
+        command: DEFAULT_CURRENT_ROUTE_CONNECTED_REFRESH_COMMAND,
       },
       { cwd, env, runCommand, allowedScripts, record, stopOnFailure },
     );

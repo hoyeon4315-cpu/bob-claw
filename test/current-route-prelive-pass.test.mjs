@@ -133,6 +133,7 @@ test("current route prelive pass preview prioritizes connected refresh before la
 
   assert.equal(pass.status, "connected_refresh_required");
   assert.equal(pass.nextAction.code, "execute_connected_refresh");
+  assert.match(pass.nextAction.command || "", /--continue-on-failure/);
   assert.equal(pass.steps[0].status, "ready");
   assert.equal(pass.steps[1].status, "conditional");
 });

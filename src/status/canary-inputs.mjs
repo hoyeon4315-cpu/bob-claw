@@ -1,4 +1,5 @@
 import { isFreshPriceSnapshot, latestPriceSnapshot } from "../market/prices.mjs";
+import { isStructuralDexSupportFailure } from "../dex/odos.mjs";
 
 const DEX_ROUTE_BLOCKED_FAILURE_REASONS = new Set([
   "odos_chain_not_supported",
@@ -49,6 +50,14 @@ function latestRelevantDexFailures(dexFailures = [], route = null) {
     .filter((item) => item?.gatewayRouteKey === route.routeKey)
     .filter((item) => String(item?.gatewayAmount) === String(route.amount))
     .filter((item) => ROUTE_DEX_FAILURE_SOURCES.has(item?.source))
+    .sort((left, right) => (observedAtMs(right?.observedAt) || 0) - (observedAtMs(left?.observedAt) || 0));
+}
+
+function latestRelevantExactGasFailures(gasEstimateFailures = [], route = null) {
+  if (!route?.routeKey || !route?.amount) return [];
+  return [...(gasEstimateFailures || [])]
+    .filter((item) => item?.routeKey === route.routeKey)
+    .filter((item) => String(item?.amount) === String(route.amount))
     .sort((left, right) => (observedAtMs(right?.observedAt) || 0) - (observedAtMs(left?.observedAt) || 0));
 }
 
@@ -150,7 +159,9 @@ function dexQuoteSummary({ state = null, route = null, now = null } = {}) {
   }
 
   const failures = latestRelevantDexFailures(state?.dexFailures, route);
-  const structuralFailure = failures.find((item) => DEX_ROUTE_BLOCKED_FAILURE_REASONS.has(item?.reason)) || null;
+  const structuralFailure = failures.find(
+    (item) => DEX_ROUTE_BLOCKED_FAILURE_REASONS.has(item?.reason) || isStructuralDexSupportFailure(item?.reason),
+  ) || null;
   const latestFailure = failures[0] || null;
   if (structuralFailure) {
     return {
@@ -176,6 +187,52 @@ function dexQuoteSummary({ state = null, route = null, now = null } = {}) {
     state: "missing",
     observedAt: null,
     ageMinutes: null,
+    failureReason: null,
+    failureReasons: [],
+  };
+}
+
+function exactGasSummary({ state = null, route = null, now = null, required = true } = {}) {
+  if (!required) {
+    return {
+      state: "not_needed",
+      observedAt: null,
+      ageMinutes: null,
+      failureReason: null,
+      failureReasons: [],
+    };
+  }
+
+  const latestExactGas = latestMatching(
+    state?.gasEstimateSnapshots,
+    (item) => item.routeKey === route?.routeKey && String(item.amount) === String(route?.amount),
+  );
+  const failures = latestRelevantExactGasFailures(state?.gasEstimateFailures, route);
+  const latestFailure = failures[0] || null;
+  const latestSuccessObservedAt = latestExactGas?.observedAt || null;
+  const latestFailureObservedAt = latestFailure?.observedAt || null;
+  const useFailure =
+    latestFailureObservedAt &&
+    (!latestSuccessObservedAt || (observedAtMs(latestFailureObservedAt) || 0) >= (observedAtMs(latestSuccessObservedAt) || 0));
+
+  if (useFailure) {
+    return {
+      ...freshnessSummary({
+        observedAt: latestFailureObservedAt,
+        now,
+        maxAgeMinutes: 30,
+      }),
+      failureReason: latestFailure?.reason || null,
+      failureReasons: unique(failures.map((item) => item?.reason)),
+    };
+  }
+
+  return {
+    ...freshnessSummary({
+      observedAt: latestSuccessObservedAt,
+      now,
+      maxAgeMinutes: 30,
+    }),
     failureReason: null,
     failureReasons: [],
   };
@@ -322,7 +379,6 @@ export function buildCanaryInputSummary(state, options = {}) {
       : null;
   const latestMarketSnapshot = latestPriceSnapshot(state?.priceSnapshots || []);
   const scoreObservedAt = state?.scoreSnapshot?.generatedAt || null;
-  const exactGasRequired = route.srcChain !== "bitcoin";
   const bitcoinFeeRequired = route.srcChain === "bitcoin" || route.dstChain === "bitcoin";
   const marketSnapshotFresh = latestMarketSnapshot ? isFreshPriceSnapshot(latestMarketSnapshot, { now }) : false;
 
@@ -340,12 +396,11 @@ export function buildCanaryInputSummary(state, options = {}) {
       now,
       maxAgeMinutes: 30,
     }),
-    exactGas: freshnessSummary({
-      observedAt: latestExactGas?.observedAt || null,
+    exactGas: exactGasSummary({
+      state,
+      route,
       now,
-      maxAgeMinutes: 30,
-      required: exactGasRequired,
-      available: matchedScore?.executionGasSource === "eth_estimateGas",
+      required: route.srcChain !== "bitcoin",
     }),
     srcGas: freshnessSummary({
       observedAt: latestSrcGas?.observedAt || null,
