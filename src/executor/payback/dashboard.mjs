@@ -1,6 +1,7 @@
 import snapshotPaybackAccumulator from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
+import { buildPaybackDecision } from "./scheduler.mjs";
 
 function normalizeTimestamp(value) {
   if (!value) return null;
@@ -116,6 +117,7 @@ export async function buildPaybackDashboardSlice({
   now = new Date().toISOString(),
   auditLogLines = null,
   receiptStore = null,
+  decisionBuilder = buildPaybackDecision,
 } = {}) {
   const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
   const resolvedReceiptStore = receiptStore || await loadLivePaybackReceiptStore({ dataDir });
@@ -123,6 +125,13 @@ export async function buildPaybackDashboardSlice({
     paybackStrategyIds: [GATEWAY_BTC_OFFRAMP_STRATEGY_ID],
     paybackIntentTypes: ["gateway_btc_offramp"],
   });
+  const decision = typeof decisionBuilder === "function"
+    ? await decisionBuilder({
+        auditLogLines: resolvedAuditLogLines,
+        receiptStore: resolvedReceiptStore,
+        now,
+      })
+    : null;
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
     schemaVersion: 1,
@@ -138,6 +147,17 @@ export async function buildPaybackDashboardSlice({
     accumulatorPendingSats: snapshot.pendingDeferredSats,
     grossProfitSatsPeriod: snapshot.grossProfitSats_period,
     paidBackSatsLifetime: snapshot.paidBackSats_lifetime,
+    scheduler: {
+      status: decision?.status || null,
+      reason: decision?.reason || null,
+      requiredEnvName: firstPresent(decision, [
+        "decisionLog.inputs.bitcoinDestAddressEnv",
+      ]),
+      nextAction:
+        decision?.reason === "payback_btc_destination_missing"
+          ? "set_payback_btc_destination_env"
+          : null,
+    },
     kpi: {
       byrRolling12m: snapshot.kpi?.byr_rolling12m ?? 0,
       cgRolling12m: snapshot.kpi?.cg_rolling12m ?? 0,

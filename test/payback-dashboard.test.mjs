@@ -191,12 +191,25 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
     auditLogLines: [],
     receiptStore,
     now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "blocked",
+      reason: "payback_btc_destination_missing",
+      decisionLog: {
+        inputs: {
+          bitcoinDestAddressEnv: "PAYBACK_BTC_DEST_ADDR",
+        },
+      },
+    }),
   });
 
   assert.equal(payback.lastPaybackSettledAt, null);
   assert.equal(payback.lastPaybackSettledSats, null);
   assert.ok(payback.accumulatorPendingSats > 0);
   assert.ok(payback.grossProfitSatsPeriod > 0);
+  assert.equal(payback.scheduler.status, "blocked");
+  assert.equal(payback.scheduler.reason, "payback_btc_destination_missing");
+  assert.equal(payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");
+  assert.equal(payback.scheduler.nextAction, "set_payback_btc_destination_env");
 });
 
 test("payback dashboard prefers destination settlement time for last settled timestamp", async () => {
@@ -238,8 +251,17 @@ test("payback dashboard prefers destination settlement time for last settled tim
       wrappedBtcLoopLiveProofs: [],
     },
     now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "plan",
+      reason: "planning_required",
+      decisionLog: {
+        inputs: {},
+      },
+    }),
   });
 
   assert.equal(payback.lastPaybackSettledAt, "2026-04-17T11:30:00.000Z");
   assert.equal(payback.lastPaybackSettledSats, 1234);
+  assert.equal(payback.scheduler.status, "plan");
+  assert.equal(payback.scheduler.reason, "planning_required");
 });
