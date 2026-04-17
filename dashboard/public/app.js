@@ -88,6 +88,44 @@ function formatUsd(value) {
   })}`;
 }
 
+function formatSats(value) {
+  if (!Number.isFinite(value)) return "0 sats";
+  return `${Math.round(value).toLocaleString("en-US")} sats`;
+}
+
+function paybackMeta(payback) {
+  const status = String(payback?.scheduler?.status || "").toLowerCase();
+  const reason = String(payback?.scheduler?.reason || "").toLowerCase();
+  if (reason === "payback_btc_destination_missing") {
+    return {
+      label: "Destination missing",
+      toneClass: "tone-blocked",
+    };
+  }
+  if (status === "plan") {
+    return {
+      label: "Ready to plan",
+      toneClass: "tone-blueprint",
+    };
+  }
+  if (status === "carry") {
+    return {
+      label: "Accruing",
+      toneClass: "tone-watch",
+    };
+  }
+  if (status === "paused" || status === "blocked") {
+    return {
+      label: humanizeCode(payback?.scheduler?.reason || payback?.scheduler?.status || "blocked"),
+      toneClass: "tone-blocked",
+    };
+  }
+  return {
+    label: "Awaiting proof",
+    toneClass: "tone-watch",
+  };
+}
+
 function findPivot(status, id) {
   return status?.strategy?.pivotPlan?.pivots?.find((item) => item.id === id) || null;
 }
@@ -230,6 +268,10 @@ function buildModel(status) {
   const ethTrack = findTrack(status, "eth_family_loop");
   const ethProfitability = status?.strategy?.ethProfitability || null;
   const pnlPaper = formatUsd(status?.pnl?.paper?.valueUsd);
+  const payback = status?.payback || null;
+  const paybackState = paybackMeta(payback);
+  const paybackPending = Number.isFinite(payback?.accumulatorPendingSats) ? payback.accumulatorPendingSats : 0;
+  const paybackLastSettled = Number.isFinite(payback?.lastPaybackSettledSats) ? payback.lastPaybackSettledSats : null;
 
   return {
     heroSummary:
@@ -252,6 +294,7 @@ function buildModel(status) {
       `${compactNumber(status?.gateway?.routeCount || 0)} public routes`,
       `${compactNumber(strategyCount)} mapped strategy surfaces`,
       status?.overall?.shadowTrading === "ALLOWED" ? "Shadow observation is allowed" : "Shadow observation is blocked",
+      `Payback pending ${formatSats(paybackPending)}`,
       pnlPaper ? `Paper PnL ${pnlPaper}` : "Paper PnL unavailable",
     ],
     rails: [
@@ -323,6 +366,29 @@ function buildModel(status) {
             },
             stateText:
               `Current read: ${humanizeReason(proxyTrack?.reason || proxySpreads?.reason)}.`,
+          },
+          {
+            id: "btc-payback",
+            toneClass: paybackState.toneClass,
+            badge: paybackState.label,
+            protocol: "gateway",
+            title: "BTC Payback Lane",
+            chains: ["base", "bob", "bitcoin"],
+            copy:
+              "Realized BTC-denominated profit accrues first, then returns as native BTC on Bitcoin L1 only after the full route is ready.",
+            flow: {
+              items: [
+                { type: "token", token: "wbtcOft", label: "BTC reserve side" },
+                { type: "protocol", protocol: "gateway", label: "Gateway + BOB path" },
+                { type: "token", token: "btc", label: "Native BTC payout" },
+              ],
+            },
+            stateText:
+              payback?.scheduler?.reason === "payback_btc_destination_missing"
+                ? `${formatSats(paybackPending)} are accruing, but the Bitcoin payout destination still needs to be set (${payback?.scheduler?.requiredEnvName || "PAYBACK_BTC_DEST_ADDR"}).`
+                : paybackLastSettled != null
+                  ? `Last settled payback delivered ${formatSats(paybackLastSettled)} to Bitcoin L1.`
+                  : `${formatSats(paybackPending)} are accruing for the next BTC payback window.`,
           },
         ],
       },
@@ -402,8 +468,8 @@ function buildModel(status) {
         title: "ETH-like Rail",
         toneClass: "tone-eth",
         summary:
-          "ETH-like paths stay on the map as an investigated lane, but remain observation-only in the current USD 300 phase.",
-        noteChips: ["Observed only", "No measured edge", "Ethereum L1 disabled"],
+          "ETH-like paths stay on the map as an investigated lane. Native ETH execution is proven, but direct cross-chain ETH loops still need measured surface before promotion.",
+        noteChips: ["Execution path proven", "No confirmed loop edge", "L1 allowed if positive EV"],
         tokens: ["btc", "eth"],
         cards: [
           {
