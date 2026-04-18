@@ -43,7 +43,7 @@ test("admission remediation plan maps stale inputs and measured-leader review to
 
   assert.equal(plan.overallStatus, "ready");
   assert.equal(plan.nextAction.code, "refresh_src_gas");
-  assert.equal(plan.items.some((item) => item.code === "refresh_dex_quote"), true);
+  assert.equal(plan.items.some((item) => item.reason === "blocked_dex_quote:no_supported_router_for_chain:60808"), true);
   assert.equal(plan.items.some((item) => item.code === "check_wallet_readiness"), true);
   assert.equal(plan.items.some((item) => item.code === "scheduled_readiness_check"), true);
 });
@@ -124,7 +124,35 @@ test("admission remediation plan preserves blocked DEX input as a hold action", 
   assert.equal(plan.overallStatus, "blocked");
   assert.equal(plan.nextAction.code, "hold_dexQuote");
   assert.equal(plan.nextAction.command, null);
-  assert.equal(plan.items.some((item) => item.reason === "blocked_dex_quote"), true);
+  assert.equal(plan.items.some((item) => item.reason.startsWith("blocked_dex_quote")), true);
+});
+
+test("admission remediation plan infers unsupported bob dex routes as blocked instead of refreshable", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        blockers: ["missing_dex_quote"],
+      },
+      manualReviewCandidate: {
+        routeKey: "sonic:0x0555->bob:0x0555",
+        routeLabel: "sonic->bob wBTC.OFT->wBTC.OFT",
+        amount: "50000",
+        inputFreshness: {
+          gatewayQuote: { state: "fresh" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "missing" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.overallStatus, "blocked");
+  assert.equal(plan.nextAction.code, "hold_dexQuote");
+  assert.equal(plan.items.some((item) => item.reason === "blocked_dex_quote:no_supported_router_for_chain:60808"), true);
+  assert.equal(plan.items.some((item) => item.code === "refresh_dex_quote"), false);
 });
 
 test("admission remediation plan prioritizes strategy-candidate receipts over blocked exact-route refreshes", () => {

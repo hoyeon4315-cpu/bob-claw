@@ -1,17 +1,29 @@
+import { defaultDexQuoteProvider, noSupportedRouterReason } from "../dex/odos.mjs";
+
 function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
+}
+
+function parseRouteChains(routeKey = null) {
+  const [src = "", dst = ""] = String(routeKey || "").split("->");
+  return {
+    srcChain: src.split(":")[0] || null,
+    dstChain: dst.split(":")[0] || null,
+  };
 }
 
 function routeContext({ dashboardStatus = null, reviewPackage = null, canaryInputs = null, nextStep = null } = {}) {
   const route = nextStep?.route || null;
   const candidate = reviewPackage?.manualReviewCandidate || null;
   const topRoute = dashboardStatus?.shadowCycle?.topRoute || null;
+  const inferredRouteKey = route?.routeKey || candidate?.routeKey || topRoute?.routeKey || canaryInputs?.routeKey || null;
+  const inferredChains = parseRouteChains(inferredRouteKey);
   return {
-    routeKey: route?.routeKey || candidate?.routeKey || topRoute?.routeKey || canaryInputs?.routeKey || null,
+    routeKey: inferredRouteKey,
     routeLabel: route?.label || candidate?.routeLabel || topRoute?.label || canaryInputs?.routeLabel || null,
     amount: route?.amount || candidate?.amount || topRoute?.amount || canaryInputs?.amount || null,
-    srcChain: route?.srcChain || topRoute?.srcChain || null,
-    dstChain: route?.dstChain || topRoute?.dstChain || null,
+    srcChain: route?.srcChain || candidate?.srcChain || topRoute?.srcChain || inferredChains.srcChain,
+    dstChain: route?.dstChain || candidate?.dstChain || topRoute?.dstChain || inferredChains.dstChain,
     tradeReadiness:
       route?.tradeReadiness ||
       candidate?.tradeReadiness ||
@@ -30,16 +42,44 @@ const INPUT_FIELDS = [
   { field: "marketSnapshot", key: "market", label: "market snapshot" },
 ];
 
-function inputProblems(canaryInputs = null) {
+function structuralDexFailureReason(route = null) {
+  const chains = [route?.srcChain, route?.dstChain].filter(Boolean);
+  for (const chain of chains) {
+    if (!defaultDexQuoteProvider(chain)) {
+      return noSupportedRouterReason(chain);
+    }
+  }
+  return null;
+}
+
+function normalizeProblem(entry, canaryInputs = null, route = null) {
+  const state = canaryInputs?.[entry.field]?.state || "unknown";
+  const failureReason = canaryInputs?.[entry.field]?.failureReason || null;
+  if (entry.key === "dex_quote" && (state === "stale" || state === "missing")) {
+    const structuralReason = structuralDexFailureReason(route);
+    if (structuralReason) {
+      return {
+        ...entry,
+        state: "blocked",
+        observedAt: canaryInputs?.[entry.field]?.observedAt || null,
+        ageMinutes: Number.isFinite(canaryInputs?.[entry.field]?.ageMinutes) ? canaryInputs[entry.field].ageMinutes : null,
+        failureReason: structuralReason,
+      };
+    }
+  }
+  return {
+    ...entry,
+    state,
+    observedAt: canaryInputs?.[entry.field]?.observedAt || null,
+    ageMinutes: Number.isFinite(canaryInputs?.[entry.field]?.ageMinutes) ? canaryInputs[entry.field].ageMinutes : null,
+    failureReason,
+  };
+}
+
+function inputProblems(canaryInputs = null, route = null) {
   if (!canaryInputs) return [];
   return INPUT_FIELDS
-    .map((entry) => ({
-      ...entry,
-      state: canaryInputs?.[entry.field]?.state || "unknown",
-      observedAt: canaryInputs?.[entry.field]?.observedAt || null,
-      ageMinutes: Number.isFinite(canaryInputs?.[entry.field]?.ageMinutes) ? canaryInputs[entry.field].ageMinutes : null,
-      failureReason: canaryInputs?.[entry.field]?.failureReason || null,
-    }))
+    .map((entry) => normalizeProblem(entry, canaryInputs, route))
     .filter((entry) => entry.state === "stale" || entry.state === "missing" || entry.state === "blocked");
 }
 
@@ -151,7 +191,7 @@ export function buildConnectedRefreshPackage({
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
   const route = routeContext({ dashboardStatus, reviewPackage, canaryInputs, nextStep });
-  const problems = inputProblems(canaryInputs);
+  const problems = inputProblems(canaryInputs, route);
   const refreshableProblems = problems.filter((problem) => problem.state === "stale" || problem.state === "missing");
   const blockedProblems = problems.filter((problem) => problem.state === "blocked");
   const refreshSteps = refreshableProblems.map((problem, index) => buildRefreshStep(problem, { route, address, index })).filter(Boolean);

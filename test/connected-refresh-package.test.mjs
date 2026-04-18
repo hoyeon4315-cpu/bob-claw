@@ -29,14 +29,16 @@ test("connected refresh package orders stale network inputs before reevaluation"
   });
 
   assert.equal(report.status, "network_refresh_required");
-  assert.equal(report.requiredRefreshes.length, 4);
+  assert.equal(report.requiredRefreshes.length, 3);
+  assert.equal(report.blockedInputs.length, 1);
+  assert.equal(report.blockedInputs[0].reason, "blocked_dex_quote:no_supported_router_for_chain:60808");
   assert.equal(report.requiredRefreshes[0].id, "refresh_gateway_quote");
   assert.equal(report.requiredRefreshes[0].command, 'npm run verify:gateway -- --route-key="bob:0x0555->base:0x0555" --amounts="10000"');
   assert.match(report.summary.fullCommandChain, /npm run price:snapshot/);
   assert.match(report.summary.fullCommandChain, /npm run write:session-handoff/);
 
   const summary = summarizeConnectedRefreshPackage(report);
-  assert.equal(summary.requiredRefreshCount, 4);
+  assert.equal(summary.requiredRefreshCount, 3);
   assert.equal(summary.nextActionCode, "refresh_gateway_quote");
   assert.equal(summary.runnerExecuteCommand, "npm run run:connected-refresh-package -- --execute");
 });
@@ -76,4 +78,34 @@ test("connected refresh package stops on blocked DEX coverage instead of schedul
   const summary = summarizeConnectedRefreshPackage(report);
   assert.equal(summary.blockedInputCount, 1);
   assert.equal(summary.nextActionCommand, null);
+});
+
+test("connected refresh package infers unsupported dex routes as blocked before retrying refresh", () => {
+  const report = buildConnectedRefreshPackage({
+    dashboardStatus: {
+      shadowCycle: {
+        topRoute: {
+          routeKey: "sonic:0x0555->bob:0x0555",
+          label: "sonic->bob wBTC.OFT->wBTC.OFT",
+          amount: "50000",
+        },
+      },
+    },
+    canaryInputs: {
+      routeKey: "sonic:0x0555->bob:0x0555",
+      routeLabel: "sonic->bob wBTC.OFT->wBTC.OFT",
+      amount: "50000",
+      gatewayQuote: { state: "fresh", ageMinutes: 2 },
+      exactGas: { state: "fresh", ageMinutes: 2 },
+      srcGas: { state: "fresh", ageMinutes: 2 },
+      dexQuote: { state: "missing", ageMinutes: null },
+      bitcoinFee: { state: "not_needed", ageMinutes: null },
+      marketSnapshot: { state: "fresh", ageMinutes: 2 },
+    },
+  });
+
+  assert.equal(report.status, "blocked_nonrefreshable_input");
+  assert.equal(report.requiredRefreshes.length, 0);
+  assert.equal(report.blockedInputs[0].reason, "blocked_dex_quote:no_supported_router_for_chain:60808");
+  assert.equal(report.nextAction.code, "hold_dex_quote");
 });

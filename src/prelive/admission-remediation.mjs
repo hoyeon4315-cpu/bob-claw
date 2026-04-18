@@ -4,6 +4,7 @@ import {
   parseWhitelistedRefreshCommand,
   runParsedRefreshSteps,
 } from "../session/shadow-refresh-runner.mjs";
+import { defaultDexQuoteProvider, noSupportedRouterReason } from "../dex/odos.mjs";
 import { shellQuote } from "../lib/shell-quote.mjs";
 
 export const DEFAULT_ADMISSION_REMEDIATION_ALLOWED_SCRIPTS = new Set([
@@ -126,6 +127,26 @@ function refreshStatusCommand() {
   return DEFAULT_ADMISSION_REMEDIATION_FOLLOW_UP_COMMANDS.join(" && ");
 }
 
+function parseRouteChains(routeKey = null) {
+  const [src = "", dst = ""] = String(routeKey || "").split("->");
+  return {
+    srcChain: src.split(":")[0] || null,
+    dstChain: dst.split(":")[0] || null,
+  };
+}
+
+function structuralDexFailureReason(candidate = null) {
+  const inferred = parseRouteChains(candidate?.routeKey);
+  const chains = [candidate?.srcChain || inferred.srcChain, candidate?.dstChain || inferred.dstChain]
+    .filter(Boolean);
+  for (const chain of chains) {
+    if (!defaultDexQuoteProvider(chain)) {
+      return noSupportedRouterReason(chain);
+    }
+  }
+  return null;
+}
+
 function inputItems(reviewPackage = null, address = null) {
   const candidate = routeCandidate(reviewPackage);
   const routeKey = candidate?.routeKey || null;
@@ -133,6 +154,7 @@ function inputItems(reviewPackage = null, address = null) {
   const amount = candidate?.amount || null;
   const inputFreshness = candidate?.inputFreshness || null;
   if (!inputFreshness || !routeKey || !amount) return [];
+  const structuralDexReason = structuralDexFailureReason(candidate);
 
   const mapping = [
     {
@@ -195,7 +217,10 @@ function inputItems(reviewPackage = null, address = null) {
 
   return mapping
     .flatMap((entry) => {
-      const state = inputFreshness[entry.field]?.state || null;
+      let state = inputFreshness[entry.field]?.state || null;
+      if (entry.field === "dexQuote" && (state === "stale" || state === "missing") && structuralDexReason) {
+        state = "blocked";
+      }
       if (state !== "stale" && state !== "missing" && state !== "blocked") return [];
       if (state === "blocked") {
         return [
@@ -204,7 +229,10 @@ function inputItems(reviewPackage = null, address = null) {
             code: `hold_${entry.field}`,
             label: `hold on blocked ${entry.label.toLowerCase()}`,
             status: "blocked",
-            reason: entry.blocked || `blocked_${entry.field}`,
+            reason:
+              entry.field === "dexQuote" && structuralDexReason
+                ? `${entry.blocked || `blocked_${entry.field}`}:${structuralDexReason}`
+                : entry.blocked || `blocked_${entry.field}`,
             command: null,
             resolves: [entry.blocked || `blocked_${entry.field}`],
             routeKey,
