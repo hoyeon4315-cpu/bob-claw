@@ -364,6 +364,11 @@ async function main() {
       `deterministicCandidates=candidates:${status.strategy.strategySnapshot.deterministicCandidates.candidateCount ?? 0} readyForDryRun:${status.strategy.strategySnapshot.deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked:${status.strategy.strategySnapshot.deterministicCandidates.receiptBackedCount ?? 0} top:${status.strategy.strategySnapshot.deterministicCandidates.topCandidate?.id || "none"} next:${status.strategy.strategySnapshot.deterministicCandidates.nextAction?.code || "none"}`,
     );
   }
+  if (status.strategy?.strategySnapshot?.formulaAudit) {
+    console.log(
+      `formulaAudit=implemented:${status.strategy.strategySnapshot.formulaAudit.summary?.implementedCount ?? 0} partial:${status.strategy.strategySnapshot.formulaAudit.summary?.partialCount ?? 0} missing:${status.strategy.strategySnapshot.formulaAudit.summary?.missingCount ?? 0} topGap:${status.strategy.strategySnapshot.formulaAudit.summary?.topGap?.id || "none"}`,
+    );
+  }
   if (status.liveBaseline) {
     console.log(
       `liveBaseline=${status.liveBaseline.status} stage=${status.liveBaseline.currentStageId || "none"} refreshInputs=${status.liveBaseline.counts?.requiredRefreshCount ?? 0} operator=${status.liveBaseline.counts?.operator ?? 0} technical=${status.liveBaseline.counts?.technical ?? 0} objective=${status.liveBaseline.counts?.objective ?? 0}`,

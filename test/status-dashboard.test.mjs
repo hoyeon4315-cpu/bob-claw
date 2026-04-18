@@ -149,6 +149,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
     /paybackScheduler=defer reason=reserve_asset_missing next=none pendingSats=\d+ lastSettledSats=n\/a/,
   );
   assert.match(result.stdout, /paybackGrossProfitSatsPeriod=\d+ paidBackSatsLifetime=0/);
+  assert.match(result.stdout, /formulaAudit=implemented:\d+ partial:\d+ missing:\d+ topGap:.+/);
   assert.equal(result.stdout.includes("paybackPreviewAfterDestination="), false);
   assert.match(result.stdout, /liveBaseline=blocked stage=shadow_replay refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+/);
   assert.match(result.stdout, /liveBaselineRefresh=.* next=.*/);
@@ -175,6 +176,11 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(
     publicStatus.strategy?.strategySnapshot?.researchBoard == null ||
       typeof publicStatus.strategy?.strategySnapshot?.researchBoard?.candidateCount === "number",
+    true,
+  );
+  assert.equal(
+    publicStatus.strategy?.strategySnapshot?.formulaAudit == null ||
+      typeof publicStatus.strategy?.strategySnapshot?.formulaAudit?.summary?.missingCount === "number",
     true,
   );
   assert.equal(
