@@ -7,6 +7,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import {
+  buildRecursiveLendingLoopReceiptGuide,
   buildRecursiveLendingLoopObservedReceipt,
   filterRecursiveLendingLoopDryRunRecords,
   recursiveLendingLoopDryRunSessionName,
@@ -68,27 +69,66 @@ async function buildScaffold(args) {
   );
 }
 
+function isMissingReceiptFieldError(error) {
+  return /Missing required recursive lending loop receipt field:/.test(String(error?.message || ""));
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!listRecursiveLendingLoopStrategyIds().includes(args.strategy)) {
     throw new Error(`Unsupported strategy: ${args.strategy}`);
   }
   const scaffold = await buildScaffold(args);
-  const receipt = buildRecursiveLendingLoopObservedReceipt({
-    scaffold,
-    scenarioId: args.scenario,
-    executionMode: args.executionMode,
-    result: args.result,
-    entryTxHashes: args.entryTxHashes,
-    unwindTxHashes: args.unwindTxHashes,
-    observedHealthFactorPath: args.observedHealthFactorPath,
-    observedLiquidationBufferPath: args.observedLiquidationBufferPath,
-    actualLoopFeesUsd: args.actualLoopFeesUsd,
-    actualUnwindCostUsd: args.actualUnwindCostUsd,
-    realizedNetCarryUsd: args.realizedNetCarryUsd,
-    notes: args.notes,
-    now: args.observedAt || undefined,
-  });
+  let receipt;
+  try {
+    receipt = buildRecursiveLendingLoopObservedReceipt({
+      scaffold,
+      scenarioId: args.scenario,
+      executionMode: args.executionMode,
+      result: args.result,
+      entryTxHashes: args.entryTxHashes,
+      unwindTxHashes: args.unwindTxHashes,
+      observedHealthFactorPath: args.observedHealthFactorPath,
+      observedLiquidationBufferPath: args.observedLiquidationBufferPath,
+      actualLoopFeesUsd: args.actualLoopFeesUsd,
+      actualUnwindCostUsd: args.actualUnwindCostUsd,
+      realizedNetCarryUsd: args.realizedNetCarryUsd,
+      notes: args.notes,
+      now: args.observedAt || undefined,
+    });
+  } catch (error) {
+    if (!isMissingReceiptFieldError(error)) throw error;
+    const guide = buildRecursiveLendingLoopReceiptGuide({
+      scaffold,
+      strategyId: scaffold.strategy?.id || args.strategy,
+    });
+    const guideArtifact = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      strategyId: scaffold.strategy?.id || args.strategy,
+      status: "receipt_template_required",
+      reason: error.message,
+      ...guide,
+    };
+    const guidePath = join(config.dataDir, `${scaffold.strategy?.id || args.strategy}-receipt-guide.json`);
+    if (args.write) {
+      await writeTextIfChanged(guidePath, `${JSON.stringify(guideArtifact, null, 2)}\n`, {
+        normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
+      });
+    }
+    if (args.json) {
+      console.log(JSON.stringify({ receipt: null, summary: null, guide: guideArtifact }, null, 2));
+      return;
+    }
+    console.log(`strategy=${scaffold.strategy?.id || args.strategy}`);
+    console.log("receiptRecorded=false");
+    console.log(`missingFields=${guide.requiredFields.join(",")}`);
+    console.log(`sampleCommand=${guide.sampleCommand}`);
+    if (args.write) {
+      console.log(`guideWrote=${guidePath}`);
+    }
+    return;
+  }
   const sessionName = recursiveLendingLoopDryRunSessionName(scaffold.strategy?.id || args.strategy);
   const store = new JsonlStore(config.dataDir);
   if (args.write) {

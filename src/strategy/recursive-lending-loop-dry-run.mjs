@@ -310,6 +310,49 @@ export function buildRecursiveLendingLoopObservedReceipt({
   };
 }
 
+export function buildRecursiveLendingLoopReceiptGuide({ scaffold = null, strategyId = null } = {}) {
+  const effectiveStrategyId = strategyId || scaffold?.strategy?.id || "recursive_wrapped_btc_lending_loop";
+  const packet = buildRecursiveLendingLoopDryRunPacket({ scaffold });
+  const requiredFields = packet?.receiptTemplate?.requiredFields || [
+    "entryTxHashes",
+    "unwindTxHashes",
+    "observedHealthFactorPath",
+    "observedLiquidationBufferPath",
+    "actualLoopFeesUsd",
+    "actualUnwindCostUsd",
+    "realizedNetCarryUsd",
+    "result",
+  ];
+  const supportedScenarios =
+    packet?.watcherScenarios?.map((item) => item.id) || [
+      "healthy_baseline",
+      "health_factor_breach",
+      "buffer_breach",
+      "oracle_drift_pause",
+    ];
+  const preferredScenario = supportedScenarios.includes("healthy_baseline")
+    ? "healthy_baseline"
+    : supportedScenarios[0] || "healthy_baseline";
+  return {
+    supportedScenarios,
+    requiredFields,
+    sampleCommand: [
+      "npm run ingest:recursive-lending-loop-receipt -- --write",
+      `--strategy=${effectiveStrategyId}`,
+      `--scenario=${preferredScenario}`,
+      "--execution-mode=signer_backed_receipt",
+      "--result=passed",
+      "--entry-tx-hashes=<entry-tx-hash-1>,<entry-tx-hash-2>",
+      "--unwind-tx-hashes=<unwind-tx-hash-1>",
+      "--health-factor-path=<hf-1>,<hf-2>",
+      "--liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2>",
+      "--actual-loop-fees-usd=<loop-fees-usd>",
+      "--actual-unwind-cost-usd=<unwind-cost-usd>",
+      "--realized-net-carry-usd=<realized-net-carry-usd>",
+    ].join(" "),
+  };
+}
+
 export function summarizeRecursiveLendingLoopDryRunRuns(records = []) {
   const latest = [...records].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
   const passedCount = records.filter((item) => item?.result === "passed").length;

@@ -48,6 +48,10 @@ function parseArgs(argv) {
   };
 }
 
+function isMissingReceiptFieldError(error) {
+  return /Missing required wrapped BTC loop receipt field:/.test(String(error?.message || ""));
+}
+
 function stripVolatile(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const { observedAt, generatedAt, runId, ...stable } = value;
@@ -123,6 +127,41 @@ async function main() {
       now: resolvedArgs.observedAt || undefined,
     });
   } catch (error) {
+    if (isMissingReceiptFieldError(error)) {
+      const guide = buildWrappedBtcLoopReceiptGuide({
+        scaffold,
+        liveProof: hydratedLiveProof,
+      });
+      const guideArtifact = {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        strategyId: scaffold.strategy?.id || null,
+        status: "receipt_template_required",
+        reason: error.message,
+        ...guide,
+        missingExtendedReceiptFields: hydratedLiveProof?.missingExtendedReceiptFields || [],
+      };
+      const guidePath = join(config.dataDir, "wrapped-btc-loop-receipt-guide.json");
+      if (args.write) {
+        await writeTextIfChanged(guidePath, `${JSON.stringify(guideArtifact, null, 2)}\n`, {
+          normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
+        });
+      }
+      if (args.json) {
+        console.log(JSON.stringify({ receipt: null, summary: null, oosEvidence: null, livePacketRefresh: null, hydratedLiveProof, guide: guideArtifact }, null, 2));
+        return;
+      }
+      console.log(`scenario=${resolvedArgs.scenario}`);
+      console.log(`executionMode=${resolvedArgs.executionMode}`);
+      console.log("receiptRecorded=false");
+      console.log(`missingFields=${guide.requiredFields.join(",")}`);
+      console.log(`sampleCommand=${guide.sampleCommand}`);
+      console.log(`liveProofMissingFields=${(hydratedLiveProof?.missingExtendedReceiptFields || []).join(",") || "none"}`);
+      if (args.write) {
+        console.log(`guideWrote=${guidePath}`);
+      }
+      return;
+    }
     if (hydratedLiveProof?.missingExtendedReceiptFields?.length) {
       error.message = `${error.message} (hydrated live proof still missing: ${hydratedLiveProof.missingExtendedReceiptFields.join(", ")})`;
     }

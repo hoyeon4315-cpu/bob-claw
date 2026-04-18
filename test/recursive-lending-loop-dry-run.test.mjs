@@ -4,6 +4,7 @@ import {
   buildRecursiveLendingLoopDryRunPacket,
   buildRecursiveLendingLoopDryRunReceipt,
   buildRecursiveLendingLoopObservedReceipt,
+  buildRecursiveLendingLoopReceiptGuide,
   recursiveLendingLoopDryRunSessionName,
   summarizeRecursiveLendingLoopDryRunRuns,
 } from "../src/strategy/recursive-lending-loop-dry-run.mjs";
@@ -138,4 +139,22 @@ test("recursive lending loop observed receipt rejects missing required fields", 
       }),
     /non-simulated execution mode/,
   );
+});
+
+test("recursive lending loop receipt guide includes signer-backed receipt placeholders", () => {
+  const scaffold = buildRecursiveLendingLoopScaffold({
+    strategyId: "recursive_wrapped_btc_lending_loop",
+    strategyConfig: buildDefaultRecursiveLendingLoopConfig("recursive_wrapped_btc_lending_loop"),
+    now: "2026-04-17T17:20:00.000Z",
+  });
+  const guide = buildRecursiveLendingLoopReceiptGuide({
+    scaffold,
+    strategyId: "recursive_wrapped_btc_lending_loop",
+  });
+
+  assert.equal(guide.supportedScenarios.includes("healthy_baseline"), true);
+  assert.equal(guide.requiredFields.includes("actualUnwindCostUsd"), true);
+  assert.equal(guide.sampleCommand.includes("--strategy=recursive_wrapped_btc_lending_loop"), true);
+  assert.equal(guide.sampleCommand.includes("--entry-tx-hashes=<entry-tx-hash-1>,<entry-tx-hash-2>"), true);
+  assert.equal(guide.sampleCommand.includes("--realized-net-carry-usd=<realized-net-carry-usd>"), true);
 });
