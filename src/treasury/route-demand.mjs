@@ -14,6 +14,40 @@ function dedupeRouteDemand(items = []) {
   });
 }
 
+function positiveInsufficientDemand(routePlan = null) {
+  return (routePlan?.candidates || [])
+    .filter(
+      (item) =>
+        item?.txReady &&
+        item?.tradeReadiness === "insufficient_data" &&
+        Number.isFinite(item?.netEdgeUsd) &&
+        item.netEdgeUsd > 0,
+    )
+    .flatMap((item) => [
+      { chain: item.srcChain },
+      item.srcToken ? { chain: item.srcChain, token: item.srcToken } : null,
+    ])
+    .filter(Boolean);
+}
+
+export function selectFundingRouteContext(routePlan = null) {
+  const positiveInsufficient = (routePlan?.candidates || [])
+    .filter(
+      (item) =>
+        item?.txReady &&
+        item?.tradeReadiness === "insufficient_data" &&
+        Number.isFinite(item?.netEdgeUsd) &&
+        item.netEdgeUsd > 0,
+    )
+    .sort(
+      (left, right) =>
+        right.netEdgeUsd - left.netEdgeUsd ||
+        (left.prepFundingUsd ?? Number.POSITIVE_INFINITY) - (right.prepFundingUsd ?? Number.POSITIVE_INFINITY),
+    )[0];
+
+  return positiveInsufficient || routePlan?.topCandidates?.find((item) => item.viableForPrep) || routePlan?.topCandidates?.[0] || null;
+}
+
 export function buildTreasuryRouteDemand({ routePlan = null, inventory = null, policy = null } = {}) {
   const activeChains = new Set(policy?.activeChains || inventory?.activeChains || []);
   const supportedChains = new Set(policy?.supportedChains || inventory?.supportedChains || []);
@@ -38,6 +72,7 @@ export function buildTreasuryRouteDemand({ routePlan = null, inventory = null, p
 
   return dedupeRouteDemand([
     ...canaryDrivenDemand,
+    ...positiveInsufficientDemand(routePlan),
     ...expansionBootstrapDemand,
   ]);
 }

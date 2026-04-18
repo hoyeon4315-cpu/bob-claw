@@ -68,6 +68,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
   const enriched = enrichInventoryWithRefillUsd(inventory);
   const routeDemandChains = new Set(routeDemand.map((item) => item.chain));
   const routeDemandTokenKeys = new Set(routeDemand.filter((item) => item.token).map((item) => `${item.chain}:${String(item.token).toLowerCase()}`));
+  const modeledTokenKeys = new Set((enriched.tokens || []).map((item) => `${item.chain}:${String(item.token).toLowerCase()}`));
   const actions = [];
   const blockers = [];
   const observations = [];
@@ -165,6 +166,16 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
         mode: item.mode,
       });
     }
+  }
+
+  for (const item of routeDemand.filter((entry) => entry.token)) {
+    const tokenKey = `${item.chain}:${String(item.token).toLowerCase()}`;
+    if (modeledTokenKeys.has(tokenKey)) continue;
+    blockers.push({
+      type: "token_inventory_unmodeled_for_demand",
+      chain: item.chain,
+      token: item.token,
+    });
   }
 
   const refillEstimatedUsd = actions

@@ -11,7 +11,7 @@ import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
 import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
-import { buildTreasuryRouteDemand } from "../treasury/route-demand.mjs";
+import { buildTreasuryRouteDemand, selectFundingRouteContext } from "../treasury/route-demand.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 
 function parseArgs(argv) {
@@ -78,7 +78,7 @@ async function main() {
   const routeDemand = buildTreasuryRouteDemand({ routePlan, inventory, policy });
 
   const plan = buildTreasuryPlan({ policy, inventory, routeDemand });
-  const routeContext = routePlan.topCandidates.find((item) => item.viableForPrep) || routePlan.topCandidates[0] || null;
+  const routeContext = selectFundingRouteContext(routePlan);
   const fundingSourcePlan = buildFundingSourcePlan({ plan, policy, routeContext });
 
   if (args.json) {

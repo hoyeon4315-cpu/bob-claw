@@ -161,3 +161,17 @@ test("planner promotes observe-only supported chains into refill actions when ro
   assert.ok(action);
   assert.equal(action.refillAmountDecimal, 0.001);
 });
+
+test("planner flags demanded source tokens that are not modeled in treasury policy", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = buildTreasuryPlan({
+    policy,
+    inventory: inventoryFixture(),
+    routeDemand: [{ chain: "base", token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" }],
+  });
+
+  const blocker = plan.blockers.find((item) => item.type === "token_inventory_unmodeled_for_demand");
+  assert.ok(blocker);
+  assert.equal(blocker.chain, "base");
+  assert.equal(blocker.token, "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+});
