@@ -43,6 +43,8 @@ function blockerLabel(blocker) {
     stale_src_gas_snapshot: "source gas snapshot stale",
     exact_src_execution_gas_not_estimated: "exact execution gas pending",
     exact_src_execution_gas_reverted: "exact execution gas reverted",
+    exact_src_execution_gas_allowance_insufficient: "exact execution gas blocked by allowance",
+    exact_src_execution_gas_token_insufficient: "exact execution gas blocked by token balance",
     stale_dex_output_quote: "DEX output quote stale",
     implausible_quote_value_ratio: "quote value outlier",
     missing_src_token_decimals: "source token decimals missing",
@@ -91,6 +93,8 @@ function reviewActions({ blockers = [], measuredCandidate = null, measuredScore 
   }
   if (
     !has("exact_src_execution_gas_reverted") &&
+    !has("exact_src_execution_gas_allowance_insufficient") &&
+    !has("exact_src_execution_gas_token_insufficient") &&
     (has("stale_src_gas_snapshot") || has("exact_src_execution_gas_not_estimated") || measuredCandidate?.exactGasDone === false)
   ) {
     actions.push("refresh_exact_gas");
@@ -161,7 +165,11 @@ export function buildCanarySelectionGap({
   }
   if (measuredCandidate?.viableForPrep === false) reasons.push("measured_route_not_viable_for_prep");
   if (measuredCandidate?.txReady === false) reasons.push("measured_route_tx_not_ready");
-  if (blockers.includes("exact_src_execution_gas_reverted")) {
+  if (
+    blockers.includes("exact_src_execution_gas_reverted") ||
+    blockers.includes("exact_src_execution_gas_allowance_insufficient") ||
+    blockers.includes("exact_src_execution_gas_token_insufficient")
+  ) {
     reasons.push("measured_route_exact_gas_blocked");
   } else if (measuredCandidate?.exactGasDone === false) {
     reasons.push("measured_route_exact_gas_pending");

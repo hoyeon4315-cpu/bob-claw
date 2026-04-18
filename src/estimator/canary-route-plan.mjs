@@ -11,6 +11,8 @@ const DISQUALIFYING_SCORE_GAPS = new Set([
   "bitcoin_network_fee_not_modelled",
   "stale_src_gas_snapshot",
   "exact_src_execution_gas_reverted",
+  "exact_src_execution_gas_allowance_insufficient",
+  "exact_src_execution_gas_token_insufficient",
 ]);
 
 function bigint(value) {

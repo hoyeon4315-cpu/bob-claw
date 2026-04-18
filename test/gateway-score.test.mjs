@@ -5,6 +5,7 @@ import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-polic
 import { scoreGatewayQuote } from "../src/scoring/gateway-score.mjs";
 
 const USDC_ETHEREUM = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 
 const prices = {
@@ -154,6 +155,39 @@ test("exact execution gas requirement blocks EVM candidates when only fallback g
 
   assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), true);
   assert.equal(score.tradeReadiness, "insufficient_data");
+});
+
+test("exact gas allowance reverts surface as an actionable data gap", () => {
+  const route = { srcChain: "base", dstChain: "bitcoin", srcToken: USDC_BASE, dstToken: ZERO_TOKEN };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "offramp",
+      inputAmount: "250000000",
+      outputAmount: "329665",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      executionGasUsd: 0.01,
+      executionGasSource: "fallback_gas_units",
+      exactExecutionGasFailureReason: "erc20_allowance_insufficient",
+      requireExactExecutionGas: true,
+      bitcoinFee: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        selectedFeeRateSatVb: 4,
+        vbytes: 180,
+        estimatedFeeSats: 720,
+        estimatedFeeUsd: 0.52,
+        model: "estimated_single_input_single_output",
+      },
+    },
+  );
+
+  assert.equal(score.tradeReadiness, "insufficient_data");
+  assert.equal(score.exactExecutionGasFailureReason, "erc20_allowance_insufficient");
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_allowance_insufficient"), true);
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_reverted"), false);
 });
 
 test("missing decimals block net edge classification", () => {

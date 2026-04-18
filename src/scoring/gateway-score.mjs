@@ -60,6 +60,13 @@ function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function exactGasGapForFailure(reason) {
+  if (reason === "erc20_allowance_insufficient") return "exact_src_execution_gas_allowance_insufficient";
+  if (reason === "erc20_balance_insufficient") return "exact_src_execution_gas_token_insufficient";
+  if (reason === "execution_reverted") return "exact_src_execution_gas_reverted";
+  return "exact_src_execution_gas_not_estimated";
+}
+
 function classifyQuote({
   quote,
   dataGaps,
@@ -130,11 +137,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     dataGaps.push("missing_src_execution_gas");
   }
   if (quote.route.srcChain !== "bitcoin" && options.requireExactExecutionGas && executionGasSource !== "eth_estimateGas") {
-    dataGaps.push(
-      exactExecutionGasFailureReason === "execution_reverted"
-        ? "exact_src_execution_gas_reverted"
-        : "exact_src_execution_gas_not_estimated",
-    );
+    dataGaps.push(exactGasGapForFailure(exactExecutionGasFailureReason));
   }
   if (hasNativeBitcoinLeg && !Number.isFinite(bitcoinFee?.estimatedFeeUsd)) {
     dataGaps.push("bitcoin_network_fee_not_modelled");

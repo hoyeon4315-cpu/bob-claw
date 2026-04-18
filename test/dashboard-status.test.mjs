@@ -727,7 +727,7 @@ test("dashboard status exposes positive insufficient-data opportunity separately
           dstAsset: { ticker: "BTC" },
           tradeReadiness: "insufficient_data",
           netEdgeUsd: 1.75,
-          dataGaps: ["exact_src_execution_gas_reverted"],
+          dataGaps: ["exact_src_execution_gas_allowance_insufficient"],
         },
         {
           srcChain: "avalanche",
@@ -753,7 +753,7 @@ test("dashboard status exposes positive insufficient-data opportunity separately
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.dstChain, "bitcoin");
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.srcTicker, "USDC");
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.netEdgeUsd, 1.75);
-  assert.deepEqual(status.opportunity.topPositiveInsufficientRoute?.dataGaps, ["exact_src_execution_gas_reverted"]);
+  assert.deepEqual(status.opportunity.topPositiveInsufficientRoute?.dataGaps, ["exact_src_execution_gas_allowance_insufficient"]);
 });
 
 test("dashboard status includes shadow cycle summary when available", () => {

@@ -145,6 +145,8 @@ export async function estimateGas(chainName, tx, chainConfig = EVM_CHAINS[chainN
 export function classifyGasEstimateError(error) {
   const messages = [error.message, ...(error.attempts || []).map((attempt) => attempt.message)].filter(Boolean).join(" | ");
   if (/insufficient funds/i.test(messages)) return "insufficient_funds";
+  if (/transfer amount exceeds allowance|insufficient allowance|allowance exceeded/i.test(messages)) return "erc20_allowance_insufficient";
+  if (/transfer amount exceeds balance|insufficient balance/i.test(messages)) return "erc20_balance_insufficient";
   if (/execution reverted|revert/i.test(messages)) return "execution_reverted";
   if (/missing transaction target/i.test(messages)) return "missing_tx_target";
   return "rpc_error";
