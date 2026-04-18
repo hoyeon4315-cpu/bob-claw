@@ -76,7 +76,7 @@ test("admission remediation plan prefers evidence-campaign execution over raw qu
           label: "execute refresh batch",
           status: "ready",
           reason: "queue_follow_up_available",
-          command: "npm run run:shadow-refresh-batch -- --execute --limit=1",
+          command: "npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=4",
         },
         {
           code: "collect_simulation_evidence",
@@ -391,7 +391,7 @@ test("admission remediation plan keeps high-priority active canary readiness eve
           label: "execute refresh batch",
           status: "ready",
           reason: "token",
-          command: "npm run run:shadow-refresh-batch -- --execute --limit=1",
+          command: "npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=4",
         },
       ],
     },

@@ -9,6 +9,11 @@ export const DEFAULT_PRELIVE_EVIDENCE_FOLLOW_UP_COMMANDS = [
   "npm run write:session-handoff",
 ];
 
+function refreshBatchCommand(limit = 1) {
+  const batchLimit = Math.max(4, Number(limit) || 1);
+  return `npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=${batchLimit}`;
+}
+
 export const DEFAULT_PRELIVE_EVIDENCE_ALLOWED_SCRIPTS = new Set([
   "analyze:ethereum-routes",
   "audit:eth-family-overfit",
@@ -163,7 +168,7 @@ export function buildPreliveEvidenceCampaign({
             status: "ready",
             automated: true,
             reason: queueFollowUps[0]?.reason || "queue_follow_up_available",
-            command: `npm run run:shadow-refresh-batch -- --execute --limit=${refreshBatchLimit}`,
+            command: refreshBatchCommand(refreshBatchLimit),
             details: {
               queueFollowUpCount: queueFollowUps.length,
               latestBatchStatus: shadowRefreshBatchSummary?.latestStatus || null,

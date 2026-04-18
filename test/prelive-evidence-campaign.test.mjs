@@ -311,7 +311,7 @@ test("evidence campaign executes automated actions and follow-up refresh command
           label: "execute refresh batch",
           status: "ready",
           automated: true,
-          command: "npm run run:shadow-refresh-batch -- --execute --limit=1",
+          command: "npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=4",
         },
         {
           code: "collect_simulation_evidence",

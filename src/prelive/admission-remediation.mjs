@@ -23,6 +23,9 @@ export const DEFAULT_ADMISSION_REMEDIATION_FOLLOW_UP_COMMANDS = [
   "npm run write:session-handoff",
 ];
 
+export const DEFAULT_ADMISSION_REMEDIATION_RUNNER_COMMAND =
+  "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3";
+
 function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -402,7 +405,7 @@ export function buildAdmissionRemediationPlan({
       overallStatus: blockers.length ? "blocked_without_command" : "clear",
       nextAction: null,
       items: [],
-      runnerCommand: "npm run run:admission-remediation -- --execute --limit=1",
+      runnerCommand: DEFAULT_ADMISSION_REMEDIATION_RUNNER_COMMAND,
       followUpCommand: refreshStatusCommand(),
     };
   }
@@ -421,7 +424,7 @@ export function buildAdmissionRemediationPlan({
     overallStatus: readyCount > 0 ? "ready" : manualCount > 0 ? "awaiting_manual" : "blocked",
     nextAction,
     items,
-    runnerCommand: "npm run run:admission-remediation -- --execute --limit=1",
+    runnerCommand: DEFAULT_ADMISSION_REMEDIATION_RUNNER_COMMAND,
     followUpCommand: refreshStatusCommand(),
   };
 }

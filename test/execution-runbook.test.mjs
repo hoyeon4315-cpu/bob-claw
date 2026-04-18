@@ -50,7 +50,7 @@ function reviewPackageFixture() {
     readyForManualReview: false,
     reviewBlockers: ["shadow_replay_not_ready", "stale_gateway_quote"],
     remediationPlan: {
-      runnerCommand: "npm run run:admission-remediation -- --execute --limit=1",
+      runnerCommand: "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3",
       nextAction: {
         code: "refresh_gateway_quote",
         label: "refresh gateway quote",
@@ -180,7 +180,7 @@ test("execution runbook prioritizes blocked current-route hold over queued remed
         nextAction: {
           code: "execute_refresh_batch",
           label: "execute refresh batch",
-          command: "npm run run:shadow-refresh-batch -- --execute --limit=1",
+          command: "npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=4",
         },
       },
     },

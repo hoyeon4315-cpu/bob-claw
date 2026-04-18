@@ -19,7 +19,7 @@ test("review package summary carries connected refresh, exact-route fork, and ju
     },
     remediationPlan: {
       overallStatus: "ready",
-      runnerCommand: "npm run run:admission-remediation -- --execute --limit=1",
+      runnerCommand: "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3",
     },
     connectedRefreshPackage: {
       status: "network_refresh_required",

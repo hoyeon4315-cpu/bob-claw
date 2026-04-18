@@ -298,7 +298,7 @@ test("prelive validation follows blocked current-route hold before queued refres
         nextAction: {
           code: "execute_refresh_batch",
           label: "execute refresh batch",
-          command: "npm run run:shadow-refresh-batch -- --execute --limit=1",
+          command: "npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=4",
         },
       },
     },

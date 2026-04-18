@@ -195,7 +195,7 @@ test("prelive review package stays blocked while canary and prelive gates are no
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "NO_GO");
   assert.equal(reviewPackage.tinyCanaryAdmission.blockers.includes("shadow_replay_not_ready"), true);
   assert.equal(reviewPackage.remediationPlan.overallStatus, "ready");
-  assert.equal(reviewPackage.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --limit=1");
+  assert.equal(reviewPackage.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3");
   assert.equal(reviewPackage.remediationPlan.nextAction.code, "refresh_src_gas");
   assert.equal(reviewPackage.remediationPlan.items.some((item) => item.code === "check_wallet_readiness"), true);
   assert.equal(reviewPackage.operatorChecklist.remaining.some((item) => item.includes("clear objective blocker")), true);
@@ -370,7 +370,7 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(summary.packageStatus, "ready_for_manual_review");
   assert.equal(summary.tinyCanaryAdmissionDecision, "GO_FOR_MANUAL_APPROVAL");
   assert.equal(summary.remediationPlan.overallStatus, "clear");
-  assert.equal(summary.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --limit=1");
+  assert.equal(summary.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3");
   assert.equal(summary.simulationSuccessCount, 50);
   assert.equal(summary.forkConfirmedCount, 3);
   assert.equal(reviewPackage.pivotPlan.topRecommendation.id, "gateway_base_btc_yield");
