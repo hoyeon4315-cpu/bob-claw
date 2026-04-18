@@ -236,6 +236,7 @@ function strategyCandidateItems(reviewPackage = null) {
   const candidate = primaryCandidate(reviewPackage);
   if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForManualReview) return [];
   const blockers = unique([...(candidate?.blockerReasons || []), ...(candidate?.evidenceBlockers || [])]);
+  if (candidate?.reviewReady === true && blockers.length === 0) return [];
   const nextAction = candidate?.nextAction || null;
   if (!nextAction?.code && blockers.length === 0) return [];
   return [

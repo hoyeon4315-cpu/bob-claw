@@ -168,3 +168,43 @@ test("admission remediation plan prioritizes strategy-candidate receipts over bl
   assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), true);
   assert.equal(plan.items.some((item) => item.code === "refresh_exact_gas"), true);
 });
+
+test("admission remediation plan skips review-ready strategy candidates with no remaining evidence blockers", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      readyForManualReview: false,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        amount: "300",
+        reviewReady: true,
+        blockerReasons: [],
+        evidenceBlockers: [],
+        nextAction: {
+          code: "capture_wrapped_btc_loop_extended_receipt_context",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+      tinyCanaryAdmission: {
+        blockers: ["live_policy_state_changed"],
+      },
+      manualReviewCandidate: {
+        routeKey: "avalanche:0x0555->soneium:0x0555",
+        routeLabel: "avalanche->soneium wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        inputFreshness: {
+          gatewayQuote: { state: "fresh" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "blocked" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.nextAction.code, "hold_dexQuote");
+  assert.equal(plan.items.some((item) => item.code === "capture_wrapped_btc_loop_extended_receipt_context"), false);
+});
