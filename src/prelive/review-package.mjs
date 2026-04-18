@@ -165,6 +165,17 @@ function inputStates(inputFreshness = null) {
     .filter(Boolean);
 }
 
+function normalizedReasonCodes(values = []) {
+  return (values || [])
+    .map((value) => {
+      if (!value) return null;
+      if (typeof value === "string") return value;
+      if (typeof value === "object") return value.reason || value.code || null;
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function isRouteStructurallyBlocked(candidate = null) {
   const tradeReadiness = String(candidate?.tradeReadiness || "");
   return (
@@ -184,11 +195,30 @@ function isRouteReviewReady(candidate = null) {
 function isRouteEconomicallyBlocked(candidate = null, dashboardStatus = null) {
   if (!candidate || candidate.candidateType === "strategy") return false;
   const blockerReasons = candidate?.blockerReasons || [];
+  const rejectionReasons = normalizedReasonCodes(candidate?.evidence?.rejectionReasons || []);
+  const latestObservedEdgeUsd = candidate?.evidence?.latestObservedEdgeUsd;
+  const policyReadyMeasuredRoutes = dashboardStatus?.prelive?.shadowReplay?.policyReadyMeasuredRoutes;
   if (
     blockerReasons.some((reason) =>
       ["reject_no_net_edge", "reject_effective_system_pnl", "route_refill_economically_unjustified"].includes(String(reason || "")),
     )
   ) {
+    return true;
+  }
+  if (
+    rejectionReasons.some((reason) =>
+      ["reject_no_net_edge", "reject_effective_system_pnl", "reject_treasury_execution_refill_cost"].includes(String(reason || "")),
+    )
+  ) {
+    return true;
+  }
+  if (Number.isFinite(candidate?.netEdgeUsd) && candidate.netEdgeUsd <= 0) {
+    return true;
+  }
+  if (Number.isFinite(latestObservedEdgeUsd) && latestObservedEdgeUsd <= 0) {
+    return true;
+  }
+  if (Number.isFinite(policyReadyMeasuredRoutes) && policyReadyMeasuredRoutes <= 0) {
     return true;
   }
   const fundingNetUsd = dashboardStatus?.shadowCycle?.funding?.effectiveSystemNetPnlUsd;

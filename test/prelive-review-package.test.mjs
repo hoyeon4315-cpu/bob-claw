@@ -954,6 +954,156 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
   assert.equal(summary.candidateId, "wrapped-btc-loop-base-moonwell");
 });
 
+test("prelive review package promotes the strategy candidate when the current route is negative and policy-ready measured routes are exhausted", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-19T03:00:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: [],
+      },
+      prelive: {
+        currentStage: "shadow_replay",
+        liveTradingPolicy: "BLOCKED",
+        shadowReplay: {
+          status: "shadow_replay_blocked",
+          blockers: ["audit:LIVE_BLOCKED", "no_policy_ready_measured_route"],
+          auditDecision: "LIVE_BLOCKED",
+          policyReadyMeasuredRoutes: 0,
+        },
+        tinyLiveCanary: {
+          ready: false,
+          blockers: ["shadow_replay_not_ready"],
+        },
+      },
+      shadowCycle: {
+        topRoute: {
+          label: "base->ethereum wBTC.OFT->WBTC",
+          amount: "25000",
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: -3.37,
+        },
+      },
+    },
+    canaryInputs: {
+      routeKey: "base:0x0555->ethereum:0x2260",
+      routeLabel: "base->ethereum wBTC.OFT->WBTC",
+      amount: "25000",
+      scoreTradeReadiness: "insufficient_data",
+      blockers: ["token"],
+      gatewayQuote: { state: "fresh" },
+      exactGas: { state: "fresh" },
+      srcGas: { state: "fresh" },
+      dexQuote: { state: "fresh" },
+      bitcoinFee: { state: "not_required" },
+      marketSnapshot: { state: "fresh" },
+    },
+    nextStep: {
+      decision: "FUND_AND_APPROVE_WALLET",
+      headline: "Fund and approve the estimator wallet before exact gas",
+      reasons: ["token"],
+      route: {
+        routeKey: "base:0x0555->ethereum:0x2260",
+        label: "base->ethereum wBTC.OFT->WBTC",
+        amount: "25000",
+        tradeReadiness: "insufficient_data",
+        viableForPrep: true,
+        txReady: true,
+      },
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: {
+        id: "recursive_wrapped_btc_lending_loop",
+        label: "Recursive wrapped-BTC lending loop",
+        strategyType: "leverage_lending_loop",
+        protocol: "moonwell",
+        chain: "base",
+        arrivalFamily: "wrapped_btc",
+        perTradeCapUsd: 300,
+      },
+      dryRunSummary: {
+        dryRunReceiptRecorded: true,
+        autoUnwindPassCount: 2,
+        signerBackedRunCount: 0,
+      },
+    },
+    recursiveWrappedBtcLoopDryRun: {
+      dryRunReceiptRecorded: true,
+      autoUnwindPassCount: 2,
+      signerBackedRunCount: 0,
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        label: "Wrapped BTC lending loop (Base / Moonwell)",
+        strategyType: "leverage_lending_loop",
+        protocol: "moonwell",
+        chain: "base",
+        perTradeCapUsd: 300,
+      },
+      dryRunSummary: {
+        dryRunReceiptRecorded: true,
+        autoUnwindPassCount: 5,
+      },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          blockers: ["recursive_observed_receipts_missing"],
+          oosSplitStatus: "simulated_dry_run_recorded",
+          nextAction: {
+            code: "collect_recursive_loop_observed_receipts",
+            command: recursiveWrappedReceiptCommand,
+          },
+        },
+        {
+          id: "wrapped_btc_loop_validation",
+          blockers: [],
+          oosSplitStatus: "signer_backed_roundtrip_recorded",
+          evidence: {
+            oosEvidenceStatus: "signer_backed_window_ready",
+            liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+            liveRoundtripEntryCount: 8,
+            liveRoundtripUnwindCount: 4,
+          },
+          nextAction: {
+            code: "capture_wrapped_btc_loop_extended_receipt_context",
+            command:
+              "npm run ingest:wrapped-btc-loop-receipt -- --write --scenario=healthy_baseline --execution-mode=signer_backed_receipt --result=passed --health-factor-path=<hf-1>,<hf-2> --liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2> --realized-net-carry-usd=<realized-net-carry-usd>",
+          },
+        },
+      ],
+    },
+    protocolMarketWatchers: {
+      watchers: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_market_watch",
+          blockers: ["recursive_observed_receipts_missing"],
+          nextAction: {
+            code: "collect_recursive_loop_observed_receipts",
+            command: recursiveWrappedReceiptCommand,
+          },
+        },
+        {
+          id: "wrapped_btc_loop_market_watch",
+          blockers: [],
+          nextAction: {
+            code: "capture_wrapped_btc_loop_extended_receipt_context",
+            command:
+              "npm run ingest:wrapped-btc-loop-receipt -- --write --scenario=healthy_baseline --execution-mode=signer_backed_receipt --result=passed --health-factor-path=<hf-1>,<hf-2> --liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2> --realized-net-carry-usd=<realized-net-carry-usd>",
+          },
+        },
+      ],
+    },
+  });
+  const summary = summarizePreliveReviewPackage(reviewPackage);
+
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "wrapped-btc-loop-base-moonwell");
+  assert.equal(summary.candidateId, "wrapped-btc-loop-base-moonwell");
+});
+
 test("prelive review package carries ETH profitability as observe-only review context", () => {
   const reviewPackage = buildPreliveReviewPackage({
     dashboardStatus: {
