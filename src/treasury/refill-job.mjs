@@ -69,7 +69,8 @@ function actionRouteMatchRank(action, routeContext, selection = null) {
 }
 
 function selectRouteContextForAction(action, selection, routeCandidates = [], fallbackRouteContext = null) {
-  const matches = routeCandidates
+  const candidatePool = fallbackRouteContext ? [...routeCandidates, fallbackRouteContext] : routeCandidates;
+  const matches = candidatePool
     .map((item) => ({
       route: item,
       rank: actionRouteMatchRank(action, item, selection),
@@ -77,17 +78,21 @@ function selectRouteContextForAction(action, selection, routeCandidates = [], fa
     .filter((item) => Number.isFinite(item.rank))
     .sort((left, right) => {
       if (left.rank !== right.rank) return left.rank - right.rank;
-      if (left.route.viableForPrep !== right.route.viableForPrep) return left.route.viableForPrep ? -1 : 1;
-      if (left.route.txReady !== right.route.txReady) return left.route.txReady ? -1 : 1;
+      const leftNet = routeNetUsd(left.route);
+      const rightNet = routeNetUsd(right.route);
+      if (leftNet !== rightNet) return (rightNet ?? -Infinity) - (leftNet ?? -Infinity);
+      const leftViableForPrep = Boolean(left.route.viableForPrep);
+      const rightViableForPrep = Boolean(right.route.viableForPrep);
+      if (leftViableForPrep !== rightViableForPrep) return leftViableForPrep ? -1 : 1;
+      const leftTxReady = Boolean(left.route.txReady);
+      const rightTxReady = Boolean(right.route.txReady);
+      if (leftTxReady !== rightTxReady) return leftTxReady ? -1 : 1;
       const leftBlockers = Number.isFinite(left.route.blockerCount) ? left.route.blockerCount : Number.POSITIVE_INFINITY;
       const rightBlockers = Number.isFinite(right.route.blockerCount) ? right.route.blockerCount : Number.POSITIVE_INFINITY;
       if (leftBlockers !== rightBlockers) return leftBlockers - rightBlockers;
       const leftPrepFunding = isFiniteNumber(left.route.prepFundingUsd) ? left.route.prepFundingUsd : Number.POSITIVE_INFINITY;
       const rightPrepFunding = isFiniteNumber(right.route.prepFundingUsd) ? right.route.prepFundingUsd : Number.POSITIVE_INFINITY;
       if (leftPrepFunding !== rightPrepFunding) return leftPrepFunding - rightPrepFunding;
-      const leftNet = routeNetUsd(left.route);
-      const rightNet = routeNetUsd(right.route);
-      if (leftNet !== rightNet) return (rightNet ?? -Infinity) - (leftNet ?? -Infinity);
       return String(left.route.routeKey || "").localeCompare(String(right.route.routeKey || ""));
     });
   return matches[0]?.route || fallbackRouteContext;

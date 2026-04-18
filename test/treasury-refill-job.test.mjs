@@ -323,3 +323,83 @@ test("refill jobs only defer overflow items when review is caused solely by pend
   assert.equal(jobs.jobs.filter((job) => job.requiresManualReview).length, 1);
   assert.deepEqual(jobs.jobs.find((job) => job.requiresManualReview).reviewReasons, ["too_many_pending_refills"]);
 });
+
+test("refill jobs prefer higher-net fallback route context over weaker local matches", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    schemaVersion: 1,
+    observedAt: "2026-04-18T19:17:21.910Z",
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    decision: "REVIEW_REFILL_PLAN",
+    inventory: {
+      native: [{ chain: "base", actualDecimal: 0.000565307215511085 }],
+      tokens: [{ chain: "base", actual: "863020", actualDecimal: 0.86302, token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", ticker: "USDC" }],
+    },
+    reasons: ["refill_cost_above_daily_cap", "too_many_pending_refills"],
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "299136980",
+        refillAmountDecimal: 299.13698,
+        refillEstimatedUsd: 299.13698,
+        rationale: "Positive Base USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
+      },
+    ],
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({
+    plan,
+    policy,
+    routeContext: {
+      routeKey: "base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000",
+      srcChain: "base",
+      dstChain: "bitcoin",
+      srcToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      dstToken: "0x0000000000000000000000000000000000000000",
+      amount: "250122268",
+      inputUsd: 250.74757366999998,
+      prepFundingUsd: 249.259248,
+      netEdgeUsd: 1.7505430945203104,
+      executableNetEdgeUsd: null,
+      knownCostUsd: 0.1391156862,
+      routeFailureRate: 0.1111111111111111,
+      tradeReadiness: "insufficient_data",
+    },
+  });
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan,
+    routeCandidates: [
+      {
+        routeKey: "base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000",
+        srcChain: "base",
+        dstChain: "bitcoin",
+        srcToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        dstToken: "0x0000000000000000000000000000000000000000",
+        viableForPrep: false,
+        txReady: true,
+        blockerCount: 0,
+        prepFundingUsd: 99.25,
+        amount: "100000000",
+        inputUsd: 100.25,
+        knownCostUsd: 0.9062857618286819,
+        netEdgeUsd: -2.3989955074786855,
+        executableNetEdgeUsd: null,
+        routeFailureRate: 0.1111111111111111,
+        tradeReadiness: "insufficient_data",
+      },
+    ],
+  });
+
+  assert.equal(jobs.jobs.length, 1);
+  assert.equal(
+    jobs.jobs[0].systemEconomics.routeKey,
+    "base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913->bitcoin:0x0000000000000000000000000000000000000000",
+  );
+  assert.equal(jobs.jobs[0].systemEconomics.amount, "250122268");
+  assert.equal(jobs.jobs[0].systemEconomics.routeNetEdgeUsd, 1.7505430945203104);
+  assert.ok(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd > 0);
+});

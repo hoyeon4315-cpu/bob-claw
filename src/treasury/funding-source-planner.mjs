@@ -431,9 +431,16 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
     routeContext: routeContext
       ? {
           routeKey: routeContext.routeKey,
+          srcChain: routeContext.srcChain ?? null,
+          dstChain: routeContext.dstChain ?? null,
+          srcToken: routeContext.srcToken ?? null,
+          dstToken: routeContext.dstToken ?? null,
           amount: routeContext.amount,
           inputUsd: routeContext.inputUsd ?? null,
           prepFundingUsd: routeContext.prepFundingUsd ?? null,
+          viableForPrep: routeContext.viableForPrep ?? null,
+          txReady: routeContext.txReady ?? null,
+          blockerCount: routeContext.blockerCount ?? null,
           netEdgeUsd: routeContext.netEdgeUsd ?? null,
           executableNetEdgeUsd: routeContext.executableNetEdgeUsd ?? null,
           knownCostUsd: routeContext.knownCostUsd ?? null,
