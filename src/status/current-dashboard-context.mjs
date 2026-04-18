@@ -10,6 +10,7 @@ import { buildExecutionRunbook, summarizeExecutionRunbook } from "../prelive/exe
 import { buildPreliveEvidenceCampaign, summarizePreliveEvidenceCampaign } from "../prelive/evidence-campaign.mjs";
 import { buildExactRouteForkPackage, summarizeExactRouteForkPackage } from "../prelive/exact-route-fork-package.mjs";
 import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } from "../prelive/operational-judgment-review.mjs";
+import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
@@ -357,6 +358,21 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   );
   dashboardStatus.prelive.exactRouteForkPackage = summarizeExactRouteForkPackage(exactRouteForkPackage);
   dashboardStatus.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+  dashboardStatus.prelive = {
+    ...dashboardStatus.prelive,
+    ...buildPreliveReadinessSummary({
+      overall: dashboardStatus.overall || {},
+      audit: dashboardStatus.audit || null,
+      shadowCycle,
+      strategy: dashboardStatus.strategy || null,
+      simulationRuns: preliveSimulationRuns,
+      walletReadinessRecords: state.readinessRecords || [],
+      forkExecutionPlans: preliveForkPlan?.plans || [],
+      forkExecutionSubmissions: preliveForkSubmissions,
+      forkExecutionReceipts: preliveForkReceipts,
+      executionEvents,
+    }),
+  };
   dashboardStatus.liveBaseline = buildLiveBaselineSummary({
     dashboardStatus,
     nextStep: state.nextStep,

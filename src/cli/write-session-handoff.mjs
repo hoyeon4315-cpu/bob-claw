@@ -454,7 +454,7 @@ function preliveLines(prelive = null) {
   const lines = [
     `- Current stage: \`${prelive.currentStage}\``,
     `- Shadow replay: \`${prelive.shadowReplay.status}\` blockers=${blockersText(prelive.shadowReplay.blockers)} audit=${prelive.shadowReplay.auditDecision || "n/a"} policyReady=${prelive.shadowReplay.policyReadyMeasuredRoutes ?? 0}`,
-    `- Mechanical simulation: \`${prelive.mechanicalSimulation.status}\` success=${prelive.mechanicalSimulation.successCount}/${prelive.mechanicalSimulation.targetSuccessCount} failures=${prelive.mechanicalSimulation.failureCount} blockers=${blockersText(prelive.mechanicalSimulation.blockers)}`,
+    `- Mechanical simulation: \`${prelive.mechanicalSimulation.status}\` success=${prelive.mechanicalSimulation.successCount}/${prelive.mechanicalSimulation.targetSuccessCount} failures=${prelive.mechanicalSimulation.failureCount} unresolved=${prelive.mechanicalSimulation.unresolvedFailureCount ?? 0} remediated=${prelive.mechanicalSimulation.remediatedFailureCount ?? 0} historical=${prelive.mechanicalSimulation.historicalFailureCount ?? 0} blockers=${blockersText(prelive.mechanicalSimulation.blockers)}`,
     `- Fork execution: \`${prelive.forkExecution.status}\` planned=${prelive.forkExecution.planCount} submitted=${prelive.forkExecution.submittedCount} confirmed=${prelive.forkExecution.confirmedCount}/${prelive.forkExecution.targetConfirmedCount} failures=${prelive.forkExecution.failedCount} blockers=${blockersText(prelive.forkExecution.blockers)}`,
     `- Execution audit: \`${prelive.executionAudit.status}\` missingRecords=${prelive.executionAudit.missingRecordCount} blockers=${blockersText(prelive.executionAudit.blockers)}`,
     `- Tiny live canary review: \`${prelive.tinyLiveCanary.status}\` blockers=${blockersText(prelive.tinyLiveCanary.blockers)} livePolicy=\`${prelive.liveTradingPolicy}\``,
@@ -1569,6 +1569,7 @@ async function main() {
     shadowCycle: dashboardStatus?.shadowCycle || null,
     strategy: dashboardStatus?.strategy || null,
     simulationRuns: preliveSimulationRuns,
+    walletReadinessRecords: state?.readinessRecords || [],
     forkExecutionPlans: preliveForkPlan?.plans || [],
     forkExecutionSubmissions: preliveForkSubmissions,
     forkExecutionReceipts: preliveForkReceipts,

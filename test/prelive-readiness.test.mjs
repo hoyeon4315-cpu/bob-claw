@@ -242,3 +242,110 @@ test("prelive readiness blocks on unresolved pending fork output", () => {
   assert.equal(summary.tinyLiveCanary.blockers.includes("fork_output_resolution_required"), true);
   assert.equal(summary.forkExecution.latestPendingOutput.planId, "plan-1");
 });
+
+test("prelive readiness does not keep remediated active insufficient-funds failures as mechanical blockers", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_CANARY_REVIEW_POSSIBLE",
+    },
+    shadowCycle: {
+      objectivePlans: {
+        executionReview: {
+          routeKey: "base:btc->ethereum:btc",
+          amount: "10000",
+        },
+      },
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: true,
+      edgeViability: {
+        policyReadyCount: 1,
+      },
+    },
+    simulationRuns: [
+      {
+        observedAt: "2026-04-12T10:00:00.000Z",
+        routeKey: "base:btc->ethereum:btc",
+        amount: "10000",
+        status: "simulation_failed",
+        gasEstimate: { reason: "insufficient_funds" },
+        call: { reason: "insufficient_funds" },
+      },
+      {
+        observedAt: "2026-04-12T10:10:00.000Z",
+        routeKey: "base:btc->ethereum:btc",
+        amount: "10000",
+        status: "simulated_ok",
+      },
+    ],
+    walletReadinessRecords: [
+      {
+        observedAt: "2026-04-12T10:11:00.000Z",
+        routeKey: "base:btc->ethereum:btc",
+        amount: "10000",
+        overallReady: true,
+      },
+    ],
+    targetSimulationSuccessCount: 1,
+  });
+
+  assert.equal(summary.mechanicalSimulation.ready, true);
+  assert.equal(summary.mechanicalSimulation.blockers.includes("simulation_failures_present"), false);
+  assert.equal(summary.mechanicalSimulation.failureCount, 1);
+  assert.equal(summary.mechanicalSimulation.unresolvedFailureCount, 0);
+  assert.equal(summary.mechanicalSimulation.remediatedFailureCount, 1);
+  assert.equal(summary.currentStage, "fork_execution");
+});
+
+test("prelive readiness treats failures outside active routes as historical instead of active blockers", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_CANARY_REVIEW_POSSIBLE",
+    },
+    shadowCycle: {
+      objectivePlans: {
+        executionReview: {
+          routeKey: "base:btc->ethereum:btc",
+          amount: "10000",
+        },
+      },
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: true,
+      edgeViability: {
+        policyReadyCount: 1,
+      },
+    },
+    simulationRuns: [
+      {
+        observedAt: "2026-04-12T10:00:00.000Z",
+        routeKey: "avalanche:btc->ethereum:btc",
+        amount: "10000",
+        status: "simulation_failed",
+        gasEstimate: { reason: "execution_reverted" },
+        call: { reason: "execution_reverted" },
+      },
+      {
+        observedAt: "2026-04-12T10:10:00.000Z",
+        routeKey: "base:btc->ethereum:btc",
+        amount: "10000",
+        status: "simulated_ok",
+      },
+    ],
+    targetSimulationSuccessCount: 1,
+  });
+
+  assert.equal(summary.mechanicalSimulation.ready, true);
+  assert.equal(summary.mechanicalSimulation.failureCount, 1);
+  assert.equal(summary.mechanicalSimulation.unresolvedFailureCount, 0);
+  assert.equal(summary.mechanicalSimulation.historicalFailureCount, 1);
+  assert.equal(summary.mechanicalSimulation.blockers.includes("simulation_failures_present"), false);
+});

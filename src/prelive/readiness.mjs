@@ -25,12 +25,83 @@ function phaseStatus({ ready, blockers, readyCode, inProgressCode, blockedCode }
   };
 }
 
+function selectionKey(routeKey = null, amount = null) {
+  if (!routeKey || amount == null) return null;
+  return `${routeKey}|${String(amount)}`;
+}
+
+function latestBySelection(records = []) {
+  const latest = new Map();
+  for (const record of records || []) {
+    const key = selectionKey(record?.routeKey, record?.amount);
+    if (!key) continue;
+    const current = latest.get(key);
+    if (!current || new Date(record.observedAt || 0) > new Date(current.observedAt || 0)) {
+      latest.set(key, record);
+    }
+  }
+  return latest;
+}
+
+function activeSimulationSelectionKeys(shadowCycle = null) {
+  return new Set(
+    [
+      selectionKey(shadowCycle?.topRoute?.routeKey, shadowCycle?.topRoute?.amount),
+      selectionKey(shadowCycle?.objectivePlans?.executionReview?.routeKey, shadowCycle?.objectivePlans?.executionReview?.amount),
+    ].filter(Boolean),
+  );
+}
+
+function failureReason(record = null) {
+  return record?.call?.reason || record?.gasEstimate?.reason || record?.skipReason || null;
+}
+
+function classifySimulationFailures({
+  failedSimulations = [],
+  successfulSimulations = [],
+  walletReadinessRecords = [],
+  activeSelectionKeys = new Set(),
+} = {}) {
+  const latestSuccessBySelection = latestBySelection(successfulSimulations);
+  const latestReadinessBySelection = latestBySelection(walletReadinessRecords);
+  const annotated = failedSimulations.map((record) => {
+    const key = selectionKey(record?.routeKey, record?.amount);
+    const active = key ? activeSelectionKeys.has(key) : false;
+    const latestSuccess = key ? latestSuccessBySelection.get(key) : null;
+    const latestReadiness = key ? latestReadinessBySelection.get(key) : null;
+    const reason = failureReason(record);
+    const successRemediated =
+      latestSuccess && new Date(latestSuccess.observedAt || 0) > new Date(record?.observedAt || 0);
+    const readinessRemediated = reason === "insufficient_funds" && latestReadiness?.overallReady === true;
+    const remediated = Boolean(successRemediated || readinessRemediated);
+    return {
+      ...record,
+      activeSelection: active,
+      remediated,
+      remediationReason: successRemediated
+        ? "later_simulated_success"
+        : readinessRemediated
+          ? "wallet_readiness_now_ready"
+          : null,
+      latestReadinessObservedAt: latestReadiness?.observedAt || null,
+      latestSuccessObservedAt: latestSuccess?.observedAt || null,
+    };
+  });
+  return {
+    unresolvedActiveFailures: annotated.filter((item) => item.activeSelection && !item.remediated),
+    remediatedFailures: annotated.filter((item) => item.remediated),
+    historicalFailures: annotated.filter((item) => !item.activeSelection),
+    annotatedFailures: annotated,
+  };
+}
+
 export function buildPreliveReadinessSummary({
   overall = {},
   audit = null,
   shadowCycle = null,
   strategy = null,
   simulationRuns = [],
+  walletReadinessRecords = [],
   forkExecutionPlans = [],
   forkExecutionSubmissions = [],
   forkExecutionReceipts = [],
@@ -43,7 +114,15 @@ export function buildPreliveReadinessSummary({
   const objectiveExecutionRoute = shadowCycle?.objectivePlans?.executionReview?.routeKey || null;
   const successfulSimulations = simulationRuns.filter((item) => item.status === "simulated_ok");
   const failedSimulations = simulationRuns.filter((item) => item.status === "simulation_failed");
-  const latestFailure = [...failedSimulations].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
+  const failureClassification = classifySimulationFailures({
+    failedSimulations,
+    successfulSimulations,
+    walletReadinessRecords,
+    activeSelectionKeys: activeSimulationSelectionKeys(shadowCycle),
+  });
+  const latestUnresolvedActiveFailure =
+    [...failureClassification.unresolvedActiveFailures].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] ||
+    null;
 
   const shadowReplayBlockers = [];
   if (audit?.decision !== "LIVE_CANARY_REVIEW_POSSIBLE") {
@@ -74,7 +153,7 @@ export function buildPreliveReadinessSummary({
   if (successfulSimulations.length < targetSimulationSuccessCount) {
     mechanicalSimulationBlockers.push(`needs_${targetSimulationSuccessCount - successfulSimulations.length}_more_successful_simulations`);
   }
-  if (failedSimulations.length > 0) {
+  if (failureClassification.unresolvedActiveFailures.length > 0) {
     mechanicalSimulationBlockers.push("simulation_failures_present");
   }
 
@@ -89,8 +168,11 @@ export function buildPreliveReadinessSummary({
     targetSuccessCount: targetSimulationSuccessCount,
     successCount: successfulSimulations.length,
     failureCount: failedSimulations.length,
-    latestFailureReason: latestFailure?.call?.reason || latestFailure?.gasEstimate?.reason || null,
-    latestFailureAt: latestFailure?.observedAt || null,
+    unresolvedFailureCount: failureClassification.unresolvedActiveFailures.length,
+    remediatedFailureCount: failureClassification.remediatedFailures.length,
+    historicalFailureCount: failureClassification.historicalFailures.length,
+    latestFailureReason: failureReason(latestUnresolvedActiveFailure),
+    latestFailureAt: latestUnresolvedActiveFailure?.observedAt || null,
   };
 
   const forkExecution = {

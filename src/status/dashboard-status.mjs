@@ -1676,6 +1676,7 @@ export function buildDashboardStatus(input, options = {}) {
     shadowCycle,
     strategy: strategyBase,
     simulationRuns: input.preliveSimulationRuns || [],
+    walletReadinessRecords: input.readinessRecords || [],
     forkExecutionPlans: input.preliveForkPlan?.plans || [],
     forkExecutionSubmissions: input.preliveForkSubmissions || [],
     forkExecutionReceipts: input.preliveForkReceipts || [],

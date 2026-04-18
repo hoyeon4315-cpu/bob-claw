@@ -56,7 +56,7 @@ async function main() {
   console.log(`shadowReplayBlockers=${report.shadowReplay.blockers.join(",") || "none"}`);
   console.log(`mechanicalSimulation=${report.mechanicalSimulation.status}`);
   console.log(
-    `simulationCounts success=${report.mechanicalSimulation.successCount}/${report.mechanicalSimulation.targetSuccessCount} failure=${report.mechanicalSimulation.failureCount}`,
+    `simulationCounts success=${report.mechanicalSimulation.successCount}/${report.mechanicalSimulation.targetSuccessCount} failure=${report.mechanicalSimulation.failureCount} unresolved=${report.mechanicalSimulation.unresolvedFailureCount ?? 0} remediated=${report.mechanicalSimulation.remediatedFailureCount ?? 0} historical=${report.mechanicalSimulation.historicalFailureCount ?? 0}`,
   );
   console.log(`mechanicalBlockers=${report.mechanicalSimulation.blockers.join(",") || "none"}`);
   console.log(`forkExecution=${report.forkExecution.status}`);
