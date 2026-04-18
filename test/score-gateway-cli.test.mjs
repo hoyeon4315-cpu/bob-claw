@@ -309,6 +309,75 @@ test("score gateway prefers a fresh gas snapshot over stale exact gas", async ()
   assert.ok(refreshed.gasSnapshotAgeMinutes < 5, `${refreshed.gasSnapshotAgeMinutes}`);
 });
 
+test("score gateway keeps exact gas when USD can be recomputed from gas units", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-score-gateway-exact-gas-recompute-"));
+  const dataDir = join(cwd, "data");
+  const now = Date.now();
+  const iso = (offsetMs) => new Date(now + offsetMs).toISOString();
+  const route = { srcChain: "avalanche", dstChain: "ethereum", srcToken: WBTC_OFT, dstToken: USDC_ETHEREUM };
+  const routeKey = `${route.srcChain}:${route.srcToken}->${route.dstChain}:${route.dstToken}`;
+
+  await writeJsonl(dataDir, "gateway-quotes", [
+    quote({
+      observedAt: iso(-60_000),
+      route,
+      outputAmount: "500000",
+    }),
+  ]);
+  await writeJsonl(dataDir, "gateway-quote-failures", []);
+  await writeJsonl(dataDir, "dex-quotes", []);
+  await writeJsonl(dataDir, "bitcoin-fee-snapshots", [{ observedAt: iso(-120_000), btcUsd: 50000 }]);
+  await writeJsonl(dataDir, "gateway-gas-estimates", [
+    {
+      observedAt: iso(-90_000),
+      routeKey,
+      amount: "10000",
+      gasUnits: 339320,
+      gasPriceWei: "44928051",
+      nativeUsd: null,
+      estimatedGasUsd: null,
+      source: "eth_estimateGas",
+    },
+  ]);
+  await writeJsonl(dataDir, "gas-snapshots", [
+    {
+      observedAt: iso(-120_000),
+      chain: "avalanche",
+      nativeUsd: 25,
+      gasPriceWei: "60000000",
+      fallbackGasUnits: 21000,
+    },
+    {
+      observedAt: iso(-120_000),
+      chain: "ethereum",
+      nativeUsd: 3000,
+      gasPriceWei: "1000000000",
+      fallbackGasUnits: 21000,
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, "src/cli/score-gateway.mjs"), "--write", `--route-key=${routeKey}`, "--amount=10000"],
+    {
+      cwd,
+      env: {
+        ...process.env,
+        BOB_CLAW_DATA_DIR: dataDir,
+      },
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const snapshot = JSON.parse(await readFile(join(dataDir, "gateway-scores.json"), "utf8"));
+  const refreshed = snapshot.scores.find((item) => item.routeKey === routeKey && item.amount === "10000");
+  assert.equal(refreshed.executionGasSource, "eth_estimateGas");
+  assert.ok(refreshed.executionGasUsd > 0, `${refreshed.executionGasUsd}`);
+  assert.equal(refreshed.dataGaps.includes("exact_src_execution_gas_not_estimated"), false);
+});
+
 test("score gateway matches trusted destination-leg dex quotes by route and amount", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-score-gateway-dex-amount-"));
   const dataDir = join(cwd, "data");

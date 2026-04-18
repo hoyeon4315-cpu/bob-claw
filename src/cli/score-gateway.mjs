@@ -176,6 +176,14 @@ function formatMinutes(value) {
   return `${value.toFixed(1)}m`;
 }
 
+function exactGasUsd(exactGas, nativeUsd) {
+  if (!exactGas) return null;
+  if (Number.isFinite(exactGas.estimatedGasUsd)) return exactGas.estimatedGasUsd;
+  if (!Number.isFinite(nativeUsd)) return null;
+  if (!Number.isFinite(Number(exactGas.gasUnits)) || !exactGas.gasPriceWei) return null;
+  return (Number(BigInt(exactGas.gasPriceWei)) / 1e18) * Number(exactGas.gasUnits) * nativeUsd;
+}
+
 function minutesBetween(older, newer) {
   if (!older || !newer) return null;
   return (new Date(newer).getTime() - new Date(older).getTime()) / 60_000;
@@ -330,16 +338,17 @@ async function main() {
         ? exactGasFailure
         : null;
     const exactGasAgeMinutes = minutesBetween(exactGas?.observedAt || null, now);
+    const exactGasEstimatedUsd = exactGasUsd(exactGas, prices.nativeByChain[quote.route.srcChain]);
     const exactGasFresh =
-      Number.isFinite(exactGas?.estimatedGasUsd) &&
+      Number.isFinite(exactGasEstimatedUsd) &&
       (!Number.isFinite(exactGasAgeMinutes) || exactGasAgeMinutes <= 30);
-    const exactGasUsable = Number.isFinite(exactGas?.estimatedGasUsd);
+    const exactGasUsable = Number.isFinite(exactGasEstimatedUsd);
     const executionGasUsd = exactGasFresh
-      ? exactGas.estimatedGasUsd
+      ? exactGasEstimatedUsd
       : snapshot
         ? gasUsdFromSnapshot(snapshot, prices.nativeByChain[quote.route.srcChain])
         : exactGasUsable
-          ? exactGas.estimatedGasUsd
+          ? exactGasEstimatedUsd
           : null;
     const executionGasSource = exactGasFresh ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : exactGasUsable ? "eth_estimateGas" : null;
     const gasObservedAt = exactGasFresh ? exactGas?.observedAt || null : snapshot?.observedAt || exactGas?.observedAt || null;
