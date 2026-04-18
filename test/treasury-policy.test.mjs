@@ -11,6 +11,8 @@ import {
   validateTreasuryPolicy,
 } from "../src/treasury/policy.mjs";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 
 test("default treasury policy validates and enables bob/base", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
@@ -33,6 +35,16 @@ test("threshold helpers convert decimals to raw units", () => {
     minBalance: "10000",
     targetBalance: "30000",
     maxBalance: "100000",
+  });
+  assert.deepEqual(tokenThresholdUnits(policy, "base", BASE_USDC_TOKEN), {
+    minBalance: "250000000",
+    targetBalance: "300000000",
+    maxBalance: "1000000000",
+  });
+  assert.deepEqual(tokenThresholdUnits(policy, "bsc", BSC_USDC_TOKEN), {
+    minBalance: "250000000000000000000",
+    targetBalance: "300000000000000000000",
+    maxBalance: "1000000000000000000000",
   });
 });
 

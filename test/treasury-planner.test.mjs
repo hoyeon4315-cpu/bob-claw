@@ -175,3 +175,55 @@ test("planner flags demanded source tokens that are not modeled in treasury poli
   assert.equal(blocker.chain, "base");
   assert.equal(blocker.token, "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
 });
+
+test("planner uses token-specific demand when a chain has multiple modeled tokens", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const inventory = inventoryFixture();
+  inventory.tokens.push({
+    chain: "base",
+    active: true,
+    enabled: true,
+    ticker: "wBTC.OFT",
+    token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+    actual: "0",
+    actualDecimal: 0,
+    targetBalance: "30000",
+    targetBalanceDecimal: 0.0003,
+    maxBalance: "100000",
+    maxBalanceDecimal: 0.001,
+    refillToTarget: "30000",
+    refillToTargetDecimal: 0.0003,
+    priceUsd: 70000,
+    estimatedUsd: 0,
+    status: "refill_required",
+    rationale: "Base wrapped BTC buffer",
+  });
+  inventory.tokens.push({
+    chain: "base",
+    active: true,
+    enabled: true,
+    ticker: "USDC",
+    token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    actual: "0",
+    actualDecimal: 0,
+    targetBalance: "300000000",
+    targetBalanceDecimal: 300,
+    maxBalance: "1000000000",
+    maxBalanceDecimal: 1000,
+    refillToTarget: "300000000",
+    refillToTargetDecimal: 300,
+    priceUsd: 1,
+    estimatedUsd: 0,
+    status: "refill_required",
+    rationale: "Base USDC buffer",
+  });
+
+  const plan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: [{ chain: "base" }, { chain: "base", token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" }],
+  });
+
+  assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"), true);
+  assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"), false);
+});

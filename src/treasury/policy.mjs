@@ -1,6 +1,8 @@
 import { tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
+const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 
 function normalizedAddress(value) {
   return String(value || "").toLowerCase();
@@ -149,6 +151,18 @@ export function buildDefaultTreasuryPolicy() {
         targetBalance: "0.0003",
         maxBalance: "0.001",
         rationale: "Keeps reverse-route readiness without overfunding.",
+      }),
+      tokenPolicy("base", BASE_USDC_TOKEN, {
+        minBalance: "250",
+        targetBalance: "300",
+        maxBalance: "1000",
+        rationale: "Positive Base USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
+      }),
+      tokenPolicy("bsc", BSC_USDC_TOKEN, {
+        minBalance: "250",
+        targetBalance: "300",
+        maxBalance: "1000",
+        rationale: "Positive BSC USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
       }),
     ],
     allowanceCaps: [

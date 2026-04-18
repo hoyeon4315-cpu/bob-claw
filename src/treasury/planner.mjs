@@ -68,6 +68,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
   const enriched = enrichInventoryWithRefillUsd(inventory);
   const routeDemandChains = new Set(routeDemand.map((item) => item.chain));
   const routeDemandTokenKeys = new Set(routeDemand.filter((item) => item.token).map((item) => `${item.chain}:${String(item.token).toLowerCase()}`));
+  const routeDemandTokenChains = new Set(routeDemand.filter((item) => item.token).map((item) => item.chain));
   const modeledTokenKeys = new Set((enriched.tokens || []).map((item) => `${item.chain}:${String(item.token).toLowerCase()}`));
   const actions = [];
   const blockers = [];
@@ -111,7 +112,9 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
 
   for (const item of enriched.tokens) {
     const tokenKey = `${item.chain}:${String(item.token).toLowerCase()}`;
-    const hasDemand = routeDemandTokenKeys.has(tokenKey) || routeDemandChains.has(item.chain);
+    const hasDemand =
+      routeDemandTokenKeys.has(tokenKey) ||
+      (!routeDemandTokenChains.has(item.chain) && routeDemandChains.has(item.chain));
     if (item.status === "refill_required" || (item.status === "observe_only_low" && hasDemand)) {
       if (policy.refillPolicy.requireRouteDemandSignal && !hasDemand) {
         blockers.push({
