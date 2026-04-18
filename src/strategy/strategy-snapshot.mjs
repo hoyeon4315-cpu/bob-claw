@@ -189,6 +189,8 @@ export function buildProductPlanningCoverage({ dashboardStatus = null, strategyS
   const liveBaseline = dashboardStatus?.liveBaseline || null;
   const paybackMinimumProgress = payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
   const exactRouteTechnicalBlocker = liveBaseline?.blockers?.technical?.[0] || null;
+  const exactRouteTechnicalStatus = exactRouteTechnicalBlocker?.status || "";
+  const exactRouteTechnicalCode = exactRouteTechnicalBlocker?.code || "";
   const paybackStatus =
     !payback
       ? "missing_plan"
@@ -210,7 +212,9 @@ export function buildProductPlanningCoverage({ dashboardStatus = null, strategyS
       ? "tracked_in_progress"
       : !exactRouteTechnicalBlocker
         ? "tracked_ready"
-        : (exactRouteTechnicalBlocker.status || exactRouteTechnicalBlocker.code || "").includes("missing_plan")
+        : exactRouteTechnicalStatus.includes("missing_plan") ||
+            exactRouteTechnicalStatus.includes("missing_exact_route_plan") ||
+            exactRouteTechnicalCode.includes("missing_plan")
           ? "missing_plan"
           : "tracked_blocked";
   const pillars = [
