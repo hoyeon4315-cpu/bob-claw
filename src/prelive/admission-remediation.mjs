@@ -233,7 +233,11 @@ function inputItems(reviewPackage = null, address = null) {
   return mapping
     .flatMap((entry) => {
       let state = inputFreshness[entry.field]?.state || null;
-      if (hasWalletBlocker && (entry.field === "gatewayQuote" || entry.field === "exactGas") && (state === "stale" || state === "missing")) {
+      if (
+        hasWalletBlocker &&
+        (entry.field === "gatewayQuote" || entry.field === "exactGas" || entry.field === "dexQuote") &&
+        (state === "stale" || state === "missing")
+      ) {
         return [];
       }
       if (entry.field === "dexQuote" && (state === "stale" || state === "missing") && structuralDexReason) {

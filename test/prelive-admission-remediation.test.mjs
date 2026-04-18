@@ -312,6 +312,42 @@ test("admission remediation plan skips stale gateway and missing exact gas when 
   assert.equal(plan.items.some((item) => item.code === "refresh_exact_gas"), false);
 });
 
+test("admission remediation plan skips dex refresh when wallet blocker is already known", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        blockers: ["native", "stale_dex_quote"],
+      },
+      manualReviewCandidate: {
+        routeKey: "base:0x0555->bsc:0x0555",
+        routeLabel: "base->bsc wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        blockerReasons: ["native"],
+        inputFreshness: {
+          gatewayQuote: { state: "fresh" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "stale" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+      queueFollowUps: [
+        {
+          rank: 1,
+          scope: "active_canary",
+          label: "base->bsc wBTC.OFT->wBTC.OFT",
+          reason: "native",
+          command: "npm run check:estimator-wallet -- --route-key=base:0x0555->bsc:0x0555 --amount=10000",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.nextAction.code, "native");
+  assert.equal(plan.items.some((item) => item.code === "refresh_dex_quote"), false);
+});
+
 test("admission remediation plan keeps high-priority active canary readiness even when refresh-batch runner exists", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
