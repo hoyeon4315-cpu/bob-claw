@@ -190,6 +190,60 @@ test("canary route plan infers token blockers from latest known balances for unc
 
   assert.deepEqual(plan.topCandidates[0].prepBlockers, ["token"]);
   assert.equal(plan.topCandidates[0].readinessFailureReason, null);
+  assert.equal(plan.topCandidates[0].prepFundingUsd, 10.95);
+});
+
+test("canary route plan prefers affordable unchecked amount over larger shortfall amount", () => {
+  const routeKey = `bob:${WBTC_OFT}->bsc:${WBTC_OFT}`;
+  const plan = buildCanaryRoutePlan(
+    {
+      quotes: [
+        quote({
+          routeKey,
+          srcChain: "bob",
+          dstChain: "bsc",
+          amount: "10000",
+          inputAmount: "10000",
+          txValueWei: "320661268633384",
+        }),
+        quote({
+          routeKey,
+          srcChain: "bob",
+          dstChain: "bsc",
+          amount: "2000",
+          inputAmount: "2000",
+          txValueWei: "320661268633384",
+        }),
+      ],
+      scores: [
+        score({ routeKey, amount: "10000", srcChain: "bob", dstChain: "bsc" }),
+        score({ routeKey, amount: "2000", srcChain: "bob", dstChain: "bsc", inputUsd: 1.46 }),
+      ],
+      readinessRecords: [
+        {
+          observedAt: "2026-04-18T01:05:00.000Z",
+          address: ADDRESS,
+          routeKey,
+          amount: "1000",
+          srcChain: "bob",
+          dstChain: "bsc",
+          native: { balanceWei: "3583671694530020", requiredWei: "320661268633384", shortfallWei: "0", ok: true },
+          token: { token: WBTC_OFT, balance: "2141", required: "1000", shortfall: "0", ok: true },
+          allowance: null,
+          overallReady: true,
+        },
+      ],
+      readinessFailures: [],
+    },
+    { address: ADDRESS, prices: { nativeByChain: { bob: 2421.47 } } },
+  );
+
+  assert.equal(plan.topCandidates[0].amount, "2000");
+  assert.deepEqual(plan.topCandidates[0].prepBlockers, ["wallet_not_checked"]);
+  assert.equal(plan.topCandidates[0].prepFundingUsd, 0);
+  assert.equal(plan.topCandidates[1].amount, "10000");
+  assert.equal(plan.topCandidates[1].prepBlockers.includes("token"), true);
+  assert.equal(plan.topCandidates[1].prepFundingUsd, 5.73707);
 });
 
 test("canary route plan demotes reject-no-edge routes behind unresolved candidates", () => {

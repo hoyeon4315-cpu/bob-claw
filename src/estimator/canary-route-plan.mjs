@@ -69,6 +69,28 @@ function tokenShortfallUsd(readiness, score) {
   return amount * rawUsd;
 }
 
+function inferredNativeShortfallUsd(quote, knownBalances, prices) {
+  const srcChain = quote?.route?.srcChain || null;
+  const txValueWei = bigint(quote?.txValueWei);
+  const nativeBalance = srcChain ? knownBalances?.nativeByChain?.get(srcChain) : null;
+  const nativeUsd = srcChain ? prices?.nativeByChain?.[srcChain] : null;
+  if (nativeBalance == null || txValueWei <= nativeBalance || !Number.isFinite(nativeUsd)) return null;
+  return (Number(txValueWei - nativeBalance) / 1e18) * nativeUsd;
+}
+
+function inferredTokenShortfallUsd(quote, score, knownBalances) {
+  const srcChain = quote?.route?.srcChain || null;
+  const srcToken = String(quote?.route?.srcToken || "").toLowerCase();
+  const inputAmount = bigint(quote?.inputAmount);
+  const tokenBalance = srcChain && srcToken ? knownBalances?.tokenByChainAndToken?.get(`${srcChain}|${srcToken}`) : null;
+  const decimals = score?.srcAsset?.decimals;
+  const rawUsd = score?.price?.srcRawUsd;
+  if (tokenBalance == null || inputAmount <= tokenBalance || !Number.isInteger(decimals) || !Number.isFinite(rawUsd)) return null;
+  const amount = unitsToDecimal(inputAmount - tokenBalance, decimals);
+  if (!Number.isFinite(amount)) return null;
+  return amount * rawUsd;
+}
+
 function routePrepBlockers(readiness, quote, knownBalances) {
   if (!readiness) {
     const inferred = [];
@@ -165,8 +187,8 @@ export function buildCanaryRoutePlan(
       const scoreDisqualifiers = disqualifyingScoreReasons(score);
       const txReady = Boolean(quote.txTo && quote.txData);
       const exactGasDone = score?.executionGasSource === "eth_estimateGas";
-      const nativeUsd = nativeShortfallUsd(readiness, prices);
-      const tokenUsd = tokenShortfallUsd(readiness, score);
+      const nativeUsd = nativeShortfallUsd(readiness, prices) ?? inferredNativeShortfallUsd(quote, knownBalances, prices);
+      const tokenUsd = tokenShortfallUsd(readiness, score) ?? inferredTokenShortfallUsd(quote, score, knownBalances);
       const prepFundingUsd = [nativeUsd, tokenUsd].filter(Number.isFinite).reduce((sum, value) => sum + value, 0);
       const viableForPrep =
         txReady &&
