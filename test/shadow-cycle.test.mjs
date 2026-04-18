@@ -872,3 +872,51 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
     ],
   );
 });
+
+test("shadow cycle suppresses immediate repeat wallet readiness checks after a fresh check", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      routePlan: {
+        topCandidates: [
+          {
+            routeKey: "avalanche:0x0555->bob:0x0555",
+            label: "avalanche->bob wBTC.OFT->wBTC.OFT",
+            amount: "25000",
+            srcChain: "avalanche",
+            dstChain: "bob",
+            viableForPrep: true,
+            txReady: true,
+            tradeReadiness: "candidate_for_validation",
+            prepBlockers: ["token"],
+            scoreDisqualifiers: [],
+            readinessFailureReason: "token",
+          },
+        ],
+      },
+      readinessRecords: [
+        {
+          observedAt: new Date(Date.now() - 60_000).toISOString(),
+          routeKey: "avalanche:0x0555->bob:0x0555",
+          amount: "25000",
+          address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+        },
+      ],
+      readinessFailures: [],
+    },
+    treasuryPlan: { decision: "BLOCKED", reasons: [], summary: {}, actions: [], blockers: [] },
+    fundingSourcePlan: { reasons: ["route_refill_economically_unjustified"], summary: { economicallyJustified: false } },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: { dailyRealizedPnlUsd: 0, projectLossUsedUsd: 0, failedGasCost24hUsd: 0, consecutiveFailures: 0 },
+    quotes: [],
+    quoteFailures: [],
+    shadowObservations: [],
+    scoreSnapshot: { scores: [] },
+    strategy: null,
+    ethFamilyWatch: null,
+  });
+
+  assert.equal(summary.shadowActions[0].code, "check_wallet_readiness");
+  assert.equal(summary.refreshQueue.some((item) => item.code === "check_wallet_readiness"), false);
+});

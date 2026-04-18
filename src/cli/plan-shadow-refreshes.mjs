@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
 
@@ -34,9 +35,9 @@ async function loadShadowCycle(path) {
   }
 }
 
-function buildRefreshPlan(shadowCycle, { limit = 8 } = {}) {
+function buildRefreshPlan(shadowCycle, { readinessRecords = [], readinessFailures = [], limit = 8 } = {}) {
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.round(limit) : 8;
-  const items = buildShadowRefreshQueue({ shadowCycle, limit: safeLimit });
+  const items = buildShadowRefreshQueue({ shadowCycle, readinessRecords, readinessFailures, limit: safeLimit });
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -55,8 +56,12 @@ function stripVolatile(plan) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const shadowCyclePath = join(config.dataDir, "shadow-cycle-latest.json");
-  const shadowCycle = await loadShadowCycle(shadowCyclePath);
-  const plan = buildRefreshPlan(shadowCycle, { limit: args.limit });
+  const [shadowCycle, readinessRecords, readinessFailures] = await Promise.all([
+    loadShadowCycle(shadowCyclePath),
+    readJsonl(config.dataDir, "estimator-wallet-readiness"),
+    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
+  ]);
+  const plan = buildRefreshPlan(shadowCycle, { readinessRecords, readinessFailures, limit: args.limit });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "shadow-refresh-plan.json");

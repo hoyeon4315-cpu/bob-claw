@@ -38,11 +38,15 @@ function stripVolatile(value) {
 async function loadRefreshPlan() {
   const existing = await readJsonIfExists(join(config.dataDir, "shadow-refresh-plan.json"));
   if (existing?.items?.length) return existing;
-  const shadowCycle = await readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json"));
+  const [shadowCycle, readinessRecords, readinessFailures] = await Promise.all([
+    readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json")),
+    readJsonl(config.dataDir, "estimator-wallet-readiness"),
+    readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
+  ]);
   if (!shadowCycle) {
     throw new Error("Missing shadow cycle snapshot. Run npm run run:shadow-cycle -- --write first.");
   }
-  const items = buildShadowRefreshQueue({ shadowCycle, limit: 8 });
+  const items = buildShadowRefreshQueue({ shadowCycle, readinessRecords, readinessFailures, limit: 8 });
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),

@@ -524,6 +524,8 @@ export function buildShadowCycleSummary({
   const refreshQueue = buildShadowRefreshQueue({
     address: canaryState?.address || null,
     nextReadinessCheck,
+    readinessRecords: canaryState?.readinessRecords || [],
+    readinessFailures: canaryState?.readinessFailures || [],
     shadowActions,
     objectivePlans,
     strategyPlans,
@@ -532,6 +534,7 @@ export function buildShadowCycleSummary({
     enabledRouteCount: enabledRoutes.length,
     treasuryDecision: treasuryPlan?.decision || null,
     fundingReasonCount: fundingSourcePlan?.reasons?.length || 0,
+    now: new Date(),
   });
 
   return {

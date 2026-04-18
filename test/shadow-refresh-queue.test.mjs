@@ -127,3 +127,33 @@ test("shadow refresh queue adds ETH-family observe-only evidence when surface ch
   assert.equal(queue[0].command.includes("audit:eth-family-overfit"), true);
   assert.equal(queue[0].command.includes("status:dashboard"), true);
 });
+
+test("shadow refresh queue skips wallet checks that were refreshed moments ago", () => {
+  const queue = buildShadowRefreshQueue({
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    shadowActions: [
+      {
+        role: "active_canary",
+        routeKey: "avalanche:0x0555->bob:0x0555",
+        label: "avalanche->bob wBTC.OFT->wBTC.OFT",
+        amount: "25000",
+        code: "check_wallet_readiness",
+        actionLabel: "refresh wallet readiness",
+        reason: "token",
+        command:
+          "npm run check:estimator-wallet -- --route-key=avalanche:0x0555->bob:0x0555 --amount=25000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      },
+    ],
+    readinessRecords: [
+      {
+        observedAt: "2026-04-19T00:00:00.000Z",
+        routeKey: "avalanche:0x0555->bob:0x0555",
+        amount: "25000",
+        address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      },
+    ],
+    now: "2026-04-19T00:03:00.000Z",
+  });
+
+  assert.equal(queue.some((item) => item.code === "check_wallet_readiness"), false);
+});

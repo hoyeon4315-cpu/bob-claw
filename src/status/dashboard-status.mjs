@@ -11,6 +11,7 @@ import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaig
 import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
 import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
 import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.mjs";
+import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
 import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-runner.mjs";
 import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
 import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
@@ -1270,10 +1271,17 @@ function buildManualMemos({ decisionInputs = null, shadowCycle = null, prelive =
   return memos.slice(0, 3);
 }
 
-function shadowCycleSummary(shadowCycle, now) {
+function shadowCycleSummary(shadowCycle, now, { readinessRecords = [], readinessFailures = [] } = {}) {
   if (!shadowCycle) return null;
   const refreshBatch = buildShadowRefreshBatchSummary(shadowCycle.refreshBatches || [], now);
   const refreshExecution = buildShadowRefreshExecutionSummary(shadowCycle.refreshExecutions || [], now);
+  const refreshedQueue = buildShadowRefreshQueue({
+    shadowCycle,
+    readinessRecords,
+    readinessFailures,
+    now,
+    limit: 8,
+  });
   const topRouteTradeReadiness = humanTradeReadiness(shadowCycle.topRoute?.tradeReadiness || null, shadowCycle.topRoute?.netEdgeUsd);
 
   return {
@@ -1444,7 +1452,7 @@ function shadowCycleSummary(shadowCycle, now) {
           evidenceCounts: shadowCycle.pivotDecision.evidenceCounts || null,
         }
       : null,
-    refreshQueue: (shadowCycle.refreshQueue || []).map((item) => ({
+    refreshQueue: refreshedQueue.map((item) => ({
       rank: item.rank ?? null,
       priority: item.priority ?? null,
       kind: item.kind || null,
@@ -1671,6 +1679,10 @@ export function buildDashboardStatus(input, options = {}) {
         }
       : null,
     now,
+    {
+      readinessRecords: input.estimatorWalletReadiness || [],
+      readinessFailures: input.estimatorWalletReadinessFailures || [],
+    },
   );
   const canaryAdvance = advanceCanarySummary(input.advanceCanary || null, now);
   const strategyBase = strategySummary({
@@ -1691,7 +1703,7 @@ export function buildDashboardStatus(input, options = {}) {
     shadowCycle,
     strategy: strategyBase,
     simulationRuns: input.preliveSimulationRuns || [],
-    walletReadinessRecords: input.readinessRecords || [],
+    walletReadinessRecords: input.estimatorWalletReadiness || [],
     forkExecutionPlans: input.preliveForkPlan?.plans || [],
     forkExecutionSubmissions: input.preliveForkSubmissions || [],
     forkExecutionReceipts: input.preliveForkReceipts || [],

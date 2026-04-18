@@ -1114,10 +1114,13 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.strategyPlans.proxySpread.nextAction, "watch_proxy_surface");
   assert.equal(status.shadowCycle.objectivePlans.executionReview.nextActionCode, "check_wallet_readiness");
   assert.equal(status.shadowCycle.objectivePlans.discovery.nextActionCode, "collect_decay_survival");
-  assert.equal(status.shadowCycle.refreshQueue[0].scope, "canary");
+  assert.equal(status.shadowCycle.refreshQueue[0].scope, "tx_ready_shadow");
   assert.equal(status.shadowCycle.refreshQueue[0].code, "check_wallet_readiness");
-  assert.equal(status.shadowCycle.refreshQueue[1].selectionCode, "prefer_viable_prep_route_over_measured_hypothesis");
-  assert.equal(status.shadowCycle.refreshQueue[2].command, "npm run report:route-performance -- --write");
+  assert.equal(status.shadowCycle.refreshQueue.some((item) => item.code === "check_wallet_readiness"), true);
+  assert.equal(
+    status.shadowCycle.refreshQueue.some((item) => item.command === "npm run report:route-performance -- --write"),
+    true,
+  );
   assert.equal(status.strategy.objectivePlans.executionReview.routeKey, "ethereum:0x2260->base:0x0555");
   assert.equal(status.strategy.objectivePlans.discovery.source, "secondary_measured_loop");
   assert.equal(status.shadowCycle.treasury.estimatedWalletUsd, 25.01);

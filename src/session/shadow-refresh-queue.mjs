@@ -4,6 +4,10 @@ function dedupe(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function normalized(value) {
+  return String(value || "").toLowerCase();
+}
+
 function readinessCommand(address, check) {
   if (!check?.routeKey || !check?.amount) return null;
   const addressArg = address ? ` --address=${shellQuote(address)}` : "";
@@ -97,6 +101,38 @@ function dedupeQueue(items = []) {
     }
   }
   return [...byKey.values()].sort(compareQueueItems);
+}
+
+function latestMatchingReadinessRecord({
+  routeKey = null,
+  amount = null,
+  address = null,
+  readinessRecords = [],
+  readinessFailures = [],
+} = {}) {
+  if (!routeKey || !amount) return null;
+  return [...readinessRecords, ...readinessFailures]
+    .filter((item) => item?.routeKey === routeKey && String(item?.amount || "") === String(amount))
+    .filter((item) => !address || normalized(item?.address) === normalized(address))
+    .sort((left, right) => new Date(right?.observedAt || 0) - new Date(left?.observedAt || 0))[0] || null;
+}
+
+function hasFreshWalletReadiness(item, options = {}) {
+  if (item?.code !== "check_wallet_readiness") return false;
+  const latest = latestMatchingReadinessRecord({
+    routeKey: item?.routeKey,
+    amount: item?.amount,
+    address: options.address,
+    readinessRecords: options.readinessRecords,
+    readinessFailures: options.readinessFailures,
+  });
+  if (!latest?.observedAt) return false;
+  const nowMs = options.now instanceof Date ? options.now.getTime() : new Date(options.now || Date.now()).getTime();
+  const observedMs = new Date(latest.observedAt).getTime();
+  if (!Number.isFinite(nowMs) || !Number.isFinite(observedMs)) return false;
+  const maxAgeMs =
+    Number.isFinite(options.readinessMaxAgeMs) && options.readinessMaxAgeMs >= 0 ? options.readinessMaxAgeMs : 300_000;
+  return nowMs - observedMs <= maxAgeMs;
 }
 
 function shadowActionQueueItems(shadowActions = []) {
@@ -289,6 +325,8 @@ export function buildShadowRefreshQueue({
   shadowCycle = null,
   address = null,
   nextReadinessCheck = null,
+  readinessRecords = [],
+  readinessFailures = [],
   shadowActions = [],
   objectivePlans = null,
   strategyPlans = null,
@@ -297,6 +335,8 @@ export function buildShadowRefreshQueue({
   enabledRouteCount = 0,
   treasuryDecision = null,
   fundingReasonCount = 0,
+  now = null,
+  readinessMaxAgeMs = 300_000,
   limit = 8,
 } = {}) {
   const resolvedAddress = address || shadowCycle?.address?.resolved || null;
@@ -333,7 +373,19 @@ export function buildShadowRefreshQueue({
       treasuryDecision: resolvedTreasuryDecision,
       fundingReasonCount: resolvedFundingReasonCount,
     }),
-  ];
+  ].filter((item) => {
+    if (!item) return false;
+    if (item.kind === "canary_readiness" && shadowCycle?.canary?.nextReadinessRefresh?.state === "cooldown") {
+      return false;
+    }
+    return !hasFreshWalletReadiness(item, {
+      address: resolvedAddress,
+      readinessRecords,
+      readinessFailures,
+      now,
+      readinessMaxAgeMs,
+    });
+  });
 
   return dedupeQueue(items)
     .slice(0, limit)
