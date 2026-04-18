@@ -23,13 +23,12 @@ function parseArgs(argv) {
 }
 
 function withTemporaryEnv(name, value, fn) {
+  if (value == null || value === "") {
+    return Promise.resolve().then(fn);
+  }
   const hadOwn = Object.prototype.hasOwnProperty.call(process.env, name);
   const previous = process.env[name];
-  if (value == null || value === "") {
-    delete process.env[name];
-  } else {
-    process.env[name] = value;
-  }
+  process.env[name] = value;
   return Promise.resolve()
     .then(fn)
     .finally(() => {
@@ -123,6 +122,14 @@ async function main() {
   console.log(`grossProfitSatsPeriod=${report.payback?.grossProfitSatsPeriod ?? 0}`);
   console.log(`accumulatorPendingSats=${report.payback?.accumulatorPendingSats ?? 0}`);
   console.log(`paidBackSatsLifetime=${report.payback?.paidBackSatsLifetime ?? 0}`);
+  if (report.payback?.scheduler?.previewAfterDestination) {
+    console.log(`previewAfterDestinationStatus=${report.payback.scheduler.previewAfterDestination.status || "n/a"}`);
+    console.log(`previewAfterDestinationReason=${report.payback.scheduler.previewAfterDestination.reason || "n/a"}`);
+    console.log(`previewGrossTargetBeforeCostsSats=${report.payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats ?? "n/a"}`);
+    console.log(`previewMinPaybackSats=${report.payback.scheduler.previewAfterDestination.minPaybackSats ?? "n/a"}`);
+    console.log(`previewSatsToMinimumPayback=${report.payback.scheduler.previewAfterDestination.satsToMinimumPayback ?? "n/a"}`);
+    console.log(`previewProgressToMinimumRatio=${report.payback.scheduler.previewAfterDestination.progressToMinimumRatio ?? "n/a"}`);
+  }
   if (report.override.btcDestinationApplied) {
     console.log(`btcDestinationOverride=${report.override.btcDestinationApplied}`);
   }

@@ -73,8 +73,8 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
   const observations = [];
 
   for (const item of enriched.native) {
-    if (item.status === "refill_required") {
-      const hasDemand = routeDemandChains.has(item.chain);
+    const hasDemand = routeDemandChains.has(item.chain);
+    if (item.status === "refill_required" || (item.status === "observe_only_low" && hasDemand)) {
       if (policy.refillPolicy.requireRouteDemandSignal && !hasDemand) {
         blockers.push({
           type: "native_refill_blocked_no_demand",
@@ -110,8 +110,8 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
 
   for (const item of enriched.tokens) {
     const tokenKey = `${item.chain}:${String(item.token).toLowerCase()}`;
-    if (item.status === "refill_required") {
-      const hasDemand = routeDemandTokenKeys.has(tokenKey) || routeDemandChains.has(item.chain);
+    const hasDemand = routeDemandTokenKeys.has(tokenKey) || routeDemandChains.has(item.chain);
+    if (item.status === "refill_required" || (item.status === "observe_only_low" && hasDemand)) {
       if (policy.refillPolicy.requireRouteDemandSignal && !hasDemand) {
         blockers.push({
           type: "token_refill_blocked_no_demand",
@@ -171,6 +171,10 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
     .map((item) => item.refillEstimatedUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
+  const executionBudgetEstimateUsd = actions
+    .map((item) => estimateActionCostUsd(item, policy))
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
   const walletValueFloorUsd = policy.refillPolicy.skipIfWalletValueBelowUsd;
   const walletValueShortfallUsd =
     Number.isFinite(enriched.summary.estimatedWalletUsd) && Number.isFinite(walletValueFloorUsd)
@@ -182,7 +186,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
   const budgetBlocked =
     (Number.isFinite(enriched.summary.estimatedWalletUsd) &&
       enriched.summary.estimatedWalletUsd < policy.refillPolicy.skipIfWalletValueBelowUsd) ||
-    refillEstimatedUsd > policy.capital.maxRefillCost24hUsd ||
+    executionBudgetEstimateUsd > policy.capital.maxRefillCost24hUsd ||
     totalPending > policy.refillPolicy.maxPendingJobs;
 
   const decision =
@@ -201,7 +205,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
     if (Number.isFinite(enriched.summary.estimatedWalletUsd) && enriched.summary.estimatedWalletUsd < policy.refillPolicy.skipIfWalletValueBelowUsd) {
       reasons.push("wallet_value_below_refill_floor");
     }
-    if (refillEstimatedUsd > policy.capital.maxRefillCost24hUsd) {
+    if (executionBudgetEstimateUsd > policy.capital.maxRefillCost24hUsd) {
       reasons.push("refill_cost_above_daily_cap");
     }
     if (totalPending > policy.refillPolicy.maxPendingJobs) {
@@ -224,6 +228,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
       blockerCount: blockers.length,
       observationCount: observations.length,
       refillEstimatedUsd,
+      executionBudgetEstimateUsd,
       estimatedWalletUsd: enriched.summary.estimatedWalletUsd,
       walletValueFloorUsd,
       walletValueShortfallUsd,

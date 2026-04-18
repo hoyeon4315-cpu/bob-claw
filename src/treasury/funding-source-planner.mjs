@@ -90,13 +90,14 @@ function estimateMethodCostUsd(method, assetValueUsd) {
   return profile.fixedCostUsd + assetValueUsd * (profile.variableCostBps / 10_000);
 }
 
-function describeSourceAsset(chain, token) {
+function describeSourceAsset(chain, token, extra = {}) {
   const asset = tokenAsset(chain, token);
   return {
     chain,
     token,
     ticker: asset.ticker,
     isNative: asset.isNative,
+    ...extra,
   };
 }
 
@@ -108,11 +109,16 @@ function candidateRecord({
   preferred,
   requiresBootstrapNative = false,
   bootstrapNativeSatisfied = true,
+  requiresReserveState = undefined,
+  reserveReplenishmentKnown = undefined,
   missingInputs = [],
   notes,
 }) {
   const profile = METHOD_PROFILES[method];
   const expectedExecutionRefillCostUsd = estimateMethodCostUsd(method, action.refillEstimatedUsd);
+  const resolvedRequiresReserveState = typeof requiresReserveState === "boolean" ? requiresReserveState : profile.requiresReserveState;
+  const resolvedReserveReplenishmentKnown =
+    typeof reserveReplenishmentKnown === "boolean" ? reserveReplenishmentKnown : profile.reserveReplenishmentKnown;
   return {
     method,
     availability,
@@ -120,11 +126,11 @@ function candidateRecord({
     source,
     expectedExecutionRefillCostUsd,
     expectedReserveReplenishmentCostUsd:
-      availability === "manual_only" || !profile.reserveReplenishmentKnown ? null : 0,
+      availability === "manual_only" || !resolvedReserveReplenishmentKnown ? null : 0,
     expectedLatencyMs: profile.expectedLatencyMs,
     requiresBootstrapNative,
     bootstrapNativeSatisfied,
-    requiresReserveState: profile.requiresReserveState,
+    requiresReserveState: resolvedRequiresReserveState,
     manualFundingDependency: profile.manualFundingDependency,
     missingInputs,
     notes,
@@ -141,7 +147,7 @@ function nativeSwapCandidate(action, plan, preferred) {
       method: "same_chain_token_to_native_swap",
       source: null,
       availability: "conditional",
-      preferred,
+      preferred: false,
       requiresBootstrapNative: true,
       bootstrapNativeSatisfied: false,
       missingInputs: ["same_chain_token_inventory_missing", "bootstrap_native_required"],
@@ -154,7 +160,7 @@ function nativeSwapCandidate(action, plan, preferred) {
     method: "same_chain_token_to_native_swap",
     source: describeSourceAsset(action.chain, tokenSource.token),
     availability: bootstrapNativeSatisfied ? "ready" : "conditional",
-    preferred,
+    preferred: bootstrapNativeSatisfied ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
     missingInputs: bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"],
@@ -171,7 +177,7 @@ function tokenSwapCandidate(action, plan, preferred) {
     method: "same_chain_native_to_token_swap",
     source: describeSourceAsset(action.chain, ZERO_TOKEN),
     availability: bootstrapNativeSatisfied ? "ready" : "conditional",
-    preferred,
+    preferred: bootstrapNativeSatisfied ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
     missingInputs: bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"],
@@ -191,15 +197,61 @@ function reserveTransferCandidate(action, preferred) {
   });
 }
 
-function crossChainCandidate(action) {
+function selectCrossChainSource(action, plan) {
+  const nativeSources = (plan.inventory?.native || [])
+    .filter((item) => item.chain !== action.chain && Number(item.actual || 0) > 0)
+    .map((item) => ({
+      chain: item.chain,
+      token: ZERO_TOKEN,
+      estimatedUsd: item.estimatedUsd ?? null,
+      actualDecimal: item.actualDecimal ?? null,
+      sourceKind: "native",
+    }));
+  const tokenSources = (plan.inventory?.tokens || [])
+    .filter((item) => item.chain !== action.chain && Number(item.actual || 0) > 0)
+    .map((item) => ({
+      chain: item.chain,
+      token: item.token,
+      estimatedUsd: item.estimatedUsd ?? null,
+      actualDecimal: item.actualDecimal ?? null,
+      sourceKind: "token",
+    }));
+  return [...nativeSources, ...tokenSources]
+    .sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1) || String(left.chain).localeCompare(String(right.chain)))[0] || null;
+}
+
+function crossChainCandidate(action, plan, policy) {
+  const selectedSource = selectCrossChainSource(action, plan);
+  const directInventoryMode = policy.walletMode === "single_wallet";
+  if (!selectedSource) {
+    return candidateRecord({
+      action,
+      method: "cross_chain_bridge_or_swap",
+      source: null,
+      availability: "conditional",
+      preferred: false,
+      requiresReserveState: false,
+      reserveReplenishmentKnown: true,
+      missingInputs: ["cross_chain_source_selection_missing"],
+      notes: "Cross-chain funding has no observed source inventory yet, so the planner cannot promote it beyond a conditional source-selection stub.",
+    });
+  }
   return candidateRecord({
     action,
     method: "cross_chain_bridge_or_swap",
-    source: null,
-    availability: "conditional",
-    preferred: false,
-    missingInputs: ["cross_chain_source_selection_missing", "reserve_state_unmodelled"],
-    notes: "Cross-chain funding remains secondary because cost, delay, and settlement risk are still under-modelled.",
+    source: describeSourceAsset(selectedSource.chain, selectedSource.token, {
+      estimatedUsd: selectedSource.estimatedUsd,
+      actualDecimal: selectedSource.actualDecimal,
+      sourceKind: selectedSource.sourceKind,
+    }),
+    availability: directInventoryMode ? "ready" : "conditional",
+    preferred: directInventoryMode,
+    requiresReserveState: !directInventoryMode,
+    reserveReplenishmentKnown: directInventoryMode,
+    missingInputs: directInventoryMode ? [] : ["reserve_state_unmodelled"],
+    notes: directInventoryMode
+      ? "Single-wallet mode can consume observed cross-chain inventory directly, so the planner treats the selected source as immediately usable."
+      : "Cross-chain funding source is selected from observed inventory, but reserve replenishment and route execution remain under-modelled.",
   });
 }
 
@@ -226,6 +278,9 @@ function chooseCandidate(candidates) {
     if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
     const availabilityDelta = rankAvailability(left.availability) - rankAvailability(right.availability);
     if (availabilityDelta !== 0) return availabilityDelta;
+    const leftBootstrapBlocked = left.requiresBootstrapNative && !left.bootstrapNativeSatisfied;
+    const rightBootstrapBlocked = right.requiresBootstrapNative && !right.bootstrapNativeSatisfied;
+    if (leftBootstrapBlocked !== rightBootstrapBlocked) return leftBootstrapBlocked ? 1 : -1;
     const leftCost = Number.isFinite(left.expectedExecutionRefillCostUsd) ? left.expectedExecutionRefillCostUsd : Number.POSITIVE_INFINITY;
     const rightCost = Number.isFinite(right.expectedExecutionRefillCostUsd) ? right.expectedExecutionRefillCostUsd : Number.POSITIVE_INFINITY;
     if (leftCost !== rightCost) return leftCost - rightCost;
@@ -284,7 +339,7 @@ export function buildFundingSourceCandidates(action, plan, policy) {
   }
 
   if (policy.refillPolicy.enableCrossChainRefill) {
-    candidates.push(crossChainCandidate(action));
+    candidates.push(crossChainCandidate(action, plan, policy));
   }
 
   candidates.push(manualFundingCandidate(action));

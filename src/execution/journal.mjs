@@ -62,8 +62,49 @@ export function buildExecutionAttemptEvent({ job, actor = "stub_executor", mode 
     targetAmountDecimal: job.targetAmountDecimal,
     executionMethod: job.executionMethod,
     requiresManualReview: Boolean(job.requiresManualReview),
+    reviewReasons: Array.isArray(job.reviewReasons) ? job.reviewReasons : [],
     constraints: job.constraints || {},
     guards,
+    riskDecision,
+  };
+}
+
+export function buildExecutionBlockedEvent({
+  job,
+  actor = "stub_executor",
+  mode = "dry_run",
+  blockers = [],
+  fundingSource = null,
+  riskDecision = null,
+  observedAt,
+}) {
+  const eventObservedAt = observedAt || new Date().toISOString();
+  return {
+    schemaVersion: 1,
+    observedAt: eventObservedAt,
+    eventType: "execution_attempt_blocked",
+    status: "blocked",
+    jobId: job.jobId,
+    attemptId: deterministicId({
+      type: "blocked",
+      jobId: job.jobId,
+      mode,
+      blockers,
+      observedAt: eventObservedAt,
+    }),
+    actor,
+    mode,
+    chain: job.chain,
+    type: job.type,
+    asset: job.asset,
+    token: job.token || null,
+    targetAmount: job.targetAmount,
+    targetAmountDecimal: job.targetAmountDecimal,
+    executionMethod: job.executionMethod,
+    requiresManualReview: Boolean(job.requiresManualReview),
+    reviewReasons: Array.isArray(job.reviewReasons) ? job.reviewReasons : [],
+    blockers,
+    fundingSource,
     riskDecision,
   };
 }

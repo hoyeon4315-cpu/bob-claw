@@ -98,14 +98,16 @@ test("planner emits refill actions for active route-demand items", () => {
     routeDemand: [{ chain: "bob" }, { chain: "bob", token: "0x0555" }],
   });
 
-  assert.equal(plan.decision, "REVIEW_REFILL_PLAN");
+  assert.equal(plan.decision, "REFILL_REQUIRED");
   assert.equal(plan.actions.length, 2);
   assert.equal(plan.actions[0].type, "refill_native");
   assert.equal(plan.actions[1].type, "refill_token");
   assert.equal(plan.observations.some((item) => item.type === "allowance_zero"), true);
-  assert.equal(plan.reasons.includes("wallet_value_below_refill_floor"), true);
-  assert.equal(plan.summary.walletValueFloorUsd, 250);
-  assert.equal(plan.summary.walletValueShortfallUsd, 233.3);
+  assert.equal(plan.reasons.includes("wallet_value_below_refill_floor"), false);
+  assert.equal(plan.reasons.includes("refill_cost_above_daily_cap"), false);
+  assert.equal(plan.summary.executionBudgetEstimateUsd, 1);
+  assert.equal(plan.summary.walletValueFloorUsd, 0);
+  assert.equal(plan.summary.walletValueShortfallUsd, 0);
   assert.equal(plan.summary.noDemandBlockerCount, 0);
 });
 
@@ -123,4 +125,39 @@ test("planner blocks token refill without demand signal", () => {
   assert.equal(plan.blockers.find((item) => item.type === "token_refill_blocked_no_demand").refillEstimatedUsd, 17.5);
   assert.equal(plan.actions.length, 0);
   assert.equal(plan.summary.noDemandBlockerCount, 2);
+});
+
+test("planner promotes observe-only supported chains into refill actions when route demand targets destination gas", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const inventory = inventoryFixture();
+  inventory.supportedChains = [...inventory.supportedChains, "soneium"];
+  inventory.native.push({
+    chain: "soneium",
+    active: false,
+    enabled: true,
+    asset: "ETH",
+    token: "0x0000000000000000000000000000000000000000",
+    actual: "0",
+    actualDecimal: 0,
+    targetBalance: "1000000000000000",
+    targetBalanceDecimal: 0.001,
+    maxBalance: "5000000000000000",
+    maxBalanceDecimal: 0.005,
+    refillToTarget: "1000000000000000",
+    refillToTargetDecimal: 0.001,
+    priceUsd: 2200,
+    estimatedUsd: 0,
+    status: "observe_only_low",
+    rationale: "Expansion chain bootstrap",
+  });
+
+  const plan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: [{ chain: "soneium" }],
+  });
+
+  const action = plan.actions.find((item) => item.chain === "soneium" && item.type === "refill_native");
+  assert.ok(action);
+  assert.equal(action.refillAmountDecimal, 0.001);
 });

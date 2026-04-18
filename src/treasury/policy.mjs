@@ -85,21 +85,49 @@ export function buildDefaultTreasuryPolicy() {
       rationale: "Reverse BTC-family route candidate and likely first secondary active chain.",
     }),
     avalanche: nativePolicy("avalanche"),
-    bera: nativePolicy("bera"),
-    bsc: nativePolicy("bsc"),
-    ethereum: nativePolicy("ethereum", {
-      rationale: "Observe only in the USD 300 phase unless re-approved.",
+    bera: nativePolicy("bera", {
+      enabled: true,
+      minBalance: "0.005",
+      targetBalance: "0.01",
+      maxBalance: "0.05",
+      rationale: "Gateway expansion chain; bootstrap native gas is required before routed inventory can be used.",
     }),
-    soneium: nativePolicy("soneium"),
+    bsc: nativePolicy("bsc", {
+      enabled: true,
+      minBalance: "0.0005",
+      targetBalance: "0.001",
+      maxBalance: "0.005",
+      rationale: "Gateway expansion chain; keep a tiny BNB float so routed BTC inventory is not stranded.",
+    }),
+    ethereum: nativePolicy("ethereum", {
+      enabled: true,
+      minBalance: "0.002",
+      targetBalance: "0.004",
+      maxBalance: "0.015",
+      rationale: "Ethereum L1 is allowed when measured execution remains positive after gas and slippage.",
+    }),
+    soneium: nativePolicy("soneium", {
+      enabled: true,
+      minBalance: "0.0005",
+      targetBalance: "0.001",
+      maxBalance: "0.005",
+      rationale: "Gateway expansion chain; bootstrap ETH gas should be maintained when route demand appears.",
+    }),
     sonic: nativePolicy("sonic"),
-    unichain: nativePolicy("unichain"),
+    unichain: nativePolicy("unichain", {
+      enabled: true,
+      minBalance: "0.0005",
+      targetBalance: "0.001",
+      maxBalance: "0.005",
+      rationale: "Gateway expansion chain; bootstrap ETH gas should be maintained when route demand appears.",
+    }),
   };
 
   return {
     schemaVersion: 1,
     walletMode: "single_wallet",
     capital: {
-      riskBudgetUsd: 300,
+      riskBudgetUsd: null,
       canaryStartUsdMin: 20,
       canaryStartUsdMax: 50,
       maxIdleCapitalPerChainUsd: 60,
@@ -134,14 +162,14 @@ export function buildDefaultTreasuryPolicy() {
       },
     ],
     refillPolicy: {
-      requireActiveChain: true,
+      requireActiveChain: false,
       requireRouteDemandSignal: true,
-      maxPendingJobs: 1,
+      maxPendingJobs: 4,
       minHoursBetweenRefillsPerChain: 6,
       maxSingleRefillCostUsd: 0.5,
-      skipIfWalletValueBelowUsd: 250,
+      skipIfWalletValueBelowUsd: 0,
       enableDexRefill: true,
-      enableCrossChainRefill: false,
+      enableCrossChainRefill: true,
     },
   };
 }

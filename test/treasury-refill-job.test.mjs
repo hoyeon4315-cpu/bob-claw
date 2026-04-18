@@ -114,3 +114,212 @@ test("refill jobs tolerate a selection without selected source details", () => {
 
   assert.equal(jobs.jobs[0].fundingSource.source, null);
 });
+
+test("refill jobs use route candidates that match each action chain instead of one global fallback", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_native",
+        chain: "bera",
+        asset: "BERA",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "10000000000000000",
+        refillAmountDecimal: 0.01,
+        refillEstimatedUsd: 0.004,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+    inventory: {
+      native: [{ chain: "base", actualDecimal: 0.005 }],
+      tokens: [{ chain: "base", actual: "5000", actualDecimal: 0.00005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 3.5 }],
+    },
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({
+    plan,
+    policy,
+    routeContext: {
+      routeKey: "avalanche:0x0555->bera:0x0555",
+      srcChain: "avalanche",
+      dstChain: "bera",
+      srcToken: "0x0555",
+      dstToken: "0x0555",
+      amount: "10000",
+      inputUsd: 7.5,
+      knownCostUsd: 0.52,
+      netEdgeUsd: -0.56,
+      executableNetEdgeUsd: null,
+      routeFailureRate: 0,
+      tradeReadiness: "insufficient_data",
+    },
+  });
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan,
+    routeCandidates: [
+      {
+        routeKey: "base:0x0555->bera:0x0555",
+        srcChain: "base",
+        dstChain: "bera",
+        srcToken: "0x0555",
+        dstToken: "0x0555",
+        viableForPrep: false,
+        txReady: true,
+        blockerCount: 1,
+        prepFundingUsd: 0,
+        amount: "10000",
+        inputUsd: 7.5,
+        knownCostUsd: 0.54,
+        netEdgeUsd: -0.58,
+        executableNetEdgeUsd: null,
+        routeFailureRate: 0,
+        tradeReadiness: "insufficient_data",
+      },
+      {
+        routeKey: "avalanche:0x0555->bera:0x0555",
+        srcChain: "avalanche",
+        dstChain: "bera",
+        srcToken: "0x0555",
+        dstToken: "0x0555",
+        viableForPrep: false,
+        txReady: true,
+        blockerCount: 0,
+        prepFundingUsd: 0,
+        amount: "10000",
+        inputUsd: 7.5,
+        knownCostUsd: 0.52,
+        netEdgeUsd: -0.56,
+        executableNetEdgeUsd: null,
+        routeFailureRate: 0,
+        tradeReadiness: "insufficient_data",
+      },
+      {
+        routeKey: "base:0x0555->soneium:0x0555",
+        srcChain: "base",
+        dstChain: "soneium",
+        srcToken: "0x0555",
+        dstToken: "0x0555",
+        viableForPrep: false,
+        txReady: true,
+        blockerCount: 0,
+        prepFundingUsd: 0,
+        amount: "10000",
+        inputUsd: 7.5,
+        knownCostUsd: 0.52,
+        netEdgeUsd: -0.67,
+        executableNetEdgeUsd: null,
+        routeFailureRate: 0,
+        tradeReadiness: "insufficient_data",
+      },
+    ],
+  });
+
+  assert.equal(jobs.jobs[0].chain, "bera");
+  assert.equal(jobs.jobs[0].systemEconomics.routeKey, "base:0x0555->bera:0x0555");
+  assert.equal(jobs.jobs[1].chain, "soneium");
+  assert.equal(jobs.jobs[1].systemEconomics.routeKey, "base:0x0555->soneium:0x0555");
+  assert.notEqual(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd, jobs.jobs[1].systemEconomics.effectiveSystemNetPnlUsd);
+  assert.equal(jobs.jobs[0].systemEconomics.executionRefillExpectedCostUsd, jobs.jobs[0].fundingSource.expectedExecutionRefillCostUsd);
+  assert.equal(jobs.jobs[1].systemEconomics.executionRefillExpectedCostUsd, jobs.jobs[1].fundingSource.expectedExecutionRefillCostUsd);
+});
+
+test("refill jobs only defer overflow items when review is caused solely by pending job count", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REVIEW_REFILL_PLAN"),
+    reasons: ["too_many_pending_refills"],
+    actions: [
+      {
+        type: "refill_native",
+        chain: "bera",
+        asset: "BERA",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "10000000000000000",
+        refillAmountDecimal: 0.01,
+        refillEstimatedUsd: 0.004,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_native",
+        chain: "bsc",
+        asset: "BNB",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 0.6,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_native",
+        chain: "ethereum",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_native",
+        chain: "unichain",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+    inventory: {
+      native: [{ chain: "base", actualDecimal: 0.005 }],
+      tokens: [{ chain: "base", actual: "5000", actualDecimal: 0.00005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 3.5 }],
+    },
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({
+    plan,
+    policy,
+    routeContext: {
+      routeKey: "base:0x0555->bera:0x0555",
+      srcChain: "base",
+      dstChain: "bera",
+      srcToken: "0x0555",
+      dstToken: "0x0555",
+      amount: "10000",
+      inputUsd: 7.5,
+      knownCostUsd: 0.52,
+      netEdgeUsd: -0.57,
+      executableNetEdgeUsd: null,
+      routeFailureRate: 0,
+      tradeReadiness: "insufficient_data",
+    },
+  });
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.requiresManualReview, true);
+  assert.equal(jobs.summary.manualReviewJobCount, 1);
+  assert.equal(jobs.summary.autoQueuedJobCount, 4);
+  assert.equal(jobs.jobs.filter((job) => job.requiresManualReview).length, 1);
+  assert.deepEqual(jobs.jobs.find((job) => job.requiresManualReview).reviewReasons, ["too_many_pending_refills"]);
+});

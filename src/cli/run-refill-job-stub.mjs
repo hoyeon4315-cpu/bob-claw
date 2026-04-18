@@ -5,7 +5,7 @@ import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
-import { canStartExecution, buildExecutionAttemptEvent } from "../execution/journal.mjs";
+import { canStartExecution, buildExecutionAttemptEvent, buildExecutionBlockedEvent } from "../execution/journal.mjs";
 import { readExecutionGuards } from "../execution/guards.mjs";
 import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
@@ -52,6 +52,40 @@ async function main() {
     throw new Error(`Execution blocked: ${executionGate.reason}`);
   }
 
+  const fundingSource = job.fundingSource || null;
+  if (fundingSource?.selectionStatus && fundingSource.selectionStatus !== "ready") {
+    const event = buildExecutionBlockedEvent({
+      job,
+      mode: args.mode,
+      blockers: [
+        `funding_source_${fundingSource.selectionStatus}`,
+        ...(fundingSource.missingInputs || []),
+      ],
+      fundingSource,
+    });
+    const store = new JsonlStore(config.dataDir);
+    await store.append("execution-journal", event);
+    if (args.json) {
+      console.log(JSON.stringify(event, null, 2));
+      return;
+    }
+    console.log(`status=${event.status}`);
+    console.log(`jobId=${event.jobId}`);
+    console.log(`attemptId=${event.attemptId}`);
+    console.log(`executionMethod=${event.executionMethod}`);
+    console.log(`blockers=${event.blockers.join(",")}`);
+    if (event.reviewReasons?.length) {
+      console.log(`reviewReasons=${event.reviewReasons.join(",")}`);
+    }
+    if (job.systemEconomics?.routeKey) {
+      console.log(`routeKey=${job.systemEconomics.routeKey}`);
+    }
+    if (Number.isFinite(job.systemEconomics?.effectiveSystemNetPnlUsd)) {
+      console.log(`effectiveSystemNetPnlUsd=${job.systemEconomics.effectiveSystemNetPnlUsd}`);
+    }
+    return;
+  }
+
   const guards = await readExecutionGuards({
     emergencyStopPath: config.emergencyStopFlagPath,
     liveModePath: config.liveModeFlagPath,
@@ -79,7 +113,34 @@ async function main() {
     mode: args.mode,
   });
   if (riskDecision.decision !== "ALLOW") {
-    throw new Error(`Risk gate blocked: ${[...riskDecision.blockers, ...riskDecision.reviews].join(",")}`);
+    const event = buildExecutionBlockedEvent({
+      job,
+      mode: args.mode,
+      blockers: [...new Set([...riskDecision.blockers, ...riskDecision.reviews])],
+      fundingSource,
+      riskDecision,
+    });
+    const store = new JsonlStore(config.dataDir);
+    await store.append("execution-journal", event);
+    if (args.json) {
+      console.log(JSON.stringify(event, null, 2));
+      return;
+    }
+    console.log(`status=${event.status}`);
+    console.log(`jobId=${event.jobId}`);
+    console.log(`attemptId=${event.attemptId}`);
+    console.log(`executionMethod=${event.executionMethod}`);
+    console.log(`blockers=${event.blockers.join(",")}`);
+    if (event.reviewReasons?.length) {
+      console.log(`reviewReasons=${event.reviewReasons.join(",")}`);
+    }
+    if (job.systemEconomics?.routeKey) {
+      console.log(`routeKey=${job.systemEconomics.routeKey}`);
+    }
+    if (Number.isFinite(job.systemEconomics?.effectiveSystemNetPnlUsd)) {
+      console.log(`effectiveSystemNetPnlUsd=${job.systemEconomics.effectiveSystemNetPnlUsd}`);
+    }
+    return;
   }
 
   const event = buildExecutionAttemptEvent({

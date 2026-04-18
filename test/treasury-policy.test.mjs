@@ -18,7 +18,7 @@ test("default treasury policy validates and enables bob/base", () => {
   assert.deepEqual(policy.activeChains, ["bob", "base"]);
   assert.equal(getNativeBalancePolicy(policy, "bob").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "base").enabled, true);
-  assert.equal(getNativeBalancePolicy(policy, "ethereum").enabled, false);
+  assert.equal(getNativeBalancePolicy(policy, "ethereum").enabled, true);
 });
 
 test("threshold helpers convert decimals to raw units", () => {

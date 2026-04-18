@@ -121,6 +121,143 @@ test("swap-based funding is conditional when bootstrap native gas is missing", (
   const funding = buildFundingSourcePlan({ plan, policy });
 
   assert.equal(funding.selections[0].selectionStatus, "conditional");
-  assert.equal(funding.selections[0].missingInputs.includes("bootstrap_native_required"), true);
-  assert.equal(funding.reasons.includes("bootstrap_native_required"), true);
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), true);
+  assert.equal(funding.reasons.includes("bootstrap_native_required"), false);
+});
+
+test("cross-chain refill is selected when same-chain native rebuild is impossible", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "soneium",
+          actual: "0",
+          actualDecimal: 0,
+          estimatedUsd: 0,
+        },
+      ],
+      tokens: [],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), true);
+  assert.equal(funding.selections[0].missingInputs.includes("reserve_state_unmodelled"), false);
+  assert.equal(funding.reasons.includes("reserve_state_unmodelled"), false);
+  assert.equal(funding.reasons.includes("reserve_replenishment_unmodelled"), false);
+});
+
+test("cross-chain refill selects an observed source inventory when another chain is funded", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "soneium",
+          actual: "0",
+          actualDecimal: 0,
+          estimatedUsd: 0,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), false);
+  assert.equal(funding.selections[0].missingInputs.includes("reserve_state_unmodelled"), false);
+  assert.equal(funding.reasons.includes("reserve_state_unmodelled"), false);
+  assert.equal(funding.reasons.includes("reserve_replenishment_unmodelled"), false);
+});
+
+test("dual wallet cross-chain refill stays conditional even when a source inventory exists", () => {
+  const policy = validateTreasuryPolicy({ ...buildDefaultTreasuryPolicy(), walletMode: "dual_wallet" });
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "soneium",
+          actual: "0",
+          actualDecimal: 0,
+          estimatedUsd: 0,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "same_chain_native_transfer");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "soneium");
+  assert.equal(funding.selections[0].missingInputs.includes("reserve_state_unmodelled"), true);
+  assert.equal(funding.reasons.includes("reserve_state_unmodelled"), true);
 });

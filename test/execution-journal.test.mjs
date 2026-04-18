@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildExecutionAttemptEvent,
+  buildExecutionBlockedEvent,
   buildExecutionReconciliationEvent,
   buildExecutionSubmissionEvent,
   canStartExecution,
@@ -21,6 +22,7 @@ function jobFixture() {
     executionMethod: "same_chain_token_to_native_swap",
     resourceKey: "bob:native",
     requiresManualReview: false,
+    reviewReasons: [],
     constraints: {
       requireEmergencyStopClear: true,
     },
@@ -116,6 +118,31 @@ test("execution attempt ids stay stable across object key order", () => {
   });
 
   assert.equal(first.attemptId, second.attemptId);
+});
+
+test("blocked execution events preserve blockers and funding-source context", () => {
+  const blocked = buildExecutionBlockedEvent({
+    job: jobFixture(),
+    blockers: ["funding_source_conditional", "cross_chain_source_selection_missing"],
+    fundingSource: {
+      selectionStatus: "conditional",
+      method: "cross_chain_bridge_or_swap",
+      missingInputs: ["cross_chain_source_selection_missing"],
+    },
+    riskDecision: {
+      decision: "REVIEW",
+      reviews: ["job_requires_manual_review"],
+      blockers: [],
+    },
+    observedAt: "2026-04-11T05:10:00.000Z",
+  });
+
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.eventType, "execution_attempt_blocked");
+  assert.equal(blocked.blockers[0], "funding_source_conditional");
+  assert.equal(blocked.fundingSource.method, "cross_chain_bridge_or_swap");
+  assert.equal(blocked.riskDecision.decision, "REVIEW");
+  assert.deepEqual(blocked.reviewReasons, []);
 });
 
 test("stableSerialize preserves undefined values deterministically", () => {

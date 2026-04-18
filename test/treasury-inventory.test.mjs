@@ -20,7 +20,7 @@ test("treasury inventory separates supported and active states", () => {
       avalanche: { balanceWei: "0", rpcUrl: "https://api.avax.network/ext/bc/C/rpc" },
       bera: { balanceWei: "0", rpcUrl: "https://rpc.berachain.com" },
       bsc: { balanceWei: "0", rpcUrl: "https://bsc-dataseed.binance.org" },
-      ethereum: { balanceWei: "100000000000000000", rpcUrl: "https://ethereum-rpc.publicnode.com" },
+      ethereum: { balanceWei: "3000000000000000", rpcUrl: "https://ethereum-rpc.publicnode.com" },
       soneium: { balanceWei: "0", rpcUrl: "https://rpc.soneium.org" },
       sonic: { balanceWei: "0", rpcUrl: "https://rpc.soniclabs.com" },
       unichain: { balanceWei: "0", rpcUrl: "https://mainnet.unichain.org" },
@@ -38,7 +38,7 @@ test("treasury inventory separates supported and active states", () => {
   assert.equal(inventory.supportedChains.length >= inventory.activeChains.length, true);
   assert.equal(inventory.native.find((item) => item.chain === "bob").status, "refill_required");
   assert.equal(inventory.native.find((item) => item.chain === "base").status, "ready");
-  assert.equal(inventory.native.find((item) => item.chain === "ethereum").status, "observe_only_balance_present");
+  assert.equal(inventory.native.find((item) => item.chain === "ethereum").status, "supported_buffered");
   assert.equal(inventory.tokens.find((item) => item.chain === "bob").status, "refill_required");
   assert.equal(inventory.tokens.find((item) => item.chain === "base").status, "ready");
   assert.equal(inventory.allowances[0].status, "over_cap");

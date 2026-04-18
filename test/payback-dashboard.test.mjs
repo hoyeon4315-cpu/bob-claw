@@ -191,15 +191,32 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
     auditLogLines: [],
     receiptStore,
     now: "2026-04-17T12:00:00.000Z",
-    decisionBuilder: async () => ({
-      status: "blocked",
-      reason: "payback_btc_destination_missing",
-      decisionLog: {
-        inputs: {
-          bitcoinDestAddressEnv: "PAYBACK_BTC_DEST_ADDR",
-        },
-      },
-    }),
+    decisionBuilder: async ({ recipientOverride } = {}) => (
+      recipientOverride
+        ? {
+            status: "carry",
+            reason: "planned_payback_below_minimum",
+            policy: {
+              minPaybackSats: 50_000,
+            },
+            decisionLog: {
+              inputs: {
+                grossProfitSatsPeriod: 250_000,
+                grossTargetBeforeCostsSats: 10_000,
+                minPaybackSats: 50_000,
+              },
+            },
+          }
+        : {
+            status: "blocked",
+            reason: "payback_btc_destination_missing",
+            decisionLog: {
+              inputs: {
+                bitcoinDestAddressEnv: "PAYBACK_BTC_DEST_ADDR",
+              },
+            },
+          }
+    ),
   });
 
   assert.equal(payback.lastPaybackSettledAt, null);
@@ -210,6 +227,12 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
   assert.equal(payback.scheduler.reason, "payback_btc_destination_missing");
   assert.equal(payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");
   assert.equal(payback.scheduler.nextAction, "set_payback_btc_destination_env");
+  assert.equal(payback.scheduler.previewAfterDestination?.status, "carry");
+  assert.equal(payback.scheduler.previewAfterDestination?.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.previewAfterDestination?.grossTargetBeforeCostsSats, 10_000);
+  assert.equal(payback.scheduler.previewAfterDestination?.minPaybackSats, 50_000);
+  assert.equal(payback.scheduler.previewAfterDestination?.satsToMinimumPayback, 40_000);
+  assert.equal(payback.scheduler.previewAfterDestination?.progressToMinimumRatio, 0.2);
 });
 
 test("payback dashboard prefers destination settlement time for last settled timestamp", async () => {

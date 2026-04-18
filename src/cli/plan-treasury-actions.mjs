@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
+import { buildTreasuryRouteDemand } from "../treasury/route-demand.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 
 function parseArgs(argv) {
@@ -79,12 +80,7 @@ async function main() {
     },
   );
 
-  const routeDemand = routePlan.topCandidates
-    .filter((item) => item.viableForPrep)
-    .flatMap((item) => [
-      { chain: item.srcChain },
-      { chain: item.srcChain, token: item.routeKey.split(":")[1]?.split("->")[0] || null },
-    ]);
+  const routeDemand = buildTreasuryRouteDemand({ routePlan, inventory, policy });
 
   const plan = buildTreasuryPlan({ policy, inventory, routeDemand });
 
@@ -102,6 +98,7 @@ async function main() {
   }
   console.log(`inventorySource=${!args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan"}`);
   console.log(`refillEstimatedUsd=${formatPlanValue(plan.summary.refillEstimatedUsd, { digits: 4 })}`);
+  console.log(`executionBudgetEstimateUsd=${formatPlanValue(plan.summary.executionBudgetEstimateUsd, { digits: 4 })}`);
   console.log(`estimatedWalletUsd=${formatPlanValue(plan.summary.estimatedWalletUsd, { digits: 4 })}`);
 
   for (const action of plan.actions) {

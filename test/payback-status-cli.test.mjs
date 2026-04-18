@@ -81,6 +81,12 @@ test("payback status cli reports missing destination env and supports destinatio
   assert.equal(blockedReport.payback.scheduler.status, "blocked");
   assert.equal(blockedReport.payback.scheduler.reason, "payback_btc_destination_missing");
   assert.equal(blockedReport.payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");
+  assert.equal(blockedReport.payback.scheduler.previewAfterDestination.status, "plan");
+  assert.equal(blockedReport.payback.scheduler.previewAfterDestination.reason, "planning_required");
+  assert.equal(blockedReport.payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats, 50_000);
+  assert.equal(blockedReport.payback.scheduler.previewAfterDestination.minPaybackSats, 50_000);
+  assert.equal(blockedReport.payback.scheduler.previewAfterDestination.satsToMinimumPayback, 0);
+  assert.equal(blockedReport.payback.scheduler.previewAfterDestination.progressToMinimumRatio, 1);
   assert.equal(blockedReport.payback.grossProfitSatsPeriod, 250_000);
   assert.equal(blockedReport.compositePreview, null);
 

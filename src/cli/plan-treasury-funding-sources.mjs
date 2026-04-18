@@ -11,6 +11,7 @@ import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
 import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
+import { buildTreasuryRouteDemand } from "../treasury/route-demand.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 
 function parseArgs(argv) {
@@ -74,12 +75,7 @@ async function main() {
     },
   );
 
-  const routeDemand = routePlan.topCandidates
-    .filter((item) => item.viableForPrep)
-    .flatMap((item) => [
-      { chain: item.srcChain },
-      { chain: item.srcChain, token: item.routeKey.split(":")[1]?.split("->")[0] || null },
-    ]);
+  const routeDemand = buildTreasuryRouteDemand({ routePlan, inventory, policy });
 
   const plan = buildTreasuryPlan({ policy, inventory, routeDemand });
   const routeContext = routePlan.topCandidates.find((item) => item.viableForPrep) || routePlan.topCandidates[0] || null;

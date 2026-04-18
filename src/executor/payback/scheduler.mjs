@@ -255,10 +255,13 @@ function resolveVolMultiplier(policy, realizedVolAnnualized) {
   };
 }
 
-function resolvePaybackRecipient(policy, getEnvImpl = getEnv) {
+function resolvePaybackRecipient(policy, { getEnvImpl = getEnv, recipientOverride = null } = {}) {
   const envName = policy.destinationPath.bitcoinDestAddressEnv;
   if (!envName) {
     return { ok: false, reason: "payback_btc_destination_env_missing", recipient: null, envName: null };
+  }
+  if (typeof recipientOverride === "string" && recipientOverride.trim() !== "") {
+    return { ok: true, reason: null, recipient: recipientOverride.trim(), envName };
   }
   const recipient = getEnvImpl(envName, null);
   if (!recipient) {
@@ -409,6 +412,8 @@ export async function buildPaybackDecision({
   marketState = {},
   riskState = {},
   accumulatorSnapshot = snapshotPaybackAccumulator,
+  getEnvImpl = getEnv,
+  recipientOverride = null,
 } = {}) {
   const policy = loadPaybackPolicyConfig(paybackConfig);
   const accumulatorConfig = buildAccumulatorConfig(policy, {
@@ -419,7 +424,10 @@ export async function buildPaybackDecision({
     btcUsd: marketState.btcUsd || riskState.btcUsd || null,
   });
   const snapshot = accumulatorSnapshot(auditLogLines, receiptStore, accumulatorConfig);
-  const recipient = resolvePaybackRecipient(policy);
+  const recipient = resolvePaybackRecipient(policy, {
+    getEnvImpl,
+    recipientOverride,
+  });
   if (!recipient.ok) {
     return {
       schemaVersion: 1,
