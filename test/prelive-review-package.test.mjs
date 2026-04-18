@@ -714,6 +714,99 @@ test("prelive review package can promote recursive wrapped loop as the primary l
   assert.equal(summary.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
 });
 
+test("prelive review package promotes the strategy candidate when route refill economics are negative", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-19T02:00:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: [],
+      },
+      shadowCycle: {
+        funding: {
+          effectiveSystemNetPnlUsd: -1.88,
+        },
+        topRoute: {
+          label: "sonic->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          tradeReadiness: "insufficient_data",
+        },
+      },
+      prelive: {
+        currentStage: "shadow_replay",
+        liveTradingPolicy: "BLOCKED",
+        tinyLiveCanary: {
+          ready: false,
+          blockers: ["shadow_replay_not_ready"],
+        },
+      },
+    },
+    canaryInputs: {
+      routeKey: "sonic:0x0555->base:0x0555",
+      routeLabel: "sonic->base wBTC.OFT->wBTC.OFT",
+      amount: "10000",
+      scoreTradeReadiness: "insufficient_data",
+      blockers: ["token", "stale_gateway_quote"],
+      gatewayQuote: { state: "stale" },
+      exactGas: { state: "missing" },
+      srcGas: { state: "fresh" },
+      dexQuote: { state: "missing" },
+      bitcoinFee: { state: "not_required" },
+      marketSnapshot: { state: "fresh" },
+    },
+    nextStep: {
+      decision: "FUND_AND_APPROVE_WALLET",
+      headline: "Fund and approve the estimator wallet before exact gas",
+      reasons: ["token"],
+      route: {
+        routeKey: "sonic:0x0555->base:0x0555",
+        label: "sonic->base wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        tradeReadiness: "insufficient_data",
+        srcChain: "sonic",
+        dstChain: "base",
+      },
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        label: "Wrapped BTC lending loop (Base / Moonwell)",
+        strategyType: "leverage_lending_loop",
+        protocol: "moonwell",
+        chain: "base",
+        perTradeCapUsd: 300,
+      },
+      dryRunSummary: {
+        dryRunReceiptRecorded: true,
+        autoUnwindPassCount: 2,
+      },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          blockers: ["signer_backed_oos_receipts_missing"],
+          evidence: { oosEvidenceStatus: "simulated_window_ready" },
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts", command: "npm run ingest:wrapped-btc-loop-receipt -- --write" },
+        },
+      ],
+    },
+    protocolMarketWatchers: {
+      watchers: [
+        {
+          id: "wrapped_btc_loop_market_watch",
+          blockers: ["signer_backed_oos_receipts_missing"],
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts", command: "npm run ingest:wrapped-btc-loop-receipt -- --write" },
+        },
+      ],
+    },
+  });
+
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "wrapped-btc-loop-base-moonwell");
+  assert.equal(reviewPackage.manualReviewCandidate.routeKey, "sonic:0x0555->base:0x0555");
+});
+
 test("prelive review package prefers the wrapped loop when signer-backed roundtrip proof outranks recursive dry-run-only evidence", () => {
   const reviewPackage = buildPreliveReviewPackage({
     dashboardStatus: {

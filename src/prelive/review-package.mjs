@@ -181,6 +181,20 @@ function isRouteReviewReady(candidate = null) {
   );
 }
 
+function isRouteEconomicallyBlocked(candidate = null, dashboardStatus = null) {
+  if (!candidate || candidate.candidateType === "strategy") return false;
+  const blockerReasons = candidate?.blockerReasons || [];
+  if (
+    blockerReasons.some((reason) =>
+      ["reject_no_net_edge", "reject_effective_system_pnl", "route_refill_economically_unjustified"].includes(String(reason || "")),
+    )
+  ) {
+    return true;
+  }
+  const fundingNetUsd = dashboardStatus?.shadowCycle?.funding?.effectiveSystemNetPnlUsd;
+  return Number.isFinite(fundingNetUsd) && fundingNetUsd <= 0;
+}
+
 function buildStrategyLiveCandidate({
   scaffold = null,
   dryRunSummary = null,
@@ -296,7 +310,12 @@ function selectBestStrategyLiveCandidate(strategyLiveCandidates = []) {
     .find((candidate) => candidate?.candidateId) || null;
 }
 
-function selectPrimaryLiveCandidate({ manualReviewCandidate = null, strategyLiveCandidate = null } = {}) {
+function selectPrimaryLiveCandidate({
+  manualReviewCandidate = null,
+  strategyLiveCandidate = null,
+  dashboardStatus = null,
+} = {}) {
+  if (isRouteEconomicallyBlocked(manualReviewCandidate, dashboardStatus) && strategyLiveCandidate) return strategyLiveCandidate;
   if (isRouteReviewReady(manualReviewCandidate)) return manualReviewCandidate;
   if (isRouteStructurallyBlocked(manualReviewCandidate) && strategyLiveCandidate) return strategyLiveCandidate;
   return manualReviewCandidate || strategyLiveCandidate || null;
@@ -537,6 +556,7 @@ export function buildPreliveReviewPackage({
   const primaryLiveCandidate = selectPrimaryLiveCandidate({
     manualReviewCandidate,
     strategyLiveCandidate: bestStrategyLiveCandidate,
+    dashboardStatus,
   });
   const strategyChecklist = buildStrategyCandidateChecklist(primaryLiveCandidate);
   const measuredLeaderReview = buildMeasuredLeaderReview({
