@@ -8,8 +8,8 @@ test("operational judgment review surfaces stale-input and false-confidence risk
       overall: { liveTrading: "BLOCKED" },
     },
     strategySnapshot: {
-      currentSystem: { activeBudgetUsd: 300 },
-      summary: { planningBudgetUsd: 1000 },
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
     },
     reviewPackage: {
       manualReviewCandidate: {
@@ -65,14 +65,14 @@ test("operational judgment review surfaces stale-input and false-confidence risk
 
   assert.equal(report.status, "guarded_blocked");
   assert.equal(report.highSeverityCount, 3);
-  assert.equal(report.issueCount, 5);
+  assert.equal(report.issueCount, 4);
   assert.equal(report.issues.some((entry) => entry.code === "stale_inputs_can_distort_route_scoring"), true);
   assert.equal(report.issues.some((entry) => entry.code === "technical_ready_but_economic_blocked"), true);
   assert.equal(report.issues.some((entry) => entry.code === "measured_leader_differs_from_current_canary"), true);
 
   const summary = summarizeOperationalJudgmentReview(report);
   assert.equal(summary.status, "guarded_blocked");
-  assert.equal(summary.issueCount, 5);
+  assert.equal(summary.issueCount, 4);
   assert.equal(summary.nextActionCode, "stale_inputs_can_distort_route_scoring");
 });
 
@@ -93,8 +93,8 @@ test("operational judgment review falls back to objective discovery divergence w
       },
     },
     strategySnapshot: {
-      currentSystem: { activeBudgetUsd: 300 },
-      summary: { planningBudgetUsd: 1000 },
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
     },
     reviewPackage: {
       manualReviewCandidate: {

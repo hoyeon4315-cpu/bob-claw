@@ -66,8 +66,8 @@ function blockedReviewPackage() {
 
 function strategySnapshotSummary() {
   return {
-    activeBudgetUsd: 300,
-    planningBudgetUsd: 1000,
+    activeBudgetUsd: null,
+    planningBudgetUsd: null,
     candidateForValidationCount: 0,
     topImplementedStrategy: {
       id: "stablecoin_entry_exit_loops",
@@ -88,10 +88,10 @@ function blockedRunbook() {
       summary: {
         topImplementedStrategyId: "stablecoin_entry_exit_loops",
         topPivotId: "gateway_base_btc_yield",
-        planningBudgetUsd: 1000,
+        planningBudgetUsd: null,
       },
       currentSystem: {
-        activeBudgetUsd: 300,
+        activeBudgetUsd: null,
       },
     },
     canaryInputs: {
@@ -115,7 +115,7 @@ function blockedRunbook() {
   });
 }
 
-test("prelive validation reports blocked readiness with next command and preserved budget lanes", () => {
+test("prelive validation reports blocked readiness without inventing budget lanes", () => {
   const report = buildPreliveValidationReport({
     dashboardStatus: blockedDashboardStatus(),
     strategySnapshot: strategySnapshotSummary(),
@@ -137,8 +137,8 @@ test("prelive validation reports blocked readiness with next command and preserv
 
   assert.equal(report.validationStatus, "blocked");
   assert.equal(report.summary.nextActionCode, "refresh_gateway_quote");
-  assert.equal(report.budgets.activeBudgetUsd, 300);
-  assert.equal(report.budgets.planningBudgetUsd, 1000);
+  assert.equal(report.budgets.activeBudgetUsd, null);
+  assert.equal(report.budgets.planningBudgetUsd, null);
   assert.equal(report.blockers.includes("shadow_replay_not_ready"), true);
   assert.equal(report.warnings.includes("live_execution_locked"), true);
   assert.equal(report.warnings.includes("connected_refresh_required"), true);
@@ -306,10 +306,10 @@ test("prelive validation follows blocked current-route hold before queued refres
       summary: {
         topImplementedStrategyId: "stablecoin_entry_exit_loops",
         topPivotId: "gateway_base_btc_yield",
-        planningBudgetUsd: 1000,
+        planningBudgetUsd: null,
       },
       currentSystem: {
-        activeBudgetUsd: 300,
+        activeBudgetUsd: null,
       },
     },
     canaryInputs: {

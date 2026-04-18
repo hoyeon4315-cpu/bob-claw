@@ -7,6 +7,11 @@ import { config } from "../config/env.mjs";
 import { writeDashboardStatus } from "../status/dashboard-status.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 import {
+  buildCanaryInputRefreshExactGasArgs,
+  buildCanaryInputRefreshGasSnapshotArgs,
+  buildCanaryInputRefreshScoringArgs,
+  buildCanaryInputRefreshVerifyArgs,
+  buildCanaryInputRefreshDexArgs,
   planCanaryInputRefresh,
   describeBlockedScoreRefreshSelection,
   planBlockedScoreRefresh,
@@ -18,11 +23,13 @@ import {
 } from "../watch/canary-readiness-watch.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
 function parseArgs(argv) {
   const flags = new Set(argv);
   return {
     skipShadowCycle: flags.has("--skip-shadow-cycle"),
+    skipCanaryInputRefresh: flags.has("--skip-canary-input-refresh"),
   };
 }
 
@@ -32,13 +39,43 @@ function runNodeScript(script, args = []) {
     env: process.env,
     encoding: "utf8",
   });
-  if (result.status !== 0) {
+  const stdout = result.stdout.trim();
+  const stderr = result.stderr.trim();
+  const toleratedTargetedGasRefreshFailure =
+    script === "src/cli/estimate-gateway-gas.mjs" &&
+    result.status !== 0 &&
+    args.some((item) => item.startsWith("--route-key=")) &&
+    /(?:failed|skipped) reason=/.test(stdout);
+  if (result.status !== 0 && !toleratedTargetedGasRefreshFailure) {
     const error = new Error(`Command failed: node ${script} ${args.join(" ")}`.trim());
-    error.stdout = result.stdout;
-    error.stderr = result.stderr;
+    error.stdout = stdout;
+    error.stderr = stderr;
     throw error;
   }
-  return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+  return { stdout, stderr };
+}
+
+export function refreshCanaryInputsIfNeeded({ state, address, runScript = runNodeScript } = {}) {
+  const canaryInputRefresh = planCanaryInputRefresh(state);
+  if (!canaryInputRefresh.shouldRefresh) return { refreshed: false, refresh: canaryInputRefresh };
+
+  if (canaryInputRefresh.inputKeys.includes("market")) {
+    runScript("src/cli/price-snapshot.mjs");
+  }
+  if (canaryInputRefresh.inputKeys.includes("gateway_quote")) {
+    runScript("src/cli/verify-gateway.mjs", buildCanaryInputRefreshVerifyArgs(canaryInputRefresh) || []);
+  }
+  if (canaryInputRefresh.inputKeys.includes("src_gas")) {
+    runScript("src/cli/gas-snapshot.mjs", buildCanaryInputRefreshGasSnapshotArgs(canaryInputRefresh) || []);
+  }
+  if (canaryInputRefresh.inputKeys.includes("exact_gas")) {
+    runScript("src/cli/estimate-gateway-gas.mjs", buildCanaryInputRefreshExactGasArgs(canaryInputRefresh, address) || []);
+  }
+  if (canaryInputRefresh.inputKeys.includes("dex_quote")) {
+    runScript("src/cli/quote-dex.mjs", buildCanaryInputRefreshDexArgs(canaryInputRefresh) || []);
+  }
+  runScript("src/cli/score-gateway.mjs", buildCanaryInputRefreshScoringArgs(canaryInputRefresh));
+  return { refreshed: true, refresh: canaryInputRefresh };
 }
 
 function watcherReasonLabel(kind, reason) {
@@ -256,9 +293,23 @@ async function main() {
     runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write"]);
   }
 
-  const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
-  const status = context.dashboardStatus;
-  const watchState = context.state;
+  let context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
+  let status = context.dashboardStatus;
+  let watchState = context.state;
+  watchState.dashboardStatus = status;
+
+  if (!args.skipCanaryInputRefresh) {
+    const refreshed = refreshCanaryInputsIfNeeded({
+      state: watchState,
+      address: watchState.address || null,
+    });
+    if (refreshed.refreshed) {
+      context = await buildCurrentDashboardContext({ dataDir: config.dataDir, address: watchState.address || null });
+      status = context.dashboardStatus;
+      watchState = context.state;
+    }
+  }
+
   watchState.dashboardStatus = status;
   status.watchers = buildPublicWatchers(watchState);
   const output = await writeDashboardStatus(config.dataDir, status);
@@ -278,9 +329,52 @@ async function main() {
       `executorRuntime=${status.executorRuntime.runtimeStatus || "unknown"} watchdog=${status.executorRuntime.watchdog?.status || "unknown"} socket=${status.executorRuntime.signerSocketPresent ? "present" : "missing"} ageMs=${status.executorRuntime.watchdog?.ageMs ?? "n/a"}`,
     );
   }
+  if (status.payback) {
+    console.log(
+      `paybackScheduler=${status.payback.scheduler?.status || "none"} reason=${status.payback.scheduler?.reason || "none"} next=${status.payback.scheduler?.nextAction || "none"} pendingSats=${status.payback.accumulatorPendingSats ?? 0} lastSettledSats=${status.payback.lastPaybackSettledSats ?? "n/a"}`,
+    );
+    console.log(
+      `paybackGrossProfitSatsPeriod=${status.payback.grossProfitSatsPeriod ?? 0} paidBackSatsLifetime=${status.payback.paidBackSatsLifetime ?? 0}`,
+    );
+    if (status.payback.scheduler?.requiredEnvName) {
+      console.log(`paybackRequiredEnv=${status.payback.scheduler.requiredEnvName}`);
+    }
+    if (status.payback.scheduler?.previewAfterDestination) {
+      console.log(
+        `paybackPreviewAfterDestination=${status.payback.scheduler.previewAfterDestination.status || "none"} reason=${status.payback.scheduler.previewAfterDestination.reason || "none"} grossTargetSats=${status.payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats ?? "n/a"} minPaybackSats=${status.payback.scheduler.previewAfterDestination.minPaybackSats ?? "n/a"} remainingSats=${status.payback.scheduler.previewAfterDestination.satsToMinimumPayback ?? "n/a"} progressRatio=${status.payback.scheduler.previewAfterDestination.progressToMinimumRatio ?? "n/a"}`,
+      );
+    }
+  }
   console.log(`shadowCycleMode=${status.shadowCycle?.mode || "none"}`);
   console.log(`preliveStage=${status.prelive?.currentStage || "none"}`);
   console.log(`reviewPackageStatus=${status.prelive?.reviewPackage?.packageStatus || "none"}`);
+  if (status.strategy?.strategySnapshot?.researchBoard) {
+    console.log(
+      `strategyResearch=candidates:${status.strategy.strategySnapshot.researchBoard.candidateCount ?? 0} top:${status.strategy.strategySnapshot.researchBoard.topCandidate?.id || "none"} newTop:${status.strategy.strategySnapshot.researchBoard.topNewCandidate?.id || "none"} newStatus:${status.strategy.strategySnapshot.researchBoard.topNewCandidate?.status || "none"} nextNew:${status.strategy.strategySnapshot.researchBoard.nextNewAction?.code || "none"}`,
+    );
+  }
+  if (status.strategy?.strategySnapshot?.deterministicCandidates) {
+    console.log(
+      `deterministicCandidates=candidates:${status.strategy.strategySnapshot.deterministicCandidates.candidateCount ?? 0} readyForDryRun:${status.strategy.strategySnapshot.deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked:${status.strategy.strategySnapshot.deterministicCandidates.receiptBackedCount ?? 0} top:${status.strategy.strategySnapshot.deterministicCandidates.topCandidate?.id || "none"} next:${status.strategy.strategySnapshot.deterministicCandidates.nextAction?.code || "none"}`,
+    );
+  }
+  if (status.liveBaseline) {
+    console.log(
+      `liveBaseline=${status.liveBaseline.status} stage=${status.liveBaseline.currentStageId || "none"} refreshInputs=${status.liveBaseline.counts?.requiredRefreshCount ?? 0} operator=${status.liveBaseline.counts?.operator ?? 0} technical=${status.liveBaseline.counts?.technical ?? 0} objective=${status.liveBaseline.counts?.objective ?? 0}`,
+    );
+    console.log(
+      `liveBaselineRefresh=${status.liveBaseline.blockers?.refresh?.map((item) => item.code).join(",") || "none"} next=${status.liveBaseline.nextAction?.category === "refresh" ? status.liveBaseline.nextAction.code : "none"}`,
+    );
+    console.log(
+      `liveBaselineOperator=${status.liveBaseline.blockers?.operator?.map((item) => item.code).join(",") || "none"}`,
+    );
+    console.log(
+      `liveBaselineTechnical=${status.liveBaseline.blockers?.technical?.map((item) => item.code).join(",") || "none"}`,
+    );
+    console.log(
+      `liveBaselineObjective=${status.liveBaseline.blockers?.objective?.map((item) => item.code).join(",") || "none"}`,
+    );
+  }
   if (status.prelive?.connectedRefresh) {
     console.log(
       `connectedRefresh=${status.prelive.connectedRefresh.status || "none"} required=${status.prelive.connectedRefresh.requiredRefreshCount ?? 0} next=${status.prelive.connectedRefresh.nextActionCode || "none"}`,
@@ -296,6 +390,11 @@ async function main() {
       `currentRoutePrelivePass=runs:${status.prelive.currentRoutePrelivePass.runCount ?? 0} preview:${status.prelive.currentRoutePrelivePass.previewCount ?? 0} latest:${status.prelive.currentRoutePrelivePass.latestStatus || "none"} next:${status.prelive.currentRoutePrelivePass.nextAction?.code || "none"}`,
     );
   }
+  if (status.prelive?.v1InfraDrills) {
+    console.log(
+      `v1InfraDrills=status:${status.prelive.v1InfraDrills.status || "none"} passed:${status.prelive.v1InfraDrills.passedCount ?? 0}/${status.prelive.v1InfraDrills.drillCount ?? 0} next:${status.prelive.v1InfraDrills.nextAction?.code || "none"}`,
+    );
+  }
   if (status.prelive?.exactRouteForkPackage) {
     console.log(
       `exactRouteFork=${status.prelive.exactRouteForkPackage.status || "none"} technical=${status.prelive.exactRouteForkPackage.technicalStatus || "n/a"} economic=${status.prelive.exactRouteForkPackage.economicStatus || "n/a"}`,
@@ -309,7 +408,9 @@ async function main() {
   console.log(`blockers=${status.overall.blockers.join(",") || "none"}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (IS_MAIN) {
+  main().catch((error) => {
+    console.error(error.stderr || error.stdout || error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

@@ -65,10 +65,10 @@ function strategySnapshotFixture() {
     summary: {
       topImplementedStrategyId: "stablecoin_entry_exit_loops",
       topPivotId: "gateway_base_btc_yield",
-      planningBudgetUsd: 1000,
+      planningBudgetUsd: null,
     },
     currentSystem: {
-      activeBudgetUsd: 300,
+      activeBudgetUsd: null,
     },
   };
 }

@@ -20,6 +20,8 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     scenario: options.scenario || "healthy_baseline",
+    perTradeCapUsd: options["per-trade-cap-usd"] ? Number(options["per-trade-cap-usd"]) : null,
+    marketMinIncrementUsd: options["market-min-increment-usd"] ? Number(options["market-min-increment-usd"]) : null,
     bindingsPath: options["bindings-path"] || executorStrategyBindingsPath(),
     socketPath: options["socket-path"] || signerSocketPath(),
     command: options.command || "sign_and_broadcast",
@@ -35,6 +37,10 @@ async function main() {
   const result = await runWrappedBtcLoopLiveScenario({
     bindingsPath: args.bindingsPath,
     scenarioId: args.scenario,
+    perTradeCapUsdOverride: args.perTradeCapUsd,
+    marketAssumptionsOverride: Number.isFinite(args.marketMinIncrementUsd)
+      ? { minIncrementUsd: args.marketMinIncrementUsd }
+      : null,
     socketPath: args.socketPath,
     command: args.command,
     awaitConfirmation: args.awaitConfirmation,

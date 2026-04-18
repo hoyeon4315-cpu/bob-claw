@@ -1,13 +1,22 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { getEnv } from "../../config/env.mjs";
+import { config } from "../../config/env.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
+import { writeTextIfChanged } from "../../lib/file-write.mjs";
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { readSignerHealth, sendSignerCommand } from "../signer/client.mjs";
 import { buildDefaultWrappedBtcLendingLoopConfig } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
 import { inspectWrappedBtcLoopBindingsDocument, resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-loop-bindings.mjs";
+import {
+  buildWrappedBtcLoopLiveProof,
+  WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE,
+} from "../../strategy/wrapped-btc-loop-live-proof.mjs";
 import { buildAutoWrappedBtcLoopScenarioBinding } from "./wrapped-btc-loop-auto-build.mjs";
+import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gateway-btc-consolidation.mjs";
 
 export const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 export const DEFAULT_EXECUTOR_STRATEGY_BINDINGS_PATH = "./state/executor-strategy-bindings.json";
@@ -123,17 +132,23 @@ export async function buildWrappedBtcLoopScenarioPlan({
   signerAddress = null,
   prices = null,
   odosClient = null,
+  estimateGasImpl = null,
+  marketAssumptionsOverride = null,
+  perTradeCapUsdOverride = null,
 } = {}) {
   const strategyCaps = assertStrategyCaps(strategyId);
+  const resolvedPerTradeCapUsd = Number.isFinite(Number(perTradeCapUsdOverride)) && Number(perTradeCapUsdOverride) > 0
+    ? Number(perTradeCapUsdOverride)
+    : strategyCaps.caps.perTxUsd;
   const strategyConfig = {
     ...buildDefaultWrappedBtcLendingLoopConfig(),
     ...strategyCaps.leverage,
     id: strategyId,
-    perTradeCapUsd: strategyCaps.caps.perTxUsd,
+    perTradeCapUsd: resolvedPerTradeCapUsd,
   };
   const strategyBindings = bindingsDocument?.strategies?.[strategyId];
   const scenarioBinding = resolveWrappedBtcLoopScenarioBinding({ bindingsDocument, strategyId, scenarioId });
-  const defaultAmountUsd = strategyCaps.caps.perTxUsd;
+  const defaultAmountUsd = resolvedPerTradeCapUsd;
   let entrySteps = scenarioBinding.entry || [];
   let unwindSteps = scenarioBinding.unwind || [];
   if (entrySteps.length === 0 && unwindSteps.length === 0) {
@@ -148,6 +163,8 @@ export async function buildWrappedBtcLoopScenarioPlan({
         scenarioId,
         signerAddress,
         prices,
+        ...(marketAssumptionsOverride ? { marketAssumptions: marketAssumptionsOverride } : {}),
+        ...(estimateGasImpl ? { estimateGasImpl } : {}),
         ...(odosClient ? { client: odosClient } : {}),
         now,
       });
@@ -249,22 +266,87 @@ export function buildWrappedBtcLoopReceiptContext({
   };
 }
 
+export async function prepareLiveLoopIntent(intent, {
+  signerAddress = null,
+  estimateGasImpl = estimateGas,
+  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+} = {}) {
+  const refreshedObservedAt = new Date().toISOString();
+  const refreshNonQuotedStep = intent?.intentType !== "odos_swap";
+  const baseIntent = {
+    ...intent,
+    observedAt: refreshedObservedAt,
+    ...(refreshNonQuotedStep
+      ? {
+          quote: {
+            ...(intent.quote || {}),
+            observedAt: refreshedObservedAt,
+          },
+        }
+      : {}),
+  };
+  if (!signerAddress || !intent?.tx?.to || !intent?.tx?.data || !getEvmChainConfig(intent.chain)) {
+    return baseIntent;
+  }
+  try {
+    const gasEstimate = await estimateGasImpl(
+      intent.chain,
+      {
+        from: signerAddress,
+        to: intent.tx.to,
+        data: intent.tx.data,
+        valueWei: intent.tx.value ?? intent.tx.valueWei ?? "0",
+      },
+      getEvmChainConfig(intent.chain),
+    );
+    return {
+      ...baseIntent,
+      tx: {
+        ...intent.tx,
+        gasLimit: String(applyGasBuffer(gasEstimate.gasUnits, gasBufferBps)),
+      },
+    };
+  } catch {
+    return baseIntent;
+  }
+}
+
 async function executeIntent(intent, options = {}) {
+  const preparedIntent = await prepareLiveLoopIntent(intent, {
+    signerAddress: options.signerAddress,
+    estimateGasImpl: options.estimateGasImpl,
+    gasBufferBps: options.gasBufferBps,
+  });
   const result = await sendSignerCommand({
     socketPath: options.socketPath,
     timeoutMs: options.timeoutMs,
     message: {
       command: options.command || "sign_and_broadcast",
-      intent,
+      intent: preparedIntent,
       awaitConfirmation: options.awaitConfirmation !== false,
       confirmations: options.confirmations ?? 1,
       timeoutMs: options.confirmationTimeoutMs ?? 120_000,
     },
   });
   return {
-    intent,
-    ...result,
+    intent: preparedIntent,
+    ...classifyIntentResult(result),
   };
+}
+
+export function classifyIntentResult(result = {}) {
+  if (result?.status !== "ok") return result;
+  if (result?.receipt?.status === 0) {
+    return {
+      ...result,
+      status: "error",
+      error: {
+        name: "EvmReceiptReverted",
+        message: "Transaction reverted after broadcast",
+      },
+    };
+  }
+  return result;
 }
 
 async function executeIntentBatch(intents = [], options = {}) {
@@ -283,12 +365,16 @@ export async function runWrappedBtcLoopLiveScenario({
   bindingsPath = executorStrategyBindingsPath(),
   scenarioId = "healthy_baseline",
   strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
+  perTradeCapUsdOverride = null,
+  marketAssumptionsOverride = null,
   socketPath,
   command = "sign_and_broadcast",
   awaitConfirmation = true,
   confirmations = 1,
   confirmationTimeoutMs = 120_000,
   timeoutMs = 30_000,
+  estimateGasImpl = estimateGas,
+  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   cwd = process.cwd(),
   now = new Date().toISOString(),
 } = {}) {
@@ -304,6 +390,8 @@ export async function runWrappedBtcLoopLiveScenario({
     now,
     signerAddress: signerHealth?.addresses?.base || null,
     prices,
+    perTradeCapUsdOverride,
+    marketAssumptionsOverride,
   });
   const entryResults = await executeIntentBatch(plan.entryIntents, {
     socketPath,
@@ -312,6 +400,9 @@ export async function runWrappedBtcLoopLiveScenario({
     confirmations,
     confirmationTimeoutMs,
     timeoutMs,
+    signerAddress: signerHealth?.addresses?.base || null,
+    estimateGasImpl,
+    gasBufferBps,
   });
   const entryFailed = entryResults.some((item) => item.status !== "ok");
   const unwindResults = entryFailed
@@ -323,15 +414,19 @@ export async function runWrappedBtcLoopLiveScenario({
         confirmations,
         confirmationTimeoutMs,
         timeoutMs,
+        signerAddress: signerHealth?.addresses?.base || null,
+        estimateGasImpl,
+        gasBufferBps,
       });
   const unwindFailed = unwindResults.some((item) => item.status !== "ok");
+  let receiptContext = null;
   let receiptAutoIngest = {
     ran: false,
     reason: command === "sign_only" ? "broadcast_required_for_receipt_ingest" : "execution_incomplete",
   };
 
   if (!entryFailed && !unwindFailed && command !== "sign_only") {
-    const receiptContext = buildWrappedBtcLoopReceiptContext({
+    receiptContext = buildWrappedBtcLoopReceiptContext({
       plan,
       entryResults,
       unwindResults,
@@ -341,15 +436,38 @@ export async function runWrappedBtcLoopLiveScenario({
       context: receiptContext,
       cwd,
     });
+    const liveProof = buildWrappedBtcLoopLiveProof({
+      result: {
+        strategyId,
+        scenarioId,
+        perTradeCapUsdOverride,
+        marketAssumptionsOverride,
+        entryResults,
+        unwindResults,
+        receiptAutoIngest,
+        ok: true,
+      },
+      receiptContext,
+      now,
+    });
+    if (liveProof) {
+      await writeTextIfChanged(
+        join(config.dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE),
+        `${JSON.stringify(liveProof, null, 2)}\n`,
+      );
+    }
   }
 
   return {
     strategyId,
     scenarioId,
+    perTradeCapUsdOverride,
+    marketAssumptionsOverride,
     bindingsPath,
     command,
     entryResults,
     unwindResults,
+    receiptContext,
     receiptAutoIngest,
     ok: !entryFailed && !unwindFailed,
   };

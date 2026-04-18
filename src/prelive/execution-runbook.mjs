@@ -408,7 +408,7 @@ export function buildExecutionRunbook({
     notes: [
       "This runbook is pre-live only and never grants execution permission.",
       "Fork execution still requires an external signer; planner and dashboard code must not hold private keys.",
-      "Keep the USD 300 live ring-fence intact. Any larger budget lane stays planning-only.",
+      "Per-strategy caps and runtime gates still control admission; no report-side budget lane grants execution permission.",
     ],
   };
 }

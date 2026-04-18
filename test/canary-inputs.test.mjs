@@ -203,6 +203,56 @@ test("canary input summary marks structurally unsupported DEX coverage as blocke
   assert.deepEqual(summary.dexQuote.failureReasons, ["odos_quote_failed", "no_supported_router_for_chain:80094"]);
 });
 
+test("canary input summary normalizes legacy Odos unsupported reasons for blocked Bera coverage", () => {
+  const summary = buildCanaryInputSummary(
+    {
+      nextStep: {
+        route: {
+          label: "avalanche->bera wBTC.OFT->wBTC.OFT",
+          routeKey: "avalanche:0x0555->bera:0x0555",
+          amount: "10000",
+          srcChain: "avalanche",
+          dstChain: "bera",
+          tradeReadiness: "reject_no_net_edge",
+        },
+        reasons: ["reject_no_net_edge"],
+      },
+      scoreSnapshot: {
+        generatedAt: "2026-04-11T12:00:00.000Z",
+        scores: [
+          {
+            routeKey: "avalanche:0x0555->bera:0x0555",
+            amount: "10000",
+            tradeReadiness: "reject_no_net_edge",
+            dataGaps: ["missing_dex_output_quote"],
+          },
+        ],
+      },
+      dexFailures: [
+        {
+          source: "gateway_dst_leg",
+          chain: "bera",
+          gatewayRouteKey: "avalanche:0x0555->bera:0x0555",
+          gatewayAmount: "10000",
+          reason: "odos_chain_not_supported",
+          observedAt: "2026-04-11T11:58:00.000Z",
+        },
+      ],
+      quotes: [],
+      gasEstimateSnapshots: [],
+      gasSnapshots: [],
+      dexQuotes: [],
+      bitcoinFeeSnapshots: [],
+      priceSnapshots: [],
+    },
+    { now: "2026-04-11T12:00:00.000Z" },
+  );
+
+  assert.equal(summary.dexQuote.state, "blocked");
+  assert.equal(summary.dexQuote.failureReason, "no_supported_router_for_chain:80094");
+  assert.deepEqual(summary.dexQuote.failureReasons, ["no_supported_router_for_chain:80094"]);
+});
+
 test("canary input summary preserves fresh exact-gas failure evidence", () => {
   const summary = buildCanaryInputSummary(
     {

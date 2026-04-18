@@ -4,6 +4,25 @@ function isFiniteNumber(value) {
   return Number.isFinite(value);
 }
 
+function legacyCapAmountUsd({ strategyId, intentId, intentType, executionReason, amountUsd }) {
+  if (strategyId === "wrapped-btc-loop-base-moonwell") {
+    if (executionReason === "risk_unwind" || String(intentId || "").includes(":unwind:")) return 0;
+    if (String(intentId || "").includes(":entry:mint-initial-collateral")) {
+      return Number(amountUsd ?? 0);
+    }
+    return 0;
+  }
+  if (strategyId === "native-dex-experiment") {
+    if (intentType === "wrap_native" || intentType === "approve_exact") return 0;
+    return null;
+  }
+  if (strategyId === "token-dex-experiment") {
+    if (intentType === "approve_exact") return 0;
+    return null;
+  }
+  return null;
+}
+
 function dayKey(timestamp) {
   return new Date(timestamp).toISOString().slice(0, 10);
 }
@@ -13,11 +32,69 @@ function hoursAgo(timestamp, now) {
 }
 
 function successfulBroadcast(record = {}) {
-  return record.policyVerdict === "approved" || record.lifecycle?.stage === "broadcasted" || record.lifecycle?.stage === "signed";
+  return ["approved", "signed", "broadcasted", "confirmed"].includes(record.policyVerdict) || ["broadcasted", "signed", "confirmed"].includes(record.lifecycle?.stage);
+}
+
+function stageRank(record = {}) {
+  const stage = record.lifecycle?.stage || null;
+  if (stage === "reverted") return 5;
+  if (stage === "confirmed") return 4;
+  if (stage === "broadcasted") return 3;
+  if (stage === "signed") return 2;
+  if (record.policyVerdict === "approved") return 1;
+  return 0;
+}
+
+function recordKey(record = {}) {
+  return record.intentId || record.intentHash || `${record.strategyId || "unknown"}:${record.chain || "unknown"}:${record.timestamp || record.observedAt || "unknown"}`;
+}
+
+function dedupeRecords(records = []) {
+  const bestByKey = new Map();
+  for (const record of records) {
+    const key = recordKey(record);
+    const existing = bestByKey.get(key);
+    if (!existing) {
+      bestByKey.set(key, record);
+      continue;
+    }
+    const rank = stageRank(record);
+    const existingRank = stageRank(existing);
+    const recordTime = new Date(record.timestamp || record.observedAt || 0).getTime();
+    const existingTime = new Date(existing.timestamp || existing.observedAt || 0).getTime();
+    if (rank > existingRank || (rank === existingRank && recordTime >= existingTime)) {
+      bestByKey.set(key, record);
+    }
+  }
+  return [...bestByKey.values()];
 }
 
 function recordAmountUsd(record = {}) {
+  const metadataOverride = record.intent?.metadata?.capCheckAmountUsd;
+  if (isFiniteNumber(Number(metadataOverride))) return Number(metadataOverride);
+  const legacyOverride = legacyCapAmountUsd({
+    strategyId: record.strategyId ?? record.intent?.strategyId,
+    intentId: record.intentId ?? record.intent?.intentId,
+    intentType: record.intent?.intentType,
+    executionReason: record.intent?.executionReason,
+    amountUsd: record.amountUsd ?? record.intent?.amountUsd,
+  });
+  if (legacyOverride !== null && legacyOverride !== undefined && isFiniteNumber(Number(legacyOverride))) return Number(legacyOverride);
   return Number(record.amountUsd ?? record.intent?.amountUsd ?? 0);
+}
+
+function intentCapAmountUsd(intent = {}) {
+  const metadataOverride = intent.metadata?.capCheckAmountUsd;
+  if (isFiniteNumber(Number(metadataOverride))) return Number(metadataOverride);
+  const legacyOverride = legacyCapAmountUsd({
+    strategyId: intent.strategyId,
+    intentId: intent.intentId,
+    intentType: intent.intentType,
+    executionReason: intent.executionReason,
+    amountUsd: intent.amountUsd,
+  });
+  if (legacyOverride !== null && legacyOverride !== undefined && isFiniteNumber(Number(legacyOverride))) return Number(legacyOverride);
+  return Number(intent.amountUsd ?? 0);
 }
 
 export function buildStrategyCapState({
@@ -28,7 +105,7 @@ export function buildStrategyCapState({
   const currentDay = dayKey(now);
   const relevant = auditRecords.filter((item) => item.strategyId === strategyId);
   const today = relevant.filter((item) => dayKey(item.timestamp || item.observedAt || now) === currentDay);
-  const executedToday = today.filter(successfulBroadcast);
+  const executedToday = dedupeRecords(today).filter(successfulBroadcast);
   const dailyVolumeUsd = executedToday
     .map(recordAmountUsd)
     .filter(isFiniteNumber)
@@ -75,6 +152,7 @@ export function evaluateCapCheck({
   const caps = strategyCaps.caps || {};
   const chainCapUsd = caps.perChainUsd?.[intent.chain] ?? null;
   const amountUsd = Number(intent.amountUsd ?? 0);
+  const capAmountUsd = intentCapAmountUsd(intent);
   const isEmergencyIntent = intent.intentType === "emergency_unwind" || intent.executionReason === "risk_unwind";
 
   if (intent.mode !== "dry_run" && strategyCaps.autoExecute !== true) {
@@ -92,17 +170,17 @@ export function evaluateCapCheck({
   if (!isEmergencyIntent && !isFiniteNumber(chainCapUsd)) {
     blockers.push("strategy_per_chain_cap_missing");
   }
-  if (!isEmergencyIntent && isFiniteNumber(caps.perTxUsd) && isFiniteNumber(amountUsd) && amountUsd > caps.perTxUsd) {
+  if (!isEmergencyIntent && isFiniteNumber(caps.perTxUsd) && isFiniteNumber(capAmountUsd) && capAmountUsd > caps.perTxUsd) {
     blockers.push("strategy_per_tx_cap_exceeded");
   }
-  if (!isEmergencyIntent && isFiniteNumber(caps.perDayUsd) && isFiniteNumber(amountUsd) && state.dailyVolumeUsd + amountUsd > caps.perDayUsd) {
+  if (!isEmergencyIntent && isFiniteNumber(caps.perDayUsd) && isFiniteNumber(capAmountUsd) && state.dailyVolumeUsd + capAmountUsd > caps.perDayUsd) {
     blockers.push("strategy_per_day_cap_exceeded");
   }
   if (
     !isEmergencyIntent &&
     isFiniteNumber(chainCapUsd) &&
-    isFiniteNumber(amountUsd) &&
-    (state.perChainVolumeUsd[intent.chain] || 0) + amountUsd > chainCapUsd
+    isFiniteNumber(capAmountUsd) &&
+    (state.perChainVolumeUsd[intent.chain] || 0) + capAmountUsd > chainCapUsd
   ) {
     blockers.push("strategy_per_chain_cap_exceeded");
   }
@@ -121,6 +199,7 @@ export function evaluateCapCheck({
     state,
     metrics: {
       amountUsd: isFiniteNumber(amountUsd) ? amountUsd : null,
+      capAmountUsd: isFiniteNumber(capAmountUsd) ? capAmountUsd : null,
       perTxUsd: caps.perTxUsd ?? null,
       perDayUsd: caps.perDayUsd ?? null,
       perChainUsd: chainCapUsd,

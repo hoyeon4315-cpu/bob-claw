@@ -55,8 +55,8 @@ async function main() {
   console.log(`validationStatus=${report?.validationStatus || "n/a"}`);
   console.log(`currentStage=${report?.currentStageId || "n/a"}`);
   console.log(`readinessPct=${report?.readinessPct ?? 0}`);
-  console.log(`activeBudgetUsd=${money(report?.budgets?.activeBudgetUsd)}`);
-  console.log(`planningBudgetUsd=${money(report?.budgets?.planningBudgetUsd)}`);
+  if (Number.isFinite(report?.budgets?.activeBudgetUsd)) console.log(`activeBudgetUsd=${money(report?.budgets?.activeBudgetUsd)}`);
+  if (Number.isFinite(report?.budgets?.planningBudgetUsd)) console.log(`planningBudgetUsd=${money(report?.budgets?.planningBudgetUsd)}`);
   console.log(`topImplementedStrategy=${report?.topStrategy?.implementedStrategyId || "n/a"}`);
   console.log(`topPivot=${report?.topStrategy?.pivotId || "n/a"}`);
   console.log(`nextStage=${report?.summary?.nextStageId || "n/a"}`);

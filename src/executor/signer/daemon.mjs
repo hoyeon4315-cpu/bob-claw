@@ -8,6 +8,7 @@ import { getBooleanEnv, getEnv, getNumberEnv } from "../../config/env.mjs";
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { evaluateIntentPolicies } from "../policy/index.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord, readSignerAuditLog } from "./audit-log.mjs";
+import { notifyPolicyRejection } from "./policy-alerts.mjs";
 import { createBtcLocalKeySigner } from "./btc-local-signer.mjs";
 import { createEvmLocalKeySigner } from "./evm-local-signer.mjs";
 import { normalizeExecutionIntent } from "./signer-interface.mjs";
@@ -73,6 +74,14 @@ async function readAddressOrNull(getter) {
   }
 }
 
+async function readAddressInfoOrNull(getter) {
+  try {
+    return await getter();
+  } catch {
+    return null;
+  }
+}
+
 async function handleIntentCommand({
   message,
   signers,
@@ -97,9 +106,11 @@ async function handleIntentCommand({
       },
     });
     await appendSignerAuditRecord(rejected, { rootDir: cwd });
+    const notification = await notifyPolicyRejection({ intent, policy });
     return {
       status: "rejected",
       policy,
+      notification,
     };
   }
 
@@ -142,6 +153,45 @@ async function handleIntentCommand({
           confirmations: Number.isFinite(message.confirmations) ? message.confirmations : 1,
           timeoutMs: Number.isFinite(message.timeoutMs) ? message.timeoutMs : 120_000,
         });
+        const serializedReceipt = serializeReceipt(receipt);
+        await appendSignerAuditRecord(
+          buildSignerAuditRecord({
+            intent,
+            policyVerdict: receipt?.status === 0 ? "errored" : "approved",
+            lifecycle: {
+              stage: receipt?.status === 0 ? "reverted" : "confirmed",
+              txHash: broadcast.txHash,
+            },
+            broadcast,
+            realized: serializedReceipt
+              ? {
+                  actualKnownCostUsd: null,
+                }
+              : null,
+            error:
+              receipt?.status === 0
+                ? {
+                    name: "EvmReceiptReverted",
+                    message: "Transaction reverted after broadcast",
+                  }
+                : null,
+          }),
+          { rootDir: cwd },
+        );
+        if (receipt?.status === 0) {
+          return {
+            status: "error",
+            policy,
+            signed,
+            broadcast,
+            receipt: serializedReceipt,
+            autoIngest: null,
+            error: {
+              name: "EvmReceiptReverted",
+              message: "Transaction reverted after broadcast",
+            },
+          };
+        }
       }
 
       const serializedReceipt = serializeReceipt(receipt);
@@ -266,14 +316,22 @@ export async function startSignerDaemon() {
         });
 
         if (message.command === "health") {
+          const baseAddress = await readAddressOrNull(() => signers.evm.getAddress("base"));
+          const bitcoinInfo = await readAddressInfoOrNull(() => signers.btc.getAddressInfo("bitcoin"));
           socket.write(
             `${JSON.stringify({
               status: "ok",
               pid: process.pid,
               socketPath,
               addresses: {
-                base: await readAddressOrNull(() => signers.evm.getAddress("base")),
-                bitcoin: await readAddressOrNull(() => signers.btc.getAddress("bitcoin")),
+                base: baseAddress,
+                bitcoin: bitcoinInfo?.address || null,
+              },
+              addressTypes: {
+                bitcoin: bitcoinInfo?.addressType || null,
+              },
+              addressDetails: {
+                bitcoin: bitcoinInfo,
               },
             })}\n`,
           );
@@ -306,7 +364,13 @@ export async function startSignerDaemon() {
     writeDaemonHeartbeat().catch(() => {});
   }, Math.max(1_000, args.heartbeatIntervalMs));
   heartbeatTimer.unref();
-  console.log(JSON.stringify({ status: "listening", socketPath }));
+  const startupBtcInfo = await readAddressInfoOrNull(() => signers.btc.getAddressInfo("bitcoin"));
+  console.log(JSON.stringify({
+    status: "listening",
+    socketPath,
+    btcAddress: startupBtcInfo?.address || null,
+    btcAddressType: startupBtcInfo?.addressType || null,
+  }));
 
   const shutdown = async () => {
     clearInterval(heartbeatTimer);

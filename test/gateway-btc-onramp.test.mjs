@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "../src/executor/helpers/gateway-btc-onramp.mjs";
+import { ZERO_TOKEN } from "../src/assets/tokens.mjs";
 import { GatewayError } from "../src/gateway/client.mjs";
 
 function gatewayClientFixture() {
@@ -57,6 +58,12 @@ function gatewayClientFixture() {
         onramp: {
           txid: payload.onramp.bitcoin_txid,
         },
+      },
+    }),
+    getOrder: async () => ({
+      body: {
+        id: "order-123",
+        status: "success",
       },
     }),
   };
@@ -128,4 +135,73 @@ test("gateway btc onramp preview can surface insufficient confirmed funds withou
   assert.equal(plan.blockedReason, "insufficient_confirmed_bitcoin_balance");
   assert.equal(plan.intent, null);
   assert.equal(plan.order, null);
+});
+
+test("gateway btc onramp plan accepts native ETH destination aliases", async () => {
+  const plan = await buildGatewayBtcOnrampPlan({
+    client: {
+      ...gatewayClientFixture(),
+      getQuote: async () => ({
+        body: {
+          onramp: {
+            ...(await gatewayClientFixture().getQuote()).body.onramp,
+            outputAmount: {
+              amount: "2815964105455293",
+              address: ZERO_TOKEN,
+              chain: "base",
+            },
+          },
+        },
+      }),
+    },
+    priceReader: async () => ({ btc: 100_000 }),
+    senderAddress: "bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546",
+    recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    amountSats: 10_000,
+    dstChain: "base",
+    dstToken: "ETH",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.dstAsset.ticker, "ETH");
+  assert.equal(plan.dstAsset.token, ZERO_TOKEN);
+  assert.equal(plan.intent.quote.route.dstToken, ZERO_TOKEN);
+});
+
+test("gateway btc onramp execution recovers order state by txid after register failure", async () => {
+  const client = {
+    ...gatewayClientFixture(),
+    registerTx: async () => {
+      throw new GatewayError("Gateway request failed", {
+        status: 502,
+        body: {
+          code: "BAD_GATEWAY",
+          error: "upstream timeout",
+        },
+      });
+    },
+  };
+  const plan = await buildGatewayBtcOnrampPlan({
+    client,
+    priceReader: async () => ({ btc: 100_000 }),
+    senderAddress: "bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546",
+    recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    amountSats: 100_000,
+  });
+  const execution = await executeGatewayBtcOnrampPlan({
+    plan,
+    client,
+    sendCommand: async () => ({
+      status: "ok",
+      signed: { signedTx: "02000000" },
+      broadcast: { txHash: "bb".repeat(32) },
+    }),
+  });
+
+  assert.equal(execution.signerResult.broadcast.txHash, "bb".repeat(32));
+  assert.equal(execution.registerResult, undefined);
+  assert.equal(execution.registerRecovered, true);
+  assert.equal(execution.orderLookup.body.id, "order-123");
+  assert.equal(execution.registerError.name, "GatewayError");
+  assert.equal(execution.registerError.details.body.code, "BAD_GATEWAY");
 });

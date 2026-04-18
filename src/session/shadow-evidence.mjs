@@ -25,7 +25,58 @@ function matchRouteAmount(item, routeKey, amount) {
   return item?.routeKey === routeKey && String(item?.amount) === String(amount);
 }
 
+function summarizeLatestScoreReasons(latestScore) {
+  const counts = new Map();
+  if (latestScore?.tradeReadiness && latestScore.tradeReadiness !== "shadow_candidate_review_only") {
+    counts.set(latestScore.tradeReadiness, (counts.get(latestScore.tradeReadiness) || 0) + 1);
+  }
+  for (const gap of latestScore?.dataGaps || []) {
+    counts.set(gap, (counts.get(gap) || 0) + 1);
+  }
+  return counts;
+}
+
+function mapToSortedReasonCounts(counts) {
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count || String(left.reason).localeCompare(String(right.reason)))
+    .slice(0, 5);
+}
+
 function summarizeReasons(shadowObservations, latestScore) {
+  const latestObservation =
+    [...(shadowObservations || [])]
+      .filter((item) => observedAtMs(item?.observedAt) !== null)
+      .sort((left, right) => observedAtMs(right.observedAt) - observedAtMs(left.observedAt))[0] || null;
+  const latestObservationMs = observedAtMs(latestObservation?.observedAt);
+  const latestScoreMs = observedAtMs(latestScore?.observedAt);
+  const latestObservationReasons = new Set((latestObservation?.rejectionReasons || []).filter(Boolean));
+  const latestScoreReasons = summarizeLatestScoreReasons(latestScore);
+
+  if (
+    latestScore &&
+    latestScoreReasons.size > 0 &&
+    (latestObservationMs === null || (
+      latestScoreMs !== null &&
+      latestScoreMs > latestObservationMs &&
+      latestScore?.tradeReadiness !== latestObservation?.tradeReadiness
+    ))
+  ) {
+    return mapToSortedReasonCounts(latestScoreReasons);
+  }
+
+  if (latestObservationReasons.size > 0) {
+    const counts = new Map();
+    for (const observation of shadowObservations || []) {
+      for (const reason of observation?.rejectionReasons || []) {
+        if (latestObservationReasons.has(reason)) {
+          counts.set(reason, (counts.get(reason) || 0) + 1);
+        }
+      }
+    }
+    if (counts.size > 0) return mapToSortedReasonCounts(counts);
+  }
+
   const counts = new Map();
   for (const observation of shadowObservations) {
     for (const reason of observation?.rejectionReasons || []) {
@@ -33,17 +84,11 @@ function summarizeReasons(shadowObservations, latestScore) {
     }
   }
   if (counts.size === 0 && latestScore) {
-    if (latestScore.tradeReadiness && latestScore.tradeReadiness !== "shadow_candidate_review_only") {
-      counts.set(latestScore.tradeReadiness, (counts.get(latestScore.tradeReadiness) || 0) + 1);
-    }
-    for (const gap of latestScore.dataGaps || []) {
-      counts.set(gap, (counts.get(gap) || 0) + 1);
+    for (const [reason, count] of latestScoreReasons.entries()) {
+      counts.set(reason, count);
     }
   }
-  return [...counts.entries()]
-    .map(([reason, count]) => ({ reason, count }))
-    .sort((left, right) => right.count - left.count || String(left.reason).localeCompare(String(right.reason)))
-    .slice(0, 5);
+  return mapToSortedReasonCounts(counts);
 }
 
 export function summarizeShadowCandidateEvidence({

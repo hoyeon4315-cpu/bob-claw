@@ -90,6 +90,7 @@ async function main() {
     plan: treasuryPlan,
     policy,
     fundingSourcePlan,
+    routeCandidates: canaryState.routePlan?.candidates || [],
   });
 
   const [receiptRecords, executionEvents, quotes, quoteFailures, scoreSnapshot, updateSnapshots] = await Promise.all([

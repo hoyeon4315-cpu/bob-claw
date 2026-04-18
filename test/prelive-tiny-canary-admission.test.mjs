@@ -30,8 +30,8 @@ test("tiny canary admission returns go-for-manual-approval when all gates clear"
     },
     overall: {
       liveTrading: "BLOCKED",
-      capitalRule: "Only a ring-fenced wallet capped near USD 300 may be used in a future canary.",
-      riskBudgetUsd: 300,
+      capitalRule: "Capital sizing is per-strategy. Each live strategy declares its own per-trade and daily caps; there is no project-wide ring-fence.",
+      riskBudgetUsd: null,
     },
     now: "2026-04-12T12:20:00.000Z",
   });

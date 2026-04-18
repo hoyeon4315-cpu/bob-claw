@@ -36,8 +36,11 @@ function parseArgs(argv) {
     socketPath: options["socket-path"] || signerSocketPath(),
     timeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : signerClientTimeoutMs(),
     awaitConfirmation: !flags.has("--no-await-confirmation"),
+    awaitDestinationSettlement: !flags.has("--no-await-destination-settlement"),
     confirmations: options.confirmations ? Number(options.confirmations) : 1,
     confirmationTimeoutMs: options["confirmation-timeout-ms"] ? Number(options["confirmation-timeout-ms"]) : 120_000,
+    destinationSettlementTimeoutMs: options["destination-timeout-ms"] ? Number(options["destination-timeout-ms"]) : null,
+    destinationPollIntervalMs: options["destination-poll-interval-ms"] ? Number(options["destination-poll-interval-ms"]) : 10_000,
     gasBufferBps: options["gas-buffer-bps"] ? Number(options["gas-buffer-bps"]) : DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   };
 }
@@ -86,8 +89,11 @@ async function main() {
         socketPath: args.socketPath,
         timeoutMs: args.timeoutMs,
         awaitConfirmation: args.awaitConfirmation,
+        awaitDestinationSettlement: args.awaitDestinationSettlement,
         confirmations: args.confirmations,
         confirmationTimeoutMs: args.confirmationTimeoutMs,
+        destinationSettlementTimeoutMs: args.destinationSettlementTimeoutMs || undefined,
+        destinationPollIntervalMs: args.destinationPollIntervalMs,
       })
     : null;
 
@@ -122,8 +128,54 @@ async function main() {
   if (plan.preflightError?.message) {
     console.log(`preflightError=${plan.preflightError.message}`);
   }
+  if (plan.gatewayError?.details?.body?.code) {
+    console.log(`gatewayCode=${plan.gatewayError.details.body.code}`);
+  }
+  if (plan.gatewayError?.details?.body?.message || plan.gatewayError?.message) {
+    console.log(`gatewayMessage=${plan.gatewayError.details?.body?.message || plan.gatewayError.message}`);
+  }
   if (execution?.signerResult?.broadcast?.txHash) {
     console.log(`txHash=${execution.signerResult.broadcast.txHash}`);
+  }
+  if (execution?.signerResult?.status) {
+    console.log(`signerStatus=${execution.signerResult.status}`);
+  }
+  if (execution?.signerResult?.error?.message) {
+    console.log(`signerError=${execution.signerResult.error.message}`);
+  }
+  if (execution?.signerResult?.policy?.blockers?.length) {
+    console.log(`policyBlockers=${execution.signerResult.policy.blockers.join(",")}`);
+  }
+  const capCheckResult =
+    execution?.signerResult?.policy?.results?.find((item) => item?.policy === "cap_check") || execution?.signerResult?.policy || null;
+  if (capCheckResult?.state?.dailyVolumeUsd !== undefined) {
+    console.log(`policyDailyVolumeUsd=${capCheckResult.state.dailyVolumeUsd}`);
+  }
+  if (capCheckResult?.state?.perChainVolumeUsd?.[plan.route.srcChain] !== undefined) {
+    console.log(`policyPerChainVolumeUsd=${capCheckResult.state.perChainVolumeUsd[plan.route.srcChain]}`);
+  }
+  if (capCheckResult?.state?.attemptedCount24h !== undefined) {
+    console.log(`policyAttemptedCount24h=${capCheckResult.state.attemptedCount24h}`);
+  }
+  if (capCheckResult?.metrics?.amountUsd !== undefined) {
+    console.log(`policyAmountUsd=${capCheckResult.metrics.amountUsd}`);
+  }
+  if (capCheckResult?.metrics?.perTxUsd !== undefined) {
+    console.log(`policyPerTxUsd=${capCheckResult.metrics.perTxUsd}`);
+  }
+  if (capCheckResult?.metrics?.perDayUsd !== undefined) {
+    console.log(`policyPerDayUsd=${capCheckResult.metrics.perDayUsd}`);
+  }
+  if (capCheckResult?.metrics?.perChainUsd !== undefined) {
+    console.log(`policyPerChainUsd=${capCheckResult.metrics.perChainUsd}`);
+  }
+  if (execution?.settlementStatus) {
+    console.log(`settlementStatus=${execution.settlementStatus}`);
+  }
+  if (execution?.destinationProof) {
+    console.log(`destinationProofSource=${execution.destinationProof.proofSource}`);
+    console.log(`destinationObservedDelta=${execution.destinationProof.observedDelta}`);
+    console.log(`destinationRequiredDelta=${execution.destinationProof.requiredDelta}`);
   }
 }
 

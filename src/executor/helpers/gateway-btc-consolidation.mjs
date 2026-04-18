@@ -1,10 +1,12 @@
 import { ETHEREUM_WBTC_TOKEN, isBtcLikeAsset, SOLVBTC_TOKEN, tokenAsset, UNI_BTC_TOKEN, WBTC_OFT_TOKEN } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
+import { readErc20Balance, readNativeBalance } from "../../evm/account-state.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
-import { GatewayClient, routeKey } from "../../gateway/client.mjs";
+import { GatewayClient, GatewayError, routeKey } from "../../gateway/client.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
+import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 
 export const GATEWAY_BTC_CONSOLIDATION_STRATEGY_ID = "gateway-btc-funding-transfer";
@@ -81,6 +83,10 @@ function applyGasBuffer(gasUnits, gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS)
 }
 
 function amountUsdFromQuote(quote, asset, prices) {
+  return amountUsdFromAmountRaw(quote.inputAmount.amount, asset, prices);
+}
+
+function amountUsdFromAmountRaw(rawAmount, asset, prices) {
   const assetUsd = priceForAssetUsd(asset, prices);
   if (!Number.isFinite(assetUsd)) {
     throw new Error(`Could not price ${asset.ticker} for gateway consolidation plan`);
@@ -88,7 +94,7 @@ function amountUsdFromQuote(quote, asset, prices) {
   if (!Number.isInteger(asset.decimals)) {
     throw new Error(`Missing decimals for ${asset.ticker}`);
   }
-  const amountDecimal = Number(BigInt(quote.inputAmount.amount)) / 10 ** asset.decimals;
+  const amountDecimal = Number(BigInt(rawAmount)) / 10 ** asset.decimals;
   return Number((amountDecimal * assetUsd).toFixed(6));
 }
 
@@ -98,6 +104,128 @@ function serializePreflightError(error) {
     message: error.message,
     attempts: error.attempts || null,
   };
+}
+
+function serializeGatewayError(error) {
+  if (!(error instanceof Error)) return { message: String(error) };
+  return {
+    name: error.name,
+    message: error.message,
+    ...(error instanceof GatewayError && error.details ? { details: error.details } : {}),
+  };
+}
+
+function normalizeGatewayBlockedReason(code) {
+  const normalized = String(code || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || null;
+}
+
+function classifyGatewayBlockedReason(error) {
+  if (!(error instanceof GatewayError)) return null;
+  const code = error.details?.body?.code || null;
+  if (code) return normalizeGatewayBlockedReason(code);
+  const status = Number(error.details?.status);
+  if (status === 404) return "no_route";
+  if (Number.isFinite(status) && status >= 400 && status < 500) return "gateway_request_rejected";
+  return null;
+}
+
+function isDeterministicGatewayBlock(error) {
+  if (!(error instanceof GatewayError)) return false;
+  const status = Number(error.details?.status);
+  return Number.isFinite(status) && status >= 400 && status < 500;
+}
+
+function defaultDestinationSettlementTimeoutMs(plan) {
+  const estimatedSeconds = Number(plan?.quote?.estimatedTimeInSecs);
+  if (Number.isFinite(estimatedSeconds) && estimatedSeconds > 0) {
+    return Math.max(180_000, (estimatedSeconds + 60) * 1_000);
+  }
+  return 180_000;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readDestinationAssetBalance({
+  asset,
+  owner,
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
+}) {
+  if (asset?.isNative) {
+    const result = await readNativeBalanceImpl(asset.chain, owner);
+    return {
+      proofSource: "native_balance_delta",
+      rpcUrl: result.rpcUrl,
+      balance: BigInt(result.balanceWei),
+    };
+  }
+  const result = await readErc20BalanceImpl(asset.chain, asset.token, owner);
+  return {
+    proofSource: "erc20_balance_delta",
+    rpcUrl: result.rpcUrl,
+    balance: BigInt(result.balance),
+  };
+}
+
+async function waitForDestinationSettlement({
+  plan,
+  destinationBalanceBefore,
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
+  timeoutMs = defaultDestinationSettlementTimeoutMs(plan),
+  pollIntervalMs = 10_000,
+  sleepImpl = sleep,
+}) {
+  const requiredDelta = BigInt(plan?.quote?.outputAmount?.amount || 0);
+  const startedAt = Date.now();
+  const deadline = startedAt + Math.max(0, Number(timeoutMs) || 0);
+  let attempts = 0;
+
+  while (true) {
+    attempts += 1;
+    const observedAt = new Date().toISOString();
+    const current = await readDestinationAssetBalance({
+      asset: plan.dstAsset,
+      owner: plan.recipient,
+      readErc20BalanceImpl,
+      readNativeBalanceImpl,
+    });
+    const observedDelta = current.balance - destinationBalanceBefore.balance;
+    if (observedDelta >= requiredDelta) {
+      return {
+        status: "delivered",
+        proofSource: current.proofSource,
+        initialBalance: destinationBalanceBefore.balance.toString(),
+        settledBalance: current.balance.toString(),
+        observedDelta: observedDelta.toString(),
+        requiredDelta: requiredDelta.toString(),
+        observedAt,
+        rpcUrl: current.rpcUrl,
+        attempts,
+      };
+    }
+    if (Date.now() >= deadline) {
+      return {
+        status: "unproven_timeout",
+        proofSource: current.proofSource,
+        initialBalance: destinationBalanceBefore.balance.toString(),
+        settledBalance: current.balance.toString(),
+        observedDelta: observedDelta.toString(),
+        requiredDelta: requiredDelta.toString(),
+        observedAt,
+        rpcUrl: current.rpcUrl,
+        attempts,
+      };
+    }
+    await sleepImpl(Math.max(0, Number(pollIntervalMs) || 0));
+  }
 }
 
 export async function buildGatewayBtcConsolidationPlan({
@@ -115,6 +243,7 @@ export async function buildGatewayBtcConsolidationPlan({
   recipient,
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  skipPreflight = false,
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("Source sender address is required");
@@ -139,101 +268,131 @@ export async function buildGatewayBtcConsolidationPlan({
     srcToken: normalizedSrcToken,
     dstToken: normalizedDstToken,
   };
-  const quoteResult = await client.getQuote({
-    ...route,
-    amount: normalizedAmount,
-    sender: senderAddress,
-    recipient,
-    slippage: String(slippageBps),
-  });
-  const quote = normalizeGatewayTransportQuoteBody(quoteResult.body);
-  const normalizedQuote = {
-    observedAt: now,
-    latencyMs: quoteResult.latencyMs,
-    quoteType: "layerZero",
-    route,
-    inputAmount: quote.inputAmount,
-    outputAmount: quote.outputAmount,
-    fees: quote.fees || null,
-    executionFees: quote.executionFees || null,
-    feeBreakdown: quote.feeBreakdown || null,
-    estimatedTimeInSecs: quote.estimatedTimeInSecs ?? null,
-    sender: senderAddress,
-    recipient,
-    txValueWei: String(quote.tx?.value || 0),
-    txTo: quote.tx.to,
-    txData: quote.tx.data,
-    txChain: quote.tx.chain || srcChain,
-    txDataBytes: txDataBytes(quote.tx.data),
-  };
-  const prices = await priceReader();
-  const amountUsd = amountUsdFromQuote(quote, srcAsset, prices);
+  let normalizedQuote = null;
+  let amountUsd = null;
+  let gatewayError = null;
+  let blockedReason = null;
+  let gatewayQuoteLatencyMs = null;
+  try {
+    const quoteResult = await client.getQuote({
+      ...route,
+      amount: normalizedAmount,
+      sender: senderAddress,
+      recipient,
+      slippage: String(slippageBps),
+    });
+    gatewayQuoteLatencyMs = quoteResult.latencyMs;
+    const quote = normalizeGatewayTransportQuoteBody(quoteResult.body);
+    normalizedQuote = {
+      observedAt: now,
+      latencyMs: gatewayQuoteLatencyMs,
+      quoteType: "layerZero",
+      route,
+      inputAmount: quote.inputAmount,
+      outputAmount: quote.outputAmount,
+      fees: quote.fees || null,
+      executionFees: quote.executionFees || null,
+      feeBreakdown: quote.feeBreakdown || null,
+      estimatedTimeInSecs: quote.estimatedTimeInSecs ?? null,
+      sender: senderAddress,
+      recipient,
+      txValueWei: String(quote.tx?.value || 0),
+      txTo: quote.tx.to,
+      txData: quote.tx.data,
+      txChain: quote.tx.chain || srcChain,
+      txDataBytes: txDataBytes(quote.tx.data),
+    };
+    const prices = await priceReader();
+    amountUsd = amountUsdFromQuote(quote, srcAsset, prices);
+  } catch (error) {
+    if (isDeterministicGatewayBlock(error)) {
+      blockedReason = classifyGatewayBlockedReason(error);
+      gatewayError = serializeGatewayError(error);
+      try {
+        amountUsd = amountUsdFromAmountRaw(normalizedAmount, srcAsset, await priceReader());
+      } catch {
+        amountUsd = null;
+      }
+    } else {
+      throw error;
+    }
+  }
 
   let gasPreflight = null;
-  let blockedReason = null;
   let preflightError = null;
   let intent = null;
 
   try {
-    const gasEstimate = await estimateGasImpl(
-      srcChain,
-      {
-        from: senderAddress,
-        to: normalizedQuote.txTo,
-        data: normalizedQuote.txData,
-        valueWei: normalizedQuote.txValueWei,
-      },
-      getEvmChainConfig(srcChain),
-    );
-    const gasLimit = applyGasBuffer(gasEstimate.gasUnits, gasBufferBps);
-    gasPreflight = {
-      ...gasEstimate,
-      gasBufferBps: Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps")),
-      gasLimit,
-      gasLimitHex: `0x${BigInt(gasLimit).toString(16)}`,
-    };
-    intent = {
-      strategyId,
-      chain: srcChain,
-      family: "evm",
-      intentType: "gateway_btc_transfer",
-      amountUsd,
-      mode: "live",
-      observedAt: now,
-      executionReason: "strategy_execution",
-      quote: {
-        ...normalizedQuote,
-        gasEstimate: gasPreflight,
-        routeKey: routeKey(route),
-      },
-      tx: {
-        to: normalizedQuote.txTo,
-        data: normalizedQuote.txData,
-        value: normalizedQuote.txValueWei,
-        gasLimit: String(gasLimit),
-      },
-      strategyConfig: {
-        intentTtlMs: strategyCaps.intentTtlMs,
-      },
-      metadata: {
-        skipAutoIngest: true,
-        gatewayRouteKey: routeKey(route),
-        gatewayQuoteLatencyMs: quoteResult.latencyMs,
-        gatewayGasEstimateSource: gasEstimate.rpcUrl,
-        gatewayEstimatedTimeInSecs: normalizedQuote.estimatedTimeInSecs,
-      },
-    };
+    if (!normalizedQuote) {
+      throw new Error(`Gateway BTC consolidation plan is not executable: ${blockedReason || "missing_quote"}`);
+    }
+    if (!skipPreflight) {
+      const gasEstimate = await estimateGasImpl(
+        srcChain,
+        {
+          from: senderAddress,
+          to: normalizedQuote.txTo,
+          data: normalizedQuote.txData,
+          valueWei: normalizedQuote.txValueWei,
+        },
+        getEvmChainConfig(srcChain),
+      );
+      const gasLimit = applyGasBuffer(gasEstimate.gasUnits, gasBufferBps);
+      gasPreflight = {
+        ...gasEstimate,
+        gasBufferBps: Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps")),
+        gasLimit,
+        gasLimitHex: `0x${BigInt(gasLimit).toString(16)}`,
+      };
+      intent = {
+        strategyId,
+        chain: srcChain,
+        family: "evm",
+        intentType: "gateway_btc_transfer",
+        amountUsd,
+        mode: "live",
+        observedAt: now,
+        executionReason: "strategy_execution",
+        quote: {
+          ...normalizedQuote,
+          gasEstimate: gasPreflight,
+          routeKey: routeKey(route),
+        },
+        tx: {
+          to: normalizedQuote.txTo,
+          data: normalizedQuote.txData,
+          value: normalizedQuote.txValueWei,
+          gasLimit: String(gasLimit),
+        },
+        strategyConfig: {
+          intentTtlMs: strategyCaps.intentTtlMs,
+        },
+        metadata: {
+          skipAutoIngest: true,
+          gatewayRouteKey: routeKey(route),
+          gatewayQuoteLatencyMs,
+          gatewayGasEstimateSource: gasEstimate.rpcUrl,
+          gatewayEstimatedTimeInSecs: normalizedQuote.estimatedTimeInSecs,
+        },
+      };
+    }
   } catch (error) {
-    blockedReason = classifyGasEstimateError(error);
-    preflightError = serializePreflightError(error);
+    if (!gatewayError) {
+      blockedReason = classifyGasEstimateError(error);
+      preflightError = serializePreflightError(error);
+    }
   }
 
+  const executionReady = Boolean(intent && gasPreflight);
   return {
     schemaVersion: 1,
     observedAt: now,
-    planStatus: intent ? "ready" : "blocked",
+    planStatus: normalizedQuote && (executionReady || skipPreflight) ? "ready" : "blocked",
     blockedReason,
+    gatewayError,
     preflightError,
+    executionReady,
+    skipPreflight,
     strategyId,
     senderAddress,
     recipient,
@@ -252,15 +411,30 @@ export async function buildGatewayBtcConsolidationPlan({
 export async function executeGatewayBtcConsolidationPlan({
   plan,
   sendCommand = sendSignerCommand,
+  receiptIngest = appendExecutionReceiptReconciliation,
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
   socketPath,
   timeoutMs,
   awaitConfirmation = true,
   confirmations = 1,
   confirmationTimeoutMs = 120_000,
+  awaitDestinationSettlement = true,
+  destinationSettlementTimeoutMs = defaultDestinationSettlementTimeoutMs(plan),
+  destinationPollIntervalMs = 10_000,
+  sleepImpl = sleep,
 } = {}) {
   if (!plan?.intent || !plan?.gasPreflight) {
     throw new Error(`Gateway BTC consolidation plan is not executable: ${plan?.blockedReason || "missing_intent"}`);
   }
+  const destinationBalanceBefore = awaitDestinationSettlement
+    ? await readDestinationAssetBalance({
+        asset: plan.dstAsset,
+        owner: plan.recipient,
+        readErc20BalanceImpl,
+        readNativeBalanceImpl,
+      })
+    : null;
   const signerResult = await sendCommand({
     socketPath,
     timeoutMs,
@@ -273,14 +447,50 @@ export async function executeGatewayBtcConsolidationPlan({
     },
   });
   if (signerResult?.status !== "ok" || !signerResult?.broadcast?.txHash) {
-    throw new Error(signerResult?.error?.message || "Signer did not return a broadcasted EVM transaction");
+    return {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      settlementStatus: signerResult?.status === "rejected" ? "signer_rejected" : "signer_error",
+      plan,
+      signerResult,
+      destinationProof: null,
+    };
   }
-  return {
+  const destinationProof = awaitDestinationSettlement
+    ? await waitForDestinationSettlement({
+        plan,
+        destinationBalanceBefore,
+        readErc20BalanceImpl,
+        readNativeBalanceImpl,
+        timeoutMs: destinationSettlementTimeoutMs,
+        pollIntervalMs: destinationPollIntervalMs,
+        sleepImpl,
+      })
+    : null;
+  const execution = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
+    settlementStatus: destinationProof?.status || "source_confirmed_only",
     plan,
     signerResult,
+    destinationProof,
   };
+  if (typeof receiptIngest !== "function") return execution;
+  try {
+    return {
+      ...execution,
+      receiptIngest: await receiptIngest({ execution }),
+    };
+  } catch (error) {
+    return {
+      ...execution,
+      receiptIngest: {
+        appended: false,
+        reason: "ingest_failed",
+        error: error.message,
+      },
+    };
+  }
 }
 
-export { applyGasBuffer, normalizeGatewayTransportQuoteBody };
+export { applyGasBuffer, defaultDestinationSettlementTimeoutMs, normalizeGatewayTransportQuoteBody };

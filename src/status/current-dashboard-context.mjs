@@ -15,6 +15,7 @@ import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../pre
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocator-core.mjs";
 import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
+import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
 import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
 import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
@@ -23,7 +24,9 @@ import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/st
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
+import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
+import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 
 export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
   const now = new Date().toISOString();
@@ -57,13 +60,20 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     overfitAuditArtifact,
     gasSlippageVariance,
     laneReclassification,
-    strategyResearchBoard,
-    secondaryStrategyScaffolds,
-    flashFloorDecision,
-    wrappedBtcLendingLoopSlice,
-    wrappedBtcLoopDryRun,
-    wrappedBtcLoopOosEvidence,
-  ] = await Promise.all([
+     strategyResearchBoard,
+     secondaryStrategyScaffolds,
+     deterministicStrategyCandidates,
+     flashFloorDecision,
+      recursiveWrappedBtcLoop,
+      recursiveWrappedBtcLoopDryRun,
+      recursiveStablecoinLoop,
+      recursiveStablecoinLoopDryRun,
+      wrappedBtcLendingLoopSlice,
+      wrappedBtcLoopDryRun,
+     wrappedBtcLoopOosEvidence,
+     wrappedBtcLoopLiveProof,
+     v1InfraDrills,
+   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
     readJsonl(dataDir, "gateway-update-snapshots"),
@@ -92,13 +102,20 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonIfExists(join(dataDir, "overfit-audit-latest.json")),
     readJsonIfExists(join(dataDir, "gas-slippage-variance-latest.json")),
     readJsonIfExists(join(dataDir, "lane-reclassification.json")),
-    readJsonIfExists(join(dataDir, "strategy-research-board.json")),
-    readJsonIfExists(join(dataDir, "secondary-strategy-scaffolds.json")),
-    readJsonIfExists(join(dataDir, "flash-floor-decision.json")),
-    readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-slice.json")),
-    readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
-    readJsonIfExists(join(dataDir, "wrapped-btc-loop-oos-evidence.json")),
-  ]);
+     readJsonIfExists(join(dataDir, "strategy-research-board.json")),
+     readJsonIfExists(join(dataDir, "secondary-strategy-scaffolds.json")),
+      readJsonIfExists(join(dataDir, "deterministic-strategy-candidates.json")),
+      readJsonIfExists(join(dataDir, "flash-floor-decision.json")),
+      readJsonIfExists(join(dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
+      readJsonIfExists(join(dataDir, "recursive_wrapped_btc_lending_loop-dry-run-latest.json")),
+      readJsonIfExists(join(dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
+      readJsonIfExists(join(dataDir, "recursive_stablecoin_lending_loop-dry-run-latest.json")),
+      readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-slice.json")),
+      readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
+     readJsonIfExists(join(dataDir, "wrapped-btc-loop-oos-evidence.json")),
+     readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
+     readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
+   ]);
 
   const executorRuntime = await loadExecutorRuntime({ now });
   const dashboardStatus = buildDashboardStatus({
@@ -140,6 +157,10 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   }, { now });
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
+  dashboardStatus.payback = await buildPaybackDashboardSlice({
+    dataDir,
+    now: dashboardStatus.generatedAt,
+  });
   const canarySelectionGap = buildCanarySelectionGap({
     routePlan: state.routePlan,
     edgeViability: dashboardStatus.strategy?.edgeViability || null,
@@ -158,9 +179,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     },
     strategyResearchBoard,
     secondaryStrategyScaffolds,
+    deterministicStrategyCandidates,
   });
   const protocolTrustTiers = buildProtocolTrustTiers({
     wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
     secondaryStrategyScaffolds,
     now: dashboardStatus.generatedAt,
   });
@@ -173,6 +197,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     wrappedBtcLendingLoopSlice,
     wrappedBtcLoopDryRun,
     wrappedBtcLoopOosEvidence,
+    wrappedBtcLoopLiveProof,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
     secondaryStrategyScaffolds,
     protocolTrustTiers,
     resolveTrustTierDecision,
@@ -185,6 +214,8 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     quoteLagLatest,
     dexSpreadLatest,
     wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
     phase3Validation: phase3StrategyValidation,
     protocolTrustTiers,
     secondaryStrategyScaffolds,
@@ -194,6 +225,8 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     strategySnapshot,
     phase3Validation: phase3StrategyValidation,
     wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
     secondaryStrategyScaffolds,
     protocolMarketWatchers,
     now: dashboardStatus.generatedAt,
@@ -220,6 +253,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     address: state.address,
     strategySnapshot: dashboardStatus.strategy.strategySnapshot,
     wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
     phase3Validation: phase3StrategyValidation,
     protocolMarketWatchers,
     destinationAllocationPlan,
@@ -283,6 +321,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     flashFloorDecision,
     wrappedBtcLendingLoopSlice,
     wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
+    phase3Validation: phase3StrategyValidation,
+    protocolMarketWatchers,
+    allocatorCore,
     preliveValidation,
     now: dashboardStatus.generatedAt,
   });
@@ -312,6 +357,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   );
   dashboardStatus.prelive.exactRouteForkPackage = summarizeExactRouteForkPackage(exactRouteForkPackage);
   dashboardStatus.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+  dashboardStatus.liveBaseline = buildLiveBaselineSummary({
+    dashboardStatus,
+    nextStep: state.nextStep,
+  });
+  dashboardStatus.dataCounts.liveBaselinePresent = dashboardStatus.liveBaseline ? 1 : 0;
+  dashboardStatus.prelive.v1InfraDrills = summarizeV1InfraDrills(v1InfraDrills);
+  dashboardStatus.dataCounts.v1InfraDrillsPresent = dashboardStatus.prelive.v1InfraDrills ? 1 : 0;
   reviewPackage.strategySnapshot = dashboardStatus.strategy.strategySnapshot;
   reviewPackage.executionRunbook = dashboardStatus.prelive.executionRunbook;
   reviewPackage.preliveValidation = dashboardStatus.prelive.validation;
@@ -376,15 +428,21 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       laneReclassification,
       strategyResearchBoard,
       secondaryStrategyScaffolds,
+      deterministicStrategyCandidates,
       phase3StrategyValidation,
       allocatorCore,
       protocolTrustTiers,
       protocolMarketWatchers,
       flashFloorDecision,
+      recursiveWrappedBtcLoop,
+      recursiveWrappedBtcLoopDryRun,
+      recursiveStablecoinLoop,
+      recursiveStablecoinLoopDryRun,
       wrappedBtcLendingLoopSlice,
       wrappedBtcLoopDryRun,
       wrappedBtcLoopOosEvidence,
       milestoneValidationGates,
+      v1InfraDrills,
     },
   };
 }

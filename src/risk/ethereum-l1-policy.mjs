@@ -1,4 +1,4 @@
-export const ETHEREUM_L1_PHASE_DISABLED_REASON = "observe_only_ethereum_l1_phase_disabled";
+export const ETHEREUM_L1_PHASE_DISABLED_REASON = "ethereum_l1_policy_override_disabled";
 export const ETHEREUM_L1_POLICY_BLOCKED_CLASSIFICATION = "policy_blocked_ethereum_l1";
 
 export function routeFromValue(value) {

@@ -755,7 +755,6 @@ test("shadow cycle summary includes a multi-shadow roster", () => {
     summary.shadowRoster.candidates[0].evidence.rejectionReasons.map((item) => [item.reason, item.count]),
     [
       ["reject_no_net_edge", 2],
-      ["stale_dex_output_quote", 1],
     ],
   );
   assert.equal(summary.strategyPlans.stableLoop.nextAction, "collect_stable_loop_coverage");

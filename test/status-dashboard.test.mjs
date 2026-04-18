@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { refreshCanaryInputsIfNeeded } from "../src/cli/status-dashboard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -14,6 +15,51 @@ async function writeJsonl(baseDir, name, records) {
   const body = records.map((record) => JSON.stringify(record)).join("\n");
   await writeFile(path, body ? `${body}\n` : "", "utf8");
 }
+
+test("status dashboard refresh helper reruns stale canary inputs through existing scripts", () => {
+  const calls = [];
+  const result = refreshCanaryInputsIfNeeded({
+    state: {
+      address: "0x1111111111111111111111111111111111111111",
+      nextStep: {
+        route: {
+          label: "avalanche->ethereum wBTC.OFT->WBTC",
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          srcChain: "avalanche",
+          dstChain: "ethereum",
+        },
+      },
+      dashboardStatus: {
+        canaryInputs: {
+          routeLabel: "avalanche->ethereum wBTC.OFT->WBTC",
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          gatewayQuote: { state: "stale" },
+          exactGas: { state: "stale" },
+          srcGas: { state: "stale" },
+          dexQuote: { state: "fresh" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "stale" },
+        },
+      },
+    },
+    address: "0x1111111111111111111111111111111111111111",
+    runScript: (script, args = []) => {
+      calls.push([script, args]);
+      return { stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(result.refreshed, true);
+  assert.deepEqual(calls, [
+    ["src/cli/price-snapshot.mjs", []],
+    ["src/cli/verify-gateway.mjs", ["--route-key=avalanche:0x0555->ethereum:0x2260", "--amounts=10000"]],
+    ["src/cli/gas-snapshot.mjs", ["--chains=avalanche"]],
+    ["src/cli/estimate-gateway-gas.mjs", ["--from=0x1111111111111111111111111111111111111111", "--route-key=avalanche:0x0555->ethereum:0x2260", "--amount=10000"]],
+    ["src/cli/score-gateway.mjs", ["--write", "--route-key=avalanche:0x0555->ethereum:0x2260", "--amount=10000"]],
+  ]);
+});
 
 test("status dashboard refreshes shadow cycle before writing public status", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-status-"));
@@ -98,12 +144,21 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(
+    result.stdout,
+    /paybackScheduler=defer reason=reserve_asset_missing next=none pendingSats=\d+ lastSettledSats=n\/a/,
+  );
+  assert.match(result.stdout, /paybackGrossProfitSatsPeriod=\d+ paidBackSatsLifetime=0/);
+  assert.equal(result.stdout.includes("paybackPreviewAfterDestination="), false);
+  assert.match(result.stdout, /liveBaseline=blocked stage=shadow_replay refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+/);
+  assert.match(result.stdout, /liveBaselineRefresh=.* next=.*/);
 
   const shadowCycle = JSON.parse(await readFile(join(dataDir, "shadow-cycle-latest.json"), "utf8"));
   const publicStatus = JSON.parse(await readFile(join(cwd, "dashboard/public/dashboard-status.json"), "utf8"));
 
   assert.equal(typeof shadowCycle.mode, "string");
   assert.equal(publicStatus.dataCounts.shadowCyclePresent, 1);
+  assert.equal(publicStatus.dataCounts.liveBaselinePresent, 1);
   assert.equal(publicStatus.dataCounts.preliveSimulationRuns, 0);
   assert.equal(publicStatus.dataCounts.preliveForkPlans, 0);
   assert.equal(publicStatus.dataCounts.shadowRefreshExecutions, 0);
@@ -114,6 +169,20 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(typeof publicStatus.shadowCycle?.refreshBatch?.runCount, "number");
   assert.equal(Array.isArray(publicStatus.shadowCycle?.refreshBatch?.recentBatches), true);
   assert.equal(typeof publicStatus.prelive?.currentStage, "string");
+  assert.equal(typeof publicStatus.liveBaseline?.status, "string");
+  assert.equal(typeof publicStatus.liveBaseline?.counts?.requiredRefreshCount, "number");
+  assert.equal(Array.isArray(publicStatus.liveBaseline?.blockers?.operator), true);
+  assert.equal(
+    publicStatus.strategy?.strategySnapshot?.researchBoard == null ||
+      typeof publicStatus.strategy?.strategySnapshot?.researchBoard?.candidateCount === "number",
+    true,
+  );
+  assert.equal(
+    publicStatus.payback?.scheduler?.previewAfterDestination == null ||
+      typeof publicStatus.payback?.scheduler?.previewAfterDestination?.status === "string",
+    true,
+  );
+  assert.equal(publicStatus.payback?.scheduler?.previewAfterDestination?.reason ?? null, null);
   assert.equal(typeof publicStatus.prelive?.shadowReplay?.status, "string");
   assert.equal(typeof publicStatus.prelive?.mechanicalSimulation?.targetSuccessCount, "number");
   assert.equal(typeof publicStatus.prelive?.forkExecution?.targetConfirmedCount, "number");

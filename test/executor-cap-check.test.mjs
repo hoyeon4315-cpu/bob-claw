@@ -61,6 +61,66 @@ test("buildStrategyCapState summarizes daily volume and realized pnl", () => {
   assert.equal(Number(state.failedGasCost24hUsd.toFixed(6)), 0.6);
 });
 
+test("buildStrategyCapState dedupes signed and broadcasted audit records for the same intent", () => {
+  const state = buildStrategyCapState({
+    strategyId: "wrapper-btc-arbitrage",
+    now: "2026-04-16T12:00:00.000Z",
+    auditRecords: [
+      {
+        strategyId: "wrapper-btc-arbitrage",
+        chain: "bob",
+        intentId: "wrapper-btc-arbitrage:bob:abc",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 25,
+        policyVerdict: "approved",
+        lifecycle: { stage: "signed" },
+      },
+      {
+        strategyId: "wrapper-btc-arbitrage",
+        chain: "bob",
+        intentId: "wrapper-btc-arbitrage:bob:abc",
+        timestamp: "2026-04-16T01:00:10.000Z",
+        amountUsd: 25,
+        policyVerdict: "approved",
+        lifecycle: { stage: "broadcasted" },
+      },
+    ],
+  });
+
+  assert.equal(state.dailyVolumeUsd, 25);
+  assert.equal(state.perChainVolumeUsd.bob, 25);
+});
+
+test("buildStrategyCapState prefers reverted audit records over earlier broadcasted records", () => {
+  const state = buildStrategyCapState({
+    strategyId: "wrapper-btc-arbitrage",
+    now: "2026-04-16T12:00:00.000Z",
+    auditRecords: [
+      {
+        strategyId: "wrapper-btc-arbitrage",
+        chain: "bob",
+        intentId: "wrapper-btc-arbitrage:bob:def",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 25,
+        policyVerdict: "approved",
+        lifecycle: { stage: "broadcasted" },
+      },
+      {
+        strategyId: "wrapper-btc-arbitrage",
+        chain: "bob",
+        intentId: "wrapper-btc-arbitrage:bob:def",
+        timestamp: "2026-04-16T01:00:10.000Z",
+        amountUsd: 25,
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
+      },
+    ],
+  });
+
+  assert.equal(state.dailyVolumeUsd, 0);
+  assert.equal(state.perChainVolumeUsd.bob ?? 0, 0);
+});
+
 test("evaluateCapCheck blocks amount above per-tx cap", () => {
   const result = evaluateCapCheck({
     intent: intentFixture({ amountUsd: 150 }),
@@ -131,4 +191,109 @@ test("evaluateCapCheck allows emergency unwind to bypass sizing caps", () => {
   });
 
   assert.equal(result.decision, "ALLOW");
+});
+
+test("evaluateCapCheck uses capCheckAmountUsd override for internal batched steps", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      amountUsd: 300,
+      metadata: {
+        capCheckAmountUsd: 0,
+      },
+    }),
+    strategyCaps: strategyCapsFixture({
+      caps: {
+        perTxUsd: 100,
+        perDayUsd: 300,
+        perChainUsd: {
+          bob: 150,
+          base: 200,
+        },
+        maxDailyLossUsd: 25,
+        maxFailedGasCost24hUsd: 3,
+      },
+    }),
+    auditRecords: [
+      {
+        strategyId: "wrapper-btc-arbitrage",
+        chain: "bob",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 90,
+        intent: {
+          metadata: {
+            capCheckAmountUsd: 90,
+          },
+        },
+        policyVerdict: "approved",
+      },
+    ],
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.metrics.amountUsd, 300);
+  assert.equal(result.metrics.capAmountUsd, 0);
+});
+
+test("buildStrategyCapState reinterprets legacy wrapped loop audit steps with internal cap accounting", () => {
+  const state = buildStrategyCapState({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    now: "2026-04-16T22:00:00.000Z",
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        intentId: "wrapped-btc-loop-base-moonwell:entry:approve-initial-collateral",
+        timestamp: "2026-04-16T20:48:16.619Z",
+        amountUsd: 300,
+        policyVerdict: "approved",
+      },
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        intentId: "wrapped-btc-loop-base-moonwell:entry:mint-initial-collateral",
+        timestamp: "2026-04-16T20:49:16.619Z",
+        amountUsd: 300,
+        policyVerdict: "approved",
+      },
+    ],
+  });
+
+  assert.equal(state.dailyVolumeUsd, 300);
+  assert.equal(state.perChainVolumeUsd.base, 300);
+});
+
+test("buildStrategyCapState reinterprets legacy token dex approval audit steps with internal cap accounting", () => {
+  const state = buildStrategyCapState({
+    strategyId: "token-dex-experiment",
+    now: "2026-04-16T22:00:00.000Z",
+    auditRecords: [
+      {
+        strategyId: "token-dex-experiment",
+        chain: "base",
+        timestamp: "2026-04-16T21:07:31.287Z",
+        amountUsd: 7.501189265945548,
+        policyVerdict: "approved",
+        intent: {
+          intentType: "approve_exact",
+        },
+      },
+      {
+        strategyId: "token-dex-experiment",
+        chain: "base",
+        timestamp: "2026-04-16T21:07:36.445Z",
+        amountUsd: 7.501189265945548,
+        policyVerdict: "rejected",
+        intent: {
+          intentType: "odos_swap",
+        },
+        lifecycle: {
+          stage: "rejected",
+        },
+      },
+    ],
+  });
+
+  assert.equal(state.dailyVolumeUsd, 0);
+  assert.equal(state.perChainVolumeUsd.base ?? 0, 0);
 });

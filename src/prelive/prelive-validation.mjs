@@ -16,7 +16,6 @@ function warningsFor(strategySummary = null, dashboardStatus = null) {
     dashboardStatus?.overall?.liveTrading === "BLOCKED" ? "live_execution_locked" : null,
     strategySummary?.candidateForValidationCount <= 0 ? "no_policy_ready_implemented_strategy" : null,
     strategySummary?.proxyCoverageNextAction ? "proxy_surface_still_needs_refresh" : null,
-    Number.isFinite(strategySummary?.planningBudgetUsd) ? "planning_budget_does_not_change_live_policy" : null,
   ]);
 }
 
@@ -139,7 +138,7 @@ export function buildPreliveValidationReport({
     nextAction,
     notes: [
       "Validation summarizes pre-live readiness only; it does not authorize live execution.",
-      "A planning budget lane does not replace runtime gates, per-strategy caps, or measured positive-EV requirements.",
+      "Reference budget math does not replace runtime gates, per-strategy caps, or measured positive-EV requirements.",
       "Treat all positive paper or measured signals as research until policy, decay, and pre-live gates all clear.",
     ],
   };

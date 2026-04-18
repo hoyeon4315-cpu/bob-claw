@@ -42,6 +42,11 @@ function runNodeScript(script, args = []) {
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 }
 
+function commandFailureReason(error) {
+  const detail = [error?.stderr, error?.stdout, error?.message].find((value) => typeof value === "string" && value.trim());
+  return detail ? detail.trim().split(/\r?\n/u).pop() : "command_failed";
+}
+
 function printStep(step, prefix = "current") {
   console.log(`${prefix}Decision=${step.decision}`);
   console.log(`${prefix}Headline=${step.headline}`);
@@ -98,9 +103,28 @@ async function main() {
         output.afterWalletCheck = next;
         route = activeRoute(next, route);
         if (next.decision === "RUN_EXACT_GAS") {
-          runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
-          actions.push("estimate-gateway-gas");
-          output.ran.push("estimate-gateway-gas");
+          try {
+            runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
+            actions.push("estimate-gateway-gas");
+            output.ran.push("estimate-gateway-gas");
+          } catch (error) {
+            actions.push("estimate-gateway-gas_failed");
+            output.ran.push("estimate-gateway-gas_failed");
+            output.exactGasFailure = {
+              reason: commandFailureReason(error),
+              routeKey: route.routeKey,
+              amount: route.amount,
+            };
+            await writeAdvanceSummary(buildAdvanceSummary({
+              address: args.address,
+              initialStep: initial.nextStep,
+              afterWalletCheckStep,
+              finalStep: next,
+              actions,
+            }));
+            console.log(JSON.stringify(output, null, 2));
+            return;
+          }
         }
       }
       runNodeScript("src/cli/score-gateway.mjs", scoringArgsForStep(next, route));
@@ -167,8 +191,24 @@ async function main() {
       return;
     }
 
-    runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
-    actions.push("estimate-gateway-gas");
+    try {
+      runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
+      actions.push("estimate-gateway-gas");
+    } catch (error) {
+      console.log(`exactGasCommandStatus=failed`);
+      console.log(`exactGasFailureReason=${commandFailureReason(error)}`);
+      actions.push("estimate-gateway-gas_failed");
+      await writeAdvanceSummary(buildAdvanceSummary({
+        address: args.address,
+        initialStep: initial.nextStep,
+        afterWalletCheckStep,
+        finalStep: next,
+        actions,
+      }));
+      runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+      writeSessionHandoff();
+      return;
+    }
   }
 
   runNodeScript("src/cli/score-gateway.mjs", scoringArgsForStep(next, route));

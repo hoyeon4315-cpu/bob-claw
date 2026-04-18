@@ -152,22 +152,6 @@ export function buildOperationalJudgmentReview({
     );
   }
 
-  if (
-    Number.isFinite(strategySnapshot?.currentSystem?.activeBudgetUsd) &&
-    Number.isFinite(strategySnapshot?.summary?.planningBudgetUsd) &&
-    strategySnapshot.summary.planningBudgetUsd > strategySnapshot.currentSystem.activeBudgetUsd
-  ) {
-    issues.push(
-      issue({
-        code: "planning_budget_is_not_live_authorization",
-        severity: "medium",
-        headline: "Planning budget does not change the live ring-fence",
-        detail: `Active ring is USD ${strategySnapshot.currentSystem.activeBudgetUsd}; planning lane is USD ${strategySnapshot.summary.planningBudgetUsd}.`,
-        command: null,
-      }),
-    );
-  }
-
   const highSeverityCount = issues.filter((entry) => entry.severity === "high").length;
   const mediumSeverityCount = issues.filter((entry) => entry.severity === "medium").length;
   const status = highSeverityCount > 0 ? "guarded_blocked" : mediumSeverityCount > 0 ? "guarded_review" : "aligned_for_manual_review";
@@ -209,7 +193,7 @@ export function buildOperationalJudgmentReview({
     nextAction,
     assumptionsToReject: [
       "A technically plannable fork transaction is not the same as a profitable or approved trade.",
-      "A planning-only USD 1000 lane does not override the active USD 300 live ring-fence.",
+      "Reference planning math does not override runtime gates or per-strategy caps.",
       "Freshness failures should be treated as missing evidence, not as permission to trust stale scores.",
     ],
     notes: unique([

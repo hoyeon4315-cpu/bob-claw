@@ -1,5 +1,5 @@
 import { isFreshPriceSnapshot, latestPriceSnapshot } from "../market/prices.mjs";
-import { isStructuralDexSupportFailure } from "../dex/odos.mjs";
+import { isStructuralDexSupportFailure, normalizeDexSupportReason } from "../dex/odos.mjs";
 
 const DEX_ROUTE_BLOCKED_FAILURE_REASONS = new Set([
   "odos_chain_not_supported",
@@ -158,7 +158,10 @@ function dexQuoteSummary({ state = null, route = null, now = null } = {}) {
     };
   }
 
-  const failures = latestRelevantDexFailures(state?.dexFailures, route);
+  const failures = latestRelevantDexFailures(state?.dexFailures, route).map((item) => ({
+    ...item,
+    reason: normalizeDexSupportReason(item?.reason, item?.chain || route?.dstChain || route?.srcChain),
+  }));
   const structuralFailure = failures.find(
     (item) => DEX_ROUTE_BLOCKED_FAILURE_REASONS.has(item?.reason) || isStructuralDexSupportFailure(item?.reason),
   ) || null;

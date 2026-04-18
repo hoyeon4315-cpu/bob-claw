@@ -1,5 +1,6 @@
 import { Interface } from "ethers";
 import { tokenAsset } from "../../assets/tokens.mjs";
+import { getEvmChainConfig } from "../../config/chains.mjs";
 import {
   attachOdosAssembly,
   normalizeOdosQuote,
@@ -7,8 +8,10 @@ import {
   odosRoutingConfig,
   STABLE_QUOTE_TOKENS,
 } from "../../dex/odos.mjs";
+import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { buildWrappedBtcLendingLoopScaffold } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-loop-bindings.mjs";
+import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gateway-btc-consolidation.mjs";
 
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 
@@ -49,7 +52,35 @@ function unitsFromUsd(amountUsd, assetUsd, decimals) {
   return decimalToUnits(amountUsd / assetUsd, decimals);
 }
 
-function exactApprovalStep({ id, chain, token, spender, amount, amountUsd, now, metadata = {} }) {
+async function estimateBufferedGasLimit({
+  chain,
+  from,
+  to,
+  data,
+  value = "0",
+  estimateGasImpl = estimateGas,
+  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  allowFailure = false,
+} = {}) {
+  try {
+    const estimate = await estimateGasImpl(
+      chain,
+      {
+        from,
+        to,
+        data,
+        valueWei: value,
+      },
+      getEvmChainConfig(chain),
+    );
+    return String(applyGasBuffer(estimate.gasUnits, gasBufferBps));
+  } catch (error) {
+    if (allowFailure) return null;
+    throw error;
+  }
+}
+
+function exactApprovalStep({ id, chain, token, spender, amount, amountUsd, now, metadata = {}, gasLimit = null }) {
   return {
     id,
     chain,
@@ -67,12 +98,13 @@ function exactApprovalStep({ id, chain, token, spender, amount, amountUsd, now, 
       to: token,
       data: ERC20_INTERFACE.encodeFunctionData("approve", [spender, amount]),
       value: "0",
+      ...(gasLimit ? { gasLimit } : {}),
     },
     metadata,
   };
 }
 
-function contractCallStep({ id, chain, to, data, amountUsd, now, metadata = {}, quote = null, tx = {} }) {
+function contractCallStep({ id, chain, to, data, amountUsd, now, metadata = {}, quote = null, tx = {}, gasLimit = null }) {
   return {
     id,
     chain,
@@ -84,6 +116,7 @@ function contractCallStep({ id, chain, to, data, amountUsd, now, metadata = {}, 
       to,
       data,
       value: "0",
+      ...(gasLimit ? { gasLimit } : {}),
       ...tx,
     },
     metadata,
@@ -183,6 +216,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   signerAddress,
   prices = null,
   client = new OdosClient(),
+  estimateGasImpl = estimateGas,
+  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  marketAssumptions = null,
   now = new Date().toISOString(),
 } = {}) {
   if (scenarioId !== "healthy_baseline") {
@@ -211,6 +247,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
 
   const scaffold = buildWrappedBtcLendingLoopScaffold({
     strategyConfig,
+    marketAssumptions,
     now,
   });
   const collateralMarketAddress = support.knownContracts.collateralMarket.mTokenAddress;
@@ -221,6 +258,34 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   if (!initialCollateralUnits) {
     throw new Error("Failed to derive initial cbBTC collateral units");
   }
+
+  const initialApprovalGasLimit = await estimateBufferedGasLimit({
+    chain: "base",
+    from: signerAddress,
+    to: collateralToken,
+    data: ERC20_INTERFACE.encodeFunctionData("approve", [collateralMarketAddress, initialCollateralUnits]),
+    estimateGasImpl,
+    gasBufferBps,
+    allowFailure: true,
+  });
+  const enterMarketsGasLimit = await estimateBufferedGasLimit({
+    chain: "base",
+    from: signerAddress,
+    to: comptrollerAddress,
+    data: COMPTROLLER_INTERFACE.encodeFunctionData("enterMarkets", [[collateralMarketAddress]]),
+    estimateGasImpl,
+    gasBufferBps,
+    allowFailure: true,
+  });
+  const mintInitialGasLimit = await estimateBufferedGasLimit({
+    chain: "base",
+    from: signerAddress,
+    to: collateralMarketAddress,
+    data: MTOKEN_INTERFACE.encodeFunctionData("mint", [initialCollateralUnits]),
+    estimateGasImpl,
+    gasBufferBps,
+    allowFailure: true,
+  });
 
   const entry = [
     exactApprovalStep({
@@ -233,7 +298,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       now,
       metadata: {
         kind: "approve_exact_collateral",
+        capCheckAmountUsd: 0,
       },
+      gasLimit: initialApprovalGasLimit,
     }),
     contractCallStep({
       id: "enter-collateral-market",
@@ -244,7 +311,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       now,
       metadata: {
         kind: "enter_markets",
+        capCheckAmountUsd: 0,
       },
+      gasLimit: enterMarketsGasLimit,
     }),
     contractCallStep({
       id: "mint-initial-collateral",
@@ -255,7 +324,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       now,
       metadata: {
         kind: "deposit_initial_collateral",
+        capCheckAmountUsd: round(strategyConfig.perTradeCapUsd, 6),
       },
+      gasLimit: mintInitialGasLimit,
     }),
   ];
 
@@ -281,6 +352,33 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       now,
       client,
     });
+    const borrowGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: borrowMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("borrow", [borrowUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const recycledApprovalGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: collateralToken,
+      data: ERC20_INTERFACE.encodeFunctionData("approve", [collateralMarketAddress, recycledCollateralUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const recycledMintGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: collateralMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("mint", [recycledCollateralUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
 
     entry.push(
       contractCallStep({
@@ -293,7 +391,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         metadata: {
           kind: "borrow_against_collateral",
           iteration: iteration.iteration,
+          capCheckAmountUsd: 0,
         },
+        gasLimit: borrowGasLimit,
       }),
       swap.approvalStep,
       swap.swapStep,
@@ -308,7 +408,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         metadata: {
           kind: "approve_recycled_collateral",
           iteration: iteration.iteration,
+          capCheckAmountUsd: 0,
         },
+        gasLimit: recycledApprovalGasLimit,
       }),
       contractCallStep({
         id: `mint-recycled-collateral-${iteration.iteration}`,
@@ -320,18 +422,75 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         metadata: {
           kind: "deposit_recycled_collateral",
           iteration: iteration.iteration,
+          capCheckAmountUsd: 0,
         },
+        gasLimit: recycledMintGasLimit,
       }),
     );
   }
 
   const unwind = [];
-  for (const iteration of [...(scaffold.entryPlan?.iterations || [])].reverse()) {
+  const finalCollateralRedeemUnits = initialCollateralUnits;
+  const iterations = [...(scaffold.entryPlan?.iterations || [])];
+  if (iterations.length === 0) {
+    const redeemInitialGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: collateralMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [initialCollateralUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    unwind.push(
+      contractCallStep({
+        id: "redeem-initial-collateral",
+        chain: "base",
+        to: collateralMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [initialCollateralUnits]),
+        amountUsd: strategyConfig.perTradeCapUsd,
+        now,
+        metadata: {
+          kind: "withdraw_initial_collateral",
+          tinyValidationOnly: true,
+        },
+        gasLimit: redeemInitialGasLimit,
+      }),
+    );
+  }
+  for (const iteration of iterations.reverse()) {
     const repayUnits = decimalToUnits(iteration.borrowUsd, borrowAsset.decimals);
-    const redeemUnits = unitsFromUsd(iteration.inputCollateralUsd, collateralPriceUsd, collateralAsset.decimals);
+    const redeemUnits = unitsFromUsd(iteration.recycledCollateralUsd, collateralPriceUsd, collateralAsset.decimals);
     if (!repayUnits || !redeemUnits) {
       throw new Error(`Failed to derive unwind units for iteration ${iteration.iteration}`);
     }
+    const repayApprovalGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: borrowToken,
+      data: ERC20_INTERFACE.encodeFunctionData("approve", [borrowMarketAddress, repayUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const repayGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: borrowMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("repayBorrow", [repayUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const redeemGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: collateralMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
     unwind.push(
       exactApprovalStep({
         id: `approve-repay-usdc-${iteration.iteration}`,
@@ -346,6 +505,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
           iteration: iteration.iteration,
           requiresBorrowAssetInventory: true,
         },
+        gasLimit: repayApprovalGasLimit,
       }),
       contractCallStep({
         id: `repay-usdc-${iteration.iteration}`,
@@ -359,6 +519,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
           iteration: iteration.iteration,
           requiresBorrowAssetInventory: true,
         },
+        gasLimit: repayGasLimit,
       }),
       contractCallStep({
         id: `redeem-collateral-${iteration.iteration}`,
@@ -368,9 +529,35 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         amountUsd: iteration.inputCollateralUsd,
         now,
         metadata: {
-          kind: "withdraw_collateral",
+          kind: "withdraw_recycled_collateral",
           iteration: iteration.iteration,
         },
+        gasLimit: redeemGasLimit,
+      }),
+    );
+  }
+  if (iterations.length > 0) {
+    const redeemInitialGasLimit = await estimateBufferedGasLimit({
+      chain: "base",
+      from: signerAddress,
+      to: collateralMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [finalCollateralRedeemUnits]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    unwind.push(
+      contractCallStep({
+        id: "redeem-initial-collateral",
+        chain: "base",
+        to: collateralMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [finalCollateralRedeemUnits]),
+        amountUsd: strategyConfig.perTradeCapUsd,
+        now,
+        metadata: {
+          kind: "withdraw_initial_collateral",
+        },
+        gasLimit: redeemInitialGasLimit,
       }),
     );
   }
@@ -380,7 +567,8 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
     unwind,
     notes: [
       "Repo auto-build generated Moonwell core calldata and Odos safe-whitelist swap calldata.",
+      iterations.length === 0 ? "Tiny validation mode skipped borrow iterations and only validates collateral deposit plus redeem." : null,
       "Unwind repayment steps require borrow-asset inventory or equivalent capital-manager funding before execution.",
-    ],
+    ].filter(Boolean),
   };
 }

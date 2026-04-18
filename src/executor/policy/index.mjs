@@ -1,6 +1,7 @@
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
+import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
@@ -14,6 +15,7 @@ export async function evaluateIntentPolicies({
   const strategyCaps = assertStrategyCaps(intent.strategyId);
   const results = [
     await checkKillSwitch({ killSwitchPath, now }),
+    evaluateConsecutiveFailures({ intent, auditRecords, now }),
     evaluateCapCheck({ intent, strategyCaps, auditRecords, now }),
     evaluateHealthFactorCheck({ intent, strategyCaps, now }),
     evaluateStaleQuote({ intent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),

@@ -66,13 +66,20 @@ function runNodeScript(script, args = []) {
     cwd: process.cwd(),
     encoding: "utf8",
   });
-  if (result.status !== 0) {
+  const stdout = result.stdout.trim();
+  const stderr = result.stderr.trim();
+  const toleratedTargetedGasRefreshFailure =
+    script === "src/cli/estimate-gateway-gas.mjs" &&
+    result.status !== 0 &&
+    args.some((item) => item.startsWith("--route-key=")) &&
+    /(?:failed|skipped) reason=/.test(stdout);
+  if (result.status !== 0 && !toleratedTargetedGasRefreshFailure) {
     const error = new Error(`Command failed: node ${script} ${args.join(" ")}`.trim());
-    error.stdout = result.stdout;
-    error.stderr = result.stderr;
+    error.stdout = stdout;
+    error.stderr = stderr;
     throw error;
   }
-  return result.stdout.trim();
+  return stdout;
 }
 
 function refreshShadowArtifacts(address, options = {}) {
@@ -87,7 +94,7 @@ function refreshShadowArtifacts(address, options = {}) {
     }
   }
   const shadowOutput = runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write", `--address=${address}`]);
-  const dashboardOutput = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+  const dashboardOutput = runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle", "--skip-canary-input-refresh"]);
   console.log(summarizeShadowArtifactRefresh({ priceOutput, shadowOutput, dashboardOutput }));
 }
 

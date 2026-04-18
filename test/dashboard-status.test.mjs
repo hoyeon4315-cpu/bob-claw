@@ -249,7 +249,7 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.market.wbtcUsd, 72_950);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").ticker, "wBTC");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").usd, null);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "odos_chain_not_supported");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "no_supported_router_for_chain:60808");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").quoteable, false);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").usd, 73_020);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").deltaPct > 0, true);
@@ -277,10 +277,10 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.dataCounts.preliveEvidenceCampaigns, 1);
   assert.equal(status.dataCounts.priceSnapshots, 1);
   assert.equal(status.dataCounts.executorHeartbeatPresent, 1);
-  assert.equal(status.strategy.pivotPlan.budgetScenarios.length, 2);
+  assert.equal(status.strategy.pivotPlan.budgetScenarios.length, 0);
   assert.equal(status.strategy.yieldShadowBook.topProfile.id, "research_pilot");
   assert.equal(typeof status.strategy.proxySpreadCoveragePlan.planCount, "number");
-  assert.equal(status.strategy.strategySnapshot.activeBudgetUsd, 300);
+  assert.equal(status.strategy.strategySnapshot.activeBudgetUsd, null);
   assert.equal(status.strategy.strategySnapshot.topPivot.id, "gateway_base_btc_yield");
 });
 
@@ -338,7 +338,100 @@ test("dashboard status records chain price coverage reasons for missing dex obse
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "avalanche").quoteable, true);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "sonic").coverageReason, "eligible_quote_not_run");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "sonic").quoteable, true);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "odos_chain_not_supported");
+  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "no_supported_router_for_chain:60808");
+});
+
+test("dashboard status normalizes legacy Odos unsupported failures for Bera market coverage", () => {
+  const now = "2026-04-10T12:00:00.000Z";
+  const avalancheBera = route("avalanche", "bera");
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [avalancheBera],
+        },
+      ],
+      quotes: [quote(avalancheBera, "2026-04-10T11:50:00.000Z")],
+      failures: [],
+      priceSnapshots: [
+        {
+          schemaVersion: 1,
+          observedAt: "2026-04-10T11:57:00.000Z",
+          source: "test",
+          btcUsd: 72_988,
+          tokenByKey: {
+            btc: 72_988,
+            wbtc: 72_950,
+            ethereum: 2_242.72,
+            usd_stable: 1,
+          },
+          nativeByChain: {
+            avalanche: 30,
+            bera: 1,
+          },
+        },
+      ],
+      dexQuotes: [],
+      dexFailures: [
+        {
+          observedAt: "2026-04-10T11:58:10.000Z",
+          provider: "router_selection",
+          source: "gateway_dst_leg",
+          chain: "bera",
+          token: WBTC_OFT,
+          amount: "10000",
+          gatewayRouteKey: `${avalancheBera.srcChain}:${avalancheBera.srcToken}->${avalancheBera.dstChain}:${avalancheBera.dstToken}`,
+          gatewayAmount: "10000",
+          ok: false,
+          reason: "odos_chain_not_supported",
+        },
+      ],
+      gasSnapshots: [
+        {
+          observedAt: "2026-04-10T11:55:00.000Z",
+          chain: "avalanche",
+          gasPriceWei: "1",
+          blockNumber: "10",
+          latencyMs: 100,
+          fallbackGasUnits: 250000,
+          fallbackTxUsd: 0.01,
+          nativeUsd: 30,
+        },
+      ],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      executorRuntime: {
+        observedAt: "2026-04-10T11:59:30.000Z",
+        heartbeatPresent: true,
+        signerSocketPresent: true,
+        watchdog: { status: "healthy", stale: false, ageMs: 30_000, ttlMs: 60_000 },
+        runtimeStatus: "healthy",
+        available: true,
+      },
+    },
+    {
+      now,
+      auditTargets: {
+        currentQuoteSchemaVersion: 2,
+        minShadowHours: 1,
+        minBobNeighborCoveragePct: 0,
+        minGlobalRouteCoveragePctForDiscovery: 0,
+        minSamplesPerCandidateRoute: 1,
+        minAmountLevelsPerCandidateRoute: 1,
+        minHourBuckets: 1,
+        maxFailureRatePct: 10,
+        maxGasSnapshotAgeMinutes: 30,
+      },
+    },
+  );
+
+  const beraPrice = status.market.chainWbtcPrices.find((item) => item.chain === "bera");
+  assert.equal(beraPrice.coverageReason, "no_supported_router_for_chain:80094");
+  assert.equal(beraPrice.coverageFailure, "no_supported_router_for_chain:80094");
+  assert.equal(status.dex.skippedReasons.find((item) => item.reason === "no_supported_router_for_chain:80094")?.count, 1);
 });
 
 test("dashboard status includes Gateway visual routes with segment-specific asset traces", () => {
@@ -583,7 +676,7 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.strategy.edgeResearch.routeCount, 2);
   assert.equal(status.strategy.edgeResearch.bestCandidate.classification, "no_edge");
   assert.equal(status.strategy.pivotPlan.topRecommendation.id, "gateway_base_btc_yield");
-  assert.equal(status.strategy.pivotPlan.currentBudgetUsd, 300);
+  assert.equal(status.strategy.pivotPlan.currentBudgetUsd, null);
   assert.equal(status.strategy.pivotPlan.pivots.some((item) => item.id === "btc_proxy_spreads"), true);
   assert.equal(status.dex.quoteCount, 1);
   assert.deepEqual(status.dex.quotedChains, ["base"]);
@@ -1193,7 +1286,7 @@ test("dashboard status exposes ETH profitability and ETH strategy track when ETH
           dstAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
           amount: "10000",
           inputAmount: 0.002,
-          tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+          tradeReadiness: "ethereum_l1_policy_override_disabled",
           netEdgeUsd: -0.1,
           executableOutputUsd: 7.83,
           executableNetEdgeUsd: -0.05,
@@ -1205,8 +1298,8 @@ test("dashboard status exposes ETH profitability and ETH strategy track when ETH
 
   assert.equal(status.strategy.ethProfitability.routeCount, 1);
   assert.equal(status.strategy.ethProfitability.gatewayRouteCount, 1);
-  assert.equal(status.strategy.ethProfitability.recommendationCode, "observe_only_until_fee_review");
-  assert.equal(status.strategy.ethProfitability.followUpActionCode, "hold_eth_policy_review");
+  assert.equal(status.strategy.ethProfitability.recommendationCode, "eth_l1_policy_override_disabled");
+  assert.equal(status.strategy.ethProfitability.followUpActionCode, "review_eth_policy_override");
   assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "eth_family_loop"), true);
 });
 

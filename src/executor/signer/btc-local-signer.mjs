@@ -10,17 +10,119 @@ bitcoin.initEccLib(ecc);
 
 const ECPair = ECPairFactory(ecc);
 
+export const SUPPORTED_BITCOIN_ADDRESS_TYPES = Object.freeze([
+  "p2tr",
+  "p2wpkh",
+  "p2sh-p2wpkh",
+  "p2pkh",
+]);
+
+const INPUT_VBYTES_BY_SCRIPT_TYPE = Object.freeze({
+  p2tr: 58,
+  p2wpkh: 68,
+  p2sh: 91,
+  p2pkh: 148,
+});
+
+const OUTPUT_VBYTES_BY_SCRIPT_TYPE = Object.freeze({
+  p2tr: 43,
+  p2wpkh: 31,
+  p2sh: 32,
+  p2pkh: 34,
+});
+
 const BITCOIN_NETWORKS = Object.freeze({
   bitcoin: bitcoin.networks.bitcoin,
   testnet: bitcoin.networks.testnet,
 });
 
-function estimateTxVbytes({ inputCount, outputCount }) {
-  return 10 + inputCount * 68 + outputCount * 31;
+export function normalizeBitcoinAddressType(addressType = "p2tr") {
+  const normalized = String(addressType || "p2tr").trim().toLowerCase();
+  if (!SUPPORTED_BITCOIN_ADDRESS_TYPES.includes(normalized)) {
+    throw new Error(`Unsupported BTC address type: ${addressType}`);
+  }
+  return normalized;
 }
 
-function feeForSelection({ inputCount, outputCount, feeRateSatVb }) {
-  return Math.ceil(estimateTxVbytes({ inputCount, outputCount }) * feeRateSatVb);
+function bitcoinChainConfig(chain = "bitcoin") {
+  const config = getBitcoinChainConfig(chain);
+  if (!config) throw new Error(`Unsupported BTC chain: ${chain}`);
+  return config;
+}
+
+export function addressTypeForChain(chain = "bitcoin") {
+  return normalizeBitcoinAddressType(bitcoinChainConfig(chain).addressType || "p2tr");
+}
+
+export function toXOnlyPublicKey(publicKey) {
+  const normalized = Buffer.from(publicKey);
+  if (normalized.length === 32) {
+    return normalized;
+  }
+  if (normalized.length === 33 && [0x02, 0x03].includes(normalized[0])) {
+    return normalized.subarray(1, 33);
+  }
+  if (normalized.length === 65 && normalized[0] === 0x04) {
+    return normalized.subarray(1, 33);
+  }
+  throw new Error(`Invalid public key length for x-only conversion: ${normalized.length}`);
+}
+
+function taprootTweakHash(keyPair, merkleRoot = null) {
+  const internalPubkey = toXOnlyPublicKey(keyPair.publicKey);
+  return Buffer.from(
+    bitcoin.crypto.taggedHash(
+      "TapTweak",
+      merkleRoot ? Buffer.concat([internalPubkey, Buffer.from(merkleRoot)]) : internalPubkey,
+    ),
+  );
+}
+
+function taprootSignerForKeyPair(keyPair, merkleRoot = null) {
+  return keyPair.tweak(taprootTweakHash(keyPair, merkleRoot));
+}
+
+export function classifyBitcoinOutputScript(script) {
+  const output = Buffer.from(script);
+  if (output.length === 34 && output[0] === 0x51 && output[1] === 0x20) return "p2tr";
+  if (output.length === 22 && output[0] === 0x00 && output[1] === 0x14) return "p2wpkh";
+  if (output.length === 23 && output[0] === 0xa9 && output[1] === 0x14 && output[22] === 0x87) return "p2sh";
+  if (
+    output.length === 25 &&
+    output[0] === 0x76 &&
+    output[1] === 0xa9 &&
+    output[2] === 0x14 &&
+    output[23] === 0x88 &&
+    output[24] === 0xac
+  ) {
+    return "p2pkh";
+  }
+  return null;
+}
+
+function scriptTypeForAddress(address, network) {
+  return classifyBitcoinOutputScript(bitcoin.address.toOutputScript(address, network));
+}
+
+export function estimateBitcoinTxVbytes({ inputScriptTypes = [], outputScriptTypes = [] }) {
+  const inputVbytes = inputScriptTypes.reduce((sum, scriptType) => sum + (INPUT_VBYTES_BY_SCRIPT_TYPE[scriptType] || 68), 0);
+  const outputVbytes = outputScriptTypes.reduce((sum, scriptType) => sum + (OUTPUT_VBYTES_BY_SCRIPT_TYPE[scriptType] || 31), 0);
+  return 10 + inputVbytes + outputVbytes;
+}
+
+function feeForSelection({ utxos = [], outputAddresses = [], feeRateSatVb, changeAddress = null, network }) {
+  const inputScriptTypes = utxos.map((utxo) => {
+    const scriptType = classifyBitcoinOutputScript(Buffer.from(utxo.scriptPubKey, "hex"));
+    if (!scriptType) {
+      throw new Error(`Unsupported BTC input script type for utxo ${utxo.txid}:${utxo.vout}`);
+    }
+    return scriptType;
+  });
+  const outputScriptTypes = outputAddresses.map((address) => scriptTypeForAddress(address, network)).filter(Boolean);
+  if (changeAddress) {
+    outputScriptTypes.push(scriptTypeForAddress(changeAddress, network));
+  }
+  return Math.ceil(estimateBitcoinTxVbytes({ inputScriptTypes, outputScriptTypes }) * feeRateSatVb);
 }
 
 async function readSigningKey(path) {
@@ -40,9 +142,7 @@ function isHexPrivateKey(value) {
 }
 
 function networkForChain(chain = "bitcoin") {
-  const config = getBitcoinChainConfig(chain);
-  if (!config) throw new Error(`Unsupported BTC chain: ${chain}`);
-  return BITCOIN_NETWORKS[config.network];
+  return BITCOIN_NETWORKS[bitcoinChainConfig(chain).network];
 }
 
 function defaultMempoolBaseUrl(env, key, fallbackKey = null) {
@@ -57,11 +157,45 @@ function keyPairFromSecret(secret, network) {
   return ECPair.fromWIF(secret, network);
 }
 
-function paymentForKeyPair(keyPair, network) {
-  return bitcoin.payments.p2wpkh({
-    pubkey: Buffer.from(keyPair.publicKey),
-    network,
-  });
+export function paymentForKeyPair(keyPair, network, addressType = "p2tr") {
+  const normalizedType = normalizeBitcoinAddressType(addressType);
+  const pubkey = Buffer.from(keyPair.publicKey);
+  if (normalizedType === "p2tr") {
+    return bitcoin.payments.p2tr({
+      internalPubkey: toXOnlyPublicKey(pubkey),
+      network,
+    });
+  }
+  if (normalizedType === "p2wpkh") {
+    return bitcoin.payments.p2wpkh({
+      pubkey,
+      network,
+    });
+  }
+  if (normalizedType === "p2sh-p2wpkh") {
+    return bitcoin.payments.p2sh({
+      redeem: bitcoin.payments.p2wpkh({
+        pubkey,
+        network,
+      }),
+      network,
+    });
+  }
+  if (normalizedType === "p2pkh") {
+    return bitcoin.payments.p2pkh({
+      pubkey,
+      network,
+    });
+  }
+  throw new Error(`Unsupported BTC address type: ${addressType}`);
+}
+
+export function deriveBitcoinAddress(keyPair, network, addressType = "p2tr") {
+  const payment = paymentForKeyPair(keyPair, network, addressType);
+  if (!payment.address) {
+    throw new Error(`Could not derive BTC address for ${addressType}`);
+  }
+  return payment.address;
 }
 
 function parsePsbt(psbtPayload, network) {
@@ -82,10 +216,22 @@ function parsePsbt(psbtPayload, network) {
 
 function psbtMetadata(psbt, transaction) {
   let inputValueSats = 0;
-  for (const input of psbt.data.inputs || []) {
+  const txInputs = psbt.txInputs || [];
+  for (let index = 0; index < (psbt.data.inputs || []).length; index += 1) {
+    const input = psbt.data.inputs[index];
     const witnessValue = input?.witnessUtxo?.value;
     if (witnessValue !== undefined) {
       inputValueSats += Number(witnessValue);
+      continue;
+    }
+    const nonWitness = input?.nonWitnessUtxo;
+    const prevIndex = txInputs[index]?.index;
+    if (nonWitness && Number.isInteger(prevIndex)) {
+      const previousTx = bitcoin.Transaction.fromBuffer(Buffer.from(nonWitness));
+      const previousOutput = previousTx.outs[prevIndex];
+      if (previousOutput) {
+        inputValueSats += Number(previousOutput.value || 0);
+      }
     }
   }
   const outputValueSats = transaction.outs.reduce((sum, output) => sum + Number(output.value || 0), 0);
@@ -99,7 +245,7 @@ function psbtMetadata(psbt, transaction) {
   };
 }
 
-function selectUtxos({ utxos = [], targetValueSats, feeRateSatVb, dustThresholdSats }) {
+function selectUtxos({ utxos = [], targetValueSats, feeRateSatVb, dustThresholdSats, outputs = [], changeAddress, network }) {
   const ordered = [...utxos].sort((left, right) => (right.confirmations || 0) - (left.confirmations || 0) || right.valueSats - left.valueSats);
   const selected = [];
   let totalInputSats = 0;
@@ -108,9 +254,11 @@ function selectUtxos({ utxos = [], targetValueSats, feeRateSatVb, dustThresholdS
     selected.push(utxo);
     totalInputSats += Number(utxo.valueSats);
     const provisionalFee = feeForSelection({
-      inputCount: selected.length,
-      outputCount: 2,
+      utxos: selected,
+      outputAddresses: outputs.map((item) => item.address),
       feeRateSatVb,
+      changeAddress,
+      network,
     });
     if (totalInputSats >= targetValueSats + provisionalFee) {
       const changeSats = totalInputSats - targetValueSats - provisionalFee;
@@ -122,9 +270,10 @@ function selectUtxos({ utxos = [], targetValueSats, feeRateSatVb, dustThresholdS
         };
       }
       const noChangeFee = feeForSelection({
-        inputCount: selected.length,
-        outputCount: 1,
+        utxos: selected,
+        outputAddresses: outputs.map((item) => item.address),
         feeRateSatVb,
+        network,
       });
       if (totalInputSats >= targetValueSats + noChangeFee) {
         return {
@@ -145,6 +294,85 @@ function normalizeTxHash(txHash) {
     return null;
   }
   return normalized;
+}
+
+function addPsbtInputForUtxo(psbt, utxo, { keyPair, network, sequence }) {
+  const script = Buffer.from(utxo.scriptPubKey, "hex");
+  const scriptType = classifyBitcoinOutputScript(script);
+  if (!scriptType) {
+    throw new Error(`Unsupported BTC input script type for utxo ${utxo.txid}:${utxo.vout}`);
+  }
+  const common = {
+    hash: utxo.txid,
+    index: utxo.vout,
+    sequence,
+  };
+  if (scriptType === "p2tr") {
+    psbt.addInput({
+      ...common,
+      witnessUtxo: {
+        script,
+        value: BigInt(utxo.valueSats),
+      },
+      tapInternalKey: toXOnlyPublicKey(keyPair.publicKey),
+    });
+    return "p2tr";
+  }
+  if (scriptType === "p2wpkh") {
+    psbt.addInput({
+      ...common,
+      witnessUtxo: {
+        script,
+        value: BigInt(utxo.valueSats),
+      },
+    });
+    return "p2wpkh";
+  }
+  if (scriptType === "p2sh") {
+    const redeem = bitcoin.payments.p2wpkh({
+      pubkey: Buffer.from(keyPair.publicKey),
+      network,
+    });
+    psbt.addInput({
+      ...common,
+      witnessUtxo: {
+        script,
+        value: BigInt(utxo.valueSats),
+      },
+      redeemScript: redeem.output,
+    });
+    return "p2sh-p2wpkh";
+  }
+  if (!utxo.rawTxHex) {
+    throw new Error(`rawTxHex is required for legacy p2pkh utxo ${utxo.txid}:${utxo.vout}`);
+  }
+  psbt.addInput({
+    ...common,
+    nonWitnessUtxo: Buffer.from(utxo.rawTxHex, "hex"),
+  });
+  return "p2pkh";
+}
+
+function isTaprootPsbtInput(input) {
+  if (input?.tapInternalKey) return true;
+  const script = input?.witnessUtxo?.script;
+  return script ? classifyBitcoinOutputScript(script) === "p2tr" : false;
+}
+
+function signPsbtWithKeyPair(psbt, keyPair) {
+  for (let index = 0; index < psbt.inputCount; index += 1) {
+    const input = psbt.data.inputs[index];
+    if (isTaprootPsbtInput(input)) {
+      if (!input.tapInternalKey) {
+        psbt.updateInput(index, {
+          tapInternalKey: toXOnlyPublicKey(keyPair.publicKey),
+        });
+      }
+      psbt.signTaprootInput(index, taprootSignerForKeyPair(keyPair, input.tapMerkleRoot || null));
+      continue;
+    }
+    psbt.signInput(index, keyPair);
+  }
 }
 
 export class BtcLocalKeySigner extends SignerInterface {
@@ -184,9 +412,32 @@ export class BtcLocalKeySigner extends SignerInterface {
   }
 
   async getAddress(chain = "bitcoin") {
+    return (await this.getAddressInfo(chain)).address;
+  }
+
+  async getAddressType(chain = "bitcoin") {
+    return addressTypeForChain(chain);
+  }
+
+  async getAddressInfo(chain = "bitcoin", addressType = null) {
     const network = networkForChain(chain);
-    const payment = paymentForKeyPair(await this.keyPair(chain), network);
-    return payment.address;
+    const normalizedAddressType = normalizeBitcoinAddressType(addressType || addressTypeForChain(chain));
+    return {
+      chain,
+      addressType: normalizedAddressType,
+      address: deriveBitcoinAddress(await this.keyPair(chain), network, normalizedAddressType),
+    };
+  }
+
+  async getDerivedAddresses(chain = "bitcoin") {
+    const network = networkForChain(chain);
+    const keyPair = await this.keyPair(chain);
+    return Object.fromEntries(
+      SUPPORTED_BITCOIN_ADDRESS_TYPES.map((addressType) => [
+        addressType,
+        deriveBitcoinAddress(keyPair, network, addressType),
+      ]),
+    );
   }
 
   async feeRateSatVb(intent) {
@@ -197,10 +448,9 @@ export class BtcLocalKeySigner extends SignerInterface {
 
   async signPsbtIntent(intent) {
     const chain = intent.chain || "bitcoin";
-    const network = networkForChain(chain);
     const keyPair = await this.keyPair(chain);
-    const psbt = parsePsbt(intent.btc?.psbtHex, network);
-    psbt.signAllInputs(keyPair);
+    const psbt = parsePsbt(intent.btc?.psbtHex, networkForChain(chain));
+    signPsbtWithKeyPair(psbt, keyPair);
     psbt.finalizeAllInputs();
     const transaction = psbt.extractTransaction();
     return createSignedTransactionEnvelope({
@@ -211,6 +461,7 @@ export class BtcLocalKeySigner extends SignerInterface {
       signerFamily: "btc",
       metadata: {
         ...psbtMetadata(psbt, transaction),
+        addressType: addressTypeForChain(chain),
         orderId: intent.btc?.orderId || null,
         depositAddress: intent.btc?.depositAddress || null,
       },
@@ -222,7 +473,7 @@ export class BtcLocalKeySigner extends SignerInterface {
       return this.signPsbtIntent(intent);
     }
     const chain = intent.chain || "bitcoin";
-    const config = getBitcoinChainConfig(chain);
+    const config = bitcoinChainConfig(chain);
     const network = networkForChain(chain);
     const keyPair = await this.keyPair(chain);
     const changeAddress = intent.btc?.changeAddress || (await this.getAddress(chain));
@@ -234,19 +485,21 @@ export class BtcLocalKeySigner extends SignerInterface {
       targetValueSats,
       feeRateSatVb,
       dustThresholdSats: config.dustThresholdSats,
+      outputs,
+      changeAddress,
+      network,
     });
 
     const psbt = new bitcoin.Psbt({ network });
+    const sourceAddressTypes = new Set();
     for (const utxo of selection.selected) {
-      psbt.addInput({
-        hash: utxo.txid,
-        index: utxo.vout,
-        sequence: intent.btc?.enableRbf === false ? undefined : config.replaceByFeeSequence,
-        witnessUtxo: {
-          script: Buffer.from(utxo.scriptPubKey, "hex"),
-          value: BigInt(utxo.valueSats),
-        },
-      });
+      sourceAddressTypes.add(
+        addPsbtInputForUtxo(psbt, utxo, {
+          keyPair,
+          network,
+          sequence: intent.btc?.enableRbf === false ? undefined : config.replaceByFeeSequence,
+        }),
+      );
     }
     for (const output of outputs) {
       psbt.addOutput({
@@ -261,9 +514,7 @@ export class BtcLocalKeySigner extends SignerInterface {
       });
     }
 
-    for (let index = 0; index < selection.selected.length; index += 1) {
-      psbt.signInput(index, keyPair);
-    }
+    signPsbtWithKeyPair(psbt, keyPair);
     psbt.finalizeAllInputs();
     const transaction = psbt.extractTransaction();
     const txHex = transaction.toHex();
@@ -280,6 +531,9 @@ export class BtcLocalKeySigner extends SignerInterface {
         feeSats: selection.feeSats,
         inputCount: selection.selected.length,
         outputCount: outputs.length + (selection.changeSats > 0 ? 1 : 0),
+        addressType: addressTypeForChain(chain),
+        changeAddressType: scriptTypeForAddress(changeAddress, network),
+        sourceAddressTypes: [...sourceAddressTypes],
         rbfEnabled: intent.btc?.enableRbf !== false,
         replaceByFeeSequence: intent.btc?.enableRbf === false ? null : config.replaceByFeeSequence,
       },

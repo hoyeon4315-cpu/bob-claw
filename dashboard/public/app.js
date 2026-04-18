@@ -385,7 +385,11 @@ function buildModel(status) {
             },
             stateText:
               payback?.scheduler?.reason === "payback_btc_destination_missing"
-                ? `${formatSats(paybackPending)} are accruing, but the Bitcoin payout destination still needs to be set (${payback?.scheduler?.requiredEnvName || "PAYBACK_BTC_DEST_ADDR"}).`
+                ? `${formatSats(paybackPending)} are accruing, but the Bitcoin payout destination still needs to be set (${payback?.scheduler?.requiredEnvName || "PAYBACK_BTC_DEST_ADDR"}).${
+                    payback?.scheduler?.previewAfterDestination?.reason === "planned_payback_below_minimum"
+                      ? ` Even after that, the scheduler still carries until the planned payback clears ${formatSats(payback?.scheduler?.previewAfterDestination?.minPaybackSats || 0)}; it is still short by ${formatSats(payback?.scheduler?.previewAfterDestination?.satsToMinimumPayback || 0)}.`
+                      : ""
+                  }`
                 : paybackLastSettled != null
                   ? `Last settled payback delivered ${formatSats(paybackLastSettled)} to Bitcoin L1.`
                   : `${formatSats(paybackPending)} are accruing for the next BTC payback window.`,

@@ -1,4 +1,4 @@
-import { WBTC_OFT_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { GatewayClient, GatewayError } from "../../gateway/client.mjs";
@@ -11,6 +11,8 @@ export const BASE_OUSDT_TOKEN = "0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189";
 export const BITCOIN_ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
 
 const TOKEN_ALIASES = Object.freeze({
+  native: ZERO_TOKEN,
+  eth: ZERO_TOKEN,
   usdc: BASE_USDC_TOKEN,
   "wbtc.oft": WBTC_OFT_TOKEN,
   wbtc_oft: WBTC_OFT_TOKEN,
@@ -58,6 +60,15 @@ function normalizeOnrampOrderBody(body) {
     address: onramp.address,
     opReturnData: onramp.op_return_data || null,
     psbtHex: onramp.psbt_hex || null,
+  };
+}
+
+function serializeGatewayError(error) {
+  if (!(error instanceof Error)) return { message: String(error) };
+  return {
+    name: error.name,
+    message: error.message,
+    ...(error instanceof GatewayError && error.details ? { details: error.details } : {}),
   };
 }
 
@@ -222,7 +233,24 @@ export async function executeGatewayBtcOnrampPlan({
       bitcoin_tx_hex: signerResult.signed?.signedTx || null,
     },
   };
-  const registerResult = await client.registerTx(registerPayload);
+  let registerResult;
+  let orderLookup = null;
+  let registerRecovered = false;
+  let registerError = null;
+  try {
+    registerResult = await client.registerTx(registerPayload);
+  } catch (error) {
+    registerError = serializeGatewayError(error);
+    try {
+      orderLookup = await client.getOrder(signerResult.broadcast.txHash);
+    } catch {
+      throw error;
+    }
+    if (!orderLookup?.body?.id) {
+      throw error;
+    }
+    registerRecovered = true;
+  }
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -230,5 +258,8 @@ export async function executeGatewayBtcOnrampPlan({
     signerResult,
     registerPayload,
     registerResult,
+    orderLookup,
+    registerRecovered,
+    registerError,
   };
 }

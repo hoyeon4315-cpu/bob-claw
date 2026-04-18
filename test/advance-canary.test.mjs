@@ -77,3 +77,32 @@ test("advance canary summary preserves a zero amount instead of coercing it to n
 
   assert.equal(summary.initial.amount, 0);
 });
+
+test("advance canary summary can record a failed exact gas action without losing the next step", () => {
+  const summary = buildAdvanceSummary({
+    address: "0xabc",
+    initialStep: {
+      decision: "RUN_EXACT_GAS",
+      headline: "Run exact gas estimate",
+      route: { label: "bob->base", routeKey: "bob:0x1->base:0x1", amount: "10000" },
+      reasons: ["exact_src_execution_gas_not_estimated"],
+    },
+    afterWalletCheckStep: {
+      decision: "RUN_EXACT_GAS",
+      headline: "Run exact gas estimate",
+      route: { label: "bob->base", routeKey: "bob:0x1->base:0x1", amount: "10000" },
+      reasons: ["exact_src_execution_gas_not_estimated"],
+    },
+    finalStep: {
+      decision: "RUN_EXACT_GAS",
+      headline: "Run exact gas estimate",
+      route: { label: "bob->base", routeKey: "bob:0x1->base:0x1", amount: "10000" },
+      reasons: ["exact_src_execution_gas_not_estimated"],
+    },
+    actions: ["check-estimator-wallet", "estimate-gateway-gas_failed"],
+  });
+
+  assert.deepEqual(summary.actions, ["check-estimator-wallet", "estimate-gateway-gas_failed"]);
+  assert.equal(summary.final.decision, "RUN_EXACT_GAS");
+  assert.equal(summary.final.reasons[0], "exact_src_execution_gas_not_estimated");
+});

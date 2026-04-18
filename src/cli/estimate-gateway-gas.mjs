@@ -169,6 +169,12 @@ async function main() {
     }
   }
 
+  const targetedRouteSelection = Boolean(args.routeKey && args.amount);
+  const successCount = results.filter((item) => item.ok).length;
+  if (targetedRouteSelection && successCount === 0) {
+    process.exitCode = 1;
+  }
+
   if (args.json) {
     console.log(JSON.stringify({ schemaVersion: SCHEMA_VERSION, runId, results }, null, 2));
   }

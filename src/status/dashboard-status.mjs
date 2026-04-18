@@ -1,8 +1,8 @@
 import { join } from "node:path";
-import { classifyGatewayAssetUniverse, isBtcFamilyRoute, isEthFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, classifyGatewayAssetUniverse, isBtcFamilyRoute, isEthFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
-import { filterTrustedExecutableDexQuotes, ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
+import { canQuoteWithDex, filterTrustedExecutableDexQuotes, normalizeDexSupportReason, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
@@ -456,12 +456,12 @@ function latestGatewayWrappedBtcLegByChain(quotes = []) {
   return latest;
 }
 
-function dexCoverageReason(chain, { dexPrice, latestFailure, sampledWrappedBtcLeg }) {
+function dexCoverageReason(chain, { dexPrice, latestFailureReason, sampledWrappedBtcLeg }) {
   if (chain === "bitcoin") return "btc_spot_reference";
   if (Number.isFinite(dexPrice?.usd)) return "dex_quote_observed";
-  if (!ODOS_CHAIN_IDS[chain]) return "odos_chain_not_supported";
-  if (!STABLE_QUOTE_TOKENS[chain]) return "stable_quote_token_missing";
-  if (latestFailure?.reason) return latestFailure.reason;
+  const support = canQuoteWithDex(chain, WBTC_OFT_TOKEN, STABLE_QUOTE_TOKENS[chain]);
+  if (!support.ok) return support.reason;
+  if (latestFailureReason) return latestFailureReason;
   if (sampledWrappedBtcLeg) return "eligible_quote_not_run";
   return "wrapped_btc_leg_not_sampled";
 }
@@ -505,7 +505,9 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
   const chainWbtcPrices = gatewayChains.map((chain) => {
     const dexPrice = dexWbtcByChain.get(chain) || null;
     const latestFailure = dexWbtcFailureByChain.get(chain) || null;
+    const latestFailureReason = normalizeDexSupportReason(latestFailure?.reason, latestFailure?.chain || chain);
     const sampledWrappedBtcLeg = latestWrappedBtcLegByChain.get(chain) || null;
+    const support = chain === "bitcoin" ? null : canQuoteWithDex(chain, WBTC_OFT_TOKEN, STABLE_QUOTE_TOKENS[chain]);
     const chainObservedAt = chain === "bitcoin" ? observedAt : dexPrice?.observedAt || null;
     const ageMinutes = minutesBetween(chainObservedAt, now);
     const usd = chain === "bitcoin" ? btcUsd : dexPrice?.usd ?? null;
@@ -518,10 +520,10 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
       deltaPct: chain === "bitcoin" ? null : pctChange(btcUsd, usd),
       stale: Number.isFinite(ageMinutes) ? ageMinutes > CHAIN_PRICE_STALE_MINUTES : false,
       source: chain === "bitcoin" ? latestObservedPrices?.source || latest(bitcoinFeeSnapshots)?.source || "observed_overlay" : dexPrice?.source || null,
-      quoteable: chain !== "bitcoin" && Boolean(ODOS_CHAIN_IDS[chain] && STABLE_QUOTE_TOKENS[chain]),
-      coverageReason: dexCoverageReason(chain, { dexPrice, latestFailure, sampledWrappedBtcLeg }),
+      quoteable: chain !== "bitcoin" && Boolean(support?.ok),
+      coverageReason: dexCoverageReason(chain, { dexPrice, latestFailureReason, sampledWrappedBtcLeg }),
       coverageObservedAt: sampledWrappedBtcLeg?.observedAt || null,
-      coverageFailure: latestFailure?.reason || null,
+      coverageFailure: latestFailureReason || null,
     };
   });
   const nonBitcoinChainPrices = chainWbtcPrices.filter((item) => item.chain !== "bitcoin");
@@ -805,7 +807,7 @@ function dexSummary({ dexQuotes = [], dexFailures = [], now }) {
   const quotedChains = [...new Set(trustedDexQuotes.map((quote) => quote.chain).filter(Boolean))].sort();
   const skippedReasons = new Map();
   for (const failure of dexFailures) {
-    const reason = failure.reason || "unknown";
+    const reason = normalizeDexSupportReason(failure.reason, failure.chain) || "unknown";
     skippedReasons.set(reason, (skippedReasons.get(reason) || 0) + 1);
   }
 

@@ -22,6 +22,7 @@ function parseArgs(argv) {
     write: flags.has("--write"),
     execute: flags.has("--execute"),
     amountSats: options["amount-sats"] ? Number(options["amount-sats"]) : 100_000,
+    dstChain: options["dst-chain"] || "base",
     dstToken: options["dst-token"] || "USDC",
     recipient: options.recipient || null,
     sender: options.sender || null,
@@ -55,6 +56,7 @@ async function main() {
     senderAddress: sender,
     recipient,
     amountSats: args.amountSats,
+    dstChain: args.dstChain,
     dstToken: args.dstToken,
     allowUnfundedPreview: !args.execute,
   });
@@ -84,6 +86,7 @@ async function main() {
   console.log(`strategyId=${plan.strategyId}`);
   console.log(`sender=${plan.senderAddress}`);
   console.log(`recipient=${plan.recipient}`);
+  console.log(`dstChain=${plan.dstChain}`);
   console.log(`dstToken=${plan.dstAsset.ticker}`);
   console.log(`amountSats=${plan.amountSats}`);
   console.log(`amountUsd=${plan.amountUsd}`);
