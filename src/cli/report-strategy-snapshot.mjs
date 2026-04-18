@@ -52,6 +52,7 @@ async function main() {
   const phase1Revalidation = context.dashboardStatus?.strategy?.strategySnapshot?.phase1Revalidation || null;
   const researchBoard = context.dashboardStatus?.strategy?.strategySnapshot?.researchBoard || null;
   const secondaryScaffolds = context.dashboardStatus?.strategy?.strategySnapshot?.secondaryStrategyScaffolds || null;
+  const deterministicCandidates = context.dashboardStatus?.strategy?.strategySnapshot?.deterministicCandidates || null;
   const phase3Validation = context.dashboardStatus?.strategy?.strategySnapshot?.phase3StrategyValidation || null;
   const allocatorCore = context.dashboardStatus?.strategy?.strategySnapshot?.allocatorCore || null;
   const protocolTrustTiers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolTrustTiers || null;
@@ -61,15 +62,22 @@ async function main() {
   console.log(`implementedStrategies=${summary.implementedStrategyCount ?? 0}`);
   console.log(`candidateForValidation=${summary.candidateForValidationCount ?? 0}`);
   console.log(`measuredBelowPolicy=${summary.measuredBelowPolicyCount ?? 0}`);
-  console.log(`activeBudgetUsd=${money(report?.currentSystem?.activeBudgetUsd)}`);
-  console.log(`planningBudgetUsd=${money(summary.planningBudgetUsd)}`);
+  console.log("capitalMode=per_strategy_caps");
+  if (Number.isFinite(report?.currentSystem?.activeBudgetUsd)) {
+    console.log(`activeBudgetUsd=${money(report?.currentSystem?.activeBudgetUsd)}`);
+  }
+  if (Number.isFinite(summary.planningBudgetUsd)) {
+    console.log(`planningBudgetUsd=${money(summary.planningBudgetUsd)}`);
+  }
   if (capitalExpansion) {
-    console.log(
-      `capitalLanes=active:${money(capitalExpansion.activeLaneBudgetUsd)} planning:${money(capitalExpansion.planningLaneBudgetUsd)} approvalRequired=${capitalExpansion.approvalRequiredForPlanningLane}`,
-    );
-    console.log(
-      `capitalPlanningTop=implemented:${capitalExpansion.planningTopImplementedId || "n/a"} pivot:${capitalExpansion.planningTopPivotId || "n/a"} yield:${capitalExpansion.planningYieldProfileId || "n/a"}`,
-    );
+    if (Number.isFinite(capitalExpansion.activeLaneBudgetUsd) || Number.isFinite(capitalExpansion.planningLaneBudgetUsd)) {
+      console.log(
+        `capitalLanes=active:${money(capitalExpansion.activeLaneBudgetUsd)} planning:${money(capitalExpansion.planningLaneBudgetUsd)} approvalRequired=${capitalExpansion.approvalRequiredForPlanningLane}`,
+      );
+      console.log(
+        `capitalPlanningTop=implemented:${capitalExpansion.planningTopImplementedId || "n/a"} pivot:${capitalExpansion.planningTopPivotId || "n/a"} yield:${capitalExpansion.planningYieldProfileId || "n/a"}`,
+      );
+    }
   }
   console.log(`topImplemented=${topStrategy?.id || "n/a"} status=${topStrategy?.status || "n/a"}`);
   console.log(`topPivot=${topPivot?.id || "n/a"} status=${topPivot?.status || "n/a"}`);
@@ -82,12 +90,17 @@ async function main() {
   }
   if (researchBoard) {
     console.log(
-      `research candidates=${researchBoard.candidateCount ?? 0} top=${researchBoard.topCandidate?.id || "n/a"} next=${researchBoard.nextAction?.code || "n/a"}`,
+      `research candidates=${researchBoard.candidateCount ?? 0} top=${researchBoard.topCandidate?.id || "n/a"} newTop=${researchBoard.topNewCandidate?.id || "n/a"} newStatus=${researchBoard.topNewCandidate?.status || "n/a"} nextNew=${researchBoard.nextNewAction?.code || "n/a"}`,
     );
   }
   if (secondaryScaffolds) {
     console.log(
       `secondary scaffolds=${secondaryScaffolds.scaffoldCount ?? 0} top=${secondaryScaffolds.topScaffold?.id || "n/a"} next=${secondaryScaffolds.nextAction?.code || "n/a"}`,
+    );
+  }
+  if (deterministicCandidates) {
+    console.log(
+      `deterministic candidates=${deterministicCandidates.candidateCount ?? 0} readyForDryRun=${deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked=${deterministicCandidates.receiptBackedCount ?? 0} top=${deterministicCandidates.topCandidate?.id || "n/a"} next=${deterministicCandidates.nextAction?.code || "n/a"}`,
     );
   }
   if (phase3Validation) {

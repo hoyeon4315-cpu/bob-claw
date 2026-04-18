@@ -41,11 +41,18 @@ export function buildLendingLoopResearchEntries() {
       thesis:
         "Supply wrapped BTC as collateral on a destination-chain money market, borrow a correlated asset, re-supply, and repeat up to a configured health-factor floor to amplify the native yield spread.",
       requiredPolicyFields: [...LENDING_LOOP_REQUIRED_POLICY_FIELDS],
-      notBuilt: [
-        "protocol adapter (Aave / Compound / Dolomite)",
-        "live health-factor watcher",
-        "emergency-unwind executor",
+      executionSurface: "deterministic_planning_executor",
+      reportCommand: "npm run report:recursive-lending-loop -- --strategy=recursive_wrapped_btc_lending_loop",
+      builtComponents: [
+        "design-time protocol adapter",
+        "health-factor watcher plan",
+        "emergency-unwind execution plan",
         "per-iteration fee and slippage accounting",
+      ],
+      notBuilt: [
+        "signer-owned venue bindings",
+        "dry-run unwind receipt capture",
+        "live protocol market-state feed",
       ],
       notes: [
         "Leverage is policy-permitted (see AGENTS.md). This catalog entry is the placeholder until a concrete executor, adapter, and unwind test land.",
@@ -61,10 +68,18 @@ export function buildLendingLoopResearchEntries() {
       thesis:
         "Supply stablecoin as collateral, borrow a second stablecoin, swap or re-supply, and loop to capture the supply-vs-borrow spread with a bounded liquidation buffer.",
       requiredPolicyFields: [...LENDING_LOOP_REQUIRED_POLICY_FIELDS],
+      executionSurface: "deterministic_planning_executor",
+      reportCommand: "npm run report:recursive-lending-loop -- --strategy=recursive_stablecoin_lending_loop",
+      builtComponents: [
+        "design-time protocol adapter",
+        "health-factor watcher plan",
+        "emergency-unwind execution plan",
+        "per-iteration fee and slippage accounting",
+      ],
       notBuilt: [
-        "stable-swap path selector",
-        "peg-divergence watcher",
-        "unwind-cost estimator",
+        "signer-owned stable-swap bindings",
+        "dry-run unwind receipt capture",
+        "live peg-divergence feed",
       ],
     },
   ];

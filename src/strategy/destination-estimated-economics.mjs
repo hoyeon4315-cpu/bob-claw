@@ -50,8 +50,8 @@ function estimateForBudget(values = {}, budgetUsd) {
 
 export function buildDestinationEstimatedEconomics({ workbench = null, blockers = null } = {}) {
   const generatedAt = workbench?.generatedAt || new Date().toISOString();
-  const activeBudgetUsd = 300;
-  const planningBudgetUsd = 1000;
+  const activeBudgetUsd = null;
+  const planningBudgetUsd = null;
   const blockerByTemplate = latestBlockersByTemplate(blockers?.entries || []);
 
   const items = (workbench?.workItems || []).map((item) => {
@@ -76,8 +76,10 @@ export function buildDestinationEstimatedEconomics({ workbench = null, blockers 
     const blocker = blockerByTemplate.get(item.templateId) || null;
     const missingEconomicFields = needed.filter((field) => !hasValue(item.values?.[field]));
     const minPositionUsd = numeric(item.values?.minPositionUsd);
-    const activeBudgetReachable = minPositionUsd == null || minPositionUsd <= activeBudgetUsd;
-    const planningBudgetReachable = minPositionUsd == null || minPositionUsd <= planningBudgetUsd;
+    const activeBudgetReachable =
+      Number.isFinite(activeBudgetUsd) ? minPositionUsd == null || minPositionUsd <= activeBudgetUsd : null;
+    const planningBudgetReachable =
+      Number.isFinite(planningBudgetUsd) ? minPositionUsd == null || minPositionUsd <= planningBudgetUsd : null;
 
     if (blocker) {
       return {
@@ -129,8 +131,8 @@ export function buildDestinationEstimatedEconomics({ workbench = null, blockers 
       missingEconomicFields: [],
       activeBudgetReachable,
       planningBudgetReachable,
-      activeBudgetEstimate: activeBudgetReachable ? estimateForBudget(item.values, activeBudgetUsd) : null,
-      planningBudgetEstimate: planningBudgetReachable ? estimateForBudget(item.values, planningBudgetUsd) : null,
+        activeBudgetEstimate: activeBudgetReachable ? estimateForBudget(item.values, activeBudgetUsd) : null,
+        planningBudgetEstimate: planningBudgetReachable ? estimateForBudget(item.values, planningBudgetUsd) : null,
     };
   });
 

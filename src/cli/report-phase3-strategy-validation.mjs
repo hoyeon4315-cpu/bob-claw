@@ -24,11 +24,28 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [laneReclassification, wrappedBtcLendingLoopSlice, wrappedBtcLoopDryRun, wrappedBtcLoopOosEvidence, secondaryStrategyScaffolds, protocolTrustTiers] = await Promise.all([
+  const [
+    laneReclassification,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    wrappedBtcLoopOosEvidence,
+    wrappedBtcLoopLiveProof,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
+    secondaryStrategyScaffolds,
+    protocolTrustTiers,
+  ] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "lane-reclassification.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-loop-oos-evidence.json")),
+    readJsonIfExists(join(config.dataDir, "wrapped-btc-loop-live-success-latest.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-dry-run-latest.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-dry-run-latest.json")),
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "protocol-trust-tiers.json")),
   ]);
@@ -38,6 +55,11 @@ async function main() {
     wrappedBtcLendingLoopSlice,
     wrappedBtcLoopDryRun,
     wrappedBtcLoopOosEvidence,
+    wrappedBtcLoopLiveProof,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
     secondaryStrategyScaffolds,
     protocolTrustTiers,
     resolveTrustTierDecision,

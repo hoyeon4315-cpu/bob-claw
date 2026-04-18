@@ -1,5 +1,6 @@
 import { isBtcLikeAsset, isEthLikeAsset, unitsToDecimal } from "../assets/tokens.mjs";
-import { filterTrustedExecutableDexQuotes, ODOS_CHAIN_IDS } from "../dex/odos.mjs";
+import { defaultDexQuoteProvider, filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
+import { hasEthereumL1PhaseBlock } from "../risk/ethereum-l1-policy.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -30,7 +31,7 @@ function loopBlockers({ score, exactAmountMatch, measuredLoopNetUsd, hasEntryQuo
   if (!Number.isFinite(score?.executableOutputUsd)) blockers.push("missing_destination_exit_quote");
   if (Number.isFinite(score?.routeStats?.failureRate) && score.routeStats.failureRate > 0.1) blockers.push("high_failure_rate");
   for (const gap of score?.dataGaps || []) blockers.push(`gateway_${gap}`);
-  if (score?.tradeReadiness && String(score.tradeReadiness).startsWith("observe_only_")) {
+  if (hasEthereumL1PhaseBlock(score) || (score?.tradeReadiness && String(score.tradeReadiness).startsWith("observe_only_"))) {
     blockers.push(`gateway_${score.tradeReadiness}`);
   }
   if (!(measuredLoopNetUsd > 0)) blockers.push("non_positive_loop_net_edge");
@@ -126,7 +127,7 @@ export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = 
 
 export function buildDexGatewayArbitrageSummary({ scoreSnapshot = null, dexQuotes = [] } = {}, options = {}) {
   const { amountTolerancePct, scores, entryQuotes, loops } = buildDexGatewayLoops({ scoreSnapshot, dexQuotes }, options);
-  const bothDexSupportedRoutes = scores.filter((score) => ODOS_CHAIN_IDS[score.srcChain] && ODOS_CHAIN_IDS[score.dstChain]);
+  const bothDexSupportedRoutes = scores.filter((score) => defaultDexQuoteProvider(score.srcChain) && defaultDexQuoteProvider(score.dstChain));
 
   return {
     schemaVersion: 1,

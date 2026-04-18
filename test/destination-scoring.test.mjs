@@ -111,7 +111,7 @@ test("destination scoring does not promote blocked arbitrage as deployment candi
   assert.equal(report.chains[0].topDeploymentCandidate.familyId, "wrapped_btc_destination_yield");
 });
 
-test("destination scoring keeps ethereum observe-only strategies out of deployment candidates", () => {
+test("destination scoring allows ethereum strategies to remain deployment candidates when phase policy is positive-EV gated", () => {
   const nativeBtcSurface = {
     liveSurface: {
       liveRoutes: [
@@ -137,8 +137,8 @@ test("destination scoring keeps ethereum observe-only strategies out of deployme
             allowlistStatus: "pending_review",
             automationReadiness: "research_only",
             evidenceStatus: "docs_supported_live_arrival_asset",
-            phasePolicy: "observe_only_until_reapproved",
-            blockers: ["ethereum l1 disabled in usd 300 phase"],
+            phasePolicy: "allowed_when_positive_ev",
+            blockers: ["venue scoring missing"],
           },
         ],
       },
@@ -167,8 +167,8 @@ test("destination scoring keeps ethereum observe-only strategies out of deployme
   const report = buildDestinationScoringInputs({ registry, nativeBtcSurface });
   const ethStrategy = report.chains.find((chain) => chain.chain === "ethereum").strategies[0];
 
-  assert.equal(ethStrategy.scoring.track, "observe_only_research");
-  assert.equal(ethStrategy.scoring.deploymentPriorityScore, 0);
-  assert.equal(report.summary.topObserveOnlyResearch[0].chain, "ethereum");
-  assert.equal(report.summary.topDeploymentCandidates[0].chain, "base");
+  assert.equal(ethStrategy.scoring.track, "deployment_candidate");
+  assert.notEqual(ethStrategy.scoring.deploymentPriorityScore, 0);
+  assert.equal(report.summary.observeOnlyResearchCount, 0);
+  assert.equal(report.summary.topDeploymentCandidates.some((candidate) => candidate.chain === "ethereum"), true);
 });

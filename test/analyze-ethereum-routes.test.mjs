@@ -139,7 +139,7 @@ test("analyze-ethereum-routes reports capability, policy block, and writes JSON 
           dstChain: "ethereum",
           dstToken: ZERO,
           amount: "10000",
-          tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+          tradeReadiness: "ethereum_l1_policy_override_disabled",
           netEdgeUsd: -2.4,
           executableNetEdgeUsd: null,
           knownCostUsd: 0.5,
@@ -168,7 +168,7 @@ test("analyze-ethereum-routes reports capability, policy block, and writes JSON 
           srcAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
           dstAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
           inputAmount: 0.002,
-          tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+          tradeReadiness: "ethereum_l1_policy_override_disabled",
           netEdgeUsd: -0.7,
           executableOutputUsd: 7.83,
           executableNetEdgeUsd: -0.4,
@@ -205,6 +205,6 @@ test("analyze-ethereum-routes reports capability, policy block, and writes JSON 
   assert.equal(analysis.ethFamily.viability.measuredLoopCount, 0);
   assert.equal(analysis.ethFamily.verdict.code, "no_measured_loops");
   assert.equal(analysis.scores.policyBlockedCount, 2);
-  assert.equal(analysis.recommendation.code, "observe_only_until_fee_review");
-  assert.equal(written.scores.tradeReadiness.observe_only_ethereum_l1_phase_disabled, 2);
+  assert.equal(analysis.recommendation.code, "eth_l1_policy_override_disabled");
+  assert.equal(written.scores.tradeReadiness.ethereum_l1_policy_override_disabled, 2);
 });

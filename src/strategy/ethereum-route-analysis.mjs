@@ -248,9 +248,9 @@ function recommendation({
 
   if (scores.policyBlockedCount > 0) {
     return {
-      code: "observe_only_until_fee_review",
-      label: "Keep Ethereum L1 observe-only",
-      detail: "ETH capability exists, but Ethereum L1 routes remain blocked in the USD 300 phase until fee analysis and explicit re-approval clear them.",
+      code: "eth_l1_policy_override_disabled",
+      label: "ETH L1 policy override is still disabled",
+      detail: "ETH capability exists, but an explicit policy override is still disabling Ethereum L1 routes in the current scoring pass.",
     };
   }
 

@@ -24,3 +24,23 @@ test("protocol trust tiers record known dependencies and expose decisions", () =
   assert.equal(decision.recorded, true);
   assert.equal(decision.entries.length, 2);
 });
+
+test("protocol trust tiers include recursive lending loop protocols with per-strategy appliesTo", () => {
+  const report = buildProtocolTrustTiers({
+    recursiveWrappedBtcLoop: {
+      strategy: { id: "recursive_wrapped_btc_lending_loop", protocol: "moonwell" },
+    },
+    recursiveStablecoinLoop: {
+      strategy: { id: "recursive_stablecoin_lending_loop", protocol: "morpho" },
+    },
+    secondaryStrategyScaffolds: { scaffolds: [] },
+    now: "2026-04-17T19:50:00.000Z",
+  });
+
+  const moonwell = report.items.find((entry) => entry.id === "moonwell");
+  const morpho = report.items.find((entry) => entry.id === "morpho");
+  assert.ok(moonwell);
+  assert.ok(morpho);
+  assert.equal(moonwell.appliesTo.includes("recursive_wrapped_btc_lending_loop"), true);
+  assert.equal(morpho.appliesTo.includes("recursive_stablecoin_lending_loop"), true);
+});

@@ -114,6 +114,7 @@ test("strategy catalog maps BTC families and ETH branches into operator statuses
   });
 
   assert.equal(catalog.policy.liveTrading, "BLOCKED");
+  assert.equal(catalog.policy.ethereumL1, "allowed_when_positive_ev");
   assert.equal(catalog.btcFamilies.find((entry) => entry.id === "gateway_wrapped_btc_loops").status, "measured_below_policy");
   assert.equal(catalog.btcFamilies.find((entry) => entry.id === "btc_proxy_spreads").status, "candidate_for_validation");
   assert.equal(catalog.ethBranches.find((entry) => entry.id === "eth_family_gateway").status, "unobserved");
@@ -168,4 +169,75 @@ test("strategy catalog prioritizes latest flash-negative runtime evidence over s
   assert.equal(triangle.evidence.verdict, "latest_flash_negative");
   assert.equal(triangle.evidence.bestRoute, "USDC→cbBTC→tBTC→USDC");
   assert.equal(triangle.evidence.bestNetPct, -0.0707);
+});
+
+test("strategy catalog overlays objective lane reclassification onto operator statuses", () => {
+  const catalog = buildStrategyCatalog({
+    dashboardStatus: {
+      generatedAt: "2026-04-17T15:40:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+      },
+      strategy: {
+        edgeViability: {
+          verdict: { code: "policy_ready" },
+          measuredNetLoopCount: 4,
+          profitableExactCount: 2,
+          bestMeasuredLoop: { routeKey: "base:0x1->bob:0x1" },
+        },
+        btcProxySpreads: {
+          opportunityCount: 3,
+          policyReadyCount: 1,
+          bestRebalanceOpportunity: { proxyTicker: "LBTC" },
+        },
+      },
+    },
+    laneReclassification: {
+      lanes: [
+        {
+          id: "gateway_wrapped_btc_loops",
+          statusOld: "candidate_for_validation",
+          statusNew: "needs_variance_measurement",
+          clearsNewFloor: null,
+          passesOverfitGate: null,
+          evidenceRouteKey: "base:0x1->bob:0x1",
+          evidenceAmount: "10000",
+          netPnlMeasuredUsd: 1.4,
+          gasSlippageVarianceUsd: null,
+          remainingBlockers: ["variance_artifact_missing_for_lane"],
+          statusReasonCode: "variance_missing",
+        },
+        {
+          id: "btc_proxy_spreads",
+          statusOld: "candidate_for_validation",
+          statusNew: "measured_overfit_blocked",
+          clearsNewFloor: true,
+          passesOverfitGate: false,
+          evidenceRouteKey: "base:lbtc->base:wbtc",
+          evidenceAmount: "25000",
+          netPnlMeasuredUsd: 0.91,
+          gasSlippageVarianceUsd: 0.15,
+          remainingBlockers: ["overfit_risks_present"],
+          statusReasonCode: "overfit_gate_blocked",
+        },
+      ],
+    },
+  });
+
+  const gatewayLoops = catalog.btcFamilies.find((entry) => entry.id === "gateway_wrapped_btc_loops");
+  const proxySpreads = catalog.btcFamilies.find((entry) => entry.id === "btc_proxy_spreads");
+
+  assert.equal(gatewayLoops.status, "thin_coverage");
+  assert.equal(gatewayLoops.reason, "variance_missing");
+  assert.equal(gatewayLoops.revalidation?.statusNew, "needs_variance_measurement");
+  assert.equal(gatewayLoops.revalidation?.nextAction?.code, "measure_variance_floor");
+
+  assert.equal(proxySpreads.status, "measured_below_policy");
+  assert.equal(proxySpreads.reason, "overfit_gate_blocked");
+  assert.equal(proxySpreads.revalidation?.statusNew, "measured_overfit_blocked");
+  assert.equal(proxySpreads.revalidation?.nextAction?.code, "rerun_overfit_revalidation");
+
+  assert.equal(catalog.summary.revalidationStatusCounts.needs_variance_measurement, 1);
+  assert.equal(catalog.summary.revalidationStatusCounts.measured_overfit_blocked, 1);
+  assert.equal(catalog.summary.topRevalidationCandidateId, "gateway_wrapped_btc_loops");
 });

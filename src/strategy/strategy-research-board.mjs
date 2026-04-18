@@ -90,14 +90,56 @@ function buildProxySpreadResearchEntry(lane = null) {
   };
 }
 
-function buildLendingLoopEntry(entry = null) {
+function recursiveLoopSurfaceById(recursiveLoopSurfaces = {}) {
+  return new Map(
+    Object.entries(recursiveLoopSurfaces || {})
+      .filter(([, value]) => value)
+      .map(([id, value]) => [id, value]),
+  );
+}
+
+function lendingLoopStatus({ scaffold = null, dryRunSummary = null } = {}) {
+  if ((dryRunSummary?.signerBackedRunCount ?? 0) > 0) return "candidate_for_validation";
+  if (dryRunSummary?.dryRunReceiptRecorded === true) return "dry_run_evidence_recorded";
+  if (scaffold?.readiness?.readyForDryRun === true) return "candidate_for_design";
+  return "candidate_for_design";
+}
+
+function lendingLoopNextAction(entry = null, scaffold = null, dryRunSummary = null) {
+  if ((dryRunSummary?.signerBackedRunCount ?? 0) > 0) {
+    return {
+      code: "review_recursive_loop_observed_receipts",
+      command: entry.reportCommand || null,
+    };
+  }
+  if (dryRunSummary?.dryRunReceiptRecorded === true) {
+    return {
+      code: "collect_recursive_loop_observed_receipts",
+      command: `npm run ingest:recursive-lending-loop-receipt -- --write --strategy=${entry.id}`,
+    };
+  }
+  if (scaffold?.readiness?.readyForDryRun === true) {
+    return {
+      code: "record_recursive_loop_dry_run_receipt",
+      command: `npm run run:recursive-lending-loop-dry-run -- --strategy=${entry.id} --write`,
+    };
+  }
+  return {
+    code: entry.executionSurface ? "review_lending_loop_scaffold" : "build_lending_loop_vertical_slice",
+    command: entry.reportCommand || null,
+  };
+}
+
+function buildLendingLoopEntry(entry = null, loopSurface = null) {
   if (!entry) return null;
+  const scaffold = loopSurface?.scaffold || null;
+  const dryRunSummary = loopSurface?.dryRunSummary || null;
   return {
     rank: entry.id === "recursive_wrapped_btc_lending_loop" ? 2 : 4,
     id: entry.id,
     label: entry.label || null,
     category: entry.category || null,
-    status: entry.status || "candidate_for_design",
+    status: lendingLoopStatus({ scaffold, dryRunSummary }) || entry.status || "candidate_for_design",
     whyNow:
       entry.arrivalFamily === "wrapped_btc"
         ? "Per-strategy sizing and the relaxed leverage policy make a wrapped-BTC loop a first-class candidate once runtime caps, watcher thresholds, and unwind automation exist."
@@ -112,8 +154,9 @@ function buildLendingLoopEntry(entry = null) {
       "unwind cost exceeds carry",
     ]),
     missingEvidence: unique([
-      "protocol adapter benchmark",
-      "dry-run unwind receipt",
+      scaffold?.protocolAdapter?.id ? null : "protocol adapter benchmark",
+      dryRunSummary?.dryRunReceiptRecorded === true ? null : "dry-run unwind receipt",
+      (dryRunSummary?.signerBackedRunCount ?? 0) > 0 ? null : "signer-backed observed receipt",
       "measured post-fee loop economics",
     ]),
     promotionPrerequisites: [
@@ -121,15 +164,21 @@ function buildLendingLoopEntry(entry = null) {
       "health_factor_watcher_live",
       "dry_run_emergency_unwind_passed",
     ],
-    evidence: {
-      source: "lending_loop_research",
-      actionType: entry.actionType || null,
-      arrivalFamily: entry.arrivalFamily || null,
-    },
-    nextAction: {
-      code: "build_lending_loop_vertical_slice",
-      command: null,
-    },
+      evidence: {
+        source: "lending_loop_research",
+        actionType: entry.actionType || null,
+        arrivalFamily: entry.arrivalFamily || null,
+        executionSurface: entry.executionSurface || null,
+        builtComponents: entry.builtComponents || [],
+        protocolAdapterId: scaffold?.protocolAdapter?.id || null,
+        executionSupportStatus: scaffold?.executionSupport?.status || null,
+        readyForDryRun: scaffold?.readiness?.readyForDryRun === true,
+        dryRunReceiptRecorded: dryRunSummary?.dryRunReceiptRecorded === true,
+        dryRunPassedCount: dryRunSummary?.passedCount ?? 0,
+        signerBackedRunCount: dryRunSummary?.signerBackedRunCount ?? 0,
+        latestDryRunObservedAt: dryRunSummary?.latestObservedAt || null,
+      },
+    nextAction: lendingLoopNextAction(entry, scaffold, dryRunSummary),
   };
 }
 
@@ -214,20 +263,30 @@ function priority(entry = null) {
     candidate_for_validation: 0,
     research_priority: 1,
     overfit_blocked_revalidation: 2,
-    candidate_for_design: 3,
-    research_backlog: 4,
-    deferred: 5,
-  }[entry?.status] ?? 6;
+    dry_run_evidence_recorded: 3,
+    candidate_for_design: 4,
+    research_backlog: 5,
+    deferred: 6,
+  }[entry?.status] ?? 7;
   return [rank, statusBias, String(entry?.id || "")];
+}
+
+function isFreshStrategyCandidate(entry = null) {
+  return ![
+    "stablecoin_entry_exit_loop_revalidation",
+    "gateway_proxy_spread_rebalance_recheck",
+  ].includes(entry?.id);
 }
 
 export function buildStrategyResearchBoard({
   laneReclassification = null,
   nativeBtcOpportunitySurface = null,
   lendingLoopResearchEntries = [],
+  recursiveLoopSurfaces = null,
   now = null,
 } = {}) {
   const lanes = laneById(laneReclassification);
+  const loopSurfaces = recursiveLoopSurfaceById(recursiveLoopSurfaces);
   const surfaceFamilies =
     nativeBtcOpportunitySurface?.rankedOpportunityFamilies ||
     nativeBtcOpportunitySurface?.families ||
@@ -235,7 +294,7 @@ export function buildStrategyResearchBoard({
   const candidates = [
     buildStableLoopResearchEntry(lanes.get("stablecoin_entry_exit_loops") || null),
     buildProxySpreadResearchEntry(lanes.get("btc_proxy_spreads") || null),
-    ...lendingLoopResearchEntries.map((entry) => buildLendingLoopEntry(entry)),
+    ...lendingLoopResearchEntries.map((entry) => buildLendingLoopEntry(entry, loopSurfaces.get(entry.id) || null)),
     ...(surfaceFamilies.map((family) => buildSurfaceResearchEntry(family))),
   ]
     .filter(Boolean)
@@ -248,14 +307,19 @@ export function buildStrategyResearchBoard({
     });
 
   const topCandidate = candidates[0] || null;
+  const freshCandidates = candidates.filter((candidate) => isFreshStrategyCandidate(candidate));
+  const topNewCandidate = freshCandidates[0] || null;
   return {
     schemaVersion: 1,
     generatedAt: now || new Date().toISOString(),
     summary: {
       candidateCount: candidates.length,
+      newCandidateCount: freshCandidates.length,
       statusCounts: countBy(candidates, (item) => item.status || "unknown"),
       topCandidateId: topCandidate?.id || null,
       nextAction: topCandidate?.nextAction || null,
+      topNewCandidateId: topNewCandidate?.id || null,
+      nextNewAction: topNewCandidate?.nextAction || null,
     },
     candidates,
   };
@@ -269,6 +333,7 @@ export function summarizeStrategyResearchBoard(board = null) {
     null;
   return {
     candidateCount: board.summary?.candidateCount ?? 0,
+    newCandidateCount: board.summary?.newCandidateCount ?? 0,
     statusCounts: board.summary?.statusCounts || {},
     topCandidate: topCandidate
       ? {
@@ -277,6 +342,14 @@ export function summarizeStrategyResearchBoard(board = null) {
           status: topCandidate.status || null,
         }
       : null,
+    topNewCandidate: board.candidates?.find((candidate) => candidate.id === board.summary?.topNewCandidateId)
+      ? {
+          id: board.candidates.find((candidate) => candidate.id === board.summary?.topNewCandidateId)?.id || null,
+          label: board.candidates.find((candidate) => candidate.id === board.summary?.topNewCandidateId)?.label || null,
+          status: board.candidates.find((candidate) => candidate.id === board.summary?.topNewCandidateId)?.status || null,
+        }
+      : null,
     nextAction: board.summary?.nextAction || null,
+    nextNewAction: board.summary?.nextNewAction || null,
   };
 }

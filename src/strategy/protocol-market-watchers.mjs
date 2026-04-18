@@ -55,6 +55,38 @@ function validationById(report = null, id = null) {
   return (report?.validations || []).find((item) => item.id === id) || null;
 }
 
+function recursiveLoopWatcher({ scaffold = null, phase3Validation = null, dashboardStatus = null } = {}) {
+  if (!scaffold?.strategy?.id) return null;
+  const validation = validationById(phase3Validation, `${scaffold.strategy.id}_validation`);
+  const dryRunSummary = scaffold?.dryRunSummary || null;
+  const staleGas = (dashboardStatus?.overall?.blockers || []).includes("stale_gas_snapshots");
+  const blockers = [...(validation?.blockers || []), staleGas ? "stale_gas_snapshots" : null].filter(Boolean);
+  return watcher({
+    id: `${scaffold.strategy.id}_market_watch`,
+    label: `${scaffold.strategy.label || "Recursive lending loop"} market watch`,
+    category: "leverage",
+    status: blockers.length === 0 ? "passed" : "blocked",
+    targets: [scaffold.strategy.id],
+    blockers,
+    evidence: {
+      strategyId: scaffold.strategy.id || null,
+      protocol: scaffold.strategy.protocol || null,
+      arrivalFamily: scaffold.strategy.arrivalFamily || null,
+      oracleModel: scaffold.protocolAdapter?.oracleModel || null,
+      referenceOracles: scaffold.protocolAdapter?.referenceOracles || [],
+      oracleStatus: scaffold.oracleSanity?.status || null,
+      oracleDriftPct: scaffold.oracleSanity?.protocolDriftPct ?? null,
+      autoUnwindPassCount: dryRunSummary?.autoUnwindPassCount ?? 0,
+      dryRunReceiptRecorded: dryRunSummary?.dryRunReceiptRecorded === true,
+      signerBackedRunCount: dryRunSummary?.signerBackedRunCount ?? 0,
+    },
+    nextAction:
+      staleGas
+        ? { code: "refresh_gas_snapshot", command: "npm run gas:snapshot" }
+        : validation?.nextAction || null,
+  });
+}
+
 function wrappedLoopWatcher({ wrappedBtcLendingLoopSlice = null, phase3Validation = null, dashboardStatus = null } = {}) {
   const validation = validationById(phase3Validation, "wrapped_btc_loop_validation");
   const dryRunSummary = wrappedBtcLendingLoopSlice?.dryRunSummary || null;
@@ -190,6 +222,8 @@ export function buildProtocolMarketWatchers({
   quoteLagLatest = null,
   dexSpreadLatest = null,
   wrappedBtcLendingLoopSlice = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveStablecoinLoop = null,
   phase3Validation = null,
   protocolTrustTiers = null,
   secondaryStrategyScaffolds = null,
@@ -197,12 +231,14 @@ export function buildProtocolMarketWatchers({
 } = {}) {
   const generatedAt = now || new Date().toISOString();
   const watchers = [
+    recursiveLoopWatcher({ scaffold: recursiveWrappedBtcLoop, phase3Validation, dashboardStatus }),
+    recursiveLoopWatcher({ scaffold: recursiveStablecoinLoop, phase3Validation, dashboardStatus }),
     wrappedLoopWatcher({ wrappedBtcLendingLoopSlice, phase3Validation, dashboardStatus }),
     stableLoopWatcher({ secondaryStrategyScaffolds, phase3Validation }),
     proxySpreadWatcher({ dexSpreadLatest, phase3Validation, now: generatedAt }),
     gatewayLagWatcher({ quoteLagLatest, now: generatedAt }),
     trustTierWatcher({ phase3Validation, protocolTrustTiers }),
-  ];
+  ].filter(Boolean);
   const topBlocked = watchers.find((item) => item.status === "blocked") || null;
   const blockerCounts = watchers
     .flatMap((item) => item.blockers || [])

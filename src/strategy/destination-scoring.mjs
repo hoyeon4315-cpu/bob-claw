@@ -42,6 +42,7 @@ function phaseWeight(status) {
   return {
     research_only_until_scored: 0.7,
     blocked_until_new_evidence: 0.05,
+    allowed_when_positive_ev: 0.65,
     observe_only_until_reapproved: 0.1,
     manual_review_only: 0.2,
     non_trading_track: 0.3,
@@ -66,7 +67,6 @@ function blockerPenalty(blockers = []) {
 
 function strategyTrack(strategy = {}) {
   if (strategy.phasePolicy === "non_trading_track" || strategy.category === "monetization") return "monetization_track";
-  if (strategy.phasePolicy === "observe_only_until_reapproved") return "observe_only_research";
   if (
     strategy.phasePolicy === "blocked_until_new_evidence" ||
     strategy.automationReadiness === "blocked_by_overfit" ||

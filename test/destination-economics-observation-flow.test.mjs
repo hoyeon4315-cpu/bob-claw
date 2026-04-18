@@ -192,7 +192,7 @@ test("observation-first destination economics flow updates reports from fresh ov
   );
   const estimated = JSON.parse(estimatedOutput.stdout);
   assert.equal(estimated.summary.estimatedCount, 1);
-  assert.equal(estimated.summary.activeBudgetPolicyPassCount, 1);
+  assert.equal(estimated.summary.activeBudgetPolicyPassCount, 0);
   assert.equal(estimated.items[0].economicsStatus, "estimated");
 
   const queueOutput = await execFileAsync(
@@ -226,8 +226,8 @@ test("observation-first destination economics flow updates reports from fresh ov
     },
   );
   const gate = JSON.parse(gateOutput.stdout);
-  assert.equal(gate.summary.promotableCount, 1);
-  assert.equal(gate.summary.blockedCount, 0);
+  assert.equal(gate.summary.promotableCount, 0);
+  assert.equal(gate.summary.blockedCount, 1);
 
   const evidencePolicyOutput = await execFileAsync(
     "node",

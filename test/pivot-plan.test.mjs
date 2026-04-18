@@ -81,7 +81,7 @@ function baseDashboardStatus() {
           rebalanceAdjustedSpreadUsd: 1.7563278971077454,
           rebalanceAdjustedSpreadPct: 0.01224683477867792,
           blockers: [
-            "rebalance_observe_only_ethereum_l1_phase_disabled",
+            "rebalance_ethereum_l1_policy_override_disabled",
             "rebalance_exact_src_execution_gas_not_estimated",
           ],
         },
@@ -104,7 +104,7 @@ function baseDashboardStatus() {
   };
 }
 
-test("strategy pivot plan explains the USD 300 budget and builds a deterministic yield blueprint", () => {
+test("strategy pivot plan removes the repo-wide live budget and builds a deterministic yield blueprint", () => {
   const plan = buildStrategyPivotPlan({
     dashboardStatus: baseDashboardStatus(),
     state: {
@@ -138,16 +138,10 @@ test("strategy pivot plan explains the USD 300 budget and builds a deterministic
   });
 
   assert.equal(plan.currentSystem.liveTrading, "BLOCKED");
-  assert.equal(plan.currentSystem.riskBudgetUsd, 300);
-  assert.equal(plan.budgetAssessment.currentBudgetUsd, 300);
+  assert.equal(plan.currentSystem.riskBudgetUsd, null);
+  assert.equal(plan.budgetAssessment.currentBudgetUsd, null);
   assert.match(plan.budgetAssessment.explanation[0], /per-strategy/i);
-  assert.deepEqual(
-    plan.budgetAssessment.budgetScenarios.map((scenario) => [scenario.budgetUsd, scenario.planningOnly]),
-    [
-      [300, false],
-      [1000, true],
-    ],
-  );
+  assert.deepEqual(plan.budgetAssessment.budgetScenarios, []);
 
   const yieldPivot = plan.pivots.find((pivot) => pivot.id === "gateway_base_btc_yield");
   assert.ok(yieldPivot);
@@ -156,10 +150,9 @@ test("strategy pivot plan explains the USD 300 budget and builds a deterministic
   assert.equal(yieldPivot.capitalGuidance.researchPilotMinimumUsd, 105);
   assert.equal(yieldPivot.capitalGuidance.diversifiedSingleSleeveMinimumUsd, 205);
   assert.equal(yieldPivot.capitalGuidance.defaultDualSleeveMinimumUsd, 338.33);
-  assert.equal(yieldPivot.capitalGuidance.budgetFit.researchPilotFits, true);
-  assert.equal(yieldPivot.capitalGuidance.budgetFit.defaultDualSleeveFits, false);
-  assert.equal(yieldPivot.budgetScenarios.find((scenario) => scenario.budgetUsd === 300).defaultDualSleeve.fitsBudget, false);
-  assert.equal(yieldPivot.budgetScenarios.find((scenario) => scenario.budgetUsd === 1000).defaultDualSleeve.fitsBudget, true);
+  assert.equal(yieldPivot.capitalGuidance.budgetFit.researchPilotFits, null);
+  assert.equal(yieldPivot.capitalGuidance.budgetFit.defaultDualSleeveFits, null);
+  assert.equal(yieldPivot.budgetScenarios.length, 0);
 
   const proxyPivot = plan.pivots.find((pivot) => pivot.id === "btc_proxy_spreads");
   assert.ok(proxyPivot);
@@ -177,8 +170,8 @@ test("strategy pivot plan explains the USD 300 budget and builds a deterministic
   const summary = summarizeStrategyPivotPlan(plan);
   assert.equal(summary.topRecommendation.id, "gateway_base_btc_yield");
   assert.equal(summary.topRecommendation.researchPilotMinimumUsd, 105);
-  assert.equal(summary.budgetScenarios.length, 2);
-  assert.equal(summary.topRecommendation.budgetScenarios.find((scenario) => scenario.budgetUsd === 1000).defaultDualSleeve.fitsBudget, true);
+  assert.equal(summary.budgetScenarios.length, 0);
+  assert.equal(summary.topRecommendation.budgetScenarios.length, 0);
 });
 
 test("strategy pivot plan refuses to invent a triangle capital floor from flash-negative percent-only data", () => {

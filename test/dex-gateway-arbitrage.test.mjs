@@ -117,7 +117,7 @@ test("eth-gateway arbitrage identifies measurable ETH-family loops separately fr
           inputAmount: 0.002,
           executableOutputUsd: 8.2,
           knownCostUsd: 0.2,
-          tradeReadiness: "observe_only_ethereum_l1_phase_disabled",
+          tradeReadiness: "ethereum_l1_policy_override_disabled",
           dataGaps: [],
           routeStats: { failureRate: 0.01 },
         },
@@ -140,5 +140,5 @@ test("eth-gateway arbitrage identifies measurable ETH-family loops separately fr
   assert.equal(summary.routeCount, 1);
   assert.equal(summary.entryQuoteCount, 1);
   assert.equal(summary.closestLoop.routeKey, "base:0x0->ethereum:0x0");
-  assert.equal(summary.closestLoop.blockers.includes("gateway_observe_only_ethereum_l1_phase_disabled"), true);
+  assert.equal(summary.closestLoop.blockers.includes("gateway_ethereum_l1_policy_override_disabled"), true);
 });

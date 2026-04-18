@@ -101,7 +101,7 @@ export const BITCOIN_CHAIN_CONFIGS = Object.freeze({
     decimals: 8,
     dustThresholdSats: 546,
     replaceByFeeSequence: 0xfffffffd,
-    addressType: "p2wpkh",
+    addressType: "p2tr",
   }),
 });
 

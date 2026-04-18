@@ -177,6 +177,138 @@ test("score gateway selectively refreshes one route and preserves unrelated scor
   assert.equal(untouched.observedAt, iso(-240_000));
 });
 
+test("score gateway prefers a fresh gas snapshot over stale exact gas", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-score-gateway-fallback-gas-"));
+  const dataDir = join(cwd, "data");
+  const now = Date.now();
+  const iso = (offsetMs) => new Date(now + offsetMs).toISOString();
+  const route = { srcChain: "base", dstChain: "bob", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
+  const routeKey = `${route.srcChain}:${route.srcToken}->${route.dstChain}:${route.dstToken}`;
+
+  await writeJsonl(dataDir, "gateway-quotes", [
+    quote({
+      observedAt: iso(-60_000),
+      route,
+      outputAmount: "12000",
+    }),
+  ]);
+  await writeJsonl(dataDir, "gateway-quote-failures", []);
+  await writeJsonl(dataDir, "dex-quotes", []);
+  await writeJsonl(dataDir, "bitcoin-fee-snapshots", [
+    {
+      observedAt: iso(-120_000),
+      btcUsd: 50000,
+    },
+  ]);
+  await writeJsonl(dataDir, "gateway-gas-estimates", [
+    {
+      observedAt: iso(-(45 * 60_000)),
+      routeKey,
+      amount: "10000",
+      estimatedGasUsd: 0.5,
+    },
+  ]);
+  await writeJsonl(dataDir, "gas-snapshots", [
+    {
+      observedAt: iso(-120_000),
+      chain: "bob",
+      nativeUsd: 3000,
+      gasPriceWei: "1000000000",
+      fallbackGasUnits: 21000,
+    },
+    {
+      observedAt: iso(-120_000),
+      chain: "base",
+      nativeUsd: 3000,
+      gasPriceWei: "1000000000",
+      fallbackGasUnits: 21000,
+    },
+    {
+      observedAt: iso(-120_000),
+      chain: "ethereum",
+      nativeUsd: 3000,
+      gasPriceWei: "1000000000",
+      fallbackGasUnits: 21000,
+    },
+    {
+      observedAt: iso(-120_000),
+      chain: "bitcoin",
+      nativeUsd: 50000,
+      gasPriceWei: "1",
+      fallbackGasUnits: 1,
+    },
+    {
+      observedAt: iso(-120_000),
+      chain: "avalanche",
+      nativeUsd: 30,
+      gasPriceWei: "1000000000",
+      fallbackGasUnits: 21000,
+    },
+    {
+      observedAt: iso(-2 * 60_000),
+      chain: "base",
+      nativeUsd: 3000,
+      gasPriceWei: "1000000000",
+      fallbackGasUnits: 21000,
+    },
+  ]);
+  await writeFile(
+    join(dataDir, "gateway-scores.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: iso(-150_000),
+      priceObservedAt: iso(-150_000),
+      btcUsd: 50000,
+      scoredQuotes: 1,
+      summary: {
+        shadowCandidates: 0,
+        dexBacked: 0,
+        insufficientData: 0,
+        highFailureRate: 0,
+        staleGas: 0,
+        missingDecimals: 0,
+      },
+      scores: [
+        {
+          routeKey,
+          amount: "10000",
+          netEdgeUsd: -0.5,
+          tradeReadiness: "reject_no_net_edge",
+          dataGaps: [],
+          routeStats: { failureRate: 0 },
+          dex: null,
+          observedAt: iso(-180_000),
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, "src/cli/score-gateway.mjs"), "--write", `--route-key=${routeKey}`, "--amount=10000"],
+    {
+      cwd,
+      env: {
+        ...process.env,
+        BOB_CLAW_DATA_DIR: dataDir,
+      },
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const snapshot = JSON.parse(await readFile(join(dataDir, "gateway-scores.json"), "utf8"));
+  const refreshed = snapshot.scores.find((item) => item.routeKey === routeKey && item.amount === "10000");
+  assert.equal(refreshed.executionGasSource, "fallback_gas_units");
+  assert.ok(refreshed.executionGasUsd > 0, `${refreshed.executionGasUsd}`);
+  assert.ok(refreshed.executionGasUsd < 0.5, `${refreshed.executionGasUsd}`);
+  assert.equal(refreshed.dataGaps.includes("stale_src_gas_snapshot"), false);
+  assert.equal(refreshed.dataGaps.includes("exact_src_execution_gas_not_estimated"), true);
+  assert.ok(refreshed.gasSnapshotAgeMinutes < 5, `${refreshed.gasSnapshotAgeMinutes}`);
+});
+
 test("score gateway matches trusted destination-leg dex quotes by route and amount", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-score-gateway-dex-amount-"));
   const dataDir = join(cwd, "data");

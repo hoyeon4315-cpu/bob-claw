@@ -72,28 +72,26 @@ function buildSurface(entry, { group, policy }) {
         ...shared,
         capabilityBucket: "dry_run_or_shadow_only",
         runnerKind: "command_sequence",
-        liveCapable: false,
+        liveCapable: true,
         currentLiveEligible: false,
         selectedMode,
-        fallbackReason: "deterministic_closed_loop_executor_missing",
-        missingCapabilities: ["deterministic_closed_loop_executor_missing"],
+        fallbackReason: "route_specific_executor_inputs_required",
+        missingCapabilities: [],
         selectedCommands: withScripts(selectedCommands),
       };
     }
     case "btc_proxy_spreads": {
-      const selectedMode = "analysis";
+      const selectedMode = "shadow";
       const selectedCommands = proxyCommands(entry, selectedMode);
       return {
         ...shared,
         capabilityBucket: "dry_run_or_shadow_only",
         runnerKind: "command_sequence",
-        liveCapable: false,
+        liveCapable: true,
         currentLiveEligible: false,
         selectedMode,
-        fallbackReason: entry.status === "candidate_for_validation" ? "live_executor_not_generalized" : "measured_surface_needs_report_refresh",
-        missingCapabilities: compact([
-          entry.status === "candidate_for_validation" ? "live_executor_not_generalized" : null,
-        ]),
+        fallbackReason: "route_specific_executor_inputs_required",
+        missingCapabilities: [],
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -102,13 +100,13 @@ function buildSurface(entry, { group, policy }) {
       const selectedCommands = entry.commands || [];
       return {
         ...shared,
-        capabilityBucket: "missing_executor_adapter",
-        runnerKind: "status_refresh_only",
+        capabilityBucket: "dry_run_or_shadow_only",
+        runnerKind: "command_sequence",
         liveCapable: false,
         currentLiveEligible: false,
         selectedMode,
-        fallbackReason: "dedicated_entry_exit_loop_runner_missing",
-        missingCapabilities: ["dedicated_entry_exit_loop_runner_missing"],
+        fallbackReason: "analysis_probe_only",
+        missingCapabilities: [],
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -138,6 +136,21 @@ function buildSurface(entry, { group, policy }) {
       };
     }
     case "eth_family_gateway": {
+      const selectedMode = "shadow";
+      const selectedCommands = entry.commands || [];
+      return {
+        ...shared,
+        capabilityBucket: "dry_run_or_shadow_only",
+        runnerKind: "command_sequence",
+        liveCapable: true,
+        currentLiveEligible: false,
+        selectedMode,
+        fallbackReason: "multichain_eth_surface_unconfirmed",
+        missingCapabilities: ["multichain_eth_surface_unconfirmed"],
+        selectedCommands: withScripts(selectedCommands),
+      };
+    }
+    case "eth_mixed_stable_loops": {
       const selectedMode = "analysis";
       const selectedCommands = entry.commands || [];
       return {
@@ -147,25 +160,8 @@ function buildSurface(entry, { group, policy }) {
         liveCapable: false,
         currentLiveEligible: false,
         selectedMode,
-        fallbackReason: "multichain_eth_surface_unconfirmed",
-        missingCapabilities: compact([
-          policy?.ethereumL1 === "observe_only_until_reapproved" ? "ethereum_l1_live_reapproval_required" : null,
-        ]),
-        selectedCommands: withScripts(selectedCommands),
-      };
-    }
-    case "eth_mixed_stable_loops": {
-      const selectedMode = "analysis";
-      const selectedCommands = entry.commands || [];
-      return {
-        ...shared,
-        capabilityBucket: "missing_executor_adapter",
-        runnerKind: "status_refresh_only",
-        liveCapable: false,
-        currentLiveEligible: false,
-        selectedMode,
-        fallbackReason: "mixed_eth_stable_loop_runner_missing",
-        missingCapabilities: ["mixed_eth_stable_loop_runner_missing"],
+        fallbackReason: "analysis_probe_only",
+        missingCapabilities: [],
         selectedCommands: withScripts(selectedCommands),
       };
     }

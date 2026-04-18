@@ -71,7 +71,7 @@ function dashboardStatusFixture() {
           rebalanceAdjustedSpreadUsd: 1.7563278971077454,
           rebalanceAdjustedSpreadPct: 0.01224683477867792,
           blockers: [
-            "rebalance_observe_only_ethereum_l1_phase_disabled",
+            "rebalance_ethereum_l1_policy_override_disabled",
             "rebalance_exact_src_execution_gas_not_estimated",
           ],
         },
@@ -132,10 +132,10 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   });
 
   assert.equal(snapshot.currentSystem.liveTrading, "BLOCKED");
-  assert.equal(snapshot.currentSystem.activeBudgetUsd, 300);
-  assert.equal(snapshot.summary.planningBudgetUsd, 1000);
+  assert.equal(snapshot.currentSystem.activeBudgetUsd, null);
+  assert.equal(snapshot.summary.planningBudgetUsd, null);
   assert.equal(snapshot.planningLayers.yieldShadowBook.topProfile.id, "research_pilot");
-  assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.planningLaneBudgetUsd, 1000);
+  assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.planningLaneBudgetUsd, null);
 
   const proxy = snapshot.implementedStrategies.find((item) => item.id === "btc_proxy_spreads");
   assert.ok(proxy);
@@ -145,7 +145,7 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   const summary = summarizeStrategySnapshot(snapshot);
   assert.equal(summary.topPivot.id, "gateway_base_btc_yield");
   assert.equal(summary.topAction.code, "build_deterministic_yield_shadow_book");
-  assert.equal(summary.activeBudgetUsd, 300);
-  assert.equal(summary.capitalExpansionReview.planningLaneBudgetUsd, 1000);
-  assert.equal(summary.capitalExpansionReview.approvalRequiredForPlanningLane, true);
+  assert.equal(summary.activeBudgetUsd, null);
+  assert.equal(summary.capitalExpansionReview.planningLaneBudgetUsd, null);
+  assert.equal(summary.capitalExpansionReview.approvalRequiredForPlanningLane, false);
 });

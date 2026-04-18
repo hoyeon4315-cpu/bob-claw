@@ -94,7 +94,12 @@ function item({ id, label, tier, appliesTo = [], rationale, status = "recorded" 
   };
 }
 
-function collectTargets({ wrappedBtcLendingLoopSlice = null, secondaryStrategyScaffolds = null } = {}) {
+function collectTargets({
+  wrappedBtcLendingLoopSlice = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveStablecoinLoop = null,
+  secondaryStrategyScaffolds = null,
+} = {}) {
   const targets = new Map();
   const add = (id, appliesTo) => {
     if (!id) return;
@@ -103,6 +108,8 @@ function collectTargets({ wrappedBtcLendingLoopSlice = null, secondaryStrategySc
   };
   const wrappedStrategyId = wrappedBtcLendingLoopSlice?.strategy?.id || "wrapped-btc-loop-base-moonwell";
   add(wrappedBtcLendingLoopSlice?.strategy?.protocol, [wrappedStrategyId]);
+  add(recursiveWrappedBtcLoop?.strategy?.protocol, [recursiveWrappedBtcLoop?.strategy?.id || "recursive_wrapped_btc_lending_loop"]);
+  add(recursiveStablecoinLoop?.strategy?.protocol, [recursiveStablecoinLoop?.strategy?.id || "recursive_stablecoin_lending_loop"]);
   for (const scaffold of secondaryStrategyScaffolds?.scaffolds || []) {
     const protocolTrack = scaffold?.protocolTrack || {};
     for (const id of [...(protocolTrack.protocols || []), ...(protocolTrack.venues || []), ...(protocolTrack.assets || [])]) {
@@ -114,10 +121,17 @@ function collectTargets({ wrappedBtcLendingLoopSlice = null, secondaryStrategySc
 
 export function buildProtocolTrustTiers({
   wrappedBtcLendingLoopSlice = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveStablecoinLoop = null,
   secondaryStrategyScaffolds = null,
   now = null,
 } = {}) {
-  const targets = collectTargets({ wrappedBtcLendingLoopSlice, secondaryStrategyScaffolds });
+  const targets = collectTargets({
+    wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
+    secondaryStrategyScaffolds,
+  });
   const items = targets.map(({ id, appliesTo }) => {
     const catalogItem = TRUST_TIER_CATALOG[id];
     if (!catalogItem) {

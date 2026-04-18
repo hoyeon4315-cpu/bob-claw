@@ -372,7 +372,7 @@ export function buildNativeBtcOpportunitySurface({
       thesis: "Rotate BTC into PAXG or XAUT for tactical hard-asset positioning.",
       supportedChains: storeOfValueRoutes.map((route) => route.dstChain),
       liveRouteCount: storeOfValueRoutes.length,
-      blockers: ["small route surface", "Ethereum fee domain is hostile to the $300 phase"],
+      blockers: ["small route surface", "Ethereum fee domain is currently expensive relative to measured edge"],
     }),
     strategyTemplate({
       id: "other_asset_rotation",

@@ -135,8 +135,8 @@ export function buildCapitalExpansionReview({
     },
     lanes,
     notes: [
-      "USD 300 remains the active live ring-fence and approval boundary.",
-      "Any lane above the active boundary is planning-only until policy is explicitly redesigned.",
+      "Capital evaluation is reference-only; strategy-specific caps still decide what can run live.",
+      "No lane in this report is itself a live authorization boundary.",
       "Lane reprioritization does not upgrade a strategy from research to live eligibility without fresh measured evidence.",
     ],
   };

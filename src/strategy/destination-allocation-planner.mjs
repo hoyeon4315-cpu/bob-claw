@@ -25,43 +25,47 @@ export function buildDestinationAllocationPlanner({ promotionGate = null, econom
   const allocationReady = promotable.filter((item) => allocationStatus(item) === "allocation_ready");
   const reviewOnly = promotable.filter((item) => allocationStatus(item) === "review_only");
 
-  const activeBudgetUsd = economics?.budgets?.activeBudgetUsd ?? 300;
-  const planningBudgetUsd = economics?.budgets?.planningBudgetUsd ?? 1000;
+  const activeBudgetUsd = economics?.budgets?.activeBudgetUsd ?? null;
+  const planningBudgetUsd = economics?.budgets?.planningBudgetUsd ?? null;
 
   const activeAllocations = [];
-  let remainingActiveBudget = activeBudgetUsd;
-  for (const item of allocationReady) {
-    if (!item.economics?.activeBudgetEstimate?.passesPolicy) continue;
-    const allocationUsd = Math.min(remainingActiveBudget, activeBudgetUsd);
-    if (allocationUsd <= 0) continue;
-    activeAllocations.push({
-      templateId: item.templateId,
-      chain: item.chain,
-      familyId: item.familyId,
-      label: item.label,
-      allocationUsd,
-      estimatedNetBps: item.economics?.activeBudgetEstimate?.estimatedNetBps ?? null,
-      estimatedNetUsd: item.economics?.activeBudgetEstimate?.estimatedNetUsd ?? null,
-    });
-    remainingActiveBudget -= allocationUsd;
+  let remainingActiveBudget = Number.isFinite(activeBudgetUsd) ? activeBudgetUsd : null;
+  if (Number.isFinite(activeBudgetUsd)) {
+    for (const item of allocationReady) {
+      if (!item.economics?.activeBudgetEstimate?.passesPolicy) continue;
+      const allocationUsd = Math.min(remainingActiveBudget, activeBudgetUsd);
+      if (allocationUsd <= 0) continue;
+      activeAllocations.push({
+        templateId: item.templateId,
+        chain: item.chain,
+        familyId: item.familyId,
+        label: item.label,
+        allocationUsd,
+        estimatedNetBps: item.economics?.activeBudgetEstimate?.estimatedNetBps ?? null,
+        estimatedNetUsd: item.economics?.activeBudgetEstimate?.estimatedNetUsd ?? null,
+      });
+      remainingActiveBudget -= allocationUsd;
+    }
   }
 
   const planningAllocations = [];
-  let remainingPlanningBudget = planningBudgetUsd;
-  for (const item of allocationReady) {
-    if (!item.economics?.planningBudgetEstimate?.passesPolicy) continue;
-    const allocationUsd = Math.min(remainingPlanningBudget, planningBudgetUsd);
-    if (allocationUsd <= 0) continue;
-    planningAllocations.push({
-      templateId: item.templateId,
-      chain: item.chain,
-      familyId: item.familyId,
-      label: item.label,
-      allocationUsd,
-      estimatedNetBps: item.economics?.planningBudgetEstimate?.estimatedNetBps ?? null,
-      estimatedNetUsd: item.economics?.planningBudgetEstimate?.estimatedNetUsd ?? null,
-    });
-    remainingPlanningBudget -= allocationUsd;
+  let remainingPlanningBudget = Number.isFinite(planningBudgetUsd) ? planningBudgetUsd : null;
+  if (Number.isFinite(planningBudgetUsd)) {
+    for (const item of allocationReady) {
+      if (!item.economics?.planningBudgetEstimate?.passesPolicy) continue;
+      const allocationUsd = Math.min(remainingPlanningBudget, planningBudgetUsd);
+      if (allocationUsd <= 0) continue;
+      planningAllocations.push({
+        templateId: item.templateId,
+        chain: item.chain,
+        familyId: item.familyId,
+        label: item.label,
+        allocationUsd,
+        estimatedNetBps: item.economics?.planningBudgetEstimate?.estimatedNetBps ?? null,
+        estimatedNetUsd: item.economics?.planningBudgetEstimate?.estimatedNetUsd ?? null,
+      });
+      remainingPlanningBudget -= allocationUsd;
+    }
   }
 
   const blockedSummary = (promotionGate?.summary?.topBlockers || []).slice(0, 12);

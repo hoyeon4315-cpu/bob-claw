@@ -19,11 +19,13 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [wrappedBtcLendingLoopSlice, secondaryStrategyScaffolds] = await Promise.all([
+  const [wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
   ]);
-  const report = buildProtocolTrustTiers({ wrappedBtcLendingLoopSlice, secondaryStrategyScaffolds });
+  const report = buildProtocolTrustTiers({ wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds });
   if (args.write) {
     await writeTextIfChanged(join(config.dataDir, "protocol-trust-tiers.json"), `${JSON.stringify(report, null, 2)}\n`, {
       normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),

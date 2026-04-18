@@ -66,3 +66,54 @@ test("mempool client rejects invalid btc transaction payloads", async () => {
 
   await assert.rejects(() => client.broadcastTransaction("xyz"), /hex string/);
 });
+
+test("mempool client reads address transaction history", async () => {
+  const client = new MempoolClient({
+    baseUrl: "https://mempool.test/api",
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{ txid: "btc123" }],
+    }),
+  });
+
+  const response = await client.getAddressTransactions("bc1test");
+
+  assert.equal(response.address, "bc1test");
+  assert.equal(response.transactions[0].txid, "btc123");
+  assert.equal(response.source, "https://mempool.test/api");
+});
+
+test("mempool client reads address utxos", async () => {
+  const client = new MempoolClient({
+    baseUrl: "https://mempool.test/api",
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{ txid: "btc123", value: 1000 }],
+    }),
+  });
+
+  const response = await client.getAddressUtxos("bc1test");
+
+  assert.equal(response.address, "bc1test");
+  assert.equal(response.utxos[0].txid, "btc123");
+  assert.equal(response.source, "https://mempool.test/api");
+});
+
+test("mempool client reads raw transaction hex", async () => {
+  const client = new MempoolClient({
+    baseUrl: "https://mempool.test/api",
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      text: async () => "0011aa",
+    }),
+  });
+
+  const response = await client.getTransactionHex("ab".repeat(32));
+
+  assert.equal(response.txid, "ab".repeat(32));
+  assert.equal(response.txHex, "0011aa");
+  assert.equal(response.source, "https://mempool.test/api");
+});

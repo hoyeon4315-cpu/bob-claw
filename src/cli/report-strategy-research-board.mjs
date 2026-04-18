@@ -25,11 +25,33 @@ function stripVolatile(value) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
-  const nativeBtcOpportunitySurface = await readJsonIfExists(join(config.dataDir, "native-btc-opportunity-surface.json"));
+  const [
+    nativeBtcOpportunitySurface,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoopDryRun,
+  ] = await Promise.all([
+    readJsonIfExists(join(config.dataDir, "native-btc-opportunity-surface.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-dry-run-latest.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-dry-run-latest.json")),
+  ]);
   const report = buildStrategyResearchBoard({
     laneReclassification: context.artifacts?.laneReclassification || null,
     nativeBtcOpportunitySurface,
     lendingLoopResearchEntries: buildLendingLoopResearchEntries(),
+    recursiveLoopSurfaces: {
+      recursive_wrapped_btc_lending_loop: {
+        scaffold: recursiveWrappedBtcLoop,
+        dryRunSummary: recursiveWrappedBtcLoopDryRun,
+      },
+      recursive_stablecoin_lending_loop: {
+        scaffold: recursiveStablecoinLoop,
+        dryRunSummary: recursiveStablecoinLoopDryRun,
+      },
+    },
   });
 
   if (args.write) {
@@ -48,10 +70,15 @@ async function main() {
   }
 
   const top = report.summary?.topCandidateId || "n/a";
+  const topNew = report.summary?.topNewCandidateId || "n/a";
   const nextAction = report.summary?.nextAction?.code || "n/a";
+  const nextNewAction = report.summary?.nextNewAction?.code || "n/a";
   console.log(`candidateCount=${report.summary?.candidateCount ?? 0}`);
+  console.log(`newCandidateCount=${report.summary?.newCandidateCount ?? 0}`);
   console.log(`topCandidate=${top}`);
+  console.log(`topNewCandidate=${topNew}`);
   console.log(`nextAction=${nextAction}`);
+  console.log(`nextNewAction=${nextNewAction}`);
   for (const candidate of (report.candidates ?? []).slice(0, 5)) {
     console.log(`${candidate.rank}. ${candidate.id} status=${candidate.status}`);
   }

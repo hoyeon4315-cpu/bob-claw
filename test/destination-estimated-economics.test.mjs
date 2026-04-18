@@ -52,12 +52,12 @@ test("destination estimated economics computes policy pass when required inputs 
   const platform = report.items.find((item) => item.templateId === "base:custom_destination_actions");
 
   assert.equal(estimated.economicsStatus, "estimated");
-  assert.equal(estimated.activeBudgetEstimate.estimatedNetBps, 80);
-  assert.equal(estimated.activeBudgetEstimate.passesPolicy, true);
+  assert.equal(estimated.activeBudgetEstimate, null);
+  assert.equal(estimated.planningBudgetEstimate, null);
   assert.equal(missing.economicsStatus, "missing_inputs");
   assert.equal(platform.economicsStatus, "non_numeric_track");
   assert.equal(report.summary.estimatedCount, 1);
-  assert.equal(report.summary.activeBudgetPolicyPassCount, 1);
+  assert.equal(report.summary.activeBudgetPolicyPassCount, 0);
 });
 
 test("destination estimated economics can mark a template as blocked by no-current-venue evidence", () => {

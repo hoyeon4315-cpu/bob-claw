@@ -27,7 +27,7 @@ const YIELD_BLUEPRINT_REFERENCE = Object.freeze({
   ],
 });
 
-const DEFAULT_PLANNING_BUDGETS_USD = Object.freeze([1000]);
+const DEFAULT_PLANNING_BUDGETS_USD = Object.freeze([]);
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -105,8 +105,8 @@ function normalizeBudgetScenarios(currentBudgetUsd, planningBudgetsUsd = DEFAULT
     .sort((left, right) => left - right);
   return budgets.map((budgetUsd) => ({
     budgetUsd: round(budgetUsd),
-    label: budgetUsd === currentBudgetUsd ? "current_live_ring" : `planning_scenario_${Math.round(budgetUsd)}`,
-    planningOnly: budgetUsd !== currentBudgetUsd,
+    label: budgetUsd === currentBudgetUsd ? "reference_cap_current" : `reference_cap_${Math.round(budgetUsd)}`,
+    planningOnly: Number.isFinite(currentBudgetUsd) ? budgetUsd !== currentBudgetUsd : true,
   }));
 }
 
@@ -401,9 +401,9 @@ function buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd }) {
       diversifiedSingleSleeveMinimumUsd: round(diversifiedSingleSleeveMinimumUsd),
       defaultDualSleeveMinimumUsd: round(defaultDualSleeveMinimumUsd),
       budgetFit: {
-        researchPilotFits: researchPilotMinimumUsd <= budgetUsd,
-        diversifiedSingleSleeveFits: diversifiedSingleSleeveMinimumUsd <= budgetUsd,
-        defaultDualSleeveFits: defaultDualSleeveMinimumUsd <= budgetUsd,
+        researchPilotFits: Number.isFinite(budgetUsd) ? researchPilotMinimumUsd <= budgetUsd : null,
+        diversifiedSingleSleeveFits: Number.isFinite(budgetUsd) ? diversifiedSingleSleeveMinimumUsd <= budgetUsd : null,
+        defaultDualSleeveFits: Number.isFinite(budgetUsd) ? defaultDualSleeveMinimumUsd <= budgetUsd : null,
       },
       assumptions: [
         "Research pilot assumes one deployable sleeve plus gas reserve.",
@@ -513,9 +513,9 @@ function buildBudgetAssessment({ riskPolicy, treasuryPolicy, pivots = [], planni
     budgetScenarios,
     projectLossCapUsd: riskPolicy.projectLossCapUsd == null ? null : round(riskPolicy.projectLossCapUsd),
     explanation: [
-      "Capital sizing is per-strategy: each strategy declares its own per-trade and daily caps; there is no project-wide loss cap by default.",
+      "Capital sizing is per-strategy: each strategy declares its own per-trade and daily caps; there is no project-wide live budget by default.",
       "Only strategies with measured, repeatable edge should earn a larger allocation; unproven edge should not pull the allocation upward.",
-      "Planning-budget scenarios are evaluation tools and do not themselves authorize larger operating capital.",
+      "Any reference-cap scenarios are evaluation tools and do not themselves authorize larger operating capital.",
     ],
     pivotCapitalReview: pivots.map((pivot) => ({
       id: pivot.id,

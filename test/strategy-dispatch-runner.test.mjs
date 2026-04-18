@@ -10,9 +10,9 @@ function strategyFixture(overrides = {}) {
     status: "thin_coverage",
     capabilityBucket: "dry_run_or_shadow_only",
     selectedMode: "shadow",
-    liveCapable: false,
+    liveCapable: true,
     currentLiveEligible: false,
-    fallbackReason: "deterministic_closed_loop_executor_missing",
+    fallbackReason: "route_specific_executor_inputs_required",
     selectedCommands: [
       {
         command: "npm run score:gateway",

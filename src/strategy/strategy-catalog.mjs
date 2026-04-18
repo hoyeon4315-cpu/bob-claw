@@ -5,6 +5,18 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function countBy(items = [], selector) {
+  return (items || []).reduce((counts, item) => {
+    const key = selector(item) || "unknown";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function laneById(laneReclassification = null) {
+  return new Map((laneReclassification?.lanes || []).map((lane) => [lane.id, lane]));
+}
+
 function bestLatestTriangleExecution(latest = null) {
   const rows = (latest?.triangular || []).filter((row) => row?.ok);
   if (rows.length === 0) return null;
@@ -59,6 +71,89 @@ function normalizeMixedLoopStatus(summary = null) {
   if (summary.bestLoop || summary.closestLoop) return "measured_below_policy";
   if ((summary.exactAssetPairCount || 0) > 0 || (summary.entryCount || 0) > 0 || (summary.exitCount || 0) > 0) return "thin_coverage";
   return "unobserved";
+}
+
+function normalizeRevalidatedCatalogStatus(statusNew = null, fallbackStatus = null) {
+  if (statusNew === "candidate_for_validation") return "candidate_for_validation";
+  if (
+    statusNew === "measured_overfit_blocked" ||
+    statusNew === "blocked_by_contract_floor" ||
+    statusNew === "measured_inside_variance_floor" ||
+    statusNew === "measured_below_zero_floor"
+  ) {
+    return "measured_below_policy";
+  }
+  if (statusNew === "needs_variance_measurement") return "thin_coverage";
+  return fallbackStatus || "analysis_only";
+}
+
+function revalidationActionForLane(entry = null, lane = null) {
+  switch (lane?.statusNew) {
+    case "candidate_for_validation":
+      return {
+        code: "promote_validation_candidate",
+        command: entry?.commands?.[0] || "npm run status:dashboard",
+      };
+    case "needs_variance_measurement":
+      return {
+        code: "measure_variance_floor",
+        command: "npm run report:gas-slippage-variance -- --write",
+      };
+    case "measured_overfit_blocked":
+      return {
+        code: "rerun_overfit_revalidation",
+        command: "npm run audit:overfit && npm run report:lane-reclassification -- --write",
+      };
+    case "blocked_by_contract_floor":
+      return {
+        code: "review_contract_floor",
+        command: "npm run report:flash-floor-decision -- --write",
+      };
+    default:
+      return {
+        code: "refresh_lane_measurement",
+        command: entry?.commands?.[0] || null,
+      };
+  }
+}
+
+function applyLaneReclassification(entry, lane = null) {
+  if (!lane) {
+    return {
+      ...entry,
+      revalidation: null,
+    };
+  }
+
+  const status = normalizeRevalidatedCatalogStatus(lane.statusNew, entry.status);
+  return {
+    ...entry,
+    status,
+    reason: lane.statusReasonCode || entry.reason,
+    evidence: {
+      ...(entry.evidence || {}),
+      revalidatedRouteKey: lane.evidenceRouteKey || null,
+      revalidatedAmount: lane.evidenceAmount || null,
+      netPnlMeasuredUsd:
+        finite(lane.netPnlMeasuredUsd) ?? finite(entry.evidence?.netPnlMeasuredUsd),
+      gasSlippageVarianceUsd:
+        finite(lane.gasSlippageVarianceUsd) ?? finite(entry.evidence?.gasSlippageVarianceUsd),
+    },
+    revalidation: {
+      statusOld: lane.statusOld || null,
+      statusNew: lane.statusNew || null,
+      broadStatus: status,
+      clearsNewFloor: lane.clearsNewFloor ?? null,
+      passesOverfitGate: lane.passesOverfitGate ?? null,
+      statusReasonCode: lane.statusReasonCode || null,
+      remainingBlockers: lane.remainingBlockers || [],
+      evidenceRouteKey: lane.evidenceRouteKey || null,
+      evidenceAmount: lane.evidenceAmount || null,
+      netPnlMeasuredUsd: finite(lane.netPnlMeasuredUsd),
+      gasSlippageVarianceUsd: finite(lane.gasSlippageVarianceUsd),
+      nextAction: revalidationActionForLane(entry, lane),
+    },
+  };
 }
 
 function normalizeTriangleStatus(profile, artifact = null) {
@@ -200,9 +295,15 @@ function summarizeTriangleArtifact(profile, artifact = null) {
   };
 }
 
-export function buildStrategyCatalog({ dashboardStatus = null, state = {}, triangleArtifacts = {} } = {}) {
+export function buildStrategyCatalog({
+  dashboardStatus = null,
+  state = {},
+  triangleArtifacts = {},
+  laneReclassification = null,
+} = {}) {
   const strategy = dashboardStatus?.strategy || {};
   const trackMap = new Map((strategy.strategyTracks?.tracks || []).map((track) => [track.kind, track]));
+  const laneMap = laneById(laneReclassification);
   const edgeViability = strategy.edgeViability || null;
   const btcProxySpreads = strategy.btcProxySpreads || null;
   const ethProfitability = strategy.ethProfitability || null;
@@ -262,7 +363,12 @@ export function buildStrategyCatalog({ dashboardStatus = null, state = {}, trian
         classification: "mixed_eth_stable",
         note: "ETH should be judged here as mixed ETH→stable→rebuy system PnL, not as pure ETH-family Gateway profit.",
       },
-      commands: ["npm run status:dashboard"],
+      commands: [
+        "npm run report:stable-loop-executor -- --write",
+        "npm run report:lane-reclassification -- --write",
+        "npm run report:secondary-strategy-scaffolds -- --write",
+        "npm run status:dashboard",
+      ],
     },
     {
       id: "triangular_flash_btc",
@@ -296,7 +402,14 @@ export function buildStrategyCatalog({ dashboardStatus = null, state = {}, trian
         recommendationCode: ethProfitability?.recommendationCode || null,
         verdictCode: ethProfitability?.verdictCode || null,
       },
-      commands: ["npm run analyze:ethereum-routes -- --write", "npm run audit:eth-family-overfit", "npm run status:dashboard"],
+      commands: [
+        "npm run executor:gateway-btc-onramp -- --dst-chain=base --dst-token=eth --json",
+        "npm run executor:gateway-btc-onramp -- --dst-chain=ethereum --dst-token=eth --json",
+        "npm run executor:gateway-btc-offramp -- --src-chain=base --src-token=eth --amount=1800000000000000 --json",
+        "npm run analyze:ethereum-routes -- --write",
+        "npm run audit:eth-family-overfit",
+        "npm run status:dashboard",
+      ],
     },
     {
       id: "eth_mixed_stable_loops",
@@ -313,7 +426,11 @@ export function buildStrategyCatalog({ dashboardStatus = null, state = {}, trian
         profitableClosedLoopCount: ethMixedLoops.profitableClosedLoopCount || 0,
         bestLoop: ethMixedLoops.bestLoop?.entryRouteKey || null,
       },
-      commands: ["npm run status:dashboard"],
+      commands: [
+        "npm run analyze:ethereum-routes -- --write",
+        "npm run report:lane-reclassification -- --write",
+        "npm run status:dashboard",
+      ],
     },
     {
       id: "eth_dex_spread_mixed",
@@ -345,24 +462,36 @@ export function buildStrategyCatalog({ dashboardStatus = null, state = {}, trian
     },
   ];
 
-  const allEntries = [...btcFamilies, ...ethBranches];
-  const statusCounts = allEntries.reduce((counts, entry) => {
-    counts[entry.status] = (counts[entry.status] || 0) + 1;
-    return counts;
-  }, {});
+  const revalidatedBtcFamilies = btcFamilies.map((entry) => applyLaneReclassification(entry, laneMap.get(entry.id)));
+  const revalidatedEthBranches = ethBranches.map((entry) => applyLaneReclassification(entry, laneMap.get(entry.id)));
+  const allEntries = [...revalidatedBtcFamilies, ...revalidatedEthBranches];
+  const statusCounts = countBy(allEntries, (entry) => entry.status || "unknown");
+  const revalidationEntries = allEntries.filter((entry) => entry.revalidation);
+  const revalidationStatusCounts = countBy(revalidationEntries, (entry) => entry.revalidation?.statusNew || "unknown");
+  const topRevalidationCandidate =
+    revalidationEntries.find((entry) => entry.revalidation?.statusNew === "candidate_for_validation") ||
+    revalidationEntries.find((entry) => entry.revalidation?.statusNew === "needs_variance_measurement") ||
+    null;
 
   return {
     schemaVersion: 1,
     generatedAt: dashboardStatus?.generatedAt || new Date().toISOString(),
     policy: {
       liveTrading: dashboardStatus?.overall?.liveTrading || "BLOCKED",
-      ethereumL1: "observe_only_until_reapproved",
+      ethereumL1: "allowed_when_positive_ev",
       flashLiveAdmission: "blocked_pending_explicit_review",
       odosExecutionTrust: "safe_whitelist_required_for_execution_claims",
     },
+    summary: {
+      entryCount: allEntries.length,
+      statusCounts,
+      revalidationStatusCounts,
+      topRevalidationCandidateId: topRevalidationCandidate?.id || null,
+      nextRevalidationAction: topRevalidationCandidate?.revalidation?.nextAction || null,
+    },
     statusCounts,
-    btcFamilies,
-    ethBranches,
+    btcFamilies: revalidatedBtcFamilies,
+    ethBranches: revalidatedEthBranches,
     sharedInfrastructure: sharedInfrastructure(),
   };
 }

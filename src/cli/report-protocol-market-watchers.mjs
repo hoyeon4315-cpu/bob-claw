@@ -22,11 +22,13 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [dashboardStatus, quoteLagLatest, dexSpreadLatest, wrappedBtcLendingLoopSlice, phase3Validation, protocolTrustTiers, secondaryStrategyScaffolds] = await Promise.all([
+  const [dashboardStatus, quoteLagLatest, dexSpreadLatest, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, phase3Validation, protocolTrustTiers, secondaryStrategyScaffolds] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "dashboard-status.json")),
     readJsonIfExists(join(config.dataDir, "quote-lag-latest.json")),
     readJsonIfExists(join(config.dataDir, "dex-spread-latest.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(config.dataDir, "protocol-trust-tiers.json")),
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
@@ -36,6 +38,8 @@ async function main() {
     quoteLagLatest,
     dexSpreadLatest,
     wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
     phase3Validation,
     protocolTrustTiers,
     secondaryStrategyScaffolds,

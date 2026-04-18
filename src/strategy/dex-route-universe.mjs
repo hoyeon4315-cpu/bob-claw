@@ -1,5 +1,5 @@
 import { isBtcFamilyRoute, isEthFamilyRoute, routeAsset } from "../assets/tokens.mjs";
-import { canQuoteWithOdos, ODOS_CHAIN_IDS, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
+import { canQuoteWithDex, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
 
 function routeKey(route) {
   return `${route.srcChain}:${route.srcToken}->${route.dstChain}:${route.dstToken}`;
@@ -7,9 +7,16 @@ function routeKey(route) {
 
 function entrySupport(route) {
   const stable = STABLE_QUOTE_TOKENS[route?.srcChain];
-  if (!ODOS_CHAIN_IDS[route?.srcChain]) return { ok: false, reason: "src_provider_missing" };
+  const providerSupport = canQuoteWithDex(route.srcChain, route.srcToken, {
+    token: route.srcToken,
+    ticker: routeAsset(route).src.ticker,
+    decimals: routeAsset(route).src.decimals,
+  });
+  if (!providerSupport.ok && String(providerSupport.reason || "").startsWith("no_supported_router_for_chain:")) {
+    return providerSupport;
+  }
   if (!stable) return { ok: false, reason: "src_stable_missing" };
-  return canQuoteWithOdos(route.srcChain, stable.token, {
+  return canQuoteWithDex(route.srcChain, stable?.token, {
     token: route.srcToken,
     ticker: routeAsset(route).src.ticker,
     decimals: routeAsset(route).src.decimals,
@@ -17,7 +24,7 @@ function entrySupport(route) {
 }
 
 function exitSupport(route) {
-  return canQuoteWithOdos(route?.dstChain, route?.dstToken);
+  return canQuoteWithDex(route?.dstChain, route?.dstToken);
 }
 
 function blockerSummary(route) {

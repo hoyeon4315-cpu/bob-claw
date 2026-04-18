@@ -172,6 +172,11 @@ function formatMinutes(value) {
   return `${value.toFixed(1)}m`;
 }
 
+function minutesBetween(older, newer) {
+  if (!older || !newer) return null;
+  return (new Date(newer).getTime() - new Date(older).getTime()) / 60_000;
+}
+
 function isDexAffectedDstRoute(quote, dstChains = []) {
   if (!quote?.route?.dstChain || !dstChains.includes(quote.route.dstChain)) return false;
   return tokenAsset(quote.route.dstChain, quote.route.dstToken).family === "wrapped_btc";
@@ -310,18 +315,27 @@ async function main() {
       resolveCached(quote.route.dstChain, quote.route.dstToken),
     ]);
     const exactGas = gasEstimates.get(`${quote.routeKey}|${quote.amount}`) || null;
-    const executionGasUsd = Number.isFinite(exactGas?.estimatedGasUsd)
+    const exactGasAgeMinutes = minutesBetween(exactGas?.observedAt || null, now);
+    const exactGasFresh =
+      Number.isFinite(exactGas?.estimatedGasUsd) &&
+      (!Number.isFinite(exactGasAgeMinutes) || exactGasAgeMinutes <= 30);
+    const exactGasUsable = Number.isFinite(exactGas?.estimatedGasUsd);
+    const executionGasUsd = exactGasFresh
       ? exactGas.estimatedGasUsd
       : snapshot
         ? gasUsdFromSnapshot(snapshot, prices.nativeByChain[quote.route.srcChain])
-        : null;
+        : exactGasUsable
+          ? exactGas.estimatedGasUsd
+          : null;
+    const executionGasSource = exactGasFresh ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : exactGasUsable ? "eth_estimateGas" : null;
+    const gasObservedAt = exactGasFresh ? exactGas?.observedAt || null : snapshot?.observedAt || exactGas?.observedAt || null;
     const scoreBaseOptions = {
       srcAsset,
       dstAsset,
       executionGasUsd,
-      executionGasSource: exactGas ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : null,
+      executionGasSource,
       allowEthereumL1Routes: config.approveEthereumL1Routes,
-      gasObservedAt: exactGas?.observedAt || snapshot?.observedAt || null,
+      gasObservedAt,
       routeStats: routeStats.get(quote.routeKey),
       dexOutputQuote: dexOutputQuotes.get(selectionKey(quote.routeKey, quote.amount)),
       bitcoinFee,

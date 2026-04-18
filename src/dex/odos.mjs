@@ -221,6 +221,56 @@ export function canQuoteWithOdos(chain, token, outputToken = STABLE_QUOTE_TOKENS
   return { ok: true, inputToken, outputToken };
 }
 
+export function defaultDexQuoteProvider(chain) {
+  if (ODOS_CHAIN_IDS[chain]) return "odos";
+  return null;
+}
+
+export function noSupportedRouterReason(chain) {
+  const chainId = EVM_CHAINS[chain]?.chainId;
+  return Number.isFinite(chainId) ? `no_supported_router_for_chain:${chainId}` : "odos_chain_not_supported";
+}
+
+export function normalizeDexSupportReason(reason, chain) {
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) return reason || null;
+  if (normalizedReason === "odos_chain_not_supported") {
+    return noSupportedRouterReason(chain);
+  }
+  return normalizedReason;
+}
+
+export function canQuoteWithDex(chain, token, outputToken = STABLE_QUOTE_TOKENS[chain]) {
+  const provider = defaultDexQuoteProvider(chain);
+  if (!provider) {
+    return {
+      ok: false,
+      provider: null,
+      reason: noSupportedRouterReason(chain),
+    };
+  }
+  if (provider === "odos") {
+    return {
+      ...canQuoteWithOdos(chain, token, outputToken),
+      provider,
+    };
+  }
+  return {
+    ok: false,
+    provider: null,
+    reason: noSupportedRouterReason(chain),
+  };
+}
+
+export function isStructuralDexSupportFailure(reason) {
+  if (!reason) return false;
+  return [
+    "odos_chain_not_supported",
+    "stable_quote_token_missing",
+    "input_token_not_evm",
+  ].includes(reason) || String(reason).startsWith("no_supported_router_for_chain:");
+}
+
 export class OdosClient {
   constructor({ baseUrl = ODOS_API_BASE, fetchImpl = fetch } = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");

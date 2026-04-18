@@ -85,11 +85,13 @@ async function main() {
   console.log(`preliveStage: ${plan.currentSystem.preliveStage || "n/a"}`);
   console.log(`riskBudget: ${money(plan.currentSystem.riskBudgetUsd)} | lossCap: ${money(plan.currentSystem.projectLossCapUsd)}`);
   console.log(`budget note: ${plan.budgetAssessment.explanation[0]}`);
-  console.log(
-    `budget scenarios: ${(plan.budgetAssessment.budgetScenarios || [])
-      .map((scenario) => `${money(scenario.budgetUsd)}${scenario.planningOnly ? "(planning)" : "(active)"}`)
-      .join(" | ")}`,
-  );
+  if (plan.budgetAssessment.budgetScenarios?.length) {
+    console.log(
+      `budget scenarios: ${(plan.budgetAssessment.budgetScenarios || [])
+        .map((scenario) => `${money(scenario.budgetUsd)}${scenario.planningOnly ? "(reference)" : "(current)"}`)
+        .join(" | ")}`,
+    );
+  }
 
   console.log("\nRecommended pivot order");
   for (const pivot of plan.pivots) {

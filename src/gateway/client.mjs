@@ -23,6 +23,10 @@ export class GatewayClient {
     });
   }
 
+  async getOrder(id) {
+    return this.#requestJson(`/v1/get-order/${encodeURIComponent(id)}`);
+  }
+
   async registerTx(payload) {
     return this.#requestJson("/v1/register-tx", {
       method: "PATCH",

@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import {
-  canQuoteWithOdos,
+  canQuoteWithDex,
+  normalizeDexSupportReason,
   normalizeOdosQuote,
   odosRoutingConfig,
   OdosClient,
@@ -182,6 +183,14 @@ function isEthLikeLeg(leg) {
   return isEthLikeAsset(tokenAsset(leg.chain, leg.outputToken || leg.inputToken));
 }
 
+function dexSupportForLeg(leg) {
+  return canQuoteWithDex(leg.chain, leg.inputToken, {
+    token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token,
+    ticker: tokenAsset(leg.chain, leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token).ticker,
+    decimals: tokenAsset(leg.chain, leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token).decimals,
+  });
+}
+
 function appendLeg(selection, seen, leg, routeLimit) {
   if (!leg || selection.length >= routeLimit) return;
   const key = [
@@ -206,7 +215,7 @@ function prioritizeLegsForCoverage(legs, { routeLimit }) {
   for (const leg of ordered) {
     if (
       !(isWrappedBtcLeg(leg) || isEthLikeLeg(leg)) ||
-      !canQuoteWithOdos(leg.chain, leg.inputToken, { token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token }).ok ||
+      !dexSupportForLeg(leg).ok ||
       coveredChains.has(leg.chain)
     ) continue;
     appendLeg(selection, seen, leg, routeLimit);
@@ -214,7 +223,7 @@ function prioritizeLegsForCoverage(legs, { routeLimit }) {
   }
 
   for (const leg of ordered) {
-    if (!canQuoteWithOdos(leg.chain, leg.inputToken, { token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token }).ok || coveredChains.has(leg.chain)) continue;
+    if (!dexSupportForLeg(leg).ok || coveredChains.has(leg.chain)) continue;
     appendLeg(selection, seen, leg, routeLimit);
     coveredChains.add(leg.chain);
   }
@@ -287,18 +296,26 @@ async function main() {
   for (const leg of selectedLegs) {
     const inputAsset = tokenAsset(leg.chain, leg.inputToken);
     const outputAsset = tokenAsset(leg.chain, leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token);
-    const routing = odosRoutingConfig(leg.chain, { allowUnsafe: args.allowUnsafeSources });
-    const support = canQuoteWithOdos(leg.chain, leg.inputToken, {
+    const support = canQuoteWithDex(leg.chain, leg.inputToken, {
       token: leg.outputToken || STABLE_QUOTE_TOKENS[leg.chain]?.token,
       ticker: outputAsset.ticker,
       decimals: outputAsset.decimals,
     });
+    const routing = support.provider === "odos"
+      ? odosRoutingConfig(leg.chain, { allowUnsafe: args.allowUnsafeSources })
+      : {
+          sourceWhitelist: null,
+          sourceBlacklist: null,
+          routingMode: null,
+          executionTrust: null,
+        };
     if (!support.ok) {
+      const failureReason = normalizeDexSupportReason(support.reason, leg.chain);
       const failure = {
         schemaVersion: SCHEMA_VERSION,
         runId,
         observedAt: new Date().toISOString(),
-        provider: "odos",
+        provider: support.provider || "router_selection",
         source: leg.source,
         quoteType: leg.quoteType,
         chain: leg.chain,
@@ -312,19 +329,22 @@ async function main() {
         routingMode: routing.routingMode,
         executionTrust: routing.executionTrust,
         ok: false,
-        reason: support.reason,
+        reason: failureReason,
       };
       records.push(failure);
       await store.append("dex-quote-failures", failure);
       if (!args.json) {
         console.log(
-          `dex skipped ${printableAsset(leg.chain, leg.inputToken, inputAsset.ticker)}->${printableAsset(leg.chain, leg.outputToken, outputAsset.ticker)} amount=${leg.amount} reason=${support.reason}`,
+          `dex skipped ${printableAsset(leg.chain, leg.inputToken, inputAsset.ticker)}->${printableAsset(leg.chain, leg.outputToken, outputAsset.ticker)} amount=${leg.amount} reason=${failureReason}`,
         );
       }
       continue;
     }
 
     try {
+      if (support.provider !== "odos") {
+        throw new Error(`Unsupported DEX quote provider selected: ${support.provider}`);
+      }
       const result = await client.quote({
         chain: leg.chain,
         inputToken: support.inputToken,

@@ -35,7 +35,7 @@ function evidenceStatus(family = null) {
 }
 
 function phasePolicy(chain, family = null) {
-  if (chain === "ethereum") return "observe_only_until_reapproved";
+  if (chain === "ethereum") return "allowed_when_positive_ev";
   if (family?.category === "monetization") return "non_trading_track";
   if (family?.status === "measured_blocked" || family?.status === "research_only_overfit_blocked") return "blocked_until_new_evidence";
   if (family?.status === "experimental_only") return "manual_review_only";
@@ -126,7 +126,7 @@ export function buildDestinationStrategyRegistry({ nativeBtcSurface = null } = {
     },
     policyDefaults: {
       defaultAllowlistStatus: "pending_review",
-      ethereumL1PhasePolicy: "observe_only_until_reapproved",
+      ethereumL1PhasePolicy: "allowed_when_positive_ev",
       monetizationTrackPolicy: "non_trading_track",
       executionDefault: "blocked_until_destination_scored",
     },
@@ -134,4 +134,3 @@ export function buildDestinationStrategyRegistry({ nativeBtcSurface = null } = {
     globalStrategies,
   };
 }
-

@@ -2,10 +2,8 @@
 
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
-import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
-import { buildMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -24,20 +22,7 @@ function stripVolatile(value) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
-  const [flashFloorDecision, wrappedBtcLendingLoopSlice, wrappedBtcLoopDryRun] = await Promise.all([
-    readJsonIfExists(join(config.dataDir, "flash-floor-decision.json")),
-    readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
-    readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
-  ]);
-
-  const report = buildMilestoneValidationGates({
-    phase1Revalidation: context.strategySnapshot?.planningLayers?.phase1Revalidation || null,
-    strategyResearchBoard: context.strategySnapshot?.planningLayers?.strategyResearchBoard || null,
-    flashFloorDecision,
-    wrappedBtcLendingLoopSlice,
-    wrappedBtcLoopDryRun,
-    preliveValidation: context.preliveValidation || null,
-  });
+  const report = context.artifacts?.milestoneValidationGates;
 
   if (args.write) {
     const outputPath = join(config.dataDir, "milestone-validation-gates.json");

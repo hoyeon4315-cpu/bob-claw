@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   attachOdosAssembly,
+  canQuoteWithDex,
   canQuoteWithOdos,
   isTrustedExecutableDexQuote,
+  normalizeDexSupportReason,
   normalizeOdosQuote,
   ODOS_NATIVE_TOKEN,
   odosSafeSourceWhitelist,
@@ -26,6 +28,24 @@ test("Odos support gate maps native EVM token and rejects unsupported chains", (
   const unsupported = canQuoteWithOdos("bob", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c");
   assert.equal(unsupported.ok, false);
   assert.equal(unsupported.reason, "odos_chain_not_supported");
+});
+
+test("generic DEX support gate surfaces explicit no-router reasons for unsupported EVM chains", () => {
+  const base = canQuoteWithDex("base", ZERO_TOKEN);
+  assert.equal(base.ok, true);
+  assert.equal(base.provider, "odos");
+  assert.equal(base.inputToken, ODOS_NATIVE_TOKEN);
+
+  const unsupported = canQuoteWithDex("bera", "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c");
+  assert.equal(unsupported.ok, false);
+  assert.equal(unsupported.provider, null);
+  assert.equal(unsupported.reason, "no_supported_router_for_chain:80094");
+});
+
+test("DEX support reason normalization upgrades legacy Odos unsupported reasons to chain-specific no-router reasons", () => {
+  assert.equal(normalizeDexSupportReason("odos_chain_not_supported", "bera"), "no_supported_router_for_chain:80094");
+  assert.equal(normalizeDexSupportReason("odos_chain_not_supported", "bob"), "no_supported_router_for_chain:60808");
+  assert.equal(normalizeDexSupportReason("odos_quote_failed", "bera"), "odos_quote_failed");
 });
 
 test("Odos quote normalization stores executable quote fields", () => {

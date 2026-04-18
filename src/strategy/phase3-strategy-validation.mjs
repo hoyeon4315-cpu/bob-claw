@@ -65,6 +65,22 @@ function oosState(wrappedBtcLoopOosEvidence = null, dryRunRecorded = false) {
   };
 }
 
+function liveRoundtripState(wrappedBtcLoopLiveProof = null) {
+  const recorded =
+    wrappedBtcLoopLiveProof?.success === true &&
+    wrappedBtcLoopLiveProof?.proofStatus === "signer_backed_roundtrip_recorded" &&
+    (wrappedBtcLoopLiveProof?.entryCount ?? 0) > 0 &&
+    (wrappedBtcLoopLiveProof?.unwindCount ?? 0) > 0;
+  return {
+    recorded,
+    status: recorded ? "signer_backed_roundtrip_recorded" : "missing",
+  };
+}
+
+function normalizedDryRunSummary(scaffold = null, dryRunSummary = null) {
+  return dryRunSummary || scaffold?.dryRunSummary || null;
+}
+
 function baseEntry({
   id,
   label,
@@ -95,11 +111,21 @@ function wrappedLoopValidation({
   wrappedBtcLendingLoopSlice = null,
   wrappedBtcLoopDryRun = null,
   wrappedBtcLoopOosEvidence = null,
+  wrappedBtcLoopLiveProof = null,
   protocolTrustTiers = null,
   resolveTrustTierDecision = null,
 } = {}) {
   const dryRunRecorded = wrappedBtcLoopDryRun?.dryRunReceiptRecorded === true;
+  const liveRoundtrip = liveRoundtripState(wrappedBtcLoopLiveProof);
   const oos = oosState(wrappedBtcLoopOosEvidence, dryRunRecorded);
+  const effectiveOosSplitStatus =
+    oos.oosSplitStatus === "signer_backed_window_recorded" || !liveRoundtrip.recorded
+      ? oos.oosSplitStatus
+      : "signer_backed_roundtrip_recorded";
+  const effectiveOosBlockers =
+    oos.oosSplitStatus === "signer_backed_window_recorded" || !liveRoundtrip.recorded
+      ? oos.blockers
+      : ["extended_receipt_context_missing"];
   const trustBlockers = trustTierBlockers(
     protocolTrustTiers,
     [wrappedBtcLendingLoopSlice?.strategy?.protocol].filter(Boolean),
@@ -108,25 +134,88 @@ function wrappedLoopValidation({
   return baseEntry({
     id: "wrapped_btc_loop_validation",
     label: "Wrapped-BTC loop validation",
-    oosSplitStatus: oos.oosSplitStatus,
+    oosSplitStatus: effectiveOosSplitStatus,
     searchComplexityStatus: "bounded_design_surface",
-    shockTestStatus: dryRunRecorded ? "simulated_pass" : "not_run",
+    shockTestStatus: liveRoundtrip.recorded ? "live_roundtrip_recorded" : dryRunRecorded ? "simulated_pass" : "not_run",
     trustTierStatus: "protocol_review_required",
     blockers: [
-      ...oos.blockers,
+      ...effectiveOosBlockers,
       ...trustBlockers,
     ],
     evidence: {
       strategyId: wrappedBtcLendingLoopSlice?.strategy?.id || null,
       protocol: wrappedBtcLendingLoopSlice?.strategy?.protocol || null,
-          dryRunReceiptRecorded: dryRunRecorded,
-          autoUnwindPassCount: wrappedBtcLoopDryRun?.autoUnwindPassCount ?? 0,
-          oosEvidenceStatus: wrappedBtcLoopOosEvidence?.summary?.status || null,
+      dryRunReceiptRecorded: dryRunRecorded,
+      autoUnwindPassCount: wrappedBtcLoopDryRun?.autoUnwindPassCount ?? 0,
+      oosEvidenceStatus: wrappedBtcLoopOosEvidence?.summary?.status || null,
+      liveRoundtripProofStatus: liveRoundtrip.status,
+      liveRoundtripEntryCount: wrappedBtcLoopLiveProof?.entryCount ?? 0,
+      liveRoundtripUnwindCount: wrappedBtcLoopLiveProof?.unwindCount ?? 0,
     },
     nextAction: {
-      code: "collect_wrapped_btc_loop_oos_receipts",
+      code: liveRoundtrip.recorded
+        ? "capture_wrapped_btc_loop_extended_receipt_context"
+        : "collect_wrapped_btc_loop_oos_receipts",
       command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
     },
+  });
+}
+
+function recursiveLoopValidation({
+  scaffold = null,
+  dryRunSummary = null,
+  protocolTrustTiers = null,
+  resolveTrustTierDecision = null,
+} = {}) {
+  const strategy = scaffold?.strategy || {};
+  if (!strategy.id) return null;
+  const summary = normalizedDryRunSummary(scaffold, dryRunSummary);
+  const dryRunRecorded = summary?.dryRunReceiptRecorded === true;
+  const signerBackedRecorded = (summary?.signerBackedRunCount ?? 0) > 0;
+  const trustBlockers = trustTierBlockers(
+    protocolTrustTiers,
+    [strategy.protocol].filter(Boolean),
+    { resolveTrustTierDecision },
+  );
+  const blockers = unique([
+    scaffold ? null : "recursive_loop_scaffold_missing",
+    scaffold?.validation?.ok === true ? null : "recursive_loop_config_invalid",
+    ...(scaffold?.blockers || []).filter((blocker) => blocker !== "dry_run_unwind_not_recorded" || !dryRunRecorded),
+    ...trustBlockers,
+    signerBackedRecorded ? null : "recursive_observed_receipts_missing",
+  ]);
+  return baseEntry({
+    id: `${strategy.id || "recursive_lending_loop"}_validation`,
+    label: `${strategy.label || "Recursive lending loop"} validation`,
+    oosSplitStatus: signerBackedRecorded ? "signer_backed_receipt_recorded" : dryRunRecorded ? "simulated_dry_run_recorded" : "dry_run_not_recorded",
+    searchComplexityStatus: "bounded_design_surface",
+    shockTestStatus: signerBackedRecorded ? "signer_backed_receipt_recorded" : dryRunRecorded ? "simulated_pass" : "not_run",
+    trustTierStatus: trustBlockers.length ? "protocol_review_required" : "recorded",
+    blockers,
+    evidence: {
+      strategyId: strategy.id || null,
+      protocol: strategy.protocol || null,
+      arrivalFamily: strategy.arrivalFamily || null,
+      readyForDryRun: scaffold?.readiness?.readyForDryRun ?? null,
+      dryRunReceiptRecorded: dryRunRecorded,
+      autoUnwindPassCount: summary?.autoUnwindPassCount ?? 0,
+      signerBackedRunCount: summary?.signerBackedRunCount ?? 0,
+      executionSupportStatus: scaffold?.executionSupport?.status || null,
+    },
+    nextAction: signerBackedRecorded
+      ? {
+          code: "review_recursive_loop_observed_receipts",
+          command: `npm run report:recursive-lending-loop -- --strategy=${strategy.id || "recursive_wrapped_btc_lending_loop"}`,
+        }
+      : dryRunRecorded
+        ? {
+            code: "collect_recursive_loop_observed_receipts",
+            command: `npm run ingest:recursive-lending-loop-receipt -- --write --strategy=${strategy.id || "recursive_wrapped_btc_lending_loop"}`,
+          }
+        : {
+            code: "record_recursive_loop_dry_run_receipt",
+            command: `npm run run:recursive-lending-loop-dry-run -- --strategy=${strategy.id || "recursive_wrapped_btc_lending_loop"} --write`,
+          },
   });
 }
 
@@ -221,6 +310,11 @@ export function buildPhase3StrategyValidation({
   wrappedBtcLendingLoopSlice = null,
   wrappedBtcLoopDryRun = null,
   wrappedBtcLoopOosEvidence = null,
+  wrappedBtcLoopLiveProof = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveWrappedBtcLoopDryRun = null,
+  recursiveStablecoinLoop = null,
+  recursiveStablecoinLoopDryRun = null,
   secondaryStrategyScaffolds = null,
   protocolTrustTiers = null,
   resolveTrustTierDecision = null,
@@ -231,10 +325,23 @@ export function buildPhase3StrategyValidation({
   const lanes = laneMap(laneReclassification);
   const scaffolds = scaffoldMap(secondaryStrategyScaffolds);
   const validations = [
+    recursiveLoopValidation({
+      scaffold: recursiveWrappedBtcLoop,
+      dryRunSummary: recursiveWrappedBtcLoopDryRun,
+      protocolTrustTiers,
+      resolveTrustTierDecision,
+    }),
+    recursiveLoopValidation({
+      scaffold: recursiveStablecoinLoop,
+      dryRunSummary: recursiveStablecoinLoopDryRun,
+      protocolTrustTiers,
+      resolveTrustTierDecision,
+    }),
     wrappedLoopValidation({
       wrappedBtcLendingLoopSlice,
       wrappedBtcLoopDryRun,
       wrappedBtcLoopOosEvidence,
+      wrappedBtcLoopLiveProof,
       protocolTrustTiers,
       resolveTrustTierDecision,
     }),
@@ -252,7 +359,7 @@ export function buildPhase3StrategyValidation({
       resolveSearchComplexityBudget,
     }),
     ...secondaryScaffoldValidation((secondaryStrategyScaffolds?.scaffolds || []).filter((item) => !["stablecoin_spread_loop", "proxy_spread_expansion"].includes(item.id))),
-  ];
+  ].filter(Boolean);
   const topValidation = validations.find((item) => item.overallStatus !== "passed") || validations[0] || null;
   return {
     schemaVersion: 1,

@@ -5,8 +5,8 @@ import { buildAllocatorCore, summarizeAllocatorCore } from "../src/strategy/allo
 test("allocator core applies deterministic cap defaults and keeps blocked strategies review-only", () => {
   const report = buildAllocatorCore({
     strategySnapshot: {
-      currentSystem: { activeBudgetUsd: 300 },
-      summary: { planningBudgetUsd: 1000 },
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
     },
     phase3Validation: {
       validations: [
@@ -48,11 +48,45 @@ test("allocator core applies deterministic cap defaults and keeps blocked strate
 
   assert.equal(report.summary.candidateCount, 2);
   assert.equal(report.summary.activeAllocationCount, 0);
-  assert.equal(report.activeView.maxAllocationPerStrategyUsd, 60);
-  assert.equal(report.planningView.maxAllocationPerStrategyUsd, 200);
+  assert.equal(report.activeView.maxAllocationPerStrategyUsd, null);
+  assert.equal(report.planningView.maxAllocationPerStrategyUsd, null);
   assert.equal(report.planningView.planningQueue[0].id, "wrapped-btc-loop-base-moonwell");
 
   const summary = summarizeAllocatorCore(report);
   assert.equal(summary.activeAllocationCount, 0);
   assert.equal(summary.topPlanningCandidate.id, "wrapped-btc-loop-base-moonwell");
+});
+
+test("allocator core prioritizes recursive wrapped loop when recursive phase3 validation exists", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["recursive_observed_receipts_missing"],
+          evidence: { strategyId: "recursive_wrapped_btc_lending_loop" },
+          nextAction: { code: "collect_recursive_loop_observed_receipts" },
+        },
+      ],
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: {
+        id: "recursive_wrapped_btc_lending_loop",
+        label: "Recursive wrapped-BTC lending loop",
+        chain: "base",
+        protocol: "moonwell",
+        arrivalFamily: "wrapped_btc",
+      },
+    },
+    now: "2026-04-17T19:50:00.000Z",
+  });
+
+  assert.equal(report.summary.candidateCount, 1);
+  assert.equal(report.planningView.planningQueue[0].id, "recursive_wrapped_btc_lending_loop");
+  assert.equal(report.summary.nextAction.code, "collect_recursive_loop_observed_receipts");
 });

@@ -55,15 +55,30 @@ test("execution surfaces classify missing runners separately from runnable obser
   });
 
   const gateway = report.strategies.find((strategy) => strategy.id === "gateway_wrapped_btc_loops");
+  const proxy = report.strategies.find((strategy) => strategy.id === "btc_proxy_spreads");
   const stable = report.strategies.find((strategy) => strategy.id === "stablecoin_entry_exit_loops");
+  const ethGateway = report.strategies.find((strategy) => strategy.id === "eth_family_gateway");
+  const ethMixedStable = report.strategies.find((strategy) => strategy.id === "eth_mixed_stable_loops");
   const btcFlash = report.strategies.find((strategy) => strategy.id === "triangular_flash_btc");
 
   assert.equal(gateway.capabilityBucket, "dry_run_or_shadow_only");
+   assert.equal(gateway.liveCapable, true);
   assert.equal(gateway.selectedMode, "shadow");
-  assert.equal(gateway.fallbackReason, "deterministic_closed_loop_executor_missing");
-  assert.equal(stable.capabilityBucket, "missing_executor_adapter");
-  assert.equal(stable.fallbackReason, "dedicated_entry_exit_loop_runner_missing");
+  assert.equal(gateway.fallbackReason, "route_specific_executor_inputs_required");
+  assert.equal(proxy.liveCapable, true);
+  assert.equal(proxy.selectedMode, "shadow");
+  assert.equal(proxy.fallbackReason, "route_specific_executor_inputs_required");
+  assert.equal(ethGateway.liveCapable, true);
+  assert.equal(ethGateway.selectedMode, "shadow");
+  assert.equal(ethGateway.fallbackReason, "multichain_eth_surface_unconfirmed");
+  assert.equal(ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-onramp"), true);
+  assert.equal(ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-offramp"), true);
+  assert.equal(stable.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(stable.fallbackReason, "analysis_probe_only");
+  assert.equal(stable.selectedCommands.some((command) => command.script === "report:lane-reclassification"), true);
+  assert.equal(ethMixedStable.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(ethMixedStable.selectedCommands.some((command) => command.script === "analyze:ethereum-routes"), true);
   assert.equal(btcFlash.selectedMode, "dry_run");
   assert.equal(btcFlash.currentLiveEligible, false);
-  assert.equal(report.summary.missingExecutorCount >= 2, true);
+  assert.equal(report.summary.missingExecutorCount, 0);
 });

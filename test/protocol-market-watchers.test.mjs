@@ -75,7 +75,7 @@ test("protocol market watchers surface freshness and trust-tier blockers to the 
   assert.deepEqual(trustTierWatch.targets.sort(), ["stablecoin_spread_loop", "wrapped-btc-loop-base-moonwell"]);
 
   const allocator = buildAllocatorCore({
-    strategySnapshot: { currentSystem: { activeBudgetUsd: 300 }, summary: { planningBudgetUsd: 1000 } },
+    strategySnapshot: { currentSystem: { activeBudgetUsd: null }, summary: { planningBudgetUsd: null } },
     phase3Validation: {
       validations: [
         {
@@ -101,4 +101,38 @@ test("protocol market watchers surface freshness and trust-tier blockers to the 
   assert.ok(wrapped);
   assert.equal(wrapped.blockers.includes("protocol_trust_tier_not_recorded"), true);
   assert.equal(wrapped.blockers.includes("stale_gas_snapshots"), true);
+});
+
+test("protocol market watchers include recursive lending loop market watches", () => {
+  const watchers = buildProtocolMarketWatchers({
+    dashboardStatus: {
+      overall: { blockers: [] },
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: { id: "recursive_wrapped_btc_lending_loop", label: "Recursive wrapped-BTC lending loop", protocol: "moonwell", arrivalFamily: "wrapped_btc" },
+      protocolAdapter: {
+        oracleModel: "protocol_oracle_with_btc_usd_sanity_check",
+        referenceOracles: ["chainlink", "pyth"],
+      },
+      oracleSanity: { status: "healthy", protocolDriftPct: 0.08 },
+      dryRunSummary: { autoUnwindPassCount: 2, dryRunReceiptRecorded: true, signerBackedRunCount: 0 },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["recursive_observed_receipts_missing"],
+          nextAction: { code: "collect_recursive_loop_observed_receipts" },
+        },
+      ],
+    },
+    now: "2026-04-17T19:50:00.000Z",
+  });
+
+  const recursiveWatch = watchers.watchers.find((item) => item.id === "recursive_wrapped_btc_lending_loop_market_watch");
+  assert.ok(recursiveWatch);
+  assert.equal(recursiveWatch.blockers.includes("recursive_observed_receipts_missing"), true);
+  assert.deepEqual(recursiveWatch.evidence.referenceOracles, ["chainlink", "pyth"]);
+  assert.equal(recursiveWatch.nextAction.code, "collect_recursive_loop_observed_receipts");
 });

@@ -13,6 +13,73 @@ function countBy(items = [], selector) {
   }, {});
 }
 
+function validationById(report = null, id = null) {
+  return (report?.validations || []).find((item) => item.id === id) || null;
+}
+
+function watcherById(report = null, id = null) {
+  return (report?.watchers || []).find((item) => item.id === id) || null;
+}
+
+function strategyMilestoneTargets({
+  allocatorCore = null,
+  wrappedBtcLendingLoopSlice = null,
+  wrappedBtcLoopDryRun = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveWrappedBtcLoopDryRun = null,
+  recursiveStablecoinLoop = null,
+  recursiveStablecoinLoopDryRun = null,
+} = {}) {
+  const planningOrder = [
+    ...((allocatorCore?.planningView?.planningQueue || []).map((item) => item?.id).filter(Boolean)),
+    ...((allocatorCore?.activeView?.allocationPlan || []).map((item) => item?.id).filter(Boolean)),
+  ];
+  const orderIndex = new Map(planningOrder.map((id, index) => [id, index]));
+  return [
+    recursiveWrappedBtcLoop?.strategy?.id
+      ? {
+          strategyId: recursiveWrappedBtcLoop.strategy.id,
+          validationId: `${recursiveWrappedBtcLoop.strategy.id}_validation`,
+          watcherId: `${recursiveWrappedBtcLoop.strategy.id}_market_watch`,
+          scaffold: recursiveWrappedBtcLoop,
+          dryRunSummary: recursiveWrappedBtcLoopDryRun || recursiveWrappedBtcLoop?.dryRunSummary || null,
+          verticalSliceLabel: "Strategy vertical slice",
+          watcherLabel: "Strategy watchers and unwind",
+          reportCommand: `npm run report:recursive-lending-loop -- --strategy=${recursiveWrappedBtcLoop.strategy.id}`,
+          dryRunCommand: `npm run run:recursive-lending-loop-dry-run -- --strategy=${recursiveWrappedBtcLoop.strategy.id} --write`,
+        }
+      : null,
+    recursiveStablecoinLoop?.strategy?.id
+      ? {
+          strategyId: recursiveStablecoinLoop.strategy.id,
+          validationId: `${recursiveStablecoinLoop.strategy.id}_validation`,
+          watcherId: `${recursiveStablecoinLoop.strategy.id}_market_watch`,
+          scaffold: recursiveStablecoinLoop,
+          dryRunSummary: recursiveStablecoinLoopDryRun || recursiveStablecoinLoop?.dryRunSummary || null,
+          verticalSliceLabel: "Strategy vertical slice",
+          watcherLabel: "Strategy watchers and unwind",
+          reportCommand: `npm run report:recursive-lending-loop -- --strategy=${recursiveStablecoinLoop.strategy.id}`,
+          dryRunCommand: `npm run run:recursive-lending-loop-dry-run -- --strategy=${recursiveStablecoinLoop.strategy.id} --write`,
+        }
+      : null,
+    wrappedBtcLendingLoopSlice?.strategy?.id
+      ? {
+          strategyId: wrappedBtcLendingLoopSlice.strategy.id,
+          validationId: "wrapped_btc_loop_validation",
+          watcherId: "wrapped_btc_loop_market_watch",
+          scaffold: wrappedBtcLendingLoopSlice,
+          dryRunSummary: wrappedBtcLoopDryRun || wrappedBtcLendingLoopSlice?.dryRunSummary || null,
+          verticalSliceLabel: "Strategy vertical slice",
+          watcherLabel: "Strategy watchers and unwind",
+          reportCommand: "npm run report:wrapped-btc-loop -- --write",
+          dryRunCommand: "node src/cli/run-wrapped-btc-loop-dry-run.mjs --write",
+        }
+      : null,
+  ]
+    .filter(Boolean)
+    .sort((left, right) => (orderIndex.get(left.strategyId) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(right.strategyId) ?? Number.MAX_SAFE_INTEGER));
+}
+
 function riskStateFixture(now = "2026-04-15T12:00:00.000Z") {
   return buildExecutionRiskState({
     now,
@@ -203,6 +270,100 @@ function runtimeSafetyGate() {
   });
 }
 
+function strategyVerticalSliceGate({ target = null, phase3Validation = null } = {}) {
+  const scaffold = target?.scaffold || null;
+  const summary = target?.dryRunSummary || scaffold?.dryRunSummary || null;
+  const dryRunRecorded = summary?.dryRunReceiptRecorded === true;
+  const validation = validationById(phase3Validation, target?.validationId || null);
+  const fallbackBlockers = unique([
+    scaffold ? null : "strategy_vertical_slice_missing",
+    scaffold?.validation?.ok === true ? null : "strategy_config_invalid",
+    ...(scaffold?.blockers || []).filter((blocker) => blocker !== "dry_run_unwind_not_recorded" || !dryRunRecorded),
+  ]);
+  const blockers = unique(validation ? [scaffold?.validation?.ok === true ? null : "strategy_config_invalid", ...(validation?.blockers || [])] : fallbackBlockers);
+  const nextAction =
+    blockers.length <= 0
+      ? null
+      : validation?.nextAction ||
+        (blockers.includes("protocol_adapter_not_built") && target?.strategyId === "wrapped-btc-loop-base-moonwell"
+            ? { code: "wire_wrapped_btc_loop_adapter", command: null }
+            : blockers.includes("dry_run_unwind_not_recorded")
+              ? { code: "run_strategy_dry_run", command: target?.dryRunCommand || null }
+            : {
+                code: "review_strategy_vertical_slice",
+                command: target?.reportCommand || null,
+              });
+  return buildGate({
+    id: "strategy_vertical_slice",
+    label: target?.verticalSliceLabel || "Strategy vertical slice",
+    status: blockers.length ? "blocked" : "passed",
+    blockers,
+    warnings: unique([
+      scaffold?.pnl?.estimated?.status === "unavailable_until_protocol_adapter_and_rate_feed_exist"
+        ? "estimated_pnl_not_connected"
+        : null,
+      scaffold?.pnl?.realized?.sampleCount > 0 ? null : "no_realized_loop_samples",
+      dryRunRecorded && (summary?.latestRun?.executionMode === "simulated_dry_run" || (summary?.signerBackedRunCount ?? 0) <= 0)
+        ? "dry_run_receipt_is_simulated"
+        : null,
+    ]),
+    nextAction,
+    evidence: scaffold
+      ? {
+          strategyId: scaffold.strategy?.id || null,
+          protocol: scaffold.strategy?.protocol || null,
+          readyForDryRun: scaffold.readiness?.readyForDryRun ?? null,
+          readyForLive: scaffold.readiness?.readyForLive ?? null,
+          loopedExposureMultiple: scaffold.entryPlan?.loopedExposureMultiple ?? null,
+          projectedHealthFactor: scaffold.entryPlan?.projectedHealthFactor ?? null,
+          dryRunReceiptRecorded: dryRunRecorded,
+          oosEvidenceStatus: validation?.evidence?.oosEvidenceStatus || validation?.oosSplitStatus || null,
+        }
+      : null,
+  });
+}
+
+function strategyWatcherGate({ target = null, protocolMarketWatchers = null } = {}) {
+  const scaffold = target?.scaffold || null;
+  const summary = target?.dryRunSummary || scaffold?.dryRunSummary || null;
+  const dryRunRecorded = summary?.dryRunReceiptRecorded === true;
+  const watcher = watcherById(protocolMarketWatchers, target?.watcherId || null);
+  const fallbackBlockers = unique([
+    scaffold ? null : "strategy_watcher_missing",
+    scaffold?.watcherPlan?.checks?.length ? null : "watcher_plan_missing",
+    scaffold?.unwindPlan?.dryRunRequired === true && !dryRunRecorded ? "dry_run_unwind_not_recorded" : null,
+    ...(scaffold?.blockers || []).filter((blocker) => ["watcher_runtime_not_wired", "emergency_unwind_executor_not_built"].includes(blocker)),
+  ]);
+  const blockers = unique(watcher ? watcher.blockers || [] : fallbackBlockers);
+  const nextAction =
+    blockers.length <= 0
+      ? null
+      : watcher?.nextAction ||
+        (blockers.includes("dry_run_unwind_not_recorded")
+          ? { code: "run_forced_unwind_dry_run", command: target?.dryRunCommand || null }
+          : {
+              code: "wire_auto_unwind_runtime",
+              command: null,
+            });
+  return buildGate({
+    id: "strategy_watchers_and_unwind",
+    label: target?.watcherLabel || "Strategy watchers and unwind",
+    status: blockers.length ? "blocked" : "passed",
+    blockers,
+    nextAction,
+    evidence: scaffold
+      ? {
+          strategyId: scaffold.strategy?.id || null,
+          watcherCheckCount: scaffold.watcherPlan?.checks?.length ?? 0,
+          unwindDryRunRequired: scaffold.unwindPlan?.dryRunRequired ?? null,
+          breachAction: scaffold.watcherPlan?.breachAction || null,
+          dryRunReceiptRecorded: dryRunRecorded,
+          signerBackedRunCount: summary?.signerBackedRunCount ?? 0,
+        }
+      : null,
+  });
+}
+
 function wrappedBtcLoopGate({ wrappedBtcLendingLoopSlice = null, wrappedBtcLoopDryRun = null } = {}) {
   const dryRunRecorded = wrappedBtcLoopDryRun?.dryRunReceiptRecorded === true;
   const blockers = unique([
@@ -320,15 +481,35 @@ export function buildMilestoneValidationGates({
   flashFloorDecision = null,
   wrappedBtcLendingLoopSlice = null,
   wrappedBtcLoopDryRun = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveWrappedBtcLoopDryRun = null,
+  recursiveStablecoinLoop = null,
+  recursiveStablecoinLoopDryRun = null,
+  phase3Validation = null,
+  protocolMarketWatchers = null,
+  allocatorCore = null,
   preliveValidation = null,
   now = null,
 } = {}) {
+  const strategyTarget = strategyMilestoneTargets({
+    allocatorCore,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
+  })[0] || null;
   const gates = [
     phase1Gate({ phase1Revalidation, flashFloorDecision }),
     researchGate({ strategyResearchBoard }),
     runtimeSafetyGate(),
-    wrappedBtcLoopGate({ wrappedBtcLendingLoopSlice, wrappedBtcLoopDryRun }),
-    leverageWatcherGate({ wrappedBtcLendingLoopSlice, wrappedBtcLoopDryRun }),
+    strategyTarget
+      ? strategyVerticalSliceGate({ target: strategyTarget, phase3Validation })
+      : wrappedBtcLoopGate({ wrappedBtcLendingLoopSlice, wrappedBtcLoopDryRun }),
+    strategyTarget
+      ? strategyWatcherGate({ target: strategyTarget, protocolMarketWatchers })
+      : leverageWatcherGate({ wrappedBtcLendingLoopSlice, wrappedBtcLoopDryRun }),
     preliveGate({ preliveValidation }),
   ];
   const nextGate = gates.find((gate) => gate.status !== "passed") || null;

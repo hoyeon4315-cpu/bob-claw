@@ -37,6 +37,7 @@ function candidate({
 }
 
 function allocationLimitUsd({ budgetUsd, constraints = {} } = {}) {
+  if (!Number.isFinite(budgetUsd)) return null;
   const caps = [
     (constraints.capPerStrategyPct ?? 0) * budgetUsd,
     (constraints.capPerProtocolPct ?? 0) * budgetUsd,
@@ -55,6 +56,25 @@ function wrappedLoopCandidate({ wrappedBtcLendingLoopSlice = null, phase3Validat
     chain: strategy.chain || "base",
     protocols: [strategy.protocol || "moonwell"],
     assetFamily: "btc_wrappers",
+    category: "yield",
+    activeEligibility: validation?.overallStatus === "passed" ? "active_ready" : "blocked",
+    planningEligibility: validation ? "review_only" : "blocked",
+    blockers: validation?.blockers || ["phase3_validation_missing"],
+    evidence: validation?.evidence || null,
+    nextAction: validation?.nextAction || null,
+  });
+}
+
+function recursiveLoopCandidate({ scaffold = null, phase3Validation = null } = {}) {
+  const strategy = scaffold?.strategy || {};
+  const validation = (phase3Validation?.validations || []).find((item) => item.id === `${strategy.id}_validation`) || null;
+  if (!strategy.id) return null;
+  return candidate({
+    id: strategy.id,
+    label: strategy.label || "Recursive lending loop",
+    chain: strategy.chain || null,
+    protocols: [strategy.protocol].filter(Boolean),
+    assetFamily: strategy.arrivalFamily === "stablecoin" ? "stables" : "btc_wrappers",
     category: "yield",
     activeEligibility: validation?.overallStatus === "passed" ? "active_ready" : "blocked",
     planningEligibility: validation ? "review_only" : "blocked",
@@ -163,13 +183,15 @@ export function buildAllocatorCore({
   strategySnapshot = null,
   phase3Validation = null,
   wrappedBtcLendingLoopSlice = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveStablecoinLoop = null,
   secondaryStrategyScaffolds = null,
   protocolMarketWatchers = null,
   now = null,
 } = {}) {
   const budgets = {
-    activeBudgetUsd: strategySnapshot?.currentSystem?.activeBudgetUsd ?? 300,
-    planningBudgetUsd: strategySnapshot?.summary?.planningBudgetUsd ?? 1000,
+    activeBudgetUsd: strategySnapshot?.currentSystem?.activeBudgetUsd ?? null,
+    planningBudgetUsd: strategySnapshot?.summary?.planningBudgetUsd ?? null,
   };
   const constraints = {
     capPerStrategyPct: 0.2,
@@ -179,10 +201,12 @@ export function buildAllocatorCore({
     reserveSleeveMinPct: 0.05,
   };
   const candidates = [
-    wrappedLoopCandidate({ wrappedBtcLendingLoopSlice, phase3Validation }),
+    recursiveLoopCandidate({ scaffold: recursiveWrappedBtcLoop, phase3Validation }),
+    recursiveLoopCandidate({ scaffold: recursiveStablecoinLoop, phase3Validation }),
+    recursiveWrappedBtcLoop ? null : wrappedLoopCandidate({ wrappedBtcLendingLoopSlice, phase3Validation }),
     ...((secondaryStrategyScaffolds?.scaffolds || []).map((item) => scaffoldCandidate(item, phase3Validation))),
   ]
-    .filter((item) => item.id)
+    .filter((item) => item?.id)
     .map((item) => {
       const watcherRelatedBlockers = watcherBlockers(item.id, protocolMarketWatchers);
       return {
@@ -214,7 +238,7 @@ export function buildAllocatorCore({
     planningView,
     notes: [
       "This allocator core is deterministic and evidence-bound; it does not authorize live execution on its own.",
-      "Per-strategy, per-protocol, per-chain, and per-asset-family caps come from the Phase 4 reference defaults until operator overrides are wired.",
+      "Per-strategy, per-protocol, per-chain, and per-asset-family caps should come from explicit strategy config rather than a repo-wide budget ring.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
     ],
   };

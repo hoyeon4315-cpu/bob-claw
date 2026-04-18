@@ -166,7 +166,11 @@ export function buildYieldShadowRecord({
     label: definition.label,
     allocationMode: definition.allocationMode,
     stage: "paper_design",
-    status: fitsCurrentBudget ? "paper_ready_within_budget" : "budget_expansion_required",
+    status: Number.isFinite(currentBudgetUsd)
+      ? fitsCurrentBudget
+        ? "paper_ready_within_budget"
+        : "budget_expansion_required"
+      : "paper_ready_strategy_cap_review",
     capitalRequiredUsd: round(capitalRequiredUsd),
     deployableUsd,
     reserveUsd: round(reserveUsd),
@@ -205,7 +209,7 @@ export function buildYieldShadowRecord({
     },
     blockers: unique([
       ...(pivot?.blockers || []),
-      fitsCurrentBudget ? null : "budget_gap_present",
+      Number.isFinite(currentBudgetUsd) && fitsCurrentBudget === false ? "budget_gap_present" : null,
       "yield_source_feed_not_integrated",
       "vault_allowlist_not_defined",
       "withdrawal_latency_unmeasured",

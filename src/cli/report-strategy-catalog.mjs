@@ -22,8 +22,13 @@ function printEntries(title, entries) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { state, dashboardStatus, triangleArtifacts } = await buildCurrentDashboardContext();
-  const catalog = buildStrategyCatalog({ dashboardStatus, state, triangleArtifacts });
+  const { state, dashboardStatus, triangleArtifacts, artifacts } = await buildCurrentDashboardContext();
+  const catalog = buildStrategyCatalog({
+    dashboardStatus,
+    state,
+    triangleArtifacts,
+    laneReclassification: artifacts?.laneReclassification || null,
+  });
 
   if (args.json) {
     console.log(JSON.stringify(catalog, null, 2));
@@ -36,6 +41,8 @@ async function main() {
   console.log(`ethereumL1: ${catalog.policy.ethereumL1}`);
   console.log(`flash live: ${catalog.policy.flashLiveAdmission}`);
   console.log(`odos trust: ${catalog.policy.odosExecutionTrust}`);
+  console.log(`revalidation top: ${catalog.summary?.topRevalidationCandidateId || "none"}`);
+  console.log(`revalidation next: ${catalog.summary?.nextRevalidationAction?.code || "none"}`);
 
   printEntries("BTC families", catalog.btcFamilies);
   printEntries("ETH branches", catalog.ethBranches);

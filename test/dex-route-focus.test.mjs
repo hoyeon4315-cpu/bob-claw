@@ -60,8 +60,8 @@ test("eth route focus tracks pure ETH-family loop observability separately", () 
     ],
     scoreSnapshot: {
       scores: [
-        { routeKey, amount: "10000", netEdgeUsd: -0.3, executableNetEdgeUsd: -0.1, tradeReadiness: "observe_only_ethereum_l1_phase_disabled" },
-        { routeKey: partialRouteKey, amount: "10000", netEdgeUsd: -0.4, executableNetEdgeUsd: null, tradeReadiness: "observe_only_ethereum_l1_phase_disabled" },
+        { routeKey, amount: "10000", netEdgeUsd: -0.3, executableNetEdgeUsd: -0.1, tradeReadiness: "ethereum_l1_policy_override_disabled" },
+        { routeKey: partialRouteKey, amount: "10000", netEdgeUsd: -0.4, executableNetEdgeUsd: null, tradeReadiness: "ethereum_l1_policy_override_disabled" },
       ],
     },
     dexQuotes: [

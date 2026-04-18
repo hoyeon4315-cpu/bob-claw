@@ -3,6 +3,7 @@ import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "./pivot-plan
 import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "./proxy-spread-coverage-plan.mjs";
 import { summarizeAllocatorCore } from "./allocator-core.mjs";
 import { buildCapitalExpansionReview, summarizeCapitalExpansionReview } from "./capital-expansion-review.mjs";
+import { summarizeDeterministicStrategyCandidates } from "./deterministic-strategy-candidates.mjs";
 import { summarizePhase1Revalidation } from "./phase1-revalidation.mjs";
 import { summarizePhase3StrategyValidation } from "./phase3-strategy-validation.mjs";
 import { summarizeProtocolMarketWatchers } from "./protocol-market-watchers.mjs";
@@ -171,10 +172,16 @@ export function buildStrategySnapshot({
   protocolMarketWatchers = null,
   strategyResearchBoard = null,
   secondaryStrategyScaffolds = null,
+  deterministicStrategyCandidates = null,
   now = null,
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
-  const catalog = buildStrategyCatalog({ dashboardStatus, state, triangleArtifacts });
+  const catalog = buildStrategyCatalog({
+    dashboardStatus,
+    state,
+    triangleArtifacts,
+    laneReclassification: phase1Revalidation?.laneReclassification || null,
+  });
   const pivotPlan = buildStrategyPivotPlan({ dashboardStatus, state, triangleArtifacts });
   const yieldShadowBook = buildYieldShadowBook({ pivotPlan });
   const proxyCoveragePlan = buildProxySpreadCoveragePlan({
@@ -234,6 +241,7 @@ export function buildStrategySnapshot({
   const protocolMarketWatchersSummary = summarizeProtocolMarketWatchers(protocolMarketWatchers || null);
   const strategyResearchSummary = summarizeStrategyResearchBoard(strategyResearchBoard || null);
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
+  const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
 
   return {
     schemaVersion: 1,
@@ -268,6 +276,10 @@ export function buildStrategySnapshot({
       researchTopCandidateId: strategyResearchSummary?.topCandidate?.id || null,
       secondaryScaffoldCount: secondaryScaffoldsSummary?.scaffoldCount ?? 0,
       secondaryTopScaffoldId: secondaryScaffoldsSummary?.topScaffold?.id || null,
+      deterministicCandidateCount: deterministicCandidatesSummary?.candidateCount ?? 0,
+      deterministicTopCandidateId: deterministicCandidatesSummary?.topCandidate?.id || null,
+      deterministicReadyForDryRunCount: deterministicCandidatesSummary?.readyForDryRunCount ?? 0,
+      deterministicReceiptBackedCount: deterministicCandidatesSummary?.receiptBackedCount ?? 0,
       phase3ValidationCount: phase3StrategyValidationSummary?.validationCount ?? 0,
       phase3PassedCount: phase3StrategyValidationSummary?.passedCount ?? 0,
       phase3TopBlockedId: phase3StrategyValidationSummary?.topBlocked?.id || null,
@@ -293,6 +305,7 @@ export function buildStrategySnapshot({
       protocolMarketWatchers: protocolMarketWatchersSummary,
       strategyResearchBoard: strategyResearchSummary,
       secondaryStrategyScaffolds: secondaryScaffoldsSummary,
+      deterministicStrategyCandidates: deterministicCandidatesSummary,
     },
     artifacts: {
       source: [
@@ -309,6 +322,7 @@ export function buildStrategySnapshot({
         { kind: "protocol_market_watchers", path: "data/protocol-market-watchers.json" },
         { kind: "strategy_research_board", path: "data/strategy-research-board.json" },
         { kind: "secondary_strategy_scaffolds", path: "data/secondary-strategy-scaffolds.json" },
+        { kind: "deterministic_strategy_candidates", path: "data/deterministic-strategy-candidates.json" },
       ],
       generated: [{ kind: "strategy_snapshot", path: "data/strategy-snapshot.json" }],
     },
@@ -368,6 +382,7 @@ export function summarizeStrategySnapshot(snapshot = null) {
     protocolMarketWatchers: snapshot.planningLayers?.protocolMarketWatchers || null,
     researchBoard: snapshot.planningLayers?.strategyResearchBoard || null,
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
+    deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,
     milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
   };
 }

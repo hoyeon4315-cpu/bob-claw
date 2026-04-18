@@ -1,0 +1,139 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "../src/executor/helpers/token-dex-experiment.mjs";
+
+function odosClientFixture() {
+  return {
+    quote: async () => ({
+      latencyMs: 111,
+      body: {
+        inAmounts: ["10000"],
+        outAmounts: ["9900"],
+        inValues: [7.5],
+        outValues: [7.4],
+        netOutValue: 7.35,
+        gasEstimate: 200000,
+        gasEstimateValue: 0.003,
+        priceImpact: 0,
+        percentDiff: -0.1,
+        pathId: "path-123",
+        blockNumber: 1,
+      },
+    }),
+    assemble: async () => ({
+      latencyMs: 55,
+      body: {
+        transaction: {
+          to: "0x7777777777777777777777777777777777777777",
+          data: "0xabcdef",
+          value: "0",
+          gas: "210000",
+        },
+      },
+    }),
+  };
+}
+
+test("token dex experiment plan builds approval and swap steps", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wbtc.oft",
+    outputToken: "cbbtc",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.steps.length, 2);
+  assert.equal(plan.steps[0].id, "approve_input_token");
+  assert.equal(plan.steps[0].intent.metadata.capCheckAmountUsd, 0);
+  assert.equal(plan.steps[1].id, "swap_input_to_output");
+  assert.equal(plan.outputAsset.ticker, "cbBTC");
+  assert.equal(plan.minimumOutputAmount, "9850");
+});
+
+test("token dex experiment plan surfaces routing failures cleanly", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: {
+      quote: async () => {
+        const error = new Error("Error getting quote, please try again");
+        error.details = {
+          body: {
+            detail: "Routing unavailable for token [0x1234]",
+          },
+        };
+        throw error;
+      },
+    },
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wbtc.oft",
+    outputToken: "cbbtc",
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "routing_unavailable");
+  assert.equal(plan.steps.length, 0);
+});
+
+test("token dex experiment execution waits for output token delivery proof", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wbtc.oft",
+    outputToken: "cbbtc",
+  });
+
+  let stepIndex = 0;
+  let readCount = 0;
+  const execution = await executeTokenDexExperimentPlan({
+    plan,
+    receiptIngest: async () => ({ appended: false, reason: "test_stub" }),
+    destinationSettlementTimeoutMs: 1_000,
+    destinationPollIntervalMs: 0,
+    readErc20BalanceImpl: async () => {
+      readCount += 1;
+      return {
+        rpcUrl: "https://base-rpc.example",
+        balance: BigInt(readCount > 1 ? 9900 : 0),
+      };
+    },
+    sendCommand: async () => ({
+      status: "ok",
+      broadcast: {
+        txHash: `0xhash${stepIndex++}`,
+      },
+      receipt: {
+        hash: `0xhash${stepIndex}`,
+        status: 1,
+      },
+    }),
+  });
+
+  assert.equal(execution.stepResults.length, 2);
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.destinationProof.requiredDelta, "9850");
+});

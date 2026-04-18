@@ -57,12 +57,16 @@ async function main() {
   }
 
   console.log(`bookStatus=${book.bookStatus}`);
-  console.log(`currentBudgetUsd=${money(book.currentBudgetUsd)}`);
-  console.log(
-    `budgetScenarios=${(book.budgetScenarios || [])
-      .map((scenario) => `${money(scenario.budgetUsd)}:${scenario.readyProfileCount}${scenario.planningOnly ? ":planning" : ":active"}`)
-      .join(",")}`,
-  );
+  if (Number.isFinite(book.currentBudgetUsd)) {
+    console.log(`currentBudgetUsd=${money(book.currentBudgetUsd)}`);
+  }
+  if (book.budgetScenarios?.length) {
+    console.log(
+      `budgetScenarios=${(book.budgetScenarios || [])
+        .map((scenario) => `${money(scenario.budgetUsd)}:${scenario.readyProfileCount}${scenario.planningOnly ? ":reference" : ":current"}`)
+        .join(",")}`,
+    );
+  }
   console.log(`profileCount=${book.summary.profileCount}`);
   console.log(`withinBudgetCount=${book.summary.withinBudgetCount}`);
   console.log(`estimatedSampleCount=${book.summary.estimatedSampleCount}`);
@@ -77,7 +81,7 @@ async function main() {
         `capital=${money(profile.capitalRequiredUsd)}`,
         `deployable=${money(profile.deployableUsd)}`,
         `reserve=${money(profile.reserveUsd)}`,
-        `fitsBudget=${profile.fitsCurrentBudget}`,
+         `fitsBudget=${profile.fitsCurrentBudget}`,
         `budgetGap=${money(profile.budgetGapUsd)}`,
         `scenarioFits=${(profile.budgetScenarios || [])
           .map((scenario) => `${scenario.budgetUsd}:${scenario.fitsBudget === true ? "fit" : scenario.fitsBudget === false ? "gap" : "n/a"}`)

@@ -124,7 +124,7 @@ function chooseEthFamilyAction(ethProfitability = null) {
     };
   }
 
-  if (ethProfitability.recommendationCode === "observe_only_until_fee_review") {
+  if (ethProfitability.recommendationCode === "eth_l1_policy_override_disabled") {
     return {
       status: "observe_only",
       nextActionCode: ethProfitability.followUpActionCode,
