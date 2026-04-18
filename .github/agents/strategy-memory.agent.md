@@ -38,3 +38,16 @@ You explain the current BOB Claw strategy stack in simple Korean first.
 1. One short Korean summary sentence.
 2. A short bullet list of relevant strategies and statuses.
 3. If ETH is mentioned, add the ETH clarification in plain language.
+
+## Recent live execution memory
+- Base/Bob/Avalanche/Sonic recent funded-chain execution facts:
+  - Base `ETH -> WETH -> USDC`, Avalanche `AVAX -> WAVAX -> USDC`, and Sonic `S -> wS -> USDC` were all executed live with destination balance-delta proof.
+  - Base `wBTC.OFT -> bitcoin` delivered live with BTC balance delta `4549`.
+  - Base `wBTC.OFT -> BOB wBTC.OFT` top-ups of `4000` sats and later `5000` sats were executed live to refill BOB.
+  - BOB `wBTC.OFT -> Avalanche wBTC.OFT` tx `0x2017bcaa09869fa19ef32ffe256dae745014d9fbcfa6348be4e29a1a6019c497` delivered `5000` sats, then Avalanche `wBTC.OFT -> bitcoin` tx `0xcbb1ee322e40508414aabcb4c60a383fb978bba3fc7928d73b2dd6cfa5b95b21` delivered BTC delta `4330` (`4549 -> 8879`).
+  - BOB `wBTC.OFT -> Sonic wBTC.OFT` tx `0x4c2d4bcfd9287f4500cdc067eadd254e0c3742df484fb735905391251e31f464` delivered `5000` sats, then Sonic `wBTC.OFT -> bitcoin` tx `0xb4349802173ad6e66f091a85e8977242895e85796f92421184c7cdd6270a2f08` delivered BTC delta `4330` (`8879 -> 13209`).
+  - Earlier Gateway mempool/quote failures were intermittent external dependency errors, not a permanent local native-BTC off-ramp blocker.
+  - Extra-chain gas shortage is now modeled as treasury bootstrap jobs instead of a silent stop:
+    - `bera:native` and `unichain:native` currently resolve to `cross_chain_bridge_or_swap`
+    - blocked execution attempts now persist exact blockers like `cross_chain_source_selection_missing` in the execution journal
+  - Strategy execution surfaces now report `missingExecutorCount = 0`; stablecoin entry/exit loops and mixed ETH/stable loops have dedicated analysis probe commands even though they are still not live-ready.
