@@ -126,6 +126,42 @@ test("prelive readiness stays in shadow replay when audit and policy gates are b
   assert.equal(summary.tinyLiveCanary.blockers.includes("shadow_replay_not_ready"), true);
 });
 
+test("prelive readiness honors review-package manual approval state even when strategy summary lags", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_CANARY_REVIEW_POSSIBLE",
+    },
+    shadowCycle: {
+      objectivePlans: {
+        executionReview: {
+          routeKey: "base:btc->ethereum:btc",
+        },
+      },
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: false,
+      edgeViability: {
+        policyReadyCount: 1,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      tinyCanaryAdmission: {
+        status: "manual_approval_required",
+      },
+    },
+    targetSimulationSuccessCount: 1,
+  });
+
+  assert.equal(summary.shadowReplay.blockers.includes("manual_canary_review_not_ready"), false);
+  assert.equal(summary.shadowReplay.manualCanaryReviewReady, true);
+  assert.equal(summary.currentStage, "mechanical_simulation");
+});
+
 test("prelive readiness pauses at fork execution after mechanical proof", () => {
   const summary = buildPreliveReadinessSummary({
     overall: {

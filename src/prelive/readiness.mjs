@@ -100,6 +100,7 @@ export function buildPreliveReadinessSummary({
   audit = null,
   shadowCycle = null,
   strategy = null,
+  reviewPackage = null,
   simulationRuns = [],
   walletReadinessRecords = [],
   forkExecutionPlans = [],
@@ -109,7 +110,11 @@ export function buildPreliveReadinessSummary({
   targetSimulationSuccessCount = 50,
   targetForkConfirmedCount = 3,
 } = {}) {
-  const manualReviewReady = Boolean(strategy?.manualCanaryReviewReady);
+  const manualReviewReady = Boolean(
+    strategy?.manualCanaryReviewReady ||
+      reviewPackage?.readyForManualReview ||
+      reviewPackage?.tinyCanaryAdmission?.status === "manual_approval_required",
+  );
   const measuredPolicyReady = Number(strategy?.edgeViability?.policyReadyCount || 0);
   const objectiveExecutionRoute = shadowCycle?.objectivePlans?.executionReview?.routeKey || null;
   const successfulSimulations = simulationRuns.filter((item) => item.status === "simulated_ok");

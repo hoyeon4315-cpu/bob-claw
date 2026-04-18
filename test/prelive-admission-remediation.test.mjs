@@ -236,3 +236,95 @@ test("admission remediation plan skips review-ready strategy candidates with no 
   assert.equal(plan.nextAction.code, "hold_dexQuote");
   assert.equal(plan.items.some((item) => item.code === "capture_wrapped_btc_loop_extended_receipt_context"), false);
 });
+
+test("admission remediation plan prioritizes active canary wallet readiness over stale input refresh", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        blockers: ["stale_gateway_quote", "stale_market"],
+      },
+      manualReviewCandidate: {
+        routeKey: "bob:0x0555->bera:0x0555",
+        routeLabel: "bob->bera wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        inputFreshness: {
+          gatewayQuote: { state: "stale" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "blocked" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "stale" },
+        },
+      },
+      queueFollowUps: [
+        {
+          rank: 1,
+          scope: "active_canary",
+          label: "bob->bera wBTC.OFT->wBTC.OFT",
+          reason: "token",
+          command: "npm run check:estimator-wallet -- --route-key=bob:0x0555->bera:0x0555 --amount=10000",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.nextAction.code, "token");
+  assert.equal(plan.nextAction.command, "npm run check:estimator-wallet -- --route-key=bob:0x0555->bera:0x0555 --amount=10000");
+  assert.equal(plan.items[0].reason, "token");
+  assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), true);
+});
+
+test("admission remediation plan keeps high-priority active canary readiness even when refresh-batch runner exists", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        blockers: ["stale_gateway_quote"],
+      },
+      manualReviewCandidate: {
+        routeKey: "bob:0x0555->bera:0x0555",
+        routeLabel: "bob->bera wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        inputFreshness: {
+          gatewayQuote: { state: "stale" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "blocked" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+      queueFollowUps: [
+        {
+          rank: 1,
+          scope: "active_canary",
+          label: "bob->bera wBTC.OFT->wBTC.OFT",
+          reason: "token",
+          command: "npm run check:estimator-wallet -- --route-key=bob:0x0555->bera:0x0555 --amount=10000",
+        },
+        {
+          rank: 2,
+          scope: "prep_candidate",
+          label: "bob->bsc wBTC.OFT->wBTC.OFT",
+          reason: "scheduled_readiness_check",
+          command: "npm run check:estimator-wallet -- --route-key=bob:0x0555->bsc:0x0555 --amount=10000",
+        },
+      ],
+    },
+    evidenceCampaign: {
+      actions: [
+        {
+          code: "execute_refresh_batch",
+          label: "execute refresh batch",
+          status: "ready",
+          reason: "token",
+          command: "npm run run:shadow-refresh-batch -- --execute --limit=1",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.nextAction.code, "token");
+  assert.equal(plan.items[0].command, "npm run check:estimator-wallet -- --route-key=bob:0x0555->bera:0x0555 --amount=10000");
+  assert.equal(plan.items.some((item) => item.command === "npm run check:estimator-wallet -- --route-key=bob:0x0555->bsc:0x0555 --amount=10000"), false);
+  assert.equal(plan.items.some((item) => item.code === "execute_refresh_batch"), true);
+});

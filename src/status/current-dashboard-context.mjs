@@ -387,6 +387,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       audit: dashboardStatus.audit || null,
       shadowCycle,
       strategy: dashboardStatus.strategy || null,
+      reviewPackage,
       simulationRuns: preliveSimulationRuns,
       walletReadinessRecords: state.readinessRecords || [],
       forkExecutionPlans: preliveForkPlan?.plans || [],

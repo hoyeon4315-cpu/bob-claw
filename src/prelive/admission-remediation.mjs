@@ -42,6 +42,19 @@ function humanizeCode(code = null) {
   return code ? code.replace(/_/g, " ") : null;
 }
 
+function isWalletReadinessReason(reason = null) {
+  const normalized = String(reason || "").toLowerCase();
+  return (
+    normalized === "token" ||
+    normalized === "native" ||
+    normalized === "allowance" ||
+    normalized === "wallet_not_checked" ||
+    normalized.includes("token_balance") ||
+    normalized.includes("native_balance") ||
+    normalized.includes("allowance_insufficient")
+  );
+}
+
 function compareItems(left, right) {
   if ((left.priority ?? 0) !== (right.priority ?? 0)) {
     return (right.priority ?? 0) - (left.priority ?? 0);
@@ -310,7 +323,14 @@ function queueFollowUpItems(reviewPackage = null) {
     .filter((entry) => entry?.command)
     .map((entry) =>
       item({
-        priority: 84 - (entry.rank ?? 0),
+        priority:
+          entry.scope === "active_canary" && isWalletReadinessReason(entry.reason)
+            ? 98 - (entry.rank ?? 0)
+            : entry.scope === "active_canary"
+              ? 90 - (entry.rank ?? 0)
+              : isWalletReadinessReason(entry.reason)
+                ? 88 - (entry.rank ?? 0)
+                : 84 - (entry.rank ?? 0),
         code: entry.reason || "queue_follow_up",
         label: entry.label || entry.scope || "queue follow-up",
         status: "ready",
@@ -350,11 +370,16 @@ export function buildAdmissionRemediationPlan({
   if (!reviewPackage) return null;
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
   const evidenceItems = evidenceCampaignItems(evidenceCampaign);
+  const queueItems = queueFollowUpItems(reviewPackage);
+  const hasRefreshBatchRunner = evidenceItems.some((entry) => entry.code === "execute_refresh_batch");
+  const eligibleQueueItems = hasRefreshBatchRunner
+    ? queueItems.filter((entry) => (entry.priority ?? 0) >= 90)
+    : queueItems;
   const items = dedupeItems([
     ...strategyCandidateItems(reviewPackage),
     ...inputItems(reviewPackage, address),
     ...measuredLeaderItem(reviewPackage),
-    ...(evidenceItems.some((entry) => entry.code === "execute_refresh_batch") ? [] : queueFollowUpItems(reviewPackage)),
+    ...eligibleQueueItems,
     ...evidenceItems,
   ]);
 
