@@ -9,7 +9,7 @@ function finite(value) {
 }
 
 function indicativeNetUsd(candidate = null) {
-  return finite(candidate?.executableNetEdgeUsd) ?? finite(candidate?.netEdgeUsd);
+  return finite(candidate?.effectiveSystemNetPnlUsd) ?? finite(candidate?.executableNetEdgeUsd) ?? finite(candidate?.netEdgeUsd);
 }
 
 function supportsRefillDemand(candidate = null) {
@@ -36,8 +36,8 @@ function positiveInsufficientDemand(routePlan = null) {
       (item) =>
         item?.txReady &&
         item?.tradeReadiness === "insufficient_data" &&
-        Number.isFinite(item?.netEdgeUsd) &&
-        item.netEdgeUsd > 0,
+        Number.isFinite(indicativeNetUsd(item)) &&
+        indicativeNetUsd(item) > 0,
     )
     .flatMap((item) => [
       { chain: item.srcChain },
@@ -52,12 +52,12 @@ export function selectFundingRouteContext(routePlan = null) {
       (item) =>
         item?.txReady &&
         item?.tradeReadiness === "insufficient_data" &&
-        Number.isFinite(item?.netEdgeUsd) &&
-        item.netEdgeUsd > 0,
+        Number.isFinite(indicativeNetUsd(item)) &&
+        indicativeNetUsd(item) > 0,
     )
     .sort(
       (left, right) =>
-        right.netEdgeUsd - left.netEdgeUsd ||
+        indicativeNetUsd(right) - indicativeNetUsd(left) ||
         (left.prepFundingUsd ?? Number.POSITIVE_INFINITY) - (right.prepFundingUsd ?? Number.POSITIVE_INFINITY),
     )[0];
 

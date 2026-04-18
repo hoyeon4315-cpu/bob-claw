@@ -157,3 +157,65 @@ test("funding route context prefers highest-edge positive insufficient-data cand
   assert.equal(routeContext.routeKey, "base:0x8335->bitcoin:0x0000");
   assert.equal(routeContext.tradeReadiness, "insufficient_data");
 });
+
+test("funding route context prefers positive effective system pnl over raw executable edge", () => {
+  const routeContext = selectFundingRouteContext({
+    topCandidates: [
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "100000",
+        srcChain: "bob",
+        srcToken: "0x0555",
+        txReady: true,
+        viableForPrep: true,
+        tradeReadiness: "insufficient_data",
+        effectiveSystemNetPnlUsd: -0.9,
+        executableNetEdgeUsd: 0.3,
+        netEdgeUsd: -1.1,
+        prepFundingUsd: 70,
+      },
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "200000",
+        srcChain: "bob",
+        srcToken: "0x0555",
+        txReady: true,
+        viableForPrep: true,
+        tradeReadiness: "insufficient_data",
+        effectiveSystemNetPnlUsd: 0.8,
+        executableNetEdgeUsd: 1.2,
+        netEdgeUsd: -1.5,
+        prepFundingUsd: 140,
+      },
+    ],
+    candidates: [
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "100000",
+        srcChain: "bob",
+        srcToken: "0x0555",
+        txReady: true,
+        tradeReadiness: "insufficient_data",
+        effectiveSystemNetPnlUsd: -0.9,
+        executableNetEdgeUsd: 0.3,
+        netEdgeUsd: -1.1,
+        prepFundingUsd: 70,
+      },
+      {
+        routeKey: "bob:0x0555->base:0x0555",
+        amount: "200000",
+        srcChain: "bob",
+        srcToken: "0x0555",
+        txReady: true,
+        tradeReadiness: "insufficient_data",
+        effectiveSystemNetPnlUsd: 0.8,
+        executableNetEdgeUsd: 1.2,
+        netEdgeUsd: -1.5,
+        prepFundingUsd: 140,
+      },
+    ],
+  });
+
+  assert.equal(routeContext.amount, "200000");
+  assert.equal(routeContext.effectiveSystemNetPnlUsd, 0.8);
+});
