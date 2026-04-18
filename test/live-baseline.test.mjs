@@ -92,3 +92,34 @@ test("live baseline summary classifies refresh, operator, technical, and objecti
   assert.equal(summary.blockers.operator[0].actions[0].summary, "fund 0.0001 wBTC.OFT on avalanche");
   assert.equal(summary.blockers.objective[2].remainingSats, 49944);
 });
+
+test("live baseline treats current below-minimum payback state as an objective blocker", () => {
+  const summary = buildLiveBaselineSummary({
+    dashboardStatus: {
+      overall: {
+        liveTrading: "ALLOWED",
+        shadowTrading: "ALLOWED",
+      },
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+          minimumPaybackProgress: {
+            source: "current",
+            status: "carry",
+            reason: "planned_payback_below_minimum",
+            grossTargetBeforeCostsSats: 58,
+            minPaybackSats: 50_000,
+            satsToMinimumPayback: 49_942,
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(summary.status, "blocked");
+  assert.equal(summary.counts.objective, 1);
+  assert.equal(summary.blockers.objective[0].code, "planned_payback_below_minimum");
+  assert.equal(summary.blockers.objective[0].remainingSats, 49_942);
+  assert.equal(summary.blockers.objective[0].progressSource, "current");
+});

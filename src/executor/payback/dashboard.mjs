@@ -59,6 +59,39 @@ function buildMinimumGapMetrics(grossTargetBeforeCostsSats, minPaybackSats) {
   };
 }
 
+function minimumPaybackProgress(decision, { source = null } = {}) {
+  if (!decision || typeof decision !== "object") return null;
+  const grossTargetBeforeCostsSats = firstFinite(decision, [
+    "decisionLog.inputs.grossTargetBeforeCostsSats",
+    "decisionLog.applied.grossTargetBeforeCostsSats",
+  ]);
+  const minPaybackSats = firstFinite(decision, [
+    "decisionLog.inputs.minPaybackSats",
+    "policy.minPaybackSats",
+  ]);
+  const gapMetrics = buildMinimumGapMetrics(grossTargetBeforeCostsSats, minPaybackSats);
+  if (
+    !Number.isFinite(grossTargetBeforeCostsSats) &&
+    !Number.isFinite(minPaybackSats) &&
+    !Number.isFinite(gapMetrics.satsToMinimumPayback)
+  ) {
+    return null;
+  }
+  return {
+    source,
+    status: decision.status || null,
+    reason: decision.reason || null,
+    grossProfitSatsPeriod: firstFinite(decision, [
+      "decisionLog.inputs.grossProfitSatsPeriod",
+      "snapshot.grossProfitSats_period",
+    ]),
+    grossTargetBeforeCostsSats,
+    minPaybackSats,
+    satsToMinimumPayback: gapMetrics.satsToMinimumPayback,
+    progressToMinimumRatio: gapMetrics.progressToMinimumRatio,
+  };
+}
+
 function allRecordsForPayback(auditLogLines = [], receiptStore = {}) {
   return [
     ...normalizeRecords(auditLogLines),
@@ -156,16 +189,13 @@ export async function buildPaybackDashboardSlice({
           recipientOverride: PREVIEW_BTC_DESTINATION,
         })
       : null;
+  const previewMinimumPaybackProgress = minimumPaybackProgress(previewAfterDestination, {
+    source: "after_destination",
+  });
+  const currentMinimumPaybackProgress = minimumPaybackProgress(decision, {
+    source: "current",
+  });
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
-  const previewGrossTargetBeforeCostsSats = firstFinite(previewAfterDestination, [
-    "decisionLog.inputs.grossTargetBeforeCostsSats",
-    "decisionLog.applied.grossTargetBeforeCostsSats",
-  ]);
-  const previewMinPaybackSats = firstFinite(previewAfterDestination, [
-    "decisionLog.inputs.minPaybackSats",
-    "policy.minPaybackSats",
-  ]);
-  const previewGapMetrics = buildMinimumGapMetrics(previewGrossTargetBeforeCostsSats, previewMinPaybackSats);
   return {
     schemaVersion: 1,
     observedAt: now,
@@ -190,18 +220,13 @@ export async function buildPaybackDashboardSlice({
         decision?.reason === "payback_btc_destination_missing"
           ? "set_payback_btc_destination_env"
           : null,
+      minimumPaybackProgress:
+        decision?.reason === "planned_payback_below_minimum"
+          ? currentMinimumPaybackProgress
+          : previewMinimumPaybackProgress,
       previewAfterDestination: previewAfterDestination
         ? {
-            status: previewAfterDestination.status || null,
-            reason: previewAfterDestination.reason || null,
-            grossProfitSatsPeriod: firstFinite(previewAfterDestination, [
-              "decisionLog.inputs.grossProfitSatsPeriod",
-              "snapshot.grossProfitSats_period",
-            ]),
-            grossTargetBeforeCostsSats: previewGrossTargetBeforeCostsSats,
-            minPaybackSats: previewMinPaybackSats,
-            satsToMinimumPayback: previewGapMetrics.satsToMinimumPayback,
-            progressToMinimumRatio: previewGapMetrics.progressToMinimumRatio,
+            ...previewMinimumPaybackProgress,
           }
         : null,
     },

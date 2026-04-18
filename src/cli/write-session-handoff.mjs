@@ -92,6 +92,10 @@ function formatRatio(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function minimumPaybackProgress(payback = null) {
+  return payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
+}
+
 function summarizeBaselineAction(action = null) {
   if (!action) return "none";
   if (action.type === "fund_native" || action.type === "fund_token") {
@@ -422,6 +426,7 @@ function blockersText(blockers = []) {
 
 function paybackLines(payback = null) {
   if (!payback) return ["- Payback readiness unavailable"];
+  const minimumProgress = minimumPaybackProgress(payback);
   const lines = [
     `- Scheduler: status=\`${payback.scheduler?.status || "unknown"}\` reason=\`${payback.scheduler?.reason || "unknown"}\` next=\`${payback.scheduler?.nextAction || "none"}\``,
     `- Balances: pending=\`${formatSats(payback.accumulatorPendingSats)}\` grossProfitPeriod=\`${formatSats(payback.grossProfitSatsPeriod)}\` lifetimePaid=\`${formatSats(payback.paidBackSatsLifetime)}\``,
@@ -433,11 +438,12 @@ function paybackLines(payback = null) {
   if (payback.scheduler?.requiredEnvName) {
     lines.splice(2, 0, `- Required env: \`${payback.scheduler.requiredEnvName}\``);
   }
-  if (payback.scheduler?.previewAfterDestination) {
+  if (minimumProgress) {
+    const label = minimumProgress.source === "current" ? "Current minimum gap" : "After destination is set";
     lines.splice(
       lines.length - 1,
       0,
-      `- After destination is set: status=\`${payback.scheduler.previewAfterDestination.status || "unknown"}\` reason=\`${payback.scheduler.previewAfterDestination.reason || "unknown"}\` grossTarget=\`${formatSats(payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats)}\` minPayback=\`${formatSats(payback.scheduler.previewAfterDestination.minPaybackSats)}\` remaining=\`${formatSats(payback.scheduler.previewAfterDestination.satsToMinimumPayback)}\` progress=\`${formatRatio(payback.scheduler.previewAfterDestination.progressToMinimumRatio)}\``,
+      `- ${label}: status=\`${minimumProgress.status || "unknown"}\` reason=\`${minimumProgress.reason || "unknown"}\` grossTarget=\`${formatSats(minimumProgress.grossTargetBeforeCostsSats)}\` minPayback=\`${formatSats(minimumProgress.minPaybackSats)}\` remaining=\`${formatSats(minimumProgress.satsToMinimumPayback)}\` progress=\`${formatRatio(minimumProgress.progressToMinimumRatio)}\``,
     );
   }
   return lines;
@@ -1133,12 +1139,14 @@ function onePageExecutionBriefLines({
     );
   }
   if (payback) {
+    const minimumProgress = minimumPaybackProgress(payback);
     lines.push(
       `- Payback: scheduler=\`${payback.scheduler?.status || "unknown"}\` reason=\`${payback.scheduler?.reason || "unknown"}\` pending=\`${formatSats(payback.accumulatorPendingSats)}\` next=\`${payback.scheduler?.nextAction || "none"}\``,
     );
-    if (payback.scheduler?.previewAfterDestination) {
+    if (minimumProgress) {
+      const label = minimumProgress.source === "current" ? "Payback minimum gap" : "Payback after destination";
       lines.push(
-        `- Payback after destination: \`${payback.scheduler.previewAfterDestination.status || "unknown"}\` reason=\`${payback.scheduler.previewAfterDestination.reason || "unknown"}\` grossTarget=\`${formatSats(payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats)}\` min=\`${formatSats(payback.scheduler.previewAfterDestination.minPaybackSats)}\` remaining=\`${formatSats(payback.scheduler.previewAfterDestination.satsToMinimumPayback)}\` progress=\`${formatRatio(payback.scheduler.previewAfterDestination.progressToMinimumRatio)}\``,
+        `- ${label}: \`${minimumProgress.status || "unknown"}\` reason=\`${minimumProgress.reason || "unknown"}\` grossTarget=\`${formatSats(minimumProgress.grossTargetBeforeCostsSats)}\` min=\`${formatSats(minimumProgress.minPaybackSats)}\` remaining=\`${formatSats(minimumProgress.satsToMinimumPayback)}\` progress=\`${formatRatio(minimumProgress.progressToMinimumRatio)}\``,
       );
     }
   }

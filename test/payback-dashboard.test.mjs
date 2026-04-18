@@ -227,12 +227,52 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
   assert.equal(payback.scheduler.reason, "payback_btc_destination_missing");
   assert.equal(payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");
   assert.equal(payback.scheduler.nextAction, "set_payback_btc_destination_env");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.source, "after_destination");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.satsToMinimumPayback, 40_000);
+  assert.equal(payback.scheduler.minimumPaybackProgress?.progressToMinimumRatio, 0.2);
   assert.equal(payback.scheduler.previewAfterDestination?.status, "carry");
   assert.equal(payback.scheduler.previewAfterDestination?.reason, "planned_payback_below_minimum");
   assert.equal(payback.scheduler.previewAfterDestination?.grossTargetBeforeCostsSats, 10_000);
   assert.equal(payback.scheduler.previewAfterDestination?.minPaybackSats, 50_000);
   assert.equal(payback.scheduler.previewAfterDestination?.satsToMinimumPayback, 40_000);
   assert.equal(payback.scheduler.previewAfterDestination?.progressToMinimumRatio, 0.2);
+});
+
+test("payback dashboard exposes current minimum payback gap when destination is already configured", async () => {
+  const payback = await buildPaybackDashboardSlice({
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [],
+      treasuryInventory: [],
+      marketPriceSnapshots: [],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "carry",
+      reason: "planned_payback_below_minimum",
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 289,
+          grossTargetBeforeCostsSats: 58,
+          minPaybackSats: 50_000,
+        },
+      },
+    }),
+  });
+
+  assert.equal(payback.scheduler.status, "carry");
+  assert.equal(payback.scheduler.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.previewAfterDestination, null);
+  assert.equal(payback.scheduler.minimumPaybackProgress?.source, "current");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.status, "carry");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.grossTargetBeforeCostsSats, 58);
+  assert.equal(payback.scheduler.minimumPaybackProgress?.minPaybackSats, 50_000);
+  assert.equal(payback.scheduler.minimumPaybackProgress?.satsToMinimumPayback, 49_942);
+  assert.equal(payback.scheduler.minimumPaybackProgress?.progressToMinimumRatio, 58 / 50_000);
 });
 
 test("payback dashboard prefers destination settlement time for last settled timestamp", async () => {

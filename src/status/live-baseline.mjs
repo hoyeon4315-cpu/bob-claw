@@ -41,6 +41,10 @@ function createBlocker(category, code, headline, extra = {}) {
   };
 }
 
+function minimumPaybackProgress(payback = null) {
+  return payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
+}
+
 export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = null } = {}) {
   const connectedRefresh = dashboardStatus?.prelive?.connectedRefresh || null;
   const currentRoutePrelivePass = dashboardStatus?.prelive?.currentRoutePrelivePass || null;
@@ -50,6 +54,7 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
   const payback = dashboardStatus?.payback || null;
   const executorRuntime = dashboardStatus?.executorRuntime || null;
   const route = normalizeRoute(nextStep?.route, connectedRefresh);
+  const paybackMinimumProgress = minimumPaybackProgress(payback);
 
   const refresh = [];
   if ((connectedRefresh?.requiredRefreshCount ?? 0) > 0) {
@@ -178,16 +183,17 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
       ),
     );
   }
-  if (payback?.scheduler?.previewAfterDestination?.reason === "planned_payback_below_minimum") {
+  if (paybackMinimumProgress?.reason === "planned_payback_below_minimum") {
     objective.push(
       createBlocker(
         "objective",
         "planned_payback_below_minimum",
         "Even after setting the payback destination, realized profit is still below the minimum payback threshold.",
         {
-          remainingSats: payback.scheduler.previewAfterDestination.satsToMinimumPayback ?? null,
-          minPaybackSats: payback.scheduler.previewAfterDestination.minPaybackSats ?? null,
-          grossTargetBeforeCostsSats: payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats ?? null,
+          remainingSats: paybackMinimumProgress.satsToMinimumPayback ?? null,
+          minPaybackSats: paybackMinimumProgress.minPaybackSats ?? null,
+          grossTargetBeforeCostsSats: paybackMinimumProgress.grossTargetBeforeCostsSats ?? null,
+          progressSource: paybackMinimumProgress.source || null,
         },
       ),
     );

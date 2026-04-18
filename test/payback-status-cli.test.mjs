@@ -81,6 +81,9 @@ test("payback status cli reports missing destination env and supports destinatio
   assert.equal(blockedReport.payback.scheduler.status, "blocked");
   assert.equal(blockedReport.payback.scheduler.reason, "payback_btc_destination_missing");
   assert.equal(blockedReport.payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");
+  assert.equal(blockedReport.payback.scheduler.minimumPaybackProgress.source, "after_destination");
+  assert.equal(blockedReport.payback.scheduler.minimumPaybackProgress.reason, "planning_required");
+  assert.equal(blockedReport.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback, 0);
   assert.equal(blockedReport.payback.scheduler.previewAfterDestination.status, "plan");
   assert.equal(blockedReport.payback.scheduler.previewAfterDestination.reason, "planning_required");
   assert.equal(blockedReport.payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats, 50_000);
@@ -110,4 +113,45 @@ test("payback status cli reports missing destination env and supports destinatio
   assert.equal(previewReport.compositePreview.status, "blocked");
   assert.equal(previewReport.compositePreview.reason, "composite_preview_failed");
   assert.match(previewReport.compositePreview.error, /executor-signer\.sock/);
+});
+
+test("payback status cli reports current below-minimum gap when destination is already configured", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-payback-cli-low-profit-"));
+  const dataDir = join(cwd, "data");
+  await seedPaybackFixture(dataDir);
+  await writeJsonl(dataDir, "receipt-reconciliations", [
+    {
+      observedAt: "2026-04-17T00:00:00.000Z",
+      pricing: {
+        btcUsd: 100_000,
+      },
+      realized: {
+        realizedNetPnlSats: 289,
+      },
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, "src/cli/report-payback-status.mjs"), "--json"],
+    {
+      cwd,
+      env: {
+        ...process.env,
+        BOB_CLAW_DATA_DIR: dataDir,
+        PAYBACK_BTC_DEST_ADDR: "bc1qpayback0000000000000000000000000000000",
+      },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.payback.scheduler.status, "carry");
+  assert.equal(report.payback.scheduler.reason, "planned_payback_below_minimum");
+  assert.equal(report.payback.scheduler.previewAfterDestination, null);
+  assert.equal(report.payback.scheduler.minimumPaybackProgress.source, "current");
+  assert.equal(report.payback.scheduler.minimumPaybackProgress.reason, "planned_payback_below_minimum");
+  assert.equal(report.payback.scheduler.minimumPaybackProgress.grossTargetBeforeCostsSats, 58);
+  assert.equal(report.payback.scheduler.minimumPaybackProgress.minPaybackSats, 50_000);
+  assert.equal(report.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback, 49_942);
 });

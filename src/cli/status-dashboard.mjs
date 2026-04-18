@@ -339,6 +339,11 @@ async function main() {
     if (status.payback.scheduler?.requiredEnvName) {
       console.log(`paybackRequiredEnv=${status.payback.scheduler.requiredEnvName}`);
     }
+    if (status.payback.scheduler?.minimumPaybackProgress) {
+      console.log(
+        `paybackMinimumProgress=${status.payback.scheduler.minimumPaybackProgress.status || "none"} reason=${status.payback.scheduler.minimumPaybackProgress.reason || "none"} source=${status.payback.scheduler.minimumPaybackProgress.source || "none"} grossTargetSats=${status.payback.scheduler.minimumPaybackProgress.grossTargetBeforeCostsSats ?? "n/a"} minPaybackSats=${status.payback.scheduler.minimumPaybackProgress.minPaybackSats ?? "n/a"} remainingSats=${status.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback ?? "n/a"} progressRatio=${status.payback.scheduler.minimumPaybackProgress.progressToMinimumRatio ?? "n/a"}`,
+      );
+    }
     if (status.payback.scheduler?.previewAfterDestination) {
       console.log(
         `paybackPreviewAfterDestination=${status.payback.scheduler.previewAfterDestination.status || "none"} reason=${status.payback.scheduler.previewAfterDestination.reason || "none"} grossTargetSats=${status.payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats ?? "n/a"} minPaybackSats=${status.payback.scheduler.previewAfterDestination.minPaybackSats ?? "n/a"} remainingSats=${status.payback.scheduler.previewAfterDestination.satsToMinimumPayback ?? "n/a"} progressRatio=${status.payback.scheduler.previewAfterDestination.progressToMinimumRatio ?? "n/a"}`,

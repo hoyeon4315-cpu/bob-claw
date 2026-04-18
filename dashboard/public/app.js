@@ -102,6 +102,12 @@ function paybackMeta(payback) {
       toneClass: "tone-blocked",
     };
   }
+  if (reason === "planned_payback_below_minimum") {
+    return {
+      label: "Below minimum",
+      toneClass: "tone-watch",
+    };
+  }
   if (status === "plan") {
     return {
       label: "Ready to plan",
@@ -272,6 +278,7 @@ function buildModel(status) {
   const paybackState = paybackMeta(payback);
   const paybackPending = Number.isFinite(payback?.accumulatorPendingSats) ? payback.accumulatorPendingSats : 0;
   const paybackLastSettled = Number.isFinite(payback?.lastPaybackSettledSats) ? payback.lastPaybackSettledSats : null;
+  const minimumPaybackProgress = payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
 
   return {
     heroSummary:
@@ -386,10 +393,12 @@ function buildModel(status) {
             stateText:
               payback?.scheduler?.reason === "payback_btc_destination_missing"
                 ? `${formatSats(paybackPending)} are accruing, but the Bitcoin payout destination still needs to be set (${payback?.scheduler?.requiredEnvName || "PAYBACK_BTC_DEST_ADDR"}).${
-                    payback?.scheduler?.previewAfterDestination?.reason === "planned_payback_below_minimum"
-                      ? ` Even after that, the scheduler still carries until the planned payback clears ${formatSats(payback?.scheduler?.previewAfterDestination?.minPaybackSats || 0)}; it is still short by ${formatSats(payback?.scheduler?.previewAfterDestination?.satsToMinimumPayback || 0)}.`
+                    minimumPaybackProgress?.reason === "planned_payback_below_minimum"
+                      ? ` Even after that, the scheduler still carries until the planned payback clears ${formatSats(minimumPaybackProgress?.minPaybackSats || 0)}; it is still short by ${formatSats(minimumPaybackProgress?.satsToMinimumPayback || 0)}.`
                       : ""
                   }`
+                : payback?.scheduler?.reason === "planned_payback_below_minimum"
+                  ? `${formatSats(paybackPending)} are accruing for the next BTC payback window. The planned payback needs ${formatSats(minimumPaybackProgress?.minPaybackSats || 0)} and is still short by ${formatSats(minimumPaybackProgress?.satsToMinimumPayback || 0)}.`
                 : paybackLastSettled != null
                   ? `Last settled payback delivered ${formatSats(paybackLastSettled)} to Bitcoin L1.`
                   : `${formatSats(paybackPending)} are accruing for the next BTC payback window.`,
