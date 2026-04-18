@@ -22,6 +22,7 @@ function scaffold({
   leverage,
   status,
   protocolTrack,
+  sequencingDecision,
   whyNow,
   entryShape,
   watcherShape,
@@ -39,6 +40,7 @@ function scaffold({
     leverage,
     status,
     protocolTrack,
+    sequencingDecision,
     whyNow,
     entryShape,
     watcherShape,
@@ -65,6 +67,8 @@ function stablecoinSpreadLoopScaffold(lanes) {
       collateralAsset: "USDC",
       borrowAsset: "USDT",
     },
+    sequencingDecision:
+      "build same-chain stable loop adapters and signer-backed receipts first; defer any cross-chain unified loop until reserve movement, unwind telemetry, and native BTC return paths are proven.",
     whyNow:
       "Relaxed positive-EV handling makes small stable carry loops worth structuring once peg drift, borrow spread, and unwind cost are monitored explicitly.",
     entryShape: {
@@ -117,6 +121,8 @@ function proxySpreadExpansionScaffold(lanes) {
       chains: ["base", "bob", "bera", "unichain"],
       wrappers: ["WBTC", "wBTC.OFT", "LBTC", "cbBTC", "tBTC"],
     },
+    sequencingDecision:
+      "expand measurement and receipt coverage now; do not collapse cross-chain wrapper movement and recursive leverage into one live loop before same-chain execution and unwind evidence exist.",
     whyNow:
       "The flat repo-wide profit floor is gone, so proxy-spread expansion should be judged on route coverage, amount diversity, and measured noise floor instead of old policy thresholds.",
     entryShape: {
@@ -166,6 +172,8 @@ function reserveSleeveScaffold() {
       chains: ["ethereum", "base"],
       assets: ["PAXG", "XAUT", "USDY", "bIB01"],
     },
+    sequencingDecision:
+      "treat this as a separate sleeve allocator problem, not as part of a recursive loop engine; only integrate after return-path and exit-liquidity evidence are measured.",
     whyNow:
       "A low-volatility reserve sleeve can improve allocator robustness even when pure trading edges are thin, but only if issuer and unwind liquidity are measured deterministically.",
     entryShape: {
@@ -203,6 +211,8 @@ function perpBasisScaffold() {
       spotAsset: "wrapped BTC",
       hedgeAsset: "BTC perpetual short",
     },
+    sequencingDecision:
+      "keep perp basis as a separate sleeve after loop evidence matures; funding, margin health, and venue risk should not be coupled into the first live recursive loop rollout.",
     whyNow:
       "Per-strategy caps and leverage policy now permit basis-style sleeves, but they need venue trust scoring, funding-rate telemetry, and liquidation-aware auto-unwind before any promotion.",
     entryShape: {

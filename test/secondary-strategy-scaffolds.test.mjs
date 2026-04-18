@@ -31,6 +31,8 @@ test("secondary strategy scaffolds rank follow-on builds with concrete blocker l
   assert.equal(report.summary.leverageCount, 2);
   assert.equal(report.summary.topScaffoldId, "stablecoin_spread_loop");
   assert.equal(report.scaffolds[0].blockers.includes("overfit_gate_blocked"), true);
+  assert.equal(typeof report.scaffolds[0].sequencingDecision, "string");
+  assert.equal(report.scaffolds[0].sequencingDecision.includes("same-chain"), true);
 
   const summary = summarizeSecondaryStrategyScaffolds(report);
   assert.equal(summary.topScaffold.id, "stablecoin_spread_loop");

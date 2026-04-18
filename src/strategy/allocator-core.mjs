@@ -240,6 +240,7 @@ export function buildAllocatorCore({
       "This allocator core is deterministic and evidence-bound; it does not authorize live execution on its own.",
       "Per-strategy, per-protocol, per-chain, and per-asset-family caps should come from explicit strategy config rather than a repo-wide budget ring.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
+      "Cross-chain reserve movement belongs in the allocator/rebalance layer; do not promote a unified multi-chain recursive loop until same-chain loop receipts, auto-unwind wiring, and native-BTC return paths are all proven.",
     ],
   };
 }

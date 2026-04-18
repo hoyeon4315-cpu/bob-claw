@@ -51,6 +51,10 @@ test("allocator core applies deterministic cap defaults and keeps blocked strate
   assert.equal(report.activeView.maxAllocationPerStrategyUsd, null);
   assert.equal(report.planningView.maxAllocationPerStrategyUsd, null);
   assert.equal(report.planningView.planningQueue[0].id, "wrapped-btc-loop-base-moonwell");
+  assert.equal(
+    report.notes.some((item) => item.includes("Cross-chain reserve movement belongs in the allocator/rebalance layer")),
+    true,
+  );
 
   const summary = summarizeAllocatorCore(report);
   assert.equal(summary.activeAllocationCount, 0);

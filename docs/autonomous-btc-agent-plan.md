@@ -130,6 +130,24 @@
 - **지금 당장의 다음 액션은 구현 확대가 아니라 증거 적재**: 최신 validation 기준 다음 액션은 `collect_recursive_loop_observed_receipts` 이며, signer-backed receipt 를 확보하기 전에는 planning lane 으로만 취급한다.
 - **live 승격 전 필수 조건**: `recursive_observed_receipts_missing` 해소, `auto_unwind` runtime 배선, protocol adapter/binding 확인, declared HF/LTV/buffer caps 검증이 모두 선행돼야 한다.
 
+#### 멀티체인 / 멀티프로토콜 루프의 우선순위 판단
+
+- **결론**: 지금 당장은 `나중` 이다. 멀티체인 이동과 멀티프로토콜 노출 자체는 포트폴리오 레벨에서 계속 설계·측정하되, **하나의 unified recursive loop executor** 로 묶는 일은 현재 크리티컬 패스가 아니다.
+- **지금 해야 할 것**:
+  - same-chain concrete lane (`Base/Moonwell`, `Base/Morpho` 등) 에서 signer-backed receipt, auto-unwind, exact unwind cost, native BTC return path 를 먼저 증명.
+  - allocator 레벨에서 per-chain / per-protocol / per-asset-family cap 과 reserve movement 를 강화.
+  - cross-wrapper / stable-entry / reserve sleeve 는 별도 sleeve 또는 rebalance 문제로 취급.
+- **지금 미루는 것**:
+  - bridge + lending market + swap + unwind 를 한 개의 live recursive loop 안에 동시에 넣는 구조.
+  - 여러 체인의 담보/부채 상태를 하나의 health-factor 개념으로 묶어 실시간 제어하는 구조.
+  - 프로토콜/체인 실패와 브리지 실패를 동시에 포함하는 first-live unified loop rollout.
+- **나중에 할 조건**:
+  - same-chain loop 에서 signer-backed observed receipts 확보
+  - auto-unwind runtime + emergency stop + native BTC 복귀 경로 검증
+  - chain / protocol / oracle exposure 합산 cap enforcement 구현
+  - reserve movement 와 treasury refill 이 receipt-backed feedback loop 로 연결
+- **원칙**: `cross-chain movement is an allocator concern first, not a recursive loop concern first.`
+
 #### 2-A. Claude 가 제안하는 후보군
 
 각 항목: `{id, arrival_family, leverage?, expected_risk_bucket, why_it_fits, what_to_build, open_questions}`.
