@@ -2,6 +2,9 @@ node_modules/
 .env
 .DS_Store
 data/
+docs/current-status.md
+docs/session-handoff-*.md
+dashboard/public/dashboard-status.json
 dist/
 coverage/
 *.log
@@ -10,6 +13,11 @@ state/
 .playwright-cli/
 .cloudflare/
 .wrangler/
+.claude/
+.codex/
+graphify-out/
+src/graphify-out/
+*.bak-*
 
 # Foundry
 lib/
