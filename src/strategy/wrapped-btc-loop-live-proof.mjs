@@ -8,7 +8,65 @@ function round(value, digits = 6) {
   return Math.round(value * factor) / factor;
 }
 
+function numericPath(values = []) {
+  return (values || []).filter(Number.isFinite).map((value) => round(value, 4));
+}
+
+function gasUsdForHashes(capitalAuditReport = null, txHashes = []) {
+  const normalizedHashes = unique(txHashes);
+  if (normalizedHashes.length === 0) return null;
+  const transactions = Array.isArray(capitalAuditReport?.transactions) ? capitalAuditReport.transactions : [];
+  const byHash = new Map(
+    transactions
+      .filter((item) => item?.txHash && Number.isFinite(item?.gasUsd))
+      .map((item) => [item.txHash, item]),
+  );
+  const matched = normalizedHashes.map((hash) => byHash.get(hash)).filter(Boolean);
+  if (matched.length !== normalizedHashes.length) return null;
+  return round(matched.reduce((sum, item) => sum + item.gasUsd, 0), 6);
+}
+
+function missingExtendedReceiptFields(proof = null) {
+  if (!proof) return [];
+  return [
+    (proof.observedHealthFactorPath || []).length > 0 ? null : "observedHealthFactorPath",
+    (proof.observedLiquidationBufferPath || []).length > 0 ? null : "observedLiquidationBufferPath",
+    Number.isFinite(proof.actualLoopFeesUsd) ? null : "actualLoopFeesUsd",
+    Number.isFinite(proof.actualUnwindCostUsd) ? null : "actualUnwindCostUsd",
+    Number.isFinite(proof.realizedNetCarryUsd) ? null : "realizedNetCarryUsd",
+  ].filter(Boolean);
+}
+
 export const WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE = "wrapped-btc-loop-live-success-latest.json";
+
+export function hydrateWrappedBtcLoopLiveProof({
+  proof = null,
+  capitalAuditReport = null,
+} = {}) {
+  if (!proof) return null;
+  const hydrated = {
+    ...proof,
+    observedHealthFactorPath: numericPath(proof.observedHealthFactorPath || []),
+    observedLiquidationBufferPath: numericPath(proof.observedLiquidationBufferPath || []),
+    actualLoopFeesUsd: Number.isFinite(proof.actualLoopFeesUsd)
+      ? round(proof.actualLoopFeesUsd)
+      : gasUsdForHashes(capitalAuditReport, proof.entryTxHashes || []),
+    actualUnwindCostUsd: Number.isFinite(proof.actualUnwindCostUsd)
+      ? round(proof.actualUnwindCostUsd)
+      : gasUsdForHashes(capitalAuditReport, proof.unwindTxHashes || []),
+    realizedNetCarryUsd: Number.isFinite(proof.realizedNetCarryUsd) ? round(proof.realizedNetCarryUsd) : null,
+  };
+  const missingFields = missingExtendedReceiptFields(hydrated);
+  return {
+    ...hydrated,
+    extendedReceiptContextReady: missingFields.length === 0,
+    missingExtendedReceiptFields: missingFields,
+    oosReceiptStatus:
+      missingFields.length === 0
+        ? "ingestable_extended_receipt_context_ready"
+        : proof.oosReceiptStatus || "extended_receipt_context_pending",
+  };
+}
 
 export function buildWrappedBtcLoopLiveProof({
   result = null,
@@ -24,7 +82,8 @@ export function buildWrappedBtcLoopLiveProof({
 
   if (entryTxHashes.length === 0 || unwindTxHashes.length === 0) return null;
 
-  return {
+  return hydrateWrappedBtcLoopLiveProof({
+    proof: {
     schemaVersion: 1,
     observedAt: now || new Date().toISOString(),
     strategyId: result.strategyId || null,
@@ -38,6 +97,8 @@ export function buildWrappedBtcLoopLiveProof({
     unwindCount: unwindResults.length,
     entryTxHashes,
     unwindTxHashes,
+    observedHealthFactorPath: numericPath(receiptContext?.observedHealthFactorPath || []),
+    observedLiquidationBufferPath: numericPath(receiptContext?.observedLiquidationBufferPath || []),
     actualLoopFeesUsd: round(receiptContext?.actualLoopFeesUsd),
     actualUnwindCostUsd: round(receiptContext?.actualUnwindCostUsd),
     realizedNetCarryUsd: round(receiptContext?.realizedNetCarryUsd),
@@ -46,7 +107,8 @@ export function buildWrappedBtcLoopLiveProof({
       reason: result.receiptAutoIngest?.reason || null,
     },
     oosReceiptStatus: result.receiptAutoIngest?.ran === true ? "ingested" : "extended_receipt_context_pending",
-  };
+    },
+  });
 }
 
 export function summarizeWrappedBtcLoopLiveProof(proof = null) {
@@ -57,6 +119,8 @@ export function summarizeWrappedBtcLoopLiveProof(proof = null) {
       oosReceiptStatus: "missing",
       entryCount: 0,
       unwindCount: 0,
+      extendedReceiptContextReady: false,
+      missingExtendedReceiptFields: [],
     };
   }
 
@@ -66,5 +130,7 @@ export function summarizeWrappedBtcLoopLiveProof(proof = null) {
     oosReceiptStatus: proof.oosReceiptStatus || null,
     entryCount: proof.entryCount ?? 0,
     unwindCount: proof.unwindCount ?? 0,
+    extendedReceiptContextReady: proof.extendedReceiptContextReady === true,
+    missingExtendedReceiptFields: proof.missingExtendedReceiptFields || [],
   };
 }

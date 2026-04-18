@@ -12,6 +12,10 @@ import {
   buildWrappedBtcLoopObservedReceipt,
   summarizeWrappedBtcLendingLoopDryRunRuns,
 } from "../strategy/wrapped-btc-lending-loop-dry-run.mjs";
+import {
+  hydrateWrappedBtcLoopLiveProof,
+  WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE,
+} from "../strategy/wrapped-btc-loop-live-proof.mjs";
 import { buildWrappedBtcLoopOosEvidence } from "../strategy/wrapped-btc-loop-oos-evidence.mjs";
 
 function parseArgs(argv) {
@@ -49,26 +53,80 @@ function stripVolatile(value) {
   return stable;
 }
 
+function mergeReceiptArgs(args = {}, liveProof = null) {
+  return {
+    ...args,
+    scenario: args.scenario || liveProof?.scenarioId || "healthy_baseline",
+    executionMode: args.executionMode || liveProof?.executionMode || "signer_backed_receipt",
+    result: args.result || liveProof?.result || "passed",
+    entryTxHashes: args.entryTxHashes?.length ? args.entryTxHashes : liveProof?.entryTxHashes || [],
+    unwindTxHashes: args.unwindTxHashes?.length ? args.unwindTxHashes : liveProof?.unwindTxHashes || [],
+    observedHealthFactorPath:
+      args.observedHealthFactorPath?.length ? args.observedHealthFactorPath : liveProof?.observedHealthFactorPath || [],
+    observedLiquidationBufferPath:
+      args.observedLiquidationBufferPath?.length
+        ? args.observedLiquidationBufferPath
+        : liveProof?.observedLiquidationBufferPath || [],
+    actualLoopFeesUsd: Number.isFinite(args.actualLoopFeesUsd) ? args.actualLoopFeesUsd : liveProof?.actualLoopFeesUsd ?? null,
+    actualUnwindCostUsd: Number.isFinite(args.actualUnwindCostUsd)
+      ? args.actualUnwindCostUsd
+      : liveProof?.actualUnwindCostUsd ?? null,
+    realizedNetCarryUsd: Number.isFinite(args.realizedNetCarryUsd)
+      ? args.realizedNetCarryUsd
+      : liveProof?.realizedNetCarryUsd ?? null,
+    notes: [...new Set([...(liveProof?.notes || []), ...(args.notes || [])].filter(Boolean))],
+    observedAt: args.observedAt || liveProof?.observedAt || null,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const scaffold =
     (await readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json"))) || buildWrappedBtcLendingLoopScaffold();
-  const receipt = buildWrappedBtcLoopObservedReceipt({
-    scaffold,
-    scenarioId: args.scenario,
-    executionMode: args.executionMode,
-    result: args.result,
-    entryTxHashes: args.entryTxHashes,
-    unwindTxHashes: args.unwindTxHashes,
-    observedHealthFactorPath: args.observedHealthFactorPath,
-    observedLiquidationBufferPath: args.observedLiquidationBufferPath,
-    actualLoopFeesUsd: args.actualLoopFeesUsd,
-    actualUnwindCostUsd: args.actualUnwindCostUsd,
-    realizedNetCarryUsd: args.realizedNetCarryUsd,
-    notes: args.notes,
-    now: args.observedAt || undefined,
+  const [latestLiveProof, capitalAuditReport] = await Promise.all([
+    readJsonIfExists(join(config.dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE)),
+    readJsonIfExists(join(config.dataDir, "capital-audit.json")),
+  ]);
+  const hydratedLiveProof = hydrateWrappedBtcLoopLiveProof({
+    proof: latestLiveProof,
+    capitalAuditReport,
   });
+  const resolvedArgs = mergeReceiptArgs(args, hydratedLiveProof);
   const store = new JsonlStore(config.dataDir);
+  if (args.write) {
+    if (hydratedLiveProof) {
+      await writeTextIfChanged(
+        join(config.dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE),
+        `${JSON.stringify(hydratedLiveProof, null, 2)}\n`,
+        {
+          normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
+        },
+      );
+    }
+  }
+  let receipt;
+  try {
+    receipt = buildWrappedBtcLoopObservedReceipt({
+      scaffold,
+      scenarioId: resolvedArgs.scenario,
+      executionMode: resolvedArgs.executionMode,
+      result: resolvedArgs.result,
+      entryTxHashes: resolvedArgs.entryTxHashes,
+      unwindTxHashes: resolvedArgs.unwindTxHashes,
+      observedHealthFactorPath: resolvedArgs.observedHealthFactorPath,
+      observedLiquidationBufferPath: resolvedArgs.observedLiquidationBufferPath,
+      actualLoopFeesUsd: resolvedArgs.actualLoopFeesUsd,
+      actualUnwindCostUsd: resolvedArgs.actualUnwindCostUsd,
+      realizedNetCarryUsd: resolvedArgs.realizedNetCarryUsd,
+      notes: resolvedArgs.notes,
+      now: resolvedArgs.observedAt || undefined,
+    });
+  } catch (error) {
+    if (hydratedLiveProof?.missingExtendedReceiptFields?.length) {
+      error.message = `${error.message} (hydrated live proof still missing: ${hydratedLiveProof.missingExtendedReceiptFields.join(", ")})`;
+    }
+    throw error;
+  }
   if (args.write) {
     await store.append("wrapped-btc-loop-dry-runs", receipt);
   }
@@ -104,7 +162,7 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(JSON.stringify({ receipt, summary, oosEvidence, livePacketRefresh }, null, 2));
+    console.log(JSON.stringify({ receipt, summary, oosEvidence, livePacketRefresh, hydratedLiveProof }, null, 2));
     return;
   }
 
@@ -113,6 +171,9 @@ async function main() {
   console.log(`result=${receipt.result}`);
   console.log(`signerBackedRunCount=${oosEvidence.summary.signerBackedRunCount}`);
   console.log(`oosStatus=${oosEvidence.summary.status}`);
+  if (hydratedLiveProof) {
+    console.log(`liveProofMissingFields=${(hydratedLiveProof.missingExtendedReceiptFields || []).join(",") || "none"}`);
+  }
   console.log(`livePacketRefresh=${livePacketRefresh?.refreshed ? `ran:${livePacketRefresh.stepCount}` : args.refreshLivePacket ? "skipped" : "disabled"}`);
 }
 

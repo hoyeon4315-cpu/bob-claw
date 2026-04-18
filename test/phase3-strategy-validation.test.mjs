@@ -33,6 +33,14 @@ test("phase3 strategy validation records OOS, search-budget, and shock-test bloc
       dryRunReceiptRecorded: true,
       autoUnwindPassCount: 1,
     },
+    wrappedBtcLoopLiveProof: {
+      success: true,
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 2,
+      unwindCount: 1,
+      extendedReceiptContextReady: false,
+      missingExtendedReceiptFields: ["observedHealthFactorPath", "realizedNetCarryUsd"],
+    },
     secondaryStrategyScaffolds: {
       scaffolds: [
         {
@@ -54,13 +62,14 @@ test("phase3 strategy validation records OOS, search-budget, and shock-test bloc
 
   const wrappedLoop = report.validations.find((item) => item.id === "wrapped_btc_loop_validation");
   assert.ok(wrappedLoop);
-  assert.equal(wrappedLoop.shockTestStatus, "simulated_pass");
-  assert.equal(wrappedLoop.blockers.includes("oos_receipt_window_below_policy"), true);
+  assert.equal(wrappedLoop.shockTestStatus, "live_roundtrip_recorded");
+  assert.equal(wrappedLoop.blockers.includes("extended_receipt_context_missing"), true);
+  assert.deepEqual(wrappedLoop.evidence.missingExtendedReceiptFields, ["observedHealthFactorPath", "realizedNetCarryUsd"]);
 
   const summary = summarizePhase3StrategyValidation(report);
   assert.equal(summary.validationCount, 4);
   assert.equal(summary.topBlocked.id, "wrapped_btc_loop_validation");
-  assert.equal(summary.topBlocked.blockers.includes("oos_receipt_window_below_policy"), true);
+  assert.equal(summary.topBlocked.blockers.includes("extended_receipt_context_missing"), true);
 
   const snapshot = buildStrategySnapshot({
     dashboardStatus: {
