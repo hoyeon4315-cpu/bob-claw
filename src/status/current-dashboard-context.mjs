@@ -21,7 +21,7 @@ import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from
 import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
 import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
 import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
-import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
+import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
@@ -400,6 +400,16 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     nextStep: state.nextStep,
   });
   dashboardStatus.dataCounts.liveBaselinePresent = dashboardStatus.liveBaseline ? 1 : 0;
+  const productCoverage = buildProductPlanningCoverage({
+    dashboardStatus,
+    strategySnapshot,
+  });
+  strategySnapshot.summary.productCoverageReadyCount = productCoverage?.readyCount ?? 0;
+  strategySnapshot.summary.productCoverageBlockedCount = productCoverage?.blockedCount ?? 0;
+  strategySnapshot.summary.productCoverageMissingCount = productCoverage?.missingCount ?? 0;
+  strategySnapshot.summary.productCoverageTopGapId = productCoverage?.topGap?.id || null;
+  strategySnapshot.planningLayers.productCoverage = productCoverage;
+  dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
   dashboardStatus.prelive.v1InfraDrills = summarizeV1InfraDrills(v1InfraDrills);
   dashboardStatus.dataCounts.v1InfraDrillsPresent = dashboardStatus.prelive.v1InfraDrills ? 1 : 0;
   reviewPackage.strategySnapshot = dashboardStatus.strategy.strategySnapshot;

@@ -58,6 +58,7 @@ async function main() {
   const protocolTrustTiers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolTrustTiers || null;
   const protocolMarketWatchers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolMarketWatchers || null;
   const milestoneValidation = context.dashboardStatus?.strategy?.strategySnapshot?.milestoneValidationGates || null;
+  const productCoverage = context.dashboardStatus?.strategy?.strategySnapshot?.productCoverage || null;
 
   console.log(`implementedStrategies=${summary.implementedStrategyCount ?? 0}`);
   console.log(`candidateForValidation=${summary.candidateForValidationCount ?? 0}`);
@@ -124,6 +125,11 @@ async function main() {
   if (milestoneValidation) {
     console.log(
       `milestones overall=${milestoneValidation.overallStatus || "n/a"} passed=${milestoneValidation.passedCount ?? 0}/${milestoneValidation.gateCount ?? 0} next=${milestoneValidation.nextGate?.id || "n/a"}`,
+    );
+  }
+  if (productCoverage) {
+    console.log(
+      `productCoverage ready=${productCoverage.readyCount ?? 0} inProgress=${productCoverage.inProgressCount ?? 0} blocked=${productCoverage.blockedCount ?? 0} missing=${productCoverage.missingCount ?? 0} topGap=${productCoverage.topGap?.id || "n/a"} reason=${productCoverage.topGap?.reason || "n/a"}`,
     );
   }
   console.log(`nextAction=${topAction?.code || "n/a"} command=${topAction?.command || "n/a"}`);

@@ -162,6 +162,147 @@ function topAction({ topPivot = null, topImplemented = null, proxyCoverageSummar
   return null;
 }
 
+function productCoverageStatusPriority(status = null) {
+  return {
+    missing_plan: 0,
+    tracked_blocked: 1,
+    tracked_in_progress: 2,
+    tracked_ready: 3,
+  }[status] ?? 4;
+}
+
+function buildProductCoverageItem({ id, label, status, reason = null, nextAction = null, evidence = null }) {
+  return {
+    id,
+    label,
+    status,
+    reason,
+    nextAction,
+    evidence,
+  };
+}
+
+export function buildProductPlanningCoverage({ dashboardStatus = null, strategySnapshot = null } = {}) {
+  const milestoneValidation = strategySnapshot?.planningLayers?.milestoneValidationGates || null;
+  const payback = dashboardStatus?.payback || null;
+  const executorRuntime = dashboardStatus?.executorRuntime || null;
+  const liveBaseline = dashboardStatus?.liveBaseline || null;
+  const paybackMinimumProgress = payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
+  const exactRouteTechnicalBlocker = liveBaseline?.blockers?.technical?.[0] || null;
+  const paybackStatus =
+    !payback
+      ? "missing_plan"
+      : payback?.lastPaybackSettledAt || (payback?.paidBackSatsLifetime ?? 0) > 0
+        ? "tracked_ready"
+        : payback?.scheduler?.status === "carry"
+          ? "tracked_in_progress"
+          : payback?.scheduler?.status === "blocked"
+            ? "tracked_blocked"
+            : "tracked_in_progress";
+  const executorStatus =
+    !executorRuntime
+      ? "missing_plan"
+      : executorRuntime.available && executorRuntime.runtimeStatus === "healthy" && executorRuntime.signerSocketPresent
+        ? "tracked_ready"
+        : "tracked_blocked";
+  const exactRouteForkStatus =
+    !liveBaseline
+      ? "tracked_in_progress"
+      : !exactRouteTechnicalBlocker
+        ? "tracked_ready"
+        : (exactRouteTechnicalBlocker.status || exactRouteTechnicalBlocker.code || "").includes("missing_plan")
+          ? "missing_plan"
+          : "tracked_blocked";
+  const pillars = [
+    milestoneValidation
+      ? buildProductCoverageItem({
+          id: "strategy_validation",
+          label: "Strategy validation",
+          status:
+            milestoneValidation.overallStatus === "passed"
+              ? "tracked_ready"
+              : milestoneValidation.overallStatus === "in_progress"
+                ? "tracked_in_progress"
+                : "tracked_blocked",
+          reason: milestoneValidation?.nextGate?.id || milestoneValidation?.overallStatus || null,
+          nextAction: milestoneValidation?.nextAction || null,
+          evidence: {
+            passedCount: milestoneValidation.passedCount ?? 0,
+            gateCount: milestoneValidation.gateCount ?? 0,
+            blockedCount: milestoneValidation.blockedCount ?? 0,
+            nextGateId: milestoneValidation.nextGate?.id || null,
+          },
+        })
+      : null,
+    buildProductCoverageItem({
+      id: "payback_engine",
+      label: "Payback engine",
+      status: paybackStatus,
+      reason: payback?.scheduler?.reason || payback?.scheduler?.status || null,
+      nextAction: payback?.scheduler?.nextAction
+        ? {
+            code: payback.scheduler.nextAction,
+            command: "npm run report:payback-status -- --json",
+          }
+        : null,
+      evidence: payback
+        ? {
+            pendingSats: payback.accumulatorPendingSats ?? null,
+            grossProfitSatsPeriod: payback.grossProfitSatsPeriod ?? null,
+            paidBackSatsLifetime: payback.paidBackSatsLifetime ?? null,
+            remainingSatsToMinimum: paybackMinimumProgress?.satsToMinimumPayback ?? null,
+          }
+        : null,
+    }),
+    buildProductCoverageItem({
+      id: "executor_runtime",
+      label: "Executor runtime",
+      status: executorStatus,
+      reason: executorRuntime?.runtimeStatus || executorRuntime?.signerStatus || null,
+      nextAction: null,
+      evidence: executorRuntime
+        ? {
+            available: executorRuntime.available === true,
+            signerStatus: executorRuntime.signerStatus || null,
+            watchdogStatus: executorRuntime.watchdog?.status || null,
+          }
+        : null,
+    }),
+    buildProductCoverageItem({
+      id: "exact_route_fork_plan",
+      label: "Exact-route fork plan",
+      status: exactRouteForkStatus,
+      reason: exactRouteTechnicalBlocker?.status || exactRouteTechnicalBlocker?.code || (liveBaseline ? null : "live_baseline_pending"),
+      nextAction: liveBaseline?.nextAction || null,
+      evidence: liveBaseline
+        ? {
+            stageId: liveBaseline.currentStageId || null,
+            technicalBlockerCode: exactRouteTechnicalBlocker?.code || null,
+            technicalBlockerStatus: exactRouteTechnicalBlocker?.status || null,
+          }
+        : null,
+    }),
+  ].filter(Boolean);
+  const topGap =
+    [...pillars].sort((left, right) => productCoverageStatusPriority(left?.status) - productCoverageStatusPriority(right?.status))[0] || null;
+  return {
+    pillarCount: pillars.length,
+    readyCount: pillars.filter((item) => item.status === "tracked_ready").length,
+    inProgressCount: pillars.filter((item) => item.status === "tracked_in_progress").length,
+    blockedCount: pillars.filter((item) => item.status === "tracked_blocked").length,
+    missingCount: pillars.filter((item) => item.status === "missing_plan").length,
+    topGap: topGap
+      ? {
+          id: topGap.id || null,
+          label: topGap.label || null,
+          status: topGap.status || null,
+          reason: topGap.reason || null,
+        }
+      : null,
+    pillars,
+  };
+}
+
 export function buildStrategySnapshot({
   dashboardStatus = null,
   state = {},
@@ -245,6 +386,13 @@ export function buildStrategySnapshot({
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
   const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
   const leverageAutoUnwindRuntimeSummary = summarizeLeverageAutoUnwindRuntimeReports(leverageAutoUnwindRuntimeReports);
+  const productCoverage = buildProductPlanningCoverage({
+    dashboardStatus,
+    strategySnapshot: {
+      summary: {},
+      planningLayers: {},
+    },
+  });
 
   return {
     schemaVersion: 1,
@@ -294,6 +442,10 @@ export function buildStrategySnapshot({
       watcherTopBlockedId: protocolMarketWatchersSummary?.topBlocked?.id || null,
       leverageRuntimeCount: leverageAutoUnwindRuntimeSummary?.runtimeCount ?? 0,
       leverageRuntimeTopPriorityId: leverageAutoUnwindRuntimeSummary?.topPriority?.strategyId || null,
+      productCoverageReadyCount: productCoverage?.readyCount ?? 0,
+      productCoverageBlockedCount: productCoverage?.blockedCount ?? 0,
+      productCoverageMissingCount: productCoverage?.missingCount ?? 0,
+      productCoverageTopGapId: productCoverage?.topGap?.id || null,
     },
     implementedStatusCounts: countByStatus(implementedStrategies),
     pivotStatusCounts: countByStatus(pivotOpportunities),
@@ -313,6 +465,7 @@ export function buildStrategySnapshot({
       strategyResearchBoard: strategyResearchSummary,
       secondaryStrategyScaffolds: secondaryScaffoldsSummary,
       deterministicStrategyCandidates: deterministicCandidatesSummary,
+      productCoverage,
     },
     artifacts: {
       source: [
@@ -397,6 +550,8 @@ export function summarizeStrategySnapshot(snapshot = null) {
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
     deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,
     milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
+    productCoverage: snapshot.planningLayers?.productCoverage || null,
+    productCoverageTopGapId: snapshot.summary?.productCoverageTopGapId || null,
     topSecondaryScaffold: snapshot.planningLayers?.secondaryStrategyScaffolds?.topScaffold || null,
     topAllocatorCandidate: snapshot.planningLayers?.allocatorCore?.topPlanningCandidate || null,
   };

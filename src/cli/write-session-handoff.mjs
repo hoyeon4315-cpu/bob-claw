@@ -934,6 +934,11 @@ function strategySnapshotLines(summary = null, snapshot = null, phase3Summary = 
       `- Planning layers: scaffoldTop=\`${summary.topSecondaryScaffold?.id || summary.secondaryTopScaffoldId || summary.secondaryStrategyScaffolds?.topScaffold?.id || "unknown"}\` allocatorTop=\`${summary.topAllocatorCandidate?.id || summary.allocatorTopPlanningCandidateId || summary.allocatorCore?.topPlanningCandidate?.id || "unknown"}\``,
     );
   }
+  if (summary.productCoverage) {
+    lines.push(
+      `- Product coverage: ready=${summary.productCoverage.readyCount ?? 0} inProgress=${summary.productCoverage.inProgressCount ?? 0} blocked=${summary.productCoverage.blockedCount ?? 0} missing=${summary.productCoverage.missingCount ?? 0} topGap=\`${summary.productCoverage.topGap?.id || "unknown"}\` reason=\`${summary.productCoverage.topGap?.reason || "unknown"}\``,
+    );
+  }
   if (summary.deterministicCandidates) {
     lines.push(
       `- Deterministic builds: candidates=${summary.deterministicCandidates.candidateCount ?? 0} readyForDryRun=${summary.deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked=${summary.deterministicCandidates.receiptBackedCount ?? 0} top=\`${summary.deterministicCandidates.topCandidate?.id || "unknown"}\` next=\`${summary.deterministicCandidates.nextAction?.code || "unknown"}\``,
@@ -1117,6 +1122,7 @@ function onePageExecutionBriefLines({
     `- Status: live=\`${dashboardStatus?.overall?.liveTrading || "BLOCKED"}\` shadow=\`${dashboardStatus?.overall?.shadowTrading || "ALLOWED"}\` next=\`${next?.decision || "unknown"}\``,
     `- Strategy pack: implemented=${strategySnapshot?.implementedStrategyCount ?? 0} top=\`${strategySnapshot?.topImplementedStrategy?.id || "unknown"}\` pivot=\`${strategySnapshot?.topPivot?.id || "unknown"}\``,
     `- Catalog scope: \`${strategySnapshot?.catalogScope?.coverage || "unknown"}\` scaffoldTop=\`${strategySnapshot?.topSecondaryScaffold?.id || strategySnapshot?.secondaryTopScaffoldId || strategySnapshot?.secondaryStrategyScaffolds?.topScaffold?.id || "unknown"}\` allocatorTop=\`${strategySnapshot?.topAllocatorCandidate?.id || strategySnapshot?.allocatorTopPlanningCandidateId || strategySnapshot?.allocatorCore?.topPlanningCandidate?.id || "unknown"}\``,
+    `- Product coverage: ready=${strategySnapshot?.productCoverage?.readyCount ?? 0} inProgress=${strategySnapshot?.productCoverage?.inProgressCount ?? 0} blocked=${strategySnapshot?.productCoverage?.blockedCount ?? 0} missing=${strategySnapshot?.productCoverage?.missingCount ?? 0} topGap=\`${strategySnapshot?.productCoverage?.topGap?.id || "unknown"}\` reason=\`${strategySnapshot?.productCoverage?.topGap?.reason || "unknown"}\``,
     `- Research board: candidates=${strategySnapshot?.researchBoard?.candidateCount ?? 0} top=\`${strategySnapshot?.researchBoard?.topCandidate?.id || "unknown"}\` newTop=\`${strategySnapshot?.researchBoard?.topNewCandidate?.id || "unknown"}\` nextNew=\`${strategySnapshot?.researchBoard?.nextNewAction?.code || "unknown"}\``,
     `- Deterministic builds: candidates=${strategySnapshot?.deterministicCandidates?.candidateCount ?? 0} readyForDryRun=${strategySnapshot?.deterministicCandidates?.readyForDryRunCount ?? 0} top=\`${strategySnapshot?.deterministicCandidates?.topCandidate?.id || "unknown"}\` next=\`${strategySnapshot?.deterministicCandidates?.nextAction?.code || "unknown"}\``,
     `- Advanced validation lane: passed=${effectivePhase3?.passedCount ?? 0}/${effectivePhase3?.validationCount ?? 0} topBlocked=\`${phase3TopBlocked?.id || "unknown"}\` blockers=${phase3TopBlocked?.blockers?.slice(0, 3).join(",") || "none"} next=\`${phase3NextAction?.code || "unknown"}\``,
