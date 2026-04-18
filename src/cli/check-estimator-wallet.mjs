@@ -5,6 +5,7 @@ import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { EVM_CHAINS } from "../chains/registry.mjs";
 import { readErc20Allowance, readErc20Balance, readNativeBalance, summarizeRequirement } from "../evm/account-state.mjs";
 import { getGasSnapshot } from "../gas/rpc-gas.mjs";
+import { hydrateStoredOfframpQuoteExecution } from "../gateway/executable-quote.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
@@ -223,31 +224,32 @@ async function main() {
   }
 
   for (const quote of selected) {
-    const reason = skipReason(quote);
+    const executableQuote = await hydrateStoredOfframpQuoteExecution(quote, { senderAddress: args.address }).catch(() => quote);
+    const reason = skipReason(executableQuote);
     if (reason) {
       const failure = {
         schemaVersion: SCHEMA_VERSION,
         runId,
         observedAt: new Date().toISOString(),
         address: args.address,
-        routeKey: quote.routeKey,
-        amount: quote.amount,
-        srcChain: quote.route.srcChain,
-        dstChain: quote.route.dstChain,
+        routeKey: executableQuote.routeKey,
+        amount: executableQuote.amount,
+        srcChain: executableQuote.route.srcChain,
+        dstChain: executableQuote.route.dstChain,
         reason,
       };
       await store.append("estimator-wallet-readiness-failures", failure);
       results.push({ ok: false, ...failure });
-      if (!args.json) console.log(`${quote.route.srcChain}->${quote.route.dstChain} skipped reason=${reason}`);
+      if (!args.json) console.log(`${executableQuote.route.srcChain}->${executableQuote.route.dstChain} skipped reason=${reason}`);
       continue;
     }
 
-    const srcAsset = await resolveTokenAsset(quote.route.srcChain, quote.route.srcToken);
-    const snapshot = await gasSnapshot(quote.route.srcChain);
+    const srcAsset = await resolveTokenAsset(executableQuote.route.srcChain, executableQuote.route.srcToken);
+    const snapshot = await gasSnapshot(executableQuote.route.srcChain);
     const gasBudgetWei = BigInt(snapshot.gasPriceWei) * BigInt(snapshot.fallbackGasUnits);
-    const txValueWei = BigInt(quote.txValueWei || 0);
+    const txValueWei = BigInt(executableQuote.txValueWei || 0);
     const nativeRequiredWei = txValueWei + gasBudgetWei;
-    const nativeState = await nativeBalance(quote.route.srcChain);
+    const nativeState = await nativeBalance(executableQuote.route.srcChain);
     const nativeRequirement = summarizeRequirement(nativeState.balanceWei, nativeRequiredWei);
 
     let tokenRequirement = null;
@@ -255,12 +257,12 @@ async function main() {
     let tokenState = null;
     let allowanceState = null;
     if (!srcAsset.isNative) {
-      const needsAllowance = requiresAllowanceForQuote(quote);
+      const needsAllowance = requiresAllowanceForQuote(executableQuote);
       [tokenState, allowanceState] = await Promise.all([
-        tokenBalance(quote.route.srcChain, quote.route.srcToken),
-        needsAllowance ? allowance(quote.route.srcChain, quote.route.srcToken, quote.txTo) : Promise.resolve(null),
+        tokenBalance(executableQuote.route.srcChain, executableQuote.route.srcToken),
+        needsAllowance ? allowance(executableQuote.route.srcChain, executableQuote.route.srcToken, executableQuote.txTo) : Promise.resolve(null),
       ]);
-      const inputUnits = BigInt(quote.inputAmount);
+      const inputUnits = BigInt(executableQuote.inputAmount);
       tokenRequirement = summarizeRequirement(tokenState.balance, inputUnits);
       allowanceRequirement = needsAllowance ? summarizeRequirement(allowanceState.allowance, inputUnits) : null;
     }
@@ -270,15 +272,17 @@ async function main() {
       runId,
       observedAt: new Date().toISOString(),
       address: args.address,
-      routeKey: quote.routeKey,
-      amount: quote.amount,
-      srcChain: quote.route.srcChain,
-      dstChain: quote.route.dstChain,
-      srcToken: quote.route.srcToken,
+      routeKey: executableQuote.routeKey,
+      amount: executableQuote.amount,
+      srcChain: executableQuote.route.srcChain,
+      dstChain: executableQuote.route.dstChain,
+      srcToken: executableQuote.route.srcToken,
       srcTicker: srcAsset.ticker,
-      txTo: quote.txTo,
+      txTo: executableQuote.txTo,
       txValueWei: txValueWei.toString(),
-      txDataBytes: quote.txDataBytes,
+      txDataBytes: executableQuote.txDataBytes,
+      executionHydratedFromOrder: executableQuote.executionHydratedFromOrder || false,
+      executionOrderId: executableQuote.executionOrderId || null,
       gasSnapshotObservedAt: snapshot.observedAt || null,
       gasSnapshotSource: snapshot.source || "live_rpc",
       fallbackGasUnits: snapshot.fallbackGasUnits,
@@ -295,7 +299,7 @@ async function main() {
       },
       token: tokenRequirement
         ? {
-            token: quote.route.srcToken,
+            token: executableQuote.route.srcToken,
             source: tokenState.source || "live_rpc",
             observedAt: tokenState.observedAt || null,
             balance: tokenRequirement.actual,
@@ -306,7 +310,7 @@ async function main() {
         : null,
       allowance: allowanceRequirement
         ? {
-            spender: quote.txTo,
+            spender: executableQuote.txTo,
             source: allowanceState.source || "live_rpc",
             observedAt: allowanceState.observedAt || null,
             allowance: allowanceRequirement.actual,

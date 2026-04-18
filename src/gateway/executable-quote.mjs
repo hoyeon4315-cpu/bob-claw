@@ -1,0 +1,91 @@
+import { config } from "../config/env.mjs";
+import { GatewayClient, GatewayError } from "./client.mjs";
+
+function quoteParamsForStoredQuote(quote, senderAddress) {
+  const params = {
+    srcChain: quote.route.srcChain,
+    dstChain: quote.route.dstChain,
+    srcToken: quote.route.srcToken,
+    dstToken: quote.route.dstToken,
+    amount: quote.amount,
+    recipient: quote.route.dstChain === "bitcoin" ? config.verifyBtcRecipient : config.verifyRecipient,
+    slippage: config.slippageBps,
+  };
+
+  if (quote.route.srcChain !== "bitcoin") {
+    params.sender = senderAddress || config.verifyRecipient;
+  }
+
+  return params;
+}
+
+export function isOfframpExecutionHydrationRequired(quote) {
+  return quote?.quoteType === "offramp" && quote?.route?.dstChain === "bitcoin" && (!quote?.txTo || !quote?.txData);
+}
+
+export function normalizeExecutableQuote(quote, execution = {}) {
+  const txTo = execution.txTo ?? quote.txTo ?? null;
+  const txData = execution.txData ?? quote.txData ?? null;
+  const txValueWei = execution.txValueWei ?? quote.txValueWei ?? "0";
+  const txChain = execution.txChain ?? quote.txChain ?? null;
+  const txDataBytes = txData ? Math.max(0, (txData.length - 2) / 2) : null;
+  return {
+    ...quote,
+    txTo,
+    txData,
+    txValueWei: String(txValueWei || 0),
+    txChain,
+    txDataBytes,
+    executionHydratedFromOrder: Boolean(execution.hydratedFromOrder),
+    executionOrderId: execution.orderId || null,
+  };
+}
+
+export async function hydrateStoredOfframpQuoteExecution(
+  quote,
+  {
+    client = new GatewayClient({ baseUrl: config.gatewayApiBase }),
+    senderAddress = null,
+  } = {},
+) {
+  if (!isOfframpExecutionHydrationRequired(quote)) {
+    return normalizeExecutableQuote(quote);
+  }
+
+  const quoteResult = await client.getQuote(quoteParamsForStoredQuote(quote, senderAddress));
+  const refreshedQuote = quoteResult.body?.offramp || null;
+  if (!refreshedQuote?.inputAmount?.amount || !refreshedQuote?.outputAmount?.amount) {
+    throw new Error("Gateway offramp quote did not include required offramp data");
+  }
+
+  const orderResult = await client.createOrder(quoteResult.body);
+  const offrampOrder = orderResult.body?.offramp || null;
+  if (!offrampOrder?.tx?.to || !offrampOrder?.tx?.data) {
+    throw new Error("Gateway create-order did not return an executable offramp tx");
+  }
+
+  return normalizeExecutableQuote(quote, {
+    txTo: offrampOrder.tx.to || refreshedQuote.txTo || null,
+    txData: offrampOrder.tx.data,
+    txValueWei: String(offrampOrder.tx.value || 0),
+    txChain: offrampOrder.tx.chain || null,
+    hydratedFromOrder: true,
+    orderId: offrampOrder.order_id || null,
+  });
+}
+
+export function classifyExecutableQuoteHydrationError(error) {
+  if (!(error instanceof GatewayError)) return null;
+  const code = error.details?.body?.code || null;
+  if (code) {
+    return String(code)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+  const status = Number(error.details?.status);
+  if (status === 404) return "no_route";
+  if (Number.isFinite(status) && status >= 400 && status < 500) return "gateway_request_rejected";
+  return null;
+}
