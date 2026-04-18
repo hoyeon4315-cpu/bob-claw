@@ -85,13 +85,20 @@ function actionLabel(action) {
 function reviewActions({ blockers = [], measuredCandidate = null, measuredScore = null }) {
   const actions = [];
   const has = (value) => blockers.includes(value);
-  if (has("wallet_not_checked") || has("native") || has("token") || has("allowance") || measuredCandidate?.readinessFailureReason) {
+  const hasWalletBlocker =
+    has("wallet_not_checked") ||
+    has("native") ||
+    has("token") ||
+    has("allowance") ||
+    Boolean(measuredCandidate?.readinessFailureReason);
+  if (hasWalletBlocker) {
     actions.push("check_wallet_readiness");
   }
   if (has("stale_src_gas_snapshot")) {
     actions.push("refresh_src_gas");
   }
   if (
+    !hasWalletBlocker &&
     !has("exact_src_execution_gas_reverted") &&
     !has("exact_src_execution_gas_allowance_insufficient") &&
     !has("exact_src_execution_gas_token_insufficient") &&
