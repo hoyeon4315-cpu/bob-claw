@@ -25,7 +25,7 @@ test("route demand is extracted only from viable canary candidates", () => {
   ]);
 });
 
-test("shadow cycle summary stays in shadow mode when no realized routes are enabled", () => {
+test("shadow cycle summary prefers economic blocker mode when no realized routes are enabled", () => {
   const summary = buildShadowCycleSummary({
     canaryState: {
       address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
@@ -113,7 +113,8 @@ test("shadow cycle summary stays in shadow mode when no realized routes are enab
     },
   });
 
-  assert.equal(summary.mode, "SHADOW_ONLY");
+  assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
+  assert.equal(summary.headline, "Best prepared route is still economically blocked after refill costs");
   assert.equal(summary.blockers.includes("no_realized_enabled_routes"), true);
   assert.equal(summary.blockers.includes("wallet_value_below_refill_floor"), true);
   assert.equal(summary.treasury.walletValueShortfallUsd, 225);
@@ -527,6 +528,44 @@ test("shadow cycle summary marks blocked canary prep explicitly", () => {
 
   assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
   assert.equal(summary.canary.decision, "FUND_AND_APPROVE_WALLET");
+});
+
+test("shadow cycle headline prefers economic blocker over wallet funding steps", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      nextStep: { decision: "FUND_AND_APPROVE_WALLET", headline: "Fund and approve the estimator wallet before exact gas", reasons: ["token"] },
+      routePlan: { topCandidates: [] },
+    },
+    treasuryPlan: {
+      decision: "BLOCKED",
+      reasons: [],
+      summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 28.8, walletValueFloorUsd: 0, walletValueShortfallUsd: 0, noDemandBlockerCount: 0 },
+      actions: [],
+      blockers: [],
+    },
+    fundingSourcePlan: {
+      reasons: ["route_refill_economically_unjustified"],
+      summary: {
+        selectionCount: 2,
+        executionRefillExpectedCostUsd: 0.2,
+        reserveReplenishmentExpectedCostUsd: 0,
+        economicallyJustified: false,
+        effectiveSystemNetPnlUsd: -0.9,
+      },
+    },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: {
+      dailyRealizedPnlUsd: 0,
+      projectLossUsedUsd: 0,
+      failedGasCost24hUsd: 0,
+      consecutiveFailures: 0,
+    },
+  });
+
+  assert.equal(summary.mode, "CANARY_PREP_BLOCKED");
+  assert.equal(summary.headline, "Best prepared route is still economically blocked after refill costs");
+  assert.equal(summary.blockers.includes("route_refill_economically_unjustified"), true);
 });
 
 test("shadow cycle summary surfaces pivot decision from route economics audit", () => {

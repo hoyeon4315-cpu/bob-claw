@@ -191,3 +191,35 @@ test("canary route plan infers token blockers from latest known balances for unc
   assert.deepEqual(plan.topCandidates[0].prepBlockers, ["token"]);
   assert.equal(plan.topCandidates[0].readinessFailureReason, null);
 });
+
+test("canary route plan demotes reject-no-edge routes behind unresolved candidates", () => {
+  const negativeRouteKey = `avalanche:${WBTC_OFT}->soneium:${WBTC_OFT}`;
+  const unresolvedRouteKey = `base:${WBTC_OFT}->ethereum:${WBTC_OFT}`;
+  const plan = buildCanaryRoutePlan(
+    {
+      quotes: [
+        quote({ routeKey: negativeRouteKey, srcChain: "avalanche", dstChain: "soneium" }),
+        quote({ routeKey: unresolvedRouteKey, srcChain: "base", dstChain: "ethereum" }),
+      ],
+      scores: [
+        {
+          ...score({ routeKey: negativeRouteKey, srcChain: "avalanche", dstChain: "soneium" }),
+          tradeReadiness: "reject_no_net_edge",
+          netEdgeUsd: -0.6,
+        },
+        {
+          ...score({ routeKey: unresolvedRouteKey, srcChain: "base", dstChain: "ethereum" }),
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: -0.4,
+        },
+      ],
+      readinessRecords: [],
+      readinessFailures: [],
+    },
+    { address: ADDRESS, prices: { nativeByChain: { avalanche: 20, base: 1800 } } },
+  );
+
+  assert.equal(plan.topCandidates[0].routeKey, unresolvedRouteKey);
+  assert.equal(plan.topCandidates[1].routeKey, negativeRouteKey);
+  assert.equal(plan.topCandidates[1].objectiveRejected, true);
+});

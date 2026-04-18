@@ -499,11 +499,18 @@ export function buildShadowCycleSummary({
     ...(fundingSourcePlan?.reasons || []),
     ...(enabledRoutes.length === 0 ? ["no_realized_enabled_routes"] : []),
   ]);
+  const economicallyBlocked =
+    fundingSourcePlan?.reasons?.includes("route_refill_economically_unjustified") ||
+    fundingSourcePlan?.summary?.economicallyJustified === false ||
+    (Number.isFinite(fundingSourcePlan?.summary?.effectiveSystemNetPnlUsd) && fundingSourcePlan.summary.effectiveSystemNetPnlUsd <= 0);
 
   let mode = "SHADOW_ONLY";
   let headline = "Collect more shadow and realized data";
 
-  if (nextStep?.decision === "FUND_AND_APPROVE_WALLET" || String(nextStep?.decision || "").startsWith("BLOCKED")) {
+  if (economicallyBlocked) {
+    mode = "CANARY_PREP_BLOCKED";
+    headline = "Best prepared route is still economically blocked after refill costs";
+  } else if (nextStep?.decision === "FUND_AND_APPROVE_WALLET" || String(nextStep?.decision || "").startsWith("BLOCKED")) {
     mode = "CANARY_PREP_BLOCKED";
     headline = nextStep?.headline || "Canary prep is blocked by wallet or route prerequisites";
   } else if (enabledRoutes.length > 0 && nextStep && !String(nextStep.decision).startsWith("BLOCKED")) {

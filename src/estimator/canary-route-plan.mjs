@@ -109,6 +109,10 @@ function disqualifyingScoreReasons(score) {
   return [...new Set(reasons)];
 }
 
+function objectiveRejected(score) {
+  return String(score?.tradeReadiness || "").startsWith("reject_");
+}
+
 function routeLabel(quote) {
   const src = tokenAsset(quote.route.srcChain, quote.route.srcToken);
   const dst = tokenAsset(quote.route.dstChain, quote.route.dstToken);
@@ -184,6 +188,7 @@ export function buildCanaryRoutePlan(
         txReady,
         exactGasDone,
         viableForPrep,
+        objectiveRejected: objectiveRejected(score),
         prepBlockers: blockers,
         blockerCount: blockers.length,
         readinessFailureReason: readinessFailure?.reason || null,
@@ -207,6 +212,7 @@ export function buildCanaryRoutePlan(
       };
     })
     .sort((left, right) => {
+      if (left.objectiveRejected !== right.objectiveRejected) return left.objectiveRejected ? 1 : -1;
       if (left.viableForPrep !== right.viableForPrep) return left.viableForPrep ? -1 : 1;
       if (left.txReady !== right.txReady) return left.txReady ? -1 : 1;
       if (left.blockerCount !== right.blockerCount) return left.blockerCount - right.blockerCount;
