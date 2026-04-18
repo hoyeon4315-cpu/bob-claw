@@ -241,6 +241,15 @@ export function shadowActionForCandidate(candidate, { address = null } = {}) {
     };
   }
 
+  if (candidate.scoreDisqualifiers?.includes("exact_src_execution_gas_reverted")) {
+    return {
+      code: "hold_blocked_exact_gas",
+      label: "hold on exact gas revert",
+      reason: "exact_src_execution_gas_reverted",
+      command: null,
+    };
+  }
+
   if (!candidate.exactGasDone || candidate.scoreDisqualifiers?.includes("stale_src_gas_snapshot")) {
     return {
       code: "refresh_exact_gas",

@@ -15,6 +15,7 @@ const MAJOR_GAPS = new Set([
   "stale_src_gas_snapshot",
   "stale_dex_output_quote",
   "exact_src_execution_gas_not_estimated",
+  "exact_src_execution_gas_reverted",
   "missing_src_token_price",
   "missing_dst_token_price",
   "missing_src_token_decimals",

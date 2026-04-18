@@ -10,6 +10,7 @@ const DISQUALIFYING_SCORE_GAPS = new Set([
   "missing_dst_token_price",
   "bitcoin_network_fee_not_modelled",
   "stale_src_gas_snapshot",
+  "exact_src_execution_gas_reverted",
 ]);
 
 function bigint(value) {

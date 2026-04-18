@@ -148,6 +148,7 @@ function inputItems(reviewPackage = null, address = null) {
       field: "exactGas",
       stale: "stale_exact_gas",
       missing: "missing_exact_gas",
+      blocked: "blocked_exact_gas",
       priority: 95,
       code: "refresh_exact_gas",
       label: "refresh exact gas",

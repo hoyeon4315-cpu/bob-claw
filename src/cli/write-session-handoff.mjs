@@ -636,7 +636,8 @@ function lastAdvanceLine(advance) {
 
 function freshnessText(name, item) {
   const ageText = Number.isFinite(item?.ageMinutes) ? `${item.ageMinutes.toFixed(1)}m` : "n/a";
-  return `${name} ${item?.state || "unknown"}${item?.state === "fresh" || item?.state === "stale" ? ` (${ageText})` : ""}`;
+  const failureText = item?.failureReason ? `:${item.failureReason}` : "";
+  return `${name} ${item?.state || "unknown"}${failureText}${item?.state === "fresh" || item?.state === "stale" ? ` (${ageText})` : ""}`;
 }
 
 function canaryInputsLines(summary) {

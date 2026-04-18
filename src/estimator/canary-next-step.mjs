@@ -108,6 +108,16 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
     };
   }
 
+  if ((best.scoreDisqualifiers || []).includes("exact_src_execution_gas_reverted")) {
+    return {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      headline: "Best prepared route is blocked by exact gas revert",
+      route: best,
+      actions: [],
+      reasons: ["exact_src_execution_gas_reverted"],
+    };
+  }
+
   if (!best.exactGasDone) {
     return {
       decision: "RUN_EXACT_GAS",

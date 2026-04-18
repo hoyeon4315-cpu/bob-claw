@@ -265,6 +265,11 @@ function selectPrimaryLiveCandidate({ manualReviewCandidate = null, strategyLive
 function buildMeasuredLeaderReview({ canarySelectionGap = null, executionReview = null } = {}) {
   const measuredLeader = canarySelectionGap?.measuredLeader || null;
   const reviewPlan = canarySelectionGap?.reviewPlan || null;
+  const preferredNextActionCode = reviewPlan?.actionCodes?.[0] || executionReview?.nextActionCode || null;
+  const preferredExecutionStep =
+    executionReview?.steps?.find((step) => step.code === preferredNextActionCode && step.command) ||
+    executionReview?.steps?.find((step) => step.command) ||
+    null;
   if (!measuredLeader?.routeKey && !executionReview?.routeKey) return null;
   return {
     selectionCode: canarySelectionGap?.selectionCode || executionReview?.selectionCode || null,
@@ -280,9 +285,9 @@ function buildMeasuredLeaderReview({ canarySelectionGap = null, executionReview 
     exactGasDone: measuredLeader?.exactGasDone ?? null,
     reasons: canarySelectionGap?.reasonLabels || executionReview?.reasonLabels || [],
     blockers: canarySelectionGap?.blockerLabels || executionReview?.blockerLabels || executionReview?.blockers || [],
-    nextActionCode: reviewPlan?.actionCodes?.[0] || executionReview?.nextActionCode || null,
+    nextActionCode: preferredNextActionCode,
     nextActionLabels: reviewPlan?.actionLabels || executionReview?.steps?.map((step) => step.label).filter(Boolean) || [],
-    command: executionReview?.command || null,
+    command: preferredExecutionStep?.command || executionReview?.command || null,
     hypothesisGuard: canarySelectionGap?.hypothesisGuard || executionReview?.hypothesisGuard || null,
   };
 }

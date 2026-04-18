@@ -89,6 +89,7 @@ function watcherReasonLabel(kind, reason) {
     },
     gasRefresh: {
       stale_src_gas_snapshot: "source 체인 gas가 오래되어 다시 확인 필요",
+      exact_src_execution_gas_reverted: "exact gas가 리버트되어 route 자체가 막혀 있음",
       not_stale_src_gas_blocked: "지금은 gas freshness가 핵심 blocker가 아님",
       route_missing: "gas 재확인 대상 route가 없음",
       src_chain_not_supported: "source 체인이 gas snapshot 대상이 아님",

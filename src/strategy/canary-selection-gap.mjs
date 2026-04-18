@@ -42,6 +42,7 @@ function blockerLabel(blocker) {
     missing_tx_data: "tx payload missing",
     stale_src_gas_snapshot: "source gas snapshot stale",
     exact_src_execution_gas_not_estimated: "exact execution gas pending",
+    exact_src_execution_gas_reverted: "exact execution gas reverted",
     stale_dex_output_quote: "DEX output quote stale",
     implausible_quote_value_ratio: "quote value outlier",
     missing_src_token_decimals: "source token decimals missing",
@@ -58,6 +59,7 @@ function reasonLabel(reason) {
     measured_route_not_viable_for_prep: "measured leader is not viable for prep yet",
     measured_route_tx_not_ready: "measured leader still lacks a tx-ready payload",
     measured_route_exact_gas_pending: "measured leader still needs exact gas",
+    measured_route_exact_gas_blocked: "measured leader exact gas reverted and is blocked",
     measured_route_wallet_checks_pending: "measured leader still needs wallet readiness checks",
     measured_route_readiness_failure: "measured leader still has a readiness failure",
     measured_route_insufficient_data: "measured leader is still marked insufficient_data",
@@ -83,7 +85,10 @@ function reviewActions({ blockers = [], measuredCandidate = null, measuredScore 
   if (has("wallet_not_checked") || has("native") || has("token") || has("allowance") || measuredCandidate?.readinessFailureReason) {
     actions.push("check_wallet_readiness");
   }
-  if (has("stale_src_gas_snapshot") || has("exact_src_execution_gas_not_estimated") || measuredCandidate?.exactGasDone === false) {
+  if (
+    !has("exact_src_execution_gas_reverted") &&
+    (has("stale_src_gas_snapshot") || has("exact_src_execution_gas_not_estimated") || measuredCandidate?.exactGasDone === false)
+  ) {
     actions.push("refresh_exact_gas");
   }
   if (has("stale_dex_output_quote")) {
@@ -152,7 +157,11 @@ export function buildCanarySelectionGap({
   }
   if (measuredCandidate?.viableForPrep === false) reasons.push("measured_route_not_viable_for_prep");
   if (measuredCandidate?.txReady === false) reasons.push("measured_route_tx_not_ready");
-  if (measuredCandidate?.exactGasDone === false) reasons.push("measured_route_exact_gas_pending");
+  if (blockers.includes("exact_src_execution_gas_reverted")) {
+    reasons.push("measured_route_exact_gas_blocked");
+  } else if (measuredCandidate?.exactGasDone === false) {
+    reasons.push("measured_route_exact_gas_pending");
+  }
   if ((measuredCandidate?.prepBlockers || []).length) reasons.push("measured_route_wallet_checks_pending");
   if (measuredCandidate?.readinessFailureReason) reasons.push("measured_route_readiness_failure");
   if (measuredScore?.tradeReadiness === "insufficient_data") reasons.push("measured_route_insufficient_data");

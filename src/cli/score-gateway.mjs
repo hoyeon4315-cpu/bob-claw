@@ -81,6 +81,10 @@ function latestByRouteAndAmountMap(items) {
   return latest;
 }
 
+function latestExactGasFailureByRouteAndAmountMap(items) {
+  return latestByRouteAndAmountMap(items);
+}
+
 function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
@@ -254,6 +258,7 @@ async function main() {
   const priceSnapshots = await readJsonl(config.dataDir, "market-price-snapshots");
   const bitcoinFeeSnapshots = await readJsonl(config.dataDir, "bitcoin-fee-snapshots");
   const gasEstimateSnapshots = await readJsonl(config.dataDir, "gateway-gas-estimates");
+  const gasEstimateFailures = await readJsonl(config.dataDir, "gateway-gas-estimate-failures");
   const gasSnapshotRecords = await readJsonl(config.dataDir, "gas-snapshots");
   const inventoryRecords = await readJsonl(config.dataDir, "treasury-inventory");
   const shadowObservationRecords = args.write ? await readJsonl(config.dataDir, "gateway-shadow-observations") : [];
@@ -261,6 +266,7 @@ async function main() {
   const routeStats = routeStatsByKey(allQuotes, failures);
   const dexOutputQuotes = latestDexOutputQuoteByRouteAndAmount(dexQuotes);
   const gasEstimates = latestByRouteAndAmountMap(gasEstimateSnapshots);
+  const gasEstimateFailureMap = latestExactGasFailureByRouteAndAmountMap(gasEstimateFailures);
   const gasSnapshots = latestBy(gasSnapshotRecords, (snapshot) => snapshot.chain);
   const bitcoinFee = bitcoinFeeSnapshots.at(-1) || null;
   const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
@@ -315,6 +321,14 @@ async function main() {
       resolveCached(quote.route.dstChain, quote.route.dstToken),
     ]);
     const exactGas = gasEstimates.get(`${quote.routeKey}|${quote.amount}`) || null;
+    const exactGasFailure = gasEstimateFailureMap.get(`${quote.routeKey}|${quote.amount}`) || null;
+    const latestExactGasSuccessMs = exactGas?.observedAt ? new Date(exactGas.observedAt).getTime() : null;
+    const latestExactGasFailureMs = exactGasFailure?.observedAt ? new Date(exactGasFailure.observedAt).getTime() : null;
+    const activeExactGasFailure =
+      latestExactGasFailureMs !== null &&
+      (latestExactGasSuccessMs === null || latestExactGasFailureMs >= latestExactGasSuccessMs)
+        ? exactGasFailure
+        : null;
     const exactGasAgeMinutes = minutesBetween(exactGas?.observedAt || null, now);
     const exactGasFresh =
       Number.isFinite(exactGas?.estimatedGasUsd) &&
@@ -334,6 +348,7 @@ async function main() {
       dstAsset,
       executionGasUsd,
       executionGasSource,
+      exactExecutionGasFailureReason: activeExactGasFailure?.reason || null,
       allowEthereumL1Routes: config.approveEthereumL1Routes,
       gasObservedAt,
       routeStats: routeStats.get(quote.routeKey),

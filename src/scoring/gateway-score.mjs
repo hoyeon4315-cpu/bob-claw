@@ -100,6 +100,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const bitcoinFee = options.bitcoinFee || null;
   const hasNativeBitcoinLeg = quote.route.srcChain === "bitcoin" || quote.route.dstChain === "bitcoin";
   const executionGasSource = options.executionGasSource || null;
+  const exactExecutionGasFailureReason = options.exactExecutionGasFailureReason || null;
 
   if (!Number.isInteger(srcAsset.decimals)) dataGaps.push("missing_src_token_decimals");
   if (!Number.isInteger(dstAsset.decimals)) dataGaps.push("missing_dst_token_decimals");
@@ -129,7 +130,11 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     dataGaps.push("missing_src_execution_gas");
   }
   if (quote.route.srcChain !== "bitcoin" && options.requireExactExecutionGas && executionGasSource !== "eth_estimateGas") {
-    dataGaps.push("exact_src_execution_gas_not_estimated");
+    dataGaps.push(
+      exactExecutionGasFailureReason === "execution_reverted"
+        ? "exact_src_execution_gas_reverted"
+        : "exact_src_execution_gas_not_estimated",
+    );
   }
   if (hasNativeBitcoinLeg && !Number.isFinite(bitcoinFee?.estimatedFeeUsd)) {
     dataGaps.push("bitcoin_network_fee_not_modelled");
@@ -223,6 +228,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     nativeCostUsd: finiteOrNull(nativeCostUsd),
     executionGasUsd: finiteOrNull(executionGasUsd),
     executionGasSource,
+    exactExecutionGasFailureReason,
     gasShockBufferUsd: finiteOrNull(gasShockBufferUsd),
     bitcoinFeeUsd: finiteOrNull(nativeBitcoinFeeUsd),
     knownCostUsd,

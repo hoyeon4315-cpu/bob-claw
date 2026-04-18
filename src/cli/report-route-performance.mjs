@@ -121,7 +121,9 @@ async function main() {
       ? {
           label: dashboardStatus.canaryInputs.routeLabel,
           amount: dashboardStatus.canaryInputs.amount,
-          exactGasDone: dashboardStatus.canaryInputs.exactGas?.state !== "missing",
+          exactGasDone:
+            dashboardStatus.canaryInputs.exactGas?.state !== "missing" &&
+            dashboardStatus.canaryInputs.exactGas?.failureReason == null,
           readinessFailureReason: null,
         }
       : null,
