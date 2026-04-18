@@ -247,6 +247,7 @@ test("admission remediation plan prioritizes active canary wallet readiness over
         routeKey: "bob:0x0555->bera:0x0555",
         routeLabel: "bob->bera wBTC.OFT->wBTC.OFT",
         amount: "10000",
+        blockerReasons: ["token"],
         inputFreshness: {
           gatewayQuote: { state: "stale" },
           exactGas: { state: "fresh" },
@@ -271,7 +272,44 @@ test("admission remediation plan prioritizes active canary wallet readiness over
   assert.equal(plan.nextAction.code, "token");
   assert.equal(plan.nextAction.command, "npm run check:estimator-wallet -- --route-key=bob:0x0555->bera:0x0555 --amount=10000");
   assert.equal(plan.items[0].reason, "token");
-  assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), true);
+  assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), false);
+});
+
+test("admission remediation plan skips stale gateway and missing exact gas when wallet blocker is already known", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        blockers: ["token", "missing_exact_gas"],
+      },
+      manualReviewCandidate: {
+        routeKey: "bob:0x0555->unichain:0x0555",
+        routeLabel: "bob->unichain wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        blockerReasons: ["token"],
+        inputFreshness: {
+          gatewayQuote: { state: "stale" },
+          exactGas: { state: "missing" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "blocked" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+      queueFollowUps: [
+        {
+          rank: 1,
+          scope: "active_canary",
+          label: "bob->unichain wBTC.OFT->wBTC.OFT",
+          reason: "token",
+          command: "npm run check:estimator-wallet -- --route-key=bob:0x0555->unichain:0x0555 --amount=10000",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.nextAction.code, "token");
+  assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), false);
+  assert.equal(plan.items.some((item) => item.code === "refresh_exact_gas"), false);
 });
 
 test("admission remediation plan keeps high-priority active canary readiness even when refresh-batch runner exists", () => {

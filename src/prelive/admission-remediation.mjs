@@ -166,8 +166,10 @@ function inputItems(reviewPackage = null, address = null) {
   const routeLabel = candidate?.routeLabel || null;
   const amount = candidate?.amount || null;
   const inputFreshness = candidate?.inputFreshness || null;
+  const blockerReasons = unique(candidate?.blockerReasons || []);
   if (!inputFreshness || !routeKey || !amount) return [];
   const structuralDexReason = structuralDexFailureReason(candidate);
+  const hasWalletBlocker = blockerReasons.some((reason) => isWalletReadinessReason(reason));
 
   const mapping = [
     {
@@ -231,6 +233,9 @@ function inputItems(reviewPackage = null, address = null) {
   return mapping
     .flatMap((entry) => {
       let state = inputFreshness[entry.field]?.state || null;
+      if (hasWalletBlocker && (entry.field === "gatewayQuote" || entry.field === "exactGas") && (state === "stale" || state === "missing")) {
+        return [];
+      }
       if (entry.field === "dexQuote" && (state === "stale" || state === "missing") && structuralDexReason) {
         state = "blocked";
       }
