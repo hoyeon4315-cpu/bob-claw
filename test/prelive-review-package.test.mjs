@@ -722,7 +722,8 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
           },
           nextAction: {
             code: "capture_wrapped_btc_loop_extended_receipt_context",
-            command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+            command:
+              "npm run ingest:wrapped-btc-loop-receipt -- --write --scenario=healthy_baseline --execution-mode=signer_backed_receipt --result=passed --health-factor-path=<hf-1>,<hf-2> --liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2> --realized-net-carry-usd=<realized-net-carry-usd>",
           },
         },
       ],
@@ -742,7 +743,8 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
           blockers: ["extended_receipt_context_missing"],
           nextAction: {
             code: "capture_wrapped_btc_loop_extended_receipt_context",
-            command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+            command:
+              "npm run ingest:wrapped-btc-loop-receipt -- --write --scenario=healthy_baseline --execution-mode=signer_backed_receipt --result=passed --health-factor-path=<hf-1>,<hf-2> --liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2> --realized-net-carry-usd=<realized-net-carry-usd>",
           },
         },
       ],

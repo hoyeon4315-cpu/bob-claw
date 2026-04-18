@@ -277,7 +277,7 @@ export function buildWrappedBtcLoopObservedReceipt({
   };
 }
 
-export function buildWrappedBtcLoopReceiptGuide({ scaffold = null } = {}) {
+export function buildWrappedBtcLoopReceiptGuide({ scaffold = null, liveProof = null } = {}) {
   const packet = buildWrappedBtcLendingLoopDryRunPacket({ scaffold });
   const requiredFields = packet?.receiptTemplate?.requiredFields || [
     "entryTxHashes",
@@ -297,23 +297,39 @@ export function buildWrappedBtcLoopReceiptGuide({ scaffold = null } = {}) {
       "oracle_drift_pause",
     ];
   const preferredScenario = supportedScenarios.includes("healthy_baseline") ? "healthy_baseline" : supportedScenarios[0] || "healthy_baseline";
+  const missingFields = new Set(liveProof?.missingExtendedReceiptFields || []);
+  const commandParts = [
+    "npm run ingest:wrapped-btc-loop-receipt -- --write",
+    `--scenario=${liveProof?.scenarioId || preferredScenario}`,
+    `--execution-mode=${liveProof?.executionMode || "signer_backed_receipt"}`,
+    `--result=${liveProof?.result || "passed"}`,
+  ];
+  if (!liveProof?.entryTxHashes?.length) {
+    commandParts.push("--entry-tx-hashes=<entry-tx-hash-1>,<entry-tx-hash-2>");
+  }
+  if (!liveProof?.unwindTxHashes?.length) {
+    commandParts.push("--unwind-tx-hashes=<unwind-tx-hash-1>");
+  }
+  if (!Number.isFinite(liveProof?.actualLoopFeesUsd)) {
+    commandParts.push("--actual-loop-fees-usd=<loop-fees-usd>");
+  }
+  if (!Number.isFinite(liveProof?.actualUnwindCostUsd)) {
+    commandParts.push("--actual-unwind-cost-usd=<unwind-cost-usd>");
+  }
+  if (missingFields.size === 0 || missingFields.has("observedHealthFactorPath")) {
+    commandParts.push("--health-factor-path=<hf-1>,<hf-2>");
+  }
+  if (missingFields.size === 0 || missingFields.has("observedLiquidationBufferPath")) {
+    commandParts.push("--liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2>");
+  }
+  if (missingFields.size === 0 || missingFields.has("realizedNetCarryUsd")) {
+    commandParts.push("--realized-net-carry-usd=<realized-net-carry-usd>");
+  }
   return {
     supportedScenarios,
     requiredFields,
     minPassedSignerBackedRuns: 2,
-    sampleCommand: [
-      "npm run ingest:wrapped-btc-loop-receipt -- --write",
-      `--scenario=${preferredScenario}`,
-      "--execution-mode=signer_backed_receipt",
-      "--result=passed",
-      "--entry-tx-hashes=<entry-tx-hash-1>,<entry-tx-hash-2>",
-      "--unwind-tx-hashes=<unwind-tx-hash-1>",
-      "--health-factor-path=<hf-1>,<hf-2>",
-      "--liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2>",
-      "--actual-loop-fees-usd=<loop-fees-usd>",
-      "--actual-unwind-cost-usd=<unwind-cost-usd>",
-      "--realized-net-carry-usd=<realized-net-carry-usd>",
-    ].join(" "),
+    sampleCommand: commandParts.join(" "),
   };
 }
 

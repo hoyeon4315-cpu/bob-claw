@@ -158,7 +158,10 @@ function wrappedLoopValidation({
       code: liveRoundtrip.recorded
         ? "capture_wrapped_btc_loop_extended_receipt_context"
         : "collect_wrapped_btc_loop_oos_receipts",
-      command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+      command: buildWrappedBtcLoopReceiptGuide({
+        scaffold: wrappedBtcLendingLoopSlice,
+        liveProof: liveRoundtrip.recorded ? wrappedBtcLoopLiveProof : null,
+      }).sampleCommand,
     },
   });
 }
@@ -398,3 +401,4 @@ export function summarizePhase3StrategyValidation(report = null) {
     nextAction: report.summary?.nextAction || null,
   };
 }
+import { buildWrappedBtcLoopReceiptGuide } from "./wrapped-btc-lending-loop-dry-run.mjs";

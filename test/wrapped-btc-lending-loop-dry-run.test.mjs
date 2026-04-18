@@ -5,6 +5,7 @@ import {
   buildWrappedBtcLendingLoopDryRunPacket,
   buildWrappedBtcLendingLoopDryRunReceipt,
   buildWrappedBtcLoopObservedReceipt,
+  buildWrappedBtcLoopReceiptGuide,
   summarizeWrappedBtcLendingLoopDryRunRuns,
 } from "../src/strategy/wrapped-btc-lending-loop-dry-run.mjs";
 
@@ -106,4 +107,31 @@ test("wrapped BTC loop observed receipt rejects missing required signer-backed r
       }),
     /non-simulated execution mode/,
   );
+});
+
+test("wrapped BTC loop receipt guide narrows command to missing extended fields when live proof exists", () => {
+  const guide = buildWrappedBtcLoopReceiptGuide({
+    liveProof: {
+      scenarioId: "healthy_baseline",
+      executionMode: "signer_backed_receipt",
+      result: "passed",
+      entryTxHashes: ["0xentry"],
+      unwindTxHashes: ["0xunwind"],
+      actualLoopFeesUsd: 0.02,
+      actualUnwindCostUsd: 0.01,
+      missingExtendedReceiptFields: [
+        "observedHealthFactorPath",
+        "observedLiquidationBufferPath",
+        "realizedNetCarryUsd",
+      ],
+    },
+  });
+
+  assert.equal(guide.sampleCommand.includes("--entry-tx-hashes="), false);
+  assert.equal(guide.sampleCommand.includes("--unwind-tx-hashes="), false);
+  assert.equal(guide.sampleCommand.includes("--actual-loop-fees-usd="), false);
+  assert.equal(guide.sampleCommand.includes("--actual-unwind-cost-usd="), false);
+  assert.equal(guide.sampleCommand.includes("--health-factor-path=<hf-1>,<hf-2>"), true);
+  assert.equal(guide.sampleCommand.includes("--liquidation-buffer-path=<buffer-pct-1>,<buffer-pct-2>"), true);
+  assert.equal(guide.sampleCommand.includes("--realized-net-carry-usd=<realized-net-carry-usd>"), true);
 });
