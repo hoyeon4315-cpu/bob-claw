@@ -9,10 +9,11 @@ import {
   WBTC_OFT_TOKEN,
   ZERO_TOKEN,
 } from "../assets/tokens.mjs";
+import { hydrateOfframpExecutionFromGatewayBody } from "../gateway/executable-quote.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const DEFAULT_BTC_TOKEN = WBTC_OFT_TOKEN;
 const LOW_COST_CHAIN_ORDER = ["base", "bob", "bsc", "sonic", "unichain", "soneium", "avalanche", "bera", "ethereum", "bitcoin"];
 
@@ -189,14 +190,15 @@ function quoteParamsFor(route, amount) {
   return params;
 }
 
-function extractQuoteMetrics(route, amount, quoteResult) {
-  const quoteType = quoteResult.body.onramp
-    ? "onramp"
-    : quoteResult.body.offramp
-      ? "offramp"
-      : quoteResult.body.layerZero
-        ? "layerZero"
-        : "unknown";
+function extractQuoteMetrics(route, amount, quoteResult, executable = {}) {
+  const quoteType = executable.quoteType ||
+    (quoteResult.body.onramp
+      ? "onramp"
+      : quoteResult.body.offramp
+        ? "offramp"
+        : quoteResult.body.layerZero
+          ? "layerZero"
+          : "unknown");
   const quote =
     quoteResult.body.onramp ||
     quoteResult.body.offramp ||
@@ -223,17 +225,19 @@ function extractQuoteMetrics(route, amount, quoteResult) {
     outputAmount: outputAmount.toString(),
     fees: fees.toString(),
     executionFees: executionFees.toString(),
-    txValueWei: txValue.toString(),
-    txTo: quote.tx?.to || null,
-    txData: quote.tx?.data || null,
-    txChain: quote.tx?.chain || null,
-    txDataBytes: quote.tx?.data ? Math.max(0, (quote.tx.data.length - 2) / 2) : null,
+    txValueWei: executable.txValueWei || txValue.toString(),
+    txTo: executable.txTo ?? quote.tx?.to ?? null,
+    txData: executable.txData ?? quote.tx?.data ?? null,
+    txChain: executable.txChain ?? quote.tx?.chain ?? null,
+    txDataBytes: executable.txDataBytes ?? (quote.tx?.data ? Math.max(0, (quote.tx.data.length - 2) / 2) : null),
     feeBreakdown: quote.feeBreakdown || null,
     estimatedTimeInSecs,
     slippageBps: config.slippageBps,
     grossOutputRatio,
     feeRatio,
     hasSignedQuoteData: Boolean(quote.signedQuoteData),
+    executionHydratedFromOrder: executable.executionHydratedFromOrder || false,
+    executionOrderId: executable.executionOrderId || null,
     rawShape: {
       hasOnramp: Boolean(quoteResult.body.onramp),
       hasOfframp: Boolean(quoteResult.body.offramp),
@@ -307,7 +311,8 @@ async function main() {
       const amount = amounts[index];
       try {
         const quoteResult = await client.getQuote(quoteParamsFor(route, amount));
-        const metric = extractQuoteMetrics(route, amount, quoteResult);
+        const executable = await hydrateOfframpExecutionFromGatewayBody(quoteResult.body, { client });
+        const metric = extractQuoteMetrics(route, amount, quoteResult, executable);
         metric.runId = runId;
         records.push({ ok: true, metric });
         await store.append("gateway-quotes", metric);
@@ -317,7 +322,8 @@ async function main() {
         if (retryAmount && retryAmount !== amount) {
           try {
             const quoteResult = await client.getQuote(quoteParamsFor(route, retryAmount));
-            const metric = extractQuoteMetrics(route, retryAmount, quoteResult);
+            const executable = await hydrateOfframpExecutionFromGatewayBody(quoteResult.body, { client });
+            const metric = extractQuoteMetrics(route, retryAmount, quoteResult, executable);
             metric.runId = runId;
             metric.retryReason = "QUOTE_AMOUNT_TOO_LOW";
             metric.retryOfAmount = amount;

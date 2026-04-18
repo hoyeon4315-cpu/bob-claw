@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  hydrateOfframpExecutionFromGatewayBody,
   classifyExecutableQuoteHydrationError,
   hydrateStoredOfframpQuoteExecution,
   isOfframpExecutionHydrationRequired,
+  normalizeExecutableQuoteFromGatewayBody,
 } from "../src/gateway/executable-quote.mjs";
 import { GatewayError } from "../src/gateway/client.mjs";
 
@@ -112,6 +114,64 @@ test("hydrateStoredOfframpQuoteExecution leaves already executable quotes untouc
   assert.equal(hydrated.txTo, quote.txTo);
   assert.equal(hydrated.txData, quote.txData);
   assert.equal(hydrated.executionHydratedFromOrder, false);
+});
+
+test("normalizeExecutableQuoteFromGatewayBody preserves direct executable tx fields", () => {
+  const normalized = normalizeExecutableQuoteFromGatewayBody({
+    layerZero: {
+      tx: {
+        to: "0x5555555555555555555555555555555555555555",
+        data: "0x1234",
+        value: "9",
+        chain: "base",
+      },
+    },
+  });
+  assert.equal(normalized.quoteType, "layerZero");
+  assert.equal(normalized.txTo, "0x5555555555555555555555555555555555555555");
+  assert.equal(normalized.txData, "0x1234");
+  assert.equal(normalized.txValueWei, "9");
+  assert.equal(normalized.txChain, "base");
+});
+
+test("hydrateOfframpExecutionFromGatewayBody attaches create-order tx when offramp quote lacks tx data", async () => {
+  let createOrderCalls = 0;
+  const normalized = await hydrateOfframpExecutionFromGatewayBody(
+    {
+      offramp: {
+        inputAmount: { amount: "250000000" },
+        outputAmount: { amount: "249000" },
+        txTo: "0x6666666666666666666666666666666666666666",
+      },
+    },
+    {
+      client: {
+        createOrder: async () => {
+          createOrderCalls += 1;
+          return {
+            body: {
+              offramp: {
+                order_id: "order-verify-1",
+                tx: {
+                  to: "0x7777777777777777777777777777777777777777",
+                  data: "0xdeadbeef",
+                  value: "11",
+                  chain: "base",
+                },
+              },
+            },
+          };
+        },
+      },
+    },
+  );
+
+  assert.equal(createOrderCalls, 1);
+  assert.equal(normalized.txTo, "0x7777777777777777777777777777777777777777");
+  assert.equal(normalized.txData, "0xdeadbeef");
+  assert.equal(normalized.txValueWei, "11");
+  assert.equal(normalized.executionHydratedFromOrder, true);
+  assert.equal(normalized.executionOrderId, "order-verify-1");
 });
 
 test("classifyExecutableQuoteHydrationError normalizes gateway errors", () => {
