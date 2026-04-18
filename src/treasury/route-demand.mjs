@@ -4,6 +4,22 @@ function normalizedToken(token) {
   return token ? String(token).toLowerCase() : null;
 }
 
+function finite(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function indicativeNetUsd(candidate = null) {
+  return finite(candidate?.executableNetEdgeUsd) ?? finite(candidate?.netEdgeUsd);
+}
+
+function supportsRefillDemand(candidate = null) {
+  if (!candidate) return false;
+  if (!candidate.viableForPrep) return false;
+  if (candidate.tradeReadiness === "reject_no_net_edge") return false;
+  const netUsd = indicativeNetUsd(candidate);
+  return !Number.isFinite(netUsd) || netUsd > 0;
+}
+
 function dedupeRouteDemand(items = []) {
   const seen = new Set();
   return items.filter((item) => {
@@ -54,7 +70,7 @@ export function buildTreasuryRouteDemand({ routePlan = null, inventory = null, p
   const announcedChains = new Set((ANNOUNCED_GATEWAY_CHAINS || []).filter((chain) => chain !== "bitcoin"));
 
   const canaryDrivenDemand = (routePlan?.topCandidates || [])
-    .filter((item) => item.viableForPrep)
+    .filter((item) => supportsRefillDemand(item))
     .flatMap((item) => [
       { chain: item.srcChain },
       { chain: item.srcChain, token: item.routeKey.split(":")[1]?.split("->")[0] || null },

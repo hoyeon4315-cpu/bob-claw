@@ -422,6 +422,8 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
         (capitalFragmentationDragUsd || 0);
     }
   }
+  const economicallyJustified = Number.isFinite(effectiveSystemNetPnlUsd) ? effectiveSystemNetPnlUsd > 0 : null;
+  if (economicallyJustified === false) reasons.push("route_refill_economically_unjustified");
 
   return {
     schemaVersion: 1,
@@ -452,6 +454,7 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
     selections,
     summary: {
       ...summary,
+      economicallyJustified,
       effectiveSystemNetPnlUsd,
     },
   };

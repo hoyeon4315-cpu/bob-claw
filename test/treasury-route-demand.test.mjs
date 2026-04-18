@@ -10,6 +10,8 @@ test("treasury route demand keeps viable canary source demand", () => {
           viableForPrep: true,
           srcChain: "bob",
           routeKey: "bob:0x0555->base:0x0555",
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: 0.4,
         },
         {
           viableForPrep: false,
@@ -26,6 +28,26 @@ test("treasury route demand keeps viable canary source demand", () => {
     { chain: "bob" },
     { chain: "bob", token: "0x0555" },
   ]);
+});
+
+test("treasury route demand drops viable canary demand once net edge is confirmed non-positive", () => {
+  const demand = buildTreasuryRouteDemand({
+    routePlan: {
+      topCandidates: [
+        {
+          viableForPrep: true,
+          srcChain: "avalanche",
+          routeKey: "avalanche:0x0555->soneium:0x0555",
+          tradeReadiness: "reject_no_net_edge",
+          netEdgeUsd: -0.6,
+        },
+      ],
+    },
+    inventory: { native: [] },
+    policy: { activeChains: ["bob", "base"], supportedChains: ["bob", "base", "avalanche", "soneium"] },
+  });
+
+  assert.deepEqual(demand, []);
 });
 
 test("treasury route demand adds announced expansion chains with low native balances", () => {

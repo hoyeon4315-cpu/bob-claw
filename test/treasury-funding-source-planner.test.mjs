@@ -84,6 +84,7 @@ test("single wallet funding source planner prefers same-chain swaps with bootstr
   assert.equal(funding.summary.strandedCapitalUsd > 0, true);
   assert.equal(Number.isFinite(funding.summary.effectiveSystemNetPnlUsd), true);
   assert.equal(funding.summary.effectiveSystemNetPnlUsd < 1.4, true);
+  assert.equal(funding.summary.economicallyJustified, true);
 });
 
 test("dual wallet funding source planner prefers reserve transfers but marks reserve state as unmodelled", () => {
@@ -109,6 +110,29 @@ test("dual wallet funding source planner prefers reserve transfers but marks res
   assert.equal(funding.reasons.includes("reserve_state_unmodelled"), true);
   assert.equal(funding.reasons.includes("reserve_replenishment_unmodelled"), true);
   assert.equal(funding.summary.effectiveSystemNetPnlUsd, null);
+  assert.equal(funding.summary.economicallyJustified, null);
+});
+
+test("funding source planner flags refill plans that stay system-negative after refill costs", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: planFixture(),
+    policy,
+    routeContext: {
+      routeKey: "bob:0x0555->base:0x0555",
+      amount: "10000",
+      inputUsd: 10,
+      knownCostUsd: 0.2,
+      netEdgeUsd: -0.3,
+      executableNetEdgeUsd: null,
+      routeFailureRate: 0,
+      tradeReadiness: "reject_no_net_edge",
+    },
+  });
+
+  assert.equal(funding.summary.economicallyJustified, false);
+  assert.equal(funding.summary.effectiveSystemNetPnlUsd < 0, true);
+  assert.equal(funding.reasons.includes("route_refill_economically_unjustified"), true);
 });
 
 test("swap-based funding is conditional when bootstrap native gas is missing", () => {
