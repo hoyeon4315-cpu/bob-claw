@@ -165,6 +165,13 @@ function summarizeReadinessChecks(routePlan, treasuryPlan) {
   return (routePlan?.candidates || [])
     .filter((candidate) => candidate.prepBlockers?.includes("wallet_not_checked") && candidate.txReady)
     .filter((candidate) => !hasEthereumL1PhaseBlock(candidate))
+    .filter((candidate) => candidate.tradeReadiness !== "reject_no_net_edge")
+    .filter((candidate) => {
+      const indicativeEdge = Number.isFinite(candidate.executableNetEdgeUsd)
+        ? candidate.executableNetEdgeUsd
+        : candidate.netEdgeUsd;
+      return !Number.isFinite(indicativeEdge) || indicativeEdge > 0;
+    })
     .sort((left, right) => {
       const leftPreferred = preferredChains.has(left.srcChain) ? 1 : 0;
       const rightPreferred = preferredChains.has(right.srcChain) ? 1 : 0;

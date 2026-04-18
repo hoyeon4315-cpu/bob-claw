@@ -223,6 +223,70 @@ test("shadow cycle does not recommend readiness checks for routes missing tx pay
   assert.equal(summary.recommendedCommands.some((item) => item.includes("check:estimator-wallet")), false);
 });
 
+test("shadow cycle skips readiness checks for wallet-unknown routes that are already no-edge", () => {
+  const summary = buildShadowCycleSummary({
+    canaryState: {
+      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+      nextStep: { decision: "BLOCKED_NO_VIABLE_PREP_ROUTE", reasons: ["reject_no_net_edge"] },
+      routePlan: {
+        topCandidates: [
+          {
+            routeKey: "base:0x0555->bitcoin:btc",
+            label: "base->bitcoin oUSDT->BTC",
+            amount: "100000000",
+            viableForPrep: false,
+            tradeReadiness: "insufficient_data",
+            netEdgeUsd: -3.2,
+            executableNetEdgeUsd: null,
+            prepFundingUsd: null,
+          },
+        ],
+        candidates: [
+          {
+            routeKey: "base:0x0555->bitcoin:btc",
+            label: "base->bitcoin oUSDT->BTC",
+            amount: "100000000",
+            srcChain: "base",
+            dstChain: "bitcoin",
+            srcToken: "0x0555",
+            srcTicker: "oUSDT",
+            dstTicker: "BTC",
+            viableForPrep: false,
+            prepBlockers: ["wallet_not_checked"],
+            txReady: true,
+            tradeReadiness: "insufficient_data",
+            netEdgeUsd: -3.2,
+            executableNetEdgeUsd: null,
+            scoreDisqualifiers: [],
+          },
+        ],
+      },
+      readinessRecords: [],
+      readinessFailures: [],
+    },
+    treasuryPlan: {
+      decision: "BLOCKED",
+      reasons: [],
+      summary: { refillActionCount: 0, blockerCount: 0, estimatedWalletUsd: 25, walletValueFloorUsd: 250, walletValueShortfallUsd: 225, noDemandBlockerCount: 0 },
+      actions: [],
+      blockers: [],
+    },
+    fundingSourcePlan: { reasons: [], summary: {} },
+    refillJobs: { requiresManualReview: false, summary: { jobCount: 0 } },
+    routePerformance: { summary: { routeVariantCount: 0, enabledCount: 0, realizedRouteCount: 0 }, routes: [] },
+    riskState: {
+      dailyRealizedPnlUsd: 0,
+      projectLossUsedUsd: 0,
+      failedGasCost24hUsd: 0,
+      consecutiveFailures: 0,
+    },
+  });
+
+  assert.equal(summary.canary.nextReadinessCheck, null);
+  assert.equal(summary.canary.readinessCheckCount, 0);
+  assert.equal(summary.recommendedCommands.some((item) => item.includes("check:estimator-wallet")), false);
+});
+
 test("shadow cycle carries ETH-family watch state into refresh planning", () => {
   const summary = buildShadowCycleSummary({
     canaryState: {
