@@ -2,8 +2,10 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { sendRawTransaction, classifySendTransactionError } from "../evm/transaction-submit.mjs";
+import { sendSignerCommand, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -27,17 +29,70 @@ function parseArgs(argv) {
     planId: options["plan-id"] || null,
     signedTx: options["signed-tx"] || null,
     signedTxFile: options["signed-tx-file"] || null,
+    useSignerDaemon: flags.has("--use-signer-daemon"),
+    socketPath: options["socket-path"] || signerSocketPath(),
+    signerTimeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : signerClientTimeoutMs(),
     rpcUrl: options["rpc-url"] || null,
     rpcUrls: options["rpc-urls"] ? options["rpc-urls"].split(",").map((item) => item.trim()).filter(Boolean) : [],
   };
 }
 
-async function loadSignedTx(args) {
-  if (args.signedTx) return args.signedTx;
-  if (args.signedTxFile) {
-    return (await readFile(args.signedTxFile, "utf8")).trim();
+export function buildForkSignerIntent(plan, { observedAt = new Date().toISOString() } = {}) {
+  return {
+    strategyId: "prelive_fork_execution",
+    chain: plan.srcChain,
+    family: "evm",
+    mode: "fork",
+    intentType: "prelive_fork_execution",
+    amountUsd: Number(plan?.routeContext?.inputUsd ?? 0),
+    observedAt,
+    executionReason: "prelive_fork_submission",
+    tx: {
+      to: plan?.transaction?.to || null,
+      data: plan?.transaction?.data || "0x",
+      value: String(plan?.transaction?.valueWei || "0"),
+    },
+    metadata: {
+      skipAutoIngest: true,
+      preliveForkPlanId: plan?.planId || null,
+      preliveForkRouteKey: plan?.routeKey || null,
+      preliveForkAmount: plan?.amount || null,
+      targetEnvironment: plan?.targetEnvironment || null,
+    },
+  };
+}
+
+async function loadSignedTx(args, plan, { readSignedTxFile = readFile, sendCommand = sendSignerCommand } = {}) {
+  if (args.signedTx) {
+    return {
+      signedTx: args.signedTx,
+      signerMode: plan?.signer?.mode || "external_signed_raw_tx",
+    };
   }
-  throw new Error("Either --signed-tx or --signed-tx-file is required");
+  if (args.signedTxFile) {
+    return {
+      signedTx: (await readSignedTxFile(args.signedTxFile, "utf8")).trim(),
+      signerMode: plan?.signer?.mode || "external_signed_raw_tx",
+    };
+  }
+  if (args.useSignerDaemon) {
+    const signerResult = await sendCommand({
+      socketPath: args.socketPath,
+      timeoutMs: args.signerTimeoutMs,
+      message: {
+        command: "sign_only",
+        intent: buildForkSignerIntent(plan),
+      },
+    });
+    if (signerResult?.status !== "ok" || !signerResult?.signed?.signedTx) {
+      throw new Error(signerResult?.error?.message || "Signer daemon did not return a signed transaction");
+    }
+    return {
+      signedTx: signerResult.signed.signedTx,
+      signerMode: "signer_daemon_sign_only",
+    };
+  }
+  throw new Error("Either --signed-tx, --signed-tx-file, or --use-signer-daemon is required");
 }
 
 async function notifyPreliveForkTransition(payload) {
@@ -56,11 +111,11 @@ async function notifyPreliveForkTransition(payload) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.planId) throw new Error("--plan-id is required");
-  const signedTx = await loadSignedTx(args);
   const forkPlan = await readJsonIfExists(join(config.dataDir, "prelive-fork-plan.json"));
   const plan = (forkPlan?.plans || []).find((item) => item.planId === args.planId);
   if (!plan) throw new Error(`Plan not found: ${args.planId}`);
   if (plan.status !== "planned") throw new Error(`Plan is not submit-ready: ${plan.status}`);
+  const { signedTx, signerMode } = await loadSignedTx(args, plan);
 
   const [events] = await Promise.all([
     readJsonl(config.dataDir, "execution-journal"),
@@ -98,7 +153,7 @@ async function main() {
       txHash: submitted.txHash,
       rpcUrl: submitted.rpcUrl,
       signedTxBytes: submitted.signedTxBytes,
-      signerMode: plan.signer?.mode || "external_signed_raw_tx",
+      signerMode,
     };
     await store.append("prelive-fork-submissions", submissionRecord);
     const journalEvent = buildExecutionSubmissionEvent({
@@ -140,7 +195,7 @@ async function main() {
         message: error.message,
         attempts: error.attempts || null,
       },
-      signerMode: plan.signer?.mode || "external_signed_raw_tx",
+      signerMode,
     };
     await store.append("prelive-fork-submissions", failure);
     await notifyPreliveForkTransition({
@@ -152,7 +207,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isDirectRun = process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

@@ -186,7 +186,7 @@ function forkNextAction({ mechanicalComplete = false, prelive = null } = {}) {
     label: "prepare externally signed fork submission",
     command: "npm run plan:prelive-fork-execution -- --source=objective --write",
     manualStep:
-      "After refreshing the fork plan, submit with an external signer via npm run submit:prelive-fork-execution -- --plan-id=<planId> --signed-tx-file=<path> --rpc-url=<forkRpc>.",
+      "After refreshing the fork plan, submit through the isolated signer path via npm run submit:prelive-fork-execution -- --plan-id=<planId> --use-signer-daemon --rpc-url=<forkRpc>.",
   };
 }
 

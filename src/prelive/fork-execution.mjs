@@ -162,7 +162,7 @@ export function buildForkExecutionPlan({
         }
       : {
           plan: `npm run plan:prelive-fork-execution -- --route-key="${selection?.routeKey || quote?.routeKey}" --amount="${selection?.amount || quote?.amount}" --write`,
-          submit: `npm run submit:prelive-fork-execution -- --plan-id="${planId}" --signed-tx="<signedTx>" --rpc-url="<forkRpcUrl>"`,
+          submit: `npm run submit:prelive-fork-execution -- --plan-id="${planId}" --use-signer-daemon --rpc-url="<forkRpcUrl>"`,
           reconcile: `npm run reconcile:prelive-fork-execution -- --plan-id="${planId}" --tx-hash="<txHash>" --rpc-url="<forkRpcUrl>"`,
           resolveOutput: buildForkOutputResolutionCommand(
             {
