@@ -100,6 +100,7 @@
     "run:execution-review": "node src/cli/run-execution-review.mjs",
     "run:prelive-simulations": "node src/cli/run-prelive-simulations.mjs",
     "run:prelive-simulation-loop": "node src/cli/run-prelive-simulation-loop.mjs",
+    "graph:focus": "node src/cli/graphify-focus.mjs",
     "report:prelive-readiness": "node src/cli/report-prelive-readiness.mjs",
     "validate:prelive-readiness": "node src/cli/validate-prelive-readiness.mjs",
     "build:prelive-review-package": "node src/cli/build-prelive-review-package.mjs",

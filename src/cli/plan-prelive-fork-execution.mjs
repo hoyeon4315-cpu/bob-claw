@@ -5,6 +5,7 @@ import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { selectSimulationTargets } from "../prelive/execution-sim.mjs";
 import { buildForkExecutionPlan } from "../prelive/fork-execution.mjs";
 
@@ -47,11 +48,14 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "shadow-cycle-latest.json")),
     readJsonIfExists(join(config.dataDir, "shadow-refresh-plan.json")),
   ]);
+  const walletReadiness = await readJsonl(config.dataDir, "estimator-wallet-readiness");
   const scoreBySelection = new Map(
     (state.scoreSnapshot?.scores || []).map((score) => [selectionKey(score.routeKey, score.amount), score]),
   );
   const selections = selectSimulationTargets({
     quotes: state.quotes || [],
+    walletReadiness,
+    address: resolved.address,
     refreshPlan,
     shadowCycle,
     source: args.routeKey ? "exact" : args.source,

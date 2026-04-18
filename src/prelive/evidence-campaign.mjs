@@ -13,6 +13,7 @@ export const DEFAULT_PRELIVE_EVIDENCE_ALLOWED_SCRIPTS = new Set([
   "analyze:ethereum-routes",
   "audit:eth-family-overfit",
   "run:shadow-refresh-batch",
+  "run:prelive-simulation-loop",
   "run:prelive-simulations",
   "plan:prelive-fork-execution",
   "report:prelive-readiness",
@@ -186,7 +187,9 @@ export function buildPreliveEvidenceCampaign({
             status: "ready",
             automated: true,
             reason: "shadow_replay_ready",
-            command: `npm run run:prelive-simulations -- --source=objective --limit=${simulationLimit} --target-success-count=${simulationSummary.targetSuccessCount} --write`,
+            command:
+              `npm run run:prelive-simulation-loop -- --execute --write --source=objective ` +
+              `--limit=${simulationLimit} --target-success-count=${simulationSummary.targetSuccessCount}`,
             details: {
               successCount: simulationSummary.successCount,
               targetSuccessCount: simulationSummary.targetSuccessCount,

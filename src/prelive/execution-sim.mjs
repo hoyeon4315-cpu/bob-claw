@@ -11,6 +11,16 @@ function selectionKey(routeKey, amount) {
   return `${routeKey}|${amount}`;
 }
 
+function normalizedAddress(value) {
+  return String(value || "").toLowerCase();
+}
+
+function sameAddress(left, right) {
+  const normalizedLeft = normalizedAddress(left);
+  const normalizedRight = normalizedAddress(right);
+  return normalizedLeft !== "" && normalizedLeft === normalizedRight;
+}
+
 function latestQuotesByRouteAndAmount(quotes = []) {
   const latest = new Map();
   for (const quote of quotes) {
@@ -22,6 +32,25 @@ function latestQuotesByRouteAndAmount(quotes = []) {
     }
   }
   return latest;
+}
+
+function latestWalletReadinessByRouteAndAmount(records = [], address = null) {
+  const latest = new Map();
+  for (const record of records || []) {
+    if (!record?.routeKey || !record?.amount) continue;
+    if (address && record.address && !sameAddress(address, record.address)) continue;
+    const key = selectionKey(record.routeKey, record.amount);
+    const existing = latest.get(key);
+    if (!existing || new Date(record.observedAt || 0) > new Date(existing.observedAt || 0)) {
+      latest.set(key, record);
+    }
+  }
+  return latest;
+}
+
+function walletReadinessRank(record = null) {
+  if (!record) return 1;
+  return record.overallReady === false ? 2 : 0;
 }
 
 function routeLabel(item) {
@@ -106,6 +135,8 @@ function canaryTargets(shadowCycle = null) {
 
 export function selectSimulationTargets({
   quotes = [],
+  walletReadiness = [],
+  address = null,
   refreshPlan = null,
   shadowCycle = null,
   source = "objective",
@@ -128,6 +159,7 @@ export function selectSimulationTargets({
         },
       ]
     : null;
+  const objectiveWithQueue = [...objectiveTargets(shadowCycle), ...queueTargets(refreshPlan, shadowCycle)];
 
   const candidates =
     exact ||
@@ -135,11 +167,26 @@ export function selectSimulationTargets({
       ? queueTargets(refreshPlan, shadowCycle)
       : source === "canary"
         ? canaryTargets(shadowCycle)
-        : objectiveTargets(shadowCycle));
+        : objectiveWithQueue);
+  const readinessBySelection = latestWalletReadinessByRouteAndAmount(walletReadiness, address);
+  const prioritizedCandidates =
+    exact ||
+    candidates
+      .map((target, index) => ({
+        target,
+        index,
+        readiness: readinessBySelection.get(selectionKey(target.routeKey, target.amount)) || null,
+      }))
+      .filter(({ readiness }) => readiness?.overallReady !== false)
+      .sort((left, right) => {
+        const rankDiff = walletReadinessRank(left.readiness) - walletReadinessRank(right.readiness);
+        return rankDiff !== 0 ? rankDiff : left.index - right.index;
+      })
+      .map(({ target }) => target);
 
   const selected = [];
   const seen = new Set();
-  for (const target of candidates) {
+  for (const target of prioritizedCandidates) {
     const key = selectionKey(target.routeKey, target.amount);
     if (!key || seen.has(key)) continue;
     const quote = latestBySelection.get(key);

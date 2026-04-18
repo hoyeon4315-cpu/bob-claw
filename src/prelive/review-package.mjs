@@ -22,6 +22,42 @@ function watcherById(report = null, id = null) {
   return (report?.watchers || []).find((item) => item.id === id) || null;
 }
 
+function strategyLiveCandidateConfigs({
+  wrappedBtcLendingLoopSlice = null,
+  wrappedBtcLoopDryRun = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveWrappedBtcLoopDryRun = null,
+  recursiveStablecoinLoop = null,
+  recursiveStablecoinLoopDryRun = null,
+} = {}) {
+  return [
+    recursiveWrappedBtcLoop?.strategy?.id
+      ? {
+          scaffold: recursiveWrappedBtcLoop,
+          dryRunSummary: recursiveWrappedBtcLoopDryRun || recursiveWrappedBtcLoop?.dryRunSummary || null,
+          validationId: `${recursiveWrappedBtcLoop.strategy.id}_validation`,
+          watcherId: `${recursiveWrappedBtcLoop.strategy.id}_market_watch`,
+        }
+      : null,
+    recursiveStablecoinLoop?.strategy?.id
+      ? {
+          scaffold: recursiveStablecoinLoop,
+          dryRunSummary: recursiveStablecoinLoopDryRun || recursiveStablecoinLoop?.dryRunSummary || null,
+          validationId: `${recursiveStablecoinLoop.strategy.id}_validation`,
+          watcherId: `${recursiveStablecoinLoop.strategy.id}_market_watch`,
+        }
+      : null,
+    wrappedBtcLendingLoopSlice?.strategy?.id
+      ? {
+          scaffold: wrappedBtcLendingLoopSlice,
+          dryRunSummary: wrappedBtcLoopDryRun || wrappedBtcLendingLoopSlice?.dryRunSummary || null,
+          validationId: "wrapped_btc_loop_validation",
+          watcherId: "wrapped_btc_loop_market_watch",
+        }
+      : null,
+  ].filter(Boolean);
+}
+
 function matchedCanaryCandidate(dashboardStatus = null, canaryInputs = null) {
   return (dashboardStatus?.shadowCycle?.shadowRoster?.candidates || []).find((candidate) => sameCandidate(candidate, canaryInputs)) || null;
 }
@@ -105,18 +141,22 @@ function isRouteReviewReady(candidate = null) {
   );
 }
 
-function buildWrappedLoopLiveCandidate({
-  wrappedBtcLendingLoopSlice = null,
+function buildStrategyLiveCandidate({
+  scaffold = null,
+  dryRunSummary = null,
+  validationId = null,
+  watcherId = null,
   phase3Validation = null,
   protocolMarketWatchers = null,
 } = {}) {
-  const strategy = wrappedBtcLendingLoopSlice?.strategy || null;
+  const strategy = scaffold?.strategy || null;
   if (!strategy?.id) return null;
-  const validation = validationById(phase3Validation, "wrapped_btc_loop_validation");
-  const watcher = watcherById(protocolMarketWatchers, "wrapped_btc_loop_market_watch");
+  const validation = validationById(phase3Validation, validationId);
+  const watcher = watcherById(protocolMarketWatchers, watcherId);
+  const summary = dryRunSummary || scaffold?.dryRunSummary || null;
   const blockerReasons = unique([...(validation?.blockers || []), ...(watcher?.blockers || [])]);
   const perTradeCapUsd = strategy?.perTradeCapUsd ?? null;
-  const reviewReady = blockerReasons.length === 0 && wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true;
+  const reviewReady = blockerReasons.length === 0 && summary?.dryRunReceiptRecorded === true;
   return {
     candidateType: "strategy",
     candidateId: strategy.id,
@@ -141,17 +181,85 @@ function buildWrappedLoopLiveCandidate({
       strategyType: strategy.strategyType || null,
       chain: strategy.chain || null,
       protocol: strategy.protocol || null,
-      dryRunReceiptRecorded: wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true,
-      autoUnwindPassCount: wrappedBtcLendingLoopSlice?.dryRunSummary?.autoUnwindPassCount ?? 0,
-      oosEvidenceStatus: validation?.evidence?.oosEvidenceStatus || null,
+      arrivalFamily: strategy.arrivalFamily || null,
+      dryRunReceiptRecorded: summary?.dryRunReceiptRecorded === true,
+      autoUnwindPassCount: summary?.autoUnwindPassCount ?? 0,
+      signerBackedRunCount: summary?.signerBackedRunCount ?? 0,
+      oosSplitStatus: validation?.oosSplitStatus || null,
+      oosEvidenceStatus: validation?.evidence?.oosEvidenceStatus || validation?.oosSplitStatus || null,
+      liveRoundtripProofStatus: validation?.evidence?.liveRoundtripProofStatus || null,
+      liveRoundtripEntryCount: validation?.evidence?.liveRoundtripEntryCount ?? 0,
+      liveRoundtripUnwindCount: validation?.evidence?.liveRoundtripUnwindCount ?? 0,
     },
   };
 }
 
-function selectPrimaryLiveCandidate({ manualReviewCandidate = null, wrappedLoopLiveCandidate = null } = {}) {
+function buildStrategyLiveCandidates({
+  wrappedBtcLendingLoopSlice = null,
+  wrappedBtcLoopDryRun = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveWrappedBtcLoopDryRun = null,
+  recursiveStablecoinLoop = null,
+  recursiveStablecoinLoopDryRun = null,
+  phase3Validation = null,
+  protocolMarketWatchers = null,
+} = {}) {
+  return strategyLiveCandidateConfigs({
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
+  })
+    .map((config) =>
+      buildStrategyLiveCandidate({
+        ...config,
+        phase3Validation,
+        protocolMarketWatchers,
+      }),
+    )
+    .filter((candidate) => candidate?.candidateId);
+}
+
+function strategyCandidateRank(candidate = null) {
+  const blockerCount = candidate?.blockerReasons?.length ?? Number.MAX_SAFE_INTEGER;
+  const liveRoundtripRecorded = candidate?.evidence?.liveRoundtripProofStatus === "signer_backed_roundtrip_recorded";
+  const signerBackedRecorded = (candidate?.evidence?.signerBackedRunCount ?? 0) > 0;
+  const dryRunRecorded = candidate?.evidence?.dryRunReceiptRecorded === true;
+  const autoUnwindPassCount = candidate?.evidence?.autoUnwindPassCount ?? 0;
+  return [
+    candidate?.reviewReady === true ? 1 : 0,
+    liveRoundtripRecorded ? 1 : 0,
+    signerBackedRecorded ? 1 : 0,
+    dryRunRecorded ? 1 : 0,
+    -blockerCount,
+    autoUnwindPassCount,
+  ];
+}
+
+function compareStrategyCandidateRanks(left = null, right = null) {
+  const leftRank = strategyCandidateRank(left);
+  const rightRank = strategyCandidateRank(right);
+  for (let index = 0; index < Math.max(leftRank.length, rightRank.length); index += 1) {
+    const difference = (rightRank[index] ?? 0) - (leftRank[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function selectBestStrategyLiveCandidate(strategyLiveCandidates = []) {
+  return strategyLiveCandidates
+    .map((candidate, index) => ({ candidate, index }))
+    .sort((left, right) => compareStrategyCandidateRanks(left.candidate, right.candidate) || left.index - right.index)
+    .map((item) => item.candidate)
+    .find((candidate) => candidate?.candidateId) || null;
+}
+
+function selectPrimaryLiveCandidate({ manualReviewCandidate = null, strategyLiveCandidate = null } = {}) {
   if (isRouteReviewReady(manualReviewCandidate)) return manualReviewCandidate;
-  if (isRouteStructurallyBlocked(manualReviewCandidate) && wrappedLoopLiveCandidate) return wrappedLoopLiveCandidate;
-  return manualReviewCandidate || wrappedLoopLiveCandidate || null;
+  if (isRouteStructurallyBlocked(manualReviewCandidate) && strategyLiveCandidate) return strategyLiveCandidate;
+  return manualReviewCandidate || strategyLiveCandidate || null;
 }
 
 function buildMeasuredLeaderReview({ canarySelectionGap = null, executionReview = null } = {}) {
@@ -210,6 +318,7 @@ function buildStrategyCandidateChecklist(candidate = null) {
     ]),
     remaining: unique([
       blockerReasons.includes("signer_backed_oos_receipts_missing") ? "ingest signer-backed wrapped-loop receipts" : null,
+      blockerReasons.includes("recursive_observed_receipts_missing") ? "ingest recursive lending-loop observed receipts" : null,
       blockerReasons.length ? `clear strategy evidence blockers (${blockerReasons.join(",")})` : null,
       "submit signer/executor-backed canary and reconcile receipts",
       "manual approval before live canary",
@@ -337,6 +446,11 @@ export function buildPreliveReviewPackage({
   exactRouteForkPackage = null,
   operationalJudgmentReview = null,
   wrappedBtcLendingLoopSlice = null,
+  wrappedBtcLoopDryRun = null,
+  recursiveWrappedBtcLoop = null,
+  recursiveWrappedBtcLoopDryRun = null,
+  recursiveStablecoinLoop = null,
+  recursiveStablecoinLoopDryRun = null,
   phase3Validation = null,
   protocolMarketWatchers = null,
   destinationAllocationPlan = null,
@@ -364,14 +478,20 @@ export function buildPreliveReviewPackage({
     nextStep,
     address,
   });
-  const wrappedLoopLiveCandidate = buildWrappedLoopLiveCandidate({
+  const strategyLiveCandidates = buildStrategyLiveCandidates({
     wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
     phase3Validation,
     protocolMarketWatchers,
   });
+  const bestStrategyLiveCandidate = selectBestStrategyLiveCandidate(strategyLiveCandidates);
   const primaryLiveCandidate = selectPrimaryLiveCandidate({
     manualReviewCandidate,
-    wrappedLoopLiveCandidate,
+    strategyLiveCandidate: bestStrategyLiveCandidate,
   });
   const strategyChecklist = buildStrategyCandidateChecklist(primaryLiveCandidate);
   const measuredLeaderReview = buildMeasuredLeaderReview({

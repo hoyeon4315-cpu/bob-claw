@@ -60,6 +60,107 @@ test("simulation target selection prefers latest objective quotes", () => {
   assert.equal(selected[1].source, "objective_discovery");
 });
 
+test("simulation target selection deprioritizes candidates with known wallet shortfalls", () => {
+  const executionReview = quote("base", "ethereum", "2026-04-12T10:05:00.000Z");
+  const discovery = quote("avalanche", "soneium", "2026-04-12T10:06:00.000Z");
+  const selected = selectSimulationTargets({
+    quotes: [executionReview, discovery],
+    walletReadiness: [
+      {
+        observedAt: "2026-04-12T10:07:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        routeKey: routeKey("base", "ethereum"),
+        amount: "10000",
+        overallReady: false,
+      },
+      {
+        observedAt: "2026-04-12T10:08:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        routeKey: routeKey("avalanche", "soneium"),
+        amount: "10000",
+        overallReady: true,
+      },
+    ],
+    address: "0x000000000000000000000000000000000000dEaD",
+    shadowCycle: {
+      objectivePlans: {
+        executionReview: {
+          routeKey: routeKey("base", "ethereum"),
+          amount: "10000",
+          label: "base->ethereum",
+          selectionCode: "check_wallet_readiness",
+          nextActionCode: "simulate_execution_path",
+        },
+        discovery: {
+          routeKey: routeKey("avalanche", "soneium"),
+          amount: "10000",
+          label: "avalanche->soneium",
+          source: "strategy_discovery",
+          selectionCode: "underexplored_secondary_route",
+          nextActionCode: "simulate_execution_path",
+        },
+      },
+    },
+    source: "objective",
+  });
+
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].routeKey, routeKey("avalanche", "soneium"));
+});
+
+test("simulation target selection falls back to queue candidates when objective routes are wallet-blocked", () => {
+  const queueCandidate = quote("avalanche", "soneium", "2026-04-12T10:06:00.000Z");
+  const selected = selectSimulationTargets({
+    quotes: [queueCandidate],
+    walletReadiness: [
+      {
+        observedAt: "2026-04-12T10:07:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        routeKey: routeKey("base", "ethereum"),
+        amount: "10000",
+        overallReady: false,
+      },
+      {
+        observedAt: "2026-04-12T10:08:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        routeKey: routeKey("avalanche", "soneium"),
+        amount: "10000",
+        overallReady: true,
+      },
+    ],
+    address: "0x000000000000000000000000000000000000dEaD",
+    shadowCycle: {
+      objectivePlans: {
+        executionReview: {
+          routeKey: routeKey("base", "ethereum"),
+          amount: "10000",
+          label: "base->ethereum",
+          selectionCode: "check_wallet_readiness",
+          nextActionCode: "simulate_execution_path",
+        },
+      },
+    },
+    refreshPlan: {
+      items: [
+        {
+          routeKey: routeKey("avalanche", "soneium"),
+          amount: "10000",
+          rank: 1,
+          scope: "tx_ready_shadow",
+          reason: "wallet_not_checked",
+          routeLabel: "avalanche->soneium",
+          code: "check_wallet_readiness",
+        },
+      ],
+    },
+    source: "objective",
+  });
+
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].routeKey, routeKey("avalanche", "soneium"));
+  assert.equal(selected[0].source, "queue");
+});
+
 test("mechanical simulation records success and builds aggregate summary", async () => {
   const selection = {
     routeKey: routeKey("ethereum", "base"),

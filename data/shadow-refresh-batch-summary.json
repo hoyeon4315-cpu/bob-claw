@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-18T01:11:28.250Z",
+  "runCount": 28,
+  "successCount": 28,
+  "failureCount": 0,
+  "blockedCount": 0,
+  "invalidCount": 0,
+  "latestObservedAt": "2026-04-18T01:11:24.459Z",
+  "latestStatus": "succeeded",
+  "latestMode": "execute",
+  "latestStopReason": null,
+  "recentBatches": [
+    {
+      "observedAt": "2026-04-18T01:11:24.459Z",
+      "batchId": "2026-04-18T01:11:24.459Z-ac5706a2",
+      "mode": "execute",
+      "batchStatus": "succeeded",
+      "stopReason": null,
+      "selectedCount": 1,
+      "queueSuccessCount": 1,
+      "queueFailureCount": 0,
+      "followUpFailureCount": 0,
+      "circuitBreakerBlocked": false
+    },
+    {
+      "observedAt": "2026-04-18T01:11:04.369Z",
+      "batchId": "2026-04-18T01:11:04.369Z-2f6db0b8",
+      "mode": "execute",
+      "batchStatus": "succeeded",
+      "stopReason": null,
+      "selectedCount": 1,
+      "queueSuccessCount": 1,
+      "queueFailureCount": 0,
+      "followUpFailureCount": 0,
+      "circuitBreakerBlocked": false
+    },
+    {
+      "observedAt": "2026-04-18T00:45:10.442Z",
+      "batchId": "2026-04-18T00:45:10.442Z-28d1468b",
+      "mode": "execute",
+      "batchStatus": "succeeded",
+      "stopReason": null,
+      "selectedCount": 1,
+      "queueSuccessCount": 1,
+      "queueFailureCount": 0,
+      "followUpFailureCount": 0,
+      "circuitBreakerBlocked": false
+    },
+    {
+      "observedAt": "2026-04-17T21:34:57.930Z",
+      "batchId": "2026-04-17T21:34:57.930Z-06b4cbe1",
+      "mode": "execute",
+      "batchStatus": "succeeded",
+      "stopReason": null,
+      "selectedCount": 4,
+      "queueSuccessCount": 4,
+      "queueFailureCount": 0,
+      "followUpFailureCount": 0,
+      "circuitBreakerBlocked": false
+    },
+    {
+      "observedAt": "2026-04-17T21:34:30.400Z",
+      "batchId": "2026-04-17T21:34:30.400Z-58bef55b",
+      "mode": "execute",
+      "batchStatus": "succeeded",
+      "stopReason": null,
+      "selectedCount": 4,
+      "queueSuccessCount": 4,
+      "queueFailureCount": 0,
+      "followUpFailureCount": 0,
+      "circuitBreakerBlocked": false
+    }
+  ]
+}

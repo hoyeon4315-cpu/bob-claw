@@ -318,7 +318,7 @@ test("evidence campaign executes automated actions and follow-up refresh command
           label: "collect simulation evidence",
           status: "ready",
           automated: true,
-          command: "npm run run:prelive-simulations -- --source=objective --limit=2 --write",
+          command: "npm run run:prelive-simulation-loop -- --execute --write --source=objective --limit=2 --target-success-count=50",
         },
         {
           code: "submit_fork_cycle",
@@ -347,7 +347,7 @@ test("evidence campaign executes automated actions and follow-up refresh command
   assert.equal(record.executionStatus, "succeeded");
   assert.equal(record.actionResults.length, 2);
   assert.equal(record.followUps.length, 2);
-  assert.deepEqual(calls, ["run:shadow-refresh-batch", "run:prelive-simulations", "status:dashboard", "write:session-handoff"]);
+  assert.deepEqual(calls, ["run:shadow-refresh-batch", "run:prelive-simulation-loop", "status:dashboard", "write:session-handoff"]);
 });
 
 test("evidence campaign summary aggregates preview and execute outcomes", () => {

@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-04-18T01:11:26.766Z",
+  "shadowCycleObservedAt": "2026-04-18T01:11:26.414Z",
+  "itemCount": 8,
+  "items": [
+    {
+      "rank": 1,
+      "priority": 100,
+      "kind": "canary_readiness",
+      "scope": "canary",
+      "code": "check_wallet_readiness",
+      "label": "refresh canary readiness",
+      "reason": "never_checked",
+      "command": "npm run check:estimator-wallet -- --route-key=\"unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262be63aa687563789225c2fe898c27a3b0ae4\"",
+      "routeKey": "unichain:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "unichain->bera wBTC.OFT->wBTC.OFT",
+      "amount": "10000",
+      "routeKeys": [],
+      "chains": []
+    },
+    {
+      "rank": 2,
+      "priority": 90,
+      "kind": "shadow_action",
+      "scope": "tx_ready_shadow",
+      "code": "check_wallet_readiness",
+      "label": "refresh wallet readiness",
+      "reason": "wallet_not_checked",
+      "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262be63aa687563789225c2fe898c27a3b0ae4\"",
+      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "amount": "10000",
+      "routeKeys": [],
+      "chains": []
+    },
+    {
+      "rank": 3,
+      "priority": 90,
+      "kind": "shadow_action",
+      "scope": "tx_ready_shadow",
+      "code": "check_wallet_readiness",
+      "label": "refresh wallet readiness",
+      "reason": "wallet_not_checked",
+      "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262be63aa687563789225c2fe898c27a3b0ae4\"",
+      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "bsc->base wBTC.OFT->wBTC.OFT",
+      "amount": "10000",
+      "routeKeys": [],
+      "chains": []
+    },
+    {
+      "rank": 4,
+      "priority": 89,
+      "kind": "objective_plan",
+      "scope": "execution_review",
+      "code": "check_wallet_readiness",
+      "label": "wallet readiness check",
+      "reason": "native",
+      "command": "npm run check:estimator-wallet -- --route-key=\"base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\" --amount=\"10000\" --address=\"0x96262be63aa687563789225c2fe898c27a3b0ae4\"",
+      "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+      "routeLabel": "base->ethereum wBTC.OFT->WBTC",
+      "amount": "10000",
+      "status": "measured_hypothesis_under_review",
+      "selectionCode": "prefer_viable_prep_route_over_measured_hypothesis",
+      "routeKeys": [],
+      "chains": []
+    },
+    {
+      "rank": 5,
+      "priority": 88,
+      "kind": "strategy_plan",
+      "scope": "stable_loop",
+      "code": "expand_amount_ladder",
+      "label": "expand stable loop amount ladder",
+      "reason": "amount_mismatch",
+      "command": "npm run quote:dex -- --route-key=\"bsc:0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d->bitcoin:0x0000000000000000000000000000000000000000\" --include-stable-entry",
+      "routeKeys": [
+        "bsc:0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d->bitcoin:0x0000000000000000000000000000000000000000",
+        "bitcoin:0x0000000000000000000000000000000000000000->base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189"
+      ],
+      "chains": []
+    },
+    {
+      "rank": 6,
+      "priority": 86,
+      "kind": "strategy_plan",
+      "scope": "proxy_spread",
+      "code": "expand_amount_ladder",
+      "label": "expand proxy spread amount ladder",
+      "reason": "partial_amount_match",
+      "command": "npm run quote:dex -- --chains=base,bsc,ethereum --include-stable-entry --route-limit=64",
+      "chains": [
+        "base",
+        "bsc",
+        "ethereum"
+      ],
+      "proxyGroup": "wbtc",
+      "routeKeys": []
+    },
+    {
+      "rank": 7,
+      "priority": 80,
+      "kind": "shadow_action",
+      "scope": "active_canary",
+      "code": "refresh_exact_gas",
+      "label": "refresh exact gas",
+      "reason": "exact_src_execution_gas_not_estimated",
+      "command": "npm run estimate:gateway-gas -- --route-key=\"avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\" --amount=\"10000\" --from=\"0x96262be63aa687563789225c2fe898c27a3b0ae4\"",
+      "routeKey": "avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+      "routeLabel": "avalanche->ethereum wBTC.OFT->WBTC",
+      "amount": "10000",
+      "routeKeys": [],
+      "chains": []
+    },
+    {
+      "rank": 8,
+      "priority": 80,
+      "kind": "shadow_action",
+      "scope": "tx_ready_shadow",
+      "code": "refresh_exact_gas",
+      "label": "refresh exact gas",
+      "reason": "stale_src_gas_snapshot",
+      "command": "npm run estimate:gateway-gas -- --route-key=\"avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --from=\"0x96262be63aa687563789225c2fe898c27a3b0ae4\"",
+      "routeKey": "avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "avalanche->soneium wBTC.OFT->wBTC.OFT",
+      "amount": "10000",
+      "routeKeys": [],
+      "chains": []
+    }
+  ]
+}
