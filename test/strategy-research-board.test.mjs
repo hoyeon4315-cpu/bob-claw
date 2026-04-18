@@ -5,6 +5,11 @@ import { buildFlashFloorDecision } from "../src/strategy/flash-floor-decision.mj
 import { buildStrategyResearchBoard, summarizeStrategyResearchBoard } from "../src/strategy/strategy-research-board.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../src/strategy/strategy-snapshot.mjs";
 import { buildDefaultRecursiveLendingLoopConfig, buildRecursiveLendingLoopScaffold } from "../src/strategy/recursive-lending-loop-slice.mjs";
+import { buildRecursiveLendingLoopReceiptGuide } from "../src/strategy/recursive-lending-loop-dry-run.mjs";
+
+const recursiveWrappedReceiptCommand = buildRecursiveLendingLoopReceiptGuide({
+  strategyId: "recursive_wrapped_btc_lending_loop",
+}).sampleCommand;
 
 function dashboardStatusFixture() {
   return {
@@ -145,7 +150,7 @@ test("strategy research board upgrades recursive loops when dry-run evidence is 
   assert.equal(wrappedLoopCandidate.nextAction.code, "collect_recursive_loop_observed_receipts");
   assert.equal(
     wrappedLoopCandidate.nextAction.command,
-    "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop",
+    recursiveWrappedReceiptCommand,
   );
   assert.equal(wrappedLoopCandidate.evidence.dryRunReceiptRecorded, true);
   assert.equal(wrappedLoopCandidate.evidence.dryRunPassedCount, 1);

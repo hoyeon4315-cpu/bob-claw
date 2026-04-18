@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../src/strategy/milestone-validation-gates.mjs";
+import { buildRecursiveLendingLoopReceiptGuide } from "../src/strategy/recursive-lending-loop-dry-run.mjs";
+
+const recursiveWrappedReceiptCommand = buildRecursiveLendingLoopReceiptGuide({
+  strategyId: "recursive_wrapped_btc_lending_loop",
+}).sampleCommand;
 
 test("milestone validation gates summarize completed and blocked phases coherently", () => {
   const report = buildMilestoneValidationGates({
@@ -102,7 +107,7 @@ test("milestone validation gates prioritize recursive strategy evidence when all
           id: "recursive_wrapped_btc_lending_loop_validation",
           blockers: ["recursive_observed_receipts_missing"],
           oosSplitStatus: "simulated_dry_run_recorded",
-          nextAction: { code: "collect_recursive_loop_observed_receipts", command: "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop" },
+          nextAction: { code: "collect_recursive_loop_observed_receipts", command: recursiveWrappedReceiptCommand },
         },
       ],
     },
@@ -111,7 +116,7 @@ test("milestone validation gates prioritize recursive strategy evidence when all
         {
           id: "recursive_wrapped_btc_lending_loop_market_watch",
           blockers: ["recursive_observed_receipts_missing"],
-          nextAction: { code: "collect_recursive_loop_observed_receipts", command: "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop" },
+          nextAction: { code: "collect_recursive_loop_observed_receipts", command: recursiveWrappedReceiptCommand },
         },
       ],
     },

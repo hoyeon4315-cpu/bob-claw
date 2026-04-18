@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from "../src/strategy/phase3-strategy-validation.mjs";
+import { buildRecursiveLendingLoopReceiptGuide } from "../src/strategy/recursive-lending-loop-dry-run.mjs";
 import { resolveTrustTierDecision } from "../src/strategy/protocol-trust-tiers.mjs";
 import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../src/strategy/search-complexity-budgets.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../src/strategy/strategy-snapshot.mjs";
+
+const recursiveWrappedReceiptCommand = buildRecursiveLendingLoopReceiptGuide({
+  strategyId: "recursive_wrapped_btc_lending_loop",
+}).sampleCommand;
 
 test("phase3 strategy validation records OOS, search-budget, and shock-test blockers", () => {
   const report = buildPhase3StrategyValidation({
@@ -257,5 +262,6 @@ test("phase3 strategy validation surfaces recursive lending loops as blocked on 
   assert.equal(wrapped.oosSplitStatus, "simulated_dry_run_recorded");
   assert.equal(wrapped.blockers.includes("recursive_observed_receipts_missing"), true);
   assert.equal(wrapped.nextAction.code, "collect_recursive_loop_observed_receipts");
+  assert.equal(wrapped.nextAction.command, recursiveWrappedReceiptCommand);
   assert.equal(stable.blockers.includes("recursive_observed_receipts_missing"), true);
 });

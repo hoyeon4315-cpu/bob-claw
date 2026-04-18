@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../src/prelive/review-package.mjs";
+import { buildRecursiveLendingLoopReceiptGuide } from "../src/strategy/recursive-lending-loop-dry-run.mjs";
+
+const recursiveWrappedReceiptCommand = buildRecursiveLendingLoopReceiptGuide({
+  strategyId: "recursive_wrapped_btc_lending_loop",
+}).sampleCommand;
 
 test("prelive review package stays blocked while canary and prelive gates are not ready", () => {
   const reviewPackage = buildPreliveReviewPackage({
@@ -667,7 +672,7 @@ test("prelive review package can promote recursive wrapped loop as the primary l
           oosSplitStatus: "simulated_dry_run_recorded",
           nextAction: {
             code: "collect_recursive_loop_observed_receipts",
-            command: "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop",
+            command: recursiveWrappedReceiptCommand,
           },
         },
         {
@@ -685,7 +690,7 @@ test("prelive review package can promote recursive wrapped loop as the primary l
           blockers: ["recursive_observed_receipts_missing"],
           nextAction: {
             code: "collect_recursive_loop_observed_receipts",
-            command: "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop",
+            command: recursiveWrappedReceiptCommand,
           },
         },
         {
@@ -704,7 +709,7 @@ test("prelive review package can promote recursive wrapped loop as the primary l
   assert.equal(reviewPackage.tinyCanaryAdmission.candidate.candidateId, "recursive_wrapped_btc_lending_loop");
   assert.equal(reviewPackage.tinyCanaryAdmission.nextActionCode, "collect_recursive_loop_observed_receipts");
   assert.equal(reviewPackage.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
-  assert.equal(reviewPackage.remediationPlan.nextAction.command, "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop");
+  assert.equal(reviewPackage.remediationPlan.nextAction.command, recursiveWrappedReceiptCommand);
   assert.equal(summary.candidateId, "recursive_wrapped_btc_lending_loop");
   assert.equal(summary.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
 });
@@ -802,7 +807,7 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
           oosSplitStatus: "simulated_dry_run_recorded",
           nextAction: {
             code: "collect_recursive_loop_observed_receipts",
-            command: "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop",
+            command: recursiveWrappedReceiptCommand,
           },
         },
         {
@@ -830,7 +835,7 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
           blockers: ["recursive_observed_receipts_missing"],
           nextAction: {
             code: "collect_recursive_loop_observed_receipts",
-            command: "npm run ingest:recursive-lending-loop-receipt -- --write --strategy=recursive_wrapped_btc_lending_loop",
+            command: recursiveWrappedReceiptCommand,
           },
         },
         {

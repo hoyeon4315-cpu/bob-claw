@@ -1,3 +1,5 @@
+import { buildRecursiveLendingLoopReceiptGuide } from "./recursive-lending-loop-dry-run.mjs";
+
 function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
@@ -115,7 +117,10 @@ function lendingLoopNextAction(entry = null, scaffold = null, dryRunSummary = nu
   if (dryRunSummary?.dryRunReceiptRecorded === true) {
     return {
       code: "collect_recursive_loop_observed_receipts",
-      command: `npm run ingest:recursive-lending-loop-receipt -- --write --strategy=${entry.id}`,
+      command: buildRecursiveLendingLoopReceiptGuide({
+        scaffold,
+        strategyId: entry.id,
+      }).sampleCommand,
     };
   }
   if (scaffold?.readiness?.readyForDryRun === true) {

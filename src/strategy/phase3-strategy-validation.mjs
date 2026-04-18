@@ -218,7 +218,10 @@ function recursiveLoopValidation({
       : dryRunRecorded
         ? {
             code: "collect_recursive_loop_observed_receipts",
-            command: `npm run ingest:recursive-lending-loop-receipt -- --write --strategy=${strategy.id || "recursive_wrapped_btc_lending_loop"}`,
+            command: buildRecursiveLendingLoopReceiptGuide({
+              scaffold,
+              strategyId: strategy.id || "recursive_wrapped_btc_lending_loop",
+            }).sampleCommand,
           }
         : {
             code: "record_recursive_loop_dry_run_receipt",
@@ -405,3 +408,4 @@ export function summarizePhase3StrategyValidation(report = null) {
   };
 }
 import { buildWrappedBtcLoopReceiptGuide } from "./wrapped-btc-lending-loop-dry-run.mjs";
+import { buildRecursiveLendingLoopReceiptGuide } from "./recursive-lending-loop-dry-run.mjs";
