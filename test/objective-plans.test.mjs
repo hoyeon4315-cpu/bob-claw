@@ -136,3 +136,104 @@ test("objective plans build execution review and discovery candidates from measu
   assert.match(plans.discovery.command, /quote:dex/);
   assert.match(plans.discovery.command, /score:gateway/);
 });
+
+test("objective plans refresh source gas before rerunning score for a stale measured leader", () => {
+  const plans = buildObjectivePlans({
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    routePlan: {
+      topCandidates: [
+        {
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          label: "avalanche->ethereum wBTC.OFT->WBTC",
+          viableForPrep: true,
+          tradeReadiness: "insufficient_data",
+        },
+      ],
+      candidates: [
+        {
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          label: "avalanche->ethereum wBTC.OFT->WBTC",
+          viableForPrep: true,
+          txReady: true,
+          exactGasDone: false,
+          tradeReadiness: "insufficient_data",
+        },
+        {
+          routeKey: "base:0x0555->ethereum:0x2260",
+          amount: "10000",
+          label: "base->ethereum wBTC.OFT->WBTC",
+          viableForPrep: false,
+          txReady: true,
+          exactGasDone: true,
+          scoreDisqualifiers: ["exact_src_execution_gas_reverted"],
+          tradeReadiness: "insufficient_data",
+        },
+      ],
+    },
+    canaryInputs: {
+      routeKey: "avalanche:0x0555->ethereum:0x2260",
+      amount: "10000",
+      routeLabel: "avalanche->ethereum wBTC.OFT->WBTC",
+      scoreTradeReadiness: "insufficient_data",
+    },
+    scoreSnapshot: {
+      scores: [
+        {
+          routeKey: "avalanche:0x0555->ethereum:0x2260",
+          amount: "10000",
+          srcChain: "avalanche",
+          dstChain: "ethereum",
+          srcAsset: { ticker: "wBTC.OFT" },
+          dstAsset: { ticker: "WBTC" },
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: -1.2,
+          executableNetEdgeUsd: -1.1,
+          dataGaps: [],
+        },
+        {
+          routeKey: "base:0x0555->ethereum:0x2260",
+          amount: "10000",
+          srcChain: "base",
+          dstChain: "ethereum",
+          srcAsset: { ticker: "wBTC.OFT" },
+          dstAsset: { ticker: "WBTC" },
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: -1.3,
+          executableNetEdgeUsd: -1.2,
+          dataGaps: ["stale_src_gas_snapshot", "exact_src_execution_gas_reverted"],
+        },
+      ],
+    },
+    edgeViability: {
+      closestLoop: {
+        routeKey: "base:0x0555->ethereum:0x2260",
+        amount: "10000",
+        measuredLoopNetUsd: -1.05,
+        gapToPolicyUsd: 1.05,
+        requiredNetProfitUsd: 0.3,
+      },
+      loops: [
+        {
+          routeKey: "base:0x0555->ethereum:0x2260",
+          amount: "10000",
+          measuredLoopNetUsd: -1.05,
+          gapToPolicyUsd: 1.05,
+          requiredNetProfitUsd: 0.3,
+        },
+      ],
+    },
+    edgeResearch: {
+      routes: [],
+    },
+  });
+
+  assert.equal(plans.executionReview?.routeKey, "base:0x0555->ethereum:0x2260");
+  assert.equal(plans.executionReview?.nextActionCode, "refresh_src_gas");
+  assert.equal(plans.executionReview?.command, "npm run gas:snapshot");
+  assert.deepEqual(
+    plans.executionReview?.steps?.map((step) => step.code),
+    ["refresh_src_gas", "rerun_route_scoring", "refresh_public_status"],
+  );
+});

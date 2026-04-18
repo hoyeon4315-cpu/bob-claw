@@ -44,6 +44,7 @@ function bestScoreForRoute(scoreSnapshot, routeKey, amount = null) {
 function reviewActionLabel(action) {
   return {
     check_wallet_readiness: "wallet readiness check",
+    refresh_src_gas: "source gas snapshot refresh",
     refresh_exact_gas: "exact gas estimate",
     refresh_dex_quote: "DEX quote refresh",
     refresh_market_snapshot: "market snapshot refresh",
@@ -126,6 +127,8 @@ function buildExecutionReviewPlan({ routePlan = null, canaryInputs = null, score
       const command =
         code === "check_wallet_readiness"
           ? readinessCommand(address, routeKey, amount)
+          : code === "refresh_src_gas"
+            ? "npm run gas:snapshot"
           : code === "refresh_exact_gas"
             ? exactGasCommand(address, routeKey, amount)
             : code === "refresh_dex_quote"

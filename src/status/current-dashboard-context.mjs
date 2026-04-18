@@ -22,6 +22,7 @@ import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "..
 import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
 import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
+import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
@@ -169,6 +170,20 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     scoreSnapshot: state.scoreSnapshot || null,
   });
   dashboardStatus.strategy.canarySelectionGap = canarySelectionGap;
+  const freshObjectivePlans = buildObjectivePlans({
+    routePlan: state.routePlan,
+    canaryInputs,
+    scoreSnapshot: state.scoreSnapshot || null,
+    shadowObservations: state.shadowObservations || [],
+    dexQuotes: state.dexQuotes || [],
+    address: state.address,
+  });
+  if (dashboardStatus.shadowCycle) {
+    dashboardStatus.shadowCycle = {
+      ...dashboardStatus.shadowCycle,
+      objectivePlans: freshObjectivePlans,
+    };
+  }
   const strategySnapshot = buildStrategySnapshot({
     dashboardStatus,
     state,

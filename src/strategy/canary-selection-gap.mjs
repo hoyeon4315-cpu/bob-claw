@@ -71,6 +71,7 @@ function reasonLabel(reason) {
 function actionLabel(action) {
   return {
     check_wallet_readiness: "wallet readiness check",
+    refresh_src_gas: "source gas snapshot refresh",
     refresh_exact_gas: "exact gas estimate",
     refresh_dex_quote: "DEX quote refresh",
     refresh_market_snapshot: "market snapshot refresh",
@@ -84,6 +85,9 @@ function reviewActions({ blockers = [], measuredCandidate = null, measuredScore 
   const has = (value) => blockers.includes(value);
   if (has("wallet_not_checked") || has("native") || has("token") || has("allowance") || measuredCandidate?.readinessFailureReason) {
     actions.push("check_wallet_readiness");
+  }
+  if (has("stale_src_gas_snapshot")) {
+    actions.push("refresh_src_gas");
   }
   if (
     !has("exact_src_execution_gas_reverted") &&

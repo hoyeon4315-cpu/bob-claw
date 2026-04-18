@@ -89,6 +89,7 @@ test("canary selection gap explains why a measured leader is not the current can
   ]);
   assert.deepEqual(gap.reviewPlan.actionCodes, [
     "check_wallet_readiness",
+    "refresh_src_gas",
     "refresh_exact_gas",
     "rerun_route_scoring",
     "refresh_public_status",

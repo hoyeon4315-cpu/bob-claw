@@ -61,6 +61,7 @@ function executionReviewPriority(plan) {
     check_wallet_readiness: 89,
     refresh_exact_gas: 87,
     refresh_dex_quote: 85,
+    refresh_src_gas: 84,
     refresh_market_snapshot: 84,
     rerun_route_scoring: 83,
     refresh_public_status: 40,
