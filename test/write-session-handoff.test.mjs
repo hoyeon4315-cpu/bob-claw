@@ -100,6 +100,7 @@ test("write-session-handoff includes payback readiness summary and preview comma
   const doc = await readFile(join(cwd, "docs/current-status.md"), "utf8");
   assert.match(doc, /Research board: candidates=\d+ top=`.*` newTop=`.*` nextNew=`.*`/);
   assert.match(doc, /Product coverage: ready=\d+ inProgress=\d+ blocked=\d+ missing=\d+ topGap=`.*` reason=`.*`/);
+  assert.match(doc, /Formula audit: implemented=\d+ partial=\d+ missing=\d+ topGap=`.*`/);
   assert.match(doc, /Advanced validation lane: passed=\d+\/\d+ topBlocked=`.*` blockers=.* next=`.*`/);
   assert.match(doc, /Auto-unwind runtime: count=\d+ top=`.*` status=`.*` triggers=.* next=`.*`/);
   assert.match(doc, /## Live Baseline/);
