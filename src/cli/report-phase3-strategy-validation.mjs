@@ -7,6 +7,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildPhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
 import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
 import { resolveTrustTierDecision } from "../strategy/protocol-trust-tiers.mjs";
+import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -30,6 +31,7 @@ async function main() {
     wrappedBtcLoopDryRun,
     wrappedBtcLoopOosEvidence,
     wrappedBtcLoopLiveProof,
+    capitalAuditReport,
     recursiveWrappedBtcLoop,
     recursiveWrappedBtcLoopDryRun,
     recursiveStablecoinLoop,
@@ -42,6 +44,7 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-loop-oos-evidence.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-loop-live-success-latest.json")),
+    readJsonIfExists(join(config.dataDir, "capital-audit.json")),
     readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-dry-run-latest.json")),
     readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
@@ -49,13 +52,17 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "protocol-trust-tiers.json")),
   ]);
+  const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
+    proof: wrappedBtcLoopLiveProof,
+    capitalAuditReport,
+  });
   const searchComplexityBudgets = buildSearchComplexityBudgets({ secondaryStrategyScaffolds });
   const report = buildPhase3StrategyValidation({
     laneReclassification,
     wrappedBtcLendingLoopSlice,
     wrappedBtcLoopDryRun,
     wrappedBtcLoopOosEvidence,
-    wrappedBtcLoopLiveProof,
+    wrappedBtcLoopLiveProof: enrichedWrappedBtcLoopLiveProof,
     recursiveWrappedBtcLoop,
     recursiveWrappedBtcLoopDryRun,
     recursiveStablecoinLoop,

@@ -13,6 +13,7 @@ test("live readiness refresh plan rebuilds the full wrapped-loop packet in order
     plan.map((step) => step.script),
     [
       "src/cli/run-current-route-prelive-pass.mjs",
+      "src/cli/hydrate-wrapped-btc-loop-live-proof.mjs",
       "src/cli/report-strategy-snapshot.mjs",
       "src/cli/report-phase3-strategy-validation.mjs",
       "src/cli/report-allocator-core.mjs",
@@ -30,6 +31,7 @@ test("live readiness refresh plan rebuilds the full wrapped-loop packet in order
   assert.deepEqual(plan[0].args, ["--execute", "--continue-on-failure"]);
   assert.deepEqual(plan[1].args, ["--write"]);
   assert.deepEqual(plan[2].args, ["--write"]);
+  assert.deepEqual(plan[3].args, ["--write"]);
   assert.deepEqual(plan.at(-1).args, []);
   assert.equal(
     summarizeLiveReadinessRefreshPlan(plan)[0],

@@ -29,6 +29,7 @@ import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
+import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
 
 export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
   const now = new Date().toISOString();
@@ -74,6 +75,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       wrappedBtcLoopDryRun,
      wrappedBtcLoopOosEvidence,
      wrappedBtcLoopLiveProof,
+     capitalAuditReport,
      v1InfraDrills,
    ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
@@ -116,8 +118,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-dry-run-latest.json")),
      readJsonIfExists(join(dataDir, "wrapped-btc-loop-oos-evidence.json")),
      readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
+     readJsonIfExists(join(dataDir, "capital-audit.json")),
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
    ]);
+  const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
+    proof: wrappedBtcLoopLiveProof,
+    capitalAuditReport,
+  });
 
   const executorRuntime = await loadExecutorRuntime({ now });
   const dashboardStatus = buildDashboardStatus({
@@ -213,7 +220,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     wrappedBtcLendingLoopSlice,
     wrappedBtcLoopDryRun,
     wrappedBtcLoopOosEvidence,
-    wrappedBtcLoopLiveProof,
+    wrappedBtcLoopLiveProof: enrichedWrappedBtcLoopLiveProof,
     recursiveWrappedBtcLoop,
     recursiveWrappedBtcLoopDryRun,
     recursiveStablecoinLoop,

@@ -118,6 +118,7 @@ function wrappedLoopValidation({
   const dryRunRecorded = wrappedBtcLoopDryRun?.dryRunReceiptRecorded === true;
   const liveRoundtrip = liveRoundtripState(wrappedBtcLoopLiveProof);
   const oos = oosState(wrappedBtcLoopOosEvidence, dryRunRecorded);
+  const extendedReceiptContextReady = wrappedBtcLoopLiveProof?.extendedReceiptContextReady === true;
   const effectiveOosSplitStatus =
     oos.oosSplitStatus === "signer_backed_window_recorded" || !liveRoundtrip.recorded
       ? oos.oosSplitStatus
@@ -125,7 +126,9 @@ function wrappedLoopValidation({
   const effectiveOosBlockers =
     oos.oosSplitStatus === "signer_backed_window_recorded" || !liveRoundtrip.recorded
       ? oos.blockers
-      : ["extended_receipt_context_missing"];
+      : extendedReceiptContextReady
+        ? []
+        : ["extended_receipt_context_missing"];
   const trustBlockers = trustTierBlockers(
     protocolTrustTiers,
     [wrappedBtcLendingLoopSlice?.strategy?.protocol].filter(Boolean),
@@ -151,7 +154,7 @@ function wrappedLoopValidation({
       liveRoundtripProofStatus: liveRoundtrip.status,
       liveRoundtripEntryCount: wrappedBtcLoopLiveProof?.entryCount ?? 0,
       liveRoundtripUnwindCount: wrappedBtcLoopLiveProof?.unwindCount ?? 0,
-      extendedReceiptContextReady: wrappedBtcLoopLiveProof?.extendedReceiptContextReady === true,
+      extendedReceiptContextReady,
       missingExtendedReceiptFields: wrappedBtcLoopLiveProof?.missingExtendedReceiptFields || [],
     },
     nextAction: {

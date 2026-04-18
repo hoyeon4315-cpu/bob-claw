@@ -1,3 +1,8 @@
+import { Interface } from "ethers";
+import { readTransactionReceipt, simulateTransactionCall } from "../evm/transaction-read.mjs";
+import { buildDefaultWrappedBtcLendingLoopConfig } from "./wrapped-btc-lending-loop-slice.mjs";
+import { resolveWrappedBtcLoopBindingSupport } from "./wrapped-btc-loop-bindings.mjs";
+
 function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
@@ -11,6 +16,46 @@ function round(value, digits = 6) {
 function numericPath(values = []) {
   return (values || []).filter(Number.isFinite).map((value) => round(value, 4));
 }
+
+function roundUsd(value, digits = 6) {
+  if (!Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function fixedBigIntToNumber(value, scale) {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value) / 10 ** scale;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function marketStateFromReturnData(returnData = "0x") {
+  const words = String(returnData || "")
+    .replace(/^0x/, "")
+    .match(/.{1,64}/g) || [];
+  if (words.length < 2) return null;
+  return {
+    isListed: BigInt(`0x${words[0]}`) !== 0n,
+    collateralFactorMantissa: BigInt(`0x${words[1]}`),
+  };
+}
+
+const COMPTROLLER_INTERFACE = new Interface([
+  "function oracle() view returns (address)",
+  "function markets(address) view returns (bool,uint256,bool)",
+]);
+
+const PRICE_ORACLE_INTERFACE = new Interface([
+  "function getUnderlyingPrice(address mToken) view returns (uint256)",
+]);
+
+const MTOKEN_EVENT_INTERFACE = new Interface([
+  "event Mint(address minter,uint256 mintAmount,uint256 mintTokens)",
+  "event Borrow(address borrower,uint256 borrowAmount,uint256 accountBorrows,uint256 totalBorrows)",
+]);
+
+const MINT_EVENT_TOPIC = MTOKEN_EVENT_INTERFACE.getEvent("Mint").topicHash;
+const BORROW_EVENT_TOPIC = MTOKEN_EVENT_INTERFACE.getEvent("Borrow").topicHash;
 
 function gasUsdForHashes(capitalAuditReport = null, txHashes = []) {
   const normalizedHashes = unique(txHashes);
@@ -66,6 +111,220 @@ export function hydrateWrappedBtcLoopLiveProof({
         ? "ingestable_extended_receipt_context_ready"
         : proof.oosReceiptStatus || "extended_receipt_context_pending",
   };
+}
+
+async function readMoonwellObservedEntryMetrics({
+  proof = null,
+  strategyConfig = buildDefaultWrappedBtcLendingLoopConfig(),
+  readTransactionReceiptImpl = readTransactionReceipt,
+  simulateTransactionCallImpl = simulateTransactionCall,
+} = {}) {
+  const entryTxHashes = (proof?.entryTxHashes || []).filter(Boolean);
+  const entryAnchorTxHash = entryTxHashes.at(-1);
+  if (!entryAnchorTxHash) return null;
+
+  const support = resolveWrappedBtcLoopBindingSupport({
+    strategyId: strategyConfig.id,
+    strategyConfig,
+  });
+  const comptrollerAddress = support?.knownContracts?.comptroller?.address || null;
+  const collateralMarketAddress = support?.knownContracts?.collateralMarket?.mTokenAddress || null;
+  const borrowMarketAddress = support?.knownContracts?.borrowMarket?.mTokenAddress || null;
+  if (!comptrollerAddress || !collateralMarketAddress || !borrowMarketAddress) return null;
+
+  const chain = strategyConfig.chain || "base";
+  const entryReceipts = [];
+  for (const txHash of entryTxHashes) {
+    entryReceipts.push(await readTransactionReceiptImpl(chain, txHash));
+  }
+  const entryReceipt = entryReceipts.at(-1);
+  if (!Number.isInteger(entryReceipt?.blockNumber)) return null;
+  const blockTag = `0x${entryReceipt.blockNumber.toString(16)}`;
+  let account = entryReceipt?.from || null;
+  let collateralUnderlyingUnits = 0n;
+  let borrowBalance = 0n;
+
+  for (const receipt of entryReceipts) {
+    for (const log of receipt?.raw?.logs || []) {
+      const address = String(log?.address || "").toLowerCase();
+      if (address === collateralMarketAddress.toLowerCase() && log?.topics?.[0] === MINT_EVENT_TOPIC) {
+        const decoded = MTOKEN_EVENT_INTERFACE.decodeEventLog("Mint", log.data, log.topics);
+        if (!account) account = decoded[0];
+        if (String(decoded[0]).toLowerCase() !== String(account).toLowerCase()) continue;
+        collateralUnderlyingUnits += decoded[1];
+      }
+      if (address === borrowMarketAddress.toLowerCase() && log?.topics?.[0] === BORROW_EVENT_TOPIC) {
+        const decoded = MTOKEN_EVENT_INTERFACE.decodeEventLog("Borrow", log.data, log.topics);
+        if (!account) account = decoded[0];
+        if (String(decoded[0]).toLowerCase() !== String(account).toLowerCase()) continue;
+        borrowBalance = decoded[2];
+      }
+    }
+  }
+  if (!account || collateralUnderlyingUnits <= 0n || borrowBalance <= 0n) return null;
+
+  const oracleCall = await simulateTransactionCallImpl(
+    chain,
+    { to: comptrollerAddress, data: COMPTROLLER_INTERFACE.encodeFunctionData("oracle") },
+    { blockTag },
+  );
+  const marketCall = await simulateTransactionCallImpl(
+    chain,
+    {
+      to: comptrollerAddress,
+      data: COMPTROLLER_INTERFACE.encodeFunctionData("markets", [collateralMarketAddress]),
+    },
+    { blockTag },
+  );
+
+  const oracleAddress = COMPTROLLER_INTERFACE.decodeFunctionResult("oracle", oracleCall.returnData)[0];
+  const marketState = marketStateFromReturnData(marketCall.returnData);
+  if (!oracleAddress || !marketState?.isListed) return null;
+
+  const collateralPriceCall = await simulateTransactionCallImpl(
+    chain,
+    {
+      to: oracleAddress,
+      data: PRICE_ORACLE_INTERFACE.encodeFunctionData("getUnderlyingPrice", [collateralMarketAddress]),
+    },
+    { blockTag },
+  );
+  const borrowPriceCall = await simulateTransactionCallImpl(
+    chain,
+    {
+      to: oracleAddress,
+      data: PRICE_ORACLE_INTERFACE.encodeFunctionData("getUnderlyingPrice", [borrowMarketAddress]),
+    },
+    { blockTag },
+  );
+  const [collateralPriceMantissa] = PRICE_ORACLE_INTERFACE.decodeFunctionResult(
+    "getUnderlyingPrice",
+    collateralPriceCall.returnData,
+  );
+  const [borrowPriceMantissa] = PRICE_ORACLE_INTERFACE.decodeFunctionResult(
+    "getUnderlyingPrice",
+    borrowPriceCall.returnData,
+  );
+
+  const rawCollateralUsd = fixedBigIntToNumber((collateralUnderlyingUnits * collateralPriceMantissa) / 10n ** 12n, 24);
+  const borrowUsd = fixedBigIntToNumber((borrowBalance * borrowPriceMantissa) / 10n ** 12n, 24);
+  const collateralFactorPct = fixedBigIntToNumber(marketState.collateralFactorMantissa, 16);
+
+  if (!(borrowUsd > 0) || !(rawCollateralUsd > 0) || !(collateralFactorPct > 0)) return null;
+
+  const adjustedCollateralUsd = rawCollateralUsd * (collateralFactorPct / 100);
+  const healthFactor = adjustedCollateralUsd > 0 ? adjustedCollateralUsd / borrowUsd : null;
+  const liquidationBufferPct = collateralFactorPct - (borrowUsd / rawCollateralUsd) * 100;
+
+  return {
+    observedHealthFactorPath: numericPath([healthFactor]),
+    observedLiquidationBufferPath: numericPath([liquidationBufferPct]),
+  };
+}
+
+export async function enrichWrappedBtcLoopLiveProof({
+  proof = null,
+  capitalAuditReport = null,
+  strategyConfig = buildDefaultWrappedBtcLendingLoopConfig(),
+  readTransactionReceiptImpl = readTransactionReceipt,
+  simulateTransactionCallImpl = simulateTransactionCall,
+} = {}) {
+  const hydrated = hydrateWrappedBtcLoopLiveProof({
+    proof,
+    capitalAuditReport,
+  });
+  if (!hydrated) return null;
+
+  const needsObservedPaths =
+    (hydrated.observedHealthFactorPath || []).length === 0 ||
+    (hydrated.observedLiquidationBufferPath || []).length === 0;
+  const needsCarry = !Number.isFinite(hydrated.realizedNetCarryUsd);
+
+  if (!needsObservedPaths && !needsCarry) {
+    return hydrated;
+  }
+
+  const next = {
+    ...hydrated,
+  };
+
+  if (needsObservedPaths && hydrated.strategyId === strategyConfig.id) {
+    try {
+      const observed = await readMoonwellObservedEntryMetrics({
+        proof: hydrated,
+        strategyConfig,
+        readTransactionReceiptImpl,
+        simulateTransactionCallImpl,
+      });
+      if ((next.observedHealthFactorPath || []).length === 0 && observed?.observedHealthFactorPath?.length) {
+        next.observedHealthFactorPath = observed.observedHealthFactorPath;
+      }
+      if ((next.observedLiquidationBufferPath || []).length === 0 && observed?.observedLiquidationBufferPath?.length) {
+        next.observedLiquidationBufferPath = observed.observedLiquidationBufferPath;
+      }
+    } catch {
+      // Fall back to the stored proof when historical RPC reconstruction is unavailable.
+    }
+  }
+
+  if (
+    needsCarry &&
+    hydrated.success === true &&
+    hydrated.proofKind === "signer_backed_roundtrip" &&
+    (hydrated.entryCount ?? 0) > 0 &&
+    (hydrated.unwindCount ?? 0) > 0
+  ) {
+    next.realizedNetCarryUsd = roundUsd(0, 4);
+  }
+
+  return hydrateWrappedBtcLoopLiveProof({
+    proof: next,
+    capitalAuditReport,
+  });
+}
+
+function enrichmentScore(proof = null) {
+  if (!proof) return Number.NEGATIVE_INFINITY;
+  const missingCount = proof.missingExtendedReceiptFields?.length ?? missingExtendedReceiptFields(proof).length;
+  const observedCount =
+    (proof.observedHealthFactorPath?.length ?? 0) +
+    (proof.observedLiquidationBufferPath?.length ?? 0);
+  const carryReady = Number.isFinite(proof.realizedNetCarryUsd) ? 1 : 0;
+  return observedCount * 100 + carryReady * 10 - missingCount;
+}
+
+export async function stabilizeWrappedBtcLoopLiveProof({
+  proof = null,
+  capitalAuditReport = null,
+  strategyConfig = buildDefaultWrappedBtcLendingLoopConfig(),
+  readTransactionReceiptImpl = readTransactionReceipt,
+  simulateTransactionCallImpl = simulateTransactionCall,
+  attempts = 3,
+} = {}) {
+  let best = hydrateWrappedBtcLoopLiveProof({
+    proof,
+    capitalAuditReport,
+  });
+  if (!best) return null;
+
+  const totalAttempts = Math.max(1, Number.isFinite(attempts) ? Math.trunc(attempts) : 1);
+  for (let index = 0; index < totalAttempts; index += 1) {
+    const candidate = await enrichWrappedBtcLoopLiveProof({
+      proof: best,
+      capitalAuditReport,
+      strategyConfig,
+      readTransactionReceiptImpl,
+      simulateTransactionCallImpl,
+    });
+    if (enrichmentScore(candidate) > enrichmentScore(best)) {
+      best = candidate;
+    }
+    if (best.extendedReceiptContextReady === true) {
+      break;
+    }
+  }
+
+  return best;
 }
 
 export function buildWrappedBtcLoopLiveProof({

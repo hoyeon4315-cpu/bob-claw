@@ -147,6 +147,43 @@ test("phase3 strategy validation clears recorded search-complexity budgets for s
   assert.equal(proxy.blockers.includes("search_complexity_budget_not_recorded"), false);
 });
 
+test("phase3 strategy validation clears wrapped loop blocker once extended receipt context is ready", () => {
+  const report = buildPhase3StrategyValidation({
+    wrappedBtcLendingLoopSlice: {
+      strategy: { id: "wrapped-btc-loop-base-moonwell", protocol: "moonwell" },
+    },
+    wrappedBtcLoopDryRun: {
+      dryRunReceiptRecorded: true,
+      autoUnwindPassCount: 3,
+    },
+    wrappedBtcLoopLiveProof: {
+      success: true,
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 8,
+      unwindCount: 4,
+      extendedReceiptContextReady: true,
+      missingExtendedReceiptFields: [],
+    },
+    protocolTrustTiers: {
+      generatedAt: "2026-04-18T09:00:00.000Z",
+      targets: [
+        {
+          id: "moonwell",
+          status: "recorded",
+          decision: "allowed",
+        },
+      ],
+    },
+    resolveTrustTierDecision,
+    now: "2026-04-18T09:00:00.000Z",
+  });
+
+  const wrappedLoop = report.validations.find((item) => item.id === "wrapped_btc_loop_validation");
+  assert.ok(wrappedLoop);
+  assert.equal(wrappedLoop.blockers.includes("extended_receipt_context_missing"), false);
+  assert.equal(wrappedLoop.evidence.extendedReceiptContextReady, true);
+});
+
 test("phase3 strategy validation records signer-backed wrapped-loop roundtrip before full OOS packet exists", () => {
   const report = buildPhase3StrategyValidation({
     wrappedBtcLendingLoopSlice: {

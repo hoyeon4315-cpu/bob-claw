@@ -13,6 +13,7 @@ import {
   summarizeWrappedBtcLendingLoopDryRunRuns,
 } from "../strategy/wrapped-btc-lending-loop-dry-run.mjs";
 import {
+  stabilizeWrappedBtcLoopLiveProof,
   hydrateWrappedBtcLoopLiveProof,
   WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE,
 } from "../strategy/wrapped-btc-loop-live-proof.mjs";
@@ -87,7 +88,7 @@ async function main() {
     readJsonIfExists(join(config.dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE)),
     readJsonIfExists(join(config.dataDir, "capital-audit.json")),
   ]);
-  const hydratedLiveProof = hydrateWrappedBtcLoopLiveProof({
+  const hydratedLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: latestLiveProof,
     capitalAuditReport,
   });
