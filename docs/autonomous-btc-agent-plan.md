@@ -123,6 +123,13 @@
 
 > 이 Phase 는 "구현" 이 아니라 "설계 카탈로그 추가" 다. 각 전략은 [src/strategy/lending-loop-research.mjs](../src/strategy/lending-loop-research.mjs) 와 동일한 shape 의 placeholder 모듈로 먼저 등록.
 
+#### 현재 운영 플랜에 끼워 넣는 방식
+
+- **주 경로는 유지**: 현재 운영 크리티컬 패스는 여전히 `shadow_replay -> mechanical_simulation -> fork_execution -> manual_canary_review` 이다. 즉 measured route, exact gas, fork evidence 정리가 먼저다.
+- **레버리지 루프는 병렬 검증 lane**: `recursive_wrapped_btc_lending_loop` 는 완화된 정책에서 허용된 leverage 후보이므로, canary 준비와 병렬로 Phase 3 validation lane 에서 계속 증거를 쌓는다.
+- **지금 당장의 다음 액션은 구현 확대가 아니라 증거 적재**: 최신 validation 기준 다음 액션은 `collect_recursive_loop_observed_receipts` 이며, signer-backed receipt 를 확보하기 전에는 planning lane 으로만 취급한다.
+- **live 승격 전 필수 조건**: `recursive_observed_receipts_missing` 해소, `auto_unwind` runtime 배선, protocol adapter/binding 확인, declared HF/LTV/buffer caps 검증이 모두 선행돼야 한다.
+
 #### 2-A. Claude 가 제안하는 후보군
 
 각 항목: `{id, arrival_family, leverage?, expected_risk_bucket, why_it_fits, what_to_build, open_questions}`.

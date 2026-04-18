@@ -1,10 +1,10 @@
 import { Interface } from "ethers";
-import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { attachOdosAssembly, normalizeOdosQuote, OdosClient, odosRoutingConfig, STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
-import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
+import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
@@ -17,6 +17,10 @@ const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const ERC20_INTERFACE = new Interface([
   "function approve(address spender,uint256 amount)",
 ]);
+const WRAPPED_NATIVE_INTERFACE = new Interface([
+  "function withdraw(uint256 wad)",
+]);
+const DEFAULT_UNWRAP_NATIVE_GAS_UNITS = 50_000;
 
 const TOKEN_ALIASES = Object.freeze({
   usdc: (chain) => STABLE_QUOTE_TOKENS[chain]?.token || null,
@@ -25,6 +29,7 @@ const TOKEN_ALIASES = Object.freeze({
   wbtc_oft: () => WBTC_OFT_TOKEN,
   weth: (chain) => WRAPPED_NATIVE_TOKENS[chain] || null,
   wrapped_native: (chain) => WRAPPED_NATIVE_TOKENS[chain] || null,
+  native: () => ZERO_TOKEN,
 });
 
 function toPositiveIntegerString(value, label) {
@@ -106,6 +111,7 @@ function resolveQuotedGasLimit(quote, gasBufferBps) {
 export async function buildTokenDexExperimentPlan({
   client = new OdosClient(),
   estimateGasImpl = estimateGas,
+  gasSnapshotImpl = getGasSnapshot,
   strategyId = TOKEN_DEX_EXPERIMENT_STRATEGY_ID,
   chain,
   amount,
@@ -122,18 +128,24 @@ export async function buildTokenDexExperimentPlan({
   const strategyCaps = assertStrategyCaps(strategyId);
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
   const normalizedInputToken = normalizeErc20Token(chain, inputToken, "inputToken");
-  const normalizedOutputToken = normalizeErc20Token(chain, outputToken, "outputToken");
+  const requestedOutputToken = String(outputToken || "").trim().toLowerCase();
+  const unwrapToNative = requestedOutputToken === "native";
+  const normalizedOutputToken = unwrapToNative
+    ? WRAPPED_NATIVE_TOKENS[chain]
+    : normalizeErc20Token(chain, outputToken, "outputToken");
   if (normalizedInputToken.toLowerCase() === normalizedOutputToken.toLowerCase()) {
     throw new Error("Input and output tokens must differ");
   }
   const inputAsset = tokenAsset(chain, normalizedInputToken);
-  const outputAsset = tokenAsset(chain, normalizedOutputToken);
+  const outputAsset = unwrapToNative ? tokenAsset(chain, ZERO_TOKEN) : tokenAsset(chain, normalizedOutputToken);
   const routing = odosRoutingConfig(chain);
 
   let quote = null;
   let executableQuote = null;
   let blockedReason = null;
   let preflightError = null;
+  let gasSnapshot = null;
+  let gasSnapshotError = null;
   let steps = [];
 
   try {
@@ -168,6 +180,11 @@ export async function buildTokenDexExperimentPlan({
     });
     executableQuote = attachOdosAssembly(quote, assembled);
     const amountUsd = Number(executableQuote.inputValueUsd ?? 0);
+    try {
+      gasSnapshot = await gasSnapshotImpl(chain, getEvmChainConfig(chain));
+    } catch (error) {
+      gasSnapshotError = serializePreflightError(error);
+    }
 
     const approveGas = await estimateGasImpl(
       chain,
@@ -198,6 +215,27 @@ export async function buildTokenDexExperimentPlan({
           gasBuffer,
         ),
       );
+    let unwrapGasLimit = null;
+    if (unwrapToNative) {
+      const unwrapAmount = minimumOutputAmount(quote.outputAmount, slippageBps).toString();
+      try {
+        const unwrapGas = await estimateGasImpl(
+          chain,
+          {
+            from: senderAddress,
+            to: normalizedOutputToken,
+            data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [unwrapAmount]),
+            valueWei: "0",
+          },
+          getEvmChainConfig(chain),
+        );
+        unwrapGasLimit = String(applyGasBuffer(unwrapGas.gasUnits, gasBuffer));
+      } catch {
+        // Unwrap estimation can revert before the swap executes because the wallet
+        // does not yet hold the wrapped-native output. Use a conservative fallback.
+        unwrapGasLimit = String(applyGasBuffer(DEFAULT_UNWRAP_NATIVE_GAS_UNITS, gasBuffer));
+      }
+    }
 
     const buildIntent = ({ intentType, tx, approval = null, metadata = {} }) => ({
       strategyId,
@@ -259,13 +297,34 @@ export async function buildTokenDexExperimentPlan({
             provider: "odos",
             pathId: executableQuote.pathId,
             inputToken: normalizedInputToken,
-            outputToken: normalizedOutputToken,
+            outputToken: unwrapToNative ? ZERO_TOKEN : normalizedOutputToken,
+            wrappedOutputToken: unwrapToNative ? normalizedOutputToken : null,
             sourceWhitelist: executableQuote.sourceWhitelist,
             executionTrust: executableQuote.executionTrust,
           },
         }),
       },
     ];
+    if (unwrapToNative) {
+      steps.push({
+        id: "unwrap_wrapped_native",
+        intent: buildIntent({
+          intentType: "unwrap_native",
+          tx: {
+            to: normalizedOutputToken,
+            data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [minimumOutputAmount(quote.outputAmount, slippageBps).toString()]),
+            value: "0",
+            gasLimit: unwrapGasLimit,
+          },
+          metadata: {
+            provider: "wrapped_native",
+            outputToken: ZERO_TOKEN,
+            wrappedOutputToken: normalizedOutputToken,
+            minimumOutputAmount: minimumOutputAmount(quote.outputAmount, slippageBps).toString(),
+          },
+        }),
+      });
+    }
   } catch (error) {
     blockedReason = blockedReason || classifyOdosError(error);
     preflightError = serializePreflightError(error);
@@ -282,11 +341,17 @@ export async function buildTokenDexExperimentPlan({
     senderAddress,
     inputToken: normalizedInputToken,
     inputAsset,
-    outputToken: normalizedOutputToken,
+    outputToken: unwrapToNative ? ZERO_TOKEN : normalizedOutputToken,
+    wrappedOutputToken: unwrapToNative ? normalizedOutputToken : null,
     outputAsset,
     amount: normalizedAmount,
     amountUsd: Number(executableQuote?.inputValueUsd ?? 0) || null,
+    quoteTtlMs: strategyCaps.intentTtlMs,
+    slippageBps: Number(slippageBps),
+    gasBufferBps: Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps")),
     quote: executableQuote,
+    gasSnapshot,
+    gasSnapshotError,
     minimumOutputAmount: quote?.outputAmount ? minimumOutputAmount(quote.outputAmount, slippageBps).toString() : null,
     steps,
   };
@@ -311,6 +376,12 @@ export async function executeTokenDexExperimentPlan({
   if (!Array.isArray(plan?.steps) || plan.steps.length === 0) {
     throw new Error(`Token DEX experiment plan is not executable: ${plan?.blockedReason || "missing_steps"}`);
   }
+  const sourceBalanceBefore = await readEvmAssetBalance({
+    asset: plan.inputAsset,
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
   const destinationBalanceBefore = awaitDestinationSettlement
     ? await readEvmAssetBalance({
         asset: plan.outputAsset,
@@ -333,7 +404,44 @@ export async function executeTokenDexExperimentPlan({
       },
     });
     if (result?.status !== "ok" || !result?.broadcast?.txHash) {
-      throw new Error(result?.error?.message || `Signer did not complete ${step.id}`);
+      const error = new Error(result?.error?.message || `Signer did not complete ${step.id}`);
+      error.name = result?.error?.name || "SignerExecutionFailed";
+      error.partialExecution = {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        settlementStatus: "failed",
+        plan,
+        stepResults: [
+          ...stepResults,
+          {
+            id: step.id,
+            signerResult: result,
+          },
+        ],
+        sourceBalanceBefore: {
+          ...sourceBalanceBefore,
+          ticker: plan.inputAsset?.ticker || null,
+          token: plan.inputToken || null,
+          chain: plan.chain,
+        },
+        sourceBalanceAfter: null,
+        destinationBalanceBefore: destinationBalanceBefore
+          ? {
+              ...destinationBalanceBefore,
+              ticker: plan.outputAsset?.ticker || null,
+              token: plan.outputToken || null,
+              chain: plan.chain,
+            }
+          : null,
+        destinationBalanceAfter: null,
+        destinationProof: null,
+        error: {
+          name: error.name,
+          message: error.message,
+          stepId: step.id,
+        },
+      };
+      throw error;
     }
     stepResults.push({
       id: step.id,
@@ -353,12 +461,60 @@ export async function executeTokenDexExperimentPlan({
         sleepImpl,
       })
     : null;
+  const sourceBalanceAfter = await readEvmAssetBalance({
+    asset: plan.inputAsset,
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const destinationBalanceAfter = destinationProof
+    ? {
+        proofSource: destinationProof.proofSource,
+        rpcUrl: destinationProof.rpcUrl || null,
+        balance: BigInt(destinationProof.settledBalance),
+      }
+    : awaitDestinationSettlement
+      ? await readEvmAssetBalance({
+          asset: plan.outputAsset,
+          owner: plan.senderAddress,
+          readErc20BalanceImpl,
+          readNativeBalanceImpl,
+        })
+      : null;
   const execution = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     settlementStatus: destinationProof?.status || "source_confirmed_only",
     plan,
     stepResults,
+    sourceBalanceBefore: {
+      ...sourceBalanceBefore,
+      ticker: plan.inputAsset?.ticker || null,
+      token: plan.inputToken || null,
+      chain: plan.chain,
+    },
+    sourceBalanceAfter: {
+      ...sourceBalanceAfter,
+      ticker: plan.inputAsset?.ticker || null,
+      token: plan.inputToken || null,
+      chain: plan.chain,
+    },
+    destinationBalanceBefore: destinationBalanceBefore
+      ? {
+          ...destinationBalanceBefore,
+          ticker: plan.outputAsset?.ticker || null,
+          token: plan.outputToken || null,
+          chain: plan.chain,
+        }
+      : null,
+    destinationBalanceAfter: destinationBalanceAfter
+      ? {
+          ...destinationBalanceAfter,
+          ticker: plan.outputAsset?.ticker || null,
+          token: plan.outputToken || null,
+          chain: plan.chain,
+        }
+      : null,
     destinationProof,
   };
   if (typeof receiptIngest !== "function") return execution;

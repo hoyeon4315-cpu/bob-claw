@@ -46,6 +46,16 @@ test("token dex experiment plan builds approval and swap steps", async () => {
       gasUnitsHex: "0x186a0",
       rpcFallbacksTried: 0,
     }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
     chain: "base",
     amount: "10000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -61,6 +71,46 @@ test("token dex experiment plan builds approval and swap steps", async () => {
   assert.equal(plan.steps[1].id, "swap_input_to_output");
   assert.equal(plan.outputAsset.ticker, "cbBTC");
   assert.equal(plan.minimumOutputAmount, "9850");
+  assert.equal(plan.slippageBps, 50);
+  assert.equal(plan.gasSnapshot.gasPriceWei, "100");
+});
+
+test("token dex experiment plan supports native output unwrap", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "cbbtc",
+    outputToken: "native",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.outputAsset.ticker, "ETH");
+  assert.equal(plan.outputToken, "0x0000000000000000000000000000000000000000");
+  assert.equal(plan.wrappedOutputToken, "0x4200000000000000000000000000000000000006");
+  assert.equal(plan.steps.length, 3);
+  assert.equal(plan.steps[2].id, "unwrap_wrapped_native");
 });
 
 test("token dex experiment plan surfaces routing failures cleanly", async () => {
@@ -100,6 +150,16 @@ test("token dex experiment execution waits for output token delivery proof", asy
       gasUnitsHex: "0x186a0",
       rpcFallbacksTried: 0,
     }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
     chain: "base",
     amount: "10000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -108,17 +168,25 @@ test("token dex experiment execution waits for output token delivery proof", asy
   });
 
   let stepIndex = 0;
-  let readCount = 0;
+  let inputReadCount = 0;
+  let outputReadCount = 0;
   const execution = await executeTokenDexExperimentPlan({
     plan,
     receiptIngest: async () => ({ appended: false, reason: "test_stub" }),
     destinationSettlementTimeoutMs: 1_000,
     destinationPollIntervalMs: 0,
-    readErc20BalanceImpl: async () => {
-      readCount += 1;
+    readErc20BalanceImpl: async (_chain, token) => {
+      if (String(token).toLowerCase() === String(plan.inputToken).toLowerCase()) {
+        inputReadCount += 1;
+        return {
+          rpcUrl: "https://base-rpc.example",
+          balance: BigInt(inputReadCount > 1 ? 0 : 10000),
+        };
+      }
+      outputReadCount += 1;
       return {
         rpcUrl: "https://base-rpc.example",
-        balance: BigInt(readCount > 1 ? 9900 : 0),
+        balance: BigInt(outputReadCount > 1 ? 9900 : 0),
       };
     },
     sendCommand: async () => ({
@@ -136,4 +204,62 @@ test("token dex experiment execution waits for output token delivery proof", asy
   assert.equal(execution.stepResults.length, 2);
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.destinationProof.requiredDelta, "9850");
+  assert.equal(execution.sourceBalanceBefore.balance.toString(), "10000");
+  assert.equal(execution.sourceBalanceAfter.balance.toString(), "0");
+  assert.equal(execution.destinationBalanceAfter.balance.toString(), "9900");
+});
+
+test("token dex experiment execution surfaces partial step results on signer revert", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wbtc.oft",
+    outputToken: "cbbtc",
+  });
+
+  await assert.rejects(
+    executeTokenDexExperimentPlan({
+      plan,
+      readErc20BalanceImpl: async (_chain, token) => ({
+        rpcUrl: "https://base-rpc.example",
+        balance: BigInt(String(token).toLowerCase() === String(plan.inputToken).toLowerCase() ? 10000 : 0),
+      }),
+      sendCommand: async () => ({
+        status: "error",
+        broadcast: { txHash: "0xreverted" },
+        error: {
+          name: "EvmReceiptReverted",
+          message: "Transaction reverted after broadcast",
+        },
+      }),
+    }),
+    (error) => {
+      assert.equal(error.name, "EvmReceiptReverted");
+      assert.equal(error.partialExecution.settlementStatus, "failed");
+      assert.equal(error.partialExecution.stepResults.length, 1);
+      assert.equal(error.partialExecution.stepResults[0].signerResult.broadcast.txHash, "0xreverted");
+      return true;
+    },
+  );
 });

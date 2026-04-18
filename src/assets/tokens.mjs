@@ -28,33 +28,33 @@ const NATIVE_ASSETS = {
   unichain: { ticker: "ETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" },
 };
 
-const TOKEN_DEFINITIONS = new Map(
-  [
-    [WBTC_OFT_TOKEN, { ticker: "wBTC.OFT", family: "wrapped_btc", icon: "wbtc", decimals: 8, priceKey: "btc" }],
-    [ETHEREUM_WBTC_TOKEN, { ticker: "WBTC", family: "wrapped_btc", icon: "wbtc", decimals: 8, priceKey: "wbtc" }],
-    [UNI_BTC_TOKEN, { ticker: "uniBTC", family: "wrapped_btc", icon: "btc", decimals: 8, priceKey: "btc" }],
-    ["0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", { ticker: "cbBTC", family: "wrapped_btc", icon: "btc", decimals: 8, priceKey: "btc" }],
-    ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" }],
-    ["0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189", { ticker: "oUSDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" }],
-    ["0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" }],
-    ["0x29219dd400f2Bf60E5a23d13Be72B486D4038894", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" }],
-    ["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" }],
-    ["0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 18, priceKey: "usd_stable" }],
-    ["0x078D782b760474a361dDA0AF3839290b0EF57AD6", { ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" }],
-    ["0x55d398326f99059fF775485246999027B3197955", { ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 18, priceKey: "usd_stable" }],
-    ["0xdAC17F958D2ee523a2206206994597C13D831ec7", { ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" }],
-    [SOLVBTC_TOKEN, { ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: 18, priceKey: "btc" }],
-    [WRAPPED_NATIVE_TOKENS.base, { ticker: "WETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" }],
-    [WRAPPED_NATIVE_TOKENS.avalanche, { ticker: "WAVAX", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "avalanche" }],
-    [WRAPPED_NATIVE_TOKENS.bera, { ticker: "WBERA", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "bera" }],
-    [WRAPPED_NATIVE_TOKENS.bsc, { ticker: "WBNB", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "bsc" }],
-    [WRAPPED_NATIVE_TOKENS.ethereum, { ticker: "WETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" }],
-    [WRAPPED_NATIVE_TOKENS.sonic, { ticker: "wS", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "sonic" }],
-    ["0x2170Ed0880ac9A755fd29B2688956BD959F933F8", { ticker: "ETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" }],
-    ["0x45804880De22913dAFE09f4980848ECE6EcbAf78", { ticker: "PAXG", family: "other", icon: "paxg", decimals: 18, priceKey: "paxg" }],
-    ["0x68749665FF8D2d112Fa859AA293F07A622782F38", { ticker: "XAUT", family: "other", icon: "xaut", decimals: 6, priceKey: "xaut" }],
-  ].map(([token, metadata]) => [normalizeToken(token), metadata]),
-);
+const KNOWN_TOKEN_DEFINITIONS = Object.freeze([
+  { token: WBTC_OFT_TOKEN, ticker: "wBTC.OFT", family: "wrapped_btc", icon: "wbtc", decimals: 8, priceKey: "btc" },
+  { token: ETHEREUM_WBTC_TOKEN, ticker: "WBTC", family: "wrapped_btc", icon: "wbtc", decimals: 8, priceKey: "wbtc" },
+  { token: UNI_BTC_TOKEN, ticker: "uniBTC", family: "wrapped_btc", icon: "btc", decimals: 8, priceKey: "btc" },
+  { token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", ticker: "cbBTC", family: "wrapped_btc", icon: "btc", decimals: 8, priceKey: "btc" },
+  { token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
+  { token: "0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189", ticker: "oUSDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" },
+  { token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
+  { token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
+  { token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
+  { token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 18, priceKey: "usd_stable" },
+  { token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
+  { token: "0x55d398326f99059fF775485246999027B3197955", ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 18, priceKey: "usd_stable" },
+  { token: "0xdAC17F958D2ee523a2206206994597C13D831ec7", ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" },
+  { token: SOLVBTC_TOKEN, ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: 18, priceKey: "btc" },
+  { token: WRAPPED_NATIVE_TOKENS.base, ticker: "WETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" },
+  { token: WRAPPED_NATIVE_TOKENS.avalanche, ticker: "WAVAX", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "avalanche" },
+  { token: WRAPPED_NATIVE_TOKENS.bera, ticker: "WBERA", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "bera" },
+  { token: WRAPPED_NATIVE_TOKENS.bsc, ticker: "WBNB", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "bsc" },
+  { token: WRAPPED_NATIVE_TOKENS.ethereum, ticker: "WETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" },
+  { token: WRAPPED_NATIVE_TOKENS.sonic, ticker: "wS", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "sonic" },
+  { token: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", ticker: "ETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" },
+  { token: "0x45804880De22913dAFE09f4980848ECE6EcbAf78", ticker: "PAXG", family: "other", icon: "paxg", decimals: 18, priceKey: "paxg" },
+  { token: "0x68749665FF8D2d112Fa859AA293F07A622782F38", ticker: "XAUT", family: "other", icon: "xaut", decimals: 6, priceKey: "xaut" },
+]);
+
+const TOKEN_DEFINITIONS = new Map(KNOWN_TOKEN_DEFINITIONS.map((item) => [normalizeToken(item.token), { ...item, token: undefined }]));
 
 export const BTC_FAMILY_TOKENS = new Set(
   [
@@ -255,6 +255,10 @@ export function classifyGatewayAssetUniverse(routes = []) {
     watchlistObserved,
     watchlistMissing,
   };
+}
+
+export function listKnownTokenDefinitions() {
+  return KNOWN_TOKEN_DEFINITIONS.map((item) => ({ ...item }));
 }
 
 export function unitsToDecimal(units, decimals) {

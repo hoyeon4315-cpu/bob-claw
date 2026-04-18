@@ -390,6 +390,7 @@ export function summarizePhase3StrategyValidation(report = null) {
           id: topBlocked.id || null,
           label: topBlocked.label || null,
           overallStatus: topBlocked.overallStatus || null,
+          blockers: topBlocked.blockers || [],
         }
       : null,
     nextAction: report.summary?.nextAction || null,

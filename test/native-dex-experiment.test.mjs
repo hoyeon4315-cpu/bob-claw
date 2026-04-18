@@ -47,6 +47,16 @@ test("native dex experiment plan builds wrap, approval, and swap steps", async (
       gasUnitsHex: "0x186a0",
       rpcFallbacksTried: 0,
     }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
     chain: "base",
     amount: "100000000000000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -61,6 +71,8 @@ test("native dex experiment plan builds wrap, approval, and swap steps", async (
   assert.equal(plan.steps[1].intent.approval.mode, "per_tx");
   assert.equal(plan.steps[1].intent.metadata.capCheckAmountUsd, 0);
   assert.equal(plan.minimumOutputAmount, "248750");
+  assert.equal(plan.slippageBps, 50);
+  assert.equal(plan.gasSnapshot.gasPriceWei, "100");
 });
 
 test("native dex experiment plan surfaces routing failures cleanly", async () => {
@@ -97,10 +109,21 @@ test("native dex experiment plan supports newly added bsc and ethereum wrapped-n
     gasUnitsHex: "0x186a0",
     rpcFallbacksTried: 0,
   });
+  const gasSnapshotImpl = async (chain) => ({
+    observedAt: "2026-04-16T06:00:02.000Z",
+    chain,
+    rpcUrl: `https://${chain}-rpc.example`,
+    latencyMs: 9,
+    blockNumber: 1,
+    gasPriceWei: "100",
+    baseFeeWei: "80",
+    priorityFeeWei: "20",
+  });
 
   const bscPlan = await buildNativeDexExperimentPlan({
     client: odosClientFixture(),
     estimateGasImpl,
+    gasSnapshotImpl,
     chain: "bsc",
     amount: "100000000000000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -109,6 +132,7 @@ test("native dex experiment plan supports newly added bsc and ethereum wrapped-n
   const ethereumPlan = await buildNativeDexExperimentPlan({
     client: odosClientFixture(),
     estimateGasImpl,
+    gasSnapshotImpl,
     chain: "ethereum",
     amount: "100000000000000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -117,6 +141,7 @@ test("native dex experiment plan supports newly added bsc and ethereum wrapped-n
   const unichainPlan = await buildNativeDexExperimentPlan({
     client: odosClientFixture(),
     estimateGasImpl,
+    gasSnapshotImpl,
     chain: "unichain",
     amount: "100000000000000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -143,6 +168,16 @@ test("native dex experiment execution waits for output token delivery proof", as
       gasUnitsHex: "0x186a0",
       rpcFallbacksTried: 0,
     }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
     chain: "base",
     amount: "100000000000000",
     senderAddress: "0x1111111111111111111111111111111111111111",
@@ -150,17 +185,25 @@ test("native dex experiment execution waits for output token delivery proof", as
   });
 
   let stepIndex = 0;
-  let readCount = 0;
+  let nativeReadCount = 0;
+  let outputReadCount = 0;
   const execution = await executeNativeDexExperimentPlan({
     plan,
     receiptIngest: async () => ({ appended: false, reason: "test_stub" }),
     destinationSettlementTimeoutMs: 1_000,
     destinationPollIntervalMs: 0,
     readErc20BalanceImpl: async () => {
-      readCount += 1;
+      outputReadCount += 1;
       return {
         rpcUrl: "https://base-rpc.example",
-        balance: BigInt(readCount > 1 ? 300000 : 0),
+        balance: BigInt(outputReadCount > 1 ? 300000 : 0),
+      };
+    },
+    readNativeBalanceImpl: async () => {
+      nativeReadCount += 1;
+      return {
+        rpcUrl: "https://base-rpc.example",
+        balanceWei: BigInt(nativeReadCount > 1 ? 0 : 100000000000000n).toString(),
       };
     },
     sendCommand: async () => ({
@@ -178,4 +221,65 @@ test("native dex experiment execution waits for output token delivery proof", as
   assert.equal(execution.stepResults.length, 3);
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.destinationProof.requiredDelta, "248750");
+  assert.equal(execution.sourceBalanceBefore.balance.toString(), "100000000000000");
+  assert.equal(execution.sourceBalanceAfter.balance.toString(), "0");
+  assert.equal(execution.destinationBalanceAfter.balance.toString(), "300000");
+});
+
+test("native dex experiment execution surfaces partial step results on signer revert", async () => {
+  const plan = await buildNativeDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "100000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    outputToken: "usdc",
+  });
+
+  await assert.rejects(
+    executeNativeDexExperimentPlan({
+      plan,
+      readErc20BalanceImpl: async () => ({
+        rpcUrl: "https://base-rpc.example",
+        balance: 0n,
+      }),
+      readNativeBalanceImpl: async () => ({
+        rpcUrl: "https://base-rpc.example",
+        balanceWei: "100000000000000",
+      }),
+      sendCommand: async () => ({
+        status: "error",
+        broadcast: { txHash: "0xreverted" },
+        error: {
+          name: "EvmReceiptReverted",
+          message: "Transaction reverted after broadcast",
+        },
+      }),
+    }),
+    (error) => {
+      assert.equal(error.name, "EvmReceiptReverted");
+      assert.equal(error.partialExecution.settlementStatus, "failed");
+      assert.equal(error.partialExecution.stepResults.length, 1);
+      assert.equal(error.partialExecution.stepResults[0].signerResult.broadcast.txHash, "0xreverted");
+      return true;
+    },
+  );
 });

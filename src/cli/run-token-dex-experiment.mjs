@@ -3,7 +3,9 @@
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { buildExecutionFundingOutcomeEvent, buildExecutionFundingSnapshotEvent } from "../execution/journal.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "../executor/helpers/token-dex-experiment.mjs";
 
@@ -63,8 +65,15 @@ async function main() {
     inputToken: args.inputToken,
     outputToken: args.outputToken,
   });
-  const execution = args.execute
-    ? await executeTokenDexExperimentPlan({
+  const fundingSnapshotEvent = buildExecutionFundingSnapshotEvent({
+    plan,
+    actor: args.execute ? "token_dex_experiment_execute" : "token_dex_experiment_preview",
+  });
+  let execution = null;
+  let executionError = null;
+  if (args.execute) {
+    try {
+      execution = await executeTokenDexExperimentPlan({
         plan,
         socketPath: args.socketPath,
         timeoutMs: args.timeoutMs,
@@ -74,21 +83,45 @@ async function main() {
         confirmationTimeoutMs: args.confirmationTimeoutMs,
         destinationSettlementTimeoutMs: args.destinationSettlementTimeoutMs || undefined,
         destinationPollIntervalMs: args.destinationPollIntervalMs,
+      });
+    } catch (error) {
+      execution = error.partialExecution || null;
+      executionError = {
+        name: error.name || "ExecutionFailed",
+        message: error.message,
+      };
+      if (execution && !execution.error) {
+        execution.error = executionError;
+      }
+    }
+  }
+  const fundingOutcomeEvent = execution
+    ? buildExecutionFundingOutcomeEvent({
+        plan,
+        execution,
+        actor: "token_dex_experiment_execute",
       })
     : null;
 
+  const store = new JsonlStore(config.dataDir);
   if (args.write || args.execute) {
-    await writeTextIfChanged(join(config.dataDir, "token-dex-experiment-plan-latest.json"), `${JSON.stringify({
+    await writeTextIfChanged(join(config.dataDir, "token-dex-experiment-plan-latest.json"), `${safeJsonStringify({
       plan,
       execution,
-    }, null, 2)}\n`);
+      error: executionError,
+    }, 2)}\n`);
+    await store.append("execution-journal", fundingSnapshotEvent);
   }
-  if (args.execute) {
-    await new JsonlStore(config.dataDir).append("token-dex-experiment-executions", execution);
+  if (args.execute && execution) {
+    await store.append("token-dex-experiment-executions", execution);
+  }
+  if (args.execute && fundingOutcomeEvent) {
+    await store.append("execution-journal", fundingOutcomeEvent);
   }
 
   if (args.json) {
-    console.log(JSON.stringify({ plan, execution }, null, 2));
+    console.log(safeJsonStringify({ plan, execution, error: executionError }, 2));
+    if (executionError) process.exitCode = 1;
     return;
   }
 
@@ -113,6 +146,10 @@ async function main() {
     console.log(`destinationProofSource=${execution.destinationProof.proofSource}`);
     console.log(`destinationObservedDelta=${execution.destinationProof.observedDelta}`);
     console.log(`destinationRequiredDelta=${execution.destinationProof.requiredDelta}`);
+  }
+  if (executionError) {
+    console.log(`executionError=${executionError.name}:${executionError.message}`);
+    process.exitCode = 1;
   }
 }
 

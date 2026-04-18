@@ -3,7 +3,9 @@
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { buildExecutionFundingOutcomeEvent, buildExecutionFundingSnapshotEvent } from "../execution/journal.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "../executor/helpers/native-dex-experiment.mjs";
 
@@ -59,8 +61,15 @@ async function main() {
     senderAddress: sender,
     outputToken: args.outputToken,
   });
-  const execution = args.execute
-    ? await executeNativeDexExperimentPlan({
+  const fundingSnapshotEvent = buildExecutionFundingSnapshotEvent({
+    plan,
+    actor: args.execute ? "native_dex_experiment_execute" : "native_dex_experiment_preview",
+  });
+  let execution = null;
+  let executionError = null;
+  if (args.execute) {
+    try {
+      execution = await executeNativeDexExperimentPlan({
         plan,
         socketPath: args.socketPath,
         timeoutMs: args.timeoutMs,
@@ -70,21 +79,45 @@ async function main() {
         confirmationTimeoutMs: args.confirmationTimeoutMs,
         destinationSettlementTimeoutMs: args.destinationSettlementTimeoutMs || undefined,
         destinationPollIntervalMs: args.destinationPollIntervalMs,
+      });
+    } catch (error) {
+      execution = error.partialExecution || null;
+      executionError = {
+        name: error.name || "ExecutionFailed",
+        message: error.message,
+      };
+      if (execution && !execution.error) {
+        execution.error = executionError;
+      }
+    }
+  }
+  const fundingOutcomeEvent = execution
+    ? buildExecutionFundingOutcomeEvent({
+        plan,
+        execution,
+        actor: "native_dex_experiment_execute",
       })
     : null;
 
+  const store = new JsonlStore(config.dataDir);
   if (args.write || args.execute) {
-    await writeTextIfChanged(join(config.dataDir, "native-dex-experiment-plan-latest.json"), `${JSON.stringify({
+    await writeTextIfChanged(join(config.dataDir, "native-dex-experiment-plan-latest.json"), `${safeJsonStringify({
       plan,
       execution,
-    }, null, 2)}\n`);
+      error: executionError,
+    }, 2)}\n`);
+    await store.append("execution-journal", fundingSnapshotEvent);
   }
-  if (args.execute) {
-    await new JsonlStore(config.dataDir).append("native-dex-experiment-executions", execution);
+  if (args.execute && execution) {
+    await store.append("native-dex-experiment-executions", execution);
+  }
+  if (args.execute && fundingOutcomeEvent) {
+    await store.append("execution-journal", fundingOutcomeEvent);
   }
 
   if (args.json) {
-    console.log(JSON.stringify({ plan, execution }, null, 2));
+    console.log(safeJsonStringify({ plan, execution, error: executionError }, 2));
+    if (executionError) process.exitCode = 1;
     return;
   }
 
@@ -108,6 +141,10 @@ async function main() {
     console.log(`destinationProofSource=${execution.destinationProof.proofSource}`);
     console.log(`destinationObservedDelta=${execution.destinationProof.observedDelta}`);
     console.log(`destinationRequiredDelta=${execution.destinationProof.requiredDelta}`);
+  }
+  if (executionError) {
+    console.log(`executionError=${executionError.name}:${executionError.message}`);
+    process.exitCode = 1;
   }
 }
 

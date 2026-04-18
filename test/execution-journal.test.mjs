@@ -3,6 +3,8 @@ import { test } from "node:test";
 import {
   buildExecutionAttemptEvent,
   buildExecutionBlockedEvent,
+  buildExecutionFundingSnapshotEvent,
+  buildExecutionFundingOutcomeEvent,
   buildExecutionReconciliationEvent,
   buildExecutionSubmissionEvent,
   canStartExecution,
@@ -143,6 +145,106 @@ test("blocked execution events preserve blockers and funding-source context", ()
   assert.equal(blocked.fundingSource.method, "cross_chain_bridge_or_swap");
   assert.equal(blocked.riskDecision.decision, "REVIEW");
   assert.deepEqual(blocked.reviewReasons, []);
+});
+
+test("funding snapshot events preserve live quote and gas context", () => {
+  const event = buildExecutionFundingSnapshotEvent({
+    actor: "token_dex_experiment_preview",
+    plan: {
+      observedAt: "2026-04-18T01:00:00.000Z",
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      planStatus: "ready",
+      amount: "10000",
+      amountUsd: 12.34,
+      slippageBps: 50,
+      gasBufferBps: 10000,
+      minimumOutputAmount: "9850",
+      quote: {
+        observedAt: "2026-04-18T01:00:01.000Z",
+        provider: "odos",
+        source: "token_dex_experiment",
+        quoteType: "token_to_token",
+        chain: "base",
+        pathId: "path-123",
+        latencyMs: 111,
+        assembleLatencyMs: 55,
+        inputToken: "0x1111",
+        outputToken: "0x2222",
+        inputAmount: "10000",
+        outputAmount: "9900",
+        inputValueUsd: 12.34,
+        outputValueUsd: 12.2,
+        netOutputValueUsd: 12.1,
+        gasEstimate: 200000,
+        gasEstimateValueUsd: 0.03,
+        priceImpactPct: 0.1,
+        percentDiff: -0.2,
+        gweiPerGas: 0.5,
+        txTo: "0x3333",
+        txGasLimit: "210000",
+        txValueWei: "0",
+        executionTrust: "verified",
+      },
+      gasSnapshot: {
+        observedAt: "2026-04-18T01:00:02.000Z",
+        chain: "base",
+        rpcUrl: "https://base-rpc.example",
+        blockNumber: 123,
+        latencyMs: 12,
+        gasPriceWei: "100",
+        baseFeeWei: "80",
+        priorityFeeWei: "20",
+      },
+      steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }],
+    },
+  });
+
+  assert.equal(event.status, "context_captured");
+  assert.equal(event.eventType, "execution_funding_snapshot");
+  assert.equal(event.quote.pathId, "path-123");
+  assert.equal(event.gas.gasPriceWei, "100");
+  assert.equal(event.slippageBps, 50);
+  assert.equal(event.minimumOutputAmount, "9850");
+  assert.deepEqual(event.stepIds, ["approve_input_token", "swap_input_to_output"]);
+});
+
+test("funding outcome events preserve balances and settlement results", () => {
+  const event = buildExecutionFundingOutcomeEvent({
+    actor: "token_dex_experiment_execute",
+    plan: {
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      outputToken: "0x2222",
+      outputAsset: { ticker: "cbBTC" },
+      quote: { outputAmount: "9900" },
+      minimumOutputAmount: "9850",
+    },
+    execution: {
+      observedAt: "2026-04-18T01:05:00.000Z",
+      settlementStatus: "delivered",
+      stepResults: [
+        { id: "approve_input_token", signerResult: { broadcast: { txHash: "0xaaa" } } },
+        { id: "swap_input_to_output", signerResult: { broadcast: { txHash: "0xbbb" } } },
+      ],
+      sourceBalanceBefore: { balance: 10000n, proofSource: "erc20_balance_delta", rpcUrl: "https://base-rpc.example" },
+      sourceBalanceAfter: { balance: 0n, proofSource: "erc20_balance_delta", rpcUrl: "https://base-rpc.example" },
+      destinationBalanceBefore: { balance: 0n, proofSource: "erc20_balance_delta", rpcUrl: "https://base-rpc.example" },
+      destinationBalanceAfter: { balance: 9900n, proofSource: "erc20_balance_delta", rpcUrl: "https://base-rpc.example" },
+      destinationProof: {
+        status: "delivered",
+        observedDelta: "9900",
+        requiredDelta: "9850",
+      },
+    },
+  });
+
+  assert.equal(event.eventType, "execution_funding_outcome");
+  assert.equal(event.status, "delivered");
+  assert.deepEqual(event.txHashes, ["0xaaa", "0xbbb"]);
+  assert.equal(event.sourceBalanceBefore.balance, "10000");
+  assert.equal(event.destinationBalanceAfter.balance, "9900");
+  assert.equal(event.destinationObservedDelta, "9900");
 });
 
 test("stableSerialize preserves undefined values deterministically", () => {

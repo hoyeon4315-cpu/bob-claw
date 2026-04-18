@@ -35,6 +35,7 @@ import { buildEdgeResearchSummary } from "../strategy/edge-research.mjs";
 import { buildEthereumRouteAnalysis } from "../strategy/ethereum-route-analysis.mjs";
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
+import { summarizePhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
 import { buildEthProfitabilitySummary, buildProfitabilitySummary } from "../strategy/profitability-summary.mjs";
 import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
 import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "../strategy/proxy-spread-coverage-plan.mjs";
@@ -128,6 +129,13 @@ function readinessRefreshLine(refresh) {
     return `- Refresh status: last readiness observation ${age}; ${remaining}`;
   }
   return `- Refresh status: ${refresh.reason || "unknown"}`;
+}
+
+function latestWholeWalletRouteFundingPlan(records = [], { routeKey = null, amount = null } = {}) {
+  return [...(records || [])]
+    .filter((item) => (!routeKey || item.routeKey === routeKey))
+    .filter((item) => (!amount || String(item.amount) === String(amount)))
+    .sort((left, right) => new Date(right?.observedAt || 0) - new Date(left?.observedAt || 0))[0] || null;
 }
 
 function liveBaselineLines(liveBaseline = null) {
@@ -640,7 +648,8 @@ function canaryInputsLines(summary) {
   ];
 }
 
-function preliveReviewPackageLines(reviewPackage = null) {
+function preliveReviewPackageLines(reviewPackage = null, options = {}) {
+  const wholeWalletFunding = options.wholeWalletFunding || null;
   if (!reviewPackage) return ["- Review package unavailable"];
   const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.manualReviewCandidate || null;
   const leader = reviewPackage.measuredLeaderReview || null;
@@ -711,6 +720,20 @@ function preliveReviewPackageLines(reviewPackage = null) {
       `- Measured leader review: route=\`${leader.routeLabel || leader.routeKey || "unknown"}\` amount=\`${leader.amount || "n/a"}\` readiness=\`${leader.tradeReadiness || "unknown"}\` measured=${money(leader.measuredNetUsd)} executable=${money(leader.executableNetUsd)} next=\`${leader.nextActionCode || "none"}\``,
     );
     lines.push(`- Leader review rationale: ${leader.reasons.join("; ") || "none"}${leader.blockers.length ? ` | blockers: ${leader.blockers.join(", ")}` : ""}`);
+    if (wholeWalletFunding?.status === "route_funding_required") {
+      const tokenTop = wholeWalletFunding.recommendations?.tokenTopUps?.[0] || null;
+      const nativeTop = wholeWalletFunding.recommendations?.nativeTopUps?.[0] || null;
+      lines.push(
+        `- Whole-wallet funding hint: nativeGap=${money(wholeWalletFunding.readiness?.nativeShortfallUsd)} tokenGap=\`${wholeWalletFunding.readiness?.tokenShortfall || "0"}\` topToken=\`${tokenTop ? `${tokenTop.chain} ${tokenTop.ticker} ${tokenTop.method}` : "none"}\` topNative=\`${nativeTop ? `${nativeTop.chain} ${nativeTop.ticker} ${nativeTop.method}` : "none"}\``,
+      );
+      if (wholeWalletFunding.livePreview?.tokenProbe || wholeWalletFunding.livePreview?.nativeProbe) {
+        const tokenProbe = wholeWalletFunding.livePreview?.tokenProbe;
+        const nativeProbe = wholeWalletFunding.livePreview?.nativeProbe;
+        lines.push(
+          `- Whole-wallet probe: token=${tokenProbe ? `${tokenProbe.status}/${tokenProbe.blockedReason || "ok"}/covers=${tokenProbe.coversShortfall}` : "n/a"} native=${nativeProbe ? `${nativeProbe.status}/${nativeProbe.blockedReason || "ok"}/covers=${nativeProbe.coversShortfall}` : "n/a"}`,
+        );
+      }
+    }
   }
   if (reviewPackage.ethFamilyProfitability) {
     lines.push(
@@ -878,8 +901,11 @@ function proxyCoveragePlanLines(summary = null, entries = []) {
   return lines;
 }
 
-function strategySnapshotLines(summary = null, snapshot = null) {
+function strategySnapshotLines(summary = null, snapshot = null, phase3Summary = null) {
   if (!summary?.topPivot && !summary?.topImplementedStrategy) return ["- Strategy snapshot unavailable"];
+  const effectivePhase3 = summary.phase3StrategyValidation || phase3Summary || null;
+  const phase3TopBlocked = effectivePhase3?.topBlocked || null;
+  const phase3NextAction = effectivePhase3?.nextAction || null;
   const lines = [
     `- Strategy snapshot: implemented=${summary.implementedStrategyCount ?? 0} candidates=${summary.candidateForValidationCount ?? 0} capitalMode=per_strategy_caps`,
     `- Top implemented strategy: \`${summary.topImplementedStrategy?.id || "unknown"}\` status=\`${summary.topImplementedStrategy?.status || "unknown"}\` reason=\`${summary.topImplementedStrategy?.reason || "unknown"}\``,
@@ -893,6 +919,11 @@ function strategySnapshotLines(summary = null, snapshot = null) {
   if (summary.deterministicCandidates) {
     lines.push(
       `- Deterministic builds: candidates=${summary.deterministicCandidates.candidateCount ?? 0} readyForDryRun=${summary.deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked=${summary.deterministicCandidates.receiptBackedCount ?? 0} top=\`${summary.deterministicCandidates.topCandidate?.id || "unknown"}\` next=\`${summary.deterministicCandidates.nextAction?.code || "unknown"}\``,
+    );
+  }
+  if (effectivePhase3) {
+    lines.push(
+      `- Advanced validation lane: passed=${effectivePhase3.passedCount ?? 0}/${effectivePhase3.validationCount ?? 0} topBlocked=\`${phase3TopBlocked?.id || "unknown"}\` blockers=${phase3TopBlocked?.blockers?.slice(0, 3).join(",") || "none"} next=\`${phase3NextAction?.code || "unknown"}\``,
     );
   }
   if (summary.topAction?.code || summary.topAction?.command) {
@@ -1017,12 +1048,14 @@ function onePageExecutionBriefLines({
   yieldShadow = null,
   proxyCoverage = null,
   strategySnapshot = null,
+  phase3StrategyValidation = null,
   executionRunbook = null,
   preliveValidation = null,
   connectedRefreshPackage = null,
   connectedRefreshExecution = null,
   exactRouteForkPackage = null,
   operationalJudgmentReview = null,
+  wholeWalletFunding = null,
 } = {}) {
   const yieldTop = yieldShadow?.topProfile || null;
   const pivotTop = pivotPlan?.topRecommendation || null;
@@ -1054,11 +1087,15 @@ function onePageExecutionBriefLines({
       ? `npm run estimate:gateway-gas -- --from="${address}" --route-key="${best.routeKey}" --amount="${best.amount}"`
       : null;
   const payback = dashboardStatus?.payback || null;
+  const effectivePhase3 = strategySnapshot?.phase3StrategyValidation || phase3StrategyValidation || null;
+  const phase3TopBlocked = effectivePhase3?.topBlocked || null;
+  const phase3NextAction = effectivePhase3?.nextAction || null;
   const lines = [
     `- Status: live=\`${dashboardStatus?.overall?.liveTrading || "BLOCKED"}\` shadow=\`${dashboardStatus?.overall?.shadowTrading || "ALLOWED"}\` next=\`${next?.decision || "unknown"}\``,
     `- Strategy pack: implemented=${strategySnapshot?.implementedStrategyCount ?? 0} top=\`${strategySnapshot?.topImplementedStrategy?.id || "unknown"}\` pivot=\`${strategySnapshot?.topPivot?.id || "unknown"}\``,
     `- Research board: candidates=${strategySnapshot?.researchBoard?.candidateCount ?? 0} top=\`${strategySnapshot?.researchBoard?.topCandidate?.id || "unknown"}\` newTop=\`${strategySnapshot?.researchBoard?.topNewCandidate?.id || "unknown"}\` nextNew=\`${strategySnapshot?.researchBoard?.nextNewAction?.code || "unknown"}\``,
     `- Deterministic builds: candidates=${strategySnapshot?.deterministicCandidates?.candidateCount ?? 0} readyForDryRun=${strategySnapshot?.deterministicCandidates?.readyForDryRunCount ?? 0} top=\`${strategySnapshot?.deterministicCandidates?.topCandidate?.id || "unknown"}\` next=\`${strategySnapshot?.deterministicCandidates?.nextAction?.code || "unknown"}\``,
+    `- Advanced validation lane: passed=${effectivePhase3?.passedCount ?? 0}/${effectivePhase3?.validationCount ?? 0} topBlocked=\`${phase3TopBlocked?.id || "unknown"}\` blockers=${phase3TopBlocked?.blockers?.slice(0, 3).join(",") || "none"} next=\`${phase3NextAction?.code || "unknown"}\``,
     `- Pivot headline: \`${pivotTop?.id || "unknown"}\` capital pilot=${money(yieldTop?.capitalRequiredUsd)} next=\`${yieldTop?.nextActionCode || pivotTop?.nextActionCode || "unknown"}\``,
     `- Capital mode: per_strategy_caps${Number.isFinite(expansionBudget?.budgetUsd) ? ` referenceCap=${money(expansionBudget?.budgetUsd)}` : ""} defaultYieldFitsReference=${
       defaultSplitExpansionFit === true ? "yes" : defaultSplitExpansionFit === false ? "no" : "n/a"
@@ -1073,6 +1110,20 @@ function onePageExecutionBriefLines({
       ? `- Canary lane: route=\`${best.label || best.routeKey}\` amount=\`${best.amount || "n/a"}\`${exactGasCommand ? ` exactGas=\`${exactGasCommand}\`` : ""}`
       : "- Canary lane: no active route",
   );
+  if (wholeWalletFunding?.status === "route_funding_required") {
+    const tokenTop = wholeWalletFunding.recommendations?.tokenTopUps?.[0] || null;
+    const nativeTop = wholeWalletFunding.recommendations?.nativeTopUps?.[0] || null;
+    lines.push(
+      `- Whole-wallet funding: route=\`${wholeWalletFunding.routeKey}\` nativeGap=${money(wholeWalletFunding.readiness?.nativeShortfallUsd)} tokenGap=\`${wholeWalletFunding.readiness?.tokenShortfall || "0"}\` topToken=\`${tokenTop ? `${tokenTop.chain} ${tokenTop.ticker}` : "none"}\` topNative=\`${nativeTop ? `${nativeTop.chain} ${nativeTop.ticker}` : "none"}\``,
+    );
+    if (wholeWalletFunding.livePreview?.tokenProbe || wholeWalletFunding.livePreview?.nativeProbe) {
+      const tokenProbe = wholeWalletFunding.livePreview?.tokenProbe;
+      const nativeProbe = wholeWalletFunding.livePreview?.nativeProbe;
+      lines.push(
+        `- Whole-wallet probe: token=${tokenProbe ? `${tokenProbe.status}/${tokenProbe.blockedReason || "ok"}/covers=${tokenProbe.coversShortfall}` : "n/a"} native=${nativeProbe ? `${nativeProbe.status}/${nativeProbe.blockedReason || "ok"}/covers=${nativeProbe.coversShortfall}` : "n/a"}`,
+      );
+    }
+  }
   lines.push(
     `- Validation: status=\`${preliveValidation?.validationStatus || "unknown"}\` nextStage=\`${executionRunbook?.nextStageId || "unknown"}\` nextAction=\`${preliveValidation?.nextActionCode || executionRunbook?.nextActionCode || "unknown"}\``,
   );
@@ -1374,7 +1425,9 @@ async function main() {
     strategyResearchBoard,
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
+    phase3StrategyValidation,
     v1InfraDrills,
+    wholeWalletRouteFundingPlans,
   ] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "prelive-fork-plan.json")),
     readJsonl(config.dataDir, "prelive-fork-submissions"),
@@ -1382,7 +1435,9 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "strategy-research-board.json")),
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "deterministic-strategy-candidates.json")),
+    readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(config.dataDir, "v1-infra-drills.json")),
+    readJsonl(config.dataDir, "whole-wallet-route-funding-plans").catch(() => []),
   ]);
   const executionEvents = await readJsonl(config.dataDir, "execution-journal");
   const triangleArtifacts = await readTriangleArtifacts(config.dataDir);
@@ -1394,6 +1449,10 @@ async function main() {
   });
   const btcWatchlist = dashboardStatus?.gateway?.btcWatchlist || buildBtcWatchlistFallbackSummary(state?.routesRecords?.at(-1)?.routes || []);
   const best = next.route || routePlan.topCandidates?.[0] || null;
+  const wholeWalletFunding = latestWholeWalletRouteFundingPlan(wholeWalletRouteFundingPlans, {
+    routeKey: best?.routeKey || null,
+    amount: best?.amount || null,
+  });
   const checklist = buildCanaryStageChecklist({
     route: best,
     nextStep: next,
@@ -1549,12 +1608,14 @@ async function main() {
     dashboardStatus: dashboardStatusForExecutionPack,
     state,
     triangleArtifacts,
+    phase3StrategyValidation,
     strategyResearchBoard,
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
     now,
   });
   const strategySnapshotSummary = summarizeStrategySnapshot(strategySnapshot);
+  const phase3StrategyValidationSummary = summarizePhase3StrategyValidation(phase3StrategyValidation);
   const dashboardStatusWithSnapshot = {
     ...dashboardStatusForExecutionPack,
     strategy: {
@@ -1571,6 +1632,10 @@ async function main() {
     address: resolved.address,
     strategySnapshot: strategySnapshotSummary,
     now,
+  });
+  const measuredLeaderWholeWalletFunding = latestWholeWalletRouteFundingPlan(wholeWalletRouteFundingPlans, {
+    routeKey: reviewPackage?.measuredLeaderReview?.routeKey || null,
+    amount: reviewPackage?.measuredLeaderReview?.amount || null,
   });
   const evidenceCampaign = buildPreliveEvidenceCampaign({
     reviewPackage,
@@ -1696,17 +1761,19 @@ async function main() {
       },
       proxyCoverage: proxyCoverageSummary,
       strategySnapshot: strategySnapshotSummary,
+      phase3StrategyValidation: phase3StrategyValidationSummary,
       executionRunbook: executionRunbookSummary,
       preliveValidation: preliveValidationSummary,
       connectedRefreshPackage: connectedRefreshSummary,
       connectedRefreshExecution: connectedRefreshExecutionSummary,
       exactRouteForkPackage: exactRouteForkSummary,
       operationalJudgmentReview: operationalJudgmentSummary,
+      wholeWalletFunding,
     }),
     "",
     "## Strategy Snapshot",
     "",
-    ...strategySnapshotLines(strategySnapshotSummary, strategySnapshot),
+    ...strategySnapshotLines(strategySnapshotSummary, strategySnapshot, phase3StrategyValidationSummary),
     "",
     "## V1 Infra Drills",
     "",
@@ -1847,7 +1914,7 @@ async function main() {
     "",
     "## Tiny Live Review Package",
     "",
-    ...preliveReviewPackageLines(reviewPackage),
+    ...preliveReviewPackageLines(reviewPackage, { wholeWalletFunding: measuredLeaderWholeWalletFunding }),
     "",
     "## Pre-live Evidence Campaign",
     "",

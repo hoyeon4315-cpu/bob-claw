@@ -60,6 +60,7 @@ test("phase3 strategy validation records OOS, search-budget, and shock-test bloc
   const summary = summarizePhase3StrategyValidation(report);
   assert.equal(summary.validationCount, 4);
   assert.equal(summary.topBlocked.id, "wrapped_btc_loop_validation");
+  assert.equal(summary.topBlocked.blockers.includes("oos_receipt_window_below_policy"), true);
 
   const snapshot = buildStrategySnapshot({
     dashboardStatus: {

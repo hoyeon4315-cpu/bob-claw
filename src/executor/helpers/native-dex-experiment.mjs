@@ -4,7 +4,7 @@ import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { attachOdosAssembly, normalizeOdosQuote, OdosClient, odosRoutingConfig, STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
-import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
+import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
@@ -110,6 +110,7 @@ function resolveQuotedGasLimit(quote, gasBufferBps) {
 export async function buildNativeDexExperimentPlan({
   client = new OdosClient(),
   estimateGasImpl = estimateGas,
+  gasSnapshotImpl = getGasSnapshot,
   strategyId = NATIVE_DEX_EXPERIMENT_STRATEGY_ID,
   chain,
   amount,
@@ -124,6 +125,8 @@ export async function buildNativeDexExperimentPlan({
 
   const wrappedNative = WRAPPED_NATIVE_TOKENS[chain];
   if (!wrappedNative) throw new Error(`Wrapped native token is not configured for ${chain}`);
+  const inputAsset = tokenAsset(chain, ZERO_TOKEN);
+  const wrappedInputAsset = tokenAsset(chain, wrappedNative);
 
   const strategyCaps = assertStrategyCaps(strategyId);
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
@@ -135,6 +138,8 @@ export async function buildNativeDexExperimentPlan({
   let executableQuote = null;
   let blockedReason = null;
   let preflightError = null;
+  let gasSnapshot = null;
+  let gasSnapshotError = null;
   let steps = [];
 
   try {
@@ -154,8 +159,8 @@ export async function buildNativeDexExperimentPlan({
       amount: normalizedAmount,
       inputToken: wrappedNative,
       outputToken: normalizedOutputToken,
-      inputTicker: tokenAsset(chain, wrappedNative).ticker,
-      inputDecimals: tokenAsset(chain, wrappedNative).decimals,
+      inputTicker: wrappedInputAsset.ticker,
+      inputDecimals: wrappedInputAsset.decimals,
       outputTicker: outputAsset.ticker,
       outputDecimals: outputAsset.decimals,
       quoteType: "wrapped_native_to_token",
@@ -169,6 +174,11 @@ export async function buildNativeDexExperimentPlan({
     });
     executableQuote = attachOdosAssembly(quote, assembled);
     const amountUsd = Number(executableQuote.inputValueUsd ?? 0);
+    try {
+      gasSnapshot = await gasSnapshotImpl(chain, getEvmChainConfig(chain));
+    } catch (error) {
+      gasSnapshotError = serializePreflightError(error);
+    }
 
     const wrapGas = await estimateGasImpl(
       chain,
@@ -303,12 +313,19 @@ export async function buildNativeDexExperimentPlan({
     chain,
     senderAddress,
     inputToken: ZERO_TOKEN,
+    inputAsset,
     wrappedInputToken: wrappedNative,
+    wrappedInputAsset,
     outputToken: normalizedOutputToken,
     outputAsset,
     amount: normalizedAmount,
     amountUsd: Number(executableQuote?.inputValueUsd ?? 0) || null,
+    quoteTtlMs: strategyCaps.intentTtlMs,
+    slippageBps: Number(slippageBps),
+    gasBufferBps: Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps")),
     quote: executableQuote,
+    gasSnapshot,
+    gasSnapshotError,
     minimumOutputAmount: quote?.outputAmount ? minimumOutputAmount(quote.outputAmount, slippageBps).toString() : null,
     steps,
   };
@@ -333,6 +350,12 @@ export async function executeNativeDexExperimentPlan({
   if (!Array.isArray(plan?.steps) || plan.steps.length === 0) {
     throw new Error(`Native DEX experiment plan is not executable: ${plan?.blockedReason || "missing_steps"}`);
   }
+  const sourceBalanceBefore = await readEvmAssetBalance({
+    asset: plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN),
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
   const destinationBalanceBefore = awaitDestinationSettlement
     ? await readEvmAssetBalance({
         asset: plan.outputAsset,
@@ -355,7 +378,44 @@ export async function executeNativeDexExperimentPlan({
       },
     });
     if (result?.status !== "ok" || !result?.broadcast?.txHash) {
-      throw new Error(result?.error?.message || `Signer did not complete ${step.id}`);
+      const error = new Error(result?.error?.message || `Signer did not complete ${step.id}`);
+      error.name = result?.error?.name || "SignerExecutionFailed";
+      error.partialExecution = {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        settlementStatus: "failed",
+        plan,
+        stepResults: [
+          ...stepResults,
+          {
+            id: step.id,
+            signerResult: result,
+          },
+        ],
+        sourceBalanceBefore: {
+          ...sourceBalanceBefore,
+          ticker: (plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN))?.ticker || null,
+          token: plan.inputToken || ZERO_TOKEN,
+          chain: plan.chain,
+        },
+        sourceBalanceAfter: null,
+        destinationBalanceBefore: destinationBalanceBefore
+          ? {
+              ...destinationBalanceBefore,
+              ticker: plan.outputAsset?.ticker || null,
+              token: plan.outputToken || null,
+              chain: plan.chain,
+            }
+          : null,
+        destinationBalanceAfter: null,
+        destinationProof: null,
+        error: {
+          name: error.name,
+          message: error.message,
+          stepId: step.id,
+        },
+      };
+      throw error;
     }
     stepResults.push({
       id: step.id,
@@ -375,12 +435,60 @@ export async function executeNativeDexExperimentPlan({
         sleepImpl,
       })
     : null;
+  const sourceBalanceAfter = await readEvmAssetBalance({
+    asset: plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN),
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const destinationBalanceAfter = destinationProof
+    ? {
+        proofSource: destinationProof.proofSource,
+        rpcUrl: destinationProof.rpcUrl || null,
+        balance: BigInt(destinationProof.settledBalance),
+      }
+    : awaitDestinationSettlement
+      ? await readEvmAssetBalance({
+          asset: plan.outputAsset,
+          owner: plan.senderAddress,
+          readErc20BalanceImpl,
+          readNativeBalanceImpl,
+        })
+      : null;
   const execution = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     settlementStatus: destinationProof?.status || "source_confirmed_only",
     plan,
     stepResults,
+    sourceBalanceBefore: {
+      ...sourceBalanceBefore,
+      ticker: (plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN))?.ticker || null,
+      token: plan.inputToken || ZERO_TOKEN,
+      chain: plan.chain,
+    },
+    sourceBalanceAfter: {
+      ...sourceBalanceAfter,
+      ticker: (plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN))?.ticker || null,
+      token: plan.inputToken || ZERO_TOKEN,
+      chain: plan.chain,
+    },
+    destinationBalanceBefore: destinationBalanceBefore
+      ? {
+          ...destinationBalanceBefore,
+          ticker: plan.outputAsset?.ticker || null,
+          token: plan.outputToken || null,
+          chain: plan.chain,
+        }
+      : null,
+    destinationBalanceAfter: destinationBalanceAfter
+      ? {
+          ...destinationBalanceAfter,
+          ticker: plan.outputAsset?.ticker || null,
+          token: plan.outputToken || null,
+          chain: plan.chain,
+        }
+      : null,
     destinationProof,
   };
   if (typeof receiptIngest !== "function") return execution;

@@ -77,6 +77,7 @@ test("write-session-handoff includes payback readiness summary and preview comma
 
   const doc = await readFile(join(cwd, "docs/current-status.md"), "utf8");
   assert.match(doc, /Research board: candidates=\d+ top=`.*` newTop=`.*` nextNew=`.*`/);
+  assert.match(doc, /Advanced validation lane: passed=\d+\/\d+ topBlocked=`.*` blockers=.* next=`.*`/);
   assert.match(doc, /## Live Baseline/);
   assert.match(doc, /Blocker counts: refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+ total=\d+/);
   assert.match(doc, /Operator blocker: status=`payback_destination_env_missing` env=`PAYBACK_BTC_DEST_ADDR` next=`set_payback_btc_destination_env`/);
