@@ -41,8 +41,19 @@ async function main() {
   console.log(`ethereumL1: ${catalog.policy.ethereumL1}`);
   console.log(`flash live: ${catalog.policy.flashLiveAdmission}`);
   console.log(`odos trust: ${catalog.policy.odosExecutionTrust}`);
+  console.log(`scope: ${catalog.scope?.coverage || "unknown"}`);
   console.log(`revalidation top: ${catalog.summary?.topRevalidationCandidateId || "none"}`);
   console.log(`revalidation next: ${catalog.summary?.nextRevalidationAction?.code || "none"}`);
+  if (catalog.scope?.excludes?.length) {
+    console.log(`catalog excludes: ${catalog.scope.excludes.join(", ")}`);
+  }
+  if (catalog.scope?.companionArtifacts?.length) {
+    console.log(
+      `companion artifacts: ${catalog.scope.companionArtifacts
+        .map((item) => `${item.kind}(${item.path})`)
+        .join(", ")}`,
+    );
+  }
 
   printEntries("BTC families", catalog.btcFamilies);
   printEntries("ETH branches", catalog.ethBranches);

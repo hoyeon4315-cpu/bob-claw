@@ -250,6 +250,7 @@ export function buildStrategySnapshot({
     schemaVersion: 1,
     generatedAt,
     currentSystem,
+    catalogScope: catalog?.scope || null,
     summary: {
       implementedStrategyCount: implementedStrategies.length,
       btcFamilyCount: catalog?.btcFamilies?.length || 0,
@@ -381,7 +382,10 @@ export function summarizeStrategySnapshot(snapshot = null) {
     topAction: snapshot.summary?.topAction || null,
     planningBudgetUsd: snapshot.summary?.planningBudgetUsd ?? null,
     yieldTopProfileId: snapshot.summary?.yieldTopProfileId || null,
+    catalogScope: snapshot.catalogScope || null,
     proxyCoverageNextAction: snapshot.summary?.proxyCoverageNextAction || null,
+    secondaryTopScaffoldId: snapshot.summary?.secondaryTopScaffoldId || null,
+    allocatorTopPlanningCandidateId: snapshot.summary?.allocatorTopPlanningCandidateId || null,
     capitalExpansionReview: summarizeCapitalExpansionReview(snapshot.planningLayers?.capitalExpansionReview || null),
     phase1Revalidation: snapshot.planningLayers?.phase1Revalidation || null,
     phase3StrategyValidation: snapshot.planningLayers?.phase3StrategyValidation || null,
@@ -393,5 +397,7 @@ export function summarizeStrategySnapshot(snapshot = null) {
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
     deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,
     milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
+    topSecondaryScaffold: snapshot.planningLayers?.secondaryStrategyScaffolds?.topScaffold || null,
+    topAllocatorCandidate: snapshot.planningLayers?.allocatorCore?.topPlanningCandidate || null,
   };
 }

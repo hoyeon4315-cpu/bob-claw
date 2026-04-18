@@ -482,6 +482,45 @@ export function buildStrategyCatalog({
       flashLiveAdmission: "blocked_pending_explicit_review",
       odosExecutionTrust: "safe_whitelist_required_for_execution_claims",
     },
+    scope: {
+      coverage: "implemented_strategy_families_only",
+      includes: [
+        "currently implemented BTC family lanes",
+        "currently implemented ETH branch lanes",
+      ],
+      excludes: [
+        "secondary design scaffolds",
+        "yield blueprints and paper yield profiles",
+        "allocator and destination LP / venue templates",
+      ],
+      companionArtifacts: [
+        {
+          kind: "strategy_snapshot",
+          path: "data/strategy-snapshot.json",
+          reason: "combined implemented lanes and planning layers",
+        },
+        {
+          kind: "strategy_pivot_plan",
+          path: "data/strategy-pivot-plan.json",
+          reason: "yield blueprint and pivot ordering",
+        },
+        {
+          kind: "secondary_strategy_scaffolds",
+          path: "data/secondary-strategy-scaffolds.json",
+          reason: "design scaffolds such as reserve sleeve and perp basis",
+        },
+        {
+          kind: "allocator_core",
+          path: "data/allocator-core.json",
+          reason: "planning allocation candidates including yield / LP sleeves",
+        },
+        {
+          kind: "destination_promotion_gate",
+          path: "data/destination-promotion-gate.json",
+          reason: "destination venue templates including wrapped-BTC LP and lending surfaces",
+        },
+      ],
+    },
     summary: {
       entryCount: allEntries.length,
       statusCounts,
@@ -492,6 +531,10 @@ export function buildStrategyCatalog({
     statusCounts,
     btcFamilies: revalidatedBtcFamilies,
     ethBranches: revalidatedEthBranches,
+    notes: [
+      "This catalog intentionally covers implemented strategy families only.",
+      "Planning-only yield, LP, allocator, and scaffold candidates remain in companion artifacts until they are promoted into implemented lanes.",
+    ],
     sharedInfrastructure: sharedInfrastructure(),
   };
 }

@@ -24,6 +24,7 @@ import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildCanaryInputSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
 import { buildLiveBaselineSummary } from "../status/live-baseline.mjs";
+import { buildAllocatorCore } from "../strategy/allocator-core.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
@@ -918,9 +919,19 @@ function strategySnapshotLines(summary = null, snapshot = null, phase3Summary = 
     `- Top implemented strategy: \`${summary.topImplementedStrategy?.id || "unknown"}\` status=\`${summary.topImplementedStrategy?.status || "unknown"}\` reason=\`${summary.topImplementedStrategy?.reason || "unknown"}\``,
     `- Top pivot: \`${summary.topPivot?.id || "unknown"}\` status=\`${summary.topPivot?.status || "unknown"}\` pilot=${money(summary.topPivot?.researchPilotMinimumUsd)}`,
   ];
+  if (summary.catalogScope?.coverage) {
+    lines.push(
+      `- Catalog scope: \`${summary.catalogScope.coverage}\` excludes=${summary.catalogScope.excludes?.join(",") || "none"}`,
+    );
+  }
   if (summary.researchBoard) {
     lines.push(
       `- Research board: candidates=${summary.researchBoard.candidateCount ?? 0} top=\`${summary.researchBoard.topCandidate?.id || "unknown"}\` newTop=\`${summary.researchBoard.topNewCandidate?.id || "unknown"}\` status=\`${summary.researchBoard.topNewCandidate?.status || summary.researchBoard.topCandidate?.status || "unknown"}\` nextNew=\`${summary.researchBoard.nextNewAction?.code || "unknown"}\``,
+    );
+  }
+  if (summary.secondaryStrategyScaffolds || summary.topAllocatorCandidate) {
+    lines.push(
+      `- Planning layers: scaffoldTop=\`${summary.topSecondaryScaffold?.id || summary.secondaryTopScaffoldId || summary.secondaryStrategyScaffolds?.topScaffold?.id || "unknown"}\` allocatorTop=\`${summary.topAllocatorCandidate?.id || summary.allocatorTopPlanningCandidateId || summary.allocatorCore?.topPlanningCandidate?.id || "unknown"}\``,
     );
   }
   if (summary.deterministicCandidates) {
@@ -1105,6 +1116,7 @@ function onePageExecutionBriefLines({
   const lines = [
     `- Status: live=\`${dashboardStatus?.overall?.liveTrading || "BLOCKED"}\` shadow=\`${dashboardStatus?.overall?.shadowTrading || "ALLOWED"}\` next=\`${next?.decision || "unknown"}\``,
     `- Strategy pack: implemented=${strategySnapshot?.implementedStrategyCount ?? 0} top=\`${strategySnapshot?.topImplementedStrategy?.id || "unknown"}\` pivot=\`${strategySnapshot?.topPivot?.id || "unknown"}\``,
+    `- Catalog scope: \`${strategySnapshot?.catalogScope?.coverage || "unknown"}\` scaffoldTop=\`${strategySnapshot?.topSecondaryScaffold?.id || strategySnapshot?.secondaryTopScaffoldId || strategySnapshot?.secondaryStrategyScaffolds?.topScaffold?.id || "unknown"}\` allocatorTop=\`${strategySnapshot?.topAllocatorCandidate?.id || strategySnapshot?.allocatorTopPlanningCandidateId || strategySnapshot?.allocatorCore?.topPlanningCandidate?.id || "unknown"}\``,
     `- Research board: candidates=${strategySnapshot?.researchBoard?.candidateCount ?? 0} top=\`${strategySnapshot?.researchBoard?.topCandidate?.id || "unknown"}\` newTop=\`${strategySnapshot?.researchBoard?.topNewCandidate?.id || "unknown"}\` nextNew=\`${strategySnapshot?.researchBoard?.nextNewAction?.code || "unknown"}\``,
     `- Deterministic builds: candidates=${strategySnapshot?.deterministicCandidates?.candidateCount ?? 0} readyForDryRun=${strategySnapshot?.deterministicCandidates?.readyForDryRunCount ?? 0} top=\`${strategySnapshot?.deterministicCandidates?.topCandidate?.id || "unknown"}\` next=\`${strategySnapshot?.deterministicCandidates?.nextAction?.code || "unknown"}\``,
     `- Advanced validation lane: passed=${effectivePhase3?.passedCount ?? 0}/${effectivePhase3?.validationCount ?? 0} topBlocked=\`${phase3TopBlocked?.id || "unknown"}\` blockers=${phase3TopBlocked?.blockers?.slice(0, 3).join(",") || "none"} next=\`${phase3NextAction?.code || "unknown"}\``,
@@ -1440,6 +1452,9 @@ async function main() {
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
     phase3StrategyValidation,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
+    wrappedBtcLendingLoopSlice,
     v1InfraDrills,
     wholeWalletRouteFundingPlans,
     wrappedBtcLoopAutoUnwindRuntime,
@@ -1452,6 +1467,9 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "deterministic-strategy-candidates.json")),
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
+    readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
     readJsonIfExists(join(config.dataDir, "v1-infra-drills.json")),
     readJsonl(config.dataDir, "whole-wallet-route-funding-plans").catch(() => []),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-loop-base-moonwell-auto-unwind-runtime-latest.json")),
@@ -1623,11 +1641,22 @@ async function main() {
     dashboardStatus: dashboardStatusForExecutionPack,
     nextStep: next,
   });
+  const allocatorCore = buildAllocatorCore({
+    strategySnapshot: null,
+    phase3Validation: phase3StrategyValidation,
+    wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
+    secondaryStrategyScaffolds,
+    protocolMarketWatchers: null,
+    now,
+  });
   const strategySnapshot = buildStrategySnapshot({
     dashboardStatus: dashboardStatusForExecutionPack,
     state,
     triangleArtifacts,
     phase3StrategyValidation,
+    allocatorCore,
     strategyResearchBoard,
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
