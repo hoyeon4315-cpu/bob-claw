@@ -1,4 +1,4 @@
-import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import { assertStrategyCaps, getStrategyCaps } from "../../config/strategy-caps.mjs";
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
@@ -97,6 +97,86 @@ function intentCapAmountUsd(intent = {}) {
   return Number(intent.amountUsd ?? 0);
 }
 
+function protocolTagsForStrategy(strategyId) {
+  return [...new Set(getStrategyCaps(strategyId)?.exposure?.protocols || [])];
+}
+
+function assetFamilyForStrategy(strategyId) {
+  return getStrategyCaps(strategyId)?.exposure?.assetFamily || null;
+}
+
+function btcDenominatedForStrategy(strategyId) {
+  return getStrategyCaps(strategyId)?.exposure?.btcDenominated === true;
+}
+
+function finiteBudget(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolvePortfolioExposurePolicy({
+  activeBudgetUsd = null,
+  policy = {},
+} = {}) {
+  const normalizedPolicy = policy || {};
+  const budgetUsd = finiteBudget(activeBudgetUsd);
+  if (!Number.isFinite(budgetUsd)) return null;
+  return {
+    activeBudgetUsd: budgetUsd,
+    maxProtocolSharePct: Number.isFinite(normalizedPolicy.maxProtocolSharePct) ? Number(normalizedPolicy.maxProtocolSharePct) : 0.25,
+    maxDefaultChainSharePct: Number.isFinite(normalizedPolicy.maxDefaultChainSharePct) ? Number(normalizedPolicy.maxDefaultChainSharePct) : 0.2,
+    chainSharePct:
+      normalizedPolicy.chainSharePct && typeof normalizedPolicy.chainSharePct === "object"
+        ? normalizedPolicy.chainSharePct
+        : { ethereum: 0.5, bob: 0.1 },
+    minBtcDenominatedSharePct:
+      Number.isFinite(normalizedPolicy.minBtcDenominatedSharePct) ? Number(normalizedPolicy.minBtcDenominatedSharePct) : 0.4,
+  };
+}
+
+export function buildPortfolioExposureState({
+  auditRecords = [],
+  now = new Date().toISOString(),
+} = {}) {
+  const currentDay = dayKey(now);
+  const today = dedupeRecords(auditRecords.filter((item) => dayKey(item.timestamp || item.observedAt || now) === currentDay)).filter(successfulBroadcast);
+  const protocolVolumeUsd = {};
+  const chainVolumeUsd = {};
+  const assetFamilyVolumeUsd = {};
+  let btcDenominatedVolumeUsd = 0;
+  let nonBtcDenominatedVolumeUsd = 0;
+
+  for (const item of today) {
+    const strategyId = item.strategyId ?? item.intent?.strategyId;
+    const amountUsd = recordAmountUsd(item);
+    if (!isFiniteNumber(amountUsd)) continue;
+    const chain = item.chain || item.intent?.chain || "unknown";
+    chainVolumeUsd[chain] = (chainVolumeUsd[chain] || 0) + amountUsd;
+    const assetFamily = assetFamilyForStrategy(strategyId);
+    if (assetFamily) {
+      assetFamilyVolumeUsd[assetFamily] = (assetFamilyVolumeUsd[assetFamily] || 0) + amountUsd;
+    }
+    const protocolTags = protocolTagsForStrategy(strategyId);
+    for (const protocol of protocolTags) {
+      protocolVolumeUsd[protocol] = (protocolVolumeUsd[protocol] || 0) + amountUsd;
+    }
+    if (btcDenominatedForStrategy(strategyId)) {
+      btcDenominatedVolumeUsd += amountUsd;
+    } else {
+      nonBtcDenominatedVolumeUsd += amountUsd;
+    }
+  }
+
+  return {
+    observedAt: now,
+    protocolVolumeUsd,
+    chainVolumeUsd,
+    assetFamilyVolumeUsd,
+    btcDenominatedVolumeUsd,
+    nonBtcDenominatedVolumeUsd,
+  };
+}
+
 export function buildStrategyCapState({
   strategyId,
   auditRecords = [],
@@ -141,6 +221,8 @@ export function evaluateCapCheck({
   intent,
   strategyCaps = assertStrategyCaps(intent.strategyId),
   auditRecords = [],
+  activeBudgetUsd = null,
+  portfolioExposurePolicy = null,
   now = new Date().toISOString(),
 } = {}) {
   const blockers = [];
@@ -154,6 +236,14 @@ export function evaluateCapCheck({
   const amountUsd = Number(intent.amountUsd ?? 0);
   const capAmountUsd = intentCapAmountUsd(intent);
   const isEmergencyIntent = intent.intentType === "emergency_unwind" || intent.executionReason === "risk_unwind";
+  const portfolioPolicy = resolvePortfolioExposurePolicy({
+    activeBudgetUsd,
+    policy: portfolioExposurePolicy,
+  });
+  const portfolioState = buildPortfolioExposureState({
+    auditRecords,
+    now,
+  });
 
   if (intent.mode !== "dry_run" && strategyCaps.autoExecute !== true) {
     blockers.push("strategy_auto_execute_disabled");
@@ -190,6 +280,40 @@ export function evaluateCapCheck({
   if (isFiniteNumber(caps.maxFailedGasCost24hUsd) && state.failedGasCost24hUsd >= caps.maxFailedGasCost24hUsd) {
     blockers.push("strategy_failed_gas_budget_breached");
   }
+  if (!isEmergencyIntent && portfolioPolicy && isFiniteNumber(capAmountUsd)) {
+    const chainSharePct = Number(
+      portfolioPolicy.chainSharePct?.[intent.chain] ?? portfolioPolicy.maxDefaultChainSharePct,
+    );
+    const chainCapBudgetUsd = Number.isFinite(chainSharePct) ? portfolioPolicy.activeBudgetUsd * chainSharePct : null;
+    if (
+      Number.isFinite(chainCapBudgetUsd) &&
+      (portfolioState.chainVolumeUsd[intent.chain] || 0) + capAmountUsd > chainCapBudgetUsd
+    ) {
+      blockers.push("portfolio_chain_cap_exceeded");
+    }
+    const protocols = protocolTagsForStrategy(intent.strategyId);
+    const protocolCapBudgetUsd = Number.isFinite(portfolioPolicy.maxProtocolSharePct)
+      ? portfolioPolicy.activeBudgetUsd * portfolioPolicy.maxProtocolSharePct
+      : null;
+    if (
+      Number.isFinite(protocolCapBudgetUsd) &&
+      protocols.some((protocol) => (portfolioState.protocolVolumeUsd[protocol] || 0) + capAmountUsd > protocolCapBudgetUsd)
+    ) {
+      blockers.push("portfolio_protocol_cap_exceeded");
+    }
+    const isBtcDenominated = btcDenominatedForStrategy(intent.strategyId);
+    const maxNonBtcBudgetUsd =
+      Number.isFinite(portfolioPolicy.minBtcDenominatedSharePct)
+        ? portfolioPolicy.activeBudgetUsd * (1 - portfolioPolicy.minBtcDenominatedSharePct)
+        : null;
+    if (
+      !isBtcDenominated &&
+      Number.isFinite(maxNonBtcBudgetUsd) &&
+      portfolioState.nonBtcDenominatedVolumeUsd + capAmountUsd > maxNonBtcBudgetUsd
+    ) {
+      blockers.push("portfolio_btc_denomination_floor_breached");
+    }
+  }
 
   return {
     policy: "cap_check",
@@ -197,6 +321,7 @@ export function evaluateCapCheck({
     decision: blockers.length > 0 ? "BLOCK" : "ALLOW",
     blockers,
     state,
+    portfolioState,
     metrics: {
       amountUsd: isFiniteNumber(amountUsd) ? amountUsd : null,
       capAmountUsd: isFiniteNumber(capAmountUsd) ? capAmountUsd : null,
@@ -205,6 +330,20 @@ export function evaluateCapCheck({
       perChainUsd: chainCapUsd,
       maxDailyLossUsd: caps.maxDailyLossUsd ?? null,
       maxFailedGasCost24hUsd: caps.maxFailedGasCost24hUsd ?? null,
+      portfolioActiveBudgetUsd: portfolioPolicy?.activeBudgetUsd ?? null,
+      portfolioProtocolCapUsd:
+        portfolioPolicy && Number.isFinite(portfolioPolicy.maxProtocolSharePct)
+          ? portfolioPolicy.activeBudgetUsd * portfolioPolicy.maxProtocolSharePct
+          : null,
+      portfolioChainCapUsd:
+        portfolioPolicy && Number.isFinite(Number(portfolioPolicy.chainSharePct?.[intent.chain] ?? portfolioPolicy.maxDefaultChainSharePct))
+          ? portfolioPolicy.activeBudgetUsd *
+            Number(portfolioPolicy.chainSharePct?.[intent.chain] ?? portfolioPolicy.maxDefaultChainSharePct)
+          : null,
+      portfolioMaxNonBtcUsd:
+        portfolioPolicy && Number.isFinite(portfolioPolicy.minBtcDenominatedSharePct)
+          ? portfolioPolicy.activeBudgetUsd * (1 - portfolioPolicy.minBtcDenominatedSharePct)
+          : null,
     },
   };
 }

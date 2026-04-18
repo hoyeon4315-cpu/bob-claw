@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStrategyCapState, evaluateCapCheck } from "../src/executor/policy/cap-check.mjs";
+import { buildPortfolioExposureState, buildStrategyCapState, evaluateCapCheck } from "../src/executor/policy/cap-check.mjs";
 
 function strategyCapsFixture(overrides = {}) {
   return {
@@ -296,4 +296,124 @@ test("buildStrategyCapState reinterprets legacy token dex approval audit steps w
 
   assert.equal(state.dailyVolumeUsd, 0);
   assert.equal(state.perChainVolumeUsd.base ?? 0, 0);
+});
+
+test("buildPortfolioExposureState aggregates protocol, chain, and BTC-denominated usage", () => {
+  const state = buildPortfolioExposureState({
+    now: "2026-04-16T22:00:00.000Z",
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        intentId: "wrapped-btc-loop-base-moonwell:entry:mint-initial-collateral",
+        timestamp: "2026-04-16T20:49:16.619Z",
+        amountUsd: 120,
+        policyVerdict: "approved",
+      },
+      {
+        strategyId: "token-dex-experiment",
+        chain: "base",
+        timestamp: "2026-04-16T21:07:36.445Z",
+        amountUsd: 30,
+        policyVerdict: "approved",
+      },
+    ],
+  });
+
+  assert.equal(state.protocolVolumeUsd.moonwell, 120);
+  assert.equal(state.protocolVolumeUsd.odos, 150);
+  assert.equal(state.chainVolumeUsd.base, 150);
+  assert.equal(state.assetFamilyVolumeUsd.btc_wrappers, 120);
+  assert.equal(state.btcDenominatedVolumeUsd, 120);
+  assert.equal(state.nonBtcDenominatedVolumeUsd, 30);
+});
+
+test("evaluateCapCheck blocks aggregate protocol exposure above configured share", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      amountUsd: 20,
+      intentId: "wrapped-btc-loop-base-moonwell:entry:mint-initial-collateral",
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        caps: {
+          perTxUsd: 300,
+          perDayUsd: 600,
+          perChainUsd: { base: 300 },
+          maxDailyLossUsd: 50,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["moonwell", "odos"],
+        assetFamily: "btc_wrappers",
+        btcDenominated: true,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        intentId: "wrapped-btc-loop-base-moonwell:entry:mint-initial-collateral",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 90,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 400,
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.blockers.includes("portfolio_protocol_cap_exceeded"), true);
+});
+
+test("evaluateCapCheck blocks aggregate chain exposure and BTC denomination drift", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      amountUsd: 40,
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "token-dex-experiment",
+        caps: {
+          perTxUsd: 100,
+          perDayUsd: 300,
+          perChainUsd: { base: 200 },
+          maxDailyLossUsd: 25,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["odos"],
+        assetFamily: "mixed_assets",
+        btcDenominated: false,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 60,
+        policyVerdict: "approved",
+      },
+      {
+        strategyId: "token-dex-experiment",
+        chain: "base",
+        timestamp: "2026-04-16T02:00:00.000Z",
+        amountUsd: 30,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 100,
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), true);
+  assert.equal(result.blockers.includes("portfolio_btc_denomination_floor_breached"), true);
 });

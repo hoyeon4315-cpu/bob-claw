@@ -28,6 +28,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "Gateway BTC funding transfer",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
     caps: Object.freeze({
       perTxUsd: 50,
       perDayUsd: 150,
@@ -62,6 +67,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "Gateway BTC onramp",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
     caps: Object.freeze({
       perTxUsd: 75,
       perDayUsd: 300,
@@ -81,6 +91,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "Gateway BTC offramp",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
     caps: Object.freeze({
       perTxUsd: 50,
       perDayUsd: 200,
@@ -115,6 +130,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "Native asset DEX experiment",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["odos"]),
+      assetFamily: "native_gas",
+      btcDenominated: false,
+    }),
     caps: Object.freeze({
       perTxUsd: 15,
       perDayUsd: 75,
@@ -147,6 +167,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "ERC20 token DEX experiment",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["odos"]),
+      assetFamily: "mixed_assets",
+      btcDenominated: false,
+    }),
     caps: Object.freeze({
       perTxUsd: 15,
       perDayUsd: 75,
@@ -179,6 +204,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "BTC proxy spread experiment",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway", "odos"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
     caps: Object.freeze({
       perTxUsd: 25,
       perDayUsd: 100,
@@ -211,6 +241,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "Wrapper BTC arbitrage",
     autoExecute: false,
     intentTtlMs: 45_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
     caps: Object.freeze({
       perTxUsd: 100,
       perDayUsd: 600,
@@ -233,6 +268,11 @@ export const STRATEGY_CAPS = Object.freeze({
     label: "Wrapped BTC lending loop (Base / Moonwell)",
     autoExecute: true,
     intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["moonwell", "odos"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
     caps: Object.freeze({
       perTxUsd: 300,
       perDayUsd: 600,
@@ -293,6 +333,17 @@ export function validateStrategyCapsConfig(config = {}) {
     }
     if (!Array.isArray(config.leverage.emergencyUnwindPath) || config.leverage.emergencyUnwindPath.length === 0) {
       errors.push("leverage.emergencyUnwindPath must be a non-empty array");
+    }
+  }
+  if (config.exposure) {
+    if (!Array.isArray(config.exposure.protocols) || config.exposure.protocols.length === 0) {
+      errors.push("exposure.protocols must be a non-empty array when provided");
+    }
+    if (config.exposure.assetFamily !== undefined && typeof config.exposure.assetFamily !== "string") {
+      errors.push("exposure.assetFamily must be a string when provided");
+    }
+    if (config.exposure.btcDenominated !== undefined && typeof config.exposure.btcDenominated !== "boolean") {
+      errors.push("exposure.btcDenominated must be a boolean when provided");
     }
   }
   return {

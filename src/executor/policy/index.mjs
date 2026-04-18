@@ -9,6 +9,7 @@ import { evaluateStaleQuote } from "./stale-quote.mjs";
 export async function evaluateIntentPolicies({
   intent,
   auditRecords = [],
+  activeBudgetUsd = null,
   now = new Date().toISOString(),
   killSwitchPath,
 } = {}) {
@@ -16,7 +17,7 @@ export async function evaluateIntentPolicies({
   const results = [
     await checkKillSwitch({ killSwitchPath, now }),
     evaluateConsecutiveFailures({ intent, auditRecords, now }),
-    evaluateCapCheck({ intent, strategyCaps, auditRecords, now }),
+    evaluateCapCheck({ intent, strategyCaps, auditRecords, activeBudgetUsd, now }),
     evaluateHealthFactorCheck({ intent, strategyCaps, now }),
     evaluateStaleQuote({ intent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
     evaluateApprovalHygiene({ intent, now }),

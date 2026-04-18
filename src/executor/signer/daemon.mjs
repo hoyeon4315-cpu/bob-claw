@@ -29,6 +29,7 @@ function parseArgs(argv) {
     heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
     heartbeatIntervalMs: getNumberEnv("EXECUTOR_HEARTBEAT_INTERVAL_MS", 15_000),
     killSwitchPath: getEnv("KILL_SWITCH_PATH", null),
+    activeBudgetUsd: getNumberEnv("BOB_CLAW_ACTIVE_BUDGET_USD", null),
     autoIngest: !flags.has("--no-auto-ingest") && getBooleanEnv("EXECUTOR_AUTO_INGEST", true),
   };
 }
@@ -93,6 +94,7 @@ async function handleIntentCommand({
   const policy = await evaluateIntentPolicies({
     intent,
     auditRecords,
+    activeBudgetUsd: args.activeBudgetUsd,
     killSwitchPath: args.killSwitchPath,
   });
 
