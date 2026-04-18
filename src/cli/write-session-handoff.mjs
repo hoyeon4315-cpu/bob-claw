@@ -932,6 +932,11 @@ function strategySnapshotLines(summary = null, snapshot = null, phase3Summary = 
       `- Advanced validation lane: passed=${effectivePhase3.passedCount ?? 0}/${effectivePhase3.validationCount ?? 0} topBlocked=\`${phase3TopBlocked?.id || "unknown"}\` blockers=${phase3TopBlocked?.blockers?.slice(0, 3).join(",") || "none"} next=\`${phase3NextAction?.code || "unknown"}\``,
     );
   }
+  if (summary.leverageAutoUnwindRuntime?.runtimeCount > 0) {
+    lines.push(
+      `- Auto-unwind runtime: count=${summary.leverageAutoUnwindRuntime.runtimeCount} top=\`${summary.leverageAutoUnwindRuntime.topPriority?.strategyId || "unknown"}\` status=\`${summary.leverageAutoUnwindRuntime.topPriority?.status || "unknown"}\` triggers=${summary.leverageAutoUnwindRuntime.topPriority?.triggers?.join(",") || "none"} next=\`${summary.leverageAutoUnwindRuntime.topPriority?.nextAction?.code || "unknown"}\``,
+    );
+  }
   if (summary.topAction?.code || summary.topAction?.command) {
     lines.push(`- Strategy next action: \`${summary.topAction?.code || "unknown"}\`${summary.topAction?.command ? ` command=\`${summary.topAction.command}\`` : ""}`);
   }
@@ -1436,6 +1441,8 @@ async function main() {
     phase3StrategyValidation,
     v1InfraDrills,
     wholeWalletRouteFundingPlans,
+    wrappedBtcLoopAutoUnwindRuntime,
+    recursiveWrappedBtcLoopAutoUnwindRuntime,
   ] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "prelive-fork-plan.json")),
     readJsonl(config.dataDir, "prelive-fork-submissions"),
@@ -1446,6 +1453,8 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(config.dataDir, "v1-infra-drills.json")),
     readJsonl(config.dataDir, "whole-wallet-route-funding-plans").catch(() => []),
+    readJsonIfExists(join(config.dataDir, "wrapped-btc-loop-base-moonwell-auto-unwind-runtime-latest.json")),
+    readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-auto-unwind-runtime-latest.json")),
   ]);
   const executionEvents = await readJsonl(config.dataDir, "execution-journal");
   const triangleArtifacts = await readTriangleArtifacts(config.dataDir);
@@ -1620,6 +1629,10 @@ async function main() {
     strategyResearchBoard,
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
+    leverageAutoUnwindRuntimeReports: [
+      wrappedBtcLoopAutoUnwindRuntime,
+      recursiveWrappedBtcLoopAutoUnwindRuntime,
+    ].filter(Boolean),
     now,
   });
   const strategySnapshotSummary = summarizeStrategySnapshot(strategySnapshot);

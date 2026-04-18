@@ -4,6 +4,7 @@ import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "
 import { summarizeAllocatorCore } from "./allocator-core.mjs";
 import { buildCapitalExpansionReview, summarizeCapitalExpansionReview } from "./capital-expansion-review.mjs";
 import { summarizeDeterministicStrategyCandidates } from "./deterministic-strategy-candidates.mjs";
+import { summarizeLeverageAutoUnwindRuntimeReports } from "../defi/leverage-auto-unwind-runtime.mjs";
 import { summarizePhase1Revalidation } from "./phase1-revalidation.mjs";
 import { summarizePhase3StrategyValidation } from "./phase3-strategy-validation.mjs";
 import { summarizeProtocolMarketWatchers } from "./protocol-market-watchers.mjs";
@@ -173,6 +174,7 @@ export function buildStrategySnapshot({
   strategyResearchBoard = null,
   secondaryStrategyScaffolds = null,
   deterministicStrategyCandidates = null,
+  leverageAutoUnwindRuntimeReports = [],
   now = null,
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
@@ -242,6 +244,7 @@ export function buildStrategySnapshot({
   const strategyResearchSummary = summarizeStrategyResearchBoard(strategyResearchBoard || null);
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
   const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
+  const leverageAutoUnwindRuntimeSummary = summarizeLeverageAutoUnwindRuntimeReports(leverageAutoUnwindRuntimeReports);
 
   return {
     schemaVersion: 1,
@@ -288,6 +291,8 @@ export function buildStrategySnapshot({
       trustTierRecordedCount: protocolTrustTiersSummary?.recordedCount ?? 0,
       watcherBlockedCount: protocolMarketWatchersSummary?.blockedCount ?? 0,
       watcherTopBlockedId: protocolMarketWatchersSummary?.topBlocked?.id || null,
+      leverageRuntimeCount: leverageAutoUnwindRuntimeSummary?.runtimeCount ?? 0,
+      leverageRuntimeTopPriorityId: leverageAutoUnwindRuntimeSummary?.topPriority?.strategyId || null,
     },
     implementedStatusCounts: countByStatus(implementedStrategies),
     pivotStatusCounts: countByStatus(pivotOpportunities),
@@ -303,6 +308,7 @@ export function buildStrategySnapshot({
       allocatorCore: allocatorCoreSummary,
       protocolTrustTiers: protocolTrustTiersSummary,
       protocolMarketWatchers: protocolMarketWatchersSummary,
+      leverageAutoUnwindRuntime: leverageAutoUnwindRuntimeSummary,
       strategyResearchBoard: strategyResearchSummary,
       secondaryStrategyScaffolds: secondaryScaffoldsSummary,
       deterministicStrategyCandidates: deterministicCandidatesSummary,
@@ -320,6 +326,8 @@ export function buildStrategySnapshot({
         { kind: "allocator_core", path: "data/allocator-core.json" },
         { kind: "protocol_trust_tiers", path: "data/protocol-trust-tiers.json" },
         { kind: "protocol_market_watchers", path: "data/protocol-market-watchers.json" },
+        { kind: "wrapped_btc_loop_auto_unwind_runtime", path: "data/wrapped-btc-loop-base-moonwell-auto-unwind-runtime-latest.json" },
+        { kind: "recursive_wrapped_btc_loop_auto_unwind_runtime", path: "data/recursive_wrapped_btc_lending_loop-auto-unwind-runtime-latest.json" },
         { kind: "strategy_research_board", path: "data/strategy-research-board.json" },
         { kind: "secondary_strategy_scaffolds", path: "data/secondary-strategy-scaffolds.json" },
         { kind: "deterministic_strategy_candidates", path: "data/deterministic-strategy-candidates.json" },
@@ -380,6 +388,7 @@ export function summarizeStrategySnapshot(snapshot = null) {
     allocatorCore: snapshot.planningLayers?.allocatorCore || null,
     protocolTrustTiers: snapshot.planningLayers?.protocolTrustTiers || null,
     protocolMarketWatchers: snapshot.planningLayers?.protocolMarketWatchers || null,
+    leverageAutoUnwindRuntime: snapshot.planningLayers?.leverageAutoUnwindRuntime || null,
     researchBoard: snapshot.planningLayers?.strategyResearchBoard || null,
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
     deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,

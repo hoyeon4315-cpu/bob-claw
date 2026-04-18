@@ -129,6 +129,22 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
       scoreSnapshot: { scores: [] },
     },
     triangleArtifacts: triangleArtifactsFixture(),
+    leverageAutoUnwindRuntimeReports: [
+      {
+        strategy: { id: "wrapped-btc-loop-base-moonwell", label: "Wrapped BTC lending loop (Base / Moonwell)", chain: "base", protocol: "moonwell" },
+        runtime: { status: "healthy", severity: "info", triggerCount: 0 },
+        watcherDecision: { triggers: [] },
+        emergencyUnwindExecution: { status: "standby", actions: new Array(9).fill({}) },
+        nextAction: { code: "continue_monitoring" },
+      },
+      {
+        strategy: { id: "recursive_wrapped_btc_lending_loop", label: "Recursive wrapped-BTC lending loop", chain: "base", protocol: "moonwell" },
+        runtime: { status: "pause_new_entries", severity: "warning", triggerCount: 1 },
+        watcherDecision: { triggers: ["unwind_gas_above_budget"] },
+        emergencyUnwindExecution: { status: "standby", actions: new Array(9).fill({}) },
+        nextAction: { code: "pause_new_entries_and_review" },
+      },
+    ],
   });
 
   assert.equal(snapshot.currentSystem.liveTrading, "BLOCKED");
@@ -136,6 +152,8 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   assert.equal(snapshot.summary.planningBudgetUsd, null);
   assert.equal(snapshot.planningLayers.yieldShadowBook.topProfile.id, "research_pilot");
   assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.planningLaneBudgetUsd, null);
+  assert.equal(snapshot.planningLayers.leverageAutoUnwindRuntime.runtimeCount, 2);
+  assert.equal(snapshot.planningLayers.leverageAutoUnwindRuntime.topPriority.strategyId, "recursive_wrapped_btc_lending_loop");
 
   const proxy = snapshot.implementedStrategies.find((item) => item.id === "btc_proxy_spreads");
   assert.ok(proxy);
@@ -148,4 +166,5 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   assert.equal(summary.activeBudgetUsd, null);
   assert.equal(summary.capitalExpansionReview.planningLaneBudgetUsd, null);
   assert.equal(summary.capitalExpansionReview.approvalRequiredForPlanningLane, false);
+  assert.equal(summary.leverageAutoUnwindRuntime.topPriority.status, "pause_new_entries");
 });

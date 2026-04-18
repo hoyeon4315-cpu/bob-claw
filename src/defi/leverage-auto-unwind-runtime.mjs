@@ -92,6 +92,43 @@ export function buildLeverageRiskEvent({ runtimeReport = null } = {}) {
   };
 }
 
+export function summarizeLeverageAutoUnwindRuntimeReport(report = null) {
+  if (!report) return null;
+  return {
+    strategyId: report.strategy?.id || null,
+    strategyLabel: report.strategy?.label || null,
+    chain: report.strategy?.chain || null,
+    protocol: report.strategy?.protocol || null,
+    status: report.runtime?.status || null,
+    severity: report.runtime?.severity || null,
+    triggerCount: report.runtime?.triggerCount ?? report.watcherDecision?.triggers?.length ?? 0,
+    triggers: report.watcherDecision?.triggers || [],
+    emergencyUnwindStatus: report.emergencyUnwindExecution?.status || null,
+    unwindActionCount: report.emergencyUnwindExecution?.actions?.length ?? 0,
+    nextAction: report.nextAction || null,
+  };
+}
+
+export function summarizeLeverageAutoUnwindRuntimeReports(reports = []) {
+  const items = (reports || []).map((item) => summarizeLeverageAutoUnwindRuntimeReport(item)).filter(Boolean);
+  const statusCounts = items.reduce((acc, item) => {
+    const key = item.status || "unknown";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const topPriority =
+    items.find((item) => item.status === "auto_unwind") ||
+    items.find((item) => item.status === "pause_new_entries") ||
+    items[0] ||
+    null;
+  return {
+    runtimeCount: items.length,
+    statusCounts,
+    topPriority,
+    items,
+  };
+}
+
 export function buildLeverageAutoUnwindRuntime({
   scaffold = null,
   observedPosition = {},

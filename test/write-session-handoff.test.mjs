@@ -64,6 +64,28 @@ test("write-session-handoff includes payback readiness summary and preview comma
       nativeByChain: { base: 2_000 },
     },
   ]);
+  await writeFile(
+    join(dataDir, "wrapped-btc-loop-base-moonwell-auto-unwind-runtime-latest.json"),
+    `${JSON.stringify({
+      strategy: { id: "wrapped-btc-loop-base-moonwell", label: "Wrapped BTC lending loop (Base / Moonwell)", chain: "base", protocol: "moonwell" },
+      runtime: { status: "healthy", severity: "info", triggerCount: 0 },
+      watcherDecision: { triggers: [] },
+      emergencyUnwindExecution: { status: "standby", actions: new Array(9).fill({}) },
+      nextAction: { code: "continue_monitoring" },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(dataDir, "recursive_wrapped_btc_lending_loop-auto-unwind-runtime-latest.json"),
+    `${JSON.stringify({
+      strategy: { id: "recursive_wrapped_btc_lending_loop", label: "Recursive wrapped-BTC lending loop", chain: "base", protocol: "moonwell" },
+      runtime: { status: "pause_new_entries", severity: "warning", triggerCount: 1 },
+      watcherDecision: { triggers: ["unwind_gas_above_budget"] },
+      emergencyUnwindExecution: { status: "standby", actions: new Array(9).fill({}) },
+      nextAction: { code: "pause_new_entries_and_review" },
+    }, null, 2)}\n`,
+    "utf8",
+  );
 
   const result = spawnSync(process.execPath, [join(ROOT, "src/cli/write-session-handoff.mjs")], {
     cwd,
@@ -78,6 +100,7 @@ test("write-session-handoff includes payback readiness summary and preview comma
   const doc = await readFile(join(cwd, "docs/current-status.md"), "utf8");
   assert.match(doc, /Research board: candidates=\d+ top=`.*` newTop=`.*` nextNew=`.*`/);
   assert.match(doc, /Advanced validation lane: passed=\d+\/\d+ topBlocked=`.*` blockers=.* next=`.*`/);
+  assert.match(doc, /Auto-unwind runtime: count=\d+ top=`.*` status=`.*` triggers=.* next=`.*`/);
   assert.match(doc, /## Live Baseline/);
   assert.match(doc, /Blocker counts: refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+ total=\d+/);
   assert.match(doc, /Operator blocker: status=`payback_destination_env_missing` env=`PAYBACK_BTC_DEST_ADDR` next=`set_payback_btc_destination_env`/);
