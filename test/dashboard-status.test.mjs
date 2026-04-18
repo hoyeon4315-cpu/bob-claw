@@ -653,6 +653,8 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.opportunity.dexBacked, 1);
   assert.equal(status.opportunity.rejectedNoEdge, 1);
   assert.equal(status.opportunity.highFailureRate, 0);
+  assert.equal(status.opportunity.positiveInsufficientCount, 0);
+  assert.equal(status.opportunity.topPositiveInsufficientRoute, null);
   assert.equal(status.opportunity.dataGaps[0].gap, "bitcoin_network_fee_not_modelled");
   assert.equal(status.strategy.profitModel, "non_directional_edge_only");
   assert.equal(status.strategy.directionalBtcAccumulationCountsAsProfit, false);
@@ -702,6 +704,56 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.audit.quoteDecayCoveredGroups, 1);
   assert.equal(status.audit.quoteDecayWindows.find((item) => item.windowSeconds === 5).survivedGroups, 1);
   assert.equal(status.dataCounts.shadowObservations, 2);
+});
+
+test("dashboard status exposes positive insufficient-data opportunity separately from no-edge blockers", () => {
+  const status = buildDashboardStatus({
+    routesRecords: [],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+    scoreSnapshot: {
+      generatedAt: "2026-04-10T12:00:00.000Z",
+      scoredQuotes: 2,
+      summary: { shadowCandidates: 0, insufficientData: 1 },
+      scores: [
+        {
+          srcChain: "base",
+          dstChain: "bitcoin",
+          srcAsset: { ticker: "USDC" },
+          dstAsset: { ticker: "BTC" },
+          tradeReadiness: "insufficient_data",
+          netEdgeUsd: 1.75,
+          dataGaps: ["exact_src_execution_gas_reverted"],
+        },
+        {
+          srcChain: "avalanche",
+          dstChain: "soneium",
+          srcAsset: { ticker: "wBTC.OFT" },
+          dstAsset: { ticker: "wBTC.OFT" },
+          tradeReadiness: "reject_no_net_edge",
+          netEdgeUsd: -0.6,
+          dataGaps: [],
+        },
+      ],
+    },
+    dexQuotes: [],
+    dexFailures: [],
+    bitcoinFeeSnapshots: [],
+    estimatorWalletReadiness: [],
+    estimatorWalletReadinessFailures: [],
+    shadowObservations: [],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(status.opportunity.positiveInsufficientCount, 1);
+  assert.equal(status.opportunity.topPositiveInsufficientRoute?.srcChain, "base");
+  assert.equal(status.opportunity.topPositiveInsufficientRoute?.dstChain, "bitcoin");
+  assert.equal(status.opportunity.topPositiveInsufficientRoute?.srcTicker, "USDC");
+  assert.equal(status.opportunity.topPositiveInsufficientRoute?.netEdgeUsd, 1.75);
+  assert.deepEqual(status.opportunity.topPositiveInsufficientRoute?.dataGaps, ["exact_src_execution_gas_reverted"]);
 });
 
 test("dashboard status includes shadow cycle summary when available", () => {

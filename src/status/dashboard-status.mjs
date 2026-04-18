@@ -589,6 +589,9 @@ function opportunitySummary(scoreSnapshot, now) {
   const candidateCount = scoreSnapshot?.summary?.shadowCandidates ?? scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length;
   const rejectedNoEdge = scores.filter((score) => score.tradeReadiness === "reject_no_net_edge").length;
   const insufficientData = scoreSnapshot?.summary?.insufficientData ?? scores.filter((score) => score.tradeReadiness === "insufficient_data").length;
+  const positiveInsufficient = [...scores]
+    .filter((score) => score.tradeReadiness === "insufficient_data" && Number.isFinite(score.netEdgeUsd) && score.netEdgeUsd > 0)
+    .sort((left, right) => right.netEdgeUsd - left.netEdgeUsd);
   const dataGaps = new Map();
   for (const score of scores) {
     for (const gap of score.dataGaps || []) {
@@ -612,6 +615,18 @@ function opportunitySummary(scoreSnapshot, now) {
     rejectedNoEdge,
     highFailureRate: scoreSnapshot?.summary?.highFailureRate ?? scores.filter((score) => (score.routeStats?.failureRate ?? 0) > 0.1).length,
     insufficientData,
+    positiveInsufficientCount: positiveInsufficient.length,
+    topPositiveInsufficientRoute: positiveInsufficient[0]
+      ? {
+          srcChain: positiveInsufficient[0].srcChain,
+          dstChain: positiveInsufficient[0].dstChain,
+          srcTicker: positiveInsufficient[0].srcAsset?.ticker || null,
+          dstTicker: positiveInsufficient[0].dstAsset?.ticker || null,
+          readiness: positiveInsufficient[0].tradeReadiness || null,
+          netEdgeUsd: positiveInsufficient[0].netEdgeUsd ?? null,
+          dataGaps: positiveInsufficient[0].dataGaps || [],
+        }
+      : null,
     bestNetEdgeUsd: best?.netEdgeUsd ?? null,
     bestRoute: best
       ? {

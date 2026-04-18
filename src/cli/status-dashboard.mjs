@@ -354,6 +354,11 @@ async function main() {
   console.log(`shadowCycleMode=${status.shadowCycle?.mode || "none"}`);
   console.log(`preliveStage=${status.prelive?.currentStage || "none"}`);
   console.log(`reviewPackageStatus=${status.prelive?.reviewPackage?.packageStatus || "none"}`);
+  if (status.opportunity) {
+    console.log(
+      `opportunityPositiveInsufficient=count:${status.opportunity.positiveInsufficientCount ?? 0} top:${status.opportunity.topPositiveInsufficientRoute ? `${status.opportunity.topPositiveInsufficientRoute.srcChain}->${status.opportunity.topPositiveInsufficientRoute.dstChain}` : "none"} net:${status.opportunity.topPositiveInsufficientRoute?.netEdgeUsd ?? "n/a"} gap:${status.opportunity.topPositiveInsufficientRoute?.dataGaps?.[0] || "none"}`,
+    );
+  }
   if (status.strategy?.strategySnapshot?.researchBoard) {
     console.log(
       `strategyResearch=candidates:${status.strategy.strategySnapshot.researchBoard.candidateCount ?? 0} top:${status.strategy.strategySnapshot.researchBoard.topCandidate?.id || "none"} newTop:${status.strategy.strategySnapshot.researchBoard.topNewCandidate?.id || "none"} newStatus:${status.strategy.strategySnapshot.researchBoard.topNewCandidate?.status || "none"} nextNew:${status.strategy.strategySnapshot.researchBoard.nextNewAction?.code || "none"}`,
