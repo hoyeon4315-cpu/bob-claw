@@ -1,6 +1,7 @@
 import { buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
 import { buildAdmissionRemediationPlan, summarizeAdmissionRemediationPlan } from "./admission-remediation.mjs";
 import { buildTinyCanaryAdmission } from "./tiny-canary-admission.mjs";
+import { defaultDexQuoteProvider, noSupportedRouterReason } from "../dex/odos.mjs";
 
 function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
@@ -74,15 +75,53 @@ function freshnessSummary(canaryInputs = null) {
   };
 }
 
+function parseRouteChains(routeKey = null) {
+  const [src = "", dst = ""] = String(routeKey || "").split("->");
+  return {
+    srcChain: src.split(":")[0] || null,
+    dstChain: dst.split(":")[0] || null,
+  };
+}
+
+function structuralDexFailureReason({ routeKey = null, srcChain = null, dstChain = null } = {}) {
+  const inferred = parseRouteChains(routeKey);
+  const chains = [srcChain || inferred.srcChain, dstChain || inferred.dstChain].filter(Boolean);
+  for (const chain of chains) {
+    if (!defaultDexQuoteProvider(chain)) {
+      return noSupportedRouterReason(chain);
+    }
+  }
+  return null;
+}
+
+function normalizeInputFreshness(inputFreshness = null, { routeKey = null, srcChain = null, dstChain = null } = {}) {
+  if (!inputFreshness) return null;
+  const normalized = { ...inputFreshness };
+  const structuralDexReason = structuralDexFailureReason({ routeKey, srcChain, dstChain });
+  if (structuralDexReason && ["missing", "stale"].includes(normalized?.dexQuote?.state)) {
+    normalized.dexQuote = {
+      ...normalized.dexQuote,
+      state: "blocked",
+      failureReason: structuralDexReason,
+    };
+  }
+  return normalized;
+}
+
 function buildManualReviewCandidate({ dashboardStatus = null, canaryInputs = null, matchedCandidate = null, nextStep = null, address = null } = {}) {
   const topRoute = dashboardStatus?.shadowCycle?.topRoute || null;
   const route = nextStep?.route || null;
   const routeLabel = canaryInputs?.routeLabel || matchedCandidate?.label || route?.label || topRoute?.label || null;
   const amount = canaryInputs?.amount || matchedCandidate?.amount || route?.amount || topRoute?.amount || null;
+  const routeKey = canaryInputs?.routeKey || route?.routeKey || null;
+  const srcChain = route?.srcChain || matchedCandidate?.srcChain || topRoute?.srcChain || parseRouteChains(routeKey).srcChain;
+  const dstChain = route?.dstChain || matchedCandidate?.dstChain || topRoute?.dstChain || parseRouteChains(routeKey).dstChain;
+  const inputFreshness = normalizeInputFreshness(freshnessSummary(canaryInputs), { routeKey, srcChain, dstChain });
+  const structuralDexReason = structuralDexFailureReason({ routeKey, srcChain, dstChain });
   if (!routeLabel && !amount && !canaryInputs?.routeKey) return null;
   return {
     address: address || null,
-    routeKey: canaryInputs?.routeKey || route?.routeKey || null,
+    routeKey,
     routeLabel,
     amount,
     tradeReadiness: canaryInputs?.scoreTradeReadiness || matchedCandidate?.tradeReadiness || route?.tradeReadiness || topRoute?.tradeReadiness || null,
@@ -95,9 +134,10 @@ function buildManualReviewCandidate({ dashboardStatus = null, canaryInputs = nul
       ...(matchedCandidate?.prepBlockers || []),
       ...(matchedCandidate?.scoreDisqualifiers || []),
       ...(nextStep?.reasons || []),
+      structuralDexReason ? `blocked_dex_quote:${structuralDexReason}` : null,
     ]),
     scoreDataGaps: canaryInputs?.scoreDataGaps || [],
-    inputFreshness: freshnessSummary(canaryInputs),
+    inputFreshness,
     evidence: matchedCandidate?.evidence
       ? {
           quoteSampleCount: matchedCandidate.evidence.quoteSampleCount ?? 0,

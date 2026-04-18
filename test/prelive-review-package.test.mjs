@@ -479,6 +479,101 @@ test("prelive review package can promote wrapped loop as the primary live candid
   assert.equal(reviewPackage.readyForManualReview, false);
 });
 
+test("prelive review package infers unsupported bob dex routes as structurally blocked", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-18T21:00:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: [],
+      },
+      shadowCycle: {
+        canaryDecision: "CANARY_PREP_BLOCKED",
+        headline: "BOB route still blocked",
+        topRoute: {
+          label: "bob->ethereum wBTC.OFT->WBTC",
+          amount: "100000",
+          tradeReadiness: "insufficient_data",
+          srcChain: "bob",
+          dstChain: "ethereum",
+        },
+      },
+      prelive: {
+        currentStage: "shadow_replay",
+        liveTradingPolicy: "BLOCKED",
+        tinyLiveCanary: {
+          ready: false,
+          blockers: ["shadow_replay_not_ready"],
+        },
+      },
+    },
+    canaryInputs: {
+      routeKey: "bob:0x0555->ethereum:0x2260",
+      routeLabel: "bob->ethereum wBTC.OFT->WBTC",
+      amount: "100000",
+      scoreTradeReadiness: "insufficient_data",
+      blockers: ["missing_dex_quote"],
+      gatewayQuote: { state: "stale" },
+      exactGas: { state: "missing" },
+      srcGas: { state: "fresh" },
+      dexQuote: { state: "missing" },
+      bitcoinFee: { state: "not_required" },
+      marketSnapshot: { state: "fresh" },
+    },
+    nextStep: {
+      decision: "FUND_AND_APPROVE_WALLET",
+      headline: "Fund and approve the estimator wallet before exact gas",
+      reasons: ["token"],
+      route: {
+        routeKey: "bob:0x0555->ethereum:0x2260",
+        label: "bob->ethereum wBTC.OFT->WBTC",
+        amount: "100000",
+        tradeReadiness: "insufficient_data",
+        srcChain: "bob",
+        dstChain: "ethereum",
+      },
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        label: "Wrapped BTC lending loop (Base / Moonwell)",
+        strategyType: "leverage_lending_loop",
+        protocol: "moonwell",
+        chain: "base",
+        perTradeCapUsd: 300,
+      },
+      dryRunSummary: {
+        dryRunReceiptRecorded: true,
+        autoUnwindPassCount: 2,
+      },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          blockers: ["signer_backed_oos_receipts_missing"],
+          evidence: { oosEvidenceStatus: "simulated_window_ready" },
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts", command: "npm run ingest:wrapped-btc-loop-receipt -- --write" },
+        },
+      ],
+    },
+    protocolMarketWatchers: {
+      watchers: [
+        {
+          id: "wrapped_btc_loop_market_watch",
+          blockers: ["signer_backed_oos_receipts_missing"],
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts", command: "npm run ingest:wrapped-btc-loop-receipt -- --write" },
+        },
+      ],
+    },
+  });
+
+  assert.equal(reviewPackage.manualReviewCandidate.inputFreshness.dexQuote.state, "blocked");
+  assert.equal(reviewPackage.manualReviewCandidate.inputFreshness.dexQuote.failureReason, "no_supported_router_for_chain:60808");
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
+  assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "wrapped-btc-loop-base-moonwell");
+});
+
 test("prelive review package can promote recursive wrapped loop as the primary live candidate when it outranks the legacy wrapped loop", () => {
   const reviewPackage = buildPreliveReviewPackage({
     dashboardStatus: {
