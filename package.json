@@ -42,6 +42,7 @@
     "report:strategy-research-board": "node src/cli/report-strategy-research-board.mjs",
     "report:deterministic-strategy-candidates": "node src/cli/report-deterministic-strategy-candidates.mjs",
     "report:recursive-lending-loop": "node src/cli/report-recursive-lending-loop.mjs",
+    "report:auto-unwind-runtime": "node src/cli/report-leverage-auto-unwind-runtime.mjs",
     "report:recursive-lending-loop-dry-run": "node src/cli/report-recursive-lending-loop-dry-run.mjs",
     "run:recursive-lending-loop-dry-run": "node src/cli/run-recursive-lending-loop-dry-run.mjs",
     "ingest:recursive-lending-loop-receipt": "node src/cli/ingest-recursive-lending-loop-receipt.mjs",
