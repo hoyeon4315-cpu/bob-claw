@@ -1,6 +1,7 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
 import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../risk/ethereum-l1-policy.mjs";
+import { requiresAllowanceForQuote } from "./wallet-readiness.mjs";
 
 const DISQUALIFYING_SCORE_GAPS = new Set([
   "implausible_quote_value_ratio",
@@ -23,8 +24,32 @@ function latestByRouteAndAmount(items) {
   return [...latestBy(items, (item) => `${item.routeKey}|${item.amount}`).values()];
 }
 
-function mapByRouteAndAmount(items) {
-  return new Map(latestByRouteAndAmount(items).map((item) => [`${item.routeKey}|${item.amount}`, item]));
+function latestByKey(items, keyFn) {
+  return [...latestBy(items, keyFn).values()];
+}
+
+function latestBalanceMaps(readinessRecords = []) {
+  return {
+    nativeByChain: new Map(
+      latestByKey(readinessRecords, (item) => item.srcChain)
+        .filter((item) => item?.native?.balanceWei != null)
+        .map((item) => [item.srcChain, bigint(item.native.balanceWei)]),
+    ),
+    tokenByChainAndToken: new Map(
+      latestByKey(readinessRecords.filter((item) => item?.token), (item) => `${item.srcChain}|${String(item.token.token || item.srcToken || "").toLowerCase()}`)
+        .map((item) => [`${item.srcChain}|${String(item.token.token || item.srcToken || "").toLowerCase()}`, bigint(item.token.balance)]),
+    ),
+    allowanceByChainTokenAndSpender: new Map(
+      latestByKey(
+        readinessRecords.filter((item) => item?.allowance),
+        (item) =>
+          `${item.srcChain}|${String(item.token?.token || item.srcToken || "").toLowerCase()}|${String(item.allowance.spender || "").toLowerCase()}`,
+      ).map((item) => [
+        `${item.srcChain}|${String(item.token?.token || item.srcToken || "").toLowerCase()}|${String(item.allowance.spender || "").toLowerCase()}`,
+        bigint(item.allowance.allowance),
+      ]),
+    ),
+  };
 }
 
 function nativeShortfallUsd(readiness, prices) {
@@ -44,8 +69,27 @@ function tokenShortfallUsd(readiness, score) {
   return amount * rawUsd;
 }
 
-function routePrepBlockers(readiness) {
-  if (!readiness) return ["wallet_not_checked"];
+function routePrepBlockers(readiness, quote, knownBalances) {
+  if (!readiness) {
+    const inferred = [];
+    const srcChain = quote?.route?.srcChain || null;
+    const srcToken = String(quote?.route?.srcToken || "").toLowerCase();
+    const txTo = String(quote?.txTo || "").toLowerCase();
+    const inputAmount = bigint(quote?.inputAmount);
+    const txValueWei = bigint(quote?.txValueWei);
+    const nativeBalance = srcChain ? knownBalances?.nativeByChain?.get(srcChain) : null;
+    const tokenBalance = srcChain && srcToken ? knownBalances?.tokenByChainAndToken?.get(`${srcChain}|${srcToken}`) : null;
+    const needsAllowance = requiresAllowanceForQuote(quote);
+    const allowanceBalance =
+      needsAllowance && srcChain && srcToken && txTo
+        ? knownBalances?.allowanceByChainTokenAndSpender?.get(`${srcChain}|${srcToken}|${txTo}`)
+        : null;
+
+    if (nativeBalance != null && txValueWei > 0n && nativeBalance < txValueWei) inferred.push("native");
+    if (tokenBalance != null && inputAmount > 0n && tokenBalance < inputAmount) inferred.push("token");
+    if (needsAllowance && allowanceBalance != null && inputAmount > 0n && allowanceBalance < inputAmount) inferred.push("allowance");
+    return inferred.length ? inferred : ["wallet_not_checked"];
+  }
   const blockers = [];
   if (readiness.native && !readiness.native.ok) blockers.push("native");
   if (readiness.token && !readiness.token.ok) blockers.push("token");
@@ -98,6 +142,11 @@ export function buildCanaryRoutePlan(
         : readinessFailures,
     ).map((item) => [`${item.routeKey}|${item.amount}`, item]),
   );
+  const knownBalances = latestBalanceMaps(
+    address
+      ? readinessRecords.filter((item) => String(item.address || "").toLowerCase() === address.toLowerCase())
+      : readinessRecords,
+  );
 
   const candidates = latestQuotes
     .filter((quote) => quote.route?.srcChain !== "bitcoin")
@@ -108,7 +157,7 @@ export function buildCanaryRoutePlan(
       const readinessFailure = failureByKey.get(key) || null;
       const srcAsset = tokenAsset(quote.route.srcChain, quote.route.srcToken);
       const dstAsset = tokenAsset(quote.route.dstChain, quote.route.dstToken);
-      const blockers = routePrepBlockers(readiness);
+      const blockers = routePrepBlockers(readiness, quote, knownBalances);
       const scoreDisqualifiers = disqualifyingScoreReasons(score);
       const txReady = Boolean(quote.txTo && quote.txData);
       const exactGasDone = score?.executionGasSource === "eth_estimateGas";

@@ -6,13 +6,25 @@ import { ETHEREUM_L1_PHASE_DISABLED_REASON } from "../src/risk/ethereum-l1-polic
 const ADDRESS = "0x000000000000000000000000000000000000dEaD";
 const WBTC_OFT = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 
-function quote({ routeKey, srcChain, dstChain, amount = "10000", txData = "0x1234", txTo = WBTC_OFT, quoteType = "layerZero" }) {
+function quote({
+  routeKey,
+  srcChain,
+  dstChain,
+  amount = "10000",
+  txData = "0x1234",
+  txTo = WBTC_OFT,
+  quoteType = "layerZero",
+  inputAmount = amount,
+  txValueWei = "0",
+}) {
   return {
     routeKey,
     amount,
     quoteType,
     txData,
     txTo,
+    inputAmount,
+    txValueWei,
     route: { srcChain, dstChain, srcToken: WBTC_OFT, dstToken: WBTC_OFT },
   };
 }
@@ -138,4 +150,44 @@ test("canary route plan marks Ethereum L1 scores as disqualified for prep", () =
   assert.equal(plan.viableCount, 1);
   assert.equal(plan.topCandidates[1].viableForPrep, false);
   assert.equal(plan.topCandidates[1].scoreDisqualifiers.includes(ETHEREUM_L1_PHASE_DISABLED_REASON), true);
+});
+
+test("canary route plan infers token blockers from latest known balances for unchecked amounts", () => {
+  const routeKey = `base:${WBTC_OFT}->ethereum:${WBTC_OFT}`;
+  const plan = buildCanaryRoutePlan(
+    {
+      quotes: [
+        quote({
+          routeKey,
+          srcChain: "base",
+          dstChain: "ethereum",
+          amount: "25000",
+          inputAmount: "25000",
+          txValueWei: "1000",
+        }),
+      ],
+      scores: [
+        score({ routeKey, amount: "25000", srcChain: "base", dstChain: "ethereum" }),
+      ],
+      readinessRecords: [
+        {
+          observedAt: "2026-04-11T01:05:00.000Z",
+          address: ADDRESS,
+          routeKey,
+          amount: "10000",
+          srcChain: "base",
+          dstChain: "ethereum",
+          native: { balanceWei: "999999999999999999", requiredWei: "1000", shortfallWei: "0", ok: true },
+          token: { token: WBTC_OFT, balance: "10000", required: "10000", shortfall: "0", ok: true },
+          allowance: null,
+          overallReady: true,
+        },
+      ],
+      readinessFailures: [],
+    },
+    { address: ADDRESS, prices: { nativeByChain: { base: 1800 } } },
+  );
+
+  assert.deepEqual(plan.topCandidates[0].prepBlockers, ["token"]);
+  assert.equal(plan.topCandidates[0].readinessFailureReason, null);
 });
