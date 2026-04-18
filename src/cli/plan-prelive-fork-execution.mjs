@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
@@ -38,6 +39,37 @@ function stripVolatile(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const { observedAt, generatedAt, ...stable } = value;
   return stable;
+}
+
+function planSelectionKey(plan = null) {
+  return [plan?.routeKey || "", String(plan?.amount || ""), plan?.selectionSource || ""].join("|");
+}
+
+export function mergePlans(existingOutput = null, nextOutput = null) {
+  const nextPlans = nextOutput?.plans || [];
+  const existingPlans = existingOutput?.plans || [];
+  const nextPlanIds = new Set(nextPlans.map((plan) => plan?.planId).filter(Boolean));
+  const nextSelectionKeys = new Set(nextPlans.map((plan) => planSelectionKey(plan)));
+  const mergedPlans = [
+    ...nextPlans,
+    ...existingPlans.filter((plan) => {
+      if (nextPlanIds.has(plan?.planId)) return false;
+      if (nextSelectionKeys.has(planSelectionKey(plan))) return false;
+      return true;
+    }),
+  ];
+  const sourceSet = new Set(
+    [
+      ...(existingOutput?.source ? [existingOutput.source] : []),
+      ...(nextOutput?.source ? [nextOutput.source] : []),
+    ].filter(Boolean),
+  );
+  return {
+    ...nextOutput,
+    source: sourceSet.size === 1 ? [...sourceSet][0] : "mixed",
+    selectedCount: mergedPlans.length,
+    plans: mergedPlans,
+  };
 }
 
 async function main() {
@@ -85,7 +117,9 @@ async function main() {
 
   if (args.write) {
     const outputPath = join(config.dataDir, "prelive-fork-plan.json");
-    await writeTextIfChanged(outputPath, `${JSON.stringify(output, null, 2)}\n`, {
+    const existingOutput = await readJsonIfExists(outputPath);
+    const mergedOutput = mergePlans(existingOutput, output);
+    await writeTextIfChanged(outputPath, `${JSON.stringify(mergedOutput, null, 2)}\n`, {
       normalize: (contents) => {
         if (!contents) return contents;
         return JSON.stringify(stripVolatile(JSON.parse(contents)));
@@ -117,7 +151,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (entryUrl && import.meta.url === entryUrl) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
