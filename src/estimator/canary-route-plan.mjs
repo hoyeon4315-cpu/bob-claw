@@ -135,6 +135,16 @@ function objectiveRejected(score) {
   return String(score?.tradeReadiness || "").startsWith("reject_");
 }
 
+function economicPriority(score = null) {
+  const edge =
+    (Number.isFinite(score?.effectiveSystemNetPnlUsd) && score.effectiveSystemNetPnlUsd) ||
+    (Number.isFinite(score?.executableNetEdgeUsd) && score.executableNetEdgeUsd) ||
+    (Number.isFinite(score?.netEdgeUsd) && score.netEdgeUsd) ||
+    null;
+  if (!Number.isFinite(edge)) return 1;
+  return edge > 0 ? 0 : 2;
+}
+
 function routeLabel(quote) {
   const src = tokenAsset(quote.route.srcChain, quote.route.srcToken);
   const dst = tokenAsset(quote.route.dstChain, quote.route.dstToken);
@@ -217,6 +227,7 @@ export function buildCanaryRoutePlan(
         scoreDisqualifiers,
         inputUsd: score?.inputUsd ?? null,
         knownCostUsd: score?.knownCostUsd ?? null,
+        effectiveSystemNetPnlUsd: score?.effectiveSystemNetPnlUsd ?? null,
         executableNetEdgeUsd: score?.executableNetEdgeUsd ?? null,
         netEdgeUsd: score?.netEdgeUsd ?? null,
         routeFailureRate: score?.routeStats?.failureRate ?? null,
@@ -235,6 +246,9 @@ export function buildCanaryRoutePlan(
     })
     .sort((left, right) => {
       if (left.objectiveRejected !== right.objectiveRejected) return left.objectiveRejected ? 1 : -1;
+      const leftEconomicPriority = economicPriority(left);
+      const rightEconomicPriority = economicPriority(right);
+      if (leftEconomicPriority !== rightEconomicPriority) return leftEconomicPriority - rightEconomicPriority;
       if (left.viableForPrep !== right.viableForPrep) return left.viableForPrep ? -1 : 1;
       if (left.txReady !== right.txReady) return left.txReady ? -1 : 1;
       if (left.blockerCount !== right.blockerCount) return left.blockerCount - right.blockerCount;

@@ -277,3 +277,61 @@ test("canary route plan demotes reject-no-edge routes behind unresolved candidat
   assert.equal(plan.topCandidates[1].routeKey, negativeRouteKey);
   assert.equal(plan.topCandidates[1].objectiveRejected, true);
 });
+
+test("canary route plan promotes positive-edge candidates ahead of negative token-blocked routes", () => {
+  const negativeRouteKey = `sonic:${WBTC_OFT}->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599`;
+  const positiveRouteKey = `bob:${WBTC_OFT}->base:${WBTC_OFT}`;
+  const plan = buildCanaryRoutePlan(
+    {
+      quotes: [
+        quote({ routeKey: negativeRouteKey, srcChain: "sonic", dstChain: "ethereum", amount: "10000" }),
+        quote({ routeKey: positiveRouteKey, srcChain: "bob", dstChain: "base", amount: "100000" }),
+      ],
+      scores: [
+        {
+          ...score({ routeKey: negativeRouteKey, amount: "10000", srcChain: "sonic", dstChain: "ethereum", inputUsd: 7.58 }),
+          netEdgeUsd: -1.18,
+        },
+        {
+          ...score({ routeKey: positiveRouteKey, amount: "100000", srcChain: "bob", dstChain: "base", inputUsd: 75.8 }),
+          netEdgeUsd: 0.27,
+        },
+      ],
+      readinessRecords: [
+        {
+          observedAt: "2026-04-18T01:05:00.000Z",
+          address: ADDRESS,
+          routeKey: negativeRouteKey,
+          amount: "10000",
+          srcChain: "sonic",
+          dstChain: "ethereum",
+          native: { shortfallWei: "0", ok: true },
+          token: { token: WBTC_OFT, balance: "0", required: "10000", shortfall: "10000", ok: false },
+          allowance: null,
+          overallReady: false,
+        },
+        {
+          observedAt: "2026-04-18T01:06:00.000Z",
+          address: ADDRESS,
+          routeKey: positiveRouteKey,
+          amount: "100000",
+          srcChain: "bob",
+          dstChain: "base",
+          native: { shortfallWei: "0", ok: true },
+          token: { token: WBTC_OFT, balance: "0", required: "100000", shortfall: "100000", ok: false },
+          allowance: null,
+          overallReady: false,
+        },
+      ],
+      readinessFailures: [],
+    },
+    {
+      address: ADDRESS,
+      prices: { nativeByChain: { bob: 2421.47, sonic: 0.047 } },
+    },
+  );
+
+  assert.equal(plan.topCandidates[0].routeKey, positiveRouteKey);
+  assert.equal(plan.topCandidates[0].netEdgeUsd > 0, true);
+  assert.equal(plan.topCandidates[1].routeKey, negativeRouteKey);
+});
