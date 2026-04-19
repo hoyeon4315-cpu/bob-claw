@@ -254,6 +254,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     recursiveStablecoinLoop,
     secondaryStrategyScaffolds,
     protocolMarketWatchers,
+    destinationPromotionGate,
     now: dashboardStatus.generatedAt,
   });
   strategySnapshot.summary.phase3ValidationCount = phase3StrategyValidation.summary?.validationCount ?? 0;

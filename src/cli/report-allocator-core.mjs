@@ -22,13 +22,14 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [strategySnapshot, phase3Validation, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds] = await Promise.all([
+  const [strategySnapshot, phase3Validation, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds, destinationPromotionGate] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "strategy-snapshot.json")),
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
     readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
+    readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
   ]);
   const report = buildAllocatorCore({
     strategySnapshot,
@@ -37,6 +38,7 @@ async function main() {
     recursiveWrappedBtcLoop,
     recursiveStablecoinLoop,
     secondaryStrategyScaffolds,
+    destinationPromotionGate,
   });
 
   if (args.write) {

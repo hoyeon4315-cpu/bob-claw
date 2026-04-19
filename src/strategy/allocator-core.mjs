@@ -47,6 +47,82 @@ function allocationLimitUsd({ budgetUsd, constraints = {} } = {}) {
   return caps.length ? Math.min(...caps) : null;
 }
 
+function destinationFamilyAssetFamily(familyId = "") {
+  if (!familyId) return null;
+  if (familyId.startsWith("stablecoin")) return "stables";
+  if (familyId.startsWith("wrapped_btc") || familyId.startsWith("native_btc")) return "btc_wrappers";
+  if (familyId.includes("reserve")) return "reserve_assets";
+  return familyId;
+}
+
+function destinationCategory(familyId = "") {
+  if (familyId?.includes("lp") || familyId?.includes("basis")) return "yield_lp";
+  if (familyId?.includes("lending") || familyId?.includes("carry")) return "yield";
+  return "yield";
+}
+
+function destinationGateCandidate(item = {}) {
+  if (!item?.templateId || !item?.familyId || !item?.chain) return null;
+  const allocationStatus = item.allocationGate?.status || null;
+  const gateStatus = item.gate?.status || null;
+  const allocationBlockers = item.allocationGate?.blockers || [];
+  const gateBlockers = item.gate?.blockers || [];
+  const activeEligibility = allocationStatus === "allocation_ready" && gateStatus === "promotable"
+    ? "active_ready"
+    : "blocked";
+  const planningEligibility = allocationStatus === "allocation_ready"
+    ? "allocation_ready"
+    : allocationStatus === "review_only"
+      ? "review_only"
+      : "blocked";
+  const blockers = [...allocationBlockers, ...gateBlockers];
+  if (gateStatus && gateStatus !== "promotable") blockers.push(`gate_${gateStatus}`);
+  return candidate({
+    id: item.templateId,
+    label: item.label || item.templateId,
+    chain: item.chain,
+    protocols: [item.familyId],
+    assetFamily: destinationFamilyAssetFamily(item.familyId),
+    category: destinationCategory(item.familyId),
+    activeEligibility,
+    planningEligibility,
+    blockers,
+    evidence: item.allocationGate?.evidence || item.evidence || null,
+    nextAction: item.allocationGate?.nextAction || item.recommendation || null,
+  });
+}
+
+function destinationGateCandidates(promotionGate = null) {
+  const items = promotionGate?.items || [];
+  return items
+    .map((item) => destinationGateCandidate(item))
+    .filter((item) => item?.id)
+    .filter((item) => item.activeEligibility === "active_ready" || item.planningEligibility === "review_only" || item.planningEligibility === "allocation_ready");
+}
+
+function capBlockers({ chain, protocols, assetFamily, perItemLimit, budgetUsd, constraints, chainUsage, protocolUsage, assetFamilyUsage }) {
+  if (!Number.isFinite(budgetUsd) || !Number.isFinite(perItemLimit)) return [];
+  const blockers = [];
+  const chainCap = (constraints.capPerChainPct ?? 0) * budgetUsd;
+  if (chainCap > 0 && round((chainUsage.get(chain) || 0) + perItemLimit) > round(chainCap)) {
+    blockers.push("chain_cap_exceeded");
+  }
+  const protocolCap = (constraints.capPerProtocolPct ?? 0) * budgetUsd;
+  if (protocolCap > 0) {
+    for (const protocol of protocols) {
+      if (round((protocolUsage.get(protocol) || 0) + perItemLimit) > round(protocolCap)) {
+        blockers.push("protocol_cap_exceeded");
+        break;
+      }
+    }
+  }
+  const assetCap = (constraints.capPerAssetFamilyPct ?? 0) * budgetUsd;
+  if (assetCap > 0 && round((assetFamilyUsage.get(assetFamily) || 0) + perItemLimit) > round(assetCap)) {
+    blockers.push("asset_family_cap_exceeded");
+  }
+  return blockers;
+}
+
 function wrappedLoopCandidate({ wrappedBtcLendingLoopSlice = null, phase3Validation = null } = {}) {
   const validation = (phase3Validation?.validations || []).find((item) => item.id === "wrapped_btc_loop_validation") || null;
   const strategy = wrappedBtcLendingLoopSlice?.strategy || {};
@@ -144,12 +220,33 @@ function buildAllocationView(items = [], budgetUsd, constraints) {
     };
 
     if (item.activeEligibility === "active_ready" && Number.isFinite(perItemLimit) && perItemLimit > 0) {
-      activePlan.push(allocation);
-      chainUsage.set(item.chain, round((chainUsage.get(item.chain) || 0) + perItemLimit));
-      for (const protocol of item.protocols) {
-        protocolUsage.set(protocol, round((protocolUsage.get(protocol) || 0) + perItemLimit));
+      const exceeded = capBlockers({
+        chain: item.chain,
+        protocols: item.protocols,
+        assetFamily: item.assetFamily,
+        perItemLimit,
+        budgetUsd,
+        constraints,
+        chainUsage,
+        protocolUsage,
+        assetFamilyUsage,
+      });
+      if (exceeded.length === 0) {
+        activePlan.push(allocation);
+        chainUsage.set(item.chain, round((chainUsage.get(item.chain) || 0) + perItemLimit));
+        for (const protocol of item.protocols) {
+          protocolUsage.set(protocol, round((protocolUsage.get(protocol) || 0) + perItemLimit));
+        }
+        assetFamilyUsage.set(item.assetFamily, round((assetFamilyUsage.get(item.assetFamily) || 0) + perItemLimit));
+        continue;
       }
-      assetFamilyUsage.set(item.assetFamily, round((assetFamilyUsage.get(item.assetFamily) || 0) + perItemLimit));
+      const capBlockedBlockers = unique([...(item.blockers || []), ...exceeded]);
+      planningQueue.push({
+        ...allocation,
+        blockers: capBlockedBlockers,
+        planningEligibility: "cap_deferred",
+        blockerCount: capBlockedBlockers.length,
+      });
       continue;
     }
 
@@ -200,6 +297,7 @@ export function buildAllocatorCore({
   recursiveStablecoinLoop = null,
   secondaryStrategyScaffolds = null,
   protocolMarketWatchers = null,
+  destinationPromotionGate = null,
   now = null,
 } = {}) {
   const budgets = {
@@ -218,6 +316,7 @@ export function buildAllocatorCore({
     recursiveLoopCandidate({ scaffold: recursiveStablecoinLoop, phase3Validation }),
     recursiveWrappedBtcLoop ? null : wrappedLoopCandidate({ wrappedBtcLendingLoopSlice, phase3Validation }),
     ...((secondaryStrategyScaffolds?.scaffolds || []).map((item) => scaffoldCandidate(item, phase3Validation))),
+    ...destinationGateCandidates(destinationPromotionGate),
   ]
     .filter((item) => item?.id)
     .map((item) => {
@@ -257,7 +356,8 @@ export function buildAllocatorCore({
     planningView,
     notes: [
       "This allocator core is deterministic and evidence-bound; it does not authorize live execution on its own.",
-      "Per-strategy, per-protocol, per-chain, and per-asset-family caps should come from explicit strategy config rather than a repo-wide budget ring.",
+      "Per-strategy, per-protocol, per-chain, and per-asset-family caps are enforced against cumulative active-plan exposure; candidates that would exceed any cap are deferred with an explicit cap_exceeded blocker rather than silently admitted.",
+      "Destination-promotion-gate allocation_ready venues are surfaced as allocator candidates so that multi-chain diversification can run under the same cap policy as scaffold-driven strategies.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
       "Cross-chain reserve movement belongs in the allocator/rebalance layer; do not promote a unified multi-chain recursive loop until same-chain loop receipts, auto-unwind wiring, and native-BTC return paths are all proven.",
     ],

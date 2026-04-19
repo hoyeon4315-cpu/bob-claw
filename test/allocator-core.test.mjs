@@ -155,6 +155,178 @@ test("allocator core exposes active-ready recursive strategy even before an acti
   assert.equal(summary.activeNextAction.code, "review_recursive_loop_observed_receipts");
 });
 
+test("allocator core surfaces destination-promotion-gate allocation_ready venues as active-ready candidates", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        {
+          templateId: "base:stablecoin_lending_carry",
+          chain: "base",
+          familyId: "stablecoin_lending_carry",
+          label: "Stablecoin lending carry",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: { status: "allocation_ready", blockers: [] },
+        },
+        {
+          templateId: "bsc:stablecoin_lending_carry",
+          chain: "bsc",
+          familyId: "stablecoin_lending_carry",
+          label: "Stablecoin lending carry",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: { status: "allocation_ready", blockers: [] },
+        },
+      ],
+    },
+    now: "2026-04-20T00:00:00.000Z",
+  });
+
+  const ids = report.candidates.map((item) => item.id);
+  assert.equal(ids.includes("base:stablecoin_lending_carry"), true);
+  assert.equal(ids.includes("bsc:stablecoin_lending_carry"), true);
+  const baseCandidate = report.candidates.find((item) => item.id === "base:stablecoin_lending_carry");
+  assert.equal(baseCandidate.activeEligibility, "active_ready");
+  assert.equal(baseCandidate.assetFamily, "stables");
+  assert.equal(baseCandidate.chain, "base");
+});
+
+test("allocator core keeps review_only destination venues out of active plan with blockers surfaced", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: 1000 },
+      summary: { planningBudgetUsd: 1000 },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        {
+          templateId: "base:wrapped_btc_lp_positions",
+          chain: "base",
+          familyId: "wrapped_btc_lp_positions",
+          label: "Wrapped BTC LP",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: {
+            status: "review_only",
+            blockers: ["manual_contract_review_required", "evidence_policy_incomplete"],
+          },
+        },
+      ],
+    },
+    now: "2026-04-20T00:00:01.000Z",
+  });
+
+  const candidate = report.candidates.find((item) => item.id === "base:wrapped_btc_lp_positions");
+  assert.ok(candidate, "review_only candidate must be present");
+  assert.equal(candidate.activeEligibility, "blocked");
+  assert.equal(candidate.planningEligibility, "review_only");
+  assert.equal(candidate.blockers.includes("manual_contract_review_required"), true);
+  assert.equal(report.summary.activeAllocationCount, 0);
+  assert.equal(
+    report.activeView.activePlan.find((item) => item.id === "base:wrapped_btc_lp_positions"),
+    undefined,
+  );
+  const planningItem = report.planningView.planningQueue.find((item) => item.id === "base:wrapped_btc_lp_positions");
+  assert.ok(planningItem, "review_only candidate must appear in planning queue");
+  assert.equal(planningItem.planningEligibility, "review_only");
+});
+
+test("allocator core enforces per-chain concentration cap and defers excess active-ready candidates", () => {
+  const makeReadyItem = (templateId, chain, familyId) => ({
+    templateId,
+    chain,
+    familyId,
+    label: templateId,
+    gate: { status: "promotable", blockers: [] },
+    allocationGate: { status: "allocation_ready", blockers: [] },
+  });
+
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: 1000 },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        makeReadyItem("base:stablecoin_lending_carry", "base", "stablecoin_lending_carry"),
+        makeReadyItem("base:stablecoin_lp_or_basis", "base", "stablecoin_lp_or_basis"),
+        makeReadyItem("base:extra_stables_sleeve", "base", "stablecoin_extra_family"),
+      ],
+    },
+    now: "2026-04-20T00:00:02.000Z",
+  });
+
+  const perItemLimit = report.activeView.maxAllocationPerStrategyUsd;
+  assert.equal(perItemLimit, 200);
+
+  const chainBaseAdmitted = report.activeView.activePlan.filter((item) => item.chain === "base");
+  const chainBaseUsage = report.activeView.exposureUsage.byChain.base || 0;
+  assert.equal(chainBaseUsage <= 0.4 * 1000 + 1e-6, true, `base chain usage ${chainBaseUsage} must not exceed 40% cap`);
+  assert.equal(chainBaseAdmitted.length <= 2, true, "chain cap must admit at most 2 base venues at $200 each under 40% of $1000");
+
+  const capDeferred = report.activeView.planningQueue.filter((item) => item.planningEligibility === "cap_deferred");
+  assert.equal(capDeferred.length >= 1, true, "at least one venue must be cap_deferred once chain cap is reached");
+  const capBlocker = capDeferred.find((item) =>
+    (item.blockers || []).some((blocker) => blocker === "chain_cap_exceeded" || blocker === "asset_family_cap_exceeded" || blocker === "protocol_cap_exceeded"),
+  );
+  assert.ok(capBlocker, "cap_deferred venue must carry a cap_exceeded blocker");
+});
+
+test("allocator core admits a chain-diversified portfolio across base and bsc stablecoin venues", () => {
+  const makeReadyItem = (templateId, chain, familyId) => ({
+    templateId,
+    chain,
+    familyId,
+    label: templateId,
+    gate: { status: "promotable", blockers: [] },
+    allocationGate: { status: "allocation_ready", blockers: [] },
+  });
+
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: 1000 },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          overallStatus: "passed",
+          blockers: [],
+          evidence: { strategyId: "recursive_wrapped_btc_lending_loop" },
+          nextAction: { code: "review_recursive_loop_observed_receipts" },
+        },
+      ],
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: {
+        id: "recursive_wrapped_btc_lending_loop",
+        label: "Recursive wrapped-BTC lending loop",
+        chain: "base",
+        protocol: "moonwell",
+        arrivalFamily: "wrapped_btc",
+      },
+    },
+    destinationPromotionGate: {
+      items: [
+        makeReadyItem("base:stablecoin_lending_carry", "base", "stablecoin_lending_carry"),
+        makeReadyItem("bsc:stablecoin_lp_or_basis", "bsc", "stablecoin_lp_or_basis"),
+      ],
+    },
+    now: "2026-04-20T00:00:03.000Z",
+  });
+
+  const activeChains = new Set(report.activeView.activePlan.map((item) => item.chain));
+  assert.equal(activeChains.size >= 2, true, "active plan must span at least 2 chains for diversification");
+  const activeAssetFamilies = new Set(report.activeView.activePlan.map((item) => item.assetFamily));
+  assert.equal(activeAssetFamilies.size >= 2, true, "active plan must span at least 2 asset families (btc_wrappers + stables)");
+  assert.equal(report.summary.activeAllocationCount >= 2, true);
+});
+
 test("allocator core keeps active allocation distinct once active budget is declared", () => {
   const report = buildAllocatorCore({
     strategySnapshot: {
