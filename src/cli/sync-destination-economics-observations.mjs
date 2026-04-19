@@ -23,6 +23,20 @@ function latestByTemplateAndField(entries = []) {
   return map;
 }
 
+function latestByTemplate(entries = []) {
+  const map = new Map();
+  for (const entry of entries || []) {
+    if (!entry?.templateId) continue;
+    const current = map.get(entry.templateId);
+    const currentTime = current ? new Date(current.observedAt).getTime() : -Infinity;
+    const nextTime = new Date(entry.observedAt).getTime();
+    if (!current || nextTime >= currentTime) {
+      map.set(entry.templateId, entry);
+    }
+  }
+  return map;
+}
+
 async function main() {
   const write = process.argv.slice(2).includes("--write");
   const observationsPath = join(config.dataDir, "destination-economics-observations.json");
@@ -31,6 +45,7 @@ async function main() {
   const observations = await readJson(observationsPath);
   const overrides = await readJson(overridesPath);
   const latest = latestByTemplateAndField(observations.entries || []);
+  const latestTemplateObservation = latestByTemplate(observations.entries || []);
 
   const entries = [...(overrides.entries || [])];
   for (const observation of latest.values()) {
@@ -54,6 +69,31 @@ async function main() {
       },
     };
 
+    if (index >= 0) entries[index] = next;
+    else entries.push(next);
+  }
+
+  for (const [templateId, observation] of latestTemplateObservation.entries()) {
+    const index = entries.findIndex((entry) => entry.templateId === templateId);
+    const existing =
+      index >= 0
+        ? entries[index]
+        : {
+            templateId,
+            status: "partially_seeded",
+            values: {},
+            notes: [],
+          };
+    const next = {
+      ...existing,
+      status: "partially_seeded",
+      values: {
+        ...(existing.values || {}),
+        sourceName: observation.sourceName ?? existing.values?.sourceName ?? null,
+        sourceType: observation.sourceType ?? existing.values?.sourceType ?? null,
+        lastVerifiedAt: observation.observedAt ? String(observation.observedAt).slice(0, 10) : existing.values?.lastVerifiedAt ?? null,
+      },
+    };
     if (index >= 0) entries[index] = next;
     else entries.push(next);
   }

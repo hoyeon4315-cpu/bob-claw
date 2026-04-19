@@ -181,6 +181,9 @@ test("observation-first destination economics flow updates reports from fresh ov
   const overrides = JSON.parse(await readFile(join(dataDir, "destination-input-overrides.json"), "utf8"));
   assert.equal(overrides.entries[0].values.grossReturnBps, 120);
   assert.equal(overrides.entries[0].values.unwindSlippageBps, 20);
+  assert.equal(overrides.entries[0].values.sourceName, "Example Protocol");
+  assert.equal(overrides.entries[0].values.sourceType, "official_docs");
+  assert.equal(overrides.entries[0].values.lastVerifiedAt, "2026-04-14");
 
   const estimatedOutput = await execFileAsync(
     "node",
