@@ -332,6 +332,108 @@ test("prelive readiness pauses at fork execution after mechanical proof", () => 
   assert.equal(summary.tinyLiveCanary.blockers.includes("fork_execution_not_ready"), true);
 });
 
+test("prelive readiness accepts signer-backed strategy execution proof instead of route fork cycles", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_BLOCKED",
+      blockers: ["candidate amount diversity"],
+    },
+    shadowCycle: {
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: false,
+      edgeViability: {
+        policyReadyCount: 0,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_candidate_review_only",
+        reviewReady: true,
+        evidence: {
+          liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+          liveRoundtripEntryCount: 8,
+          liveRoundtripUnwindCount: 4,
+        },
+      },
+      tinyCanaryAdmission: {
+        status: "manual_approval_required",
+      },
+    },
+    simulationRuns: [
+      { observedAt: "2026-04-12T10:00:00.000Z", status: "simulated_ok" },
+      { observedAt: "2026-04-12T10:05:00.000Z", status: "simulated_ok" },
+    ],
+    targetSimulationSuccessCount: 2,
+    targetForkConfirmedCount: 3,
+  });
+
+  assert.equal(summary.currentStage, "tiny_live_canary_review");
+  assert.equal(summary.forkExecution.ready, true);
+  assert.equal(summary.forkExecution.status, "strategy_execution_proven");
+  assert.equal(summary.forkExecution.blockers.includes("no_fork_execution_plan"), false);
+  assert.equal(summary.forkExecution.blockers.some((blocker) => blocker.includes("confirmed_fork_cycles")), false);
+  assert.equal(summary.forkExecution.strategyExecutionProof.ready, true);
+  assert.equal(summary.tinyLiveCanary.ready, true);
+});
+
+test("prelive readiness still requires fork cycles when a strategy lacks signer-backed proof", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_CANARY_REVIEW_POSSIBLE",
+    },
+    shadowCycle: {
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: false,
+      edgeViability: {
+        policyReadyCount: 0,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "recursive_wrapped_btc_lending_loop",
+        candidateLabel: "Recursive wrapped-BTC lending loop",
+        tradeReadiness: "strategy_candidate_review_only",
+        reviewReady: true,
+        evidence: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 0,
+        },
+      },
+      tinyCanaryAdmission: {
+        status: "manual_approval_required",
+      },
+    },
+    simulationRuns: [
+      { observedAt: "2026-04-12T10:00:00.000Z", status: "simulated_ok" },
+      { observedAt: "2026-04-12T10:05:00.000Z", status: "simulated_ok" },
+    ],
+    targetSimulationSuccessCount: 2,
+    targetForkConfirmedCount: 3,
+  });
+
+  assert.equal(summary.currentStage, "fork_execution");
+  assert.equal(summary.forkExecution.ready, false);
+  assert.equal(summary.forkExecution.strategyExecutionProof.ready, false);
+  assert.equal(summary.forkExecution.blockers.includes("no_fork_execution_plan"), true);
+  assert.equal(summary.tinyLiveCanary.blockers.includes("fork_execution_not_ready"), true);
+});
+
 test("prelive readiness blocks on unresolved pending fork output", () => {
   const summary = buildPreliveReadinessSummary({
     overall: {

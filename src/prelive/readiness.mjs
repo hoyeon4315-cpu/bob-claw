@@ -46,6 +46,35 @@ function auditBlocksSelectedLane({ audit = null, strategyReviewCandidateReady = 
   return blockers.some((label) => !TRANSPORT_ONLY_AUDIT_BLOCKERS.has(label));
 }
 
+function strategyExecutionProof(primaryCandidate = null) {
+  if (primaryCandidate?.candidateType !== "strategy") {
+    return {
+      ready: false,
+      status: null,
+      blocker: "strategy_execution_proof_missing",
+    };
+  }
+  const evidence = primaryCandidate.evidence || {};
+  const signerBackedRunCount = evidence.signerBackedRunCount ?? 0;
+  const liveRoundtripEntryCount = evidence.liveRoundtripEntryCount ?? 0;
+  const liveRoundtripUnwindCount = evidence.liveRoundtripUnwindCount ?? 0;
+  const liveRoundtripRecorded = evidence.liveRoundtripProofStatus === "signer_backed_roundtrip_recorded";
+  const signerBackedRecorded =
+    signerBackedRunCount > 0 ||
+    (liveRoundtripRecorded && liveRoundtripEntryCount > 0 && liveRoundtripUnwindCount > 0);
+  return {
+    ready: Boolean(primaryCandidate.reviewReady === true && signerBackedRecorded),
+    status: signerBackedRecorded ? "signer_backed_strategy_roundtrip_recorded" : "strategy_execution_proof_missing",
+    blocker: signerBackedRecorded ? null : "strategy_execution_proof_missing",
+    strategyId: primaryCandidate.candidateId || null,
+    strategyLabel: primaryCandidate.candidateLabel || null,
+    liveRoundtripProofStatus: evidence.liveRoundtripProofStatus || null,
+    liveRoundtripEntryCount,
+    liveRoundtripUnwindCount,
+    signerBackedRunCount,
+  };
+}
+
 function selectionKey(routeKey = null, amount = null) {
   if (!routeKey || amount == null) return null;
   return `${routeKey}|${String(amount)}`;
@@ -143,6 +172,7 @@ export function buildPreliveReadinessSummary({
         primaryCandidate.tradeReadiness === "strategy_candidate_review_only" ||
         reviewPackage?.readyForManualReview === true),
   );
+  const strategyProof = strategyExecutionProof(primaryCandidate);
   const measuredPolicyReady = Number(strategy?.edgeViability?.policyReadyCount || 0);
   const objectiveExecutionRoute = shadowCycle?.objectivePlans?.executionReview?.routeKey || null;
   const successfulSimulations = simulationRuns.filter((item) => item.status === "simulated_ok");
@@ -231,31 +261,36 @@ export function buildPreliveReadinessSummary({
   if (!mechanicalSimulation.ready) {
     forkExecutionBlockers.push("mechanical_simulation_not_ready");
   }
-  if (forkExecution.planCount <= 0) {
-    forkExecutionBlockers.push("no_fork_execution_plan");
-  }
-  if (forkExecution.confirmedCount < targetForkConfirmedCount) {
-    forkExecutionBlockers.push(`needs_${targetForkConfirmedCount - forkExecution.confirmedCount}_more_confirmed_fork_cycles`);
-  }
-  if (forkExecution.pendingOutputCount > 0) {
-    forkExecutionBlockers.push("fork_output_resolution_required");
-  }
-  if (forkExecution.submissionFailureCount > 0) {
-    forkExecutionBlockers.push("fork_submission_failures_present");
-  }
-  if (forkExecution.failedCount > 0) {
-    forkExecutionBlockers.push("fork_execution_failures_present");
-  }
-  if (executionAudit.missingRecordCount > 0) {
-    forkExecutionBlockers.push("fork_execution_records_missing");
+  if (!strategyProof.ready) {
+    if (forkExecution.planCount <= 0) {
+      forkExecutionBlockers.push("no_fork_execution_plan");
+    }
+    if (forkExecution.confirmedCount < targetForkConfirmedCount) {
+      forkExecutionBlockers.push(`needs_${targetForkConfirmedCount - forkExecution.confirmedCount}_more_confirmed_fork_cycles`);
+    }
+    if (forkExecution.pendingOutputCount > 0) {
+      forkExecutionBlockers.push("fork_output_resolution_required");
+    }
+    if (forkExecution.submissionFailureCount > 0) {
+      forkExecutionBlockers.push("fork_submission_failures_present");
+    }
+    if (forkExecution.failedCount > 0) {
+      forkExecutionBlockers.push("fork_execution_failures_present");
+    }
+    if (executionAudit.missingRecordCount > 0) {
+      forkExecutionBlockers.push("fork_execution_records_missing");
+    }
   }
   forkExecution.ready = forkExecutionBlockers.length === 0;
-  forkExecution.status = forkExecution.ready
-    ? "fork_execution_proven"
-    : forkExecutionBlockers.length
-      ? "fork_execution_blocked"
-      : "building_fork_evidence";
+  forkExecution.status = forkExecution.ready && strategyProof.ready
+    ? "strategy_execution_proven"
+    : forkExecution.ready
+      ? "fork_execution_proven"
+      : forkExecutionBlockers.length
+        ? "fork_execution_blocked"
+        : "building_fork_evidence";
   forkExecution.blockers = forkExecution.ready ? [] : forkExecutionBlockers;
+  forkExecution.strategyExecutionProof = strategyProof;
 
   const tinyCanaryBlockers = [];
   if (!shadowReplay.ready) {
