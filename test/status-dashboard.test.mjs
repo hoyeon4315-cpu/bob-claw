@@ -133,6 +133,26 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
       },
     },
   ]);
+  await writeJsonl(dataDir, "shadow-refresh-batches", [
+    {
+      observedAt: "2026-04-11T02:11:00.000Z",
+      batchId: "batch-failed",
+      mode: "execute",
+      batchStatus: "failed",
+      stopReason: "queue_item_failed",
+      selectedCount: 1,
+      queueResults: [
+        {
+          executionStatus: "failed",
+          routeLabel: "soneium->bob wBTC.OFT->wBTC.OFT",
+          outcomeCategory: "rpc_unavailable",
+          transientFailure: true,
+        },
+      ],
+      followUps: [],
+      circuitBreaker: { blocked: false },
+    },
+  ]);
 
   const result = spawnSync(process.execPath, [join(ROOT, "src/cli/status-dashboard.mjs")], {
     cwd,
@@ -164,12 +184,14 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(publicStatus.dataCounts.preliveSimulationRuns, 0);
   assert.equal(publicStatus.dataCounts.preliveForkPlans, 0);
   assert.equal(publicStatus.dataCounts.shadowRefreshExecutions, 0);
-  assert.equal(publicStatus.dataCounts.shadowRefreshBatches, 0);
+  assert.equal(publicStatus.dataCounts.shadowRefreshBatches, 1);
   assert.equal(publicStatus.shadowCycle.mode, shadowCycle.mode);
   assert.equal(typeof publicStatus.shadowCycle?.refreshExecution?.runCount, "number");
   assert.equal(Array.isArray(publicStatus.shadowCycle?.refreshExecution?.recentExecutions), true);
   assert.equal(typeof publicStatus.shadowCycle?.refreshBatch?.runCount, "number");
   assert.equal(Array.isArray(publicStatus.shadowCycle?.refreshBatch?.recentBatches), true);
+  assert.equal(publicStatus.shadowCycle?.refreshBatch?.latestFailureCategory, "rpc_unavailable");
+  assert.equal(publicStatus.shadowCycle?.refreshBatch?.latestFailureRouteLabel, "soneium->bob wBTC.OFT->wBTC.OFT");
   assert.equal(typeof publicStatus.prelive?.currentStage, "string");
   assert.equal(typeof publicStatus.liveBaseline?.status, "string");
   assert.equal(typeof publicStatus.liveBaseline?.counts?.requiredRefreshCount, "number");

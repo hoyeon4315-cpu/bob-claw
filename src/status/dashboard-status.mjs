@@ -1491,6 +1491,8 @@ function shadowCycleSummary(shadowCycle, now, { readinessRecords = [], readiness
       latestStatus: refreshBatch.latestStatus,
       latestMode: refreshBatch.latestMode,
       latestStopReason: refreshBatch.latestStopReason,
+      latestFailureCategory: refreshBatch.latestFailureCategory,
+      latestFailureRouteLabel: refreshBatch.latestFailureRouteLabel,
       recentBatches: refreshBatch.recentBatches,
     },
     shadowActions: (shadowCycle.shadowActions || []).map((item) => ({

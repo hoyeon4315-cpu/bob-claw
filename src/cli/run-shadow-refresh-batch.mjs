@@ -8,6 +8,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
 import { buildShadowRefreshBatchSummary, executeShadowRefreshBatch } from "../session/shadow-refresh-batch.mjs";
+import { parseWhitelistedRefreshCommand, runParsedRefreshSteps } from "../session/shadow-refresh-runner.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -35,6 +36,13 @@ function stripVolatile(value) {
   const { generatedAt, latestObservedAt, ...stable } = value;
   return stable;
 }
+
+const POST_APPEND_SYNC_COMMANDS = [
+  "npm run status:dashboard",
+  "npm run write:session-handoff",
+];
+
+const POST_APPEND_ALLOWED_SCRIPTS = new Set(["status:dashboard", "write:session-handoff"]);
 
 async function loadRefreshPlan() {
   const existing = await readJsonIfExists(join(config.dataDir, "shadow-refresh-plan.json"));
@@ -92,6 +100,16 @@ async function main() {
         return JSON.stringify(stripVolatile(JSON.parse(contents)));
       },
     });
+  }
+
+  if (args.execute) {
+    for (const command of POST_APPEND_SYNC_COMMANDS) {
+      const steps = parseWhitelistedRefreshCommand(command, { allowedScripts: POST_APPEND_ALLOWED_SCRIPTS });
+      const result = await runParsedRefreshSteps(steps);
+      if (result.executionStatus !== "succeeded") {
+        throw new Error(`Post-append sync failed for command: ${command}`);
+      }
+    }
   }
 
   const summary = args.execute ? persistedSummary : buildShadowRefreshBatchSummary([record]);
