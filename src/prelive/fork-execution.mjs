@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { tokenAsset } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { stableSerialize } from "../execution/journal.mjs";
 
@@ -56,6 +57,19 @@ function routeKey(record = null) {
   return record?.routeKey || record?.routeContext?.routeKey || null;
 }
 
+function parseRouteKey(routeKeyValue = null) {
+  const [src = "", dst = ""] = String(routeKeyValue || "").split("->");
+  const [srcChain, srcToken] = src.split(":");
+  const [dstChain, dstToken] = dst.split(":");
+  if (!srcChain || !dstChain) return null;
+  return {
+    srcChain,
+    srcToken: srcToken || null,
+    dstChain,
+    dstToken: dstToken || null,
+  };
+}
+
 function median(values) {
   if (values.length === 0) return null;
   const sorted = [...values].sort((left, right) => left - right);
@@ -74,12 +88,17 @@ function driftUsd(actualValue, expectedValue) {
 }
 
 export function buildForkOutputRequirements(plan = null) {
+  const parsedRoute = parseRouteKey(plan?.routeKey);
+  const outputChain = plan?.routeContext?.dstAsset?.chain || parsedRoute?.dstChain || plan?.dstChain || null;
+  const outputToken = plan?.routeContext?.dstAsset?.token || parsedRoute?.dstToken || null;
+  const outputAsset = outputChain && outputToken ? tokenAsset(outputChain, outputToken) : null;
+  const canPriceFromAsset = Boolean(outputAsset?.priceKey || outputAsset?.isNative);
   return {
     needsActualOutputUnits: true,
-    needsOutputAsset: !(plan?.routeContext?.dstAsset?.chain && plan?.routeContext?.dstAsset?.token),
-    needsOutputPriceUsd: !Number.isFinite(plan?.routeContext?.price?.dstRawUsd),
-    outputChain: plan?.routeContext?.dstAsset?.chain || plan?.dstChain || null,
-    outputToken: plan?.routeContext?.dstAsset?.token || null,
+    needsOutputAsset: !(outputChain && outputToken),
+    needsOutputPriceUsd: !Number.isFinite(plan?.routeContext?.price?.dstRawUsd) && !canPriceFromAsset,
+    outputChain,
+    outputToken,
     outputPriceUsd: Number.isFinite(plan?.routeContext?.price?.dstRawUsd) ? plan.routeContext.price.dstRawUsd : null,
   };
 }

@@ -43,6 +43,19 @@ function latestSubmittedTxHash(submissions = [], planId) {
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0]?.txHash || null;
 }
 
+function parseRouteKey(routeKey = null) {
+  const [src = "", dst = ""] = String(routeKey || "").split("->");
+  const [srcChain, srcToken] = src.split(":");
+  const [dstChain, dstToken] = dst.split(":");
+  if (!srcChain || !dstChain) return null;
+  return {
+    srcChain,
+    srcToken: srcToken || null,
+    dstChain,
+    dstToken: dstToken || null,
+  };
+}
+
 async function notifyPreliveForkTransition(payload) {
   try {
     return await sendTelegramMessage({
@@ -70,6 +83,7 @@ async function main() {
   ]);
   const txHash = args.txHash || latestSubmittedTxHash(submissions, plan.planId);
   if (!txHash) throw new Error(`No submitted tx hash found for plan: ${plan.planId}`);
+  const parsedRoute = parseRouteKey(plan.routeKey);
   const rpcOptions = {
     ...(args.rpcUrl ? { rpcUrl: args.rpcUrl } : {}),
     ...(args.rpcUrls.length ? { rpcUrls: args.rpcUrls } : {}),
@@ -104,8 +118,8 @@ async function main() {
       output: {
         actualOutputUnits: args.actualOutputUnits,
         actualOutputUsd: args.actualOutputUsd,
-        chain: args.outputChain,
-        token: args.outputToken,
+        chain: args.outputChain || plan.routeContext?.dstAsset?.chain || parsedRoute?.dstChain || plan.dstChain || null,
+        token: args.outputToken || plan.routeContext?.dstAsset?.token || parsedRoute?.dstToken || null,
         priceUsd: args.outputPriceUsd,
       },
     }),

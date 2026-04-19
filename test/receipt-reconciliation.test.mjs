@@ -134,6 +134,55 @@ test("receipt reconciliation treats zero output as failed when output was expect
   assert.equal(record.output.actualOutputUsd, 0);
 });
 
+test("receipt reconciliation infers OFT output units from source receipt logs", () => {
+  const record = buildReceiptReconciliation({
+    chain: "base",
+    txHash: "0xinferred",
+    routeContext: routeContextFixture({
+      srcChain: "base",
+      dstChain: "bsc",
+      srcAsset: {
+        chain: "base",
+        token: WBTC_OFT_TOKEN,
+        ticker: "wBTC.OFT",
+        decimals: 8,
+        priceKey: "btc",
+        isNative: false,
+      },
+      dstAsset: {
+        chain: "bsc",
+        token: WBTC_OFT_TOKEN,
+        ticker: "wBTC.OFT",
+        decimals: 8,
+        priceKey: "btc",
+        isNative: false,
+      },
+    }),
+    receipt: receiptFixture({
+      raw: {
+        logs: [
+          {
+            address: WBTC_OFT_TOKEN,
+            topics: [
+              "0x85496b760a4b7f8d66384b9df21b381f5d1b1e79f229a47aaf4c232edc2fe59a",
+              "0xguid",
+              "0x00000000000000000000000096262be63aa687563789225c2fe898c27a3b0ae4",
+            ],
+            data: "0x000000000000000000000000000000000000000000000000000000000000759600000000000000000000000000000000000000000000000000000000000003e900000000000000000000000000000000000000000000000000000000000003e9",
+          },
+        ],
+      },
+    }),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+  });
+
+  assert.equal(record.reconciliationStatus, "reconciled");
+  assert.equal(record.output.actualOutputUnits, "1001");
+  assert.equal(record.output.outputInference, "oft_sent_log");
+  assert.equal(Number.isFinite(record.output.actualOutputUsd), true);
+});
+
 test("receipt ledger summary aggregates realized records", () => {
   const success = buildReceiptReconciliation({
     chain: "bob",

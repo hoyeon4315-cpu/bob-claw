@@ -2,6 +2,7 @@ import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { ZERO_TOKEN } from "../assets/tokens.mjs";
 
 const BTC_SATS = 100_000_000;
+const OFT_SENT_EVENT_TOPIC = "0x85496b760a4b7f8d66384b9df21b381f5d1b1e79f229a47aaf4c232edc2fe59a";
 
 function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
@@ -62,6 +63,53 @@ function outputAssetFromContext(routeContext, output) {
     return tokenAsset(routeContext.dstAsset.chain, routeContext.dstAsset.token, routeContext.dstAsset);
   }
   return null;
+}
+
+function normalizeHexAddress(value) {
+  return value ? String(value).toLowerCase() : null;
+}
+
+function decodeLogWords(data = "0x") {
+  return String(data || "")
+    .replace(/^0x/i, "")
+    .match(/.{64}/g) || [];
+}
+
+function inferOutputUnitsFromOftSentLog(routeContext, receipt) {
+  const logs = receipt?.raw?.logs;
+  if (!Array.isArray(logs) || logs.length === 0) return null;
+  const expectedEmitter = normalizeHexAddress(routeContext?.srcAsset?.token || receipt?.to || null);
+  const matchingLog = [...logs]
+    .reverse()
+    .find((entry) => {
+      if (!Array.isArray(entry?.topics) || entry.topics[0]?.toLowerCase() !== OFT_SENT_EVENT_TOPIC) return false;
+      if (!expectedEmitter) return true;
+      return normalizeHexAddress(entry.address) === expectedEmitter;
+    });
+  if (!matchingLog) return null;
+  const words = decodeLogWords(matchingLog.data);
+  if (words.length < 3) return null;
+  try {
+    return BigInt(`0x${words[2]}`).toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeOutput(routeContext, receipt, output = {}) {
+  if (output?.actualOutputUnits !== undefined && output?.actualOutputUnits !== null) {
+    return {
+      ...output,
+      actualOutputUnits: String(output.actualOutputUnits),
+      inferredFromLog: false,
+    };
+  }
+  const inferredUnits = inferOutputUnitsFromOftSentLog(routeContext, receipt);
+  return {
+    ...output,
+    actualOutputUnits: inferredUnits,
+    inferredFromLog: Boolean(inferredUnits),
+  };
 }
 
 function inputAssetFromContext(routeContext) {
@@ -148,9 +196,10 @@ export function buildReceiptReconciliation({
   prices = null,
   observedAt,
 }) {
+  const normalizedOutput = normalizeOutput(routeContext, receipt, output);
   const actualGasCostUsd = receiptGasUsd({ chain, receipt, prices });
   const actualTxValueCostUsd = actualTxValueUsd({ chain, transaction, routeContext, prices });
-  const actualOutputValueUsd = actualOutputUsd({ routeContext, output, prices });
+  const actualOutputValueUsd = actualOutputUsd({ routeContext, output: normalizedOutput, prices });
   const expectedOutputValueUsd = expectedOutputUsd(routeContext);
   const actualKnownCostUsd =
     (Number.isFinite(actualGasCostUsd) ? actualGasCostUsd : 0) + (Number.isFinite(actualTxValueCostUsd) ? actualTxValueCostUsd : 0);
@@ -209,10 +258,11 @@ export function buildReceiptReconciliation({
       btcUsd: finiteOrNull(btcUsd),
     },
     output: {
-      asset: outputAssetFromContext(routeContext, output),
-      actualOutputUnits: output.actualOutputUnits != null ? String(output.actualOutputUnits) : null,
+      asset: outputAssetFromContext(routeContext, normalizedOutput),
+      actualOutputUnits: normalizedOutput.actualOutputUnits != null ? String(normalizedOutput.actualOutputUnits) : null,
       actualOutputUsd: finiteOrNull(actualOutputValueUsd),
-      explicitOutputPriceUsd: finiteOrNull(output.priceUsd),
+      explicitOutputPriceUsd: finiteOrNull(normalizedOutput.priceUsd),
+      outputInference: normalizedOutput.inferredFromLog ? "oft_sent_log" : null,
     },
     realized: {
       actualTxValueUsd: finiteOrNull(actualTxValueCostUsd),
