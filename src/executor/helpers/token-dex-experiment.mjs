@@ -108,6 +108,47 @@ function resolveQuotedGasLimit(quote, gasBufferBps) {
   return String(applyGasBuffer(Math.ceil(quotedGasLimit), gasBufferBps));
 }
 
+function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
+  const available = BigInt(sourceBalanceBefore?.balance ?? 0);
+  const required = BigInt(plan?.amount ?? 0);
+  if (available >= required) return;
+
+  const error = new Error(`Insufficient source balance: required ${required.toString()}, available ${available.toString()}`);
+  error.name = "InsufficientSourceBalance";
+  error.partialExecution = {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    settlementStatus: "blocked",
+    blockedReason: "insufficient_source_balance",
+    plan,
+    stepResults: [],
+    sourceBalanceBefore: {
+      ...sourceBalanceBefore,
+      ticker: plan.inputAsset?.ticker || null,
+      token: plan.inputToken || null,
+      chain: plan.chain,
+    },
+    sourceBalanceAfter: null,
+    destinationBalanceBefore: destinationBalanceBefore
+      ? {
+          ...destinationBalanceBefore,
+          ticker: plan.outputAsset?.ticker || null,
+          token: plan.outputToken || null,
+          chain: plan.chain,
+        }
+      : null,
+    destinationBalanceAfter: null,
+    destinationProof: null,
+    error: {
+      name: error.name,
+      message: error.message,
+      requiredAmount: required.toString(),
+      availableBalance: available.toString(),
+    },
+  };
+  throw error;
+}
+
 export async function buildTokenDexExperimentPlan({
   client = new OdosClient(),
   estimateGasImpl = estimateGas,
@@ -390,6 +431,7 @@ export async function executeTokenDexExperimentPlan({
         readNativeBalanceImpl,
       })
     : null;
+  assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore });
   const stepResults = [];
   for (const step of plan.steps) {
     const result = await sendCommand({

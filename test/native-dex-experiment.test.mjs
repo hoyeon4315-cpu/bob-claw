@@ -226,6 +226,63 @@ test("native dex experiment execution waits for output token delivery proof", as
   assert.equal(execution.destinationBalanceAfter.balance.toString(), "300000");
 });
 
+test("native dex experiment blocks before signing when native source balance is too low", async () => {
+  const plan = await buildNativeDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "100000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    outputToken: "usdc",
+  });
+
+  let signerCalls = 0;
+  await assert.rejects(
+    executeNativeDexExperimentPlan({
+      plan,
+      readErc20BalanceImpl: async () => ({
+        rpcUrl: "https://base-rpc.example",
+        balance: 0n,
+      }),
+      readNativeBalanceImpl: async () => ({
+        rpcUrl: "https://base-rpc.example",
+        balanceWei: "99999999999999",
+      }),
+      sendCommand: async () => {
+        signerCalls += 1;
+        return { status: "ok", broadcast: { txHash: "0xshould-not-send" } };
+      },
+    }),
+    (error) => {
+      assert.equal(error.name, "InsufficientSourceBalance");
+      assert.equal(error.partialExecution.settlementStatus, "blocked");
+      assert.equal(error.partialExecution.blockedReason, "insufficient_source_balance");
+      assert.equal(error.partialExecution.sourceBalanceBefore.balance.toString(), "99999999999999");
+      assert.equal(error.partialExecution.error.requiredAmount, "100000000000000");
+      return true;
+    },
+  );
+  assert.equal(signerCalls, 0);
+});
+
 test("native dex experiment execution surfaces partial step results on signer revert", async () => {
   const plan = await buildNativeDexExperimentPlan({
     client: odosClientFixture(),

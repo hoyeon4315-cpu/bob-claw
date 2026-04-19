@@ -209,6 +209,60 @@ test("token dex experiment execution waits for output token delivery proof", asy
   assert.equal(execution.destinationBalanceAfter.balance.toString(), "9900");
 });
 
+test("token dex experiment blocks before signing when source token balance is too low", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wbtc.oft",
+    outputToken: "cbbtc",
+  });
+
+  let signerCalls = 0;
+  await assert.rejects(
+    executeTokenDexExperimentPlan({
+      plan,
+      readErc20BalanceImpl: async (_chain, token) => ({
+        rpcUrl: "https://base-rpc.example",
+        balance: BigInt(String(token).toLowerCase() === String(plan.inputToken).toLowerCase() ? 9999 : 0),
+      }),
+      sendCommand: async () => {
+        signerCalls += 1;
+        return { status: "ok", broadcast: { txHash: "0xshould-not-send" } };
+      },
+    }),
+    (error) => {
+      assert.equal(error.name, "InsufficientSourceBalance");
+      assert.equal(error.partialExecution.settlementStatus, "blocked");
+      assert.equal(error.partialExecution.blockedReason, "insufficient_source_balance");
+      assert.equal(error.partialExecution.sourceBalanceBefore.balance.toString(), "9999");
+      assert.equal(error.partialExecution.error.requiredAmount, "10000");
+      return true;
+    },
+  );
+  assert.equal(signerCalls, 0);
+});
+
 test("token dex experiment execution surfaces partial step results on signer revert", async () => {
   const plan = await buildTokenDexExperimentPlan({
     client: odosClientFixture(),
