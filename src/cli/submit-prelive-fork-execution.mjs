@@ -3,8 +3,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Transaction } from "ethers";
 import { config } from "../config/env.mjs";
 import { rpc } from "../evm/json-rpc.mjs";
+import { readErc20Balance, readNativeBalance, summarizeRequirement } from "../evm/account-state.mjs";
 import { sendRawTransaction, classifySendTransactionError } from "../evm/transaction-submit.mjs";
 import { sendSignerCommand, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
@@ -45,6 +47,31 @@ function uniqueExplicitRpcUrls(args) {
   return [...new Set([...(args?.rpcUrls || []), args?.rpcUrl].filter(Boolean))];
 }
 
+function rpcOptionsFromArgs(args) {
+  return {
+    ...(args?.rpcUrl ? { rpcUrl: args.rpcUrl } : {}),
+    ...(args?.rpcUrls?.length ? { rpcUrls: args.rpcUrls } : {}),
+  };
+}
+
+function parseRouteKey(routeKey = null) {
+  const [src = "", dst = ""] = String(routeKey || "").split("->");
+  const [srcChain, srcToken] = src.split(":");
+  const [dstChain, dstToken] = dst.split(":");
+  if (!srcChain || !dstChain) return null;
+  return {
+    srcChain,
+    srcToken: srcToken || null,
+    dstChain,
+    dstToken: dstToken || null,
+  };
+}
+
+function toBigIntOrZero(value) {
+  if (value === null || value === undefined || value === "") return 0n;
+  return BigInt(value);
+}
+
 async function readForkPendingNonce(plan, args) {
   const fromAddress = plan?.address || plan?.transaction?.from || null;
   if (!fromAddress) return null;
@@ -63,6 +90,128 @@ async function readForkPendingNonce(plan, args) {
   error.name = "ForkPendingNonceRpcError";
   error.attempts = attempts;
   throw error;
+}
+
+async function readForkLatestBlock(args) {
+  const rpcUrls = uniqueExplicitRpcUrls(args);
+  if (rpcUrls.length === 0) return null;
+  const attempts = [];
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const block = await rpc(rpcUrl, "eth_getBlockByNumber", ["latest", false]);
+      if (!block) continue;
+      return {
+        rpcUrl,
+        blockNumber: Number(BigInt(block.number || "0x0")),
+        blockTimestamp: Number(BigInt(block.timestamp || "0x0")),
+      };
+    } catch (error) {
+      attempts.push({ rpcUrl, message: error.message, code: error.rpcError?.code ?? null });
+    }
+  }
+  const error = new Error("Failed to read latest fork block");
+  error.name = "ForkLatestBlockRpcError";
+  error.attempts = attempts;
+  throw error;
+}
+
+export async function buildForkSubmissionPreflight(
+  plan,
+  args,
+  {
+    readPendingNonceImpl = readForkPendingNonce,
+    readLatestBlockImpl = readForkLatestBlock,
+    readErc20BalanceImpl = readErc20Balance,
+    readNativeBalanceImpl = readNativeBalance,
+    decodeSignedTxImpl = (signedTx) => Transaction.from(signedTx),
+  } = {},
+) {
+  const parsedRoute = parseRouteKey(plan?.routeKey);
+  const fromAddress = plan?.address || plan?.transaction?.from || null;
+  const sourceChain = plan?.srcChain || parsedRoute?.srcChain || null;
+  const sourceToken = plan?.routeContext?.srcAsset?.token || parsedRoute?.srcToken || null;
+  const sourceAmountUnits = plan?.amount ? BigInt(plan.amount) : null;
+  const latestBlock = await readLatestBlockImpl(args);
+  const pendingNonce = Number.isInteger(args?.nonce) ? args.nonce : await readPendingNonceImpl(plan, args);
+  const rpcOptions = rpcOptionsFromArgs(args);
+
+  const sourceBalance = sourceChain && sourceToken && fromAddress
+    ? await readErc20BalanceImpl(sourceChain, sourceToken, fromAddress, rpcOptions)
+    : null;
+  if (sourceBalance && sourceAmountUnits !== null && sourceBalance.balance < sourceAmountUnits) {
+    const shortfall = summarizeRequirement(sourceBalance.balance, sourceAmountUnits);
+    const error = new Error(
+      `Fork source token balance is insufficient: actual=${shortfall.actual} required=${shortfall.required}`,
+    );
+    error.name = "ForkSourceBalanceError";
+    error.details = {
+      chain: sourceChain,
+      token: sourceToken,
+      address: fromAddress,
+      ...shortfall,
+    };
+    throw error;
+  }
+
+  const nativeBalance = sourceChain && fromAddress
+    ? await readNativeBalanceImpl(sourceChain, fromAddress, rpcOptions)
+    : null;
+
+  const preflight = {
+    observedAt: new Date().toISOString(),
+    chain: sourceChain,
+    address: fromAddress,
+    pendingNonce,
+    latestBlock,
+    sourceBalance: sourceBalance
+      ? {
+          rpcUrl: sourceBalance.rpcUrl,
+          token: sourceToken,
+          actual: sourceBalance.balance.toString(),
+          required: sourceAmountUnits?.toString() || null,
+          ok: sourceAmountUnits === null ? true : sourceBalance.balance >= sourceAmountUnits,
+        }
+      : null,
+    nativeBalance: nativeBalance
+      ? {
+          rpcUrl: nativeBalance.rpcUrl,
+          balanceWei: nativeBalance.balanceWei.toString(),
+        }
+      : null,
+    funding: null,
+  };
+
+  if (!nativeBalance || !args?.signedTx) return preflight;
+
+  const signedTransaction = decodeSignedTxImpl(args.signedTx);
+  const valueWei = toBigIntOrZero(signedTransaction?.value);
+  const gasLimit = toBigIntOrZero(signedTransaction?.gasLimit);
+  const gasPriceCapWei = toBigIntOrZero(signedTransaction?.maxFeePerGas ?? signedTransaction?.gasPrice);
+  const requiredWei = valueWei + (gasLimit * gasPriceCapWei);
+  const fundingSummary = summarizeRequirement(nativeBalance.balanceWei, requiredWei);
+  preflight.funding = {
+    requiredWei: fundingSummary.required,
+    actualWei: fundingSummary.actual,
+    ok: fundingSummary.ok,
+    shortfallWei: fundingSummary.shortfall,
+    valueWei: valueWei.toString(),
+    gasLimit: gasLimit.toString(),
+    gasPriceCapWei: gasPriceCapWei.toString(),
+  };
+  if (!fundingSummary.ok) {
+    const error = new Error(
+      `Fork native balance is insufficient for signed transaction: actual=${fundingSummary.actual} required=${fundingSummary.required}`,
+    );
+    error.name = "ForkNativeBalanceError";
+    error.details = {
+      chain: sourceChain,
+      address: fromAddress,
+      ...preflight.funding,
+    };
+    throw error;
+  }
+
+  return preflight;
 }
 
 export function buildForkSignerIntent(plan, { observedAt = new Date().toISOString(), gasLimit = null, nonce = null } = {}) {
@@ -139,6 +288,13 @@ async function notifyPreliveForkTransition(payload) {
   }
 }
 
+function classifyForkSubmissionFailure(error) {
+  if (error?.name === "ForkSourceBalanceError") return "insufficient_source_balance";
+  if (error?.name === "ForkNativeBalanceError") return "insufficient_native_balance";
+  if (error?.name === "ForkPendingNonceRpcError" || error?.name === "ForkLatestBlockRpcError") return "fork_state_unavailable";
+  return classifySendTransactionError(error);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.planId) throw new Error("--plan-id is required");
@@ -146,7 +302,6 @@ async function main() {
   const plan = (forkPlan?.plans || []).find((item) => item.planId === args.planId);
   if (!plan) throw new Error(`Plan not found: ${args.planId}`);
   if (plan.status !== "planned") throw new Error(`Plan is not submit-ready: ${plan.status}`);
-  const { signedTx, signerMode } = await loadSignedTx(args, plan);
 
   const [events] = await Promise.all([
     readJsonl(config.dataDir, "execution-journal"),
@@ -167,6 +322,12 @@ async function main() {
 
   const store = new JsonlStore(config.dataDir);
   try {
+    const preflightBeforeSign = await buildForkSubmissionPreflight(plan, args);
+    const signerArgs = Number.isInteger(args.nonce) || !Number.isInteger(preflightBeforeSign.pendingNonce)
+      ? args
+      : { ...args, nonce: preflightBeforeSign.pendingNonce };
+    const { signedTx, signerMode } = await loadSignedTx(signerArgs, plan);
+    const preflight = await buildForkSubmissionPreflight(plan, { ...args, signedTx });
     const submitted = await sendRawTransaction(plan.srcChain, signedTx, {
       ...(args.rpcUrl ? { rpcUrl: args.rpcUrl } : {}),
       ...(args.rpcUrls.length ? { rpcUrls: args.rpcUrls } : {}),
@@ -185,6 +346,7 @@ async function main() {
       rpcUrl: submitted.rpcUrl,
       signedTxBytes: submitted.signedTxBytes,
       signerMode,
+      forkPreflight: preflight,
     };
     await store.append("prelive-fork-submissions", submissionRecord);
     const journalEvent = buildExecutionSubmissionEvent({
@@ -220,13 +382,14 @@ async function main() {
       chain: plan.srcChain,
       targetEnvironment: plan.targetEnvironment,
       submissionStatus: "failed",
-      reason: classifySendTransactionError(error),
+      reason: classifyForkSubmissionFailure(error),
       error: {
         name: error.name,
         message: error.message,
         attempts: error.attempts || null,
+        details: error.details || null,
       },
-      signerMode,
+      signerMode: error.signerMode || null,
     };
     await store.append("prelive-fork-submissions", failure);
     await notifyPreliveForkTransition({

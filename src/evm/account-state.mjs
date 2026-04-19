@@ -1,9 +1,8 @@
 import { EVM_CHAINS } from "../chains/registry.mjs";
+import { rpc } from "./json-rpc.mjs";
 
 const BALANCE_OF_SELECTOR = "0x70a08231";
 const ALLOWANCE_SELECTOR = "0xdd62ed3e";
-
-let requestId = 1;
 
 function uniqueRpcUrls(chainConfig) {
   return [...new Set([...(chainConfig?.rpcUrls || []), chainConfig?.rpcUrl].filter(Boolean))];
@@ -11,11 +10,17 @@ function uniqueRpcUrls(chainConfig) {
 
 function resolveChainConfig(chain, options = {}) {
   const base = options.chainConfig || EVM_CHAINS[chain];
-  if (!base) return null;
+  const explicitRpcUrls = [...(options.rpcUrls || []), options.rpcUrl].filter(Boolean);
+  if (!base && !explicitRpcUrls.length) return null;
+  if (explicitRpcUrls.length) {
+    return {
+      ...(base || {}),
+      rpcUrls: explicitRpcUrls,
+      rpcUrl: null,
+    };
+  }
   return {
     ...base,
-    ...(options.rpcUrl ? { rpcUrl: options.rpcUrl } : {}),
-    ...(options.rpcUrls?.length ? { rpcUrls: options.rpcUrls } : {}),
   };
 }
 
@@ -31,22 +36,6 @@ function encodeAddressArg(address) {
 function decodeBigInt(hex) {
   if (!hex || hex === "0x") return 0n;
   return BigInt(hex);
-}
-
-async function rpc(url, method, params = [], { fetchImpl = fetch } = {}) {
-  const response = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: requestId++, method, params }),
-    signal: AbortSignal.timeout(12_000),
-  });
-  const body = await response.json();
-  if (!response.ok || body.error) {
-    const error = new Error(body.error?.message || `RPC ${method} failed with ${response.status}`);
-    error.rpcError = body.error || null;
-    throw error;
-  }
-  return body.result;
 }
 
 async function firstSuccess(chain, executor) {
