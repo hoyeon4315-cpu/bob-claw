@@ -237,7 +237,7 @@ test("admission remediation plan skips review-ready strategy candidates with no 
   assert.equal(plan.items.some((item) => item.code === "capture_wrapped_btc_loop_extended_receipt_context"), false);
 });
 
-test("admission remediation plan suppresses route refresh work when strategy review is already ready", () => {
+test("admission remediation plan suppresses stale route refreshes but keeps wallet readiness when strategy review is already ready", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
       readyForManualReview: true,
@@ -286,11 +286,12 @@ test("admission remediation plan suppresses route refresh work when strategy rev
     },
   });
 
-  assert.equal(plan.overallStatus, "awaiting_manual");
-  assert.equal(plan.nextAction.code, "submit_fork_cycle");
+  assert.equal(plan.overallStatus, "ready");
+  assert.equal(plan.nextAction.code, "token");
   assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), false);
   assert.equal(plan.items.some((item) => item.code === "refresh_exact_gas"), false);
-  assert.equal(plan.items.some((item) => item.reason === "token"), false);
+  assert.equal(plan.items.some((item) => item.reason === "token"), true);
+  assert.equal(plan.items.some((item) => item.code === "submit_fork_cycle"), true);
 });
 
 test("admission remediation plan prioritizes active canary wallet readiness over stale input refresh", () => {
@@ -457,4 +458,41 @@ test("admission remediation plan keeps high-priority active canary readiness eve
   assert.equal(plan.items[0].command, "npm run check:estimator-wallet -- --route-key=bob:0x0555->bera:0x0555 --amount=10000");
   assert.equal(plan.items.some((item) => item.command === "npm run check:estimator-wallet -- --route-key=bob:0x0555->bsc:0x0555 --amount=10000"), false);
   assert.equal(plan.items.some((item) => item.code === "execute_refresh_batch"), true);
+});
+
+test("admission remediation plan keeps advance-canary wallet blockers visible even when strategy review is ready", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      },
+      tinyCanaryAdmission: {
+        blockers: [],
+      },
+    },
+    address: "0xabc",
+    advanceCanary: {
+      final: {
+        decision: "FUND_AND_APPROVE_WALLET",
+        routeLabel: "soneium->bob wBTC.OFT->wBTC.OFT",
+        routeKey: "soneium:0x0555->bob:0x0555",
+        amount: "100",
+        reasons: ["native"],
+      },
+    },
+  });
+
+  assert.equal(plan.overallStatus, "ready");
+  assert.equal(plan.nextAction.code, "native");
+  assert.equal(
+    plan.items.some(
+      (item) =>
+        item.command ===
+        'npm run check:estimator-wallet -- --route-key="soneium:0x0555->bob:0x0555" --amount="100" --address="0xabc"',
+    ),
+    true,
+  );
 });

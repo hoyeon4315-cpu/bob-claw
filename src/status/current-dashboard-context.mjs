@@ -302,6 +302,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     reviewPackage,
     evidenceCampaign,
     address: state.address,
+    advanceCanary,
   });
   let connectedRefreshPackage = buildConnectedRefreshPackage({
     dashboardStatus,
@@ -433,6 +434,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     reviewPackage,
     evidenceCampaign,
     address: state.address,
+    advanceCanary,
   });
   connectedRefreshPackage = buildConnectedRefreshPackage({
     dashboardStatus,
@@ -525,6 +527,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     dashboardStatus.overall,
   );
   reviewPackage.liveTradingPolicy = dashboardStatus.overall.liveTrading;
+  reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
+    reviewPackage,
+    evidenceCampaign,
+    address: state.address,
+    advanceCanary,
+  });
   preliveValidation = buildPreliveValidationReport({
     dashboardStatus,
     strategySnapshot,

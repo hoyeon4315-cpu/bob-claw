@@ -1564,6 +1564,7 @@ function advanceCanarySummary(advanceCanary, now) {
           decision: advanceCanary.initial.decision || null,
           headline: advanceCanary.initial.headline || null,
           routeLabel: advanceCanary.initial.routeLabel || null,
+          routeKey: advanceCanary.initial.routeKey || null,
           amount: advanceCanary.initial.amount || null,
           reasons: advanceCanary.initial.reasons || [],
         }
@@ -1573,6 +1574,7 @@ function advanceCanarySummary(advanceCanary, now) {
           decision: advanceCanary.afterWalletCheck.decision || null,
           headline: advanceCanary.afterWalletCheck.headline || null,
           routeLabel: advanceCanary.afterWalletCheck.routeLabel || null,
+          routeKey: advanceCanary.afterWalletCheck.routeKey || null,
           amount: advanceCanary.afterWalletCheck.amount || null,
           reasons: advanceCanary.afterWalletCheck.reasons || [],
         }
@@ -1582,6 +1584,7 @@ function advanceCanarySummary(advanceCanary, now) {
           decision: advanceCanary.final.decision || null,
           headline: advanceCanary.final.headline || null,
           routeLabel: advanceCanary.final.routeLabel || null,
+          routeKey: advanceCanary.final.routeKey || null,
           amount: advanceCanary.final.amount || null,
           reasons: advanceCanary.final.reasons || [],
         }

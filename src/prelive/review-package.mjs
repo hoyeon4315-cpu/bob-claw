@@ -714,6 +714,7 @@ export function buildPreliveReviewPackage({
   reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
     reviewPackage,
     address,
+    advanceCanary: advanceCanary || dashboardStatus?.canaryAdvance || null,
   });
   return reviewPackage;
 }

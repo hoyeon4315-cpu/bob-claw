@@ -143,6 +143,12 @@ function bitcoinFeeCommand() {
   return "npm run bitcoin:fees";
 }
 
+function checkWalletReadinessCommand(routeKey = null, amount = null, address = null) {
+  if (!routeKey || !amount) return null;
+  const addressArg = address ? ` --address=${shellQuote(address)}` : "";
+  return `npm run check:estimator-wallet -- --route-key=${shellQuote(routeKey)} --amount=${shellQuote(amount)}${addressArg}`;
+}
+
 function refreshStatusCommand() {
   return DEFAULT_ADMISSION_REMEDIATION_FOLLOW_UP_COMMANDS.join(" && ");
 }
@@ -359,6 +365,14 @@ function queueFollowUpItems(reviewPackage = null) {
     );
 }
 
+function retainSuppressedQueueItem(entry = null) {
+  return isWalletReadinessReason(entry?.reason);
+}
+
+function retainSuppressedInputItem(entry = null) {
+  return entry?.status === "blocked" || entry?.status === "manual";
+}
+
 function evidenceCampaignItems(evidenceCampaign = null) {
   return (evidenceCampaign?.actions || [])
     .filter((entry) => entry?.command)
@@ -378,23 +392,54 @@ function evidenceCampaignItems(evidenceCampaign = null) {
     );
 }
 
+function advanceCanaryWalletItems(advanceCanary = null, address = null) {
+  const candidate = advanceCanary?.final || advanceCanary?.afterWalletCheck || advanceCanary?.initial || null;
+  const reason = (candidate?.reasons || []).find((entry) => isWalletReadinessReason(entry)) || null;
+  if (candidate?.decision !== "FUND_AND_APPROVE_WALLET" || !reason) return [];
+  return [
+    item({
+      priority: 99,
+      code: reason,
+      label: candidate.routeLabel || "active canary wallet readiness",
+      status: "ready",
+      reason,
+      command: checkWalletReadinessCommand(candidate.routeKey || null, candidate.amount || null, address),
+      resolves: ["shadow_replay_not_ready"],
+      routeKey: candidate.routeKey || null,
+      routeLabel: candidate.routeLabel || null,
+      amount: candidate.amount || null,
+      source: "advance_canary",
+    }),
+  ];
+}
+
 export function buildAdmissionRemediationPlan({
   reviewPackage = null,
   evidenceCampaign = null,
   address = null,
+  advanceCanary = null,
 } = {}) {
   if (!reviewPackage) return null;
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
   const suppressRouteRefreshWork = strategyPrimaryReadyForManualReview(reviewPackage);
   const evidenceItems = evidenceCampaignItems(evidenceCampaign);
-  const queueItems = suppressRouteRefreshWork ? [] : queueFollowUpItems(reviewPackage);
+  const canaryWalletItems = advanceCanaryWalletItems(advanceCanary, address);
+  const routeInputItems = inputItems(reviewPackage, address);
+  const queueItems = queueFollowUpItems(reviewPackage);
+  const retainedRouteInputItems = suppressRouteRefreshWork
+    ? routeInputItems.filter(retainSuppressedInputItem)
+    : routeInputItems;
+  const retainedQueueItems = suppressRouteRefreshWork
+    ? queueItems.filter(retainSuppressedQueueItem)
+    : queueItems;
   const hasRefreshBatchRunner = evidenceItems.some((entry) => entry.code === "execute_refresh_batch");
   const eligibleQueueItems = hasRefreshBatchRunner
-    ? queueItems.filter((entry) => (entry.priority ?? 0) >= 90)
-    : queueItems;
+    ? retainedQueueItems.filter((entry) => (entry.priority ?? 0) >= 90)
+    : retainedQueueItems;
   const items = dedupeItems([
     ...strategyCandidateItems(reviewPackage),
-    ...(suppressRouteRefreshWork ? [] : inputItems(reviewPackage, address)),
+    ...canaryWalletItems,
+    ...retainedRouteInputItems,
     ...(suppressRouteRefreshWork ? [] : measuredLeaderItem(reviewPackage)),
     ...eligibleQueueItems,
     ...evidenceItems,

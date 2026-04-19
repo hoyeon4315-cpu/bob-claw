@@ -1720,6 +1720,7 @@ async function main() {
     reviewPackage,
     evidenceCampaign,
     address: resolved.address,
+    advanceCanary: dashboardStatus?.canaryAdvance || null,
   });
   prelive = buildPreliveReadinessSummary({
     overall: dashboardStatus?.overall || {},
