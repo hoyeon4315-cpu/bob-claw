@@ -1815,6 +1815,10 @@ async function main() {
     now,
   });
   const operationalJudgmentSummary = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+  reviewPackage.currentStage =
+    executionRunbookSummary.currentStageId ||
+    preliveValidationSummary.currentStageId ||
+    reviewPackage.currentStage;
   reviewPackage.strategySnapshot = strategySnapshotSummary;
   reviewPackage.executionRunbook = executionRunbookSummary;
   reviewPackage.preliveValidation = preliveValidationSummary;

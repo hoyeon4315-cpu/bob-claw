@@ -384,6 +384,168 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(summary.preliveValidationStatus, "ready_for_manual_review");
 });
 
+test("prelive review package marks reviewDecision ready when auto-execute policy is already allowed", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-19T19:52:32.865Z",
+      overall: {
+        liveTrading: "ALLOWED",
+        blockers: [],
+      },
+      strategy: {
+        pivotPlan: {
+          currentBudgetUsd: null,
+          budgetNote: "Capital sizing is per-strategy: each strategy declares its own per-trade and daily caps; there is no project-wide live budget by default.",
+          budgetScenarios: [],
+          topRecommendation: {
+            id: "gateway_base_btc_yield",
+            label: "Gateway-funded BTC yield on Base",
+            status: "pre_execution_blueprint",
+            researchPilotMinimumUsd: 105,
+            defaultDualSleeveMinimumUsd: 338.33,
+            nextActionCode: "build_deterministic_yield_shadow_book",
+            nextActionLabel: "build deterministic yield shadow book",
+          },
+          pivots: [],
+        },
+        yieldShadowBook: {
+          topProfile: {
+            id: "research_pilot",
+            capitalRequiredUsd: 105,
+          },
+        },
+        proxySpreadCoveragePlan: {
+          nextAction: "expand_amount_ladder",
+          nextProxyGroup: "wbtc",
+        },
+      },
+      shadowCycle: {
+        canaryDecision: "REVIEW_CANARY_CANDIDATE",
+        headline: "Route is prepared for manual canary review",
+        topRoute: {
+          label: "base->unichain wBTC.OFT->wBTC.OFT",
+          amount: "25000",
+          tradeReadiness: "shadow_candidate_review_only",
+          netEdgeUsd: 1.24,
+        },
+        shadowRoster: {
+          candidates: [
+            {
+              label: "base->unichain wBTC.OFT->wBTC.OFT",
+              amount: "25000",
+              tradeReadiness: "shadow_candidate_review_only",
+              netEdgeUsd: 1.24,
+              prepFundingUsd: 0,
+              viableForPrep: true,
+              txReady: true,
+              prepBlockers: [],
+              scoreDisqualifiers: [],
+            },
+          ],
+        },
+        objectivePlans: {},
+      },
+      prelive: {
+        currentStage: "shadow_replay",
+        liveTradingPolicy: "ALLOWED",
+        notes: [],
+        shadowReplay: {
+          status: "ready_for_mechanical_simulation",
+          blockers: [],
+          auditDecision: "LIVE_CANARY_REVIEW_POSSIBLE",
+          policyReadyMeasuredRoutes: 2,
+        },
+        mechanicalSimulation: {
+          status: "mechanical_path_proven",
+          blockers: [],
+          successCount: 50,
+          targetSuccessCount: 50,
+          failureCount: 0,
+        },
+        forkExecution: {
+          status: "fork_execution_proven",
+          blockers: [],
+          planCount: 3,
+          submittedCount: 3,
+          confirmedCount: 3,
+          targetConfirmedCount: 3,
+          failedCount: 0,
+        },
+        executionAudit: {
+          status: "complete",
+          blockers: [],
+          missingRecordCount: 0,
+          recentTransitions: [],
+        },
+        tinyLiveCanary: {
+          ready: true,
+          status: "review_only_canary_candidate",
+          blockers: [],
+        },
+        nextActions: [],
+      },
+      canaryAdvance: {
+        final: {
+          decision: "REVIEW_CANARY_CANDIDATE",
+          headline: "Route is prepared for manual canary review",
+        },
+      },
+    },
+    canaryInputs: {
+      routeKey: "base:0x0555->unichain:0x0555",
+      routeLabel: "base->unichain wBTC.OFT->wBTC.OFT",
+      amount: "25000",
+      scoreTradeReadiness: "shadow_candidate_review_only",
+      blockers: [],
+      scoreDataGaps: [],
+      gatewayQuote: { state: "fresh", ageMinutes: 2 },
+      exactGas: { state: "fresh", ageMinutes: 2 },
+      srcGas: { state: "fresh", ageMinutes: 2 },
+      dexQuote: { state: "fresh", ageMinutes: 2 },
+      bitcoinFee: { state: "not_required", ageMinutes: null },
+      marketSnapshot: { state: "fresh", ageMinutes: 2 },
+    },
+    nextStep: {
+      decision: "REVIEW_CANARY_CANDIDATE",
+      headline: "Route is prepared for manual canary review",
+      reasons: [],
+      route: {
+        routeKey: "base:0x0555->unichain:0x0555",
+        label: "base->unichain wBTC.OFT->wBTC.OFT",
+        amount: "25000",
+        tradeReadiness: "shadow_candidate_review_only",
+        viableForPrep: true,
+        txReady: true,
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    strategySnapshot: {
+      implementedStrategyCount: 9,
+      candidateForValidationCount: 0,
+      topImplementedStrategy: {
+        id: "stablecoin_entry_exit_loops",
+      },
+      topPivot: {
+        id: "gateway_base_btc_yield",
+      },
+    },
+    executionRunbook: {
+      currentStageId: "tiny_live_canary_review",
+      nextStageId: "manual_canary_review",
+      nextActionCode: "manual_canary_review_only",
+    },
+    preliveValidation: {
+      validationStatus: "ready_for_manual_review",
+      nextActionCode: "manual_canary_review_only",
+    },
+  });
+
+  assert.equal(reviewPackage.packageStatus, "ready_for_manual_review");
+  assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_AUTO_EXECUTE");
+  assert.equal(reviewPackage.currentStage, "tiny_live_canary_review");
+  assert.equal(reviewPackage.reviewDecision, "READY_FOR_MANUAL_CANARY_REVIEW");
+});
+
 test("prelive review package can promote wrapped loop as the primary live candidate when the route path is structurally blocked", () => {
   const reviewPackage = buildPreliveReviewPackage({
     dashboardStatus: {

@@ -737,6 +737,7 @@ export function buildPreliveReviewPackage({
   const readyForManualReview = ["GO_FOR_MANUAL_APPROVAL", "GO_FOR_AUTO_EXECUTE"].includes(tinyCanaryAdmission.decision);
   const reviewBlockers = readyForManualReview ? [] : tinyCanaryAdmission.blockers;
   const liveBlockers = unique([...(executionStage.liveReasons || []), ...(dashboardStatus?.overall?.blockers || [])]);
+  const reviewDecision = readyForManualReview ? "READY_FOR_MANUAL_CANARY_REVIEW" : executionStage.reviewStage;
 
   const reviewPackage = {
     schemaVersion: 1,
@@ -744,8 +745,8 @@ export function buildPreliveReviewPackage({
     reviewScope: "tiny_live_canary",
     packageStatus: readyForManualReview ? "ready_for_manual_review" : "not_ready_for_manual_review",
     readyForManualReview,
-    currentStage: prelive?.currentStage || null,
-    reviewDecision: executionStage.reviewStage,
+    currentStage: executionRunbook?.currentStageId || preliveValidation?.currentStageId || prelive?.currentStage || null,
+    reviewDecision,
     reviewBlockers,
     liveDecision: executionStage.liveStage,
     liveBlockers,
