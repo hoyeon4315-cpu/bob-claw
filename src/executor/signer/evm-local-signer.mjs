@@ -108,12 +108,15 @@ export class EvmLocalKeySigner extends SignerInterface {
     return wallet.address;
   }
 
-  async buildTransactionRequest(intent) {
+  async buildTransactionRequest(intent, { reserveNonce = true } = {}) {
     const chainConfig = getEvmChainConfig(intent.chain);
     const wallet = await this.wallet(intent.chain);
     const provider = wallet.provider;
     const feeData = await provider.getFeeData();
-    const nonce = await (await this.nonceManager(intent.chain)).reserve(intent.tx?.nonce ?? null);
+    const explicitNonce = Number.isInteger(intent.tx?.nonce) ? intent.tx.nonce : null;
+    const nonce = reserveNonce
+      ? await (await this.nonceManager(intent.chain)).reserve(explicitNonce)
+      : explicitNonce ?? await provider.getTransactionCount(wallet.address, "pending");
 
     return {
       chainId: chainConfig.chainId,
@@ -129,9 +132,9 @@ export class EvmLocalKeySigner extends SignerInterface {
     };
   }
 
-  async signIntent(intent) {
+  async signIntent(intent, { reserveNonce = true } = {}) {
     const wallet = await this.wallet(intent.chain);
-    const request = await this.buildTransactionRequest(intent);
+    const request = await this.buildTransactionRequest(intent, { reserveNonce });
     const signedTx = await wallet.signTransaction(request);
     return createSignedTransactionEnvelope({
       intent,

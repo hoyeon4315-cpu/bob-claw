@@ -118,7 +118,9 @@ async function handleIntentCommand({
 
   const signer = selectSigner(signers, intent);
   try {
-    const signed = await signer.signIntent(intent);
+    const signed = await signer.signIntent(intent, {
+      reserveNonce: message.command !== "sign_only",
+    });
     await appendSignerAuditRecord(
       buildSignerAuditRecord({
         intent,
