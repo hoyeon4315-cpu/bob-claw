@@ -8,6 +8,7 @@ import {
   odosRoutingConfig,
   STABLE_QUOTE_TOKENS,
 } from "../../dex/odos.mjs";
+import { readErc20Balance } from "../../evm/account-state.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { buildWrappedBtcLendingLoopScaffold } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-loop-bindings.mjs";
@@ -50,6 +51,13 @@ function decimalToUnits(value, decimals) {
 function unitsFromUsd(amountUsd, assetUsd, decimals) {
   if (!Number.isFinite(amountUsd) || !Number.isFinite(assetUsd) || assetUsd <= 0) return null;
   return decimalToUnits(amountUsd / assetUsd, decimals);
+}
+
+function unitsToUsd(amountUnits, assetUsd, decimals) {
+  if (!Number.isFinite(assetUsd) || assetUsd <= 0) return null;
+  const safeDecimals = Math.max(0, Math.min(18, Number(decimals)));
+  const units = typeof amountUnits === "bigint" ? amountUnits : BigInt(amountUnits || 0);
+  return round((Number(units) / (10 ** safeDecimals)) * assetUsd, 6);
 }
 
 async function estimateBufferedGasLimit({
@@ -216,6 +224,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   signerAddress,
   prices = null,
   client = new OdosClient(),
+  readErc20BalanceImpl = readErc20Balance,
   estimateGasImpl = estimateGas,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   marketAssumptions = null,
@@ -244,20 +253,45 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   if (!Number.isFinite(collateralPriceUsd)) {
     throw new Error("Repo auto-build requires a current cbBTC/BTC USD price");
   }
-
-  const scaffold = buildWrappedBtcLendingLoopScaffold({
-    strategyConfig,
-    marketAssumptions,
-    now,
-  });
   const collateralMarketAddress = support.knownContracts.collateralMarket.mTokenAddress;
   const borrowMarketAddress = support.knownContracts.borrowMarket.mTokenAddress;
   const comptrollerAddress = support.knownContracts.comptroller.address;
 
-  const initialCollateralUnits = unitsFromUsd(strategyConfig.perTradeCapUsd, collateralPriceUsd, collateralAsset.decimals);
-  if (!initialCollateralUnits) {
+  const requestedInitialCollateralUnits = unitsFromUsd(
+    strategyConfig.perTradeCapUsd,
+    collateralPriceUsd,
+    collateralAsset.decimals,
+  );
+  if (!requestedInitialCollateralUnits) {
     throw new Error("Failed to derive initial cbBTC collateral units");
   }
+  const availableCollateralBalance = await readErc20BalanceImpl("base", collateralToken, signerAddress);
+  const availableCollateralUnits = BigInt(availableCollateralBalance?.balance ?? 0n);
+  if (availableCollateralUnits <= 0n) {
+    throw new Error("Signer does not hold any cbBTC collateral on Base for the wrapped BTC loop entry");
+  }
+  const effectiveInitialCollateralUnits = BigInt(requestedInitialCollateralUnits) > availableCollateralUnits
+    ? availableCollateralUnits
+    : BigInt(requestedInitialCollateralUnits);
+  const effectivePerTradeCapUsd = unitsToUsd(
+    effectiveInitialCollateralUnits,
+    collateralPriceUsd,
+    collateralAsset.decimals,
+  );
+  if (!Number.isFinite(effectivePerTradeCapUsd) || effectivePerTradeCapUsd <= 0) {
+    throw new Error("Failed to derive executable cbBTC collateral size from the current Base wallet balance");
+  }
+  const effectiveStrategyConfig = {
+    ...strategyConfig,
+    perTradeCapUsd: effectivePerTradeCapUsd,
+  };
+  const scaffold = buildWrappedBtcLendingLoopScaffold({
+    strategyConfig: effectiveStrategyConfig,
+    marketAssumptions,
+    now,
+  });
+  const initialCollateralUnits = effectiveInitialCollateralUnits.toString();
+  const collateralDownsized = effectiveInitialCollateralUnits < BigInt(requestedInitialCollateralUnits);
 
   const initialApprovalGasLimit = await estimateBufferedGasLimit({
     chain: "base",
@@ -294,11 +328,15 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       token: collateralToken,
       spender: collateralMarketAddress,
       amount: initialCollateralUnits,
-      amountUsd: strategyConfig.perTradeCapUsd,
+      amountUsd: effectiveStrategyConfig.perTradeCapUsd,
       now,
       metadata: {
         kind: "approve_exact_collateral",
         capCheckAmountUsd: 0,
+        requestedPerTradeCapUsd: round(strategyConfig.perTradeCapUsd, 6),
+        appliedPerTradeCapUsd: round(effectiveStrategyConfig.perTradeCapUsd, 6),
+        appliedCollateralUnits: initialCollateralUnits,
+        collateralDownsized,
       },
       gasLimit: initialApprovalGasLimit,
     }),
@@ -307,11 +345,15 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       chain: "base",
       to: comptrollerAddress,
       data: COMPTROLLER_INTERFACE.encodeFunctionData("enterMarkets", [[collateralMarketAddress]]),
-      amountUsd: strategyConfig.perTradeCapUsd,
+      amountUsd: effectiveStrategyConfig.perTradeCapUsd,
       now,
       metadata: {
         kind: "enter_markets",
         capCheckAmountUsd: 0,
+        requestedPerTradeCapUsd: round(strategyConfig.perTradeCapUsd, 6),
+        appliedPerTradeCapUsd: round(effectiveStrategyConfig.perTradeCapUsd, 6),
+        appliedCollateralUnits: initialCollateralUnits,
+        collateralDownsized,
       },
       gasLimit: enterMarketsGasLimit,
     }),
@@ -320,11 +362,15 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       chain: "base",
       to: collateralMarketAddress,
       data: MTOKEN_INTERFACE.encodeFunctionData("mint", [initialCollateralUnits]),
-      amountUsd: strategyConfig.perTradeCapUsd,
+      amountUsd: effectiveStrategyConfig.perTradeCapUsd,
       now,
       metadata: {
         kind: "deposit_initial_collateral",
-        capCheckAmountUsd: round(strategyConfig.perTradeCapUsd, 6),
+        capCheckAmountUsd: round(effectiveStrategyConfig.perTradeCapUsd, 6),
+        requestedPerTradeCapUsd: round(strategyConfig.perTradeCapUsd, 6),
+        appliedPerTradeCapUsd: round(effectiveStrategyConfig.perTradeCapUsd, 6),
+        appliedCollateralUnits: initialCollateralUnits,
+        collateralDownsized,
       },
       gasLimit: mintInitialGasLimit,
     }),
@@ -447,16 +493,20 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         id: "redeem-initial-collateral",
         chain: "base",
         to: collateralMarketAddress,
-        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [initialCollateralUnits]),
-        amountUsd: strategyConfig.perTradeCapUsd,
-        now,
-        metadata: {
-          kind: "withdraw_initial_collateral",
-          tinyValidationOnly: true,
-        },
-        gasLimit: redeemInitialGasLimit,
-      }),
-    );
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [initialCollateralUnits]),
+      amountUsd: effectiveStrategyConfig.perTradeCapUsd,
+      now,
+      metadata: {
+        kind: "withdraw_initial_collateral",
+        tinyValidationOnly: true,
+        requestedPerTradeCapUsd: round(strategyConfig.perTradeCapUsd, 6),
+        appliedPerTradeCapUsd: round(effectiveStrategyConfig.perTradeCapUsd, 6),
+        appliedCollateralUnits: initialCollateralUnits,
+        collateralDownsized,
+      },
+      gasLimit: redeemInitialGasLimit,
+    }),
+  );
   }
   for (const iteration of iterations.reverse()) {
     const repayUnits = decimalToUnits(iteration.borrowUsd, borrowAsset.decimals);

@@ -4,8 +4,10 @@ import {
   buildWrappedBtcLoopReceiptContext,
   classifyIntentResult,
   buildWrappedBtcLoopScenarioPlan,
+  evaluateWrappedBtcLoopUnwindInventory,
   finalizeWrappedBtcLoopLiveReceipt,
   prepareLiveLoopIntent,
+  resolveWrappedBtcLoopSignerClientTimeout,
 } from "../src/executor/strategies/wrapped-btc-loop-live.mjs";
 import { WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE } from "../src/strategy/wrapped-btc-loop-live-proof.mjs";
 
@@ -167,6 +169,9 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
     },
     odosClient,
     estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
   });
 
   assert.equal(plan.entryIntents.length > 3, true);
@@ -192,12 +197,15 @@ test("wrapped loop live plan supports tiny per-trade override with collateral-on
       },
     },
     estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
     perTradeCapUsdOverride: 7,
   });
 
   assert.equal(plan.entryIntents.length, 3);
   assert.equal(plan.unwindIntents.length, 1);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).amountUsd, 7);
+  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).amountUsd, 6.99975);
   assert.equal(plan.unwindIntents[0].intentId.endsWith(":unwind:redeem-initial-collateral"), true);
   assert.equal(plan.unwindIntents[0].metadata.tinyValidationOnly, true);
 });
@@ -236,6 +244,9 @@ test("wrapped loop live plan supports tiny borrow cycle override and full unwind
     },
     odosClient,
     estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
     perTradeCapUsdOverride: 7,
     marketAssumptionsOverride: {
       minIncrementUsd: 1,
@@ -247,6 +258,90 @@ test("wrapped loop live plan supports tiny borrow cycle override and full unwind
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")), true);
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-1")), true);
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-initial-collateral")), true);
+});
+
+test("wrapped loop live plan auto-downsizes initial collateral to the available cbBTC balance", async () => {
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 75000,
+      tokenByKey: {
+        btc: 75000,
+        usd_stable: 1,
+      },
+    },
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 8000n,
+    }),
+    perTradeCapUsdOverride: 7,
+  });
+
+  const approveInitial = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral"));
+  const mintInitial = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral"));
+  assert.equal(approveInitial.approval.amount, "8000");
+  assert.equal(mintInitial.amountUsd, 6);
+  assert.equal(mintInitial.metadata.requestedPerTradeCapUsd, 7);
+  assert.equal(mintInitial.metadata.appliedPerTradeCapUsd, 6);
+  assert.equal(mintInitial.metadata.collateralDownsized, true);
+});
+
+test("wrapped loop unwind inventory check fails when wallet lacks repay asset balance", async () => {
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 75000,
+      tokenByKey: {
+        btc: 75000,
+        usd_stable: 1,
+      },
+    },
+    odosClient: {
+      quote: async () => ({
+        latencyMs: 10,
+        body: {
+          outAmounts: ["4200"],
+          pathId: "path-borrow-1",
+        },
+      }),
+      assemble: async () => ({
+        latencyMs: 12,
+        body: {
+          transaction: {
+            to: "0x0000000000000000000000000000000000000d05",
+            data: "0x12345678",
+            value: "0",
+            gas: 210000,
+          },
+        },
+      }),
+    },
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async (chain, token) => ({
+      balance: token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 1_000_000n : 500_000n,
+    }),
+    perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: {
+      minIncrementUsd: 1,
+    },
+  });
+
+  const check = await evaluateWrappedBtcLoopUnwindInventory({
+    plan,
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    readErc20BalanceImpl: async () => ({
+      balance: 500_000n,
+    }),
+  });
+
+  assert.equal(check.ok, false);
+  assert.equal(check.availableUnits, "500000");
+  assert.equal(BigInt(check.requiredUnits) > 500_000n, true);
+  assert.equal(check.shortfallUnits, (BigInt(check.requiredUnits) - 500_000n).toString());
 });
 
 test("wrapped loop signer result treats reverted EVM receipts as execution failure", () => {
@@ -312,6 +407,33 @@ test("wrapped loop live receipt writes proof before auto-ingest and rewrites fin
   assert.equal(writes[1].proof.receiptAutoIngest.ran, true);
   assert.equal(finalized.receiptAutoIngest.ran, true);
   assert.equal(finalized.liveProof.receiptAutoIngest.ran, true);
+});
+
+test("wrapped loop signer client timeout stays above confirmation wait for live confirmation", () => {
+  assert.equal(
+    resolveWrappedBtcLoopSignerClientTimeout({
+      timeoutMs: 30_000,
+      confirmationTimeoutMs: 120_000,
+      awaitConfirmation: true,
+    }),
+    125_000,
+  );
+  assert.equal(
+    resolveWrappedBtcLoopSignerClientTimeout({
+      timeoutMs: 150_000,
+      confirmationTimeoutMs: 120_000,
+      awaitConfirmation: true,
+    }),
+    150_000,
+  );
+  assert.equal(
+    resolveWrappedBtcLoopSignerClientTimeout({
+      timeoutMs: 30_000,
+      confirmationTimeoutMs: 120_000,
+      awaitConfirmation: false,
+    }),
+    30_000,
+  );
 });
 
 test("wrapped loop live intent refreshes gas limit just before execution", async () => {

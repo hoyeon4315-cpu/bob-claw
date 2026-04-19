@@ -4,6 +4,7 @@ import { getEnv } from "../../config/env.mjs";
 import { config } from "../../config/env.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import { readErc20Balance } from "../../evm/account-state.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { writeTextIfChanged } from "../../lib/file-write.mjs";
@@ -34,6 +35,25 @@ function round(value, digits = 6) {
 function bigIntValue(value) {
   if (value === null || value === undefined || value === "") return null;
   return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function sumBigInt(values = []) {
+  return values.reduce((sum, value) => sum + BigInt(value || 0n), 0n);
+}
+
+export function resolveWrappedBtcLoopSignerClientTimeout({
+  timeoutMs = 30_000,
+  confirmationTimeoutMs = 120_000,
+  awaitConfirmation = true,
+} = {}) {
+  const baseTimeoutMs = Number(timeoutMs);
+  const confirmationWaitMs = Number(confirmationTimeoutMs);
+  if (awaitConfirmation === false) {
+    return Number.isFinite(baseTimeoutMs) ? baseTimeoutMs : 30_000;
+  }
+  const safeBaseTimeoutMs = Number.isFinite(baseTimeoutMs) ? baseTimeoutMs : 30_000;
+  const safeConfirmationWaitMs = Number.isFinite(confirmationWaitMs) ? confirmationWaitMs : 120_000;
+  return Math.max(safeBaseTimeoutMs, safeConfirmationWaitMs + 5_000);
 }
 
 export function executorStrategyBindingsPath() {
@@ -132,6 +152,7 @@ export async function buildWrappedBtcLoopScenarioPlan({
   signerAddress = null,
   prices = null,
   odosClient = null,
+  readErc20BalanceImpl = undefined,
   estimateGasImpl = null,
   marketAssumptionsOverride = null,
   perTradeCapUsdOverride = null,
@@ -163,6 +184,7 @@ export async function buildWrappedBtcLoopScenarioPlan({
         scenarioId,
         signerAddress,
         prices,
+        ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),
         ...(marketAssumptionsOverride ? { marketAssumptions: marketAssumptionsOverride } : {}),
         ...(estimateGasImpl ? { estimateGasImpl } : {}),
         ...(odosClient ? { client: odosClient } : {}),
@@ -263,6 +285,41 @@ export function buildWrappedBtcLoopReceiptContext({
     realizedNetCarryUsd: Number.isFinite(bindingContext.realizedNetCarryUsd) ? bindingContext.realizedNetCarryUsd : 0,
     notes: bindingContext.notes || [],
     observedAt: bindingContext.observedAt || null,
+  };
+}
+
+export async function evaluateWrappedBtcLoopUnwindInventory({
+  plan,
+  signerAddress = null,
+  readErc20BalanceImpl = readErc20Balance,
+} = {}) {
+  if (!plan || !signerAddress) {
+    return {
+      ok: true,
+      reason: "no_plan_or_signer_address",
+    };
+  }
+  const repayApprovalSteps = (plan.unwindIntents || []).filter(
+    (item) => item?.metadata?.requiresBorrowAssetInventory === true && item?.approval?.token,
+  );
+  if (repayApprovalSteps.length === 0) {
+    return {
+      ok: true,
+      reason: "no_borrow_asset_inventory_required",
+    };
+  }
+  const chain = repayApprovalSteps[0].chain || "base";
+  const token = repayApprovalSteps[0].approval.token;
+  const requiredUnits = sumBigInt(repayApprovalSteps.map((item) => item.approval.amount));
+  const balanceResult = await readErc20BalanceImpl(chain, token, signerAddress);
+  const availableUnits = BigInt(balanceResult?.balance ?? 0n);
+  return {
+    ok: availableUnits >= requiredUnits,
+    chain,
+    token,
+    availableUnits: availableUnits.toString(),
+    requiredUnits: requiredUnits.toString(),
+    shortfallUnits: availableUnits >= requiredUnits ? "0" : (requiredUnits - availableUnits).toString(),
   };
 }
 
@@ -403,7 +460,11 @@ async function executeIntent(intent, options = {}) {
   });
   const result = await sendSignerCommand({
     socketPath: options.socketPath,
-    timeoutMs: options.timeoutMs,
+    timeoutMs: resolveWrappedBtcLoopSignerClientTimeout({
+      timeoutMs: options.timeoutMs,
+      confirmationTimeoutMs: options.confirmationTimeoutMs,
+      awaitConfirmation: options.awaitConfirmation !== false,
+    }),
     message: {
       command: options.command || "sign_and_broadcast",
       intent: preparedIntent,
@@ -477,6 +538,17 @@ export async function runWrappedBtcLoopLiveScenario({
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
   });
+  if (command !== "sign_only") {
+    const unwindInventory = await evaluateWrappedBtcLoopUnwindInventory({
+      plan,
+      signerAddress: signerHealth?.addresses?.base || null,
+    });
+    if (!unwindInventory.ok) {
+      throw new Error(
+        `Wrapped BTC loop unwind inventory shortfall on ${unwindInventory.chain}: need ${unwindInventory.requiredUnits} units of ${unwindInventory.token}, have ${unwindInventory.availableUnits}`,
+      );
+    }
+  }
   const entryResults = await executeIntentBatch(plan.entryIntents, {
     socketPath,
     command,
