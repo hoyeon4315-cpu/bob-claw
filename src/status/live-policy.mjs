@@ -8,6 +8,14 @@ function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function baselineBlockerCodes(liveBaseline = null) {
+  return unique(
+    ["refresh", "operator", "technical", "objective"].flatMap((category) =>
+      (liveBaseline?.blockers?.[category] || []).map((blocker) => blocker?.code || null),
+    ),
+  );
+}
+
 function primaryCandidate(reviewPackage = null) {
   return reviewPackage?.primaryLiveCandidate || reviewPackage || null;
 }
@@ -65,6 +73,7 @@ export function applyLaneAwareLivePolicy({
   const candidate = primaryCandidate(reviewPackage);
   const policy = strategyPolicy(candidate);
   const baselineClear = (liveBaseline?.counts?.total ?? 0) === 0;
+  const baselineCodes = baselineBlockerCodes(liveBaseline);
   const preliveReady = prelive?.currentStage === "tiny_live_canary_review";
   const auditTransportOnly = transportOnlyAudit(audit);
   const existingBlockers = overall?.blockers || [];
@@ -72,11 +81,11 @@ export function applyLaneAwareLivePolicy({
     existingBlockers.includes("audit_blocks_live") &&
     auditTransportOnly &&
     preliveReady &&
-    baselineClear &&
     policy.ok;
-  const blockers = canSuppressAudit
-    ? existingBlockers.filter((blocker) => blocker !== "audit_blocks_live")
-    : existingBlockers;
+  const blockers = unique([
+    ...(canSuppressAudit ? existingBlockers.filter((blocker) => blocker !== "audit_blocks_live") : existingBlockers),
+    ...baselineCodes,
+  ]);
   const warnings = unique([
     ...(overall?.warnings || []),
     canSuppressAudit ? "transport_audit_warning_only" : null,

@@ -37,6 +37,44 @@ test("lane-aware live policy suppresses transport-only audit for auto-executable
   assert.equal(overall.lanePolicy.strategyPolicy.autoExecute, true);
 });
 
+test("lane-aware live policy replaces transport-only audit with real baseline blocker codes", () => {
+  const overall = applyLaneAwareLivePolicy({
+    overall: {
+      liveTrading: "BLOCKED",
+      shadowTrading: "ALLOWED",
+      blockers: ["audit_blocks_live"],
+      warnings: [],
+    },
+    audit: {
+      decision: "LIVE_BLOCKED",
+      blockers: ["candidate amount diversity"],
+    },
+    reviewPackage: {
+      candidateType: "strategy",
+      candidateId: "wrapped-btc-loop-base-moonwell",
+    },
+    prelive: {
+      currentStage: "tiny_live_canary_review",
+    },
+    liveBaseline: {
+      counts: {
+        total: 1,
+      },
+      blockers: {
+        refresh: [],
+        operator: [],
+        technical: [{ code: "executor_runtime_unavailable" }],
+        objective: [],
+      },
+    },
+  });
+
+  assert.equal(overall.liveTrading, "BLOCKED");
+  assert.deepEqual(overall.blockers, ["executor_runtime_unavailable"]);
+  assert.equal(overall.warnings.includes("transport_audit_warning_only"), true);
+  assert.equal(overall.lanePolicy.auditSuppressedForStrategy, true);
+});
+
 test("lane-aware live policy keeps non-transport audit blocker live-blocking", () => {
   const overall = applyLaneAwareLivePolicy({
     overall: {

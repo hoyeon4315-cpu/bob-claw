@@ -220,6 +220,63 @@ test("evidence campaign routes pending output into manual resolution before new 
   assert.equal(campaign.forkExecution.pendingOutputCount, 1);
 });
 
+test("evidence campaign suppresses route refresh work once a strategy is manual-review ready", () => {
+  const campaign = buildPreliveEvidenceCampaign({
+    reviewPackage: {
+      packageStatus: "ready_for_manual_review",
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+      },
+      queueFollowUps: [
+        {
+          rank: 1,
+          scope: "active_canary",
+          reason: "token",
+          command: "npm run check:estimator-wallet -- --route-key=\"base:0x0555->bsc:0x0555\" --amount=\"25000\"",
+        },
+      ],
+      preliveEvidence: {
+        shadowReplay: {
+          blockers: [],
+        },
+        mechanicalSimulation: {
+          targetSuccessCount: 2,
+        },
+        forkExecution: {
+          targetConfirmedCount: 2,
+        },
+      },
+    },
+    simulationRuns: [
+      { observedAt: "2026-04-12T10:00:00.000Z", status: "simulated_ok" },
+      { observedAt: "2026-04-12T10:05:00.000Z", status: "simulated_ok" },
+    ],
+    forkExecutionPlans: [
+      {
+        observedAt: "2026-04-12T10:06:00.000Z",
+        planId: "plan-1",
+        status: "planned",
+        routeLabel: "sonic->bob",
+        commands: {
+          submit: 'npm run submit:prelive-fork-execution -- --plan-id="plan-1" --use-signer-daemon --rpc-url="<forkRpcUrl>"',
+        },
+      },
+    ],
+    forkExecutionSubmissions: [],
+    forkExecutionReceipts: [],
+  });
+
+  assert.equal(campaign.actions[0].code, "execute_refresh_batch");
+  assert.equal(campaign.actions[0].status, "done");
+  assert.equal(campaign.actions[0].reason, "no_queue_follow_up_remaining");
+  assert.equal(campaign.actions[3].code, "submit_fork_cycle");
+  assert.equal(campaign.actions[3].status, "manual");
+  assert.match(campaign.actions[3].command, /submit:prelive-fork-execution/);
+  assert.equal(campaign.nextAction.code, "submit_fork_cycle");
+});
+
 test("evidence campaign prioritizes ETH-family evidence collection when a new ETH surface appears", () => {
   const campaign = buildPreliveEvidenceCampaign({
     reviewPackage: {

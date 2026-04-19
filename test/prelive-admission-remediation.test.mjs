@@ -237,6 +237,62 @@ test("admission remediation plan skips review-ready strategy candidates with no 
   assert.equal(plan.items.some((item) => item.code === "capture_wrapped_btc_loop_extended_receipt_context"), false);
 });
 
+test("admission remediation plan suppresses route refresh work when strategy review is already ready", () => {
+  const plan = buildAdmissionRemediationPlan({
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        amount: "300",
+      },
+      manualReviewCandidate: {
+        routeKey: "base:0x0555->bsc:0x0555",
+        routeLabel: "base->bsc wBTC.OFT->wBTC.OFT",
+        amount: "25000",
+        inputFreshness: {
+          gatewayQuote: { state: "stale" },
+          exactGas: { state: "stale" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "fresh" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+      queueFollowUps: [
+        {
+          rank: 1,
+          scope: "active_canary",
+          reason: "token",
+          command:
+            'npm run check:estimator-wallet -- --route-key="base:0x0555->bsc:0x0555" --amount="25000"',
+        },
+      ],
+      tinyCanaryAdmission: {
+        blockers: [],
+      },
+    },
+    evidenceCampaign: {
+      actions: [
+        {
+          code: "submit_fork_cycle",
+          label: "submit fork cycle",
+          status: "manual",
+          reason: "external_signer_required",
+          command: 'npm run submit:prelive-fork-execution -- --plan-id="plan-1" --use-signer-daemon --rpc-url="<forkRpcUrl>"',
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.overallStatus, "awaiting_manual");
+  assert.equal(plan.nextAction.code, "submit_fork_cycle");
+  assert.equal(plan.items.some((item) => item.code === "refresh_gateway_quote"), false);
+  assert.equal(plan.items.some((item) => item.code === "refresh_exact_gas"), false);
+  assert.equal(plan.items.some((item) => item.reason === "token"), false);
+});
+
 test("admission remediation plan prioritizes active canary wallet readiness over stale input refresh", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {

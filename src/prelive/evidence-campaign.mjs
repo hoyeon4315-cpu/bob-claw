@@ -92,6 +92,10 @@ function isShadowReplayPolicyGate(blockers = []) {
   );
 }
 
+function strategyPrimaryReadyForManualReview(reviewPackage = null) {
+  return reviewPackage?.readyForManualReview === true && reviewPackage?.primaryLiveCandidate?.candidateType === "strategy";
+}
+
 export function buildPreliveEvidenceCampaign({
   reviewPackage = null,
   shadowRefreshBatchSummary = null,
@@ -103,7 +107,8 @@ export function buildPreliveEvidenceCampaign({
   simulationLimit = 4,
   now = new Date().toISOString(),
 } = {}) {
-  const queueFollowUps = reviewPackage?.queueFollowUps || [];
+  const suppressRouteRefreshWork = strategyPrimaryReadyForManualReview(reviewPackage);
+  const queueFollowUps = suppressRouteRefreshWork ? [] : reviewPackage?.queueFollowUps || [];
   const shadowReplay = reviewPackage?.preliveEvidence?.shadowReplay || null;
   const mechanicalSimulation = reviewPackage?.preliveEvidence?.mechanicalSimulation || null;
   const targetSimulationSuccessCount = mechanicalSimulation?.targetSuccessCount || 50;

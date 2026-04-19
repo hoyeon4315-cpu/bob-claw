@@ -41,6 +41,10 @@ function routeCandidate(reviewPackage = null) {
   return reviewPackage?.manualReviewCandidate || null;
 }
 
+function strategyPrimaryReadyForManualReview(reviewPackage = null) {
+  return reviewPackage?.readyForManualReview === true && primaryCandidate(reviewPackage)?.candidateType === "strategy";
+}
+
 function humanizeCode(code = null) {
   return code ? code.replace(/_/g, " ") : null;
 }
@@ -381,16 +385,17 @@ export function buildAdmissionRemediationPlan({
 } = {}) {
   if (!reviewPackage) return null;
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
+  const suppressRouteRefreshWork = strategyPrimaryReadyForManualReview(reviewPackage);
   const evidenceItems = evidenceCampaignItems(evidenceCampaign);
-  const queueItems = queueFollowUpItems(reviewPackage);
+  const queueItems = suppressRouteRefreshWork ? [] : queueFollowUpItems(reviewPackage);
   const hasRefreshBatchRunner = evidenceItems.some((entry) => entry.code === "execute_refresh_batch");
   const eligibleQueueItems = hasRefreshBatchRunner
     ? queueItems.filter((entry) => (entry.priority ?? 0) >= 90)
     : queueItems;
   const items = dedupeItems([
     ...strategyCandidateItems(reviewPackage),
-    ...inputItems(reviewPackage, address),
-    ...measuredLeaderItem(reviewPackage),
+    ...(suppressRouteRefreshWork ? [] : inputItems(reviewPackage, address)),
+    ...(suppressRouteRefreshWork ? [] : measuredLeaderItem(reviewPackage)),
     ...eligibleQueueItems,
     ...evidenceItems,
   ]);
