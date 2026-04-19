@@ -19,6 +19,11 @@ function strategyPrimaryCandidate(reviewPackage = null) {
   return primaryCandidate(reviewPackage)?.candidateType === "strategy";
 }
 
+function effectiveLiveBlockers(dashboardStatus = null, reviewPackage = null) {
+  if (dashboardStatus?.overall?.liveTrading === "ALLOWED") return [];
+  return unique([...(reviewPackage?.liveBlockers || []), ...(dashboardStatus?.overall?.blockers || [])]);
+}
+
 function warningsFor(strategySummary = null, dashboardStatus = null, reviewPackage = null) {
   const strategyPrimary = strategyPrimaryCandidate(reviewPackage);
   return unique([
@@ -77,9 +82,10 @@ export function buildPreliveValidationReport({
   const strategySummary = strategySnapshot?.summary ? summarizeStrategySnapshot(strategySnapshot) : strategySnapshot;
   const runbookSummary = executionRunbook?.summary ? summarizeExecutionRunbook(executionRunbook) : executionRunbook;
   const nextStage = executionRunbook?.stages?.find((stage) => !stage.complete) || null;
+  const liveBlockers = effectiveLiveBlockers(dashboardStatus, reviewPackage);
   const blockers = unique([
     ...(reviewPackage?.reviewBlockers || []),
-    ...(reviewPackage?.liveBlockers || []),
+    ...liveBlockers,
     ...(nextStage?.blockers || []),
   ]);
   const strategyPrimary = strategyPrimaryCandidate(reviewPackage);

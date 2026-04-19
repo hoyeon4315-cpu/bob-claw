@@ -1824,11 +1824,42 @@ async function main() {
     liveBaseline: dashboardStatusWithSnapshot.liveBaseline,
   });
   dashboardStatusWithSnapshot.prelive.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
+  reviewPackage.liveDecision =
+    dashboardStatusWithSnapshot.overall.liveTrading === "ALLOWED"
+      ? "LIVE_EXECUTION_ALLOWED"
+      : "LIVE_EXECUTION_BLOCKED";
+  reviewPackage.liveBlockers = dashboardStatusWithSnapshot.overall.blockers || [];
   reviewPackage.tinyCanaryAdmission = reconcileTinyCanaryAdmissionWithLivePolicy(
     reviewPackage.tinyCanaryAdmission,
     dashboardStatusWithSnapshot.overall,
   );
   reviewPackage.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
+  const alignedPreliveValidation = buildPreliveValidationReport({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    strategySnapshot,
+    executionRunbook,
+    reviewPackage,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+    now,
+  });
+  const alignedPreliveValidationSummary = summarizePreliveValidationReport(alignedPreliveValidation);
+  const alignedOperationalJudgmentReview = buildOperationalJudgmentReview({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    strategySnapshot,
+    reviewPackage,
+    executionRunbook,
+    preliveValidation: alignedPreliveValidation,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+    now,
+  });
+  reviewPackage.preliveValidation = alignedPreliveValidationSummary;
+  reviewPackage.operationalJudgmentReview = alignedOperationalJudgmentReview;
+  dashboardStatusWithSnapshot.prelive.validation = alignedPreliveValidationSummary;
+  dashboardStatusWithSnapshot.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(
+    alignedOperationalJudgmentReview,
+  );
   dashboardStatusWithSnapshot.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatusWithSnapshot.liveBaseline = buildLiveBaselineSummary({
     dashboardStatus: dashboardStatusWithSnapshot,

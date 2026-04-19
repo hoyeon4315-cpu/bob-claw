@@ -517,11 +517,36 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     liveBaseline: dashboardStatus.liveBaseline,
   });
   dashboardStatus.prelive.liveTradingPolicy = dashboardStatus.overall.liveTrading;
+  reviewPackage.liveDecision =
+    dashboardStatus.overall.liveTrading === "ALLOWED" ? "LIVE_EXECUTION_ALLOWED" : "LIVE_EXECUTION_BLOCKED";
+  reviewPackage.liveBlockers = dashboardStatus.overall.blockers || [];
   reviewPackage.tinyCanaryAdmission = reconcileTinyCanaryAdmissionWithLivePolicy(
     reviewPackage.tinyCanaryAdmission,
     dashboardStatus.overall,
   );
   reviewPackage.liveTradingPolicy = dashboardStatus.overall.liveTrading;
+  preliveValidation = buildPreliveValidationReport({
+    dashboardStatus,
+    strategySnapshot,
+    executionRunbook,
+    reviewPackage,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+  });
+  operationalJudgmentReview = buildOperationalJudgmentReview({
+    dashboardStatus,
+    strategySnapshot,
+    reviewPackage,
+    executionRunbook,
+    preliveValidation,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+  });
+  dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
+  dashboardStatus.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+  reviewPackage.preliveValidation = dashboardStatus.prelive.validation;
+  reviewPackage.operationalJudgmentReview = operationalJudgmentReview;
+  dashboardStatus.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatus.liveBaseline = buildLiveBaselineSummary({
     dashboardStatus,
     nextStep: state.nextStep,
