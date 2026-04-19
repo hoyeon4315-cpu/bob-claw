@@ -138,10 +138,16 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   });
 
   assert.equal(plan.currentSystem.liveTrading, "BLOCKED");
-  assert.equal(plan.currentSystem.riskBudgetUsd, null);
-  assert.equal(plan.budgetAssessment.currentBudgetUsd, null);
+  assert.equal(plan.currentSystem.riskBudgetUsd, 300);
+  assert.equal(plan.budgetAssessment.currentBudgetUsd, 300);
   assert.match(plan.budgetAssessment.explanation[0], /per-strategy/i);
-  assert.deepEqual(plan.budgetAssessment.budgetScenarios, []);
+  assert.deepEqual(plan.budgetAssessment.budgetScenarios, [
+    {
+      budgetUsd: 300,
+      label: "reference_cap_current",
+      planningOnly: false,
+    },
+  ]);
 
   const yieldPivot = plan.pivots.find((pivot) => pivot.id === "gateway_base_btc_yield");
   assert.ok(yieldPivot);
@@ -150,9 +156,10 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   assert.equal(yieldPivot.capitalGuidance.researchPilotMinimumUsd, 105);
   assert.equal(yieldPivot.capitalGuidance.diversifiedSingleSleeveMinimumUsd, 205);
   assert.equal(yieldPivot.capitalGuidance.defaultDualSleeveMinimumUsd, 338.33);
-  assert.equal(yieldPivot.capitalGuidance.budgetFit.researchPilotFits, null);
-  assert.equal(yieldPivot.capitalGuidance.budgetFit.defaultDualSleeveFits, null);
-  assert.equal(yieldPivot.budgetScenarios.length, 0);
+  assert.equal(yieldPivot.capitalGuidance.budgetFit.researchPilotFits, true);
+  assert.equal(yieldPivot.capitalGuidance.budgetFit.diversifiedSingleSleeveFits, true);
+  assert.equal(yieldPivot.capitalGuidance.budgetFit.defaultDualSleeveFits, false);
+  assert.equal(yieldPivot.budgetScenarios.length, 1);
 
   const proxyPivot = plan.pivots.find((pivot) => pivot.id === "btc_proxy_spreads");
   assert.ok(proxyPivot);
@@ -170,8 +177,9 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   const summary = summarizeStrategyPivotPlan(plan);
   assert.equal(summary.topRecommendation.id, "gateway_base_btc_yield");
   assert.equal(summary.topRecommendation.researchPilotMinimumUsd, 105);
-  assert.equal(summary.budgetScenarios.length, 0);
-  assert.equal(summary.topRecommendation.budgetScenarios.length, 0);
+  assert.equal(summary.currentBudgetUsd, 300);
+  assert.equal(summary.budgetScenarios.length, 1);
+  assert.equal(summary.topRecommendation.budgetScenarios.length, 1);
 });
 
 test("strategy pivot plan refuses to invent a triangle capital floor from flash-negative percent-only data", () => {

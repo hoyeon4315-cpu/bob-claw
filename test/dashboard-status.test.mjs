@@ -277,10 +277,10 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.dataCounts.preliveEvidenceCampaigns, 1);
   assert.equal(status.dataCounts.priceSnapshots, 1);
   assert.equal(status.dataCounts.executorHeartbeatPresent, 1);
-  assert.equal(status.strategy.pivotPlan.budgetScenarios.length, 0);
+  assert.equal(status.strategy.pivotPlan.budgetScenarios.length, 1);
   assert.equal(status.strategy.yieldShadowBook.topProfile.id, "research_pilot");
   assert.equal(typeof status.strategy.proxySpreadCoveragePlan.planCount, "number");
-  assert.equal(status.strategy.strategySnapshot.activeBudgetUsd, null);
+  assert.equal(status.strategy.strategySnapshot.activeBudgetUsd, 300);
   assert.equal(status.strategy.strategySnapshot.topPivot.id, "gateway_base_btc_yield");
 });
 
@@ -755,7 +755,7 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(status.strategy.edgeResearch.routeCount, 2);
   assert.equal(status.strategy.edgeResearch.bestCandidate.classification, "no_edge");
   assert.equal(status.strategy.pivotPlan.topRecommendation.id, "gateway_base_btc_yield");
-  assert.equal(status.strategy.pivotPlan.currentBudgetUsd, null);
+  assert.equal(status.strategy.pivotPlan.currentBudgetUsd, 300);
   assert.equal(status.strategy.pivotPlan.pivots.some((item) => item.id === "btc_proxy_spreads"), true);
   assert.equal(status.dex.quoteCount, 1);
   assert.deepEqual(status.dex.quotedChains, ["base"]);

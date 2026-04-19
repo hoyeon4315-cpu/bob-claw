@@ -148,9 +148,10 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   });
 
   assert.equal(snapshot.currentSystem.liveTrading, "BLOCKED");
-  assert.equal(snapshot.currentSystem.activeBudgetUsd, null);
+  assert.equal(snapshot.currentSystem.activeBudgetUsd, 300);
   assert.equal(snapshot.summary.planningBudgetUsd, null);
   assert.equal(snapshot.planningLayers.yieldShadowBook.topProfile.id, "research_pilot");
+  assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.activeLaneBudgetUsd, 300);
   assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.planningLaneBudgetUsd, null);
   assert.equal(snapshot.planningLayers.formulaAudit.summary.implementedCount, 3);
   assert.equal(snapshot.planningLayers.formulaAudit.summary.topGap.id, "advanced_overfit_statistics");
@@ -165,7 +166,8 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   const summary = summarizeStrategySnapshot(snapshot);
   assert.equal(summary.topPivot.id, "gateway_base_btc_yield");
   assert.equal(summary.topAction.code, "build_deterministic_yield_shadow_book");
-  assert.equal(summary.activeBudgetUsd, null);
+  assert.equal(summary.activeBudgetUsd, 300);
+  assert.equal(summary.capitalExpansionReview.activeLaneBudgetUsd, 300);
   assert.equal(summary.capitalExpansionReview.planningLaneBudgetUsd, null);
   assert.equal(summary.capitalExpansionReview.approvalRequiredForPlanningLane, false);
   assert.equal(summary.formulaAudit.summary.missingCount, 1);

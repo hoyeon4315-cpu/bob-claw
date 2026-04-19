@@ -1,3 +1,5 @@
+import { buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
+
 function round(value, digits = 4) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
@@ -50,8 +52,9 @@ function estimateForBudget(values = {}, budgetUsd) {
 
 export function buildDestinationEstimatedEconomics({ workbench = null, blockers = null } = {}) {
   const generatedAt = workbench?.generatedAt || new Date().toISOString();
-  const activeBudgetUsd = null;
-  const planningBudgetUsd = null;
+  const treasuryPolicy = buildDefaultTreasuryPolicy();
+  const activeBudgetUsd = numeric(workbench?.budgets?.activeBudgetUsd) ?? numeric(treasuryPolicy?.capital?.riskBudgetUsd);
+  const planningBudgetUsd = numeric(workbench?.budgets?.planningBudgetUsd);
   const blockerByTemplate = latestBlockersByTemplate(blockers?.entries || []);
 
   const items = (workbench?.workItems || []).map((item) => {

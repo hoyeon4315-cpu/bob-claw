@@ -129,7 +129,7 @@ export function buildDefaultTreasuryPolicy() {
     schemaVersion: 1,
     walletMode: "single_wallet",
     capital: {
-      riskBudgetUsd: null,
+      riskBudgetUsd: 300,
       canaryStartUsdMin: 20,
       canaryStartUsdMax: 50,
       maxIdleCapitalPerChainUsd: 60,
