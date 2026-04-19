@@ -230,13 +230,54 @@ test("cross-chain refill selects an observed source inventory when another chain
   const funding = buildFundingSourcePlan({ plan, policy });
 
   assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
-  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
   assert.equal(funding.selections[0].selectedSource.source.chain, "base");
   assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
   assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), false);
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_native_refill_executor_missing"), true);
   assert.equal(funding.selections[0].missingInputs.includes("reserve_state_unmodelled"), false);
   assert.equal(funding.reasons.includes("reserve_state_unmodelled"), false);
   assert.equal(funding.reasons.includes("reserve_replenishment_unmodelled"), false);
+});
+
+test("cross-chain BTC-family token refill is ready when Gateway consolidation can execute it", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "bob",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.4,
+        rationale: "Route token buffer",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.actual, "25000");
+  assert.equal(funding.selections[0].missingInputs.length, 0);
 });
 
 test("funding source planner supplements same-chain token candidates from whole-wallet inventory", () => {

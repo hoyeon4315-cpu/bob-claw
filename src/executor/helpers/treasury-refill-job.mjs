@@ -1,0 +1,205 @@
+import { ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
+import {
+  buildGatewayBtcConsolidationPlan,
+  executeGatewayBtcConsolidationPlan,
+} from "./gateway-btc-consolidation.mjs";
+import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
+import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
+
+const INPUT_BUFFER_MULTIPLIER = 1.1;
+
+function isFiniteNumber(value) {
+  return Number.isFinite(value);
+}
+
+function positiveBigInt(value) {
+  try {
+    const parsed = BigInt(value ?? 0);
+    return parsed > 0n ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function ceilUnitsFromDecimalAmount(amountDecimal, decimals) {
+  if (!isFiniteNumber(amountDecimal) || !(amountDecimal > 0) || !Number.isInteger(decimals) || decimals < 0) {
+    return null;
+  }
+  const scaled = Math.ceil(amountDecimal * 10 ** decimals);
+  return scaled > 0 ? String(scaled) : null;
+}
+
+function estimateInputAmountFromSource({ job, source }) {
+  const targetUsd = job?.estimatedAssetValueUsd;
+  const sourceUsd = source?.estimatedUsd;
+  const sourceDecimal = source?.actualDecimal;
+  if (!isFiniteNumber(targetUsd) || !(targetUsd > 0) || !isFiniteNumber(sourceUsd) || !(sourceUsd > 0)) {
+    return null;
+  }
+  if (!isFiniteNumber(sourceDecimal) || !(sourceDecimal > 0)) {
+    return null;
+  }
+  const sourceAsset = tokenAsset(source.chain, source.token || ZERO_TOKEN);
+  const sourceUnitUsd = sourceUsd / sourceDecimal;
+  const inputDecimal = Math.min(sourceDecimal, (targetUsd * INPUT_BUFFER_MULTIPLIER) / sourceUnitUsd);
+  return ceilUnitsFromDecimalAmount(inputDecimal, sourceAsset.decimals);
+}
+
+function outputAmountForCoverage(plan, executor) {
+  if (!plan) return null;
+  if (executor === "gateway_btc_consolidation") {
+    return plan.quote?.outputAmount?.amount || null;
+  }
+  return plan.minimumOutputAmount || plan.quote?.outputAmount || null;
+}
+
+function coverageForPlan({ plan, job, executor }) {
+  const outputAmount = positiveBigInt(outputAmountForCoverage(plan, executor));
+  const targetAmount = positiveBigInt(job?.targetAmount);
+  const coversTarget = outputAmount != null && targetAmount != null ? outputAmount >= targetAmount : null;
+  return {
+    targetAmount: targetAmount?.toString() || job?.targetAmount || null,
+    minimumOutputAmount: outputAmount?.toString() || outputAmountForCoverage(plan, executor),
+    coversTarget,
+  };
+}
+
+function blockedPreparation({ job, executor = null, blockedReason, plan = null, coverage = null }) {
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    status: "blocked",
+    jobId: job?.jobId || null,
+    executionMethod: job?.executionMethod || null,
+    executor,
+    blockedReason,
+    plan,
+    coverage,
+  };
+}
+
+function readyPreparation({ job, executor, plan, coverage }) {
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    status: "ready",
+    jobId: job.jobId,
+    executionMethod: job.executionMethod,
+    executor,
+    plan,
+    coverage,
+  };
+}
+
+export function refillExecutorForJob(job = {}) {
+  if (job.executionMethod === "same_chain_token_to_native_swap") return "token_dex_experiment";
+  if (job.executionMethod === "same_chain_native_to_token_swap") return "native_dex_experiment";
+  if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
+  return null;
+}
+
+export async function buildTreasuryRefillExecutionPlan({
+  job,
+  senderAddress,
+  buildTokenDexPlanImpl = buildTokenDexExperimentPlan,
+  buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
+  buildGatewayBtcPlanImpl = buildGatewayBtcConsolidationPlan,
+} = {}) {
+  if (!job) throw new Error("Treasury refill job is required");
+  if (!senderAddress) throw new Error("Treasury refill sender address is required");
+
+  const executor = refillExecutorForJob(job);
+  if (!executor) {
+    return blockedPreparation({
+      job,
+      blockedReason: `unsupported_refill_execution_method:${job.executionMethod || "missing"}`,
+    });
+  }
+
+  const source = job.fundingSource?.source || null;
+  if (!source?.chain || !source?.token) {
+    return blockedPreparation({ job, executor, blockedReason: "funding_source_missing" });
+  }
+
+  let plan = null;
+  if (executor === "token_dex_experiment") {
+    const amount = estimateInputAmountFromSource({ job, source });
+    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    plan = await buildTokenDexPlanImpl({
+      chain: job.chain,
+      amount,
+      senderAddress,
+      inputToken: source.token,
+      outputToken: "native",
+    });
+  } else if (executor === "native_dex_experiment") {
+    const amount = estimateInputAmountFromSource({ job, source });
+    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    plan = await buildNativeDexPlanImpl({
+      chain: job.chain,
+      amount,
+      senderAddress,
+      outputToken: job.token,
+    });
+  } else if (executor === "gateway_btc_consolidation") {
+    const targetAmount = positiveBigInt(job.targetAmount);
+    const sourceAmount = positiveBigInt(source.actual);
+    if (!targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
+    if (sourceAmount != null && sourceAmount < targetAmount) {
+      return blockedPreparation({ job, executor, blockedReason: "source_inventory_below_target_amount" });
+    }
+    plan = await buildGatewayBtcPlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      srcToken: source.token,
+      dstToken: job.token,
+      amount: targetAmount.toString(),
+      senderAddress,
+      recipient: senderAddress,
+    });
+  }
+
+  if (plan?.planStatus !== "ready") {
+    return blockedPreparation({
+      job,
+      executor,
+      blockedReason: plan?.blockedReason || "executor_plan_blocked",
+      plan,
+    });
+  }
+
+  const coverage = coverageForPlan({ plan, job, executor });
+  if (coverage.coversTarget === false) {
+    return blockedPreparation({
+      job,
+      executor,
+      blockedReason: "executor_output_below_refill_target",
+      plan,
+      coverage,
+    });
+  }
+
+  return readyPreparation({ job, executor, plan, coverage });
+}
+
+export async function executeTreasuryRefillExecutionPlan({
+  preparation,
+  executeTokenDexPlanImpl = executeTokenDexExperimentPlan,
+  executeNativeDexPlanImpl = executeNativeDexExperimentPlan,
+  executeGatewayBtcPlanImpl = executeGatewayBtcConsolidationPlan,
+  ...executionOptions
+} = {}) {
+  if (preparation?.status !== "ready" || !preparation?.plan) {
+    throw new Error(`Treasury refill execution plan is not ready: ${preparation?.blockedReason || "missing_plan"}`);
+  }
+  if (preparation.executor === "token_dex_experiment") {
+    return executeTokenDexPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  if (preparation.executor === "native_dex_experiment") {
+    return executeNativeDexPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  if (preparation.executor === "gateway_btc_consolidation") {
+    return executeGatewayBtcPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  throw new Error(`Unsupported treasury refill executor: ${preparation.executor || "missing"}`);
+}

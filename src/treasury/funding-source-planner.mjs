@@ -1,4 +1,4 @@
-import { ZERO_TOKEN, tokenAsset } from "../assets/tokens.mjs";
+import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
 
 const METHOD_PROFILES = {
   same_chain_native_transfer: {
@@ -160,6 +160,16 @@ function describeSourceAsset(chain, token, extra = {}) {
   };
 }
 
+function sourceAmountMetadata(source = {}) {
+  const resolvedSource = source || {};
+  return {
+    actual: resolvedSource.actual ?? resolvedSource.balance ?? null,
+    actualDecimal: resolvedSource.actualDecimal ?? null,
+    estimatedUsd: resolvedSource.estimatedUsd ?? null,
+    sourceKind: resolvedSource.sourceKind || null,
+  };
+}
+
 function candidateRecord({
   action,
   method,
@@ -217,7 +227,7 @@ function nativeSwapCandidate(action, plan, preferred) {
   return candidateRecord({
     action,
     method: "same_chain_token_to_native_swap",
-    source: describeSourceAsset(action.chain, tokenSource.token),
+    source: describeSourceAsset(action.chain, tokenSource.token, sourceAmountMetadata(tokenSource)),
     availability: bootstrapNativeSatisfied ? "ready" : "conditional",
     preferred: bootstrapNativeSatisfied ? preferred : false,
     requiresBootstrapNative: true,
@@ -234,7 +244,7 @@ function tokenSwapCandidate(action, plan, preferred) {
   return candidateRecord({
     action,
     method: "same_chain_native_to_token_swap",
-    source: describeSourceAsset(action.chain, ZERO_TOKEN),
+    source: describeSourceAsset(action.chain, ZERO_TOKEN, sourceAmountMetadata(native)),
     availability: bootstrapNativeSatisfied ? "ready" : "conditional",
     preferred: bootstrapNativeSatisfied ? preferred : false,
     requiresBootstrapNative: true,
@@ -276,6 +286,7 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     .map((item) => ({
       chain: item.chain,
       token: ZERO_TOKEN,
+      actual: item.actual ?? null,
       estimatedUsd: item.estimatedUsd ?? null,
       actualDecimal: item.actualDecimal ?? null,
       sourceKind: "native",
@@ -285,6 +296,7 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     .map((item) => ({
       chain: item.chain,
       token: item.token,
+      actual: item.actual ?? null,
       estimatedUsd: item.estimatedUsd ?? null,
       actualDecimal: item.actualDecimal ?? null,
       sourceKind: "token",
@@ -300,9 +312,43 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     })[0] || null;
 }
 
+function crossChainExecutorSupport(action, selectedSource) {
+  if (!selectedSource) {
+    return {
+      supported: false,
+      missingInputs: ["cross_chain_source_selection_missing"],
+      notes: "Cross-chain funding has no observed source inventory yet, so the planner cannot promote it beyond a conditional source-selection stub.",
+    };
+  }
+
+  if (action.type === "refill_token") {
+    const sourceAsset = tokenAsset(selectedSource.chain, selectedSource.token);
+    const targetAsset = tokenAsset(action.chain, action.token);
+    if (isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset)) {
+      return {
+        supported: true,
+        missingInputs: [],
+        notes: "Gateway BTC-family consolidation can bridge the observed source token into the target-chain token inventory.",
+      };
+    }
+    return {
+      supported: false,
+      missingInputs: ["cross_chain_token_refill_executor_missing"],
+      notes: "Observed cross-chain inventory exists, but the repo only has a direct executor for BTC-family Gateway token refills.",
+    };
+  }
+
+  return {
+    supported: false,
+    missingInputs: ["cross_chain_native_refill_executor_missing"],
+    notes: "Observed cross-chain inventory exists, but native-gas refill still needs a same-chain swap or a dedicated bridge-to-native executor before it can run unattended.",
+  };
+}
+
 function crossChainCandidate(action, plan, policy, routeContext = null) {
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   const directInventoryMode = policy.walletMode === "single_wallet";
+  const executorSupport = crossChainExecutorSupport(action, selectedSource);
   if (!selectedSource) {
     return candidateRecord({
       action,
@@ -312,25 +358,29 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
       preferred: false,
       requiresReserveState: false,
       reserveReplenishmentKnown: true,
-      missingInputs: ["cross_chain_source_selection_missing"],
-      notes: "Cross-chain funding has no observed source inventory yet, so the planner cannot promote it beyond a conditional source-selection stub.",
+      missingInputs: executorSupport.missingInputs,
+      notes: executorSupport.notes,
     });
   }
+  const executableDirectInventory = directInventoryMode && executorSupport.supported;
   return candidateRecord({
     action,
     method: "cross_chain_bridge_or_swap",
     source: describeSourceAsset(selectedSource.chain, selectedSource.token, {
+      actual: selectedSource.actual,
       estimatedUsd: selectedSource.estimatedUsd,
       actualDecimal: selectedSource.actualDecimal,
       sourceKind: selectedSource.sourceKind,
     }),
-    availability: directInventoryMode ? "ready" : "conditional",
-    preferred: directInventoryMode,
+    availability: executableDirectInventory ? "ready" : "conditional",
+    preferred: executableDirectInventory,
     requiresReserveState: !directInventoryMode,
     reserveReplenishmentKnown: directInventoryMode,
-    missingInputs: directInventoryMode ? [] : ["reserve_state_unmodelled"],
-    notes: directInventoryMode
-      ? "Single-wallet mode can consume observed cross-chain inventory directly, so the planner treats the selected source as immediately usable."
+    missingInputs: directInventoryMode ? executorSupport.missingInputs : ["reserve_state_unmodelled"],
+    notes: executableDirectInventory
+      ? executorSupport.notes
+      : directInventoryMode
+        ? executorSupport.notes
       : "Cross-chain funding source is selected from observed inventory, but reserve replenishment and route execution remain under-modelled.",
   });
 }

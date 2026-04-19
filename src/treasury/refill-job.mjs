@@ -30,6 +30,18 @@ function selectionStatusRank(value) {
   return 3;
 }
 
+function fundingSourceReviewReasons(fundingSource) {
+  if (!fundingSource) return ["funding_source_missing"];
+  const reasons = [];
+  if (fundingSource.selectionStatus && fundingSource.selectionStatus !== "ready") {
+    reasons.push(`funding_source_${fundingSource.selectionStatus}`);
+  }
+  for (const reason of fundingSource.missingInputs || []) {
+    reasons.push(reason);
+  }
+  return [...new Set(reasons)];
+}
+
 function routeNetUsd(routeContext = null) {
   return finiteOrNull(routeContext?.executableNetEdgeUsd) ?? finiteOrNull(routeContext?.netEdgeUsd);
 }
@@ -278,6 +290,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
     const reviewReasons = [
       ...explicitGlobalReviewReasons,
       ...(deferredJobIds.has(job.jobId) ? ["too_many_pending_refills"] : []),
+      ...fundingSourceReviewReasons(job.fundingSource),
     ];
     const requiresManualReview =
       reviewReasons.length > 0 || (plan.decision === "REVIEW_REFILL_PLAN" && planReasons.length === 0);
