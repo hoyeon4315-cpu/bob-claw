@@ -192,6 +192,9 @@ test("allocator core surfaces destination-promotion-gate allocation_ready venues
   assert.equal(baseCandidate.activeEligibility, "active_ready");
   assert.equal(baseCandidate.assetFamily, "stables");
   assert.equal(baseCandidate.chain, "base");
+  assert.deepEqual(baseCandidate.protocols, ["aave_v3"]);
+  const bscCandidate = report.candidates.find((item) => item.id === "bsc:stablecoin_lending_carry");
+  assert.deepEqual(bscCandidate.protocols, ["venus"]);
 });
 
 test("allocator core keeps review_only destination venues out of active plan with blockers surfaced", () => {
@@ -276,7 +279,7 @@ test("allocator core enforces per-chain concentration cap and defers excess acti
   assert.ok(capBlocker, "cap_deferred venue must carry a cap_exceeded blocker");
 });
 
-test("allocator core admits a chain-diversified portfolio across base and bsc stablecoin venues", () => {
+test("allocator core admits a chain-diversified portfolio across base and bsc stablecoin carry venues when protocols differ", () => {
   const makeReadyItem = (templateId, chain, familyId) => ({
     templateId,
     chain,
@@ -314,7 +317,7 @@ test("allocator core admits a chain-diversified portfolio across base and bsc st
     destinationPromotionGate: {
       items: [
         makeReadyItem("base:stablecoin_lending_carry", "base", "stablecoin_lending_carry"),
-        makeReadyItem("bsc:stablecoin_lp_or_basis", "bsc", "stablecoin_lp_or_basis"),
+        makeReadyItem("bsc:stablecoin_lending_carry", "bsc", "stablecoin_lending_carry"),
       ],
     },
     now: "2026-04-20T00:00:03.000Z",
@@ -325,6 +328,54 @@ test("allocator core admits a chain-diversified portfolio across base and bsc st
   const activeAssetFamilies = new Set(report.activeView.activePlan.map((item) => item.assetFamily));
   assert.equal(activeAssetFamilies.size >= 2, true, "active plan must span at least 2 asset families (btc_wrappers + stables)");
   assert.equal(report.summary.activeAllocationCount >= 2, true);
+  assert.equal(report.activeView.exposureUsage.byProtocol.aave_v3 > 0, true);
+  assert.equal(report.activeView.exposureUsage.byProtocol.venus > 0, true);
+});
+
+test("allocator core surfaces priority expansion chains as review-only when target chains have promotable but not allocation-ready venues", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          chain: "avalanche",
+          familyId: "wrapped_btc_lending",
+          label: "Wrapped BTC -> lending positions",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: {
+            status: "review_only",
+            blockers: ["allocation_grossReturnBps_recheck_required", "allocation_unwindSlippageBps_recheck_required"],
+          },
+        },
+        {
+          templateId: "sonic:wrapped_btc_lp_positions",
+          chain: "sonic",
+          familyId: "wrapped_btc_lp_positions",
+          label: "Wrapped BTC -> LP positions",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: {
+            status: "review_only",
+            blockers: ["allocation_check_count_below_policy"],
+          },
+        },
+      ],
+    },
+    now: "2026-04-20T00:00:04.000Z",
+  });
+
+  assert.deepEqual(report.summary.priorityExpansionActiveReadyChains, []);
+  assert.deepEqual(report.summary.priorityExpansionReviewOnlyChains.sort(), ["avalanche", "sonic"]);
+  const avalanche = report.priorityChainExpansion.perChain.find((item) => item.chain === "avalanche");
+  assert.equal(avalanche.reviewOnlyCount, 1);
+  assert.equal(avalanche.topCandidate.id, "avalanche:wrapped_btc_lending");
+  assert.deepEqual(avalanche.topCandidate.protocols, ["benqi"]);
+  assert.equal(report.diversifiedPortfolioDraft.reviewQueue.some((item) => item.chain === "avalanche"), true);
+  assert.equal(report.diversifiedPortfolioDraft.reviewQueue.some((item) => item.chain === "sonic"), true);
 });
 
 test("allocator core chain coverage matrix enumerates target gateway chains and marks missing cells template_missing", () => {

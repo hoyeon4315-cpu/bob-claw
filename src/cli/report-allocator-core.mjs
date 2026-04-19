@@ -63,6 +63,10 @@ async function main() {
   console.log(`topActiveReady=${report.summary.topActiveReadyCandidateId || "n/a"}`);
   console.log(`topPlanning=${report.summary.topPlanningCandidateId || "n/a"}`);
   console.log(`nextAction=${report.summary.nextAction?.code || "n/a"}`);
+  console.log(`priorityActiveReadyChains=${(report.summary.priorityExpansionActiveReadyChains || []).join(",") || "none"}`);
+  console.log(`priorityReviewOnlyChains=${(report.summary.priorityExpansionReviewOnlyChains || []).join(",") || "none"}`);
+  console.log(`portfolioDraftActive=${report.diversifiedPortfolioDraft?.summary?.activeDraftCount ?? 0}`);
+  console.log(`portfolioDraftReview=${report.diversifiedPortfolioDraft?.summary?.reviewQueueCount ?? 0}`);
   if (report.chainCoverage) {
     console.log("");
     console.log("chainCoverage:");

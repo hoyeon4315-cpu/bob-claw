@@ -15,6 +15,25 @@ const DIVERSIFICATION_TARGET_FAMILIES = [
   "wrapped_btc_lp_positions",
 ];
 
+const PRIORITY_EXPANSION_CHAINS = ["avalanche", "sonic", "bera", "unichain", "soneium"];
+
+const DESTINATION_PROTOCOL_OVERRIDES = {
+  "base:stablecoin_lending_carry": ["aave_v3"],
+  "bsc:stablecoin_lending_carry": ["venus"],
+  "base:stablecoin_lp_or_basis": ["aerodrome"],
+  "bsc:stablecoin_lp_or_basis": ["thena"],
+  "avalanche:wrapped_btc_lending": ["benqi"],
+  "bera:wrapped_btc_lending": ["dolomite"],
+  "base:wrapped_btc_lp_positions": ["aerodrome"],
+  "bsc:wrapped_btc_lp_positions": ["pancakeswap_v3"],
+  "avalanche:wrapped_btc_lp_positions": ["lfj"],
+  "bera:wrapped_btc_lp_positions": ["kodiak"],
+  "bob:wrapped_btc_lp_positions": ["gamma"],
+  "soneium:wrapped_btc_lp_positions": ["kyo"],
+  "sonic:wrapped_btc_lp_positions": ["shadow"],
+  "unichain:wrapped_btc_lp_positions": ["catex"],
+};
+
 function round(value, digits = 2) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
@@ -78,6 +97,15 @@ function destinationCategory(familyId = "") {
   return "yield";
 }
 
+function destinationProtocolIds(item = {}) {
+  const explicit = item?.protocolIds || item?.protocols || item?.metadata?.protocolIds || null;
+  if (Array.isArray(explicit) && explicit.length > 0) return unique(explicit);
+  const override = DESTINATION_PROTOCOL_OVERRIDES[item?.templateId] || null;
+  if (override?.length) return unique(override);
+  if (item?.familyId) return [item.familyId];
+  return [];
+}
+
 function destinationGateCandidate(item = {}) {
   if (!item?.templateId || !item?.familyId || !item?.chain) return null;
   const allocationStatus = item.allocationGate?.status || null;
@@ -98,7 +126,7 @@ function destinationGateCandidate(item = {}) {
     id: item.templateId,
     label: item.label || item.templateId,
     chain: item.chain,
-    protocols: [item.familyId],
+    protocols: destinationProtocolIds(item),
     assetFamily: destinationFamilyAssetFamily(item.familyId),
     category: destinationCategory(item.familyId),
     activeEligibility,
@@ -215,6 +243,113 @@ function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFI
       tier2ReviewOnlyChainCount: tier2ReviewOnly.length,
       tier3BlockedOnlyChainCount: tier3BlockedOnly.length,
       tier4TemplateOnlyChainCount: tier4TemplateOnly.length,
+    },
+  };
+}
+
+function statusRank(candidate = null) {
+  if (candidate?.activeEligibility === "active_ready") return 0;
+  if (candidate?.planningEligibility === "allocation_ready") return 1;
+  if (candidate?.planningEligibility === "review_only") return 2;
+  if (candidate?.planningEligibility === "cap_deferred") return 3;
+  return 4;
+}
+
+function compareCandidates(left = null, right = null) {
+  const leftRank = statusRank(left);
+  const rightRank = statusRank(right);
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  const leftBlockers = left?.blockers?.length || 0;
+  const rightBlockers = right?.blockers?.length || 0;
+  if (leftBlockers !== rightBlockers) return leftBlockers - rightBlockers;
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
+}
+
+function topChainCandidate(items = []) {
+  return [...items].sort(compareCandidates)[0] || null;
+}
+
+function buildPriorityChainExpansion(candidates = [], targetChains = PRIORITY_EXPANSION_CHAINS) {
+  const perChain = targetChains.map((chain) => {
+    const chainCandidates = candidates.filter((candidate) => candidate.chain === chain);
+    const activeReady = chainCandidates.filter((candidate) => candidate.activeEligibility === "active_ready");
+    const reviewOnly = chainCandidates.filter((candidate) => ["allocation_ready", "review_only"].includes(candidate.planningEligibility));
+    const blocked = chainCandidates.filter((candidate) => !["allocation_ready", "review_only"].includes(candidate.planningEligibility));
+    const topCandidate = topChainCandidate(chainCandidates);
+    return {
+      chain,
+      activeReadyCount: activeReady.length,
+      reviewOnlyCount: reviewOnly.length,
+      blockedCount: blocked.length,
+      topCandidate: topCandidate
+        ? {
+            id: topCandidate.id,
+            label: topCandidate.label,
+            protocols: topCandidate.protocols || [],
+            assetFamily: topCandidate.assetFamily || null,
+            activeEligibility: topCandidate.activeEligibility || null,
+            planningEligibility: topCandidate.planningEligibility || null,
+            blockers: topCandidate.blockers || [],
+            nextAction: topCandidate.nextAction || null,
+          }
+        : null,
+    };
+  });
+  return {
+    targetChains,
+    tier1ActiveReadyChains: perChain.filter((item) => item.activeReadyCount > 0).map((item) => item.chain),
+    tier2ReviewOnlyChains: perChain.filter((item) => item.activeReadyCount === 0 && item.reviewOnlyCount > 0).map((item) => item.chain),
+    tier3BlockedOnlyChains: perChain.filter((item) => item.activeReadyCount === 0 && item.reviewOnlyCount === 0 && item.blockedCount > 0).map((item) => item.chain),
+    perChain,
+  };
+}
+
+function preferredPortfolioCandidates(candidates = []) {
+  return [...candidates].sort((left, right) => {
+    const leftAnchor = left?.id === "recursive_wrapped_btc_lending_loop" ? 1 : 0;
+    const rightAnchor = right?.id === "recursive_wrapped_btc_lending_loop" ? 1 : 0;
+    if (leftAnchor !== rightAnchor) return rightAnchor - leftAnchor;
+    return compareCandidates(left, right);
+  });
+}
+
+function buildDiversifiedPortfolioDraft({ candidates = [], priorityChainExpansion = null } = {}) {
+  const selected = [];
+  const usedChains = new Set();
+  const usedProtocols = new Set();
+  const usedFamilies = new Set();
+  for (const item of preferredPortfolioCandidates(candidates).filter((candidate) => candidate.activeEligibility === "active_ready")) {
+    const sameChain = usedChains.has(item.chain);
+    const sameFamily = usedFamilies.has(item.assetFamily);
+    const sameProtocol = (item.protocols || []).some((protocol) => usedProtocols.has(protocol));
+    if (selected.length > 0 && sameChain && sameFamily && sameProtocol) continue;
+    selected.push({
+      id: item.id,
+      label: item.label,
+      chain: item.chain,
+      protocols: item.protocols || [],
+      assetFamily: item.assetFamily || null,
+      planningEligibility: item.planningEligibility || null,
+    });
+    usedChains.add(item.chain);
+    usedFamilies.add(item.assetFamily);
+    for (const protocol of item.protocols || []) usedProtocols.add(protocol);
+    if (selected.length >= 4) break;
+  }
+  const expansionQueue = (priorityChainExpansion?.perChain || [])
+    .filter((item) => item.reviewOnlyCount > 0 && item.topCandidate)
+    .map((item) => ({
+      chain: item.chain,
+      ...item.topCandidate,
+    }));
+  return {
+    activeDraft: selected,
+    reviewQueue: expansionQueue,
+    summary: {
+      activeDraftCount: selected.length,
+      reviewQueueCount: expansionQueue.length,
+      activeDraftChains: unique(selected.map((item) => item.chain)),
+      activeDraftAssetFamilies: unique(selected.map((item) => item.assetFamily)),
     },
   };
 }
@@ -449,6 +584,8 @@ export function buildAllocatorCore({
   const activeView = buildAllocationView(candidates, budgets.activeBudgetUsd, constraints);
   const planningView = buildAllocationView(candidates, budgets.planningBudgetUsd, constraints);
   const chainCoverage = buildChainCoverageMatrix(destinationPromotionGate);
+  const priorityChainExpansion = buildPriorityChainExpansion(candidates);
+  const diversifiedPortfolioDraft = buildDiversifiedPortfolioDraft({ candidates, priorityChainExpansion });
   const topPlanningCandidate = planningView.planningQueue[0] || null;
   const topActiveAllocation = activeView.activePlan[0] || null;
   const topActiveReadyCandidate = topReadyCandidate(candidates);
@@ -475,16 +612,23 @@ export function buildAllocatorCore({
       tier3BlockedOnlyChains: chainCoverage.tiers.tier3_blocked_only,
       tier4TemplateOnlyChains: chainCoverage.tiers.tier4_template_only,
       templateMissingCellCount: chainCoverage.summary.templateMissingCellCount,
+      priorityExpansionActiveReadyChains: priorityChainExpansion.tier1ActiveReadyChains,
+      priorityExpansionReviewOnlyChains: priorityChainExpansion.tier2ReviewOnlyChains,
+      priorityExpansionBlockedOnlyChains: priorityChainExpansion.tier3BlockedOnlyChains,
     },
     candidates,
     activeView,
     planningView,
     chainCoverage,
+    priorityChainExpansion,
+    diversifiedPortfolioDraft,
     notes: [
       "This allocator core is deterministic and evidence-bound; it does not authorize live execution on its own.",
       "Per-strategy, per-protocol, per-chain, and per-asset-family caps are enforced against cumulative active-plan exposure; candidates that would exceed any cap are deferred with an explicit cap_exceeded blocker rather than silently admitted.",
+      "Destination venue protocol IDs are inferred where needed so that same-family venues on different chains (for example Aave Base versus Venus BSC) do not collapse into one synthetic protocol bucket.",
       "Destination-promotion-gate allocation_ready venues are surfaced as allocator candidates so that multi-chain diversification can run under the same cap policy as scaffold-driven strategies.",
       "chainCoverage tiers list the Gateway target chains by evidence readiness: tier1 has at least one allocation_ready family, tier2 only has review_only families, tier3 only has blocked families, and tier4 means the (chain, family) template is missing entirely and must be filled in by destination registry work before allocation can be considered.",
+      "Priority expansion chains are tracked separately so Avalanche, Sonic, Berachain, Unichain, and Soneium can stay in a review-only cohort without being overstated as live-ready.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
       "Cross-chain reserve movement belongs in the allocator/rebalance layer; do not promote a unified multi-chain recursive loop until same-chain loop receipts, auto-unwind wiring, and native-BTC return paths are all proven.",
     ],
@@ -544,6 +688,21 @@ export function summarizeAllocatorCore(report = null) {
           allocationReadyCellCount: report.chainCoverage.summary?.allocationReadyCellCount ?? 0,
           reviewOnlyCellCount: report.chainCoverage.summary?.reviewOnlyCellCount ?? 0,
           blockedCellCount: report.chainCoverage.summary?.blockedCellCount ?? 0,
+        }
+      : null,
+    priorityChainExpansion: report.priorityChainExpansion
+      ? {
+          tier1ActiveReadyChains: report.priorityChainExpansion.tier1ActiveReadyChains || [],
+          tier2ReviewOnlyChains: report.priorityChainExpansion.tier2ReviewOnlyChains || [],
+          tier3BlockedOnlyChains: report.priorityChainExpansion.tier3BlockedOnlyChains || [],
+          perChain: report.priorityChainExpansion.perChain || [],
+        }
+      : null,
+    diversifiedPortfolioDraft: report.diversifiedPortfolioDraft
+      ? {
+          summary: report.diversifiedPortfolioDraft.summary || null,
+          activeDraft: report.diversifiedPortfolioDraft.activeDraft || [],
+          reviewQueue: report.diversifiedPortfolioDraft.reviewQueue || [],
         }
       : null,
   };
