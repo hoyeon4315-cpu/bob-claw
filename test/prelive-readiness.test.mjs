@@ -162,6 +162,44 @@ test("prelive readiness honors review-package manual approval state even when st
   assert.equal(summary.currentStage, "mechanical_simulation");
 });
 
+test("prelive readiness does not require a route edge when a strategy candidate is review-ready", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_CANARY_REVIEW_POSSIBLE",
+    },
+    shadowCycle: {
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: false,
+      edgeViability: {
+        policyReadyCount: 0,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        tradeReadiness: "strategy_candidate_review_only",
+        reviewReady: true,
+      },
+      tinyCanaryAdmission: {
+        status: "manual_approval_required",
+      },
+    },
+    targetSimulationSuccessCount: 1,
+  });
+
+  assert.equal(summary.shadowReplay.blockers.includes("no_policy_ready_measured_route"), false);
+  assert.equal(summary.shadowReplay.blockers.includes("no_execution_review_route"), false);
+  assert.equal(summary.shadowReplay.strategyReviewCandidateReady, true);
+  assert.equal(summary.currentStage, "mechanical_simulation");
+});
+
 test("prelive readiness pauses at fork execution after mechanical proof", () => {
   const summary = buildPreliveReadinessSummary({
     overall: {

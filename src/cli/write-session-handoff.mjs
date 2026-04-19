@@ -1461,6 +1461,7 @@ async function main() {
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
     phase3StrategyValidation,
+    protocolMarketWatchers,
     recursiveWrappedBtcLoop,
     recursiveStablecoinLoop,
     wrappedBtcLendingLoopSlice,
@@ -1476,6 +1477,7 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "deterministic-strategy-candidates.json")),
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
+    readJsonIfExists(join(config.dataDir, "protocol-market-watchers.json")),
     readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
@@ -1591,7 +1593,7 @@ async function main() {
     economicsAudit,
     objectivePlans,
   });
-  const prelive = buildPreliveReadinessSummary({
+  let prelive = buildPreliveReadinessSummary({
     overall: dashboardStatus?.overall || {},
     audit: dashboardStatus?.audit || null,
     shadowCycle: dashboardStatus?.shadowCycle || null,
@@ -1657,7 +1659,7 @@ async function main() {
     recursiveWrappedBtcLoop,
     recursiveStablecoinLoop,
     secondaryStrategyScaffolds,
-    protocolMarketWatchers: null,
+    protocolMarketWatchers,
     now,
   });
   const strategySnapshot = buildStrategySnapshot({
@@ -1692,6 +1694,11 @@ async function main() {
     advanceCanary: dashboardStatus?.canaryAdvance || null,
     address: resolved.address,
     strategySnapshot: strategySnapshotSummary,
+    wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoop,
+    recursiveStablecoinLoop,
+    phase3Validation: phase3StrategyValidation,
+    protocolMarketWatchers,
     now,
   });
   const measuredLeaderWholeWalletFunding = latestWholeWalletRouteFundingPlan(wholeWalletRouteFundingPlans, {
@@ -1711,6 +1718,25 @@ async function main() {
     evidenceCampaign,
     address: resolved.address,
   });
+  prelive = buildPreliveReadinessSummary({
+    overall: dashboardStatus?.overall || {},
+    audit: dashboardStatus?.audit || null,
+    shadowCycle: dashboardStatus?.shadowCycle || null,
+    strategy: dashboardStatus?.strategy || null,
+    reviewPackage,
+    simulationRuns: preliveSimulationRuns,
+    walletReadinessRecords: state?.readinessRecords || [],
+    forkExecutionPlans: preliveForkPlan?.plans || [],
+    forkExecutionSubmissions: preliveForkSubmissions,
+    forkExecutionReceipts: preliveForkReceipts,
+    executionEvents,
+  });
+  dashboardStatusForExecutionPack.prelive = {
+    ...(dashboardStatusForExecutionPack.prelive || {}),
+    ...prelive,
+    v1InfraDrills: summarizeV1InfraDrills(v1InfraDrills),
+  };
+  dashboardStatusWithSnapshot.prelive = dashboardStatusForExecutionPack.prelive;
   const connectedRefreshPackage = buildConnectedRefreshPackage({
     dashboardStatus: dashboardStatusWithSnapshot,
     canaryInputs,

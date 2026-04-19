@@ -125,7 +125,8 @@
 
 #### 현재 운영 플랜에 끼워 넣는 방식
 
-- **주 경로는 유지**: 현재 운영 크리티컬 패스는 여전히 `shadow_replay -> mechanical_simulation -> fork_execution -> manual_canary_review` 이다. 즉 measured route, exact gas, fork evidence 정리가 먼저다.
+- **Gateway route 는 transport lane 이다**: Gateway quote/exact gas/fork evidence 는 native BTC 를 각 전략 장소로 보내고 다시 BTC 로 회수하기 위한 기반 증명이다. route 자체가 양수 alpha 를 만들지 못하면 primary 에 계속 세우지 않고 infrastructure/reevaluation lane 으로 내린다.
+- **primary lane 은 증거가 가장 강한 수익 전략이 맡는다**: 현재 route alpha 가 `policyReady=0` 또는 순효과 음수이면, same-chain lending/yield 같은 전략 증적 lane 이 review primary 가 된다. 이때 route proof 는 전략의 입출금·payback settlement 조건으로만 유지한다.
 - **레버리지 루프는 병렬 검증 lane**: `recursive_wrapped_btc_lending_loop` 는 완화된 정책에서 허용된 leverage 후보이므로, canary 준비와 병렬로 Phase 3 validation lane 에서 계속 증거를 쌓는다.
 - **지금 당장의 다음 액션은 구현 확대가 아니라 증거 적재**: 최신 validation 기준 다음 액션은 `collect_recursive_loop_observed_receipts` 이며, signer-backed receipt 를 확보하기 전에는 planning lane 으로만 취급한다.
 - **live 승격 전 필수 조건**: `recursive_observed_receipts_missing` 해소, `auto_unwind` runtime 배선, protocol adapter/binding 확인, declared HF/LTV/buffer caps 검증이 모두 선행돼야 한다.

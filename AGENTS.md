@@ -5,16 +5,19 @@
 - **Product model: payback**. The system takes native BTC from the operator's Bitcoin L1 wallet, routes it through BOB Gateway into destination-chain DeFi positions, and returns a configured share of the realized profit back to a native BTC wallet on a fixed schedule. All PnL, caps, and KPIs are **BTC-denominated first**; USD values are display-only.
 - **Operator = user**. Single-account mode. Multi-depositor vaulting (ERC-4626 shares, per-user cost basis) is out of scope until explicitly unlocked by a committed diff to this document.
 - Capital sizing is operator-controlled per strategy. There is no project-wide ring-fenced wallet — the operator decides which wallet a given strategy uses and what cap that wallet runs at, declared in the strategy's config.
-- Primary strategy: BOB Gateway / Instant Swap quote verification.
-- Secondary strategies (active scope): wrapper-BTC arbitrage across Gateway-supported chains, and lending-protocol looping (recursive supply/borrow yield) on chains where unwind cost is measured.
+- Primary product objective: a native-BTC payback agent. Gateway / Instant Swap quote verification is the **transport and settlement lane**, not the alpha source by itself.
+- Active strategy lanes: destination-chain BTC yield and lending loops, wrapper-BTC arbitrage across Gateway-supported chains, stable entry/exit loops, and other deterministic yield sleeves whose unwind cost is measured.
+- Lane selection is evidence-driven. If the Gateway route/arb lane has no positive measured edge, it moves to infrastructure/reevaluation mode and the highest evidence-backed strategy lane becomes primary.
 - Ethereum L1 trading is allowed when fee analysis shows positive expected value after gas and slippage.
 - **All 11 BOB Gateway official destinations are in scope** (Ethereum, BOB L2, Base, BNB, Avalanche, Unichain, Berachain, Optimism, Soneium, Sei, Sonic). Arbitrum and Polygon are NOT Gateway destinations as of 2026-04 — treat them as post-Gateway manual bridge only. See `docs/research/bob-ecosystem.md`.
 
 ## Objective Review
 
 - Do not say a route is profitable until measured quote, fee, latency, and execution data support it.
+- Do not treat a transport route as the product goal. A route can be technically proven while still not being a profitable strategy.
 - Treat all profit claims as hypotheses until replay/shadow/live receipt data confirms them.
 - If data says no trade, no trade.
+- If route alpha is exhausted, stop route brute-force and switch the primary review lane to receipt-backed strategy evidence.
 - Overfitting guards: no strategy goes live solely on a single-period or single-pair backtest. At minimum, Walk-Forward purged/embargoed CV + at least one regime change in the sample window. Detail in `docs/research/ops-costs.md`.
 
 ## Execution Safety
@@ -130,15 +133,17 @@ The accumulator writes these to the dashboard status slice; the dashboard may di
 
 **Settlement proof.** A payback period is only "delivered" when the Receipt Ingestor sees a Bitcoin L1 balance delta on the destination address matching the Gateway order. Source-side tx alone does not count. This is the same objective delivery-proof rule used for cross-chain wrapped-BTC routes (see Operator Memory).
 
-## Build Order
+## Build / Validation Order
 
-1. Route and quote verification.
-2. Shadow/replay harness.
-3. Telegram and mobile dashboard.
-4. Testnet/fork execution harness.
-5. Tiny live canary.
-6. Live operation with per-strategy caps and per-strategy unwind paths.
-7. Payback engine — Scheduler + Accumulator + policy config, first on Base → BOB L2 → Bitcoin L1 path only, expanded to other destination chains only after round-trip efficiency on Base exceeds 90% on at least 8 consecutive periods.
+This is a lane-aware build order, not a runtime phase gate. Runtime execution is still controlled only by committed config, caps, policy checks, signer approval, kill-switch, and receipt evidence.
+
+1. Native BTC transport and settlement proof: Gateway quote/onramp/offramp, destination delivery proof, and Base → BOB L2 → Bitcoin L1 payback path.
+2. Strategy evidence: destination-chain yield, lending loops, wrapper-BTC spreads, stable loops, LP/reserve sleeves, and any new deterministic strategy candidate.
+3. Shadow/replay harness for the selected primary lane. The selected lane may be a strategy lane even when route alpha is exhausted.
+4. Testnet/fork/mechanical execution harness for the selected lane, with strategy-specific receipt and unwind evidence where relevant.
+5. Tiny live canary only when committed strategy config declares caps and `autoExecute: true`, and policy validates the intent.
+6. Live operation with per-strategy caps, per-strategy unwind paths, watchdog, and receipt ingestor.
+7. Payback engine: Scheduler + Accumulator + policy config. Base → BOB L2 → Bitcoin L1 is the first required settlement path; other profit-reserve chains expand only after round-trip efficiency on Base exceeds 90% on at least 8 consecutive periods.
 
 ## Dashboard Context
 
@@ -161,16 +166,17 @@ The accumulator writes these to the dashboard status slice; the dashboard may di
 - When the user asks about the current strategies, answer in simple Korean first and keep the first explanation short.
 - When freshness matters, prefer `npm run report:strategy-catalog -- --json` before giving the strategy snapshot.
 - Latest known strategy snapshot:
-  - BTC Gateway loops: `candidate_for_validation`
-  - BTC proxy spreads: `thin_coverage`
+  - BTC Gateway loops: `measured_below_policy` / transport infrastructure lane. Current route alpha has no confirmed positive edge.
+  - BTC proxy spreads: `measured_below_policy` with thin/noisy coverage; keep as reevaluation lane, not primary alpha.
   - BTC stable entry/exit loops: `measured_below_policy`
   - BTC triangular/flash: `measured_below_policy`
   - Direct ETH-family Gateway: `unobserved`
   - ETH/stable mixed loops: `unobserved`
   - ETH mixed triangle: `analysis_only`
   - ETH mixed flash: `analysis_only`
-  - Lending-protocol looping: `candidate_for_design` (scaffolding present, executor not built)
-  - **Payback engine: `not_yet_scaffolded`** — scheduler/accumulator not written. First target path Base → BOB L2 → Bitcoin L1 has all prerequisite route proofs (see below).
+  - Lending-protocol looping: `dry_run_evidence_recorded` for `recursive_wrapped_btc_lending_loop`; repo auto-build support is present, but signer-backed observed receipts and measured post-fee loop economics are still missing.
+  - Wrapped BTC lending loop: signer-backed OOS/live roundtrip evidence is recorded for the Base / Moonwell lane; keep it as current strategy-primary review lane until recursive observed receipts supersede it.
+  - **Payback engine: `scaffolded_active_carry`** — scheduler/accumulator/config exist and are reporting BTC-denominated pending carry. Current blocker is `planned_payback_below_minimum`, not missing payback code.
 - If the user asks why ETH was "not validated", clarify that ETH was investigated and measured; the current outcome is "no confirmed edge," not "skipped work."
 - Use this ETH explanation:
   - no measured multichain ETH-family Gateway surface yet

@@ -115,6 +115,13 @@ export function buildPreliveReadinessSummary({
       reviewPackage?.readyForManualReview ||
       reviewPackage?.tinyCanaryAdmission?.status === "manual_approval_required",
   );
+  const primaryCandidate = reviewPackage?.primaryLiveCandidate || null;
+  const strategyReviewCandidateReady = Boolean(
+    primaryCandidate?.candidateType === "strategy" &&
+      (primaryCandidate.reviewReady === true ||
+        primaryCandidate.tradeReadiness === "strategy_candidate_review_only" ||
+        reviewPackage?.readyForManualReview === true),
+  );
   const measuredPolicyReady = Number(strategy?.edgeViability?.policyReadyCount || 0);
   const objectiveExecutionRoute = shadowCycle?.objectivePlans?.executionReview?.routeKey || null;
   const successfulSimulations = simulationRuns.filter((item) => item.status === "simulated_ok");
@@ -136,10 +143,10 @@ export function buildPreliveReadinessSummary({
   if (!manualReviewReady) {
     shadowReplayBlockers.push("manual_canary_review_not_ready");
   }
-  if (measuredPolicyReady <= 0) {
+  if (measuredPolicyReady <= 0 && !strategyReviewCandidateReady) {
     shadowReplayBlockers.push("no_policy_ready_measured_route");
   }
-  if (!objectiveExecutionRoute) {
+  if (!objectiveExecutionRoute && !strategyReviewCandidateReady) {
     shadowReplayBlockers.push("no_execution_review_route");
   }
 
@@ -266,6 +273,7 @@ export function buildPreliveReadinessSummary({
       ...shadowReplay,
       auditDecision: audit?.decision || null,
       manualCanaryReviewReady: manualReviewReady,
+      strategyReviewCandidateReady,
       policyReadyMeasuredRoutes: measuredPolicyReady,
       executionReviewRoute: objectiveExecutionRoute,
     },
