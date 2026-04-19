@@ -86,6 +86,67 @@ test("refresh queue item executes sequential steps and stops on failure", async 
   assert.equal(record.executionStatus, "failed");
   assert.equal(record.steps.length, 2);
   assert.equal(record.steps[1].stderrSummary, "dex failed");
+  assert.equal(record.outcomeCategory, null);
+});
+
+test("refresh queue item classifies transient RPC wallet readiness failures", async () => {
+  const record = await executeRefreshQueueItem(
+    {
+      rank: 1,
+      scope: "active_canary",
+      code: "check_wallet_readiness",
+      routeLabel: "soneium->bob",
+      amount: "100",
+      command: 'npm run check:estimator-wallet -- --route-key="soneium:0x0555->bob:0x0555" --amount="100"',
+    },
+    {
+      execute: true,
+      runCommand: async () => ({
+        ok: false,
+        exitCode: 1,
+        signal: null,
+        durationMs: 9,
+        stdout: "",
+        stderr: "AccountStateRpcError: All RPC endpoints failed for chain: soneium",
+      }),
+    },
+  );
+
+  assert.equal(record.executionStatus, "failed");
+  assert.equal(record.outcomeCategory, "rpc_unavailable");
+  assert.equal(record.readinessStatus, "unknown");
+  assert.equal(record.transientFailure, true);
+  assert.deepEqual(record.readinessGaps, []);
+});
+
+test("refresh queue item classifies wallet readiness gaps separately from command failure", async () => {
+  const record = await executeRefreshQueueItem(
+    {
+      rank: 1,
+      scope: "active_canary",
+      code: "check_wallet_readiness",
+      routeLabel: "soneium->bob",
+      amount: "100",
+      command: 'npm run check:estimator-wallet -- --route-key="soneium:0x0555->bob:0x0555" --amount="100"',
+    },
+    {
+      execute: true,
+      runCommand: async () => ({
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        durationMs: 11,
+        stdout: "soneium->bob nativeReady=false tokenReady=true native=0.000000",
+        stderr: "",
+      }),
+    },
+  );
+
+  assert.equal(record.executionStatus, "succeeded");
+  assert.equal(record.outcomeCategory, "wallet_not_ready");
+  assert.equal(record.readinessStatus, "blocked");
+  assert.equal(record.transientFailure, false);
+  assert.deepEqual(record.readinessGaps, ["native"]);
 });
 
 test("refresh execution summary aggregates recent outcomes", () => {
@@ -98,6 +159,10 @@ test("refresh execution summary aggregates recent outcomes", () => {
       routeLabel: "base->avalanche",
       amount: "100000",
       executionStatus: "succeeded",
+      outcomeCategory: "wallet_ready",
+      readinessStatus: "ready",
+      readinessGaps: [],
+      transientFailure: false,
       stepCount: 1,
       steps: [{ script: "check:estimator-wallet", exitCode: 0 }],
     },
@@ -119,4 +184,5 @@ test("refresh execution summary aggregates recent outcomes", () => {
   assert.equal(summary.failureCount, 1);
   assert.equal(summary.latestStatus, "failed");
   assert.equal(summary.recentExecutions[0].scripts[0], "verify:gateway");
+  assert.equal(summary.recentExecutions[1].outcomeCategory, "wallet_ready");
 });

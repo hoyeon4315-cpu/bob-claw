@@ -33,7 +33,7 @@ test("refresh batch stops on the first failed queue item", async () => {
       {
         rank: 1,
         scope: "execution_review",
-        code: "first",
+        code: "check_wallet_readiness",
         routeLabel: "base->avalanche",
         command: 'npm run check:estimator-wallet -- --route-key="base:0x0555->avalanche:0x0555" --amount=10000',
       },
@@ -69,6 +69,7 @@ test("refresh batch stops on the first failed queue item", async () => {
   assert.equal(record.queueResults.length, 1);
   assert.equal(record.followUps.length, 0);
   assert.deepEqual(calls, ["check:estimator-wallet"]);
+  assert.equal(record.queueResults[0].outcomeCategory, "wallet_check_failed");
 });
 
 test("refresh batch runs follow-up commands after successful queue execution", async () => {
@@ -134,7 +135,7 @@ test("refresh batch summary aggregates execute and preview outcomes", () => {
       batchStatus: "failed",
       stopReason: "queue_item_failed",
       selectedCount: 2,
-      queueResults: [{ executionStatus: "failed" }],
+      queueResults: [{ executionStatus: "failed", outcomeCategory: "rpc_unavailable", routeLabel: "soneium->bob", transientFailure: true }],
       followUps: [],
       circuitBreaker: { blocked: false },
     },
@@ -158,4 +159,26 @@ test("refresh batch summary aggregates execute and preview outcomes", () => {
   assert.equal(summary.latestMode, "preview");
   assert.equal(summary.latestStopReason, null);
   assert.equal(summary.recentBatches[0].batchId, "b3");
+  assert.equal(summary.recentBatches[1].queueFailureCategory, "rpc_unavailable");
+  assert.equal(summary.recentBatches[1].queueFailureTransient, true);
+  assert.equal(summary.recentBatches[1].queueFailureRouteLabel, "soneium->bob");
+});
+
+test("refresh batch summary surfaces latest queue failure category", () => {
+  const summary = buildShadowRefreshBatchSummary([
+    {
+      observedAt: "2026-04-12T12:00:00.000Z",
+      batchId: "b1",
+      mode: "execute",
+      batchStatus: "failed",
+      stopReason: "queue_item_failed",
+      selectedCount: 1,
+      queueResults: [{ executionStatus: "failed", outcomeCategory: "rpc_unavailable", routeLabel: "soneium->bob", transientFailure: true }],
+      followUps: [],
+      circuitBreaker: { blocked: false },
+    },
+  ]);
+
+  assert.equal(summary.latestFailureCategory, "rpc_unavailable");
+  assert.equal(summary.latestFailureRouteLabel, "soneium->bob");
 });

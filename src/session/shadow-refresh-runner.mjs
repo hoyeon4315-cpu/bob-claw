@@ -195,6 +195,71 @@ export function defaultRunCommand({ command, args, cwd, env }) {
   });
 }
 
+function parseBooleanSummaryFlag(text, key) {
+  const match = String(text || "").match(new RegExp(`${key}=(true|false)`));
+  if (!match) return null;
+  return match[1] === "true";
+}
+
+function classifyWalletReadinessOutcome(executed) {
+  const stdout = (executed.steps || [])
+    .map((step) => step.stdoutSummary)
+    .filter(Boolean)
+    .join("\n");
+  const stderr = (executed.steps || [])
+    .map((step) => step.stderrSummary)
+    .filter(Boolean)
+    .join("\n");
+
+  if (executed.executionStatus === "failed") {
+    if (/AccountStateRpcError|All RPC endpoints failed/i.test(stderr)) {
+      return {
+        outcomeCategory: "rpc_unavailable",
+        readinessStatus: "unknown",
+        readinessGaps: [],
+        transientFailure: true,
+      };
+    }
+    return {
+      outcomeCategory: "wallet_check_failed",
+      readinessStatus: "unknown",
+      readinessGaps: [],
+      transientFailure: false,
+    };
+  }
+
+  if (executed.executionStatus !== "succeeded") {
+    return {
+      outcomeCategory: null,
+      readinessStatus: null,
+      readinessGaps: [],
+      transientFailure: false,
+    };
+  }
+
+  const readinessGaps = [];
+  if (parseBooleanSummaryFlag(stdout, "nativeReady") === false) readinessGaps.push("native");
+  if (parseBooleanSummaryFlag(stdout, "tokenReady") === false) readinessGaps.push("token");
+  if (parseBooleanSummaryFlag(stdout, "allowanceReady") === false) readinessGaps.push("allowance");
+
+  return {
+    outcomeCategory: readinessGaps.length > 0 ? "wallet_not_ready" : "wallet_ready",
+    readinessStatus: readinessGaps.length > 0 ? "blocked" : "ready",
+    readinessGaps,
+    transientFailure: false,
+  };
+}
+
+function classifyRefreshItemOutcome(code, executed) {
+  if (code === "check_wallet_readiness") return classifyWalletReadinessOutcome(executed);
+  return {
+    outcomeCategory: null,
+    readinessStatus: null,
+    readinessGaps: [],
+    transientFailure: false,
+  };
+}
+
 export async function runParsedRefreshSteps(steps, { cwd = process.cwd(), env = process.env, runCommand = defaultRunCommand } = {}) {
   const executedSteps = [];
   for (const step of steps) {
@@ -297,6 +362,7 @@ export async function executeRefreshQueueItem(
     env,
     runCommand: async (details) => runCommand({ ...details, item }),
   });
+  const outcome = classifyRefreshItemOutcome(base.code, executed);
 
   return {
     ...base,
@@ -304,6 +370,10 @@ export async function executeRefreshQueueItem(
     invalidReason: null,
     stepCount: steps.length,
     steps: executed.steps,
+    outcomeCategory: outcome.outcomeCategory,
+    readinessStatus: outcome.readinessStatus,
+    readinessGaps: outcome.readinessGaps,
+    transientFailure: outcome.transientFailure,
   };
 }
 
@@ -333,6 +403,10 @@ export function buildShadowRefreshExecutionSummary(records = [], now = new Date(
       amount: item.amount || null,
       executionStatus: item.executionStatus || null,
       invalidReason: item.invalidReason || null,
+      outcomeCategory: item.outcomeCategory || null,
+      readinessStatus: item.readinessStatus || null,
+      readinessGaps: item.readinessGaps || [],
+      transientFailure: Boolean(item.transientFailure),
       stepCount: item.stepCount ?? 0,
       scripts: (item.steps || []).map((step) => step.script),
       lastStepExitCode: item.steps?.length ? item.steps[item.steps.length - 1].exitCode : null,

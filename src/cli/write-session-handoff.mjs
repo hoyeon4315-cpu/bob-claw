@@ -385,7 +385,7 @@ function refreshExecutionLines(refreshExecution = null) {
 function refreshBatchLines(refreshBatch = null) {
   if (!refreshBatch) return ["- none"];
   const lines = [
-    `- Summary: runs=${refreshBatch.runCount ?? 0} success=${refreshBatch.successCount ?? 0} failed=${refreshBatch.failureCount ?? 0} blocked=${refreshBatch.blockedCount ?? 0} invalid=${refreshBatch.invalidCount ?? 0} latest=${refreshBatch.latestStatus || "none"} stopReason=${refreshBatch.latestStopReason || "none"}`,
+    `- Summary: runs=${refreshBatch.runCount ?? 0} success=${refreshBatch.successCount ?? 0} failed=${refreshBatch.failureCount ?? 0} blocked=${refreshBatch.blockedCount ?? 0} invalid=${refreshBatch.invalidCount ?? 0} latest=${refreshBatch.latestStatus || "none"} stopReason=${refreshBatch.latestStopReason || "none"} failureCategory=${refreshBatch.latestFailureCategory || "none"}`,
   ];
   if (!refreshBatch.recentBatches?.length) {
     lines.push("- Recent batches: none");
@@ -393,7 +393,7 @@ function refreshBatchLines(refreshBatch = null) {
   }
   lines.push(
     ...refreshBatch.recentBatches.map((item) =>
-      `- Batch: mode=\`${item.mode || "unknown"}\` status=\`${item.batchStatus || "unknown"}\` selected=${item.selectedCount ?? 0} queueSuccess=${item.queueSuccessCount ?? 0} queueFailure=${item.queueFailureCount ?? 0} followUpFailure=${item.followUpFailureCount ?? 0} stopReason=${item.stopReason || "none"} breakerBlocked=${item.circuitBreakerBlocked}`,
+      `- Batch: mode=\`${item.mode || "unknown"}\` status=\`${item.batchStatus || "unknown"}\` selected=${item.selectedCount ?? 0} queueSuccess=${item.queueSuccessCount ?? 0} queueFailure=${item.queueFailureCount ?? 0} followUpFailure=${item.followUpFailureCount ?? 0} stopReason=${item.stopReason || "none"} failureCategory=${item.queueFailureCategory || "none"} breakerBlocked=${item.circuitBreakerBlocked}`,
     ),
   );
   return lines;

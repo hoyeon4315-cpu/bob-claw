@@ -24,6 +24,10 @@ const DEFAULT_BATCH_ALLOWED_SCRIPTS = new Set([
   "write:session-handoff",
 ]);
 
+function firstFailedQueueResult(record) {
+  return (record?.queueResults || []).find((result) => result.executionStatus === "failed") || null;
+}
+
 function summarizeFollowUp(command, result) {
   return {
     command,
@@ -141,6 +145,7 @@ export function buildShadowRefreshBatchSummary(records = [], now = new Date().to
   const blockedCount = executeRecords.filter((item) => item.batchStatus === "blocked").length;
   const invalidCount = executeRecords.filter((item) => item.batchStatus === "invalid").length;
   const latest = sorted[0] || null;
+  const latestFailedQueue = firstFailedQueueResult(latest);
   return {
     schemaVersion: 1,
     generatedAt: now,
@@ -153,17 +158,25 @@ export function buildShadowRefreshBatchSummary(records = [], now = new Date().to
     latestStatus: latest?.batchStatus || null,
     latestMode: latest?.mode || null,
     latestStopReason: latest?.stopReason || null,
-    recentBatches: sorted.slice(0, 5).map((item) => ({
-      observedAt: item.observedAt,
-      batchId: item.batchId,
-      mode: item.mode,
-      batchStatus: item.batchStatus,
-      stopReason: item.stopReason,
-      selectedCount: item.selectedCount,
-      queueSuccessCount: (item.queueResults || []).filter((result) => result.executionStatus === "succeeded").length,
-      queueFailureCount: (item.queueResults || []).filter((result) => result.executionStatus === "failed").length,
-      followUpFailureCount: (item.followUps || []).filter((result) => result.executionStatus === "failed").length,
-      circuitBreakerBlocked: Boolean(item.circuitBreaker?.blocked),
-    })),
+    latestFailureCategory: latestFailedQueue?.outcomeCategory || null,
+    latestFailureRouteLabel: latestFailedQueue?.routeLabel || latestFailedQueue?.routeKey || null,
+    recentBatches: sorted.slice(0, 5).map((item) => {
+      const failedQueue = firstFailedQueueResult(item);
+      return {
+        observedAt: item.observedAt,
+        batchId: item.batchId,
+        mode: item.mode,
+        batchStatus: item.batchStatus,
+        stopReason: item.stopReason,
+        selectedCount: item.selectedCount,
+        queueSuccessCount: (item.queueResults || []).filter((result) => result.executionStatus === "succeeded").length,
+        queueFailureCount: (item.queueResults || []).filter((result) => result.executionStatus === "failed").length,
+        queueFailureCategory: failedQueue?.outcomeCategory || null,
+        queueFailureRouteLabel: failedQueue?.routeLabel || failedQueue?.routeKey || null,
+        queueFailureTransient: Boolean(failedQueue?.transientFailure),
+        followUpFailureCount: (item.followUps || []).filter((result) => result.executionStatus === "failed").length,
+        circuitBreakerBlocked: Boolean(item.circuitBreaker?.blocked),
+      };
+    }),
   };
 }
