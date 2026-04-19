@@ -4,8 +4,22 @@ function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
 
+function resolvedLiveTrading(strategySnapshot = null, reviewPackage = null) {
+  if (reviewPackage?.liveDecision === "LIVE_EXECUTION_ALLOWED") return "ALLOWED";
+  if (reviewPackage?.liveDecision === "LIVE_EXECUTION_BLOCKED") return "BLOCKED";
+  return strategySnapshot?.currentSystem?.liveTrading || null;
+}
+
+function resolvedPreliveStage(strategySnapshot = null, reviewPackage = null, preliveValidation = null) {
+  return preliveValidation?.currentStageId || reviewPackage?.currentStage || strategySnapshot?.currentSystem?.preliveStage || null;
+}
+
 function buildPrimaryLiveLane(candidate, tinyLiveCanaryRollout = null, preliveValidation = null) {
   const strategyCandidate = candidate?.candidateType === "strategy";
+  const rolloutNextAction =
+    strategyCandidate && (tinyLiveCanaryRollout?.summary?.blockerCount ?? 0) === 0
+      ? tinyLiveCanaryRollout?.summary?.nextAction || null
+      : null;
   return {
     id: candidate?.candidateId || candidate?.routeKey || null,
     label: candidate?.candidateLabel || candidate?.routeLabel || null,
@@ -15,7 +29,7 @@ function buildPrimaryLiveLane(candidate, tinyLiveCanaryRollout = null, preliveVa
     status: candidate?.tradeReadiness || (candidate ? "candidate_selected" : "missing_candidate"),
     blockerReasons: unique(candidate?.blockerReasons || candidate?.evidenceBlockers || []),
     nextAction: strategyCandidate
-      ? candidate?.nextAction || tinyLiveCanaryRollout?.summary?.nextAction || preliveValidation?.nextAction || null
+      ? rolloutNextAction || candidate?.nextAction || tinyLiveCanaryRollout?.summary?.nextAction || preliveValidation?.nextAction || null
       : candidate?.nextAction || null,
   };
 }
@@ -58,6 +72,8 @@ export function buildLiveOpsHandoff({
   const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || reviewPackage?.tinyCanaryAdmission?.candidate || null;
   const primaryLiveLane = buildPrimaryLiveLane(candidate, tinyLiveCanaryRollout, preliveValidation);
   const blockedExactRouteLane = buildExactRouteLane(btcOnlyE2eDryRun, currentRoutePrelivePass, preliveValidation);
+  const liveTrading = resolvedLiveTrading(strategySnapshot, reviewPackage);
+  const preliveStage = resolvedPreliveStage(strategySnapshot, reviewPackage, preliveValidation);
   const receiptIngestionGuide =
     candidate?.candidateType === "strategy" && unique(candidate?.blockerReasons || candidate?.evidenceBlockers || []).includes("signer_backed_oos_receipts_missing")
       ? buildWrappedBtcLoopReceiptGuide()
@@ -80,8 +96,8 @@ export function buildLiveOpsHandoff({
     schemaVersion: 1,
     generatedAt: now || new Date().toISOString(),
       summary: {
-        liveTrading: strategySnapshot?.currentSystem?.liveTrading || null,
-        preliveStage: strategySnapshot?.currentSystem?.preliveStage || null,
+        liveTrading,
+        preliveStage,
         candidateType: candidate?.candidateType || "route",
         candidateId: candidate?.candidateId || candidate?.routeKey || null,
         candidateLabel: candidate?.candidateLabel || candidate?.routeLabel || null,

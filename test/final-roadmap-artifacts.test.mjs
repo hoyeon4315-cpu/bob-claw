@@ -190,6 +190,69 @@ test("live ops handoff separates wrapped-loop primary lane from blocked exact-ro
   assert.equal(handoff.receiptIngestionGuide.sampleCommand.includes("--execution-mode=signer_backed_receipt"), true);
 });
 
+test("live ops handoff prefers ready rollout status over stale strategy snapshot state", () => {
+  const handoff = buildLiveOpsHandoff({
+    strategySnapshot: { currentSystem: { liveTrading: "BLOCKED", preliveStage: "shadow_replay" } },
+    reviewPackage: {
+      currentStage: "tiny_live_canary_review",
+      liveDecision: "LIVE_EXECUTION_ALLOWED",
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_candidate_review_only",
+        blockerReasons: [],
+        nextAction: {
+          code: "capture_wrapped_btc_loop_extended_receipt_context",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+    },
+    preliveValidation: {
+      currentStageId: "tiny_live_canary_review",
+      nextActionCode: "manual_canary_review_only",
+      nextActionCommand: null,
+      exactRouteForkTechnicalStatus: "missing_plan",
+      exactRouteForkEconomicStatus: "blocked_insufficient_data",
+    },
+    currentRoutePrelivePass: {
+      provenCount: 0,
+      latestStopReason: "blocked_insufficient_data",
+      nextAction: { code: "hold_negative_edge", command: null },
+    },
+    btcOnlyE2eDryRun: {
+      summary: {
+        blockedCount: 3,
+        topStuckPointId: "exact_route_pass",
+        nextAction: { code: "hold_negative_edge", command: null },
+      },
+      candidate: {
+        routeKey: "ethereum:btc->bsc:btc",
+        routeLabel: "ethereum->bsc WBTC->wBTC.OFT",
+      },
+      lane: {
+        id: "btc_exact_route",
+        label: "BTC exact-route lane",
+      },
+    },
+    tinyLiveCanaryRollout: {
+      summary: {
+        decision: "GO_FOR_AUTO_EXECUTE",
+        blockerCount: 0,
+        nextAction: {
+          code: "auto_execute_policy_ready",
+          command: null,
+        },
+      },
+    },
+  });
+
+  assert.equal(handoff.summary.liveTrading, "ALLOWED");
+  assert.equal(handoff.summary.preliveStage, "tiny_live_canary_review");
+  assert.equal(handoff.summary.nextAction, "auto_execute_policy_ready");
+  assert.equal(handoff.primaryLiveLane.nextAction.code, "auto_execute_policy_ready");
+});
+
 test("tiny live canary rollout keeps manual approval as next action after blockers clear", () => {
   const rollout = buildTinyLiveCanaryRollout({
     reviewPackage: {
