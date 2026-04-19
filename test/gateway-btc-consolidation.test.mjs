@@ -133,6 +133,37 @@ test("gateway btc consolidation plan preserves deterministic gateway quote block
   assert.equal(plan.amountUsd, 10);
 });
 
+test("gateway btc consolidation plan classifies zero-limit gateway pauses explicitly", async () => {
+  const plan = await buildGatewayBtcConsolidationPlan({
+    client: {
+      getQuote: async () => {
+        throw new GatewayError("Gateway request failed", {
+          status: 429,
+          body: {
+            code: "EXCEEDED_LIMIT",
+            error: "Requested amount exceeds current limit of 0 BTC",
+            details: {
+              limit: "0 BTC",
+            },
+          },
+        });
+      },
+    },
+    priceReader: async () => ({ btc: 100_000, tokenByKey: { btc: 100_000 } }),
+    srcChain: "base",
+    dstChain: "bera",
+    token: "wbtc.oft",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "gateway_zero_btc_limit");
+  assert.equal(plan.gatewayError.details.body.code, "EXCEEDED_LIMIT");
+  assert.equal(plan.intent, null);
+});
+
 test("gateway btc consolidation preview can skip preflight and still preserve quote data", async () => {
   let estimateCalls = 0;
   const plan = await buildGatewayBtcConsolidationPlan({

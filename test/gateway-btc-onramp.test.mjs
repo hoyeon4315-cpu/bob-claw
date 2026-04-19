@@ -135,6 +135,65 @@ test("gateway btc onramp preview can surface insufficient confirmed funds withou
   assert.equal(plan.blockedReason, "insufficient_confirmed_bitcoin_balance");
   assert.equal(plan.intent, null);
   assert.equal(plan.order, null);
+  assert.equal(plan.gatewayError.details.body.code, "INSUFFICIENT_CONFIRMED_FUNDS");
+});
+
+test("gateway btc onramp plan classifies deterministic quote blockers as blocked plans", async () => {
+  const plan = await buildGatewayBtcOnrampPlan({
+    client: {
+      ...gatewayClientFixture(),
+      getQuote: async () => {
+        throw new GatewayError("Gateway request failed", {
+          status: 429,
+          body: {
+            code: "GLOBAL_LIMIT_EXCEEDED",
+            error: "Global rate limit exceeded",
+          },
+        });
+      },
+    },
+    priceReader: async () => ({ btc: 100_000 }),
+    senderAddress: "bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546",
+    recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    amountSats: 100_000,
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "gateway_global_rate_limited");
+  assert.equal(plan.gatewayError.details.body.code, "GLOBAL_LIMIT_EXCEEDED");
+  assert.equal(plan.quote, null);
+  assert.equal(plan.intent, null);
+});
+
+test("gateway btc onramp plan classifies zero-limit order blockers explicitly", async () => {
+  const plan = await buildGatewayBtcOnrampPlan({
+    client: {
+      ...gatewayClientFixture(),
+      createOrder: async () => {
+        throw new GatewayError("Gateway request failed", {
+          status: 429,
+          body: {
+            code: "EXCEEDED_LIMIT",
+            error: "Requested amount exceeds current limit of 0 BTC",
+            details: {
+              limit: "0 BTC",
+            },
+          },
+        });
+      },
+    },
+    priceReader: async () => ({ btc: 100_000 }),
+    senderAddress: "bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546",
+    recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    amountSats: 100_000,
+    allowUnfundedPreview: true,
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "gateway_zero_btc_limit");
+  assert.equal(plan.gatewayError.details.body.code, "EXCEEDED_LIMIT");
+  assert.equal(plan.order, null);
+  assert.equal(plan.intent, null);
 });
 
 test("gateway btc onramp plan accepts native ETH destination aliases", async () => {

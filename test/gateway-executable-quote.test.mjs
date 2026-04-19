@@ -183,3 +183,14 @@ test("classifyExecutableQuoteHydrationError normalizes gateway errors", () => {
   });
   assert.equal(classifyExecutableQuoteHydrationError(error), "quote_amount_too_low");
 });
+
+test("classifyExecutableQuoteHydrationError maps gateway availability blockers", () => {
+  const error = new GatewayError("Gateway request failed", {
+    status: 429,
+    body: {
+      code: "GLOBAL_LIMIT_EXCEEDED",
+      error: "Global rate limit exceeded",
+    },
+  });
+  assert.equal(classifyExecutableQuoteHydrationError(error), "gateway_global_rate_limited");
+});

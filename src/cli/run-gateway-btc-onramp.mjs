@@ -92,6 +92,12 @@ async function main() {
   console.log(`amountUsd=${plan.amountUsd}`);
   console.log(`planStatus=${plan.planStatus}`);
   console.log(`blockedReason=${plan.blockedReason || "none"}`);
+  if (plan.gatewayError?.details?.body?.code) {
+    console.log(`gatewayCode=${plan.gatewayError.details.body.code}`);
+  }
+  if (plan.gatewayError?.details?.body?.error || plan.gatewayError?.message) {
+    console.log(`gatewayMessage=${plan.gatewayError.details?.body?.error || plan.gatewayError.message}`);
+  }
   if (plan.order) {
     console.log(`orderId=${plan.order.orderId}`);
     console.log(`depositAddress=${plan.order.address}`);

@@ -1,7 +1,7 @@
 import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
-import { GatewayClient, GatewayError } from "../../gateway/client.mjs";
+import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock } from "../../gateway/client.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 
@@ -104,36 +104,53 @@ export async function buildGatewayBtcOnrampPlan({
     ...(strategyMessage ? { strategyMessage } : {}),
     ...(gasRefill ? { gasRefill } : {}),
   };
-  const quoteResult = await client.getQuote(quoteParams);
-  const quote = normalizeOnrampQuoteBody(quoteResult.body);
   const prices = await priceReader();
   const btcUsd = Number(prices?.btc);
   if (!Number.isFinite(btcUsd)) {
     throw new Error("Could not price BTC for gateway onramp plan");
   }
-  const inputSats = toPositiveInteger(quote.inputAmount.amount, "quote.inputAmount.amount");
-  const amountUsd = Number(((inputSats / 1e8) * btcUsd).toFixed(6));
+  const amountUsd = Number((((normalizedAmountSats || 0) / 1e8) * btcUsd).toFixed(6));
+  let quoteResult = null;
+  let quote = null;
   let order = null;
   let blockedReason = null;
   let gatewayError = null;
   try {
-    const orderResult = await client.createOrder(quoteResult.body);
-    order = normalizeOnrampOrderBody(orderResult.body);
-    if (!order.psbtHex) {
-      throw new Error("Gateway create-order did not return psbt_hex for signer-owned onramp execution");
-    }
+    quoteResult = await client.getQuote(quoteParams);
+    quote = normalizeOnrampQuoteBody(quoteResult.body);
   } catch (error) {
-    if (
-      allowUnfundedPreview &&
-      error instanceof GatewayError &&
-      error.details?.body?.code === "INSUFFICIENT_CONFIRMED_FUNDS"
-    ) {
-      blockedReason = "insufficient_confirmed_bitcoin_balance";
-      gatewayError = error.details.body;
+    if (isDeterministicGatewayBlock(error)) {
+      blockedReason = classifyGatewayBlockedReason(error);
+      gatewayError = serializeGatewayError(error);
     } else {
       throw error;
     }
   }
+
+  if (quote && !blockedReason) {
+    try {
+      const orderResult = await client.createOrder(quoteResult.body);
+      order = normalizeOnrampOrderBody(orderResult.body);
+      if (!order.psbtHex) {
+        throw new Error("Gateway create-order did not return psbt_hex for signer-owned onramp execution");
+      }
+    } catch (error) {
+      if (
+        allowUnfundedPreview &&
+        error instanceof GatewayError &&
+        error.details?.body?.code === "INSUFFICIENT_CONFIRMED_FUNDS"
+      ) {
+        blockedReason = "insufficient_confirmed_bitcoin_balance";
+        gatewayError = serializeGatewayError(error);
+      } else if (isDeterministicGatewayBlock(error)) {
+        blockedReason = classifyGatewayBlockedReason(error);
+        gatewayError = serializeGatewayError(error);
+      } else {
+        throw error;
+      }
+    }
+  }
+
   const plan = {
     schemaVersion: 1,
     observedAt: now,

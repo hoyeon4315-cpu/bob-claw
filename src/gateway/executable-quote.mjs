@@ -1,5 +1,5 @@
 import { config } from "../config/env.mjs";
-import { GatewayClient, GatewayError } from "./client.mjs";
+import { GatewayClient, classifyGatewayBlockedReason } from "./client.mjs";
 
 function quoteParamsForStoredQuote(quote, senderAddress) {
   const params = {
@@ -126,17 +126,5 @@ export async function hydrateOfframpExecutionFromGatewayBody(
 }
 
 export function classifyExecutableQuoteHydrationError(error) {
-  if (!(error instanceof GatewayError)) return null;
-  const code = error.details?.body?.code || null;
-  if (code) {
-    return String(code)
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-  }
-  const status = Number(error.details?.status);
-  if (status === 404) return "no_route";
-  if (Number.isFinite(status) && status >= 400 && status < 500) return "gateway_request_rejected";
-  return null;
+  return classifyGatewayBlockedReason(error);
 }

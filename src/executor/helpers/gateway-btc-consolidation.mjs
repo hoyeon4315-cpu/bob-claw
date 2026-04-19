@@ -4,7 +4,7 @@ import { config } from "../../config/env.mjs";
 import { readErc20Balance, readNativeBalance } from "../../evm/account-state.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
-import { GatewayClient, GatewayError, routeKey } from "../../gateway/client.mjs";
+import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock, routeKey } from "../../gateway/client.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -113,31 +113,6 @@ function serializeGatewayError(error) {
     message: error.message,
     ...(error instanceof GatewayError && error.details ? { details: error.details } : {}),
   };
-}
-
-function normalizeGatewayBlockedReason(code) {
-  const normalized = String(code || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized || null;
-}
-
-function classifyGatewayBlockedReason(error) {
-  if (!(error instanceof GatewayError)) return null;
-  const code = error.details?.body?.code || null;
-  if (code) return normalizeGatewayBlockedReason(code);
-  const status = Number(error.details?.status);
-  if (status === 404) return "no_route";
-  if (Number.isFinite(status) && status >= 400 && status < 500) return "gateway_request_rejected";
-  return null;
-}
-
-function isDeterministicGatewayBlock(error) {
-  if (!(error instanceof GatewayError)) return false;
-  const status = Number(error.details?.status);
-  return Number.isFinite(status) && status >= 400 && status < 500;
 }
 
 function defaultDestinationSettlementTimeoutMs(plan) {

@@ -135,6 +135,36 @@ test("gateway btc offramp plan keeps deterministic gateway quote blockers as blo
   assert.equal(plan.intent, null);
 });
 
+test("gateway btc offramp plan classifies global gateway rate limits explicitly", async () => {
+  const plan = await buildGatewayBtcOfframpPlan({
+    client: {
+      getQuote: async () => {
+        throw new GatewayError("Gateway request failed", {
+          url: "https://gateway.example/v1/get-quote",
+          status: 429,
+          latencyMs: 300,
+          body: {
+            code: "GLOBAL_LIMIT_EXCEEDED",
+            error: "Global rate limit exceeded",
+          },
+        });
+      },
+      createOrder: async () => {
+        throw new Error("createOrder should not run when quote fails");
+      },
+    },
+    srcChain: "base",
+    amount: "1000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "bc1qrecipient0000000000000000000000000000000",
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "gateway_global_rate_limited");
+  assert.equal(plan.gatewayError.details.body.code, "GLOBAL_LIMIT_EXCEEDED");
+  assert.equal(plan.intent, null);
+});
+
 test("gateway btc offramp execution waits for bitcoin balance proof", async () => {
   const plan = await buildGatewayBtcOfframpPlan({
     client: gatewayClientFixture(),
