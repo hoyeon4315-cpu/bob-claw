@@ -137,10 +137,14 @@ test("wrapped loop receipt context derives fee totals from EVM receipts when bin
 
 test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings stay empty", async () => {
   const odosClient = {
-    quote: async () => ({
+    quote: async ({ outputToken }) => ({
       latencyMs: 10,
       body: {
-        outAmounts: ["1332"],
+        outAmounts: [
+          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+            ? "100000000"
+            : "1332",
+        ],
         pathId: "path-1",
       },
     }),
@@ -212,10 +216,14 @@ test("wrapped loop live plan supports tiny per-trade override with collateral-on
 
 test("wrapped loop live plan supports tiny borrow cycle override and full unwind path", async () => {
   const odosClient = {
-    quote: async () => ({
+    quote: async ({ outputToken }) => ({
       latencyMs: 10,
       body: {
-        outAmounts: ["4200"],
+        outAmounts: [
+          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+            ? "5000000"
+            : "4200",
+        ],
         pathId: "path-borrow-1",
       },
     }),
@@ -260,6 +268,63 @@ test("wrapped loop live plan supports tiny borrow cycle override and full unwind
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-initial-collateral")), true);
 });
 
+test("wrapped loop live plan self-funds unwind repay with redeemed collateral when free USDC is short", async () => {
+  const odosClient = {
+    quote: async ({ inputToken, outputToken }) => ({
+      latencyMs: 10,
+      body: {
+        outAmounts: [
+          inputToken.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase()
+            && outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913".toLowerCase()
+            ? "5000000"
+            : "4200",
+        ],
+        pathId: "path-funding-1",
+      },
+    }),
+    assemble: async () => ({
+      latencyMs: 12,
+      body: {
+        transaction: {
+          to: "0x0000000000000000000000000000000000000d05",
+          data: "0x12345678",
+          value: "0",
+          gas: 210000,
+        },
+      },
+    }),
+  };
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 75000,
+      tokenByKey: {
+        btc: 75000,
+        usd_stable: 1,
+      },
+    },
+    odosClient,
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async (chain, token) => ({
+      balance: token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 1_000_000n : 500_000n,
+    }),
+    perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: {
+      minIncrementUsd: 1,
+    },
+  });
+
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-for-repay-2")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-2")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-2")), false);
+
+  const repayTwo = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-2"));
+  assert.equal(repayTwo.metadata.inventorySource, "redeemed_collateral_swap");
+  assert.equal(repayTwo.metadata.requiresBorrowAssetInventory, false);
+});
+
 test("wrapped loop live plan auto-downsizes initial collateral to the available cbBTC balance", async () => {
   const plan = await buildWrappedBtcLoopScenarioPlan({
     bindingsDocument: blockedBindingsFixture(),
@@ -301,10 +366,14 @@ test("wrapped loop unwind inventory check fails when wallet lacks repay asset ba
       },
     },
     odosClient: {
-      quote: async () => ({
+      quote: async ({ outputToken }) => ({
         latencyMs: 10,
         body: {
-          outAmounts: ["4200"],
+          outAmounts: [
+            outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+              ? "5000000"
+              : "4200",
+          ],
           pathId: "path-borrow-1",
         },
       }),
@@ -338,10 +407,8 @@ test("wrapped loop unwind inventory check fails when wallet lacks repay asset ba
     }),
   });
 
-  assert.equal(check.ok, false);
-  assert.equal(check.availableUnits, "500000");
-  assert.equal(BigInt(check.requiredUnits) > 500_000n, true);
-  assert.equal(check.shortfallUnits, (BigInt(check.requiredUnits) - 500_000n).toString());
+  assert.equal(check.ok, true);
+  assert.equal(check.reason, "inventory_path_satisfied");
 });
 
 test("wrapped loop signer result treats reverted EVM receipts as execution failure", () => {

@@ -141,6 +141,7 @@ async function buildOdosSwapStep({
   signerAddress,
   now,
   client,
+  quoteType = "stable_to_token",
 }) {
   const outputAsset = tokenAsset(chain, outputToken);
   const routing = odosRoutingConfig(chain);
@@ -164,7 +165,7 @@ async function buildOdosSwapStep({
     inputDecimals: tokenAsset(chain, inputToken).decimals,
     outputTicker: outputAsset.ticker,
     outputDecimals: outputAsset.decimals,
-    quoteType: "stable_to_token",
+    quoteType,
     result: quoted,
     sourceWhitelist: routing.sourceWhitelist,
     sourceBlacklist: routing.sourceBlacklist,
@@ -200,6 +201,11 @@ async function buildOdosSwapStep({
         observedAt: executableQuote.observedAt,
         provider: executableQuote.provider,
         pathId: executableQuote.pathId,
+        quoteType: executableQuote.quoteType,
+        inputAmount: executableQuote.inputAmount,
+        outputAmount: executableQuote.outputAmount,
+        inputValueUsd: executableQuote.inputValueUsd,
+        outputValueUsd: executableQuote.outputValueUsd,
         executionTrust: executableQuote.executionTrust,
         sourceWhitelist: executableQuote.sourceWhitelist,
       },
@@ -253,6 +259,8 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   if (!Number.isFinite(collateralPriceUsd)) {
     throw new Error("Repo auto-build requires a current cbBTC/BTC USD price");
   }
+  const availableBorrowBalance = await readErc20BalanceImpl("base", borrowToken, signerAddress);
+  let availableBorrowInventoryUnits = BigInt(availableBorrowBalance?.balance ?? 0n);
   const collateralMarketAddress = support.knownContracts.collateralMarket.mTokenAddress;
   const borrowMarketAddress = support.knownContracts.borrowMarket.mTokenAddress;
   const comptrollerAddress = support.knownContracts.comptroller.address;
@@ -514,6 +522,8 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
     if (!repayUnits || !redeemUnits) {
       throw new Error(`Failed to derive unwind units for iteration ${iteration.iteration}`);
     }
+    const repayUnitsBigInt = BigInt(repayUnits);
+    let collateralConsumedForRepay = false;
     const repayApprovalGasLimit = await estimateBufferedGasLimit({
       chain: "base",
       from: signerAddress,
@@ -541,6 +551,74 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       gasBufferBps,
       allowFailure: true,
     });
+
+    if (availableBorrowInventoryUnits < repayUnitsBigInt) {
+      const fundingRedeemGasLimit = await estimateBufferedGasLimit({
+        chain: "base",
+        from: signerAddress,
+        to: collateralMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
+        estimateGasImpl,
+        gasBufferBps,
+        allowFailure: true,
+      });
+      const fundingSwap = await buildOdosSwapStep({
+        id: `swap-collateral-to-repay-${iteration.iteration}`,
+        chain: "base",
+        inputToken: collateralToken,
+        outputToken: borrowToken,
+        amount: redeemUnits,
+        amountUsd: iteration.recycledCollateralUsd,
+        signerAddress,
+        now,
+        client,
+        quoteType: "token_to_stable",
+      });
+      const plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
+      unwind.push(
+        contractCallStep({
+          id: `redeem-collateral-for-repay-${iteration.iteration}`,
+          chain: "base",
+          to: collateralMarketAddress,
+          data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
+          amountUsd: iteration.recycledCollateralUsd,
+          now,
+          metadata: {
+            kind: "withdraw_collateral_for_repay",
+            iteration: iteration.iteration,
+            fundsBorrowRepay: true,
+          },
+          gasLimit: fundingRedeemGasLimit,
+        }),
+        {
+          ...fundingSwap.approvalStep,
+          metadata: {
+            ...fundingSwap.approvalStep.metadata,
+            kind: "approve_collateral_for_repay_swap",
+            iteration: iteration.iteration,
+            fundsBorrowRepay: true,
+          },
+        },
+        {
+          ...fundingSwap.swapStep,
+          metadata: {
+            ...fundingSwap.swapStep.metadata,
+            kind: "swap_collateral_to_repay_asset",
+            iteration: iteration.iteration,
+            fundsBorrowRepay: true,
+            plannedBorrowTopUpUnits: plannedBorrowTopUpUnits.toString(),
+          },
+        },
+      );
+      availableBorrowInventoryUnits += plannedBorrowTopUpUnits;
+      collateralConsumedForRepay = true;
+      if (availableBorrowInventoryUnits < repayUnitsBigInt) {
+        throw new Error(
+          `Iteration ${iteration.iteration} still lacks repay inventory after collateral swap: need ${repayUnits}, planned ${availableBorrowInventoryUnits.toString()}`,
+        );
+      }
+    }
+
     unwind.push(
       exactApprovalStep({
         id: `approve-repay-usdc-${iteration.iteration}`,
@@ -553,7 +631,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         metadata: {
           kind: "repay_borrow_asset",
           iteration: iteration.iteration,
-          requiresBorrowAssetInventory: true,
+          requiresBorrowAssetInventory: !collateralConsumedForRepay,
+          inventorySource: collateralConsumedForRepay ? "redeemed_collateral_swap" : "wallet_balance",
+          repayUnits,
         },
         gasLimit: repayApprovalGasLimit,
       }),
@@ -567,24 +647,32 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         metadata: {
           kind: "repay_borrow_asset",
           iteration: iteration.iteration,
-          requiresBorrowAssetInventory: true,
+          requiresBorrowAssetInventory: !collateralConsumedForRepay,
+          inventorySource: collateralConsumedForRepay ? "redeemed_collateral_swap" : "wallet_balance",
+          repayUnits,
+          borrowInventoryEffect: "consume",
         },
         gasLimit: repayGasLimit,
       }),
-      contractCallStep({
-        id: `redeem-collateral-${iteration.iteration}`,
-        chain: "base",
-        to: collateralMarketAddress,
-        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
-        amountUsd: iteration.inputCollateralUsd,
-        now,
-        metadata: {
-          kind: "withdraw_recycled_collateral",
-          iteration: iteration.iteration,
-        },
-        gasLimit: redeemGasLimit,
-      }),
     );
+    availableBorrowInventoryUnits -= repayUnitsBigInt;
+    if (!collateralConsumedForRepay) {
+      unwind.push(
+        contractCallStep({
+          id: `redeem-collateral-${iteration.iteration}`,
+          chain: "base",
+          to: collateralMarketAddress,
+          data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
+          amountUsd: iteration.recycledCollateralUsd,
+          now,
+          metadata: {
+            kind: "withdraw_recycled_collateral",
+            iteration: iteration.iteration,
+          },
+          gasLimit: redeemGasLimit,
+        }),
+      );
+    }
   }
   if (iterations.length > 0) {
     const redeemInitialGasLimit = await estimateBufferedGasLimit({
@@ -618,7 +706,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
     notes: [
       "Repo auto-build generated Moonwell core calldata and Odos safe-whitelist swap calldata.",
       iterations.length === 0 ? "Tiny validation mode skipped borrow iterations and only validates collateral deposit plus redeem." : null,
-      "Unwind repayment steps require borrow-asset inventory or equivalent capital-manager funding before execution.",
+      "Unwind repays from free borrow-asset inventory first and falls back to redeemed collateral swaps when the wallet is short.",
     ].filter(Boolean),
   };
 }

@@ -299,27 +299,51 @@ export async function evaluateWrappedBtcLoopUnwindInventory({
       reason: "no_plan_or_signer_address",
     };
   }
-  const repayApprovalSteps = (plan.unwindIntents || []).filter(
-    (item) => item?.metadata?.requiresBorrowAssetInventory === true && item?.approval?.token,
+  const repayTokenSource = (plan.unwindIntents || []).find(
+    (item) =>
+      item?.metadata?.kind === "repay_borrow_asset" &&
+      (item?.approval?.token || item?.metadata?.repayUnits),
   );
-  if (repayApprovalSteps.length === 0) {
+  const repayToken = repayTokenSource?.approval?.token || null;
+  if (!repayToken) {
     return {
       ok: true,
       reason: "no_borrow_asset_inventory_required",
     };
   }
-  const chain = repayApprovalSteps[0].chain || "base";
-  const token = repayApprovalSteps[0].approval.token;
-  const requiredUnits = sumBigInt(repayApprovalSteps.map((item) => item.approval.amount));
-  const balanceResult = await readErc20BalanceImpl(chain, token, signerAddress);
-  const availableUnits = BigInt(balanceResult?.balance ?? 0n);
+  const chain = repayTokenSource.chain || "base";
+  const balanceResult = await readErc20BalanceImpl(chain, repayToken, signerAddress);
+  let availableUnits = BigInt(balanceResult?.balance ?? 0n);
+  let peakRequiredUnits = 0n;
+  for (const intent of plan.unwindIntents || []) {
+    if (intent?.metadata?.kind === "swap_collateral_to_repay_asset") {
+      availableUnits += BigInt(intent?.quote?.outputAmount || intent?.metadata?.plannedBorrowTopUpUnits || 0n);
+      continue;
+    }
+    if (intent?.metadata?.borrowInventoryEffect === "consume") {
+      const repayUnits = BigInt(intent?.metadata?.repayUnits || 0n);
+      peakRequiredUnits = repayUnits > peakRequiredUnits ? repayUnits : peakRequiredUnits;
+      if (availableUnits < repayUnits) {
+        return {
+          ok: false,
+          chain,
+          token: repayToken,
+          availableUnits: availableUnits.toString(),
+          requiredUnits: repayUnits.toString(),
+          shortfallUnits: (repayUnits - availableUnits).toString(),
+        };
+      }
+      availableUnits -= repayUnits;
+    }
+  }
   return {
-    ok: availableUnits >= requiredUnits,
+    ok: true,
     chain,
-    token,
+    token: repayToken,
     availableUnits: availableUnits.toString(),
-    requiredUnits: requiredUnits.toString(),
-    shortfallUnits: availableUnits >= requiredUnits ? "0" : (requiredUnits - availableUnits).toString(),
+    requiredUnits: peakRequiredUnits.toString(),
+    shortfallUnits: "0",
+    reason: "inventory_path_satisfied",
   };
 }
 
