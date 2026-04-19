@@ -15,6 +15,7 @@ import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
 import { buildTreasuryRefillJobs } from "../treasury/refill-job.mjs";
 import { buildTreasuryRouteDemand, selectFundingRouteContext } from "../treasury/route-demand.mjs";
 import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
+import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -28,6 +29,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
+    refreshInventory: flags.has("--refresh-inventory"),
     address: options.address || null,
   };
 }
@@ -44,9 +46,17 @@ async function readJsonIfExists(path) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  const context = await resolveShadowCycleContext({
+    dataDir: config.dataDir,
+    explicitAddress: resolved.address,
+    configuredAddress: config.estimateFrom,
+  });
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
-  const inventory = await scanTreasuryInventory({ policy, address: resolved.address, prices });
+  const inventory =
+    !args.refreshInventory && context.inventorySnapshot
+      ? context.inventorySnapshot
+      : await scanTreasuryInventory({ policy, address: resolved.address, prices });
   const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
@@ -82,11 +92,15 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(JSON.stringify(jobs, null, 2));
+    console.log(JSON.stringify({
+      ...jobs,
+      inventorySource: !args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan",
+    }, null, 2));
     return;
   }
 
   console.log(`decision=${jobs.decision}`);
+  console.log(`inventorySource=${!args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan"}`);
   console.log(`requiresManualReview=${jobs.requiresManualReview}`);
   console.log(`jobCount=${jobs.summary.jobCount}`);
   console.log(`estimatedAssetValueUsd=${jobs.summary.estimatedAssetValueUsd.toFixed(4)}`);
