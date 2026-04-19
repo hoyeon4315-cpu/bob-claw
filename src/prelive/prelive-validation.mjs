@@ -11,16 +11,25 @@ function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
 
-function warningsFor(strategySummary = null, dashboardStatus = null) {
+function primaryCandidate(reviewPackage = null) {
+  return reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+}
+
+function strategyPrimaryCandidate(reviewPackage = null) {
+  return primaryCandidate(reviewPackage)?.candidateType === "strategy";
+}
+
+function warningsFor(strategySummary = null, dashboardStatus = null, reviewPackage = null) {
+  const strategyPrimary = strategyPrimaryCandidate(reviewPackage);
   return unique([
     dashboardStatus?.overall?.liveTrading === "BLOCKED" ? "live_execution_locked" : null,
-    strategySummary?.candidateForValidationCount <= 0 ? "no_policy_ready_implemented_strategy" : null,
-    strategySummary?.proxyCoverageNextAction ? "proxy_surface_still_needs_refresh" : null,
+    strategyPrimary || strategySummary?.candidateForValidationCount > 0 ? null : "no_policy_ready_implemented_strategy",
+    strategyPrimary || !strategySummary?.proxyCoverageNextAction ? null : "proxy_surface_still_needs_refresh",
   ]);
 }
 
 function candidateNextAction(reviewPackage = null) {
-  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  const candidate = primaryCandidate(reviewPackage);
   if (candidate?.candidateType === "strategy" && !reviewPackage?.readyForManualReview) {
     const action = reviewPackage?.remediationPlan?.nextAction || candidate?.nextAction || null;
     if (!action) return null;
@@ -34,6 +43,7 @@ function candidateNextAction(reviewPackage = null) {
 }
 
 function nextActionFrom(runbook = null, reviewPackage = null) {
+  if (reviewPackage?.readyForManualReview) return null;
   const strategyCandidateAction = candidateNextAction(reviewPackage);
   if (strategyCandidateAction) return strategyCandidateAction;
   const nextStage = runbook?.stages?.find((stage) => !stage.complete) || null;
@@ -72,13 +82,17 @@ export function buildPreliveValidationReport({
     ...(reviewPackage?.liveBlockers || []),
     ...(nextStage?.blockers || []),
   ]);
+  const strategyPrimary = strategyPrimaryCandidate(reviewPackage);
   const warnings = unique([
-    ...warningsFor(strategySummary, dashboardStatus),
-    (connectedRefreshPackage?.summary?.requiredRefreshCount || 0) > 0 ? "connected_refresh_required" : null,
-    exactRouteForkPackage?.readiness?.technicalStatus === "submit_ready" &&
-    exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_manual_review"
-      ? "technical_ready_economic_blocked"
-      : null,
+    ...warningsFor(strategySummary, dashboardStatus, reviewPackage),
+    strategyPrimary || (connectedRefreshPackage?.summary?.requiredRefreshCount || 0) <= 0 ? null : "connected_refresh_required",
+    strategyPrimary ||
+    !(
+      exactRouteForkPackage?.readiness?.technicalStatus === "submit_ready" &&
+      exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_manual_review"
+    )
+      ? null
+      : "technical_ready_economic_blocked",
   ]);
   const nextAction = nextActionFrom(executionRunbook, reviewPackage);
   const stageCount = runbookSummary?.stageCount ?? 0;
@@ -86,7 +100,7 @@ export function buildPreliveValidationReport({
   const readinessPct = stageCount > 0 ? round((completeCount / stageCount) * 100) : 0;
   const readyForManualReview = Boolean(reviewPackage?.readyForManualReview || runbookSummary?.readyForManualReview);
   const validationStatus = readyForManualReview ? "ready_for_manual_review" : blockers.length ? "blocked" : "in_progress";
-  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  const candidate = primaryCandidate(reviewPackage);
 
   return {
     schemaVersion: 1,

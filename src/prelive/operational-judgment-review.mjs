@@ -10,6 +10,14 @@ function routeContext({ executionRunbook = null, reviewPackage = null } = {}) {
   return executionRunbook?.currentRoute || reviewPackage?.manualReviewCandidate || null;
 }
 
+function primaryCandidate(reviewPackage = null) {
+  return reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+}
+
+function strategyPrimaryCandidate(reviewPackage = null) {
+  return primaryCandidate(reviewPackage)?.candidateType === "strategy";
+}
+
 function measuredLeader(reviewPackage = null) {
   return reviewPackage?.measuredLeaderReview || null;
 }
@@ -54,7 +62,7 @@ function objectiveComparisonRoute({ dashboardStatus = null, reviewPackage = null
   return null;
 }
 
-function nextActionFrom(issues = [], validation = null, connectedRefreshPackage = null) {
+function nextActionFrom(issues = [], validation = null, connectedRefreshPackage = null, reviewPackage = null) {
   const actionable = issues.find((entry) => entry.command) || null;
   if (actionable) {
     return {
@@ -63,6 +71,7 @@ function nextActionFrom(issues = [], validation = null, connectedRefreshPackage 
       command: actionable.command,
     };
   }
+  if (reviewPackage?.readyForManualReview || strategyPrimaryCandidate(reviewPackage)) return null;
   if (connectedRefreshPackage?.summary?.nextActionCode || connectedRefreshPackage?.summary?.nextActionCommand) {
     return {
       code: connectedRefreshPackage.summary.nextActionCode || null,
@@ -87,9 +96,10 @@ export function buildOperationalJudgmentReview({
   const currentRoute = routeContext({ executionRunbook, reviewPackage });
   const leader = measuredLeader(reviewPackage);
   const comparisonRoute = objectiveComparisonRoute({ dashboardStatus, reviewPackage });
+  const strategyPrimary = strategyPrimaryCandidate(reviewPackage);
   const issues = [];
 
-  if ((connectedRefreshPackage?.summary?.requiredRefreshCount || 0) > 0) {
+  if (!strategyPrimary && (connectedRefreshPackage?.summary?.requiredRefreshCount || 0) > 0) {
     issues.push(
       issue({
         code: "stale_inputs_can_distort_route_scoring",
@@ -102,6 +112,7 @@ export function buildOperationalJudgmentReview({
   }
 
   if (
+    !strategyPrimary &&
     exactRouteForkPackage?.readiness?.technicalStatus === "submit_ready" &&
     exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_manual_review"
   ) {
@@ -116,7 +127,7 @@ export function buildOperationalJudgmentReview({
     );
   }
 
-  if (comparisonRoute?.routeKey && currentRoute?.routeKey && comparisonRoute.routeKey !== currentRoute.routeKey) {
+  if (!strategyPrimary && comparisonRoute?.routeKey && currentRoute?.routeKey && comparisonRoute.routeKey !== currentRoute.routeKey) {
     const comparisonLabel =
       comparisonRoute.source === "measured_leader"
         ? "measured leader"
@@ -155,7 +166,7 @@ export function buildOperationalJudgmentReview({
   const highSeverityCount = issues.filter((entry) => entry.severity === "high").length;
   const mediumSeverityCount = issues.filter((entry) => entry.severity === "medium").length;
   const status = highSeverityCount > 0 ? "guarded_blocked" : mediumSeverityCount > 0 ? "guarded_review" : "aligned_for_manual_review";
-  const nextAction = nextActionFrom(issues, preliveValidation, connectedRefreshPackage);
+  const nextAction = nextActionFrom(issues, preliveValidation, connectedRefreshPackage, reviewPackage);
 
   return {
     schemaVersion: 1,

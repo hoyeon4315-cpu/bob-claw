@@ -189,6 +189,63 @@ test("prelive validation flips to manual review ready when all stages are comple
   assert.equal(report.readinessPct, 100);
 });
 
+test("prelive validation suppresses route-only warnings when a strategy candidate is manual-review ready", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: {
+      overall: { liveTrading: "BLOCKED" },
+      prelive: { currentStage: "tiny_live_canary_review" },
+    },
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        { id: "shadow_replay", complete: true },
+        { id: "mechanical_simulation", complete: true },
+        { id: "fork_execution", complete: true },
+        { id: "manual_canary_review", complete: true },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 4,
+        blockedCount: 0,
+        readyForManualReview: true,
+        nextStageId: "manual_canary_review",
+        nextActionCode: "manual_canary_review_only",
+        nextActionCommand: null,
+      },
+      currentStageId: "tiny_live_canary_review",
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      reviewBlockers: [],
+      liveBlockers: ["audit_blocks_live"],
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      },
+    },
+    connectedRefreshPackage: {
+      status: "network_refresh_required",
+      summary: {
+        requiredRefreshCount: 2,
+      },
+    },
+    exactRouteForkPackage: {
+      readiness: {
+        technicalStatus: "submit_ready",
+        economicStatus: "blocked_no_net_edge",
+      },
+    },
+  });
+
+  assert.equal(report.validationStatus, "ready_for_manual_review");
+  assert.equal(report.summary.nextActionCode, null);
+  assert.equal(report.warnings.includes("no_policy_ready_implemented_strategy"), false);
+  assert.equal(report.warnings.includes("proxy_surface_still_needs_refresh"), false);
+  assert.equal(report.warnings.includes("connected_refresh_required"), false);
+  assert.equal(report.warnings.includes("technical_ready_economic_blocked"), false);
+});
+
 test("prelive validation prefers the strategy candidate next action over blocked route hold", () => {
   const report = buildPreliveValidationReport({
     dashboardStatus: blockedDashboardStatus(),

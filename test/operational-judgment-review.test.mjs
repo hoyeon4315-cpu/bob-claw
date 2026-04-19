@@ -136,3 +136,55 @@ test("operational judgment review falls back to objective discovery divergence w
   assert.equal(report.comparisonRoute?.source, "objective_discovery");
   assert.equal(report.issues.some((entry) => entry.code === "objective_route_differs_from_current_canary"), true);
 });
+
+test("operational judgment review suppresses route-only issues when a strategy candidate is primary", () => {
+  const report = buildOperationalJudgmentReview({
+    dashboardStatus: {
+      overall: { liveTrading: "BLOCKED" },
+    },
+    reviewPackage: {
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      },
+      manualReviewCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      },
+      measuredLeaderReview: {
+        routeKey: "bitcoin:0x0->base:0x0",
+        routeLabel: "bitcoin->base BTC->ETH",
+        amount: "200000",
+      },
+    },
+    executionRunbook: {
+      currentStageId: "tiny_live_canary_review",
+      summary: {
+        readyForManualReview: true,
+        nextStageId: "manual_canary_review",
+      },
+    },
+    connectedRefreshPackage: {
+      summary: {
+        requiredRefreshCount: 2,
+        nextActionCommand: 'npm run verify:gateway -- --route-key="bob:0x0555->base:0x0555" --amounts="10000"',
+      },
+    },
+    exactRouteForkPackage: {
+      plan: { planId: "plan-123" },
+      commands: {
+        refreshInputs: 'npm run verify:gateway -- --route-key="bob:0x0555->base:0x0555" --amounts="10000" && npm run gas:snapshot',
+      },
+      readiness: {
+        technicalStatus: "submit_ready",
+        economicStatus: "blocked_no_net_edge",
+      },
+    },
+  });
+
+  assert.equal(report.status, "aligned_for_manual_review");
+  assert.equal(report.issueCount, 0);
+  assert.equal(report.nextAction, null);
+});
