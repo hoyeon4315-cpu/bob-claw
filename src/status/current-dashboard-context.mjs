@@ -533,6 +533,16 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     address: state.address,
     advanceCanary,
   });
+  executionRunbook = buildExecutionRunbook({
+    dashboardStatus,
+    reviewPackage,
+    strategySnapshot,
+    canaryInputs,
+    nextStep: state.nextStep,
+    forkPlan: preliveForkPlan,
+    address: state.address,
+  });
+  dashboardStatus.prelive.executionRunbook = summarizeExecutionRunbook(executionRunbook);
   preliveValidation = buildPreliveValidationReport({
     dashboardStatus,
     strategySnapshot,

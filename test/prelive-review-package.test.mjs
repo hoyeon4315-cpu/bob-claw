@@ -1121,9 +1121,13 @@ test("prelive review package keeps yield strategies blocked until live carry is 
   assert.equal(reviewPackage.packageStatus, "not_ready_for_manual_review");
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "NO_GO");
   assert.equal(reviewPackage.primaryLiveCandidate.tradeReadiness, "strategy_evidence_blocked");
-  assert.equal(reviewPackage.primaryLiveCandidate.railProof.completeStageCount, 5);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.completeStageCount, 3);
   assert.equal(reviewPackage.primaryLiveCandidate.railProof.nextStage.id, "holding_period_carry_observation");
-  assert.deepEqual(reviewPackage.primaryLiveCandidate.blockerReasons, ["observed_holding_period_carry_missing"]);
+  assert.deepEqual(reviewPackage.primaryLiveCandidate.blockerReasons, [
+    "observed_holding_period_carry_missing",
+    "protocol_unwind_receipt_missing",
+    "btc_denominated_reconciliation_missing",
+  ]);
   assert.equal(summary.railProofNextStageId, "holding_period_carry_observation");
 
   const observedCarryPackage = buildPreliveReviewPackage({
@@ -1141,9 +1145,39 @@ test("prelive review package keeps yield strategies blocked until live carry is 
     },
   });
 
-  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.completeStageCount, 6);
-  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.nextStage, null);
-  assert.equal(observedCarryPackage.primaryLiveCandidate.blockerReasons.includes("observed_holding_period_carry_missing"), false);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.completeStageCount, 3);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.extendedReceiptContextReady, false);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.nextStage.id, "holding_period_carry_observation");
+  assert.equal(
+    observedCarryPackage.primaryLiveCandidate.railProof.stages.find((stage) => stage.id === "protocol_unwind_receipt").status,
+    "ready_for_proof",
+  );
+  assert.equal(observedCarryPackage.primaryLiveCandidate.blockerReasons.includes("observed_holding_period_carry_missing"), true);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.blockerReasons.includes("protocol_unwind_receipt_missing"), true);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.blockerReasons.includes("btc_denominated_reconciliation_missing"), true);
+
+  const extendedReceiptContextPackage = buildPreliveReviewPackage({
+    ...baseInput,
+    phase3Validation: {
+      validations: [
+        {
+          ...baseInput.phase3Validation.validations[0],
+          evidence: {
+            ...baseInput.phase3Validation.validations[0].evidence,
+            realizedNetCarryUsd: 0,
+            extendedReceiptContextReady: true,
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(extendedReceiptContextPackage.primaryLiveCandidate.railProof.completeStageCount, 6);
+  assert.equal(extendedReceiptContextPackage.primaryLiveCandidate.railProof.nextStage, null);
+  assert.equal(
+    extendedReceiptContextPackage.primaryLiveCandidate.blockerReasons.includes("observed_holding_period_carry_missing"),
+    false,
+  );
 });
 
 test("prelive review package promotes the strategy candidate when the current route is negative and policy-ready measured routes are exhausted", () => {

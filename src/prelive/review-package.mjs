@@ -209,12 +209,15 @@ function buildStrategyRailProof({ scaffold = null, summary = null, validation = 
   const liveRoundtripEntryCount = validation?.evidence?.liveRoundtripEntryCount ?? 0;
   const liveRoundtripUnwindCount = validation?.evidence?.liveRoundtripUnwindCount ?? 0;
   const liveRealizedNetCarryUsd = validation?.evidence?.realizedNetCarryUsd ?? null;
+  const extendedReceiptContextReady = validation?.evidence?.extendedReceiptContextReady === true;
   const observedCarrySampleRecorded =
-    Number.isFinite(liveRealizedNetCarryUsd) || (observedStatus(realized?.status) && (realized?.sampleCount ?? 0) > 0);
+    (extendedReceiptContextReady && Number.isFinite(liveRealizedNetCarryUsd)) ||
+    (observedStatus(realized?.status) && (realized?.sampleCount ?? 0) > 0);
   const protocolPlanReady = entryActionCount > 0 && unwindActionCount > 0 && watcherCheckCount > 0 && readyForDryRun;
   const entryReceiptRecorded = liveRoundtripEntryCount > 0;
-  const unwindReceiptRecorded = liveRoundtripUnwindCount > 0;
-  const btcReconciled = liveRoundtripProofStatus === "signer_backed_roundtrip_recorded";
+  const unwindAttemptRecorded = liveRoundtripUnwindCount > 0;
+  const unwindReceiptRecorded = unwindAttemptRecorded && extendedReceiptContextReady;
+  const btcReconciled = liveRoundtripProofStatus === "signer_backed_roundtrip_recorded" && extendedReceiptContextReady;
   const receiptCommand = nextAction?.command || null;
   const stages = [
     railStage({
@@ -252,7 +255,7 @@ function buildStrategyRailProof({ scaffold = null, summary = null, validation = 
       id: "protocol_unwind_receipt",
       label: "protocol unwind receipt records gas, slippage, and health-factor path",
       complete: unwindReceiptRecorded,
-      ready: unwindActionCount > 0,
+      ready: unwindAttemptRecorded || unwindActionCount > 0,
       blocker: "protocol_unwind_receipt_missing",
       command: receiptCommand,
     }),
@@ -260,7 +263,7 @@ function buildStrategyRailProof({ scaffold = null, summary = null, validation = 
       id: "btc_reconciliation",
       label: "BTC-denominated reconciliation reaches treasury/payback accounting",
       complete: btcReconciled,
-      ready: entryReceiptRecorded && unwindReceiptRecorded,
+      ready: entryReceiptRecorded && unwindAttemptRecorded,
       blocker: "btc_denominated_reconciliation_missing",
     }),
   ];
@@ -277,7 +280,7 @@ function buildStrategyRailProof({ scaffold = null, summary = null, validation = 
     realizedCarryStatus: realized?.status || null,
     realizedCarrySampleCount: realized?.sampleCount ?? 0,
     liveRealizedNetCarryUsd,
-    extendedReceiptContextReady: validation?.evidence?.extendedReceiptContextReady === true,
+    extendedReceiptContextReady,
     requiredProofs: [
       "native BTC funded route into destination-chain collateral",
       "protocol entry receipt for deposit/borrow/supply path",

@@ -1836,10 +1836,23 @@ async function main() {
     dashboardStatusWithSnapshot.overall,
   );
   reviewPackage.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
+  const alignedExecutionRunbook = buildExecutionRunbook({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    reviewPackage,
+    strategySnapshot,
+    canaryInputs,
+    nextStep: next,
+    forkPlan: preliveForkPlan,
+    address: resolved.address,
+    now,
+  });
+  const alignedExecutionRunbookSummary = summarizeExecutionRunbook(alignedExecutionRunbook);
+  dashboardStatusWithSnapshot.prelive.executionRunbook = alignedExecutionRunbookSummary;
+  reviewPackage.executionRunbook = alignedExecutionRunbookSummary;
   const alignedPreliveValidation = buildPreliveValidationReport({
     dashboardStatus: dashboardStatusWithSnapshot,
     strategySnapshot,
-    executionRunbook,
+    executionRunbook: alignedExecutionRunbook,
     reviewPackage,
     connectedRefreshPackage,
     exactRouteForkPackage,
@@ -1850,7 +1863,7 @@ async function main() {
     dashboardStatus: dashboardStatusWithSnapshot,
     strategySnapshot,
     reviewPackage,
-    executionRunbook,
+    executionRunbook: alignedExecutionRunbook,
     preliveValidation: alignedPreliveValidation,
     connectedRefreshPackage,
     exactRouteForkPackage,
