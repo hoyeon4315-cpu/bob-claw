@@ -84,9 +84,11 @@ test("fork signer intent can carry an explicit gas limit override", () => {
   const intent = buildForkSignerIntent(plan, {
     observedAt: "2026-04-19T00:00:01.000Z",
     gasLimit: "500000",
+    nonce: 17,
   });
 
   assert.equal(intent.tx.gasLimit, "500000");
+  assert.equal(intent.tx.nonce, 17);
 });
 
 test("fork execution plan submit command prefers signer daemon plus fork rpc", () => {

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { rpc } from "../evm/json-rpc.mjs";
 import { sendRawTransaction, classifySendTransactionError } from "../evm/transaction-submit.mjs";
 import { sendSignerCommand, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
@@ -24,6 +25,7 @@ function parseArgs(argv) {
         return [key, valueParts.join("=")];
       }),
   );
+  const nonceRaw = options.nonce || null;
   return {
     json: flags.has("--json"),
     planId: options["plan-id"] || null,
@@ -35,10 +37,35 @@ function parseArgs(argv) {
     rpcUrl: options["rpc-url"] || null,
     rpcUrls: options["rpc-urls"] ? options["rpc-urls"].split(",").map((item) => item.trim()).filter(Boolean) : [],
     gasLimit: options["gas-limit"] || null,
+    nonce: nonceRaw ? Number(BigInt(nonceRaw)) : null,
   };
 }
 
-export function buildForkSignerIntent(plan, { observedAt = new Date().toISOString(), gasLimit = null } = {}) {
+function uniqueExplicitRpcUrls(args) {
+  return [...new Set([...(args?.rpcUrls || []), args?.rpcUrl].filter(Boolean))];
+}
+
+async function readForkPendingNonce(plan, args) {
+  const fromAddress = plan?.address || plan?.transaction?.from || null;
+  if (!fromAddress) return null;
+  const rpcUrls = uniqueExplicitRpcUrls(args);
+  if (rpcUrls.length === 0) return null;
+  const attempts = [];
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const result = await rpc(rpcUrl, "eth_getTransactionCount", [fromAddress, "pending"]);
+      return Number(BigInt(result));
+    } catch (error) {
+      attempts.push({ rpcUrl, message: error.message, code: error.rpcError?.code ?? null });
+    }
+  }
+  const error = new Error(`Failed to read pending nonce for fork signer intent: ${plan?.planId || "unknown_plan"}`);
+  error.name = "ForkPendingNonceRpcError";
+  error.attempts = attempts;
+  throw error;
+}
+
+export function buildForkSignerIntent(plan, { observedAt = new Date().toISOString(), gasLimit = null, nonce = null } = {}) {
   return {
     strategyId: "prelive_fork_execution",
     chain: plan.srcChain,
@@ -53,6 +80,7 @@ export function buildForkSignerIntent(plan, { observedAt = new Date().toISOStrin
       data: plan?.transaction?.data || "0x",
       value: String(plan?.transaction?.valueWei || "0"),
       ...(gasLimit ? { gasLimit: String(gasLimit) } : {}),
+      ...(Number.isInteger(nonce) ? { nonce } : {}),
     },
     metadata: {
       skipAutoIngest: true,
@@ -78,12 +106,13 @@ async function loadSignedTx(args, plan, { readSignedTxFile = readFile, sendComma
     };
   }
   if (args.useSignerDaemon) {
+    const nonce = Number.isInteger(args.nonce) ? args.nonce : await readForkPendingNonce(plan, args);
     const signerResult = await sendCommand({
       socketPath: args.socketPath,
       timeoutMs: args.signerTimeoutMs,
       message: {
         command: "sign_only",
-        intent: buildForkSignerIntent(plan, { gasLimit: args.gasLimit }),
+        intent: buildForkSignerIntent(plan, { gasLimit: args.gasLimit, nonce }),
       },
     });
     if (signerResult?.status !== "ok" || !signerResult?.signed?.signedTx) {
