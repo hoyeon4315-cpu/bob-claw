@@ -171,6 +171,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.match(result.stdout, /paybackGrossProfitSatsPeriod=\d+ paidBackSatsLifetime=0/);
   assert.match(result.stdout, /opportunityPositiveInsufficient=count:\d+ top:[^ ]+ net:[^ ]+ gap:[^ \n]+/);
   assert.match(result.stdout, /formulaAudit=implemented:\d+ partial:\d+ missing:\d+ topGap:.+/);
+  assert.match(result.stdout, /gasFreshness=missing:\d+ stale:\d+ staleChains=.*/);
   assert.equal(result.stdout.includes("paybackPreviewAfterDestination="), false);
   assert.match(result.stdout, /liveBaseline=blocked stage=shadow_replay refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+/);
   assert.match(result.stdout, /liveBaselineRefresh=.* next=.*/);

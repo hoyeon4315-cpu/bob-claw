@@ -540,6 +540,83 @@ test("dashboard status flags gateway chains missing gas snapshots", () => {
   assert.equal(status.overall.blockers.includes("missing_gateway_gas_snapshots"), true);
 });
 
+test("dashboard status lists stale gateway gas chains", () => {
+  const now = "2026-04-10T12:00:00.000Z";
+  const baseBob = route("base", "bob");
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [baseBob],
+        },
+      ],
+      quotes: [quote(baseBob, "2026-04-10T11:00:00.000Z")],
+      failures: [],
+      priceSnapshots: [
+        {
+          schemaVersion: 1,
+          observedAt: "2026-04-10T11:57:00.000Z",
+          source: "test",
+          btcUsd: 72_988,
+          tokenByKey: { btc: 72_988, wbtc: 72_950, ethereum: 2_242.72, usd_stable: 1 },
+          nativeByChain: { base: 2_242.72, bob: 2_242.72 },
+        },
+      ],
+      dexQuotes: [],
+      gasSnapshots: [
+        {
+          observedAt: "2026-04-10T11:20:00.000Z",
+          chain: "base",
+          gasPriceWei: "1",
+          blockNumber: "10",
+          latencyMs: 100,
+          fallbackGasUnits: 250000,
+          fallbackTxUsd: 0.01,
+          nativeUsd: 1,
+        },
+        {
+          observedAt: "2026-04-10T11:55:00.000Z",
+          chain: "bob",
+          gasPriceWei: "1",
+          blockNumber: "11",
+          latencyMs: 100,
+          fallbackGasUnits: 250000,
+          fallbackTxUsd: 0.01,
+          nativeUsd: 1,
+        },
+      ],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      preliveSimulationRuns: [],
+      preliveForkPlan: { plans: [] },
+      preliveForkSubmissions: [],
+      preliveForkReceipts: [],
+      shadowRefreshBatches: [],
+      preliveEvidenceCampaigns: [],
+      executorRuntime: null,
+    },
+    {
+      now,
+      auditTargets: {
+        currentQuoteSchemaVersion: 2,
+        minShadowHours: 1,
+        minBobNeighborCoveragePct: 0,
+        minGlobalRouteCoveragePctForDiscovery: 0,
+        minSamplesPerCandidateRoute: 1,
+        minAmountLevelsPerCandidateRoute: 1,
+        minHourBuckets: 1,
+        maxFailureRatePct: 10,
+      },
+    },
+  );
+
+  assert.deepEqual(status.gas.staleGatewayGasChains, ["base"]);
+  assert.equal(status.gas.staleChainCount30m, 1);
+});
+
 test("dashboard status includes read-only opportunity summary", () => {
   const bobBase = route("bob", "base");
   const status = buildDashboardStatus({

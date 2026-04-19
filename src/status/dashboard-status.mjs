@@ -376,13 +376,15 @@ function gasSummary({ gasSnapshots, gasFailures, gatewayChains, now }) {
       nativeUsd: snapshot.nativeUsd,
     }))
     .sort((left, right) => left.chain.localeCompare(right.chain));
+  const staleGatewayGasChains = chains.filter((item) => item.ageMinutes === null || item.ageMinutes > 30).map((item) => item.chain);
 
   return {
     latestChainCount: chains.length,
     expectedGatewayGasChains,
     missingGatewayGasChains,
     missingGatewayGasChainCount: missingGatewayGasChains.length,
-    staleChainCount30m: chains.filter((item) => item.ageMinutes === null || item.ageMinutes > 30).length,
+    staleGatewayGasChains,
+    staleChainCount30m: staleGatewayGasChains.length,
     recentFailureCount24h: countRecent(gasFailures, now, 24),
     chains,
     lastFailure: latest(gasFailures)
