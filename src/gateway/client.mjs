@@ -68,11 +68,18 @@ export class GatewayClient {
     }
 
     if (!response.ok) {
-      throw new GatewayError("Gateway request failed", {
+      const bodyCode = body && typeof body === "object" ? body.code || body.error || null : null;
+      const reason = response.status === 429
+        ? `HTTP 429 ${bodyCode || "RATE_LIMITED"}`
+        : bodyCode
+          ? `HTTP ${response.status} ${bodyCode}`
+          : `HTTP ${response.status}`;
+      throw new GatewayError(`Gateway request failed: ${reason}`, {
         url,
         status: response.status,
         latencyMs,
         body,
+        rateLimited: response.status === 429,
       });
     }
 
