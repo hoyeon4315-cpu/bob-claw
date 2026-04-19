@@ -10,6 +10,7 @@ import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildTreasuryPlan } from "../treasury/planner.mjs";
 import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
 import { buildTreasuryRefillJobs } from "../treasury/refill-job.mjs";
+import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
 import { buildDefaultRoutePerformancePolicy, buildRoutePerformanceRanking } from "../risk/route-performance.mjs";
 import { buildExecutionRiskState } from "../risk/execution-gate.mjs";
 import { buildInventoryConsistencyAudit, resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
@@ -75,16 +76,19 @@ async function main() {
       })
     : context.inventoryAudit;
   const routeDemand = buildRouteDemandFromCanaryState(canaryState.routePlan);
+  const wholeWalletInventoryRecords = await readJsonl(config.dataDir, "whole-wallet-inventory").catch(() => []);
   const treasuryPlan = buildTreasuryPlan({
     policy,
     inventory,
     routeDemand,
   });
   const routeContext = canaryState.routePlan?.topCandidates?.find((item) => item.viableForPrep) || canaryState.routePlan?.topCandidates?.[0] || null;
+  const supplementalInventory = latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, address);
   const fundingSourcePlan = buildFundingSourcePlan({
     plan: treasuryPlan,
     policy,
     routeContext,
+    supplementalInventory,
   });
   const refillJobs = buildTreasuryRefillJobs({
     plan: treasuryPlan,

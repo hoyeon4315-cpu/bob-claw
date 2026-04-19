@@ -67,6 +67,65 @@ function resourceKeyForRefillAction(action) {
   return action.type === "refill_native" ? `${action.chain}:native` : `${action.chain}:${normalized(action.token)}`;
 }
 
+function normalizeInventoryEntry(entry = {}, kind) {
+  const token = kind === "native" ? ZERO_TOKEN : entry.token;
+  const resolvedAsset = entry.chain && token ? tokenAsset(entry.chain, token) : null;
+  const amountRaw = entry.actual ?? entry.balance ?? null;
+  return {
+    chain: entry.chain,
+    token,
+    ticker: entry.ticker || resolvedAsset?.ticker || null,
+    actual: amountRaw == null ? null : String(amountRaw),
+    actualDecimal: finite(entry.actualDecimal),
+    estimatedUsd: finite(entry.estimatedUsd),
+    sourceKind: entry.sourceKind || kind,
+  };
+}
+
+function mergeInventoryEntries(primaryEntries = [], supplementalEntries = [], kind) {
+  const merged = new Map();
+  const ingest = (entry, priority) => {
+    const normalizedEntry = normalizeInventoryEntry(entry, kind);
+    if (!normalizedEntry.chain) return;
+    if (kind === "token" && !normalizedEntry.token) return;
+    const key = kind === "native" ? normalizedEntry.chain : `${normalizedEntry.chain}:${normalized(normalizedEntry.token)}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...normalizedEntry, priority });
+      return;
+    }
+    const existingActual = Number(existing.actual || 0);
+    const nextActual = Number(normalizedEntry.actual || 0);
+    const existingUsd = Number.isFinite(existing.estimatedUsd) ? existing.estimatedUsd : -1;
+    const nextUsd = Number.isFinite(normalizedEntry.estimatedUsd) ? normalizedEntry.estimatedUsd : -1;
+    if (
+      priority < existing.priority ||
+      nextActual > existingActual ||
+      (nextActual === existingActual && nextUsd > existingUsd)
+    ) {
+      merged.set(key, { ...normalizedEntry, priority: Math.min(priority, existing.priority) });
+    }
+  };
+
+  for (const entry of supplementalEntries || []) ingest(entry, 1);
+  for (const entry of primaryEntries || []) ingest(entry, 0);
+  return [...merged.values()]
+    .sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1))
+    .map(({ priority, ...entry }) => entry);
+}
+
+function mergeObservedInventory(planInventory = null, supplementalInventory = null) {
+  if (!supplementalInventory) return planInventory;
+  return {
+    native: mergeInventoryEntries(planInventory?.native || [], supplementalInventory.native || [], "native"),
+    tokens: mergeInventoryEntries(
+      planInventory?.tokens || [],
+      supplementalInventory.tokens || supplementalInventory.tokenBalances || [],
+      "token",
+    ),
+  };
+}
+
 function inventoryForChain(plan, chain) {
   return {
     native: (plan.inventory?.native || []).find((item) => item.chain === chain) || null,
@@ -197,7 +256,21 @@ function reserveTransferCandidate(action, preferred) {
   });
 }
 
-function selectCrossChainSource(action, plan) {
+function crossChainRoutePreference(source, action, routeContext = null) {
+  if (!routeContext || action.type !== "refill_native") return 5;
+  if (routeContext.dstChain && routeContext.dstChain !== action.chain) return 5;
+  if (source.chain === routeContext.srcChain && normalized(source.token) === normalized(routeContext.srcToken)) return 0;
+  const sourceAsset = source.chain && source.token ? tokenAsset(source.chain, source.token) : null;
+  const routeSourceAsset =
+    routeContext.srcChain && routeContext.srcToken ? tokenAsset(routeContext.srcChain, routeContext.srcToken) : null;
+  if (source.chain === routeContext.srcChain && sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 1;
+  if (sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 2;
+  if (source.sourceKind === "token") return 3;
+  if (source.sourceKind === "native") return 4;
+  return 5;
+}
+
+function selectCrossChainSource(action, plan, routeContext = null) {
   const nativeSources = (plan.inventory?.native || [])
     .filter((item) => item.chain !== action.chain && Number(item.actual || 0) > 0)
     .map((item) => ({
@@ -217,11 +290,18 @@ function selectCrossChainSource(action, plan) {
       sourceKind: "token",
     }));
   return [...nativeSources, ...tokenSources]
-    .sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1) || String(left.chain).localeCompare(String(right.chain)))[0] || null;
+    .sort((left, right) => {
+      const preferenceDelta = crossChainRoutePreference(left, action, routeContext) - crossChainRoutePreference(right, action, routeContext);
+      if (preferenceDelta !== 0) return preferenceDelta;
+      const leftUsd = Number.isFinite(left.estimatedUsd) ? left.estimatedUsd : -1;
+      const rightUsd = Number.isFinite(right.estimatedUsd) ? right.estimatedUsd : -1;
+      if (leftUsd !== rightUsd) return rightUsd - leftUsd;
+      return String(left.chain).localeCompare(String(right.chain));
+    })[0] || null;
 }
 
-function crossChainCandidate(action, plan, policy) {
-  const selectedSource = selectCrossChainSource(action, plan);
+function crossChainCandidate(action, plan, policy, routeContext = null) {
+  const selectedSource = selectCrossChainSource(action, plan, routeContext);
   const directInventoryMode = policy.walletMode === "single_wallet";
   if (!selectedSource) {
     return candidateRecord({
@@ -324,7 +404,7 @@ function estimateCapitalFragmentationDrag({ selections = [], routeContext = null
   };
 }
 
-export function buildFundingSourceCandidates(action, plan, policy) {
+export function buildFundingSourceCandidates(action, plan, policy, routeContext = null) {
   const candidates = [];
   if (policy.walletMode === "dual_wallet") {
     candidates.push(reserveTransferCandidate(action, true));
@@ -339,16 +419,20 @@ export function buildFundingSourceCandidates(action, plan, policy) {
   }
 
   if (policy.refillPolicy.enableCrossChainRefill) {
-    candidates.push(crossChainCandidate(action, plan, policy));
+    candidates.push(crossChainCandidate(action, plan, policy, routeContext));
   }
 
   candidates.push(manualFundingCandidate(action));
   return candidates;
 }
 
-export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
-  const selections = (plan.actions || []).map((action) => {
-    const candidates = buildFundingSourceCandidates(action, plan, policy);
+export function buildFundingSourcePlan({ plan, policy, routeContext = null, supplementalInventory = null }) {
+  const resolvedPlan = {
+    ...plan,
+    inventory: mergeObservedInventory(plan?.inventory || null, supplementalInventory),
+  };
+  const selections = (resolvedPlan.actions || []).map((action) => {
+    const candidates = buildFundingSourceCandidates(action, resolvedPlan, policy, routeContext);
     const selected = chooseCandidate(candidates);
     return {
       resourceKey: resourceKeyForRefillAction(action),
@@ -427,9 +511,9 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
 
   return {
     schemaVersion: 1,
-    observedAt: plan.observedAt,
-    address: plan.address,
-    decision: plan.decision,
+    observedAt: resolvedPlan.observedAt,
+    address: resolvedPlan.address,
+    decision: resolvedPlan.decision,
     routeContext: routeContext
       ? {
           routeKey: routeContext.routeKey,
@@ -450,6 +534,7 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null }) {
           tradeReadiness: routeContext.tradeReadiness ?? null,
         }
       : null,
+    inventory: resolvedPlan.inventory,
     reasons,
     selections,
     summary: {

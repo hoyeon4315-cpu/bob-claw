@@ -14,6 +14,7 @@ import { buildTreasuryPlan } from "../treasury/planner.mjs";
 import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
 import { buildTreasuryRefillJobs } from "../treasury/refill-job.mjs";
 import { buildTreasuryRouteDemand, selectFundingRouteContext } from "../treasury/route-demand.mjs";
+import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -46,11 +47,12 @@ async function main() {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const inventory = await scanTreasuryInventory({ policy, address: resolved.address, prices });
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot] = await Promise.all([
+  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
     readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
+    readJsonl(config.dataDir, "whole-wallet-inventory").catch(() => []),
   ]);
 
   const routePlan = buildCanaryRoutePlan(
@@ -71,7 +73,8 @@ async function main() {
 
   const plan = buildTreasuryPlan({ policy, inventory, routeDemand });
   const routeContext = selectFundingRouteContext(routePlan);
-  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy, routeContext });
+  const supplementalInventory = latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, resolved.address);
+  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy, routeContext, supplementalInventory });
   const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan, routeCandidates: routePlan.candidates || [] });
   const store = new JsonlStore(config.dataDir);
   for (const job of jobs.jobs) {
