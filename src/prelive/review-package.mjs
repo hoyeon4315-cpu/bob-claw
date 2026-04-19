@@ -602,7 +602,7 @@ export function buildPreliveReviewPackage({
   });
   const ethFamilyObservation = buildEthFamilyObservation(dashboardStatus);
   const ethFamilyProfitability = buildEthFamilyProfitability(dashboardStatus);
-  const readyForManualReview = tinyCanaryAdmission.decision === "GO_FOR_MANUAL_APPROVAL";
+  const readyForManualReview = ["GO_FOR_MANUAL_APPROVAL", "GO_FOR_AUTO_EXECUTE"].includes(tinyCanaryAdmission.decision);
   const reviewBlockers = readyForManualReview ? [] : tinyCanaryAdmission.blockers;
   const liveBlockers = unique([...(executionStage.liveReasons || []), ...(dashboardStatus?.overall?.blockers || [])]);
 

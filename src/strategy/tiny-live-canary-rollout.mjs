@@ -4,9 +4,9 @@ function unique(values = []) {
 
 function nextAction({ admission = null, preliveValidation = null } = {}) {
   const blockerCount = admission?.blockers?.length ?? 0;
-  if (blockerCount === 0 && admission?.status === "manual_approval_required") {
+  if (blockerCount === 0 && ["manual_approval_required", "auto_execute_policy_ready"].includes(admission?.status)) {
     return {
-      code: admission?.nextActionCode || "manual_approval_required",
+      code: admission?.nextActionCode || admission?.status,
       command: null,
     };
   }

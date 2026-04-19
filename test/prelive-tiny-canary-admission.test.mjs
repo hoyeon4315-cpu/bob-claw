@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildTinyCanaryAdmission } from "../src/prelive/tiny-canary-admission.mjs";
+import {
+  buildTinyCanaryAdmission,
+  reconcileTinyCanaryAdmissionWithLivePolicy,
+} from "../src/prelive/tiny-canary-admission.mjs";
 
 test("tiny canary admission returns go-for-manual-approval when all gates clear", () => {
   const admission = buildTinyCanaryAdmission({
@@ -185,4 +188,68 @@ test("tiny canary admission supports strategy-level candidates", () => {
 
   assert.equal(ready.decision, "GO_FOR_MANUAL_APPROVAL");
   assert.equal(ready.candidate.candidateType, "strategy");
+});
+
+test("tiny canary admission promotes cleared strategy candidate when live policy is allowed", () => {
+  const admission = buildTinyCanaryAdmission({
+    prelive: {
+      tinyLiveCanary: {
+        ready: true,
+        blockers: [],
+      },
+    },
+    executionStage: {
+      reviewStage: "READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewReasons: [],
+    },
+    manualReviewCandidate: {
+      candidateType: "strategy",
+      candidateId: "wrapped-btc-loop-base-moonwell",
+      candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      amount: "300",
+      amountUnit: "usd_cap",
+      perTradeCapUsd: 300,
+      tradeReadiness: "strategy_candidate_review_only",
+      evidenceBlockers: [],
+      reviewReady: true,
+      preliveReady: true,
+    },
+    overall: {
+      liveTrading: "ALLOWED",
+    },
+  });
+
+  assert.equal(admission.decision, "GO_FOR_AUTO_EXECUTE");
+  assert.equal(admission.status, "auto_execute_policy_ready");
+  assert.deepEqual(admission.blockers, []);
+  assert.equal(admission.nextActionCode, "auto_execute_policy_ready");
+  assert.equal(admission.constraints.liveTradingPolicy, "ALLOWED");
+  assert.equal(admission.requirements.some((item) => item.code === "auto_execute_policy_ready" && item.status === "passed"), true);
+});
+
+test("tiny canary admission reconciliation updates stale manual approval package after live policy clears", () => {
+  const reconciled = reconcileTinyCanaryAdmissionWithLivePolicy(
+    {
+      decision: "GO_FOR_MANUAL_APPROVAL",
+      status: "manual_approval_required",
+      blockers: [],
+      nextActionCode: "manual_approval_required",
+      requirements: [
+        { code: "candidate_selected", label: "candidate selected", status: "passed", blockers: [] },
+        { code: "manual_approval_required", label: "manual approval required", status: "required", blockers: [] },
+      ],
+      constraints: {
+        liveTradingPolicy: "BLOCKED",
+      },
+    },
+    {
+      liveTrading: "ALLOWED",
+    },
+  );
+
+  assert.equal(reconciled.decision, "GO_FOR_AUTO_EXECUTE");
+  assert.equal(reconciled.status, "auto_execute_policy_ready");
+  assert.equal(reconciled.nextActionCode, "auto_execute_policy_ready");
+  assert.equal(reconciled.constraints.liveTradingPolicy, "ALLOWED");
+  assert.equal(reconciled.requirements.some((item) => item.code === "auto_execute_policy_ready" && item.status === "passed"), true);
 });

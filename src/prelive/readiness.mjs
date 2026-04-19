@@ -163,7 +163,8 @@ export function buildPreliveReadinessSummary({
   const manualReviewReady = Boolean(
     strategy?.manualCanaryReviewReady ||
       reviewPackage?.readyForManualReview ||
-      reviewPackage?.tinyCanaryAdmission?.status === "manual_approval_required",
+      reviewPackage?.tinyCanaryAdmission?.status === "manual_approval_required" ||
+      reviewPackage?.tinyCanaryAdmission?.status === "auto_execute_policy_ready",
   );
   const primaryCandidate = reviewPackage?.primaryLiveCandidate || null;
   const strategyReviewCandidateReady = Boolean(
@@ -305,8 +306,8 @@ export function buildPreliveReadinessSummary({
   if (forkExecution.pendingOutputCount > 0) {
     tinyCanaryBlockers.push("fork_output_resolution_required");
   }
-  if (overall?.liveTrading !== "BLOCKED") {
-    tinyCanaryBlockers.push("live_policy_state_changed");
+  if (!["BLOCKED", "ALLOWED"].includes(overall?.liveTrading || "BLOCKED")) {
+    tinyCanaryBlockers.push("live_policy_state_unknown");
   }
 
   const tinyLiveCanary = phaseStatus({
@@ -350,7 +351,7 @@ export function buildPreliveReadinessSummary({
       "Mechanical simulation uses RPC estimation and eth_call only; it is not realized execution proof.",
       "Pre-live execution audit requires plan, submission, receipt, and journal records to stay in sync.",
       "Fork execution requires an external signer and never stores private keys in planner or dashboard code.",
-      "liveTrading remains BLOCKED until architecture review and explicit canary approval.",
+      "liveTrading is reported from deterministic policy gates; dashboard code never signs or authorizes transactions.",
     ],
   };
 }

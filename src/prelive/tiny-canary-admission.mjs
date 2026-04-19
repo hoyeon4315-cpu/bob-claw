@@ -53,6 +53,7 @@ export function buildTinyCanaryAdmission({
     candidate?.tradeReadiness === "review_only_canary_candidate" ||
     reviewReady;
   const livePolicyBlocked = (overall?.liveTrading || "BLOCKED") === "BLOCKED";
+  const livePolicyAllowed = overall?.liveTrading === "ALLOWED";
 
   const requirements = [
     {
@@ -80,15 +81,17 @@ export function buildTinyCanaryAdmission({
       blockers: preliveReady ? [] : preliveBlockers,
     },
     {
-      code: "live_policy_blocked_for_manual_review",
-      label: "live trading remains blocked until manual approval",
-      status: livePolicyBlocked ? "passed" : "blocked",
-      blockers: livePolicyBlocked ? [] : ["live_policy_state_changed"],
+      code: "live_policy_gate_recorded",
+      label: "live policy gate state is recorded",
+      status: livePolicyBlocked || livePolicyAllowed ? "passed" : "blocked",
+      blockers: livePolicyBlocked || livePolicyAllowed ? [] : ["live_policy_state_unknown"],
     },
     {
-      code: "manual_approval_required",
-      label: "manual approval is still required before any live canary",
-      status: "required",
+      code: livePolicyAllowed ? "auto_execute_policy_ready" : "manual_approval_required",
+      label: livePolicyAllowed
+        ? "auto-execute policy is ready for the selected strategy"
+        : "manual approval is still required before any live canary",
+      status: livePolicyAllowed ? "passed" : "required",
       blockers: [],
     },
   ];
@@ -99,11 +102,22 @@ export function buildTinyCanaryAdmission({
       .flatMap((item) => item.blockers),
   );
   const decision = blockers.length === 0 ? "GO_FOR_MANUAL_APPROVAL" : "NO_GO";
+  const reconciledDecision = decision === "GO_FOR_MANUAL_APPROVAL" && livePolicyAllowed ? "GO_FOR_AUTO_EXECUTE" : decision;
+  const status = reconciledDecision === "GO_FOR_AUTO_EXECUTE"
+    ? "auto_execute_policy_ready"
+    : reconciledDecision === "GO_FOR_MANUAL_APPROVAL"
+      ? "manual_approval_required"
+      : "blocked";
+  const nextActionCode = reconciledDecision === "GO_FOR_AUTO_EXECUTE"
+    ? "auto_execute_policy_ready"
+    : reconciledDecision === "GO_FOR_MANUAL_APPROVAL"
+      ? "manual_approval_required"
+      : candidate?.nextAction?.code || "clear_admission_blockers";
 
   return {
     schemaVersion: 1,
-    decision,
-    status: decision === "GO_FOR_MANUAL_APPROVAL" ? "manual_approval_required" : "blocked",
+    decision: reconciledDecision,
+    status,
     blockers,
     requirements,
     candidate: candidate
@@ -133,7 +147,42 @@ export function buildTinyCanaryAdmission({
       minNetProfitUsd: riskPolicy.minNetProfitUsd,
       minNetProfitPct: riskPolicy.minNetProfitPct,
     },
-    nextActionCode: decision === "GO_FOR_MANUAL_APPROVAL" ? "manual_approval_required" : candidate?.nextAction?.code || "clear_admission_blockers",
-    nextActionCommand: decision === "GO_FOR_MANUAL_APPROVAL" ? null : candidate?.nextAction?.command || null,
+    nextActionCode,
+    nextActionCommand: status === "blocked" ? candidate?.nextAction?.command || null : null,
+  };
+}
+
+export function reconcileTinyCanaryAdmissionWithLivePolicy(admission = null, overall = null) {
+  if (!admission) return null;
+  if (overall?.liveTrading !== "ALLOWED" || (admission.blockers || []).length > 0) {
+    return {
+      ...admission,
+      constraints: {
+        ...(admission.constraints || {}),
+        liveTradingPolicy: overall?.liveTrading || admission.constraints?.liveTradingPolicy || "BLOCKED",
+      },
+    };
+  }
+  return {
+    ...admission,
+    decision: "GO_FOR_AUTO_EXECUTE",
+    status: "auto_execute_policy_ready",
+    requirements: (admission.requirements || []).map((requirement) =>
+      requirement?.code === "manual_approval_required"
+        ? {
+            ...requirement,
+            code: "auto_execute_policy_ready",
+            label: "auto-execute policy is ready for the selected strategy",
+            status: "passed",
+            blockers: [],
+          }
+        : requirement,
+    ),
+    nextActionCode: "auto_execute_policy_ready",
+    nextActionCommand: null,
+    constraints: {
+      ...(admission.constraints || {}),
+      liveTradingPolicy: "ALLOWED",
+    },
   };
 }

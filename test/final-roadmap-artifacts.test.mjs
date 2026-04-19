@@ -224,3 +224,39 @@ test("tiny live canary rollout keeps manual approval as next action after blocke
   assert.equal(rollout.summary.nextAction.command, null);
   assert.equal(summarizeTinyLiveCanaryRollout(rollout).nextAction.code, "manual_approval_required");
 });
+
+test("tiny live canary rollout keeps auto-execute policy as next action after policy clears", () => {
+  const rollout = buildTinyLiveCanaryRollout({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        decision: "GO_FOR_AUTO_EXECUTE",
+        status: "auto_execute_policy_ready",
+        blockers: [],
+        nextActionCode: "auto_execute_policy_ready",
+        requirements: [
+          { code: "candidate_selected", label: "candidate selected", status: "passed", blockers: [] },
+          { code: "prelive_evidence_complete", label: "prelive evidence complete", status: "passed", blockers: [] },
+          { code: "auto_execute_policy_ready", label: "auto-execute policy ready", status: "passed", blockers: [] },
+        ],
+        candidate: {
+          candidateType: "strategy",
+          candidateId: "wrapped-btc-loop-base-moonwell",
+        },
+      },
+    },
+    preliveValidation: {
+      validationStatus: "ready_for_manual_review",
+      currentStageId: "tiny_live_canary_review",
+      nextActionCode: "token",
+      nextActionCommand: "npm run check:estimator-wallet -- --route-key=base:btc->ethereum:btc --amount=25000",
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  assert.equal(rollout.summary.decision, "GO_FOR_AUTO_EXECUTE");
+  assert.equal(rollout.summary.status, "auto_execute_policy_ready");
+  assert.equal(rollout.summary.blockerCount, 0);
+  assert.equal(rollout.summary.nextAction.code, "auto_execute_policy_ready");
+  assert.equal(rollout.summary.nextAction.command, null);
+  assert.equal(summarizeTinyLiveCanaryRollout(rollout).nextAction.code, "auto_execute_policy_ready");
+});

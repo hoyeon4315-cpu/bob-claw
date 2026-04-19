@@ -13,6 +13,7 @@ import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } fr
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
+import { reconcileTinyCanaryAdmissionWithLivePolicy } from "../prelive/tiny-canary-admission.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocator-core.mjs";
 import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
@@ -27,6 +28,7 @@ import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
+import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
@@ -503,6 +505,23 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.prelive.exactRouteForkPackage = summarizeExactRouteForkPackage(exactRouteForkPackage);
   dashboardStatus.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(operationalJudgmentReview);
 
+  dashboardStatus.liveBaseline = buildLiveBaselineSummary({
+    dashboardStatus,
+    nextStep: state.nextStep,
+  });
+  dashboardStatus.overall = applyLaneAwareLivePolicy({
+    overall: dashboardStatus.overall,
+    audit: dashboardStatus.audit,
+    reviewPackage: dashboardStatus.prelive.reviewPackage,
+    prelive: dashboardStatus.prelive,
+    liveBaseline: dashboardStatus.liveBaseline,
+  });
+  dashboardStatus.prelive.liveTradingPolicy = dashboardStatus.overall.liveTrading;
+  reviewPackage.tinyCanaryAdmission = reconcileTinyCanaryAdmissionWithLivePolicy(
+    reviewPackage.tinyCanaryAdmission,
+    dashboardStatus.overall,
+  );
+  reviewPackage.liveTradingPolicy = dashboardStatus.overall.liveTrading;
   dashboardStatus.liveBaseline = buildLiveBaselineSummary({
     dashboardStatus,
     nextStep: state.nextStep,

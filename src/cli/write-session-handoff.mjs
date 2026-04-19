@@ -19,11 +19,13 @@ import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } fr
 import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
+import { reconcileTinyCanaryAdmissionWithLivePolicy } from "../prelive/tiny-canary-admission.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildCanaryInputSummary, buildCanaryStageChecklist, buildExecutionStageSummary } from "../status/canary-inputs.mjs";
 import { buildLiveBaselineSummary } from "../status/live-baseline.mjs";
+import { applyLaneAwareLivePolicy } from "../status/live-policy.mjs";
 import { buildAllocatorCore } from "../strategy/allocator-core.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
@@ -1810,6 +1812,24 @@ async function main() {
     reviewPackage: summarizePreliveReviewPackage(reviewPackage),
     validation: preliveValidationSummary,
   };
+  dashboardStatusWithSnapshot.liveBaseline = buildLiveBaselineSummary({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    nextStep: next,
+  });
+  dashboardStatusWithSnapshot.overall = applyLaneAwareLivePolicy({
+    overall: dashboardStatusWithSnapshot.overall,
+    audit: dashboardStatusWithSnapshot.audit,
+    reviewPackage: dashboardStatusWithSnapshot.prelive.reviewPackage,
+    prelive: dashboardStatusWithSnapshot.prelive,
+    liveBaseline: dashboardStatusWithSnapshot.liveBaseline,
+  });
+  dashboardStatusWithSnapshot.prelive.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
+  reviewPackage.tinyCanaryAdmission = reconcileTinyCanaryAdmissionWithLivePolicy(
+    reviewPackage.tinyCanaryAdmission,
+    dashboardStatusWithSnapshot.overall,
+  );
+  reviewPackage.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
+  dashboardStatusWithSnapshot.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatusWithSnapshot.liveBaseline = buildLiveBaselineSummary({
     dashboardStatus: dashboardStatusWithSnapshot,
     nextStep: next,
