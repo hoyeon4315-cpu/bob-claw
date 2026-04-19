@@ -168,6 +168,9 @@ test("phase3 strategy validation clears wrapped loop blocker once extended recei
       unwindCount: 4,
       extendedReceiptContextReady: true,
       missingExtendedReceiptFields: [],
+      actualLoopFeesUsd: 0.035,
+      actualUnwindCostUsd: 0.033,
+      realizedNetCarryUsd: 0,
     },
     protocolTrustTiers: {
       generatedAt: "2026-04-18T09:00:00.000Z",
@@ -187,6 +190,7 @@ test("phase3 strategy validation clears wrapped loop blocker once extended recei
   assert.ok(wrappedLoop);
   assert.equal(wrappedLoop.blockers.includes("extended_receipt_context_missing"), false);
   assert.equal(wrappedLoop.evidence.extendedReceiptContextReady, true);
+  assert.equal(wrappedLoop.evidence.realizedNetCarryUsd, 0);
 });
 
 test("phase3 strategy validation records signer-backed wrapped-loop roundtrip before full OOS packet exists", () => {

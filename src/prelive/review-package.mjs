@@ -208,7 +208,9 @@ function buildStrategyRailProof({ scaffold = null, summary = null, validation = 
   const liveRoundtripProofStatus = validation?.evidence?.liveRoundtripProofStatus || null;
   const liveRoundtripEntryCount = validation?.evidence?.liveRoundtripEntryCount ?? 0;
   const liveRoundtripUnwindCount = validation?.evidence?.liveRoundtripUnwindCount ?? 0;
-  const observedCarrySampleRecorded = observedStatus(realized?.status) && (realized?.sampleCount ?? 0) > 0;
+  const liveRealizedNetCarryUsd = validation?.evidence?.realizedNetCarryUsd ?? null;
+  const observedCarrySampleRecorded =
+    Number.isFinite(liveRealizedNetCarryUsd) || (observedStatus(realized?.status) && (realized?.sampleCount ?? 0) > 0);
   const protocolPlanReady = entryActionCount > 0 && unwindActionCount > 0 && watcherCheckCount > 0 && readyForDryRun;
   const entryReceiptRecorded = liveRoundtripEntryCount > 0;
   const unwindReceiptRecorded = liveRoundtripUnwindCount > 0;
@@ -274,6 +276,8 @@ function buildStrategyRailProof({ scaffold = null, summary = null, validation = 
     estimatedCarrySampleCount: estimated?.sampleCount ?? 0,
     realizedCarryStatus: realized?.status || null,
     realizedCarrySampleCount: realized?.sampleCount ?? 0,
+    liveRealizedNetCarryUsd,
+    extendedReceiptContextReady: validation?.evidence?.extendedReceiptContextReady === true,
     requiredProofs: [
       "native BTC funded route into destination-chain collateral",
       "protocol entry receipt for deposit/borrow/supply path",
@@ -392,6 +396,10 @@ function buildStrategyLiveCandidate({
       liveRoundtripProofStatus: validation?.evidence?.liveRoundtripProofStatus || null,
       liveRoundtripEntryCount: validation?.evidence?.liveRoundtripEntryCount ?? 0,
       liveRoundtripUnwindCount: validation?.evidence?.liveRoundtripUnwindCount ?? 0,
+      extendedReceiptContextReady: validation?.evidence?.extendedReceiptContextReady === true,
+      actualLoopFeesUsd: validation?.evidence?.actualLoopFeesUsd ?? null,
+      actualUnwindCostUsd: validation?.evidence?.actualUnwindCostUsd ?? null,
+      realizedNetCarryUsd: validation?.evidence?.realizedNetCarryUsd ?? null,
     },
     railProof,
   };

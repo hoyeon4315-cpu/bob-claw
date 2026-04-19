@@ -1009,7 +1009,7 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
 });
 
 test("prelive review package keeps yield strategies blocked until live carry is observed", () => {
-  const reviewPackage = buildPreliveReviewPackage({
+  const baseInput = {
     dashboardStatus: {
       generatedAt: "2026-04-19T12:00:00.000Z",
       overall: {
@@ -1114,7 +1114,8 @@ test("prelive review package keeps yield strategies blocked until live carry is 
         },
       ],
     },
-  });
+  };
+  const reviewPackage = buildPreliveReviewPackage(baseInput);
   const summary = summarizePreliveReviewPackage(reviewPackage);
 
   assert.equal(reviewPackage.packageStatus, "not_ready_for_manual_review");
@@ -1124,6 +1125,25 @@ test("prelive review package keeps yield strategies blocked until live carry is 
   assert.equal(reviewPackage.primaryLiveCandidate.railProof.nextStage.id, "holding_period_carry_observation");
   assert.deepEqual(reviewPackage.primaryLiveCandidate.blockerReasons, ["observed_holding_period_carry_missing"]);
   assert.equal(summary.railProofNextStageId, "holding_period_carry_observation");
+
+  const observedCarryPackage = buildPreliveReviewPackage({
+    ...baseInput,
+    phase3Validation: {
+      validations: [
+        {
+          ...baseInput.phase3Validation.validations[0],
+          evidence: {
+            ...baseInput.phase3Validation.validations[0].evidence,
+            realizedNetCarryUsd: 0,
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.completeStageCount, 6);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.railProof.nextStage, null);
+  assert.equal(observedCarryPackage.primaryLiveCandidate.blockerReasons.includes("observed_holding_period_carry_missing"), false);
 });
 
 test("prelive review package promotes the strategy candidate when the current route is negative and policy-ready measured routes are exhausted", () => {

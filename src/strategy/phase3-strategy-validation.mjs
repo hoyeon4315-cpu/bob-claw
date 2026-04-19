@@ -156,6 +156,9 @@ function wrappedLoopValidation({
       liveRoundtripUnwindCount: wrappedBtcLoopLiveProof?.unwindCount ?? 0,
       extendedReceiptContextReady,
       missingExtendedReceiptFields: wrappedBtcLoopLiveProof?.missingExtendedReceiptFields || [],
+      actualLoopFeesUsd: wrappedBtcLoopLiveProof?.actualLoopFeesUsd ?? null,
+      actualUnwindCostUsd: wrappedBtcLoopLiveProof?.actualUnwindCostUsd ?? null,
+      realizedNetCarryUsd: wrappedBtcLoopLiveProof?.realizedNetCarryUsd ?? null,
     },
     nextAction: {
       code: liveRoundtrip.recorded
