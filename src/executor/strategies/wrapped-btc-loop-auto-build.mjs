@@ -9,6 +9,7 @@ import {
   STABLE_QUOTE_TOKENS,
 } from "../../dex/odos.mjs";
 import { readErc20Balance } from "../../evm/account-state.mjs";
+import { simulateTransactionCall } from "../../evm/transaction-read.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { buildWrappedBtcLendingLoopScaffold } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-loop-bindings.mjs";
@@ -24,11 +25,24 @@ const COMPTROLLER_INTERFACE = new Interface([
   "function enterMarkets(address[] mTokens)",
 ]);
 
+const COMPTROLLER_VIEW_INTERFACE = new Interface([
+  "function oracle() view returns (address)",
+  "function markets(address) view returns (bool,uint256,bool)",
+]);
+
 const MTOKEN_INTERFACE = new Interface([
   "function mint(uint256 mintAmount)",
   "function borrow(uint256 borrowAmount)",
   "function repayBorrow(uint256 repayAmount)",
   "function redeemUnderlying(uint256 redeemAmount)",
+]);
+
+const MTOKEN_VIEW_INTERFACE = new Interface([
+  "function getAccountSnapshot(address account) view returns (uint256,uint256,uint256,uint256)",
+]);
+
+const PRICE_ORACLE_INTERFACE = new Interface([
+  "function getUnderlyingPrice(address mToken) view returns (uint256)",
 ]);
 
 function round(value, digits = 8) {
@@ -58,6 +72,33 @@ function unitsToUsd(amountUnits, assetUsd, decimals) {
   const safeDecimals = Math.max(0, Math.min(18, Number(decimals)));
   const units = typeof amountUnits === "bigint" ? amountUnits : BigInt(amountUnits || 0);
   return round((Number(units) / (10 ** safeDecimals)) * assetUsd, 6);
+}
+
+function usd36ToNumber(value) {
+  return round(Number(value || 0n) / 1e36, 6);
+}
+
+function minBigInt(left, right) {
+  const a = BigInt(left || 0n);
+  const b = BigInt(right || 0n);
+  return a < b ? a : b;
+}
+
+function ceilDiv(numerator, denominator) {
+  const n = BigInt(numerator || 0n);
+  const d = BigInt(denominator || 1n);
+  return n <= 0n ? 0n : ((n - 1n) / d) + 1n;
+}
+
+function marketStateFromReturnData(returnData = "0x") {
+  const words = String(returnData || "")
+    .replace(/^0x/, "")
+    .match(/.{1,64}/g) || [];
+  if (words.length < 2) return null;
+  return {
+    isListed: BigInt(`0x${words[0]}`) !== 0n,
+    collateralFactorMantissa: BigInt(`0x${words[1]}`),
+  };
 }
 
 async function estimateBufferedGasLimit({
@@ -255,11 +296,17 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   const borrowToken = STABLE_QUOTE_TOKENS.base.token;
   const collateralAsset = tokenAsset("base", collateralToken);
   const borrowAsset = tokenAsset("base", borrowToken);
+  const baseChainConfig = getEvmChainConfig("base");
   const collateralPriceUsd = prices?.tokenByKey?.[collateralAsset.priceKey] ?? prices?.btc ?? null;
   if (!Number.isFinite(collateralPriceUsd)) {
     throw new Error("Repo auto-build requires a current cbBTC/BTC USD price");
   }
-  const availableBorrowBalance = await readErc20BalanceImpl("base", borrowToken, signerAddress);
+  const availableBorrowBalance = await readErc20BalanceImpl(
+    "base",
+    borrowToken,
+    signerAddress,
+    baseChainConfig ? { chainConfig: baseChainConfig } : undefined,
+  );
   let availableBorrowInventoryUnits = BigInt(availableBorrowBalance?.balance ?? 0n);
   const collateralMarketAddress = support.knownContracts.collateralMarket.mTokenAddress;
   const borrowMarketAddress = support.knownContracts.borrowMarket.mTokenAddress;
@@ -273,7 +320,12 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   if (!requestedInitialCollateralUnits) {
     throw new Error("Failed to derive initial cbBTC collateral units");
   }
-  const availableCollateralBalance = await readErc20BalanceImpl("base", collateralToken, signerAddress);
+  const availableCollateralBalance = await readErc20BalanceImpl(
+    "base",
+    collateralToken,
+    signerAddress,
+    baseChainConfig ? { chainConfig: baseChainConfig } : undefined,
+  );
   const availableCollateralUnits = BigInt(availableCollateralBalance?.balance ?? 0n);
   if (availableCollateralUnits <= 0n) {
     throw new Error("Signer does not hold any cbBTC collateral on Base for the wrapped BTC loop entry");
@@ -708,5 +760,402 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       iterations.length === 0 ? "Tiny validation mode skipped borrow iterations and only validates collateral deposit plus redeem." : null,
       "Unwind repays from free borrow-asset inventory first and falls back to redeemed collateral swaps when the wallet is short.",
     ].filter(Boolean),
+  };
+}
+
+export async function readCurrentMoonwellWrappedBtcLoopPosition({
+  strategyId = "wrapped-btc-loop-base-moonwell",
+  strategyConfig = {},
+  signerAddress,
+  readErc20BalanceImpl = readErc20Balance,
+  simulateTransactionCallImpl = simulateTransactionCall,
+} = {}) {
+  if (!signerAddress) {
+    throw new Error("Signer address is required to read the current Moonwell wrapped BTC loop position");
+  }
+
+  const support = resolveWrappedBtcLoopBindingSupport({
+    strategyId,
+    strategyConfig,
+  });
+  if (support.executableFromRepo !== true) {
+    throw new Error(`Repo auto-build is unavailable: ${(support.missingFacts || []).join(" ")}`);
+  }
+
+  const chain = strategyConfig.chain || "base";
+  const chainConfig = getEvmChainConfig(chain);
+  const collateralToken = BASE_CBBTC_TOKEN;
+  const borrowToken = STABLE_QUOTE_TOKENS.base.token;
+  const collateralAsset = tokenAsset(chain, collateralToken);
+  const borrowAsset = tokenAsset(chain, borrowToken);
+  const comptrollerAddress = support.knownContracts.comptroller.address;
+  const collateralMarketAddress = support.knownContracts.collateralMarket.mTokenAddress;
+  const borrowMarketAddress = support.knownContracts.borrowMarket.mTokenAddress;
+
+  const [collateralWalletBalance, borrowWalletBalance, oracleCall, collateralMarketCall, collateralSnapshotCall, borrowSnapshotCall] =
+    await Promise.all([
+      readErc20BalanceImpl(
+        chain,
+        collateralToken,
+        signerAddress,
+        chainConfig ? { chainConfig } : undefined,
+      ),
+      readErc20BalanceImpl(
+        chain,
+        borrowToken,
+        signerAddress,
+        chainConfig ? { chainConfig } : undefined,
+      ),
+      simulateTransactionCallImpl(chain, {
+        to: comptrollerAddress,
+        data: COMPTROLLER_VIEW_INTERFACE.encodeFunctionData("oracle"),
+      }, chainConfig ? { chainConfig } : undefined),
+      simulateTransactionCallImpl(chain, {
+        to: comptrollerAddress,
+        data: COMPTROLLER_VIEW_INTERFACE.encodeFunctionData("markets", [collateralMarketAddress]),
+      }, chainConfig ? { chainConfig } : undefined),
+      simulateTransactionCallImpl(chain, {
+        to: collateralMarketAddress,
+        data: MTOKEN_VIEW_INTERFACE.encodeFunctionData("getAccountSnapshot", [signerAddress]),
+      }, chainConfig ? { chainConfig } : undefined),
+      simulateTransactionCallImpl(chain, {
+        to: borrowMarketAddress,
+        data: MTOKEN_VIEW_INTERFACE.encodeFunctionData("getAccountSnapshot", [signerAddress]),
+      }, chainConfig ? { chainConfig } : undefined),
+    ]);
+
+  const oracleAddress = COMPTROLLER_VIEW_INTERFACE.decodeFunctionResult("oracle", oracleCall.returnData)[0];
+  const marketState = marketStateFromReturnData(collateralMarketCall.returnData);
+  if (!oracleAddress || !marketState?.isListed) {
+    throw new Error("Moonwell collateral market is not listed or oracle is unavailable");
+  }
+
+  const [collateralSnapshotError, collateralTokenBalance, , collateralExchangeRate] =
+    MTOKEN_VIEW_INTERFACE.decodeFunctionResult("getAccountSnapshot", collateralSnapshotCall.returnData);
+  const [borrowSnapshotError, , borrowBalance] =
+    MTOKEN_VIEW_INTERFACE.decodeFunctionResult("getAccountSnapshot", borrowSnapshotCall.returnData);
+  if (BigInt(collateralSnapshotError) !== 0n || BigInt(borrowSnapshotError) !== 0n) {
+    throw new Error("Moonwell getAccountSnapshot returned a non-zero error code");
+  }
+
+  const [collateralPriceMantissa, borrowPriceMantissa] = await Promise.all([
+    simulateTransactionCallImpl(chain, {
+      to: oracleAddress,
+      data: PRICE_ORACLE_INTERFACE.encodeFunctionData("getUnderlyingPrice", [collateralMarketAddress]),
+    }, chainConfig ? { chainConfig } : undefined).then((result) =>
+      PRICE_ORACLE_INTERFACE.decodeFunctionResult("getUnderlyingPrice", result.returnData)[0]
+    ),
+    simulateTransactionCallImpl(chain, {
+      to: oracleAddress,
+      data: PRICE_ORACLE_INTERFACE.encodeFunctionData("getUnderlyingPrice", [borrowMarketAddress]),
+    }, chainConfig ? { chainConfig } : undefined).then((result) =>
+      PRICE_ORACLE_INTERFACE.decodeFunctionResult("getUnderlyingPrice", result.returnData)[0]
+    ),
+  ]);
+
+  const collateralUnderlyingUnits = (BigInt(collateralTokenBalance) * BigInt(collateralExchangeRate)) / 10n ** 18n;
+  const borrowBalanceUnits = BigInt(borrowBalance);
+  const freeBorrowUnits = BigInt(borrowWalletBalance?.balance ?? 0n);
+  const freeCollateralUnits = BigInt(collateralWalletBalance?.balance ?? 0n);
+  const collateralUsd36 = collateralUnderlyingUnits * BigInt(collateralPriceMantissa);
+  const borrowUsd36 = borrowBalanceUnits * BigInt(borrowPriceMantissa);
+
+  return {
+    chain,
+    signerAddress,
+    collateralToken,
+    borrowToken,
+    collateralDecimals: collateralAsset.decimals,
+    borrowDecimals: borrowAsset.decimals,
+    collateralMarketAddress,
+    borrowMarketAddress,
+    collateralFactorMantissa: BigInt(marketState.collateralFactorMantissa),
+    collateralPriceMantissa: BigInt(collateralPriceMantissa),
+    borrowPriceMantissa: BigInt(borrowPriceMantissa),
+    collateralTokenBalance: BigInt(collateralTokenBalance),
+    collateralExchangeRate: BigInt(collateralExchangeRate),
+    collateralUnderlyingUnits,
+    borrowBalanceUnits,
+    freeBorrowUnits,
+    freeCollateralUnits,
+    collateralUsd36,
+    borrowUsd36,
+    collateralUsd: usd36ToNumber(collateralUsd36),
+    borrowUsd: usd36ToNumber(borrowUsd36),
+    freeBorrowUsd: usd36ToNumber(freeBorrowUnits * BigInt(borrowPriceMantissa)),
+  };
+}
+
+export async function buildCurrentWrappedBtcLoopUnwindBinding({
+  strategyId = "wrapped-btc-loop-base-moonwell",
+  strategyConfig = {},
+  signerAddress,
+  client = new OdosClient(),
+  readErc20BalanceImpl = readErc20Balance,
+  simulateTransactionCallImpl = simulateTransactionCall,
+  estimateGasImpl = estimateGas,
+  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  now = new Date().toISOString(),
+} = {}) {
+  const position = await readCurrentMoonwellWrappedBtcLoopPosition({
+    strategyId,
+    strategyConfig,
+    signerAddress,
+    readErc20BalanceImpl,
+    simulateTransactionCallImpl,
+  });
+
+  if (position.borrowBalanceUnits <= 0n && position.collateralUnderlyingUnits <= 0n) {
+    throw new Error("No current Moonwell wrapped BTC loop position is open on Base");
+  }
+
+  const unwind = [];
+  let remainingBorrowUnits = position.borrowBalanceUnits;
+  const freeRepayUnits = minBigInt(position.freeBorrowUnits, remainingBorrowUnits);
+  if (freeRepayUnits > 0n) {
+    const freeRepayAmountUsd = usd36ToNumber(freeRepayUnits * position.borrowPriceMantissa);
+    const repayFromWalletApprovalGasLimit = await estimateBufferedGasLimit({
+      chain: position.chain,
+      from: signerAddress,
+      to: position.borrowToken,
+      data: ERC20_INTERFACE.encodeFunctionData("approve", [position.borrowMarketAddress, freeRepayUnits.toString()]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const repayFromWalletGasLimit = await estimateBufferedGasLimit({
+      chain: position.chain,
+      from: signerAddress,
+      to: position.borrowMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("repayBorrow", [freeRepayUnits.toString()]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    unwind.push(
+      exactApprovalStep({
+        id: "approve-repay-usdc-wallet",
+        chain: position.chain,
+        token: position.borrowToken,
+        spender: position.borrowMarketAddress,
+        amount: freeRepayUnits.toString(),
+        amountUsd: freeRepayAmountUsd,
+        now,
+        metadata: {
+          kind: "repay_borrow_asset",
+          inventorySource: "wallet_balance",
+          repayUnits: freeRepayUnits.toString(),
+        },
+        gasLimit: repayFromWalletApprovalGasLimit,
+      }),
+      contractCallStep({
+        id: "repay-usdc-wallet",
+        chain: position.chain,
+        to: position.borrowMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("repayBorrow", [freeRepayUnits.toString()]),
+        amountUsd: freeRepayAmountUsd,
+        now,
+        metadata: {
+          kind: "repay_borrow_asset",
+          inventorySource: "wallet_balance",
+          repayUnits: freeRepayUnits.toString(),
+          borrowInventoryEffect: "consume",
+        },
+        gasLimit: repayFromWalletGasLimit,
+      }),
+    );
+    remainingBorrowUnits -= freeRepayUnits;
+  }
+
+  let redeemedForRepayUnits = 0n;
+  if (remainingBorrowUnits > 0n) {
+    const remainingBorrowUsd36 = remainingBorrowUnits * position.borrowPriceMantissa;
+    const adjustedBorrowUsd36 = ceilDiv(remainingBorrowUsd36 * 10200n, 10000n);
+    const maxSafeRedeemUsd36 = position.collateralUsd36 - ((remainingBorrowUsd36 * 10n ** 18n) / position.collateralFactorMantissa);
+    if (maxSafeRedeemUsd36 <= 0n) {
+      throw new Error("Current Moonwell position has no safe collateral liquidity available for repay funding");
+    }
+    const maxSafeRedeemUnits = maxSafeRedeemUsd36 / position.collateralPriceMantissa;
+    let redeemForRepayUnits = minBigInt(
+      maxSafeRedeemUnits,
+      ceilDiv(adjustedBorrowUsd36, position.collateralPriceMantissa),
+    );
+    if (redeemForRepayUnits <= 0n) {
+      redeemForRepayUnits = maxSafeRedeemUnits;
+    }
+
+    let fundingSwap = await buildOdosSwapStep({
+      id: "swap-collateral-to-repay-current",
+      chain: position.chain,
+      inputToken: position.collateralToken,
+      outputToken: position.borrowToken,
+      amount: redeemForRepayUnits.toString(),
+      amountUsd: usd36ToNumber(redeemForRepayUnits * position.collateralPriceMantissa),
+      signerAddress,
+      now,
+      client,
+      quoteType: "token_to_stable",
+    });
+    if (BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n) < remainingBorrowUnits && maxSafeRedeemUnits > redeemForRepayUnits) {
+      redeemForRepayUnits = maxSafeRedeemUnits;
+      fundingSwap = await buildOdosSwapStep({
+        id: "swap-collateral-to-repay-current",
+        chain: position.chain,
+        inputToken: position.collateralToken,
+        outputToken: position.borrowToken,
+        amount: redeemForRepayUnits.toString(),
+        amountUsd: usd36ToNumber(redeemForRepayUnits * position.collateralPriceMantissa),
+        signerAddress,
+        now,
+        client,
+        quoteType: "token_to_stable",
+      });
+    }
+    const plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
+    if (plannedBorrowTopUpUnits < remainingBorrowUnits) {
+      throw new Error(
+        `Current Moonwell position still lacks repay inventory after collateral swap plan: need ${remainingBorrowUnits.toString()}, planned ${plannedBorrowTopUpUnits.toString()}`,
+      );
+    }
+
+    const redeemForRepayGasLimit = await estimateBufferedGasLimit({
+      chain: position.chain,
+      from: signerAddress,
+      to: position.collateralMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemForRepayUnits.toString()]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const approveRepayGasLimit = await estimateBufferedGasLimit({
+      chain: position.chain,
+      from: signerAddress,
+      to: position.borrowToken,
+      data: ERC20_INTERFACE.encodeFunctionData("approve", [position.borrowMarketAddress, remainingBorrowUnits.toString()]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    const repayGasLimit = await estimateBufferedGasLimit({
+      chain: position.chain,
+      from: signerAddress,
+      to: position.borrowMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("repayBorrow", [remainingBorrowUnits.toString()]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+
+    unwind.push(
+      contractCallStep({
+        id: "redeem-collateral-for-repay-current",
+        chain: position.chain,
+        to: position.collateralMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemForRepayUnits.toString()]),
+        amountUsd: usd36ToNumber(redeemForRepayUnits * position.collateralPriceMantissa),
+        now,
+        metadata: {
+          kind: "withdraw_collateral_for_repay",
+          fundsBorrowRepay: true,
+        },
+        gasLimit: redeemForRepayGasLimit,
+      }),
+      {
+        ...fundingSwap.approvalStep,
+        metadata: {
+          ...fundingSwap.approvalStep.metadata,
+          kind: "approve_collateral_for_repay_swap",
+          fundsBorrowRepay: true,
+        },
+      },
+      {
+        ...fundingSwap.swapStep,
+        metadata: {
+          ...fundingSwap.swapStep.metadata,
+          kind: "swap_collateral_to_repay_asset",
+          fundsBorrowRepay: true,
+          plannedBorrowTopUpUnits: plannedBorrowTopUpUnits.toString(),
+        },
+      },
+      exactApprovalStep({
+        id: "approve-repay-usdc-current",
+        chain: position.chain,
+        token: position.borrowToken,
+        spender: position.borrowMarketAddress,
+        amount: remainingBorrowUnits.toString(),
+        amountUsd: usd36ToNumber(remainingBorrowUsd36),
+        now,
+        metadata: {
+          kind: "repay_borrow_asset",
+          inventorySource: "redeemed_collateral_swap",
+          repayUnits: remainingBorrowUnits.toString(),
+          requiresBorrowAssetInventory: false,
+        },
+        gasLimit: approveRepayGasLimit,
+      }),
+      contractCallStep({
+        id: "repay-usdc-current",
+        chain: position.chain,
+        to: position.borrowMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("repayBorrow", [remainingBorrowUnits.toString()]),
+        amountUsd: usd36ToNumber(remainingBorrowUsd36),
+        now,
+        metadata: {
+          kind: "repay_borrow_asset",
+          inventorySource: "redeemed_collateral_swap",
+          repayUnits: remainingBorrowUnits.toString(),
+          borrowInventoryEffect: "consume",
+          requiresBorrowAssetInventory: false,
+        },
+        gasLimit: repayGasLimit,
+      }),
+    );
+    redeemedForRepayUnits = redeemForRepayUnits;
+    remainingBorrowUnits = 0n;
+  }
+
+  const residualCollateralUnits = position.collateralUnderlyingUnits - redeemedForRepayUnits;
+  if (residualCollateralUnits > 0n) {
+    const redeemResidualGasLimit = await estimateBufferedGasLimit({
+      chain: position.chain,
+      from: signerAddress,
+      to: position.collateralMarketAddress,
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [residualCollateralUnits.toString()]),
+      estimateGasImpl,
+      gasBufferBps,
+      allowFailure: true,
+    });
+    unwind.push(
+      contractCallStep({
+        id: "redeem-residual-collateral",
+        chain: position.chain,
+        to: position.collateralMarketAddress,
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [residualCollateralUnits.toString()]),
+        amountUsd: usd36ToNumber(residualCollateralUnits * position.collateralPriceMantissa),
+        now,
+        metadata: {
+          kind: "withdraw_residual_collateral",
+          residualAfterRepay: true,
+        },
+        gasLimit: redeemResidualGasLimit,
+      }),
+    );
+  }
+
+  return {
+    entry: [],
+    unwind,
+    notes: [
+      "Current-position unwind reads live Moonwell snapshots and builds a signer-owned rescue path.",
+      "Rescue plan repays from free USDC first, then redeems/sells safe collateral liquidity only if debt remains.",
+    ],
+    currentPosition: {
+      collateralUnderlyingUnits: position.collateralUnderlyingUnits.toString(),
+      borrowBalanceUnits: position.borrowBalanceUnits.toString(),
+      freeBorrowUnits: position.freeBorrowUnits.toString(),
+      freeCollateralUnits: position.freeCollateralUnits.toString(),
+      collateralUsd: position.collateralUsd,
+      borrowUsd: position.borrowUsd,
+    },
   };
 }

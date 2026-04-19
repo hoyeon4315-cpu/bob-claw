@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Interface } from "ethers";
 import {
   buildWrappedBtcLoopReceiptContext,
   classifyIntentResult,
@@ -78,6 +79,19 @@ const estimateGasFixture = async () => ({
   gasUnitsHex: "0x2bf20",
   rpcFallbacksTried: 0,
 });
+
+const comptrollerViewInterface = new Interface([
+  "function oracle() view returns (address)",
+  "function markets(address) view returns (bool,uint256,bool)",
+]);
+
+const mTokenViewInterface = new Interface([
+  "function getAccountSnapshot(address account) view returns (uint256,uint256,uint256,uint256)",
+]);
+
+const priceOracleInterface = new Interface([
+  "function getUnderlyingPrice(address mToken) view returns (uint256)",
+]);
 
 test("wrapped loop live plan builds signer intents with batch auto-ingest disabled", async () => {
   const plan = await buildWrappedBtcLoopScenarioPlan({
@@ -351,6 +365,108 @@ test("wrapped loop live plan auto-downsizes initial collateral to the available 
   assert.equal(mintInitial.metadata.requestedPerTradeCapUsd, 7);
   assert.equal(mintInitial.metadata.appliedPerTradeCapUsd, 6);
   assert.equal(mintInitial.metadata.collateralDownsized, true);
+});
+
+test("wrapped loop live plan supports current-position unwind-only rescue mode", async () => {
+  const oracleAddress = "0x0000000000000000000000000000000000000a11";
+  const collateralMarketAddress = "0xF877ACaFA28c19b96727966690b2f44d35aD5976";
+  const borrowMarketAddress = "0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22";
+  const collateralPriceMantissa = 75000n * 10n ** 28n;
+  const borrowPriceMantissa = 10n ** 30n;
+  const collateralFactorMantissa = 85n * 10n ** 16n;
+  const collateralTokenBalance = 10_000_000n;
+  const collateralExchangeRate = 10n ** 18n;
+  const borrowBalanceUnits = 700_000_000n;
+  const freeBorrowUnits = 200_000_000n;
+  const plannedBorrowTopUpUnits = 510_000_000n;
+
+  const odosClient = {
+    quote: async ({ outputToken }) => ({
+      latencyMs: 10,
+      body: {
+        outAmounts: [
+          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+            ? plannedBorrowTopUpUnits.toString()
+            : "0",
+        ],
+        pathId: "path-current-unwind",
+      },
+    }),
+    assemble: async () => ({
+      latencyMs: 12,
+      body: {
+        transaction: {
+          to: "0x0000000000000000000000000000000000000d05",
+          data: "0x12345678",
+          value: "0",
+          gas: 210000,
+        },
+      },
+    }),
+  };
+
+  const simulateTransactionCallImpl = async (chain, { to, data }) => {
+    const selector = data.slice(0, 10).toLowerCase();
+    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("oracle").selector.toLowerCase()) {
+      return {
+        returnData: comptrollerViewInterface.encodeFunctionResult("oracle", [oracleAddress]),
+      };
+    }
+    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("markets").selector.toLowerCase()) {
+      return {
+        returnData: comptrollerViewInterface.encodeFunctionResult("markets", [true, collateralFactorMantissa, true]),
+      };
+    }
+    if (to.toLowerCase() === collateralMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+      return {
+        returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, collateralTokenBalance, 0n, collateralExchangeRate]),
+      };
+    }
+    if (to.toLowerCase() === borrowMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+      return {
+        returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, 0n, borrowBalanceUnits, 0n]),
+      };
+    }
+    if (to.toLowerCase() === oracleAddress.toLowerCase()) {
+      const [market] = priceOracleInterface.decodeFunctionData("getUnderlyingPrice", data);
+      return {
+        returnData: priceOracleInterface.encodeFunctionResult(
+          "getUnderlyingPrice",
+          [market.toLowerCase() === collateralMarketAddress.toLowerCase() ? collateralPriceMantissa : borrowPriceMantissa],
+        ),
+      };
+    }
+    throw new Error(`Unexpected simulateTransactionCall for ${to}`);
+  };
+
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    odosClient,
+    estimateGasImpl: estimateGasFixture,
+    useCurrentPosition: true,
+    unwindOnly: true,
+    readErc20BalanceImpl: async (chain, token) => ({
+      balance: token.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? freeBorrowUnits : 2n,
+    }),
+    simulateTransactionCallImpl,
+  });
+
+  assert.equal(plan.entryIntents.length, 0);
+  assert.equal(plan.unwindIntents.length > 0, true);
+  assert.equal(plan.unwindOnly, true);
+  assert.equal(plan.currentPosition.borrowBalanceUnits, borrowBalanceUnits.toString());
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-wallet")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-for-repay-current")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-current")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-current")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-residual-collateral")), true);
+
+  const repayWallet = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-wallet"));
+  const repayCurrent = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-current"));
+  assert.equal(repayWallet.metadata.inventorySource, "wallet_balance");
+  assert.equal(repayCurrent.metadata.inventorySource, "redeemed_collateral_swap");
 });
 
 test("wrapped loop unwind inventory check fails when wallet lacks repay asset balance", async () => {

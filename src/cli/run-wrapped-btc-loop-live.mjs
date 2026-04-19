@@ -22,6 +22,8 @@ function parseArgs(argv) {
     scenario: options.scenario || "healthy_baseline",
     perTradeCapUsd: options["per-trade-cap-usd"] ? Number(options["per-trade-cap-usd"]) : null,
     marketMinIncrementUsd: options["market-min-increment-usd"] ? Number(options["market-min-increment-usd"]) : null,
+    useCurrentPosition: flags.has("--use-current-position"),
+    unwindOnly: flags.has("--unwind-only"),
     bindingsPath: options["bindings-path"] || executorStrategyBindingsPath(),
     socketPath: options["socket-path"] || signerSocketPath(),
     command: options.command || "sign_and_broadcast",
@@ -41,6 +43,8 @@ async function main() {
     marketAssumptionsOverride: Number.isFinite(args.marketMinIncrementUsd)
       ? { minIncrementUsd: args.marketMinIncrementUsd }
       : null,
+    useCurrentPosition: args.useCurrentPosition,
+    unwindOnly: args.unwindOnly,
     socketPath: args.socketPath,
     command: args.command,
     awaitConfirmation: args.awaitConfirmation,
@@ -56,6 +60,8 @@ async function main() {
 
   console.log(`ok=${result.ok}`);
   console.log(`scenario=${result.scenarioId}`);
+  console.log(`useCurrentPosition=${result.useCurrentPosition ? "true" : "false"}`);
+  console.log(`unwindOnly=${result.unwindOnly ? "true" : "false"}`);
   console.log(`entryCount=${result.entryResults.length}`);
   console.log(`unwindCount=${result.unwindResults.length}`);
   console.log(`receiptAutoIngest=${result.receiptAutoIngest.ran ? "ran" : result.receiptAutoIngest.reason || "skipped"}`);

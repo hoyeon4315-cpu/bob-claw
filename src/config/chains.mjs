@@ -1,3 +1,5 @@
+import { getChainRpcUrls } from "./env.mjs";
+
 export const EVM_CHAIN_CONFIGS = Object.freeze({
   avalanche: Object.freeze({
     family: "evm",
@@ -16,7 +18,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "base",
     rpcUrl: "https://mainnet.base.org",
-    rpcUrls: ["https://mainnet.base.org"],
+    rpcUrls: ["https://mainnet.base.org", "https://mainnet-preconf.base.org"],
     fallbackGasUnits: 260_000,
   }),
   bera: Object.freeze({
@@ -123,7 +125,14 @@ export function getChainConfig(chain) {
 }
 
 export function getEvmChainConfig(chain) {
-  return EVM_CHAIN_CONFIGS[chain] || null;
+  const base = EVM_CHAIN_CONFIGS[chain] || null;
+  if (!base) return null;
+  const rpcUrls = getChainRpcUrls(chain, base.rpcUrls || [base.rpcUrl].filter(Boolean));
+  return {
+    ...base,
+    rpcUrls,
+    rpcUrl: rpcUrls[0] || base.rpcUrl || null,
+  };
 }
 
 export function getBitcoinChainConfig(chain = "bitcoin") {

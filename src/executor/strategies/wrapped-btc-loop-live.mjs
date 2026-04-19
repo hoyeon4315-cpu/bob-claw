@@ -16,7 +16,10 @@ import {
   buildWrappedBtcLoopLiveProof,
   WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE,
 } from "../../strategy/wrapped-btc-loop-live-proof.mjs";
-import { buildAutoWrappedBtcLoopScenarioBinding } from "./wrapped-btc-loop-auto-build.mjs";
+import {
+  buildAutoWrappedBtcLoopScenarioBinding,
+  buildCurrentWrappedBtcLoopUnwindBinding,
+} from "./wrapped-btc-loop-auto-build.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gateway-btc-consolidation.mjs";
 
 export const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
@@ -153,10 +156,16 @@ export async function buildWrappedBtcLoopScenarioPlan({
   prices = null,
   odosClient = null,
   readErc20BalanceImpl = undefined,
+  simulateTransactionCallImpl = undefined,
   estimateGasImpl = null,
   marketAssumptionsOverride = null,
   perTradeCapUsdOverride = null,
+  useCurrentPosition = false,
+  unwindOnly = false,
 } = {}) {
+  if (unwindOnly && !useCurrentPosition) {
+    throw new Error("Wrapped BTC loop unwind-only mode currently requires useCurrentPosition=true");
+  }
   const strategyCaps = assertStrategyCaps(strategyId);
   const resolvedPerTradeCapUsd = Number.isFinite(Number(perTradeCapUsdOverride)) && Number(perTradeCapUsdOverride) > 0
     ? Number(perTradeCapUsdOverride)
@@ -172,7 +181,25 @@ export async function buildWrappedBtcLoopScenarioPlan({
   const defaultAmountUsd = resolvedPerTradeCapUsd;
   let entrySteps = scenarioBinding.entry || [];
   let unwindSteps = scenarioBinding.unwind || [];
-  if (entrySteps.length === 0 && unwindSteps.length === 0) {
+  let currentPosition = null;
+  let planNotes = [];
+  if (useCurrentPosition) {
+    const currentBinding = await buildCurrentWrappedBtcLoopUnwindBinding({
+      strategyId,
+      strategyConfig,
+      scenarioId,
+      signerAddress,
+      ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),
+      ...(simulateTransactionCallImpl ? { simulateTransactionCallImpl } : {}),
+      ...(estimateGasImpl ? { estimateGasImpl } : {}),
+      ...(odosClient ? { client: odosClient } : {}),
+      now,
+    });
+    entrySteps = currentBinding.entry || [];
+    unwindSteps = currentBinding.unwind || [];
+    currentPosition = currentBinding.currentPosition || null;
+    planNotes = currentBinding.notes || [];
+  } else if (entrySteps.length === 0 && unwindSteps.length === 0) {
     const support = resolveWrappedBtcLoopBindingSupport({
       strategyId,
       strategyConfig,
@@ -196,7 +223,7 @@ export async function buildWrappedBtcLoopScenarioPlan({
   }
   const missingFacts = unique(strategyBindings?.missingFacts || []);
   const missingFactsMessage = missingFacts.length ? ` Missing facts: ${missingFacts.join(" ")}` : "";
-  if (entrySteps.length === 0) {
+  if (!unwindOnly && entrySteps.length === 0) {
     throw new Error(`Wrapped loop scenario ${scenarioId} requires at least one entry step.${missingFactsMessage}`);
   }
   if (unwindSteps.length === 0) {
@@ -232,6 +259,9 @@ export async function buildWrappedBtcLoopScenarioPlan({
         strategyConfig,
       })),
     receiptContext: scenarioBinding.receiptContext || {},
+    currentPosition,
+    unwindOnly,
+    notes: planNotes,
   };
 }
 
@@ -312,7 +342,13 @@ export async function evaluateWrappedBtcLoopUnwindInventory({
     };
   }
   const chain = repayTokenSource.chain || "base";
-  const balanceResult = await readErc20BalanceImpl(chain, repayToken, signerAddress);
+  const chainConfig = getEvmChainConfig(chain);
+  const balanceResult = await readErc20BalanceImpl(
+    chain,
+    repayToken,
+    signerAddress,
+    chainConfig ? { chainConfig } : undefined,
+  );
   let availableUnits = BigInt(balanceResult?.balance ?? 0n);
   let peakRequiredUnits = 0n;
   for (const intent of plan.unwindIntents || []) {
@@ -536,6 +572,8 @@ export async function runWrappedBtcLoopLiveScenario({
   strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
   perTradeCapUsdOverride = null,
   marketAssumptionsOverride = null,
+  useCurrentPosition = false,
+  unwindOnly = false,
   socketPath,
   command = "sign_and_broadcast",
   awaitConfirmation = true,
@@ -543,6 +581,8 @@ export async function runWrappedBtcLoopLiveScenario({
   confirmationTimeoutMs = 120_000,
   timeoutMs = 30_000,
   estimateGasImpl = estimateGas,
+  readErc20BalanceImpl = undefined,
+  simulateTransactionCallImpl = undefined,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   cwd = process.cwd(),
   now = new Date().toISOString(),
@@ -561,11 +601,17 @@ export async function runWrappedBtcLoopLiveScenario({
     prices,
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
+    useCurrentPosition,
+    unwindOnly,
+    ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),
+    ...(simulateTransactionCallImpl ? { simulateTransactionCallImpl } : {}),
+    ...(estimateGasImpl ? { estimateGasImpl } : {}),
   });
   if (command !== "sign_only") {
     const unwindInventory = await evaluateWrappedBtcLoopUnwindInventory({
       plan,
       signerAddress: signerHealth?.addresses?.base || null,
+      ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),
     });
     if (!unwindInventory.ok) {
       throw new Error(
@@ -630,6 +676,8 @@ export async function runWrappedBtcLoopLiveScenario({
     scenarioId,
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
+    useCurrentPosition,
+    unwindOnly,
     bindingsPath,
     command,
     entryResults,
