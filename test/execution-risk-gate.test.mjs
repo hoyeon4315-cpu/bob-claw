@@ -129,6 +129,33 @@ test("risk gate blocks jobs when economics or limits fail", () => {
   assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), true);
 });
 
+test("risk gate allows native refill jobs to pass with negative system pnl when no other blockers apply", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      type: "refill_native",
+      systemEconomics: {
+        tradeReadiness: "insufficient_data",
+        routeInputUsd: 10,
+        routeNetEdgeUsd: -0.8,
+        routeExecutableNetEdgeUsd: null,
+        effectiveSystemNetPnlUsd: -1.1,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "dry_run",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), false);
+});
+
 test("risk gate returns review for conditional/manual funding without hard blockers", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({
