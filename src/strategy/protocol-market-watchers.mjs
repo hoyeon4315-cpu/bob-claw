@@ -217,6 +217,45 @@ function trustTierWatcher({ phase3Validation = null, protocolTrustTiers = null }
   });
 }
 
+function protocolCodehashWatcher({ protocolCodehashWatch = null } = {}) {
+  const summary = protocolCodehashWatch?.summary || null;
+  if (!summary) {
+    return watcher({
+      id: "protocol_codehash_drift_watch",
+      label: "Protocol codehash drift watch",
+      category: "protocol",
+      status: "observe",
+      targets: [],
+      blockers: [],
+      evidence: {
+        targetCount: 0,
+        status: "missing_report",
+      },
+      nextAction: { code: "run_protocol_codehash_watch", command: "npm run report:protocol-codehash-watch -- --write" },
+    });
+  }
+  const status = summary.status === "blocked" ? "blocked" : summary.status === "passed" ? "passed" : "observe";
+  return watcher({
+    id: "protocol_codehash_drift_watch",
+    label: "Protocol codehash drift watch",
+    category: "protocol",
+    status,
+    targets: (protocolCodehashWatch.items || [])
+      .filter((item) => item.status !== "matched")
+      .map((item) => item.id),
+    blockers: status === "blocked" ? (summary.topBlockers || []).map((item) => item.blocker) : [],
+    evidence: {
+      targetCount: summary.targetCount ?? 0,
+      driftCount: summary.driftCount ?? 0,
+      missingCodeCount: summary.missingCodeCount ?? 0,
+      baselineMissingCount: summary.baselineMissingCount ?? 0,
+      rpcErrorCount: summary.rpcErrorCount ?? 0,
+      status: summary.status || null,
+    },
+    nextAction: summary.nextAction || null,
+  });
+}
+
 export function buildProtocolMarketWatchers({
   dashboardStatus = null,
   quoteLagLatest = null,
@@ -227,6 +266,7 @@ export function buildProtocolMarketWatchers({
   phase3Validation = null,
   protocolTrustTiers = null,
   secondaryStrategyScaffolds = null,
+  protocolCodehashWatch = null,
   now = null,
 } = {}) {
   const generatedAt = now || new Date().toISOString();
@@ -238,6 +278,7 @@ export function buildProtocolMarketWatchers({
     proxySpreadWatcher({ dexSpreadLatest, phase3Validation, now: generatedAt }),
     gatewayLagWatcher({ quoteLagLatest, now: generatedAt }),
     trustTierWatcher({ phase3Validation, protocolTrustTiers }),
+    protocolCodehashWatcher({ protocolCodehashWatch }),
   ].filter(Boolean);
   const topBlocked = watchers.find((item) => item.status === "blocked") || null;
   const blockerCounts = watchers

@@ -64,7 +64,7 @@ test("protocol market watchers surface freshness and trust-tier blockers to the 
     now: "2026-04-15T13:00:00.000Z",
   });
 
-  assert.equal(watchers.summary.watcherCount, 5);
+  assert.equal(watchers.summary.watcherCount, 6);
   assert.equal(watchers.summary.blockedCount >= 4, true);
 
   const summary = summarizeProtocolMarketWatchers(watchers);
@@ -73,6 +73,9 @@ test("protocol market watchers surface freshness and trust-tier blockers to the 
   assert.equal(watchers.watchers[0].evidence.oracleStatus, "healthy");
   const trustTierWatch = watchers.watchers.find((item) => item.id === "protocol_trust_tier_watch");
   assert.deepEqual(trustTierWatch.targets.sort(), ["stablecoin_spread_loop", "wrapped-btc-loop-base-moonwell"]);
+  const codehashWatch = watchers.watchers.find((item) => item.id === "protocol_codehash_drift_watch");
+  assert.equal(codehashWatch.status, "observe");
+  assert.equal(codehashWatch.nextAction.code, "run_protocol_codehash_watch");
 
   const allocator = buildAllocatorCore({
     strategySnapshot: { currentSystem: { activeBudgetUsd: null }, summary: { planningBudgetUsd: null } },
@@ -101,6 +104,47 @@ test("protocol market watchers surface freshness and trust-tier blockers to the 
   assert.ok(wrapped);
   assert.equal(wrapped.blockers.includes("protocol_trust_tier_not_recorded"), true);
   assert.equal(wrapped.blockers.includes("stale_gas_snapshots"), true);
+});
+
+test("protocol market watchers block protocol codehash drift but only observe missing baselines", () => {
+  const observeWatchers = buildProtocolMarketWatchers({
+    protocolCodehashWatch: {
+      summary: {
+        status: "observe",
+        targetCount: 2,
+        baselineMissingCount: 2,
+        driftCount: 0,
+        missingCodeCount: 0,
+        rpcErrorCount: 0,
+        nextAction: { code: "seed_protocol_codehash_baseline" },
+      },
+      items: [{ id: "moonwell_base_comptroller", status: "baseline_missing" }],
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+  const observeCodehash = observeWatchers.watchers.find((item) => item.id === "protocol_codehash_drift_watch");
+  assert.equal(observeCodehash.status, "observe");
+  assert.deepEqual(observeCodehash.blockers, []);
+
+  const blockedWatchers = buildProtocolMarketWatchers({
+    protocolCodehashWatch: {
+      summary: {
+        status: "blocked",
+        targetCount: 2,
+        baselineMissingCount: 0,
+        driftCount: 1,
+        missingCodeCount: 0,
+        rpcErrorCount: 0,
+        topBlockers: [{ blocker: "protocol_codehash_drift", count: 1 }],
+        nextAction: { code: "review_protocol_codehash_drift" },
+      },
+      items: [{ id: "moonwell_base_comptroller", status: "drift_detected" }],
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+  const blockedCodehash = blockedWatchers.watchers.find((item) => item.id === "protocol_codehash_drift_watch");
+  assert.equal(blockedCodehash.status, "blocked");
+  assert.deepEqual(blockedCodehash.blockers, ["protocol_codehash_drift"]);
 });
 
 test("protocol market watchers include recursive lending loop market watches", () => {
