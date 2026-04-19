@@ -54,6 +54,38 @@ test("explicit RPC endpoints do not fall through to configured live chain RPCs",
   assert.deepEqual(calls, ["http://127.0.0.1:8545"]);
 });
 
+test("raw transaction submission bypasses fetch for loopback RPC URLs", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("fetch should not be used for loopback RPC");
+  };
+
+  try {
+    const calls = [];
+    const rpcUrl = "http://127.0.0.1:8548";
+    const result = await sendRawTransaction("base", "0x1234", {
+      rpcUrl,
+      loopbackPostImpl: async (url, payload) => {
+        calls.push({ url, payload });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jsonrpc: "2.0", id: payload.id, result: "0xloopback" }),
+        };
+      },
+    });
+
+    assert.equal(result.txHash, "0xloopback");
+    assert.equal(result.rpcUrl, rpcUrl);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, rpcUrl);
+    assert.equal(calls[0].payload.method, "eth_sendRawTransaction");
+    assert.deepEqual(calls[0].payload.params, ["0x1234"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("raw transaction submission rejects invalid hex", async () => {
   await assert.rejects(
     () => sendRawTransaction("bob", "1234"),

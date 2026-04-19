@@ -1,6 +1,5 @@
 import { EVM_CHAINS } from "../chains/registry.mjs";
-
-let requestId = 1;
+import { rpc } from "./json-rpc.mjs";
 
 function chainConfigFor(chain, options = {}) {
   const base = EVM_CHAINS[chain];
@@ -24,22 +23,6 @@ function chainConfigFor(chain, options = {}) {
 
 function uniqueRpcUrls(chainConfig) {
   return [...new Set([...(chainConfig?.rpcUrls || []), chainConfig?.rpcUrl].filter(Boolean))];
-}
-
-async function rpc(url, method, params = [], { fetchImpl = fetch } = {}) {
-  const response = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: requestId++, method, params }),
-    signal: AbortSignal.timeout(12_000),
-  });
-  const body = await response.json();
-  if (!response.ok || body.error) {
-    const error = new Error(body.error?.message || `RPC ${method} failed with ${response.status}`);
-    error.rpcError = body.error || null;
-    throw error;
-  }
-  return body.result;
 }
 
 async function firstSuccess(chain, executor, options = {}) {
