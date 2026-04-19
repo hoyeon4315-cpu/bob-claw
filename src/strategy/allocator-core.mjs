@@ -612,6 +612,7 @@ export function buildAllocatorCore({
   protocolMarketWatchers = null,
   destinationPromotionGate = null,
   destinationStrategyRegistry = null,
+  indirectStablecoinLaneInventory = null,
   now = null,
 } = {}) {
   const budgets = {
@@ -677,6 +678,9 @@ export function buildAllocatorCore({
       priorityExpansionActiveReadyChains: priorityChainExpansion.tier1ActiveReadyChains,
       priorityExpansionReviewOnlyChains: priorityChainExpansion.tier2ReviewOnlyChains,
       priorityExpansionBlockedOnlyChains: priorityChainExpansion.tier3BlockedOnlyChains,
+      indirectStableDirectChains: indirectStablecoinLaneInventory?.summary?.directStableChains || [],
+      indirectStableReviewChains: indirectStablecoinLaneInventory?.summary?.indirectStableReviewChains || [],
+      indirectStableDexVenueCount: (indirectStablecoinLaneInventory?.summary?.indirectLanesWithDexVenue || []).length,
     },
     candidates,
     activeView,
@@ -684,6 +688,7 @@ export function buildAllocatorCore({
     chainCoverage,
     priorityChainExpansion,
     diversifiedPortfolioDraft,
+    indirectStablecoinLaneInventory: indirectStablecoinLaneInventory || null,
     notes: [
       "This allocator core is deterministic and evidence-bound; it does not authorize live execution on its own.",
       "Per-strategy, per-protocol, per-chain, and per-asset-family caps are enforced against cumulative active-plan exposure; candidates that would exceed any cap are deferred with an explicit cap_exceeded blocker rather than silently admitted.",
@@ -693,6 +698,8 @@ export function buildAllocatorCore({
       "Priority expansion chains are tracked separately so Avalanche, Sonic, Berachain, Unichain, and Soneium can stay in a review-only cohort without being overstated as live-ready.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
       "Cross-chain reserve movement belongs in the allocator/rebalance layer; do not promote a unified multi-chain recursive loop until same-chain loop receipts, auto-unwind wiring, and native-BTC return paths are all proven.",
+      "Indirect stablecoin lane (wBTC.OFT -> local DEX -> USDC/USDT) is tracked separately from direct stable Gateway arrival. Chains without direct stable arrival (avalanche, sonic, bera, unichain, soneium) have wBTC.OFT arrival proven but DEX swap to stable is not yet live-proven; they stay review_only until a live wBTC->stable DEX quote is recorded.",
+      "Direct stable lane for base/bsc is blocked only by evidence_stale and stale gate artifact; fresh economics observations unblock them without requiring new strategy work.",
     ],
   };
 }
@@ -767,6 +774,14 @@ export function summarizeAllocatorCore(report = null) {
           summary: report.diversifiedPortfolioDraft.summary || null,
           activeDraft: report.diversifiedPortfolioDraft.activeDraft || [],
           reviewQueue: report.diversifiedPortfolioDraft.reviewQueue || [],
+        }
+      : null,
+    indirectStableLane: report.indirectStablecoinLaneInventory
+      ? {
+          directStableChains: report.summary?.indirectStableDirectChains || [],
+          indirectStableReviewChains: report.summary?.indirectStableReviewChains || [],
+          indirectStableDexVenueCount: report.summary?.indirectStableDexVenueCount ?? 0,
+          indirectLanesWithDexVenue: report.indirectStablecoinLaneInventory.summary?.indirectLanesWithDexVenue || [],
         }
       : null,
   };

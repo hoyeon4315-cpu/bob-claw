@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAllocatorCore, summarizeAllocatorCore } from "../src/strategy/allocator-core.mjs";
+import { buildIndirectStablecoinLaneInventory } from "../src/strategy/indirect-stablecoin-lane-inventory.mjs";
 
 test("allocator core applies deterministic cap defaults and keeps blocked strategies review-only", () => {
   const report = buildAllocatorCore({
@@ -595,4 +596,68 @@ test("allocator core keeps active allocation distinct once active budget is decl
   const summary = summarizeAllocatorCore(report);
   assert.equal(summary.topActiveAllocation.id, "recursive_wrapped_btc_lending_loop");
   assert.equal(summary.topActiveAllocation.maxAllocationUsd, 100);
+});
+
+test("allocator core surfaces indirect stablecoin lane inventory in summary and full report", () => {
+  const inventory = buildIndirectStablecoinLaneInventory();
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    indirectStablecoinLaneInventory: inventory,
+    now: "2026-04-20T12:00:00.000Z",
+  });
+
+  // Full report carries inventory object
+  assert.ok(report.indirectStablecoinLaneInventory, "inventory must be present in full report");
+  assert.equal(report.indirectStablecoinLaneInventory.summary.chainCount, 7);
+
+  // Summary fields derived from inventory
+  assert.deepEqual(report.summary.indirectStableDirectChains.sort(), ["base", "bsc"]);
+  assert.deepEqual(report.summary.indirectStableReviewChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.equal(report.summary.indirectStableDexVenueCount, 5);
+
+  // summarizeAllocatorCore exposes indirectStableLane slice
+  const summary = summarizeAllocatorCore(report);
+  assert.ok(summary.indirectStableLane, "summarized indirectStableLane must be present");
+  assert.deepEqual(summary.indirectStableLane.directStableChains.sort(), ["base", "bsc"]);
+  assert.deepEqual(summary.indirectStableLane.indirectStableReviewChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.equal(summary.indirectStableLane.indirectStableDexVenueCount, 5);
+  assert.equal(summary.indirectStableLane.indirectLanesWithDexVenue.length, 5);
+});
+
+test("allocator core notes distinguish direct vs indirect stable and document base/bsc unblock path", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: { currentSystem: { activeBudgetUsd: null }, summary: { planningBudgetUsd: null } },
+    phase3Validation: { validations: [] },
+    indirectStablecoinLaneInventory: buildIndirectStablecoinLaneInventory(),
+    now: "2026-04-20T12:01:00.000Z",
+  });
+
+  assert.ok(
+    report.notes.some((n) => n.includes("Indirect stablecoin lane")),
+    "notes must reference indirect stablecoin lane",
+  );
+  assert.ok(
+    report.notes.some((n) => n.includes("Direct stable lane for base/bsc")),
+    "notes must document base/bsc direct stable unblock path",
+  );
+});
+
+test("allocator core summary indirectStableLane is null when no inventory provided", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: { currentSystem: { activeBudgetUsd: null }, summary: { planningBudgetUsd: null } },
+    phase3Validation: { validations: [] },
+    now: "2026-04-20T12:02:00.000Z",
+  });
+
+  assert.equal(report.indirectStablecoinLaneInventory, null);
+  assert.deepEqual(report.summary.indirectStableDirectChains, []);
+  assert.deepEqual(report.summary.indirectStableReviewChains, []);
+  assert.equal(report.summary.indirectStableDexVenueCount, 0);
+
+  const summary = summarizeAllocatorCore(report);
+  assert.equal(summary.indirectStableLane, null);
 });
