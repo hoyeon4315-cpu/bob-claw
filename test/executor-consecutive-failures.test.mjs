@@ -98,3 +98,30 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
   assert.equal(policy.decision, "BLOCK");
   assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), true);
 });
+
+test("prelive fork sign-only rejections do not count as terminal failures", () => {
+  const state = buildConsecutiveFailureState({
+    strategyId: "prelive_fork_execution",
+    auditRecords: [
+      {
+        strategyId: "prelive_fork_execution",
+        intentId: "fork-reject-1",
+        timestamp: "2026-04-19T10:00:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+        broadcast: null,
+      },
+      {
+        strategyId: "prelive_fork_execution",
+        intentId: "fork-reject-2",
+        timestamp: "2026-04-19T10:01:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+        broadcast: null,
+      },
+    ],
+  });
+
+  assert.equal(state.consecutiveFailures, 0);
+  assert.equal(state.terminalRecordCount, 0);
+});

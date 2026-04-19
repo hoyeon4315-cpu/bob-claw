@@ -10,6 +10,9 @@ function recordTimestamp(record = {}) {
 
 function terminalOutcome(record = {}) {
   const stage = record.lifecycle?.stage || null;
+  if (record.strategyId === "prelive_fork_execution" && stage === "rejected" && !record.broadcast) {
+    return null;
+  }
   if (["rejected", "reverted", "error"].includes(stage)) return "failure";
   if (["confirmed"].includes(stage)) return "success";
   if (record.policyVerdict === "rejected" || record.policyVerdict === "errored") return "failure";

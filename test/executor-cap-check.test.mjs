@@ -417,3 +417,25 @@ test("evaluateCapCheck blocks aggregate chain exposure and BTC denomination drif
   assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), true);
   assert.equal(result.blockers.includes("portfolio_btc_denomination_floor_breached"), true);
 });
+
+test("buildStrategyCapState ignores prelive fork sign-only audit rows before broadcast", () => {
+  const state = buildStrategyCapState({
+    strategyId: "prelive_fork_execution",
+    now: "2026-04-19T12:00:00.000Z",
+    auditRecords: [
+      {
+        strategyId: "prelive_fork_execution",
+        chain: "sonic",
+        intentId: "prelive-fork:signed-only",
+        timestamp: "2026-04-19T11:00:00.000Z",
+        amountUsd: 18.96,
+        policyVerdict: "approved",
+        lifecycle: { stage: "signed" },
+        broadcast: null,
+      },
+    ],
+  });
+
+  assert.equal(state.dailyVolumeUsd, 0);
+  assert.equal(state.perChainVolumeUsd.sonic ?? 0, 0);
+});

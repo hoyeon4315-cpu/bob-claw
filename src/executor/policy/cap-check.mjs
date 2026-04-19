@@ -32,6 +32,9 @@ function hoursAgo(timestamp, now) {
 }
 
 function successfulBroadcast(record = {}) {
+  if (record.strategyId === "prelive_fork_execution" && record.lifecycle?.stage === "signed" && !record.broadcast) {
+    return false;
+  }
   return ["approved", "signed", "broadcasted", "confirmed"].includes(record.policyVerdict) || ["broadcasted", "signed", "confirmed"].includes(record.lifecycle?.stage);
 }
 

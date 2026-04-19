@@ -347,13 +347,25 @@ export async function startSignerDaemon() {
           continue;
         }
 
-        const result = await handleIntentCommand({
-          message,
-          signers,
-          args,
-          cwd,
-        });
-        socket.write(`${JSON.stringify(result)}\n`);
+        try {
+          const result = await handleIntentCommand({
+            message,
+            signers,
+            args,
+            cwd,
+          });
+          socket.write(`${JSON.stringify(result)}\n`);
+        } catch (error) {
+          socket.write(
+            `${JSON.stringify({
+              status: "error",
+              error: {
+                name: error.name || "Error",
+                message: error.message || "unknown_error",
+              },
+            })}\n`,
+          );
+        }
       }
     });
   });

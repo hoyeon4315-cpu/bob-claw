@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildForkSignerIntent } from "../src/cli/submit-prelive-fork-execution.mjs";
+import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import { buildForkExecutionPlan } from "../src/prelive/fork-execution.mjs";
 
 const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
@@ -82,4 +83,44 @@ test("fork execution plan submit command prefers signer daemon plus fork rpc", (
 
   assert.match(plan.commands.submit, /--use-signer-daemon/);
   assert.match(plan.commands.submit, /--rpc-url="<forkRpcUrl>"/);
+});
+
+test("fork signer intent passes policy evaluation with configured caps", async () => {
+  const plan = buildForkExecutionPlan({
+    selection: {
+      routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+      amount: "25000",
+      label: "sonic->bob",
+      score: {
+        routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+        amount: "25000",
+        srcChain: "sonic",
+        dstChain: "bob",
+        inputUsd: 18.96,
+        tradeReadiness: "insufficient_data",
+        srcAsset: { chain: "sonic", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+        dstAsset: { chain: "bob", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+      },
+      quote: {
+        routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+        amount: "25000",
+        route: { srcChain: "sonic", dstChain: "bob" },
+        txTo: "0x1111111111111111111111111111111111111111",
+        txData: "0x1234",
+        txValueWei: "1",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  const policy = await evaluateIntentPolicies({
+    intent: buildForkSignerIntent(plan, { observedAt: "2026-04-19T00:00:01.000Z" }),
+    auditRecords: [],
+    now: "2026-04-19T00:00:02.000Z",
+    killSwitchPath: null,
+  });
+
+  assert.equal(policy.decision, "ALLOW");
+  assert.equal(policy.strategyId, "prelive_fork_execution");
 });
