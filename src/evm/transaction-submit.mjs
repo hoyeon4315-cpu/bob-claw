@@ -4,14 +4,21 @@ let requestId = 1;
 
 function chainConfigFor(chain, options = {}) {
   const base = EVM_CHAINS[chain];
-  if (!base && !options.rpcUrls?.length && !options.rpcUrl) {
+  const explicitRpcUrls = [...(options.rpcUrls || []), options.rpcUrl].filter(Boolean);
+  if (!base && !explicitRpcUrls.length) {
     throw new Error(`No RPC config for chain: ${chain}`);
+  }
+  if (explicitRpcUrls.length) {
+    return {
+      ...(base || {}),
+      ...(options.chainConfig || {}),
+      rpcUrls: explicitRpcUrls,
+      rpcUrl: null,
+    };
   }
   return {
     ...(base || {}),
     ...(options.chainConfig || {}),
-    ...(options.rpcUrl ? { rpcUrl: options.rpcUrl } : {}),
-    ...(options.rpcUrls?.length ? { rpcUrls: options.rpcUrls } : {}),
   };
 }
 

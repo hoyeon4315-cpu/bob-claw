@@ -36,6 +36,24 @@ test("raw transaction submission falls back to the next RPC endpoint", async () 
   assert.equal(calls.length, 2);
 });
 
+test("explicit RPC endpoints do not fall through to configured live chain RPCs", async () => {
+  const calls = [];
+  const result = await sendRawTransaction(
+    "bob",
+    "0x1234",
+    {
+      rpcUrl: "http://127.0.0.1:8545",
+      fetchImpl: async (url) => {
+        calls.push(url);
+        return rpcResponse("0xfork");
+      },
+    },
+  );
+
+  assert.equal(result.txHash, "0xfork");
+  assert.deepEqual(calls, ["http://127.0.0.1:8545"]);
+});
+
 test("raw transaction submission rejects invalid hex", async () => {
   await assert.rejects(
     () => sendRawTransaction("bob", "1234"),
