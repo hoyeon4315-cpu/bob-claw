@@ -291,6 +291,38 @@ export const STRATEGY_CAPS = Object.freeze({
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
     }),
   }),
+  "recursive_wrapped_btc_lending_loop": Object.freeze({
+    strategyId: "recursive_wrapped_btc_lending_loop",
+    label: "Recursive wrapped-BTC lending loop",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["moonwell", "odos"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 300,
+      perDayUsd: 600,
+      perChainUsd: Object.freeze({
+        base: 300,
+      }),
+      maxDailyLossUsd: 50,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    leverage: Object.freeze({
+      healthFactorMin: 1.35,
+      liquidationBufferPct: 12,
+      emergencyUnwindPath: Object.freeze([
+        "repay USDC debt",
+        "withdraw cbBTC collateral",
+        "return collateral to BTC treasury sleeve",
+      ]),
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
   "wrapped-btc-loop-base-moonwell": Object.freeze({
     strategyId: "wrapped-btc-loop-base-moonwell",
     label: "Wrapped BTC lending loop (Base / Moonwell)",

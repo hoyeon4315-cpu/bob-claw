@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { assertStrategyCaps } from "../src/config/strategy-caps.mjs";
 import { buildPortfolioExposureState, buildStrategyCapState, evaluateCapCheck } from "../src/executor/policy/cap-check.mjs";
 
 function strategyCapsFixture(overrides = {}) {
@@ -438,4 +439,48 @@ test("buildStrategyCapState ignores prelive fork sign-only audit rows before bro
 
   assert.equal(state.dailyVolumeUsd, 0);
   assert.equal(state.perChainVolumeUsd.sonic ?? 0, 0);
+});
+
+test("recursive wrapped BTC loop caps are declared but do not auto-execute live yet", () => {
+  const caps = assertStrategyCaps("recursive_wrapped_btc_lending_loop");
+
+  assert.equal(caps.autoExecute, false);
+  assert.equal(caps.caps.perTxUsd, 300);
+  assert.equal(caps.caps.perChainUsd.base, 300);
+  assert.deepEqual(caps.exposure.protocols, ["moonwell", "odos"]);
+  assert.equal(caps.exposure.btcDenominated, true);
+  assert.equal(caps.leverage.healthFactorMin, 1.35);
+  assert.equal(caps.leverage.liquidationBufferPct, 12);
+
+  const liveResult = evaluateCapCheck({
+    intent: {
+      strategyId: "recursive_wrapped_btc_lending_loop",
+      chain: "base",
+      mode: "live",
+      amountUsd: 300,
+      intentType: "lending_loop_entry",
+    },
+    strategyCaps: caps,
+    auditRecords: [],
+  });
+
+  assert.equal(liveResult.decision, "BLOCK");
+  assert.equal(liveResult.blockers.includes("strategy_auto_execute_disabled"), true);
+  assert.equal(liveResult.blockers.includes("strategy_per_tx_cap_missing"), false);
+  assert.equal(liveResult.blockers.includes("strategy_per_day_cap_missing"), false);
+  assert.equal(liveResult.blockers.includes("strategy_per_chain_cap_missing"), false);
+
+  const dryRunResult = evaluateCapCheck({
+    intent: {
+      strategyId: "recursive_wrapped_btc_lending_loop",
+      chain: "base",
+      mode: "dry_run",
+      amountUsd: 300,
+      intentType: "lending_loop_entry",
+    },
+    strategyCaps: caps,
+    auditRecords: [],
+  });
+
+  assert.equal(dryRunResult.decision, "ALLOW");
 });

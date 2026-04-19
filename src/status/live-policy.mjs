@@ -58,8 +58,23 @@ function strategyPolicy(candidate = null) {
     caps: {
       perTxUsd: caps.caps?.perTxUsd ?? null,
       perDayUsd: caps.caps?.perDayUsd ?? null,
+      perChainUsd: caps.caps?.perChainUsd ?? null,
       maxDailyLossUsd: caps.caps?.maxDailyLossUsd ?? null,
     },
+    exposure: caps.exposure
+      ? {
+          protocols: caps.exposure.protocols || [],
+          assetFamily: caps.exposure.assetFamily || null,
+          btcDenominated: caps.exposure.btcDenominated ?? null,
+        }
+      : null,
+    leverage: caps.leverage
+      ? {
+          healthFactorMin: caps.leverage.healthFactorMin ?? null,
+          liquidationBufferPct: caps.leverage.liquidationBufferPct ?? null,
+          emergencyUnwindPath: caps.leverage.emergencyUnwindPath || [],
+        }
+      : null,
   };
 }
 
