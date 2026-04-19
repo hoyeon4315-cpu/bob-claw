@@ -14,6 +14,8 @@ test("live readiness refresh plan rebuilds the full wrapped-loop packet in order
     [
       "src/cli/run-current-route-prelive-pass.mjs",
       "src/cli/hydrate-wrapped-btc-loop-live-proof.mjs",
+      "src/cli/report-strategy-research-board.mjs",
+      "src/cli/report-deterministic-strategy-candidates.mjs",
       "src/cli/report-strategy-snapshot.mjs",
       "src/cli/report-phase3-strategy-validation.mjs",
       "src/cli/report-allocator-core.mjs",

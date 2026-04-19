@@ -92,6 +92,37 @@ test("wrapped btc loop live proof hydrates missing fee fields from capital audit
   ]);
 });
 
+test("wrapped btc loop live proof treats zero placeholder observed paths as missing", () => {
+  const proof = hydrateWrappedBtcLoopLiveProof({
+    proof: {
+      schemaVersion: 1,
+      observedAt: "2026-04-16T21:37:24.879Z",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenarioId: "healthy_baseline",
+      success: true,
+      proofKind: "signer_backed_roundtrip",
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 1,
+      unwindCount: 1,
+      entryTxHashes: ["0xentry1"],
+      unwindTxHashes: ["0xunwind1"],
+      observedHealthFactorPath: [0],
+      observedLiquidationBufferPath: [0],
+      actualLoopFeesUsd: 0.11,
+      actualUnwindCostUsd: 0.07,
+      realizedNetCarryUsd: 0,
+    },
+  });
+
+  assert.deepEqual(proof.observedHealthFactorPath, []);
+  assert.deepEqual(proof.observedLiquidationBufferPath, []);
+  assert.equal(proof.extendedReceiptContextReady, false);
+  assert.deepEqual(proof.missingExtendedReceiptFields, [
+    "observedHealthFactorPath",
+    "observedLiquidationBufferPath",
+  ]);
+});
+
 test("wrapped btc loop live proof enriches missing observed entry metrics from historical chain state", async () => {
   const comptroller = "0xfBb21d0380beE3312B33c4353c8936a0F13EF26C";
   const collateralMarket = "0xF877ACaFA28c19b96727966690b2f44d35aD5976";

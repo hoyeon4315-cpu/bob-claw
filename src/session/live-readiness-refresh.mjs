@@ -8,6 +8,8 @@ export function buildLiveReadinessRefreshPlan() {
   return [
     { script: "src/cli/run-current-route-prelive-pass.mjs", args: ["--execute", "--continue-on-failure"] },
     { script: "src/cli/hydrate-wrapped-btc-loop-live-proof.mjs", args: ["--write"] },
+    { script: "src/cli/report-strategy-research-board.mjs", args: ["--write"] },
+    { script: "src/cli/report-deterministic-strategy-candidates.mjs", args: ["--write"] },
     { script: "src/cli/report-strategy-snapshot.mjs", args: ["--write"] },
     { script: "src/cli/report-phase3-strategy-validation.mjs", args: ["--write"] },
     { script: "src/cli/report-allocator-core.mjs", args: ["--write"] },

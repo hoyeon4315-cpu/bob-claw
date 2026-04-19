@@ -17,6 +17,10 @@ function numericPath(values = []) {
   return (values || []).filter(Number.isFinite).map((value) => round(value, 4));
 }
 
+function positiveNumericPath(values = []) {
+  return numericPath(values).filter((value) => value > 0);
+}
+
 function roundUsd(value, digits = 6) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
@@ -74,8 +78,8 @@ function gasUsdForHashes(capitalAuditReport = null, txHashes = []) {
 function missingExtendedReceiptFields(proof = null) {
   if (!proof) return [];
   return [
-    (proof.observedHealthFactorPath || []).length > 0 ? null : "observedHealthFactorPath",
-    (proof.observedLiquidationBufferPath || []).length > 0 ? null : "observedLiquidationBufferPath",
+    positiveNumericPath(proof.observedHealthFactorPath || []).length > 0 ? null : "observedHealthFactorPath",
+    positiveNumericPath(proof.observedLiquidationBufferPath || []).length > 0 ? null : "observedLiquidationBufferPath",
     Number.isFinite(proof.actualLoopFeesUsd) ? null : "actualLoopFeesUsd",
     Number.isFinite(proof.actualUnwindCostUsd) ? null : "actualUnwindCostUsd",
     Number.isFinite(proof.realizedNetCarryUsd) ? null : "realizedNetCarryUsd",
@@ -91,8 +95,8 @@ export function hydrateWrappedBtcLoopLiveProof({
   if (!proof) return null;
   const hydrated = {
     ...proof,
-    observedHealthFactorPath: numericPath(proof.observedHealthFactorPath || []),
-    observedLiquidationBufferPath: numericPath(proof.observedLiquidationBufferPath || []),
+    observedHealthFactorPath: positiveNumericPath(proof.observedHealthFactorPath || []),
+    observedLiquidationBufferPath: positiveNumericPath(proof.observedLiquidationBufferPath || []),
     actualLoopFeesUsd: Number.isFinite(proof.actualLoopFeesUsd)
       ? round(proof.actualLoopFeesUsd)
       : gasUsdForHashes(capitalAuditReport, proof.entryTxHashes || []),

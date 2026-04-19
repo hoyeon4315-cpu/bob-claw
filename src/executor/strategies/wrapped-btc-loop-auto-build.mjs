@@ -183,6 +183,7 @@ async function buildOdosSwapStep({
   now,
   client,
   quoteType = "stable_to_token",
+  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
 }) {
   const outputAsset = tokenAsset(chain, outputToken);
   const routing = odosRoutingConfig(chain);
@@ -252,7 +253,9 @@ async function buildOdosSwapStep({
       },
       tx: {
         value: executableQuote.txValueWei,
-        gasLimit: executableQuote.txGasLimit != null ? String(executableQuote.txGasLimit) : undefined,
+        gasLimit: executableQuote.txGasLimit != null
+          ? String(applyGasBuffer(executableQuote.txGasLimit, gasBufferBps))
+          : undefined,
       },
       metadata: {
         provider: "odos",
@@ -457,6 +460,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       signerAddress,
       now,
       client,
+      gasBufferBps,
     });
     const borrowGasLimit = await estimateBufferedGasLimit({
       chain: "base",
@@ -995,6 +999,7 @@ export async function buildCurrentWrappedBtcLoopUnwindBinding({
       now,
       client,
       quoteType: "token_to_stable",
+      gasBufferBps,
     });
     if (BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n) < remainingBorrowUnits && maxSafeRedeemUnits > redeemForRepayUnits) {
       redeemForRepayUnits = maxSafeRedeemUnits;
@@ -1007,9 +1012,10 @@ export async function buildCurrentWrappedBtcLoopUnwindBinding({
         amountUsd: usd36ToNumber(redeemForRepayUnits * position.collateralPriceMantissa),
         signerAddress,
         now,
-        client,
-        quoteType: "token_to_stable",
-      });
+      client,
+      quoteType: "token_to_stable",
+      gasBufferBps,
+    });
     }
     const plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
     if (plannedBorrowTopUpUnits < remainingBorrowUnits) {

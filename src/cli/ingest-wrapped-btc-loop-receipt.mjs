@@ -10,6 +10,7 @@ import { runLiveReadinessRefreshPlan } from "../session/live-readiness-refresh.m
 import { buildWrappedBtcLendingLoopScaffold } from "../strategy/wrapped-btc-lending-loop-slice.mjs";
 import {
   buildWrappedBtcLoopObservedReceipt,
+  buildWrappedBtcLoopReceiptGuide,
   summarizeWrappedBtcLendingLoopDryRunRuns,
 } from "../strategy/wrapped-btc-lending-loop-dry-run.mjs";
 import {
@@ -33,6 +34,13 @@ function parseArgs(argv) {
         return [key, valueParts.join("=")];
       }),
   );
+  const parseNumericList = (value) =>
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => Number(item))
+      .filter(Number.isFinite);
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
@@ -41,8 +49,8 @@ function parseArgs(argv) {
     result: options.result || "passed",
     entryTxHashes: (options["entry-tx-hashes"] || "").split(",").map((item) => item.trim()).filter(Boolean),
     unwindTxHashes: (options["unwind-tx-hashes"] || "").split(",").map((item) => item.trim()).filter(Boolean),
-    observedHealthFactorPath: (options["health-factor-path"] || "").split(",").map((item) => Number(item.trim())).filter(Number.isFinite),
-    observedLiquidationBufferPath: (options["liquidation-buffer-path"] || "").split(",").map((item) => Number(item.trim())).filter(Number.isFinite),
+    observedHealthFactorPath: parseNumericList(options["health-factor-path"]),
+    observedLiquidationBufferPath: parseNumericList(options["liquidation-buffer-path"]),
     actualLoopFeesUsd: options["actual-loop-fees-usd"] ? Number(options["actual-loop-fees-usd"]) : null,
     actualUnwindCostUsd: options["actual-unwind-cost-usd"] ? Number(options["actual-unwind-cost-usd"]) : null,
     realizedNetCarryUsd: options["realized-net-carry-usd"] ? Number(options["realized-net-carry-usd"]) : null,
@@ -88,6 +96,32 @@ function mergeReceiptArgs(args = {}, liveProof = null) {
   };
 }
 
+function buildReceiptSeedProof({
+  args = {},
+  liveProof = null,
+} = {}) {
+  const merged = mergeReceiptArgs(args, liveProof);
+  return {
+    ...liveProof,
+    observedAt: merged.observedAt || liveProof?.observedAt || null,
+    strategyId: liveProof?.strategyId || "wrapped-btc-loop-base-moonwell",
+    scenarioId: merged.scenario,
+    success: merged.result === "passed",
+    proofKind: liveProof?.proofKind || "signer_backed_roundtrip",
+    proofStatus: liveProof?.proofStatus || "signer_backed_roundtrip_recorded",
+    entryCount: merged.entryTxHashes.length,
+    unwindCount: merged.unwindTxHashes.length,
+    entryTxHashes: merged.entryTxHashes,
+    unwindTxHashes: merged.unwindTxHashes,
+    observedHealthFactorPath: merged.observedHealthFactorPath,
+    observedLiquidationBufferPath: merged.observedLiquidationBufferPath,
+    actualLoopFeesUsd: merged.actualLoopFeesUsd,
+    actualUnwindCostUsd: merged.actualUnwindCostUsd,
+    realizedNetCarryUsd: merged.realizedNetCarryUsd,
+    receiptAutoIngest: liveProof?.receiptAutoIngest || { ran: false, reason: null },
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const scaffold =
@@ -100,13 +134,22 @@ async function main() {
     proof: latestLiveProof,
     capitalAuditReport,
   });
-  const resolvedArgs = mergeReceiptArgs(args, hydratedLiveProof);
+  const enrichedReceiptProof = await stabilizeWrappedBtcLoopLiveProof({
+    proof: buildReceiptSeedProof({
+      args,
+      liveProof: hydratedLiveProof || latestLiveProof,
+    }),
+    capitalAuditReport,
+    attempts: 5,
+  });
+  const resolvedLiveProof = enrichedReceiptProof || hydratedLiveProof;
+  const resolvedArgs = mergeReceiptArgs(args, resolvedLiveProof);
   const store = new JsonlStore(config.dataDir);
   if (args.write) {
-    if (hydratedLiveProof) {
+    if (resolvedLiveProof) {
       await writeTextIfChanged(
         join(config.dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE),
-        `${JSON.stringify(hydratedLiveProof, null, 2)}\n`,
+        `${JSON.stringify(resolvedLiveProof, null, 2)}\n`,
         {
           normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
         },
@@ -166,8 +209,8 @@ async function main() {
       }
       return;
     }
-    if (hydratedLiveProof?.missingExtendedReceiptFields?.length) {
-      error.message = `${error.message} (hydrated live proof still missing: ${hydratedLiveProof.missingExtendedReceiptFields.join(", ")})`;
+  if (resolvedLiveProof?.missingExtendedReceiptFields?.length) {
+      error.message = `${error.message} (hydrated live proof still missing: ${resolvedLiveProof.missingExtendedReceiptFields.join(", ")})`;
     }
     throw error;
   }
@@ -221,7 +264,7 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(JSON.stringify({ receipt, summary, oosEvidence, livePacketRefresh, hydratedLiveProof }, null, 2));
+    console.log(JSON.stringify({ receipt, summary, oosEvidence, livePacketRefresh, hydratedLiveProof: resolvedLiveProof }, null, 2));
     return;
   }
 
@@ -230,8 +273,8 @@ async function main() {
   console.log(`result=${receipt.result}`);
   console.log(`signerBackedRunCount=${oosEvidence.summary.signerBackedRunCount}`);
   console.log(`oosStatus=${oosEvidence.summary.status}`);
-  if (hydratedLiveProof) {
-    console.log(`liveProofMissingFields=${(hydratedLiveProof.missingExtendedReceiptFields || []).join(",") || "none"}`);
+  if (resolvedLiveProof) {
+    console.log(`liveProofMissingFields=${(resolvedLiveProof.missingExtendedReceiptFields || []).join(",") || "none"}`);
   }
   console.log(`livePacketRefresh=${livePacketRefresh?.refreshed ? `ran:${livePacketRefresh.stepCount}` : args.refreshLivePacket ? "skipped" : "disabled"}`);
 }

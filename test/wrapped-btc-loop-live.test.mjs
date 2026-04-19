@@ -196,6 +196,7 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
   assert.equal(plan.unwindIntents.length > 0, true);
   assert.equal(plan.entryIntents.some((item) => item.metadata?.provider === "odos"), true);
   assert.equal(plan.entryIntents.some((item) => item.approval?.mode === "per_tx"), true);
+  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:swap-borrow-to-collateral-1")).tx.gasLimit, "252000");
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral")).metadata.capCheckAmountUsd, 0);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:enter-collateral-market")).metadata.capCheckAmountUsd, 0);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).metadata.capCheckAmountUsd, 300);
@@ -335,8 +336,10 @@ test("wrapped loop live plan self-funds unwind repay with redeemed collateral wh
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-2")), false);
 
   const repayTwo = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-2"));
+  const swapTwo = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-2"));
   assert.equal(repayTwo.metadata.inventorySource, "redeemed_collateral_swap");
   assert.equal(repayTwo.metadata.requiresBorrowAssetInventory, false);
+  assert.equal(swapTwo.tx.gasLimit, "252000");
 });
 
 test("wrapped loop live plan auto-downsizes initial collateral to the available cbBTC balance", async () => {
