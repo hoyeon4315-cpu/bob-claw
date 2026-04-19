@@ -236,7 +236,11 @@ export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS, scope 
   const sampleGroups = useShadowObservations
     ? groupBy(validShadowObservations, (item) => routeKeyFromShadowObservation(item))
     : groupBy(activeQuotes, (quote) => quote.routeKey);
-  const candidateRoutes = [...sampleGroups.entries()].filter(([, routeSamples]) => routeSamples.length >= effectiveTargets.minSamplesPerCandidateRoute);
+  const candidateRoutes = [...sampleGroups.entries()].filter(
+    ([key, routeSamples]) =>
+      routeSamples.length >= effectiveTargets.minSamplesPerCandidateRoute &&
+      (focusRouteKeys.size === 0 || focusRouteKeys.has(key)),
+  );
   const candidateAmountFailures = candidateRoutes.filter(([, routeSamples]) => {
     const amounts = new Set(routeSamples.map((item) => (useShadowObservations ? amountFromShadowObservation(item) : item.amount)).filter(Boolean));
     return amounts.size < effectiveTargets.minAmountLevelsPerCandidateRoute;
