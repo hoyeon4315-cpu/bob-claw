@@ -4,8 +4,10 @@ import {
   buildWrappedBtcLoopReceiptContext,
   classifyIntentResult,
   buildWrappedBtcLoopScenarioPlan,
+  finalizeWrappedBtcLoopLiveReceipt,
   prepareLiveLoopIntent,
 } from "../src/executor/strategies/wrapped-btc-loop-live.mjs";
+import { WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE } from "../src/strategy/wrapped-btc-loop-live-proof.mjs";
 
 function bindingsFixture() {
   return {
@@ -257,6 +259,59 @@ test("wrapped loop signer result treats reverted EVM receipts as execution failu
 
   assert.equal(result.status, "error");
   assert.equal(result.error.name, "EvmReceiptReverted");
+});
+
+test("wrapped loop live receipt writes proof before auto-ingest and rewrites final ingest status", async () => {
+  const writes = [];
+  const ingestCalls = [];
+
+  const finalized = await finalizeWrappedBtcLoopLiveReceipt({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    scenarioId: "healthy_baseline",
+    perTradeCapUsdOverride: 5,
+    entryResults: [
+      { broadcast: { txHash: "0xentry1" } },
+      { broadcast: { txHash: "0xentry2" } },
+    ],
+    unwindResults: [
+      { broadcast: { txHash: "0xunwind1" } },
+    ],
+    receiptContext: {
+      actualLoopFeesUsd: 0.01,
+      actualUnwindCostUsd: 0.02,
+      realizedNetCarryUsd: 0,
+    },
+    now: "2026-04-19T12:00:00.000Z",
+    dataDir: "/tmp/bob-claw-test",
+    writeTextIfChangedImpl: async (path, contents) => {
+      writes.push({
+        path,
+        proof: JSON.parse(contents),
+      });
+      return { path, changed: true };
+    },
+    runReceiptAutoIngestImpl: async ({ context, cwd }) => {
+      ingestCalls.push({ context, cwd });
+      return {
+        ran: true,
+        code: 0,
+        stdout: "ok",
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].path.endsWith(WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE), true);
+  assert.equal(writes[0].proof.receiptAutoIngest.ran, false);
+  assert.deepEqual(writes[0].proof.entryTxHashes, ["0xentry1", "0xentry2"]);
+  assert.deepEqual(writes[0].proof.unwindTxHashes, ["0xunwind1"]);
+  assert.equal(ingestCalls.length, 1);
+  assert.deepEqual(ingestCalls[0].context.entryTxHashes, ["0xentry1", "0xentry2"]);
+  assert.deepEqual(ingestCalls[0].context.unwindTxHashes, ["0xunwind1"]);
+  assert.equal(writes[1].proof.receiptAutoIngest.ran, true);
+  assert.equal(finalized.receiptAutoIngest.ran, true);
+  assert.equal(finalized.liveProof.receiptAutoIngest.ran, true);
 });
 
 test("wrapped loop live intent refreshes gas limit just before execution", async () => {

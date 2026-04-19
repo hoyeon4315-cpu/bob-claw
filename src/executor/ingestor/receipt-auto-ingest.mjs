@@ -35,22 +35,18 @@ function buildWrappedBtcLoopCommand(context = {}) {
     `--result=${result}`,
   ];
 
-  if (
-    entryTxHashes.length === 0 ||
-    unwindTxHashes.length === 0 ||
-    observedHealthFactorPath.length === 0 ||
-    observedLiquidationBufferPath.length === 0 ||
-    !Number.isFinite(Number(context.actualLoopFeesUsd)) ||
-    !Number.isFinite(Number(context.actualUnwindCostUsd)) ||
-    !Number.isFinite(Number(context.realizedNetCarryUsd))
-  ) {
+  if (entryTxHashes.length === 0 || unwindTxHashes.length === 0) {
     return null;
   }
 
   args.push(`--entry-tx-hashes=${entryTxHashes.join(",")}`);
   args.push(`--unwind-tx-hashes=${unwindTxHashes.join(",")}`);
-  args.push(`--health-factor-path=${observedHealthFactorPath.join(",")}`);
-  args.push(`--liquidation-buffer-path=${observedLiquidationBufferPath.join(",")}`);
+  if (observedHealthFactorPath.length > 0) {
+    args.push(`--health-factor-path=${observedHealthFactorPath.join(",")}`);
+  }
+  if (observedLiquidationBufferPath.length > 0) {
+    args.push(`--liquidation-buffer-path=${observedLiquidationBufferPath.join(",")}`);
+  }
   appendIfFinite(args, "--actual-loop-fees-usd", Number(context.actualLoopFeesUsd));
   appendIfFinite(args, "--actual-unwind-cost-usd", Number(context.actualUnwindCostUsd));
   appendIfFinite(args, "--realized-net-carry-usd", Number(context.realizedNetCarryUsd));

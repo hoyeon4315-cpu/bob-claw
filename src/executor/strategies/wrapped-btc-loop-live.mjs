@@ -266,6 +266,90 @@ export function buildWrappedBtcLoopReceiptContext({
   };
 }
 
+async function writeWrappedBtcLoopLiveProof({
+  liveProof,
+  dataDir = config.dataDir,
+  writeTextIfChangedImpl = writeTextIfChanged,
+} = {}) {
+  if (!liveProof) return null;
+  return writeTextIfChangedImpl(
+    join(dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE),
+    `${JSON.stringify(liveProof, null, 2)}\n`,
+  );
+}
+
+export async function finalizeWrappedBtcLoopLiveReceipt({
+  strategyId,
+  scenarioId,
+  perTradeCapUsdOverride = null,
+  marketAssumptionsOverride = null,
+  entryResults = [],
+  unwindResults = [],
+  receiptContext = null,
+  cwd = process.cwd(),
+  now = new Date().toISOString(),
+  dataDir = config.dataDir,
+  runReceiptAutoIngestImpl = runReceiptAutoIngest,
+  writeTextIfChangedImpl = writeTextIfChanged,
+} = {}) {
+  const initialReceiptAutoIngest = {
+    ran: false,
+    reason: "pending_auto_ingest",
+  };
+  const initialLiveProof = buildWrappedBtcLoopLiveProof({
+    result: {
+      strategyId,
+      scenarioId,
+      perTradeCapUsdOverride,
+      marketAssumptionsOverride,
+      entryResults,
+      unwindResults,
+      receiptAutoIngest: initialReceiptAutoIngest,
+      ok: true,
+    },
+    receiptContext,
+    now,
+  });
+  await writeWrappedBtcLoopLiveProof({
+    liveProof: initialLiveProof,
+    dataDir,
+    writeTextIfChangedImpl,
+  });
+
+  const receiptAutoIngest = await runReceiptAutoIngestImpl({
+    context: {
+      ...(receiptContext || {}),
+      ...(initialLiveProof || {}),
+    },
+    cwd,
+  });
+
+  const liveProof = buildWrappedBtcLoopLiveProof({
+    result: {
+      strategyId,
+      scenarioId,
+      perTradeCapUsdOverride,
+      marketAssumptionsOverride,
+      entryResults,
+      unwindResults,
+      receiptAutoIngest,
+      ok: true,
+    },
+    receiptContext,
+    now,
+  });
+  await writeWrappedBtcLoopLiveProof({
+    liveProof,
+    dataDir,
+    writeTextIfChangedImpl,
+  });
+
+  return {
+    receiptAutoIngest,
+    liveProof,
+  };
+}
+
 export async function prepareLiveLoopIntent(intent, {
   signerAddress = null,
   estimateGasImpl = estimateGas,
@@ -432,30 +516,17 @@ export async function runWrappedBtcLoopLiveScenario({
       unwindResults,
       prices,
     });
-    receiptAutoIngest = await runReceiptAutoIngest({
-      context: receiptContext,
-      cwd,
-    });
-    const liveProof = buildWrappedBtcLoopLiveProof({
-      result: {
-        strategyId,
-        scenarioId,
-        perTradeCapUsdOverride,
-        marketAssumptionsOverride,
-        entryResults,
-        unwindResults,
-        receiptAutoIngest,
-        ok: true,
-      },
+    ({ receiptAutoIngest } = await finalizeWrappedBtcLoopLiveReceipt({
+      strategyId,
+      scenarioId,
+      perTradeCapUsdOverride,
+      marketAssumptionsOverride,
+      entryResults,
+      unwindResults,
       receiptContext,
+      cwd,
       now,
-    });
-    if (liveProof) {
-      await writeTextIfChanged(
-        join(config.dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE),
-        `${JSON.stringify(liveProof, null, 2)}\n`,
-      );
-    }
+    }));
   }
 
   return {

@@ -32,12 +32,22 @@ test("wrapped loop auto-ingest refuses incomplete receipt context", () => {
   const command = buildAutoIngestCommand({
     strategyId: "wrapped-btc-loop-base-moonwell",
     entryTxHashes: ["0xentry1"],
-    unwindTxHashes: ["0xunwind1"],
-    observedHealthFactorPath: [1.4],
-    observedLiquidationBufferPath: [14],
-    actualLoopFeesUsd: 0.1,
-    actualUnwindCostUsd: 0.05,
   });
 
   assert.equal(command, null);
+});
+
+test("wrapped loop auto-ingest builds a minimal receipt command when proof hydration can fill the rest", () => {
+  const command = buildAutoIngestCommand({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    scenario: "healthy_baseline",
+    entryTxHashes: ["0xentry1"],
+    unwindTxHashes: ["0xunwind1"],
+  });
+
+  assert.equal(command.command, "npm");
+  assert.equal(command.args.includes("--entry-tx-hashes=0xentry1"), true);
+  assert.equal(command.args.includes("--unwind-tx-hashes=0xunwind1"), true);
+  assert.equal(command.args.some((arg) => arg.startsWith("--health-factor-path=")), false);
+  assert.equal(command.args.some((arg) => arg.startsWith("--liquidation-buffer-path=")), false);
 });
