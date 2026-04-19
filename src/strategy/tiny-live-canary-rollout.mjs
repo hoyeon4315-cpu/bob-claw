@@ -2,6 +2,20 @@ function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
 
+function nextAction({ admission = null, preliveValidation = null } = {}) {
+  const blockerCount = admission?.blockers?.length ?? 0;
+  if (blockerCount === 0 && admission?.status === "manual_approval_required") {
+    return {
+      code: admission?.nextActionCode || "manual_approval_required",
+      command: null,
+    };
+  }
+  return {
+    code: preliveValidation?.nextActionCode || admission?.nextActionCode || null,
+    command: preliveValidation?.nextActionCommand || null,
+  };
+}
+
 export function buildTinyLiveCanaryRollout({
   reviewPackage = null,
   preliveValidation = null,
@@ -31,10 +45,7 @@ export function buildTinyLiveCanaryRollout({
       decision: admission?.decision || "NO_GO",
       blockerCount: admission?.blockers?.length ?? 0,
       topBlockedRequirementCode: blockedRequirement?.code || null,
-      nextAction: {
-        code: preliveValidation?.nextActionCode || admission?.nextActionCode || null,
-        command: preliveValidation?.nextActionCommand || null,
-      },
+      nextAction: nextAction({ admission, preliveValidation }),
     },
     candidate: admission?.candidate || null,
     constraints: admission?.constraints || null,

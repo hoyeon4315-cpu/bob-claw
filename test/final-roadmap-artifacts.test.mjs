@@ -189,3 +189,38 @@ test("live ops handoff separates wrapped-loop primary lane from blocked exact-ro
   assert.equal(handoff.receiptIngestionGuide.requiredFields.includes("entryTxHashes"), true);
   assert.equal(handoff.receiptIngestionGuide.sampleCommand.includes("--execution-mode=signer_backed_receipt"), true);
 });
+
+test("tiny live canary rollout keeps manual approval as next action after blockers clear", () => {
+  const rollout = buildTinyLiveCanaryRollout({
+    reviewPackage: {
+      tinyCanaryAdmission: {
+        decision: "GO_FOR_MANUAL_APPROVAL",
+        status: "manual_approval_required",
+        blockers: [],
+        nextActionCode: "manual_approval_required",
+        requirements: [
+          { code: "candidate_selected", label: "candidate selected", status: "passed", blockers: [] },
+          { code: "prelive_evidence_complete", label: "prelive evidence complete", status: "passed", blockers: [] },
+          { code: "manual_approval_required", label: "manual approval required", status: "required", blockers: [] },
+        ],
+        candidate: {
+          candidateType: "strategy",
+          candidateId: "wrapped-btc-loop-base-moonwell",
+        },
+      },
+    },
+    preliveValidation: {
+      validationStatus: "ready_for_manual_review",
+      currentStageId: "tiny_live_canary_review",
+      nextActionCode: "token",
+      nextActionCommand: "npm run check:estimator-wallet -- --route-key=base:btc->ethereum:btc --amount=25000",
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  assert.equal(rollout.summary.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(rollout.summary.blockerCount, 0);
+  assert.equal(rollout.summary.nextAction.code, "manual_approval_required");
+  assert.equal(rollout.summary.nextAction.command, null);
+  assert.equal(summarizeTinyLiveCanaryRollout(rollout).nextAction.code, "manual_approval_required");
+});
