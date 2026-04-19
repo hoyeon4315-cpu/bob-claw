@@ -260,6 +260,13 @@ function classifyRefreshItemOutcome(code, executed) {
   };
 }
 
+export function inferRefreshItemOutcome(item) {
+  return classifyRefreshItemOutcome(item?.code || null, {
+    executionStatus: item?.executionStatus || null,
+    steps: item?.steps || [],
+  });
+}
+
 export async function runParsedRefreshSteps(steps, { cwd = process.cwd(), env = process.env, runCommand = defaultRunCommand } = {}) {
   const executedSteps = [];
   for (const step of steps) {

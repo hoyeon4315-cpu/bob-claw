@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildShadowRefreshExecutionSummary,
   executeRefreshQueueItem,
+  inferRefreshItemOutcome,
   parseWhitelistedRefreshCommand,
   splitCommandSequence,
   tokenizeCommandSegment,
@@ -185,4 +186,20 @@ test("refresh execution summary aggregates recent outcomes", () => {
   assert.equal(summary.latestStatus, "failed");
   assert.equal(summary.recentExecutions[0].scripts[0], "verify:gateway");
   assert.equal(summary.recentExecutions[1].outcomeCategory, "wallet_ready");
+});
+
+test("refresh runner infers wallet readiness outcome from persisted step logs", () => {
+  const inferred = inferRefreshItemOutcome({
+    code: "check_wallet_readiness",
+    executionStatus: "failed",
+    steps: [
+      {
+        script: "check:estimator-wallet",
+        stderrSummary: "AccountStateRpcError: All RPC endpoints failed for chain: soneium",
+      },
+    ],
+  });
+
+  assert.equal(inferred.outcomeCategory, "rpc_unavailable");
+  assert.equal(inferred.transientFailure, true);
 });

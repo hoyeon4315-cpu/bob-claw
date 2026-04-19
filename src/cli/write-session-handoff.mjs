@@ -385,7 +385,7 @@ function refreshExecutionLines(refreshExecution = null) {
 function refreshBatchLines(refreshBatch = null) {
   if (!refreshBatch) return ["- none"];
   const lines = [
-    `- Summary: runs=${refreshBatch.runCount ?? 0} success=${refreshBatch.successCount ?? 0} failed=${refreshBatch.failureCount ?? 0} blocked=${refreshBatch.blockedCount ?? 0} invalid=${refreshBatch.invalidCount ?? 0} latest=${refreshBatch.latestStatus || "none"} stopReason=${refreshBatch.latestStopReason || "none"} failureCategory=${refreshBatch.latestFailureCategory || "none"}`,
+    `- Summary: runs=${refreshBatch.runCount ?? 0} success=${refreshBatch.successCount ?? 0} failed=${refreshBatch.failureCount ?? 0} blocked=${refreshBatch.blockedCount ?? 0} invalid=${refreshBatch.invalidCount ?? 0} latest=${refreshBatch.latestStatus || "none"} stopReason=${refreshBatch.latestStopReason || "none"} failureCategory=${refreshBatch.latestFailureCategory || "none"} recentFailureCategory=${refreshBatch.recentFailureCategory || "none"}`,
   ];
   if (!refreshBatch.recentBatches?.length) {
     lines.push("- Recent batches: none");

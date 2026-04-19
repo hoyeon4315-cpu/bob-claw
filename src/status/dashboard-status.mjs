@@ -1493,6 +1493,10 @@ function shadowCycleSummary(shadowCycle, now, { readinessRecords = [], readiness
       latestStopReason: refreshBatch.latestStopReason,
       latestFailureCategory: refreshBatch.latestFailureCategory,
       latestFailureRouteLabel: refreshBatch.latestFailureRouteLabel,
+      recentFailureObservedAt: refreshBatch.recentFailureObservedAt,
+      recentFailureCategory: refreshBatch.recentFailureCategory,
+      recentFailureRouteLabel: refreshBatch.recentFailureRouteLabel,
+      recentFailureTransient: refreshBatch.recentFailureTransient,
       recentBatches: refreshBatch.recentBatches,
     },
     shadowActions: (shadowCycle.shadowActions || []).map((item) => ({

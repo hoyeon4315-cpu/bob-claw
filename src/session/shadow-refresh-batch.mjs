@@ -4,6 +4,7 @@ import {
   DEFAULT_ALLOWED_QUEUE_SCRIPTS,
   defaultRunCommand,
   executeRefreshQueueItem,
+  inferRefreshItemOutcome,
   parseWhitelistedRefreshCommand,
   runParsedRefreshSteps,
 } from "./shadow-refresh-runner.mjs";
@@ -26,6 +27,19 @@ const DEFAULT_BATCH_ALLOWED_SCRIPTS = new Set([
 
 function firstFailedQueueResult(record) {
   return (record?.queueResults || []).find((result) => result.executionStatus === "failed") || null;
+}
+
+function normalizedFailedQueueResult(record) {
+  const failedQueue = firstFailedQueueResult(record);
+  if (!failedQueue) return null;
+  const inferred = inferRefreshItemOutcome(failedQueue);
+  return {
+    ...failedQueue,
+    outcomeCategory: failedQueue.outcomeCategory || inferred.outcomeCategory || null,
+    readinessStatus: failedQueue.readinessStatus || inferred.readinessStatus || null,
+    readinessGaps: failedQueue.readinessGaps || inferred.readinessGaps || [],
+    transientFailure: failedQueue.transientFailure ?? inferred.transientFailure ?? false,
+  };
 }
 
 function summarizeFollowUp(command, result) {
@@ -145,7 +159,9 @@ export function buildShadowRefreshBatchSummary(records = [], now = new Date().to
   const blockedCount = executeRecords.filter((item) => item.batchStatus === "blocked").length;
   const invalidCount = executeRecords.filter((item) => item.batchStatus === "invalid").length;
   const latest = sorted[0] || null;
-  const latestFailedQueue = firstFailedQueueResult(latest);
+  const latestFailedQueue = normalizedFailedQueueResult(latest);
+  const latestExecuteFailure = executeRecords.find((item) => item.batchStatus === "failed") || null;
+  const latestExecuteFailedQueue = normalizedFailedQueueResult(latestExecuteFailure);
   return {
     schemaVersion: 1,
     generatedAt: now,
@@ -160,8 +176,12 @@ export function buildShadowRefreshBatchSummary(records = [], now = new Date().to
     latestStopReason: latest?.stopReason || null,
     latestFailureCategory: latestFailedQueue?.outcomeCategory || null,
     latestFailureRouteLabel: latestFailedQueue?.routeLabel || latestFailedQueue?.routeKey || null,
+    recentFailureObservedAt: latestExecuteFailure?.observedAt || null,
+    recentFailureCategory: latestExecuteFailedQueue?.outcomeCategory || null,
+    recentFailureRouteLabel: latestExecuteFailedQueue?.routeLabel || latestExecuteFailedQueue?.routeKey || null,
+    recentFailureTransient: Boolean(latestExecuteFailedQueue?.transientFailure),
     recentBatches: sorted.slice(0, 5).map((item) => {
-      const failedQueue = firstFailedQueueResult(item);
+      const failedQueue = normalizedFailedQueueResult(item);
       return {
         observedAt: item.observedAt,
         batchId: item.batchId,

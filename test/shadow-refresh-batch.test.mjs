@@ -182,3 +182,44 @@ test("refresh batch summary surfaces latest queue failure category", () => {
   assert.equal(summary.latestFailureCategory, "rpc_unavailable");
   assert.equal(summary.latestFailureRouteLabel, "soneium->bob");
 });
+
+test("refresh batch summary backfills legacy queue failure categories and keeps recent failure visible", () => {
+  const summary = buildShadowRefreshBatchSummary([
+    {
+      observedAt: "2026-04-12T12:02:00.000Z",
+      batchId: "b3",
+      mode: "execute",
+      batchStatus: "succeeded",
+      stopReason: null,
+      selectedCount: 1,
+      queueResults: [{ executionStatus: "succeeded" }],
+      followUps: [],
+      circuitBreaker: { blocked: false },
+    },
+    {
+      observedAt: "2026-04-12T12:01:00.000Z",
+      batchId: "b2",
+      mode: "execute",
+      batchStatus: "failed",
+      stopReason: "queue_item_failed",
+      selectedCount: 1,
+      queueResults: [
+        {
+          code: "check_wallet_readiness",
+          executionStatus: "failed",
+          routeLabel: "soneium->bob",
+          steps: [{ script: "check:estimator-wallet", stderrSummary: "AccountStateRpcError: All RPC endpoints failed for chain: soneium" }],
+        },
+      ],
+      followUps: [],
+      circuitBreaker: { blocked: false },
+    },
+  ]);
+
+  assert.equal(summary.latestStatus, "succeeded");
+  assert.equal(summary.latestFailureCategory, null);
+  assert.equal(summary.recentFailureCategory, "rpc_unavailable");
+  assert.equal(summary.recentFailureRouteLabel, "soneium->bob");
+  assert.equal(summary.recentFailureTransient, true);
+  assert.equal(summary.recentBatches[1].queueFailureCategory, "rpc_unavailable");
+});
