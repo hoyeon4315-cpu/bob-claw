@@ -138,13 +138,15 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   });
 
   assert.equal(plan.currentSystem.liveTrading, "BLOCKED");
-  assert.equal(plan.currentSystem.riskBudgetUsd, 300);
+  assert.equal(plan.currentSystem.activeBudgetUsd, 300);
+  assert.equal(plan.currentSystem.referenceBudgetUsd, 300);
   assert.equal(plan.budgetAssessment.currentBudgetUsd, 300);
+  assert.equal(plan.budgetAssessment.referenceBudgetUsd, 300);
   assert.match(plan.budgetAssessment.explanation[0], /per-strategy/i);
   assert.deepEqual(plan.budgetAssessment.budgetScenarios, [
     {
       budgetUsd: 300,
-      label: "reference_cap_current",
+      label: "active_cap_current",
       planningOnly: false,
     },
   ]);
@@ -178,6 +180,7 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   assert.equal(summary.topRecommendation.id, "gateway_base_btc_yield");
   assert.equal(summary.topRecommendation.researchPilotMinimumUsd, 105);
   assert.equal(summary.currentBudgetUsd, 300);
+  assert.equal(summary.referenceBudgetUsd, 300);
   assert.equal(summary.budgetScenarios.length, 1);
   assert.equal(summary.topRecommendation.budgetScenarios.length, 1);
 });

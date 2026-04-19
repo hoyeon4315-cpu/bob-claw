@@ -1,4 +1,5 @@
 import { tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
+import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -71,6 +72,7 @@ function tokenPolicy(chain, token, overrides = {}) {
 }
 
 export function buildDefaultTreasuryPolicy() {
+  const activeBudgetUsd = deriveConfiguredActiveBudgetUsd();
   const nativeBalances = {
     bob: nativePolicy("bob", {
       enabled: true,
@@ -129,7 +131,8 @@ export function buildDefaultTreasuryPolicy() {
     schemaVersion: 1,
     walletMode: "single_wallet",
     capital: {
-      riskBudgetUsd: 300,
+      activeBudgetUsd,
+      referenceBudgetUsd: 300,
       canaryStartUsdMin: 20,
       canaryStartUsdMax: 50,
       maxIdleCapitalPerChainUsd: 60,
@@ -186,6 +189,11 @@ export function buildDefaultTreasuryPolicy() {
       enableCrossChainRefill: true,
     },
   };
+}
+
+export function referenceBudgetUsd(policy = null) {
+  const value = Number(policy?.capital?.referenceBudgetUsd);
+  return Number.isFinite(value) ? value : null;
 }
 
 export function validateTreasuryPolicy(policy) {

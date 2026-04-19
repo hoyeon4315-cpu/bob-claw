@@ -371,6 +371,7 @@ export function buildStrategySnapshot({
     shadowTrading: dashboardStatus?.overall?.shadowTrading || null,
     preliveStage: dashboardStatus?.prelive?.currentStage || null,
     activeBudgetUsd: pivotPlanSummary?.currentBudgetUsd ?? null,
+    referenceBudgetUsd: pivotPlanSummary?.referenceBudgetUsd ?? null,
     budgetScenarios: pivotPlanSummary?.budgetScenarios || [],
     ethereumL1: pivotPlan?.currentSystem?.ethereumL1 || "allowed_when_positive_ev",
   };

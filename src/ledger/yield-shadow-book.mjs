@@ -232,7 +232,7 @@ export function buildYieldShadowRecord({
 
 export function buildYieldShadowBook({ pivotPlan = null, scenarioAprBps = DEFAULT_SCENARIO_APR_BPS } = {}) {
   const pivot = yieldPivot(pivotPlan);
-  const currentBudgetUsd = finite(pivotPlan?.budgetAssessment?.currentBudgetUsd ?? pivotPlan?.currentSystem?.riskBudgetUsd);
+  const currentBudgetUsd = finite(pivotPlan?.budgetAssessment?.currentBudgetUsd ?? pivotPlan?.currentSystem?.activeBudgetUsd);
   const budgetScenarios = pivotPlan?.budgetAssessment?.budgetScenarios || [];
   const defaults = pivot?.evidence?.defaults || {};
   const profiles = PROFILE_DEFINITIONS.map((definition) =>

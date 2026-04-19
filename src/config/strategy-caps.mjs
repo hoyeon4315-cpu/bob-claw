@@ -369,6 +369,30 @@ export function listStrategyCaps() {
   return Object.values(STRATEGY_CAPS);
 }
 
+function effectiveActiveStrategyCapUsd(config = {}) {
+  const perChainCaps = Object.values(config?.caps?.perChainUsd || {}).filter(isFiniteNumber);
+  const candidates = [
+    config?.caps?.perTxUsd,
+    config?.caps?.perDayUsd,
+    perChainCaps.length > 0 ? Math.max(...perChainCaps) : null,
+  ].filter(isFiniteNumber);
+  return candidates.length > 0 ? Math.min(...candidates) : null;
+}
+
+export function deriveConfiguredActiveBudgetUsd({
+  strategies = listStrategyCaps(),
+  includeAutoExecuteOnly = true,
+  excludeStrategyIds = ["gateway-instant-swap-verification", "prelive_fork_execution"],
+} = {}) {
+  const excluded = new Set(excludeStrategyIds);
+  const activeCaps = (strategies || [])
+    .filter((config) => config?.strategyId && !excluded.has(config.strategyId))
+    .filter((config) => (includeAutoExecuteOnly ? config?.autoExecute === true : true))
+    .map((config) => effectiveActiveStrategyCapUsd(config))
+    .filter(isFiniteNumber);
+  return activeCaps.length > 0 ? Math.max(...activeCaps) : null;
+}
+
 export function validateStrategyCapsConfig(config = {}) {
   const errors = [];
   if (!config.strategyId) errors.push("strategyId is required");

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildDefaultTreasuryPolicy,
   decimalToUnits,
+  referenceBudgetUsd,
   getAllowanceCapPolicy,
   getNativeBalancePolicy,
   getTokenInventoryPolicy,
@@ -21,6 +22,8 @@ test("default treasury policy validates and enables bob/base", () => {
   assert.equal(getNativeBalancePolicy(policy, "bob").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "base").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "ethereum").enabled, true);
+  assert.equal(policy.capital.activeBudgetUsd, 300);
+  assert.equal(referenceBudgetUsd(policy), 300);
 });
 
 test("threshold helpers convert decimals to raw units", () => {

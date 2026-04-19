@@ -83,12 +83,12 @@ async function main() {
   console.log(`generated: ${plan.generatedAt}`);
   console.log(`liveTrading: ${plan.currentSystem.liveTrading}`);
   console.log(`preliveStage: ${plan.currentSystem.preliveStage || "n/a"}`);
-  console.log(`riskBudget: ${money(plan.currentSystem.riskBudgetUsd)} | lossCap: ${money(plan.currentSystem.projectLossCapUsd)}`);
+  console.log(`activeBudget: ${money(plan.currentSystem.activeBudgetUsd)} | referenceBudget: ${money(plan.currentSystem.referenceBudgetUsd)} | lossCap: ${money(plan.currentSystem.projectLossCapUsd)}`);
   console.log(`budget note: ${plan.budgetAssessment.explanation[0]}`);
   if (plan.budgetAssessment.budgetScenarios?.length) {
     console.log(
       `budget scenarios: ${(plan.budgetAssessment.budgetScenarios || [])
-        .map((scenario) => `${money(scenario.budgetUsd)}${scenario.planningOnly ? "(reference)" : "(current)"}`)
+        .map((scenario) => `${money(scenario.budgetUsd)}${scenario.planningOnly ? "(reference)" : "(active)"}`)
         .join(" | ")}`,
     );
   }

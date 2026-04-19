@@ -53,7 +53,7 @@ function estimateForBudget(values = {}, budgetUsd) {
 export function buildDestinationEstimatedEconomics({ workbench = null, blockers = null } = {}) {
   const generatedAt = workbench?.generatedAt || new Date().toISOString();
   const treasuryPolicy = buildDefaultTreasuryPolicy();
-  const activeBudgetUsd = numeric(workbench?.budgets?.activeBudgetUsd) ?? numeric(treasuryPolicy?.capital?.riskBudgetUsd);
+  const activeBudgetUsd = numeric(workbench?.budgets?.activeBudgetUsd) ?? numeric(treasuryPolicy?.capital?.activeBudgetUsd);
   const planningBudgetUsd = numeric(workbench?.budgets?.planningBudgetUsd);
   const blockerByTemplate = latestBlockersByTemplate(blockers?.entries || []);
 

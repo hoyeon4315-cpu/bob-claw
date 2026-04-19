@@ -149,6 +149,7 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
 
   assert.equal(snapshot.currentSystem.liveTrading, "BLOCKED");
   assert.equal(snapshot.currentSystem.activeBudgetUsd, 300);
+  assert.equal(snapshot.currentSystem.referenceBudgetUsd, 300);
   assert.equal(snapshot.summary.planningBudgetUsd, null);
   assert.equal(snapshot.planningLayers.yieldShadowBook.topProfile.id, "research_pilot");
   assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.activeLaneBudgetUsd, 300);

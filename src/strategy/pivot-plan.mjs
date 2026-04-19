@@ -1,5 +1,6 @@
 import { buildDefaultRiskPolicy } from "../risk/policy.mjs";
 import { buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
+import { referenceBudgetUsd } from "../treasury/policy.mjs";
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
 
 const YIELD_BLUEPRINT_REFERENCE = Object.freeze({
@@ -100,13 +101,14 @@ function buildBudgetScenarioFit(minimumCapitalUsd, budgetUsd) {
   };
 }
 
-function normalizeBudgetScenarios(currentBudgetUsd, planningBudgetsUsd = DEFAULT_PLANNING_BUDGETS_USD) {
-  const budgets = unique([currentBudgetUsd, ...(planningBudgetsUsd || [])].map((value) => finite(value)).filter(Number.isFinite))
+function normalizeBudgetScenarios(activeBudgetUsd, referenceBudgetsUsd = DEFAULT_PLANNING_BUDGETS_USD) {
+  const activeBudget = finite(activeBudgetUsd);
+  const budgets = unique([activeBudget, ...(referenceBudgetsUsd || [])].map((value) => finite(value)).filter(Number.isFinite))
     .sort((left, right) => left - right);
   return budgets.map((budgetUsd) => ({
     budgetUsd: round(budgetUsd),
-    label: budgetUsd === currentBudgetUsd ? "reference_cap_current" : `reference_cap_${Math.round(budgetUsd)}`,
-    planningOnly: Number.isFinite(currentBudgetUsd) ? budgetUsd !== currentBudgetUsd : true,
+    label: Number.isFinite(activeBudget) && budgetUsd === activeBudget ? "active_cap_current" : `reference_cap_${Math.round(budgetUsd)}`,
+    planningOnly: Number.isFinite(activeBudget) ? budgetUsd !== activeBudget : true,
   }));
 }
 
@@ -144,7 +146,8 @@ function buildPolicyContext({ dashboardStatus = null, riskPolicy, treasuryPolicy
   return {
     liveTrading: dashboardStatus?.overall?.liveTrading || "BLOCKED",
     preliveStage: dashboardStatus?.prelive?.currentStage || null,
-    riskBudgetUsd: round(treasuryPolicy.capital.riskBudgetUsd),
+    activeBudgetUsd: round(treasuryPolicy.capital.activeBudgetUsd),
+    referenceBudgetUsd: round(referenceBudgetUsd(treasuryPolicy)),
     projectLossCapUsd: riskPolicy.projectLossCapUsd == null ? null : round(riskPolicy.projectLossCapUsd),
     dailyLossCapUsd: riskPolicy.dailyLossCapUsd == null ? null : round(riskPolicy.dailyLossCapUsd),
     minNetProfitUsd: round(riskPolicy.minNetProfitUsd),
@@ -506,14 +509,16 @@ function comparePriority(left, right) {
 }
 
 function buildBudgetAssessment({ riskPolicy, treasuryPolicy, pivots = [], planningBudgetsUsd = DEFAULT_PLANNING_BUDGETS_USD } = {}) {
-  const budgetUsd = finite(treasuryPolicy.capital.riskBudgetUsd);
-  const budgetScenarios = normalizeBudgetScenarios(budgetUsd, planningBudgetsUsd);
+  const activeBudgetUsd = finite(treasuryPolicy.capital.activeBudgetUsd);
+  const referenceCapUsd = finite(referenceBudgetUsd(treasuryPolicy));
+  const budgetScenarios = normalizeBudgetScenarios(activeBudgetUsd, [referenceCapUsd, ...(planningBudgetsUsd || [])]);
   return {
-    currentBudgetUsd: round(budgetUsd),
+    currentBudgetUsd: round(activeBudgetUsd),
+    referenceBudgetUsd: round(referenceCapUsd),
     budgetScenarios,
     projectLossCapUsd: riskPolicy.projectLossCapUsd == null ? null : round(riskPolicy.projectLossCapUsd),
     explanation: [
-      "Capital sizing is per-strategy: each strategy declares its own per-trade and daily caps; there is no project-wide live budget by default.",
+      "Current active budget is inferred from per-strategy autoExecute caps; there is no project-wide live budget by default.",
       "Only strategies with measured, repeatable edge should earn a larger allocation; unproven edge should not pull the allocation upward.",
       "Any reference-cap scenarios are evaluation tools and do not themselves authorize larger operating capital.",
     ],
@@ -571,6 +576,7 @@ export function summarizeStrategyPivotPlan(plan = null) {
     schemaVersion: plan.schemaVersion || 1,
     generatedAt: plan.generatedAt || null,
     currentBudgetUsd: plan.budgetAssessment?.currentBudgetUsd ?? null,
+    referenceBudgetUsd: plan.budgetAssessment?.referenceBudgetUsd ?? null,
     budgetScenarios: plan.budgetAssessment?.budgetScenarios || [],
     budgetNote: plan.budgetAssessment?.explanation?.[0] || null,
     pivotCount: plan.pivots?.length || 0,
@@ -587,8 +593,11 @@ export function buildStrategyPivotPlan({
 } = {}) {
   const riskPolicy = buildDefaultRiskPolicy();
   const treasuryPolicy = buildDefaultTreasuryPolicy();
-  const budgetUsd = treasuryPolicy.capital.riskBudgetUsd;
-  const budgetScenarios = normalizeBudgetScenarios(budgetUsd, planningBudgetsUsd);
+  const budgetUsd = finite(treasuryPolicy.capital.activeBudgetUsd) ?? finite(referenceBudgetUsd(treasuryPolicy));
+  const budgetScenarios = normalizeBudgetScenarios(finite(treasuryPolicy.capital.activeBudgetUsd), [
+    referenceBudgetUsd(treasuryPolicy),
+    ...(planningBudgetsUsd || []),
+  ]);
   const catalog = buildStrategyCatalog({ dashboardStatus, state, triangleArtifacts });
   const strategy = dashboardStatus?.strategy || {};
   const pivots = [

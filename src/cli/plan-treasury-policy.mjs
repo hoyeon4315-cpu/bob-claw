@@ -22,7 +22,8 @@ async function main() {
   }
 
   console.log(`schemaVersion=${policy.schemaVersion}`);
-  console.log(`riskBudgetUsd=${policy.capital.riskBudgetUsd ?? "n/a"}`);
+  console.log(`activeBudgetUsd=${policy.capital.activeBudgetUsd ?? "n/a"}`);
+  console.log(`referenceBudgetUsd=${policy.capital.referenceBudgetUsd ?? "n/a"}`);
   console.log(`activeChains=${policy.activeChains.join(",")}`);
 
   for (const chain of policy.activeChains) {
