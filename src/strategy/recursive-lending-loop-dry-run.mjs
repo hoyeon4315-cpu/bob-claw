@@ -32,6 +32,32 @@ function requireFiniteNumber(label, value) {
   throw new Error(`Missing required recursive lending loop receipt field: ${label}`);
 }
 
+function hasExtendedObservedReceiptContext(record = {}) {
+  return (
+    (record?.observedHealthFactorPath || []).some((value) => Number.isFinite(value) && value > 0) &&
+    (record?.observedLiquidationBufferPath || []).some((value) => Number.isFinite(value) && value > 0) &&
+    Number.isFinite(record?.actualLoopFeesUsd) &&
+    Number.isFinite(record?.actualUnwindCostUsd) &&
+    Number.isFinite(record?.realizedNetCarryUsd)
+  );
+}
+
+function mirrorWrappedBtcObservedReceiptForRecursive(record = null, strategyId = null) {
+  if (!record || !strategyId) return null;
+  if (record.strategyId !== "wrapped-btc-loop-base-moonwell") return null;
+  if (!record.executionMode || record.executionMode === "simulated_dry_run") return null;
+  if (!hasExtendedObservedReceiptContext(record)) return null;
+  return {
+    ...record,
+    strategyId,
+    runId: `${strategyId}:mirrored:${record.runId || record.observedAt || "unknown"}`,
+    notes: unique([
+      ...(record.notes || []),
+      "Mirrored from wrapped-btc-loop-base-moonwell because the same signer-backed Moonwell/Base receipt satisfies recursive wrapped-BTC observed receipt requirements.",
+    ]),
+  };
+}
+
 function driftScenarioMetadata(scaffold = null) {
   const arrivalFamily = scaffold?.strategy?.arrivalFamily || "wrapped_btc";
   if (arrivalFamily === "stablecoin") {
@@ -58,7 +84,11 @@ export function recursiveLendingLoopDryRunSessionName(strategyId = "recursive_wr
 
 export function filterRecursiveLendingLoopDryRunRecords(records = [], strategyId = null) {
   if (!strategyId) return [...(records || [])];
-  return (records || []).filter((item) => item?.strategyId === strategyId);
+  return (records || []).flatMap((item) => {
+    if (item?.strategyId === strategyId) return [item];
+    const mirrored = mirrorWrappedBtcObservedReceiptForRecursive(item, strategyId);
+    return mirrored ? [mirrored] : [];
+  });
 }
 
 export function buildRecursiveLendingLoopDryRunPacket({ scaffold = null, now = null } = {}) {

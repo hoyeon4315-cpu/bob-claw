@@ -18,6 +18,10 @@ import {
   WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE,
 } from "../strategy/wrapped-btc-loop-live-proof.mjs";
 import { buildWrappedBtcLoopOosEvidence } from "../strategy/wrapped-btc-loop-oos-evidence.mjs";
+import {
+  filterRecursiveLendingLoopDryRunRecords,
+  summarizeRecursiveLendingLoopDryRunRuns,
+} from "../strategy/recursive-lending-loop-dry-run.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -187,6 +191,21 @@ async function main() {
     await writeTextIfChanged(join(config.dataDir, "wrapped-btc-lending-loop-dry-run-latest.json"), `${JSON.stringify(summary, null, 2)}\n`, {
       normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
     });
+    const recursiveWrappedSummary = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      strategyId: "recursive_wrapped_btc_lending_loop",
+      ...summarizeRecursiveLendingLoopDryRunRuns(
+        filterRecursiveLendingLoopDryRunRecords(allRecords, "recursive_wrapped_btc_lending_loop"),
+      ),
+    };
+    await writeTextIfChanged(
+      join(config.dataDir, "recursive_wrapped_btc_lending_loop-dry-run-latest.json"),
+      `${JSON.stringify(recursiveWrappedSummary, null, 2)}\n`,
+      {
+        normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
+      },
+    );
     await writeTextIfChanged(join(config.dataDir, "wrapped-btc-loop-oos-evidence.json"), `${JSON.stringify(oosEvidence, null, 2)}\n`, {
       normalize: (contents) => (contents ? JSON.stringify(stripVolatile(JSON.parse(contents))) : contents),
     });

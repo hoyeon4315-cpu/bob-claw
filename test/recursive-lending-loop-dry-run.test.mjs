@@ -5,6 +5,7 @@ import {
   buildRecursiveLendingLoopDryRunReceipt,
   buildRecursiveLendingLoopObservedReceipt,
   buildRecursiveLendingLoopReceiptGuide,
+  filterRecursiveLendingLoopDryRunRecords,
   recursiveLendingLoopDryRunSessionName,
   summarizeRecursiveLendingLoopDryRunRuns,
 } from "../src/strategy/recursive-lending-loop-dry-run.mjs";
@@ -157,4 +158,48 @@ test("recursive lending loop receipt guide includes signer-backed receipt placeh
   assert.equal(guide.sampleCommand.includes("--strategy=recursive_wrapped_btc_lending_loop"), true);
   assert.equal(guide.sampleCommand.includes("--entry-tx-hashes=<entry-tx-hash-1>,<entry-tx-hash-2>"), true);
   assert.equal(guide.sampleCommand.includes("--realized-net-carry-usd=<realized-net-carry-usd>"), true);
+});
+
+test("recursive wrapped BTC summary mirrors eligible wrapped loop signer receipts with extended context", () => {
+  const summary = summarizeRecursiveLendingLoopDryRunRuns(
+    filterRecursiveLendingLoopDryRunRecords(
+      [
+        {
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          runId: "wrapped:1",
+          observedAt: "2026-04-19T01:00:00.000Z",
+          scenarioId: "healthy_baseline",
+          result: "passed",
+          executionMode: "signer_backed_receipt",
+          watcherStatus: "healthy",
+          observedHealthFactorPath: [1.6],
+          observedLiquidationBufferPath: [12.1],
+          actualLoopFeesUsd: 0.01,
+          actualUnwindCostUsd: 0.02,
+          realizedNetCarryUsd: 0,
+          notes: [],
+        },
+        {
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          runId: "wrapped:incomplete",
+          observedAt: "2026-04-19T01:05:00.000Z",
+          scenarioId: "healthy_baseline",
+          result: "passed",
+          executionMode: "signer_backed_receipt",
+          watcherStatus: "healthy",
+          observedHealthFactorPath: [],
+          observedLiquidationBufferPath: [],
+          actualLoopFeesUsd: 0.01,
+          actualUnwindCostUsd: 0.02,
+          realizedNetCarryUsd: 0,
+          notes: [],
+        },
+      ],
+      "recursive_wrapped_btc_lending_loop",
+    ),
+  );
+
+  assert.equal(summary.runCount, 1);
+  assert.equal(summary.signerBackedRunCount, 1);
+  assert.equal(summary.latestRun.runId.startsWith("recursive_wrapped_btc_lending_loop:mirrored:"), true);
 });
