@@ -60,3 +60,39 @@ test("mergePlans marks mixed sources when exact-route and objective plans coexis
   assert.equal(merged.source, "mixed");
   assert.equal(merged.selectedCount, 2);
 });
+
+test("mergePlans preserves replaced selections that already have execution records", () => {
+  const existing = {
+    source: "exact_route",
+    selectedCount: 1,
+    plans: [
+      {
+        planId: "old-submitted-plan",
+        routeKey: "avalanche:wbtc->soneium:wbtc",
+        amount: "10000",
+        selectionSource: "exact_route",
+      },
+    ],
+  };
+  const next = {
+    source: "exact_route",
+    selectedCount: 1,
+    plans: [
+      {
+        planId: "new-plan",
+        routeKey: "avalanche:wbtc->soneium:wbtc",
+        amount: "10000",
+        selectionSource: "exact_route",
+      },
+    ],
+  };
+
+  const merged = mergePlans(existing, next, {
+    preservePlanIds: new Set(["old-submitted-plan"]),
+  });
+
+  assert.deepEqual(
+    merged.plans.map((plan) => plan.planId),
+    ["new-plan", "old-submitted-plan"],
+  );
+});

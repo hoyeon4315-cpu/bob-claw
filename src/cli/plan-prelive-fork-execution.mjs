@@ -45,7 +45,7 @@ function planSelectionKey(plan = null) {
   return [plan?.routeKey || "", String(plan?.amount || ""), plan?.selectionSource || ""].join("|");
 }
 
-export function mergePlans(existingOutput = null, nextOutput = null) {
+export function mergePlans(existingOutput = null, nextOutput = null, { preservePlanIds = new Set() } = {}) {
   const nextPlans = nextOutput?.plans || [];
   const existingPlans = existingOutput?.plans || [];
   const nextPlanIds = new Set(nextPlans.map((plan) => plan?.planId).filter(Boolean));
@@ -54,6 +54,7 @@ export function mergePlans(existingOutput = null, nextOutput = null) {
     ...nextPlans,
     ...existingPlans.filter((plan) => {
       if (nextPlanIds.has(plan?.planId)) return false;
+      if (preservePlanIds.has(plan?.planId)) return true;
       if (nextSelectionKeys.has(planSelectionKey(plan))) return false;
       return true;
     }),
@@ -117,8 +118,15 @@ async function main() {
 
   if (args.write) {
     const outputPath = join(config.dataDir, "prelive-fork-plan.json");
-    const existingOutput = await readJsonIfExists(outputPath);
-    const mergedOutput = mergePlans(existingOutput, output);
+    const [existingOutput, existingSubmissions, existingReceipts] = await Promise.all([
+      readJsonIfExists(outputPath),
+      readJsonl(config.dataDir, "prelive-fork-submissions"),
+      readJsonl(config.dataDir, "prelive-fork-receipts"),
+    ]);
+    const preservePlanIds = new Set(
+      [...existingSubmissions, ...existingReceipts].map((record) => record?.planId).filter(Boolean),
+    );
+    const mergedOutput = mergePlans(existingOutput, output, { preservePlanIds });
     await writeTextIfChanged(outputPath, `${JSON.stringify(mergedOutput, null, 2)}\n`, {
       normalize: (contents) => {
         if (!contents) return contents;

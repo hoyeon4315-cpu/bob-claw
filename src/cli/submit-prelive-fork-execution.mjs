@@ -34,10 +34,11 @@ function parseArgs(argv) {
     signerTimeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : signerClientTimeoutMs(),
     rpcUrl: options["rpc-url"] || null,
     rpcUrls: options["rpc-urls"] ? options["rpc-urls"].split(",").map((item) => item.trim()).filter(Boolean) : [],
+    gasLimit: options["gas-limit"] || null,
   };
 }
 
-export function buildForkSignerIntent(plan, { observedAt = new Date().toISOString() } = {}) {
+export function buildForkSignerIntent(plan, { observedAt = new Date().toISOString(), gasLimit = null } = {}) {
   return {
     strategyId: "prelive_fork_execution",
     chain: plan.srcChain,
@@ -51,6 +52,7 @@ export function buildForkSignerIntent(plan, { observedAt = new Date().toISOStrin
       to: plan?.transaction?.to || null,
       data: plan?.transaction?.data || "0x",
       value: String(plan?.transaction?.valueWei || "0"),
+      ...(gasLimit ? { gasLimit: String(gasLimit) } : {}),
     },
     metadata: {
       skipAutoIngest: true,
@@ -81,7 +83,7 @@ async function loadSignedTx(args, plan, { readSignedTxFile = readFile, sendComma
       timeoutMs: args.signerTimeoutMs,
       message: {
         command: "sign_only",
-        intent: buildForkSignerIntent(plan),
+        intent: buildForkSignerIntent(plan, { gasLimit: args.gasLimit }),
       },
     });
     if (signerResult?.status !== "ok" || !signerResult?.signed?.signedTx) {

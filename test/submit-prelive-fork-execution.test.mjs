@@ -52,6 +52,43 @@ test("fork signer intent is derived from the fork plan transaction payload", () 
   assert.equal(intent.metadata.preliveForkAmount, "50000");
 });
 
+test("fork signer intent can carry an explicit gas limit override", () => {
+  const plan = buildForkExecutionPlan({
+    selection: {
+      routeKey: `bob:${WBTC}->soneium:${WBTC}`,
+      amount: "1000",
+      label: "bob->soneium",
+      score: {
+        routeKey: `bob:${WBTC}->soneium:${WBTC}`,
+        amount: "1000",
+        srcChain: "bob",
+        dstChain: "soneium",
+        inputUsd: 0.76,
+        tradeReadiness: "reject_no_net_edge",
+        srcAsset: { chain: "bob", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+        dstAsset: { chain: "soneium", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+      },
+      quote: {
+        routeKey: `bob:${WBTC}->soneium:${WBTC}`,
+        amount: "1000",
+        route: { srcChain: "bob", dstChain: "soneium" },
+        txTo: "0x1111111111111111111111111111111111111111",
+        txData: "0x1234",
+        txValueWei: "42",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  const intent = buildForkSignerIntent(plan, {
+    observedAt: "2026-04-19T00:00:01.000Z",
+    gasLimit: "500000",
+  });
+
+  assert.equal(intent.tx.gasLimit, "500000");
+});
+
 test("fork execution plan submit command prefers signer daemon plus fork rpc", () => {
   const plan = buildForkExecutionPlan({
     selection: {
