@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { classifyGatewayAssetUniverse } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
@@ -1231,18 +1232,34 @@ function onePageExecutionBriefLines({
 }
 
 function checklistLines(checklist) {
+  return checklistLinesForReviewState(checklist);
+}
+
+export function checklistLinesForReviewState(checklist, reviewPackage = null) {
+  const completed = checklist?.completed || [];
+  const remaining = reviewPackage?.readyForManualReview ? ["manual canary review only"] : checklist?.remaining || [];
   return [
-    `- Completed so far: ${checklist?.completed?.join(" · ") || "none yet"}`,
-    `- Remaining steps: ${checklist?.remaining?.join(" · ") || "none"}`,
+    `- Completed so far: ${completed.join(" · ") || "none yet"}`,
+    `- Remaining steps: ${remaining.join(" · ") || "none"}`,
   ];
 }
 
-function executionStageLines(summary) {
+export function executionStageLines(summary, reviewPackage = null) {
+  if (reviewPackage?.readyForManualReview) {
+    const nextAction = reviewPackage?.executionRunbook?.nextActionCode || "manual_canary_review_only";
+    const auditText = summary?.auditDecision ? `; audit=${summary.auditDecision}` : "";
+    return [
+      `- Manual canary review: READY_FOR_MANUAL_CANARY_REVIEW (${nextAction})`,
+      `- Live execution: ${reviewPackage.liveDecision || summary?.liveStage || "unknown"}${auditText}`,
+    ];
+  }
   return [
     `- Manual canary review: ${summary.reviewStage}${summary.reviewReasons.length ? ` (${summary.reviewReasons.join(",")})` : ""}`,
     `- Live execution: ${summary.liveStage}${summary.auditDecision ? `; audit=${summary.auditDecision}` : ""}${summary.liveReasons.length ? ` (${summary.liveReasons.join(",")})` : ""}`,
   ];
 }
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 function stableRouteCandidates(scores = []) {
   return scores
@@ -1987,8 +2004,8 @@ async function main() {
     "",
     "## Progress Snapshot",
     "",
-    ...checklistLines(checklist),
-    ...executionStageLines(executionStage),
+    ...checklistLinesForReviewState(checklist, reviewPackage),
+    ...executionStageLines(executionStage, reviewPackage),
     "",
     "## Best Route Right Now",
     "",
@@ -2182,7 +2199,9 @@ async function main() {
   console.log(`${result.changed ? "wrote" : "unchanged"}=${outputPath}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
