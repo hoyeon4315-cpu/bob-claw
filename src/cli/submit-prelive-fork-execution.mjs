@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Transaction } from "ethers";
 import { config } from "../config/env.mjs";
+import { getEvmChainConfig } from "../config/chains.mjs";
 import { rpc } from "../evm/json-rpc.mjs";
 import { readErc20Balance, readNativeBalance, summarizeRequirement } from "../evm/account-state.mjs";
 import { sendRawTransaction, classifySendTransactionError } from "../evm/transaction-submit.mjs";
@@ -16,6 +17,9 @@ import { sendTelegramMessage, formatPreliveForkExecutionAlert } from "../notify/
 import { buildExecutionSubmissionEvent, canStartExecution } from "../execution/journal.mjs";
 import { readExecutionGuards } from "../execution/guards.mjs";
 import { buildForkExecutionJob } from "../prelive/fork-execution.mjs";
+
+const MAX_FORK_BLOCK_LAG = 120;
+const MAX_FORK_TIME_LAG_SECONDS = 900;
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -115,12 +119,52 @@ async function readForkLatestBlock(args) {
   throw error;
 }
 
+async function readLiveLatestBlock(chain) {
+  const chainConfig = getEvmChainConfig(chain);
+  const rpcUrls = [...new Set([...(chainConfig?.rpcUrls || []), chainConfig?.rpcUrl].filter(Boolean))];
+  if (rpcUrls.length === 0) return null;
+  const attempts = [];
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const block = await rpc(rpcUrl, "eth_getBlockByNumber", ["latest", false]);
+      if (!block) continue;
+      return {
+        rpcUrl,
+        blockNumber: Number(BigInt(block.number || "0x0")),
+        blockTimestamp: Number(BigInt(block.timestamp || "0x0")),
+      };
+    } catch (error) {
+      attempts.push({ rpcUrl, message: error.message, code: error.rpcError?.code ?? null });
+    }
+  }
+  const error = new Error(`Failed to read live latest block for chain: ${chain}`);
+  error.name = "LiveLatestBlockRpcError";
+  error.attempts = attempts;
+  throw error;
+}
+
+function buildForkFreshness(latestBlock, liveLatestBlock) {
+  if (!latestBlock || !liveLatestBlock) return null;
+  const blockLag = Math.max(0, (liveLatestBlock.blockNumber || 0) - (latestBlock.blockNumber || 0));
+  const timeLagSeconds = Math.max(0, (liveLatestBlock.blockTimestamp || 0) - (latestBlock.blockTimestamp || 0));
+  const stale = blockLag > MAX_FORK_BLOCK_LAG || timeLagSeconds > MAX_FORK_TIME_LAG_SECONDS;
+  return {
+    stale,
+    blockLag,
+    timeLagSeconds,
+    maxBlockLag: MAX_FORK_BLOCK_LAG,
+    maxTimeLagSeconds: MAX_FORK_TIME_LAG_SECONDS,
+    liveLatestBlock,
+  };
+}
+
 export async function buildForkSubmissionPreflight(
   plan,
   args,
   {
     readPendingNonceImpl = readForkPendingNonce,
     readLatestBlockImpl = readForkLatestBlock,
+    readLiveLatestBlockImpl = readLiveLatestBlock,
     readErc20BalanceImpl = readErc20Balance,
     readNativeBalanceImpl = readNativeBalance,
     decodeSignedTxImpl = (signedTx) => Transaction.from(signedTx),
@@ -132,6 +176,16 @@ export async function buildForkSubmissionPreflight(
   const sourceToken = plan?.routeContext?.srcAsset?.token || parsedRoute?.srcToken || null;
   const sourceAmountUnits = plan?.amount ? BigInt(plan.amount) : null;
   const latestBlock = await readLatestBlockImpl(args);
+  const liveLatestBlock = sourceChain ? await readLiveLatestBlockImpl(sourceChain).catch(() => null) : null;
+  const freshness = buildForkFreshness(latestBlock, liveLatestBlock);
+  if (freshness?.stale) {
+    const error = new Error(
+      `Fork snapshot is stale: blockLag=${freshness.blockLag} timeLagSeconds=${freshness.timeLagSeconds}`,
+    );
+    error.name = "StaleForkSnapshotError";
+    error.details = freshness;
+    throw error;
+  }
   const pendingNonce = Number.isInteger(args?.nonce) ? args.nonce : await readPendingNonceImpl(plan, args);
   const rpcOptions = rpcOptionsFromArgs(args);
 
@@ -163,6 +217,7 @@ export async function buildForkSubmissionPreflight(
     address: fromAddress,
     pendingNonce,
     latestBlock,
+    freshness,
     sourceBalance: sourceBalance
       ? {
           rpcUrl: sourceBalance.rpcUrl,
@@ -289,6 +344,7 @@ async function notifyPreliveForkTransition(payload) {
 }
 
 function classifyForkSubmissionFailure(error) {
+  if (error?.name === "StaleForkSnapshotError") return "stale_fork_snapshot";
   if (error?.name === "ForkSourceBalanceError") return "insufficient_source_balance";
   if (error?.name === "ForkNativeBalanceError") return "insufficient_native_balance";
   if (error?.name === "ForkPendingNonceRpcError" || error?.name === "ForkLatestBlockRpcError") return "fork_state_unavailable";

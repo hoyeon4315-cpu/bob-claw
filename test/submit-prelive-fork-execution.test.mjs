@@ -160,6 +160,7 @@ test("fork submission preflight blocks insufficient source token balance on the 
         { rpcUrl: "http://127.0.0.1:8549" },
         {
           readLatestBlockImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", blockNumber: 123, blockTimestamp: 456 }),
+          readLiveLatestBlockImpl: async () => ({ rpcUrl: "https://mainnet.base.org", blockNumber: 123, blockTimestamp: 456 }),
           readPendingNonceImpl: async () => 9,
           readErc20BalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balance: 299n }),
           readNativeBalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balanceWei: 10n ** 18n }),
@@ -205,6 +206,7 @@ test("fork submission preflight blocks insufficient native gas funding for the s
         { rpcUrl: "http://127.0.0.1:8549", signedTx: "0xdeadbeef" },
         {
           readLatestBlockImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", blockNumber: 123, blockTimestamp: 456 }),
+          readLiveLatestBlockImpl: async () => ({ rpcUrl: "https://mainnet.base.org", blockNumber: 123, blockTimestamp: 456 }),
           readPendingNonceImpl: async () => 9,
           readErc20BalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balance: 300n }),
           readNativeBalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balanceWei: 100n }),
@@ -213,6 +215,98 @@ test("fork submission preflight blocks insufficient native gas funding for the s
       ),
     (error) => error?.name === "ForkNativeBalanceError" && /required=152/.test(error.message),
   );
+});
+
+test("fork submission preflight blocks stale fork snapshots compared with live chain state", async () => {
+  const plan = buildForkExecutionPlan({
+    selection: {
+      routeKey: `base:${WBTC}->bob:${WBTC}`,
+      amount: "300",
+      label: "base->bob",
+      score: {
+        routeKey: `base:${WBTC}->bob:${WBTC}`,
+        amount: "300",
+        srcChain: "base",
+        dstChain: "bob",
+        inputUsd: 0.23,
+        tradeReadiness: "insufficient_data",
+        srcAsset: { chain: "base", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+        dstAsset: { chain: "bob", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+      },
+      quote: {
+        routeKey: `base:${WBTC}->bob:${WBTC}`,
+        amount: "300",
+        route: { srcChain: "base", dstChain: "bob" },
+        txTo: "0x1111111111111111111111111111111111111111",
+        txData: "0x1234",
+        txValueWei: "42",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  await assert.rejects(
+    () =>
+      buildForkSubmissionPreflight(
+        plan,
+        { rpcUrl: "http://127.0.0.1:8549" },
+        {
+          readLatestBlockImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", blockNumber: 100, blockTimestamp: 1_000 }),
+          readLiveLatestBlockImpl: async () => ({ rpcUrl: "https://mainnet.base.org", blockNumber: 500, blockTimestamp: 3_000 }),
+          readPendingNonceImpl: async () => 9,
+          readErc20BalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balance: 300n }),
+          readNativeBalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balanceWei: 10n ** 18n }),
+        },
+      ),
+    (error) => error?.name === "StaleForkSnapshotError" && /blockLag=400/.test(error.message),
+  );
+});
+
+test("fork submission preflight records freshness when fork is still close to live", async () => {
+  const plan = buildForkExecutionPlan({
+    selection: {
+      routeKey: `base:${WBTC}->bob:${WBTC}`,
+      amount: "300",
+      label: "base->bob",
+      score: {
+        routeKey: `base:${WBTC}->bob:${WBTC}`,
+        amount: "300",
+        srcChain: "base",
+        dstChain: "bob",
+        inputUsd: 0.23,
+        tradeReadiness: "insufficient_data",
+        srcAsset: { chain: "base", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+        dstAsset: { chain: "bob", token: WBTC, ticker: "wBTC.OFT", decimals: 8, isNative: false, priceKey: "btc" },
+      },
+      quote: {
+        routeKey: `base:${WBTC}->bob:${WBTC}`,
+        amount: "300",
+        route: { srcChain: "base", dstChain: "bob" },
+        txTo: "0x1111111111111111111111111111111111111111",
+        txData: "0x1234",
+        txValueWei: "42",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  const preflight = await buildForkSubmissionPreflight(
+    plan,
+    { rpcUrl: "http://127.0.0.1:8549" },
+    {
+      readLatestBlockImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", blockNumber: 490, blockTimestamp: 2_950 }),
+      readLiveLatestBlockImpl: async () => ({ rpcUrl: "https://mainnet.base.org", blockNumber: 500, blockTimestamp: 3_000 }),
+      readPendingNonceImpl: async () => 9,
+      readErc20BalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balance: 300n }),
+      readNativeBalanceImpl: async () => ({ rpcUrl: "http://127.0.0.1:8549", balanceWei: 10n ** 18n }),
+    },
+  );
+
+  assert.equal(preflight.freshness?.stale, false);
+  assert.equal(preflight.freshness?.blockLag, 10);
+  assert.equal(preflight.freshness?.timeLagSeconds, 50);
 });
 
 test("fork signer intent passes policy evaluation with configured caps", async () => {
