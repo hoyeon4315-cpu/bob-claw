@@ -14,6 +14,7 @@ import { buildDefaultWrappedBtcLendingLoopConfig } from "../../strategy/wrapped-
 import { inspectWrappedBtcLoopBindingsDocument, resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-loop-bindings.mjs";
 import {
   buildWrappedBtcLoopLiveProof,
+  choosePreferredWrappedBtcLoopLiveProof,
   WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE,
 } from "../../strategy/wrapped-btc-loop-live-proof.mjs";
 import {
@@ -387,11 +388,25 @@ async function writeWrappedBtcLoopLiveProof({
   liveProof,
   dataDir = config.dataDir,
   writeTextIfChangedImpl = writeTextIfChanged,
+  readExistingLiveProofImpl = async (path) => {
+    try {
+      return JSON.parse(await readFile(path, "utf8"));
+    } catch (error) {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    }
+  },
 } = {}) {
   if (!liveProof) return null;
+  const proofPath = join(dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE);
+  const existingProof = await readExistingLiveProofImpl(proofPath);
+  const preferredProof = choosePreferredWrappedBtcLoopLiveProof({
+    previousProof: existingProof,
+    nextProof: liveProof,
+  });
   return writeTextIfChangedImpl(
-    join(dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE),
-    `${JSON.stringify(liveProof, null, 2)}\n`,
+    proofPath,
+    `${JSON.stringify(preferredProof, null, 2)}\n`,
   );
 }
 
@@ -408,6 +423,7 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
   dataDir = config.dataDir,
   runReceiptAutoIngestImpl = runReceiptAutoIngest,
   writeTextIfChangedImpl = writeTextIfChanged,
+  readExistingLiveProofImpl = undefined,
 } = {}) {
   const initialReceiptAutoIngest = {
     ran: false,
@@ -431,6 +447,7 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
     liveProof: initialLiveProof,
     dataDir,
     writeTextIfChangedImpl,
+    ...(readExistingLiveProofImpl ? { readExistingLiveProofImpl } : {}),
   });
 
   const receiptAutoIngest = await runReceiptAutoIngestImpl({
@@ -459,6 +476,7 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
     liveProof,
     dataDir,
     writeTextIfChangedImpl,
+    ...(readExistingLiveProofImpl ? { readExistingLiveProofImpl } : {}),
   });
 
   return {

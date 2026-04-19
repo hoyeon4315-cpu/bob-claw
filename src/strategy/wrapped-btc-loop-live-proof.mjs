@@ -369,6 +369,25 @@ export async function stabilizeWrappedBtcLoopLiveProof({
   return best;
 }
 
+export function choosePreferredWrappedBtcLoopLiveProof({
+  previousProof = null,
+  nextProof = null,
+} = {}) {
+  const hydratedPrevious = hydrateWrappedBtcLoopLiveProof({ proof: previousProof });
+  const hydratedNext = hydrateWrappedBtcLoopLiveProof({ proof: nextProof });
+  if (!hydratedPrevious) return hydratedNext;
+  if (!hydratedNext) return hydratedPrevious;
+
+  const previousScore = enrichmentScore(hydratedPrevious);
+  const nextScore = enrichmentScore(hydratedNext);
+  if (nextScore > previousScore) return hydratedNext;
+  if (previousScore > nextScore) return hydratedPrevious;
+
+  const previousObservedAt = Date.parse(hydratedPrevious.observedAt || "") || 0;
+  const nextObservedAt = Date.parse(hydratedNext.observedAt || "") || 0;
+  return nextObservedAt >= previousObservedAt ? hydratedNext : hydratedPrevious;
+}
+
 export function buildWrappedBtcLoopLiveProof({
   result = null,
   receiptContext = null,

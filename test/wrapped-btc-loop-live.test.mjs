@@ -595,6 +595,70 @@ test("wrapped loop live receipt writes proof before auto-ingest and rewrites fin
   assert.equal(finalized.liveProof.receiptAutoIngest.ran, true);
 });
 
+test("wrapped loop live receipt preserves stronger existing proof when a new roundtrip is weaker", async () => {
+  const writes = [];
+
+  await finalizeWrappedBtcLoopLiveReceipt({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    scenarioId: "healthy_baseline",
+    entryResults: [
+      { broadcast: { txHash: "0xentry-new-1" } },
+      { broadcast: { txHash: "0xentry-new-2" } },
+      { broadcast: { txHash: "0xentry-new-3" } },
+    ],
+    unwindResults: [
+      { broadcast: { txHash: "0xunwind-new-1" } },
+    ],
+    receiptContext: {
+      actualLoopFeesUsd: 0.004573,
+      actualUnwindCostUsd: 0.006021,
+      realizedNetCarryUsd: 0,
+    },
+    now: "2026-04-19T13:48:04.394Z",
+    dataDir: "/tmp/bob-claw-test",
+    readExistingLiveProofImpl: async () => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-16T21:46:00.000Z",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenarioId: "healthy_baseline",
+      success: true,
+      proofKind: "signer_backed_roundtrip",
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 8,
+      unwindCount: 5,
+      entryTxHashes: ["0xentry-old"],
+      unwindTxHashes: ["0xunwind-old"],
+      observedHealthFactorPath: [2.7453],
+      observedLiquidationBufferPath: [54.0378],
+      actualLoopFeesUsd: 0.004548,
+      actualUnwindCostUsd: 0.005989,
+      realizedNetCarryUsd: 0,
+      entryReceiptMode: "borrow_loop_observed",
+      mintEventCount: 2,
+      borrowEventCount: 1,
+    }),
+    writeTextIfChangedImpl: async (path, contents) => {
+      writes.push({
+        path,
+        proof: JSON.parse(contents),
+      });
+      return { path, changed: true };
+    },
+    runReceiptAutoIngestImpl: async () => ({
+      ran: true,
+      code: 0,
+      stdout: "ok",
+      stderr: "",
+    }),
+  });
+
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0].proof.entryTxHashes, ["0xentry-old"]);
+  assert.equal(writes[0].proof.extendedReceiptContextReady, true);
+  assert.deepEqual(writes[1].proof.entryTxHashes, ["0xentry-old"]);
+  assert.equal(writes[1].proof.extendedReceiptContextReady, true);
+});
+
 test("wrapped loop signer client timeout stays above confirmation wait for live confirmation", () => {
   assert.equal(
     resolveWrappedBtcLoopSignerClientTimeout({

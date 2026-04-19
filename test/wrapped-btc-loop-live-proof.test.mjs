@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Interface } from "ethers";
 import {
   buildWrappedBtcLoopLiveProof,
+  choosePreferredWrappedBtcLoopLiveProof,
   enrichWrappedBtcLoopLiveProof,
   hydrateWrappedBtcLoopLiveProof,
   stabilizeWrappedBtcLoopLiveProof,
@@ -53,6 +54,54 @@ test("wrapped btc loop live proof summarizes successful signer-backed roundtrip"
   assert.equal(summary.entryCount, 2);
   assert.equal(summary.unwindCount, 1);
   assert.equal(summary.extendedReceiptContextReady, true);
+});
+
+test("wrapped btc loop live proof keeps the stronger existing receipt context over a weaker newer roundtrip", () => {
+  const preferred = choosePreferredWrappedBtcLoopLiveProof({
+    previousProof: {
+      schemaVersion: 1,
+      observedAt: "2026-04-16T21:46:00.000Z",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenarioId: "healthy_baseline",
+      success: true,
+      proofKind: "signer_backed_roundtrip",
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 8,
+      unwindCount: 5,
+      entryTxHashes: ["0xentry-old"],
+      unwindTxHashes: ["0xunwind-old"],
+      observedHealthFactorPath: [2.7453],
+      observedLiquidationBufferPath: [54.0378],
+      actualLoopFeesUsd: 0.004548,
+      actualUnwindCostUsd: 0.005989,
+      realizedNetCarryUsd: 0,
+      entryReceiptMode: "borrow_loop_observed",
+      mintEventCount: 2,
+      borrowEventCount: 1,
+    },
+    nextProof: {
+      schemaVersion: 1,
+      observedAt: "2026-04-19T13:48:04.394Z",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenarioId: "healthy_baseline",
+      success: true,
+      proofKind: "signer_backed_roundtrip",
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 3,
+      unwindCount: 1,
+      entryTxHashes: ["0xentry-new"],
+      unwindTxHashes: ["0xunwind-new"],
+      observedHealthFactorPath: [],
+      observedLiquidationBufferPath: [],
+      actualLoopFeesUsd: 0.004573,
+      actualUnwindCostUsd: 0.006021,
+      realizedNetCarryUsd: 0,
+    },
+  });
+
+  assert.deepEqual(preferred.entryTxHashes, ["0xentry-old"]);
+  assert.equal(preferred.entryReceiptMode, "borrow_loop_observed");
+  assert.equal(preferred.extendedReceiptContextReady, true);
 });
 
 test("wrapped btc loop live proof hydrates missing fee fields from capital audit and exposes remaining blockers", () => {
