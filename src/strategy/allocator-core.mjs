@@ -647,6 +647,10 @@ export function buildAllocatorCore({
   const chainCoverage = buildChainCoverageMatrix(destinationPromotionGate, destinationStrategyRegistry);
   const priorityChainExpansion = buildPriorityChainExpansion(candidates);
   const diversifiedPortfolioDraft = buildDiversifiedPortfolioDraft({ candidates, priorityChainExpansion });
+  const combinedReviewOnlyChains = unique([
+    ...(priorityChainExpansion.tier2ReviewOnlyChains || []),
+    ...(indirectStablecoinLaneInventory?.summary?.indirectStableReviewChains || []),
+  ]).filter((chain) => PRIORITY_EXPANSION_CHAINS.includes(chain));
   const topPlanningCandidate = planningView.planningQueue[0] || null;
   const topActiveAllocation = activeView.activePlan[0] || null;
   const topActiveReadyCandidate = topReadyCandidate(candidates);
@@ -678,8 +682,11 @@ export function buildAllocatorCore({
       priorityExpansionActiveReadyChains: priorityChainExpansion.tier1ActiveReadyChains,
       priorityExpansionReviewOnlyChains: priorityChainExpansion.tier2ReviewOnlyChains,
       priorityExpansionBlockedOnlyChains: priorityChainExpansion.tier3BlockedOnlyChains,
+      priorityExpansionCombinedReviewOnlyChains: combinedReviewOnlyChains,
       indirectStableDirectChains: indirectStablecoinLaneInventory?.summary?.directStableChains || [],
       indirectStableReviewChains: indirectStablecoinLaneInventory?.summary?.indirectStableReviewChains || [],
+      indirectStableQuoteOnlyChains: indirectStablecoinLaneInventory?.summary?.indirectQuoteOnlyChains || [],
+      indirectStableRouterMissingChains: indirectStablecoinLaneInventory?.summary?.indirectRouterMissingChains || [],
       indirectStableDexVenueCount: (indirectStablecoinLaneInventory?.summary?.indirectLanesWithDexVenue || []).length,
     },
     candidates,
@@ -696,9 +703,11 @@ export function buildAllocatorCore({
       "Destination-promotion-gate allocation_ready venues are surfaced as allocator candidates so that multi-chain diversification can run under the same cap policy as scaffold-driven strategies.",
       "chainCoverage tiers list the Gateway target chains by evidence readiness: tier1 has at least one allocation_ready family, tier2 only has review_only families, tier3 only has blocked families, and tier4 means the (chain, family) template is missing entirely and must be filled in by destination registry work before allocation can be considered.",
       "Priority expansion chains are tracked separately so Avalanche, Sonic, Berachain, Unichain, and Soneium can stay in a review-only cohort without being overstated as live-ready.",
+      "Combined priority review includes raw promotion-gate review_only plus indirect-stable review lanes; this puts Avalanche, Sonic, Berachain, Unichain, and Soneium on the same review track while preserving their exact blockers.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
       "Cross-chain reserve movement belongs in the allocator/rebalance layer; do not promote a unified multi-chain recursive loop until same-chain loop receipts, auto-unwind wiring, and native-BTC return paths are all proven.",
-      "Indirect stablecoin lane (wBTC.OFT -> local DEX -> USDC/USDT) is tracked separately from direct stable Gateway arrival. Chains without direct stable arrival (avalanche, sonic, bera, unichain, soneium) have wBTC.OFT arrival proven but DEX swap to stable is not yet live-proven; they stay review_only until a live wBTC->stable DEX quote is recorded.",
+      "Indirect stablecoin lane (wBTC.OFT -> local DEX -> USDC/USDT) is tracked separately from direct stable Gateway arrival. Avalanche, Sonic, and Unichain now have quote-only untrusted wBTC.OFT->USDC observations; they still stay review_only until the route clears a trusted execution whitelist or live execution proof exists.",
+      "Berachain and Soneium indirect stable lanes are narrower now: wBTC.OFT arrival is proven, but repo-safe stable conversion needs dedicated Kodiak/Kyo routing because the current Odos path reports no_supported_router_for_chain.",
       "Direct stable lane for base/bsc is blocked only by evidence_stale and stale gate artifact; fresh economics observations unblock them without requiring new strategy work.",
     ],
   };
@@ -766,6 +775,7 @@ export function summarizeAllocatorCore(report = null) {
           tier1ActiveReadyChains: report.priorityChainExpansion.tier1ActiveReadyChains || [],
           tier2ReviewOnlyChains: report.priorityChainExpansion.tier2ReviewOnlyChains || [],
           tier3BlockedOnlyChains: report.priorityChainExpansion.tier3BlockedOnlyChains || [],
+          combinedReviewOnlyChains: report.summary?.priorityExpansionCombinedReviewOnlyChains || [],
           perChain: report.priorityChainExpansion.perChain || [],
         }
       : null,
@@ -780,6 +790,8 @@ export function summarizeAllocatorCore(report = null) {
       ? {
           directStableChains: report.summary?.indirectStableDirectChains || [],
           indirectStableReviewChains: report.summary?.indirectStableReviewChains || [],
+          indirectStableQuoteOnlyChains: report.summary?.indirectStableQuoteOnlyChains || [],
+          indirectStableRouterMissingChains: report.summary?.indirectStableRouterMissingChains || [],
           indirectStableDexVenueCount: report.summary?.indirectStableDexVenueCount ?? 0,
           indirectLanesWithDexVenue: report.indirectStablecoinLaneInventory.summary?.indirectLanesWithDexVenue || [],
         }

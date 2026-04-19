@@ -38,10 +38,7 @@ test("priority expansion chains have blocked direct stable but review_only indir
       `${chain} must have no_stablecoin_gateway_arrival_route blocker`,
     );
     assert.equal(c.indirectStableViaWrappedBtc.status, "review_only", `${chain} indirect stable should be review_only`);
-    assert.equal(
-      c.indirectStableViaWrappedBtc.blockers.includes("wrapped_btc_to_stable_dex_swap_not_live_proven"),
-      true,
-    );
+    assert.equal(c.indirectStableViaWrappedBtc.blockers.some((blocker) => blocker.startsWith("wrapped_btc_to_stable_dex_swap")), true);
     assert.equal(c.primaryStableLane, "indirect_via_wrapped_btc");
     assert.equal(c.stableAccessible, true);
   }
@@ -51,18 +48,20 @@ test("priority expansion chains have blocked direct stable but review_only indir
   );
 });
 
-test("avalanche and sonic have partial DEX proof (native→USDC) while bera/unichain/soneium have none", () => {
+test("avalanche, sonic, and unichain have quote-only DEX proof while bera/soneium need router integration", () => {
   const inventory = buildIndirectStablecoinLaneInventory();
 
-  for (const chain of ["avalanche", "sonic"]) {
+  for (const chain of ["avalanche", "sonic", "unichain"]) {
     const c = inventory.chains.find((c) => c.chain === chain);
-    assert.equal(c.indirectStableViaWrappedBtc.dexConversionProof, "partial_native_to_usdc_proven_wrapped_btc_to_usdc_not_proven");
+    assert.equal(c.indirectStableViaWrappedBtc.dexConversionProof, "quote_only_untrusted");
+    assert.equal(c.indirectStableViaWrappedBtc.latestDexQuoteTrust, "quote_only_untrusted");
     assert.equal(c.indirectStableViaWrappedBtc.arrivalProof, "live_delivery");
   }
 
-  for (const chain of ["bera", "unichain", "soneium"]) {
+  for (const chain of ["bera", "soneium"]) {
     const c = inventory.chains.find((c) => c.chain === chain);
     assert.equal(c.indirectStableViaWrappedBtc.dexConversionProof, "not_proven");
+    assert.equal(c.indirectStableViaWrappedBtc.routerSupport, "repo_safe_router_missing");
     assert.equal(c.indirectStableViaWrappedBtc.arrivalProof, "live_delivery");
   }
 });
@@ -89,6 +88,8 @@ test("summarize returns correct counts and chain lists", () => {
   const summary = summarizeIndirectStablecoinLaneInventory(inventory);
   assert.deepEqual(summary.directStableChains.sort(), ["base", "bsc"]);
   assert.deepEqual(summary.indirectStableReviewChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.deepEqual(summary.indirectQuoteOnlyChains.sort(), ["avalanche", "sonic", "unichain"]);
+  assert.deepEqual(summary.indirectRouterMissingChains.sort(), ["bera", "soneium"]);
   assert.equal(summary.fullyBlockedStableChains.length, 0);
   assert.equal(summary.indirectLanesWithDexVenue.length, 5);
   assert.equal(summary.chainCount, 7);

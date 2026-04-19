@@ -70,6 +70,7 @@ async function main() {
   console.log(`nextAction=${report.summary.nextAction?.code || "n/a"}`);
   console.log(`priorityActiveReadyChains=${(report.summary.priorityExpansionActiveReadyChains || []).join(",") || "none"}`);
   console.log(`priorityReviewOnlyChains=${(report.summary.priorityExpansionReviewOnlyChains || []).join(",") || "none"}`);
+  console.log(`priorityCombinedReviewOnlyChains=${(report.summary.priorityExpansionCombinedReviewOnlyChains || []).join(",") || "none"}`);
   console.log(`portfolioDraftActive=${report.diversifiedPortfolioDraft?.summary?.activeDraftCount ?? 0}`);
   console.log(`portfolioDraftReview=${report.diversifiedPortfolioDraft?.summary?.reviewQueueCount ?? 0}`);
   if (report.chainCoverage) {
@@ -88,6 +89,8 @@ async function main() {
     console.log("indirectStableLane:");
     console.log(`  directStable=${(report.summary.indirectStableDirectChains || []).join(",") || "none"}`);
     console.log(`  indirectStableReview=${(report.summary.indirectStableReviewChains || []).join(",") || "none"}`);
+    console.log(`  quoteOnly=${(report.summary.indirectStableQuoteOnlyChains || []).join(",") || "none"}`);
+    console.log(`  routerMissing=${(report.summary.indirectStableRouterMissingChains || []).join(",") || "none"}`);
     console.log(`  dexVenueCount=${report.summary.indirectStableDexVenueCount ?? 0}`);
   }
 }

@@ -7,6 +7,10 @@
 //   allocation_ready  — live end-to-end proof with policy-passing economics
 //   review_only       — key prerequisite proven, secondary gap remains
 //   blocked           — prerequisite evidence missing
+//
+// DEX conversion proof values:
+//   quote_only_untrusted — quote path observed only when unsafe/untrusted routing is allowed; not executable policy proof
+//   not_proven           — no quote/conversion proof in repo-safe routing
 
 const INDIRECT_STABLE_CHAIN_DATA = {
   // Direct stable arrival (Gateway stablecoin → chain) possible.
@@ -50,12 +54,14 @@ const INDIRECT_STABLE_CHAIN_DATA = {
     },
     indirectStableViaWrappedBtc: {
       status: "review_only",
-      blockers: ["wrapped_btc_to_stable_dex_swap_not_live_proven"],
-      evidence: "wBTC.OFT arrival to Avalanche proven live (Gateway consolidation executed per AGENTS.md). Native→USDC via Odos proven live on Avalanche. wBTC.OFT→USDC direct DEX swap not yet executed as live quote. DEX venue: Odos aggregator (BTC.b→WBTC.e→USDC path exists per unwind evidence in economics ledger).",
+      blockers: ["dex_execution_trust_not_allowlisted", "wrapped_btc_to_stable_dex_swap_not_live_executed"],
+      evidence: "wBTC.OFT arrival to Avalanche proven live (Gateway consolidation executed per AGENTS.md). Native→USDC via Odos proven live on Avalanche. On 2026-04-20 KST, repo-safe Odos whitelist failed for wBTC.OFT→USDC, while --allow-unsafe-sources produced quote-only observations for 25k, 50k, and 100k sats. This proves route observability but not execution-trusted policy readiness.",
       dexVenue: "odos",
       arrivalProof: "live_delivery",
-      dexConversionProof: "partial_native_to_usdc_proven_wrapped_btc_to_usdc_not_proven",
-      nextAction: "Execute wBTC.OFT→USDC quote via Odos on Avalanche and record as live observation.",
+      dexConversionProof: "quote_only_untrusted",
+      latestDexQuoteAt: "2026-04-19T22:40:30.715Z",
+      latestDexQuoteTrust: "quote_only_untrusted",
+      nextAction: "Promote Avalanche only after wBTC.OFT→USDC quotes clear the safe whitelist or a dedicated trusted venue path is added and live-executed.",
     },
   },
   sonic: {
@@ -66,12 +72,14 @@ const INDIRECT_STABLE_CHAIN_DATA = {
     },
     indirectStableViaWrappedBtc: {
       status: "review_only",
-      blockers: ["wrapped_btc_to_stable_dex_swap_not_live_proven"],
-      evidence: "wBTC.OFT arrival to Sonic proven live (Gateway BTC offramp from Sonic proven per AGENTS.md). Native→USDC via Odos proven live on Sonic. wBTC.OFT→USDC direct swap not yet proven. DEX venue: Shadow (primary Sonic AMM) or Odos aggregator.",
+      blockers: ["dex_execution_trust_not_allowlisted", "wrapped_btc_to_stable_dex_swap_not_live_executed"],
+      evidence: "wBTC.OFT arrival to Sonic proven live (Gateway BTC offramp from Sonic proven per AGENTS.md). Native→USDC via Odos proven live on Sonic. On 2026-04-20 KST, repo-safe Odos whitelist failed for wBTC.OFT→USDC, while --allow-unsafe-sources produced a quote-only 10k-sat observation with 0.8431% price impact. This proves route observability but not execution-trusted policy readiness.",
       dexVenue: "shadow_or_odos",
       arrivalProof: "live_delivery",
-      dexConversionProof: "partial_native_to_usdc_proven_wrapped_btc_to_usdc_not_proven",
-      nextAction: "Execute wBTC.OFT→USDC quote via Shadow/Odos on Sonic and record as live observation.",
+      dexConversionProof: "quote_only_untrusted",
+      latestDexQuoteAt: "2026-04-19T22:40:24.037Z",
+      latestDexQuoteTrust: "quote_only_untrusted",
+      nextAction: "Promote Sonic only after wBTC.OFT→USDC quotes clear the safe whitelist or a dedicated trusted Shadow/Odos route is added and live-executed.",
     },
   },
   bera: {
@@ -82,12 +90,13 @@ const INDIRECT_STABLE_CHAIN_DATA = {
     },
     indirectStableViaWrappedBtc: {
       status: "review_only",
-      blockers: ["wrapped_btc_to_stable_dex_swap_not_live_proven", "no_native_dex_conversion_proof"],
-      evidence: "wBTC.OFT arrival to Bera proven live (wBTC.OFT delivery proof exists per AGENTS.md). No native→USDC DEX proof recorded for Bera. DEX venue: Kodiak (primary Bera AMM). No live wBTC.OFT→USDC quote executed.",
+      blockers: ["repo_safe_router_missing", "wrapped_btc_to_stable_dex_swap_not_live_proven", "no_native_dex_conversion_proof"],
+      evidence: "wBTC.OFT arrival to Bera proven live (wBTC.OFT delivery proof exists per AGENTS.md). On 2026-04-20 KST, repo-safe/Odos routing for Berachain returned no_supported_router_for_chain:80094 for wBTC.OFT→stable, so the next step is adding or validating a dedicated Kodiak route rather than retrying Odos blindly.",
       dexVenue: "kodiak",
       arrivalProof: "live_delivery",
       dexConversionProof: "not_proven",
-      nextAction: "Execute wBTC.OFT→USDC quote via Kodiak on Berachain and record as live observation.",
+      routerSupport: "repo_safe_router_missing",
+      nextAction: "Add or validate a Kodiak quote path for Berachain wBTC.OFT→USDC, then record a live quote/execution proof.",
     },
   },
   unichain: {
@@ -98,12 +107,14 @@ const INDIRECT_STABLE_CHAIN_DATA = {
     },
     indirectStableViaWrappedBtc: {
       status: "review_only",
-      blockers: ["wrapped_btc_to_stable_dex_swap_not_live_proven", "no_native_dex_conversion_proof"],
-      evidence: "wBTC.OFT arrival to Unichain proven live (wBTC.OFT delivery proof exists per AGENTS.md). No DEX conversion proof recorded. DEX venue: Catex (identified in allocator protocol overrides).",
+      blockers: ["dex_execution_trust_not_allowlisted", "wrapped_btc_to_stable_dex_swap_not_live_executed", "no_native_dex_conversion_proof"],
+      evidence: "wBTC.OFT arrival to Unichain proven live (wBTC.OFT delivery proof exists per AGENTS.md). On 2026-04-20 KST, repo-safe Odos whitelist failed for wBTC.OFT→USDC, while --allow-unsafe-sources produced a quote-only 25k-sat observation with 0% price impact. This proves route observability but not execution-trusted policy readiness.",
       dexVenue: "catex",
       arrivalProof: "live_delivery",
-      dexConversionProof: "not_proven",
-      nextAction: "Execute wBTC.OFT→USDC quote via Catex on Unichain and record as live observation.",
+      dexConversionProof: "quote_only_untrusted",
+      latestDexQuoteAt: "2026-04-19T22:40:24.319Z",
+      latestDexQuoteTrust: "quote_only_untrusted",
+      nextAction: "Promote Unichain only after wBTC.OFT→USDC quotes clear a trusted route or a dedicated Catex path is added and live-executed.",
     },
   },
   soneium: {
@@ -114,12 +125,13 @@ const INDIRECT_STABLE_CHAIN_DATA = {
     },
     indirectStableViaWrappedBtc: {
       status: "review_only",
-      blockers: ["wrapped_btc_to_stable_dex_swap_not_live_proven", "no_native_dex_conversion_proof"],
-      evidence: "wBTC.OFT arrival to Soneium proven live (wBTC.OFT delivery proof exists per AGENTS.md). No DEX conversion proof recorded. DEX venue: Kyo (identified in allocator protocol overrides).",
+      blockers: ["repo_safe_router_missing", "wrapped_btc_to_stable_dex_swap_not_live_proven", "no_native_dex_conversion_proof"],
+      evidence: "wBTC.OFT arrival to Soneium proven live (wBTC.OFT delivery proof exists per AGENTS.md). On 2026-04-20 KST, repo-safe routing returned no_supported_router_for_chain:1868 for wBTC.OFT→stable. This needs a dedicated Kyo/Soneium route integration before conversion can be promoted.",
       dexVenue: "kyo",
       arrivalProof: "live_delivery",
       dexConversionProof: "not_proven",
-      nextAction: "Execute wBTC.OFT→USDC quote via Kyo on Soneium and record as live observation.",
+      routerSupport: "repo_safe_router_missing",
+      nextAction: "Add or validate a Kyo/Soneium quote path for wBTC.OFT→USDC, then record a live quote/execution proof.",
     },
   },
 };
@@ -153,6 +165,9 @@ function buildChainLaneSummary(chain, chainData) {
       dexVenue: indirect.dexVenue || null,
       arrivalProof: indirect.arrivalProof || null,
       dexConversionProof: indirect.dexConversionProof || null,
+      latestDexQuoteAt: indirect.latestDexQuoteAt || null,
+      latestDexQuoteTrust: indirect.latestDexQuoteTrust || null,
+      routerSupport: indirect.routerSupport || null,
       nextAction: indirect.nextAction || null,
     },
     primaryStableLane,
@@ -172,6 +187,12 @@ export function buildIndirectStablecoinLaneInventory() {
     .filter((c) => c.directStableGatewayArrival.status === "blocked" && c.indirectStableViaWrappedBtc.status === "review_only")
     .map((c) => c.chain);
   const fullyBlockedStableChains = chains.filter((c) => !c.stableAccessible).map((c) => c.chain);
+  const indirectQuoteOnlyChains = chains
+    .filter((c) => c.indirectStableViaWrappedBtc.dexConversionProof === "quote_only_untrusted")
+    .map((c) => c.chain);
+  const indirectRouterMissingChains = chains
+    .filter((c) => c.indirectStableViaWrappedBtc.routerSupport === "repo_safe_router_missing")
+    .map((c) => c.chain);
 
   const indirectLanesWithDexVenue = chains
     .filter((c) => c.indirectStableViaWrappedBtc.dexVenue && c.indirectStableViaWrappedBtc.status === "review_only")
@@ -180,6 +201,9 @@ export function buildIndirectStablecoinLaneInventory() {
       dexVenue: c.indirectStableViaWrappedBtc.dexVenue,
       arrivalProof: c.indirectStableViaWrappedBtc.arrivalProof,
       dexConversionProof: c.indirectStableViaWrappedBtc.dexConversionProof,
+      latestDexQuoteAt: c.indirectStableViaWrappedBtc.latestDexQuoteAt,
+      latestDexQuoteTrust: c.indirectStableViaWrappedBtc.latestDexQuoteTrust,
+      routerSupport: c.indirectStableViaWrappedBtc.routerSupport,
       nextAction: c.indirectStableViaWrappedBtc.nextAction,
     }));
 
@@ -191,6 +215,8 @@ export function buildIndirectStablecoinLaneInventory() {
       directStableChains,
       indirectStableReviewChains,
       fullyBlockedStableChains,
+      indirectQuoteOnlyChains,
+      indirectRouterMissingChains,
       indirectLanesWithDexVenue,
       note: [
         "direct stable = Gateway stablecoin arrival (no DEX hop needed)",
@@ -209,6 +235,8 @@ export function summarizeIndirectStablecoinLaneInventory(inventory = null) {
     directStableChains: inventory.summary?.directStableChains || [],
     indirectStableReviewChains: inventory.summary?.indirectStableReviewChains || [],
     fullyBlockedStableChains: inventory.summary?.fullyBlockedStableChains || [],
+    indirectQuoteOnlyChains: inventory.summary?.indirectQuoteOnlyChains || [],
+    indirectRouterMissingChains: inventory.summary?.indirectRouterMissingChains || [],
     indirectLanesWithDexVenue: inventory.summary?.indirectLanesWithDexVenue || [],
     chainCount: inventory.summary?.chainCount ?? 0,
   };

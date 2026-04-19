@@ -617,6 +617,9 @@ test("allocator core surfaces indirect stablecoin lane inventory in summary and 
   // Summary fields derived from inventory
   assert.deepEqual(report.summary.indirectStableDirectChains.sort(), ["base", "bsc"]);
   assert.deepEqual(report.summary.indirectStableReviewChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.deepEqual(report.summary.priorityExpansionCombinedReviewOnlyChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.deepEqual(report.summary.indirectStableQuoteOnlyChains.sort(), ["avalanche", "sonic", "unichain"]);
+  assert.deepEqual(report.summary.indirectStableRouterMissingChains.sort(), ["bera", "soneium"]);
   assert.equal(report.summary.indirectStableDexVenueCount, 5);
 
   // summarizeAllocatorCore exposes indirectStableLane slice
@@ -624,6 +627,9 @@ test("allocator core surfaces indirect stablecoin lane inventory in summary and 
   assert.ok(summary.indirectStableLane, "summarized indirectStableLane must be present");
   assert.deepEqual(summary.indirectStableLane.directStableChains.sort(), ["base", "bsc"]);
   assert.deepEqual(summary.indirectStableLane.indirectStableReviewChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.deepEqual(summary.priorityChainExpansion.combinedReviewOnlyChains.sort(), ["avalanche", "bera", "soneium", "sonic", "unichain"]);
+  assert.deepEqual(summary.indirectStableLane.indirectStableQuoteOnlyChains.sort(), ["avalanche", "sonic", "unichain"]);
+  assert.deepEqual(summary.indirectStableLane.indirectStableRouterMissingChains.sort(), ["bera", "soneium"]);
   assert.equal(summary.indirectStableLane.indirectStableDexVenueCount, 5);
   assert.equal(summary.indirectStableLane.indirectLanesWithDexVenue.length, 5);
 });
@@ -656,6 +662,8 @@ test("allocator core summary indirectStableLane is null when no inventory provid
   assert.equal(report.indirectStablecoinLaneInventory, null);
   assert.deepEqual(report.summary.indirectStableDirectChains, []);
   assert.deepEqual(report.summary.indirectStableReviewChains, []);
+  assert.deepEqual(report.summary.indirectStableQuoteOnlyChains, []);
+  assert.deepEqual(report.summary.indirectStableRouterMissingChains, []);
   assert.equal(report.summary.indirectStableDexVenueCount, 0);
 
   const summary = summarizeAllocatorCore(report);
