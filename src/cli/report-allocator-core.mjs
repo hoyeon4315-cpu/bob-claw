@@ -22,7 +22,7 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [strategySnapshot, phase3Validation, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds, destinationPromotionGate] = await Promise.all([
+  const [strategySnapshot, phase3Validation, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds, destinationPromotionGate, destinationStrategyRegistry] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "strategy-snapshot.json")),
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
@@ -30,6 +30,7 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
+    readJsonIfExists(join(config.dataDir, "destination-strategy-registry.json")),
   ]);
   const report = buildAllocatorCore({
     strategySnapshot,
@@ -39,6 +40,7 @@ async function main() {
     recursiveStablecoinLoop,
     secondaryStrategyScaffolds,
     destinationPromotionGate,
+    destinationStrategyRegistry,
   });
 
   if (args.write) {
@@ -75,6 +77,7 @@ async function main() {
     console.log(`  tier3_blocked_only=${(report.summary.tier3BlockedOnlyChains || []).join(",") || "n/a"}`);
     console.log(`  tier4_template_only=${(report.summary.tier4TemplateOnlyChains || []).join(",") || "n/a"}`);
     console.log(`  templateMissingCells=${report.summary.templateMissingCellCount ?? 0}`);
+    console.log(`  stablecoinGatewayArrivalMissing=${(report.summary.stablecoinGatewayArrivalMissingChains || []).join(",") || "none"}`);
   }
 }
 

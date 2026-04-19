@@ -145,8 +145,48 @@ function destinationGateCandidates(promotionGate = null) {
     .filter((item) => item.activeEligibility === "active_ready" || item.planningEligibility === "review_only" || item.planningEligibility === "allocation_ready");
 }
 
-function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFICATION_TARGET_CHAINS, targetFamilies = DIVERSIFICATION_TARGET_FAMILIES) {
+function buildChainSupportIndex(destinationStrategyRegistry = null) {
+  const map = new Map();
+  for (const chain of destinationStrategyRegistry?.chains || []) {
+    map.set(chain.chain, {
+      arrivalAssetFamilies: new Set(chain.arrivalAssetFamilies || []),
+      strategyFamilies: new Set((chain.strategies || []).map((item) => item.familyId).filter(Boolean)),
+    });
+  }
+  return map;
+}
+
+function missingTemplateBlockers(chain, family, chainSupportIndex) {
+  const support = chainSupportIndex.get(chain);
+  const blockers = ["template_missing_for_chain_family"];
+  if (!support) {
+    blockers.push("chain_not_in_destination_registry");
+    return blockers;
+  }
+  if (family?.startsWith("stablecoin")) {
+    blockers.push(
+      support.arrivalAssetFamilies.has("stablecoin")
+        ? "stablecoin_family_not_yet_seeded"
+        : "stablecoin_gateway_arrival_missing",
+    );
+  } else if (family?.startsWith("wrapped_btc")) {
+    blockers.push(
+      support.arrivalAssetFamilies.has("wrapped_btc")
+        ? "wrapped_btc_family_not_yet_seeded"
+        : "wrapped_btc_gateway_arrival_missing",
+    );
+  }
+  return unique(blockers);
+}
+
+function buildChainCoverageMatrix(
+  promotionGate = null,
+  destinationStrategyRegistry = null,
+  targetChains = DIVERSIFICATION_TARGET_CHAINS,
+  targetFamilies = DIVERSIFICATION_TARGET_FAMILIES,
+) {
   const items = promotionGate?.items || [];
+  const chainSupportIndex = buildChainSupportIndex(destinationStrategyRegistry);
   const byKey = new Map();
   for (const item of items) {
     if (!item?.chain || !item?.familyId) continue;
@@ -167,7 +207,7 @@ function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFI
           templateId: null,
           gateStatus: null,
           allocationStatus: null,
-          blockers: ["template_missing_for_chain_family"],
+          blockers: missingTemplateBlockers(chain, family, chainSupportIndex),
         });
         perChainStatuses.get(chain).template_missing += 1;
         continue;
@@ -204,6 +244,7 @@ function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFI
   const perChain = targetChains.map((chain) => {
     const counts = perChainStatuses.get(chain);
     const chainRows = matrix.filter((row) => row.chain === chain);
+    const support = chainSupportIndex.get(chain);
     const tier = tier1ActiveReady.includes(chain)
       ? "tier1_active_ready"
       : tier2ReviewOnly.includes(chain)
@@ -218,6 +259,12 @@ function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFI
       counts: { ...counts },
       familyCount: chainRows.length,
       dominantBlockers,
+      support: {
+        arrivalAssetFamilies: [...(support?.arrivalAssetFamilies || [])].sort(),
+        stablecoinArrivalSupported: support?.arrivalAssetFamilies?.has("stablecoin") || false,
+        wrappedBtcArrivalSupported: support?.arrivalAssetFamilies?.has("wrapped_btc") || false,
+      },
+      templateMissingFamilies: chainRows.filter((row) => row.status === "template_missing").map((row) => row.family),
     };
   });
   return {
@@ -243,6 +290,9 @@ function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFI
       tier2ReviewOnlyChainCount: tier2ReviewOnly.length,
       tier3BlockedOnlyChainCount: tier3BlockedOnly.length,
       tier4TemplateOnlyChainCount: tier4TemplateOnly.length,
+      stablecoinGatewayArrivalMissingChains: perChain
+        .filter((row) => !row.support.stablecoinArrivalSupported)
+        .map((row) => row.chain),
     },
   };
 }
@@ -552,6 +602,7 @@ export function buildAllocatorCore({
   secondaryStrategyScaffolds = null,
   protocolMarketWatchers = null,
   destinationPromotionGate = null,
+  destinationStrategyRegistry = null,
   now = null,
 } = {}) {
   const budgets = {
@@ -583,7 +634,7 @@ export function buildAllocatorCore({
     });
   const activeView = buildAllocationView(candidates, budgets.activeBudgetUsd, constraints);
   const planningView = buildAllocationView(candidates, budgets.planningBudgetUsd, constraints);
-  const chainCoverage = buildChainCoverageMatrix(destinationPromotionGate);
+  const chainCoverage = buildChainCoverageMatrix(destinationPromotionGate, destinationStrategyRegistry);
   const priorityChainExpansion = buildPriorityChainExpansion(candidates);
   const diversifiedPortfolioDraft = buildDiversifiedPortfolioDraft({ candidates, priorityChainExpansion });
   const topPlanningCandidate = planningView.planningQueue[0] || null;
@@ -612,6 +663,7 @@ export function buildAllocatorCore({
       tier3BlockedOnlyChains: chainCoverage.tiers.tier3_blocked_only,
       tier4TemplateOnlyChains: chainCoverage.tiers.tier4_template_only,
       templateMissingCellCount: chainCoverage.summary.templateMissingCellCount,
+      stablecoinGatewayArrivalMissingChains: chainCoverage.summary.stablecoinGatewayArrivalMissingChains,
       priorityExpansionActiveReadyChains: priorityChainExpansion.tier1ActiveReadyChains,
       priorityExpansionReviewOnlyChains: priorityChainExpansion.tier2ReviewOnlyChains,
       priorityExpansionBlockedOnlyChains: priorityChainExpansion.tier3BlockedOnlyChains,
@@ -685,6 +737,7 @@ export function summarizeAllocatorCore(report = null) {
           tier3BlockedOnlyChains: report.chainCoverage.tiers?.tier3_blocked_only || [],
           tier4TemplateOnlyChains: report.chainCoverage.tiers?.tier4_template_only || [],
           templateMissingCellCount: report.chainCoverage.summary?.templateMissingCellCount ?? 0,
+          stablecoinGatewayArrivalMissingChains: report.chainCoverage.summary?.stablecoinGatewayArrivalMissingChains || [],
           allocationReadyCellCount: report.chainCoverage.summary?.allocationReadyCellCount ?? 0,
           reviewOnlyCellCount: report.chainCoverage.summary?.reviewOnlyCellCount ?? 0,
           blockedCellCount: report.chainCoverage.summary?.blockedCellCount ?? 0,
