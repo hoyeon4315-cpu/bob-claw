@@ -45,6 +45,20 @@ function minimumPaybackProgress(payback = null) {
   return payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
 }
 
+function primaryReviewCandidate(dashboardStatus = null) {
+  return dashboardStatus?.prelive?.reviewPackage || null;
+}
+
+function isStrategyPrimary(dashboardStatus = null) {
+  const candidate = primaryReviewCandidate(dashboardStatus);
+  return candidate?.candidateType === "strategy";
+}
+
+function isRouteOnlyOperationalJudgment(review = null) {
+  const code = review?.nextActionCode || review?.nextAction?.code || null;
+  return ["technical_ready_but_economic_blocked", "stale_inputs_can_distort_route_scoring"].includes(code);
+}
+
 export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = null } = {}) {
   const connectedRefresh = dashboardStatus?.prelive?.connectedRefresh || null;
   const currentRoutePrelivePass = dashboardStatus?.prelive?.currentRoutePrelivePass || null;
@@ -55,9 +69,11 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
   const executorRuntime = dashboardStatus?.executorRuntime || null;
   const route = normalizeRoute(nextStep?.route, connectedRefresh);
   const paybackMinimumProgress = minimumPaybackProgress(payback);
+  const strategyPrimary = isStrategyPrimary(dashboardStatus);
+  const suppressedRouteBlockers = [];
 
   const refresh = [];
-  if ((connectedRefresh?.requiredRefreshCount ?? 0) > 0) {
+  if ((connectedRefresh?.requiredRefreshCount ?? 0) > 0 && !strategyPrimary) {
     refresh.push(
       createBlocker(
         "refresh",
@@ -74,10 +90,12 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
         },
       ),
     );
+  } else if ((connectedRefresh?.requiredRefreshCount ?? 0) > 0 && strategyPrimary) {
+    suppressedRouteBlockers.push("connected_refresh_required");
   }
 
   const operator = [];
-  if (nextStep?.decision === "FUND_AND_APPROVE_WALLET") {
+  if (nextStep?.decision === "FUND_AND_APPROVE_WALLET" && !strategyPrimary) {
     operator.push(
       createBlocker(
         "operator",
@@ -95,6 +113,8 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
         },
       ),
     );
+  } else if (nextStep?.decision === "FUND_AND_APPROVE_WALLET" && strategyPrimary) {
+    suppressedRouteBlockers.push("fund_and_approve_wallet");
   }
   if (payback?.scheduler?.reason === "payback_btc_destination_missing") {
     operator.push(
@@ -111,7 +131,7 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
   }
 
   const technical = [];
-  if (exactRouteForkPackage?.technicalStatus && exactRouteForkPackage.technicalStatus !== "submit_ready") {
+  if (exactRouteForkPackage?.technicalStatus && exactRouteForkPackage.technicalStatus !== "submit_ready" && !strategyPrimary) {
     technical.push(
       createBlocker(
         "technical",
@@ -124,6 +144,8 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
         },
       ),
     );
+  } else if (exactRouteForkPackage?.technicalStatus && exactRouteForkPackage.technicalStatus !== "submit_ready" && strategyPrimary) {
+    suppressedRouteBlockers.push(exactRouteForkPackage.technicalStatus);
   }
   if (executorRuntime && executorRuntime.available === false) {
     technical.push(
@@ -140,7 +162,7 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
   }
 
   const objective = [];
-  if (currentRoutePrelivePass?.nextAction?.code === "hold_negative_edge") {
+  if (currentRoutePrelivePass?.nextAction?.code === "hold_negative_edge" && !strategyPrimary) {
     objective.push(
       createBlocker(
         "objective",
@@ -153,9 +175,12 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
         },
       ),
     );
+  } else if (currentRoutePrelivePass?.nextAction?.code === "hold_negative_edge" && strategyPrimary) {
+    suppressedRouteBlockers.push(currentRoutePrelivePass.latestStatus || "hold_negative_edge");
   } else if (
     exactRouteForkPackage?.economicStatus &&
-    exactRouteForkPackage.economicStatus !== "eligible_for_manual_review"
+    exactRouteForkPackage.economicStatus !== "eligible_for_manual_review" &&
+    !strategyPrimary
   ) {
     objective.push(
       createBlocker(
@@ -167,8 +192,14 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
         },
       ),
     );
+  } else if (
+    exactRouteForkPackage?.economicStatus &&
+    exactRouteForkPackage.economicStatus !== "eligible_for_manual_review" &&
+    strategyPrimary
+  ) {
+    suppressedRouteBlockers.push(exactRouteForkPackage.economicStatus);
   }
-  if ((operationalJudgmentReview?.highSeverityCount ?? 0) > 0) {
+  if ((operationalJudgmentReview?.highSeverityCount ?? 0) > 0 && !(strategyPrimary && isRouteOnlyOperationalJudgment(operationalJudgmentReview))) {
     objective.push(
       createBlocker(
         "objective",
@@ -182,21 +213,8 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
         },
       ),
     );
-  }
-  if (paybackMinimumProgress?.reason === "planned_payback_below_minimum") {
-    objective.push(
-      createBlocker(
-        "objective",
-        "planned_payback_below_minimum",
-        "Even after setting the payback destination, realized profit is still below the minimum payback threshold.",
-        {
-          remainingSats: paybackMinimumProgress.satsToMinimumPayback ?? null,
-          minPaybackSats: paybackMinimumProgress.minPaybackSats ?? null,
-          grossTargetBeforeCostsSats: paybackMinimumProgress.grossTargetBeforeCostsSats ?? null,
-          progressSource: paybackMinimumProgress.source || null,
-        },
-      ),
-    );
+  } else if ((operationalJudgmentReview?.highSeverityCount ?? 0) > 0 && strategyPrimary) {
+    suppressedRouteBlockers.push(operationalJudgmentReview.status || "guarded_blocked");
   }
 
   const counts = {
@@ -223,6 +241,13 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
     liveTrading: dashboardStatus?.overall?.liveTrading || null,
     shadowTrading: dashboardStatus?.overall?.shadowTrading || null,
     currentStageId: preliveValidation?.currentStageId || dashboardStatus?.prelive?.currentStage || null,
+    primaryCandidate: primaryReviewCandidate(dashboardStatus)
+      ? {
+          candidateType: primaryReviewCandidate(dashboardStatus).candidateType || null,
+          candidateId: primaryReviewCandidate(dashboardStatus).candidateId || null,
+          candidateLabel: primaryReviewCandidate(dashboardStatus).candidateLabel || null,
+        }
+      : null,
     route,
     counts,
     blockers: {
@@ -230,6 +255,19 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
       operator,
       technical,
       objective,
+    },
+    observations: {
+      suppressedRouteBlockers,
+      paybackMinimumProgress: paybackMinimumProgress?.reason === "planned_payback_below_minimum"
+        ? {
+            status: paybackMinimumProgress.status || null,
+            reason: paybackMinimumProgress.reason || null,
+            remainingSats: paybackMinimumProgress.satsToMinimumPayback ?? null,
+            minPaybackSats: paybackMinimumProgress.minPaybackSats ?? null,
+            grossTargetBeforeCostsSats: paybackMinimumProgress.grossTargetBeforeCostsSats ?? null,
+            progressSource: paybackMinimumProgress.source || null,
+          }
+        : null,
     },
     nextAction,
   };

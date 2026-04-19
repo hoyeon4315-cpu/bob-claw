@@ -18,7 +18,7 @@ import { buildExactRouteForkPackage, summarizeExactRouteForkPackage } from "../p
 import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } from "../prelive/operational-judgment-review.mjs";
 import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
-import { buildPreliveReviewPackage } from "../prelive/review-package.mjs";
+import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
@@ -1807,6 +1807,7 @@ async function main() {
     executionRunbook: executionRunbookSummary,
     exactRouteForkPackage: exactRouteForkSummary,
     operationalJudgmentReview: operationalJudgmentSummary,
+    reviewPackage: summarizePreliveReviewPackage(reviewPackage),
     validation: preliveValidationSummary,
   };
   dashboardStatusWithSnapshot.liveBaseline = buildLiveBaselineSummary({
