@@ -40,6 +40,7 @@
 - 정책 엔진: `src/executor/policy/`
 - 서명 데몬: `src/executor/signer/`
 - treasury / funding / refill planning: `src/treasury/`
+- payback 스케줄러·누산기: `src/executor/payback/` (`scheduler.mjs`, `accumulator.mjs`)
 - payback 관련 구현/상태 평가는 **항상 최신 `AGENTS.md`와 실제 코드 기준**으로 확인한다
 
 Python/YAML/pytest 중심 새 구조를 기본값처럼 들이밀지 말고, 먼저 현재 `.mjs` 구조를 따른다.
@@ -48,12 +49,14 @@ Python/YAML/pytest 중심 새 구조를 기본값처럼 들이밀지 말고, 먼
 
 graphify는 “코드 연결 관계를 좁힐 때” 먼저 쓴다.
 
+- **3개 이상 파일 읽을 것 같으면 먼저 `graphify query`로 좁혀 읽을 파일 수를 줄인다.**
 - 추천 시작:
   - `npm run graph:focus -- explain <symbol>`
   - `npm run graph:focus -- path <A> <B>`
-  - `npm run graph:focus -- query "<question>"`
+  - `npm run graph:focus -- query “<question>”`
 - broad query가 노이즈가 크면 바로 `path`/`explain`으로 좁힌다.
 - 정확 수치, 문서 인용, 실제 수정 대상 파일 내용은 원문을 직접 읽는다.
+- `docs/research/*.md` 문서 질문에는 graphify 쓰지 않는다 (그래프는 .mjs AST만 포함).
 
 ## Working Style
 
@@ -63,17 +66,27 @@ graphify는 “코드 연결 관계를 좁힐 때” 먼저 쓴다.
 - 생성 산출물과 코드 변경을 한 커밋에 섞지 않는다.
 - 관련 없는 미추적 파일은 건드리지 않는다.
 
+## Workspace Hygiene
+
+- `data/`, `docs/current-status.md`, `dashboard/public/dashboard-status.json` 등 자동 생성 산출물은 로컬 운영 artifact로 취급한다.
+- 생성 산출물은 코드 변경과 같은 커밋에 섞지 않는다.
+- 코드 변경이 **의미 있는 실행 단위**(새 CLI 1개+테스트, 운영 규칙 1묶음+회귀 테스트, 동일 목적 파일 3개 이상)까지 쌓이면 사용자 지시 없이 알아서 커밋한다.
+- 자동 커밋 전에는 반드시 관련 테스트/검증을 먼저 돌린다.
+- unrelated 변경이 섞여 있으면 나눠 커밋하고, push는 사용자가 막지 않는 한 같은 흐름에서 이어서 진행한다.
+
 ## Reporting Style
 
 작업 종료 보고는 항상 `AGENTS.md` 형식을 따른다.
 
-- 첫 줄: `현재 단계: L0 / ...`
+- 첫 줄: `현재 단계: L0/L1/L2/...`
 - 이어서 짧게:
-  - `이번에 한 일`
-  - `왜 아직 그 단계인지`
-  - `다음 체크리스트`
+  - `이번에 한 일`: 실제로 바뀐 것만 1~3문장
+  - `왜 아직 그 단계인지`: blocker를 사실 기반으로 짧게
+  - `다음 체크리스트`: 바로 이어서 할 수 있는 작업, 가능하면 3개 이하
 
-추정 대신 방금 실행한 명령/파일 결과 기준으로만 쓴다.
+- 추정이나 희망 표현 대신 방금 확인한 파일/로그/명령 결과 기준으로만 쓴다.
+- 단계가 안 올라갔으면 숨기지 말고 그대로 말하되 "무엇이 정리됐는지"를 같이 적는다.
+- 내부 모듈명은 꼭 필요할 때만 쓰고, 쓰면 한 줄로 의미를 풀어쓴다.
 
 ## Claude-Specific Goal
 
