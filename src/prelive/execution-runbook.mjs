@@ -223,9 +223,9 @@ function reviewNextAction(reviewPackage = null) {
 function summarizeExactRouteForkPlan({ forkPlan = null, route = null } = {}) {
   const plans = forkPlan?.plans || [];
   const exactPlan =
-    plans.find((item) => item?.routeKey === route?.routeKey && String(item?.amount) === String(route?.amount)) ||
-    plans.find((item) => item?.selectionSource === "exact_route") ||
-    null;
+    route?.routeKey && route?.amount != null
+      ? plans.find((item) => item?.routeKey === route?.routeKey && String(item?.amount) === String(route?.amount)) || null
+      : plans.find((item) => item?.selectionSource === "exact_route") || null;
   if (!exactPlan) return null;
   return {
     planId: exactPlan.planId || null,

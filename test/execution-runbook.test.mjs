@@ -232,3 +232,55 @@ test("execution runbook prioritizes strategy-candidate remediation over stale ex
   assert.equal(runbook.stages[0].nextAction.code, "collect_wrapped_btc_loop_oos_receipts");
   assert.equal(runbook.stages[0].blockers.includes("stale_gateway_quote"), true);
 });
+
+test("execution runbook does not attach an unrelated exact-route plan to the current route", () => {
+  const runbook = buildExecutionRunbook({
+    dashboardStatus: dashboardStatusFixture(),
+    reviewPackage: reviewPackageFixture(),
+    strategySnapshot: strategySnapshotFixture(),
+    canaryInputs: canaryInputsFixture(),
+    nextStep: {
+      route: {
+        routeKey: "soneium:0x0555->bob:0x0555",
+        label: "soneium->bob wBTC.OFT->wBTC.OFT",
+        amount: "100",
+        srcChain: "soneium",
+        dstChain: "bob",
+        tradeReadiness: "insufficient_data",
+      },
+    },
+    forkPlan: {
+      plans: [
+        {
+          planId: "plan-base-bsc",
+          status: "planned",
+          routeKey: "base:0x0555->bsc:0x0555",
+          routeLabel: "base->bsc",
+          amount: "300",
+          selectionSource: "exact_route",
+          selectionCode: "reject_no_net_edge",
+          routeContext: {
+            tradeReadiness: "reject_no_net_edge",
+            netEdgeUsd: -2.06,
+          },
+          transaction: {
+            to: "0x0555",
+            txDataBytes: 452,
+          },
+          signer: {
+            required: true,
+          },
+          commands: {
+            submit: "npm run submit:prelive-fork-execution -- --plan-id=\"plan-base-bsc\" --signed-tx=\"<signedTx>\" --rpc-url=\"<forkRpcUrl>\"",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(runbook.exactRouteForkPlan, null);
+  const summary = summarizeExecutionRunbook(runbook);
+  assert.equal(summary.topRouteLabel, "soneium->bob wBTC.OFT->wBTC.OFT");
+  assert.equal(summary.exactRouteForkPlanId, null);
+  assert.equal(summary.exactRouteForkPlanStatus, null);
+});
