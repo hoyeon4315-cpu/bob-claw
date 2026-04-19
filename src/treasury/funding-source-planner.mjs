@@ -403,11 +403,31 @@ function rankAvailability(value) {
   return 3;
 }
 
+function rankConditionalSupport(candidate = {}) {
+  const missingInputs = new Set(candidate.missingInputs || []);
+  if (missingInputs.size === 0) return 0;
+  if ([...missingInputs].every((item) => item === "bootstrap_native_required")) return 1;
+  if (missingInputs.has("reserve_state_unmodelled")) return 2;
+  if (
+    missingInputs.has("cross_chain_source_selection_missing") ||
+    [...missingInputs].some((item) => item.endsWith("_executor_missing"))
+  ) {
+    return 3;
+  }
+  if (missingInputs.has("same_chain_token_inventory_missing")) return 4;
+  return 5;
+}
+
 function chooseCandidate(candidates) {
   return [...candidates].sort((left, right) => {
     if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
     const availabilityDelta = rankAvailability(left.availability) - rankAvailability(right.availability);
     if (availabilityDelta !== 0) return availabilityDelta;
+    const supportDelta = rankConditionalSupport(left) - rankConditionalSupport(right);
+    if (supportDelta !== 0) return supportDelta;
+    const leftHasSource = Boolean(left.source);
+    const rightHasSource = Boolean(right.source);
+    if (leftHasSource !== rightHasSource) return leftHasSource ? -1 : 1;
     const leftBootstrapBlocked = left.requiresBootstrapNative && !left.bootstrapNativeSatisfied;
     const rightBootstrapBlocked = right.requiresBootstrapNative && !right.bootstrapNativeSatisfied;
     if (leftBootstrapBlocked !== rightBootstrapBlocked) return leftBootstrapBlocked ? 1 : -1;

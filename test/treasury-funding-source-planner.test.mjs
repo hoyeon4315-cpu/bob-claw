@@ -145,9 +145,10 @@ test("swap-based funding is conditional when bootstrap native gas is missing", (
   const funding = buildFundingSourcePlan({ plan, policy });
 
   assert.equal(funding.selections[0].selectionStatus, "conditional");
-  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
-  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), true);
-  assert.equal(funding.reasons.includes("bootstrap_native_required"), false);
+  assert.equal(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
+  assert.equal(funding.selections[0].missingInputs.includes("bootstrap_native_required"), true);
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), false);
+  assert.equal(funding.reasons.includes("bootstrap_native_required"), true);
 });
 
 test("cross-chain refill is selected when same-chain native rebuild is impossible", () => {
@@ -327,11 +328,16 @@ test("funding source planner supplements same-chain token candidates from whole-
     },
   });
 
-  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "soneium");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
   assert.equal(funding.selections[0].candidates[0].method, "same_chain_token_to_native_swap");
   assert.equal(funding.selections[0].candidates[0].source.ticker, "wBTC.OFT");
   assert.equal(funding.selections[0].candidates[0].missingInputs.includes("same_chain_token_inventory_missing"), false);
   assert.equal(funding.selections[0].candidates[0].missingInputs.includes("bootstrap_native_required"), true);
+  assert.equal(funding.selections[0].missingInputs.includes("bootstrap_native_required"), true);
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_native_refill_executor_missing"), false);
 });
 
 test("cross-chain source selection prefers route-family token inventory over unrelated native balance", () => {
