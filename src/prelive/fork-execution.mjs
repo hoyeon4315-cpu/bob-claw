@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { config } from "../config/env.mjs";
 import { stableSerialize } from "../execution/journal.mjs";
 
 function deterministicId(payload) {
@@ -12,6 +13,22 @@ function routeLabel(selection) {
     return `${selection.quote.route.srcChain}->${selection.quote.route.dstChain}`;
   }
   return selection?.routeKey || null;
+}
+
+function normalizedAddress(value) {
+  return value ? String(value).toLowerCase() : null;
+}
+
+function paddedAddressNeedle(value) {
+  const normalized = normalizedAddress(value);
+  if (!normalized?.startsWith("0x") || normalized.length !== 42) return null;
+  return normalized.slice(2).padStart(64, "0");
+}
+
+function txDataContainsAddress(txData, address) {
+  const needle = paddedAddressNeedle(address);
+  if (!needle || !txData) return false;
+  return String(txData).toLowerCase().includes(needle);
 }
 
 function buildRouteContext(score = null) {
@@ -107,9 +124,37 @@ export function buildForkExecutionPlan({
 } = {}) {
   const quote = selection?.quote || null;
   const blockers = [];
+  const expectedAddress = normalizedAddress(address);
   if (!quote?.route?.srcChain) blockers.push("missing_source_chain");
   if (!quote?.txTo) blockers.push("missing_tx_to");
   if (!quote?.txData) blockers.push("missing_tx_data");
+  if (
+    expectedAddress &&
+    quote?.route?.srcChain &&
+    quote.route.srcChain !== "bitcoin" &&
+    quote?.sender &&
+    normalizedAddress(quote.sender) !== expectedAddress
+  ) {
+    blockers.push("quote_sender_mismatch");
+  }
+  if (
+    expectedAddress &&
+    quote?.route?.dstChain &&
+    quote.route.dstChain !== "bitcoin" &&
+    quote?.recipient &&
+    normalizedAddress(quote.recipient) !== expectedAddress
+  ) {
+    blockers.push("quote_recipient_mismatch");
+  }
+  if (
+    expectedAddress &&
+    quote?.route?.dstChain &&
+    quote.route.dstChain !== "bitcoin" &&
+    normalizedAddress(config.verifyRecipient) !== expectedAddress &&
+    txDataContainsAddress(quote?.txData, config.verifyRecipient)
+  ) {
+    blockers.push("quote_verify_recipient_in_tx_data");
+  }
   const plannedAt = now;
   const routeContext = buildRouteContext(selection?.score || null);
   const planId = deterministicId({

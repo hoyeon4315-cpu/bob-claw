@@ -117,6 +117,23 @@ test("receipt reconciliation records failed transaction cost even without output
   assert.equal(record.realized.realizedNetPnlUsd < 0, true);
 });
 
+test("receipt reconciliation treats zero output as failed when output was expected", () => {
+  const record = buildReceiptReconciliation({
+    chain: "bob",
+    txHash: "0xzero",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture(),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+    output: {
+      actualOutputUnits: "0",
+    },
+  });
+
+  assert.equal(record.reconciliationStatus, "failed");
+  assert.equal(record.output.actualOutputUsd, 0);
+});
+
 test("receipt ledger summary aggregates realized records", () => {
   const success = buildReceiptReconciliation({
     chain: "bob",

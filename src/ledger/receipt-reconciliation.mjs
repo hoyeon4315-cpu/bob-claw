@@ -123,8 +123,16 @@ function driftUsd(actualValue, expectedValue) {
   return actualValue - expectedValue;
 }
 
-function reconciliationStatus({ receipt, actualOutputValueUsd }) {
+function reconciliationStatus({ receipt, actualOutputValueUsd, expectedOutputValueUsd }) {
   if (Number(receipt?.status) === 0) return "failed";
+  if (
+    Number.isFinite(actualOutputValueUsd) &&
+    Number.isFinite(expectedOutputValueUsd) &&
+    expectedOutputValueUsd > 0 &&
+    actualOutputValueUsd <= 0
+  ) {
+    return "failed";
+  }
   if (Number.isFinite(actualOutputValueUsd)) return "reconciled";
   return "pending_output";
 }
@@ -143,6 +151,7 @@ export function buildReceiptReconciliation({
   const actualGasCostUsd = receiptGasUsd({ chain, receipt, prices });
   const actualTxValueCostUsd = actualTxValueUsd({ chain, transaction, routeContext, prices });
   const actualOutputValueUsd = actualOutputUsd({ routeContext, output, prices });
+  const expectedOutputValueUsd = expectedOutputUsd(routeContext);
   const actualKnownCostUsd =
     (Number.isFinite(actualGasCostUsd) ? actualGasCostUsd : 0) + (Number.isFinite(actualTxValueCostUsd) ? actualTxValueCostUsd : 0);
   const btcUsd = btcUsdPrice(prices);
@@ -161,7 +170,7 @@ export function buildReceiptReconciliation({
     kind,
     chain,
     txHash,
-    reconciliationStatus: reconciliationStatus({ receipt, actualOutputValueUsd }),
+    reconciliationStatus: reconciliationStatus({ receipt, actualOutputValueUsd, expectedOutputValueUsd }),
     routeContext: routeContext
       ? {
           routeKey: routeContext.routeKey,

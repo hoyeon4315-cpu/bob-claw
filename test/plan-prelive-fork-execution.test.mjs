@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { mergePlans } from "../src/cli/plan-prelive-fork-execution.mjs";
+import { buildForkExecutionPlan } from "../src/prelive/fork-execution.mjs";
+
+const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 
 test("mergePlans preserves existing fork plans for other routes while replacing same selection", () => {
   const existing = {
@@ -95,4 +98,55 @@ test("mergePlans preserves replaced selections that already have execution recor
     merged.plans.map((plan) => plan.planId),
     ["new-plan", "old-submitted-plan"],
   );
+});
+
+test("fork execution plan blocks quotes addressed to a non-operational recipient", () => {
+  const plan = buildForkExecutionPlan({
+    selection: {
+      routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+      amount: "10000",
+      label: "sonic->bob",
+      quote: {
+        routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+        amount: "10000",
+        route: { srcChain: "sonic", dstChain: "bob" },
+        sender: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+        recipient: "0x000000000000000000000000000000000000dEaD",
+        txTo: WBTC,
+        txData: "0x1234",
+        txValueWei: "1",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  assert.equal(plan.status, "blocked");
+  assert.deepEqual(plan.blockers, ["quote_recipient_mismatch"]);
+  assert.equal(plan.commands.submit, null);
+});
+
+test("fork execution plan blocks verify-recipient addresses embedded in calldata", () => {
+  const paddedDead = "000000000000000000000000000000000000000000000000000000000000dead";
+  const plan = buildForkExecutionPlan({
+    selection: {
+      routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+      amount: "10000",
+      label: "sonic->bob",
+      quote: {
+        routeKey: `sonic:${WBTC}->bob:${WBTC}`,
+        amount: "10000",
+        route: { srcChain: "sonic", dstChain: "bob" },
+        txTo: WBTC,
+        txData: `0x1234${paddedDead}`,
+        txValueWei: "1",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  assert.equal(plan.status, "blocked");
+  assert.deepEqual(plan.blockers, ["quote_verify_recipient_in_tx_data"]);
+  assert.equal(plan.commands.submit, null);
 });
