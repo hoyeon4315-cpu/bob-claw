@@ -56,7 +56,9 @@ async function main() {
 
   console.log(`candidates=${report.summary.candidateCount}`);
   console.log(`activeAllocations=${report.summary.activeAllocationCount}`);
+  console.log(`activeReadyCandidates=${report.summary.activeReadyCandidateCount}`);
   console.log(`planningCandidates=${report.summary.planningCandidateCount}`);
+  console.log(`topActiveReady=${report.summary.topActiveReadyCandidateId || "n/a"}`);
   console.log(`topPlanning=${report.summary.topPlanningCandidateId || "n/a"}`);
   console.log(`nextAction=${report.summary.nextAction?.code || "n/a"}`);
 }

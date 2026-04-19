@@ -246,11 +246,11 @@ export function buildCanaryRoutePlan(
     })
     .sort((left, right) => {
       if (left.objectiveRejected !== right.objectiveRejected) return left.objectiveRejected ? 1 : -1;
+      if (left.viableForPrep !== right.viableForPrep) return left.viableForPrep ? -1 : 1;
+      if (left.txReady !== right.txReady) return left.txReady ? -1 : 1;
       const leftEconomicPriority = economicPriority(left);
       const rightEconomicPriority = economicPriority(right);
       if (leftEconomicPriority !== rightEconomicPriority) return leftEconomicPriority - rightEconomicPriority;
-      if (left.viableForPrep !== right.viableForPrep) return left.viableForPrep ? -1 : 1;
-      if (left.txReady !== right.txReady) return left.txReady ? -1 : 1;
       if (left.blockerCount !== right.blockerCount) return left.blockerCount - right.blockerCount;
       const leftPrepUsd = Number.isFinite(left.prepFundingUsd) ? left.prepFundingUsd : Number.POSITIVE_INFINITY;
       const rightPrepUsd = Number.isFinite(right.prepFundingUsd) ? right.prepFundingUsd : Number.POSITIVE_INFINITY;

@@ -34,6 +34,63 @@ test("next step asks for funding when best viable route still has wallet blocker
   assert.deepEqual(next.reasons, ["native", "token", "allowance"]);
 });
 
+test("next step blocks wallet funding when the best prep route has non-positive system economics", () => {
+  const next = determineCanaryNextStep({
+    routePlan: {
+      topCandidates: [
+        {
+          routeKey: "soneium:token->bob:token",
+          label: "soneium->bob wBTC.OFT->wBTC.OFT",
+          amount: "100",
+          srcChain: "soneium",
+          viableForPrep: true,
+          exactGasDone: false,
+          prepBlockers: ["native"],
+          effectiveSystemNetPnlUsd: -0.96,
+          tradeReadiness: "insufficient_data",
+        },
+      ],
+    },
+    fundingPlan: {
+      chains: [
+        {
+          chain: "soneium",
+          native: { ticker: "ETH", shortfallDecimal: 0.00051, shortfall: "510", ok: false },
+          tokens: [],
+          allowances: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(next.decision, "BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP");
+  assert.equal(next.actions.length, 0);
+  assert.deepEqual(next.reasons, ["effective_system_net_pnl_not_positive", "insufficient_data"]);
+});
+
+test("next step blocks exact gas when executable economics are already non-positive", () => {
+  const next = determineCanaryNextStep({
+    routePlan: {
+      topCandidates: [
+        {
+          routeKey: "bob:token->base:token",
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          srcChain: "bob",
+          viableForPrep: true,
+          exactGasDone: false,
+          prepBlockers: [],
+          executableNetEdgeUsd: 0,
+        },
+      ],
+    },
+    fundingPlan: { chains: [] },
+  });
+
+  assert.equal(next.decision, "BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP");
+  assert.deepEqual(next.reasons, ["executable_net_edge_not_positive"]);
+});
+
 test("next step asks for exact gas when route is funded and viable", () => {
   const next = determineCanaryNextStep({
     routePlan: {

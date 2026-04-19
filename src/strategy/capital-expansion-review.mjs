@@ -6,15 +6,16 @@ function round(value, digits = 2) {
 
 function statusPriority(status) {
   return {
-    candidate_for_validation: 0,
-    measured_below_policy: 1,
-    thin_coverage: 2,
-    blocked_by_policy: 3,
-    research_only: 4,
-    analysis_only: 5,
-    unobserved: 6,
-    pre_execution_blueprint: 7,
-  }[status] ?? 8;
+    receipt_backed_validation_ready: 0,
+    candidate_for_validation: 1,
+    measured_below_policy: 2,
+    thin_coverage: 3,
+    blocked_by_policy: 4,
+    research_only: 5,
+    analysis_only: 6,
+    unobserved: 7,
+    pre_execution_blueprint: 8,
+  }[status] ?? 9;
 }
 
 function minimumCapitalUsd(item = null) {

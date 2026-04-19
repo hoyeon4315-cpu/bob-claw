@@ -101,7 +101,7 @@ function recursiveLoopSurfaceById(recursiveLoopSurfaces = {}) {
 }
 
 function lendingLoopStatus({ scaffold = null, dryRunSummary = null } = {}) {
-  if ((dryRunSummary?.signerBackedRunCount ?? 0) > 0) return "candidate_for_validation";
+  if ((dryRunSummary?.signerBackedRunCount ?? 0) > 0) return "receipt_backed_validation_ready";
   if (dryRunSummary?.dryRunReceiptRecorded === true) return "dry_run_evidence_recorded";
   if (scaffold?.readiness?.readyForDryRun === true) return "candidate_for_design";
   return "candidate_for_design";
@@ -162,7 +162,7 @@ function buildLendingLoopEntry(entry = null, loopSurface = null) {
       scaffold?.protocolAdapter?.id ? null : "protocol adapter benchmark",
       dryRunSummary?.dryRunReceiptRecorded === true ? null : "dry-run unwind receipt",
       (dryRunSummary?.signerBackedRunCount ?? 0) > 0 ? null : "signer-backed observed receipt",
-      "measured post-fee loop economics",
+      (dryRunSummary?.signerBackedRunCount ?? 0) > 0 ? null : "measured post-fee loop economics",
     ]),
     promotionPrerequisites: [
       "runtime_per_trade_cap_enforced",
@@ -265,14 +265,15 @@ function buildSurfaceResearchEntry(family = null) {
 function priority(entry = null) {
   const rank = Number.isFinite(entry?.rank) ? entry.rank : 999;
   const statusBias = {
-    candidate_for_validation: 0,
-    research_priority: 1,
-    overfit_blocked_revalidation: 2,
-    dry_run_evidence_recorded: 3,
-    candidate_for_design: 4,
-    research_backlog: 5,
-    deferred: 6,
-  }[entry?.status] ?? 7;
+    receipt_backed_validation_ready: 0,
+    candidate_for_validation: 1,
+    research_priority: 2,
+    overfit_blocked_revalidation: 3,
+    dry_run_evidence_recorded: 4,
+    candidate_for_design: 5,
+    research_backlog: 6,
+    deferred: 7,
+  }[entry?.status] ?? 8;
   return [rank, statusBias, String(entry?.id || "")];
 }
 

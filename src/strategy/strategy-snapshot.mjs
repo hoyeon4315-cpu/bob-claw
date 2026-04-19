@@ -34,20 +34,21 @@ function countByStatus(items = []) {
 
 function statusPriority(status) {
   return {
-    candidate_for_validation: 0,
-    measured_below_policy: 1,
-    thin_coverage: 2,
-    blocked_by_policy: 3,
-    research_only: 4,
-    analysis_only: 5,
-    unobserved: 6,
-  }[status] ?? 7;
+    receipt_backed_validation_ready: 0,
+    candidate_for_validation: 1,
+    measured_below_policy: 2,
+    thin_coverage: 3,
+    blocked_by_policy: 4,
+    research_only: 5,
+    analysis_only: 6,
+    unobserved: 7,
+  }[status] ?? 8;
 }
 
 function evidenceGrade(entry = null, pivot = null) {
   if (pivot?.evidenceGrade) return pivot.evidenceGrade;
   const status = entry?.status || null;
-  if (status === "candidate_for_validation" || status === "measured_below_policy") return "measured";
+  if (status === "receipt_backed_validation_ready" || status === "candidate_for_validation" || status === "measured_below_policy") return "measured";
   if (status === "thin_coverage" || status === "research_only") return "research";
   if (status === "analysis_only") return "analysis";
   return "none";

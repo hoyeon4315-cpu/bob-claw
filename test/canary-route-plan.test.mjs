@@ -335,3 +335,74 @@ test("canary route plan promotes positive-edge candidates ahead of negative toke
   assert.equal(plan.topCandidates[0].netEdgeUsd > 0, true);
   assert.equal(plan.topCandidates[1].routeKey, negativeRouteKey);
 });
+
+test("canary route plan keeps viable tx-ready candidates ahead of null-edge missing-payload research routes", () => {
+  const researchRouteKey = "ethereum:0x4580->bitcoin:0x0000";
+  const viableRouteKey = `bob:${WBTC_OFT}->base:${WBTC_OFT}`;
+  const plan = buildCanaryRoutePlan(
+    {
+      quotes: [
+        {
+          routeKey: researchRouteKey,
+          amount: "846805234795996",
+          quoteType: "offramp",
+          txData: null,
+          txTo: null,
+          inputAmount: "846805234795996",
+          txValueWei: "0",
+          route: {
+            srcChain: "ethereum",
+            dstChain: "bitcoin",
+            srcToken: "0x45804880De22913dAFE09f4980848ECE6EcbAf78",
+            dstToken: "0x0000000000000000000000000000000000000000",
+          },
+        },
+        quote({ routeKey: viableRouteKey, srcChain: "bob", dstChain: "base", amount: "100000", inputAmount: "100000" }),
+      ],
+      scores: [
+        {
+          routeKey: researchRouteKey,
+          amount: "846805234795996",
+          srcChain: "ethereum",
+          dstChain: "bitcoin",
+          srcAsset: { ticker: "PAXG", decimals: 18 },
+          price: {},
+          inputUsd: null,
+          netEdgeUsd: null,
+          executableNetEdgeUsd: null,
+          effectiveSystemNetPnlUsd: null,
+          dataGaps: ["missing_src_token_price"],
+          tradeReadiness: "insufficient_data",
+          executionGasSource: null,
+        },
+        {
+          ...score({ routeKey: viableRouteKey, amount: "100000", srcChain: "bob", dstChain: "base", inputUsd: 75.8 }),
+          effectiveSystemNetPnlUsd: 0.15,
+          executableNetEdgeUsd: 0.27,
+          netEdgeUsd: -1.12,
+        },
+      ],
+      readinessRecords: [
+        {
+          observedAt: "2026-04-18T01:06:00.000Z",
+          address: ADDRESS,
+          routeKey: viableRouteKey,
+          amount: "100000",
+          srcChain: "bob",
+          dstChain: "base",
+          native: { balanceWei: "3583671694530020", requiredWei: "0", shortfallWei: "0", ok: true },
+          token: { token: WBTC_OFT, balance: "2141", required: "100000", shortfall: "97859", ok: false },
+          allowance: null,
+          overallReady: false,
+        },
+      ],
+      readinessFailures: [],
+    },
+    { address: ADDRESS, prices: { nativeByChain: { bob: 2421.47 } } },
+  );
+
+  assert.equal(plan.topCandidates[0].routeKey, viableRouteKey);
+  assert.equal(plan.topCandidates[0].txReady, true);
+  assert.equal(plan.topCandidates[1].routeKey, researchRouteKey);
+  assert.equal(plan.topCandidates[1].txReady, false);
+});

@@ -49,6 +49,16 @@ function requiredFundingActions(candidate, fundingPlan) {
   return actions;
 }
 
+function economicPrepRejectionReasons(candidate = {}) {
+  if (Number.isFinite(candidate.effectiveSystemNetPnlUsd) && candidate.effectiveSystemNetPnlUsd <= 0) {
+    return ["effective_system_net_pnl_not_positive"];
+  }
+  if (Number.isFinite(candidate.executableNetEdgeUsd) && candidate.executableNetEdgeUsd <= 0) {
+    return ["executable_net_edge_not_positive"];
+  }
+  return [];
+}
+
 export function determineCanaryNextStep({ routePlan, fundingPlan }) {
   const best = routePlan?.topCandidates?.[0] || null;
 
@@ -95,6 +105,17 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
         ...(best.scoreDisqualifiers || []),
         ...(best.txReady ? [] : ["missing_tx_data"]),
       ],
+    };
+  }
+
+  const economicPrepReasons = economicPrepRejectionReasons(best);
+  if (economicPrepReasons.length) {
+    return {
+      decision: "BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP",
+      headline: "Canary prep is blocked because estimated route economics are non-positive",
+      route: best,
+      actions: [],
+      reasons: [...economicPrepReasons, ...(best.tradeReadiness ? [best.tradeReadiness] : [])],
     };
   }
 

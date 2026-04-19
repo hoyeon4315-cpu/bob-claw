@@ -58,6 +58,8 @@ test("allocator core applies deterministic cap defaults and keeps blocked strate
 
   const summary = summarizeAllocatorCore(report);
   assert.equal(summary.activeAllocationCount, 0);
+  assert.equal(summary.activeReadyCandidateCount, 0);
+  assert.equal(summary.topActiveReadyCandidate, null);
   assert.equal(summary.topPlanningCandidate.id, "wrapped-btc-loop-base-moonwell");
 });
 
@@ -93,4 +95,100 @@ test("allocator core prioritizes recursive wrapped loop when recursive phase3 va
   assert.equal(report.summary.candidateCount, 1);
   assert.equal(report.planningView.planningQueue[0].id, "recursive_wrapped_btc_lending_loop");
   assert.equal(report.summary.nextAction.code, "collect_recursive_loop_observed_receipts");
+});
+
+test("allocator core exposes active-ready recursive strategy even before an active budget exists", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          overallStatus: "passed",
+          blockers: [],
+          evidence: { strategyId: "recursive_wrapped_btc_lending_loop" },
+          nextAction: { code: "review_recursive_loop_observed_receipts" },
+        },
+        {
+          id: "recursive_stablecoin_lending_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["stable_swap_binding_missing"],
+          evidence: { strategyId: "recursive_stablecoin_lending_loop" },
+          nextAction: { code: "materialize_stable_swap_binding" },
+        },
+      ],
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: {
+        id: "recursive_wrapped_btc_lending_loop",
+        label: "Recursive wrapped-BTC lending loop",
+        chain: "base",
+        protocol: "moonwell",
+        arrivalFamily: "wrapped_btc",
+      },
+    },
+    recursiveStablecoinLoop: {
+      strategy: {
+        id: "recursive_stablecoin_lending_loop",
+        label: "Recursive stablecoin lending loop",
+        chain: "base",
+        protocol: "aave_v3",
+        arrivalFamily: "stablecoin",
+      },
+    },
+    now: "2026-04-18T11:30:00.000Z",
+  });
+
+  assert.equal(report.summary.activeAllocationCount, 0);
+  assert.equal(report.summary.activeReadyCandidateCount, 1);
+  assert.equal(report.summary.topActiveAllocationId, null);
+  assert.equal(report.summary.topActiveReadyCandidateId, "recursive_wrapped_btc_lending_loop");
+  assert.equal(report.summary.nextAction.code, "review_recursive_loop_observed_receipts");
+  assert.equal(report.planningView.planningQueue[0].id, "recursive_wrapped_btc_lending_loop");
+
+  const summary = summarizeAllocatorCore(report);
+  assert.equal(summary.topActiveAllocation, null);
+  assert.equal(summary.topActiveReadyCandidate.id, "recursive_wrapped_btc_lending_loop");
+  assert.equal(summary.activeNextAction.code, "review_recursive_loop_observed_receipts");
+});
+
+test("allocator core keeps active allocation distinct once active budget is declared", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: 500 },
+      summary: { planningBudgetUsd: 1000 },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          overallStatus: "passed",
+          blockers: [],
+          evidence: { strategyId: "recursive_wrapped_btc_lending_loop" },
+          nextAction: { code: "review_recursive_loop_observed_receipts" },
+        },
+      ],
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: {
+        id: "recursive_wrapped_btc_lending_loop",
+        label: "Recursive wrapped-BTC lending loop",
+        chain: "base",
+        protocol: "moonwell",
+        arrivalFamily: "wrapped_btc",
+      },
+    },
+    now: "2026-04-18T11:35:00.000Z",
+  });
+
+  assert.equal(report.summary.activeAllocationCount, 1);
+  assert.equal(report.summary.topActiveAllocationId, "recursive_wrapped_btc_lending_loop");
+  assert.equal(report.activeView.activePlan[0].maxAllocationUsd, 100);
+
+  const summary = summarizeAllocatorCore(report);
+  assert.equal(summary.topActiveAllocation.id, "recursive_wrapped_btc_lending_loop");
+  assert.equal(summary.topActiveAllocation.maxAllocationUsd, 100);
 });

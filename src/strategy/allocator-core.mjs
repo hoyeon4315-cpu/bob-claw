@@ -179,6 +179,19 @@ function buildAllocationView(items = [], budgetUsd, constraints) {
   };
 }
 
+function topReadyCandidate(items = []) {
+  return (
+    items
+      .filter((item) => item.activeEligibility === "active_ready")
+      .sort((left, right) => {
+        const leftBlockers = left.blockers?.length || 0;
+        const rightBlockers = right.blockers?.length || 0;
+        if (leftBlockers !== rightBlockers) return leftBlockers - rightBlockers;
+        return String(left.id || "").localeCompare(String(right.id || ""));
+      })[0] || null
+  );
+}
+
 export function buildAllocatorCore({
   strategySnapshot = null,
   phase3Validation = null,
@@ -218,6 +231,8 @@ export function buildAllocatorCore({
   const activeView = buildAllocationView(candidates, budgets.activeBudgetUsd, constraints);
   const planningView = buildAllocationView(candidates, budgets.planningBudgetUsd, constraints);
   const topPlanningCandidate = planningView.planningQueue[0] || null;
+  const topActiveAllocation = activeView.activePlan[0] || null;
+  const topActiveReadyCandidate = topReadyCandidate(candidates);
 
   return {
     schemaVersion: 1,
@@ -227,11 +242,15 @@ export function buildAllocatorCore({
     summary: {
       candidateCount: candidates.length,
       activeAllocationCount: activeView.activePlan.length,
+      activeReadyCandidateCount: candidates.filter((item) => item.activeEligibility === "active_ready").length,
       planningCandidateCount: planningView.planningQueue.length,
       activeBudgetUsd: budgets.activeBudgetUsd,
       planningBudgetUsd: budgets.planningBudgetUsd,
+      topActiveAllocationId: topActiveAllocation?.id || null,
+      topActiveReadyCandidateId: topActiveReadyCandidate?.id || null,
       topPlanningCandidateId: topPlanningCandidate?.id || null,
-      nextAction: topPlanningCandidate?.nextAction || null,
+      activeNextAction: topActiveAllocation?.nextAction || topActiveReadyCandidate?.nextAction || null,
+      nextAction: topActiveAllocation?.nextAction || topActiveReadyCandidate?.nextAction || topPlanningCandidate?.nextAction || null,
     },
     candidates,
     activeView,
@@ -247,6 +266,13 @@ export function buildAllocatorCore({
 
 export function summarizeAllocatorCore(report = null) {
   if (!report) return null;
+  const topActiveAllocation =
+    report.activeView?.activePlan?.find((item) => item.id === report.summary?.topActiveAllocationId) ||
+    report.activeView?.activePlan?.[0] ||
+    null;
+  const topActiveReady =
+    report.candidates?.find((candidate) => candidate.id === report.summary?.topActiveReadyCandidateId) ||
+    null;
   const topPlanning =
     report.planningView?.planningQueue?.find((item) => item.id === report.summary?.topPlanningCandidateId) ||
     report.planningView?.planningQueue?.[0] ||
@@ -254,9 +280,24 @@ export function summarizeAllocatorCore(report = null) {
   return {
     candidateCount: report.summary?.candidateCount ?? 0,
     activeAllocationCount: report.summary?.activeAllocationCount ?? 0,
+    activeReadyCandidateCount: report.summary?.activeReadyCandidateCount ?? 0,
     planningCandidateCount: report.summary?.planningCandidateCount ?? 0,
     activeBudgetUsd: report.summary?.activeBudgetUsd ?? null,
     planningBudgetUsd: report.summary?.planningBudgetUsd ?? null,
+    topActiveAllocation: topActiveAllocation
+      ? {
+          id: topActiveAllocation.id || null,
+          label: topActiveAllocation.label || null,
+          maxAllocationUsd: topActiveAllocation.maxAllocationPerStrategyUsd ?? topActiveAllocation.maxAllocationUsd ?? null,
+        }
+      : null,
+    topActiveReadyCandidate: topActiveReady
+      ? {
+          id: topActiveReady.id || null,
+          label: topActiveReady.label || null,
+          blockers: topActiveReady.blockers || [],
+        }
+      : null,
     topPlanningCandidate: topPlanning
       ? {
           id: topPlanning.id || null,
@@ -264,6 +305,7 @@ export function summarizeAllocatorCore(report = null) {
           maxAllocationUsd: topPlanning.maxAllocationPerStrategyUsd ?? topPlanning.maxAllocationUsd ?? null,
         }
       : null,
+    activeNextAction: report.summary?.activeNextAction || null,
     nextAction: report.summary?.nextAction || null,
   };
 }

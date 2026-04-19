@@ -61,10 +61,6 @@ function latestRelevantExactGasFailures(gasEstimateFailures = [], route = null) 
     .sort((left, right) => (observedAtMs(right?.observedAt) || 0) - (observedAtMs(left?.observedAt) || 0));
 }
 
-function isBlockingExactGasFailure(reason = null) {
-  return reason === "execution_reverted";
-}
-
 function freshnessSummary({ observedAt = null, now, maxAgeMinutes = null, required = true, available = true } = {}) {
   if (!required) {
     return {
@@ -223,15 +219,6 @@ function exactGasSummary({ state = null, route = null, now = null, required = tr
     (!latestSuccessObservedAt || (observedAtMs(latestFailureObservedAt) || 0) >= (observedAtMs(latestSuccessObservedAt) || 0));
 
   if (useFailure) {
-    if (isBlockingExactGasFailure(latestFailure?.reason)) {
-      return {
-        state: "blocked",
-        observedAt: latestFailureObservedAt,
-        ageMinutes: ageMinutes(latestFailureObservedAt, now),
-        failureReason: latestFailure?.reason || null,
-        failureReasons: unique(failures.map((item) => item?.reason)),
-      };
-    }
     return {
       ...freshnessSummary({
         observedAt: latestFailureObservedAt,

@@ -156,6 +156,42 @@ test("strategy research board upgrades recursive loops when dry-run evidence is 
   assert.equal(wrappedLoopCandidate.evidence.dryRunPassedCount, 1);
 });
 
+test("strategy research board marks signer-backed recursive loop receipts as validation-ready", () => {
+  const wrappedScaffold = buildRecursiveLendingLoopScaffold({
+    strategyId: "recursive_wrapped_btc_lending_loop",
+    strategyConfig: buildDefaultRecursiveLendingLoopConfig("recursive_wrapped_btc_lending_loop"),
+    dryRunReceipts: [
+      {
+        strategyId: "recursive_wrapped_btc_lending_loop",
+        executionMode: "signer_backed_receipt",
+        result: "passed",
+        watcherStatus: "auto_unwind",
+        observedAt: "2026-04-18T10:00:00.000Z",
+      },
+    ],
+    now: "2026-04-18T10:00:00.000Z",
+  });
+  const researchBoard = buildStrategyResearchBoard({
+    laneReclassification: { lanes: [] },
+    lendingLoopResearchEntries: buildLendingLoopResearchEntries(),
+    recursiveLoopSurfaces: {
+      recursive_wrapped_btc_lending_loop: {
+        scaffold: wrappedScaffold,
+        dryRunSummary: wrappedScaffold.dryRunSummary,
+      },
+    },
+    nativeBtcOpportunitySurface: null,
+    now: "2026-04-18T10:00:00.000Z",
+  });
+
+  const wrappedLoopCandidate = researchBoard.candidates.find((candidate) => candidate.id === "recursive_wrapped_btc_lending_loop");
+  assert.equal(wrappedLoopCandidate.status, "receipt_backed_validation_ready");
+  assert.equal(wrappedLoopCandidate.nextAction.code, "review_recursive_loop_observed_receipts");
+  assert.equal(wrappedLoopCandidate.evidence.signerBackedRunCount, 1);
+  assert.deepEqual(wrappedLoopCandidate.missingEvidence, []);
+  assert.equal(researchBoard.summary.statusCounts.receipt_backed_validation_ready, 1);
+});
+
 test("flash floor decision reports owner setter availability and deploy-time 0.30 USDC default", () => {
   const report = buildFlashFloorDecision({
     contractSource: `
