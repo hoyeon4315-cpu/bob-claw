@@ -179,6 +179,116 @@ function normalizedReasonCodes(values = []) {
     .filter(Boolean);
 }
 
+function observedStatus(status = null) {
+  const normalized = String(status || "").toLowerCase();
+  if (!normalized) return false;
+  if (normalized.includes("simulated") || normalized.includes("paper") || normalized.includes("estimate")) return false;
+  return normalized.includes("observed") || normalized.includes("receipt") || normalized.includes("realized") || normalized.includes("live");
+}
+
+function railStage({ id, label, complete = false, ready = false, blocker = null, command = null } = {}) {
+  return {
+    id,
+    label,
+    status: complete ? "complete" : ready ? "ready_for_proof" : "blocked",
+    blockers: complete ? [] : unique([blocker]),
+    command: complete ? null : command || null,
+  };
+}
+
+function buildStrategyRailProof({ scaffold = null, summary = null, validation = null, nextAction = null } = {}) {
+  const paper = scaffold?.pnl?.paper || null;
+  const estimated = scaffold?.pnl?.estimated || null;
+  const realized = scaffold?.pnl?.realized || null;
+  const entryActionCount = scaffold?.executionPlan?.actionCount ?? scaffold?.executionPlan?.actions?.length ?? 0;
+  const unwindActionCount = scaffold?.unwindPlan?.actions?.length ?? 0;
+  const watcherCheckCount = scaffold?.watcherPlan?.checks?.length ?? 0;
+  const readyForDryRun = scaffold?.readiness?.readyForDryRun === true;
+  const readyForLive = scaffold?.readiness?.readyForLive === true;
+  const liveRoundtripProofStatus = validation?.evidence?.liveRoundtripProofStatus || null;
+  const liveRoundtripEntryCount = validation?.evidence?.liveRoundtripEntryCount ?? 0;
+  const liveRoundtripUnwindCount = validation?.evidence?.liveRoundtripUnwindCount ?? 0;
+  const observedCarrySampleRecorded = observedStatus(realized?.status) && (realized?.sampleCount ?? 0) > 0;
+  const protocolPlanReady = entryActionCount > 0 && unwindActionCount > 0 && watcherCheckCount > 0 && readyForDryRun;
+  const entryReceiptRecorded = liveRoundtripEntryCount > 0;
+  const unwindReceiptRecorded = liveRoundtripUnwindCount > 0;
+  const btcReconciled = liveRoundtripProofStatus === "signer_backed_roundtrip_recorded";
+  const receiptCommand = nextAction?.command || null;
+  const stages = [
+    railStage({
+      id: "protocol_plan_ready",
+      label: "strategy entry, watcher, and unwind plan is declared",
+      complete: protocolPlanReady,
+      ready: entryActionCount > 0 || unwindActionCount > 0 || watcherCheckCount > 0,
+      blocker: "protocol_plan_incomplete",
+    }),
+    railStage({
+      id: "native_btc_funding_delivery",
+      label: "native BTC reaches destination-chain protocol collateral",
+      complete: entryReceiptRecorded,
+      ready: readyForDryRun,
+      blocker: "native_btc_to_protocol_funding_receipt_missing",
+      command: receiptCommand,
+    }),
+    railStage({
+      id: "protocol_entry_receipt",
+      label: "protocol deposit/borrow/supply entry receipt is recorded",
+      complete: entryReceiptRecorded,
+      ready: entryActionCount > 0,
+      blocker: "protocol_entry_receipt_missing",
+      command: receiptCommand,
+    }),
+    railStage({
+      id: "holding_period_carry_observation",
+      label: "holding-period carry/accrual is observed from receipts or live snapshots",
+      complete: observedCarrySampleRecorded,
+      ready: entryReceiptRecorded || readyForDryRun,
+      blocker: "observed_holding_period_carry_missing",
+      command: receiptCommand,
+    }),
+    railStage({
+      id: "protocol_unwind_receipt",
+      label: "protocol unwind receipt records gas, slippage, and health-factor path",
+      complete: unwindReceiptRecorded,
+      ready: unwindActionCount > 0,
+      blocker: "protocol_unwind_receipt_missing",
+      command: receiptCommand,
+    }),
+    railStage({
+      id: "btc_reconciliation",
+      label: "BTC-denominated reconciliation reaches treasury/payback accounting",
+      complete: btcReconciled,
+      ready: entryReceiptRecorded && unwindReceiptRecorded,
+      blocker: "btc_denominated_reconciliation_missing",
+    }),
+  ];
+  const nextStage = stages.find((stage) => stage.status !== "complete") || null;
+  return {
+    entryActionCount,
+    unwindActionCount,
+    watcherCheckCount,
+    readyForDryRun,
+    readyForLive,
+    paperAnnualNetCarryUsd: paper?.annualNetCarryUsd ?? null,
+    estimatedCarryStatus: estimated?.status || null,
+    estimatedCarrySampleCount: estimated?.sampleCount ?? 0,
+    realizedCarryStatus: realized?.status || null,
+    realizedCarrySampleCount: realized?.sampleCount ?? 0,
+    requiredProofs: [
+      "native BTC funded route into destination-chain collateral",
+      "protocol entry receipt for deposit/borrow/supply path",
+      "holding-period carry snapshot or receipt-backed accrual sample",
+      "unwind receipt with realized gas, slippage, and health-factor path",
+      "BTC-denominated reconciliation back to treasury/payback accounting",
+    ],
+    stages,
+    stageCount: stages.length,
+    completeStageCount: stages.filter((stage) => stage.status === "complete").length,
+    blockers: unique(stages.flatMap((stage) => stage.blockers || [])),
+    nextStage,
+  };
+}
+
 function isRouteStructurallyBlocked(candidate = null) {
   const tradeReadiness = String(candidate?.tradeReadiness || "");
   return (
@@ -241,12 +351,12 @@ function buildStrategyLiveCandidate({
   const validation = validationById(phase3Validation, validationId);
   const watcher = watcherById(protocolMarketWatchers, watcherId);
   const summary = dryRunSummary || scaffold?.dryRunSummary || null;
-  const blockerReasons = unique([...(validation?.blockers || []), ...(watcher?.blockers || [])]);
+  const evidenceBlockers = unique([...(validation?.blockers || []), ...(watcher?.blockers || [])]);
   const perTradeCapUsd = strategy?.perTradeCapUsd ?? null;
+  const nextAction = watcher?.nextAction || validation?.nextAction || null;
+  const railProof = buildStrategyRailProof({ scaffold, summary, validation, nextAction });
+  const blockerReasons = unique([...evidenceBlockers, ...(railProof.blockers || [])]);
   const reviewReady = blockerReasons.length === 0 && summary?.dryRunReceiptRecorded === true;
-  const paper = scaffold?.pnl?.paper || null;
-  const estimated = scaffold?.pnl?.estimated || null;
-  const realized = scaffold?.pnl?.realized || null;
   return {
     candidateType: "strategy",
     candidateId: strategy.id,
@@ -265,7 +375,7 @@ function buildStrategyLiveCandidate({
     blockerReasons,
     evidenceBlockers: blockerReasons,
     inputFreshness: null,
-    nextAction: watcher?.nextAction || validation?.nextAction || null,
+    nextAction,
     reviewReady,
     preliveReady: reviewReady,
     evidence: {
@@ -283,25 +393,7 @@ function buildStrategyLiveCandidate({
       liveRoundtripEntryCount: validation?.evidence?.liveRoundtripEntryCount ?? 0,
       liveRoundtripUnwindCount: validation?.evidence?.liveRoundtripUnwindCount ?? 0,
     },
-    railProof: {
-      entryActionCount: scaffold?.executionPlan?.actionCount ?? scaffold?.executionPlan?.actions?.length ?? 0,
-      unwindActionCount: scaffold?.unwindPlan?.actions?.length ?? 0,
-      watcherCheckCount: scaffold?.watcherPlan?.checks?.length ?? 0,
-      readyForDryRun: scaffold?.readiness?.readyForDryRun === true,
-      readyForLive: scaffold?.readiness?.readyForLive === true,
-      paperAnnualNetCarryUsd: paper?.annualNetCarryUsd ?? null,
-      estimatedCarryStatus: estimated?.status || null,
-      estimatedCarrySampleCount: estimated?.sampleCount ?? 0,
-      realizedCarryStatus: realized?.status || null,
-      realizedCarrySampleCount: realized?.sampleCount ?? 0,
-      requiredProofs: [
-        "native BTC funded route into destination-chain collateral",
-        "protocol entry receipt for deposit/borrow/supply path",
-        "holding-period carry snapshot or receipt-backed accrual sample",
-        "unwind receipt with realized gas, slippage, and health-factor path",
-        "BTC-denominated reconciliation back to treasury/payback accounting",
-      ],
-    },
+    railProof,
   };
 }
 
@@ -430,18 +522,20 @@ function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview 
 function buildStrategyCandidateChecklist(candidate = null) {
   if (candidate?.candidateType !== "strategy") return null;
   const blockerReasons = candidate?.blockerReasons || [];
+  const stages = candidate?.railProof?.stages || [];
   return {
     completed: unique([
       "primary live strategy selected",
       Number.isFinite(candidate?.perTradeCapUsd) ? "per-trade cap declared" : null,
       candidate?.evidence?.dryRunReceiptRecorded ? "dry-run receipt recorded" : null,
       (candidate?.evidence?.autoUnwindPassCount || 0) > 0 ? "auto-unwind path simulated" : null,
+      ...stages.filter((stage) => stage.status === "complete").map((stage) => `rail proof complete: ${stage.label}`),
     ]),
     remaining: unique([
       blockerReasons.includes("signer_backed_oos_receipts_missing") ? "ingest signer-backed wrapped-loop receipts" : null,
       blockerReasons.includes("recursive_observed_receipts_missing") ? "ingest recursive lending-loop observed receipts" : null,
       blockerReasons.length ? `clear strategy evidence blockers (${blockerReasons.join(",")})` : null,
-      "submit signer/executor-backed protocol entry, hold/accrual, and unwind proof",
+      ...stages.filter((stage) => stage.status !== "complete").map((stage) => `rail proof needed: ${stage.label}`),
       "manual approval before live canary",
     ]),
   };
@@ -773,6 +867,11 @@ export function summarizePreliveReviewPackage(reviewPackage = null) {
     economicsMode: candidate?.economicsMode || null,
     proofObjective: candidate?.proofObjective || null,
     railProof: candidate?.railProof || null,
+    railProofStageCount: candidate?.railProof?.stageCount ?? 0,
+    railProofCompleteStageCount: candidate?.railProof?.completeStageCount ?? 0,
+    railProofNextStageId: candidate?.railProof?.nextStage?.id || null,
+    railProofNextStageStatus: candidate?.railProof?.nextStage?.status || null,
+    railProofBlockers: candidate?.railProof?.blockers || [],
     simulationSuccessCount: reviewPackage.preliveEvidence?.mechanicalSimulation?.successCount ?? 0,
     simulationTargetCount: reviewPackage.preliveEvidence?.mechanicalSimulation?.targetSuccessCount ?? 0,
     forkConfirmedCount: reviewPackage.preliveEvidence?.forkExecution?.confirmedCount ?? 0,

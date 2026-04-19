@@ -739,6 +739,21 @@ test("prelive review package can promote recursive wrapped loop as the primary l
   assert.equal(reviewPackage.primaryLiveCandidate.railProof.unwindActionCount, 2);
   assert.equal(reviewPackage.primaryLiveCandidate.railProof.paperAnnualNetCarryUsd, 3.42);
   assert.equal(reviewPackage.primaryLiveCandidate.railProof.requiredProofs.some((item) => item.includes("holding-period carry")), true);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.stageCount, 6);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.completeStageCount, 1);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.nextStage.id, "native_btc_funding_delivery");
+  assert.equal(
+    reviewPackage.primaryLiveCandidate.railProof.stages.find((stage) => stage.id === "protocol_plan_ready").status,
+    "complete",
+  );
+  assert.equal(
+    reviewPackage.primaryLiveCandidate.railProof.stages.find((stage) => stage.id === "holding_period_carry_observation").status,
+    "ready_for_proof",
+  );
+  assert.equal(
+    reviewPackage.primaryLiveCandidate.railProof.blockers.includes("native_btc_to_protocol_funding_receipt_missing"),
+    true,
+  );
   assert.equal(reviewPackage.tinyCanaryAdmission.candidate.candidateId, "recursive_wrapped_btc_lending_loop");
   assert.equal(reviewPackage.tinyCanaryAdmission.nextActionCode, "collect_recursive_loop_observed_receipts");
   assert.equal(reviewPackage.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
@@ -747,6 +762,9 @@ test("prelive review package can promote recursive wrapped loop as the primary l
   assert.equal(summary.economicsMode, "holding_period_carry");
   assert.equal(summary.proofObjective, "protocol_rail_entry_hold_unwind_receipts");
   assert.equal(summary.railProof.entryActionCount, 4);
+  assert.equal(summary.railProofStageCount, 6);
+  assert.equal(summary.railProofCompleteStageCount, 1);
+  assert.equal(summary.railProofNextStageId, "native_btc_funding_delivery");
   assert.equal(summary.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
 });
 
@@ -988,6 +1006,124 @@ test("prelive review package prefers the wrapped loop when signer-backed roundtr
   assert.equal(reviewPackage.tinyCanaryAdmission.nextActionCode, "capture_wrapped_btc_loop_extended_receipt_context");
   assert.equal(reviewPackage.remediationPlan.nextAction.code, "capture_wrapped_btc_loop_extended_receipt_context");
   assert.equal(summary.candidateId, "wrapped-btc-loop-base-moonwell");
+});
+
+test("prelive review package keeps yield strategies blocked until live carry is observed", () => {
+  const reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus: {
+      generatedAt: "2026-04-19T12:00:00.000Z",
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: [],
+      },
+      shadowCycle: {
+        funding: { effectiveSystemNetPnlUsd: -0.42 },
+        topRoute: {
+          label: "soneium->bob wBTC.OFT->wBTC.OFT",
+          amount: "100",
+          tradeReadiness: "reject_effective_system_pnl",
+        },
+      },
+      prelive: {
+        currentStage: "tiny_live_canary_review",
+        liveTradingPolicy: "BLOCKED",
+        shadowReplay: { status: "ready_for_mechanical_simulation", blockers: [] },
+        mechanicalSimulation: { status: "mechanical_path_proven", blockers: [], successCount: 50, targetSuccessCount: 50 },
+        forkExecution: { status: "strategy_execution_proven", blockers: [], confirmedCount: 3, targetConfirmedCount: 3 },
+        executionAudit: { status: "complete", blockers: [], missingRecordCount: 0 },
+        tinyLiveCanary: { ready: true, blockers: [] },
+      },
+    },
+    canaryInputs: {
+      routeKey: "soneium:0x0555->bob:0x0555",
+      routeLabel: "soneium->bob wBTC.OFT->wBTC.OFT",
+      amount: "100",
+      scoreTradeReadiness: "reject_effective_system_pnl",
+      blockers: ["reject_effective_system_pnl"],
+      gatewayQuote: { state: "fresh" },
+      exactGas: { state: "fresh" },
+      srcGas: { state: "fresh" },
+      dexQuote: { state: "fresh" },
+      bitcoinFee: { state: "not_required" },
+      marketSnapshot: { state: "fresh" },
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        label: "Wrapped BTC lending loop (Base / Moonwell)",
+        strategyType: "leverage_lending_loop",
+        protocol: "moonwell",
+        chain: "base",
+        perTradeCapUsd: 300,
+      },
+      dryRunSummary: {
+        dryRunReceiptRecorded: true,
+        autoUnwindPassCount: 5,
+      },
+      executionPlan: {
+        actionCount: 10,
+        actions: [{ id: "approve_collateral" }],
+      },
+      unwindPlan: {
+        actions: [{ id: "repay_debt" }],
+      },
+      watcherPlan: {
+        checks: [{ id: "health_factor_floor" }],
+      },
+      readiness: {
+        readyForDryRun: true,
+        readyForLive: false,
+      },
+      pnl: {
+        estimated: {
+          status: "simulated_dry_run_estimate",
+          sampleCount: 5,
+        },
+        realized: {
+          status: "simulated_dry_run_receipts",
+          sampleCount: 5,
+        },
+      },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          blockers: [],
+          evidence: {
+            liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+            liveRoundtripEntryCount: 13,
+            liveRoundtripUnwindCount: 11,
+          },
+          nextAction: {
+            code: "capture_wrapped_btc_loop_extended_receipt_context",
+            command: "npm run ingest:wrapped-btc-loop-receipt -- --write --realized-net-carry-usd=<realized-net-carry-usd>",
+          },
+        },
+      ],
+    },
+    protocolMarketWatchers: {
+      watchers: [
+        {
+          id: "wrapped_btc_loop_market_watch",
+          blockers: [],
+          nextAction: {
+            code: "capture_wrapped_btc_loop_extended_receipt_context",
+            command: "npm run ingest:wrapped-btc-loop-receipt -- --write --realized-net-carry-usd=<realized-net-carry-usd>",
+          },
+        },
+      ],
+    },
+  });
+  const summary = summarizePreliveReviewPackage(reviewPackage);
+
+  assert.equal(reviewPackage.packageStatus, "not_ready_for_manual_review");
+  assert.equal(reviewPackage.tinyCanaryAdmission.decision, "NO_GO");
+  assert.equal(reviewPackage.primaryLiveCandidate.tradeReadiness, "strategy_evidence_blocked");
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.completeStageCount, 5);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.nextStage.id, "holding_period_carry_observation");
+  assert.deepEqual(reviewPackage.primaryLiveCandidate.blockerReasons, ["observed_holding_period_carry_missing"]);
+  assert.equal(summary.railProofNextStageId, "holding_period_carry_observation");
 });
 
 test("prelive review package promotes the strategy candidate when the current route is negative and policy-ready measured routes are exhausted", () => {
