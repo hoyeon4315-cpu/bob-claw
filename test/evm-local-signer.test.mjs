@@ -6,7 +6,11 @@ import { EvmLocalKeySigner } from "../src/executor/signer/evm-local-signer.mjs";
 const PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 function buildProvider({ pendingNonce = 12 } = {}) {
+  let nextPendingNonce = pendingNonce;
   return {
+    setPendingNonce(value) {
+      nextPendingNonce = value;
+    },
     getFeeData: async () => ({
       maxFeePerGas: 1_000_000_000n,
       maxPriorityFeePerGas: 1_000_000n,
@@ -14,11 +18,11 @@ function buildProvider({ pendingNonce = 12 } = {}) {
     }),
     getTransactionCount: async (_address, blockTag) => {
       assert.equal(blockTag, "pending");
-      return pendingNonce;
+      return nextPendingNonce;
     },
     broadcastTransaction: async (signedTx) => ({
       hash: "0x" + "a".repeat(64),
-      nonce: pendingNonce,
+      nonce: nextPendingNonce,
       from: "0x0000000000000000000000000000000000000000",
       to: "0x0000000000000000000000000000000000000001",
       signedTx,
@@ -62,4 +66,18 @@ test("evm signer sign-only mode does not consume the sequential nonce manager", 
   assert.equal(secondPreview.metadata.nonce, 12);
   assert.equal(firstBroadcastable.metadata.nonce, 12);
   assert.equal(secondBroadcastable.metadata.nonce, 13);
+});
+
+test("evm signer catches up when chain pending nonce advances externally", async () => {
+  const provider = buildProvider({ pendingNonce: 20 });
+  const signer = buildSigner(provider);
+
+  const first = await signer.signIntent(intent(), { reserveNonce: true });
+  provider.setPendingNonce(23);
+  const caughtUp = await signer.signIntent(intent(), { reserveNonce: true });
+  const next = await signer.signIntent(intent(), { reserveNonce: true });
+
+  assert.equal(first.metadata.nonce, 20);
+  assert.equal(caughtUp.metadata.nonce, 23);
+  assert.equal(next.metadata.nonce, 24);
 });

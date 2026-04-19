@@ -32,8 +32,9 @@ class SequentialNonceManager {
       this.nextNonce = explicitNonce + 1;
       return explicitNonce;
     }
-    if (!Number.isInteger(this.nextNonce)) {
-      this.nextNonce = await this.provider.getTransactionCount(this.address, "pending");
+    const pendingNonce = await this.provider.getTransactionCount(this.address, "pending");
+    if (!Number.isInteger(this.nextNonce) || pendingNonce > this.nextNonce) {
+      this.nextNonce = pendingNonce;
     }
     const nonce = this.nextNonce;
     this.nextNonce += 1;
