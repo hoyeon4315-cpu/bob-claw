@@ -25,6 +25,27 @@ function phaseStatus({ ready, blockers, readyCode, inProgressCode, blockedCode }
   };
 }
 
+const TRANSPORT_ONLY_AUDIT_BLOCKERS = new Set([
+  "candidate amount diversity",
+]);
+
+function auditBlockerLabels(audit = null) {
+  const explicitBlockers = Array.isArray(audit?.blockers) ? audit.blockers : [];
+  const failedCheckLabels = Array.isArray(audit?.checks)
+    ? audit.checks.filter((check) => check && check.ok === false).map((check) => check.label).filter(Boolean)
+    : [];
+  return [...new Set([...explicitBlockers, ...failedCheckLabels].filter(Boolean))];
+}
+
+function auditBlocksSelectedLane({ audit = null, strategyReviewCandidateReady = false } = {}) {
+  if (audit?.decision === "LIVE_CANARY_REVIEW_POSSIBLE") return false;
+  if (!strategyReviewCandidateReady) return true;
+
+  const blockers = auditBlockerLabels(audit);
+  if (!blockers.length) return true;
+  return blockers.some((label) => !TRANSPORT_ONLY_AUDIT_BLOCKERS.has(label));
+}
+
 function selectionKey(routeKey = null, amount = null) {
   if (!routeKey || amount == null) return null;
   return `${routeKey}|${String(amount)}`;
@@ -135,9 +156,14 @@ export function buildPreliveReadinessSummary({
   const latestUnresolvedActiveFailure =
     [...failureClassification.unresolvedActiveFailures].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] ||
     null;
+  const auditBlockers = auditBlockerLabels(audit);
+  const auditBlocksLane = auditBlocksSelectedLane({ audit, strategyReviewCandidateReady });
+  const transportAuditWarningOnly = Boolean(
+    audit?.decision && audit.decision !== "LIVE_CANARY_REVIEW_POSSIBLE" && !auditBlocksLane,
+  );
 
   const shadowReplayBlockers = [];
-  if (audit?.decision !== "LIVE_CANARY_REVIEW_POSSIBLE") {
+  if (auditBlocksLane) {
     shadowReplayBlockers.push(`audit:${audit?.decision || "missing_audit"}`);
   }
   if (!manualReviewReady) {
@@ -272,6 +298,9 @@ export function buildPreliveReadinessSummary({
     shadowReplay: {
       ...shadowReplay,
       auditDecision: audit?.decision || null,
+      auditBlockers,
+      auditBlocksSelectedLane: auditBlocksLane,
+      transportAuditWarningOnly,
       manualCanaryReviewReady: manualReviewReady,
       strategyReviewCandidateReady,
       policyReadyMeasuredRoutes: measuredPolicyReady,

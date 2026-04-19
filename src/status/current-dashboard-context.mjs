@@ -267,7 +267,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   strategySnapshot.planningLayers.allocatorCore = summarizeAllocatorCore(allocatorCore);
   strategySnapshot.planningLayers.protocolMarketWatchers = summarizeProtocolMarketWatchers(protocolMarketWatchers);
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
-  const reviewPackage = buildPreliveReviewPackage({
+  let reviewPackage = buildPreliveReviewPackage({
     dashboardStatus,
     canaryInputs,
     canarySelectionGap,
@@ -288,7 +288,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   });
   dashboardStatus.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
   dashboardStatus.dataCounts.preliveReviewPackagePresent = dashboardStatus.prelive.reviewPackage ? 1 : 0;
-  const evidenceCampaign = buildPreliveEvidenceCampaign({
+  let evidenceCampaign = buildPreliveEvidenceCampaign({
     reviewPackage,
     shadowRefreshBatchSummary: dashboardStatus?.shadowCycle?.refreshBatch || null,
     simulationRuns: preliveSimulationRuns,
@@ -301,14 +301,14 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     evidenceCampaign,
     address: state.address,
   });
-  const connectedRefreshPackage = buildConnectedRefreshPackage({
+  let connectedRefreshPackage = buildConnectedRefreshPackage({
     dashboardStatus,
     canaryInputs,
     reviewPackage,
     nextStep: state.nextStep,
     address: state.address,
   });
-  const executionRunbook = buildExecutionRunbook({
+  let executionRunbook = buildExecutionRunbook({
     dashboardStatus,
     reviewPackage,
     strategySnapshot,
@@ -317,7 +317,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     forkPlan: preliveForkPlan,
     address: state.address,
   });
-  const exactRouteForkPackage = buildExactRouteForkPackage({
+  let exactRouteForkPackage = buildExactRouteForkPackage({
     dashboardStatus,
     canaryInputs,
     reviewPackage,
@@ -329,7 +329,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     connectedRefreshPackage,
   });
   dashboardStatus.prelive.executionRunbook = summarizeExecutionRunbook(executionRunbook);
-  const preliveValidation = buildPreliveValidationReport({
+  let preliveValidation = buildPreliveValidationReport({
     dashboardStatus,
     strategySnapshot,
     executionRunbook,
@@ -338,7 +338,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     exactRouteForkPackage,
   });
   dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
-  const milestoneValidationGates = buildMilestoneValidationGates({
+  let milestoneValidationGates = buildMilestoneValidationGates({
     phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
     strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
     flashFloorDecision,
@@ -360,7 +360,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   strategySnapshot.artifacts.source.push({ kind: "milestone_validation_gates", path: "data/milestone-validation-gates.json" });
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
   dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
-  const operationalJudgmentReview = buildOperationalJudgmentReview({
+  let operationalJudgmentReview = buildOperationalJudgmentReview({
     dashboardStatus,
     strategySnapshot,
     reviewPackage,
@@ -396,6 +396,113 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       executionEvents,
     }),
   };
+
+  // Second pass: readiness depends on the selected review candidate, while the
+  // review package/runbook must display the final readiness stage.
+  reviewPackage = buildPreliveReviewPackage({
+    dashboardStatus,
+    canaryInputs,
+    canarySelectionGap,
+    nextStep: state.nextStep,
+    advanceCanary: dashboardStatus.canaryAdvance || null,
+    address: state.address,
+    strategySnapshot: dashboardStatus.strategy.strategySnapshot,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
+    phase3Validation: phase3StrategyValidation,
+    protocolMarketWatchers,
+    destinationAllocationPlan,
+    destinationPromotionGate,
+  });
+  dashboardStatus.prelive.reviewPackage = summarizePreliveReviewPackage(reviewPackage);
+  evidenceCampaign = buildPreliveEvidenceCampaign({
+    reviewPackage,
+    shadowRefreshBatchSummary: dashboardStatus?.shadowCycle?.refreshBatch || null,
+    simulationRuns: preliveSimulationRuns,
+    forkExecutionPlans: preliveForkPlan?.plans || [],
+    forkExecutionSubmissions: preliveForkSubmissions,
+    forkExecutionReceipts: preliveForkReceipts,
+  });
+  reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
+    reviewPackage,
+    evidenceCampaign,
+    address: state.address,
+  });
+  connectedRefreshPackage = buildConnectedRefreshPackage({
+    dashboardStatus,
+    canaryInputs,
+    reviewPackage,
+    nextStep: state.nextStep,
+    address: state.address,
+  });
+  executionRunbook = buildExecutionRunbook({
+    dashboardStatus,
+    reviewPackage,
+    strategySnapshot,
+    canaryInputs,
+    nextStep: state.nextStep,
+    forkPlan: preliveForkPlan,
+    address: state.address,
+  });
+  exactRouteForkPackage = buildExactRouteForkPackage({
+    dashboardStatus,
+    canaryInputs,
+    reviewPackage,
+    nextStep: state.nextStep,
+    forkPlan: preliveForkPlan,
+    simulationRuns: preliveSimulationRuns,
+    submissions: preliveForkSubmissions,
+    receipts: preliveForkReceipts,
+    connectedRefreshPackage,
+  });
+  dashboardStatus.prelive.executionRunbook = summarizeExecutionRunbook(executionRunbook);
+  preliveValidation = buildPreliveValidationReport({
+    dashboardStatus,
+    strategySnapshot,
+    executionRunbook,
+    reviewPackage,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+  });
+  dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
+  milestoneValidationGates = buildMilestoneValidationGates({
+    phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
+    strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
+    flashFloorDecision,
+    wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRun,
+    recursiveWrappedBtcLoop,
+    recursiveWrappedBtcLoopDryRun,
+    recursiveStablecoinLoop,
+    recursiveStablecoinLoopDryRun,
+    phase3Validation: phase3StrategyValidation,
+    protocolMarketWatchers,
+    allocatorCore,
+    preliveValidation,
+    now: dashboardStatus.generatedAt,
+  });
+  strategySnapshot.summary.milestoneOverallStatus = milestoneValidationGates.summary?.overallStatus || null;
+  strategySnapshot.summary.milestoneNextGateId = milestoneValidationGates.summary?.nextGateId || null;
+  strategySnapshot.planningLayers.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
+  dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
+  dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
+  operationalJudgmentReview = buildOperationalJudgmentReview({
+    dashboardStatus,
+    strategySnapshot,
+    reviewPackage,
+    executionRunbook,
+    preliveValidation,
+    connectedRefreshPackage,
+    exactRouteForkPackage,
+  });
+  dashboardStatus.prelive.connectedRefresh = summarizeConnectedRefreshPackage(connectedRefreshPackage);
+  dashboardStatus.prelive.exactRouteForkPackage = summarizeExactRouteForkPackage(exactRouteForkPackage);
+  dashboardStatus.prelive.operationalJudgmentReview = summarizeOperationalJudgmentReview(operationalJudgmentReview);
+
   dashboardStatus.liveBaseline = buildLiveBaselineSummary({
     dashboardStatus,
     nextStep: state.nextStep,

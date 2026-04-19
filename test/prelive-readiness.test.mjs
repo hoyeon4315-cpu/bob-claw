@@ -200,6 +200,101 @@ test("prelive readiness does not require a route edge when a strategy candidate 
   assert.equal(summary.currentStage, "mechanical_simulation");
 });
 
+test("prelive readiness treats transport-only audit blockers as warnings for ready strategy candidates", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_BLOCKED",
+      blockers: ["candidate amount diversity"],
+      checks: [
+        {
+          label: "candidate amount diversity",
+          ok: false,
+          detail: "1 candidate routes have < 4 amount levels",
+        },
+      ],
+    },
+    shadowCycle: {
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: false,
+      edgeViability: {
+        policyReadyCount: 0,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        tradeReadiness: "strategy_candidate_review_only",
+        reviewReady: true,
+      },
+      tinyCanaryAdmission: {
+        status: "manual_approval_required",
+      },
+    },
+    targetSimulationSuccessCount: 1,
+  });
+
+  assert.equal(summary.shadowReplay.ready, true);
+  assert.equal(summary.shadowReplay.blockers.includes("audit:LIVE_BLOCKED"), false);
+  assert.equal(summary.shadowReplay.auditBlocksSelectedLane, false);
+  assert.equal(summary.shadowReplay.transportAuditWarningOnly, true);
+  assert.deepEqual(summary.shadowReplay.auditBlockers, ["candidate amount diversity"]);
+  assert.equal(summary.currentStage, "mechanical_simulation");
+});
+
+test("prelive readiness still blocks strategy candidates on non-transport audit failures", () => {
+  const summary = buildPreliveReadinessSummary({
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    audit: {
+      decision: "LIVE_BLOCKED",
+      blockers: ["shadow time window"],
+      checks: [
+        {
+          label: "shadow time window",
+          ok: false,
+          detail: "12h observed, target 168h",
+        },
+      ],
+    },
+    shadowCycle: {
+      refreshQueue: [],
+    },
+    strategy: {
+      manualCanaryReviewReady: false,
+      edgeViability: {
+        policyReadyCount: 0,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        tradeReadiness: "strategy_candidate_review_only",
+        reviewReady: true,
+      },
+      tinyCanaryAdmission: {
+        status: "manual_approval_required",
+      },
+    },
+    targetSimulationSuccessCount: 1,
+  });
+
+  assert.equal(summary.shadowReplay.ready, false);
+  assert.equal(summary.shadowReplay.blockers.includes("audit:LIVE_BLOCKED"), true);
+  assert.equal(summary.shadowReplay.auditBlocksSelectedLane, true);
+  assert.equal(summary.shadowReplay.transportAuditWarningOnly, false);
+  assert.equal(summary.currentStage, "shadow_replay");
+});
+
 test("prelive readiness pauses at fork execution after mechanical proof", () => {
   const summary = buildPreliveReadinessSummary({
     overall: {

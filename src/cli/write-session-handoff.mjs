@@ -1800,6 +1800,19 @@ async function main() {
   reviewPackage.connectedRefreshPackage = connectedRefreshPackage;
   reviewPackage.exactRouteForkPackage = exactRouteForkPackage;
   reviewPackage.operationalJudgmentReview = operationalJudgmentReview;
+  dashboardStatusWithSnapshot.prelive = {
+    ...(dashboardStatusWithSnapshot.prelive || {}),
+    connectedRefresh: connectedRefreshSummary,
+    currentRoutePrelivePass: currentRoutePrelivePassSummary,
+    executionRunbook: executionRunbookSummary,
+    exactRouteForkPackage: exactRouteForkSummary,
+    operationalJudgmentReview: operationalJudgmentSummary,
+    validation: preliveValidationSummary,
+  };
+  dashboardStatusWithSnapshot.liveBaseline = buildLiveBaselineSummary({
+    dashboardStatus: dashboardStatusWithSnapshot,
+    nextStep: next,
+  });
 
   const doc = [
     "# Current Status",
