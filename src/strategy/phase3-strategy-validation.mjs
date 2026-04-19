@@ -119,6 +119,7 @@ function wrappedLoopValidation({
   const liveRoundtrip = liveRoundtripState(wrappedBtcLoopLiveProof);
   const oos = oosState(wrappedBtcLoopOosEvidence, dryRunRecorded);
   const extendedReceiptContextReady = wrappedBtcLoopLiveProof?.extendedReceiptContextReady === true;
+  const entryReceiptMode = wrappedBtcLoopLiveProof?.entryReceiptMode || null;
   const effectiveOosSplitStatus =
     oos.oosSplitStatus === "signer_backed_window_recorded" || !liveRoundtrip.recorded
       ? oos.oosSplitStatus
@@ -128,7 +129,24 @@ function wrappedLoopValidation({
       ? oos.blockers
       : extendedReceiptContextReady
         ? []
-        : ["extended_receipt_context_missing"];
+        : entryReceiptMode === "collateral_only_roundtrip"
+          ? ["borrow_inclusive_live_receipt_missing"]
+          : ["extended_receipt_context_missing"];
+  const nextAction =
+    liveRoundtrip.recorded && entryReceiptMode === "collateral_only_roundtrip"
+      ? {
+          code: "collect_wrapped_btc_loop_borrow_receipt",
+          command: null,
+        }
+      : {
+          code: liveRoundtrip.recorded
+            ? "capture_wrapped_btc_loop_extended_receipt_context"
+            : "collect_wrapped_btc_loop_oos_receipts",
+          command: buildWrappedBtcLoopReceiptGuide({
+            scaffold: wrappedBtcLendingLoopSlice,
+            liveProof: liveRoundtrip.recorded ? wrappedBtcLoopLiveProof : null,
+          }).sampleCommand,
+        };
   const trustBlockers = trustTierBlockers(
     protocolTrustTiers,
     [wrappedBtcLendingLoopSlice?.strategy?.protocol].filter(Boolean),
@@ -154,21 +172,15 @@ function wrappedLoopValidation({
       liveRoundtripProofStatus: liveRoundtrip.status,
       liveRoundtripEntryCount: wrappedBtcLoopLiveProof?.entryCount ?? 0,
       liveRoundtripUnwindCount: wrappedBtcLoopLiveProof?.unwindCount ?? 0,
+      entryReceiptMode,
+      borrowEventCount: wrappedBtcLoopLiveProof?.borrowEventCount ?? null,
       extendedReceiptContextReady,
       missingExtendedReceiptFields: wrappedBtcLoopLiveProof?.missingExtendedReceiptFields || [],
       actualLoopFeesUsd: wrappedBtcLoopLiveProof?.actualLoopFeesUsd ?? null,
       actualUnwindCostUsd: wrappedBtcLoopLiveProof?.actualUnwindCostUsd ?? null,
       realizedNetCarryUsd: wrappedBtcLoopLiveProof?.realizedNetCarryUsd ?? null,
     },
-    nextAction: {
-      code: liveRoundtrip.recorded
-        ? "capture_wrapped_btc_loop_extended_receipt_context"
-        : "collect_wrapped_btc_loop_oos_receipts",
-      command: buildWrappedBtcLoopReceiptGuide({
-        scaffold: wrappedBtcLendingLoopSlice,
-        liveProof: liveRoundtrip.recorded ? wrappedBtcLoopLiveProof : null,
-      }).sampleCommand,
-    },
+    nextAction,
   });
 }
 

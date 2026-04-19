@@ -86,6 +86,12 @@ function missingExtendedReceiptFields(proof = null) {
   ].filter(Boolean);
 }
 
+function entryReceiptModeFromCounts({ mintEventCount = 0, borrowEventCount = 0 } = {}) {
+  if (borrowEventCount > 0) return "borrow_loop_observed";
+  if (mintEventCount > 0) return "collateral_only_roundtrip";
+  return null;
+}
+
 export const WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE = "wrapped-btc-loop-live-success-latest.json";
 
 export function hydrateWrappedBtcLoopLiveProof({
@@ -147,6 +153,8 @@ async function readMoonwellObservedEntryMetrics({
   let account = entryReceipt?.from || null;
   let collateralUnderlyingUnits = 0n;
   let borrowBalance = 0n;
+  let mintEventCount = 0;
+  let borrowEventCount = 0;
 
   for (const receipt of entryReceipts) {
     for (const log of receipt?.raw?.logs || []) {
@@ -155,17 +163,33 @@ async function readMoonwellObservedEntryMetrics({
         const decoded = MTOKEN_EVENT_INTERFACE.decodeEventLog("Mint", log.data, log.topics);
         if (!account) account = decoded[0];
         if (String(decoded[0]).toLowerCase() !== String(account).toLowerCase()) continue;
+        mintEventCount += 1;
         collateralUnderlyingUnits += decoded[1];
       }
       if (address === borrowMarketAddress.toLowerCase() && log?.topics?.[0] === BORROW_EVENT_TOPIC) {
         const decoded = MTOKEN_EVENT_INTERFACE.decodeEventLog("Borrow", log.data, log.topics);
         if (!account) account = decoded[0];
         if (String(decoded[0]).toLowerCase() !== String(account).toLowerCase()) continue;
+        borrowEventCount += 1;
         borrowBalance = decoded[2];
       }
     }
   }
-  if (!account || collateralUnderlyingUnits <= 0n || borrowBalance <= 0n) return null;
+  const entryReceiptMode = entryReceiptModeFromCounts({ mintEventCount, borrowEventCount });
+  if (!account || collateralUnderlyingUnits <= 0n) {
+    return {
+      entryReceiptMode,
+      mintEventCount,
+      borrowEventCount,
+    };
+  }
+  if (borrowBalance <= 0n) {
+    return {
+      entryReceiptMode,
+      mintEventCount,
+      borrowEventCount,
+    };
+  }
 
   const oracleCall = await simulateTransactionCallImpl(
     chain,
@@ -221,6 +245,9 @@ async function readMoonwellObservedEntryMetrics({
   const liquidationBufferPct = collateralFactorPct - (borrowUsd / rawCollateralUsd) * 100;
 
   return {
+    entryReceiptMode,
+    mintEventCount,
+    borrowEventCount,
     observedHealthFactorPath: numericPath([healthFactor]),
     observedLiquidationBufferPath: numericPath([liquidationBufferPct]),
   };
@@ -260,6 +287,15 @@ export async function enrichWrappedBtcLoopLiveProof({
         readTransactionReceiptImpl,
         simulateTransactionCallImpl,
       });
+      if (observed?.entryReceiptMode && !next.entryReceiptMode) {
+        next.entryReceiptMode = observed.entryReceiptMode;
+      }
+      if (Number.isInteger(observed?.mintEventCount) && !Number.isInteger(next.mintEventCount)) {
+        next.mintEventCount = observed.mintEventCount;
+      }
+      if (Number.isInteger(observed?.borrowEventCount) && !Number.isInteger(next.borrowEventCount)) {
+        next.borrowEventCount = observed.borrowEventCount;
+      }
       if ((next.observedHealthFactorPath || []).length === 0 && observed?.observedHealthFactorPath?.length) {
         next.observedHealthFactorPath = observed.observedHealthFactorPath;
       }
@@ -294,7 +330,9 @@ function enrichmentScore(proof = null) {
     (proof.observedHealthFactorPath?.length ?? 0) +
     (proof.observedLiquidationBufferPath?.length ?? 0);
   const carryReady = Number.isFinite(proof.realizedNetCarryUsd) ? 1 : 0;
-  return observedCount * 100 + carryReady * 10 - missingCount;
+  const receiptModeReady = proof.entryReceiptMode ? 1 : 0;
+  const borrowCountReady = Number.isInteger(proof.borrowEventCount) ? 1 : 0;
+  return observedCount * 100 + carryReady * 10 + receiptModeReady * 2 + borrowCountReady - missingCount;
 }
 
 export async function stabilizeWrappedBtcLoopLiveProof({
@@ -358,6 +396,9 @@ export function buildWrappedBtcLoopLiveProof({
     marketAssumptionsOverride: result.marketAssumptionsOverride || null,
     entryCount: entryResults.length,
     unwindCount: unwindResults.length,
+    entryReceiptMode: receiptContext?.entryReceiptMode || null,
+    mintEventCount: Number.isInteger(receiptContext?.mintEventCount) ? receiptContext.mintEventCount : null,
+    borrowEventCount: Number.isInteger(receiptContext?.borrowEventCount) ? receiptContext.borrowEventCount : null,
     entryTxHashes,
     unwindTxHashes,
     observedHealthFactorPath: numericPath(receiptContext?.observedHealthFactorPath || []),
@@ -393,6 +434,8 @@ export function summarizeWrappedBtcLoopLiveProof(proof = null) {
     oosReceiptStatus: proof.oosReceiptStatus || null,
     entryCount: proof.entryCount ?? 0,
     unwindCount: proof.unwindCount ?? 0,
+    entryReceiptMode: proof.entryReceiptMode || null,
+    borrowEventCount: proof.borrowEventCount ?? null,
     extendedReceiptContextReady: proof.extendedReceiptContextReady === true,
     missingExtendedReceiptFields: proof.missingExtendedReceiptFields || [],
   };

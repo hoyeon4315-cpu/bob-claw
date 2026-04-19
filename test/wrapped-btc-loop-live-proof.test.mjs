@@ -226,6 +226,92 @@ test("wrapped btc loop live proof enriches missing observed entry metrics from h
   assert.deepEqual(enriched.missingExtendedReceiptFields, []);
 });
 
+test("wrapped btc loop live proof marks collateral-only roundtrips when no borrow event is observed", async () => {
+  const collateralMarket = "0xF877ACaFA28c19b96727966690b2f44d35aD5976";
+  const account = "0x96262bE63AA687563789225c2fE898c27a3b0AE4";
+  const eventInterface = new Interface([
+    "event Mint(address minter,uint256 mintAmount,uint256 mintTokens)",
+  ]);
+
+  const enriched = await enrichWrappedBtcLoopLiveProof({
+    proof: {
+      schemaVersion: 1,
+      observedAt: "2026-04-19T12:49:14.797Z",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenarioId: "healthy_baseline",
+      success: true,
+      proofKind: "signer_backed_roundtrip",
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 3,
+      unwindCount: 1,
+      entryTxHashes: ["0xentry1", "0xentry2", "0xentry3"],
+      unwindTxHashes: ["0xunwind1"],
+      actualLoopFeesUsd: 0.33,
+      actualUnwindCostUsd: 0.11,
+      realizedNetCarryUsd: 0,
+      observedHealthFactorPath: [],
+      observedLiquidationBufferPath: [],
+    },
+    readTransactionReceiptImpl: async () => ({
+      transactionHash: "0xentry",
+      blockNumber: 123,
+      from: account,
+      raw: {
+        logs: [
+          {
+            address: collateralMarket,
+            topics: [eventInterface.getEvent("Mint").topicHash],
+            data: eventInterface.encodeEventLog(eventInterface.getEvent("Mint"), [account, 9337n, 465263n]).data,
+          },
+        ],
+      },
+    }),
+    simulateTransactionCallImpl: async () => {
+      throw new Error("should not request on-chain state without a borrow event");
+    },
+  });
+
+  assert.equal(enriched.entryReceiptMode, "collateral_only_roundtrip");
+  assert.equal(enriched.borrowEventCount, 0);
+  assert.equal(enriched.extendedReceiptContextReady, false);
+  assert.deepEqual(enriched.missingExtendedReceiptFields, [
+    "observedHealthFactorPath",
+    "observedLiquidationBufferPath",
+  ]);
+
+  const summary = summarizeWrappedBtcLoopLiveProof(enriched);
+  assert.equal(summary.entryReceiptMode, "collateral_only_roundtrip");
+  assert.equal(summary.borrowEventCount, 0);
+
+  const stabilized = await stabilizeWrappedBtcLoopLiveProof({
+    proof: {
+      ...enriched,
+      entryReceiptMode: null,
+      borrowEventCount: null,
+    },
+    attempts: 1,
+    readTransactionReceiptImpl: async () => ({
+      transactionHash: "0xentry",
+      blockNumber: 123,
+      from: account,
+      raw: {
+        logs: [
+          {
+            address: collateralMarket,
+            topics: [eventInterface.getEvent("Mint").topicHash],
+            data: eventInterface.encodeEventLog(eventInterface.getEvent("Mint"), [account, 9337n, 465263n]).data,
+          },
+        ],
+      },
+    }),
+    simulateTransactionCallImpl: async () => {
+      throw new Error("should not request on-chain state without a borrow event");
+    },
+  });
+  assert.equal(stabilized.entryReceiptMode, "collateral_only_roundtrip");
+  assert.equal(stabilized.borrowEventCount, 0);
+});
+
 test("wrapped btc loop live proof stabilization keeps the best enrichment across flaky retries", async () => {
   const comptroller = "0xfBb21d0380beE3312B33c4353c8936a0F13EF26C";
   const collateralMarket = "0xF877ACaFA28c19b96727966690b2f44d35aD5976";

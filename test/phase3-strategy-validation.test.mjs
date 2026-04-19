@@ -99,6 +99,41 @@ test("phase3 strategy validation records OOS, search-budget, and shock-test bloc
   assert.equal(summarizedSnapshot.phase3StrategyValidation.topBlocked.id, "wrapped_btc_loop_validation");
 });
 
+test("phase3 strategy validation flags collateral-only roundtrips as borrow-inclusive receipt blockers", () => {
+  const report = buildPhase3StrategyValidation({
+    wrappedBtcLendingLoopSlice: {
+      strategy: { id: "wrapped-btc-loop-base-moonwell", protocol: "moonwell" },
+    },
+    wrappedBtcLoopDryRun: {
+      dryRunReceiptRecorded: true,
+      autoUnwindPassCount: 1,
+    },
+    wrappedBtcLoopLiveProof: {
+      success: true,
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 3,
+      unwindCount: 1,
+      entryReceiptMode: "collateral_only_roundtrip",
+      borrowEventCount: 0,
+      extendedReceiptContextReady: false,
+      missingExtendedReceiptFields: ["observedHealthFactorPath", "observedLiquidationBufferPath"],
+      actualLoopFeesUsd: 0.004548,
+      actualUnwindCostUsd: 0.005989,
+      realizedNetCarryUsd: 0,
+    },
+    now: "2026-04-19T13:00:00.000Z",
+  });
+
+  const wrappedLoop = report.validations.find((item) => item.id === "wrapped_btc_loop_validation");
+  assert.ok(wrappedLoop);
+  assert.equal(wrappedLoop.blockers.includes("borrow_inclusive_live_receipt_missing"), true);
+  assert.equal(wrappedLoop.blockers.includes("extended_receipt_context_missing"), false);
+  assert.equal(wrappedLoop.evidence.entryReceiptMode, "collateral_only_roundtrip");
+  assert.equal(wrappedLoop.evidence.borrowEventCount, 0);
+  assert.equal(wrappedLoop.nextAction.code, "collect_wrapped_btc_loop_borrow_receipt");
+  assert.equal(wrappedLoop.nextAction.command, null);
+});
+
 test("phase3 strategy validation clears recorded search-complexity budgets for stable and proxy lanes", () => {
   const secondaryStrategyScaffolds = {
     scaffolds: [
