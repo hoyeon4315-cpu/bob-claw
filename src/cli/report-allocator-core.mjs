@@ -78,6 +78,7 @@ async function main() {
     console.log(`  tier4_template_only=${(report.summary.tier4TemplateOnlyChains || []).join(",") || "n/a"}`);
     console.log(`  templateMissingCells=${report.summary.templateMissingCellCount ?? 0}`);
     console.log(`  stablecoinGatewayArrivalMissing=${(report.summary.stablecoinGatewayArrivalMissingChains || []).join(",") || "none"}`);
+    console.log(`  stablecoinIndirectViaWrappedBtc=${(report.summary.stablecoinIndirectViaWrappedBtcChains || []).join(",") || "none"}`);
   }
 }
 

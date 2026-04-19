@@ -424,6 +424,7 @@ test("allocator core chain coverage matrix enumerates target gateway chains and 
   assert.equal(avaxStablesCarry.status, "template_missing");
   assert.equal(avaxStablesCarry.blockers.includes("template_missing_for_chain_family"), true);
   assert.equal(avaxStablesCarry.blockers.includes("stablecoin_gateway_arrival_missing"), true);
+  assert.equal(avaxStablesCarry.blockers.includes("stablecoin_indirect_via_wrapped_btc_possible"), true);
 
   const baseStablesCarry = coverage.matrix.find(
     (row) => row.chain === "base" && row.family === "stablecoin_lending_carry",
@@ -433,6 +434,7 @@ test("allocator core chain coverage matrix enumerates target gateway chains and 
   assert.equal(coverage.summary.cellCount, coverage.targetChains.length * coverage.targetFamilies.length);
   assert.equal(coverage.summary.templateMissingCellCount > 0, true);
   assert.equal(coverage.summary.stablecoinGatewayArrivalMissingChains.includes("avalanche"), true);
+  assert.equal(coverage.summary.stablecoinIndirectViaWrappedBtcChains.includes("avalanche"), true);
 });
 
 test("allocator core chain coverage classifies chains into tier1/tier2/tier3/tier4 by evidence readiness", () => {
@@ -504,11 +506,13 @@ test("allocator core chain coverage classifies chains into tier1/tier2/tier3/tie
   assert.equal(report.summary.tier1ActiveReadyChains.includes("base"), true);
   assert.equal(report.summary.tier4TemplateOnlyChains.includes("bera"), true);
   assert.equal(report.summary.stablecoinGatewayArrivalMissingChains.includes("sonic"), true);
+  assert.equal(report.summary.stablecoinIndirectViaWrappedBtcChains.includes("sonic"), true);
 
   const summary = summarizeAllocatorCore(report);
   assert.equal(summary.chainCoverage.tier1ActiveReadyChains.length >= 2, true);
   assert.equal(summary.chainCoverage.templateMissingCellCount > 0, true);
   assert.equal(summary.chainCoverage.stablecoinGatewayArrivalMissingChains.includes("unichain"), true);
+  assert.equal(summary.chainCoverage.stablecoinIndirectViaWrappedBtcChains.includes("unichain"), true);
 });
 
 test("allocator core surfaces per-chain dominant blockers for tier2 review_only chains", () => {

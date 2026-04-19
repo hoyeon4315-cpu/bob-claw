@@ -62,6 +62,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     triangleArtifacts,
     destinationAllocationPlan,
     destinationPromotionGate,
+    destinationStrategyRegistry,
     overfitAuditArtifact,
     gasSlippageVariance,
     laneReclassification,
@@ -105,6 +106,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readTriangleArtifacts(dataDir),
     readJsonIfExists(join(dataDir, "destination-allocation-plan.json")),
     readJsonIfExists(join(dataDir, "destination-promotion-gate.json")),
+    readJsonIfExists(join(dataDir, "destination-strategy-registry.json")),
     readJsonIfExists(join(dataDir, "overfit-audit-latest.json")),
     readJsonIfExists(join(dataDir, "gas-slippage-variance-latest.json")),
     readJsonIfExists(join(dataDir, "lane-reclassification.json")),
@@ -255,6 +257,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     secondaryStrategyScaffolds,
     protocolMarketWatchers,
     destinationPromotionGate,
+    destinationStrategyRegistry,
     now: dashboardStatus.generatedAt,
   });
   strategySnapshot.summary.phase3ValidationCount = phase3StrategyValidation.summary?.validationCount ?? 0;

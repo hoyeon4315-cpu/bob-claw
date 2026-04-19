@@ -164,11 +164,14 @@ function missingTemplateBlockers(chain, family, chainSupportIndex) {
     return blockers;
   }
   if (family?.startsWith("stablecoin")) {
-    blockers.push(
-      support.arrivalAssetFamilies.has("stablecoin")
-        ? "stablecoin_family_not_yet_seeded"
-        : "stablecoin_gateway_arrival_missing",
-    );
+    if (support.arrivalAssetFamilies.has("stablecoin")) {
+      blockers.push("stablecoin_family_not_yet_seeded");
+    } else {
+      blockers.push("stablecoin_gateway_arrival_missing");
+      if (support.arrivalAssetFamilies.has("wrapped_btc")) {
+        blockers.push("stablecoin_indirect_via_wrapped_btc_possible");
+      }
+    }
   } else if (family?.startsWith("wrapped_btc")) {
     blockers.push(
       support.arrivalAssetFamilies.has("wrapped_btc")
@@ -263,6 +266,9 @@ function buildChainCoverageMatrix(
         arrivalAssetFamilies: [...(support?.arrivalAssetFamilies || [])].sort(),
         stablecoinArrivalSupported: support?.arrivalAssetFamilies?.has("stablecoin") || false,
         wrappedBtcArrivalSupported: support?.arrivalAssetFamilies?.has("wrapped_btc") || false,
+        stablecoinIndirectViaWrappedBtcPossible:
+          !(support?.arrivalAssetFamilies?.has("stablecoin") || false) &&
+          (support?.arrivalAssetFamilies?.has("wrapped_btc") || false),
       },
       templateMissingFamilies: chainRows.filter((row) => row.status === "template_missing").map((row) => row.family),
     };
@@ -292,6 +298,9 @@ function buildChainCoverageMatrix(
       tier4TemplateOnlyChainCount: tier4TemplateOnly.length,
       stablecoinGatewayArrivalMissingChains: perChain
         .filter((row) => !row.support.stablecoinArrivalSupported)
+        .map((row) => row.chain),
+      stablecoinIndirectViaWrappedBtcChains: perChain
+        .filter((row) => row.support.stablecoinIndirectViaWrappedBtcPossible)
         .map((row) => row.chain),
     },
   };
@@ -664,6 +673,7 @@ export function buildAllocatorCore({
       tier4TemplateOnlyChains: chainCoverage.tiers.tier4_template_only,
       templateMissingCellCount: chainCoverage.summary.templateMissingCellCount,
       stablecoinGatewayArrivalMissingChains: chainCoverage.summary.stablecoinGatewayArrivalMissingChains,
+      stablecoinIndirectViaWrappedBtcChains: chainCoverage.summary.stablecoinIndirectViaWrappedBtcChains,
       priorityExpansionActiveReadyChains: priorityChainExpansion.tier1ActiveReadyChains,
       priorityExpansionReviewOnlyChains: priorityChainExpansion.tier2ReviewOnlyChains,
       priorityExpansionBlockedOnlyChains: priorityChainExpansion.tier3BlockedOnlyChains,
@@ -738,6 +748,7 @@ export function summarizeAllocatorCore(report = null) {
           tier4TemplateOnlyChains: report.chainCoverage.tiers?.tier4_template_only || [],
           templateMissingCellCount: report.chainCoverage.summary?.templateMissingCellCount ?? 0,
           stablecoinGatewayArrivalMissingChains: report.chainCoverage.summary?.stablecoinGatewayArrivalMissingChains || [],
+          stablecoinIndirectViaWrappedBtcChains: report.chainCoverage.summary?.stablecoinIndirectViaWrappedBtcChains || [],
           allocationReadyCellCount: report.chainCoverage.summary?.allocationReadyCellCount ?? 0,
           reviewOnlyCellCount: report.chainCoverage.summary?.reviewOnlyCellCount ?? 0,
           blockedCellCount: report.chainCoverage.summary?.blockedCellCount ?? 0,
