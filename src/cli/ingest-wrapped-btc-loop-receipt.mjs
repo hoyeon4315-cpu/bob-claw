@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -96,11 +97,19 @@ function mergeReceiptArgs(args = {}, liveProof = null) {
   };
 }
 
-function buildReceiptSeedProof({
+export function buildReceiptSeedProof({
   args = {},
   liveProof = null,
 } = {}) {
   const merged = mergeReceiptArgs(args, liveProof);
+  const entryHashesOverridden =
+    Array.isArray(args.entryTxHashes) &&
+    args.entryTxHashes.length > 0 &&
+    JSON.stringify(args.entryTxHashes) !== JSON.stringify(liveProof?.entryTxHashes || []);
+  const unwindHashesOverridden =
+    Array.isArray(args.unwindTxHashes) &&
+    args.unwindTxHashes.length > 0 &&
+    JSON.stringify(args.unwindTxHashes) !== JSON.stringify(liveProof?.unwindTxHashes || []);
   return {
     ...liveProof,
     observedAt: merged.observedAt || liveProof?.observedAt || null,
@@ -111,6 +120,9 @@ function buildReceiptSeedProof({
     proofStatus: liveProof?.proofStatus || "signer_backed_roundtrip_recorded",
     entryCount: merged.entryTxHashes.length,
     unwindCount: merged.unwindTxHashes.length,
+    entryReceiptMode: entryHashesOverridden ? null : liveProof?.entryReceiptMode || null,
+    mintEventCount: entryHashesOverridden ? null : liveProof?.mintEventCount ?? null,
+    borrowEventCount: entryHashesOverridden ? null : liveProof?.borrowEventCount ?? null,
     entryTxHashes: merged.entryTxHashes,
     unwindTxHashes: merged.unwindTxHashes,
     observedHealthFactorPath: merged.observedHealthFactorPath,
@@ -118,9 +130,12 @@ function buildReceiptSeedProof({
     actualLoopFeesUsd: merged.actualLoopFeesUsd,
     actualUnwindCostUsd: merged.actualUnwindCostUsd,
     realizedNetCarryUsd: merged.realizedNetCarryUsd,
-    receiptAutoIngest: liveProof?.receiptAutoIngest || { ran: false, reason: null },
+    receiptAutoIngest:
+      entryHashesOverridden || unwindHashesOverridden ? { ran: false, reason: "historical_receipt_reconstruction" } : liveProof?.receiptAutoIngest || { ran: false, reason: null },
   };
 }
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -279,7 +294,9 @@ async function main() {
   console.log(`livePacketRefresh=${livePacketRefresh?.refreshed ? `ran:${livePacketRefresh.stepCount}` : args.refreshLivePacket ? "skipped" : "disabled"}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
