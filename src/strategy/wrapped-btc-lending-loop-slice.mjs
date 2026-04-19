@@ -35,7 +35,7 @@ const DEFAULT_MARKET_ASSUMPTIONS = Object.freeze({
   loopSwapFeeBps: 12,
   unwindSlippageBps: 20,
   unwindFixedCostUsd: 2.5,
-  minIncrementUsd: 40,
+  minIncrementUsd: 1,
   oracleDriftTriggerPct: 4,
   maxUnwindGasUsd: 10,
 });

@@ -190,6 +190,7 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
     readErc20BalanceImpl: async () => ({
       balance: 1_000_000n,
     }),
+    marketAssumptionsOverride: { minIncrementUsd: 40 },
   });
 
   assert.equal(plan.entryIntents.length > 3, true);
@@ -220,6 +221,7 @@ test("wrapped loop live plan supports tiny per-trade override with collateral-on
       balance: 1_000_000n,
     }),
     perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: { minIncrementUsd: 100 },
   });
 
   assert.equal(plan.entryIntents.length, 3);
@@ -359,6 +361,7 @@ test("wrapped loop live plan auto-downsizes initial collateral to the available 
       balance: 8000n,
     }),
     perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: { minIncrementUsd: 100 },
   });
 
   const approveInitial = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral"));
