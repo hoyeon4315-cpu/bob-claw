@@ -327,6 +327,157 @@ test("allocator core admits a chain-diversified portfolio across base and bsc st
   assert.equal(report.summary.activeAllocationCount >= 2, true);
 });
 
+test("allocator core chain coverage matrix enumerates target gateway chains and marks missing cells template_missing", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        {
+          templateId: "base:stablecoin_lending_carry",
+          chain: "base",
+          familyId: "stablecoin_lending_carry",
+          label: "Stablecoin lending carry",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: { status: "allocation_ready", blockers: [] },
+        },
+      ],
+    },
+    now: "2026-04-20T00:00:04.000Z",
+  });
+
+  const coverage = report.chainCoverage;
+  assert.ok(coverage, "chainCoverage block must exist");
+  assert.equal(coverage.targetChains.includes("avalanche"), true);
+  assert.equal(coverage.targetChains.includes("bera"), true);
+  assert.equal(coverage.targetChains.includes("soneium"), true);
+  assert.equal(coverage.targetFamilies.includes("wrapped_btc_lending"), true);
+
+  const avaxStablesCarry = coverage.matrix.find(
+    (row) => row.chain === "avalanche" && row.family === "stablecoin_lending_carry",
+  );
+  assert.equal(avaxStablesCarry.status, "template_missing");
+  assert.equal(avaxStablesCarry.blockers.includes("template_missing_for_chain_family"), true);
+
+  const baseStablesCarry = coverage.matrix.find(
+    (row) => row.chain === "base" && row.family === "stablecoin_lending_carry",
+  );
+  assert.equal(baseStablesCarry.status, "allocation_ready");
+
+  assert.equal(coverage.summary.cellCount, coverage.targetChains.length * coverage.targetFamilies.length);
+  assert.equal(coverage.summary.templateMissingCellCount > 0, true);
+});
+
+test("allocator core chain coverage classifies chains into tier1/tier2/tier3/tier4 by evidence readiness", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        {
+          templateId: "base:stablecoin_lending_carry",
+          chain: "base",
+          familyId: "stablecoin_lending_carry",
+          label: "Stablecoin lending carry",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: { status: "allocation_ready", blockers: [] },
+        },
+        {
+          templateId: "bsc:stablecoin_lending_carry",
+          chain: "bsc",
+          familyId: "stablecoin_lending_carry",
+          label: "Stablecoin lending carry",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: { status: "allocation_ready", blockers: [] },
+        },
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          chain: "avalanche",
+          familyId: "wrapped_btc_lending",
+          label: "Avalanche wrapped BTC lending",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: { status: "review_only", blockers: ["allocation_grossReturnBps_recheck_required"] },
+        },
+        {
+          templateId: "sonic:wrapped_btc_lending",
+          chain: "sonic",
+          familyId: "wrapped_btc_lending",
+          label: "Sonic wrapped BTC lending",
+          gate: { status: "blocked", blockers: ["evidence_policy_incomplete"] },
+          allocationGate: { status: "blocked", blockers: ["no_current_destination_venue"] },
+        },
+      ],
+    },
+    now: "2026-04-20T00:00:05.000Z",
+  });
+
+  const tiers = report.chainCoverage.tiers;
+  assert.equal(tiers.tier1_active_ready.includes("base"), true);
+  assert.equal(tiers.tier1_active_ready.includes("bsc"), true);
+  assert.equal(tiers.tier2_review_only.includes("avalanche"), true);
+  assert.equal(tiers.tier3_blocked_only.includes("sonic"), true);
+  assert.equal(tiers.tier4_template_only.includes("bera"), true);
+  assert.equal(tiers.tier4_template_only.includes("unichain"), true);
+  assert.equal(tiers.tier4_template_only.includes("soneium"), true);
+
+  assert.equal(report.summary.tier1ActiveReadyChains.includes("base"), true);
+  assert.equal(report.summary.tier4TemplateOnlyChains.includes("bera"), true);
+
+  const summary = summarizeAllocatorCore(report);
+  assert.equal(summary.chainCoverage.tier1ActiveReadyChains.length >= 2, true);
+  assert.equal(summary.chainCoverage.templateMissingCellCount > 0, true);
+});
+
+test("allocator core surfaces per-chain dominant blockers for tier2 review_only chains", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: null },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationPromotionGate: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          chain: "avalanche",
+          familyId: "wrapped_btc_lending",
+          label: "Avalanche wrapped BTC lending",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: {
+            status: "review_only",
+            blockers: ["allocation_grossReturnBps_recheck_required", "allocation_unwindSlippageBps_recheck_required"],
+          },
+        },
+        {
+          templateId: "avalanche:wrapped_btc_lp_positions",
+          chain: "avalanche",
+          familyId: "wrapped_btc_lp_positions",
+          label: "Avalanche wrapped BTC LP",
+          gate: { status: "promotable", blockers: [] },
+          allocationGate: {
+            status: "review_only",
+            blockers: ["allocation_check_count_below_policy"],
+          },
+        },
+      ],
+    },
+    now: "2026-04-20T00:00:06.000Z",
+  });
+
+  const avaxChain = report.chainCoverage.perChain.find((row) => row.chain === "avalanche");
+  assert.ok(avaxChain);
+  assert.equal(avaxChain.tier, "tier2_review_only");
+  assert.equal(avaxChain.counts.review_only, 2);
+  assert.equal(avaxChain.dominantBlockers.includes("allocation_grossReturnBps_recheck_required"), true);
+  assert.equal(avaxChain.dominantBlockers.includes("allocation_check_count_below_policy"), true);
+});
+
 test("allocator core keeps active allocation distinct once active budget is declared", () => {
   const report = buildAllocatorCore({
     strategySnapshot: {

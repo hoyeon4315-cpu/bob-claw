@@ -1,3 +1,20 @@
+const DIVERSIFICATION_TARGET_CHAINS = [
+  "base",
+  "bsc",
+  "avalanche",
+  "sonic",
+  "bera",
+  "unichain",
+  "soneium",
+];
+
+const DIVERSIFICATION_TARGET_FAMILIES = [
+  "stablecoin_lending_carry",
+  "stablecoin_lp_or_basis",
+  "wrapped_btc_lending",
+  "wrapped_btc_lp_positions",
+];
+
 function round(value, digits = 2) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
@@ -98,6 +115,108 @@ function destinationGateCandidates(promotionGate = null) {
     .map((item) => destinationGateCandidate(item))
     .filter((item) => item?.id)
     .filter((item) => item.activeEligibility === "active_ready" || item.planningEligibility === "review_only" || item.planningEligibility === "allocation_ready");
+}
+
+function buildChainCoverageMatrix(promotionGate = null, targetChains = DIVERSIFICATION_TARGET_CHAINS, targetFamilies = DIVERSIFICATION_TARGET_FAMILIES) {
+  const items = promotionGate?.items || [];
+  const byKey = new Map();
+  for (const item of items) {
+    if (!item?.chain || !item?.familyId) continue;
+    byKey.set(`${item.chain}:${item.familyId}`, item);
+  }
+  const matrix = [];
+  const perChainStatuses = new Map();
+  for (const chain of targetChains) {
+    perChainStatuses.set(chain, { allocation_ready: 0, review_only: 0, blocked: 0, template_missing: 0 });
+    for (const family of targetFamilies) {
+      const key = `${chain}:${family}`;
+      const item = byKey.get(key);
+      if (!item) {
+        matrix.push({
+          chain,
+          family,
+          status: "template_missing",
+          templateId: null,
+          gateStatus: null,
+          allocationStatus: null,
+          blockers: ["template_missing_for_chain_family"],
+        });
+        perChainStatuses.get(chain).template_missing += 1;
+        continue;
+      }
+      const allocationStatus = item.allocationGate?.status || "blocked";
+      const gateStatus = item.gate?.status || null;
+      const bucket = allocationStatus === "allocation_ready"
+        ? "allocation_ready"
+        : allocationStatus === "review_only"
+          ? "review_only"
+          : "blocked";
+      perChainStatuses.get(chain)[bucket] += 1;
+      matrix.push({
+        chain,
+        family,
+        status: bucket,
+        templateId: item.templateId || null,
+        gateStatus,
+        allocationStatus,
+        blockers: unique([...(item.allocationGate?.blockers || []), ...(item.gate?.blockers || [])]),
+      });
+    }
+  }
+  const tier1ActiveReady = [];
+  const tier2ReviewOnly = [];
+  const tier3BlockedOnly = [];
+  const tier4TemplateOnly = [];
+  for (const [chain, counts] of perChainStatuses.entries()) {
+    if (counts.allocation_ready > 0) tier1ActiveReady.push(chain);
+    else if (counts.review_only > 0) tier2ReviewOnly.push(chain);
+    else if (counts.blocked > 0) tier3BlockedOnly.push(chain);
+    else tier4TemplateOnly.push(chain);
+  }
+  const perChain = targetChains.map((chain) => {
+    const counts = perChainStatuses.get(chain);
+    const chainRows = matrix.filter((row) => row.chain === chain);
+    const tier = tier1ActiveReady.includes(chain)
+      ? "tier1_active_ready"
+      : tier2ReviewOnly.includes(chain)
+        ? "tier2_review_only"
+        : tier3BlockedOnly.includes(chain)
+          ? "tier3_blocked_only"
+          : "tier4_template_only";
+    const dominantBlockers = unique(chainRows.flatMap((row) => row.blockers || [])).slice(0, 8);
+    return {
+      chain,
+      tier,
+      counts: { ...counts },
+      familyCount: chainRows.length,
+      dominantBlockers,
+    };
+  });
+  return {
+    targetChains,
+    targetFamilies,
+    matrix,
+    perChain,
+    tiers: {
+      tier1_active_ready: tier1ActiveReady,
+      tier2_review_only: tier2ReviewOnly,
+      tier3_blocked_only: tier3BlockedOnly,
+      tier4_template_only: tier4TemplateOnly,
+    },
+    summary: {
+      chainCount: targetChains.length,
+      familyCount: targetFamilies.length,
+      cellCount: matrix.length,
+      allocationReadyCellCount: matrix.filter((row) => row.status === "allocation_ready").length,
+      reviewOnlyCellCount: matrix.filter((row) => row.status === "review_only").length,
+      blockedCellCount: matrix.filter((row) => row.status === "blocked").length,
+      templateMissingCellCount: matrix.filter((row) => row.status === "template_missing").length,
+      tier1ActiveReadyChainCount: tier1ActiveReady.length,
+      tier2ReviewOnlyChainCount: tier2ReviewOnly.length,
+      tier3BlockedOnlyChainCount: tier3BlockedOnly.length,
+      tier4TemplateOnlyChainCount: tier4TemplateOnly.length,
+    },
+  };
 }
 
 function capBlockers({ chain, protocols, assetFamily, perItemLimit, budgetUsd, constraints, chainUsage, protocolUsage, assetFamilyUsage }) {
@@ -329,6 +448,7 @@ export function buildAllocatorCore({
     });
   const activeView = buildAllocationView(candidates, budgets.activeBudgetUsd, constraints);
   const planningView = buildAllocationView(candidates, budgets.planningBudgetUsd, constraints);
+  const chainCoverage = buildChainCoverageMatrix(destinationPromotionGate);
   const topPlanningCandidate = planningView.planningQueue[0] || null;
   const topActiveAllocation = activeView.activePlan[0] || null;
   const topActiveReadyCandidate = topReadyCandidate(candidates);
@@ -350,14 +470,21 @@ export function buildAllocatorCore({
       topPlanningCandidateId: topPlanningCandidate?.id || null,
       activeNextAction: topActiveAllocation?.nextAction || topActiveReadyCandidate?.nextAction || null,
       nextAction: topActiveAllocation?.nextAction || topActiveReadyCandidate?.nextAction || topPlanningCandidate?.nextAction || null,
+      tier1ActiveReadyChains: chainCoverage.tiers.tier1_active_ready,
+      tier2ReviewOnlyChains: chainCoverage.tiers.tier2_review_only,
+      tier3BlockedOnlyChains: chainCoverage.tiers.tier3_blocked_only,
+      tier4TemplateOnlyChains: chainCoverage.tiers.tier4_template_only,
+      templateMissingCellCount: chainCoverage.summary.templateMissingCellCount,
     },
     candidates,
     activeView,
     planningView,
+    chainCoverage,
     notes: [
       "This allocator core is deterministic and evidence-bound; it does not authorize live execution on its own.",
       "Per-strategy, per-protocol, per-chain, and per-asset-family caps are enforced against cumulative active-plan exposure; candidates that would exceed any cap are deferred with an explicit cap_exceeded blocker rather than silently admitted.",
       "Destination-promotion-gate allocation_ready venues are surfaced as allocator candidates so that multi-chain diversification can run under the same cap policy as scaffold-driven strategies.",
+      "chainCoverage tiers list the Gateway target chains by evidence readiness: tier1 has at least one allocation_ready family, tier2 only has review_only families, tier3 only has blocked families, and tier4 means the (chain, family) template is missing entirely and must be filled in by destination registry work before allocation can be considered.",
       "Candidates stay review_only unless phase3 validation and downstream live/prelive gates both clear.",
       "Cross-chain reserve movement belongs in the allocator/rebalance layer; do not promote a unified multi-chain recursive loop until same-chain loop receipts, auto-unwind wiring, and native-BTC return paths are all proven.",
     ],
@@ -407,5 +534,17 @@ export function summarizeAllocatorCore(report = null) {
       : null,
     activeNextAction: report.summary?.activeNextAction || null,
     nextAction: report.summary?.nextAction || null,
+    chainCoverage: report.chainCoverage
+      ? {
+          tier1ActiveReadyChains: report.chainCoverage.tiers?.tier1_active_ready || [],
+          tier2ReviewOnlyChains: report.chainCoverage.tiers?.tier2_review_only || [],
+          tier3BlockedOnlyChains: report.chainCoverage.tiers?.tier3_blocked_only || [],
+          tier4TemplateOnlyChains: report.chainCoverage.tiers?.tier4_template_only || [],
+          templateMissingCellCount: report.chainCoverage.summary?.templateMissingCellCount ?? 0,
+          allocationReadyCellCount: report.chainCoverage.summary?.allocationReadyCellCount ?? 0,
+          reviewOnlyCellCount: report.chainCoverage.summary?.reviewOnlyCellCount ?? 0,
+          blockedCellCount: report.chainCoverage.summary?.blockedCellCount ?? 0,
+        }
+      : null,
   };
 }

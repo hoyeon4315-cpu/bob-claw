@@ -63,6 +63,15 @@ async function main() {
   console.log(`topActiveReady=${report.summary.topActiveReadyCandidateId || "n/a"}`);
   console.log(`topPlanning=${report.summary.topPlanningCandidateId || "n/a"}`);
   console.log(`nextAction=${report.summary.nextAction?.code || "n/a"}`);
+  if (report.chainCoverage) {
+    console.log("");
+    console.log("chainCoverage:");
+    console.log(`  tier1_active_ready=${(report.summary.tier1ActiveReadyChains || []).join(",") || "n/a"}`);
+    console.log(`  tier2_review_only=${(report.summary.tier2ReviewOnlyChains || []).join(",") || "n/a"}`);
+    console.log(`  tier3_blocked_only=${(report.summary.tier3BlockedOnlyChains || []).join(",") || "n/a"}`);
+    console.log(`  tier4_template_only=${(report.summary.tier4TemplateOnlyChains || []).join(",") || "n/a"}`);
+    console.log(`  templateMissingCells=${report.summary.templateMissingCellCount ?? 0}`);
+  }
 }
 
 main().catch((error) => {
