@@ -29,11 +29,10 @@ function sameSelection(record = null, route = null) {
 
 function findExactPlan(forkPlan = null, route = null) {
   const plans = forkPlan?.plans || [];
-  return (
-    plans.find((plan) => sameSelection(plan, route)) ||
-    plans.find((plan) => plan?.selectionSource === "exact_route") ||
-    null
-  );
+  if (route?.routeKey && route?.amount != null) {
+    return plans.find((plan) => sameSelection(plan, route)) || null;
+  }
+  return plans.find((plan) => plan?.selectionSource === "exact_route") || null;
 }
 
 function filterByPlanOrRoute(records = [], plan = null, route = null) {
