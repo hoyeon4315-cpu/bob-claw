@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { GatewayClient } from "../gateway/client.mjs";
+import { hydrateOfframpExecutionFromGatewayBody } from "../gateway/executable-quote.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { selectSimulationTargets } from "../prelive/execution-sim.mjs";
@@ -33,6 +35,68 @@ function parseArgs(argv) {
 
 function selectionKey(routeKey, amount) {
   return routeKey && amount ? `${routeKey}|${amount}` : null;
+}
+
+function parseRouteKey(routeKey = null) {
+  const [src = "", dst = ""] = String(routeKey || "").split("->");
+  const [srcChain, srcToken] = src.split(":");
+  const [dstChain, dstToken] = dst.split(":");
+  if (!srcChain || !dstChain || !srcToken || !dstToken) return null;
+  return { srcChain, srcToken, dstChain, dstToken };
+}
+
+function quoteParamsForExecution(route, amount, address) {
+  const params = {
+    srcChain: route.srcChain,
+    dstChain: route.dstChain,
+    srcToken: route.srcToken,
+    dstToken: route.dstToken,
+    amount,
+    recipient: route.dstChain === "bitcoin" ? config.verifyBtcRecipient : address,
+    slippage: config.slippageBps,
+  };
+  if (route.srcChain !== "bitcoin") {
+    params.sender = address;
+  }
+  return params;
+}
+
+function normalizeQuoteBody(body = null) {
+  return body?.onramp || body?.offramp || body?.layerZero || body || null;
+}
+
+export async function refreshSelectionExecutableQuote(
+  selection,
+  {
+    address,
+    client = new GatewayClient({ baseUrl: config.gatewayApiBase }),
+    hydrateExecutionImpl = hydrateOfframpExecutionFromGatewayBody,
+  } = {},
+) {
+  if (!selection?.routeKey || !selection?.amount || !address) return selection;
+  const route = selection?.quote?.route || parseRouteKey(selection.routeKey);
+  if (!route) return selection;
+  const quoteResult = await client.getQuote(quoteParamsForExecution(route, selection.amount, address));
+  const executable = await hydrateExecutionImpl(quoteResult.body, { client });
+  const quoteBody = normalizeQuoteBody(quoteResult.body);
+  return {
+    ...selection,
+    quote: {
+      ...(selection.quote || {}),
+      ...(quoteBody || {}),
+      route,
+      amount: selection.amount,
+      sender: route.srcChain === "bitcoin" ? null : address,
+      recipient: route.dstChain === "bitcoin" ? config.verifyBtcRecipient : address,
+      txTo: executable.txTo ?? quoteBody?.tx?.to ?? quoteBody?.txTo ?? selection?.quote?.txTo ?? null,
+      txData: executable.txData ?? quoteBody?.tx?.data ?? selection?.quote?.txData ?? null,
+      txValueWei: executable.txValueWei ?? String(quoteBody?.tx?.value ?? selection?.quote?.txValueWei ?? 0),
+      txChain: executable.txChain ?? quoteBody?.tx?.chain ?? selection?.quote?.txChain ?? null,
+      txDataBytes:
+        executable.txDataBytes ??
+        (quoteBody?.tx?.data ? Math.max(0, (quoteBody.tx.data.length - 2) / 2) : selection?.quote?.txDataBytes ?? null),
+    },
+  };
 }
 
 function stripVolatile(value) {
@@ -99,8 +163,18 @@ async function main() {
     ...selection,
     score: scoreBySelection.get(selectionKey(selection.routeKey, selection.amount)) || null,
   }));
+  const hydratedSelections = await Promise.all(
+    selections.map(async (selection) => {
+      if (!args.routeKey) return selection;
+      try {
+        return await refreshSelectionExecutableQuote(selection, { address: resolved.address });
+      } catch {
+        return selection;
+      }
+    }),
+  );
 
-  const plans = selections.map((selection) =>
+  const plans = hydratedSelections.map((selection) =>
     buildForkExecutionPlan({
       selection,
       address: resolved.address,

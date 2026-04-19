@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { mergePlans } from "../src/cli/plan-prelive-fork-execution.mjs";
+import { mergePlans, refreshSelectionExecutableQuote } from "../src/cli/plan-prelive-fork-execution.mjs";
 import { buildForkExecutionPlan } from "../src/prelive/fork-execution.mjs";
 
 const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
@@ -149,4 +149,71 @@ test("fork execution plan blocks verify-recipient addresses embedded in calldata
   assert.equal(plan.status, "blocked");
   assert.deepEqual(plan.blockers, ["quote_verify_recipient_in_tx_data"]);
   assert.equal(plan.commands.submit, null);
+});
+
+test("refreshSelectionExecutableQuote refetches exact-route executable calldata for the operator address", async () => {
+  const operator = "0x96262be63aa687563789225c2fe898c27a3b0ae4";
+  const selection = {
+    routeKey: `base:${WBTC}->bsc:${WBTC}`,
+    amount: "300",
+    label: "base->bsc",
+    quote: {
+      route: { srcChain: "base", dstChain: "bsc", srcToken: WBTC, dstToken: WBTC },
+      txTo: WBTC,
+      txData: `0x123400000000000000000000000000000000000000000000000000000000dead`,
+      txValueWei: "1",
+    },
+  };
+  const requested = [];
+  const refreshed = await refreshSelectionExecutableQuote(selection, {
+    address: operator,
+    client: {
+      async getQuote(params) {
+        requested.push(params);
+        return {
+          body: {
+            layerZero: {
+              tx: {
+                to: WBTC,
+                data: `0x123400000000000000000000${operator.slice(2).toLowerCase()}`,
+                value: "7",
+                chain: "base",
+              },
+            },
+          },
+        };
+      },
+    },
+    hydrateExecutionImpl: async (body) => ({
+      txTo: body.layerZero.tx.to,
+      txData: body.layerZero.tx.data,
+      txValueWei: String(body.layerZero.tx.value),
+      txChain: body.layerZero.tx.chain,
+      txDataBytes: Math.max(0, (body.layerZero.tx.data.length - 2) / 2),
+    }),
+  });
+
+  assert.deepEqual(requested, [
+    {
+      srcChain: "base",
+      dstChain: "bsc",
+      srcToken: WBTC,
+      dstToken: WBTC,
+      amount: "300",
+      recipient: operator,
+      slippage: "50",
+      sender: operator,
+    },
+  ]);
+  assert.equal(refreshed.quote.recipient, operator);
+  assert.equal(refreshed.quote.sender, operator);
+  assert.equal(refreshed.quote.txValueWei, "7");
+
+  const plan = buildForkExecutionPlan({
+    selection: refreshed,
+    address: operator,
+    now: "2026-04-19T00:00:00.000Z",
+  });
+  assert.equal(plan.status, "planned");
+  assert.deepEqual(plan.blockers, []);
 });
