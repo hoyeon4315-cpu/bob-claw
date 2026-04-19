@@ -64,6 +64,9 @@ test("next step blocks wallet funding when the best prep route has non-positive 
   });
 
   assert.equal(next.decision, "BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP");
+  assert.equal(next.blockerScope, "transport_route_prep");
+  assert.equal(next.economicsMode, "instant_route_edge");
+  assert.match(next.strategyRailHint, /Yield\/protocol rails/);
   assert.equal(next.actions.length, 0);
   assert.deepEqual(next.reasons, ["effective_system_net_pnl_not_positive", "insufficient_data"]);
 });

@@ -25,6 +25,20 @@ function isLeverageStrategy(job = {}, strategyPolicy = null) {
   return actionType.includes("leverage") || actionType.includes("lending_loop") || strategyType.includes("leverage");
 }
 
+function isHoldingPeriodCarryStrategy(job = {}, strategyPolicy = null) {
+  const economicsMode = String(strategyPolicy?.economicsMode || job?.economicsMode || "").toLowerCase();
+  const category = String(strategyPolicy?.category || job?.category || "").toLowerCase();
+  const actionType = String(strategyPolicy?.actionType || job?.actionType || "").toLowerCase();
+  const strategyType = String(strategyPolicy?.strategyType || job?.strategyType || "").toLowerCase();
+  return (
+    economicsMode === "holding_period_carry" ||
+    category === "yield" ||
+    actionType.includes("yield") ||
+    actionType.includes("lending_loop") ||
+    strategyType.includes("lending_loop")
+  );
+}
+
 function missingLeverageFields(strategyPolicy = null) {
   return [
     "perTradeCapUsd",
@@ -103,6 +117,7 @@ export function buildExecutionRiskDecision({
   const strategyId = strategyPolicy?.id || job.strategyId || job.strategyLabel || null;
   const perTradeCapUsd = strategyPolicy?.perTradeCapUsd ?? null;
   const leverageStrategy = isLeverageStrategy(job, strategyPolicy);
+  const holdingPeriodCarryStrategy = isHoldingPeriodCarryStrategy(job, strategyPolicy);
   const leverageMissingFields = leverageStrategy ? missingLeverageFields(strategyPolicy) : [];
 
   if (isFiniteNumber(riskPolicy.projectLossCapUsd) && riskState.projectLossUsedUsd >= riskPolicy.projectLossCapUsd) {
@@ -181,7 +196,7 @@ export function buildExecutionRiskDecision({
   if (job.systemEconomics?.tradeReadiness && String(job.systemEconomics.tradeReadiness).startsWith("reject_")) {
     blockers.push("route_trade_rejected");
   }
-  if (isFiniteNumber(effectiveNetPnlUsd) && effectiveNetPnlUsd <= 0 && !isNativeRefillJob(job)) {
+  if (isFiniteNumber(effectiveNetPnlUsd) && effectiveNetPnlUsd <= 0 && !isNativeRefillJob(job) && !holdingPeriodCarryStrategy) {
     blockers.push("system_net_pnl_non_positive");
   }
   // Profit-floor checks only apply when the policy actually sets a positive
@@ -227,6 +242,7 @@ export function buildExecutionRiskDecision({
       strategyId,
       strategyPerTradeCapUsd: perTradeCapUsd ?? null,
       leverageStrategy,
+      holdingPeriodCarryStrategy,
       missingLeverageFields: leverageMissingFields,
       ageMinutes,
     },

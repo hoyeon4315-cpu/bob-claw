@@ -121,6 +121,9 @@ function buildManualReviewCandidate({ dashboardStatus = null, canaryInputs = nul
   if (!routeLabel && !amount && !canaryInputs?.routeKey) return null;
   return {
     address: address || null,
+    candidateType: "route",
+    economicsMode: "instant_route_edge",
+    proofObjective: "transport_quote_execution_and_delivery",
     routeKey,
     routeLabel,
     amount,
@@ -241,10 +244,15 @@ function buildStrategyLiveCandidate({
   const blockerReasons = unique([...(validation?.blockers || []), ...(watcher?.blockers || [])]);
   const perTradeCapUsd = strategy?.perTradeCapUsd ?? null;
   const reviewReady = blockerReasons.length === 0 && summary?.dryRunReceiptRecorded === true;
+  const paper = scaffold?.pnl?.paper || null;
+  const estimated = scaffold?.pnl?.estimated || null;
+  const realized = scaffold?.pnl?.realized || null;
   return {
     candidateType: "strategy",
     candidateId: strategy.id,
     candidateLabel: strategy.label || strategy.id,
+    economicsMode: "holding_period_carry",
+    proofObjective: "protocol_rail_entry_hold_unwind_receipts",
     routeKey: null,
     routeLabel: null,
     address: null,
@@ -274,6 +282,25 @@ function buildStrategyLiveCandidate({
       liveRoundtripProofStatus: validation?.evidence?.liveRoundtripProofStatus || null,
       liveRoundtripEntryCount: validation?.evidence?.liveRoundtripEntryCount ?? 0,
       liveRoundtripUnwindCount: validation?.evidence?.liveRoundtripUnwindCount ?? 0,
+    },
+    railProof: {
+      entryActionCount: scaffold?.executionPlan?.actionCount ?? scaffold?.executionPlan?.actions?.length ?? 0,
+      unwindActionCount: scaffold?.unwindPlan?.actions?.length ?? 0,
+      watcherCheckCount: scaffold?.watcherPlan?.checks?.length ?? 0,
+      readyForDryRun: scaffold?.readiness?.readyForDryRun === true,
+      readyForLive: scaffold?.readiness?.readyForLive === true,
+      paperAnnualNetCarryUsd: paper?.annualNetCarryUsd ?? null,
+      estimatedCarryStatus: estimated?.status || null,
+      estimatedCarrySampleCount: estimated?.sampleCount ?? 0,
+      realizedCarryStatus: realized?.status || null,
+      realizedCarrySampleCount: realized?.sampleCount ?? 0,
+      requiredProofs: [
+        "native BTC funded route into destination-chain collateral",
+        "protocol entry receipt for deposit/borrow/supply path",
+        "holding-period carry snapshot or receipt-backed accrual sample",
+        "unwind receipt with realized gas, slippage, and health-factor path",
+        "BTC-denominated reconciliation back to treasury/payback accounting",
+      ],
     },
   };
 }
@@ -414,7 +441,7 @@ function buildStrategyCandidateChecklist(candidate = null) {
       blockerReasons.includes("signer_backed_oos_receipts_missing") ? "ingest signer-backed wrapped-loop receipts" : null,
       blockerReasons.includes("recursive_observed_receipts_missing") ? "ingest recursive lending-loop observed receipts" : null,
       blockerReasons.length ? `clear strategy evidence blockers (${blockerReasons.join(",")})` : null,
-      "submit signer/executor-backed canary and reconcile receipts",
+      "submit signer/executor-backed protocol entry, hold/accrual, and unwind proof",
       "manual approval before live canary",
     ]),
   };
@@ -743,6 +770,9 @@ export function summarizePreliveReviewPackage(reviewPackage = null) {
     routeKey: candidate?.routeKey || null,
     amount: candidate?.amount || null,
     tradeReadiness: candidate?.tradeReadiness || null,
+    economicsMode: candidate?.economicsMode || null,
+    proofObjective: candidate?.proofObjective || null,
+    railProof: candidate?.railProof || null,
     simulationSuccessCount: reviewPackage.preliveEvidence?.mechanicalSimulation?.successCount ?? 0,
     simulationTargetCount: reviewPackage.preliveEvidence?.mechanicalSimulation?.targetSuccessCount ?? 0,
     forkConfirmedCount: reviewPackage.preliveEvidence?.forkExecution?.confirmedCount ?? 0,

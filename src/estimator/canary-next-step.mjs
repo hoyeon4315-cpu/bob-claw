@@ -112,7 +112,10 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
   if (economicPrepReasons.length) {
     return {
       decision: "BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP",
-      headline: "Canary prep is blocked because estimated route economics are non-positive",
+      headline: "Transport route prep is blocked because instant route economics are non-positive",
+      blockerScope: "transport_route_prep",
+      economicsMode: "instant_route_edge",
+      strategyRailHint: "This only blocks transport-route prep. Yield/protocol rails should be evaluated with entry cost, carry, breakeven, unwind, and receipt proof.",
       route: best,
       actions: [],
       reasons: [...economicPrepReasons, ...(best.tradeReadiness ? [best.tradeReadiness] : [])],

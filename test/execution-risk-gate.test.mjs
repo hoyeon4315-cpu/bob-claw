@@ -156,6 +156,48 @@ test("risk gate allows native refill jobs to pass with negative system pnl when 
   assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), false);
 });
 
+test("risk gate does not apply instant system PnL blocker to holding-period yield jobs", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      strategyPolicy: {
+        id: "recursive_wrapped_btc_lending_loop",
+        category: "yield",
+        economicsMode: "holding_period_carry",
+        strategyType: "leverage_lending_loop",
+        isLeverage: true,
+        perTradeCapUsd: 300,
+        healthFactorMin: 1.35,
+        liquidationBufferPct: 12,
+        unwindTriggerHealthFactor: 1.3,
+        maxLoopIterations: 4,
+        maxLtvPct: 62,
+        currentHealthFactor: 1.65,
+        currentLiquidationBufferPct: 20,
+      },
+      systemEconomics: {
+        tradeReadiness: "strategy_candidate_review_only",
+        routeInputUsd: 300,
+        routeNetEdgeUsd: null,
+        routeExecutableNetEdgeUsd: null,
+        effectiveSystemNetPnlUsd: -2.4,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(500),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), false);
+  assert.equal(decision.metrics.holdingPeriodCarryStrategy, true);
+});
+
 test("risk gate returns review for conditional/manual funding without hard blockers", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({

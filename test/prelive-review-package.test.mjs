@@ -644,6 +644,33 @@ test("prelive review package can promote recursive wrapped loop as the primary l
         autoUnwindPassCount: 2,
         signerBackedRunCount: 0,
       },
+      executionPlan: {
+        actionCount: 4,
+        actions: [{ id: "approve_collateral" }, { id: "deposit_collateral" }, { id: "borrow_usdc" }, { id: "resupply_collateral" }],
+      },
+      unwindPlan: {
+        actions: [{ id: "repay_debt" }, { id: "withdraw_collateral" }],
+      },
+      watcherPlan: {
+        checks: [{ id: "health_factor_floor" }, { id: "liquidation_buffer_floor" }],
+      },
+      readiness: {
+        readyForDryRun: true,
+        readyForLive: false,
+      },
+      pnl: {
+        paper: {
+          annualNetCarryUsd: 3.42,
+        },
+        estimated: {
+          status: "simulated_dry_run_estimate",
+          sampleCount: 2,
+        },
+        realized: {
+          status: "simulated_dry_run_receipts",
+          sampleCount: 2,
+        },
+      },
     },
     recursiveWrappedBtcLoopDryRun: {
       dryRunReceiptRecorded: true,
@@ -705,12 +732,21 @@ test("prelive review package can promote recursive wrapped loop as the primary l
 
   assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
   assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "recursive_wrapped_btc_lending_loop");
+  assert.equal(reviewPackage.primaryLiveCandidate.economicsMode, "holding_period_carry");
+  assert.equal(reviewPackage.primaryLiveCandidate.proofObjective, "protocol_rail_entry_hold_unwind_receipts");
   assert.equal(reviewPackage.primaryLiveCandidate.evidence.arrivalFamily, "wrapped_btc");
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.entryActionCount, 4);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.unwindActionCount, 2);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.paperAnnualNetCarryUsd, 3.42);
+  assert.equal(reviewPackage.primaryLiveCandidate.railProof.requiredProofs.some((item) => item.includes("holding-period carry")), true);
   assert.equal(reviewPackage.tinyCanaryAdmission.candidate.candidateId, "recursive_wrapped_btc_lending_loop");
   assert.equal(reviewPackage.tinyCanaryAdmission.nextActionCode, "collect_recursive_loop_observed_receipts");
   assert.equal(reviewPackage.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
   assert.equal(reviewPackage.remediationPlan.nextAction.command, recursiveWrappedReceiptCommand);
   assert.equal(summary.candidateId, "recursive_wrapped_btc_lending_loop");
+  assert.equal(summary.economicsMode, "holding_period_carry");
+  assert.equal(summary.proofObjective, "protocol_rail_entry_hold_unwind_receipts");
+  assert.equal(summary.railProof.entryActionCount, 4);
   assert.equal(summary.remediationPlan.nextAction.code, "collect_recursive_loop_observed_receipts");
 });
 
