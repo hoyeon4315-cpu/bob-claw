@@ -1,7 +1,8 @@
 import { access } from "node:fs/promises";
 import { getEnv, getNumberEnv } from "../config/env.mjs";
 import { DEFAULT_SIGNER_SOCKET_PATH } from "../executor/signer/client.mjs";
-import { evaluateWatchdogHeartbeat, readHeartbeat } from "../executor/watchdog/heartbeat.mjs";
+import { readSignerHealth } from "../executor/signer/client.mjs";
+import { evaluateWatchdogHeartbeat, readHeartbeat, writeHeartbeat } from "../executor/watchdog/heartbeat.mjs";
 
 async function pathExists(path) {
   if (!path) return false;
@@ -48,10 +49,36 @@ export async function loadExecutorRuntime({
   heartbeatPath = getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
   signerSocketPath = getEnv("EXECUTOR_SIGNER_SOCKET_PATH", DEFAULT_SIGNER_SOCKET_PATH),
   ttlMs = getNumberEnv("EXECUTOR_WATCHDOG_TTL_MS", 60_000),
+  healthReader = readSignerHealth,
+  heartbeatReader = readHeartbeat,
+  heartbeatWriter = writeHeartbeat,
 } = {}) {
-  const heartbeat = await readHeartbeat(heartbeatPath);
+  let heartbeat = await heartbeatReader(heartbeatPath);
   const effectiveSocketPath = heartbeat?.socketPath || signerSocketPath;
   const signerSocketPresent = await pathExists(effectiveSocketPath);
+  const heartbeatState = evaluateWatchdogHeartbeat({ heartbeat, now, ttlMs });
+
+  if (signerSocketPresent && heartbeatState.status !== "healthy") {
+    try {
+      const health = await healthReader({
+        socketPath: effectiveSocketPath,
+        timeoutMs: Math.min(ttlMs, 5_000),
+      });
+      heartbeat = await heartbeatWriter({
+        path: heartbeatPath,
+        now,
+        metadata: {
+          pid: health?.pid ?? heartbeat?.pid ?? null,
+          socketPath: effectiveSocketPath,
+          status: "listening",
+          lastCommand: "health",
+        },
+      });
+    } catch {
+      // Keep the stale/missing heartbeat result when the socket cannot answer health checks.
+    }
+  }
+
   return summarizeExecutorRuntime({
     heartbeat,
     heartbeatPath,
