@@ -5,6 +5,7 @@ import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildAllocatorCore } from "../strategy/allocator-core.mjs";
+import { buildIndirectStablecoinLaneInventory } from "../strategy/indirect-stablecoin-lane-inventory.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -32,6 +33,7 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
     readJsonIfExists(join(config.dataDir, "destination-strategy-registry.json")),
   ]);
+  const indirectStablecoinLaneInventory = buildIndirectStablecoinLaneInventory();
   const report = buildAllocatorCore({
     strategySnapshot,
     phase3Validation,
@@ -41,6 +43,7 @@ async function main() {
     secondaryStrategyScaffolds,
     destinationPromotionGate,
     destinationStrategyRegistry,
+    indirectStablecoinLaneInventory,
   });
 
   if (args.write) {
@@ -79,6 +82,13 @@ async function main() {
     console.log(`  templateMissingCells=${report.summary.templateMissingCellCount ?? 0}`);
     console.log(`  stablecoinGatewayArrivalMissing=${(report.summary.stablecoinGatewayArrivalMissingChains || []).join(",") || "none"}`);
     console.log(`  stablecoinIndirectViaWrappedBtc=${(report.summary.stablecoinIndirectViaWrappedBtcChains || []).join(",") || "none"}`);
+  }
+  if (report.summary.indirectStableDirectChains?.length > 0 || report.summary.indirectStableReviewChains?.length > 0) {
+    console.log("");
+    console.log("indirectStableLane:");
+    console.log(`  directStable=${(report.summary.indirectStableDirectChains || []).join(",") || "none"}`);
+    console.log(`  indirectStableReview=${(report.summary.indirectStableReviewChains || []).join(",") || "none"}`);
+    console.log(`  dexVenueCount=${report.summary.indirectStableDexVenueCount ?? 0}`);
   }
 }
 
