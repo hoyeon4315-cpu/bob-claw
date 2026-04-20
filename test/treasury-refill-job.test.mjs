@@ -11,8 +11,8 @@ function planFixture(decision = "REVIEW_REFILL_PLAN") {
     address: "0x000000000000000000000000000000000000dEaD",
     decision,
     inventory: {
-      native: [{ chain: "bob", actualDecimal: 0.001 }],
-      tokens: [{ chain: "bob", actual: "5000", actualDecimal: 0.00005, token: "0x0555", ticker: "wBTC.OFT" }],
+      native: [{ chain: "bob", actual: "10000000000000000", actualDecimal: 0.01, estimatedUsd: 22 }],
+      tokens: [{ chain: "bob", actual: "50000", actualDecimal: 0.0005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 35 }],
     },
     actions: [
       {
@@ -333,7 +333,7 @@ test("refill jobs prefer higher-net fallback route context over weaker local mat
     address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
     decision: "REVIEW_REFILL_PLAN",
     inventory: {
-      native: [{ chain: "base", actualDecimal: 0.000565307215511085 }],
+      native: [{ chain: "base", actual: "200000000000000000", actualDecimal: 0.2, estimatedUsd: 400 }],
       tokens: [{ chain: "base", actual: "863020", actualDecimal: 0.86302, token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", ticker: "USDC" }],
     },
     reasons: ["refill_cost_above_daily_cap", "too_many_pending_refills"],

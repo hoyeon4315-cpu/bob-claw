@@ -215,3 +215,56 @@ test("capital manager wrapper emits wrapped-BTC settlement rebalance jobs from o
   assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "base");
   assert.equal(result.jobs.jobs[0].fundingSource.source.token, WBTC_OFT_TOKEN);
 });
+
+test("capital manager wrapper prefers cross-chain wrapped BTC when destination native gas exists but cannot cover settlement refill", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const result = buildCapitalManagerRefillJobs({
+    strategyCaps: [
+      {
+        strategyId: "wrapped-btc-soneium",
+        autoExecute: true,
+        caps: {
+          perChainUsd: {
+            soneium: 50,
+          },
+        },
+        gasFloat: {
+          soneium: { minUsd: 0, targetUsd: 0 },
+        },
+      },
+    ],
+    policy,
+    wholeWalletInventory: {
+      native: [
+        {
+          chain: "soneium",
+          token: ZERO_TOKEN,
+          balance: "20000000000000",
+          actualDecimal: 0.00002,
+          estimatedUsd: 0.04,
+        },
+      ],
+      tokenBalances: [
+        {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          balance: "150000",
+          actualDecimal: 0.0015,
+          estimatedUsd: 120,
+        },
+      ],
+    },
+    prices: priceFixture(),
+    address: "0x1111111111111111111111111111111111111111",
+    now: "2026-04-20T12:00:00.000Z",
+  });
+
+  assert.equal(result.jobs.jobs.length, 1);
+  assert.equal(result.jobs.jobs[0].executionMethod, "cross_chain_bridge_or_swap");
+  assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "base");
+  assert.equal(
+    result.jobs.jobs[0].candidateMethods.find((item) => item.method === "same_chain_native_to_token_swap").missingInputs.includes("source_inventory_below_target_amount"),
+    true,
+  );
+});

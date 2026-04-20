@@ -179,6 +179,24 @@ function sourceAmountMetadata(source = {}) {
   };
 }
 
+function sourceInventoryCoversTargetValue(action, source = null) {
+  const targetUsd = finite(action?.refillEstimatedUsd);
+  if (!Number.isFinite(targetUsd) || !(targetUsd > 0)) return true;
+  const sourceUsd = finite(source?.estimatedUsd);
+  return Number.isFinite(sourceUsd) && sourceUsd >= targetUsd;
+}
+
+function sourceInventoryCoversTargetAmount(action, source = null) {
+  if (!source) return false;
+  try {
+    const targetAmount = BigInt(action?.refillAmount ?? 0);
+    const sourceAmount = BigInt(source?.actual ?? source?.balance ?? 0);
+    return targetAmount > 0n && sourceAmount >= targetAmount;
+  } catch {
+    return false;
+  }
+}
+
 function candidateRecord({
   action,
   method,
@@ -235,21 +253,27 @@ function nativeSwapCandidate(action, plan, preferred) {
     });
   }
   const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
+  const coversTargetValue = sourceInventoryCoversTargetValue(action, tokenSource);
   const missingInputs = [];
   if (!bootstrapNativeSatisfied) {
     missingInputs.push("bootstrap_native_required");
     missingInputs.push("stranded_same_chain_token_inventory_without_native");
   }
+  if (!coversTargetValue) {
+    missingInputs.push("source_inventory_below_target_amount");
+  }
   return candidateRecord({
     action,
     method: "same_chain_token_to_native_swap",
     source: describeSourceAsset(action.chain, tokenSource.token, sourceAmountMetadata(tokenSource)),
-    availability: bootstrapNativeSatisfied ? "ready" : "conditional",
-    preferred: bootstrapNativeSatisfied ? preferred : false,
+    availability: bootstrapNativeSatisfied && coversTargetValue ? "ready" : "conditional",
+    preferred: bootstrapNativeSatisfied && coversTargetValue ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
     missingInputs,
-    notes: bootstrapNativeSatisfied
+    notes: !coversTargetValue
+      ? "Same-chain token inventory exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required."
+      : bootstrapNativeSatisfied
       ? "Use same-chain token inventory to rebuild native gas when some bootstrap native gas still exists."
       : "Same-chain token inventory is already present but stranded because native gas is zero; first bootstrap native gas, then swap local tokens into the chain native asset.",
   });
@@ -259,16 +283,22 @@ function tokenSwapCandidate(action, plan, preferred) {
   const chainInventory = inventoryForChain(plan, action.chain);
   const native = chainInventory.native;
   const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
+  const coversTargetValue = sourceInventoryCoversTargetValue(action, native);
   return candidateRecord({
     action,
     method: "same_chain_native_to_token_swap",
     source: describeSourceAsset(action.chain, ZERO_TOKEN, sourceAmountMetadata(native)),
-    availability: bootstrapNativeSatisfied ? "ready" : "conditional",
-    preferred: bootstrapNativeSatisfied ? preferred : false,
+    availability: bootstrapNativeSatisfied && coversTargetValue ? "ready" : "conditional",
+    preferred: bootstrapNativeSatisfied && coversTargetValue ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
-    missingInputs: bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"],
-    notes: "Use same-chain native balance to acquire the route token inventory.",
+    missingInputs: [
+      ...(bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"]),
+      ...(coversTargetValue ? [] : ["source_inventory_below_target_amount"]),
+    ],
+    notes: coversTargetValue
+      ? "Use same-chain native balance to acquire the route token inventory."
+      : "Same-chain native balance exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required.",
   });
 }
 
@@ -322,6 +352,9 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     }));
   return [...nativeSources, ...tokenSources]
     .sort((left, right) => {
+      const leftSupportRank = crossChainExecutorSupport(action, left).supported ? 0 : 1;
+      const rightSupportRank = crossChainExecutorSupport(action, right).supported ? 0 : 1;
+      if (leftSupportRank !== rightSupportRank) return leftSupportRank - rightSupportRank;
       const preferenceDelta = crossChainRoutePreference(left, action, routeContext) - crossChainRoutePreference(right, action, routeContext);
       if (preferenceDelta !== 0) return preferenceDelta;
       const leftUsd = Number.isFinite(left.estimatedUsd) ? left.estimatedUsd : -1;
@@ -391,6 +424,10 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   const directInventoryMode = policy.walletMode === "single_wallet";
   const executorSupport = crossChainExecutorSupport(action, selectedSource);
+  const coversTarget =
+    action.type === "refill_token"
+      ? sourceInventoryCoversTargetAmount(action, selectedSource)
+      : sourceInventoryCoversTargetValue(action, selectedSource);
   if (!selectedSource) {
     return candidateRecord({
       action,
@@ -404,7 +441,7 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
       notes: executorSupport.notes,
     });
   }
-  const executableDirectInventory = directInventoryMode && executorSupport.supported;
+  const executableDirectInventory = directInventoryMode && executorSupport.supported && coversTarget;
   return candidateRecord({
     action,
     method: "cross_chain_bridge_or_swap",
@@ -418,11 +455,18 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
     preferred: executableDirectInventory,
     requiresReserveState: !directInventoryMode,
     reserveReplenishmentKnown: directInventoryMode,
-    missingInputs: directInventoryMode ? executorSupport.missingInputs : ["reserve_state_unmodelled"],
+    missingInputs: directInventoryMode
+      ? [
+          ...executorSupport.missingInputs,
+          ...(coversTarget ? [] : ["source_inventory_below_target_amount"]),
+        ]
+      : ["reserve_state_unmodelled"],
     notes: executableDirectInventory
       ? executorSupport.notes
       : directInventoryMode
-        ? executorSupport.notes
+        ? coversTarget
+          ? executorSupport.notes
+          : "Cross-chain source inventory is observed, but the selected source cannot cover the refill target amount yet."
       : "Cross-chain funding source is selected from observed inventory, but reserve replenishment and route execution remain under-modelled.",
   });
 }

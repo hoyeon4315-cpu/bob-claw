@@ -14,19 +14,19 @@ function planFixture(decision = "REVIEW_REFILL_PLAN") {
       native: [
         {
           chain: "bob",
-          actual: "1000000000000000",
-          actualDecimal: 0.001,
-          estimatedUsd: 2.2,
+          actual: "10000000000000000",
+          actualDecimal: 0.01,
+          estimatedUsd: 22,
         },
       ],
       tokens: [
         {
           chain: "bob",
-          actual: "5000",
-          actualDecimal: 0.00005,
+          actual: "50000",
+          actualDecimal: 0.0005,
           token: WBTC_OFT_TOKEN,
           ticker: "wBTC.OFT",
-          estimatedUsd: 3.5,
+          estimatedUsd: 35,
         },
       ],
     },
@@ -280,6 +280,187 @@ test("cross-chain BTC-family token refill is ready when Gateway consolidation ca
   assert.equal(funding.selections[0].selectedSource.source.chain, "base");
   assert.equal(funding.selections[0].selectedSource.source.actual, "25000");
   assert.equal(funding.selections[0].missingInputs.length, 0);
+});
+
+test("cross-chain BTC-family token refill stays conditional when observed source amount is below target", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "base",
+          actual: "5000",
+          actualDecimal: 0.00005,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 3.7,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "bob",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.4,
+        rationale: "Route token buffer",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].missingInputs.includes("source_inventory_below_target_amount"), true);
+});
+
+test("cross-chain token refill prefers executable wrapped BTC over larger unsupported stablecoin inventory", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+        {
+          chain: "bsc",
+          actual: "300000000",
+          actualDecimal: 300,
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          ticker: "USDT",
+          estimatedUsd: 300,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "soneium",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.4,
+        rationale: "Settlement reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+});
+
+test("token refill prefers cross-chain wrapped BTC when same-chain native inventory is too small", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "soneium",
+          actual: "20000000000000",
+          actualDecimal: 0.00002,
+          estimatedUsd: 0.04,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "soneium",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.4,
+        rationale: "Settlement reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(
+    funding.selections[0].candidates.find((item) => item.method === "same_chain_native_to_token_swap").missingInputs.includes("source_inventory_below_target_amount"),
+    true,
+  );
+});
+
+test("native refill does not treat undersized same-chain token inventory as ready", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "soneium",
+          actual: "10000000000000",
+          actualDecimal: 0.00001,
+          estimatedUsd: 0.02,
+        },
+      ],
+      tokens: [
+        {
+          chain: "soneium",
+          actual: "1100",
+          actualDecimal: 0.000011,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 0.82,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: ZERO_TOKEN,
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.notEqual(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
+  assert.equal(
+    funding.selections[0].candidates.find((item) => item.method === "same_chain_token_to_native_swap").missingInputs.includes("source_inventory_below_target_amount"),
+    true,
+  );
 });
 
 test("funding source planner supplements same-chain token candidates from whole-wallet inventory", () => {
