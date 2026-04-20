@@ -3,14 +3,15 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
-import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readTransactionByHash, readTransactionReceipt } from "../evm/transaction-read.mjs";
 import { buildReceiptReconciliation } from "../ledger/receipt-reconciliation.mjs";
 import { buildExecutionSubmissionEvent, buildExecutionReconciliationEvent, latestExecutionEvent } from "../execution/journal.mjs";
+import { readRefillJobById } from "../executor/helpers/refill-job-store.mjs";
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
     argv
@@ -55,11 +56,10 @@ async function main() {
   if (!args.txHash) throw new Error("--tx-hash is required");
 
   const [jobs, events] = await Promise.all([
-    readJsonl(config.dataDir, "treasury-refill-jobs"),
+    readRefillJobById(config.dataDir, args.jobId),
     readJsonl(config.dataDir, "execution-journal"),
   ]);
-  const latestJobs = [...latestBy(jobs, (item) => item.jobId).values()];
-  const job = latestJobs.find((item) => item.jobId === args.jobId);
+  const job = jobs;
   if (!job) throw new Error(`Job not found: ${args.jobId}`);
 
   const [prices, receipt, transaction, routeContext] = await Promise.all([

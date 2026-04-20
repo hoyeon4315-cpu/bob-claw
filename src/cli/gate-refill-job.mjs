@@ -3,13 +3,14 @@
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
-import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildDefaultRiskPolicy } from "../risk/policy.mjs";
 import { buildExecutionRiskDecision, buildExecutionRiskState } from "../risk/execution-gate.mjs";
+import { readRefillJobById } from "../executor/helpers/refill-job-store.mjs";
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
     argv
@@ -31,13 +32,12 @@ async function main() {
   if (!args.jobId) throw new Error("--job-id is required");
 
   const [jobs, receiptRecords, executionEvents, prices] = await Promise.all([
-    readJsonl(config.dataDir, "treasury-refill-jobs"),
+    readRefillJobById(config.dataDir, args.jobId),
     readJsonl(config.dataDir, "receipt-reconciliations"),
     readJsonl(config.dataDir, "execution-journal"),
     getCoinGeckoPricesUsd().catch(() => emptyPricesUsd()),
   ]);
-  const latestJobs = [...latestBy(jobs, (item) => item.jobId).values()];
-  const job = latestJobs.find((item) => item.jobId === args.jobId);
+  const job = jobs;
   if (!job) throw new Error(`Job not found: ${args.jobId}`);
   const resolved = await resolveOperationalAddress({ explicitAddress: job.address || null, dataDir: config.dataDir });
 
