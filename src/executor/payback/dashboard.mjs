@@ -230,6 +230,10 @@ export async function buildPaybackDashboardSlice({
   const currentMinimumPaybackProgress = minimumPaybackProgress(decision, {
     source: "current",
   });
+  const effectiveMinimumProgress =
+    decision?.reason === "planned_payback_below_minimum"
+      ? currentMinimumPaybackProgress
+      : previewMinimumPaybackProgress;
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
     schemaVersion: 1,
@@ -256,14 +260,23 @@ export async function buildPaybackDashboardSlice({
           ? "set_payback_btc_destination_env"
           : null,
       minimumPaybackProgress:
-        decision?.reason === "planned_payback_below_minimum"
-          ? currentMinimumPaybackProgress
-          : previewMinimumPaybackProgress,
+        effectiveMinimumProgress,
       previewAfterDestination: previewAfterDestination
         ? {
             ...previewMinimumPaybackProgress,
           }
         : null,
+    },
+    carry: {
+      active: decision?.reason === "planned_payback_below_minimum",
+      reason: decision?.reason === "planned_payback_below_minimum" ? decision.reason : null,
+      pendingSats: snapshot.pendingDeferredSats,
+      remainingSatsToMinimum: effectiveMinimumProgress?.satsToMinimumPayback ?? null,
+      progressToMinimumRatio: effectiveMinimumProgress?.progressToMinimumRatio ?? null,
+      requiredGrossProfitSats: effectiveMinimumProgress?.requiredGrossProfitSats ?? null,
+      roundTripEfficiencyPeriod: snapshot.kpi?.roundTripEfficiency_period ?? 0,
+      expansionPeriodsRemaining: snapshot.expansionGate?.periodsRemaining ?? null,
+      consecutivePeriodsMeetingTarget: snapshot.expansionGate?.consecutivePeriodsMeetingTarget ?? null,
     },
     kpi: {
       byrRolling12m: snapshot.kpi?.byr_rolling12m ?? 0,

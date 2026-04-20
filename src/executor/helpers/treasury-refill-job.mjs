@@ -3,6 +3,10 @@ import {
   buildGatewayBtcConsolidationPlan,
   executeGatewayBtcConsolidationPlan,
 } from "./gateway-btc-consolidation.mjs";
+import {
+  buildGasZipNativeRefuelPlan,
+  executeGasZipNativeRefuelPlan,
+} from "./gas-zip-refuel.mjs";
 import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "./gateway-btc-onramp.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
@@ -116,6 +120,7 @@ function readyPreparation({ job, executor, plan, coverage }) {
 export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "same_chain_token_to_native_swap") return "token_dex_experiment";
   if (job.executionMethod === "same_chain_native_to_token_swap") return "native_dex_experiment";
+  if (job.executionMethod === "gas_refuel_bridge_gas_zip" && job.type === "refill_native") return "gas_zip_native_refuel";
   if (
     job.executionMethod === "cross_chain_bridge_or_swap" &&
     job.type === "refill_native" &&
@@ -144,6 +149,7 @@ export async function buildTreasuryRefillExecutionPlan({
   buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
   buildGatewayBtcPlanImpl = buildGatewayBtcConsolidationPlan,
   buildGatewayBtcOnrampPlanImpl = buildGatewayBtcOnrampPlan,
+  buildGasZipPlanImpl = buildGasZipNativeRefuelPlan,
 } = {}) {
   if (!job) throw new Error("Treasury refill job is required");
   if (!senderAddress) throw new Error("Treasury refill sender address is required");
@@ -221,6 +227,16 @@ export async function buildTreasuryRefillExecutionPlan({
       gasRefill: gasRefill?.toString() || null,
       allowUnfundedPreview: true,
     });
+  } else if (executor === "gas_zip_native_refuel") {
+    const targetAmount = positiveBigInt(job.targetAmount);
+    if (!targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
+    plan = await buildGasZipPlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      amountWei: targetAmount.toString(),
+      senderAddress,
+      recipient: senderAddress,
+    });
   }
 
   if (plan?.planStatus !== "ready") {
@@ -252,6 +268,7 @@ export async function executeTreasuryRefillExecutionPlan({
   executeNativeDexPlanImpl = executeNativeDexExperimentPlan,
   executeGatewayBtcPlanImpl = executeGatewayBtcConsolidationPlan,
   executeGatewayBtcOnrampPlanImpl = executeGatewayBtcOnrampPlan,
+  executeGasZipPlanImpl = executeGasZipNativeRefuelPlan,
   ...executionOptions
 } = {}) {
   if (preparation?.status !== "ready" || !preparation?.plan) {
@@ -268,6 +285,9 @@ export async function executeTreasuryRefillExecutionPlan({
   }
   if (preparation.executor === "gateway_btc_onramp") {
     return executeGatewayBtcOnrampPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  if (preparation.executor === "gas_zip_native_refuel") {
+    return executeGasZipPlanImpl({ plan: preparation.plan, ...executionOptions });
   }
   throw new Error(`Unsupported treasury refill executor: ${preparation.executor || "missing"}`);
 }

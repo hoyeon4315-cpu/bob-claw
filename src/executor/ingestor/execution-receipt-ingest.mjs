@@ -160,6 +160,30 @@ function routeContextForGatewayExecution(execution) {
   };
 }
 
+function routeContextForGasZipExecution(execution) {
+  const plan = execution?.plan;
+  if (!plan?.srcChain || !plan?.dstChain) return null;
+  return {
+    routeKey: `${plan.srcChain}:native->${plan.dstChain}:native`,
+    amount: plan.amountWei || null,
+    srcChain: plan.srcChain,
+    dstChain: plan.dstChain,
+    srcAsset: {
+      chain: plan.srcChain,
+      token: ZERO_TOKEN,
+    },
+    dstAsset: {
+      chain: plan.dstChain,
+      token: ZERO_TOKEN,
+    },
+    inputUsd: finiteNumber(plan?.amountUsd),
+    outputUsd: finiteNumber(plan?.quote?.outputValueUsd),
+    netEdgeUsd: null,
+    executionGasUsd: null,
+    nativeCostUsd: null,
+  };
+}
+
 function outputForDexExecution(execution) {
   const plan = execution?.plan;
   const observedDelta = execution?.destinationProof?.observedDelta || null;
@@ -218,6 +242,18 @@ function ingestionDescriptorForExecution(execution) {
       kind: "gateway_btc_offramp",
       routeContext: routeContextForGatewayExecution(execution),
       output: outputForGatewayOfframp(execution),
+    };
+  }
+  if (strategyId === "gas-zip-native-refuel") {
+    return {
+      kind: "gas_zip_native_refuel",
+      routeContext: routeContextForGasZipExecution(execution),
+      output: {
+        actualOutputUnits: execution?.destinationProof?.observedDelta || null,
+        chain: execution?.plan?.dstChain || null,
+        token: ZERO_TOKEN,
+        priceUsd: null,
+      },
     };
   }
   return null;

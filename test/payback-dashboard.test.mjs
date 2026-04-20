@@ -243,6 +243,8 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
   assert.equal(payback.scheduler.previewAfterDestination?.minPaybackSats, 50_000);
   assert.equal(payback.scheduler.previewAfterDestination?.satsToMinimumPayback, 40_000);
   assert.equal(payback.scheduler.previewAfterDestination?.progressToMinimumRatio, 0.2);
+  assert.equal(payback.carry.active, false);
+  assert.equal(payback.carry.pendingSats, payback.accumulatorPendingSats);
 });
 
 test("payback dashboard exposes current minimum payback gap when destination is already configured", async () => {
@@ -287,6 +289,9 @@ test("payback dashboard exposes current minimum payback gap when destination is 
   assert.equal(payback.scheduler.minimumPaybackProgress?.minPaybackSats, 50_000);
   assert.equal(payback.scheduler.minimumPaybackProgress?.satsToMinimumPayback, 49_942);
   assert.equal(payback.scheduler.minimumPaybackProgress?.progressToMinimumRatio, 58 / 50_000);
+  assert.equal(payback.carry.active, true);
+  assert.equal(payback.carry.reason, "planned_payback_below_minimum");
+  assert.equal(payback.carry.remainingSatsToMinimum, 49_942);
 });
 
 test("payback dashboard prefers destination settlement time for last settled timestamp", async () => {

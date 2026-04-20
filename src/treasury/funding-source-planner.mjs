@@ -1,5 +1,5 @@
 import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
-import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction } from "../config/gas-zip.mjs";
+import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction, gasZipInboundChain } from "../config/gas-zip.mjs";
 
 const METHOD_PROFILES = {
   same_chain_native_transfer: {
@@ -190,6 +190,7 @@ function candidateRecord({
   requiresReserveState = undefined,
   reserveReplenishmentKnown = undefined,
   missingInputs = [],
+  settlementRequirements = [],
   notes,
 }) {
   const profile = METHOD_PROFILES[method];
@@ -211,6 +212,7 @@ function candidateRecord({
     requiresReserveState: resolvedRequiresReserveState,
     manualFundingDependency: profile.manualFundingDependency,
     missingInputs,
+    settlementRequirements,
     notes,
   };
 }
@@ -425,7 +427,19 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
   });
 }
 
-function gasRefuelCandidate(action, policy) {
+function selectGasZipSource(action, plan, policy) {
+  const vendorPolicy = policy?.gasZipPolicy || GAS_ZIP_DEFAULT_POLICY;
+  return sortByEstimatedUsd(
+    (plan.inventory?.native || []).filter((item) =>
+      item.chain &&
+      item.chain !== action.chain &&
+      Number(item.actual || 0) > 0 &&
+      gasZipInboundChain(item.chain, vendorPolicy),
+    ),
+  )[0] || null;
+}
+
+function gasRefuelCandidate(action, plan, policy) {
   const vendorPolicy = policy?.gasZipPolicy || GAS_ZIP_DEFAULT_POLICY;
   const verdict = gasZipAcceptsAction(action, vendorPolicy);
   if (!verdict.accepted) {
@@ -440,21 +454,28 @@ function gasRefuelCandidate(action, policy) {
         "Gas.Zip fallback rejected this action. Per committed policy it is gas-only and per-job capped; strategy capital must not use this lane.",
     });
   }
+  const source = selectGasZipSource(action, plan, policy);
+  if (!source) {
+    return candidateRecord({
+      action,
+      method: "gas_refuel_bridge_gas_zip",
+      source: null,
+      availability: "conditional",
+      preferred: false,
+      missingInputs: ["gas_zip_source_native_inventory_missing"],
+      notes:
+        "Gas.Zip gas-only refuel is policy-allowed, but no supported source-chain native inventory is currently available to fund the deposit.",
+    });
+  }
   return candidateRecord({
     action,
     method: "gas_refuel_bridge_gas_zip",
-    source: {
-      chain: "gas_zip",
-      token: ZERO_TOKEN,
-      ticker: "NATIVE",
-      isNative: true,
-      sourceKind: "gas_zip_inbound",
-    },
+    source: describeSourceAsset(source.chain, ZERO_TOKEN, sourceAmountMetadata(source)),
     availability: "conditional",
     preferred: false,
     requiresBootstrapNative: false,
     bootstrapNativeSatisfied: true,
-    missingInputs: ["gas_zip_destination_native_delta_proof_required"],
+    settlementRequirements: ["gas_zip_destination_native_delta_proof_required"],
     notes:
       "Gas.Zip gas-only refuel. Settlement requires destination-chain native balance delta proof before the job is accepted as successful.",
   });
@@ -496,6 +517,7 @@ function rankConditionalSupport(candidate = {}) {
     return 3;
   }
   if (missingInputs.has("same_chain_token_inventory_missing")) return 4;
+  if (candidate.method === "gas_refuel_bridge_gas_zip") return 5;
   return 5;
 }
 
@@ -574,7 +596,7 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
   }
 
   if (policy.refillPolicy.enableGasRefuelFallback && action.type === "refill_native") {
-    candidates.push(gasRefuelCandidate(action, policy));
+    candidates.push(gasRefuelCandidate(action, plan, policy));
   }
 
   candidates.push(manualFundingCandidate(action));
@@ -607,6 +629,7 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null, supp
       requiresManualFunding: selected.manualFundingDependency,
       requiresReserveState: selected.requiresReserveState,
       missingInputs: selected.missingInputs,
+      settlementRequirements: selected.settlementRequirements,
       rationale: action.rationale,
     };
   });

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction, isGasZipSupportedChain } from "../src/config/gas-zip.mjs";
+import {
+  GAS_ZIP_DEFAULT_POLICY,
+  gasZipAcceptsAction,
+  gasZipInboundChain,
+  gasZipOutboundChain,
+  isGasZipSupportedChain,
+} from "../src/config/gas-zip.mjs";
 import { buildFundingSourcePlan } from "../src/treasury/funding-source-planner.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../src/treasury/policy.mjs";
 import { ZERO_TOKEN } from "../src/assets/tokens.mjs";
@@ -43,6 +49,8 @@ test("Gas.Zip accepts small native gas refuel on supported chain", () => {
   const verdict = gasZipAcceptsAction(nativeAction("bsc", 3), GAS_ZIP_DEFAULT_POLICY);
   assert.equal(verdict.accepted, true);
   assert.equal(isGasZipSupportedChain("bsc"), true);
+  assert.equal(gasZipInboundChain("base")?.directAddress, "0x391E7C679d29bD940d63be94AD22A25d25b5A604");
+  assert.equal(gasZipOutboundChain("bsc")?.shortId, 14);
 });
 
 test("funding planner surfaces Gas.Zip as fallback candidate for native refills only", () => {
@@ -52,7 +60,10 @@ test("funding planner surfaces Gas.Zip as fallback candidate for native refills 
     observedAt: "2026-04-20T06:00:00.000Z",
     address: "0x000000000000000000000000000000000000dEaD",
     decision: "REVIEW_REFILL_PLAN",
-    inventory: { native: [], tokens: [] },
+    inventory: {
+      native: [{ chain: "base", actual: "1000000000000000", actualDecimal: 0.001, estimatedUsd: 2 }],
+      tokens: [],
+    },
     actions: [nativeAction("bsc", 3)],
   };
   const funding = buildFundingSourcePlan({ plan, policy });
@@ -61,7 +72,8 @@ test("funding planner surfaces Gas.Zip as fallback candidate for native refills 
   assert.ok(methods.includes("gas_refuel_bridge_gas_zip"));
   const gasZip = candidates.find((item) => item.method === "gas_refuel_bridge_gas_zip");
   assert.equal(gasZip.availability, "conditional");
-  assert.deepEqual(gasZip.missingInputs, ["gas_zip_destination_native_delta_proof_required"]);
+  assert.deepEqual(gasZip.missingInputs, []);
+  assert.deepEqual(gasZip.settlementRequirements, ["gas_zip_destination_native_delta_proof_required"]);
 });
 
 test("funding planner marks Gas.Zip manual_only when destination is off-surface", () => {

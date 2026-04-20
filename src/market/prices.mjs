@@ -6,6 +6,8 @@ const PRICE_IDS = {
   bera: "berachain-bera",
   bob: "ethereum",
   bsc: "binancecoin",
+  optimism: "ethereum",
+  sei: "sei-network",
   soneium: "ethereum",
   sonic: "sonic-3",
   unichain: "ethereum",
@@ -17,7 +19,7 @@ const TOKEN_PRICE_IDS = {
   xaut: "tether-gold",
 };
 
-const ETH_LIKE_CHAINS = ["ethereum", "base", "bob", "soneium", "unichain"];
+const ETH_LIKE_CHAINS = ["ethereum", "base", "bob", "optimism", "soneium", "unichain"];
 
 export function emptyPricesUsd() {
   return {
@@ -214,6 +216,8 @@ async function fallbackPricesUsd() {
       bob: eth,
       bsc: null,
       ethereum: eth,
+      optimism: eth,
+      sei: null,
       soneium: eth,
       sonic: null,
       unichain: eth,

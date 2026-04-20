@@ -67,6 +67,17 @@ function printBlockedEvent(event, job) {
   }
 }
 
+function fundingSourceAutoExecutable(fundingSource) {
+  if (!fundingSource) return false;
+  if (fundingSource.selectionStatus === "ready") return true;
+  return (
+    fundingSource.selectionStatus === "conditional" &&
+    (fundingSource.missingInputs || []).length === 0 &&
+    (fundingSource.settlementRequirements || []).length > 0 &&
+    !fundingSource.requiresManualFunding
+  );
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.jobId) throw new Error("--job-id is required");
@@ -90,7 +101,7 @@ async function main() {
   }
 
   const fundingSource = job.fundingSource || null;
-  if (fundingSource?.selectionStatus && fundingSource.selectionStatus !== "ready") {
+  if (fundingSource?.selectionStatus && !fundingSourceAutoExecutable(fundingSource)) {
     const event = buildExecutionBlockedEvent({
       job,
       mode: args.mode,

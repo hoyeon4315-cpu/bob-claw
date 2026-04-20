@@ -257,6 +257,9 @@ export function buildProductPlanningCoverage({ dashboardStatus = null, strategyS
             grossProfitSatsPeriod: payback.grossProfitSatsPeriod ?? null,
             paidBackSatsLifetime: payback.paidBackSatsLifetime ?? null,
             remainingSatsToMinimum: paybackMinimumProgress?.satsToMinimumPayback ?? null,
+            roundTripEfficiencyPeriod: payback.kpi?.roundTripEfficiencyPeriod ?? null,
+            expansionPeriodsRemaining: payback.expansionGate?.periodsRemaining ?? null,
+            consecutivePeriodsMeetingTarget: payback.expansionGate?.consecutivePeriodsMeetingTarget ?? null,
           }
         : null,
     }),

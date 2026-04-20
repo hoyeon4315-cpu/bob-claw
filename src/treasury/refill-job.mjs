@@ -30,10 +30,21 @@ function selectionStatusRank(value) {
   return 3;
 }
 
+function fundingSourceAutoExecutable(fundingSource) {
+  if (!fundingSource) return false;
+  if (fundingSource.selectionStatus === "ready") return true;
+  return (
+    fundingSource.selectionStatus === "conditional" &&
+    (fundingSource.missingInputs || []).length === 0 &&
+    (fundingSource.settlementRequirements || []).length > 0 &&
+    !fundingSource.requiresManualFunding
+  );
+}
+
 function fundingSourceReviewReasons(fundingSource) {
   if (!fundingSource) return ["funding_source_missing"];
   const reasons = [];
-  if (fundingSource.selectionStatus && fundingSource.selectionStatus !== "ready") {
+  if (fundingSource.selectionStatus && !fundingSourceAutoExecutable(fundingSource)) {
     reasons.push(`funding_source_${fundingSource.selectionStatus}`);
   }
   for (const reason of fundingSource.missingInputs || []) {
@@ -207,6 +218,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       preferred: item.preferred,
       manualFundingDependency: item.manualFundingDependency,
       missingInputs: item.missingInputs,
+      settlementRequirements: item.settlementRequirements || [],
       notes: item.notes,
     }));
     const selectedMethod = selection?.selectedMethod || candidateMethods.find((item) => item.preferred)?.method || candidateMethods[0]?.method || null;
@@ -220,7 +232,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
         reviewReasons: [],
         priority: priorityForAction(action),
         type: action.type,
-        candidateMethods,
+      candidateMethods,
       executionMethod: selectedMethod,
       chain: action.chain,
       resourceKey: resourceKeyForRefillAction(action),
@@ -251,6 +263,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
             requiresManualFunding: selection.requiresManualFunding,
             requiresReserveState: selection.requiresReserveState,
             missingInputs: selection.missingInputs,
+            settlementRequirements: selection.settlementRequirements || [],
           }
         : null,
       systemEconomics: buildJobSystemEconomics({ action, selection, routeContext: actionRouteContext, policy }),
