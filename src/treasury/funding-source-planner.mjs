@@ -224,6 +224,11 @@ function nativeSwapCandidate(action, plan, preferred) {
     });
   }
   const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
+  const missingInputs = [];
+  if (!bootstrapNativeSatisfied) {
+    missingInputs.push("bootstrap_native_required");
+    missingInputs.push("stranded_same_chain_token_inventory_without_native");
+  }
   return candidateRecord({
     action,
     method: "same_chain_token_to_native_swap",
@@ -232,8 +237,10 @@ function nativeSwapCandidate(action, plan, preferred) {
     preferred: bootstrapNativeSatisfied ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
-    missingInputs: bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"],
-    notes: "Use same-chain token inventory to rebuild native gas when some bootstrap native gas still exists.",
+    missingInputs,
+    notes: bootstrapNativeSatisfied
+      ? "Use same-chain token inventory to rebuild native gas when some bootstrap native gas still exists."
+      : "Same-chain token inventory is already present but stranded because native gas is zero; first bootstrap native gas, then swap local tokens into the chain native asset.",
   });
 }
 
@@ -419,7 +426,13 @@ function rankAvailability(value) {
 function rankConditionalSupport(candidate = {}) {
   const missingInputs = new Set(candidate.missingInputs || []);
   if (missingInputs.size === 0) return 0;
-  if ([...missingInputs].every((item) => item === "bootstrap_native_required")) return 1;
+  if (
+    [...missingInputs].every(
+      (item) => item === "bootstrap_native_required" || item === "stranded_same_chain_token_inventory_without_native",
+    )
+  ) {
+    return 1;
+  }
   if (missingInputs.has("reserve_state_unmodelled")) return 2;
   if (
     missingInputs.has("cross_chain_source_selection_missing") ||

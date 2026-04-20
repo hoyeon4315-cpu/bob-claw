@@ -147,6 +147,7 @@ test("swap-based funding is conditional when bootstrap native gas is missing", (
   assert.equal(funding.selections[0].selectionStatus, "conditional");
   assert.equal(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
   assert.equal(funding.selections[0].missingInputs.includes("bootstrap_native_required"), true);
+  assert.equal(funding.selections[0].missingInputs.includes("stranded_same_chain_token_inventory_without_native"), true);
   assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), false);
   assert.equal(funding.reasons.includes("bootstrap_native_required"), true);
 });
