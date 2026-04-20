@@ -22,6 +22,7 @@ function parseArgs(argv) {
     write: flags.has("--write"),
     execute: flags.has("--execute"),
     amountSats: options["amount-sats"] ? Number(options["amount-sats"]) : 100_000,
+    gasRefill: options["gas-refill"] || null,
     dstChain: options["dst-chain"] || "base",
     dstToken: options["dst-token"] || "USDC",
     recipient: options.recipient || null,
@@ -58,6 +59,7 @@ async function main() {
     amountSats: args.amountSats,
     dstChain: args.dstChain,
     dstToken: args.dstToken,
+    gasRefill: args.gasRefill,
     allowUnfundedPreview: !args.execute,
   });
   const execution = args.execute
@@ -90,6 +92,9 @@ async function main() {
   console.log(`dstToken=${plan.dstAsset.ticker}`);
   console.log(`amountSats=${plan.amountSats}`);
   console.log(`amountUsd=${plan.amountUsd}`);
+  if (plan.gasRefill) {
+    console.log(`gasRefill=${plan.gasRefill}`);
+  }
   console.log(`planStatus=${plan.planStatus}`);
   console.log(`blockedReason=${plan.blockedReason || "none"}`);
   if (plan.gatewayError?.details?.body?.code) {

@@ -36,6 +36,14 @@ function normalizeTokenAddress(token) {
   throw new Error(`Unsupported onramp destination token: ${token}`);
 }
 
+function normalizeGasRefill(gasRefill) {
+  if (gasRefill == null || gasRefill === "") return null;
+  if (typeof gasRefill === "object") {
+    return normalizeGasRefill(gasRefill.amount);
+  }
+  return String(toPositiveInteger(gasRefill, "gasRefill"));
+}
+
 function normalizeOnrampQuoteBody(body) {
   const quote = body?.onramp || null;
   if (!quote) {
@@ -92,6 +100,7 @@ export async function buildGatewayBtcOnrampPlan({
   const strategyCaps = assertStrategyCaps(strategyId);
   const normalizedAmountSats = toPositiveInteger(amountSats, "amountSats");
   const normalizedDstToken = normalizeTokenAddress(dstToken);
+  const normalizedGasRefill = normalizeGasRefill(gasRefill);
   const quoteParams = {
     srcChain: "bitcoin",
     dstChain,
@@ -102,7 +111,7 @@ export async function buildGatewayBtcOnrampPlan({
     recipient,
     slippage: String(slippageBps),
     ...(strategyMessage ? { strategyMessage } : {}),
-    ...(gasRefill ? { gasRefill } : {}),
+    ...(normalizedGasRefill ? { gasRefill: normalizedGasRefill } : {}),
   };
   const prices = await priceReader();
   const btcUsd = Number(prices?.btc);
@@ -165,6 +174,7 @@ export async function buildGatewayBtcOnrampPlan({
     dstAsset: tokenAsset(dstChain, normalizedDstToken),
     amountSats: normalizedAmountSats,
     amountUsd,
+    gasRefill: normalizedGasRefill,
     quote,
     order,
     intent: order
@@ -214,6 +224,7 @@ export async function buildGatewayBtcOnrampPlan({
         gatewayOrderId: order.orderId,
         gatewayDepositAddress: order.address,
         gatewayDstToken: normalizedDstToken,
+        ...(normalizedGasRefill ? { gatewayGasRefill: normalizedGasRefill } : {}),
       },
     }
       : null,

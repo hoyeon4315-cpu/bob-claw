@@ -227,6 +227,33 @@ test("gateway btc onramp plan accepts native ETH destination aliases", async () 
   assert.equal(plan.intent.quote.route.dstToken, ZERO_TOKEN);
 });
 
+test("gateway btc onramp plan normalizes object gasRefill into a scalar quote param", async () => {
+  let capturedParams = null;
+  const client = {
+    ...gatewayClientFixture(),
+    getQuote: async (params) => {
+      capturedParams = params;
+      return gatewayClientFixture().getQuote();
+    },
+  };
+
+  const plan = await buildGatewayBtcOnrampPlan({
+    client,
+    priceReader: async () => ({ btc: 100_000 }),
+    senderAddress: "bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546",
+    recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    amountSats: 10_000,
+    dstChain: "base",
+    dstToken: "USDC",
+    gasRefill: { amount: "1000000000000000" },
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.gasRefill, "1000000000000000");
+  assert.equal(capturedParams.gasRefill, "1000000000000000");
+  assert.equal(plan.intent.metadata.gatewayGasRefill, "1000000000000000");
+});
+
 test("gateway btc onramp execution recovers order state by txid after register failure", async () => {
   const client = {
     ...gatewayClientFixture(),
