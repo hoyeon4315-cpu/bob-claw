@@ -454,6 +454,67 @@ function paybackLines(payback = null) {
   return lines;
 }
 
+function treasuryTriageLines({
+  dashboardStatus = null,
+  reviewPackage = null,
+  wholeWalletFunding = null,
+} = {}) {
+  const pivotDecision =
+    reviewPackage?.pivotDecision ||
+    dashboardStatus?.strategy?.pivotDecision ||
+    null;
+  const liveTrading = dashboardStatus?.overall?.liveTrading || reviewPackage?.liveTradingPolicy || "BLOCKED";
+  const lines = [
+    "- Wallet mode: `single_wallet` default. `dual_wallet` remains later-phase reserve tooling, not the current blocker.",
+  ];
+
+  if (wholeWalletFunding?.status === "route_funding_required") {
+    const tokenTop = wholeWalletFunding.recommendations?.tokenTopUps?.[0] || null;
+    const nativeTop = wholeWalletFunding.recommendations?.nativeTopUps?.[0] || null;
+    lines.push(
+      `- Do now: close single-wallet funding gaps for the measured leader before any promotion. route=\`${wholeWalletFunding.routeKey || "unknown"}\` topToken=\`${tokenTop ? `${tokenTop.chain} ${tokenTop.ticker}` : "none"}\` topNative=\`${nativeTop ? `${nativeTop.chain} ${nativeTop.ticker}` : "none"}\``,
+    );
+  } else {
+    lines.push(
+      "- Do now: keep reserve-replenishment modeling and refill-cost accounting inside the single-wallet path so system PnL includes treasury maintenance.",
+    );
+  }
+
+  lines.push(
+    "- Under-modelled gap: non-BTC cross-chain native/token refill stays conditional until a dedicated executor exists.",
+  );
+
+  if (liveTrading === "ALLOWED" && pivotDecision?.decisionCode === "stay_blocked") {
+    lines.push(
+      "- Later only after measured positive expectancy: consider `dual_wallet` reserve transfers or broader cross-chain refill automation.",
+    );
+  } else {
+    lines.push(
+      "- Later: consider `dual_wallet` reserve transfers only after measured positive expectancy and reserve replenishment are both confirmed.",
+    );
+  }
+
+  return lines;
+}
+
+function decisionLockLine({ dashboardStatus = null, reviewPackage = null } = {}) {
+  const liveTrading = dashboardStatus?.overall?.liveTrading || reviewPackage?.liveTradingPolicy || "BLOCKED";
+  const pivotDecision =
+    reviewPackage?.pivotDecision ||
+    dashboardStatus?.strategy?.pivotDecision ||
+    null;
+
+  if (liveTrading !== "ALLOWED") {
+    return "- Decision lock: keep live execution blocked; treat all new samples as research until policy and anti-overfit gates clear.";
+  }
+
+  if (pivotDecision?.decisionCode === "stay_blocked") {
+    return "- Decision lock: live policy is `ALLOWED`, but economic promotion stays blocked until a route clears measured edge and overfit gates.";
+  }
+
+  return "- Decision lock: live policy is `ALLOWED`; only promote when measured edge, treasury costs, and overfit gates stay green.";
+}
+
 function preliveLines(prelive = null) {
   if (!prelive) return ["- Pre-live readiness: unavailable"];
   const lines = [
@@ -1088,6 +1149,7 @@ function onePageExecutionBriefLines({
   exactRouteForkPackage = null,
   operationalJudgmentReview = null,
   wholeWalletFunding = null,
+  reviewPackage = null,
 } = {}) {
   const yieldTop = yieldShadow?.topProfile || null;
   const pivotTop = pivotPlan?.topRecommendation || null;
@@ -1227,7 +1289,12 @@ function onePageExecutionBriefLines({
   if (proxyCoverage?.nextCommand) {
     lines.push(`- Networked operator runtime only: \`${proxyCoverage.nextCommand}\``);
   }
-  lines.push("- Decision lock: keep live execution blocked; treat all new samples as research until policy and anti-overfit gates clear.");
+  lines.push(
+    decisionLockLine({
+      dashboardStatus,
+      reviewPackage,
+    }),
+  );
   return lines;
 }
 
@@ -1957,6 +2024,15 @@ async function main() {
       exactRouteForkPackage: exactRouteForkSummary,
       operationalJudgmentReview: operationalJudgmentSummary,
       wholeWalletFunding,
+      reviewPackage,
+    }),
+    "",
+    "## Treasury Triage",
+    "",
+    ...treasuryTriageLines({
+      dashboardStatus: dashboardStatusWithSnapshot,
+      reviewPackage,
+      wholeWalletFunding: measuredLeaderWholeWalletFunding,
     }),
     "",
     "## Strategy Snapshot",
