@@ -22,6 +22,24 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const workbench = await readJson(join(config.dataDir, "destination-input-workbench.json"));
   const researchQueue = await readJson(join(config.dataDir, "destination-research-queue.json"));
+  let overrides = null;
+  try {
+    overrides = await readJson(join(config.dataDir, "destination-input-overrides.json"));
+  } catch { /* no overrides file */ }
+  const overrideMap = new Map();
+  if (overrides?.entries) {
+    for (const entry of overrides.entries) {
+      if (entry.templateId) overrideMap.set(entry.templateId, entry.values || {});
+    }
+  }
+  if (overrideMap.size > 0) {
+    for (const item of (workbench.workItems || [])) {
+      const overrideValues = overrideMap.get(item.templateId);
+      if (overrideValues) {
+        item.values = { ...(item.values || {}), ...overrideValues };
+      }
+    }
+  }
   const report = buildDestinationAllowlistBoard({ workbench, researchQueue });
 
   if (args.write) {
