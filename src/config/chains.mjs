@@ -50,6 +50,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     rpcUrl: "https://bsc-dataseed.binance.org",
     rpcUrls: ["https://bsc-dataseed.binance.org"],
     fallbackGasUnits: 260_000,
+    legacyTxType: true,
   }),
   ethereum: Object.freeze({
     family: "evm",

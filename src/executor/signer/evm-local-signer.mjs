@@ -118,6 +118,8 @@ export class EvmLocalKeySigner extends SignerInterface {
     const nonce = reserveNonce
       ? await (await this.nonceManager(intent.chain)).reserve(explicitNonce)
       : explicitNonce ?? await provider.getTransactionCount(wallet.address, "pending");
+    const useLegacy = chainConfig.legacyTxType === true;
+    const txType = intent.tx?.type ?? (useLegacy ? 0 : 2);
 
     return {
       chainId: chainConfig.chainId,
@@ -126,10 +128,13 @@ export class EvmLocalKeySigner extends SignerInterface {
       value: toBigIntOrNull(intent.tx?.value) ?? 0n,
       gasLimit: toBigIntOrNull(intent.tx?.gasLimit) ?? BigInt(chainConfig.fallbackGasUnits),
       nonce,
-      type: intent.tx?.type ?? 2,
-      maxFeePerGas: toBigIntOrNull(intent.tx?.maxFeePerGas) ?? feeData.maxFeePerGas ?? undefined,
-      maxPriorityFeePerGas: toBigIntOrNull(intent.tx?.maxPriorityFeePerGas) ?? feeData.maxPriorityFeePerGas ?? undefined,
-      gasPrice: toBigIntOrNull(intent.tx?.gasPrice) ?? feeData.gasPrice ?? undefined,
+      type: txType,
+      ...(useLegacy
+        ? { gasPrice: toBigIntOrNull(intent.tx?.gasPrice) ?? feeData.gasPrice ?? undefined }
+        : {
+            maxFeePerGas: toBigIntOrNull(intent.tx?.maxFeePerGas) ?? feeData.maxFeePerGas ?? undefined,
+            maxPriorityFeePerGas: toBigIntOrNull(intent.tx?.maxPriorityFeePerGas) ?? feeData.maxPriorityFeePerGas ?? undefined,
+          }),
     };
   }
 
