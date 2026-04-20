@@ -129,6 +129,9 @@ async function main() {
     console.log(
       `minimumGrossTargetBeforeCostsSats=${report.payback.scheduler.minimumPaybackProgress.grossTargetBeforeCostsSats ?? "n/a"}`,
     );
+    console.log(
+      `minimumRequiredGrossProfitSats=${report.payback.scheduler.minimumPaybackProgress.requiredGrossProfitSats ?? "n/a"}`,
+    );
     console.log(`minimumPaybackSats=${report.payback.scheduler.minimumPaybackProgress.minPaybackSats ?? "n/a"}`);
     console.log(
       `minimumSatsToThreshold=${report.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback ?? "n/a"}`,
@@ -141,6 +144,7 @@ async function main() {
     console.log(`previewAfterDestinationStatus=${report.payback.scheduler.previewAfterDestination.status || "n/a"}`);
     console.log(`previewAfterDestinationReason=${report.payback.scheduler.previewAfterDestination.reason || "n/a"}`);
     console.log(`previewGrossTargetBeforeCostsSats=${report.payback.scheduler.previewAfterDestination.grossTargetBeforeCostsSats ?? "n/a"}`);
+    console.log(`previewRequiredGrossProfitSats=${report.payback.scheduler.previewAfterDestination.requiredGrossProfitSats ?? "n/a"}`);
     console.log(`previewMinPaybackSats=${report.payback.scheduler.previewAfterDestination.minPaybackSats ?? "n/a"}`);
     console.log(`previewSatsToMinimumPayback=${report.payback.scheduler.previewAfterDestination.satsToMinimumPayback ?? "n/a"}`);
     console.log(`previewProgressToMinimumRatio=${report.payback.scheduler.previewAfterDestination.progressToMinimumRatio ?? "n/a"}`);

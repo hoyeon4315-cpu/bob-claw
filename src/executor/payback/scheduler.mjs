@@ -535,6 +535,11 @@ export async function buildPaybackDecision({
         reason: "planned_payback_below_minimum",
         inputs: {
           grossProfitSatsPeriod,
+          baseRatio: policy.baseRatio,
+          regime,
+          regimeMultiplier,
+          volAnnualized: vol.annualized,
+          volMultiplier: vol.multiplier,
           grossTargetBeforeCostsSats,
           minPaybackSats: policy.minPaybackSats,
           pendingDeferredSats: snapshot.pendingDeferredSats,

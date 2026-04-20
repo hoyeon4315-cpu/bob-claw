@@ -59,6 +59,20 @@ function buildMinimumGapMetrics(grossTargetBeforeCostsSats, minPaybackSats) {
   };
 }
 
+function requiredGrossProfitSats({ minPaybackSats, baseRatio, regimeMultiplier, volMultiplier }) {
+  if (
+    !Number.isFinite(minPaybackSats) ||
+    !Number.isFinite(baseRatio) ||
+    !Number.isFinite(regimeMultiplier) ||
+    !Number.isFinite(volMultiplier)
+  ) {
+    return null;
+  }
+  const appliedMultiplier = baseRatio * regimeMultiplier * volMultiplier;
+  if (!(appliedMultiplier > 0)) return null;
+  return Math.ceil(minPaybackSats / appliedMultiplier);
+}
+
 function minimumPaybackProgress(decision, { source = null } = {}) {
   if (!decision || typeof decision !== "object") return null;
   const grossTargetBeforeCostsSats = firstFinite(decision, [
@@ -69,11 +83,31 @@ function minimumPaybackProgress(decision, { source = null } = {}) {
     "decisionLog.inputs.minPaybackSats",
     "policy.minPaybackSats",
   ]);
+  const baseRatio = firstFinite(decision, [
+    "decisionLog.inputs.baseRatio",
+    "decisionLog.applied.baseRatio",
+    "policy.baseRatio",
+  ]);
+  const regimeMultiplier = firstFinite(decision, [
+    "decisionLog.inputs.regimeMultiplier",
+    "decisionLog.applied.regimeMultiplier",
+  ]);
+  const volMultiplier = firstFinite(decision, [
+    "decisionLog.inputs.volMultiplier",
+    "decisionLog.applied.volMultiplier",
+  ]);
   const gapMetrics = buildMinimumGapMetrics(grossTargetBeforeCostsSats, minPaybackSats);
+  const grossProfitRequiredSats = requiredGrossProfitSats({
+    minPaybackSats,
+    baseRatio,
+    regimeMultiplier,
+    volMultiplier,
+  });
   if (
     !Number.isFinite(grossTargetBeforeCostsSats) &&
     !Number.isFinite(minPaybackSats) &&
-    !Number.isFinite(gapMetrics.satsToMinimumPayback)
+    !Number.isFinite(gapMetrics.satsToMinimumPayback) &&
+    !Number.isFinite(grossProfitRequiredSats)
   ) {
     return null;
   }
@@ -85,6 +119,7 @@ function minimumPaybackProgress(decision, { source = null } = {}) {
       "decisionLog.inputs.grossProfitSatsPeriod",
       "snapshot.grossProfitSats_period",
     ]),
+    requiredGrossProfitSats: grossProfitRequiredSats,
     grossTargetBeforeCostsSats,
     minPaybackSats,
     satsToMinimumPayback: gapMetrics.satsToMinimumPayback,

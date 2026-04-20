@@ -197,11 +197,15 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
             status: "carry",
             reason: "planned_payback_below_minimum",
             policy: {
+              baseRatio: 0.2,
               minPaybackSats: 50_000,
             },
             decisionLog: {
               inputs: {
                 grossProfitSatsPeriod: 250_000,
+                baseRatio: 0.2,
+                regimeMultiplier: 1,
+                volMultiplier: 1,
                 grossTargetBeforeCostsSats: 10_000,
                 minPaybackSats: 50_000,
               },
@@ -229,10 +233,12 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
   assert.equal(payback.scheduler.nextAction, "set_payback_btc_destination_env");
   assert.equal(payback.scheduler.minimumPaybackProgress?.source, "after_destination");
   assert.equal(payback.scheduler.minimumPaybackProgress?.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.requiredGrossProfitSats, 250_000);
   assert.equal(payback.scheduler.minimumPaybackProgress?.satsToMinimumPayback, 40_000);
   assert.equal(payback.scheduler.minimumPaybackProgress?.progressToMinimumRatio, 0.2);
   assert.equal(payback.scheduler.previewAfterDestination?.status, "carry");
   assert.equal(payback.scheduler.previewAfterDestination?.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.previewAfterDestination?.requiredGrossProfitSats, 250_000);
   assert.equal(payback.scheduler.previewAfterDestination?.grossTargetBeforeCostsSats, 10_000);
   assert.equal(payback.scheduler.previewAfterDestination?.minPaybackSats, 50_000);
   assert.equal(payback.scheduler.previewAfterDestination?.satsToMinimumPayback, 40_000);
@@ -253,9 +259,16 @@ test("payback dashboard exposes current minimum payback gap when destination is 
     decisionBuilder: async () => ({
       status: "carry",
       reason: "planned_payback_below_minimum",
+      policy: {
+        baseRatio: 0.2,
+        minPaybackSats: 50_000,
+      },
       decisionLog: {
         inputs: {
           grossProfitSatsPeriod: 289,
+          baseRatio: 0.2,
+          regimeMultiplier: 1,
+          volMultiplier: 1,
           grossTargetBeforeCostsSats: 58,
           minPaybackSats: 50_000,
         },
@@ -269,6 +282,7 @@ test("payback dashboard exposes current minimum payback gap when destination is 
   assert.equal(payback.scheduler.minimumPaybackProgress?.source, "current");
   assert.equal(payback.scheduler.minimumPaybackProgress?.status, "carry");
   assert.equal(payback.scheduler.minimumPaybackProgress?.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.minimumPaybackProgress?.requiredGrossProfitSats, 250_000);
   assert.equal(payback.scheduler.minimumPaybackProgress?.grossTargetBeforeCostsSats, 58);
   assert.equal(payback.scheduler.minimumPaybackProgress?.minPaybackSats, 50_000);
   assert.equal(payback.scheduler.minimumPaybackProgress?.satsToMinimumPayback, 49_942);

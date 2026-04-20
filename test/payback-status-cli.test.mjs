@@ -151,6 +151,7 @@ test("payback status cli reports current below-minimum gap when destination is a
   assert.equal(report.payback.scheduler.previewAfterDestination, null);
   assert.equal(report.payback.scheduler.minimumPaybackProgress.source, "current");
   assert.equal(report.payback.scheduler.minimumPaybackProgress.reason, "planned_payback_below_minimum");
+  assert.equal(report.payback.scheduler.minimumPaybackProgress.requiredGrossProfitSats, 250_000);
   assert.equal(report.payback.scheduler.minimumPaybackProgress.grossTargetBeforeCostsSats, 58);
   assert.equal(report.payback.scheduler.minimumPaybackProgress.minPaybackSats, 50_000);
   assert.equal(report.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback, 49_942);
