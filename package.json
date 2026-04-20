@@ -23,6 +23,7 @@
     "plan:treasury-funding-sources": "node src/cli/plan-treasury-funding-sources.mjs",
     "plan:whole-wallet-route-funding": "node src/cli/plan-whole-wallet-route-funding.mjs",
     "plan:treasury-refill-jobs": "node src/cli/plan-treasury-refill-jobs.mjs",
+    "plan:capital-manager-refill-jobs": "node src/cli/plan-capital-manager-refill-jobs.mjs",
     "gate:refill-job": "node src/cli/gate-refill-job.mjs",
     "run:refill-job-stub": "node src/cli/run-refill-job-stub.mjs",
     "ingest:execution-receipt": "node src/cli/ingest-execution-receipt.mjs",
