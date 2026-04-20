@@ -18,6 +18,17 @@ function strategyPolicyFromJob(job = {}) {
   return job.strategyPolicy || job.strategyConfig || null;
 }
 
+function fundingSourceAutoExecutable(fundingSource = null) {
+  if (!fundingSource) return false;
+  if (fundingSource.selectionStatus === "ready") return true;
+  return (
+    fundingSource.selectionStatus === "conditional" &&
+    (fundingSource.missingInputs || []).length === 0 &&
+    (fundingSource.settlementRequirements || []).length > 0 &&
+    !fundingSource.requiresManualFunding
+  );
+}
+
 function isLeverageStrategy(job = {}, strategyPolicy = null) {
   if (strategyPolicy?.isLeverage === true) return true;
   const actionType = String(strategyPolicy?.actionType || job?.actionType || "").toLowerCase();
@@ -180,7 +191,7 @@ export function buildExecutionRiskDecision({
   if (job.fundingSource?.selectionStatus === "manual_only") {
     reviews.push("manual_funding_only");
   }
-  if (job.fundingSource?.selectionStatus === "conditional") {
+  if (job.fundingSource?.selectionStatus === "conditional" && !fundingSourceAutoExecutable(job.fundingSource)) {
     reviews.push("conditional_funding_source");
   }
   if (job.fundingSource?.requiresReserveState) {

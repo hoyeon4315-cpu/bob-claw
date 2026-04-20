@@ -243,6 +243,33 @@ test("risk gate returns review for conditional/manual funding without hard block
   assert.equal(decision.reviews.includes("bootstrap_native_required"), true);
 });
 
+test("risk gate allows auto-executable conditional funding sources with settlement proof requirements", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      fundingSource: {
+        selectionStatus: "conditional",
+        requiresReserveState: false,
+        requiresManualFunding: false,
+        missingInputs: [],
+        settlementRequirements: ["gas_zip_destination_native_delta_proof_required"],
+      },
+      requiresManualReview: false,
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "dry_run",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.reviews.includes("conditional_funding_source"), false);
+});
+
 test("live risk gate blocks strategy jobs without a declared per-trade cap", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({
