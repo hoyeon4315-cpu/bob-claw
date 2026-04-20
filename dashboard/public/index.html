@@ -1,99 +1,325 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark">
-    <title>BOB CLAW</title>
-    <link rel="icon" href="./favicon.ico">
-    <link rel="stylesheet" href="./styles.css">
-  </head>
-  <body>
-    <main class="dashboard-shell">
-      <section class="hero-banner" aria-label="BOB CLAW banner">
-        <div class="brand-lockup">
-          <img class="brand-mascot" src="./assets/branding/bob-claw-mascot.jpg" alt="BOB CLAW mascot">
-          <div class="brand-copy">
-            <p class="eyebrow">Gateway Strategy Map</p>
-            <h1>BOB CLAW</h1>
-            <p id="heroSummary" class="hero-summary">Loading the latest public route map.</p>
-          </div>
-        </div>
-        <div id="heroPills" class="hero-pills" aria-label="current state"></div>
-      </section>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>BOB Claw</title>
+  <link rel="icon" href="./favicon.ico"/>
+  <style>
+    :root {
+      --ink: #111113;
+      --ink-2: #3A3A3D;
+      --ink-3: #6B6B6E;
+      --ink-4: #A0A0A3;
+      --line: #E4E4E6;
+      --paper: #F5F5F6;
+      --card: #FFFFFF;
+      --accent: #F2A33B;
+      --green: #1C7A3E;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    html, body { margin: 0; padding: 0; background: var(--paper); font-family: -apple-system, "SF Pro", system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+    .stage { min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 48px 16px 96px; box-sizing: border-box; }
+    .title { font-size: 13px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin: 0; text-align: center; }
+    .sub { font-size: 12px; color: var(--ink-4); margin-top: 4px; letter-spacing: 0.2px; text-align: center; }
 
-      <section class="map-stage" aria-label="BOB CLAW routing map">
-        <div class="stage-topline">
-          <div class="topline-copy">
-            <span class="topline-label">What This View Shows</span>
-            <strong id="stageHeadline">Native BTC moving through BOB Gateway into the current strategy rails.</strong>
-          </div>
-          <div class="topline-meta">
-            <span id="stageMeta" class="meta-pill">Refreshing</span>
-          </div>
-        </div>
+    .tabtrack {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; width: 100%; overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory; scroll-behavior: smooth;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .tabtrack::-webkit-scrollbar { display: none; }
+    .tabpane {
+      flex: 0 0 100%; width: 100%; scroll-snap-align: start;
+      overflow-y: auto; overflow-x: hidden;
+    }
+    .tabbar {
+      display: flex; gap: 4px; padding: 6px;
+      background: #ECECEE; border-radius: 12px;
+      margin: 0 16px 12px;
+    }
+    .tabbar button {
+      flex: 1; border: none; background: transparent;
+      font: 500 13px/1.2 -apple-system, system-ui; letter-spacing: -0.1px;
+      color: var(--ink-3);
+      padding: 8px 0; border-radius: 8px; cursor: pointer;
+      transition: background 280ms var(--ease), color 280ms var(--ease);
+    }
+    .tabbar button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 
-        <div id="mapBoard" class="map-board">
-          <svg id="flowLayer" class="flow-layer" aria-hidden="true"></svg>
+    .boot { color: var(--ink-4); font-size: 12px; letter-spacing: 0.4px; }
 
-          <div class="map-grid">
-            <div class="source-column">
-              <article id="sourceNode" class="map-node source-node" data-node="source">
-                <div class="node-head">
-                  <span class="node-kicker">Starting Asset</span>
-                  <span class="status-pill tone-btc">Bitcoin</span>
-                </div>
-                <div class="node-title-row">
-                  <span class="token-stack token-stack-large" id="sourceTokens"></span>
-                  <div>
-                    <h2>Native BTC</h2>
-                    <p>All mapped lanes begin with real BTC before the Gateway decides where the asset family should land.</p>
-                  </div>
-                </div>
-                <div class="node-footer">
-                  <span id="sourceCoverage" class="micro-note">Loading chain coverage.</span>
-                </div>
-              </article>
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes cardIn { from { transform: translateY(14px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes chipIn { from { transform: scale(0.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+    @keyframes slideUp { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root" class="stage"><div class="boot">loading live status…</div></div>
+
+  <script type="text/babel" data-presets="env,react" src="./logos.jsx"></script>
+  <script type="text/babel" data-presets="env,react" src="./data.jsx"></script>
+  <script type="text/babel" data-presets="env,react" src="./ios-frame.jsx"></script>
+  <script type="text/babel" data-presets="env,react" src="./mindmap.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useRef } = React;
+
+    const TABS = [
+      { id: 'flow',   label: 'Flow'   },
+      { id: 'defi',   label: 'DeFi'   },
+      { id: 'assets', label: 'Assets' },
+    ];
+
+    function TabView({ tabs, active, onChange, children }) {
+      const trackRef = useRef(null);
+      const programmaticRef = useRef(false);
+      useEffect(() => {
+        const el = trackRef.current;
+        if (!el) return;
+        const idx = tabs.findIndex(t => t.id === active);
+        const target = idx * el.clientWidth;
+        if (Math.abs(el.scrollLeft - target) < 2) return;
+        programmaticRef.current = true;
+        el.scrollTo({ left: target, behavior: 'smooth' });
+        clearTimeout(programmaticRef.timer);
+        programmaticRef.timer = setTimeout(() => { programmaticRef.current = false; }, 500);
+      }, [active, tabs]);
+      useEffect(() => {
+        const el = trackRef.current;
+        if (!el) return;
+        let raf, settleTimer;
+        const onScroll = () => {
+          if (programmaticRef.current) return;
+          clearTimeout(settleTimer);
+          settleTimer = setTimeout(() => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+              const idx = Math.round(el.scrollLeft / el.clientWidth);
+              const next = tabs[idx]?.id;
+              if (next && next !== active) onChange(next);
+            });
+          }, 140);
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        return () => { el.removeEventListener('scroll', onScroll); clearTimeout(settleTimer); };
+      }, [tabs, active, onChange]);
+      return (
+        <>
+          <div className="tabbar" role="tablist">
+            {tabs.map(t => (
+              <button key={t.id} role="tab" aria-selected={active === t.id} onClick={() => onChange(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="tabtrack" ref={trackRef}>
+            {children}
+          </div>
+        </>
+      );
+    }
+
+    function fmtSats(n) {
+      if (!Number.isFinite(n) || n <= 0) return '—';
+      if (n >= 1e8) return (n/1e8).toFixed(4) + ' BTC';
+      return n.toLocaleString() + ' sats';
+    }
+    function fmtUsd(n) {
+      if (!Number.isFinite(n)) return '—';
+      const sign = n < 0 ? '-' : '';
+      return sign + '$' + Math.abs(n).toFixed(2);
+    }
+
+    function FlowPane() {
+      const [expanded, setExpanded] = useState(false);
+      const liveEarnedUsd = STRATEGIES.reduce((s, x) => s + (x.earnedUsd || 0), 0);
+      const pendingSats = KPI?.periodDue?.sats || 0;
+      const paidSats = KPI?.paidBack?.sats || 0;
+      return (
+        <div className="tabpane" style={{ height: '100%' }}>
+          <div style={{ padding: '4px 16px 0' }}>
+            <div style={{
+              height: 380, borderRadius: 20, overflow: 'hidden',
+              background: 'var(--card)', border: '0.5px solid var(--line)',
+            }}>
+              <Mindmap expanded={expanded} onExpand={() => setExpanded(e => !e)} />
             </div>
-
-            <div class="gateway-column">
-              <article id="gatewayNode" class="map-node gateway-node" data-node="gateway">
-                <div class="gateway-ring"></div>
-                <div class="node-head">
-                  <span class="node-kicker">Central Router</span>
-                  <span id="gatewayState" class="status-pill tone-gateway">Loading</span>
-                </div>
-                <div class="node-title-row">
-                  <span class="protocol-mark protocol-mark-large" id="gatewayMark"></span>
-                  <div>
-                    <h2>BOB Gateway</h2>
-                    <p>BTC is converted here, then routed into wrapped BTC, stablecoin, or ETH-like rails across supported chains.</p>
-                  </div>
-                </div>
-                <div class="gateway-metrics" id="gatewayMetrics"></div>
-              </article>
+          </div>
+          <div style={{ margin: '14px 16px 0', padding: '14px 16px', background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)' }}>
+            <div style={{ fontSize: 10, color: 'var(--ink-4)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Pre-payback earning</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.8, color: liveEarnedUsd > 0 ? 'var(--green)' : 'var(--ink-2)' }}>
+                {liveEarnedUsd > 0 ? '+' : ''}{fmtUsd(liveEarnedUsd)}
+              </span>
+              <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>USD</span>
             </div>
-
-            <div id="railColumn" class="rail-column" aria-live="polite"></div>
+            <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>BTC-denominated first · USD projection</div>
+          </div>
+          <div style={{ margin: '10px 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <KpiCard label="Period due" main={fmtSats(pendingSats)} sub={KPI?.periodDue?.eta || '—'}/>
+            <KpiCard label="Paid back (lifetime)" main={fmtSats(paidSats)} sub={fmtUsd(KPI?.paidBack?.usd)}/>
           </div>
         </div>
+      );
+    }
 
-        <div class="stage-footer">
-          <div class="legend-row">
-            <span class="legend-dot tone-blocked"></span>
-            <span>Blocked</span>
-            <span class="legend-dot tone-watch"></span>
-            <span>Measured but not ready</span>
-            <span class="legend-dot tone-observe"></span>
-            <span>Observation only</span>
-            <span class="legend-dot tone-blueprint"></span>
-            <span>Blueprint</span>
-          </div>
-          <p id="safetyLine" class="safety-line">This map is read-only and does not grant live execution.</p>
+    function KpiCard({ label, main, sub }) {
+      return (
+        <div style={{ padding: '12px 14px', background: 'var(--card)', borderRadius: 16, border: '0.5px solid var(--line)' }}>
+          <div style={{ fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: 1.3, textTransform: 'uppercase' }}>{label}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: -0.3, marginTop: 3 }}>{main}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>{sub}</div>
         </div>
-      </section>
-    </main>
+      );
+    }
 
-    <script src="./app.js" type="module"></script>
-  </body>
+    function DefiPane() {
+      const byProtocol = STRATEGIES.reduce((acc, s) => {
+        (acc[s.protocol] ||= []).push(s);
+        return acc;
+      }, {});
+      return (
+        <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
+          {Object.entries(byProtocol).map(([proto, list]) => (
+            <div key={proto} style={{ marginBottom: 16 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, padding: '0 4px 8px' }}>
+                <ProtocolLogo id={proto} size={24}/>
+                <div style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize', letterSpacing: -0.1 }}>{proto}</div>
+                <div style={{ flex: 1 }}/>
+                <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{list.length} strategies</div>
+              </div>
+              <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
+                {list.map((s, i) => <StrategyRow key={s.id} s={s} isLast={i === list.length - 1}/>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function StrategyRow({ s, isLast }) {
+      const statusInk = { 'LIVE':'#1C7A3E','DRY RUN':'#7A5C0D','CANDIDATE':'#6B6B6E','BLOCKED':'#8A1F1F' }[s.status] || '#555';
+      const chain = CHAINS.find(c => c.id === s.chain);
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 14px', position: 'relative',
+        }}>
+          <div style={{ position:'relative', width:32, height:32, flexShrink:0 }}>
+            <ChainLogo id={s.chain} size={32}/>
+            <div style={{ position:'absolute', bottom:-2, right:-2, background:'#fff', borderRadius:'50%', padding:1, border:'0.5px solid var(--line)' }}>
+              <ProtocolLogo id={s.protocol} size={14}/>
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 500, letterSpacing: -0.1 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
+              {chain?.name}
+              {s.loops ? ` · ×${s.loops} loops` : ''}
+              {s.apyPct != null ? ` · ${s.apyPct.toFixed(1)}% APY` : ''}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: s.earnedUsd > 0 ? 'var(--green)' : 'var(--ink-4)', letterSpacing: -0.2 }}>
+              {s.earnedUsd > 0 ? `+$${s.earnedUsd.toFixed(2)}` : '—'}
+            </div>
+            <div style={{
+              display:'inline-block', fontSize: 8.5, fontWeight: 600, padding: '1.5px 5px', borderRadius: 4,
+              border: `0.5px solid ${statusInk}`, color: statusInk, letterSpacing: 0.5, marginTop: 3,
+            }}>{s.status}</div>
+          </div>
+          {!isLast && <div style={{
+            position: 'absolute', left: 58, right: 0, bottom: 0, height: 0.5,
+            background: 'var(--line)',
+          }}/>}
+        </div>
+      );
+    }
+
+    function AssetsPane() {
+      const items = HOLDINGS?.all || [];
+      const total = items.reduce((s, a) => s + (a.usd || 0), 0);
+      const pending = HOLDINGS?.pending;
+      return (
+        <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
+          <div style={{ padding: '14px 16px', background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', marginBottom: 14 }}>
+            <div style={{ fontSize: 10, color: 'var(--ink-4)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Total holdings</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.8 }}>
+                {pending ? '—' : '$' + total.toLocaleString()}
+              </span>
+              <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>USD</span>
+            </div>
+            {pending && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>treasury snapshot pending</div>}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: 1.6, textTransform: 'uppercase', padding: '0 4px 8px' }}>Balances</div>
+          <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
+            {items.length === 0 && (
+              <div style={{ padding: '18px 14px', fontSize: 12, color: 'var(--ink-4)', textAlign: 'center' }}>
+                no balance feed wired yet
+              </div>
+            )}
+            {items.map((a, i, arr) => (
+              <div key={a.sym + i} style={{
+                display:'flex', alignItems:'center', gap:12,
+                padding:'12px 14px', position:'relative',
+              }}>
+                <AssetLogo id={a.sym} size={28}/>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13.5, fontWeight:500 }}>{a.name}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{a.chain}</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontSize:13, fontWeight:600, letterSpacing:-0.2 }}>${(a.usd||0).toLocaleString()}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{(a.amount||0).toLocaleString()} {a.name}</div>
+                </div>
+                {i !== arr.length-1 && <div style={{ position:'absolute', left:54, right:0, bottom:0, height:0.5, background:'var(--line)' }}/>}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [tab, setTab] = useState('flow');
+      const gen = KPI?.generatedAt ? new Date(KPI.generatedAt).toLocaleString() : null;
+      const src = KPI?.source || 'pending';
+      return (
+        <>
+          <div>
+            <div className="title">BOB Claw</div>
+            <div className="sub">
+              {src === 'live'
+                ? `live · ${gen || 'status loaded'}`
+                : 'status pending · showing catalog'}
+            </div>
+          </div>
+          <IOSDevice title="BOB Claw">
+            <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+              <TabView tabs={TABS} active={tab} onChange={setTab}>
+                <FlowPane/>
+                <DefiPane/>
+                <AssetsPane/>
+              </TabView>
+            </div>
+          </IOSDevice>
+        </>
+      );
+    }
+
+    (async () => {
+      try { if (window.DATA_READY) await window.DATA_READY; } catch {}
+      const root = document.getElementById('root');
+      root.innerHTML = '';
+      ReactDOM.createRoot(root).render(<App/>);
+    })();
+  </script>
+</body>
 </html>
