@@ -13,6 +13,7 @@ import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
+import { buildGasZipRateState, evaluateGasZipRateLimit, classifySettlementTimeout } from "./gas-zip-rate-limit.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
 
 export const GAS_ZIP_NATIVE_REFUEL_STRATEGY_ID = "gas-zip-native-refuel";
@@ -93,6 +94,11 @@ export async function buildGasZipNativeRefuelPlan({
   quoteFetcher = fetchGasZipQuote,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   gasZipPolicy = GAS_ZIP_DEFAULT_POLICY,
+  auditRecords = [],
+  destinationBalanceStatus = null,
+  destinationNativeDecimal = null,
+  destinationMinBalanceDecimal = null,
+  skipRateLimit = false,
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
@@ -124,6 +130,35 @@ export async function buildGasZipNativeRefuelPlan({
       dstChain,
       amountWei: normalizedAmountWei,
     };
+  }
+
+  // Rate-limit enforcement: per-chain daily max, open jobs, cooldown, destination-already-met
+  if (!skipRateLimit) {
+    const rateState = buildGasZipRateState({ auditRecords, now, gasZipPolicy });
+    const rateVerdict = evaluateGasZipRateLimit({
+      dstChain,
+      amountUsd,
+      rateState,
+      destinationBalanceStatus,
+      destinationNativeDecimal,
+      destinationMinBalanceDecimal,
+      now,
+    });
+    if (rateVerdict.decision === "BLOCK") {
+      return {
+        schemaVersion: 1,
+        observedAt: now,
+        planStatus: "blocked",
+        blockedReason: rateVerdict.blockers[0],
+        rateLimitBlockers: rateVerdict.blockers,
+        rateLimitMetrics: rateVerdict.metrics,
+        strategyId,
+        srcChain,
+        dstChain,
+        amountWei: normalizedAmountWei,
+        amountUsd,
+      };
+    }
   }
 
   const quoteUrl = gasZipQuoteUrl({
@@ -311,7 +346,7 @@ export async function executeGasZipNativeRefuelPlan({
     };
   }
   const destinationProof = awaitDestinationSettlement
-    ? await waitForEvmAssetDelta({
+    ? classifySettlementTimeout(await waitForEvmAssetDelta({
         asset: plan.dstAsset,
         owner: plan.recipient,
         initialBalance: destinationBalanceBefore,
@@ -321,7 +356,7 @@ export async function executeGasZipNativeRefuelPlan({
         timeoutMs: destinationSettlementTimeoutMs,
         pollIntervalMs: destinationPollIntervalMs,
         sleepImpl,
-      })
+      }))
     : null;
   const execution = {
     schemaVersion: 1,

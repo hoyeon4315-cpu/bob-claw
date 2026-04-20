@@ -174,6 +174,10 @@ async function main() {
     job,
     senderAddress: resolved.address,
     bitcoinSenderAddress: signerHealth?.addresses?.bitcoin || null,
+    auditRecords: events,
+    destinationBalanceStatus: job.destinationBalanceStatus || null,
+    destinationNativeDecimal: job.destinationNativeDecimal || null,
+    destinationMinBalanceDecimal: job.destinationMinBalanceDecimal || null,
   });
 
   const store = new JsonlStore(config.dataDir);

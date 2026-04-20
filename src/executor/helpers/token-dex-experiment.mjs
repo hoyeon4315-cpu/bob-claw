@@ -8,6 +8,7 @@ import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
+import { classifySettlementTimeout } from "./gas-zip-rate-limit.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
 
 export const TOKEN_DEX_EXPERIMENT_STRATEGY_ID = "token-dex-experiment";
@@ -491,7 +492,7 @@ export async function executeTokenDexExperimentPlan({
     });
   }
   const destinationProof = awaitDestinationSettlement
-    ? await waitForEvmAssetDelta({
+    ? classifySettlementTimeout(await waitForEvmAssetDelta({
         asset: plan.outputAsset,
         owner: plan.senderAddress,
         initialBalance: destinationBalanceBefore,
@@ -501,7 +502,7 @@ export async function executeTokenDexExperimentPlan({
         timeoutMs: destinationSettlementTimeoutMs,
         pollIntervalMs: destinationPollIntervalMs,
         sleepImpl,
-      })
+      }))
     : null;
   const sourceBalanceAfter = await readEvmAssetBalance({
     asset: plan.inputAsset,

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import {
   buildGasZipNativeRefuelPlan,
@@ -11,6 +12,10 @@ import {
   GAS_ZIP_NATIVE_REFUEL_STRATEGY_ID,
 } from "../executor/helpers/gas-zip-refuel.mjs";
 import { DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../executor/helpers/gateway-btc-consolidation.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
+import { scanTreasuryInventory } from "../treasury/inventory.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 
 export function parseArgs(argv) {
   const flags = new Set(argv);
@@ -26,6 +31,7 @@ export function parseArgs(argv) {
     json: flags.has("--json"),
     write: flags.has("--write"),
     execute: flags.has("--execute"),
+    skipRateLimit: flags.has("--skip-rate-limit"),
     srcChain: options["src-chain"] || null,
     dstChain: options["dst-chain"] || null,
     amountWei: options["amount-wei"] || null,
@@ -72,6 +78,37 @@ async function main() {
   if (!args.amountWei) throw new Error("--amount-wei is required (source-chain native amount, in wei)");
 
   const { sender, recipient } = await resolveAddresses(args);
+
+  // Load audit records for rate-limit enforcement
+  const auditRecords = await readJsonl(config.dataDir, "signer-audit").catch(() => []);
+
+  // Check destination chain balance status
+  let destinationBalanceStatus = null;
+  let destinationNativeDecimal = null;
+  let destinationMinBalanceDecimal = null;
+  try {
+    const treasuryPolicy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+    const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+    const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
+    const inventory = await scanTreasuryInventory({
+      policy: treasuryPolicy,
+      address: resolved.address,
+      prices,
+    });
+    const dstNative = inventory.native.find((n) => n.chain === args.dstChain);
+    if (dstNative) {
+      destinationBalanceStatus = dstNative.status || null;
+      destinationNativeDecimal = dstNative.actualDecimal ?? dstNative.actual != null
+        ? Number(BigInt(dstNative.actual)) / 10 ** (dstNative.decimals || 18)
+        : null;
+      destinationMinBalanceDecimal = dstNative.minBalanceDecimal ?? dstNative.minBalance != null
+        ? Number(BigInt(dstNative.minBalance)) / 10 ** (dstNative.decimals || 18)
+        : null;
+    }
+  } catch {
+    // Inventory scan failure should not block; rate limit still applies via audit records
+  }
+
   const plan = await buildGasZipNativeRefuelPlan({
     srcChain: args.srcChain,
     dstChain: args.dstChain,
@@ -80,6 +117,11 @@ async function main() {
     recipient,
     strategyId: args.strategyId,
     gasBufferBps: args.gasBufferBps,
+    auditRecords,
+    destinationBalanceStatus,
+    destinationNativeDecimal,
+    destinationMinBalanceDecimal,
+    skipRateLimit: args.skipRateLimit,
   });
   const execution = args.execute
     ? await executeGasZipNativeRefuelPlan({
@@ -118,6 +160,9 @@ async function main() {
   console.log(`recipient=${plan.recipient}`);
   console.log(`planStatus=${plan.planStatus}`);
   console.log(`blockedReason=${plan.blockedReason || "none"}`);
+  if (plan.rateLimitBlockers?.length) {
+    console.log(`rateLimitBlockers=${plan.rateLimitBlockers.join(",")}`);
+  }
   if (plan.gasZipError?.message) console.log(`gasZipError=${plan.gasZipError.message}`);
   if (plan.preflightError?.message) console.log(`preflightError=${plan.preflightError.message}`);
   if (plan.gasPreflight) {
@@ -144,6 +189,9 @@ async function main() {
     console.log(`destinationProofSource=${execution.destinationProof.proofSource}`);
     console.log(`destinationObservedDelta=${execution.destinationProof.observedDelta}`);
     console.log(`destinationRequiredDelta=${execution.destinationProof.requiredDelta}`);
+    if (execution.destinationProof.status === "near_match_timeout") {
+      console.log(`nearMatchBps=${execution.destinationProof.nearMatchBps}`);
+    }
   }
   if (execution?.receiptIngest) {
     console.log(`receiptIngestAppended=${execution.receiptIngest.appended === true}`);

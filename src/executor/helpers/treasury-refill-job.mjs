@@ -145,6 +145,10 @@ export async function buildTreasuryRefillExecutionPlan({
   job,
   senderAddress,
   bitcoinSenderAddress = null,
+  auditRecords = [],
+  destinationBalanceStatus = null,
+  destinationNativeDecimal = null,
+  destinationMinBalanceDecimal = null,
   buildTokenDexPlanImpl = buildTokenDexExperimentPlan,
   buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
   buildGatewayBtcPlanImpl = buildGatewayBtcConsolidationPlan,
@@ -236,6 +240,10 @@ export async function buildTreasuryRefillExecutionPlan({
       amountWei: targetAmount.toString(),
       senderAddress,
       recipient: senderAddress,
+      auditRecords,
+      destinationBalanceStatus,
+      destinationNativeDecimal,
+      destinationMinBalanceDecimal,
     });
   }
 

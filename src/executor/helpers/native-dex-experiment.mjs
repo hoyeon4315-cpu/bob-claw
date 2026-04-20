@@ -8,6 +8,7 @@ import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
+import { classifySettlementTimeout } from "./gas-zip-rate-limit.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
 
 export const NATIVE_DEX_EXPERIMENT_STRATEGY_ID = "native-dex-experiment";
@@ -465,7 +466,7 @@ export async function executeNativeDexExperimentPlan({
     });
   }
   const destinationProof = awaitDestinationSettlement
-    ? await waitForEvmAssetDelta({
+    ? classifySettlementTimeout(await waitForEvmAssetDelta({
         asset: plan.outputAsset,
         owner: plan.senderAddress,
         initialBalance: destinationBalanceBefore,
@@ -475,7 +476,7 @@ export async function executeNativeDexExperimentPlan({
         timeoutMs: destinationSettlementTimeoutMs,
         pollIntervalMs: destinationPollIntervalMs,
         sleepImpl,
-      })
+      }))
     : null;
   const sourceBalanceAfter = await readEvmAssetBalance({
     asset: plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN),
