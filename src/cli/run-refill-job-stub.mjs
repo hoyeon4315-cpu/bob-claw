@@ -21,7 +21,7 @@ import {
   buildTreasuryRefillExecutionPlan,
   executeTreasuryRefillExecutionPlan,
 } from "../executor/helpers/treasury-refill-job.mjs";
-import { signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
+import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -119,6 +119,11 @@ async function main() {
     throw new Error(`Execution guard blocked: ${guards.reasons.join(",")}`);
   }
 
+  const signerHealth = await readSignerHealth({
+    socketPath: args.socketPath,
+    timeoutMs: args.timeoutMs,
+  }).catch(() => null);
+
   const treasuryPolicy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const inventory = await scanTreasuryInventory({
     policy: treasuryPolicy,
@@ -157,6 +162,7 @@ async function main() {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job,
     senderAddress: resolved.address,
+    bitcoinSenderAddress: signerHealth?.addresses?.bitcoin || null,
   });
 
   const store = new JsonlStore(config.dataDir);

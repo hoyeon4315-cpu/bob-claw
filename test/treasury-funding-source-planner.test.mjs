@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN } from "../src/assets/tokens.mjs";
 import { buildFundingSourcePlan } from "../src/treasury/funding-source-planner.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../src/treasury/policy.mjs";
 
@@ -406,6 +406,88 @@ test("cross-chain source selection prefers route-family token inventory over unr
   assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
   assert.equal(funding.selections[0].selectedSource.source.chain, "base");
   assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+});
+
+test("cross-chain native refill prefers bitcoin inventory when gateway onramp bootstrap is available", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "soneium",
+          actual: "0",
+          actualDecimal: 0,
+          estimatedUsd: 0,
+        },
+        {
+          chain: "sonic",
+          actual: "2000000000000000000",
+          actualDecimal: 2,
+          estimatedUsd: 9.5,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "soneium",
+        asset: "ETH",
+        token: ZERO_TOKEN,
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({
+    plan,
+    policy,
+    routeContext: {
+      routeKey: "base:0x0555->soneium:0x0555",
+      srcChain: "base",
+      dstChain: "soneium",
+      srcToken: WBTC_OFT_TOKEN,
+      dstToken: WBTC_OFT_TOKEN,
+      amount: "10000",
+      inputUsd: 7.5,
+      knownCostUsd: 0.52,
+      netEdgeUsd: -0.58,
+      executableNetEdgeUsd: null,
+      routeFailureRate: 0,
+      tradeReadiness: "insufficient_data",
+    },
+    supplementalInventory: {
+      native: [
+        {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          balance: "25000",
+          actualDecimal: 0.00025,
+          estimatedUsd: 18.5,
+        },
+      ],
+      tokenBalances: [],
+    },
+  });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "bitcoin");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "BTC");
+  assert.deepEqual(funding.selections[0].missingInputs, []);
 });
 
 test("dual wallet cross-chain refill stays conditional even when a source inventory exists", () => {

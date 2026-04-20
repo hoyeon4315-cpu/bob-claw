@@ -4,6 +4,7 @@ import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { scanWholeWalletInventory } from "../treasury/whole-wallet-scan.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
@@ -90,6 +91,18 @@ export function materializeWholeWalletInventory(liveInventory = null, treasurySn
   };
 }
 
+async function resolveBitcoinAddress() {
+  try {
+    const health = await readSignerHealth({
+      socketPath: signerSocketPath(),
+      timeoutMs: signerClientTimeoutMs(),
+    });
+    return health?.addresses?.bitcoin || null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
@@ -100,8 +113,10 @@ async function main() {
     configuredAddress: config.estimateFrom,
   });
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+  const bitcoinAddress = await resolveBitcoinAddress();
   const liveInventory = await scanWholeWalletInventory({
     address: resolved.address,
+    bitcoinAddress,
     prices,
     chains: policy.supportedChains,
     families: args.families,

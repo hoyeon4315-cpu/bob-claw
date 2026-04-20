@@ -268,15 +268,16 @@ function reserveTransferCandidate(action, preferred) {
 
 function crossChainRoutePreference(source, action, routeContext = null) {
   if (!routeContext || action.type !== "refill_native") return 5;
+  if (source.chain === "bitcoin" && normalized(source.token) === normalized(ZERO_TOKEN)) return 0;
   if (routeContext.dstChain && routeContext.dstChain !== action.chain) return 5;
-  if (source.chain === routeContext.srcChain && normalized(source.token) === normalized(routeContext.srcToken)) return 0;
+  if (source.chain === routeContext.srcChain && normalized(source.token) === normalized(routeContext.srcToken)) return 1;
   const sourceAsset = source.chain && source.token ? tokenAsset(source.chain, source.token) : null;
   const routeSourceAsset =
     routeContext.srcChain && routeContext.srcToken ? tokenAsset(routeContext.srcChain, routeContext.srcToken) : null;
-  if (source.chain === routeContext.srcChain && sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 1;
-  if (sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 2;
-  if (source.sourceKind === "token") return 3;
-  if (source.sourceKind === "native") return 4;
+  if (source.chain === routeContext.srcChain && sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 2;
+  if (sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 3;
+  if (source.sourceKind === "token") return 4;
+  if (source.sourceKind === "native") return 5;
   return 5;
 }
 
@@ -318,6 +319,18 @@ function crossChainExecutorSupport(action, selectedSource) {
       supported: false,
       missingInputs: ["cross_chain_source_selection_missing"],
       notes: "Cross-chain funding has no observed source inventory yet, so the planner cannot promote it beyond a conditional source-selection stub.",
+    };
+  }
+
+  if (
+    action.type === "refill_native" &&
+    selectedSource.chain === "bitcoin" &&
+    normalized(selectedSource.token) === normalized(ZERO_TOKEN)
+  ) {
+    return {
+      supported: true,
+      missingInputs: [],
+      notes: "Gateway BTC onramp can bootstrap destination native gas from native BTC inventory using a gas-refill quote path.",
     };
   }
 

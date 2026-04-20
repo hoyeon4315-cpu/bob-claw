@@ -1,8 +1,9 @@
-import { ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
 import {
   buildGatewayBtcConsolidationPlan,
   executeGatewayBtcConsolidationPlan,
 } from "./gateway-btc-consolidation.mjs";
+import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "./gateway-btc-onramp.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
 
@@ -47,6 +48,9 @@ function estimateInputAmountFromSource({ job, source }) {
 
 function outputAmountForCoverage(plan, executor) {
   if (!plan) return null;
+  if (executor === "gateway_btc_onramp") {
+    return plan.gasRefill || plan.quote?.gasRefill || null;
+  }
   if (executor === "gateway_btc_consolidation") {
     return plan.quote?.outputAmount?.amount || null;
   }
@@ -94,6 +98,13 @@ function readyPreparation({ job, executor, plan, coverage }) {
 export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "same_chain_token_to_native_swap") return "token_dex_experiment";
   if (job.executionMethod === "same_chain_native_to_token_swap") return "native_dex_experiment";
+  if (
+    job.executionMethod === "cross_chain_bridge_or_swap" &&
+    job.type === "refill_native" &&
+    job.fundingSource?.source?.chain === "bitcoin"
+  ) {
+    return "gateway_btc_onramp";
+  }
   if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
   return null;
 }
@@ -101,9 +112,11 @@ export function refillExecutorForJob(job = {}) {
 export async function buildTreasuryRefillExecutionPlan({
   job,
   senderAddress,
+  bitcoinSenderAddress = null,
   buildTokenDexPlanImpl = buildTokenDexExperimentPlan,
   buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
   buildGatewayBtcPlanImpl = buildGatewayBtcConsolidationPlan,
+  buildGatewayBtcOnrampPlanImpl = buildGatewayBtcOnrampPlan,
 } = {}) {
   if (!job) throw new Error("Treasury refill job is required");
   if (!senderAddress) throw new Error("Treasury refill sender address is required");
@@ -157,6 +170,21 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       recipient: senderAddress,
     });
+  } else if (executor === "gateway_btc_onramp") {
+    const amountSats = estimateInputAmountFromSource({ job, source });
+    const gasRefill = positiveBigInt(job.targetAmount);
+    const bitcoinSender = bitcoinSenderAddress || senderAddress;
+    if (!amountSats) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    if (!bitcoinSender) return blockedPreparation({ job, executor, blockedReason: "bitcoin_sender_address_missing" });
+    plan = await buildGatewayBtcOnrampPlanImpl({
+      senderAddress: bitcoinSender,
+      recipient: senderAddress,
+      amountSats,
+      dstChain: job.chain,
+      dstToken: WBTC_OFT_TOKEN,
+      gasRefill: gasRefill?.toString() || null,
+      allowUnfundedPreview: true,
+    });
   }
 
   if (plan?.planStatus !== "ready") {
@@ -187,6 +215,7 @@ export async function executeTreasuryRefillExecutionPlan({
   executeTokenDexPlanImpl = executeTokenDexExperimentPlan,
   executeNativeDexPlanImpl = executeNativeDexExperimentPlan,
   executeGatewayBtcPlanImpl = executeGatewayBtcConsolidationPlan,
+  executeGatewayBtcOnrampPlanImpl = executeGatewayBtcOnrampPlan,
   ...executionOptions
 } = {}) {
   if (preparation?.status !== "ready" || !preparation?.plan) {
@@ -200,6 +229,9 @@ export async function executeTreasuryRefillExecutionPlan({
   }
   if (preparation.executor === "gateway_btc_consolidation") {
     return executeGatewayBtcPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  if (preparation.executor === "gateway_btc_onramp") {
+    return executeGatewayBtcOnrampPlanImpl({ plan: preparation.plan, ...executionOptions });
   }
   throw new Error(`Unsupported treasury refill executor: ${preparation.executor || "missing"}`);
 }

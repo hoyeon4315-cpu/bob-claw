@@ -86,6 +86,53 @@ test("treasury refill executor blocks cross-chain native refill until a native e
   assert.match(preparation.blockedReason, /unsupported_refill_execution_method/);
 });
 
+test("treasury refill executor maps bitcoin-funded native refill to Gateway onramp with gas refill", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: nativeRefillJob({
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          ticker: "BTC",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          estimatedUsd: 18.5,
+        },
+      },
+    }),
+    senderAddress: ADDRESS,
+    bitcoinSenderAddress: "bc1qsource000000000000000000000000000000000",
+    buildGatewayBtcOnrampPlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-20T00:00:00.000Z",
+      planStatus: "ready",
+      strategyId: "gateway-btc-onramp",
+      senderAddress: input.senderAddress,
+      recipient: input.recipient,
+      dstChain: input.dstChain,
+      dstToken: input.dstToken,
+      amountSats: input.amountSats,
+      gasRefill: input.gasRefill,
+      quote: { outputAmount: { amount: "1000" } },
+      intent: { strategyId: "gateway-btc-onramp" },
+    }),
+  });
+
+  assert.equal(refillExecutorForJob({
+    executionMethod: "cross_chain_bridge_or_swap",
+    type: "refill_native",
+    fundingSource: { source: { chain: "bitcoin" } },
+  }), "gateway_btc_onramp");
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "gateway_btc_onramp");
+  assert.equal(preparation.plan.senderAddress, "bc1qsource000000000000000000000000000000000");
+  assert.equal(preparation.plan.recipient, ADDRESS);
+  assert.equal(preparation.plan.dstToken, WBTC_OFT_TOKEN);
+  assert.equal(preparation.plan.gasRefill, "1000000000000000");
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor maps BTC-family cross-chain token refill to Gateway consolidation", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
@@ -148,4 +195,18 @@ test("treasury refill executor dispatches ready preparation to the selected exec
 
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.plan.marker, "native");
+});
+
+test("treasury refill executor dispatches Gateway onramp preparations", async () => {
+  const execution = await executeTreasuryRefillExecutionPlan({
+    preparation: {
+      status: "ready",
+      executor: "gateway_btc_onramp",
+      plan: { planStatus: "ready", marker: "onramp" },
+    },
+    executeGatewayBtcOnrampPlanImpl: async ({ plan }) => ({ settlementStatus: "delivered", plan }),
+  });
+
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.plan.marker, "onramp");
 });
