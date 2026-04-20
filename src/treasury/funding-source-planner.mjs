@@ -1,4 +1,5 @@
 import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
+import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction } from "../config/gas-zip.mjs";
 
 const METHOD_PROFILES = {
   same_chain_native_transfer: {
@@ -29,6 +30,14 @@ const METHOD_PROFILES = {
     fixedCostUsd: 0.03,
     variableCostBps: 35,
     expectedLatencyMs: 25_000,
+    requiresReserveState: false,
+    reserveReplenishmentKnown: true,
+    manualFundingDependency: false,
+  },
+  gas_refuel_bridge_gas_zip: {
+    fixedCostUsd: 0.05,
+    variableCostBps: 50,
+    expectedLatencyMs: 90_000,
     requiresReserveState: false,
     reserveReplenishmentKnown: true,
     manualFundingDependency: false,
@@ -416,6 +425,41 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
   });
 }
 
+function gasRefuelCandidate(action, policy) {
+  const vendorPolicy = policy?.gasZipPolicy || GAS_ZIP_DEFAULT_POLICY;
+  const verdict = gasZipAcceptsAction(action, vendorPolicy);
+  if (!verdict.accepted) {
+    return candidateRecord({
+      action,
+      method: "gas_refuel_bridge_gas_zip",
+      source: null,
+      availability: "manual_only",
+      preferred: false,
+      missingInputs: [verdict.reason],
+      notes:
+        "Gas.Zip fallback rejected this action. Per committed policy it is gas-only and per-job capped; strategy capital must not use this lane.",
+    });
+  }
+  return candidateRecord({
+    action,
+    method: "gas_refuel_bridge_gas_zip",
+    source: {
+      chain: "gas_zip",
+      token: ZERO_TOKEN,
+      ticker: "NATIVE",
+      isNative: true,
+      sourceKind: "gas_zip_inbound",
+    },
+    availability: "conditional",
+    preferred: false,
+    requiresBootstrapNative: false,
+    bootstrapNativeSatisfied: true,
+    missingInputs: ["gas_zip_destination_native_delta_proof_required"],
+    notes:
+      "Gas.Zip gas-only refuel. Settlement requires destination-chain native balance delta proof before the job is accepted as successful.",
+  });
+}
+
 function manualFundingCandidate(action) {
   return candidateRecord({
     action,
@@ -527,6 +571,10 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
 
   if (policy.refillPolicy.enableCrossChainRefill) {
     candidates.push(crossChainCandidate(action, plan, policy, routeContext));
+  }
+
+  if (policy.refillPolicy.enableGasRefuelFallback && action.type === "refill_native") {
+    candidates.push(gasRefuelCandidate(action, policy));
   }
 
   candidates.push(manualFundingCandidate(action));

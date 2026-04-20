@@ -194,6 +194,7 @@ export function buildDefaultTreasuryPolicy() {
       skipIfWalletValueBelowUsd: 0,
       enableDexRefill: true,
       enableCrossChainRefill: true,
+      enableGasRefuelFallback: true,
     },
   };
 }
