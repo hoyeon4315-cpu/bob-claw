@@ -6,6 +6,8 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 import { buildStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
 import { buildYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
+import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -37,8 +39,16 @@ function money(value) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { state, dashboardStatus, triangleArtifacts } = await buildCurrentDashboardContext();
-  const pivotPlan = buildStrategyPivotPlan({ dashboardStatus, state, triangleArtifacts });
-  const book = buildYieldShadowBook({ pivotPlan, scenarioAprBps: args.aprBps });
+  const walletRecords = await readJsonl(config.dataDir, "whole-wallet-inventory");
+  const latestWallet = walletRecords.length > 0
+    ? walletRecords.sort((a, b) => new Date(b.observedAt || 0) - new Date(a.observedAt || 0))[0]
+    : null;
+  const walletTotalUsd = Number.isFinite(latestWallet?.totalUsd) ? latestWallet.totalUsd : null;
+  const allowlistBoard = await readJsonIfExists(join(config.dataDir, "destination-allowlist-board.json"));
+  const allowlistedDestinationExists = Array.isArray(allowlistBoard?.items)
+    && allowlistBoard.items.some((item) => item?.values?.allowlistDecision === "allowlisted");
+  const pivotPlan = buildStrategyPivotPlan({ dashboardStatus, state, triangleArtifacts, walletTotalUsd, allowlistedDestinationExists });
+  const book = buildYieldShadowBook({ pivotPlan, scenarioAprBps: args.aprBps, allowlistBoard });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "yield-shadow-book-latest.json");

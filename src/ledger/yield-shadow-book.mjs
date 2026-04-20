@@ -137,6 +137,8 @@ export function buildYieldShadowRecord({
   defaults = {},
   pivot = null,
   scenarioAprBps = DEFAULT_SCENARIO_APR_BPS,
+  allowlistedDestinationExists = false,
+  yieldFeedIntegrated = false,
 } = {}) {
   const capitalRequiredUsd = finite(capitalGuidance?.[definition.capitalField]);
   if (!Number.isFinite(capitalRequiredUsd)) {
@@ -210,8 +212,8 @@ export function buildYieldShadowRecord({
     blockers: unique([
       ...(pivot?.blockers || []),
       Number.isFinite(currentBudgetUsd) && fitsCurrentBudget === false ? "budget_gap_present" : null,
-      "yield_source_feed_not_integrated",
-      "vault_allowlist_not_defined",
+      yieldFeedIntegrated ? null : "yield_source_feed_not_integrated",
+      allowlistedDestinationExists ? null : "vault_allowlist_not_defined",
       "withdrawal_latency_unmeasured",
       "cashout_cost_unmeasured",
     ]),
@@ -230,11 +232,14 @@ export function buildYieldShadowRecord({
   };
 }
 
-export function buildYieldShadowBook({ pivotPlan = null, scenarioAprBps = DEFAULT_SCENARIO_APR_BPS } = {}) {
+export function buildYieldShadowBook({ pivotPlan = null, scenarioAprBps = DEFAULT_SCENARIO_APR_BPS, allowlistBoard = null } = {}) {
   const pivot = yieldPivot(pivotPlan);
   const currentBudgetUsd = finite(pivotPlan?.budgetAssessment?.currentBudgetUsd ?? pivotPlan?.currentSystem?.activeBudgetUsd);
   const budgetScenarios = pivotPlan?.budgetAssessment?.budgetScenarios || [];
   const defaults = pivot?.evidence?.defaults || {};
+  const allowlistedDestinationExists = Array.isArray(allowlistBoard?.items)
+    && allowlistBoard.items.some((item) => item?.values?.allowlistDecision === "allowlisted");
+  const yieldFeedIntegrated = false;
   const profiles = PROFILE_DEFINITIONS.map((definition) =>
     buildYieldShadowRecord({
       definition,
@@ -244,6 +249,8 @@ export function buildYieldShadowBook({ pivotPlan = null, scenarioAprBps = DEFAUL
       defaults,
       pivot,
       scenarioAprBps,
+      allowlistedDestinationExists,
+      yieldFeedIntegrated,
     }),
   );
 

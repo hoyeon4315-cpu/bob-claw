@@ -72,8 +72,10 @@ function tokenPolicy(chain, token, overrides = {}) {
   };
 }
 
-export function buildDefaultTreasuryPolicy() {
-  const activeBudgetUsd = deriveConfiguredActiveBudgetUsd();
+export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
+  const activeBudgetUsd = Number.isFinite(walletTotalUsd) && walletTotalUsd > 0
+    ? walletTotalUsd
+    : deriveConfiguredActiveBudgetUsd();
   const nativeBalances = {
     bob: nativePolicy("bob", {
       enabled: true,
@@ -133,7 +135,7 @@ export function buildDefaultTreasuryPolicy() {
     walletMode: "single_wallet",
     capital: {
       activeBudgetUsd,
-      referenceBudgetUsd: 300,
+      referenceBudgetUsd: activeBudgetUsd,
       canaryStartUsdMin: 20,
       canaryStartUsdMax: 50,
       maxIdleCapitalPerChainUsd: 60,

@@ -381,7 +381,7 @@ function buildTrianglePivot({ catalog = null, budgetUsd }) {
   };
 }
 
-function buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd }) {
+function buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd, allowlistedDestinationExists = false, yieldFeedIntegrated = false }) {
   const defaults = YIELD_BLUEPRINT_REFERENCE.defaults;
   const splitFraction = defaults.usdcSplitPercent / 100;
   const inverseFraction = 1 - splitFraction;
@@ -428,11 +428,11 @@ function buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd }) {
     blockers: [
       "external_reference_only",
       "llm_execution_path_not_allowed",
-      "yield_source_feed_not_integrated",
-      "vault_allowlist_not_defined",
+      allowlistedDestinationExists ? null : "vault_allowlist_not_defined",
+      yieldFeedIntegrated ? null : "yield_source_feed_not_integrated",
       "withdrawal_latency_unmodelled",
       "cashout_costs_unmeasured",
-    ],
+    ].filter(Boolean),
     overfitRisks: [
       "apy_history_not_measured",
       "yield_decay_not_measured",
@@ -590,9 +590,12 @@ export function buildStrategyPivotPlan({
   state = {},
   triangleArtifacts = {},
   planningBudgetsUsd = DEFAULT_PLANNING_BUDGETS_USD,
+  walletTotalUsd = null,
+  allowlistedDestinationExists = false,
+  yieldFeedIntegrated = false,
 } = {}) {
   const riskPolicy = buildDefaultRiskPolicy();
-  const treasuryPolicy = buildDefaultTreasuryPolicy();
+  const treasuryPolicy = buildDefaultTreasuryPolicy({ walletTotalUsd });
   const budgetUsd = finite(treasuryPolicy.capital.activeBudgetUsd) ?? finite(referenceBudgetUsd(treasuryPolicy));
   const budgetScenarios = normalizeBudgetScenarios(finite(treasuryPolicy.capital.activeBudgetUsd), [
     referenceBudgetUsd(treasuryPolicy),
@@ -601,7 +604,7 @@ export function buildStrategyPivotPlan({
   const catalog = buildStrategyCatalog({ dashboardStatus, state, triangleArtifacts });
   const strategy = dashboardStatus?.strategy || {};
   const pivots = [
-    buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd }),
+    buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd, allowlistedDestinationExists, yieldFeedIntegrated }),
     buildProxySpreadPivot({ strategy, catalog, riskPolicy, budgetUsd }),
     buildStableLoopPivot({ strategy, catalog, riskPolicy, budgetUsd }),
     buildTrianglePivot({ catalog, budgetUsd }),
