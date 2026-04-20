@@ -61,6 +61,21 @@ test("risk state summarizes realized pnl, failed gas, and consecutive failures",
   assert.equal(riskState.walletEstimatedUsd, 280);
 });
 
+test("risk state treats delivered executions as terminal successes that reset failure streaks", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T07:00:00.000Z",
+    inventory: inventoryFixture(),
+    receiptRecords: [],
+    executionEvents: [
+      { observedAt: "2026-04-11T06:40:00.000Z", status: "failed" },
+      { observedAt: "2026-04-11T06:50:00.000Z", status: "delivered" },
+      { observedAt: "2026-04-11T06:55:00.000Z", status: "failed" },
+    ],
+  });
+
+  assert.equal(riskState.consecutiveFailures, 1);
+});
+
 test("risk gate allows a healthy refill job", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture(),

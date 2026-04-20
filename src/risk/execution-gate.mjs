@@ -52,7 +52,7 @@ function missingLeverageFields(strategyPolicy = null) {
 
 function latestTerminalStatuses(events = []) {
   return [...events]
-    .filter((item) => ["confirmed", "failed"].includes(item.status))
+    .filter((item) => ["confirmed", "delivered", "failed"].includes(item.status))
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt));
 }
 
