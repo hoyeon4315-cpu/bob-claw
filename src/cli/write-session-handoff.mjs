@@ -465,7 +465,7 @@ function treasuryTriageLines({
     null;
   const liveTrading = dashboardStatus?.overall?.liveTrading || reviewPackage?.liveTradingPolicy || "BLOCKED";
   const lines = [
-    "- Wallet mode: `single_wallet` default. `dual_wallet` remains later-phase reserve tooling, not the current blocker.",
+    "- Wallet mode: `single_wallet`. Budget derived from real-time wallet inventory. `dual_wallet` remains later-phase reserve tooling, not the current blocker.",
   ];
 
   if (wholeWalletFunding?.status === "route_funding_required") {
@@ -481,7 +481,7 @@ function treasuryTriageLines({
   }
 
   lines.push(
-    "- Under-modelled gap: non-BTC cross-chain native/token refill stays conditional until a dedicated executor exists.",
+    "- Under-modelled gap: non-BTC cross-chain native/token refill stays conditional until a dedicated executor exists. Currently no active lane requires it — all active strategies are BTC-family-based.",
   );
 
   if (liveTrading === "ALLOWED" && pivotDecision?.decisionCode === "stay_blocked") {
