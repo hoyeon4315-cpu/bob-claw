@@ -179,13 +179,13 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: false,
     }),
     caps: Object.freeze({
-      perTxUsd: 15,
-      perDayUsd: 75,
+      perTxUsd: 50,
+      perDayUsd: 200,
       perChainUsd: Object.freeze({
         base: 15,
         avalanche: 15,
         bera: 15,
-        bsc: 15,
+        bsc: 75,
         ethereum: 15,
         soneium: 15,
         sonic: 15,
@@ -216,13 +216,13 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: false,
     }),
     caps: Object.freeze({
-      perTxUsd: 15,
-      perDayUsd: 75,
+      perTxUsd: 50,
+      perDayUsd: 200,
       perChainUsd: Object.freeze({
         base: 15,
         avalanche: 15,
         bera: 15,
-        bsc: 15,
+        bsc: 75,
         ethereum: 15,
         soneium: 15,
         sonic: 15,
