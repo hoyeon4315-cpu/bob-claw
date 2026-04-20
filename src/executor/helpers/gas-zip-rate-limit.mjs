@@ -4,12 +4,34 @@
 // between refills per chain, and destination-balance-already-met gates.
 // These config values were previously defined but never enforced.
 
-import { GAS_ZIP_DEFAULT_POLICY } from "../../config/gas-zip.mjs";
+import { GAS_ZIP_DEFAULT_POLICY, GAS_ZIP_OUTBOUND_CHAINS } from "../../config/gas-zip.mjs";
 import { buildDefaultTreasuryPolicy } from "../../treasury/policy.mjs";
 
 const GAS_ZIP_STRATEGY_ID = "gas-zip-native-refuel";
 
 const NEAR_MATCH_THRESHOLD_BPS = 50; // 0.5% = near-match
+
+// Build a reverse map from chainId -> chain name
+const CHAIN_ID_TO_NAME = Object.fromEntries(
+  Object.entries(GAS_ZIP_OUTBOUND_CHAINS).map(([name, cfg]) => [cfg.chainId, name]),
+);
+
+function resolveDstChainName(record) {
+  // Prefer destination chainId from metadata (most reliable)
+  const dstChainId = record.intent?.metadata?.gasZipDestinationChainId;
+  if (dstChainId && CHAIN_ID_TO_NAME[dstChainId]) {
+    return CHAIN_ID_TO_NAME[dstChainId];
+  }
+  // Fallback: try shortId
+  const dstShortId = record.intent?.metadata?.gasZipDestinationShortId;
+  if (dstShortId != null) {
+    for (const [name, cfg] of Object.entries(GAS_ZIP_OUTBOUND_CHAINS)) {
+      if (cfg.shortId === Number(dstShortId)) return name;
+    }
+  }
+  // Last resort: use source chain name (not ideal but covers non-metadata records)
+  return null;
+}
 
 function hoursAgo(isoTimestamp, nowIso) {
   const ts = new Date(isoTimestamp).getTime();
@@ -65,13 +87,8 @@ export function buildGasZipRateState({
   const openJobCount = {};
 
   for (const record of todayRecords) {
-    const chain = record.chain || record.intent?.chain || "unknown";
-    const dstChain = record.intent?.metadata?.gasZipDestinationShortId
-      ? String(record.intent.metadata.gasZipDestinationShortId)
-      : null;
-
-    // Use destination chain for rate limiting (where gas arrives)
-    const targetChain = dstChain || chain;
+    const srcChain = record.chain || record.intent?.chain || "unknown";
+    const targetChain = resolveDstChainName(record) || srcChain;
     const amountUsd = Number(record.amountUsd || record.intent?.amountUsd || 0);
 
     // Skip terminal failures from volume counting
