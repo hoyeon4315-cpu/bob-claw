@@ -1,4 +1,4 @@
-import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../../assets/tokens.mjs";
 import {
   buildGatewayBtcConsolidationPlan,
   executeGatewayBtcConsolidationPlan,
@@ -70,7 +70,7 @@ function outputAmountForCoverage(plan, executor) {
     return plan.gasRefill || plan.quote?.gasRefill || null;
   }
   if (executor === "gateway_btc_consolidation") {
-    return plan.quote?.outputAmount?.amount || null;
+    return plan.gasRefill || plan.quote?.gasRefill || plan.quote?.outputAmount?.amount || null;
   }
   return plan.minimumOutputAmount || plan.quote?.outputAmount || null;
 }
@@ -122,6 +122,15 @@ export function refillExecutorForJob(job = {}) {
     job.fundingSource?.source?.chain === "bitcoin"
   ) {
     return "gateway_btc_onramp";
+  }
+  if (
+    job.executionMethod === "cross_chain_bridge_or_swap" &&
+    job.type === "refill_native" &&
+    job.fundingSource?.source?.chain &&
+    job.fundingSource?.source?.token &&
+    isBtcLikeAsset(tokenAsset(job.fundingSource.source.chain, job.fundingSource.source.token))
+  ) {
+    return "gateway_btc_consolidation";
   }
   if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
   return null;
@@ -175,18 +184,23 @@ export async function buildTreasuryRefillExecutionPlan({
   } else if (executor === "gateway_btc_consolidation") {
     const targetAmount = positiveBigInt(job.targetAmount);
     const sourceAmount = positiveBigInt(source.actual);
-    if (!targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
-    if (sourceAmount != null && sourceAmount < targetAmount) {
+    const amount = job.type === "refill_native" ? estimateInputAmountFromSource({ job, source }) : targetAmount?.toString() || null;
+    if (job.type === "refill_native" && !amount) {
+      return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    }
+    if (job.type !== "refill_native" && !targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
+    if (job.type !== "refill_native" && sourceAmount != null && sourceAmount < targetAmount) {
       return blockedPreparation({ job, executor, blockedReason: "source_inventory_below_target_amount" });
     }
     plan = await buildGatewayBtcPlanImpl({
       srcChain: source.chain,
       dstChain: job.chain,
       srcToken: source.token,
-      dstToken: job.token,
-      amount: targetAmount.toString(),
+      dstToken: job.type === "refill_native" ? WBTC_OFT_TOKEN : job.token,
+      amount,
       senderAddress,
       recipient: senderAddress,
+      gasRefill: job.type === "refill_native" ? job.targetAmount : null,
     });
   } else if (executor === "gateway_btc_onramp") {
     const onrampAmount = gatewayOnrampAmountSats({ job, source });

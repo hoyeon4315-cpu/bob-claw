@@ -232,11 +232,11 @@ test("cross-chain refill selects an observed source inventory when another chain
   const funding = buildFundingSourcePlan({ plan, policy });
 
   assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
-  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
   assert.equal(funding.selections[0].selectedSource.source.chain, "base");
   assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
   assert.equal(funding.selections[0].missingInputs.includes("cross_chain_source_selection_missing"), false);
-  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_native_refill_executor_missing"), true);
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_native_refill_executor_missing"), false);
   assert.equal(funding.selections[0].missingInputs.includes("reserve_state_unmodelled"), false);
   assert.equal(funding.reasons.includes("reserve_state_unmodelled"), false);
   assert.equal(funding.reasons.includes("reserve_replenishment_unmodelled"), false);
@@ -409,7 +409,7 @@ test("cross-chain source selection prefers route-family token inventory over unr
   assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
 });
 
-test("cross-chain native refill prefers bitcoin inventory when gateway onramp bootstrap is available", () => {
+test("cross-chain native refill prefers exact route-source wrapped BTC over bitcoin inventory when gas refill is executable", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {
     ...planFixture("REFILL_REQUIRED"),
@@ -486,8 +486,8 @@ test("cross-chain native refill prefers bitcoin inventory when gateway onramp bo
 
   assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
   assert.equal(funding.selections[0].selectionStatus, "ready");
-  assert.equal(funding.selections[0].selectedSource.source.chain, "bitcoin");
-  assert.equal(funding.selections[0].selectedSource.source.ticker, "BTC");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
   assert.deepEqual(funding.selections[0].missingInputs, []);
 });
 

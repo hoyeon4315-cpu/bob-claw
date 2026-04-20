@@ -275,7 +275,6 @@ function reserveTransferCandidate(action, preferred) {
 
 function crossChainRoutePreference(source, action, routeContext = null) {
   if (!routeContext || action.type !== "refill_native") return 5;
-  if (source.chain === "bitcoin" && normalized(source.token) === normalized(ZERO_TOKEN)) return 0;
   if (routeContext.dstChain && routeContext.dstChain !== action.chain) return 5;
   if (source.chain === routeContext.srcChain && normalized(source.token) === normalized(routeContext.srcToken)) return 1;
   const sourceAsset = source.chain && source.token ? tokenAsset(source.chain, source.token) : null;
@@ -283,8 +282,9 @@ function crossChainRoutePreference(source, action, routeContext = null) {
     routeContext.srcChain && routeContext.srcToken ? tokenAsset(routeContext.srcChain, routeContext.srcToken) : null;
   if (source.chain === routeContext.srcChain && sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 2;
   if (sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 3;
-  if (source.sourceKind === "token") return 4;
-  if (source.sourceKind === "native") return 5;
+  if (source.chain === "bitcoin" && normalized(source.token) === normalized(ZERO_TOKEN)) return 4;
+  if (source.sourceKind === "token") return 5;
+  if (source.sourceKind === "native") return 6;
   return 5;
 }
 
@@ -339,6 +339,17 @@ function crossChainExecutorSupport(action, selectedSource) {
       missingInputs: [],
       notes: "Gateway BTC onramp can bootstrap destination native gas from native BTC inventory using a gas-refill quote path.",
     };
+  }
+
+  if (action.type === "refill_native") {
+    const sourceAsset = tokenAsset(selectedSource.chain, selectedSource.token);
+    if (isBtcLikeAsset(sourceAsset)) {
+      return {
+        supported: true,
+        missingInputs: [],
+        notes: "Gateway BTC-family transport can move wrapped BTC inventory into the destination chain while bundling destination native gas through gas-refill.",
+      };
+    }
   }
 
   if (action.type === "refill_token") {

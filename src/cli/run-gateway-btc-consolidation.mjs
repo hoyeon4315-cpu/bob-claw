@@ -31,6 +31,7 @@ function parseArgs(argv) {
     srcToken: options["src-token"] || null,
     dstToken: options["dst-token"] || null,
     amount: options.amount || "10000",
+    gasRefill: options["gas-refill"] || null,
     sender: options.sender || null,
     recipient: options.recipient || null,
     socketPath: options["socket-path"] || signerSocketPath(),
@@ -79,6 +80,7 @@ async function main() {
     srcToken: args.srcToken || args.token,
     dstToken: args.dstToken || args.token,
     amount: args.amount,
+    gasRefill: args.gasRefill,
     senderAddress: sender,
     recipient,
     gasBufferBps: args.gasBufferBps,
@@ -117,6 +119,9 @@ async function main() {
   console.log(`asset=${plan.srcAsset.ticker}->${plan.dstAsset.ticker}`);
   console.log(`amount=${plan.amount}`);
   console.log(`amountUsd=${plan.amountUsd}`);
+  if (plan.gasRefill) {
+    console.log(`gasRefill=${plan.gasRefill}`);
+  }
   console.log(`sender=${plan.senderAddress}`);
   console.log(`recipient=${plan.recipient}`);
   console.log(`planStatus=${plan.planStatus}`);

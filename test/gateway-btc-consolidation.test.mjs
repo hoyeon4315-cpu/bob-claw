@@ -191,6 +191,42 @@ test("gateway btc consolidation preview can skip preflight and still preserve qu
   assert.equal(plan.quote.route.dstChain, "bera");
 });
 
+test("gateway btc consolidation plan forwards gas refill for destination native bootstrap", async () => {
+  let capturedParams = null;
+  const plan = await buildGatewayBtcConsolidationPlan({
+    client: {
+      ...gatewayClientFixture(),
+      getQuote: async (params) => {
+        capturedParams = params;
+        return gatewayClientFixture().getQuote();
+      },
+    },
+    priceReader: async () => ({ btc: 100_000, tokenByKey: { btc: 100_000 } }),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T03:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://rpc.example",
+      latencyMs: 25,
+      gasUnits: 240_000,
+      gasUnitsHex: "0x3a980",
+      rpcFallbacksTried: 0,
+    }),
+    srcChain: "base",
+    dstChain: "bsc",
+    token: "wbtc.oft",
+    amount: "10000",
+    gasRefill: { amount: "1000000000000000" },
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.gasRefill, "1000000000000000");
+  assert.equal(plan.quote.gasRefill, "1000000000000000");
+  assert.equal(capturedParams.gasRefill, "1000000000000000");
+  assert.equal(plan.intent.metadata.gatewayGasRefill, "1000000000000000");
+});
+
 test("gateway btc consolidation execution sends signer a buffered live intent", async () => {
   const plan = await buildGatewayBtcConsolidationPlan({
     client: gatewayClientFixture(),

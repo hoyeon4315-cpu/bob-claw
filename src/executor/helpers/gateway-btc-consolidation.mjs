@@ -62,6 +62,14 @@ function txDataBytes(data) {
   return Math.max(0, (data.length - 2) / 2);
 }
 
+function normalizeGasRefill(gasRefill) {
+  if (gasRefill == null || gasRefill === "") return null;
+  if (typeof gasRefill === "object") {
+    return normalizeGasRefill(gasRefill.amount);
+  }
+  return String(toPositiveInteger(gasRefill, "gasRefill"));
+}
+
 function normalizeGatewayTransportQuoteBody(body) {
   const quote = body?.layerZero || null;
   if (!quote) {
@@ -217,6 +225,7 @@ export async function buildGatewayBtcConsolidationPlan({
   senderAddress,
   recipient,
   slippageBps = config.slippageBps,
+  gasRefill = null,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   skipPreflight = false,
   now = new Date().toISOString(),
@@ -237,6 +246,7 @@ export async function buildGatewayBtcConsolidationPlan({
   }
 
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
+  const normalizedGasRefill = normalizeGasRefill(gasRefill);
   const route = {
     srcChain,
     dstChain,
@@ -255,6 +265,7 @@ export async function buildGatewayBtcConsolidationPlan({
       sender: senderAddress,
       recipient,
       slippage: String(slippageBps),
+      ...(normalizedGasRefill ? { gasRefill: normalizedGasRefill } : {}),
     });
     gatewayQuoteLatencyMs = quoteResult.latencyMs;
     const quote = normalizeGatewayTransportQuoteBody(quoteResult.body);
@@ -276,6 +287,7 @@ export async function buildGatewayBtcConsolidationPlan({
       txData: quote.tx.data,
       txChain: quote.tx.chain || srcChain,
       txDataBytes: txDataBytes(quote.tx.data),
+      gasRefill: normalizedGasRefill,
     };
     const prices = await priceReader();
     amountUsd = amountUsdFromQuote(quote, srcAsset, prices);
@@ -345,6 +357,7 @@ export async function buildGatewayBtcConsolidationPlan({
         metadata: {
           skipAutoIngest: true,
           gatewayRouteKey: routeKey(route),
+          gatewayGasRefill: normalizedGasRefill,
           gatewayQuoteLatencyMs,
           gatewayGasEstimateSource: gasEstimate.rpcUrl,
           gatewayEstimatedTimeInSecs: normalizedQuote.estimatedTimeInSecs,
@@ -377,6 +390,7 @@ export async function buildGatewayBtcConsolidationPlan({
     dstAsset,
     amount: normalizedAmount,
     amountUsd,
+    gasRefill: normalizedGasRefill,
     quote: normalizedQuote,
     gasPreflight,
     intent,

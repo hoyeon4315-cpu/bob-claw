@@ -64,7 +64,8 @@ test("treasury refill executor builds same-chain token-to-native refill preview"
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
-test("treasury refill executor blocks cross-chain native refill until a native executor exists", async () => {
+test("treasury refill executor maps cross-chain BTC-family native refill to Gateway consolidation with gas refill", async () => {
+  let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob({
       executionMethod: "cross_chain_bridge_or_swap",
@@ -79,11 +80,43 @@ test("treasury refill executor blocks cross-chain native refill until a native e
       },
     }),
     senderAddress: ADDRESS,
+    buildGatewayBtcPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-20T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "gateway-btc-funding-transfer",
+        route: {
+          srcChain: input.srcChain,
+          dstChain: input.dstChain,
+          srcToken: input.srcToken,
+          dstToken: input.dstToken,
+        },
+        amount: input.amount,
+        gasRefill: input.gasRefill,
+        amountUsd: 2.42,
+        quote: {
+          outputAmount: { amount: "900" },
+          gasRefill: input.gasRefill,
+        },
+        gasPreflight: { gasUnits: 100000 },
+        intent: { strategyId: "gateway-btc-funding-transfer" },
+      };
+    },
   });
 
-  assert.equal(refillExecutorForJob({ executionMethod: "cross_chain_bridge_or_swap", type: "refill_native" }), null);
-  assert.equal(preparation.status, "blocked");
-  assert.match(preparation.blockedReason, /unsupported_refill_execution_method/);
+  assert.equal(refillExecutorForJob({
+    executionMethod: "cross_chain_bridge_or_swap",
+    type: "refill_native",
+    fundingSource: { source: { chain: "base", token: WBTC_OFT_TOKEN } },
+  }), "gateway_btc_consolidation");
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "gateway_btc_consolidation");
+  assert.equal(capturedInput.dstToken, WBTC_OFT_TOKEN);
+  assert.equal(capturedInput.gasRefill, "1000000000000000");
+  assert.equal(preparation.plan.gasRefill, "1000000000000000");
+  assert.equal(preparation.coverage.coversTarget, true);
 });
 
 test("treasury refill executor maps bitcoin-funded native refill to Gateway onramp with gas refill", async () => {
