@@ -3,7 +3,8 @@ import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, tokenAsset } from ".
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
-import { attachOdosAssembly, normalizeOdosQuote, OdosClient, odosRoutingConfig, STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
+import { STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
+import { classifyDexError, dexProvidersForChain, tryProvidersWithFallback, OdosProvider } from "../../dex/providers.mjs";
 import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -72,19 +73,17 @@ function normalizeErc20Token(chain, token, label) {
   throw new Error(`Unsupported ${label}: ${token}`);
 }
 
-function classifyOdosError(error) {
+function classifyExperimentError(error) {
   if (error?.name === "GasEstimateError") {
     return classifyGasEstimateError(error);
   }
-  const message = String(error?.message || "");
+  // Use generic DEX classifier for provider errors
+  const classified = classifyDexError(error, error?.provider || null);
+  if (classified !== "dex_quote_failed") return classified;
+  // Fallback: inspect message for Odos-specific patterns
   const detail = String(error?.details?.body?.detail || "");
-  if (message.includes("Odos chain unsupported")) {
-    return "odos_chain_not_supported";
-  }
-  if (detail.includes("Routing unavailable")) {
-    return "routing_unavailable";
-  }
-  return "odos_quote_failed";
+  if (detail.includes("Routing unavailable")) return "routing_unavailable";
+  return "dex_quote_failed";
 }
 
 function serializePreflightError(error) {
@@ -151,7 +150,8 @@ function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationB
 }
 
 export async function buildTokenDexExperimentPlan({
-  client = new OdosClient(),
+  providers = null,
+  client = null,
   estimateGasImpl = estimateGas,
   gasSnapshotImpl = getGasSnapshot,
   strategyId = TOKEN_DEX_EXPERIMENT_STRATEGY_ID,
@@ -167,6 +167,9 @@ export async function buildTokenDexExperimentPlan({
   if (!senderAddress) throw new Error("EVM sender address is required");
   if (!getEvmChainConfig(chain)) throw new Error(`Unsupported EVM chain: ${chain}`);
 
+  // Backward compat: if client is passed, wrap as OdosProvider
+  const resolvedProviders = providers || (client ? [new OdosProvider({ client })] : dexProvidersForChain(chain));
+
   const strategyCaps = assertStrategyCaps(strategyId);
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
   const normalizedInputToken = normalizeErc20Token(chain, inputToken, "inputToken");
@@ -180,10 +183,10 @@ export async function buildTokenDexExperimentPlan({
   }
   const inputAsset = tokenAsset(chain, normalizedInputToken);
   const outputAsset = unwrapToNative ? tokenAsset(chain, ZERO_TOKEN) : tokenAsset(chain, normalizedOutputToken);
-  const routing = odosRoutingConfig(chain);
 
   let quote = null;
   let executableQuote = null;
+  let providerName = null;
   let blockedReason = null;
   let preflightError = null;
   let gasSnapshot = null;
@@ -191,36 +194,17 @@ export async function buildTokenDexExperimentPlan({
   let steps = [];
 
   try {
-    const quoted = await client.quote({
+    const result = await tryProvidersWithFallback(resolvedProviders, {
       chain,
       inputToken: normalizedInputToken,
       outputToken: normalizedOutputToken,
       amount: normalizedAmount,
-      userAddr: senderAddress,
-      slippageLimitPercent: Number(slippageBps) / 100,
-      sourceWhitelist: routing.sourceWhitelist,
-      sourceBlacklist: routing.sourceBlacklist,
+      senderAddress,
+      slippageBps: Number(slippageBps),
     });
-    quote = normalizeOdosQuote({
-      chain,
-      source: "token_dex_experiment",
-      amount: normalizedAmount,
-      inputToken: normalizedInputToken,
-      outputToken: normalizedOutputToken,
-      inputTicker: inputAsset.ticker,
-      inputDecimals: inputAsset.decimals,
-      outputTicker: outputAsset.ticker,
-      outputDecimals: outputAsset.decimals,
-      quoteType: "token_to_token",
-      result: quoted,
-      sourceWhitelist: routing.sourceWhitelist,
-      sourceBlacklist: routing.sourceBlacklist,
-    });
-    const assembled = await client.assemble({
-      pathId: quote.pathId,
-      userAddr: senderAddress,
-    });
-    executableQuote = attachOdosAssembly(quote, assembled);
+    quote = result.quote;
+    executableQuote = result.executableQuote;
+    providerName = result.provider;
     const amountUsd = Number(executableQuote.inputValueUsd ?? 0);
     try {
       gasSnapshot = await gasSnapshotImpl(chain, getEvmChainConfig(chain));
@@ -317,7 +301,7 @@ export async function buildTokenDexExperimentPlan({
             gasLimit: String(applyGasBuffer(approveGas.gasUnits, gasBuffer)),
           },
           metadata: {
-            provider: "odos",
+            provider: providerName || "odos",
             inputToken: normalizedInputToken,
             outputToken: normalizedOutputToken,
             sourceWhitelist: executableQuote.sourceWhitelist,
@@ -328,7 +312,7 @@ export async function buildTokenDexExperimentPlan({
       {
         id: "swap_input_to_output",
         intent: buildIntent({
-          intentType: "odos_swap",
+          intentType: "dex_swap",
           tx: {
             to: executableQuote.txTo,
             data: executableQuote.txData,
@@ -336,7 +320,7 @@ export async function buildTokenDexExperimentPlan({
             gasLimit: swapGasLimit,
           },
           metadata: {
-            provider: "odos",
+            provider: providerName || "odos",
             pathId: executableQuote.pathId,
             inputToken: normalizedInputToken,
             outputToken: unwrapToNative ? ZERO_TOKEN : normalizedOutputToken,
@@ -368,7 +352,7 @@ export async function buildTokenDexExperimentPlan({
       });
     }
   } catch (error) {
-    blockedReason = blockedReason || classifyOdosError(error);
+    blockedReason = blockedReason || classifyExperimentError(error);
     preflightError = serializePreflightError(error);
   }
 

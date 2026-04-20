@@ -425,3 +425,59 @@ export function attachOdosAssembly(quote, result) {
     assembleLatencyMs: result?.latencyMs ?? null,
   };
 }
+
+export class OdosProvider {
+  constructor({ client = new OdosClient() } = {}) {
+    this.client = client;
+  }
+
+  get name() {
+    return "odos";
+  }
+
+  supportsChain(chain) {
+    return !!ODOS_CHAIN_IDS[chain];
+  }
+
+  async quote({
+    chain,
+    inputToken,
+    outputToken,
+    amount,
+    senderAddress,
+    slippageBps = 50,
+    sourceWhitelist = null,
+    sourceBlacklist = null,
+  } = {}) {
+    const routing = odosRoutingConfig(chain, { sourceWhitelist, sourceBlacklist });
+    const quoted = await this.client.quote({
+      chain,
+      inputToken,
+      outputToken,
+      amount,
+      userAddr: senderAddress,
+      slippageLimitPercent: Number(slippageBps) / 100,
+      sourceWhitelist: routing.sourceWhitelist,
+      sourceBlacklist: routing.sourceBlacklist,
+    });
+    return normalizeOdosQuote({
+      chain,
+      source: "odos_provider",
+      amount,
+      inputToken,
+      outputToken,
+      quoteType: "token_to_token",
+      result: quoted,
+      sourceWhitelist: routing.sourceWhitelist,
+      sourceBlacklist: routing.sourceBlacklist,
+    });
+  }
+
+  async assemble({ quote, senderAddress } = {}) {
+    const assembled = await this.client.assemble({
+      pathId: quote.pathId,
+      userAddr: senderAddress,
+    });
+    return attachOdosAssembly(quote, assembled);
+  }
+}
