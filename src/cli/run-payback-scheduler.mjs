@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { config } from "../config/env.mjs";
 import { PAYBACK_CONFIG } from "../config/payback.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -14,7 +14,7 @@ import {
   runPaybackSchedulerTick,
 } from "../executor/payback/scheduler.mjs";
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
     argv
@@ -116,7 +116,10 @@ async function main() {
   printTickSummary(result);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const entrypointHref = process.argv[1] ? new URL(`file://${resolve(process.argv[1])}`).href : null;
+if (entrypointHref && import.meta.url === entrypointHref) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
