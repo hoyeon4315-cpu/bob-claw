@@ -4,8 +4,10 @@ import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import {
   buildCompositePaybackPlan,
   buildPaybackDecision,
+  buildPaybackDisbursementRecord,
   matchesCronExpression,
   runPaybackSchedulerTick,
+  submitCompositePaybackPlan,
 } from "../src/executor/payback/scheduler.mjs";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
 
@@ -279,4 +281,126 @@ test("composite payback plan defers when offramp cost breaches the net-payback r
 test("cron matcher uses config-supplied weekly schedule", () => {
   assert.equal(matchesCronExpression("0 0 * * 0", "2026-04-19T00:00:00.000Z"), true);
   assert.equal(matchesCronExpression("0 0 * * 0", "2026-04-20T00:00:00.000Z"), false);
+});
+
+test("payback disbursement record contains every AGENTS.md required audit field", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const decision = await buildPaybackDecision({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "80000",
+    },
+    accumulatorSnapshot: accumulatorFixture,
+    marketState: {
+      periodId: "week-2026-16",
+      periodStartAt: "2026-04-13T00:00:00.000Z",
+      periodEndAt: "2026-04-20T00:00:00.000Z",
+    },
+  });
+
+  const planning = await buildCompositePaybackPlan({
+    decision,
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    signerHealthReader: async () => ({
+      addresses: { base: "0x1111111111111111111111111111111111111111" },
+    }),
+    consolidationPlanBuilder: async () => consolidationPlanFixture(),
+    offrampPlanBuilder: async () => offrampPlanFixture(),
+  });
+
+  const result = await submitCompositePaybackPlan({
+    compositePlan: planning.compositePlan,
+    tokenDexExecutor: async () => ({ realized: { realizedNetCostSats: 100 } }),
+    consolidationExecutor: async () => ({ realized: { realizedNetCostSats: 900 } }),
+    offrampExecutor: async () => ({
+      settlementStatus: "delivered",
+      plan: {
+        order: { orderId: "gateway-order-xyz" },
+        intent: { metadata: { gatewayOrderId: "gateway-order-xyz" } },
+      },
+      signerResult: { broadcast: { txHash: "0xsourcetx" } },
+      realized: { realizedNetCostSats: 4000 },
+      destinationProof: {
+        status: "delivered",
+        observedDelta: "70000",
+        txid: "btc-txid-xyz",
+      },
+    }),
+    now: "2026-04-20T00:00:00.000Z",
+  });
+
+  assert.equal(result.status, "submitted");
+  const record = result.disbursementRecord;
+  assert.ok(record, "disbursement record emitted");
+  assert.equal(record.kind, "payback_disbursement");
+  assert.equal(record.strategyId, "gateway-btc-offramp");
+  assert.equal(record.periodId, "week-2026-16");
+  assert.equal(record.chain, "base");
+  assert.equal(record.harvestWindow.startAt, "2026-04-13T00:00:00.000Z");
+  assert.equal(record.harvestWindow.endAt, "2026-04-20T00:00:00.000Z");
+  assert.equal(record.grossProfitSats, 400_000);
+  assert.equal(record.grossTargetBeforeCostsSats, 80_000);
+  assert.equal(record.appliedRatios.baseRatio, 0.2);
+  assert.equal(record.appliedRatios.regime, "neutral");
+  assert.equal(record.appliedRatios.regimeMultiplier, 1);
+  assert.equal(record.appliedRatios.volMultiplier, 1);
+  assert.equal(record.plannedPaybackSats, 75_250);
+  assert.equal(record.estimatedRoundTripCostSats, 4_750);
+  assert.equal(record.realizedRoundTripCostSats, 4_900);
+  assert.equal(record.gatewayOrderId, "gateway-order-xyz");
+  assert.equal(record.bitcoinTxid, "btc-txid-xyz");
+  assert.equal(record.sourceTxHash, "0xsourcetx");
+  assert.equal(record.settlementStatus, "delivered");
+  assert.equal(record.settledBalanceDeltaSats, 70_000);
+});
+
+test("payback disbursement helper accepts minimal offramp-only composite plan", () => {
+  const record = buildPaybackDisbursementRecord({
+    compositePlan: {
+      plannedPaybackSats: 60_000,
+      estimatedOfframpCostSats: 3_000,
+      recipient: "bc1qrecipient",
+      senderAddress: "0xsender",
+      route: { reserveChain: "base" },
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 400_000,
+          periodStartAt: "2026-04-13T00:00:00.000Z",
+          periodEndAt: "2026-04-20T00:00:00.000Z",
+        },
+        applied: {
+          baseRatio: 0.2,
+          regime: "neutral",
+          regimeMultiplier: 1,
+          volMultiplier: 1,
+          grossTargetBeforeCostsSats: 80_000,
+        },
+      },
+    },
+    stepResults: [
+      {
+        kind: "gateway_btc_offramp",
+        execution: {
+          settlementStatus: "delivered",
+          plan: { order: { orderId: "order-abc" } },
+          signerResult: { broadcast: { txHash: "0xhash" } },
+          realized: { realizedNetCostSats: 3_200 },
+          destinationProof: {
+            status: "delivered",
+            observedDelta: "56800",
+            txid: "btc-abc",
+          },
+        },
+      },
+    ],
+    now: "2026-04-20T00:00:00.000Z",
+  });
+  assert.equal(record.gatewayOrderId, "order-abc");
+  assert.equal(record.bitcoinTxid, "btc-abc");
+  assert.equal(record.settledBalanceDeltaSats, 56_800);
+  assert.equal(record.realizedRoundTripCostSats, 3_200);
+  assert.equal(record.plannedPaybackSats, 60_000);
 });

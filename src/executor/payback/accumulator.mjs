@@ -65,6 +65,25 @@ const DEFAULT_OFFRAMP_COST_USD_PATHS = Object.freeze([
   "offrampCostUsd",
 ]);
 
+const DEFAULT_GROSS_PROFIT_SATS_PATHS = Object.freeze([
+  "payback.grossProfitSats",
+  "realized.grossProfitSats",
+  "metadata.grossProfitSats",
+  "decisionLog.inputs.grossProfitSatsPeriod",
+  "grossProfitSats",
+]);
+
+const DEFAULT_REALIZED_ROUND_TRIP_COST_SATS_PATHS = Object.freeze([
+  "payback.realizedRoundTripCostSats",
+  "realized.realizedRoundTripCostSats",
+  "metadata.realizedRoundTripCostSats",
+  "realizedRoundTripCostSats",
+]);
+
+const DEFAULT_EXPANSION_RESERVE_CHAIN = "base";
+const DEFAULT_EXPANSION_TARGET_EFFICIENCY = 0.9;
+const DEFAULT_EXPANSION_CONSECUTIVE_PERIODS_REQUIRED = 8;
+
 function finiteNumber(value) {
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -296,6 +315,55 @@ function hasDeliveredPaybackReceipt(record) {
   return record?.settlementStatus === "delivered" || record?.destinationProof?.status === "delivered";
 }
 
+function grossProfitSatsFromPaybackRecord(record, btcUsd, config) {
+  const direct = firstFinitePathValue(record, config?.grossProfitSatsPaths || DEFAULT_GROSS_PROFIT_SATS_PATHS);
+  if (Number.isFinite(direct)) return roundSats(direct);
+  const projectedUsd = firstFinitePathValue(record, [
+    "payback.grossProfitUsd",
+    "realized.grossProfitUsd",
+    "metadata.grossProfitUsd",
+  ]);
+  if (Number.isFinite(projectedUsd)) return usdToSats(projectedUsd, btcUsd);
+  return null;
+}
+
+function realizedRoundTripCostSatsFromPaybackRecord(record, btcUsd, config) {
+  const direct = firstFinitePathValue(
+    record,
+    config?.realizedRoundTripCostSatsPaths || DEFAULT_REALIZED_ROUND_TRIP_COST_SATS_PATHS,
+  );
+  if (Number.isFinite(direct)) return roundSats(direct);
+  const projectedUsd = firstFinitePathValue(record, [
+    "payback.realizedRoundTripCostUsd",
+    "realized.realizedRoundTripCostUsd",
+    "metadata.realizedRoundTripCostUsd",
+  ]);
+  if (Number.isFinite(projectedUsd)) return usdToSats(projectedUsd, btcUsd);
+  return null;
+}
+
+function paybackChainFromRecord(record) {
+  return firstPresentPathValue(record, [
+    "chain",
+    "payback.reserveChain",
+    "plan.reserveChain",
+    "plan.route.reserveChain",
+    "metadata.reserveChain",
+    "reserveState.chain",
+  ]);
+}
+
+function paybackPeriodIdFromRecord(record) {
+  return firstPresentPathValue(record, [
+    "periodId",
+    "payback.periodId",
+    "metadata.periodId",
+    "plan.periodId",
+    "plan.intent.metadata.periodId",
+    "decisionLog.periodId",
+  ]);
+}
+
 function paidBackSatsFromRecord(record, btcUsd, config, markers) {
   const direct = firstFinitePathValue(record, config?.paidBackSatsPaths || DEFAULT_PAID_BACK_SATS_PATHS);
   if (Number.isFinite(direct)) return roundSats(direct);
@@ -513,6 +581,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
       record,
       settledSats: paidBackSatsFromRecord(record, btcUsd, config, markers),
       offrampCostSats: offrampCostSatsFromRecord(record, btcUsd, config, markers),
+      grossProfitSats: grossProfitSatsFromPaybackRecord(record, btcUsd, config),
+      realizedRoundTripCostSats: realizedRoundTripCostSatsFromPaybackRecord(record, btcUsd, config),
+      delivered: hasDeliveredPaybackReceipt(record),
+      chain: paybackChainFromRecord(record),
+      periodId: paybackPeriodIdFromRecord(record),
+      receipt: paybackThreeWayReceipt(record),
       observedAtMs: latestTimestampMs([record]),
     }))
     .filter((item) => Number.isFinite(item.settledSats) || Number.isFinite(item.offrampCostSats));
@@ -573,6 +647,73 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
       ? remainingEntryRecoverySats / averageDailyPaybackSatsRecent
       : 0;
 
+  const expansionReserveChain =
+    firstPresentPathValue(config, ["expansionReserveChain"]) || DEFAULT_EXPANSION_RESERVE_CHAIN;
+  const expansionTargetEfficiency =
+    finiteNumber(config?.expansionTargetEfficiency) ?? DEFAULT_EXPANSION_TARGET_EFFICIENCY;
+  const expansionConsecutiveRequired =
+    Math.max(1, Math.floor(
+      finiteNonNegative(config?.expansionConsecutivePeriodsRequired) ??
+        DEFAULT_EXPANSION_CONSECUTIVE_PERIODS_REQUIRED,
+    ));
+
+  const deliveredPaybackPeriods = paybackRecords
+    .filter((item) => item.delivered)
+    .sort((left, right) => left.observedAtMs - right.observedAtMs);
+
+  const expansionReserveChainLower = String(expansionReserveChain || "").toLowerCase();
+  const paybackPeriodEfficiencies = deliveredPaybackPeriods.map((item, index) => {
+    const gross = Number.isFinite(item.grossProfitSats) ? item.grossProfitSats : null;
+    const realizedCost = Number.isFinite(item.realizedRoundTripCostSats)
+      ? item.realizedRoundTripCostSats
+      : Number.isFinite(item.offrampCostSats)
+        ? item.offrampCostSats
+        : null;
+    const chainLower = String(item.chain || "").toLowerCase();
+    const matchesExpansionChain = chainLower === expansionReserveChainLower;
+    const efficiency =
+      Number.isFinite(gross) && gross > 0 && Number.isFinite(realizedCost)
+        ? (gross - realizedCost) / gross
+        : null;
+    const meetsTarget = Number.isFinite(efficiency) ? efficiency >= expansionTargetEfficiency : false;
+    return {
+      index,
+      periodId: item.periodId || null,
+      observedAt: Number.isFinite(item.observedAtMs) && item.observedAtMs > 0
+        ? new Date(item.observedAtMs).toISOString()
+        : null,
+      chain: item.chain || null,
+      matchesExpansionChain,
+      grossProfitSats: Number.isFinite(gross) ? gross : null,
+      realizedRoundTripCostSats: Number.isFinite(realizedCost) ? realizedCost : null,
+      settledSats: Number.isFinite(item.settledSats) ? item.settledSats : null,
+      efficiency,
+      meetsTarget,
+      receipt: item.receipt,
+    };
+  });
+
+  const expansionChainPeriods = paybackPeriodEfficiencies.filter((item) => item.matchesExpansionChain);
+  let consecutiveCount = 0;
+  for (let index = expansionChainPeriods.length - 1; index >= 0; index -= 1) {
+    const entry = expansionChainPeriods[index];
+    if (!entry.meetsTarget) break;
+    consecutiveCount += 1;
+  }
+  const mostRecentExpansionPeriod =
+    expansionChainPeriods.length > 0 ? expansionChainPeriods[expansionChainPeriods.length - 1] : null;
+  const expansionGate = {
+    reserveChain: expansionReserveChain,
+    targetEfficiency: expansionTargetEfficiency,
+    requiredConsecutivePeriods: expansionConsecutiveRequired,
+    consecutivePeriodsMeetingTarget: consecutiveCount,
+    periodsRemaining: Math.max(0, expansionConsecutiveRequired - consecutiveCount),
+    deliveredPeriodCountOnReserveChain: expansionChainPeriods.length,
+    deliveredPeriodCountAllChains: paybackPeriodEfficiencies.length,
+    eligible: consecutiveCount >= expansionConsecutiveRequired,
+    mostRecent: mostRecentExpansionPeriod,
+  };
+
   return {
     periodId: period.periodId,
     grossProfitSats_period: grossProfitSatsPeriod,
@@ -586,5 +727,7 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
       roundTripEfficiency_period: grossProfitSatsPeriod > 0 ? safeRatio(grossProfitSatsPeriod - offrampCostSatsPeriod, grossProfitSatsPeriod) : 0,
       daysToBreakeven,
     },
+    paybackPeriodEfficiencies,
+    expansionGate,
   };
 }

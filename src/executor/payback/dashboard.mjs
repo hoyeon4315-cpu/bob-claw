@@ -237,6 +237,21 @@ export async function buildPaybackDashboardSlice({
       roundTripEfficiencyPeriod: snapshot.kpi?.roundTripEfficiency_period ?? 0,
       daysToBreakeven: snapshot.kpi?.daysToBreakeven ?? 0,
     },
+    expansionGate: snapshot.expansionGate
+      ? {
+          reserveChain: snapshot.expansionGate.reserveChain,
+          targetEfficiency: snapshot.expansionGate.targetEfficiency,
+          requiredConsecutivePeriods: snapshot.expansionGate.requiredConsecutivePeriods,
+          consecutivePeriodsMeetingTarget: snapshot.expansionGate.consecutivePeriodsMeetingTarget,
+          periodsRemaining: snapshot.expansionGate.periodsRemaining,
+          deliveredPeriodCountOnReserveChain: snapshot.expansionGate.deliveredPeriodCountOnReserveChain,
+          deliveredPeriodCountAllChains: snapshot.expansionGate.deliveredPeriodCountAllChains,
+          eligible: snapshot.expansionGate.eligible,
+          mostRecentPeriodEfficiency: snapshot.expansionGate.mostRecent?.efficiency ?? null,
+          mostRecentPeriodObservedAt: snapshot.expansionGate.mostRecent?.observedAt ?? null,
+        }
+      : null,
+    paybackPeriodEfficiencies: snapshot.paybackPeriodEfficiencies || [],
     dataSources: {
       auditLogCount: normalizeRecords(resolvedAuditLogLines).length,
       receiptReconciliationCount: normalizeRecords(resolvedReceiptStore.receiptReconciliations).length,

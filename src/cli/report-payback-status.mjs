@@ -155,6 +155,16 @@ async function main() {
     console.log(`plannedPaybackSats=${report.compositePreview.plannedPaybackSats ?? "n/a"}`);
     console.log(`estimatedOfframpCostSats=${report.compositePreview.estimatedOfframpCostSats ?? "n/a"}`);
   }
+  const expansionGate = report.payback?.expansionGate;
+  if (expansionGate) {
+    console.log(`expansionReserveChain=${expansionGate.reserveChain}`);
+    console.log(`expansionTargetEfficiency=${expansionGate.targetEfficiency}`);
+    console.log(`expansionRequiredConsecutivePeriods=${expansionGate.requiredConsecutivePeriods}`);
+    console.log(`expansionConsecutivePeriodsMeetingTarget=${expansionGate.consecutivePeriodsMeetingTarget}`);
+    console.log(`expansionPeriodsRemaining=${expansionGate.periodsRemaining}`);
+    console.log(`expansionEligible=${expansionGate.eligible}`);
+    console.log(`expansionDeliveredPeriodCountOnReserveChain=${expansionGate.deliveredPeriodCountOnReserveChain}`);
+  }
 }
 
 main().catch((error) => {

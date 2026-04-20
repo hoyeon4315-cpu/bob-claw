@@ -20,6 +20,18 @@ test("payback accumulator returns zeroed snapshot for empty inputs", () => {
       roundTripEfficiency_period: 0,
       daysToBreakeven: 0,
     },
+    paybackPeriodEfficiencies: [],
+    expansionGate: {
+      reserveChain: "base",
+      targetEfficiency: 0.9,
+      requiredConsecutivePeriods: 8,
+      consecutivePeriodsMeetingTarget: 0,
+      periodsRemaining: 8,
+      deliveredPeriodCountOnReserveChain: 0,
+      deliveredPeriodCountAllChains: 0,
+      eligible: false,
+      mostRecent: null,
+    },
   });
 });
 
@@ -214,6 +226,72 @@ test("payback accumulator only counts delivered payback when three-way receipt i
   });
 
   assert.equal(snapshot.paidBackSats_lifetime, 4_200);
+});
+
+test("payback accumulator tracks base expansion gate over 8 consecutive delivered periods", () => {
+  const CHAIN = "base";
+  const buildDelivered = (index, grossProfitSats, realizedRoundTripCostSats, { hoursAgo = 0 } = {}) => {
+    const observedAt = new Date(Date.UTC(2026, 3, 10, 0, 0, 0) + index * 7 * 24 * 60 * 60 * 1000);
+    return {
+      timestamp: observedAt.toISOString(),
+      strategyId: "gateway-btc-offramp",
+      settlementStatus: "delivered",
+      chain: CHAIN,
+      periodId: `period-${index}`,
+      payback: {
+        grossProfitSats,
+        realizedRoundTripCostSats,
+      },
+      signerResult: {
+        broadcast: { txHash: `0xsource-${index}` },
+      },
+      metadata: {
+        gatewayOrderId: `order-${index}`,
+      },
+      destinationProof: {
+        status: "delivered",
+        observedDelta: String(Math.max(0, grossProfitSats - realizedRoundTripCostSats)),
+        txid: `btc-${index}`,
+      },
+    };
+  };
+
+  const eightPassing = Array.from({ length: 8 }, (_, index) => buildDelivered(index, 100_000, 5_000));
+  const snapshotPassing = snapshotPaybackAccumulator(eightPassing, {}, {
+    paybackStrategyIds: ["gateway-btc-offramp"],
+    paybackIntentTypes: ["gateway_btc_offramp"],
+  });
+
+  assert.equal(snapshotPassing.expansionGate.consecutivePeriodsMeetingTarget, 8);
+  assert.equal(snapshotPassing.expansionGate.periodsRemaining, 0);
+  assert.equal(snapshotPassing.expansionGate.eligible, true);
+  assert.equal(snapshotPassing.paybackPeriodEfficiencies.length, 8);
+  assert.equal(snapshotPassing.paybackPeriodEfficiencies.at(-1).meetsTarget, true);
+
+  const withFailure = [
+    buildDelivered(0, 100_000, 20_000), // 0.8 efficiency, fails 0.9 target
+    ...Array.from({ length: 5 }, (_, index) => buildDelivered(index + 1, 100_000, 5_000)),
+  ];
+  const snapshotWithFailure = snapshotPaybackAccumulator(withFailure, {}, {
+    paybackStrategyIds: ["gateway-btc-offramp"],
+    paybackIntentTypes: ["gateway_btc_offramp"],
+  });
+  assert.equal(snapshotWithFailure.expansionGate.consecutivePeriodsMeetingTarget, 5);
+  assert.equal(snapshotWithFailure.expansionGate.periodsRemaining, 3);
+  assert.equal(snapshotWithFailure.expansionGate.eligible, false);
+  assert.equal(snapshotWithFailure.expansionGate.deliveredPeriodCountOnReserveChain, 6);
+
+  const offChain = [
+    buildDelivered(0, 100_000, 5_000),
+    { ...buildDelivered(1, 100_000, 5_000), chain: "avalanche" },
+  ];
+  const snapshotOffChain = snapshotPaybackAccumulator(offChain, {}, {
+    paybackStrategyIds: ["gateway-btc-offramp"],
+    paybackIntentTypes: ["gateway_btc_offramp"],
+  });
+  assert.equal(snapshotOffChain.expansionGate.consecutivePeriodsMeetingTarget, 1);
+  assert.equal(snapshotOffChain.expansionGate.deliveredPeriodCountOnReserveChain, 1);
+  assert.equal(snapshotOffChain.expansionGate.deliveredPeriodCountAllChains, 2);
 });
 
 test("payback accumulator excludes delivered payback receipts from gross profit", () => {

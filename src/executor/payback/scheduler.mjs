@@ -599,7 +599,11 @@ export async function buildPaybackDecision({
     reason: "planning_required",
     decisionLog: {
       observedAt: now,
+      periodId: accumulatorConfig.periodId || null,
       inputs: {
+        periodId: accumulatorConfig.periodId || null,
+        periodStartAt: accumulatorConfig.periodStartAt || null,
+        periodEndAt: accumulatorConfig.periodEndAt || null,
         grossProfitSatsPeriod,
         paidBackSatsRolling12m: rollingPaidBackSats,
         pendingDeferredSats: snapshot.pendingDeferredSats,
@@ -873,11 +877,126 @@ export async function buildCompositePaybackPlan({
   };
 }
 
+function sumBigIntishSats(values) {
+  let total = 0;
+  for (const value of values) {
+    const parsed = finiteNonNegative(value);
+    if (Number.isFinite(parsed)) total += parsed;
+  }
+  return total;
+}
+
+function firstPresent(target, paths = []) {
+  for (const path of paths) {
+    const value = path.split(".").reduce(
+      (acc, segment) => (acc == null ? undefined : acc[segment]),
+      target,
+    );
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+export function buildPaybackDisbursementRecord({ compositePlan, stepResults = [], now = new Date().toISOString() } = {}) {
+  if (!compositePlan) {
+    throw new Error("Payback disbursement record requires a composite plan");
+  }
+  const offrampStep = stepResults.find((step) => step?.kind === "gateway_btc_offramp") || null;
+  const consolidationStep = stepResults.find((step) => step?.kind === "gateway_btc_consolidation") || null;
+  const swapStep = stepResults.find((step) => step?.kind === "token_dex_swap") || null;
+
+  const offrampExecution = offrampStep?.execution || null;
+  const settledBalanceDeltaSats = finiteNumber(firstPresent(offrampExecution, [
+    "destinationProof.observedDelta",
+    "destinationProof.deltaSats",
+    "destinationProof.balanceDelta",
+  ]));
+  const bitcoinTxid = firstPresent(offrampExecution, [
+    "destinationProof.txid",
+    "destinationProof.bitcoinTxid",
+  ]);
+  const gatewayOrderId = firstPresent(offrampExecution, [
+    "plan.order.orderId",
+    "plan.intent.metadata.gatewayOrderId",
+  ]) || firstPresent(compositePlan, ["steps.2.plan.order.orderId"]);
+  const sourceTxHash = firstPresent(offrampExecution, [
+    "signerResult.broadcast.txHash",
+  ]);
+  const settlementStatus = firstPresent(offrampExecution, ["settlementStatus"]) || "source_confirmed_only";
+
+  const realizedRoundTripCostSats = sumBigIntishSats([
+    firstPresent(swapStep, ["execution.realized.realizedNetCostSats"]),
+    firstPresent(swapStep, ["execution.realized.realizedGasCostSats"]),
+    firstPresent(consolidationStep, ["execution.realized.realizedNetCostSats"]),
+    firstPresent(consolidationStep, ["execution.realized.realizedGasCostSats"]),
+    firstPresent(offrampExecution, ["realized.realizedNetCostSats"]),
+    firstPresent(offrampExecution, ["realized.realizedGasCostSats"]),
+    firstPresent(offrampExecution, ["plan.quote.fees.amount"]),
+  ]);
+
+  const applied = compositePlan.decisionLog?.applied || {};
+  const inputs = compositePlan.decisionLog?.inputs || {};
+  const periodId =
+    compositePlan.decisionLog?.periodId ||
+    inputs.periodId ||
+    compositePlan.reserveState?.periodId ||
+    `payback:${sourceTxHash || bitcoinTxid || gatewayOrderId || "unknown"}`;
+
+  const plannedPaybackSats =
+    finiteNonNegative(compositePlan.plannedPaybackSats) ??
+    finiteNonNegative(compositePlan.decisionLog?.result?.plannedPaybackSats) ??
+    null;
+  const estimatedRoundTripCostSats =
+    finiteNonNegative(compositePlan.estimatedOfframpCostSats) ??
+    finiteNonNegative(compositePlan.decisionLog?.result?.estimatedOfframpCostSats) ??
+    null;
+
+  return {
+    schemaVersion: 1,
+    observedAt: now,
+    kind: "payback_disbursement",
+    strategyId: GATEWAY_BTC_OFFRAMP_STRATEGY_ID,
+    periodId,
+    chain: compositePlan.route?.reserveChain || compositePlan.reserveState?.chain || null,
+    harvestWindow: {
+      startAt: inputs.periodStartAt || null,
+      endAt: inputs.periodEndAt || null,
+    },
+    grossProfitSats: finiteNonNegative(inputs.grossProfitSatsPeriod) ?? null,
+    grossTargetBeforeCostsSats: finiteNonNegative(applied.grossTargetBeforeCostsSats) ?? null,
+    appliedRatios: {
+      baseRatio: finiteNumber(applied.baseRatio) ?? null,
+      regime: applied.regime || null,
+      regimeMultiplier: finiteNumber(applied.regimeMultiplier) ?? null,
+      volAnnualized: finiteNumber(applied.volAnnualized) ?? null,
+      volMultiplier: finiteNumber(applied.volMultiplier) ?? null,
+    },
+    plannedPaybackSats,
+    estimatedRoundTripCostSats,
+    realizedRoundTripCostSats,
+    gatewayOrderId,
+    bitcoinTxid,
+    sourceTxHash,
+    settlementStatus,
+    settledBalanceDeltaSats: Number.isFinite(settledBalanceDeltaSats) ? settledBalanceDeltaSats : null,
+    destinationProof: offrampExecution?.destinationProof || null,
+    receipt: {
+      sourceTxHash,
+      gatewayOrderId,
+      bitcoinTxid,
+    },
+    recipient: compositePlan.recipient || null,
+    senderAddress: compositePlan.senderAddress || null,
+  };
+}
+
 export async function submitCompositePaybackPlan({
   compositePlan,
   tokenDexExecutor = executeTokenDexExperimentPlan,
   consolidationExecutor = executeGatewayBtcConsolidationPlan,
   offrampExecutor = executeGatewayBtcOfframpPlan,
+  disbursementRecordBuilder = buildPaybackDisbursementRecord,
+  now = new Date().toISOString(),
 } = {}) {
   if (!Array.isArray(compositePlan?.steps) || compositePlan.steps.length === 0) {
     throw new Error("Composite payback plan has no executable steps");
@@ -910,12 +1029,17 @@ export async function submitCompositePaybackPlan({
     }
     throw new Error(`Unsupported payback composite step: ${step.kind}`);
   }
+  const disbursementRecord =
+    typeof disbursementRecordBuilder === "function"
+      ? disbursementRecordBuilder({ compositePlan, stepResults, now })
+      : null;
   return {
     schemaVersion: 1,
-    observedAt: new Date().toISOString(),
+    observedAt: now,
     status: "submitted",
     compositePlan,
     stepResults,
+    disbursementRecord,
   };
 }
 
