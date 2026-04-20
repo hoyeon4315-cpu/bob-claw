@@ -87,6 +87,7 @@ test("treasury refill executor blocks cross-chain native refill until a native e
 });
 
 test("treasury refill executor maps bitcoin-funded native refill to Gateway onramp with gas refill", async () => {
+  let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob({
       executionMethod: "cross_chain_bridge_or_swap",
@@ -103,7 +104,9 @@ test("treasury refill executor maps bitcoin-funded native refill to Gateway onra
     }),
     senderAddress: ADDRESS,
     bitcoinSenderAddress: "bc1qsource000000000000000000000000000000000",
-    buildGatewayBtcOnrampPlanImpl: async (input) => ({
+    buildGatewayBtcOnrampPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
       schemaVersion: 1,
       observedAt: "2026-04-20T00:00:00.000Z",
       planStatus: "ready",
@@ -116,7 +119,8 @@ test("treasury refill executor maps bitcoin-funded native refill to Gateway onra
       gasRefill: input.gasRefill,
       quote: { outputAmount: { amount: "1000" } },
       intent: { strategyId: "gateway-btc-onramp" },
-    }),
+      };
+    },
   });
 
   assert.equal(refillExecutorForJob({
@@ -129,8 +133,36 @@ test("treasury refill executor maps bitcoin-funded native refill to Gateway onra
   assert.equal(preparation.plan.senderAddress, "bc1qsource000000000000000000000000000000000");
   assert.equal(preparation.plan.recipient, ADDRESS);
   assert.equal(preparation.plan.dstToken, WBTC_OFT_TOKEN);
+  assert.equal(capturedInput.amountSats, "5000");
   assert.equal(preparation.plan.gasRefill, "1000000000000000");
   assert.equal(preparation.coverage.coversTarget, true);
+});
+
+test("treasury refill executor blocks gateway onramp native refill when bitcoin source is below gateway minimum", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: nativeRefillJob({
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          ticker: "BTC",
+          actual: "4000",
+          actualDecimal: 0.00004,
+          estimatedUsd: 3,
+        },
+      },
+    }),
+    senderAddress: ADDRESS,
+    bitcoinSenderAddress: "bc1qsource000000000000000000000000000000000",
+    buildGatewayBtcOnrampPlanImpl: async () => {
+      throw new Error("builder must not run below minimum");
+    },
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.executor, "gateway_btc_onramp");
+  assert.equal(preparation.blockedReason, "source_inventory_below_gateway_minimum");
 });
 
 test("treasury refill executor maps BTC-family cross-chain token refill to Gateway consolidation", async () => {

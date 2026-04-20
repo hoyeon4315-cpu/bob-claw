@@ -227,3 +227,61 @@ test("planner uses token-specific demand when a chain has multiple modeled token
   assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"), true);
   assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"), false);
 });
+
+test("planner accepts same-chain stablecoin alias coverage for chain-level demand", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const inventory = inventoryFixture();
+  inventory.supportedChains = [...inventory.supportedChains, "bsc"];
+  inventory.tokens.push({
+    chain: "bsc",
+    active: false,
+    enabled: true,
+    ticker: "USDC",
+    token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    actual: "0",
+    actualDecimal: 0,
+    targetBalance: "300000000000000000000",
+    targetBalanceDecimal: 300,
+    maxBalance: "1000000000000000000000",
+    maxBalanceDecimal: 1000,
+    refillToTarget: "300000000000000000000",
+    refillToTargetDecimal: 300,
+    priceUsd: 1,
+    estimatedUsd: 0,
+    status: "observe_only_low",
+    rationale: "BSC stable buffer",
+  });
+  inventory.tokens.push({
+    chain: "bsc",
+    active: false,
+    enabled: true,
+    ticker: "USDT",
+    token: "0x55d398326f99059fF775485246999027B3197955",
+    actual: "357373900000000000000",
+    actualDecimal: 357.3739,
+    targetBalance: "300000000000000000000",
+    targetBalanceDecimal: 300,
+    maxBalance: "1000000000000000000000",
+    maxBalanceDecimal: 1000,
+    refillToTarget: "0",
+    refillToTargetDecimal: 0,
+    priceUsd: 1,
+    estimatedUsd: 357.3739,
+    status: "supported_ready",
+    rationale: "BSC stable buffer",
+  });
+
+  const plan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: [{ chain: "bsc" }],
+  });
+
+  assert.equal(plan.actions.some((item) => item.chain === "bsc" && item.token === "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"), false);
+  assert.equal(
+    plan.observations.some(
+      (item) => item.chain === "bsc" && item.ticker === "USDC" && item.status === "satisfied_by_same_chain_stable_buffer",
+    ),
+    true,
+  );
+});

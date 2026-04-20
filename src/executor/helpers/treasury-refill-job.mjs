@@ -8,6 +8,7 @@ import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
+const GATEWAY_BTC_ONRAMP_MIN_SATS = 5000n;
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
@@ -44,6 +45,23 @@ function estimateInputAmountFromSource({ job, source }) {
   const sourceUnitUsd = sourceUsd / sourceDecimal;
   const inputDecimal = Math.min(sourceDecimal, (targetUsd * INPUT_BUFFER_MULTIPLIER) / sourceUnitUsd);
   return ceilUnitsFromDecimalAmount(inputDecimal, sourceAsset.decimals);
+}
+
+function gatewayOnrampAmountSats({ job, source }) {
+  const sourceAmount = positiveBigInt(source?.actual);
+  if (!sourceAmount) return { amount: null, belowMinimum: false };
+  if (sourceAmount < GATEWAY_BTC_ONRAMP_MIN_SATS) {
+    return {
+      amount: sourceAmount.toString(),
+      belowMinimum: true,
+    };
+  }
+  const estimated = positiveBigInt(estimateInputAmountFromSource({ job, source }));
+  const clamped = estimated && estimated > GATEWAY_BTC_ONRAMP_MIN_SATS ? estimated : GATEWAY_BTC_ONRAMP_MIN_SATS;
+  return {
+    amount: clamped.toString(),
+    belowMinimum: false,
+  };
 }
 
 function outputAmountForCoverage(plan, executor) {
@@ -171,9 +189,13 @@ export async function buildTreasuryRefillExecutionPlan({
       recipient: senderAddress,
     });
   } else if (executor === "gateway_btc_onramp") {
-    const amountSats = estimateInputAmountFromSource({ job, source });
+    const onrampAmount = gatewayOnrampAmountSats({ job, source });
+    const amountSats = onrampAmount.amount;
     const gasRefill = positiveBigInt(job.targetAmount);
     const bitcoinSender = bitcoinSenderAddress || senderAddress;
+    if (onrampAmount.belowMinimum) {
+      return blockedPreparation({ job, executor, blockedReason: "source_inventory_below_gateway_minimum" });
+    }
     if (!amountSats) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     if (!bitcoinSender) return blockedPreparation({ job, executor, blockedReason: "bitcoin_sender_address_missing" });
     plan = await buildGatewayBtcOnrampPlanImpl({

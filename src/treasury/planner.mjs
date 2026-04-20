@@ -1,4 +1,5 @@
 import { decimalToUnits } from "./policy.mjs";
+import { tokenAsset } from "../assets/tokens.mjs";
 
 function bigint(value) {
   return BigInt(value || 0);
@@ -50,6 +51,21 @@ function tokenAction(item, policy) {
   };
 }
 
+function isStablecoinInventoryItem(item) {
+  return tokenAsset(item.chain, item.token).family === "stablecoin";
+}
+
+function stablecoinCoverageByChain(items = []) {
+  const coverage = new Map();
+  for (const item of items) {
+    if (!isStablecoinInventoryItem(item)) continue;
+    const current = Number.isFinite(item.actualDecimal) ? item.actualDecimal : 0;
+    const existing = coverage.get(item.chain) || 0;
+    if (current > existing) coverage.set(item.chain, current);
+  }
+  return coverage;
+}
+
 export function enrichInventoryWithRefillUsd(inventory) {
   const native = inventory.native.map((item) => ({
     ...item,
@@ -70,6 +86,7 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
   const routeDemandTokenKeys = new Set(routeDemand.filter((item) => item.token).map((item) => `${item.chain}:${String(item.token).toLowerCase()}`));
   const routeDemandTokenChains = new Set(routeDemand.filter((item) => item.token).map((item) => item.chain));
   const modeledTokenKeys = new Set((enriched.tokens || []).map((item) => `${item.chain}:${String(item.token).toLowerCase()}`));
+  const stableCoverage = stablecoinCoverageByChain(enriched.tokens || []);
   const actions = [];
   const blockers = [];
   const observations = [];
@@ -112,10 +129,26 @@ export function buildTreasuryPlan({ policy, inventory, routeDemand = [] }) {
 
   for (const item of enriched.tokens) {
     const tokenKey = `${item.chain}:${String(item.token).toLowerCase()}`;
-    const hasDemand =
-      routeDemandTokenKeys.has(tokenKey) ||
-      (!routeDemandTokenChains.has(item.chain) && routeDemandChains.has(item.chain));
+    const hasExactDemand = routeDemandTokenKeys.has(tokenKey);
+    const hasChainLevelDemand = !routeDemandTokenChains.has(item.chain) && routeDemandChains.has(item.chain);
+    const hasDemand = hasExactDemand || hasChainLevelDemand;
+    const stableEquivalentSatisfied =
+      !hasExactDemand &&
+      hasChainLevelDemand &&
+      isStablecoinInventoryItem(item) &&
+      (stableCoverage.get(item.chain) || 0) >= item.targetBalanceDecimal;
     if (item.status === "refill_required" || (item.status === "observe_only_low" && hasDemand)) {
+      if (stableEquivalentSatisfied) {
+        observations.push({
+          type: "token_watch",
+          chain: item.chain,
+          ticker: item.ticker,
+          status: "satisfied_by_same_chain_stable_buffer",
+          currentDecimal: item.actualDecimal,
+          targetDecimal: item.targetBalanceDecimal,
+        });
+        continue;
+      }
       if (policy.refillPolicy.requireRouteDemandSignal && !hasDemand) {
         blockers.push({
           type: "token_refill_blocked_no_demand",

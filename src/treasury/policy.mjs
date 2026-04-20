@@ -4,6 +4,7 @@ import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
 
 function normalizedAddress(value) {
   return String(value || "").toLowerCase();
@@ -165,7 +166,13 @@ export function buildDefaultTreasuryPolicy() {
         minBalance: "250",
         targetBalance: "300",
         maxBalance: "1000",
-        rationale: "Positive BSC USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
+        rationale: "Positive BSC stablecoin -> native BTC offramp candidate is commonly expressed as USDC, so keep the direct settlement token modeled explicitly.",
+      }),
+      tokenPolicy("bsc", BSC_USDT_TOKEN, {
+        minBalance: "250",
+        targetBalance: "300",
+        maxBalance: "1000",
+        rationale: "Direct BSC stablecoin arrival can land as USDT; treat it as equivalent treasury buffer instead of ignoring live stable inventory already on-chain.",
       }),
     ],
     allowanceCaps: [
