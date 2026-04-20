@@ -182,6 +182,15 @@ async function main() {
     console.log(`destinationObservedDelta=${execution.destinationProof.observedDelta}`);
     console.log(`destinationRequiredDelta=${execution.destinationProof.requiredDelta}`);
   }
+  if (execution?.layerZeroMessageStatus?.status) {
+    console.log(`layerZeroStatus=${execution.layerZeroMessageStatus.status}`);
+  }
+  if (execution?.layerZeroMessageStatus?.destinationStatus) {
+    console.log(`layerZeroDestinationStatus=${execution.layerZeroMessageStatus.destinationStatus}`);
+  }
+  if (execution?.layerZeroMessageStatus?.waitingRequiredDvns?.length) {
+    console.log(`layerZeroWaitingRequiredDvns=${execution.layerZeroMessageStatus.waitingRequiredDvns.map((item) => item.address).join(",")}`);
+  }
 }
 
 main().catch((error) => {

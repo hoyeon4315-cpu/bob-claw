@@ -318,6 +318,18 @@ test("gateway btc consolidation execution distinguishes source confirmation from
     awaitDestinationSettlement: true,
     destinationSettlementTimeoutMs: 0,
     destinationPollIntervalMs: 0,
+    readLayerZeroStatusImpl: async () => ({
+      guid: "0xguid",
+      status: "INFLIGHT",
+      destinationStatus: "WAITING",
+      waitingRequiredDvns: [
+        {
+          address: "0xbitgo",
+          status: "WAITING",
+          optional: false,
+        },
+      ],
+    }),
     readErc20BalanceImpl: async () => ({
       rpcUrl: "https://base-rpc.example",
       balance: 1_000n,
@@ -338,6 +350,9 @@ test("gateway btc consolidation execution distinguishes source confirmation from
   assert.equal(execution.settlementStatus, "unproven_timeout");
   assert.equal(execution.destinationProof.observedDelta, "0");
   assert.equal(execution.destinationProof.requiredDelta, "10000");
+  assert.equal(execution.layerZeroMessageStatus.status, "INFLIGHT");
+  assert.equal(execution.layerZeroMessageStatus.destinationStatus, "WAITING");
+  assert.equal(execution.layerZeroMessageStatus.waitingRequiredDvns[0].address, "0xbitgo");
 });
 
 test("gateway btc consolidation execution preserves signer rejection details", async () => {

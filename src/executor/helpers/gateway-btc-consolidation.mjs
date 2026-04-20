@@ -8,6 +8,7 @@ import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterminis
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
+import { readLayerZeroMessageStatusByTxHash } from "./layerzero-scan.mjs";
 
 export const GATEWAY_BTC_CONSOLIDATION_STRATEGY_ID = "gateway-btc-funding-transfer";
 export const DEFAULT_GATEWAY_GAS_BUFFER_BPS = 12_000;
@@ -401,6 +402,7 @@ export async function executeGatewayBtcConsolidationPlan({
   plan,
   sendCommand = sendSignerCommand,
   receiptIngest = appendExecutionReceiptReconciliation,
+  readLayerZeroStatusImpl = readLayerZeroMessageStatusByTxHash,
   readErc20BalanceImpl = readErc20Balance,
   readNativeBalanceImpl = readNativeBalance,
   socketPath,
@@ -456,6 +458,10 @@ export async function executeGatewayBtcConsolidationPlan({
         sleepImpl,
       })
     : null;
+  const layerZeroMessageStatus =
+    destinationProof?.status === "unproven_timeout" && typeof readLayerZeroStatusImpl === "function"
+      ? await readLayerZeroStatusImpl(signerResult.broadcast.txHash).catch(() => null)
+      : null;
   const execution = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -463,6 +469,7 @@ export async function executeGatewayBtcConsolidationPlan({
     plan,
     signerResult,
     destinationProof,
+    layerZeroMessageStatus,
   };
   if (typeof receiptIngest !== "function") return execution;
   try {
