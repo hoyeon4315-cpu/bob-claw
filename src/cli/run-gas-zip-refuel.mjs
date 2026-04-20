@@ -81,6 +81,7 @@ async function main() {
 
   // Load audit records for rate-limit enforcement
   const auditRecords = await readJsonl(config.dataDir, "signer-audit").catch(() => []);
+  const gasZipExecutions = await readJsonl(config.dataDir, "gas-zip-refuel-executions").catch(() => []);
 
   // Check destination chain balance status
   let destinationBalanceStatus = null;
@@ -118,6 +119,7 @@ async function main() {
     strategyId: args.strategyId,
     gasBufferBps: args.gasBufferBps,
     auditRecords,
+    gasZipExecutions,
     destinationBalanceStatus,
     destinationNativeDecimal,
     destinationMinBalanceDecimal,

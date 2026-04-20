@@ -58,11 +58,13 @@ function isTerminalFailure(record = {}) {
 }
 
 /**
- * Build a per-chain Gas.Zip execution state from audit records.
+ * Build a per-chain Gas.Zip execution state from audit records
+ * and Gas.Zip execution records.
  * This is the state needed to enforce rate limits.
  */
 export function buildGasZipRateState({
   auditRecords = [],
+  gasZipExecutions = [],
   now = new Date().toISOString(),
   gasZipPolicy = GAS_ZIP_DEFAULT_POLICY,
   treasuryPolicy = buildDefaultTreasuryPolicy(),
@@ -74,7 +76,7 @@ export function buildGasZipRateState({
 
   const dayStart = new Date(now).toISOString().slice(0, 10);
 
-  // Collect all Gas.Zip records from today
+  // Collect all Gas.Zip audit records from today
   const todayRecords = auditRecords.filter((r) => {
     if (!isGasZipRecord(r)) return false;
     const ts = r.timestamp || r.observedAt || "";
@@ -108,6 +110,31 @@ export function buildGasZipRateState({
     const stage = record.lifecycle?.stage;
     if (stage === "signed" || stage === "broadcasted") {
       openJobCount[targetChain] = (openJobCount[targetChain] || 0) + 1;
+    }
+  }
+
+  // Supplement from Gas.Zip execution records (which have dstChain directly)
+  for (const exec of gasZipExecutions) {
+    const ts = exec.observedAt || "";
+    if (!ts.startsWith(dayStart)) continue;
+    const dstChain = exec.plan?.dstChain;
+    if (!dstChain) continue;
+    const amountUsd = Number(exec.plan?.amountUsd || 0);
+    const status = exec.settlementStatus || "";
+    // Only count delivered or near-match toward volume
+    if ((status === "delivered" || status === "near_match_timeout") && amountUsd > 0) {
+      if (!dailyVolumeUsd[dstChain] || ts > (lastRefillTimestamp[dstChain] || "")) {
+        // Use execution record if audit record didn't already capture this chain
+        // (handles the case where audit records lack destination metadata)
+        if (!dailyVolumeUsd[dstChain]) {
+          dailyVolumeUsd[dstChain] = amountUsd;
+          lastRefillTimestamp[dstChain] = ts;
+        }
+      }
+    }
+    // Count in-flight: unproven_timeout still means the tx went through
+    if (status === "unproven_timeout" || status === "near_match_timeout" || status === "delivered") {
+      // Not open anymore — already settled (even if unproven)
     }
   }
 
