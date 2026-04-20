@@ -3,7 +3,8 @@ import { WRAPPED_NATIVE_TOKENS, WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from ".
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
-import { attachOdosAssembly, normalizeOdosQuote, OdosClient, odosRoutingConfig, STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
+import { STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
+import { classifyDexError, dexProvidersForChain, tryProvidersWithFallback, OdosProvider } from "../../dex/providers.mjs";
 import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -71,19 +72,15 @@ function normalizeOutputToken(chain, token) {
   throw new Error(`Unsupported DEX output token: ${token}`);
 }
 
-function classifyOdosError(error) {
+function classifyExperimentError(error) {
   if (error?.name === "GasEstimateError") {
     return classifyGasEstimateError(error);
   }
-  const message = String(error?.message || "");
+  const classified = classifyDexError(error, error?.provider || null);
+  if (classified !== "dex_quote_failed") return classified;
   const detail = String(error?.details?.body?.detail || "");
-  if (message.includes("Odos chain unsupported")) {
-    return "odos_chain_not_supported";
-  }
-  if (detail.includes("Routing unavailable")) {
-    return "routing_unavailable";
-  }
-  return "odos_quote_failed";
+  if (detail.includes("Routing unavailable")) return "routing_unavailable";
+  return "dex_quote_failed";
 }
 
 function serializePreflightError(error) {
@@ -150,7 +147,8 @@ function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationB
 }
 
 export async function buildNativeDexExperimentPlan({
-  client = new OdosClient(),
+  providers = null,
+  client = null,
   estimateGasImpl = estimateGas,
   gasSnapshotImpl = getGasSnapshot,
   strategyId = NATIVE_DEX_EXPERIMENT_STRATEGY_ID,
@@ -165,6 +163,9 @@ export async function buildNativeDexExperimentPlan({
   if (!senderAddress) throw new Error("EVM sender address is required");
   if (!getEvmChainConfig(chain)) throw new Error(`Unsupported EVM chain: ${chain}`);
 
+  // Backward compat: if client is passed, wrap as OdosProvider
+  const resolvedProviders = providers || (client ? [new OdosProvider({ client })] : dexProvidersForChain(chain));
+
   const wrappedNative = WRAPPED_NATIVE_TOKENS[chain];
   if (!wrappedNative) throw new Error(`Wrapped native token is not configured for ${chain}`);
   const inputAsset = tokenAsset(chain, ZERO_TOKEN);
@@ -174,10 +175,10 @@ export async function buildNativeDexExperimentPlan({
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
   const normalizedOutputToken = normalizeOutputToken(chain, outputToken);
   const outputAsset = tokenAsset(chain, normalizedOutputToken);
-  const routing = odosRoutingConfig(chain);
 
   let quote = null;
   let executableQuote = null;
+  let providerName = null;
   let blockedReason = null;
   let preflightError = null;
   let gasSnapshot = null;
@@ -185,36 +186,17 @@ export async function buildNativeDexExperimentPlan({
   let steps = [];
 
   try {
-    const quoted = await client.quote({
+    const result = await tryProvidersWithFallback(resolvedProviders, {
       chain,
       inputToken: wrappedNative,
       outputToken: normalizedOutputToken,
       amount: normalizedAmount,
-      userAddr: senderAddress,
-      slippageLimitPercent: Number(slippageBps) / 100,
-      sourceWhitelist: routing.sourceWhitelist,
-      sourceBlacklist: routing.sourceBlacklist,
+      senderAddress,
+      slippageBps: Number(slippageBps),
     });
-    quote = normalizeOdosQuote({
-      chain,
-      source: "native_dex_experiment",
-      amount: normalizedAmount,
-      inputToken: wrappedNative,
-      outputToken: normalizedOutputToken,
-      inputTicker: wrappedInputAsset.ticker,
-      inputDecimals: wrappedInputAsset.decimals,
-      outputTicker: outputAsset.ticker,
-      outputDecimals: outputAsset.decimals,
-      quoteType: "wrapped_native_to_token",
-      result: quoted,
-      sourceWhitelist: routing.sourceWhitelist,
-      sourceBlacklist: routing.sourceBlacklist,
-    });
-    const assembled = await client.assemble({
-      pathId: quote.pathId,
-      userAddr: senderAddress,
-    });
-    executableQuote = attachOdosAssembly(quote, assembled);
+    quote = result.quote;
+    executableQuote = result.executableQuote;
+    providerName = result.provider;
     const amountUsd = Number(executableQuote.inputValueUsd ?? 0);
     try {
       gasSnapshot = await gasSnapshotImpl(chain, getEvmChainConfig(chain));
@@ -315,7 +297,7 @@ export async function buildNativeDexExperimentPlan({
             gasLimit: String(applyGasBuffer(approveGas.gasUnits, gasBuffer)),
           },
           metadata: {
-            provider: "odos",
+            provider: providerName || "odos",
             sourceWhitelist: executableQuote.sourceWhitelist,
             capCheckAmountUsd: 0,
           },
@@ -324,7 +306,7 @@ export async function buildNativeDexExperimentPlan({
       {
         id: "swap_wrapped_native",
         intent: buildIntent({
-          intentType: "odos_swap",
+          intentType: "dex_swap",
           tx: {
             to: executableQuote.txTo,
             data: executableQuote.txData,
@@ -332,7 +314,7 @@ export async function buildNativeDexExperimentPlan({
             gasLimit: swapGasLimit,
           },
           metadata: {
-            provider: "odos",
+            provider: providerName || "odos",
             pathId: executableQuote.pathId,
             sourceWhitelist: executableQuote.sourceWhitelist,
             executionTrust: executableQuote.executionTrust,
@@ -341,7 +323,7 @@ export async function buildNativeDexExperimentPlan({
       },
     ];
   } catch (error) {
-    blockedReason = blockedReason || classifyOdosError(error);
+    blockedReason = blockedReason || classifyExperimentError(error);
     preflightError = serializePreflightError(error);
   }
 
