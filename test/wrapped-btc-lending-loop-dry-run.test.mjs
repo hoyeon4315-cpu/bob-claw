@@ -36,6 +36,7 @@ test("wrapped BTC loop dry-run packet enumerates breach scenarios and receipt re
   const summary = summarizeWrappedBtcLendingLoopDryRunRuns([receipt]);
   assert.equal(summary.dryRunReceiptRecorded, true);
   assert.equal(summary.autoUnwindPassCount, 1);
+  assert.equal(summary.signerBackedRunCount, 0);
 });
 
 test("wrapped BTC loop observed receipt records signer-backed executions distinctly", () => {
@@ -63,6 +64,8 @@ test("wrapped BTC loop observed receipt records signer-backed executions distinc
   assert.deepEqual(receipt.unwindTxHashes, ["0xunwind"]);
   assert.deepEqual(receipt.observedHealthFactorPath, [1.65, 1.61]);
   assert.deepEqual(receipt.observedLiquidationBufferPath, [12, 13]);
+  const summary = summarizeWrappedBtcLendingLoopDryRunRuns([receipt]);
+  assert.equal(summary.signerBackedRunCount, 1);
 });
 
 test("wrapped BTC loop observed receipt rejects missing required signer-backed receipt fields", () => {

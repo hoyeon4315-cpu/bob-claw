@@ -598,6 +598,73 @@ test("wrapped loop live receipt writes proof before auto-ingest and rewrites fin
   assert.equal(finalized.liveProof.receiptAutoIngest.ran, true);
 });
 
+test("wrapped loop live receipt reuses the prior entry proof for unwind-only auto-ingest", async () => {
+  const ingestCalls = [];
+
+  const finalized = await finalizeWrappedBtcLoopLiveReceipt({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    scenarioId: "healthy_baseline",
+    entryResults: [],
+    unwindResults: [
+      { broadcast: { txHash: "0xunwind-new-1" } },
+      { broadcast: { txHash: "0xunwind-new-2" } },
+    ],
+    receiptContext: {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenario: "healthy_baseline",
+      executionMode: "signer_backed_receipt",
+      result: "passed",
+      unwindTxHashes: ["0xunwind-new-1", "0xunwind-new-2"],
+      observedHealthFactorPath: [1.8787],
+      observedLiquidationBufferPath: [34.6102],
+      actualLoopFeesUsd: 0,
+      actualUnwindCostUsd: 0.023424,
+      realizedNetCarryUsd: 0,
+      notes: ["unwind only"],
+    },
+    dataDir: "/tmp/bob-claw-test",
+    readExistingLiveProofImpl: async () => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-19T18:47:21.078Z",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      scenarioId: "healthy_baseline",
+      success: true,
+      proofKind: "signer_backed_roundtrip",
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 8,
+      unwindCount: 6,
+      entryTxHashes: ["0xentry-old-1", "0xentry-old-2"],
+      unwindTxHashes: ["0xunwind-old"],
+      observedHealthFactorPath: [2.7453],
+      observedLiquidationBufferPath: [54.0378],
+      actualLoopFeesUsd: 0.018287,
+      actualUnwindCostUsd: 0.020473,
+      realizedNetCarryUsd: 0,
+      notes: ["prior roundtrip"],
+    }),
+    runReceiptAutoIngestImpl: async ({ context }) => {
+      ingestCalls.push(context);
+      return {
+        ran: true,
+        code: 0,
+        stdout: "ok",
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(ingestCalls.length, 1);
+  assert.deepEqual(ingestCalls[0].entryTxHashes, ["0xentry-old-1", "0xentry-old-2"]);
+  assert.deepEqual(ingestCalls[0].unwindTxHashes, ["0xunwind-new-1", "0xunwind-new-2"]);
+  assert.deepEqual(ingestCalls[0].observedHealthFactorPath, [1.8787]);
+  assert.deepEqual(ingestCalls[0].observedLiquidationBufferPath, [34.6102]);
+  assert.equal(ingestCalls[0].actualLoopFeesUsd, 0.018287);
+  assert.equal(ingestCalls[0].actualUnwindCostUsd, 0.023424);
+  assert.deepEqual(ingestCalls[0].notes, ["prior roundtrip", "unwind only"]);
+  assert.equal(finalized.receiptAutoIngest.ran, true);
+  assert.equal(finalized.liveProof, null);
+});
+
 test("wrapped loop live receipt preserves stronger existing proof when a new roundtrip is weaker", async () => {
   const writes = [];
 

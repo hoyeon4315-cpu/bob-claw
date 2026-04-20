@@ -410,6 +410,68 @@ async function writeWrappedBtcLoopLiveProof({
   );
 }
 
+async function readWrappedBtcLoopLiveProof({
+  dataDir = config.dataDir,
+  readExistingLiveProofImpl = async (path) => {
+    try {
+      return JSON.parse(await readFile(path, "utf8"));
+    } catch (error) {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    }
+  },
+} = {}) {
+  return readExistingLiveProofImpl(join(dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE));
+}
+
+function buildWrappedBtcLoopAutoIngestFallbackContext({
+  previousProof = null,
+  receiptContext = null,
+} = {}) {
+  const currentEntryTxHashes = unique(receiptContext?.entryTxHashes || []);
+  const currentUnwindTxHashes = unique(receiptContext?.unwindTxHashes || []);
+  const currentObservedHealthFactorPath = (receiptContext?.observedHealthFactorPath || []).filter(Number.isFinite);
+  const currentObservedLiquidationBufferPath = (receiptContext?.observedLiquidationBufferPath || []).filter(Number.isFinite);
+  return {
+    ...(previousProof || {}),
+    ...(receiptContext || {}),
+    strategyId: receiptContext?.strategyId || previousProof?.strategyId || null,
+    scenario: receiptContext?.scenario || previousProof?.scenarioId || previousProof?.scenario || "healthy_baseline",
+    executionMode: receiptContext?.executionMode || previousProof?.executionMode || "signer_backed_receipt",
+    result:
+      receiptContext?.result ||
+      previousProof?.result ||
+      (previousProof?.success === true ? "passed" : null) ||
+      "passed",
+    entryTxHashes: currentEntryTxHashes.length > 0 ? currentEntryTxHashes : unique(previousProof?.entryTxHashes || []),
+    unwindTxHashes: currentUnwindTxHashes.length > 0 ? currentUnwindTxHashes : unique(previousProof?.unwindTxHashes || []),
+    observedHealthFactorPath:
+      currentObservedHealthFactorPath.length > 0
+        ? currentObservedHealthFactorPath
+        : positiveNumericPath(previousProof?.observedHealthFactorPath || []),
+    observedLiquidationBufferPath:
+      currentObservedLiquidationBufferPath.length > 0
+        ? currentObservedLiquidationBufferPath
+        : positiveNumericPath(previousProof?.observedLiquidationBufferPath || []),
+    actualLoopFeesUsd:
+      currentEntryTxHashes.length > 0
+        ? receiptContext?.actualLoopFeesUsd
+        : Number.isFinite(previousProof?.actualLoopFeesUsd)
+          ? previousProof.actualLoopFeesUsd
+          : receiptContext?.actualLoopFeesUsd,
+    actualUnwindCostUsd:
+      Number.isFinite(receiptContext?.actualUnwindCostUsd)
+        ? receiptContext.actualUnwindCostUsd
+        : previousProof?.actualUnwindCostUsd,
+    realizedNetCarryUsd:
+      Number.isFinite(receiptContext?.realizedNetCarryUsd)
+        ? receiptContext.realizedNetCarryUsd
+        : previousProof?.realizedNetCarryUsd,
+    notes: unique([...(previousProof?.notes || []), ...(receiptContext?.notes || [])]),
+    observedAt: receiptContext?.observedAt || previousProof?.observedAt || null,
+  };
+}
+
 export async function finalizeWrappedBtcLoopLiveReceipt({
   strategyId,
   scenarioId,
@@ -425,6 +487,20 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
   writeTextIfChangedImpl = writeTextIfChanged,
   readExistingLiveProofImpl = undefined,
 } = {}) {
+  const readLiveProofImpl =
+    readExistingLiveProofImpl ||
+    (async (path) => {
+      try {
+        return JSON.parse(await readFile(path, "utf8"));
+      } catch (error) {
+        if (error?.code === "ENOENT") return null;
+        throw error;
+      }
+    });
+  const existingLiveProof = await readWrappedBtcLoopLiveProof({
+    dataDir,
+    readExistingLiveProofImpl: readLiveProofImpl,
+  });
   const initialReceiptAutoIngest = {
     ran: false,
     reason: "pending_auto_ingest",
@@ -447,14 +523,20 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
     liveProof: initialLiveProof,
     dataDir,
     writeTextIfChangedImpl,
-    ...(readExistingLiveProofImpl ? { readExistingLiveProofImpl } : {}),
+    readExistingLiveProofImpl: readLiveProofImpl,
   });
 
+  const autoIngestContext = initialLiveProof
+    ? {
+        ...(receiptContext || {}),
+        ...(initialLiveProof || {}),
+      }
+    : buildWrappedBtcLoopAutoIngestFallbackContext({
+        previousProof: existingLiveProof,
+        receiptContext,
+      });
   const receiptAutoIngest = await runReceiptAutoIngestImpl({
-    context: {
-      ...(receiptContext || {}),
-      ...(initialLiveProof || {}),
-    },
+    context: autoIngestContext,
     cwd,
   });
 
@@ -476,7 +558,7 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
     liveProof,
     dataDir,
     writeTextIfChangedImpl,
-    ...(readExistingLiveProofImpl ? { readExistingLiveProofImpl } : {}),
+    readExistingLiveProofImpl: readLiveProofImpl,
   });
 
   return {

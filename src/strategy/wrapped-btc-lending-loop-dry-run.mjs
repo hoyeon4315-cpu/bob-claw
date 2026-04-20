@@ -337,10 +337,12 @@ export function summarizeWrappedBtcLendingLoopDryRunRuns(records = []) {
   const latest = [...records].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] || null;
   const passedCount = records.filter((item) => item.result === "passed").length;
   const autoUnwindPassCount = records.filter((item) => item.result === "passed" && item.watcherStatus === "auto_unwind").length;
+  const signerBackedRunCount = records.filter((item) => item?.executionMode && item.executionMode !== "simulated_dry_run").length;
   return {
     runCount: records.length,
     passedCount,
     autoUnwindPassCount,
+    signerBackedRunCount,
     latestRun: latest
       ? {
           runId: latest.runId || null,
