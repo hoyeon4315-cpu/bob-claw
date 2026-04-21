@@ -232,14 +232,13 @@ export function buildYieldShadowRecord({
   };
 }
 
-export function buildYieldShadowBook({ pivotPlan = null, scenarioAprBps = DEFAULT_SCENARIO_APR_BPS, allowlistBoard = null } = {}) {
+export function buildYieldShadowBook({ pivotPlan = null, scenarioAprBps = DEFAULT_SCENARIO_APR_BPS, allowlistBoard = null, yieldFeedIntegrated = false } = {}) {
   const pivot = yieldPivot(pivotPlan);
   const currentBudgetUsd = finite(pivotPlan?.budgetAssessment?.currentBudgetUsd ?? pivotPlan?.currentSystem?.activeBudgetUsd);
   const budgetScenarios = pivotPlan?.budgetAssessment?.budgetScenarios || [];
   const defaults = pivot?.evidence?.defaults || {};
   const allowlistedDestinationExists = Array.isArray(allowlistBoard?.items)
     && allowlistBoard.items.some((item) => item?.values?.allowlistDecision === "allowlisted");
-  const yieldFeedIntegrated = false;
   const profiles = PROFILE_DEFINITIONS.map((definition) =>
     buildYieldShadowRecord({
       definition,

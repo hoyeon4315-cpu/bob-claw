@@ -8,6 +8,7 @@ import { buildStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
 import { buildYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { latestYieldFeedRecord, yieldFeedIntegrated } from "../defi/yield-feed.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -47,8 +48,11 @@ async function main() {
   const allowlistBoard = await readJsonIfExists(join(config.dataDir, "destination-allowlist-board.json"));
   const allowlistedDestinationExists = Array.isArray(allowlistBoard?.items)
     && allowlistBoard.items.some((item) => item?.values?.allowlistDecision === "allowlisted");
-  const pivotPlan = buildStrategyPivotPlan({ dashboardStatus, state, triangleArtifacts, walletTotalUsd, allowlistedDestinationExists });
-  const book = buildYieldShadowBook({ pivotPlan, scenarioAprBps: args.aprBps, allowlistBoard });
+  const yieldFeedRecords = await readJsonl(config.dataDir, "yield-feed");
+  const latestYieldFeed = latestYieldFeedRecord(yieldFeedRecords);
+  const yieldFeedReady = yieldFeedIntegrated(latestYieldFeed);
+  const pivotPlan = buildStrategyPivotPlan({ dashboardStatus, state, triangleArtifacts, walletTotalUsd, allowlistedDestinationExists, yieldFeedIntegrated: yieldFeedReady });
+  const book = buildYieldShadowBook({ pivotPlan, scenarioAprBps: args.aprBps, allowlistBoard, yieldFeedIntegrated: yieldFeedReady });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "yield-shadow-book-latest.json");
