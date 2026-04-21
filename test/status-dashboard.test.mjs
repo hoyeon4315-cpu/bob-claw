@@ -61,6 +61,53 @@ test("status dashboard refresh helper reruns stale canary inputs through existin
   ]);
 });
 
+test("status dashboard refresh helper tolerates targeted gateway refresh route misses", () => {
+  const calls = [];
+  const result = refreshCanaryInputsIfNeeded({
+    state: {
+      address: "0x1111111111111111111111111111111111111111",
+      nextStep: {
+        route: {
+          label: "ethereum->bsc WBTC->wBTC.OFT",
+          routeKey: "ethereum:0x2260->bsc:0x0555",
+          amount: "150000",
+          srcChain: "ethereum",
+          dstChain: "bsc",
+        },
+      },
+      dashboardStatus: {
+        canaryInputs: {
+          routeLabel: "ethereum->bsc WBTC->wBTC.OFT",
+          routeKey: "ethereum:0x2260->bsc:0x0555",
+          amount: "150000",
+          gatewayQuote: { state: "missing" },
+          exactGas: { state: "fresh" },
+          srcGas: { state: "fresh" },
+          dexQuote: { state: "fresh" },
+          bitcoinFee: { state: "not_needed" },
+          marketSnapshot: { state: "fresh" },
+        },
+      },
+    },
+    address: "0x1111111111111111111111111111111111111111",
+    runScript: (script, args = []) => {
+      calls.push([script, args]);
+      if (script === "src/cli/verify-gateway.mjs") {
+        const error = new Error("Command failed: node src/cli/verify-gateway.mjs");
+        error.stderr = "Error: No Gateway routes matched the selected filters. Review route selection before continuing.";
+        throw error;
+      }
+      return { stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(result.refreshed, true);
+  assert.deepEqual(calls, [
+    ["src/cli/verify-gateway.mjs", ["--route-key=ethereum:0x2260->bsc:0x0555", "--amounts=150000"]],
+    ["src/cli/score-gateway.mjs", ["--write", "--route-key=ethereum:0x2260->bsc:0x0555", "--amount=150000"]],
+  ]);
+});
+
 test("status dashboard refreshes shadow cycle before writing public status", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-status-"));
   const dataDir = join(cwd, "data");

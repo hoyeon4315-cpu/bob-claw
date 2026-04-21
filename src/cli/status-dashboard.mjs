@@ -55,6 +55,12 @@ function runNodeScript(script, args = []) {
   return { stdout, stderr };
 }
 
+function isTargetedGatewayRefreshRouteMiss(error) {
+  if (!error) return false;
+  const combined = [error.message, error.stdout, error.stderr].filter(Boolean).join("\n");
+  return /No Gateway routes matched the selected filters/.test(combined);
+}
+
 export function refreshCanaryInputsIfNeeded({ state, address, runScript = runNodeScript } = {}) {
   const canaryInputRefresh = planCanaryInputRefresh(state);
   if (!canaryInputRefresh.shouldRefresh) return { refreshed: false, refresh: canaryInputRefresh };
@@ -63,7 +69,11 @@ export function refreshCanaryInputsIfNeeded({ state, address, runScript = runNod
     runScript("src/cli/price-snapshot.mjs");
   }
   if (canaryInputRefresh.inputKeys.includes("gateway_quote")) {
-    runScript("src/cli/verify-gateway.mjs", buildCanaryInputRefreshVerifyArgs(canaryInputRefresh) || []);
+    try {
+      runScript("src/cli/verify-gateway.mjs", buildCanaryInputRefreshVerifyArgs(canaryInputRefresh) || []);
+    } catch (error) {
+      if (!isTargetedGatewayRefreshRouteMiss(error)) throw error;
+    }
   }
   if (canaryInputRefresh.inputKeys.includes("src_gas")) {
     runScript("src/cli/gas-snapshot.mjs", buildCanaryInputRefreshGasSnapshotArgs(canaryInputRefresh) || []);
