@@ -7,6 +7,11 @@
       "color": "#F7931A"
     },
     {
+      "id": "bob",
+      "file": "chains/bob.svg",
+      "color": "#F25D2B"
+    },
+    {
       "id": "ethereum",
       "file": "chains/ethereum.svg",
       "color": "#627EEA"
@@ -112,6 +117,21 @@
       "id": "solv",
       "file": "protocols/solv.svg",
       "color": "#1B1B1B"
+    },
+    {
+      "id": "gateway",
+      "file": "protocols/gateway.svg",
+      "color": "#F25D2B"
+    },
+    {
+      "id": "odos",
+      "file": "protocols/odos.svg",
+      "color": "#1F2937"
+    },
+    {
+      "id": "gaszip",
+      "file": "protocols/gaszip.svg",
+      "color": "#10B981"
     }
   ]
 }

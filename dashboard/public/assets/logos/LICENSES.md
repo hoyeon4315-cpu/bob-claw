@@ -28,6 +28,10 @@ plus a neutral letter mark; **no third-party trademarked artwork is bundled**.
 | `protocols/k3capital.svg` | k3 Capital      | `#6B3FA0` | placeholder | k3capital.com brand assets |
 | `protocols/babylon.svg`   | Babylon         | `#CE6533` | placeholder | babylonlabs.io brand kit |
 | `protocols/solv.svg`      | Solv (SolvBTC)  | `#1B1B1B` | placeholder | solv.finance brand kit |
+| `chains/bob.svg`          | BOB             | `#F25D2B` | placeholder | gobob.xyz brand kit |
+| `protocols/gateway.svg`   | BOB Gateway     | `#F25D2B` | placeholder | gobob.xyz/gateway brand assets |
+| `protocols/odos.svg`      | Odos            | `#1F2937` | placeholder | odos.xyz brand kit |
+| `protocols/gaszip.svg`    | Gas.Zip         | `#10B981` | placeholder | gas.zip brand kit |
 
 ## Replacement contract
 

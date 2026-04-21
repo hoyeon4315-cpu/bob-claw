@@ -14,25 +14,29 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const LOGOS_DIR = join(HERE, "..", "dashboard", "public", "assets", "logos");
 
 const REQUIRED_CHAINS = [
-  "bitcoin", "ethereum", "base", "bsc", "avalanche", "unichain",
+  "bitcoin", "bob", "ethereum", "base", "bsc", "avalanche", "unichain",
   "bera", "optimism", "soneium", "sei", "sonic",
 ];
 const REQUIRED_PROTOCOLS = [
   "moonwell", "morpho", "pendle", "aerodrome", "beefy", "gmx",
   "bend", "bex", "k3capital", "babylon", "solv",
+  "gateway", "odos", "gaszip",
 ];
 
+const EXPECTED_CHAIN_COUNT = 12;
+const EXPECTED_PROTOCOL_COUNT = 14;
+
 describe("T25 logo asset coverage", () => {
-  test("11 chain marks declared, all required ids covered", () => {
-    assert.equal(CHAIN_MARKS.length, 11);
+  test("chain marks declared, all required ids covered", () => {
+    assert.equal(CHAIN_MARKS.length, EXPECTED_CHAIN_COUNT);
     const ids = new Set(CHAIN_MARKS.map((c) => c.id));
     for (const id of REQUIRED_CHAINS) {
       assert.ok(ids.has(id), `missing chain mark: ${id}`);
     }
   });
 
-  test("11 protocol marks declared, all required ids covered", () => {
-    assert.equal(PROTOCOL_MARKS.length, 11);
+  test("protocol marks declared, all required ids covered", () => {
+    assert.equal(PROTOCOL_MARKS.length, EXPECTED_PROTOCOL_COUNT);
     const ids = new Set(PROTOCOL_MARKS.map((p) => p.id));
     for (const id of REQUIRED_PROTOCOLS) {
       assert.ok(ids.has(id), `missing protocol mark: ${id}`);
@@ -93,19 +97,19 @@ describe("T25 SVG content invariants", () => {
 });
 
 describe("T25 manifest + license", () => {
-  test("manifest.json present, schema versioned, lists all 22 entries", () => {
+  test("manifest.json present, schema versioned, lists all entries", () => {
     const path = join(LOGOS_DIR, "manifest.json");
     assert.ok(existsSync(path), "manifest.json missing");
     const m = JSON.parse(readFileSync(path, "utf8"));
     assert.equal(m.schema, "bobclaw-logo-manifest@1");
-    assert.equal(m.chains.length, 11);
-    assert.equal(m.protocols.length, 11);
+    assert.equal(m.chains.length, EXPECTED_CHAIN_COUNT);
+    assert.equal(m.protocols.length, EXPECTED_PROTOCOL_COUNT);
   });
 
   test("buildManifest matches generator output", () => {
     const m = buildManifest();
-    assert.equal(m.chains.length, 11);
-    assert.equal(m.protocols.length, 11);
+    assert.equal(m.chains.length, EXPECTED_CHAIN_COUNT);
+    assert.equal(m.protocols.length, EXPECTED_PROTOCOL_COUNT);
     for (const c of m.chains) assert.match(c.file, /^chains\/[a-z0-9]+\.svg$/);
     for (const p of m.protocols) assert.match(p.file, /^protocols\/[a-z0-9]+\.svg$/);
   });
