@@ -26,6 +26,11 @@ const DEFAULT_UNWRAP_NATIVE_GAS_UNITS = 50_000;
 
 const TOKEN_ALIASES = Object.freeze({
   usdc: (chain) => STABLE_QUOTE_TOKENS[chain]?.token || null,
+  usdt: (chain) => {
+    if (chain === "bsc") return "0x55d398326f99059fF775485246999027B3197955";
+    if (chain === "ethereum") return "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+    return null;
+  },
   cbbtc: (chain) => (chain === "base" ? BASE_CBBTC_TOKEN : null),
   "wbtc.oft": () => WBTC_OFT_TOKEN,
   wbtc_oft: () => WBTC_OFT_TOKEN,

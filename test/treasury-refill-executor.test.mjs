@@ -275,3 +275,151 @@ test("treasury refill executor dispatches Gateway onramp preparations", async ()
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.plan.marker, "onramp");
 });
+
+test("treasury refill executor maps cross-chain intermediate swap to composite plan", async () => {
+  assert.equal(refillExecutorForJob({
+    executionMethod: "cross_chain_swap_via_btc_intermediate",
+  }), "cross_chain_btc_intermediate");
+
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-intermediate",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 7.4,
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          actual: "3000000000000000000",
+          actualDecimal: 300,
+          estimatedUsd: 300,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-19T00:00:00.000Z",
+      planStatus: "ready",
+      strategyId: "token-dex-experiment",
+      chain: input.chain,
+      senderAddress: input.senderAddress,
+      inputToken: input.inputToken,
+      outputToken: WBTC_OFT_TOKEN,
+      outputAsset: { ticker: "wBTC.OFT" },
+      amount: input.amount,
+      minimumOutputAmount: "9500",
+      steps: [{ id: "swap" }],
+    }),
+    buildGatewayBtcPlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-19T00:00:00.000Z",
+      planStatus: "ready",
+      strategyId: "gateway-btc-funding-transfer",
+      route: {
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+      },
+      amount: input.amount,
+      amountUsd: 7.4,
+      quote: { outputAmount: { amount: "10000" } },
+      gasPreflight: { gasUnits: 100000 },
+      intent: { strategyId: "gateway-btc-funding-transfer" },
+    }),
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "cross_chain_btc_intermediate");
+  assert.equal(preparation.plan.step1.type, "dex_swap");
+  assert.equal(preparation.plan.step1.plan.chain, "bsc");
+  assert.equal(preparation.plan.step2.type, "gateway_consolidation");
+  assert.equal(preparation.plan.step2.plan.route.srcChain, "bsc");
+  assert.equal(preparation.plan.step2.plan.route.dstChain, "base");
+  assert.equal(preparation.plan.step2.plan.amount, "9500");
+  assert.equal(preparation.coverage.coversTarget !== false, true);
+});
+
+test("treasury refill executor blocks composite plan when DEX step fails", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-intermediate-blocked",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 7.4,
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          actual: "3000000000000000000",
+          actualDecimal: 300,
+          estimatedUsd: 300,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async () => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-19T00:00:00.000Z",
+      planStatus: "blocked",
+      blockedReason: "dex_quote_failed",
+      steps: [],
+    }),
+    buildGatewayBtcPlanImpl: async () => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-19T00:00:00.000Z",
+      planStatus: "ready",
+    }),
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.executor, "cross_chain_btc_intermediate");
+  assert.equal(preparation.blockedReason, "dex_quote_failed");
+});
+
+test("treasury refill executor executes composite plan sequentially", async () => {
+  const executionOrder = [];
+  const execution = await executeTreasuryRefillExecutionPlan({
+    preparation: {
+      status: "ready",
+      executor: "cross_chain_btc_intermediate",
+      plan: {
+        planStatus: "ready",
+        step1: {
+          type: "dex_swap",
+          plan: { planStatus: "ready", marker: "dex-step" },
+        },
+        step2: {
+          type: "gateway_consolidation",
+          plan: { planStatus: "ready", marker: "gateway-step" },
+        },
+      },
+    },
+    executeTokenDexPlanImpl: async ({ plan }) => {
+      executionOrder.push("dex");
+      return { settlementStatus: "delivered", plan };
+    },
+    executeGatewayBtcPlanImpl: async ({ plan }) => {
+      executionOrder.push("gateway");
+      return { settlementStatus: "delivered", plan };
+    },
+  });
+
+  assert.deepEqual(executionOrder, ["dex", "gateway"]);
+  assert.equal(execution.executor, "cross_chain_btc_intermediate");
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.step1Result.plan.marker, "dex-step");
+  assert.equal(execution.step2Result.plan.marker, "gateway-step");
+});

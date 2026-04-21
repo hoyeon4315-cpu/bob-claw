@@ -318,11 +318,12 @@ test("refill jobs combine pending overflow review with non-ready funding-source 
   const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
 
   assert.equal(jobs.requiresManualReview, true);
-  assert.equal(jobs.summary.manualReviewJobCount, 5);
-  assert.equal(jobs.summary.autoQueuedJobCount, 0);
-  assert.equal(jobs.jobs.filter((job) => job.requiresManualReview).length, 5);
+  assert.equal(jobs.summary.manualReviewJobCount, 1);
+  assert.equal(jobs.summary.autoQueuedJobCount, 4);
+  assert.equal(jobs.jobs.filter((job) => job.requiresManualReview).length, 1);
   assert.equal(jobs.jobs.some((job) => job.reviewReasons.includes("too_many_pending_refills")), true);
-  assert.equal(jobs.jobs.every((job) => job.reviewReasons.includes("cross_chain_native_refill_executor_missing")), true);
+  assert.equal(jobs.jobs.some((job) => job.reviewReasons.includes("too_many_pending_refills")), true);
+  assert.equal(jobs.jobs.every((job) => !job.reviewReasons.includes("cross_chain_native_refill_executor_missing")), true);
 });
 
 test("refill jobs prefer higher-net fallback route context over weaker local matches", () => {
