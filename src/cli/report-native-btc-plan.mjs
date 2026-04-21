@@ -58,6 +58,25 @@ function compactAction(action = null) {
   };
 }
 
+function unique(values = []) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+function normalizeAssetSymbol(value = null) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function assetsMatch(left = null, right = null) {
+  const normalizedLeft = normalizeAssetSymbol(left);
+  const normalizedRight = normalizeAssetSymbol(right);
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+}
+
+function isStableAsset(asset = null) {
+  const ticker = String(asset?.ticker || "").toUpperCase();
+  return asset?.family === "stablecoin" || ticker === "USDC" || ticker === "USDT" || ticker === "OUSDT";
+}
+
 function allocatorCandidateById(allocatorCore = null, candidateId = null) {
   if (!candidateId) return null;
   return (allocatorCore?.candidates || []).find((item) => item.id === candidateId) || null;
@@ -398,21 +417,184 @@ async function buildDepositPreview(route = null, { amountSats, addresses } = {})
   }
 }
 
-function postArrivalCommandsForPath(path = null, { primaryStrategy = null } = {}) {
-  if (!path) return [];
+function buildPrimaryStrategyPostArrivalPlan(path = null, { primaryStrategy = null } = {}) {
+  const landedAsset = path?.dstAsset?.ticker || null;
+  const targetAsset = primaryStrategy?.collateralAsset || null;
+  const aligned = assetsMatch(landedAsset, targetAsset);
+  const baseCommands = unique([
+    primaryStrategy?.nextAction?.command || null,
+    "npm run report:wrapped-btc-loop -- --json",
+    "npm run report:payback-status -- --json",
+  ]);
+
+  if (!landedAsset || !targetAsset) {
+    return {
+      status: "strategy_target_unknown",
+      reason: "strategy_target_unknown",
+      aligned: false,
+      landedAsset,
+      targetAsset,
+      commandChain: baseCommands,
+      notes: [
+        "The primary strategy is selected, but the required landing-versus-collateral asset match is still incomplete in the current report context.",
+      ],
+    };
+  }
+
+  if (!aligned) {
+    return {
+      status: "landing_asset_mismatch",
+      reason: "strategy_collateral_mismatch",
+      aligned,
+      landedAsset,
+      targetAsset,
+      commandChain: baseCommands,
+      notes: [
+        `${targetAsset} collateral is required before the current wrapped-BTC loop entry surface can build signer-ready entry calldata.`,
+      ],
+    };
+  }
+
+  const executorCommand = primaryStrategy?.readyForLive === true
+    ? "npm run executor:wrapped-btc-loop -- --json"
+    : primaryStrategy?.readyForDryRun
+      ? "npm run run:wrapped-btc-loop-dry-run -- --json"
+      : null;
+
+  return {
+    status: primaryStrategy?.readyForLive === true
+      ? "executor_live_ready"
+      : primaryStrategy?.readyForDryRun
+        ? "executor_dry_run_ready"
+        : "strategy_review_required",
+    reason: primaryStrategy?.readyForLive === true
+      ? "collateral_aligned_for_live_executor"
+      : primaryStrategy?.readyForDryRun
+        ? "collateral_aligned_for_dry_run"
+        : "strategy_review_required",
+    aligned,
+    landedAsset,
+    targetAsset,
+    commandChain: unique([
+      executorCommand,
+      ...baseCommands,
+    ]),
+    notes: [
+      primaryStrategy?.readyForLive === true
+        ? "Landing asset and strategy collateral are aligned, so the signer-backed executor surface is the next deterministic step."
+        : "Landing asset and strategy collateral are aligned, but this lane is still limited to dry-run / review surfaces before live promotion.",
+    ],
+  };
+}
+
+function buildActiveAllocationPostArrivalPlan(path = null, { allocation = null } = {}) {
+  const landedAsset = path?.dstAsset?.ticker || null;
+  const landedStable = isStableAsset(path?.dstAsset);
+  const targetAssetFamily = allocation?.assetFamily || null;
+  const aligned = targetAssetFamily === "stables" ? landedStable : true;
+  const commandChain = unique([
+    allocation?.nextAction?.command || null,
+    "npm run report:destination-allocation-plan -- --json",
+    "npm run report:allocator-core -- --json",
+    "npm run report:payback-status -- --json",
+  ]);
+
+  if (!landedAsset || !targetAssetFamily) {
+    return {
+      status: "allocation_target_unknown",
+      reason: "allocation_target_unknown",
+      aligned: false,
+      landedAsset,
+      targetAssetFamily,
+      commandChain,
+      notes: [
+        "The active allocation lane exists, but the arrival asset-family handoff is still incomplete in the current report context.",
+      ],
+    };
+  }
+
+  if (!aligned) {
+    return {
+      status: "landing_asset_mismatch",
+      reason: "allocation_asset_family_mismatch",
+      aligned,
+      landedAsset,
+      targetAssetFamily,
+      commandChain,
+      notes: [
+        `The active allocation lane expects ${targetAssetFamily}, so the landed asset must be converted into the allocator sleeve before deployment.`,
+      ],
+    };
+  }
+
+  return {
+    status: allocation?.nextAction?.command ? "allocator_next_action_ready" : "allocator_review_surface_only",
+    reason: allocation?.nextAction?.command ? "allocation_aligned_with_next_action" : "allocation_aligned_but_executor_missing",
+    aligned,
+    landedAsset,
+    targetAssetFamily,
+    commandChain,
+    notes: [
+      allocation?.nextAction?.command
+        ? "The landed asset is already aligned with the active allocation sleeve, and the allocator exposes a concrete next action."
+        : "The landed asset is already aligned with the active allocation sleeve, but the repo currently exposes review / allocator surfaces rather than a dedicated signer-owned deployment command.",
+    ],
+  };
+}
+
+function buildPostArrivalPlan(path = null, { primaryStrategy = null, allocation = null } = {}) {
+  if (!path) {
+    return {
+      status: "path_missing",
+      reason: "path_missing",
+      aligned: false,
+      commandChain: [],
+      notes: [],
+    };
+  }
   if (path.kind === "primary_strategy") {
-    return [
-      primaryStrategy?.nextAction?.command || null,
-      "npm run report:payback-status -- --json",
-    ].filter(Boolean);
+    return buildPrimaryStrategyPostArrivalPlan(path, { primaryStrategy });
   }
   if (path.kind === "active_allocation") {
-    return [
-      "npm run report:destination-allocation-plan -- --json",
-      "npm run report:payback-status -- --json",
-    ];
+    return buildActiveAllocationPostArrivalPlan(path, { allocation });
   }
-  return [];
+  return {
+    status: "path_kind_unknown",
+    reason: "path_kind_unknown",
+    aligned: false,
+    commandChain: [],
+    notes: [],
+  };
+}
+
+function preferredDepositCommand(path = null, addressResolution = null) {
+  if (!path) return null;
+  return addressResolution?.status === "resolved"
+    ? path.commandTemplates?.autoAddress || null
+    : path.commandTemplates?.manualAddress || null;
+}
+
+function preflightCommandsForPath(path = null, { addressResolution = null } = {}) {
+  if (!path) return [];
+  return unique([
+    addressResolution?.status === "resolved" ? null : "npm run executor:send-intent -- --command=health --json",
+    path.kind === "primary_strategy" ? "npm run report:wrapped-btc-loop -- --json" : null,
+    path.kind === "active_allocation" ? "npm run report:destination-allocation-plan -- --json" : null,
+  ]);
+}
+
+function buildRecommendedWorkflow(path = null, { addressResolution = null } = {}) {
+  if (!path) return null;
+  return {
+    kind: path.kind,
+    label: path.label,
+    depositCommandSource: addressResolution?.status === "resolved" ? "auto_address" : "manual_address",
+    depositCommand: preferredDepositCommand(path, addressResolution),
+    preflightCommands: preflightCommandsForPath(path, { addressResolution }),
+    postArrivalStatus: path.postArrivalPlan?.status || null,
+    postArrivalReason: path.postArrivalPlan?.reason || null,
+    postArrivalCommands: path.postArrivalPlan?.commandChain || [],
+  };
 }
 
 function buildDepositPath(route, {
@@ -425,7 +607,7 @@ function buildDepositPath(route, {
   addresses,
   preview,
 } = {}) {
-  return {
+  const path = {
     kind,
     label,
     reason,
@@ -454,7 +636,15 @@ function buildDepositPath(route, {
       }),
     },
     preview,
-    postArrivalCommands: postArrivalCommandsForPath({ kind }, { primaryStrategy }),
+  };
+  const postArrivalPlan = buildPostArrivalPlan(path, {
+    primaryStrategy,
+    allocation,
+  });
+  return {
+    ...path,
+    postArrivalPlan,
+    postArrivalCommands: postArrivalPlan.commandChain,
   };
 }
 
@@ -513,6 +703,9 @@ async function buildDepositExecution({
   ].filter((item) => item.routeKey || item.preview?.blockedReason);
 
   const recommendedPath =
+    paths.find((item) => item.postArrivalPlan?.status === "executor_live_ready") ||
+    paths.find((item) => item.postArrivalPlan?.status === "allocator_next_action_ready") ||
+    paths.find((item) => item.postArrivalPlan?.status === "allocator_review_surface_only") ||
     paths.find((item) => item.executionReadiness === "live_ready") ||
     paths.find((item) => item.kind === "active_allocation") ||
     paths[0] ||
@@ -529,6 +722,9 @@ async function buildDepositExecution({
     },
     recommendedPathKind: recommendedPath?.kind || null,
     recommendedPathLabel: recommendedPath?.label || null,
+    recommendedWorkflow: buildRecommendedWorkflow(recommendedPath, {
+      addressResolution: addresses,
+    }),
     paths,
   };
 }
@@ -804,6 +1000,11 @@ async function main() {
   console.log(`- depositPreviewAmountSats=${report.depositExecution.amountSats}`);
   console.log(`- addressResolution=${report.depositExecution.addressResolution.status}`);
   console.log(`- recommendedPath=${report.depositExecution.recommendedPathKind || "n/a"} ${report.depositExecution.recommendedPathLabel || ""}`.trim());
+  if (report.depositExecution.recommendedWorkflow) {
+    console.log(`- recommendedDepositCommandSource=${report.depositExecution.recommendedWorkflow.depositCommandSource}`);
+    console.log(`- recommendedPostArrivalStatus=${report.depositExecution.recommendedWorkflow.postArrivalStatus || "n/a"}`);
+    console.log(`- recommendedPostArrivalReason=${report.depositExecution.recommendedWorkflow.postArrivalReason || "n/a"}`);
+  }
   if (report.depositExecution.addressResolution.error) {
     console.log(`- addressResolutionError=${report.depositExecution.addressResolution.error}`);
   }
@@ -812,7 +1013,7 @@ async function main() {
     console.log("Deposit paths:");
     for (const path of report.depositExecution.paths) {
       console.log(
-        `- ${path.kind} ${path.dstChain || "n/a"}:${path.dstAsset?.ticker || "n/a"} readiness=${path.executionReadiness} preview=${path.preview?.status || "n/a"} blocked=${path.preview?.blockedReason || "none"}`,
+        `- ${path.kind} ${path.dstChain || "n/a"}:${path.dstAsset?.ticker || "n/a"} readiness=${path.executionReadiness} preview=${path.preview?.status || "n/a"} blocked=${path.preview?.blockedReason || "none"} postArrival=${path.postArrivalPlan?.status || "n/a"}`,
       );
     }
   }

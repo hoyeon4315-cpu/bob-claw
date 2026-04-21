@@ -316,7 +316,7 @@ function normalizeReserveState(reserveState, policy, receiptStore) {
 }
 
 function supportedSwapVenue(paybackPolicy) {
-  const supported = new Set([]);
+  const supported = new Set(["cowswap", "uniswap_v3"]);
   const configured = paybackPolicy.destinationPath.swapVenueOrdered || [];
   const selected = configured.find((item) => supported.has(String(item).trim().toLowerCase())) || null;
   return {
