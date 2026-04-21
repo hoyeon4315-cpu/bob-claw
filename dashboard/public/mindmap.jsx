@@ -11,6 +11,18 @@ const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const T_FAST = 220;
 const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.8;
 
+// Mindmap shows only protocols where user capital is parked.
+// Hidden: pure swap/refuel/arb routing (odos, gaszip). Kept: lending, loops, LPs,
+// payback, and BOB Gateway as the BTC <-> EVM entrypoint.
+const MINDMAP_HIDDEN_PROTOCOLS = new Set(['odos', 'gaszip']);
+const MINDMAP_HIDDEN_TYPES = new Set(['refuel']);
+function isMindmapVisible(strategy) {
+  if (!strategy) return false;
+  if (MINDMAP_HIDDEN_PROTOCOLS.has(strategy.protocol)) return false;
+  if (MINDMAP_HIDDEN_TYPES.has(strategy.type)) return false;
+  return true;
+}
+
 function bloomRadiusForCount(count, chipR, minR = 62, padding = 6) {
   if (!Number.isFinite(count) || count <= 1) return minR;
   const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
@@ -417,10 +429,11 @@ function Mindmap({ motionSpeed = 1.4 }) {
     return () => cancelAnimationFrame(rafRef.current);
   }, [motionSpeed]);
 
-  const VB = 380;
-  const cx0 = VB / 2;
-  const cy0 = VB / 2 + 34;
-  const ringR = 120;
+  const VB_W = 380;
+  const VB_H = 540;
+  const cx0 = VB_W / 2;
+  const cy0 = VB_H / 2 + 50;
+  const ringR = 132;
   const chainSize = 34;
   const gatewaySize = 22;
 
@@ -429,7 +442,10 @@ function Mindmap({ motionSpeed = 1.4 }) {
 
   const strategiesByChain = useMemo(() => {
     const m = {};
-    for (const s of STRATEGIES) (m[s.chain] ||= []).push(s);
+    for (const s of STRATEGIES) {
+      if (!isMindmapVisible(s)) continue;
+      (m[s.chain] ||= []).push(s);
+    }
     return m;
   }, []);
 
@@ -443,7 +459,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
 
   const liveChains = new Set(STRATEGIES.filter(s => s.status === 'LIVE').map(s => s.chain));
 
-  const btcPos = { x: 0, y: -(ringR + chainSize*1.5) };
+  const btcPos = { x: 0, y: -(ringR + chainSize * 1.7) };
 
   const srcCurve = useMemo(() => ({
     ...curvePath(btcPos.x, btcPos.y, 0, 0, 0),
@@ -515,21 +531,30 @@ function Mindmap({ motionSpeed = 1.4 }) {
 
     const width = Math.max(120, finalBounds.maxX - finalBounds.minX);
     const height = Math.max(120, finalBounds.maxY - finalBounds.minY);
-    const padding = selectedProtocolId ? 74 : 54;
-    const fitZoom = Math.min((VB - padding * 2) / width, (VB - padding * 2) / height);
-    const zoom = clamp(fitZoom, 1, selectedProtocolId ? 1.48 : 1.12);
+    // Reserve generous bottom for ChainCard / ProtocolCard so chips and flow
+    // tokens never hide under it. Card heights measured ~150px (protocol) /
+    // ~100px (chain) at viewBox scale.
+    const cardReserveBottom = selectedProtocolId ? 170 : 118;
+    const reserveTop = 36;
+    const reserveSide = 26;
+    const availW = VB_W - reserveSide * 2;
+    const availH = VB_H - reserveTop - cardReserveBottom;
+    const fitZoom = Math.min(availW / width, availH / height);
+    const zoom = clamp(fitZoom, 1, selectedProtocolId ? 1.55 : 1.18);
     const focus = {
       x: (finalBounds.minX + finalBounds.maxX) / 2,
       y: (finalBounds.minY + finalBounds.maxY) / 2,
     };
 
+    // Center the focus inside the available (non-card) region.
+    const availCenterY = reserveTop + availH / 2;
     let tx = cx0 - focus.x * zoom;
-    let ty = cy0 - focus.y * zoom;
+    let ty = availCenterY - focus.y * zoom;
 
-    const minLeft = 24;
-    const maxRight = VB - 24;
-    const minTop = 22;
-    const maxBottom = VB - (selectedProtocolId ? 116 : 92);
+    const minLeft = reserveSide;
+    const maxRight = VB_W - reserveSide;
+    const minTop = reserveTop;
+    const maxBottom = VB_H - cardReserveBottom;
 
     const left = finalBounds.minX * zoom + tx;
     const right = finalBounds.maxX * zoom + tx;
@@ -542,7 +567,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
     if (bottom > maxBottom) ty -= bottom - maxBottom;
 
     return { zoom, tx, ty };
-  }, [VB, chainSize, cx0, cy0, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
+  }, [VB_W, VB_H, chainSize, cx0, cy0, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
 
   const { zoom, tx, ty } = selectionTransform;
 
@@ -557,7 +582,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
       background: 'linear-gradient(180deg, #FAFAFA 0%, #F3F3F4 100%)',
       borderRadius: 20, overflow:'hidden',
     }}>
-      <svg width="100%" height="100%" viewBox={`0 0 ${VB} ${VB}`} preserveAspectRatio="xMidYMid meet">
+      <svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet">
         <defs>
           <pattern id="dotgrid" width="14" height="14" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.7" fill="#E0E0E2"/>
@@ -568,7 +593,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
           </radialGradient>
         </defs>
 
-        <rect width={VB} height={VB} fill="url(#dotgrid)" onClick={resetAll}/>
+        <rect width={VB_W} height={VB_H} fill="url(#dotgrid)" onClick={resetAll}/>
 
         <g transform={`translate(${tx}, ${ty}) scale(${zoom})`}
            style={{ transition: `transform ${T_FAST}ms ${EASE}` }}>
@@ -700,15 +725,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
         <ChainCard chainId={selectedChain} strategies={strategiesByChain[selectedChain] || []}/>
       )}
 
-      {!selectedChain && (
-        <div style={{
-          position:'absolute', bottom:10, left:0, right:0, textAlign:'center',
-          fontSize:11, color:'#8A8A8D', letterSpacing: 0.3,
-          fontFamily:'-apple-system, system-ui', pointerEvents:'none',
-        }}>
-          tap a chain to zoom · tap background to reset
-        </div>
-      )}
+      {!selectedChain && null}
     </div>
   );
 }

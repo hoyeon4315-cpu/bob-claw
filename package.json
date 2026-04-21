@@ -34,6 +34,7 @@
     "write:session-handoff": "node src/cli/write-session-handoff.mjs",
     "reconcile:receipt": "node src/cli/reconcile-receipt.mjs",
     "report:receipt-ledger": "node src/cli/report-receipt-ledger.mjs",
+    "report:wallet-holdings-slice": "node src/cli/report-wallet-holdings-slice.mjs",
     "report:capital-audit": "node src/cli/report-capital-audit.mjs",
     "report:btc-proxy-spreads": "node src/cli/report-btc-proxy-spreads.mjs",
     "report:native-btc-surface": "node src/cli/report-native-btc-opportunity-surface.mjs",
