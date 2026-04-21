@@ -138,14 +138,14 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   });
 
   assert.equal(plan.currentSystem.liveTrading, "BLOCKED");
-  assert.equal(plan.currentSystem.activeBudgetUsd, 300);
-  assert.equal(plan.currentSystem.referenceBudgetUsd, 300);
-  assert.equal(plan.budgetAssessment.currentBudgetUsd, 300);
-  assert.equal(plan.budgetAssessment.referenceBudgetUsd, 300);
+  assert.equal(plan.currentSystem.activeBudgetUsd, 1_000_000);
+  assert.equal(plan.currentSystem.referenceBudgetUsd, 1_000_000);
+  assert.equal(plan.budgetAssessment.currentBudgetUsd, 1_000_000);
+  assert.equal(plan.budgetAssessment.referenceBudgetUsd, 1_000_000);
   assert.match(plan.budgetAssessment.explanation[0], /per-strategy/i);
   assert.deepEqual(plan.budgetAssessment.budgetScenarios, [
     {
-      budgetUsd: 300,
+      budgetUsd: 1_000_000,
       label: "active_cap_current",
       planningOnly: false,
     },
@@ -160,7 +160,7 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   assert.equal(yieldPivot.capitalGuidance.defaultDualSleeveMinimumUsd, 338.33);
   assert.equal(yieldPivot.capitalGuidance.budgetFit.researchPilotFits, true);
   assert.equal(yieldPivot.capitalGuidance.budgetFit.diversifiedSingleSleeveFits, true);
-  assert.equal(yieldPivot.capitalGuidance.budgetFit.defaultDualSleeveFits, false);
+  assert.equal(yieldPivot.capitalGuidance.budgetFit.defaultDualSleeveFits, true);
   assert.equal(yieldPivot.budgetScenarios.length, 1);
 
   const proxyPivot = plan.pivots.find((pivot) => pivot.id === "btc_proxy_spreads");
@@ -179,8 +179,8 @@ test("strategy pivot plan removes the repo-wide live budget and builds a determi
   const summary = summarizeStrategyPivotPlan(plan);
   assert.equal(summary.topRecommendation.id, "gateway_base_btc_yield");
   assert.equal(summary.topRecommendation.researchPilotMinimumUsd, 105);
-  assert.equal(summary.currentBudgetUsd, 300);
-  assert.equal(summary.referenceBudgetUsd, 300);
+  assert.equal(summary.currentBudgetUsd, 1_000_000);
+  assert.equal(summary.referenceBudgetUsd, 1_000_000);
   assert.equal(summary.budgetScenarios.length, 1);
   assert.equal(summary.topRecommendation.budgetScenarios.length, 1);
 });

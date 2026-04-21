@@ -76,9 +76,9 @@ export function buildAdaptiveCapitalPlan({
       ? Math.min(adaptivePerStrategyUsd, globalCeilingUsd.perDayUsd)
       : globalCeilingUsd.perDayUsd;
 
-    const effectivePerTxUsd = adaptivePerTxUsd;
-    const effectivePerDayUsd = adaptivePerDayUsd;
-    const effectiveMaxLossUsd = globalCeilingUsd.maxDailyLossUsd;
+    const effectivePerTxUsd = minOrZero(staticPerTx, adaptivePerTxUsd);
+    const effectivePerDayUsd = minOrZero(staticPerDay, adaptivePerDayUsd);
+    const effectiveMaxLossUsd = minOrZero(staticMaxLoss, globalCeilingUsd.maxDailyLossUsd);
 
     const newEntriesAllowed = adaptive.newEntriesAllowed && strategy.autoExecute === true;
 

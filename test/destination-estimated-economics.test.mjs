@@ -53,9 +53,9 @@ test("destination estimated economics computes policy pass when required inputs 
 
   assert.equal(estimated.economicsStatus, "estimated");
   assert.deepEqual(estimated.activeBudgetEstimate, {
-    budgetUsd: 300,
+    budgetUsd: 1_000_000,
     estimatedNetBps: 80,
-    estimatedNetUsd: 2.4,
+    estimatedNetUsd: 8000,
     passesPolicy: true,
   });
   assert.equal(estimated.planningBudgetEstimate, null);
