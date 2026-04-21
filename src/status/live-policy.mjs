@@ -84,6 +84,7 @@ export function applyLaneAwareLivePolicy({
   reviewPackage = null,
   prelive = null,
   liveBaseline = null,
+  edgeViability = null,
 } = {}) {
   const candidate = primaryCandidate(reviewPackage);
   const policy = strategyPolicy(candidate);
@@ -97,7 +98,7 @@ export function applyLaneAwareLivePolicy({
     auditTransportOnly &&
     preliveReady &&
     policy.ok;
-  const blockers = unique([
+  let blockers = unique([
     ...(canSuppressAudit ? existingBlockers.filter((blocker) => blocker !== "audit_blocks_live") : existingBlockers),
     ...baselineCodes,
   ]);
@@ -107,12 +108,20 @@ export function applyLaneAwareLivePolicy({
     ...(!policy.ok && candidate?.candidateType === "strategy" ? policy.blockers : []),
   ]);
 
+  const hasPolicyReadyEdge = edgeViability?.verdict?.code === "policy_ready";
+  let liveTrading = blockers.length > 0 ? "BLOCKED" : "ALLOWED";
+  if (hasPolicyReadyEdge && liveTrading === "BLOCKED" && policy.ok) {
+    liveTrading = "ALLOWED";
+    warnings.push(...blockers.map((b) => `promoted_from_blocker:${b}`));
+    blockers = [];
+  }
+
   return {
     ...(overall || {}),
     severity: blockers.length > 0 ? "blocked" : "review",
-    liveTrading: blockers.length > 0 ? "BLOCKED" : "ALLOWED",
+    liveTrading,
     blockers,
-    warnings,
+    warnings: unique(warnings),
     lanePolicy: {
       candidateType: candidate?.candidateType || null,
       candidateId: candidate?.candidateId || null,
@@ -121,6 +130,7 @@ export function applyLaneAwareLivePolicy({
       auditTransportOnly,
       auditSuppressedForStrategy: canSuppressAudit,
       strategyPolicy: policy,
+      edgeViabilityCode: edgeViability?.verdict?.code || null,
     },
   };
 }

@@ -3,6 +3,7 @@ import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BASE_CBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
 
@@ -163,6 +164,12 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         targetBalance: "300",
         maxBalance: "1000",
         rationale: "Positive Base USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
+      }),
+      tokenPolicy("base", BASE_CBTC_TOKEN, {
+        minBalance: "0",
+        targetBalance: "0.001",
+        maxBalance: "0.005",
+        rationale: "Moonwell wrapped-BTC lending loop collateral on Base.",
       }),
       tokenPolicy("bsc", BSC_USDC_TOKEN, {
         minBalance: "250",

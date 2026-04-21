@@ -521,6 +521,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     reviewPackage: dashboardStatus.prelive.reviewPackage,
     prelive: dashboardStatus.prelive,
     liveBaseline: dashboardStatus.liveBaseline,
+    edgeViability: dashboardStatus.strategy?.edgeViability,
   });
   dashboardStatus.prelive.liveTradingPolicy = dashboardStatus.overall.liveTrading;
   reviewPackage.liveDecision =
