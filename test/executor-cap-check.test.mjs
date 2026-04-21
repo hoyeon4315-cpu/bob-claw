@@ -445,8 +445,8 @@ test("recursive wrapped BTC loop caps are declared but do not auto-execute live 
   const caps = assertStrategyCaps("recursive_wrapped_btc_lending_loop");
 
   assert.equal(caps.autoExecute, false);
-  assert.equal(caps.caps.perTxUsd, 300);
-  assert.equal(caps.caps.perChainUsd.base, 300);
+  assert.equal(caps.caps.perTxUsd, 1_000_000);
+  assert.equal(caps.caps.perChainUsd.base, 1_000_000);
   assert.deepEqual(caps.exposure.protocols, ["moonwell", "odos"]);
   assert.equal(caps.exposure.btcDenominated, true);
   assert.equal(caps.leverage.healthFactorMin, 1.35);

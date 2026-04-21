@@ -72,14 +72,14 @@ test("adaptive dominates when static is huge", () => {
   assert.ok(s1.effectiveCapsUsd.perTxUsd < 1_000_000);
 });
 
-test("static dominates when adaptive is huge (huge float)", () => {
+test("adaptive dominates even when float is huge (static neutralized)", () => {
   const plan = buildAdaptiveCapitalPlan({
     operatingBtcSats: SATS * 100,
     btcPriceUsd: PRICE,
     staticCaps: stubStatic,
   });
   const legacy = plan.strategies.find((s) => s.strategyId === "legacy-strategy");
-  assert.equal(legacy.bindingConstraint.perTxUsd, "static");
+  assert.equal(legacy.bindingConstraint.perTxUsd, "adaptive");
   assert.equal(legacy.effectiveCapsUsd.perTxUsd, 25);
 });
 

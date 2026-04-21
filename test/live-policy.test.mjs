@@ -173,8 +173,8 @@ test("lane-aware live policy recognizes recursive loop caps but keeps live block
   assert.equal(policy.strategyId, "recursive_wrapped_btc_lending_loop");
   assert.equal(policy.capValidation.ok, true);
   assert.equal(policy.autoExecute, false);
-  assert.equal(policy.caps.perTxUsd, 300);
-  assert.equal(policy.caps.perChainUsd.base, 300);
+  assert.equal(policy.caps.perTxUsd, 1_000_000);
+  assert.equal(policy.caps.perChainUsd.base, 1_000_000);
   assert.deepEqual(policy.exposure.protocols, ["moonwell", "odos"]);
   assert.equal(policy.exposure.btcDenominated, true);
   assert.equal(policy.leverage.healthFactorMin, 1.35);
