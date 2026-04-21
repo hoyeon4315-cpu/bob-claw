@@ -308,8 +308,8 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected }) {
   const hitSize = strategy.loops ? size * 4.1 : size * 3.2;
   return (
     <g data-protocol-id={strategy.id} transform={`translate(${x}, ${y})`}
-        style={{ cursor:'pointer', animation: `chipIn 220ms ${EASE} both` }}>
-      <g style={{ pointerEvents:'none' }}>
+        style={{ cursor:'pointer' }}>
+      <g style={{ pointerEvents:'none', animation: `chipIn 220ms ${EASE} both` }}>
         <circle r={R} fill="#FFFFFF" stroke={selected ? '#111113' : '#DADADA'} strokeWidth={selected ? 1.2 : 0.6}/>
         <foreignObject x={-R*0.82} y={-R*0.82} width={R*1.64} height={R*1.64} style={{ pointerEvents:'none' }}>
           <div xmlns="http://www.w3.org/1999/xhtml" style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', pointerEvents:'none' }}>

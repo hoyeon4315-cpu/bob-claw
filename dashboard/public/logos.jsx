@@ -101,8 +101,8 @@ function ChainLogo({ id, size = 28, style = {} }) {
   const slug = CHAIN_SLUG[id];
   const label = (id || '?').slice(0, 1).toUpperCase();
   const sources = [];
-  if (id) sources.push(LOCAL_CHAIN(id));
   if (slug) sources.push(LLAMA_CHAIN(slug, size));
+  if (id) sources.push(LOCAL_CHAIN(id));
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }} data-chain-logo={id}>
       <MultiImgMark
@@ -116,7 +116,7 @@ function ChainLogo({ id, size = 28, style = {} }) {
 
 function ProtocolLogo({ id, size = 22, style = {} }) {
   const remote = protoSources(id, size);
-  const sources = id ? [LOCAL_PROTOCOL(id), ...remote] : remote;
+  const sources = id ? [...remote, LOCAL_PROTOCOL(id)] : remote;
   const label = (id || '?').slice(0, 1).toUpperCase();
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }} data-protocol-logo={id}>
