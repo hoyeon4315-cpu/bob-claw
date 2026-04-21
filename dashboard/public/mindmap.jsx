@@ -9,7 +9,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const T_FAST = 220;
-const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.8;
+const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.75;
 
 // Mindmap shows only protocols where user capital is parked.
 // Hidden: pure swap/refuel/arb routing (odos, gaszip). Kept: lending, loops, LPs,
@@ -210,7 +210,7 @@ function OrbitTokens({ cx, cy, radius, assets, loops, time, speed = 0.55 }) {
     const x = Math.cos(ang) * radius;
     const y = Math.sin(ang) * radius;
     const asset = assets[i % assets.length];
-    dots.push(<TokenBubble key={'orb-'+i} x={x} y={y} assetId={asset} size={10}/>);
+    dots.push(<TokenBubble key={'orb-'+i} x={x} y={y} assetId={asset} size={12}/>);
   }
   return (
     <g transform={`translate(${cx}, ${cy})`}>
@@ -237,55 +237,6 @@ function PairBadge({ x, y, pair, size = 14 }) {
           <AssetLogo id={pair[1] || pair[0]} size={size*0.9}/>
         </div>
       </foreignObject>
-    </g>
-  );
-}
-
-function ProtocolMark({ x, y, protocol, size = 14 }) {
-  return (
-    <g transform={`translate(${x}, ${y})`} style={{ pointerEvents:'none' }}>
-      <circle r={size/2 + 1.4} fill="#FFFFFF" stroke="#E4E4E6" strokeWidth="0.5"/>
-      <foreignObject x={-size/2} y={-size/2} width={size} height={size} style={{ pointerEvents:'none' }}>
-        <div xmlns="http://www.w3.org/1999/xhtml" style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', pointerEvents:'none' }}>
-          <ProtocolLogo id={protocol} size={size}/>
-        </div>
-      </foreignObject>
-    </g>
-  );
-}
-
-function EndpointProtocols({ chainId, chainX, chainY, strategies, chainSize }) {
-  const seen = new Set();
-  const protos = [];
-  for (const s of strategies) {
-    if (!s.protocol || seen.has(s.protocol)) continue;
-    seen.add(s.protocol);
-    protos.push(s);
-  }
-  if (protos.length === 0) return null;
-  const baseA = Math.atan2(chainY, chainX);
-  const R = chainSize * 0.9;
-  const spread = Math.min(Math.PI * 0.55, (protos.length - 1) * 0.42 + 0.3);
-  return (
-    <g>
-      {protos.map((s, i) => {
-        const t = protos.length === 1 ? 0 : (i / (protos.length - 1)) - 0.5;
-        const a = baseA + t * spread;
-        const x = chainX + Math.cos(a) * R;
-        const y = chainY + Math.sin(a) * R;
-        const mark = <ProtocolMark key={'ep-'+chainId+'-'+s.protocol} x={x} y={y} protocol={s.protocol} size={11}/>;
-        if (s.type === 'loop') {
-          return (
-            <g key={'epg-'+chainId+'-'+s.protocol}>
-              <circle cx={x} cy={y} r={9.5} fill="none" stroke="#B8B8BC" strokeWidth="0.5" strokeDasharray="2 2">
-                <animateTransform attributeName="transform" type="rotate" from={`0 ${x} ${y}`} to={`360 ${x} ${y}`} dur="6s" repeatCount="indefinite"/>
-              </circle>
-              {mark}
-            </g>
-          );
-        }
-        return mark;
-      })}
     </g>
   );
 }
@@ -376,6 +327,12 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected }) {
               {typeLabel}
             </text>
           </>
+        )}
+        {strategy.pair?.length > 0 && !selected && (
+          <text y={R + 10} textAnchor="middle" fontSize="8" fontWeight="500" fill="#8A8A8D"
+            style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
+            {strategy.pair.map(p => p.toUpperCase()).join(' / ')}
+          </text>
         )}
         {strategy.loops && (
           <g transform={`translate(${R*0.78}, ${-R*0.78})`}>
@@ -484,9 +441,8 @@ function Mindmap({ motionSpeed = 1.4 }) {
     const baseA = Math.atan2(p.y, p.x);
     const chipR = 28 * 1.1;
     // Bloom sits OUTSIDE the chain — push protocol chips far enough that the
-    // chain disc + label and the chip + pair badge never collide. minR raised
-    // from 62 to 84 to keep ~50px clear gap between chain edge and chip edge.
-    const R = bloomRadiusForCount(strats.length, chipR, 84, 10);
+    // chain disc + label and the chip + pair badge never collide.
+    const R = bloomRadiusForCount(strats.length, chipR, 110, 14);
     const out = {};
     strats.forEach((s, i) => {
       const t = strats.length === 1 ? 0 : (i / (strats.length - 1)) - 0.5;
@@ -516,6 +472,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
       const chipSize = 28;
       const chipRadius = chipSize * 1.1;
       includeCircle(bounds, point.x, point.y, chipRadius + 4);
+      includeRect(bounds, point.x, point.y + chipRadius + 10, 80, 14);
       includeRect(bounds, point.x, point.y + chipRadius + 18, 112, 38);
 
       if (strategy.loops) {
@@ -523,7 +480,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
         includeCircle(bounds, point.x + chipRadius * 0.78, point.y - chipRadius * 0.78, 14);
       }
       if (strategy.pair?.length > 1) {
-        includeRect(bounds, point.x, point.y - chipSize * 1.55, 42, 18);
+        includeRect(bounds, point.x, point.y - chipSize * 1.8, 42, 18);
       }
     });
 
@@ -535,9 +492,8 @@ function Mindmap({ motionSpeed = 1.4 }) {
     const width = Math.max(120, finalBounds.maxX - finalBounds.minX);
     const height = Math.max(120, finalBounds.maxY - finalBounds.minY);
     // Reserve generous bottom for ChainCard / ProtocolCard so chips and flow
-    // tokens never hide under it. Card heights measured ~150px (protocol) /
-    // ~100px (chain) at viewBox scale.
-    const cardReserveBottom = selectedProtocolId ? 170 : 118;
+    // tokens never hide under it.
+    const cardReserveBottom = selectedProtocolId ? 195 : 130;
     const reserveTop = 36;
     const reserveSide = 26;
     const availW = VB_W - reserveSide * 2;
@@ -685,9 +641,6 @@ function Mindmap({ motionSpeed = 1.4 }) {
                   sourceChainId={selectedChain}
                   sourceChainAfterSwap={s.type === 'payback' ? 'bitcoin' : 'bob'}
                   size={11}/>
-                <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
-                  selected={isSel}
-                  onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}/>
                 {s.type === 'loop' && (
                   <OrbitTokens cx={pp.x} cy={pp.y}
                     radius={chipSize * 1.8}
@@ -695,11 +648,14 @@ function Mindmap({ motionSpeed = 1.4 }) {
                     loops={s.loops}
                     time={time} speed={0.55}/>
                 )}
+                <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
+                  selected={isSel}
+                  onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}/>
                 {(s.type === 'lp' || s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
-                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.55} pair={s.pair} size={12}/>
+                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
                 )}
                 {(s.type === 'bridge' || s.type === 'payback' || s.type === 'refuel') && s.pair.length > 1 && (
-                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.55} pair={s.pair} size={12}/>
+                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
                 )}
               </g>
             );
