@@ -51,6 +51,24 @@ Updated: 2026-04-22
 - LLM 의사결정 경로 편입
 - BOB Gateway 비공식 destination chain
 
+## 실전 소액 테스트 현황
+
+이 문서는 "실전 소액 테스트가 아직 전혀 없다"는 전제로 쓰지 않는다.
+
+현재 repo와 운영 메모 기준 사실은 아래와 같다.
+
+- Gateway transport 쪽은 최소 라이브 증명이 이미 있다.
+- `Base -> BOB wBTC.OFT` `1000 sats` end-to-end minimal live proof가 기록돼 있다.
+- `wrapped-btc-loop-base-moonwell`은 signer-backed OOS / live roundtrip evidence가 기록돼 있다.
+- `docs/current-status.md` 기준 tiny live canary review 단계는 존재하며, 현재 top route는 `base->bsc wBTC.OFT->wBTC.OFT` `300` amount까지 내려와 있다.
+- 하지만 이것을 "반복 가능한 수익 전략의 소액 실전 canary가 완료됐다"로 부르면 안 된다.
+- 현재 상태는 `tiny_live_canary_review` 또는 `minimal_live_proof_exists`에 가깝고, 경제성은 아직 `BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP` 또는 `blocked_no_net_edge`가 남아 있다.
+
+즉, 앞으로의 계획은 "소액 실전 테스트를 새로 발명"하는 것이 아니라 아래 두 가지를 닫는 것이다.
+
+1. 이미 있는 minimal live proof를 전략별 repeatable micro-canary로 승격
+2. canary / rescue / unwind 도중 native gas 부족으로 막히지 않도록 자동 gas bootstrap 경로를 완성
+
 ## 현재 후보 인벤토리
 
 | Bucket | ID | Chain | 주요 프로토콜 | 현재 상태 | 핵심 blocker |
@@ -78,6 +96,55 @@ Updated: 2026-04-22
 3. 새 체인 추가보다 `receipt -> tick -> canary -> promotion` 연결을 먼저 완성한다.
 4. BOB Gateway transport proof만으로 전략 완료로 치지 않는다.
 5. 모든 전략은 `BTC-denominated`, `deterministic`, `cap = code` 원칙을 지킨다.
+6. 실전 소액 테스트는 전략별 `micro-canary`로 명시 관리한다. "최소 라이브 증명"과 "전략 canary 통과"는 같은 말이 아니다.
+7. `rescue`, `unwind`, `offramp`, `gas top-up`은 모두 운영 부속작업이 아니라 전략 생존 조건이다. 가스 부족으로 rescue가 멈추면 그 전략은 구축 완료가 아니다.
+
+## 마이크로 캐너리 원칙
+
+앞으로 모든 후보 전략은 아래 3단계 중 어느 단계인지 명시해야 한다.
+
+1. `minimal_live_proof_exists`
+2. `micro_canary_ready`
+3. `micro_canary_repeatable`
+
+정의:
+
+- `minimal_live_proof_exists`: 단일 소액 라이브 증명은 있으나, 전략별 반복성과 economics가 아직 닫히지 않은 상태
+- `micro_canary_ready`: 전략 config, receipt schema, gas bootstrap, unwind path가 갖춰져서 아주 작은 금액으로 반복 테스트가 가능한 상태
+- `micro_canary_repeatable`: 최소 3회 이상 signer-backed 소액 실행이 같은 schema로 기록되고, 실패 원인과 realized cost가 재현 가능하게 남는 상태
+
+모든 후보는 live 승격 전에 먼저 `micro_canary_repeatable`까지 가야 한다.
+
+## Gas Rescue Autonomy 원칙
+
+앞으로는 "구출하려고 했는데 native gas가 없어서 멈춤"을 정상 상태로 취급하지 않는다.
+
+원칙:
+
+1. `rescue` / `unwind` / `offramp` / `payback` / `gas refill`은 모두 intent 전 preflight에서 native gas floor를 검사한다.
+2. gas floor 미달이면 원래 intent를 바로 실패시키지 않고 `bootstrap_required_before_execution` 상태로 바꾼다.
+3. bootstrap은 deterministic 우선순위대로 자동 시도한다.
+4. bootstrap 비용이 전략 손실보다 더 큰 경우는 "가스를 못 구함"이 아니라 `economically_unjustified_rescue`로 기록한다.
+5. coding tool / executor는 사람이 따로 지시하지 않아도 bootstrap job을 생성하고 실행 가능한 경로를 찾아야 한다.
+6. rescue intent는 "가스 부족으로 미실행"에서 끝나면 안 되고, 반드시 아래 셋 중 하나로 종결돼야 한다.
+
+- `rescue_executed`
+- `bootstrap_executed_but_rescue_blocked_for_policy`
+- `bootstrap_and_rescue_economically_unjustified`
+
+bootstrap 우선순위:
+
+1. same-chain native 잔액 사용
+2. same-chain swap으로 native 확보
+3. same-wallet wrapped asset -> native unwrap/sell
+4. cross-chain gas refuel (`Gas.Zip` 또는 repo 허용 경로)
+5. treasury reserve source에서 bootstrap job 발행
+
+금지:
+
+- "운영자가 나중에 수동으로 가스를 넣으면 됨"을 steady-state 해결책으로 간주하지 않는다.
+- rescue 직전에만 ad hoc manual top-up을 넣고 artifact에는 안 남기는 방식
+- bootstrap 비용을 전략 economics 밖으로 숨기는 방식
 
 ## 전체 빌드 순서
 
@@ -153,6 +220,53 @@ Updated: 2026-04-22
 - `berachain-bend-bex-bgt`
 - `gmx-v2-perp-basis-avax`
 
+### W1-B. Micro Canary + Gas Bootstrap Backbone
+
+목표:
+
+- 모든 후보 전략이 "소액 실전 테스트 가능 여부"와 "가스 없을 때 자동 확보 가능 여부"를 같은 runtime에서 판단하게 만든다.
+
+수정 대상:
+
+- `src/cli/run-strategy-tick.mjs`
+- `src/executor/tick/strategy-tick.mjs`
+- `src/executor/bootstrap/multi-hop-planner.mjs`
+- `src/executor/balance/reconcile.mjs`
+- `src/executor/watchdog/feed-freshness.mjs`
+- 신규 `src/executor/bootstrap/gas-bootstrap-runner.mjs`
+- 신규 `src/executor/bootstrap/rescue-bootstrap-policy.mjs`
+- 신규 `src/status/micro-canary-slice.mjs`
+
+세부 작업:
+
+1. 각 strategy report에 `microCanaryStatus` 필드 추가
+2. `rescue`, `unwind`, `payback`, `offramp` intent에 공통 `requiredNativeGasUsd` 계산 경로 추가
+3. gas floor 미달 시 `multi-hop-planner`를 호출해 bootstrap plan 생성
+4. bootstrap plan이 있으면 원래 intent보다 먼저 `gas-bootstrap` intent를 enqueue
+5. bootstrap 성공 후 원래 intent 재시도
+6. bootstrap 실패 시 `missing_gas`가 아니라 `bootstrap_failed`, `bootstrap_unavailable`, `economically_unjustified_rescue`로 구분 기록
+7. `data/strategy-tick-status.json`과 dashboard slice에 `micro canary` / `bootstrap pending` 상태 노출
+
+추천 신규 파일:
+
+- `src/executor/bootstrap/gas-bootstrap-runner.mjs`
+- `src/executor/bootstrap/rescue-bootstrap-policy.mjs`
+- `src/executor/bootstrap/bootstrap-receipt-normalizer.mjs`
+- `src/status/micro-canary-slice.mjs`
+
+테스트:
+
+- native gas가 0에 가까운 상태에서도 rescue intent가 즉시 hard fail하지 않는지
+- bootstrap 성공 후 rescue intent가 재개되는지
+- bootstrap 비용이 과도하면 `economically_unjustified_rescue`로 명시 차단되는지
+- micro canary가 3회 반복 전에는 live candidate로 승격되지 않는지
+
+완료 기준:
+
+- "구출할 때마다 가스가 없어서 멈춘다"는 현상이 artifact에서 사라진다.
+- 모든 rescue/unwind 실패는 `gas missing`이 아니라 bootstrap result가 붙은 상태 코드로 남는다.
+- strategy별 `minimal_live_proof_exists` / `micro_canary_ready` / `micro_canary_repeatable` 상태가 보인다.
+
 ### W2. Near-live 후보 마감
 
 이 workstream은 "실제로 가장 빨리 증거를 쌓아 promotion gate까지 갈 수 있는" 후보를 마감하는 단계다.
@@ -170,6 +284,7 @@ Updated: 2026-04-22
 3. live peg-divergence watcher 연결
 4. receipt ingest에서 health factor / buffer / fees / unwind cost 기록
 5. `phase3-strategy-validation` blocker 3개 제거
+6. rescue/unwind 전에 native gas가 부족하면 자동 bootstrap 후 재시도
 
 수정 대상:
 
@@ -184,6 +299,7 @@ Updated: 2026-04-22
 - `recursive_stablecoin_lending_loop_validation`이 `blocked`에서 빠진다.
 - signer-backed receipt가 누적된다.
 - post-fee economics가 dashboard/validation artifact에 반영된다.
+- 소액 signer-backed micro canary를 3회 반복 가능하다.
 
 #### W2-B. `pendle-pt-lbtc-base`
 
@@ -197,6 +313,7 @@ Updated: 2026-04-22
 2. Moonwell borrow leg와 PT entry leg를 묶는 economics packet 정의
 3. maturity rollover receipt schema 추가
 4. executor path는 먼저 dry-run / shadow까지만 연결
+5. exit / unwind / payback leg에서 gas bootstrap path를 같이 정의
 
 수정 대상:
 
@@ -209,6 +326,7 @@ Updated: 2026-04-22
 
 - strategy tick에서 `shadowReady` 또는 명시적 blocker를 안정적으로 출력한다.
 - `daysToMaturity`, `ptImpliedAprBps`, `entry/exit slippage`, `LBTC peg`가 artifact로 남는다.
+- small live path는 `micro_canary_ready` 여부까지 판정된다.
 
 #### W2-C. `aerodrome-cl-base`
 
@@ -222,6 +340,7 @@ Updated: 2026-04-22
 2. rebalance receipt schema 추가
 3. range reset proof를 live_candidate 조건에 맞게 기록
 4. variant별 config template 분리
+5. out-of-range rescue 시 native gas bootstrap을 공통 경로로 사용
 
 수정 대상:
 
@@ -233,6 +352,7 @@ Updated: 2026-04-22
 
 - 두 variant 모두 tick report에서 구분된다.
 - `rebalanceProven`을 계산할 수 있는 receipt schema가 존재한다.
+- range rescue가 gas 부족 때문에 멈추지 않도록 bootstrap status가 같이 기록된다.
 
 #### W2-D. `beefy-folding-vault`
 
@@ -246,11 +366,13 @@ Updated: 2026-04-22
 2. underlying Moonwell HF 상태 연결
 3. full vault exit receipt 증거 정의
 4. tick runner에 strategy 등록
+5. vault exit 전에 bootstrap gas가 자동 확보되는지 검증
 
 완료 기준:
 
 - vault withdrawal proof를 receipt로 남길 수 있다.
 - `beefy-folding-vault`가 tick runner에서 blocked/shadowReady를 일관되게 출력한다.
+- small live vault exit test를 `micro_canary`로 별도 기록할 수 있다.
 
 ### W3. 신규 체인 / 신규 venue vertical
 
@@ -266,6 +388,7 @@ Updated: 2026-04-22
 2. Gateway custom action availability / failure-rate 관측 저장
 3. PT direct entry와 maturity exit receipt schema 정의
 4. BSC chain gas / quote freshness automation 포함
+5. custom action 실패 후 rescue/offramp path도 bootstrap 가능하게 설계
 
 완료 기준:
 
@@ -284,6 +407,7 @@ Updated: 2026-04-22
 2. BGT price confidence / spot liquidity loader 작성
 3. BGT claim receipt와 valuation proof schema 추가
 4. Berachain offramp cost를 BTC 기준으로 기록
+5. Bera native gas floor 미달 시 bootstrap source와 retry path를 명시
 
 완료 기준:
 
@@ -302,6 +426,7 @@ Updated: 2026-04-22
 2. GMX V2 perp open/close receipt schema
 3. funding flip auto-exit proof schema
 4. Avalanche spot asset unwind economics 기록
+5. auto-unwind 전에 AVAX gas bootstrap을 자동 발행
 
 완료 기준:
 
@@ -446,6 +571,8 @@ Updated: 2026-04-22
 4. `evaluatePromotionEvidence` 결과를 dashboard와 session handoff에 반영
 5. `evaluateFeedFreshness`, `detectOftExploit`, `reconcileBalances`를 tick 전후 guard로 연결
 6. payback accumulator가 yield strategy의 realized carry를 동일 schema로 읽는지 검증
+7. gas bootstrap runner를 dispatcher / rescue / payback / canary 공통 경로에 연결
+8. "manual top-up required"를 steady-state 문구에서 제거하고 bootstrap artifact로 치환
 
 수정 대상:
 
@@ -460,6 +587,8 @@ Updated: 2026-04-22
 
 - 각 전략에 대해 `shadow -> canary_1 -> canary_7 -> live` 상태를 artifact에서 확인할 수 있다.
 - dashboard가 "candidate 존재"만이 아니라 "어느 단계에 있는지" 보여준다.
+- rescue / unwind / offramp / payback 실패 건마다 bootstrap 판정이 같이 남는다.
+- "가스가 없어서 구출 실패"는 허용되는 종료 상태가 아니다.
 
 ## 추천 PR 분해
 
@@ -476,9 +605,10 @@ Updated: 2026-04-22
 9. PR-09: Avalanche GMX basis funding / unwind proof path
 10. PR-10: destination venue registry + wrapped BTC rotation
 11. PR-11: stable treasury rotation + reserve sleeve risk policy
-12. PR-12: Optimism / Sei onboarding
-13. PR-13: shadow -> canary -> promotion automation 연결
-14. PR-14: dashboard / payback / reporting finish
+12. PR-12: micro canary + gas bootstrap backbone
+13. PR-13: Optimism / Sei onboarding
+14. PR-14: shadow -> canary -> promotion automation 연결
+15. PR-15: dashboard / payback / reporting finish
 
 ## 병렬화 규칙
 
@@ -493,6 +623,7 @@ Updated: 2026-04-22
 - `recursive_stablecoin_lending_loop` live path와 shared receipt schema
 - shadow/canary/promotion bridge
 - payback carry schema와 strategy realized carry schema 통합
+- gas bootstrap runner와 rescue receipt schema
 
 ## 공통 완료 기준
 
@@ -504,6 +635,7 @@ Updated: 2026-04-22
 4. receipt schema가 entry / unwind / fees / realized carry를 포함한다.
 5. `phase3-strategy-validation`에서 blocker가 줄어들거나 passed가 된다.
 6. dashboard 또는 status slice에서 후보 상태를 읽을 수 있다.
+7. micro canary 상태와 bootstrap 상태를 같이 읽을 수 있다.
 
 ## 최종 목표 상태
 
@@ -515,6 +647,8 @@ Updated: 2026-04-22
 - `destination_wrapped_btc_rotation`과 `stablecoin_treasury_rotation`은 chain별 venue registry를 가짐
 - `optimism`, `sei`는 strategy surface에 명시적으로 등장
 - shadow / canary / promotion / dashboard / payback가 동일한 deterministic receipt 체인을 공유
+- rescue / unwind / offramp / payback가 같은 gas bootstrap 체인을 공유
+- 최소 라이브 증명 단계의 후보와 반복 가능한 micro canary 후보가 구분되어 보인다
 
 ## 실행 시작점
 
@@ -522,11 +656,12 @@ Updated: 2026-04-22
 
 1. W0 baseline refresh
 2. W1 strategy tick backbone 일반화
-3. W2-A recursive stablecoin loop 마감
-4. W2-B / W2-C / W2-D Base adapter 3종 shadow-ready
-5. W3 BSC / Bera / Avalanche vertical
-6. W5 destination rotation
-7. W6 Optimism / Sei onboarding
-8. W7 운영 연동 마감
+3. W1-B micro canary + gas bootstrap backbone
+4. W2-A recursive stablecoin loop 마감
+5. W2-B / W2-C / W2-D Base adapter 3종 shadow-ready
+6. W3 BSC / Bera / Avalanche vertical
+7. W5 destination rotation
+8. W6 Optimism / Sei onboarding
+9. W7 운영 연동 마감
 
 이 순서를 바꾸면 "후보 수는 많지만 실제로는 tick / receipt / promotion이 끊긴 상태"가 다시 반복될 가능성이 높다.
