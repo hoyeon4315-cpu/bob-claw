@@ -1,0 +1,59 @@
+name: promotion-watch
+
+on:
+  schedule:
+    # Daily at 23:00 UTC (08:00 KST) — pure read of audit log, no secrets, no deploy.
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "Lookback window in days"
+        required: false
+        default: "14"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promotion-watch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Run promotion preview
+        run: |
+          mkdir -p reports
+          npm run report:promotion-pr-preview -- \
+            --lookback-days=${{ github.event.inputs.lookback_days || '14' }} \
+            --write=reports/promotion-latest.json \
+            --quiet
+      - name: Summarize
+        run: |
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("reports/promotion-latest.json", "utf8"));
+            console.log("generatedAt:", r.generatedAt);
+            console.log("lookbackDays:", r.lookbackDays);
+            console.log("summary:", JSON.stringify(r.summary, null, 2));
+            const eligible = (r.reports || []).filter(x => x.eligible);
+            if (eligible.length) {
+              console.log("ELIGIBLE:", eligible.map(x => x.strategyId).join(", "));
+              process.exitCode = 0;
+            } else {
+              console.log("no strategies eligible yet");
+            }
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: promotion-latest
+          path: reports/promotion-latest.json
+          retention-days: 30
