@@ -1912,6 +1912,7 @@ async function main() {
     reviewPackage: dashboardStatusWithSnapshot.prelive.reviewPackage,
     prelive: dashboardStatusWithSnapshot.prelive,
     liveBaseline: dashboardStatusWithSnapshot.liveBaseline,
+    edgeViability: dashboardStatusWithSnapshot.strategy?.edgeViability,
   });
   dashboardStatusWithSnapshot.prelive.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
   reviewPackage.liveDecision =
