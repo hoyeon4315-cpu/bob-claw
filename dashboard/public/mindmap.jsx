@@ -287,7 +287,7 @@ function groupStrategiesByProtocol(strategies = []) {
       strategyCount: items.length,
       liveCount,
       earnedUsd: items.reduce((sum, item) => sum + (item.earnedUsd || 0), 0),
-      capUsd: items.reduce((sum, item) => sum + (item.capUsd || 0), 0),
+      capUsd: items.every((item) => item.capUsd == null) ? null : items.reduce((sum, item) => sum + (item.capUsd || 0), 0),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
       apyPct: apyDenominator > 0 ? apyNumerator / apyDenominator : null,
       desc: items.length === 1
@@ -720,7 +720,7 @@ function ProtocolCard({ protocolNode }) {
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
         <Metric label="Earned" value={protocolNode.earnedUsd > 0 ? `$${protocolNode.earnedUsd.toFixed(2)}` : '—'} accent={protocolNode.earnedUsd > 0}/>
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
-        <Metric label="Cap" value={`$${protocolNode.capUsd}`}/>
+        <Metric label="Cap" value={protocolNode.capUsd != null ? `$${protocolNode.capUsd}` : 'Adaptive'}/>
         {protocolNode.loops && <Metric label="Loops" value={`×${protocolNode.loops}`}/>}
       </div>
       <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:5, padding:'5px 8px', background:'#F5F5F6', borderRadius:8 }}>
@@ -752,7 +752,7 @@ function ChainCard({ chainId, strategies }) {
   const chain = CHAINS.find(c => c.id === chainId);
   if (!chain) return null;
   const live = strategies.filter(s => s.status === 'LIVE').length;
-  const totalCap = strategies.reduce((s, x) => s + (x.capUsd || 0), 0);
+  const totalCap = strategies.every((x) => x.capUsd == null) ? null : strategies.reduce((s, x) => s + (x.capUsd || 0), 0);
   const totalEarned = strategies.reduce((s, x) => s + (x.earnedUsd || 0), 0);
   return (
     <div data-card-type="chain" style={{
@@ -779,7 +779,7 @@ function ChainCard({ chainId, strategies }) {
       </div>
       <div style={{ marginTop:8, display:'flex', gap:14, flexWrap:'wrap' }}>
         <Metric label="Live" value={`${live}/${strategies.length}`}/>
-        <Metric label="Cap" value={`$${totalCap}`}/>
+        <Metric label="Cap" value={totalCap != null ? `$${totalCap}` : 'Adaptive'}/>
         <Metric label="Earned" value={totalEarned > 0 ? `$${totalEarned.toFixed(2)}` : '—'} accent={totalEarned > 0}/>
       </div>
     </div>
