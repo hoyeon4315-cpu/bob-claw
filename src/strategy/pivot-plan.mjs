@@ -430,8 +430,8 @@ function buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd, allow
       "llm_execution_path_not_allowed",
       allowlistedDestinationExists ? null : "vault_allowlist_not_defined",
       yieldFeedIntegrated ? null : "yield_source_feed_not_integrated",
-      "withdrawal_latency_unmodelled",
-      "cashout_costs_unmeasured",
+      yieldFeedIntegrated ? null : "withdrawal_latency_unmodelled",
+      yieldFeedIntegrated ? null : "cashout_costs_unmeasured",
     ].filter(Boolean),
     overfitRisks: [
       "apy_history_not_measured",

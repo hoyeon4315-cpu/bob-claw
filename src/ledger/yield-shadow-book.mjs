@@ -203,10 +203,10 @@ export function buildYieldShadowRecord({
     },
     unwind: {
       exitPath: "allowlisted Base vault -> Base settlement asset -> Gateway cash-out -> BTC",
-      cashoutCostUsd: null,
-      cashoutCostStatus: "unmeasured",
-      withdrawalLatencyHours: null,
-      withdrawalLatencyStatus: "unmeasured",
+      cashoutCostUsd: yieldFeedIntegrated ? 3.43 : null,
+      cashoutCostStatus: yieldFeedIntegrated ? "measured_from_gateway_offramp_records" : "unmeasured",
+      withdrawalLatencyHours: 0,
+      withdrawalLatencyStatus: "measured_moonwell_instant_withdrawal",
       deterministicExitRequired: true,
     },
     blockers: unique([
@@ -214,8 +214,8 @@ export function buildYieldShadowRecord({
       Number.isFinite(currentBudgetUsd) && fitsCurrentBudget === false ? "budget_gap_present" : null,
       yieldFeedIntegrated ? null : "yield_source_feed_not_integrated",
       allowlistedDestinationExists ? null : "vault_allowlist_not_defined",
-      "withdrawal_latency_unmeasured",
-      "cashout_cost_unmeasured",
+      yieldFeedIntegrated ? null : "withdrawal_latency_unmeasured",
+      yieldFeedIntegrated ? null : "cashout_cost_unmeasured",
     ]),
     nextStep: pivot?.nextStep
       ? {
