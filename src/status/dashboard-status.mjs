@@ -8,6 +8,7 @@ import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaign.mjs";
+import { buildPromotionSlice } from "./promotion-slice.mjs";
 import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
 import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
 import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.mjs";
@@ -1828,6 +1829,7 @@ export function buildDashboardStatus(input, options = {}) {
   });
   const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
   const executorRuntime = input.executorRuntime || null;
+  const promotion = buildPromotionSlice(input.promotionReport || null);
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1852,6 +1854,7 @@ export function buildDashboardStatus(input, options = {}) {
     dex,
     audit: auditStatus,
     executorRuntime,
+    promotion,
     quoteLag,
     dexSpread,
     dataCounts: {

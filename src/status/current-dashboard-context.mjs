@@ -80,6 +80,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      wrappedBtcLoopLiveProof,
      capitalAuditReport,
      v1InfraDrills,
+     promotionReport,
    ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -124,6 +125,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
      readJsonIfExists(join(dataDir, "capital-audit.json")),
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
+     readJsonIfExists(join(dataDir, "promotion-latest.json")),
    ]);
   const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
@@ -167,6 +169,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     thresholdSensitivity,
     triangleArtifacts,
     executorRuntime,
+    promotionReport,
   }, { now });
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
