@@ -35,6 +35,9 @@ import { evaluateAerodromeClAdapter, buildDefaultAerodromeClConfig } from "../st
 import { evaluatePendlePtSolvBtcAdapter, buildDefaultPendlePtSolvBtcConfig } from "../strategy/pendle-pt-solvbtc-bbn-adapter.mjs";
 import { evaluateBerachainAdapter, buildDefaultBerachainConfig } from "../strategy/berachain-bend-bex-adapter.mjs";
 import { evaluateGmxBasisAdapter, buildDefaultGmxBasisConfig } from "../strategy/gmx-basis-adapter.mjs";
+import { evaluateStablecoinSpreadAdapter, buildDefaultStablecoinSpreadConfig } from "../strategy/stablecoin-spread-loop-adapter.mjs";
+import { evaluateProxySpreadAdapter, buildDefaultProxySpreadConfig } from "../strategy/proxy-spread-expansion-adapter.mjs";
+import { evaluateTokenizedReserveAdapter, buildDefaultTokenizedReserveConfig } from "../strategy/tokenized-reserve-sleeve-adapter.mjs";
 
 const ADAPTERS = Object.freeze({
   "beefy-folding-vault": {
@@ -72,6 +75,24 @@ const ADAPTERS = Object.freeze({
     buildConfig: buildDefaultGmxBasisConfig,
     snapshotPrefixes: ["gmx-", "gateway-", "avax-"],
     protocol: "gmx",
+  },
+  "stablecoin-spread-loop": {
+    evaluate: evaluateStablecoinSpreadAdapter,
+    buildConfig: buildDefaultStablecoinSpreadConfig,
+    snapshotPrefixes: ["moonwell-", "gateway-"],
+    protocol: "moonwell",
+  },
+  "proxy-spread-expansion": {
+    evaluate: evaluateProxySpreadAdapter,
+    buildConfig: buildDefaultProxySpreadConfig,
+    snapshotPrefixes: ["morpho-", "gateway-"],
+    protocol: "morpho",
+  },
+  "tokenized-reserve-sleeve": {
+    evaluate: evaluateTokenizedReserveAdapter,
+    buildConfig: buildDefaultTokenizedReserveConfig,
+    snapshotPrefixes: ["pendle-", "solv-", "gateway-", "bsc-"],
+    protocol: "pendle",
   },
 });
 
