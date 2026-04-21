@@ -363,6 +363,16 @@ export function evaluateBeefyFoldingAdapter({
     evidence.realizedNetUsd > 0 &&
     evidence.vaultWithdrawalProvenCount >= 1;
 
+  const intent = shadowReady || liveReady
+    ? Object.freeze({
+        strategyId: config?.id || STRATEGY_ID,
+        chain: config?.chain || "base",
+        amountUsd: config?.perTradeCapUsd || 0,
+        intentType: "entry",
+        executionReason: "strategy_tick",
+      })
+    : null;
+
   return Object.freeze({
     strategyId: config?.id || STRATEGY_ID,
     generatedAt: typeof now === "string" ? now : null,
@@ -382,6 +392,13 @@ export function evaluateBeefyFoldingAdapter({
       : shadowReady
       ? "shadow_ready"
       : "blocked",
+    mode: liveReady
+      ? "live_candidate"
+      : shadowReady
+      ? "shadow_ready"
+      : "blocked",
+    intent,
+    microCanaryStatus: evidence.signerBackedCount >= 3 ? "micro_canary_repeatable" : evidence.signerBackedCount > 0 ? "micro_canary_ready" : "not_started",
   });
 }
 

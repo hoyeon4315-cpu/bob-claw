@@ -374,6 +374,16 @@ export function evaluateAerodromeClAdapter({
     evidence.rebalanceProvenCount > 0 &&
     evidence.ilWithinBoundsCount === evidence.signerBackedCount;
 
+  const intent = shadowReady || liveReady
+    ? Object.freeze({
+        strategyId: config?.id || STRATEGY_ID,
+        chain: config?.chain || "base",
+        amountUsd: config?.perTradeCapUsd || 0,
+        intentType: "entry",
+        executionReason: "strategy_tick",
+      })
+    : null;
+
   return Object.freeze({
     strategyId: config?.id || STRATEGY_ID,
     poolVariant: config?.poolVariant || null,
@@ -394,6 +404,8 @@ export function evaluateAerodromeClAdapter({
       : shadowReady
       ? "shadow_ready"
       : "blocked",
+    intent,
+    microCanaryStatus: evidence.signerBackedCount >= 3 ? "micro_canary_repeatable" : evidence.signerBackedCount > 0 ? "micro_canary_ready" : "not_started",
   });
 }
 
