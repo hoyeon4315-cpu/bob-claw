@@ -1,3 +1,6 @@
+import { resolveVenueProtocols } from "../config/destination-venues.mjs";
+import { resolveStableProtocols } from "../config/stable-venues.mjs";
+
 const DIVERSIFICATION_TARGET_CHAINS = [
   "base",
   "bsc",
@@ -102,6 +105,22 @@ function destinationProtocolIds(item = {}) {
   if (Array.isArray(explicit) && explicit.length > 0) return unique(explicit);
   const override = DESTINATION_PROTOCOL_OVERRIDES[item?.templateId] || null;
   if (override?.length) return unique(override);
+  const chain = item?.chain;
+  const familyId = item?.familyId;
+  if (chain && familyId) {
+    const resolved = resolveVenueProtocols(chain, familyId);
+    if (resolved?.protocols?.length) return unique(resolved.protocols);
+    if (resolved?.status === "template_only") {
+      return unique(["template_only"]);
+    }
+    if (familyId.startsWith("stablecoin")) {
+      const stableResolved = resolveStableProtocols(chain);
+      if (stableResolved?.protocols?.length) return unique(stableResolved.protocols);
+      if (stableResolved?.status === "template_only") {
+        return unique(["template_only"]);
+      }
+    }
+  }
   if (item?.familyId) return [item.familyId];
   return [];
 }

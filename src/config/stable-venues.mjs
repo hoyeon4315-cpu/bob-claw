@@ -56,3 +56,22 @@ export function listConfirmedStableVenueChains() {
     (c) => STABLE_VENUES[c].status !== "template_only",
   );
 }
+
+export function resolveStableProtocols(chain, depositAsset = "USDC", borrowAsset = "USDT") {
+  const entry = STABLE_VENUES[chain];
+  if (!entry) return null;
+  if (entry.status === "template_only") {
+    return { protocols: [], status: "template_only", blockers: [...entry.blockers] };
+  }
+  const matches = entry.venues.filter((v) =>
+    v.depositAsset === depositAsset || v.borrowAsset === borrowAsset || v.pairAsset === borrowAsset
+  );
+  const protocols = matches.map((v) => v.protocol);
+  return { protocols, status: "confirmed", blockers: [] };
+}
+
+export function getFirstStableProtocol(chain) {
+  const entry = STABLE_VENUES[chain];
+  if (!entry || entry.status === "template_only" || !entry.venues?.length) return null;
+  return entry.venues[0].protocol;
+}
