@@ -1,0 +1,58 @@
+// W5-B — Stablecoin treasury rotation venue registry.
+//
+// Per-chain stable venues ranked by exit-cost and round-trip
+// economics.  Used by the treasury allocator and stable sleeve
+// strategies.
+//
+// This is config, not code. Updates require a committed diff.
+
+export const STABLE_VENUES = Object.freeze({
+  base: Object.freeze({
+    chain: "base",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "moonwell", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "morpho", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
+  }),
+  ethereum: Object.freeze({
+    chain: "ethereum",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "compound_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
+  }),
+  bsc: Object.freeze({
+    chain: "bsc",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "venus", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "pancakeswap", family: "amm_stable", depositAsset: "USDC", pairAsset: "USDT" }),
+    ]),
+  }),
+  optimism: Object.freeze({
+    chain: "optimism",
+    venues: Object.freeze([]),
+    status: "template_only",
+    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+  }),
+  sei: Object.freeze({
+    chain: "sei",
+    venues: Object.freeze([]),
+    status: "template_only",
+    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+  }),
+});
+
+export function listStableVenueChains() {
+  return Object.keys(STABLE_VENUES);
+}
+
+export function getStableVenues(chain) {
+  return STABLE_VENUES[chain] || null;
+}
+
+export function listConfirmedStableVenueChains() {
+  return Object.keys(STABLE_VENUES).filter(
+    (c) => STABLE_VENUES[c].status !== "template_only",
+  );
+}
