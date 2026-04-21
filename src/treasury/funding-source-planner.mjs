@@ -1,5 +1,6 @@
 import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
 import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction, gasZipInboundChain } from "../config/gas-zip.mjs";
+import { dexProvidersForChain } from "../dex/providers.mjs";
 
 const METHOD_PROFILES = {
   same_chain_native_transfer: {
@@ -46,6 +47,14 @@ const METHOD_PROFILES = {
     fixedCostUsd: 0.2,
     variableCostBps: 75,
     expectedLatencyMs: 240_000,
+    requiresReserveState: true,
+    reserveReplenishmentKnown: false,
+    manualFundingDependency: false,
+  },
+  cross_chain_swap_via_btc_intermediate: {
+    fixedCostUsd: 0.25,
+    variableCostBps: 100,
+    expectedLatencyMs: 300_000,
     requiresReserveState: true,
     reserveReplenishmentKnown: false,
     manualFundingDependency: false,
@@ -352,8 +361,10 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     }));
   return [...nativeSources, ...tokenSources]
     .sort((left, right) => {
-      const leftSupportRank = crossChainExecutorSupport(action, left).supported ? 0 : 1;
-      const rightSupportRank = crossChainExecutorSupport(action, right).supported ? 0 : 1;
+      const leftSupport = crossChainExecutorSupport(action, left);
+      const rightSupport = crossChainExecutorSupport(action, right);
+      const leftSupportRank = !leftSupport.supported ? 2 : (leftSupport.intermediateSwapRequired ? 1 : 0);
+      const rightSupportRank = !rightSupport.supported ? 2 : (rightSupport.intermediateSwapRequired ? 1 : 0);
       if (leftSupportRank !== rightSupportRank) return leftSupportRank - rightSupportRank;
       const preferenceDelta = crossChainRoutePreference(left, action, routeContext) - crossChainRoutePreference(right, action, routeContext);
       if (preferenceDelta !== 0) return preferenceDelta;
@@ -394,6 +405,14 @@ function crossChainExecutorSupport(action, selectedSource) {
         notes: "Gateway BTC-family transport can move wrapped BTC inventory into the destination chain while bundling destination native gas through gas-refill.",
       };
     }
+    if (dexProvidersForChain(selectedSource.chain).length > 0) {
+      return {
+        supported: true,
+        intermediateSwapRequired: true,
+        missingInputs: [],
+        notes: "Source token is not BTC-family but source chain has DEX liquidity; swap source token to wBTC.OFT then bridge via Gateway with gasRefill for destination native gas.",
+      };
+    }
   }
 
   if (action.type === "refill_token") {
@@ -404,6 +423,14 @@ function crossChainExecutorSupport(action, selectedSource) {
         supported: true,
         missingInputs: [],
         notes: "Gateway BTC-family consolidation can bridge the observed source token into the target-chain token inventory.",
+      };
+    }
+    if (!isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset) && dexProvidersForChain(selectedSource.chain).length > 0) {
+      return {
+        supported: true,
+        intermediateSwapRequired: true,
+        missingInputs: [],
+        notes: "Source token is not BTC-family but target is; swap source token to wBTC.OFT on source chain then bridge via Gateway consolidation.",
       };
     }
     return {
@@ -424,6 +451,9 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   const directInventoryMode = policy.walletMode === "single_wallet";
   const executorSupport = crossChainExecutorSupport(action, selectedSource);
+  const method = executorSupport.intermediateSwapRequired
+    ? "cross_chain_swap_via_btc_intermediate"
+    : "cross_chain_bridge_or_swap";
   const coversTarget =
     action.type === "refill_token"
       ? sourceInventoryCoversTargetAmount(action, selectedSource)
@@ -431,7 +461,7 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
   if (!selectedSource) {
     return candidateRecord({
       action,
-      method: "cross_chain_bridge_or_swap",
+      method,
       source: null,
       availability: "conditional",
       preferred: false,
@@ -444,7 +474,7 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
   const executableDirectInventory = directInventoryMode && executorSupport.supported && coversTarget;
   return candidateRecord({
     action,
-    method: "cross_chain_bridge_or_swap",
+    method,
     source: describeSourceAsset(selectedSource.chain, selectedSource.token, {
       actual: selectedSource.actual,
       estimatedUsd: selectedSource.estimatedUsd,

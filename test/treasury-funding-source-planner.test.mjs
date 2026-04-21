@@ -718,3 +718,128 @@ test("dual wallet cross-chain refill stays conditional even when a source invent
   assert.equal(funding.selections[0].missingInputs.includes("reserve_state_unmodelled"), true);
   assert.equal(funding.reasons.includes("reserve_state_unmodelled"), true);
 });
+
+test("cross-chain refill from non-BTC source uses intermediate swap method when DEX available", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "bsc",
+          actual: "300000000",
+          actualDecimal: 300,
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          ticker: "USDT",
+          estimatedUsd: 300,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.4,
+        rationale: "Settlement reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "bsc");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "USDT");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.deepEqual(funding.selections[0].missingInputs, []);
+});
+
+test("cross-chain refill prefers direct BTC-family source over intermediate swap", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "base",
+          actual: "25000",
+          actualDecimal: 0.00025,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 18.5,
+        },
+        {
+          chain: "bsc",
+          actual: "300000000",
+          actualDecimal: 300,
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          ticker: "USDT",
+          estimatedUsd: 300,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "soneium",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.4,
+        rationale: "Settlement reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  // Direct BTC-family source should be preferred over intermediate swap
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+});
+
+test("cross-chain native refill from non-BTC source with DEX uses intermediate swap", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "bsc",
+          actual: "300000000",
+          actualDecimal: 300,
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          ticker: "USDT",
+          estimatedUsd: 300,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "base",
+        asset: "ETH",
+        token: ZERO_TOKEN,
+        refillAmount: "1000000000000000",
+        refillAmountDecimal: 0.001,
+        refillEstimatedUsd: 2.2,
+        rationale: "Expansion chain bootstrap",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "bsc");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "USDT");
+});

@@ -138,6 +138,7 @@ export function refillExecutorForJob(job = {}) {
     return "gateway_btc_consolidation";
   }
   if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
+  if (job.executionMethod === "cross_chain_swap_via_btc_intermediate") return "cross_chain_btc_intermediate";
   return null;
 }
 
@@ -245,6 +246,48 @@ export async function buildTreasuryRefillExecutionPlan({
       destinationNativeDecimal,
       destinationMinBalanceDecimal,
     });
+  } else if (executor === "cross_chain_btc_intermediate") {
+    // Step 1: DEX swap source token → wBTC.OFT on source chain
+    const dexAmount = estimateInputAmountFromSource({ job, source });
+    if (!dexAmount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+
+    const step1Plan = await buildTokenDexPlanImpl({
+      chain: source.chain,
+      amount: dexAmount,
+      senderAddress,
+      inputToken: source.token,
+      outputToken: "wbtc.oft",
+    });
+
+    if (step1Plan.planStatus !== "ready") {
+      return blockedPreparation({ job, executor, blockedReason: step1Plan.blockedReason || "dex_step_blocked", plan: step1Plan });
+    }
+
+    // Step 2: Gateway consolidation wBTC.OFT from source chain → destination chain
+    const gatewayAmount = step1Plan.minimumOutputAmount;
+    const gasRefill = job.type === "refill_native" ? job.targetAmount : null;
+
+    const step2Plan = await buildGatewayBtcPlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      srcToken: WBTC_OFT_TOKEN,
+      dstToken: job.type === "refill_native" ? WBTC_OFT_TOKEN : job.token,
+      amount: gatewayAmount,
+      senderAddress,
+      recipient: senderAddress,
+      gasRefill,
+    });
+
+    if (step2Plan.planStatus !== "ready") {
+      return blockedPreparation({ job, executor, blockedReason: step2Plan.blockedReason || "gateway_step_blocked", plan: step2Plan });
+    }
+
+    plan = {
+      planStatus: "ready",
+      executor: "cross_chain_btc_intermediate",
+      step1: { type: "dex_swap", plan: step1Plan },
+      step2: { type: "gateway_consolidation", plan: step2Plan },
+    };
   }
 
   if (plan?.planStatus !== "ready") {
@@ -256,7 +299,9 @@ export async function buildTreasuryRefillExecutionPlan({
     });
   }
 
-  const coverage = coverageForPlan({ plan, job, executor });
+  const coverage = executor === "cross_chain_btc_intermediate"
+    ? coverageForPlan({ plan: plan.step2.plan, job, executor: "gateway_btc_consolidation" })
+    : coverageForPlan({ plan, job, executor });
   if (coverage.coversTarget === false) {
     return blockedPreparation({
       job,
@@ -296,6 +341,18 @@ export async function executeTreasuryRefillExecutionPlan({
   }
   if (preparation.executor === "gas_zip_native_refuel") {
     return executeGasZipPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  if (preparation.executor === "cross_chain_btc_intermediate") {
+    const step1Result = await executeTokenDexPlanImpl({ plan: preparation.plan.step1.plan, ...executionOptions });
+    const step2Result = await executeGatewayBtcPlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+    return {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      settlementStatus: step2Result.settlementStatus || "source_confirmed_only",
+      executor: "cross_chain_btc_intermediate",
+      step1Result,
+      step2Result,
+    };
   }
   throw new Error(`Unsupported treasury refill executor: ${preparation.executor || "missing"}`);
 }
