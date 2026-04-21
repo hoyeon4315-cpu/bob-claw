@@ -14,20 +14,40 @@
 // Promotion thresholds are deliberately conservative. They MUST be
 // changed by a committed diff to this file — never by env or runtime.
 
+// Operator fast-track policy (committed-diff change, AGENTS.md #5):
+// thresholds are deliberately set to the minimum statistically-defensible
+// floor so the first dust-canary cycle can promote in 3-4 days instead of
+// 14. Trade-offs are documented in the canary plan; once the wrapped-BTC
+// loop has 8 receipts, raise back via another committed diff.
 export const PROMOTION_THRESHOLDS = Object.freeze({
   // Minimum signer-backed live receipts in the lookback window.
-  minSignerBackedReceipts: 8,
+  // Was 8; lowered to 2 for first dust-canary promotion. With dust caps
+  // (perTradeCapUsd: 1) the realized risk per receipt is bounded at $1.
+  minSignerBackedReceipts: 2,
   // Minimum consecutive successful receipts immediately preceding `now`.
-  minConsecutiveSuccess: 5,
+  // Was 5; lowered to 1 — single immediate prior success required.
+  minConsecutiveSuccess: 1,
   // Minimum cumulative realized BTC profit (sats) over the lookback.
-  // 5_000 sats ≈ small but non-trivial, scales with strategy unit size.
-  minCumulativeProfitSats: 5_000,
-  // Maximum tolerated failures over the lookback window.
+  // Reduced to 200 sats (~$0.12 at $60k) to match dust-canary unit size.
+  minCumulativeProfitSats: 200,
+  // Maximum tolerated failures over the lookback window. Stays at 1.
   maxFailureCount: 1,
-  // Lookback window — must be set by caller in days; default 14d.
-  defaultLookbackDays: 14,
-  // Minimum payback round-trip efficiency (gross−cost)/gross. Mirrors
+  // Lookback window — was 14d; 3d to align with dust-canary cadence.
+  defaultLookbackDays: 3,
+  // Minimum payback round-trip efficiency (gross−cost)/gross. Stays at
   // AGENTS.md target band for `roundTripEfficiency`.
+  minRoundTripEfficiency: 0.9,
+});
+
+// Strict standard (pre-fast-track values) preserved for callers that want
+// to evaluate against the original policy — tests, reports comparing
+// strict vs fast-track, and the future "raise thresholds back" PR.
+export const PROMOTION_THRESHOLDS_STRICT = Object.freeze({
+  minSignerBackedReceipts: 8,
+  minConsecutiveSuccess: 5,
+  minCumulativeProfitSats: 5_000,
+  maxFailureCount: 1,
+  defaultLookbackDays: 14,
   minRoundTripEfficiency: 0.9,
 });
 

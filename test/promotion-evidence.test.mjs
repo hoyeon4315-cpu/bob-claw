@@ -5,6 +5,7 @@ import {
   summarizePromotionEvidence,
   buildAutoExecDiffHint,
   PROMOTION_THRESHOLDS,
+  PROMOTION_THRESHOLDS_STRICT,
 } from "../src/strategy/promotion-evidence.mjs";
 import { buildPromotionReport, loadAuditReceipts } from "../src/cli/promotion-pr-preview.mjs";
 import { spawnSync } from "node:child_process";
@@ -14,6 +15,13 @@ import { join } from "node:path";
 
 const NOW = Date.parse("2026-04-21T00:00:00Z");
 const ONE_DAY = 24 * 60 * 60 * 1000;
+// Strict-policy overrides — used by tests written against the
+// pre-fast-track 14-day / 8-receipt regime. New tests below cover the
+// fast-track defaults explicitly.
+const STRICT = Object.freeze({
+  lookbackDays: 14,
+  thresholds: PROMOTION_THRESHOLDS_STRICT,
+});
 
 function mkReceipt({ daysAgo = 0, success = true, signer = true, profit = 1000, cost = 50 } = {}) {
   return {
@@ -32,6 +40,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts: [],
+      ...STRICT,
       nowMs: NOW,
     });
     assert.equal(r.eligible, false);
@@ -46,6 +55,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.equal(r.eligible, true, JSON.stringify(r.blockers));
@@ -62,6 +72,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.equal(r.eligible, false);
@@ -76,6 +87,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.ok(r.blockers.some((b) => b.kind === "insufficient_consecutive_success"));
@@ -87,6 +99,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.ok(r.blockers.some((b) => b.kind === "round_trip_efficiency_below_target"), JSON.stringify(r.evidence));
@@ -98,6 +111,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
       lookbackDays: 14,
     });
@@ -111,6 +125,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.equal(r.evidence.signerBackedReceiptCount, 0);
@@ -125,6 +140,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.equal(r.evidence.signerBackedReceiptCount, 0);
@@ -160,6 +176,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "x",
       receipts: [],
+      ...STRICT,
       nowMs: NOW,
     });
     assert.ok(Object.isFrozen(r));
@@ -173,6 +190,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
     });
     assert.equal(r.eligible, true);
@@ -188,6 +206,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
       walkForwardReport: { passes: false, blockers: ["insufficient_folds_passed"] },
     });
@@ -205,6 +224,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
       walkForwardReport: { passes: true, blockers: [] },
     });
@@ -218,6 +238,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
       regimeWindow: { hasChange: false },
     });
@@ -233,11 +254,50 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
       regimeWindow: { hasChange: true },
     });
     assert.equal(r.eligible, true);
     assert.equal(r.evidence.regimeWindowHasChange, true);
+  });
+
+  test("fast-track defaults: 2 receipts in 3 days promotes (operator opt-in)", () => {
+    // The committed fast-track policy (PROMOTION_THRESHOLDS, the active
+    // export) is intentionally permissive so a dust-canary lane with
+    // perTradeCapUsd≈$1 can promote in days, not weeks. This test pins
+    // that contract — changing it requires another committed diff.
+    assert.equal(PROMOTION_THRESHOLDS.minSignerBackedReceipts, 2);
+    assert.equal(PROMOTION_THRESHOLDS.minConsecutiveSuccess, 1);
+    assert.equal(PROMOTION_THRESHOLDS.defaultLookbackDays, 3);
+    assert.equal(PROMOTION_THRESHOLDS.minRoundTripEfficiency, 0.9);
+    assert.ok(Object.isFrozen(PROMOTION_THRESHOLDS));
+    assert.ok(Object.isFrozen(PROMOTION_THRESHOLDS_STRICT));
+
+    // 2 signer-backed receipts in last 2 days → eligible under fast-track.
+    const receipts = [
+      mkReceipt({ daysAgo: 0, profit: 1000 }),
+      mkReceipt({ daysAgo: 1, profit: 1000 }),
+    ];
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+    });
+    assert.equal(r.eligible, true, JSON.stringify(r.blockers));
+    assert.equal(r.evidence.signerBackedReceiptCount, 2);
+
+    // Same evidence under STRICT policy → blocked.
+    const rStrict = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+      ...STRICT,
+    });
+    assert.equal(rStrict.eligible, false);
+    assert.ok(
+      rStrict.blockers.some((b) => b.kind === "insufficient_signer_backed_receipts"),
+    );
   });
 
   test("walk-forward + regime both applied together", () => {
@@ -246,6 +306,7 @@ describe("promotion evidence — pure gate", () => {
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
       receipts,
+      ...STRICT,
       nowMs: NOW,
       walkForwardReport: { passes: true, blockers: [] },
       regimeWindow: { hasChange: true },
@@ -265,6 +326,7 @@ describe("promotion-pr-preview CLI helpers", () => {
   test("buildPromotionReport produces stable shape", () => {
     const report = buildPromotionReport({
       receipts: [],
+      ...STRICT,
       nowMs: NOW,
       strategyIds: ["recursive_wrapped_btc_lending_loop"],
       lookbackDays: 14,
