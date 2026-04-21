@@ -77,6 +77,7 @@ function main() {
   const strategyRows = strategies.map((sid) => {
     const tick = latestByStrategy.get(sid) || null;
     const tickBlocker = tick?.blockers?.find((b) => b.strategyId === sid) || null;
+    const tickSnapshot = tick?.snapshotSummary?.find((item) => item?.strategyId === sid) || null;
     const receipts = audit.filter((r) => r?.strategyId === sid);
 
     const promotionFastTrack = evaluatePromotionEvidence({
@@ -100,6 +101,16 @@ function main() {
       lastTickCandidateCount: tick?.candidateCount ?? 0,
       lastTickAllowCount: tick?.dispatchSummary?.allowCount ?? 0,
       lastTickDenyCount: tick?.dispatchSummary?.denyCount ?? 0,
+      capsConfigured: tickSnapshot?.capsConfigured ?? null,
+      operatorAddress: tickSnapshot?.operatorAddress ?? null,
+      gasFloatConfiguredChainCount: tickSnapshot?.gasFloatSummary?.configuredChainCount ?? 0,
+      gasFloatObservedChainCount: tickSnapshot?.gasFloatSummary?.observedChainCount ?? 0,
+      gasFloatMissingChains: (tickSnapshot?.gasFloatSummary?.chains || [])
+        .filter((item) => item?.missingReason)
+        .map((item) => ({
+          chain: item.chain,
+          reason: item.missingReason,
+        })),
       receiptCountTotal: receipts.length,
       receiptCountSignerBacked: receipts.filter((r) => r?.source === "signer").length,
       promotion: {
@@ -130,6 +141,7 @@ function main() {
     summary: {
       strategiesTracked: strategies.length,
       strategiesWithTick: strategyRows.filter((s) => s.lastTickAt).length,
+      strategiesMissingCaps: strategyRows.filter((s) => s.capsConfigured === false).length,
       strategiesEligibleFastTrack: strategyRows.filter((s) => s.promotion.fastTrack.eligible).length,
       strategiesEligibleStrict: strategyRows.filter((s) => s.promotion.strict.eligible).length,
       totalSignerBackedReceipts: strategyRows.reduce((acc, s) => acc + s.receiptCountSignerBacked, 0),
