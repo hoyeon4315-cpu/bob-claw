@@ -1,0 +1,178 @@
+// Deterministic evidence-→-promotion gate.
+//
+// Pure function. Reads strategy receipts (already collected by the
+// existing receipt ingestor) and decides whether a strategy has accrued
+// enough signer-backed live evidence to be eligible for an
+// `autoExecute: true` cap-flip diff.
+//
+// Caps are still code, not env vars (AGENTS.md). This module never
+// rewrites strategy-caps.mjs and never opens a PR. It only emits a
+// machine-readable verdict and a human-readable diff hint that the
+// operator must commit by hand. The bash side runs the suggestion
+// through `promotion-pr-preview.mjs`.
+//
+// Promotion thresholds are deliberately conservative. They MUST be
+// changed by a committed diff to this file — never by env or runtime.
+
+export const PROMOTION_THRESHOLDS = Object.freeze({
+  // Minimum signer-backed live receipts in the lookback window.
+  minSignerBackedReceipts: 8,
+  // Minimum consecutive successful receipts immediately preceding `now`.
+  minConsecutiveSuccess: 5,
+  // Minimum cumulative realized BTC profit (sats) over the lookback.
+  // 5_000 sats ≈ small but non-trivial, scales with strategy unit size.
+  minCumulativeProfitSats: 5_000,
+  // Maximum tolerated failures over the lookback window.
+  maxFailureCount: 1,
+  // Lookback window — must be set by caller in days; default 14d.
+  defaultLookbackDays: 14,
+  // Minimum payback round-trip efficiency (gross−cost)/gross. Mirrors
+  // AGENTS.md target band for `roundTripEfficiency`.
+  minRoundTripEfficiency: 0.9,
+});
+
+function withinLookback(receipt, nowMs, lookbackDays) {
+  if (!Number.isFinite(receipt.tsMs)) return false;
+  const cutoff = nowMs - lookbackDays * 24 * 60 * 60 * 1000;
+  return receipt.tsMs >= cutoff;
+}
+
+function isSignerBacked(r) {
+  return r.source === "signer" && Boolean(r.txHash);
+}
+
+function isSuccess(r) {
+  return r.outcome === "success";
+}
+
+export function evaluatePromotionEvidence({
+  strategyId,
+  receipts,
+  nowMs,
+  thresholds = PROMOTION_THRESHOLDS,
+  lookbackDays = PROMOTION_THRESHOLDS.defaultLookbackDays,
+} = {}) {
+  if (typeof strategyId !== "string" || !strategyId) {
+    throw new TypeError("strategyId required");
+  }
+  if (!Array.isArray(receipts)) throw new TypeError("receipts array required");
+  if (!Number.isFinite(nowMs)) throw new TypeError("nowMs required");
+
+  const filtered = receipts
+    .filter((r) => r && r.strategyId === strategyId)
+    .filter((r) => withinLookback(r, nowMs, lookbackDays))
+    .sort((a, b) => a.tsMs - b.tsMs);
+
+  const signerBacked = filtered.filter(isSignerBacked);
+  const successes = signerBacked.filter(isSuccess);
+  const failures = signerBacked.filter((r) => !isSuccess(r));
+
+  let consecutive = 0;
+  for (let i = signerBacked.length - 1; i >= 0; i -= 1) {
+    if (isSuccess(signerBacked[i])) consecutive += 1;
+    else break;
+  }
+
+  const cumulativeProfitSats = successes
+    .map((r) => Number(r.realizedProfitSats || 0))
+    .filter(Number.isFinite)
+    .reduce((a, b) => a + b, 0);
+
+  const roundTripCostsSats = successes
+    .map((r) => Number(r.roundTripCostSats || 0))
+    .filter(Number.isFinite)
+    .reduce((a, b) => a + b, 0);
+
+  const grossProfitSats = cumulativeProfitSats + roundTripCostsSats;
+  const roundTripEfficiency = grossProfitSats > 0
+    ? (grossProfitSats - roundTripCostsSats) / grossProfitSats
+    : 0;
+
+  const blockers = [];
+  if (signerBacked.length < thresholds.minSignerBackedReceipts) {
+    blockers.push({
+      kind: "insufficient_signer_backed_receipts",
+      have: signerBacked.length,
+      need: thresholds.minSignerBackedReceipts,
+    });
+  }
+  if (consecutive < thresholds.minConsecutiveSuccess) {
+    blockers.push({
+      kind: "insufficient_consecutive_success",
+      have: consecutive,
+      need: thresholds.minConsecutiveSuccess,
+    });
+  }
+  if (failures.length > thresholds.maxFailureCount) {
+    blockers.push({
+      kind: "too_many_failures",
+      have: failures.length,
+      max: thresholds.maxFailureCount,
+    });
+  }
+  if (cumulativeProfitSats < thresholds.minCumulativeProfitSats) {
+    blockers.push({
+      kind: "insufficient_cumulative_profit_sats",
+      have: cumulativeProfitSats,
+      need: thresholds.minCumulativeProfitSats,
+    });
+  }
+  if (
+    grossProfitSats > 0
+    && roundTripEfficiency < thresholds.minRoundTripEfficiency
+  ) {
+    blockers.push({
+      kind: "round_trip_efficiency_below_target",
+      have: Number(roundTripEfficiency.toFixed(4)),
+      need: thresholds.minRoundTripEfficiency,
+    });
+  }
+
+  const eligible = blockers.length === 0;
+
+  return Object.freeze({
+    strategyId,
+    eligible,
+    evidence: Object.freeze({
+      lookbackDays,
+      signerBackedReceiptCount: signerBacked.length,
+      consecutiveSuccess: consecutive,
+      failureCount: failures.length,
+      cumulativeProfitSats,
+      grossProfitSats,
+      roundTripCostsSats,
+      roundTripEfficiency: Number(roundTripEfficiency.toFixed(4)),
+    }),
+    blockers: Object.freeze(blockers),
+    suggestedDiff: eligible ? buildAutoExecDiffHint(strategyId) : null,
+  });
+}
+
+export function buildAutoExecDiffHint(strategyId) {
+  // Returns a *hint*, not an executed patch. Operator commits by hand
+  // after reviewing. AGENTS.md: caps are code, change via committed diff.
+  return Object.freeze({
+    file: "src/config/strategy-caps.mjs",
+    strategyId,
+    change: "autoExecute: false → autoExecute: true",
+    operatorAction:
+      "Edit src/config/strategy-caps.mjs, flip autoExecute on the named strategy, "
+      + "run `npm test`, commit on its own PR with the supporting evidence JSON in the body.",
+  });
+}
+
+export function summarizePromotionEvidence(reports) {
+  if (!Array.isArray(reports)) throw new TypeError("reports array required");
+  const eligible = reports.filter((r) => r.eligible);
+  const blocked = reports.filter((r) => !r.eligible);
+  return Object.freeze({
+    eligibleCount: eligible.length,
+    blockedCount: blocked.length,
+    eligible: Object.freeze(eligible.map((r) => r.strategyId)),
+    blocked: Object.freeze(blocked.map((r) => ({
+      strategyId: r.strategyId,
+      blockerCount: r.blockers.length,
+      firstBlocker: r.blockers[0]?.kind || null,
+    }))),
+  });
+}
