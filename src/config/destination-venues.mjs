@@ -97,3 +97,30 @@ export function listTemplateOnlyChains() {
     (c) => WRAPPED_BTC_VENUES[c].status === "template_only",
   );
 }
+
+const FAMILY_TO_VENUE_FAMILY = Object.freeze({
+  wrapped_btc_lending: "lending",
+  wrapped_btc_lp_positions: "cl_lp",
+  stablecoin_lending_carry: "lending",
+  stablecoin_lp_or_basis: "amm",
+});
+
+export function resolveVenueProtocols(chain, familyId = "") {
+  const entry = WRAPPED_BTC_VENUES[chain];
+  if (!entry) return null;
+  if (entry.status === "template_only") {
+    return { protocols: [], status: "template_only", blockers: [...entry.blockers] };
+  }
+  const venueFamily = FAMILY_TO_VENUE_FAMILY[familyId];
+  const matches = entry.venues.filter((v) =>
+    !venueFamily || v.family === venueFamily || v.family === "amm" || v.family === "cl_lp"
+  );
+  const protocols = matches.map((v) => v.protocol);
+  return { protocols, status: "confirmed", blockers: [] };
+}
+
+export function getFirstVenueProtocol(chain) {
+  const entry = WRAPPED_BTC_VENUES[chain];
+  if (!entry || entry.status === "template_only" || !entry.venues?.length) return null;
+  return entry.venues[0].protocol;
+}
