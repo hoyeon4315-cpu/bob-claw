@@ -140,6 +140,7 @@
     "price:snapshot": "node src/cli/price-snapshot.mjs",
     "collect:quote-lag": "node src/cli/collect-quote-lag.mjs",
     "collect:dex-spreads": "node src/cli/collect-dex-spreads.mjs",
+    "collect:yield-feed": "node src/cli/collect-yield-feed.mjs",
     "collect:triangular-spreads": "node src/cli/collect-triangular-spreads.mjs",
     "analyze:triangular-spreads": "node src/cli/analyze-triangular-spreads.mjs",
     "flash:dryrun": "node src/cli/flash-arb-dryrun.mjs",
