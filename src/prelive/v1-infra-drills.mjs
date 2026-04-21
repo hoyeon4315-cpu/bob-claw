@@ -180,9 +180,9 @@ async function runStaleQuoteDrill(rootDir) {
 
 async function runCapExceededDrill(rootDir) {
   const intent = baseIntent({
-    amountUsd: 1_000,
+    amountUsd: 2_000_000,
     metadata: {
-      capCheckAmountUsd: 1_000,
+      capCheckAmountUsd: 2_000_000,
     },
   });
   const policy = await evaluateIntentPolicies({
