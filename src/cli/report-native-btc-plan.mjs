@@ -5,6 +5,10 @@ import { readFile } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { tokenAsset } from "../assets/tokens.mjs";
 import { buildGatewayBtcOnrampPlan } from "../executor/helpers/gateway-btc-onramp.mjs";
+import {
+  buildWrappedBtcLoopHandoffCommands,
+  isWrappedBtcLoopDepositHandoffCandidate,
+} from "../executor/helpers/wrapped-btc-loop-handoff.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 
@@ -417,7 +421,7 @@ async function buildDepositPreview(route = null, { amountSats, addresses } = {})
   }
 }
 
-function buildPrimaryStrategyPostArrivalPlan(path = null, { primaryStrategy = null } = {}) {
+function buildPrimaryStrategyPostArrivalPlan(path = null, { primaryStrategy = null, addresses = null } = {}) {
   const landedAsset = path?.dstAsset?.ticker || null;
   const targetAsset = primaryStrategy?.collateralAsset || null;
   const aligned = assetsMatch(landedAsset, targetAsset);
@@ -442,6 +446,33 @@ function buildPrimaryStrategyPostArrivalPlan(path = null, { primaryStrategy = nu
   }
 
   if (!aligned) {
+    if (isWrappedBtcLoopDepositHandoffCandidate({
+      chain: path?.dstChain,
+      landedAsset,
+      targetAsset,
+    })) {
+      const handoffCommands = buildWrappedBtcLoopHandoffCommands({
+        amountSats: path?.amountSats,
+        senderAddress: addresses?.recipient || null,
+      });
+      return {
+        status: "conversion_handoff_ready",
+        reason: "wrapped_btc_to_collateral_conversion_available",
+        aligned,
+        landedAsset,
+        targetAsset,
+        commandChain: unique([
+          handoffCommands.previewHandoff,
+          handoffCommands.executeHandoff,
+          handoffCommands.loopIntentPreview,
+          handoffCommands.loopDryRun,
+          ...baseCommands,
+        ]),
+        notes: [
+          `${landedAsset} can be converted into ${targetAsset} on Base through the deterministic wrapped-BTC handoff helper before the loop entry surface is used.`,
+        ],
+      };
+    }
     return {
       status: "landing_asset_mismatch",
       reason: "strategy_collateral_mismatch",
@@ -542,7 +573,7 @@ function buildActiveAllocationPostArrivalPlan(path = null, { allocation = null }
   };
 }
 
-function buildPostArrivalPlan(path = null, { primaryStrategy = null, allocation = null } = {}) {
+function buildPostArrivalPlan(path = null, { primaryStrategy = null, allocation = null, addresses = null } = {}) {
   if (!path) {
     return {
       status: "path_missing",
@@ -553,7 +584,7 @@ function buildPostArrivalPlan(path = null, { primaryStrategy = null, allocation 
     };
   }
   if (path.kind === "primary_strategy") {
-    return buildPrimaryStrategyPostArrivalPlan(path, { primaryStrategy });
+    return buildPrimaryStrategyPostArrivalPlan(path, { primaryStrategy, addresses });
   }
   if (path.kind === "active_allocation") {
     return buildActiveAllocationPostArrivalPlan(path, { allocation });
@@ -640,6 +671,7 @@ function buildDepositPath(route, {
   const postArrivalPlan = buildPostArrivalPlan(path, {
     primaryStrategy,
     allocation,
+    addresses,
   });
   return {
     ...path,
