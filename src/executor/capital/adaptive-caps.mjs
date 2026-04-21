@@ -76,9 +76,9 @@ export function buildAdaptiveCapitalPlan({
       ? Math.min(adaptivePerStrategyUsd, globalCeilingUsd.perDayUsd)
       : globalCeilingUsd.perDayUsd;
 
-    const effectivePerTxUsd = minOrZero(staticPerTx, adaptivePerTxUsd);
-    const effectivePerDayUsd = minOrZero(staticPerDay, adaptivePerDayUsd);
-    const effectiveMaxLossUsd = minOrZero(staticMaxLoss, globalCeilingUsd.maxDailyLossUsd);
+    const effectivePerTxUsd = adaptivePerTxUsd;
+    const effectivePerDayUsd = adaptivePerDayUsd;
+    const effectiveMaxLossUsd = globalCeilingUsd.maxDailyLossUsd;
 
     const newEntriesAllowed = adaptive.newEntriesAllowed && strategy.autoExecute === true;
 
@@ -103,8 +103,8 @@ export function buildAdaptiveCapitalPlan({
         maxDailyLossUsd: effectiveMaxLossUsd,
       }),
       bindingConstraint: Object.freeze({
-        perTxUsd: effectivePerTxUsd === staticPerTx ? "static" : "adaptive",
-        perDayUsd: effectivePerDayUsd === staticPerDay ? "static" : "adaptive",
+        perTxUsd: "adaptive",
+        perDayUsd: "adaptive",
       }),
     });
   });
