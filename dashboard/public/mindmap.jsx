@@ -23,7 +23,7 @@ function isMindmapVisible(strategy) {
   return true;
 }
 
-function bloomRadiusForCount(count, chipR, minR = 62, padding = 6) {
+function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   if (!Number.isFinite(count) || count <= 1) return minR;
   const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
   const requiredChord = 2 * chipR + padding;
@@ -483,7 +483,10 @@ function Mindmap({ motionSpeed = 1.4 }) {
     const strats = protocolsByChain[selectedChain] || [];
     const baseA = Math.atan2(p.y, p.x);
     const chipR = 28 * 1.1;
-    const R = bloomRadiusForCount(strats.length, chipR, 62, 6);
+    // Bloom sits OUTSIDE the chain — push protocol chips far enough that the
+    // chain disc + label and the chip + pair badge never collide. minR raised
+    // from 62 to 84 to keep ~50px clear gap between chain edge and chip edge.
+    const R = bloomRadiusForCount(strats.length, chipR, 84, 10);
     const out = {};
     strats.forEach((s, i) => {
       const t = strats.length === 1 ? 0 : (i / (strats.length - 1)) - 0.5;
@@ -651,19 +654,9 @@ function Mindmap({ motionSpeed = 1.4 }) {
             );
           })}
 
-          {!selectedChain && destChains.map((c) => {
-            const p = ringPos[c.id];
-            return (
-              <EndpointProtocols
-                key={`endpoint-${c.id}`}
-                chainId={c.id}
-                chainX={p.x}
-                chainY={p.y}
-                strategies={strategiesByChain[c.id] || []}
-                chainSize={chainSize}
-              />
-            );
-          })}
+          {/* Protocols are intentionally hidden at the default view.
+              They only render after a chain is tapped (selectedChain set), as
+              ProtocolChip + connector / orbit further below. */}
 
 
           {selectedChain && (protocolsByChain[selectedChain] || []).map((s) => {
