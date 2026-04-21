@@ -1,0 +1,89 @@
+name: Dashboard Deploy
+
+# T27: deterministic dashboard publish. Runs preflight (tests + dashboard
+# health checks + visual regression) then invokes the existing Cloudflare
+# Pages deploy script. Requires repo secrets:
+#
+#   CLOUDFLARE_API_TOKEN          — Pages:Edit + Account:Read scoped token
+#   BOB_CLAW_CF_PAGES_PROJECT     — Pages project name
+#   BOB_CLAW_CF_PRODUCTION_BRANCH — defaults to main
+#
+# This workflow does NOT manipulate signer keys, capital, or caps. It
+# only uploads the static dashboard artifact built by
+# `npm run status:dashboard`. The browser still reads only
+# `dashboard/public/dashboard-status.json`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard/**'
+      - 'src/dashboard/**'
+      - 'src/cli/status-dashboard.mjs'
+      - 'src/cli/deploy-dashboard-cloudflare.mjs'
+      - '.github/workflows/dashboard-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      skip_status:
+        description: 'Skip status:dashboard regeneration (use existing dashboard-status.json)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: dashboard-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Preflight (tests + visual regression)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Dashboard layout + visual regression
+        run: |
+          node --test \
+            test/mindmap-layout.test.mjs \
+            test/logo-assets.test.mjs \
+            test/dashboard-visual-regression.test.mjs
+      - name: Dashboard JS syntax
+        run: node --check dashboard/public/app.js
+      - name: Full test suite
+        run: npm test --silent
+
+  deploy:
+    name: Cloudflare Pages deploy
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: dashboard-production
+      url: ${{ steps.deploy.outputs.deployment_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Install wrangler
+        run: npm install --no-save wrangler@^3
+      - name: Deploy
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          BOB_CLAW_CF_PAGES_PROJECT: ${{ secrets.BOB_CLAW_CF_PAGES_PROJECT }}
+          BOB_CLAW_CF_PRODUCTION_BRANCH: ${{ secrets.BOB_CLAW_CF_PRODUCTION_BRANCH || 'main' }}
+          SKIP_STATUS: ${{ inputs.skip_status && '--skip-status' || '' }}
+        run: |
+          set -euo pipefail
+          node src/cli/deploy-dashboard-cloudflare.mjs $SKIP_STATUS | tee deploy.log
+          url=$(grep -Eo 'https://[a-z0-9.-]+\.pages\.dev[^[:space:]]*' deploy.log | tail -n1 || true)
+          if [ -n "$url" ]; then
+            echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
+          fi

@@ -64,4 +64,31 @@ Deploy updates to the same stable `pages.dev` address later:
 npm run deploy:dashboard:cloudflare
 ```
 
+Current public dashboard URL:
+
+```text
+https://bob-claw-dashboard.pages.dev
+```
+
 This deploy flow uses a repo-local `.cloudflare/` state directory and does not depend on or modify your global Wrangler login.
+
+## CI Auto-Deploy (T27)
+
+GitHub Actions workflow `.github/workflows/dashboard-deploy.yml` runs on every push to `main` that touches `dashboard/**`, `src/dashboard/**`, or the deploy script. It performs:
+
+1. `npm ci`
+2. Layout + visual-regression tests (`mindmap-layout`, `logo-assets`, `dashboard-visual-regression`)
+3. `node --check dashboard/public/app.js`
+4. Full `npm test`
+5. `node src/cli/deploy-dashboard-cloudflare.mjs` (only if every step above passes)
+
+Required repo secrets (Settings → Secrets and variables → Actions):
+
+- `CLOUDFLARE_API_TOKEN` — scoped Pages:Edit + Account:Read
+- `BOB_CLAW_CF_PAGES_PROJECT` — Pages project name
+- `BOB_CLAW_CF_PRODUCTION_BRANCH` — optional, defaults to `main`
+
+The workflow only ships static assets. It never touches signer keys, capital, or caps.
+
+`workflow_dispatch` is enabled with a `skip_status` toggle to redeploy the existing `dashboard-status.json` without regenerating it.
+
