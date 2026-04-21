@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>BOB Claw · UI preview</title>
+  <style>
+    :root {
+      --ink: #111113;
+      --ink-2: #3A3A3D;
+      --ink-3: #6B6B6E;
+      --ink-4: #A0A0A3;
+      --line: #E4E4E6;
+      --paper: #F5F5F6;
+      --card: #FFFFFF;
+      --accent: #F2A33B;
+      --green: #1C7A3E;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    html, body { margin: 0; padding: 0; background: var(--paper); font-family: -apple-system, "SF Pro", system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+    .stage { min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 48px 16px 96px; box-sizing: border-box; }
+    .title { font-size: 13px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin: 0; text-align: center; }
+    .sub { font-size: 12px; color: var(--ink-4); margin-top: 4px; letter-spacing: 0.2px; text-align: center; }
+
+    /* Tab scroll-snap track inside device content */
+    .tabtrack {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; width: 100%; overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory; scroll-behavior: smooth;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .tabtrack::-webkit-scrollbar { display: none; }
+    .tabpane {
+      flex: 0 0 100%; width: 100%; scroll-snap-align: start;
+      overflow-y: auto; overflow-x: hidden;
+    }
+    .tabbar {
+      display: flex; gap: 4px; padding: 6px;
+      background: #ECECEE; border-radius: 12px;
+      margin: 0 16px 12px;
+    }
+    .tabbar button {
+      flex: 1; border: none; background: transparent;
+      font: 500 13px/1.2 -apple-system, system-ui; letter-spacing: -0.1px;
+      color: var(--ink-3);
+      padding: 8px 0; border-radius: 8px; cursor: pointer;
+      transition: background 280ms var(--ease), color 280ms var(--ease);
+    }
+    .tabbar button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes cardIn { from { transform: translateY(14px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes chipIn { from { transform: scale(0.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+    @keyframes slideUp { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root" class="stage"></div>
+
+  <script type="text/babel" data-presets="env,react" src="./logos.jsx"></script>
+  <script type="text/babel" data-presets="env,react" src="./data.jsx"></script>
+  <script type="text/babel" data-presets="env,react" src="./ios-frame.jsx"></script>
+  <script type="text/babel" data-presets="env,react" src="./mindmap.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useRef } = React;
+
+    const TABS = [
+      { id: 'flow',   label: 'Flow'   },
+      { id: 'defi',   label: 'DeFi'   },
+      { id: 'assets', label: 'Assets' },
+    ];
+
+    function TabView({ tabs, active, onChange, children }) {
+      const trackRef = useRef(null);
+      const programmaticRef = useRef(false);
+      useEffect(() => {
+        const el = trackRef.current;
+        if (!el) return;
+        const idx = tabs.findIndex(t => t.id === active);
+        const target = idx * el.clientWidth;
+        if (Math.abs(el.scrollLeft - target) < 2) return;
+        programmaticRef.current = true;
+        el.scrollTo({ left: target, behavior: 'smooth' });
+        // clear the guard after snap settles
+        clearTimeout(programmaticRef.timer);
+        programmaticRef.timer = setTimeout(() => { programmaticRef.current = false; }, 500);
+      }, [active, tabs]);
+      useEffect(() => {
+        const el = trackRef.current;
+        if (!el) return;
+        let raf, settleTimer;
+        const onScroll = () => {
+          if (programmaticRef.current) return;
+          clearTimeout(settleTimer);
+          settleTimer = setTimeout(() => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+              const idx = Math.round(el.scrollLeft / el.clientWidth);
+              const next = tabs[idx]?.id;
+              if (next && next !== active) onChange(next);
+            });
+          }, 140);
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        return () => { el.removeEventListener('scroll', onScroll); clearTimeout(settleTimer); };
+      }, [tabs, active, onChange]);
+      return (
+        <>
+          <div className="tabbar" role="tablist">
+            {tabs.map(t => (
+              <button key={t.id} role="tab" aria-selected={active === t.id} onClick={() => onChange(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="tabtrack" ref={trackRef}>
+            {children}
+          </div>
+        </>
+      );
+    }
+
+    function StatCard({ label, main, sub, accent, onTap, tappable }) {
+      return (
+        <div onClick={onTap} style={{
+          padding: '12px 14px', background: 'var(--card)', borderRadius: 16,
+          border: '0.5px solid var(--line)', cursor: tappable ? 'pointer' : 'default',
+        }}>
+          <div style={{ fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: 1.3, textTransform: 'uppercase' }}>{label}</div>
+          <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: -0.3, marginTop: 3, color: accent || 'var(--ink)' }}>{main}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>{sub}</div>
+        </div>
+      );
+    }
+
+    function FlowPane() {
+      const items = (HOLDINGS && HOLDINGS.all) || [];
+      const totalUsd = items.reduce((s, a) => s + (a.usd || 0), 0);
+      const btcSyms = new Set(['btc','cbbtc','wbtc','tbtc']);
+      const btcAmount = items.filter(a => btcSyms.has(a.sym)).reduce((s, a) => s + (a.amount || 0), 0);
+      const paidSats = (KPI && KPI.paidBack && KPI.paidBack.sats) || 0;
+      const paidUsd  = KPI && KPI.paidBack && KPI.paidBack.usd;
+      const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
+      const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
+      const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
+      const totalApr = aprDen > 0 ? aprNum / aprDen : null;
+      const [aprOpen, setAprOpen] = useState(false);
+      const fmtSats = (n) => !n ? '—' : (n >= 1e8 ? (n/1e8).toFixed(4)+' BTC' : n.toLocaleString()+' sats');
+      const fmtUsd  = (n) => Number.isFinite(n) ? (n<0?'-':'') + '$' + Math.abs(n).toFixed(2) : '—';
+      return (
+        <div className="tabpane" style={{ height: '100%' }}>
+          <div style={{ padding: '4px 16px 0' }}>
+            <div style={{
+              height: 380, borderRadius: 20, overflow: 'hidden',
+              background: 'var(--card)', border: '0.5px solid var(--line)',
+            }}>
+              <Mindmap/>
+            </div>
+          </div>
+          <div style={{ margin: '14px 16px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <StatCard label="Paid back"    main={fmtSats(paidSats)} sub={fmtUsd(paidUsd)}/>
+            <StatCard label="Total assets" main={'$' + totalUsd.toLocaleString()} sub="USD"/>
+            <StatCard label="BTC held"     main={btcAmount.toFixed(4) + ' BTC'} sub="native + wrapped"/>
+            <StatCard label="Total APR"    main={totalApr != null ? totalApr.toFixed(2) + '%' : '—'} sub="tap to explain"
+                      onTap={() => setAprOpen(o => !o)} tappable/>
+          </div>
+          {aprOpen && (
+            <div style={{
+              margin:'10px 16px 0', padding:'12px 14px',
+              background:'#111113', color:'#F4F4F4', borderRadius:14,
+              fontSize:11.5, lineHeight:1.5, position:'relative',
+              animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
+            }}>
+              <div style={{ position:'absolute', top:-5, right:32, width:10, height:10, background:'#111113', transform:'rotate(45deg)' }}/>
+              Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price.
+            </div>
+          )}
+          <div style={{ height: 20 }}/>
+        </div>
+      );
+    }
+
+    function DefiPane() {
+      const byProtocol = STRATEGIES.reduce((acc, s) => {
+        (acc[s.protocol] ||= []).push(s);
+        return acc;
+      }, {});
+      return (
+        <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
+          {Object.entries(byProtocol).map(([proto, list]) => (
+            <div key={proto} style={{ marginBottom: 16 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, padding: '0 4px 8px' }}>
+                <ProtocolLogo id={proto} size={24}/>
+                <div style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize', letterSpacing: -0.1 }}>{proto}</div>
+                <div style={{ flex: 1 }}/>
+                <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{list.length} strategies</div>
+              </div>
+              <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
+                {list.map((s, i) => <StrategyRow key={s.id} s={s} isLast={i === list.length - 1}/>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function StrategyRow({ s, isLast }) {
+      const statusInk = { 'LIVE':'#1C7A3E','DRY RUN':'#7A5C0D','CANDIDATE':'#6B6B6E','BLOCKED':'#8A1F1F' }[s.status] || '#555';
+      const chain = CHAINS.find(c => c.id === s.chain);
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 14px', position: 'relative',
+        }}>
+          <div style={{ position:'relative', width:32, height:32, flexShrink:0 }}>
+            <ChainLogo id={s.chain} size={32}/>
+            <div style={{ position:'absolute', bottom:-2, right:-2, background:'#fff', borderRadius:'50%', padding:1, border:'0.5px solid var(--line)' }}>
+              <ProtocolLogo id={s.protocol} size={14}/>
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 500, letterSpacing: -0.1 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
+              {chain?.name}
+              {s.loops ? ` · ×${s.loops} loops` : ''}
+              {s.apyPct != null ? ` · ${s.apyPct.toFixed(1)}% APY` : ''}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: s.earnedUsd > 0 ? 'var(--green)' : 'var(--ink-4)', letterSpacing: -0.2 }}>
+              {s.earnedUsd > 0 ? `+$${s.earnedUsd.toFixed(2)}` : '—'}
+            </div>
+            <div style={{
+              display:'inline-block', fontSize: 8.5, fontWeight: 600, padding: '1.5px 5px', borderRadius: 4,
+              border: `0.5px solid ${statusInk}`, color: statusInk, letterSpacing: 0.5, marginTop: 3,
+            }}>{s.status}</div>
+          </div>
+          {!isLast && <div style={{
+            position: 'absolute', left: 58, right: 0, bottom: 0, height: 0.5,
+            background: 'var(--line)',
+          }}/>}
+        </div>
+      );
+    }
+
+    function AssetsPane() {
+      const total = HOLDINGS.all.reduce((s, a) => s + a.usd, 0);
+      return (
+        <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
+          <div style={{ padding: '14px 16px', background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', marginBottom: 14 }}>
+            <div style={{ fontSize: 10, color: 'var(--ink-4)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Total holdings</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.8 }}>${total.toLocaleString()}</span>
+              <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>USD</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: 1.6, textTransform: 'uppercase', padding: '0 4px 8px' }}>Balances</div>
+          <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
+            {HOLDINGS.all.map((a, i, arr) => (
+              <div key={a.sym + i} style={{
+                display:'flex', alignItems:'center', gap:12,
+                padding:'12px 14px', position:'relative',
+              }}>
+                <AssetLogo id={a.sym} size={28}/>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13.5, fontWeight:500 }}>{a.name}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{a.chain}</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontSize:13, fontWeight:600, letterSpacing:-0.2 }}>${a.usd.toLocaleString()}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{a.amount.toLocaleString()} {a.name}</div>
+                </div>
+                {i !== arr.length-1 && <div style={{ position:'absolute', left:54, right:0, bottom:0, height:0.5, background:'var(--line)' }}/>}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [tab, setTab] = useState('flow');
+      return (
+        <>
+          <div>
+            <div className="title">BOB Claw</div>
+            <div className="sub">Flow · DeFi · Assets — swipe or tap</div>
+          </div>
+          <IOSDevice title="BOB Claw">
+            <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+              <TabView tabs={TABS} active={tab} onChange={setTab}>
+                <FlowPane/>
+                <DefiPane/>
+                <AssetsPane/>
+              </TabView>
+            </div>
+          </IOSDevice>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

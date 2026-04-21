@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>BOB CLAW</title>
+    <link rel="icon" href="./favicon.ico">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="dashboard-shell">
+      <section class="hero-banner" aria-label="BOB CLAW banner">
+        <div class="brand-lockup">
+          <img class="brand-mascot" src="./assets/branding/bob-claw-mascot.jpg" alt="BOB CLAW mascot">
+          <div class="brand-copy">
+            <p class="eyebrow">Gateway Strategy Map</p>
+            <h1>BOB CLAW</h1>
+            <p id="heroSummary" class="hero-summary">Loading the latest public route map.</p>
+          </div>
+        </div>
+        <div id="heroPills" class="hero-pills" aria-label="current state"></div>
+      </section>
+
+      <section class="map-stage" aria-label="BOB CLAW routing map">
+        <div class="stage-topline">
+          <div class="topline-copy">
+            <span class="topline-label">What This View Shows</span>
+            <strong id="stageHeadline">Native BTC moving through BOB Gateway into the current strategy rails.</strong>
+          </div>
+          <div class="topline-meta">
+            <span id="stageMeta" class="meta-pill">Refreshing</span>
+          </div>
+        </div>
+
+        <div id="mapBoard" class="map-board">
+          <svg id="flowLayer" class="flow-layer" aria-hidden="true"></svg>
+
+          <div class="map-grid">
+            <div class="source-column">
+              <article id="sourceNode" class="map-node source-node" data-node="source">
+                <div class="node-head">
+                  <span class="node-kicker">Starting Asset</span>
+                  <span class="status-pill tone-btc">Bitcoin</span>
+                </div>
+                <div class="node-title-row">
+                  <span class="token-stack token-stack-large" id="sourceTokens"></span>
+                  <div>
+                    <h2>Native BTC</h2>
+                    <p>All mapped lanes begin with real BTC before the Gateway decides where the asset family should land.</p>
+                  </div>
+                </div>
+                <div class="node-footer">
+                  <span id="sourceCoverage" class="micro-note">Loading chain coverage.</span>
+                </div>
+              </article>
+            </div>
+
+            <div class="gateway-column">
+              <article id="gatewayNode" class="map-node gateway-node" data-node="gateway">
+                <div class="gateway-ring"></div>
+                <div class="node-head">
+                  <span class="node-kicker">Central Router</span>
+                  <span id="gatewayState" class="status-pill tone-gateway">Loading</span>
+                </div>
+                <div class="node-title-row">
+                  <span class="protocol-mark protocol-mark-large" id="gatewayMark"></span>
+                  <div>
+                    <h2>BOB Gateway</h2>
+                    <p>BTC is converted here, then routed into wrapped BTC, stablecoin, or ETH-like rails across supported chains.</p>
+                  </div>
+                </div>
+                <div class="gateway-metrics" id="gatewayMetrics"></div>
+              </article>
+            </div>
+
+            <div id="railColumn" class="rail-column" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="stage-footer">
+          <div class="legend-row">
+            <span class="legend-dot tone-blocked"></span>
+            <span>Blocked</span>
+            <span class="legend-dot tone-watch"></span>
+            <span>Measured but not ready</span>
+            <span class="legend-dot tone-observe"></span>
+            <span>Observation only</span>
+            <span class="legend-dot tone-blueprint"></span>
+            <span>Blueprint</span>
+          </div>
+          <p id="safetyLine" class="safety-line">This map is read-only and does not grant live execution.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

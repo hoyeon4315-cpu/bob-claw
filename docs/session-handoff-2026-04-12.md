@@ -234,7 +234,7 @@ Success condition:
   - `3b70f5f` `Add canary review telemetry and dashboard ETA`
   - `1fd7c12` `Refresh deployed dashboard status snapshot`
 - Prior deployed dashboard URL:
-  - `https://5a876a42.bob-claw-dashboard.pages.dev`
+  - `https://bob-claw-dashboard.pages.dev`
 
 ## Local Files Changed In This Session
 

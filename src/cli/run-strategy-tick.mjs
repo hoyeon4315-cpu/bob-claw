@@ -25,8 +25,10 @@
 
 import { readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
+import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
 import { evaluatePendlePtLbtcAdapter, buildDefaultPendlePtLbtcConfig } from "../strategy/pendle-pt-lbtc-adapter.mjs";
 import { evaluateAerodromeClAdapter, buildDefaultAerodromeClConfig } from "../strategy/aerodrome-cl-adapter.mjs";
@@ -149,6 +151,14 @@ function loadReceipts(auditPath, strategyIds) {
   return receipts;
 }
 
+function loadJsonlIfExists(path) {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf-8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 function buildAdaptiveCapitalPlan(strategyIds) {
   // Minimal plan — gives every requested strategy default open caps of
   // $1/$5 (dust canary). Operator must still flip `autoExecute:true` in
@@ -181,9 +191,13 @@ async function main() {
   }
 
   const snapshotDir = resolve(args["snapshot-dir"] || "data/snapshots");
+  const dataDir = resolve(args["data-dir"] || envConfig.dataDir);
   const auditPath = resolve(args.audit || "logs/signer-audit.jsonl");
   const outPath = resolve(args.out || "logs/strategy-tick.jsonl");
   const btcPriceUsd = Number(args["btc-price-usd"] || 60_000);
+  const gasSnapshots = loadJsonlIfExists(join(dataDir, "gas-snapshots.jsonl"));
+  const walletReadiness = loadJsonlIfExists(join(dataDir, "estimator-wallet-readiness.jsonl"));
+  const treasuryInventory = loadJsonlIfExists(join(dataDir, "treasury-inventory.jsonl"));
 
   const entries = [];
   const snapshotSummary = [];
@@ -199,12 +213,26 @@ async function main() {
     const config = { ...adapter.buildConfig(), id: sid };
     const receipts = loadReceipts(auditPath, [sid]);
     const caps = getStrategyCaps(sid);
-    const gasFloats = caps?.gasFloat ? Object.fromEntries(
-      Object.entries(caps.gasFloat).map(([chain, v]) => [
-        chain,
-        { actualWei: String(v.targetUsd * 1e18 / 3000), targetWei: String(v.targetUsd * 1e18 / 3000) },
-      ])
-    ) : {};
+    const gasObservation = caps
+      ? buildObservedGasFloats({
+          strategyCaps: caps,
+          gasSnapshots,
+          walletReadiness,
+          treasuryInventory,
+        })
+      : {
+          operatorAddress: null,
+          gasFloats: Object.freeze({}),
+          summary: Object.freeze({
+            configuredChainCount: 0,
+            observedChainCount: 0,
+            chains: Object.freeze([]),
+          }),
+        };
+    const gasFloats = gasObservation.gasFloats;
+    snapshotSummary[snapshotSummary.length - 1].capsConfigured = Boolean(caps);
+    snapshotSummary[snapshotSummary.length - 1].gasFloatSummary = gasObservation.summary;
+    snapshotSummary[snapshotSummary.length - 1].operatorAddress = gasObservation.operatorAddress;
     entries.push({
       strategyId: sid,
       evaluate: adapter.evaluate,
