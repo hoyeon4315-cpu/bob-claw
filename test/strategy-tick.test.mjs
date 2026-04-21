@@ -181,4 +181,62 @@ describe("strategy-tick", () => {
     assert.equal(result.summary.candidateCount, 0);
     assert.equal(result.builder.skipped[0].reason, "shadow_only");
   });
+
+  test("gas bootstrap: live_candidate with insufficient gas → bootstrap_pending", () => {
+    const result = runStrategyTick({
+      ...baseGates,
+      entries: [
+        {
+          evaluate: ({ config }) =>
+            Object.freeze({
+              strategyId: config.id,
+              chain: "base",
+              mode: "live_candidate",
+              shadowReady: true,
+              liveReady: true,
+              blockers: [],
+              economics: { projectedNetUsd: 120 },
+              intent: { chain: "base", amountUsd: 100 },
+            }),
+          config: { id: "recursive_stablecoin_lending_loop", perTradeCapUsd: 300 },
+          gasFloats: { base: { actualWei: "0", targetWei: "1000000000000000000" } },
+          hopCatalog: [
+            { from: { chain: "ethereum", asset: "ETH" }, to: { chain: "base", asset: "ETH" }, kind: "gas_topup", estimatedFeeBps: 5 },
+          ],
+        },
+      ],
+    });
+    assert.equal(result.reports[0].mode, "bootstrap_pending");
+    assert.equal(result.reports[0].bootstrapStatus.status, "bootstrap_required_before_execution");
+    assert.equal(result.summary.bootstrapPendingCount, 1);
+    assert.equal(result.summary.bootstrapFailedCount, 0);
+    assert.equal(result.summary.microCanaryNotStartedCount, 1);
+  });
+
+  test("gas sufficient → no bootstrap, candidate proceeds", () => {
+    const result = runStrategyTick({
+      ...baseGates,
+      entries: [
+        {
+          evaluate: ({ config }) =>
+            Object.freeze({
+              strategyId: config.id,
+              chain: "base",
+              mode: "live_candidate",
+              shadowReady: true,
+              liveReady: true,
+              blockers: [],
+              economics: { projectedNetUsd: 120 },
+              intent: { chain: "base", amountUsd: 100 },
+            }),
+          config: { id: "recursive_wrapped_btc_lending_loop", perTradeCapUsd: 300 },
+          gasFloats: { base: { actualWei: "5000000000000000000", targetWei: "1000000000000000000" } },
+          hopCatalog: [],
+        },
+      ],
+    });
+    assert.equal(result.reports[0].mode, "live_candidate");
+    assert.equal(result.reports[0].bootstrapStatus == null, true);
+    assert.equal(result.summary.bootstrapPendingCount, 0);
+  });
 });

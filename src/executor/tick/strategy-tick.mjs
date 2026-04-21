@@ -26,6 +26,7 @@
 
 import { buildDispatcherCandidates } from "../dispatcher/candidate-builder.mjs";
 import { dispatchStrategyCatalog } from "../dispatcher/strategy-catalog-dispatcher.mjs";
+import { evaluateGasBootstrap, applyBootstrapResult } from "../bootstrap/gas-bootstrap.mjs";
 
 function syntheticBlocked(strategyId, reason) {
   return Object.freeze({
@@ -35,11 +36,13 @@ function syntheticBlocked(strategyId, reason) {
     liveReady: false,
     blockers: Object.freeze([reason]),
     economics: null,
+    microCanaryStatus: "not_started",
+    bootstrapStatus: null,
   });
 }
 
 function evaluateOne(entry, now) {
-  const { evaluate, config = {}, market = {}, receipts = [] } = entry || {};
+  const { evaluate, config = {}, market = {}, receipts = [], gasFloats = {}, hopCatalog = [] } = entry || {};
   const sid = entry?.strategyId || config?.id || null;
   if (typeof evaluate !== "function") {
     return { report: syntheticBlocked(sid, "evaluator_missing"), error: null };
@@ -52,7 +55,45 @@ function evaluateOne(entry, now) {
         error: null,
       };
     }
-    return { report, error: null };
+    // Enrich report with micro-canary status if adapter did not provide it.
+    const enriched = {
+      ...report,
+      microCanaryStatus: report.microCanaryStatus ?? "not_started",
+    };
+    // Gas bootstrap: only for live_candidate / shadow_ready modes that intend to execute.
+    if ((enriched.mode === "live_candidate" || enriched.mode === "shadow_ready") && enriched.intent) {
+      const bootstrapResult = evaluateGasBootstrap({
+        intent: enriched.intent,
+        gasFloats,
+        hopCatalog,
+      });
+      if (bootstrapResult.status === "bootstrap_required_before_execution") {
+        enriched.mode = "bootstrap_pending";
+        enriched.liveReady = false;
+        enriched.shadowReady = false;
+        enriched.blockers = Object.freeze([
+          ...(enriched.blockers || []),
+          "bootstrap_required_before_execution",
+        ]);
+        enriched.bootstrapStatus = Object.freeze({
+          status: "bootstrap_required_before_execution",
+          plan: bootstrapResult.bootstrapPlan,
+        });
+      } else if (bootstrapResult.status === "bootstrap_failed" || bootstrapResult.status === "bootstrap_unavailable") {
+        enriched.mode = "blocked";
+        enriched.liveReady = false;
+        enriched.shadowReady = false;
+        enriched.blockers = Object.freeze([
+          ...(enriched.blockers || []),
+          bootstrapResult.status,
+        ]);
+        enriched.bootstrapStatus = Object.freeze({
+          status: bootstrapResult.status,
+          reason: bootstrapResult.reason,
+        });
+      }
+    }
+    return { report: Object.freeze(enriched), error: null };
   } catch (err) {
     return {
       report: syntheticBlocked(sid, "evaluator_threw"),
@@ -142,6 +183,9 @@ export function runStrategyTick({
       allowCount: dispatch.summary?.allowCount ?? 0,
       denyCount: dispatch.summary?.denyCount ?? 0,
       globalBlockReason: dispatch.summary?.globalBlockReason ?? null,
+      bootstrapPendingCount: reports.filter((r) => r.bootstrapStatus?.status === "bootstrap_required_before_execution").length,
+      bootstrapFailedCount: reports.filter((r) => r.bootstrapStatus?.status === "bootstrap_failed" || r.bootstrapStatus?.status === "bootstrap_unavailable").length,
+      microCanaryNotStartedCount: reports.filter((r) => r.microCanaryStatus === "not_started").length,
     }),
   });
 }
