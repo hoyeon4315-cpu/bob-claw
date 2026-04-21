@@ -26,7 +26,13 @@
 import { readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
+import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
+import { evaluatePendlePtLbtcAdapter, buildDefaultPendlePtLbtcConfig } from "../strategy/pendle-pt-lbtc-adapter.mjs";
+import { evaluateAerodromeClAdapter, buildDefaultAerodromeClConfig } from "../strategy/aerodrome-cl-adapter.mjs";
+import { evaluatePendlePtSolvBtcAdapter, buildDefaultPendlePtSolvBtcConfig } from "../strategy/pendle-pt-solvbtc-bbn-adapter.mjs";
+import { evaluateBerachainAdapter, buildDefaultBerachainConfig } from "../strategy/berachain-bend-bex-adapter.mjs";
+import { evaluateGmxBasisAdapter, buildDefaultGmxBasisConfig } from "../strategy/gmx-basis-adapter.mjs";
 
 const ADAPTERS = Object.freeze({
   "beefy-folding-vault": {
@@ -35,9 +41,36 @@ const ADAPTERS = Object.freeze({
     snapshotPrefixes: ["beefy-", "gateway-", "moonwell-"],
     protocol: "beefy",
   },
-  // Other adapters can be registered the same way once their evaluators
-  // accept the same { config, market, receipts, now } shape. See
-  // src/strategy/{pendle,aerodrome,berachain-bend-bex,gmx-perp,recursive-lending-loop}-*.mjs.
+  "pendle-pt-lbtc-base": {
+    evaluate: evaluatePendlePtLbtcAdapter,
+    buildConfig: buildDefaultPendlePtLbtcConfig,
+    snapshotPrefixes: ["pendle-", "moonwell-", "gateway-"],
+    protocol: "pendle",
+  },
+  "aerodrome-cl-base": {
+    evaluate: evaluateAerodromeClAdapter,
+    buildConfig: buildDefaultAerodromeClConfig,
+    snapshotPrefixes: ["aerodrome-", "gateway-"],
+    protocol: "aerodrome",
+  },
+  "pendle-pt-solvbtc-bbn-bsc": {
+    evaluate: evaluatePendlePtSolvBtcAdapter,
+    buildConfig: buildDefaultPendlePtSolvBtcConfig,
+    snapshotPrefixes: ["pendle-", "solv-", "gateway-", "bsc-"],
+    protocol: "pendle",
+  },
+  "berachain-bend-bex-bgt": {
+    evaluate: evaluateBerachainAdapter,
+    buildConfig: buildDefaultBerachainConfig,
+    snapshotPrefixes: ["berachain-", "bend-", "gateway-"],
+    protocol: "berachain",
+  },
+  "gmx-v2-perp-basis-avax": {
+    evaluate: evaluateGmxBasisAdapter,
+    buildConfig: buildDefaultGmxBasisConfig,
+    snapshotPrefixes: ["gmx-", "gateway-", "avax-"],
+    protocol: "gmx",
+  },
 });
 
 function parseArgs(argv) {
@@ -165,6 +198,13 @@ async function main() {
     const market = mergeMarket(snapshots);
     const config = { ...adapter.buildConfig(), id: sid };
     const receipts = loadReceipts(auditPath, [sid]);
+    const caps = getStrategyCaps(sid);
+    const gasFloats = caps?.gasFloat ? Object.fromEntries(
+      Object.entries(caps.gasFloat).map(([chain, v]) => [
+        chain,
+        { actualWei: String(v.targetUsd * 1e18 / 3000), targetWei: String(v.targetUsd * 1e18 / 3000) },
+      ])
+    ) : {};
     entries.push({
       strategyId: sid,
       evaluate: adapter.evaluate,
@@ -172,6 +212,8 @@ async function main() {
       market,
       receipts,
       protocol: adapter.protocol,
+      gasFloats,
+      hopCatalog: [],
     });
   }
 
