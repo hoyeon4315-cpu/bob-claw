@@ -472,6 +472,12 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
     });
   }
   const executableDirectInventory = directInventoryMode && executorSupport.supported && coversTarget;
+  // For gas-float-keeper–originated native refills, the purpose-built
+  // lane is Gas.Zip. Even when cross-chain BTC-intermediate would work,
+  // it must not pre-empt the gas-zip candidate via preferred=true. Let
+  // the gas-zip candidate claim preferred itself when accepted.
+  const isGasFloatOrigin = action?.origin === "gas_float_keeper";
+  const suppressPreference = isGasFloatOrigin && action.type === "refill_native";
   return candidateRecord({
     action,
     method,
@@ -481,8 +487,10 @@ function crossChainCandidate(action, plan, policy, routeContext = null) {
       actualDecimal: selectedSource.actualDecimal,
       sourceKind: selectedSource.sourceKind,
     }),
-    availability: executableDirectInventory ? "ready" : "conditional",
-    preferred: executableDirectInventory,
+    availability: executableDirectInventory
+      ? (suppressPreference ? "conditional" : "ready")
+      : "conditional",
+    preferred: executableDirectInventory && !suppressPreference,
     requiresReserveState: !directInventoryMode,
     reserveReplenishmentKnown: directInventoryMode,
     missingInputs: directInventoryMode
@@ -541,12 +549,18 @@ function gasRefuelCandidate(action, plan, policy) {
         "Gas.Zip gas-only refuel is policy-allowed, but no supported source-chain native inventory is currently available to fund the deposit.",
     });
   }
+  // Gas-float top-ups are the purpose-built lane for Gas.Zip. When the
+  // action was emitted by the gas-float keeper and Gas.Zip policy accepts
+  // it with a viable source, it is the preferred/ready executor. Using a
+  // heavier cross-chain BTC-intermediate path for a few USD of gas would
+  // waste bridge fees on every refill.
+  const isGasFloatOrigin = action?.origin === "gas_float_keeper";
   return candidateRecord({
     action,
     method: "gas_refuel_bridge_gas_zip",
     source: describeSourceAsset(source.chain, ZERO_TOKEN, sourceAmountMetadata(source)),
-    availability: "conditional",
-    preferred: false,
+    availability: isGasFloatOrigin ? "ready" : "conditional",
+    preferred: isGasFloatOrigin,
     requiresBootstrapNative: false,
     bootstrapNativeSatisfied: true,
     settlementRequirements: ["gas_zip_destination_native_delta_proof_required"],
