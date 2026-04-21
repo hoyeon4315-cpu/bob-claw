@@ -19,21 +19,28 @@
       --ease: cubic-bezier(0.22, 1, 0.36, 1);
     }
     html, body { margin: 0; padding: 0; background: var(--paper); font-family: -apple-system, "SF Pro", system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
-    .stage { min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 48px 16px 96px; box-sizing: border-box; }
+    .stage { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0; box-sizing: border-box; }
     .title { font-size: 13px; color: var(--ink-3); letter-spacing: 2px; text-transform: uppercase; margin: 0; text-align: center; }
     .sub { font-size: 12px; color: var(--ink-4); margin-top: 4px; letter-spacing: 0.2px; text-align: center; }
 
     .tabtrack {
       flex: 1 1 auto; min-height: 0;
-      display: flex; width: 100%; overflow-x: auto; overflow-y: hidden;
-      scroll-snap-type: x mandatory; scroll-behavior: smooth;
-      scrollbar-width: none; -ms-overflow-style: none;
+      display: flex; width: 100%;
+      overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
     }
     .tabtrack::-webkit-scrollbar { display: none; }
     .tabpane {
-      flex: 0 0 100%; width: 100%; scroll-snap-align: start;
+      flex: 0 0 100%; width: 100%; height: 100%;
+      scroll-snap-align: start;
       overflow-y: auto; overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      box-sizing: border-box;
     }
+    .tabpane::-webkit-scrollbar { display: none; }
     .tabbar {
       display: flex; gap: 4px; padding: 6px;
       background: #ECECEE; border-radius: 12px;
@@ -136,35 +143,87 @@
       return sign + '$' + Math.abs(n).toFixed(2);
     }
 
-    function FlowPane() {
-      const [expanded, setExpanded] = useState(false);
-      const liveEarnedUsd = STRATEGIES.reduce((s, x) => s + (x.earnedUsd || 0), 0);
-      const pendingSats = KPI?.periodDue?.sats || 0;
-      const paidSats = KPI?.paidBack?.sats || 0;
+    function StatCard({ label, main, sub, accent, onTap, tappable }) {
       return (
-        <div className="tabpane" style={{ height: '100%' }}>
-          <div style={{ padding: '4px 16px 0' }}>
+        <div onClick={onTap} style={{
+          padding: '8px 12px', background: 'var(--card)', borderRadius: 12,
+          border: '0.5px solid var(--line)', cursor: tappable ? 'pointer' : 'default',
+          transition: `transform 180ms ${'cubic-bezier(0.22, 1, 0.36, 1)'}`,
+        }}>
+          <div style={{ fontSize: 8.5, color: 'var(--ink-4)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: -0.3, marginTop: 2, color: accent || 'var(--ink)' }}>{main}</div>
+          <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 0 }}>{sub}</div>
+        </div>
+      );
+    }
+
+    function TriCard({ cells }) {
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'stretch',
+          padding: '10px 4px', background: 'var(--card)', borderRadius: 14,
+          border: '0.5px solid var(--line)',
+        }}>
+          {cells.map((c, i) => (
+            <React.Fragment key={c.label}>
+              <div onClick={c.onTap} style={{
+                flex: 1, padding: '0 10px', textAlign: 'center',
+                cursor: c.onTap ? 'pointer' : 'default', minWidth: 0,
+              }}>
+                <div style={{ fontSize: 8.5, color: 'var(--ink-4)', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: -0.3, marginTop: 2, color: c.accent || 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.main}</div>
+                {c.sub && <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.sub}</div>}
+              </div>
+              {i < cells.length - 1 && <div style={{ width: 0.5, background: 'var(--line)' }}/>}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    }
+
+    function FlowPane() {
+      const items = HOLDINGS?.all || [];
+      const pending = HOLDINGS?.pending;
+      const totalUsd = HOLDINGS?.totalUsd != null ? HOLDINGS.totalUsd : items.reduce((s, a) => s + (a.usd || 0), 0);
+      const paidSats = KPI?.paidBack?.sats || 0;
+      const paidUsd  = KPI?.paidBack?.usd;
+      const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
+      const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
+      const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
+      const totalApr = aprDen > 0 ? aprNum / aprDen : null;
+      const [aprOpen, setAprOpen] = useState(false);
+      return (
+        <div className="tabpane" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0, padding: '4px 12px 0' }}>
             <div style={{
-              height: 380, borderRadius: 20, overflow: 'hidden',
+              height: '100%', borderRadius: 18, overflow: 'hidden',
               background: 'var(--card)', border: '0.5px solid var(--line)',
             }}>
-              <Mindmap expanded={expanded} onExpand={() => setExpanded(e => !e)} />
+              <Mindmap/>
             </div>
           </div>
-          <div style={{ margin: '14px 16px 0', padding: '14px 16px', background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)' }}>
-            <div style={{ fontSize: 10, color: 'var(--ink-4)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Pre-payback earning</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-              <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.8, color: liveEarnedUsd > 0 ? 'var(--green)' : 'var(--ink-2)' }}>
-                {liveEarnedUsd > 0 ? '+' : ''}{fmtUsd(liveEarnedUsd)}
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>USD</span>
+
+          <div style={{ margin: '8px 12px 0', flexShrink: 0 }}>
+            <TriCard cells={[
+              { label: 'Paid back', main: fmtSats(paidSats), sub: paidUsd != null ? fmtUsd(paidUsd) : '—' },
+              { label: 'Total APR', main: totalApr != null ? totalApr.toFixed(2) + '%' : '—',
+                sub: aprOpen ? 'cap-weighted' : 'tap', onTap: () => setAprOpen(o => !o),
+                accent: aprOpen ? 'var(--ink)' : undefined },
+              { label: 'Assets',   main: pending ? '—' : ('$' + (totalUsd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })),
+                sub: pending ? 'pending' : 'live' },
+            ]}/>
+          </div>
+          {aprOpen && (
+            <div style={{
+              margin:'6px 12px 0', padding:'8px 12px',
+              background:'#111113', color:'#F4F4F4', borderRadius:12,
+              fontSize:11, lineHeight:1.45, flexShrink: 0,
+              animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
+            }}>
+              Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price.
             </div>
-            <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>BTC-denominated first · USD projection</div>
-          </div>
-          <div style={{ margin: '10px 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <KpiCard label="Period due" main={fmtSats(pendingSats)} sub={KPI?.periodDue?.eta || '—'}/>
-            <KpiCard label="Paid back (lifetime)" main={fmtSats(paidSats)} sub={fmtUsd(KPI?.paidBack?.usd)}/>
-          </div>
+          )}
+          <div style={{ height: 6, flexShrink: 0 }}/>
         </div>
       );
     }
@@ -292,8 +351,8 @@
       const gen = KPI?.generatedAt ? new Date(KPI.generatedAt).toLocaleString() : null;
       const src = KPI?.source || 'pending';
       return (
-        <>
-          <div>
+        <div style={{ position:'fixed', inset:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          <div style={{ padding:'6px 16px 2px', flexShrink:0 }}>
             <div className="title">BOB Claw</div>
             <div className="sub">
               {src === 'live'
@@ -301,16 +360,14 @@
                 : 'status pending · showing catalog'}
             </div>
           </div>
-          <IOSDevice title="BOB Claw">
-            <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-              <TabView tabs={TABS} active={tab} onChange={setTab}>
-                <FlowPane/>
-                <DefiPane/>
-                <AssetsPane/>
-              </TabView>
-            </div>
-          </IOSDevice>
-        </>
+          <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' }}>
+            <TabView tabs={TABS} active={tab} onChange={setTab}>
+              <FlowPane/>
+              <DefiPane/>
+              <AssetsPane/>
+            </TabView>
+          </div>
+        </div>
       );
     }
 

@@ -4,7 +4,7 @@
 
 const CHAINS = [
   { id: 'bitcoin',   name: 'Bitcoin',   role: 'source'      },
-  { id: 'bob',       name: 'BOB',       role: 'gateway'     },
+  { id: 'bob',       name: 'BOB',       role: 'destination' },
   { id: 'base',      name: 'Base',      role: 'destination' },
   { id: 'ethereum',  name: 'Ethereum',  role: 'destination' },
   { id: 'bsc',       name: 'BNB',       role: 'destination' },
@@ -46,9 +46,14 @@ function satsToUsd(sats, btcUsd) {
 
 async function bootData() {
   let status = null;
+  let holdings = null;
   try {
     const resp = await fetch('./dashboard-status.json', { cache: 'no-store' });
     if (resp.ok) status = await resp.json();
+  } catch {}
+  try {
+    const resp = await fetch('./wallet-holdings.json', { cache: 'no-store' });
+    if (resp.ok) holdings = await resp.json();
   } catch {}
 
   const lanePolicy = status?.overall?.lanePolicy || {};
@@ -59,6 +64,8 @@ async function bootData() {
   const pnl = status?.pnl || {};
   // Pre-payback earning: realized PnL today (USD). Only reported on primary lane for now.
   const realizedUsd = pnl?.realized?.valueUsd;
+
+  const liveApr = holdings?.protocolApr || {};
 
   // Fold live flags onto the catalog.
   const STRATEGIES = STRATEGY_CATALOG.map(s => {
@@ -74,7 +81,7 @@ async function bootData() {
       autoExecute: autoExec,
       status,
       earnedUsd,
-      apyPct: apyHint(s.id),
+      apyPct: liveAprFor(s, liveApr) ?? apyHint(s.id),
     };
   });
 
@@ -94,10 +101,30 @@ async function bootData() {
     generatedAt: status?.generatedAt || null,
   };
 
-  const HOLDINGS = { all: [], pending: true };
+  const HOLDINGS = holdings && Array.isArray(holdings.items)
+    ? {
+        all: holdings.items,
+        totalUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
+        pending: holdings.pending === true || holdings.items.length === 0,
+        generatedAt: holdings.generatedAt || null,
+      }
+    : { all: [], pending: true, totalUsd: null };
 
   Object.assign(window, { CHAINS, STRATEGIES, KPI, HOLDINGS, RAW_STATUS: status });
   return true;
+}
+
+function liveAprFor(strategy, aprMap) {
+  if (!aprMap || !strategy) return null;
+  const key = `${strategy.protocol}:${strategy.chain}`;
+  const entry = aprMap[key] || aprMap[strategy.protocol];
+  if (!entry) return null;
+  if (Number.isFinite(entry.netApyPct)) return entry.netApyPct;
+  if (Number.isFinite(entry.apyPct)) return entry.apyPct;
+  if (Number.isFinite(entry.supplyApyPct) && Number.isFinite(entry.borrowApyPct) && strategy.type === 'loop') {
+    return entry.supplyApyPct - entry.borrowApyPct;
+  }
+  return null;
 }
 
 function defaultAutoExec(id) {
