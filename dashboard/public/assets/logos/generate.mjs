@@ -26,6 +26,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const CHAIN_MARKS = Object.freeze([
   { id: "bitcoin",   color: "#F7931A", mark: "₿",   ink: "#FFFFFF" },
+  { id: "bob",       color: "#F25D2B", mark: "BOB", ink: "#FFFFFF" },
   { id: "ethereum",  color: "#627EEA", mark: "Ξ",   ink: "#FFFFFF" },
   { id: "base",      color: "#0052FF", mark: "B",   ink: "#FFFFFF" },
   { id: "bsc",       color: "#F0B90B", mark: "BNB", ink: "#181A20" },
@@ -50,6 +51,9 @@ export const PROTOCOL_MARKS = Object.freeze([
   { id: "k3capital",  color: "#6B3FA0", mark: "K3", ink: "#FFFFFF" },
   { id: "babylon",    color: "#CE6533", mark: "BA", ink: "#FFFFFF" },
   { id: "solv",       color: "#1B1B1B", mark: "SO", ink: "#FFFFFF" },
+  { id: "gateway",    color: "#F25D2B", mark: "GW", ink: "#FFFFFF" },
+  { id: "odos",       color: "#1F2937", mark: "OD", ink: "#FFFFFF" },
+  { id: "gaszip",     color: "#10B981", mark: "GZ", ink: "#0B1F18" },
 ]);
 
 export function renderLetterMark({ id, color, mark, ink }) {
