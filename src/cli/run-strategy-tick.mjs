@@ -296,6 +296,18 @@ async function main() {
     candidateCount: result.builder.candidateCount,
     skippedCount: result.builder.skippedCount,
     errorCount: result.errors.length,
+    reportSummaries: result.reports.map((r) => ({
+      strategyId: r.strategyId,
+      mode: r.mode || (r.liveReady ? "live_candidate" : r.shadowReady ? "shadow_ready" : "blocked"),
+      shadowReady: Boolean(r.shadowReady),
+      liveReady: Boolean(r.liveReady),
+      microCanaryStatus: r.microCanaryStatus || "not_started",
+      blockerCount: r.blockers?.length ?? 0,
+      topBlocker: r.blockers?.[0] || null,
+      projectedNetUsd: r.economics?.projectedNetUsd ?? null,
+      signerBackedCount: r.evidence?.signerBackedCount ?? 0,
+      passedCount: r.evidence?.passedCount ?? 0,
+    })),
   };
 
   mkdirSync(dirname(outPath), { recursive: true });
