@@ -162,6 +162,94 @@ describe("promotion evidence — pure gate", () => {
     assert.ok(Object.isFrozen(r.evidence));
     assert.ok(Object.isFrozen(r.blockers));
   });
+
+  test("walk-forward + regime evidence: absent by default (backwards compatible)", () => {
+    const receipts = [];
+    for (let i = 0; i < 10; i += 1) receipts.push(mkReceipt({ daysAgo: i, profit: 6000 }));
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+    });
+    assert.equal(r.eligible, true);
+    assert.equal(r.evidence.walkForwardApplied, false);
+    assert.equal(r.evidence.walkForwardPasses, null);
+    assert.equal(r.evidence.regimeWindowApplied, false);
+    assert.equal(r.evidence.regimeWindowHasChange, null);
+  });
+
+  test("walk-forward failing report blocks promotion", () => {
+    const receipts = [];
+    for (let i = 0; i < 10; i += 1) receipts.push(mkReceipt({ daysAgo: i, profit: 6000 }));
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+      walkForwardReport: { passes: false, blockers: ["insufficient_folds_passed"] },
+    });
+    assert.equal(r.eligible, false);
+    const b = r.blockers.find((x) => x.kind === "walk_forward_cv_failed");
+    assert.ok(b);
+    assert.deepEqual([...b.cvBlockers], ["insufficient_folds_passed"]);
+    assert.equal(r.evidence.walkForwardApplied, true);
+    assert.equal(r.evidence.walkForwardPasses, false);
+  });
+
+  test("walk-forward passing report does not block", () => {
+    const receipts = [];
+    for (let i = 0; i < 10; i += 1) receipts.push(mkReceipt({ daysAgo: i, profit: 6000 }));
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+      walkForwardReport: { passes: true, blockers: [] },
+    });
+    assert.equal(r.eligible, true);
+    assert.equal(r.evidence.walkForwardPasses, true);
+  });
+
+  test("regime window without change blocks promotion", () => {
+    const receipts = [];
+    for (let i = 0; i < 10; i += 1) receipts.push(mkReceipt({ daysAgo: i, profit: 6000 }));
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+      regimeWindow: { hasChange: false },
+    });
+    assert.equal(r.eligible, false);
+    assert.ok(r.blockers.some((b) => b.kind === "no_regime_change_in_sample_window"));
+    assert.equal(r.evidence.regimeWindowApplied, true);
+    assert.equal(r.evidence.regimeWindowHasChange, false);
+  });
+
+  test("regime window with change does not block", () => {
+    const receipts = [];
+    for (let i = 0; i < 10; i += 1) receipts.push(mkReceipt({ daysAgo: i, profit: 6000 }));
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+      regimeWindow: { hasChange: true },
+    });
+    assert.equal(r.eligible, true);
+    assert.equal(r.evidence.regimeWindowHasChange, true);
+  });
+
+  test("walk-forward + regime both applied together", () => {
+    const receipts = [];
+    for (let i = 0; i < 10; i += 1) receipts.push(mkReceipt({ daysAgo: i, profit: 6000 }));
+    const r = evaluatePromotionEvidence({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      receipts,
+      nowMs: NOW,
+      walkForwardReport: { passes: true, blockers: [] },
+      regimeWindow: { hasChange: true },
+    });
+    assert.equal(r.eligible, true);
+    assert.equal(r.evidence.walkForwardApplied, true);
+    assert.equal(r.evidence.regimeWindowApplied, true);
+  });
 });
 
 describe("promotion-pr-preview CLI helpers", () => {

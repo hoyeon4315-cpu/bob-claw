@@ -51,6 +51,16 @@ export function evaluatePromotionEvidence({
   nowMs,
   thresholds = PROMOTION_THRESHOLDS,
   lookbackDays = PROMOTION_THRESHOLDS.defaultLookbackDays,
+  // Optional backtest / market-context evidence. When provided, a failing
+  // report becomes an additional blocker; when absent, it is silently
+  // skipped (backwards compatible with prior callers).
+  //
+  // walkForwardReport: output of evaluateWalkForwardCv(). Must expose
+  //   `.passes: boolean` and `.blockers: string[]`.
+  // regimeWindow: output of summarizeRegimeWindow(). Must expose
+  //   `.hasChange: boolean`.
+  walkForwardReport = null,
+  regimeWindow = null,
 } = {}) {
   if (typeof strategyId !== "string" || !strategyId) {
     throw new TypeError("strategyId required");
@@ -128,6 +138,33 @@ export function evaluatePromotionEvidence({
     });
   }
 
+  if (walkForwardReport !== null && walkForwardReport !== undefined) {
+    if (typeof walkForwardReport !== "object") {
+      throw new TypeError("walkForwardReport must be an object");
+    }
+    if (walkForwardReport.passes !== true) {
+      blockers.push({
+        kind: "walk_forward_cv_failed",
+        cvBlockers: Object.freeze(
+          Array.isArray(walkForwardReport.blockers)
+            ? [...walkForwardReport.blockers]
+            : [],
+        ),
+      });
+    }
+  }
+
+  if (regimeWindow !== null && regimeWindow !== undefined) {
+    if (typeof regimeWindow !== "object") {
+      throw new TypeError("regimeWindow must be an object");
+    }
+    if (regimeWindow.hasChange !== true) {
+      blockers.push({
+        kind: "no_regime_change_in_sample_window",
+      });
+    }
+  }
+
   const eligible = blockers.length === 0;
 
   return Object.freeze({
@@ -142,6 +179,10 @@ export function evaluatePromotionEvidence({
       grossProfitSats,
       roundTripCostsSats,
       roundTripEfficiency: Number(roundTripEfficiency.toFixed(4)),
+      walkForwardApplied: walkForwardReport !== null && walkForwardReport !== undefined,
+      walkForwardPasses: walkForwardReport ? walkForwardReport.passes === true : null,
+      regimeWindowApplied: regimeWindow !== null && regimeWindow !== undefined,
+      regimeWindowHasChange: regimeWindow ? regimeWindow.hasChange === true : null,
     }),
     blockers: Object.freeze(blockers),
     suggestedDiff: eligible ? buildAutoExecDiffHint(strategyId) : null,
