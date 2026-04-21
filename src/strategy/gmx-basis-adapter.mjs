@@ -412,6 +412,16 @@ export function evaluateGmxBasisAdapter({
     evidence.liquidationBufferProvenCount === evidence.signerBackedCount &&
     evidence.autoUnwindProvenCount >= 1;
 
+  const intent = shadowReady || liveReady
+    ? Object.freeze({
+        strategyId: config?.id || STRATEGY_ID,
+        chain: config?.chain || "avalanche",
+        amountUsd: config?.perTradeCapUsd || 0,
+        intentType: "entry",
+        executionReason: "strategy_tick",
+      })
+    : null;
+
   return Object.freeze({
     strategyId: config?.id || STRATEGY_ID,
     generatedAt: typeof now === "string" ? now : null,
@@ -441,6 +451,8 @@ export function evaluateGmxBasisAdapter({
       : shadowReady
       ? "shadow_ready"
       : "blocked",
+    intent,
+    microCanaryStatus: evidence.signerBackedCount >= 3 ? "micro_canary_repeatable" : evidence.signerBackedCount > 0 ? "micro_canary_ready" : "not_started",
   });
 }
 

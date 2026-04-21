@@ -431,6 +431,16 @@ export function evaluateBerachainAdapter({
       evidence.rebalanceProvenCount >= 1;
   }
 
+  const intent = shadowReady || liveReady
+    ? Object.freeze({
+        strategyId: config?.id || STRATEGY_ID,
+        chain: config?.chain || "bera",
+        amountUsd: config?.perTradeCapUsd || 0,
+        intentType: "entry",
+        executionReason: "strategy_tick",
+      })
+    : null;
+
   return Object.freeze({
     strategyId: config?.id || STRATEGY_ID,
     mode: config?.mode || null,
@@ -451,6 +461,8 @@ export function evaluateBerachainAdapter({
       : shadowReady
       ? "shadow_ready"
       : "blocked",
+    intent,
+    microCanaryStatus: evidence.signerBackedCount >= 3 ? "micro_canary_repeatable" : evidence.signerBackedCount > 0 ? "micro_canary_ready" : "not_started",
   });
 }
 

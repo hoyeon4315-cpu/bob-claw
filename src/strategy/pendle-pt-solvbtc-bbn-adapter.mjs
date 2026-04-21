@@ -337,6 +337,16 @@ export function evaluatePendlePtSolvBtcAdapter({
     evidence.hasMaturityRedemptionProof &&
     evidence.customActionAtomicCount === evidence.signerBackedCount;
 
+  const intent = shadowReady || liveReady
+    ? Object.freeze({
+        strategyId: config?.id || STRATEGY_ID,
+        chain: config?.chain || "bsc",
+        amountUsd: config?.perTradeCapUsd || 0,
+        intentType: "entry",
+        executionReason: "strategy_tick",
+      })
+    : null;
+
   return Object.freeze({
     strategyId: config?.id || STRATEGY_ID,
     generatedAt: typeof now === "string" ? now : null,
@@ -356,6 +366,8 @@ export function evaluatePendlePtSolvBtcAdapter({
       : shadowReady
       ? "shadow_ready"
       : "blocked",
+    intent,
+    microCanaryStatus: evidence.signerBackedCount >= 3 ? "micro_canary_repeatable" : evidence.signerBackedCount > 0 ? "micro_canary_ready" : "not_started",
   });
 }
 
