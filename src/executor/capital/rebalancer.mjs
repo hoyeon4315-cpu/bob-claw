@@ -68,7 +68,7 @@ function ceilUnitsFromDecimal(decimalAmount, decimals) {
   return decimalToUnits(roundedUp.toFixed(precision), decimals).toString();
 }
 
-function refillActionForUsdShortfall({ type, chain, token = ZERO_TOKEN, amountUsd, currentUsd = 0, targetUsd = 0, prices, rationale }) {
+function refillActionForUsdShortfall({ type, chain, token = ZERO_TOKEN, amountUsd, currentUsd = 0, targetUsd = 0, prices, rationale, origin = null }) {
   const asset = tokenAsset(chain, token);
   const priceUsd = priceForAssetUsd(asset, prices);
   if (!Number.isFinite(amountUsd) || !(amountUsd > 0)) {
@@ -114,6 +114,7 @@ function refillActionForUsdShortfall({ type, chain, token = ZERO_TOKEN, amountUs
       refillAmountDecimal: unitsToDecimal(BigInt(refillAmount), asset.decimals),
       refillEstimatedUsd: amountUsd,
       rationale,
+      ...(origin ? { origin } : {}),
     },
     blocker: null,
   };
@@ -233,6 +234,7 @@ export function buildCapitalRebalanceRefillPlan({
         targetUsd: item.targetUsd,
         prices,
         rationale: "Capital Manager gas float keeper target shortfall.",
+        origin: "gas_float_keeper",
       });
       if (action) actions.push(action);
       if (blocker) blockers.push(blocker);
