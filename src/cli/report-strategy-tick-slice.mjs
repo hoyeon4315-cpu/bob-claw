@@ -25,6 +25,8 @@ import {
   PROMOTION_THRESHOLDS,
   PROMOTION_THRESHOLDS_STRICT,
 } from "../strategy/promotion-evidence.mjs";
+import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
+import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
 
 const DEFAULT_STRATEGIES = ["beefy-folding-vault", "wrapped-btc-loop-base-moonwell"];
 
@@ -128,8 +130,22 @@ function main() {
     };
   });
 
+  const latestTick = ticks.length > 0
+    ? ticks.reduce((a, b) => new Date(a.tickAt) > new Date(b.tickAt) ? a : b)
+    : null;
+  const reportSummaries = latestTick?.reportSummaries || [];
+  const allReportSummaries = ticks.flatMap((t) => t.reportSummaries || []);
+  const latestReportSummariesByStrategy = new Map();
+  for (const r of reportSummaries) {
+    latestReportSummariesByStrategy.set(r.strategyId, r);
+  }
+  const dedupedLatestReports = [...latestReportSummariesByStrategy.values()];
+
+  const microCanarySlice = buildMicroCanarySlice(dedupedLatestReports);
+  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports);
+
   const slice = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date(nowMs).toISOString(),
     fastTrackThresholds: PROMOTION_THRESHOLDS,
     strictThresholds: PROMOTION_THRESHOLDS_STRICT,
@@ -146,6 +162,8 @@ function main() {
       strategiesEligibleStrict: strategyRows.filter((s) => s.promotion.strict.eligible).length,
       totalSignerBackedReceipts: strategyRows.reduce((acc, s) => acc + s.receiptCountSignerBacked, 0),
     },
+    microCanary: microCanarySlice,
+    strategyStage: strategyStageSlice,
   };
 
   mkdirSync(dirname(outPath), { recursive: true });

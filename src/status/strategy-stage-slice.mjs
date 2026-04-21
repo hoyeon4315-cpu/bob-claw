@@ -24,9 +24,12 @@ export function buildStrategyStageSlice(reports = []) {
         mode: r?.mode || "blocked",
         shadowReady: Boolean(r?.shadowReady),
         liveReady: Boolean(r?.liveReady),
-        blockerCount: r?.blockers?.length ?? 0,
-        topBlocker: r?.blockers?.[0] || null,
-        projectedNetUsd: r?.economics?.projectedNetUsd ?? null,
+        blockerCount:
+          Number.isFinite(r?.blockerCount)
+            ? r.blockerCount
+            : r?.blockers?.length ?? 0,
+        topBlocker: r?.topBlocker ?? r?.blockers?.[0] ?? null,
+        projectedNetUsd: r?.projectedNetUsd ?? r?.economics?.projectedNetUsd ?? null,
       },
     ]),
   );
