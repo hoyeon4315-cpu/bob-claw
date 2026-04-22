@@ -1177,6 +1177,169 @@ bootstrap 우선순위:
 2. `emergency_unwind`를 먼저 운영 증거로 닫고 그 다음 tiny live를 다시 제출했다.
 3. 실제 자금이 걸렸으나 금액은 0 ETH transfer (gas만 소모, ~$0.0003).
 
+## W10. Shadow Cycle Promotion Gate
+
+W9가 "실제로 안전하게 작은 live를 돌릴 수 있는가"를 닫았다면, W10은 "언제 shadow에서 승격하고 언제 다시 내리는가"를 deterministic하게 고정하는 단계다.
+
+중요:
+
+- 현재 adapter/dispatcher 표면의 기본 승격 단계는 `blocked -> shadow_ready -> live_candidate`다.
+- `src/status/strategy-stage-slice.mjs`도 현재는 이 3단계만 집계한다.
+- 따라서 W10에서 새로 문서화할 `live_ready`는 "이미 코드상 일반화된 adapter mode"가 아니라, `promotion-evidence`와 committed cap diff까지 포함한 운영 승격 판정으로 정의한다.
+
+### 현재 코드 기준 ground truth
+
+1. adapter 단계:
+   - 각 adapter는 시장 데이터/영수증/전략별 증거를 읽어 `blocked`, `shadow_ready`, `live_candidate`를 계산한다.
+   - 공통 패턴은 "healthy market + 양수 economics + 필수 proof 없음 -> shadow_ready", "shadow_ready + signer-backed receipts/전략별 추가 proof 충족 -> live_candidate"다.
+2. dispatcher 단계:
+   - `src/executor/dispatcher/candidate-builder.mjs`는 `blocked`는 버리고, `shadow_ready`는 선택적으로, `live_candidate`는 dispatch candidate로 변환한다.
+3. 운영 promotion 단계:
+   - `src/strategy/promotion-evidence.mjs`는 최근 signer-backed 영수증을 읽어 `eligible` 여부를 계산한다.
+   - 이 모듈은 `autoExecute`를 직접 뒤집지 않고, committed diff 힌트만 낸다.
+4. 운영 safety 단계:
+   - W9 기준 `emergency_unwind confirmed`와 `tiny_live_canary confirmed`가 실전 증거로 존재한다.
+   - 즉 이제 승격은 "실행 가능한가"가 아니라 "승격해도 되는가"의 문제다.
+
+### 승격 사다리 정의
+
+#### 1. `shadow_ready`
+
+정의:
+
+- 전략이 아직 live 배치되지는 않지만, deterministic shadow 관측과 canary 준비가 가능한 상태
+
+최소 조건:
+
+1. adapter report가 `mode=shadow_ready`
+2. market snapshot / oracle / quote가 stale이 아니고 필수 필드가 존재
+3. `economics.projectedNetUsd > 0` 또는 전략별 양수 edge 조건 충족
+4. strategy-specific hard proof blocker가 없음
+5. gas bootstrap / rescue path가 선언되어 있음
+
+강등 조건:
+
+1. snapshot / oracle stale
+2. projected net 음수 전환
+3. strategy-specific proof missing 재발
+4. risk blocker가 `blocked`로 돌아감
+
+#### 2. `live_candidate`
+
+정의:
+
+- 작은 금액으로 반복 가능한 signer-backed 실행을 감당할 수 있고, dispatcher가 후보로 받아도 되는 상태
+
+최소 조건:
+
+1. `shadow_ready` 유지
+2. strategy-specific signer-backed receipt floor 충족
+3. `microCanaryStatus >= micro_canary_repeatable`
+4. W9 runtime safety evidence 존재:
+   - `emergency_unwind confirmed`
+   - `tiny_live_canary confirmed`
+5. risk policy가 현재 시점에서 `ALLOW`
+6. destination / allowlist / economics evidence가 promotion artifact에서 stale이 아님
+
+강등 조건:
+
+1. 최근 24h 실패율 또는 failed gas budget 악화
+2. emergency unwind / tiny canary가 최근 window에서 다시 실패
+3. venue allowlist 또는 economics evidence stale
+4. risk policy blocker 재발
+
+#### 3. `live_ready`
+
+정의:
+
+- 운영 관점에서 `autoExecute: true` committed diff를 올려도 되는 상태
+
+이 단계는 adapter mode가 아니라, 아래를 모두 충족한 promotion verdict다.
+
+최소 조건:
+
+1. `live_candidate` 유지
+2. `evaluatePromotionEvidence()`가 `eligible=true`
+3. lookback window에서:
+   - signer-backed receipt 수
+   - consecutive success
+   - cumulative profit sats
+   - round-trip efficiency
+   - failure count
+   가 threshold를 모두 통과
+4. walk-forward / regime evidence가 필요한 lane이면 그 조건도 통과
+5. operator가 committed diff로 `autoExecute`를 켜기 전, cap/risk 문서가 최신 상태
+
+주의:
+
+- `live_ready`는 runtime auto-flip이 아니다.
+- 실제 live 전환은 `src/config/strategy-caps.mjs`에 committed diff로 `autoExecute: false -> true`가 들어가야만 성립한다.
+
+### W10-A. promotion ladder 문서/상태 고정
+
+핵심 작업:
+
+1. `blocked -> shadow_ready -> live_candidate -> live_ready`의 의미를 문서/상태 산출물에서 통일
+2. `src/status/strategy-stage-slice.mjs` 또는 후속 slice가 `live_ready`를 운영 단계로 읽을 수 있게 확장 계획 수립
+3. `mode`와 `promotionVerdict`를 혼동하지 않도록 필드명을 정리
+
+완료 기준:
+
+- 사용자가 "지금 이 전략이 shadow인지 live candidate인지 live ready인지"를 하나의 용어 체계로 답할 수 있다.
+- adapter stage와 promotion verdict가 문서에서 분리 설명된다.
+
+### W10-B. deterministic promotion verdict 연결
+
+핵심 작업:
+
+1. `src/strategy/promotion-evidence.mjs`를 strategy status/report pipeline에 연결
+2. strategy별 `eligible`, `blockers`, `suggestedDiff`를 dashboard/status에서 읽을 수 있게 정리
+3. fast-track threshold와 strict threshold를 둘 다 기록해 현재 승격이 어떤 기준에 근거하는지 남김
+
+완료 기준:
+
+- `live_candidate`와 `live_ready`가 같은 말로 쓰이지 않는다.
+- `live_ready`는 반드시 `promotion-evidence eligible`을 의미한다.
+
+### W10-C. demotion / rollback gate
+
+핵심 작업:
+
+1. `live_candidate` 또는 `live_ready` 상태에서 다시 `shadow_ready` 또는 `blocked`로 내려가는 조건을 명문화
+2. 아래 항목을 demotion trigger로 고정:
+   - recent failure burst
+   - failed gas budget breach
+   - round-trip efficiency 하락
+   - emergency unwind 실패
+   - stale economics / stale quote / stale allowlist evidence
+3. rollback은 runtime key path가 아니라 committed cap diff와 policy blocker 조합으로 정의
+
+완료 기준:
+
+- 승격 조건뿐 아니라 강등 조건도 deterministic하게 설명된다.
+- "한 번 live_ready 되면 계속 유지" 같은 애매한 운영 해석이 사라진다.
+
+### W10 Gate
+
+#### Gate P1. stage semantics lock
+
+- `shadow_ready`, `live_candidate`, `live_ready` 정의가 문서/상태 산출물에서 충돌하지 않는다.
+
+#### Gate P2. promotion evidence lock
+
+- 최소 1개 전략에 대해 `evaluatePromotionEvidence()` 결과가 artifact로 노출된다.
+
+#### Gate P3. demotion rule lock
+
+- 실패/비용/효율/증거 stale에 따른 강등 규칙이 문서와 status pipeline에 반영된다.
+
+### W10 최종 산출물
+
+1. `docs/remaining-candidate-build-plan-2026-04-22.md`의 W10 섹션
+2. `docs/current-status.md` 또는 대응 status artifact에 `promotion verdict` 요약
+3. 필요 시 `strategy-stage-slice` 후속 확장 또는 별도 `promotion-verdict-slice`
+4. committed diff 없이 runtime에서 autoExecute를 올리지 않는다는 명시
+
 ## 추천 PR 분해
 
 아래처럼 자르면 충돌이 적고 검증이 쉽다.
@@ -1200,6 +1363,7 @@ bootstrap 우선순위:
 17. PR-17: indirect native conversion registry + safe router proofs
 18. PR-18: native/ETH LP and looping policy / dashboard integration
 19. PR-19: real risk automation closure (`liquidity-watch`, `concentration-guard`, `emergency_unwind`, tiny live evidence)
+20. PR-20: shadow cycle promotion gate (`live_candidate` vs `live_ready` verdict, demotion rules, status slice)
 
 ## 병렬화 규칙
 
@@ -1259,6 +1423,7 @@ bootstrap 우선순위:
 9. W7 운영 연동 마감
 10. W9 real risk automation closure
 11. W8 Gateway-first native / ETH deployment
+12. W10 shadow cycle promotion gate
 
 이 순서를 바꾸면 "후보 수는 많지만 실제로는 tick / receipt / promotion이 끊긴 상태"가 다시 반복될 가능성이 높다.
 
