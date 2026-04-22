@@ -354,13 +354,37 @@ repo와 외부 자료를 함께 봤을 때의 전략적 의미:
 
 구축 순서는 아래 원칙을 따른다.
 
-1. `Base/Moonwell`에서 검증된 부품을 최대한 재사용한다.
+1. `Base/Moonwell`은 영구 우선 체인이 아니라 초기 검증용 seed lane으로만 쓴다. 검증된 부품은 복제하고, 체인/전략 우선순위는 parity floor 기준으로 다시 나눈다.
 2. evaluator만 있는 후보를 먼저 "shadow 가능한 후보"로 올린다.
-3. 새 체인 추가보다 `receipt -> tick -> canary -> promotion` 연결을 먼저 완성한다.
-4. BOB Gateway transport proof만으로 전략 완료로 치지 않는다.
-5. 모든 전략은 `BTC-denominated`, `deterministic`, `cap = code` 원칙을 지킨다.
-6. 실전 소액 테스트는 전략별 `micro-canary`로 명시 관리한다. "최소 라이브 증명"과 "전략 canary 통과"는 같은 말이 아니다.
-7. `rescue`, `unwind`, `offramp`, `gas top-up`은 모두 운영 부속작업이 아니라 전략 생존 조건이다. 가스 부족으로 rescue가 멈추면 그 전략은 구축 완료가 아니다.
+3. 이제부터는 특정 한 전략을 `live_ready`까지 깊게 미는 것보다, 공식 11개 체인과 신규 전략 후보 전부를 최소 공통 maturity까지 breadth-first로 끌어올리는 것을 우선한다.
+4. 새 체인 추가보다 `receipt -> tick -> canary -> promotion` 연결을 먼저 완성한다. 단 이미 한 체인에서만 닫힌 부품은 다른 공식 체인에도 같은 수준으로 복제해야 "완료"로 본다.
+5. BOB Gateway transport proof만으로 전략 완료로 치지 않는다.
+6. 모든 전략은 `BTC-denominated`, `deterministic`, `cap = code` 원칙을 지킨다.
+7. 실전 소액 테스트는 전략별 `micro-canary`로 명시 관리한다. "최소 라이브 증명"과 "전략 canary 통과"는 같은 말이 아니다.
+8. `rescue`, `unwind`, `offramp`, `gas top-up`은 모두 운영 부속작업이 아니라 전략 생존 조건이다. 가스 부족으로 rescue가 멈추면 그 전략은 구축 완료가 아니다.
+9. 앞으로의 완료 기준은 "Base에서 된다"가 아니라 "공식 체인/전략군 전반이 같은 stage vocabulary와 같은 evidence schema로 관리된다"이다.
+
+## 전체 parity floor 원칙
+
+사용자 목표는 특정 1개 전략의 깊이 우선 승격이 아니라, 전체 전략군과 전체 공식 체인을 같은 선상으로 올리는 것이다.
+
+따라서 W10 이후의 기본 정책은 아래와 같다.
+
+1. `Base/Moonwell`에만 있는 특별 취급을 줄인다.
+2. 모든 공식 체인에 대해 최소 아래 4개를 같은 수준으로 만든다:
+   - venue registry
+   - strategy adapter 또는 explicit empty surface
+   - receipt/evidence schema
+   - promotion/demotion 상태 노출
+3. 모든 신규 전략 후보에 대해 최소 아래 4개를 같은 수준으로 만든다:
+   - tick 연결
+   - market snapshot loader
+   - micro-canary 상태
+   - blocked reason의 기계 판독 가능 출력
+4. 특정 lane 하나를 `live_ready`까지 더 밀기 전에, 나머지 lane들이 아직 `template_only`나 `design scaffold`에 머물러 있으면 breadth-first 보강을 먼저 한다.
+5. 앞으로 문서/상태 보고에서 "완성"은 아래 둘을 동시에 뜻해야 한다:
+   - 해당 전략/체인이 자체적으로 동작 가능
+   - 같은 계열 다른 전략/체인과 비교 가능한 동일 schema로 관리됨
 
 ## 외부 에이전트 단일 세션 실행 원칙
 
@@ -1375,6 +1399,90 @@ Evidence:
 3. 필요 시 `strategy-stage-slice` 후속 확장 또는 별도 `promotion-verdict-slice`
 4. committed diff 없이 runtime에서 autoExecute를 올리지 않는다는 명시
 
+## W11. Global Strategy / Chain Parity Floor
+
+W11의 목적은 "특정 한 전략을 더 깊게 판다"가 아니라, 현재 repo에 존재하는 전체 전략 후보와 공식 11개 체인을 같은 선상으로 올리는 것이다.
+
+짧은 목표:
+
+- 모든 공식 체인이 같은 stage vocabulary로 보인다.
+- 모든 신규 전략 후보가 최소한 같은 evidence schema를 가진다.
+- `template_only`, `design scaffold`, `blocked-only`, `review-only`, `live_candidate`, `live_ready`가 체인/전략 전반에서 같은 뜻을 가진다.
+
+### W11-A. official 11-chain parity floor
+
+핵심 작업:
+
+1. 공식 11개 체인 각각에 대해 아래 필드를 모두 채운다:
+   - wrapped-BTC venue registry 상태
+   - stable venue registry 상태
+   - direct/indirect native-ETH arrival class
+   - strategy surface 존재 여부
+   - promotion/demotion surface 존재 여부
+2. `template_only`인 체인(`optimism`, `sei`)도 "비어 있음"이 아니라 명시된 empty surface로 관리한다.
+3. `base`, `bsc`, `avalanche`, `bera`, `bob`, `unichain`, `soneium`, `sonic`, `ethereum`, `optimism`, `sei` 전부가 동일 status schema에 나타나게 한다.
+
+완료 기준:
+
+- 어떤 체인도 "문서엔 있는데 artifact에는 없음" 상태로 남지 않는다.
+- 11개 체인 모두에 대해 최소 한 줄 요약과 blocker가 기계 판독 가능하게 나온다.
+
+### W11-B. new strategy candidate parity floor
+
+핵심 작업:
+
+1. 아래 후보 전부를 동일 기준으로 비교 가능하게 만든다:
+   - `recursive_stablecoin_lending_loop`
+   - `stablecoin_spread_loop`
+   - `proxy_spread_expansion`
+   - `tokenized_reserve_sleeve`
+   - `eth_destination_deployment`
+   - `gateway_native_asset_conversion_sleeve`
+2. 각 후보에 대해 최소 아래 6개를 통일:
+   - adapter/tick 연결 여부
+   - market loader 존재 여부
+   - receipt schema 존재 여부
+   - micro-canary status
+   - promotion verdict
+   - top blocker
+3. "연구 중"인 후보도 빈 칸이 아니라 explicit blocked reason으로 남긴다.
+
+완료 기준:
+
+- 새 전략 후보들이 `Base/Moonwell만 자세하고 나머지는 메모 수준` 상태를 벗어난다.
+- 전략별 maturity 비교가 동일 schema로 가능해진다.
+
+### W11-C. breadth-first implementation cadence
+
+핵심 작업:
+
+1. 앞으로 한 세션의 기본 단위는 "1개 전략 완전 마감"이 아니라 "여러 전략/체인에 같은 종류의 구멍을 한 번에 메우기"로 잡는다.
+2. 예:
+   - market loader parity 세션
+   - receipt schema parity 세션
+   - micro-canary parity 세션
+   - promotion verdict parity 세션
+3. Base 전용 특수 처리는 공통 모듈로 끌어올리고, chain-specific 예외는 명시적 override로만 남긴다.
+
+완료 기준:
+
+- 다음 구현이 다시 `Base/Moonwell만 깊어지는` 방향으로 기울지 않는다.
+- 세션 보고가 항상 "전체 전략군 중 무엇이 같은 수준으로 올라왔는지"를 보여준다.
+
+### W11 Gate
+
+#### Gate G1. chain parity lock
+
+- 공식 11개 체인 모두가 동일 status vocabulary와 blocker schema로 노출된다.
+
+#### Gate G2. strategy parity lock
+
+- 신규 전략 후보 전부가 동일 maturity schema로 노출된다.
+
+#### Gate G3. breadth-first cadence lock
+
+- 다음 실행 계획이 특정 1개 체인/전략의 depth-first 마감이 아니라 parity floor 향상 기준으로 작성된다.
+
 ## 추천 PR 분해
 
 아래처럼 자르면 충돌이 적고 검증이 쉽다.
@@ -1459,8 +1567,17 @@ Evidence:
 10. W9 real risk automation closure
 11. W8 Gateway-first native / ETH deployment
 12. W10 shadow cycle promotion gate
+13. W11 global strategy / chain parity floor
 
-이 순서를 바꾸면 "후보 수는 많지만 실제로는 tick / receipt / promotion이 끊긴 상태"가 다시 반복될 가능성이 높다.
+W10 이후의 실행 원칙:
+
+1. 이제부터는 특정 1개 lane을 더 깊게 파는 것보다 W11 parity floor를 먼저 높인다.
+2. 다음 세션 우선순위는 "Base/Moonwell 추가 심화"가 아니라 "공식 11개 체인 + 신규 전략 후보를 같은 maturity schema로 맞추는 것"이다.
+3. 특정 전략을 다시 depth-first로 밀 수 있는 경우는 아래 둘을 모두 만족할 때만이다:
+   - 전체 parity floor 작업이 같은 세션에서 함께 전진함
+   - 그 전략이 공통 모듈화 결과를 다른 체인/전략에도 재사용 가능하게 만든다
+
+이 순서를 바꾸면 "후보 수는 많지만 실제로는 한두 lane만 계속 깊어지고, 나머지는 tick / receipt / promotion이 끊긴 상태"가 다시 반복될 가능성이 높다.
 
 ## 외부 에이전트 권장 실행 모드
 
