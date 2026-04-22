@@ -1,0 +1,184 @@
+// P2 — New strategy candidate parity floor slice.
+//
+// Exposes every strategy candidate (existing + new) with the same maturity
+// schema so the dashboard can compare them side-by-side.
+//
+// Pure function. No I/O.
+
+const NEW_CANDIDATE_IDS = Object.freeze([
+  "recursive_stablecoin_lending_loop",
+  "stablecoin_spread_loop",
+  "proxy_spread_expansion",
+  "tokenized_reserve_sleeve",
+  "eth_destination_deployment",
+  "gateway_native_asset_conversion_sleeve",
+]);
+
+function resolveFromDeterministic(candidates, id) {
+  const c = candidates?.find((x) => x.id === id);
+  if (!c) return null;
+  return {
+    strategyId: c.id,
+    chainSet: c.protocolTrack?.chains || ["base"],
+    adapterTickConnected:
+      c.deterministicStatus === "repo_auto_build_supported" ||
+      c.deterministicStatus === "planning_adapter_ready",
+    marketLoader: Boolean(c.protocolAdapterId),
+    receiptSchema: Boolean(c.dryRunReceiptRecorded),
+    microCanaryStatus: c.readyForLive
+      ? "micro_canary_ready"
+      : c.dryRunReceiptRecorded
+        ? "minimal_live_proof_exists"
+        : "not_started",
+    promotionVerdict:
+      c.status === "receipt_backed_validation_ready"
+        ? "live_candidate"
+        : c.status === "dry_run_evidence_recorded"
+          ? "shadow_ready"
+          : "blocked",
+    demotionSummary: { demoted: false, triggers: [] },
+    topBlocker: c.blockers?.[0] || null,
+    blockers: c.blockers || [],
+    maturity: c.status || "unknown",
+    source: "deterministic_candidate",
+  };
+}
+
+function resolveFromScaffold(scaffolds, id) {
+  const s = scaffolds?.find((x) => x.id === id);
+  if (!s) return null;
+  return {
+    strategyId: s.id,
+    chainSet: s.protocolTrack?.chains || ["base"],
+    adapterTickConnected: false,
+    marketLoader: Boolean(s.protocolTrack?.protocols?.length),
+    receiptSchema: false,
+    microCanaryStatus: "not_started",
+    promotionVerdict: "blocked",
+    demotionSummary: { demoted: false, triggers: [] },
+    topBlocker: s.blockers?.[0] || "design_scaffold_incomplete",
+    blockers: s.blockers || ["design_scaffold_incomplete"],
+    maturity: s.status || "design_scaffold",
+    source: "secondary_scaffold",
+  };
+}
+
+function resolveFromResearch(board, id) {
+  const c = board?.find((x) => x.id === id);
+  if (!c) return null;
+  return {
+    strategyId: c.id,
+    chainSet: c.evidence?.arrivalFamily === "wrapped_btc" ? ["base"] : ["base"],
+    adapterTickConnected: c.evidence?.executionSupportStatus === "repo_auto_build_supported",
+    marketLoader: Boolean(c.protocolAdapterId),
+    receiptSchema: Boolean(c.evidence?.dryRunReceiptRecorded),
+    microCanaryStatus: c.evidence?.signerBackedRunCount > 0
+      ? "minimal_live_proof_exists"
+      : c.evidence?.dryRunReceiptRecorded
+        ? "micro_canary_ready"
+        : "not_started",
+    promotionVerdict:
+      c.status === "receipt_backed_validation_ready"
+        ? "live_candidate"
+        : c.status === "dry_run_evidence_recorded"
+          ? "shadow_ready"
+          : "blocked",
+    demotionSummary: { demoted: false, triggers: [] },
+    topBlocker: c.missingEvidence?.[0] || c.blockers?.[0] || null,
+    blockers: [...(c.blockers || []), ...(c.missingEvidence || [])],
+    maturity: c.status || "research_backlog",
+    source: "research_board",
+  };
+}
+
+function resolveFromTick(tickStatus, id) {
+  const s = tickStatus?.strategies?.find((x) => x.strategyId === id);
+  const stage = tickStatus?.strategyStage?.byStrategy?.[id];
+  const micro = tickStatus?.microCanary?.byStrategy?.[id];
+  if (!s && !stage && !micro) return null;
+  return {
+    microCanaryStatus: micro?.microCanaryStatus || s?.microCanaryStatus || "not_started",
+    promotionVerdict: stage?.promotionVerdict || s?.lastTickMode || "blocked",
+    demotionSummary: {
+      demoted: s?.demotion?.demoted || false,
+      triggers: s?.demotion?.triggers || [],
+    },
+    topBlocker: stage?.topBlocker || s?.lastTickBlockers?.[0] || null,
+    blockers: s?.lastTickBlockers || [],
+  };
+}
+
+function fallbackCandidate(id) {
+  const chainMap = {
+    recursive_stablecoin_lending_loop: ["base"],
+    stablecoin_spread_loop: ["base"],
+    proxy_spread_expansion: ["base", "ethereum"],
+    tokenized_reserve_sleeve: ["bsc"],
+    eth_destination_deployment: ["ethereum"],
+    gateway_native_asset_conversion_sleeve: ["bob", "base"],
+  };
+  return {
+    strategyId: id,
+    chainSet: chainMap[id] || ["base"],
+    adapterTickConnected: false,
+    marketLoader: false,
+    receiptSchema: false,
+    microCanaryStatus: "not_started",
+    promotionVerdict: "blocked",
+    demotionSummary: { demoted: false, triggers: [] },
+    topBlocker: "candidate_not_yet_built_in_repo",
+    blockers: ["candidate_not_yet_built_in_repo"],
+    maturity: "design_scaffold",
+    source: "fallback_registry",
+  };
+}
+
+export function buildStrategyParitySlice({
+  deterministicCandidates = [],
+  secondaryScaffolds = [],
+  researchBoard = [],
+  strategyTickStatus = null,
+} = {}) {
+  const det = deterministicCandidates?.candidates || deterministicCandidates || [];
+  const scaff = secondaryScaffolds?.scaffolds || secondaryScaffolds || [];
+  const research = researchBoard?.candidates || researchBoard || [];
+
+  const allIds = [
+    ...new Set([
+      ...det.map((c) => c.id),
+      ...scaff.map((s) => s.id),
+      ...research.map((r) => r.id),
+      ...NEW_CANDIDATE_IDS,
+    ]),
+  ];
+
+  const rows = allIds.map((id) => {
+    let row =
+      resolveFromDeterministic(det, id) ||
+      resolveFromScaffold(scaff, id) ||
+      resolveFromResearch(research, id) ||
+      fallbackCandidate(id);
+
+    const tick = resolveFromTick(strategyTickStatus, id);
+    if (tick) {
+      row = {
+        ...row,
+        microCanaryStatus: tick.microCanaryStatus,
+        promotionVerdict: tick.promotionVerdict,
+        demotionSummary: tick.demotionSummary,
+        topBlocker: tick.topBlocker || row.topBlocker,
+        blockers: tick.blockers?.length > 0 ? tick.blockers : row.blockers,
+      };
+    }
+
+    return Object.freeze(row);
+  });
+
+  return Object.freeze({
+    candidateCount: rows.length,
+    newCandidateCount: NEW_CANDIDATE_IDS.length,
+    rows,
+    byStrategy: Object.freeze(Object.fromEntries(rows.map((r) => [r.strategyId, r]))),
+    generatedAt: new Date().toISOString(),
+  });
+}

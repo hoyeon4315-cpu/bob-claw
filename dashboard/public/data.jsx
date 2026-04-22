@@ -57,7 +57,6 @@ function satsToUsd(sats, btcUsd) {
 async function bootData() {
   let status = null;
   let holdings = null;
-  let tickStatus = null;
   try {
     const resp = await fetch('./dashboard-status.json', { cache: 'no-store' });
     if (resp.ok) status = await resp.json();
@@ -65,10 +64,6 @@ async function bootData() {
   try {
     const resp = await fetch('./wallet-holdings.json', { cache: 'no-store' });
     if (resp.ok) holdings = await resp.json();
-  } catch {}
-  try {
-    const resp = await fetch('./strategy-tick-status.json', { cache: 'no-store' });
-    if (resp.ok) tickStatus = await resp.json();
   } catch {}
 
   const lanePolicy = status?.overall?.lanePolicy || {};
@@ -82,37 +77,41 @@ async function bootData() {
 
   const liveApr = holdings?.protocolApr || {};
 
-  const tickById = Object.fromEntries((tickStatus?.strategies || []).map(r => [r.strategyId, r]));
-  const microById = tickStatus?.microCanary?.byStrategy || {};
-  const stageById = tickStatus?.strategyStage?.byStrategy || {};
+  // P3 — unified read from dashboard-status.json only
+  const strategyParity = status?.strategy?.strategyParity || {};
+  const chainParity = status?.strategy?.chainParity || {};
+  const microCanary = status?.strategy?.microCanarySummary || {};
+  const promotion = status?.strategy?.promotionSummary || {};
+
+  const tickById = strategyParity.byStrategy || {};
+  const microById = microCanary.byStrategy || {};
 
   // Fold live flags onto the catalog.
   const STRATEGIES = STRATEGY_CATALOG.map(s => {
     const isPrimary = s.id === primaryId;
     const live = isPrimary ? primaryPolicy : null;
     const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
-    const status = isPrimary
+    const statusLabel = isPrimary
       ? (Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'LIVE' : 'DRY RUN'))
       : (defaultAutoExec(s.id) ? 'LIVE' : (s.id === 'recursive_wrapped_btc_lending_loop' ? 'DRY RUN' : 'CANDIDATE'));
     const earnedUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
-    const tick = tickById[s.id] || null;
+    const parity = tickById[s.id] || null;
     const micro = microById[s.id] || null;
-    const stage = stageById[s.id] || null;
-    const tickMode = tick?.lastTickMode || stage?.mode || null;
-    const tickStatusLabel = tickMode === 'live_candidate' ? 'LIVE CANDIDATE' : tickMode === 'shadow_ready' ? 'SHADOW' : tickMode === 'blocked' ? 'BLOCKED' : status;
+    const tickMode = parity?.promotionVerdict || null;
+    const tickStatusLabel = tickMode === 'live_candidate' ? 'LIVE CANDIDATE' : tickMode === 'shadow_ready' ? 'SHADOW' : tickMode === 'blocked' ? 'BLOCKED' : statusLabel;
     return {
       ...s,
       autoExecute: autoExec,
-      status: tickStatusLabel || status,
+      status: tickStatusLabel || statusLabel,
       earnedUsd,
       apyPct: liveAprFor(s, liveApr) ?? apyHint(s.id),
       tickMode,
-      tickBlockers: tick?.lastTickBlockers || [],
-      microCanaryStatus: micro?.microCanaryStatus || 'not_started',
-      blockerCount: stage?.blockerCount ?? tick?.lastTickBlockers?.length ?? 0,
-      topBlocker: stage?.topBlocker || tick?.lastTickBlockers?.[0] || null,
-      projectedNetUsd: stage?.projectedNetUsd ?? null,
-      lastTickAt: tick?.lastTickAt || null,
+      tickBlockers: parity?.blockers || [],
+      microCanaryStatus: micro?.microCanaryStatus || parity?.microCanaryStatus || 'not_started',
+      blockerCount: parity?.blockers?.length ?? 0,
+      topBlocker: parity?.topBlocker || null,
+      projectedNetUsd: null,
+      lastTickAt: parity?.lastTickAt || null,
     };
   });
 
@@ -141,7 +140,21 @@ async function bootData() {
       }
     : { all: [], pending: true, totalUsd: null };
 
-  Object.assign(window, { CHAINS, STRATEGIES, KPI, HOLDINGS, RAW_STATUS: status });
+  // P1 — fold chain parity into CHAINS so the UI shows explicit maturity/blockers
+  const CHAINS_PARITY = CHAINS.map(c => {
+    const p = chainParity.byChain?.[c.id] || null;
+    return {
+      ...c,
+      wrappedBtcVenueStatus: p?.wrappedBtcVenueStatus || 'unknown',
+      stableVenueStatus: p?.stableVenueStatus || 'unknown',
+      nativeEthArrivalClass: p?.nativeEthArrivalClass || 'unknown',
+      strategySurfacePresence: p?.strategySurfacePresence ?? 0,
+      currentMaturity: p?.currentMaturity || 'unknown',
+      topBlocker: p?.topBlocker || null,
+    };
+  });
+
+  Object.assign(window, { CHAINS: CHAINS_PARITY, STRATEGIES, KPI, HOLDINGS, RAW_STATUS: status });
   return true;
 }
 
