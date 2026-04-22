@@ -183,6 +183,14 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
   - no measured mixed ETH/stable closed loop yet
   - ETH mixed triangle and flash paths are still analysis-only because the contract path is not generalized
   - therefore ETH lanes stay observe-only until a measured edge appears, even though `liveTrading` itself is no longer hard-blocked
+- W4–W7 status (2026-04-22):
+  - W4: 9 strategy adapters in `run-strategy-tick.mjs` registry: beefy-folding-vault, pendle-pt-lbtc-base, aerodrome-cl-base, pendle-pt-solvbtc-bbn-bsc, berachain-bend-bex-bgt, gmx-v2-perp-basis-avax, stablecoin-spread-loop, proxy-spread-expansion, tokenized-reserve-sleeve.
+  - W5: `destination-venues.mjs` + `stable-venues.mjs` registries wired into `allocator-core.mjs` as protocol fallback.
+  - W6: optimism/sei registered as `template_only` in venue registries with explicit blockers. Gateway API currently returns only 3 routes (bitcoin↔bob); quote fetch fails for optimism/sei. No dedicated adapters until route coverage expands.
+  - W7: `micro-canary-slice.mjs` + `strategy-stage-slice.mjs` feed into `dashboard/public/strategy-tick-status.json` (schema v2). Dashboard frontend renders tick mode, micro-canary status, blocker count, top blocker, projectedNetUsd per strategy in the DeFi tab.
+  - Mindmap payback return path: added orange dashed curve from protocol chip back to Bitcoin L1 for `gateway-btc-offramp` type.
+  - Known failures: `wrapped-btc-loop-live.test.mjs:152` is pre-existing (mock collateral-swap output insufficient for iteration 2 repay). Not caused by W4–W7 changes. Documented in `docs/known-failures-2026-04-22.md`.
+  - v1-infra-drills fix: `per_tx_cap_exceeded` drill amount bumped to 2_000_000 after cap neutralization changed perTxUsd to 1_000_000.
 - Latest Gateway funding-memory for the live signer:
   - Sonic `wBTC.OFT -> Base wBTC.OFT` and Avalanche `wBTC.OFT -> Base wBTC.OFT` were executed successfully through BOB Gateway and consolidated onto Base signer `0x96262bE63AA687563789225c2fE898c27a3b0AE4`.
   - Both routes initially reverted because signer fallback gas was too low; retries succeeded only after using chain RPC `estimateGas` plus buffer.
