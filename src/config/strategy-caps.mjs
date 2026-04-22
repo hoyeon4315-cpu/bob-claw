@@ -369,7 +369,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "wrapped-btc-loop-base-moonwell": Object.freeze({
     strategyId: "wrapped-btc-loop-base-moonwell",
     label: "Wrapped BTC lending loop (Base / Moonwell)",
-    autoExecute: true,
+    autoExecute: false,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),

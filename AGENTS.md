@@ -17,6 +17,7 @@
 - Do not treat a transport route as the product goal. A route can be technically proven while still not being a profitable strategy.
 - Treat all profit claims as hypotheses until replay/shadow/live receipt data confirms them.
 - If data says no trade, no trade.
+- **Operator override (2026-04-22):** `wrapped-btc-loop-base-moonwell` and the broader wrapped-BTC lending-loop lane are on hold until an explicit committed diff removes the hold. Treat the current economics as insufficient, do not present that lane as primary alpha, and do not spend additional live-promotion effort on it unless the task is unwind/safety/receipt cleanup or the operator explicitly reopens the lane.
 - If route alpha is exhausted, stop route brute-force and switch the primary review lane to receipt-backed strategy evidence.
 - Overfitting guards: no strategy goes live solely on a single-period or single-pair backtest. At minimum, Walk-Forward purged/embargoed CV + at least one regime change in the sample window. Detail in `docs/research/ops-costs.md`.
 
@@ -174,8 +175,8 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
   - ETH/stable mixed loops: `unobserved`
   - ETH mixed triangle: `analysis_only`
   - ETH mixed flash: `analysis_only`
-  - Lending-protocol looping: `dry_run_evidence_recorded` for `recursive_wrapped_btc_lending_loop`; repo auto-build support is present, but signer-backed observed receipts and measured post-fee loop economics are still missing.
-  - Wrapped BTC lending loop: signer-backed OOS/live roundtrip evidence is recorded for the Base / Moonwell lane; keep it as current strategy-primary review lane until recursive observed receipts supersede it.
+  - Lending-protocol looping: `operator_hold` for wrapped-BTC lending-loop variants. Repo auto-build support and some receipts exist, but the operator's current judgment is that economics are not good enough for further promotion.
+  - Wrapped BTC lending loop: `operator_hold` / not a primary lane. Limit work to unwind safety, evidence archiving, or explicit operator-directed reactivation.
   - **Payback engine: `scaffolded_active_carry`** — scheduler/accumulator/config exist and are reporting BTC-denominated pending carry. Current blocker is `planned_payback_below_minimum`, not missing payback code.
 - If the user asks why ETH was "not validated", clarify that ETH was investigated and measured; the current outcome is "no confirmed edge," not "skipped work."
 - Use this ETH explanation:
