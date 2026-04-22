@@ -40,10 +40,10 @@ Updated: 2026-04-22
 현재 repo 기준 사실:
 
 1. W9 리스크 자동관리와 W10 promotion/demotion gate는 구현 완료다.
-2. 공식 11개 체인 전체 parity는 아직 아니다.
-3. 신규 전략 후보는 여전히 `design scaffold`, `research priority`, `dry_run_evidence_recorded`, `template_only`가 섞여 있다.
-4. dashboard는 아직 `dashboard-status.json` 외에 `strategy-tick-status.json`도 직접 읽고 있다.
-5. AGENTS / dashboard-context 기준 최종 읽기 경로는 `dashboard/public/dashboard-status.json` 하나로 정리하는 편이 맞다.
+2. 공식 11개 체인 전체 parity가 `dashboard-status.json`의 `strategy.chainParity`로 노출된다.
+3. 신규 전략 후보 6개가 `strategy.strategyParity`로 동일 maturity schema로 노출된다.
+4. dashboard는 `dashboard-status.json` 하나만 읽는다 (`strategy-tick-status.json` fetch 제거 완료).
+5. AGENTS / dashboard-context 기준 최종 읽기 경로는 `dashboard/public/dashboard-status.json` 하나로 정리 완료.
 
 ## 최종 목표 상태
 

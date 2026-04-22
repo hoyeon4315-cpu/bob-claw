@@ -34,6 +34,7 @@ Updated: 2026-04-22
 - `docs/research/*` 일부 메모는 현재 소스보다 오래되었을 수 있다.
 - 현재 ground truth는 "문서 주장"보다 `src/`와 `data/*.json`이 우선이다.
 - 2026-04-22 재점검 기준 현재 `run-strategy-tick.mjs`에는 9개 adapter가 등록돼 있다. 아래 workstream 본문은 "초기 빌드 순서" 기록으로 유지하되, 현시점 우선순위 판단은 이 문서의 `상태 보정`과 `공식 11개 체인 maturity matrix`를 우선한다.
+- **2026-04-22 parity floor 완료**: 공식 11개 체인과 6개 신규 전략 후보가 `dashboard-status.json`의 `chainParity` / `strategyParity`로 동일 schema로 노출된다.
 
 ## 범위
 
