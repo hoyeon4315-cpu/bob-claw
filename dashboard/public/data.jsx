@@ -30,6 +30,16 @@ const STRATEGY_CATALOG = [
   { id: 'native-dex-experiment',               label: 'Native DEX probe',         sub: 'Unichain · Odos',           chain: 'unichain',  protocol: 'odos',     type: 'swap',    pair: ['eth','usdc'],              capUsd: null,  desc: 'Native-gas asset swap probe.' },
   { id: 'gas-zip-native-refuel',               label: 'Gas.Zip refuel',           sub: 'Gas float top-up',          chain: 'avalanche', protocol: 'gaszip',   type: 'refuel',  pair: ['eth','avax'],              capUsd: null,  desc: 'Per-chain native gas float top-up fallback.' },
   { id: 'wrapper-btc-arbitrage',               label: 'Wrapper BTC arbitrage',    sub: 'Gateway · candidate',       chain: 'bob',       protocol: 'gateway',  type: 'arb',     pair: ['wbtc','cbbtc'],            capUsd: null, desc: 'Measured-edge wrapper-BTC arbitrage lane. Not auto-exec yet.' },
+  // W4–W7 tick-evaluated strategies
+  { id: 'beefy-folding-vault',                   label: 'Beefy folding',            sub: 'BSC · Beefy',               chain: 'bsc',       protocol: 'beefy',    type: 'fold',    pair: ['wbtc','usdc'],             capUsd: null, desc: 'Leveraged yield vault via Beefy on BSC.' },
+  { id: 'pendle-pt-lbtc-base',                   label: 'Pendle PT-LBTC',           sub: 'Base · Pendle',             chain: 'base',      protocol: 'pendle',   type: 'pt',      pair: ['lbtc','usdc'],             capUsd: null, desc: 'Fixed-yield PT-LBTC direct entry via Pendle on Base.' },
+  { id: 'aerodrome-cl-base',                     label: 'Aerodrome CL',             sub: 'Base · Aerodrome',          chain: 'base',      protocol: 'aerodrome', type: 'cl_lp',  pair: ['cbbtc','usdc'],            capUsd: null, desc: 'Concentrated liquidity LP on Aerodrome Base.' },
+  { id: 'pendle-pt-solvbtc-bbn-bsc',            label: 'Pendle PT-SolvBTC',        sub: 'BSC · Pendle',              chain: 'bsc',       protocol: 'pendle',   type: 'pt',      pair: ['solvbtc','usdc'],          capUsd: null, desc: 'PT-SolvBTC.BBN direct via Gateway Custom Action on BSC.' },
+  { id: 'berachain-bend-bex-bgt',               label: 'Berachain Bend+BEX',       sub: 'Bera · Bend',               chain: 'bera',      protocol: 'bend',     type: 'lp_bgt',  pair: ['wbtc','honey'],            capUsd: null, desc: 'Bend collateral + BEX LP with BGT rewards on Berachain.' },
+  { id: 'gmx-v2-perp-basis-avax',              label: 'GMX V2 perp basis',         sub: 'Avax · GMX',                chain: 'avalanche', protocol: 'gmx',      type: 'basis',   pair: ['btc.b','usdc'],            capUsd: null, desc: 'Delta-neutral perp basis via GMX V2 on Avalanche.' },
+  { id: 'stablecoin-spread-loop',               label: 'Stable spread loop',       sub: 'Base · Moonwell',           chain: 'base',      protocol: 'moonwell', type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Stablecoin supply-borrow spread loop on Base.' },
+  { id: 'proxy-spread-expansion',               label: 'Proxy spread expansion',   sub: 'Base · Morpho',             chain: 'base',      protocol: 'morpho',   type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Leveraged proxy stable spread via Morpho on Base.' },
+  { id: 'tokenized-reserve-sleeve',             label: 'Tokenized reserve',        sub: 'BSC · Pendle',              chain: 'bsc',       protocol: 'pendle',   type: 'reserve', pair: ['pt-solvbtc','usdc'],       capUsd: null, desc: 'Tokenized BTC reserve sleeve on BSC.' },
 ];
 
 function deriveStatus(live) {
@@ -47,6 +57,7 @@ function satsToUsd(sats, btcUsd) {
 async function bootData() {
   let status = null;
   let holdings = null;
+  let tickStatus = null;
   try {
     const resp = await fetch('./dashboard-status.json', { cache: 'no-store' });
     if (resp.ok) status = await resp.json();
@@ -54,6 +65,10 @@ async function bootData() {
   try {
     const resp = await fetch('./wallet-holdings.json', { cache: 'no-store' });
     if (resp.ok) holdings = await resp.json();
+  } catch {}
+  try {
+    const resp = await fetch('./strategy-tick-status.json', { cache: 'no-store' });
+    if (resp.ok) tickStatus = await resp.json();
   } catch {}
 
   const lanePolicy = status?.overall?.lanePolicy || {};
@@ -67,6 +82,10 @@ async function bootData() {
 
   const liveApr = holdings?.protocolApr || {};
 
+  const tickById = Object.fromEntries((tickStatus?.strategies || []).map(r => [r.strategyId, r]));
+  const microById = tickStatus?.microCanary?.byStrategy || {};
+  const stageById = tickStatus?.strategyStage?.byStrategy || {};
+
   // Fold live flags onto the catalog.
   const STRATEGIES = STRATEGY_CATALOG.map(s => {
     const isPrimary = s.id === primaryId;
@@ -76,12 +95,24 @@ async function bootData() {
       ? (Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'LIVE' : 'DRY RUN'))
       : (defaultAutoExec(s.id) ? 'LIVE' : (s.id === 'recursive_wrapped_btc_lending_loop' ? 'DRY RUN' : 'CANDIDATE'));
     const earnedUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
+    const tick = tickById[s.id] || null;
+    const micro = microById[s.id] || null;
+    const stage = stageById[s.id] || null;
+    const tickMode = tick?.lastTickMode || stage?.mode || null;
+    const tickStatusLabel = tickMode === 'live_candidate' ? 'LIVE CANDIDATE' : tickMode === 'shadow_ready' ? 'SHADOW' : tickMode === 'blocked' ? 'BLOCKED' : status;
     return {
       ...s,
       autoExecute: autoExec,
-      status,
+      status: tickStatusLabel || status,
       earnedUsd,
       apyPct: liveAprFor(s, liveApr) ?? apyHint(s.id),
+      tickMode,
+      tickBlockers: tick?.lastTickBlockers || [],
+      microCanaryStatus: micro?.microCanaryStatus || 'not_started',
+      blockerCount: stage?.blockerCount ?? tick?.lastTickBlockers?.length ?? 0,
+      topBlocker: stage?.topBlocker || tick?.lastTickBlockers?.[0] || null,
+      projectedNetUsd: stage?.projectedNetUsd ?? null,
+      lastTickAt: tick?.lastTickAt || null,
     };
   });
 

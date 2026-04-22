@@ -292,6 +292,12 @@
               display:'inline-block', fontSize: 8.5, fontWeight: 600, padding: '1.5px 5px', borderRadius: 4,
               border: `0.5px solid ${statusInk}`, color: statusInk, letterSpacing: 0.5, marginTop: 3,
             }}>{s.status}</div>
+            {s.microCanaryStatus && s.microCanaryStatus !== 'not_started' && (
+              <div style={{ fontSize: 8, color: 'var(--ink-4)', marginTop: 2 }}>
+                {s.microCanaryStatus.replace(/_/g, ' ')}
+                {s.blockerCount > 0 ? ` · ${s.blockerCount} blocker${s.blockerCount > 1 ? 's' : ''}` : ''}
+              </div>
+            )}
           </div>
           {!isLast && <div style={{
             position: 'absolute', left: 58, right: 0, bottom: 0, height: 0.5,
