@@ -1024,7 +1024,7 @@ bootstrap 우선순위:
 완료 기준:
 
 - `base:eth_destination_deployment`와 `bsc:eth_destination_deployment`가 economics packet completeness를 가진다.
-- `ethereum`도 direct ETH arrival candidate로 명시되고, gas domain 때문에 왜 observe-only인지 artifact에서 읽힌다.
+- `ethereum`도 direct ETH arrival candidate로 명시되고, gas domain 때문에 왜 evidence-gated 상태인지 artifact에서 읽힌다.
 
 #### W8-C. indirect native / ETH-like deployment
 

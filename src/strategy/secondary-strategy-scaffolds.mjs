@@ -197,9 +197,113 @@ function reserveSleeveScaffold() {
   });
 }
 
-function perpBasisScaffold() {
+function ethDestinationDeploymentScaffold() {
   return scaffold({
     rank: 4,
+    id: "eth_destination_deployment",
+    label: "ETH destination deployment",
+    category: "yield",
+    leverage: true,
+    status: "design_scaffold",
+    protocolTrack: {
+      chains: ["ethereum", "base", "bsc"],
+      protocols: ["aave_v3", "morpho", "euler", "pendle"],
+      collateralAsset: "ETH-family",
+      borrowAsset: "stablecoin or same-asset carry",
+    },
+    sequencingDecision:
+      "treat ETH deployment as a first-class strategy lane once ETH entry, unwind, and BTC return economics are measured per chain; do not keep Ethereum parked in blanket observe-only status.",
+    whyNow:
+      "ETH can act as both productive collateral and destination inventory, so we need repo-native scaffolds for lending, borrow loops, and fixed-yield sleeves rather than leaving the lane in planning-only limbo.",
+    entryShape: {
+      type: "eth_destination_deployment",
+      requiredFields: [
+        "perTradeCapUsd",
+        "healthFactorMin",
+        "liquidationBufferPct",
+        "maxSlippageBps",
+        "btcReturnPathId",
+      ],
+    },
+    watcherShape: {
+      checks: ["eth_fee_regime", "health_factor", "liquidation_buffer", "borrow_rate_spike", "btc_return_cost"],
+    },
+    unwindShape: {
+      path: "repay debt if present -> withdraw ETH-family collateral -> swap into BTC return rail -> Gateway payback path",
+      dryRunRequired: true,
+    },
+    blockers: [
+      "destination_action_scoring_missing",
+      "eth_arrival_evidence_thin",
+      "btc_return_path_cost_not_bound",
+    ],
+    missingEvidence: [
+      "eth_destination_receipts",
+      "eth_unwind_cost_samples",
+      "eth_to_btc_roundtrip_samples",
+    ],
+    evidence: null,
+    nextAction: {
+      code: "build_eth_destination_deployment",
+      command: null,
+    },
+  });
+}
+
+function gatewayNativeAssetConversionScaffold() {
+  return scaffold({
+    rank: 5,
+    id: "gateway_native_asset_conversion_sleeve",
+    label: "Gateway native asset conversion sleeve",
+    category: "macro_rotation",
+    leverage: false,
+    status: "design_scaffold",
+    protocolTrack: {
+      chains: ["ethereum", "base", "bob", "bsc", "avalanche", "bera", "sonic", "soneium", "unichain"],
+      protocols: ["aave_v3", "morpho", "euler", "pendle", "benqi", "bend"],
+    },
+    sequencingDecision:
+      "separate asset conversion, holding-period control, and BTC return-path accounting into one generic sleeve so ETH, stables, gold proxies, and other approved bluechips can rotate without bespoke one-off executors.",
+    whyNow:
+      "The operator wants aggressive but diversified deployment, which requires a reusable sleeve for non-BTC intermediate inventory instead of hard-coding only wrapped-BTC routes.",
+    entryShape: {
+      type: "gateway_native_asset_conversion",
+      requiredFields: [
+        "perTradeCapUsd",
+        "targetAssetFamily",
+        "maxHoldHours",
+        "maxExitSlippageBps",
+        "btcReturnPathId",
+      ],
+    },
+    watcherShape: {
+      checks: ["target_asset_drift", "exit_liquidity", "btc_return_cost", "campaign_window", "trust_tier_review"],
+    },
+    unwindShape: {
+      path: "exit target asset -> settle into approved bridge asset -> Gateway return to BTC",
+      dryRunRequired: true,
+    },
+    blockers: [
+      "generic_conversion_executor_not_built",
+      "allowlist_policy_not_bound",
+      "btc_return_cost_measurement_missing",
+    ],
+    missingEvidence: [
+      "same_chain_conversion_receipts",
+      "asset_family_unwind_samples",
+      "destination_to_btc_roundtrip_samples",
+    ],
+    evidence: null,
+    nextAction: {
+      code: "build_gateway_native_asset_conversion_sleeve",
+      command: null,
+    },
+  });
+}
+
+function perpBasisScaffold() {
+  return scaffold({
+    rank: 6,
     id: "onchain_btc_perp_basis",
     label: "On-chain BTC perp basis",
     category: "yield",
@@ -242,6 +346,8 @@ export function buildSecondaryStrategyScaffolds({ laneReclassification = null, n
     stablecoinSpreadLoopScaffold(lanes),
     proxySpreadExpansionScaffold(lanes),
     reserveSleeveScaffold(),
+    ethDestinationDeploymentScaffold(),
+    gatewayNativeAssetConversionScaffold(),
     perpBasisScaffold(),
   ].sort((left, right) => left.rank - right.rank || String(left.id).localeCompare(String(right.id)));
   const topScaffold = scaffolds[0] || null;

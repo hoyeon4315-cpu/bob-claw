@@ -20,6 +20,7 @@ function formatAlert(result, report) {
     `ended: ${result.diff.endedIds.length}`,
     `newlyExpiring: ${result.diff.newlyExpiringIds.length}`,
     `candidateCount: ${report.summary.candidateCount}`,
+    `multiAssetRelevantCount: ${report.summary.multiAssetRelevantCount}`,
     `highOverfitRiskCount: ${report.summary.highOverfitRiskCount}`,
   ];
   if (top) {
@@ -80,6 +81,7 @@ async function main() {
   console.log(`opportunityCount=${result.snapshot.opportunityCount}`);
   console.log(`campaignCount=${result.snapshot.campaignCount}`);
   console.log(`expiringSoonCount=${result.snapshot.expiringSoonCount}`);
+  console.log(`multiAssetRelevantCount=${report.summary.multiAssetRelevantCount}`);
   console.log(`candidateCount=${report.summary.candidateCount}`);
   console.log(`watchCount=${report.summary.watchCount}`);
   console.log(`blockedCount=${report.summary.blockedCount}`);

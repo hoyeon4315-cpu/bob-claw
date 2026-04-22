@@ -271,7 +271,7 @@ For every stage:
 - treat old blogs as hints, not truth
 - treat quote support as transport evidence, not realized profitability
 - keep realized, estimated, and paper PnL separated
-- keep Ethereum L1 observe-only in the USD 300 phase unless re-approved
+- keep Ethereum L1 evidence-gated in the USD 300 phase unless fresh positive-EV measurements justify promotion
 - update both the Markdown plan and the JSON state if assumptions change
 
 ## Immediate Next Build Focus

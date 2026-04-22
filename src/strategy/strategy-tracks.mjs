@@ -124,9 +124,9 @@ function chooseEthFamilyAction(ethProfitability = null) {
     };
   }
 
-  if (ethProfitability.recommendationCode === "eth_l1_policy_override_disabled") {
+  if (ethProfitability.recommendationCode === "eth_l1_positive_ev_unconfirmed") {
     return {
-      status: "observe_only",
+      status: "blocked_loop",
       nextActionCode: ethProfitability.followUpActionCode,
       reason: ethProfitability.recommendationCode,
     };
@@ -180,9 +180,9 @@ function chooseEthFamilyAction(ethProfitability = null) {
   }
 
   return {
-    status: "observe_only",
+    status: "thin_coverage",
     nextActionCode: ethProfitability.followUpActionCode,
-    reason: ethProfitability.recommendationCode || ethProfitability.verdictCode || "eth_family_observe_only",
+    reason: ethProfitability.recommendationCode || ethProfitability.verdictCode || "eth_family_surface_incomplete",
   };
 }
 
