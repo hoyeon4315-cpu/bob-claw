@@ -269,6 +269,12 @@ function shouldStopAfterExecutionError(error = null) {
   return /policy|reject|timeout|timed out|socket|eperm|econnrefused|nonce/u.test(text);
 }
 
+function countsTowardExecutionLimit(result = {}) {
+  if (!result || result.status === "blocked") return false;
+  if (result.status === "preview_ready" || result.status === "execution_failed") return true;
+  return Boolean(result.execution?.lastTxHash || result.plan?.planStatus === "ready");
+}
+
 async function evaluateCandidate({
   candidate,
   senderAddress,
@@ -513,19 +519,16 @@ export async function runLiveCanarySweep({
       });
       continue;
     }
-    if (candidate.status === "candidate") {
-      if (executableSeen >= limit) {
-        results.push({
-          candidate,
-          status: "not_run_limit_reached",
-          blockedReason: "limit_reached",
-          plan: null,
-          execution: null,
-          shouldStopGlobally: false,
-        });
-        continue;
-      }
-      executableSeen += 1;
+    if (candidate.status === "candidate" && executableSeen >= limit) {
+      results.push({
+        candidate,
+        status: "not_run_limit_reached",
+        blockedReason: "limit_reached",
+        plan: null,
+        execution: null,
+        shouldStopGlobally: false,
+      });
+      continue;
     }
     const result = await evaluateCandidate({
       candidate,
@@ -539,6 +542,9 @@ export async function runLiveCanarySweep({
       executeNativeDexPlanImpl,
     });
     results.push(result);
+    if (candidate.status === "candidate" && countsTowardExecutionLimit(result)) {
+      executableSeen += 1;
+    }
     if (result.shouldStopGlobally) {
       globalStopReason = result.blockedReason || "global_safety_stop";
     }

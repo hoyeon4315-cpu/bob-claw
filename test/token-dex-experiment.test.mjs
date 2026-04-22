@@ -34,6 +34,33 @@ function odosClientFixture() {
   };
 }
 
+function pancakeProviderFixture() {
+  return {
+    name: "pancake_swap",
+    quote: async () => ({
+      provider: "pancake_swap",
+      chain: "bsc",
+      chainId: 56,
+      inputToken: "0x55d398326f99059fF775485246999027B3197955",
+      outputToken: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      inputAmount: "100000000000000000",
+      outputAmount: "100000000000000",
+      inputValueUsd: 0.1,
+      fee: 500,
+      slippageBps: 50,
+      pathId: "pancake_v3:test",
+      executionTrust: "on_chain_verified",
+    }),
+    assemble: async ({ quote }) => ({
+      ...quote,
+      txTo: "0x1b81D678ffb9C0263b24A97847620C99d213eB14",
+      txData: "0xabcdef",
+      txValueWei: "0",
+      txGasLimit: null,
+    }),
+  };
+}
+
 test("token dex experiment plan builds approval and swap steps", async () => {
   const plan = await buildTokenDexExperimentPlan({
     client: odosClientFixture(),
@@ -73,6 +100,48 @@ test("token dex experiment plan builds approval and swap steps", async () => {
   assert.equal(plan.minimumOutputAmount, "9850");
   assert.equal(plan.slippageBps, 50);
   assert.equal(plan.gasSnapshot.gasPriceWei, "100");
+});
+
+test("token dex experiment plan uses Pancake direct gas fallback after pre-approval swap revert", async () => {
+  let estimateCount = 0;
+  const plan = await buildTokenDexExperimentPlan({
+    providers: [pancakeProviderFixture()],
+    estimateGasImpl: async () => {
+      estimateCount += 1;
+      if (estimateCount === 2) throw new Error("execution reverted: allowance");
+      return {
+        observedAt: "2026-04-16T06:00:01.000Z",
+        chain: "bsc",
+        rpcUrl: "https://bsc-rpc.example",
+        latencyMs: 12,
+        gasUnits: 45_000,
+        gasUnitsHex: "0xafc8",
+        rpcFallbacksTried: 0,
+      };
+    },
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "bsc",
+      rpcUrl: "https://bsc-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "bsc",
+    amount: "100000000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "usdt",
+    outputToken: "wrapped_native",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(estimateCount, 2);
+  assert.equal(plan.steps[1].id, "swap_input_to_output");
+  assert.equal(plan.steps[1].intent.tx.gasLimit, "540000");
+  assert.equal(plan.steps[1].intent.metadata.provider, "pancake_swap");
 });
 
 test("token dex experiment plan supports native output unwrap", async () => {

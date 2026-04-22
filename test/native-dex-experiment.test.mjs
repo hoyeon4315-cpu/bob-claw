@@ -35,6 +35,33 @@ function odosClientFixture() {
   };
 }
 
+function pancakeProviderFixture() {
+  return {
+    name: "pancake_swap",
+    quote: async () => ({
+      provider: "pancake_swap",
+      chain: "bsc",
+      chainId: 56,
+      inputToken: WRAPPED_NATIVE_TOKENS.bsc,
+      outputToken: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      inputAmount: "100000000000000",
+      outputAmount: "250000",
+      inputValueUsd: 0.1,
+      fee: 500,
+      slippageBps: 50,
+      pathId: "pancake_v3:native",
+      executionTrust: "on_chain_verified",
+    }),
+    assemble: async ({ quote }) => ({
+      ...quote,
+      txTo: "0x1b81D678ffb9C0263b24A97847620C99d213eB14",
+      txData: "0xabcdef",
+      txValueWei: "0",
+      txGasLimit: null,
+    }),
+  };
+}
+
 test("native dex experiment plan builds wrap, approval, and swap steps", async () => {
   const plan = await buildNativeDexExperimentPlan({
     client: odosClientFixture(),
@@ -73,6 +100,47 @@ test("native dex experiment plan builds wrap, approval, and swap steps", async (
   assert.equal(plan.minimumOutputAmount, "248750");
   assert.equal(plan.slippageBps, 50);
   assert.equal(plan.gasSnapshot.gasPriceWei, "100");
+});
+
+test("native dex experiment plan uses Pancake direct gas fallback after pre-wrap swap revert", async () => {
+  let estimateCount = 0;
+  const plan = await buildNativeDexExperimentPlan({
+    providers: [pancakeProviderFixture()],
+    estimateGasImpl: async () => {
+      estimateCount += 1;
+      if (estimateCount === 3) throw new Error("execution reverted: allowance");
+      return {
+        observedAt: "2026-04-16T06:00:01.000Z",
+        chain: "bsc",
+        rpcUrl: "https://bsc-rpc.example",
+        latencyMs: 12,
+        gasUnits: 45_000,
+        gasUnitsHex: "0xafc8",
+        rpcFallbacksTried: 0,
+      };
+    },
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "bsc",
+      rpcUrl: "https://bsc-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "bsc",
+    amount: "100000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    outputToken: "usdc",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(estimateCount, 3);
+  assert.equal(plan.steps[2].id, "swap_wrapped_native");
+  assert.equal(plan.steps[2].intent.tx.gasLimit, "540000");
+  assert.equal(plan.steps[2].intent.metadata.provider, "pancake_swap");
 });
 
 test("native dex experiment plan surfaces routing failures cleanly", async () => {

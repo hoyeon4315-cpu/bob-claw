@@ -9,7 +9,7 @@ const QUOTER_V2_ABI = [
 ];
 
 const SWAP_ROUTER_ABI = [
-  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)",
+  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)",
 ];
 
 const QUOTER_V2_INTERFACE = new Interface(QUOTER_V2_ABI);
@@ -119,17 +119,19 @@ export class PancakeSwapProvider {
     };
   }
 
-  async assemble({ quote, senderAddress } = {}) {
+  async assemble({ quote, senderAddress, deadlineSeconds = 300 } = {}) {
     if (!quote?.pathId || !quote?.fee) {
       throw new Error("PancakeSwap: invalid quote for assembly");
     }
     const minOut = minimumOutputAmount(quote.outputAmount, quote.slippageBps);
+    const deadline = Math.floor(Date.now() / 1000) + Math.max(1, Number(deadlineSeconds) || 300);
     const callData = SWAP_ROUTER_INTERFACE.encodeFunctionData("exactInputSingle", [
       {
         tokenIn: quote.inputToken,
         tokenOut: quote.outputToken,
         fee: quote.fee,
         recipient: senderAddress,
+        deadline,
         amountIn: BigInt(quote.inputAmount),
         amountOutMinimum: BigInt(minOut),
         sqrtPriceLimitX96: 0n,
@@ -144,6 +146,7 @@ export class PancakeSwapProvider {
       txGasLimit: null,
       txDataBytes: Math.max(0, (callData.length - 2) / 2),
       assembleLatencyMs: 0,
+      deadline,
     };
   }
 }

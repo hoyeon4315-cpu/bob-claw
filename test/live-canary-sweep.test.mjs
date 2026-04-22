@@ -159,3 +159,71 @@ test("sweep continues after per-candidate plan blocker but stops after signer un
   assert.equal(report.results[1].status, "execution_failed");
   assert.equal(report.summary.globalStopReason, "global_safety_stop_after_execution_error");
 });
+
+test("sweep limit counts only executable candidates, not plan blockers", async () => {
+  const inventory = {
+    observedAt: "2026-04-23T00:00:00.000Z",
+    totalUsd: 6,
+    tokenBalances: [
+      {
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "3000000",
+        estimatedUsd: 3,
+      },
+      {
+        chain: "bsc",
+        token: "0x55d398326f99059fF775485246999027B3197955",
+        ticker: "USDT",
+        family: "stablecoin",
+        balance: "2000000000000000000",
+        estimatedUsd: 2,
+      },
+      {
+        chain: "sonic",
+        token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+    ],
+    native: [],
+    summary: { nativeCount: 0, tokenCount: 3, scanErrorCount: 0 },
+    scanErrors: [],
+  };
+
+  const seenChains = [];
+  const report = await runLiveCanarySweep({
+    limit: 1,
+    inventory,
+    preflightImpl: async () => readyPreflight(),
+    buildTokenDexPlanImpl: async ({ chain }) => {
+      seenChains.push(chain);
+      if (chain !== "sonic") {
+        return { planStatus: "blocked", blockedReason: "routing_unavailable", chain, steps: [] };
+      }
+      return {
+        strategyId: "token-dex-experiment",
+        planStatus: "ready",
+        chain,
+        inputToken: "in",
+        outputToken: "out",
+        amount: "100000",
+        amountUsd: 0.1,
+        minimumOutputAmount: "1",
+        steps: [{ id: "approve" }, { id: "swap" }],
+      };
+    },
+    now: "2026-04-23T00:00:00.000Z",
+  });
+
+  assert.deepEqual(seenChains, ["base", "bsc", "sonic"]);
+  assert.equal(report.status, "completed");
+  assert.equal(report.results[0].status, "blocked");
+  assert.equal(report.results[1].status, "blocked");
+  assert.equal(report.results[2].status, "preview_ready");
+  assert.equal(report.summary.previewReadyCount, 1);
+});
