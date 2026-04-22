@@ -18,6 +18,7 @@ const WRAPPED_NATIVE_INTERFACE = new Interface([
   "function deposit() payable",
   "function approve(address spender,uint256 amount)",
 ]);
+const DEFAULT_DIRECT_SWAP_GAS_UNITS = 450_000;
 
 const TOKEN_ALIASES = Object.freeze({
   usdc: (chain) => STABLE_QUOTE_TOKENS[chain]?.token || null,
@@ -103,6 +104,12 @@ function resolveQuotedGasLimit(quote, gasBufferBps) {
     return null;
   }
   return String(applyGasBuffer(Math.ceil(quotedGasLimit), gasBufferBps));
+}
+
+function canUseDirectSwapGasFallback({ error, providerName, executableQuote } = {}) {
+  return providerName === "pancake_swap"
+    && executableQuote?.executionTrust === "on_chain_verified"
+    && classifyGasEstimateError(error) === "execution_reverted";
 }
 
 function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
@@ -225,24 +232,32 @@ export async function buildNativeDexExperimentPlan({
       getEvmChainConfig(chain),
     );
     const gasBuffer = Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps"));
-    const swapGasLimit = resolveQuotedGasLimit(executableQuote, gasBuffer)
-      || String(
-        applyGasBuffer(
-          (
-            await estimateGasImpl(
-              chain,
-              {
-                from: senderAddress,
-                to: executableQuote.txTo,
-                data: executableQuote.txData,
-                valueWei: executableQuote.txValueWei,
-              },
-              getEvmChainConfig(chain),
-            )
-          ).gasUnits,
-          gasBuffer,
-        ),
-      );
+    let swapGasLimit = resolveQuotedGasLimit(executableQuote, gasBuffer);
+    if (!swapGasLimit) {
+      try {
+        swapGasLimit = String(
+          applyGasBuffer(
+            (
+              await estimateGasImpl(
+                chain,
+                {
+                  from: senderAddress,
+                  to: executableQuote.txTo,
+                  data: executableQuote.txData,
+                  valueWei: executableQuote.txValueWei,
+                },
+                getEvmChainConfig(chain),
+              )
+            ).gasUnits,
+            gasBuffer,
+          ),
+        );
+      } catch (error) {
+        if (!canUseDirectSwapGasFallback({ error, providerName, executableQuote })) throw error;
+        // Direct Pancake swaps can revert in preflight before wrap + approval steps land.
+        swapGasLimit = String(applyGasBuffer(DEFAULT_DIRECT_SWAP_GAS_UNITS, gasBuffer));
+      }
+    }
     const buildIntent = ({ intentType, tx, approval = null, metadata = {} }) => ({
       strategyId,
       chain,

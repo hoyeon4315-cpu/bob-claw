@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Interface } from "ethers";
 import { PancakeSwapProvider } from "../src/dex/providers/pancake-swap.mjs";
 import { PANCAKE_SWAP_V3 } from "../src/config/dex-providers.mjs";
 
 const BSC_USDT = "0x55d398326f99059fF775485246999027B3197955";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
+const SWAP_ROUTER_INTERFACE = new Interface([
+  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)",
+]);
 
 test("PancakeSwapProvider has correct name", () => {
   const provider = new PancakeSwapProvider();
@@ -78,6 +82,12 @@ test("PancakeSwapProvider assemble encodes exactInputSingle calldata", () => {
     assert.equal(result.txValueWei, "0");
     assert.equal(result.provider, "pancake_swap");
     assert.ok(Number.isFinite(result.txDataBytes));
+    const decoded = SWAP_ROUTER_INTERFACE.decodeFunctionData("exactInputSingle", result.txData);
+    assert.equal(decoded[0].tokenIn, BSC_USDT);
+    assert.equal(decoded[0].tokenOut, WBNB);
+    assert.equal(decoded[0].recipient, "0x1234567890123456789012345678901234567890");
+    assert.equal(decoded[0].amountIn.toString(), quote.inputAmount);
+    assert.ok(Number(decoded[0].deadline) > Math.floor(Date.now() / 1000));
   });
 });
 
