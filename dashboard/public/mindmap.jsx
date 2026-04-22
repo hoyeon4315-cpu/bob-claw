@@ -119,7 +119,7 @@ function GatewayCore({ size }) {
           <ProtocolLogo id="gateway" size={h*0.8}/>
         </div>
       </foreignObject>
-      <text y={h/2 + 10} textAnchor="middle" fontSize="10" fontWeight="600" fill="#8A8A8D" style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 1 }}>CROSS-CHAIN</text>
+      <text y={h/2 + 10} textAnchor="middle" fontSize="10" fontWeight="600" fill="#8A8A8D" style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 1 }}>BOB GATEWAY</text>
     </g>
   );
 }
@@ -241,19 +241,20 @@ function PairBadge({ x, y, pair, size = 14 }) {
   );
 }
 
-const TYPE_LABEL = { loop: 'LOOP', bridge: 'BRIDGE', payback: 'PAYBACK', arb: 'ARB', swap: 'DEX', refuel: 'REFUEL', lp: 'VAULT' };
-const TYPE_INK   = { loop: '#1C7A3E', bridge: '#3A3A3D', payback: '#7A5C0D', arb: '#5B3DBF', swap: '#0A84FF', refuel: '#8A5C0D', lp: '#0A84FF' };
+const TYPE_LABEL = { loop: 'LOOP', bridge: 'BRIDGE', payback: 'PAYBACK', arb: 'ARB', swap: 'DEX', refuel: 'REFUEL', lp: 'LP', cl_lp: 'LP', lp_bgt: 'LP' };
+const TYPE_INK   = { loop: '#1C7A3E', bridge: '#3A3A3D', payback: '#7A5C0D', arb: '#5B3DBF', swap: '#0A84FF', refuel: '#8A5C0D', lp: '#0A84FF', cl_lp: '#0A84FF', lp_bgt: '#0A84FF' };
 
 function prettifyProtocolLabel(protocol) {
+  const acronyms = { gmx: 'GMX' };
   return String(protocol || '')
     .split(/[-_]/g)
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => acronyms[part.toLowerCase()] || (part.charAt(0).toUpperCase() + part.slice(1)))
     .join(' ');
 }
 
 function dominantType(strategies = []) {
-  const priority = ['loop', 'lp', 'payback', 'bridge', 'arb', 'swap', 'refuel'];
+  const priority = ['loop', 'cl_lp', 'lp_bgt', 'lp', 'payback', 'bridge', 'arb', 'swap', 'refuel'];
   for (const type of priority) {
     if (strategies.some((strategy) => strategy.type === type)) return type;
   }
@@ -466,6 +467,12 @@ function Mindmap({ motionSpeed = 1.4 }) {
     includeCircle(bounds, chain.x, chain.y, chainSize * 0.9);
     includeRect(bounds, chain.x, chain.y + chainSize * 0.95, 72, 18);
 
+    const hasPayback = focusStrategies.some(s => s.type === 'payback');
+    if (hasPayback) {
+      includeCircle(bounds, btcPos.x, btcPos.y, chainSize * 0.9);
+      includeRect(bounds, btcPos.x, btcPos.y - chainSize * 0.94, 72, 18);
+    }
+
     focusStrategies.forEach((strategy) => {
       const point = protocolBloom[strategy.id];
       if (!point) return;
@@ -641,6 +648,23 @@ function Mindmap({ motionSpeed = 1.4 }) {
                   sourceChainId={selectedChain}
                   sourceChainAfterSwap={s.type === 'payback' ? 'bitcoin' : 'bob'}
                   size={11}/>
+                {s.type === 'payback' && (
+                  <g style={{ animation: `fadeIn 180ms ${EASE} both` }}>
+                    {/* Return path from protocol back toward Bitcoin */}
+                    {(() => {
+                      const ret = curvePath(pp.x, pp.y, btcPos.x, btcPos.y, -0.18);
+                      const dur = 3.2 / motionSpeed;
+                      const t = ((time + 0.5) % dur) / dur;
+                      return (
+                        <>
+                          <path d={ret.d} fill="none" stroke="#F2A33B" strokeWidth="1" strokeDasharray="3 3" opacity="0.6"/>
+                          <FlowToken curve={{ ...ret, x1: pp.x, y1: pp.y, x2: btcPos.x, y2: btcPos.y }}
+                            progress={t} assetId="btc" size={12} sourceChainId="bitcoin"/>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
                 {s.type === 'loop' && (
                   <OrbitTokens cx={pp.x} cy={pp.y}
                     radius={chipSize * 1.8}
@@ -651,7 +675,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
                 <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
                   selected={isSel}
                   onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}/>
-                {(s.type === 'lp' || s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
+                {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt' || s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
                   <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
                 )}
                 {(s.type === 'bridge' || s.type === 'payback' || s.type === 'refuel') && s.pair.length > 1 && (
@@ -661,7 +685,10 @@ function Mindmap({ motionSpeed = 1.4 }) {
             );
           })}
 
-          <BitcoinSource x={btcPos.x} y={btcPos.y} size={chainSize*0.95} hidden={Boolean(selectedChain)}/>
+          {(() => {
+            const btcHidden = Boolean(selectedChain) && !(protocolsByChain[selectedChain] || []).some(s => s.type === 'payback');
+            return <BitcoinSource x={btcPos.x} y={btcPos.y} size={chainSize*0.95} hidden={btcHidden}/>;
+          })()}
           <GatewayCore size={gatewaySize}/>
         </g>
       </svg>
