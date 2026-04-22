@@ -8,6 +8,12 @@ function recordTimestamp(record = {}) {
   return new Date(record.timestamp || record.observedAt || 0).getTime();
 }
 
+function resumeAfterTimestamp(resumeAfter = null) {
+  if (!resumeAfter) return null;
+  const timestamp = new Date(resumeAfter).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function terminalOutcome(record = {}) {
   const stage = record.lifecycle?.stage || null;
   if (record.strategyId === "prelive_fork_execution" && stage === "rejected" && !record.broadcast) {
@@ -19,9 +25,12 @@ function terminalOutcome(record = {}) {
   return null;
 }
 
-function latestTerminalRecords(auditRecords = [], strategyId = null) {
+function latestTerminalRecords(auditRecords = [], strategyId = null, resumeAfter = null) {
+  const resumeAfterMs = resumeAfterTimestamp(resumeAfter);
   const grouped = new Map();
   for (const record of auditRecords.filter((item) => item?.strategyId === strategyId)) {
+    const timestamp = recordTimestamp(record);
+    if (resumeAfterMs !== null && timestamp <= resumeAfterMs) continue;
     const outcome = terminalOutcome(record);
     if (!outcome) continue;
     const key = recordKey(record);
@@ -41,8 +50,9 @@ function latestTerminalRecords(auditRecords = [], strategyId = null) {
 export function buildConsecutiveFailureState({
   strategyId,
   auditRecords = [],
+  resumeAfter = null,
 } = {}) {
-  const terminalRecords = latestTerminalRecords(auditRecords, strategyId);
+  const terminalRecords = latestTerminalRecords(auditRecords, strategyId, resumeAfter);
   let consecutiveFailures = 0;
   for (const item of terminalRecords) {
     if (item.outcome !== "failure") break;
@@ -57,6 +67,7 @@ export function buildConsecutiveFailureState({
       terminalRecords.find((item) => item.outcome === "failure")?.record?.timestamp ||
       terminalRecords.find((item) => item.outcome === "failure")?.record?.observedAt ||
       null,
+    resumeAfter,
   };
 }
 
@@ -64,11 +75,13 @@ export function evaluateConsecutiveFailures({
   intent = {},
   auditRecords = [],
   maxConsecutiveFailures = buildDefaultRiskPolicy().maxConsecutiveFailures,
+  resumeAfter = null,
   now = new Date().toISOString(),
 } = {}) {
   const state = buildConsecutiveFailureState({
     strategyId: intent.strategyId,
     auditRecords,
+    resumeAfter,
   });
   const blockers =
     Number.isFinite(maxConsecutiveFailures) && state.consecutiveFailures >= maxConsecutiveFailures
@@ -85,6 +98,7 @@ export function evaluateConsecutiveFailures({
       terminalRecordCount: state.terminalRecordCount,
       lastTerminalStatus: state.lastTerminalStatus,
       latestFailureAt: state.latestFailureAt,
+      resumeAfter: state.resumeAfter,
     },
   };
 }

@@ -41,6 +41,7 @@ const KNOWN_TOKEN_DEFINITIONS = Object.freeze([
   { token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
   { token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
   { token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
+  { token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
   { token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 18, priceKey: "usd_stable" },
   { token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
   { token: "0x55d398326f99059fF775485246999027B3197955", ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 18, priceKey: "usd_stable" },

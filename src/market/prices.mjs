@@ -197,9 +197,37 @@ async function fetchCoinbaseSpotUsd(symbol) {
   return Number.isFinite(amount) ? amount : null;
 }
 
+export async function backfillMissingNativePricesUsd(prices, { spotFetcher = fetchCoinbaseSpotUsd } = {}) {
+  const next = {
+    ...prices,
+    tokenByKey: { ...(prices?.tokenByKey || {}) },
+    nativeByChain: { ...(prices?.nativeByChain || {}) },
+  };
+  const coinbaseSymbolsByChain = {
+    avalanche: "AVAX",
+    bsc: "BNB",
+  };
+
+  await Promise.all(Object.entries(coinbaseSymbolsByChain).map(async ([chain, symbol]) => {
+    if (Number.isFinite(next.nativeByChain[chain])) return;
+    const price = await spotFetcher(symbol).catch(() => null);
+    if (Number.isFinite(price)) {
+      next.nativeByChain[chain] = price;
+      next.tokenByKey[chain] = price;
+    }
+  }));
+
+  return next;
+}
+
 async function fallbackPricesUsd() {
-  const [btc, eth] = await Promise.all([fetchCoinbaseSpotUsd("BTC"), fetchCoinbaseSpotUsd("ETH")]);
-  return {
+  const [btc, eth, bnb, avax] = await Promise.all([
+    fetchCoinbaseSpotUsd("BTC"),
+    fetchCoinbaseSpotUsd("ETH"),
+    fetchCoinbaseSpotUsd("BNB").catch(() => null),
+    fetchCoinbaseSpotUsd("AVAX").catch(() => null),
+  ]);
+  return backfillMissingNativePricesUsd({
     btc,
     tokenByKey: {
       btc,
@@ -208,13 +236,15 @@ async function fallbackPricesUsd() {
       usd_stable: 1,
       paxg: null,
       xaut: null,
+      bsc: bnb,
+      avalanche: avax,
     },
     nativeByChain: {
-      avalanche: null,
+      avalanche: avax,
       base: eth,
       bera: null,
       bob: eth,
-      bsc: null,
+      bsc: bnb,
       ethereum: eth,
       optimism: eth,
       sei: null,
@@ -222,7 +252,7 @@ async function fallbackPricesUsd() {
       sonic: null,
       unichain: eth,
     },
-  };
+  });
 }
 
 export async function getCoinGeckoPricesUsd() {
@@ -235,7 +265,7 @@ export async function getCoinGeckoPricesUsd() {
     }
     const body = await response.json();
 
-    return {
+    return backfillMissingNativePricesUsd({
       btc: body.bitcoin?.usd || null,
       tokenByKey: {
         btc: body.bitcoin?.usd || null,
@@ -244,13 +274,15 @@ export async function getCoinGeckoPricesUsd() {
         usd_stable: 1,
         paxg: body["pax-gold"]?.usd || null,
         xaut: body["tether-gold"]?.usd || null,
+        bsc: body.binancecoin?.usd || null,
+        avalanche: body["avalanche-2"]?.usd || null,
       },
       nativeByChain: Object.fromEntries(
         Object.entries(PRICE_IDS)
           .filter(([key]) => key !== "btc")
           .map(([chain, id]) => [chain, body[id]?.usd || null]),
       ),
-    };
+    });
   } catch (error) {
     const fallback = await fallbackPricesUsd().catch(() => null);
     if (fallback) return fallback;

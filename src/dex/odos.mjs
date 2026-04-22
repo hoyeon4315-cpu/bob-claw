@@ -36,6 +36,11 @@ export const STABLE_QUOTE_TOKENS = {
     token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     decimals: 6,
   },
+  optimism: {
+    ticker: "USDC",
+    token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    decimals: 6,
+  },
   sonic: {
     ticker: "USDC",
     token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",

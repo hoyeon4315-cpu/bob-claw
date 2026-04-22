@@ -72,7 +72,12 @@ export async function evaluateIntentPolicies({
 
   const results = [
     await checkKillSwitch({ killSwitchPath, now }),
-    evaluateConsecutiveFailures({ intent, auditRecords, now }),
+    evaluateConsecutiveFailures({
+      intent,
+      auditRecords,
+      resumeAfter: strategyCaps.resumeAfterFailureAt || null,
+      now,
+    }),
     evaluateCapCheck({ intent, strategyCaps, auditRecords, activeBudgetUsd, now }),
     evaluateHealthFactorCheck({ intent, strategyCaps, now }),
     evaluateStaleQuote({ intent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
