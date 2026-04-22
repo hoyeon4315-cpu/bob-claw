@@ -8,7 +8,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "AVAX",
     nativePriceKey: "avalanche",
     rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
-    rpcUrls: ["https://api.avax.network/ext/bc/C/rpc"],
+    rpcUrls: getChainRpcUrls("avalanche", ["https://api.avax.network/ext/bc/C/rpc"]),
     fallbackGasUnits: 260_000,
   }),
   base: Object.freeze({
@@ -18,7 +18,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "base",
     rpcUrl: "https://mainnet.base.org",
-    rpcUrls: ["https://mainnet.base.org", "https://mainnet-preconf.base.org"],
+    rpcUrls: getChainRpcUrls("base", ["https://mainnet.base.org", "https://mainnet-preconf.base.org"]),
     fallbackGasUnits: 260_000,
   }),
   bera: Object.freeze({
@@ -28,7 +28,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "BERA",
     nativePriceKey: "bera",
     rpcUrl: "https://rpc.berachain.com",
-    rpcUrls: ["https://rpc.berachain.com"],
+    rpcUrls: getChainRpcUrls("bera", ["https://rpc.berachain.com"]),
     fallbackGasUnits: 260_000,
   }),
   bob: Object.freeze({
@@ -38,7 +38,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "bob",
     rpcUrl: "https://rpc.gobob.xyz",
-    rpcUrls: ["https://rpc.gobob.xyz"],
+    rpcUrls: getChainRpcUrls("bob", ["https://rpc.gobob.xyz"]),
     fallbackGasUnits: 260_000,
   }),
   bsc: Object.freeze({
@@ -48,7 +48,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "BNB",
     nativePriceKey: "bsc",
     rpcUrl: "https://bsc-dataseed.binance.org",
-    rpcUrls: ["https://bsc-dataseed.binance.org"],
+    rpcUrls: getChainRpcUrls("bsc", ["https://bsc-dataseed.binance.org"]),
     fallbackGasUnits: 260_000,
     legacyTxType: true,
   }),
@@ -59,7 +59,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "ethereum",
     rpcUrl: "https://ethereum-rpc.publicnode.com",
-    rpcUrls: ["https://ethereum-rpc.publicnode.com"],
+    rpcUrls: getChainRpcUrls("ethereum", ["https://ethereum-rpc.publicnode.com"]),
     fallbackGasUnits: 260_000,
   }),
   optimism: Object.freeze({
@@ -69,7 +69,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "ethereum",
     rpcUrl: "https://mainnet.optimism.io",
-    rpcUrls: ["https://mainnet.optimism.io"],
+    rpcUrls: getChainRpcUrls("optimism", ["https://mainnet.optimism.io"]),
     fallbackGasUnits: 260_000,
   }),
   sei: Object.freeze({
@@ -79,7 +79,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "SEI",
     nativePriceKey: "sei",
     rpcUrl: "https://evm-rpc.sei-apis.com",
-    rpcUrls: ["https://evm-rpc.sei-apis.com"],
+    rpcUrls: getChainRpcUrls("sei", ["https://evm-rpc.sei-apis.com"]),
     fallbackGasUnits: 260_000,
   }),
   soneium: Object.freeze({
@@ -89,7 +89,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "soneium",
     rpcUrl: "https://rpc.soneium.org",
-    rpcUrls: ["https://rpc.soneium.org"],
+    rpcUrls: getChainRpcUrls("soneium", ["https://rpc.soneium.org"]),
     fallbackGasUnits: 260_000,
   }),
   sonic: Object.freeze({
@@ -99,7 +99,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "S",
     nativePriceKey: "sonic",
     rpcUrl: "https://rpc.soniclabs.com",
-    rpcUrls: ["https://rpc.soniclabs.com"],
+    rpcUrls: getChainRpcUrls("sonic", ["https://rpc.soniclabs.com"]),
     fallbackGasUnits: 260_000,
   }),
   unichain: Object.freeze({
@@ -109,7 +109,7 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "unichain",
     rpcUrl: "https://mainnet.unichain.org",
-    rpcUrls: ["https://mainnet.unichain.org"],
+    rpcUrls: getChainRpcUrls("unichain", ["https://mainnet.unichain.org", "https://unichain-rpc.publicnode.com"]),
     fallbackGasUnits: 260_000,
   }),
 });
