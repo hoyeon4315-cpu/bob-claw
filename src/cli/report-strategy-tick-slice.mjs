@@ -141,8 +141,11 @@ function main() {
   }
   const dedupedLatestReports = [...latestReportSummariesByStrategy.values()];
 
+  const promotionEvidence = Object.fromEntries(
+    strategyRows.map((s) => [s.strategyId, { eligible: s.promotion.fastTrack.eligible }]),
+  );
   const microCanarySlice = buildMicroCanarySlice(dedupedLatestReports);
-  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports);
+  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, promotionEvidence);
 
   const slice = {
     schemaVersion: 2,
