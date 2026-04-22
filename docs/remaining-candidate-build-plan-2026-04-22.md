@@ -1108,6 +1108,27 @@ bootstrap 우선순위:
 남은 것:
 - 실제 생산 환경에서 `minimal_live_proof_exists` 상태인 전략을 `micro_canary_repeatable`(signer-backed >= 3)까지 끌어올리는 것은 자금/API/RPC/approval blocker에 달려있다. 이 blocker는 `docs/current-status.md`와 strategy tick status artifact에 기록돼 있다.
 
+#### W9-D. tiny live canary 자동 승인 조건 고정 — 완료
+
+핵심 작업:
+
+1. `tiny_live_canary` intent type을 도입해 일반 `entry`와 분리
+2. `wrapped-btc-loop-base-moonwell`에 `tinyLivePerTxUsd: 25` 고정 cap 추가
+3. `evaluateTinyLiveCanaryPolicy`가 3가지 조건을 deterministic하게 검증:
+   - `microCanaryStatus >= minimal_live_proof_exists`
+   - `emergencyUnwindPath`가 strategy caps에 존재
+   - 최근 24h 내 동일 전략의 `emergency_unwind` confirmed 기록
+4. cap-check가 `tiny_live_canary`일 때만 `tinyLivePerTxUsd`를 적용
+
+증거:
+- `src/config/strategy-caps.mjs` — `tinyLivePerTxUsd: 25` 추가
+- `src/executor/policy/tiny-live-canary-policy.mjs` — micro-canary stage + emergency_unwind 검증
+- `src/executor/policy/tiny-live-canary-intent.mjs` — pure deterministic intent builder
+- `src/executor/policy/cap-check.mjs` — `tiny_live_canary` 분기 및 `legacyCapAmountUsd` 확장
+- `test/tiny-live-canary-policy.test.mjs` — 승인/거부 경계 검증
+- `test/tiny-live-canary-intent.test.mjs` — intent builder 검증
+- `test/executor-policy-index.test.mjs` — 통합: tiny_live_canary가 전체 policy aggregator를 통과
+
 ## 추천 PR 분해
 
 아래처럼 자르면 충돌이 적고 검증이 쉽다.

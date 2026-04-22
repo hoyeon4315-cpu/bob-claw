@@ -7,6 +7,7 @@ function isFiniteNumber(value) {
 function legacyCapAmountUsd({ strategyId, intentId, intentType, executionReason, amountUsd }) {
   if (strategyId === "wrapped-btc-loop-base-moonwell") {
     if (executionReason === "risk_unwind" || String(intentId || "").includes(":unwind:")) return 0;
+    if (intentType === "tiny_live_canary") return Number(amountUsd ?? 0);
     if (String(intentId || "").includes(":entry:mint-initial-collateral")) {
       return Number(amountUsd ?? 0);
     }
@@ -239,6 +240,8 @@ export function evaluateCapCheck({
   const amountUsd = Number(intent.amountUsd ?? 0);
   const capAmountUsd = intentCapAmountUsd(intent);
   const isEmergencyIntent = intent.intentType === "emergency_unwind" || intent.executionReason === "risk_unwind";
+  const isTinyLiveCanary = intent.intentType === "tiny_live_canary";
+  const perTxCapUsd = isTinyLiveCanary ? caps.tinyLivePerTxUsd : caps.perTxUsd;
   const portfolioPolicy = resolvePortfolioExposurePolicy({
     activeBudgetUsd,
     policy: portfolioExposurePolicy,
@@ -251,8 +254,8 @@ export function evaluateCapCheck({
   if (intent.mode !== "dry_run" && strategyCaps.autoExecute !== true) {
     blockers.push("strategy_auto_execute_disabled");
   }
-  if (!isEmergencyIntent && !isFiniteNumber(caps.perTxUsd)) {
-    blockers.push("strategy_per_tx_cap_missing");
+  if (!isEmergencyIntent && !isFiniteNumber(perTxCapUsd)) {
+    blockers.push(isTinyLiveCanary ? "strategy_tiny_live_cap_missing" : "strategy_per_tx_cap_missing");
   }
   if (!isEmergencyIntent && !isFiniteNumber(caps.perDayUsd)) {
     blockers.push("strategy_per_day_cap_missing");
@@ -263,7 +266,7 @@ export function evaluateCapCheck({
   if (!isEmergencyIntent && !isFiniteNumber(chainCapUsd)) {
     blockers.push("strategy_per_chain_cap_missing");
   }
-  if (!isEmergencyIntent && isFiniteNumber(caps.perTxUsd) && isFiniteNumber(capAmountUsd) && capAmountUsd > caps.perTxUsd) {
+  if (!isEmergencyIntent && isFiniteNumber(perTxCapUsd) && isFiniteNumber(capAmountUsd) && capAmountUsd > perTxCapUsd) {
     blockers.push("strategy_per_tx_cap_exceeded");
   }
   if (!isEmergencyIntent && isFiniteNumber(caps.perDayUsd) && isFiniteNumber(capAmountUsd) && state.dailyVolumeUsd + capAmountUsd > caps.perDayUsd) {
@@ -330,6 +333,7 @@ export function evaluateCapCheck({
       capAmountUsd: isFiniteNumber(capAmountUsd) ? capAmountUsd : null,
       perTxUsd: caps.perTxUsd ?? null,
       perDayUsd: caps.perDayUsd ?? null,
+      tinyLivePerTxUsd: caps.tinyLivePerTxUsd ?? null,
       perChainUsd: chainCapUsd,
       maxDailyLossUsd: caps.maxDailyLossUsd ?? null,
       maxFailedGasCost24hUsd: caps.maxFailedGasCost24hUsd ?? null,
