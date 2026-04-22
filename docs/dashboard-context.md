@@ -217,7 +217,7 @@ Do not remove or rename these fields without updating `dashboard/public/app.js` 
 
 The current public status schema version is `2`.
 
-`strategy.ethProfitability` is an observe-only/operator-review summary. It must not be treated as execution permission or live profitability approval.
+`strategy.ethProfitability` is an execution-gated/operator-review summary. It may surface ETH-family candidate evidence and blockers, but it must not be treated as execution permission or live profitability approval.
 
 `strategy.pivotPlan` powers the read-only `Pivot Watch` card. It may describe the next research lane and indicative capital floors, but it must not claim profitability, execution permission, or live readiness.
 

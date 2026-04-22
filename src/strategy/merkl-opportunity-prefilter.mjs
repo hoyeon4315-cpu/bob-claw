@@ -9,6 +9,11 @@ function executionSurfaceSupported(surface, policy) {
   if (surface === "stableBorrow") return policy.entry.supportedExecutionSurfaces.stableBorrow;
   if (surface === "clLp") return policy.entry.supportedExecutionSurfaces.clLp;
   if (surface === "managedVault") return policy.entry.supportedExecutionSurfaces.managedVault;
+  if (surface === "ethLending") return policy.entry.supportedExecutionSurfaces.ethLending;
+  if (surface === "stableCarry") return policy.entry.supportedExecutionSurfaces.stableCarry;
+  if (surface === "fixedYield") return policy.entry.supportedExecutionSurfaces.fixedYield;
+  if (surface === "reserveAllocation") return policy.entry.supportedExecutionSurfaces.reserveAllocation;
+  if (surface === "assetRotation") return policy.entry.supportedExecutionSurfaces.assetRotation;
   return false;
 }
 
@@ -34,9 +39,9 @@ function buildOverfitFlags(opportunity, policy) {
 
 function hardBlockersForOpportunity(opportunity, policy) {
   const blockers = [];
-  if (!opportunity.hasBtcExposure) blockers.push("non_btc_surface");
+  if (!opportunity.btcPaybackCompatible) blockers.push("btc_return_path_not_supported");
   if (opportunity.status !== "LIVE" || (opportunity.liveCampaigns || 0) < policy.entry.minLiveCampaignCount) blockers.push("campaign_not_live");
-  if (opportunity.family === "non_btc") blockers.push("family_not_supported");
+  if (opportunity.family === "non_core_asset") blockers.push("family_not_supported");
   if (policy.entry.hardRejectRewardTokenTypes.some((kind) => opportunity.rewardTokenTypes.includes(kind))) blockers.push("point_reward_program");
   if (Number.isFinite(opportunity.campaignRemainingHours) && opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForNewEntry) {
     blockers.push("campaign_too_close_to_end");
@@ -61,7 +66,9 @@ function watchReasonsForOpportunity(opportunity, policy) {
 function scoreOpportunity(opportunity, { hardBlockers = [], watchReasons = [], overfitFlags = [] } = {}, policy) {
   const weights = policy.scoring;
   let score = 0;
-  if (opportunity.hasBtcExposure) score += weights.btcDirectness;
+  if (opportunity.btcPaybackCompatible) score += weights.btcPaybackCompatibility;
+  if (opportunity.hasBtcExposure) score += weights.directBtcExposure;
+  if (opportunity.hasSupportedAssetExposure) score += weights.coreAssetFamily;
   if (opportunity.mappedStrategyId) score += weights.supportedStrategyMapping;
   if (chainEligibleForEntry(opportunity.chain, policy)) score += weights.chainInCoreScope;
   if (Number.isFinite(opportunity.campaignRemainingHours) && opportunity.campaignRemainingHours >= policy.entry.minHoursRemainingForScaleUp) {

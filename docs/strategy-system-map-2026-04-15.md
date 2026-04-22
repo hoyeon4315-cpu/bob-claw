@@ -105,7 +105,7 @@ Important note: ETH was not skipped. It was investigated and currently has no co
 | Sonic | `wBTC.OFT` | Shadow | LP, route readiness checks | LP visible, lending venue still missing |
 | Soneium | `wBTC.OFT` | KYO | LP candidate | LP visible, lending venue still missing |
 | Unichain | `wBTC.OFT` | Catex | LP proxy candidate | proxy/LP surface exists, direct lender-facing venue is weak |
-| Ethereum | `WBTC`, `USDC/USDT`, `ETH`, `PAXG/XAUT` | observe-only research surfaces | ETH-family, stable, gold proxy research | not an active live target in the USD 300 phase |
+| Ethereum | `WBTC`, `USDC/USDT`, `ETH`, `PAXG/XAUT` | evidence-gated deployment surfaces | ETH-family, stable, gold proxy research | candidate lane once fee, unwind, and BTC return-path evidence clear |
 
 ## Destination deployment layer
 
@@ -203,7 +203,7 @@ The correct ETH explanation is:
 - no measured multichain ETH-family gateway surface yet
 - no measured mixed ETH/stable closed loop yet
 - ETH mixed triangle and flash remain analysis-only
-- Ethereum L1 stays observe-only
+- Ethereum L1 is allowed when positive EV clears measured fee and unwind thresholds
 - therefore `liveTrading` remains `BLOCKED`
 
 ## Recommended dashboard structure

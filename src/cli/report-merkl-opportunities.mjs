@@ -64,6 +64,7 @@ async function main() {
   console.log(`opportunityCount=${report.summary.opportunityCount}`);
   console.log(`campaignCount=${report.summary.campaignCount}`);
   console.log(`btcRelevantCount=${report.summary.btcRelevantCount}`);
+  console.log(`multiAssetRelevantCount=${report.summary.multiAssetRelevantCount}`);
   console.log(`candidateCount=${report.summary.candidateCount}`);
   console.log(`watchCount=${report.summary.watchCount}`);
   console.log(`blockedCount=${report.summary.blockedCount}`);

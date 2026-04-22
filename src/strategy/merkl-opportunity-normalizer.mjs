@@ -1,7 +1,12 @@
 const BTC_SYMBOL_RE = /(btc|cbbtc|wbtc|wbtc\.oft|lbtc|unibtc|ebtc|fbtc|solvbtc|btcb|btc\.b|xsolvbtc)/i;
 const STABLE_SYMBOL_RE = /^(usdc|usdt|usd0|usd₮0|usdc\.e|usdt\.e|dai|eurc|gho|rlusd|pyusd|usde|usds|ausd|usdt0|usdt0\.0|ousdt)$/i;
+const ETH_SYMBOL_RE = /^(eth|weth|weth\.e|steth|wsteth|cbeth|reth|weeth|ezeth|rseth|meth)$/i;
+const GOLD_SYMBOL_RE = /^(paxg|xaut|xau₮)$/i;
+const RESERVE_SYMBOL_RE = /^(usdy|bib01|ousg|ustb|buidl|ustbl)$/i;
+const OTHER_APPROVED_SYMBOL_RE = /^(sol|wsol|link|uni|aero|pendle|ena|ondo)$/i;
 const MANAGED_VAULT_PROTOCOLS = new Set(["superform", "ichi"]);
 const DIRECT_LENDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "bend", "avalon", "benqi"]);
+const FIXED_YIELD_PROTOCOLS = new Set(["pendle"]);
 const OPERATOR_HELD_STRATEGIES = new Set(["recursive_wrapped_btc_lending_loop"]);
 
 const CHAIN_NAME_MAP = Object.freeze({
@@ -95,37 +100,137 @@ function hasStableExposure(tokenSymbols = [], text = "") {
   return tokenSymbols.some((symbol) => STABLE_SYMBOL_RE.test(symbol)) || /\beurc\b/i.test(text);
 }
 
+function hasEthExposure(tokenSymbols = [], text = "") {
+  return tokenSymbols.some((symbol) => ETH_SYMBOL_RE.test(symbol)) || /\beth\b|\bweth\b|\bsteth\b|\bwsteth\b/i.test(text);
+}
+
+function hasGoldExposure(tokenSymbols = [], text = "") {
+  return tokenSymbols.some((symbol) => GOLD_SYMBOL_RE.test(symbol)) || /\bpaxg\b|\bxaut\b/i.test(text);
+}
+
+function hasReserveExposure(tokenSymbols = [], text = "") {
+  return tokenSymbols.some((symbol) => RESERVE_SYMBOL_RE.test(symbol)) || /\busdy\b|\bbib01\b|\bousg\b|\bbuidl\b/i.test(text);
+}
+
+function hasOtherBluechipExposure(tokenSymbols = [], text = "") {
+  return (
+    tokenSymbols.some((symbol) => OTHER_APPROVED_SYMBOL_RE.test(symbol)) ||
+    /\bsol\b|\bwsol\b|\blink\b|\buni\b|\baero\b|\bpendle\b|\bena\b|\bondo\b/i.test(text)
+  );
+}
+
+function detectAssetFamilies(tokenSymbols = [], text = "") {
+  const families = [];
+  if (hasBtcExposure(tokenSymbols, text)) families.push("btc_like");
+  if (hasEthExposure(tokenSymbols, text)) families.push("eth_like");
+  if (hasStableExposure(tokenSymbols, text)) families.push("stablecoin");
+  if (hasGoldExposure(tokenSymbols, text)) families.push("tokenized_gold");
+  if (hasReserveExposure(tokenSymbols, text)) families.push("tokenized_reserve");
+  if (hasOtherBluechipExposure(tokenSymbols, text)) families.push("other_bluechip");
+  return unique(families);
+}
+
 function managedVaultLike({ opportunity = {}, protocolId = "", text = "" } = {}) {
   if (MANAGED_VAULT_PROTOCOLS.has(protocolId)) return true;
   if (["morpho", "aave", "euler"].includes(protocolId) && lower(opportunity.action) === "borrow") return false;
   return /\bvault\b/i.test(text) && !DIRECT_LENDING_PROTOCOLS.has(protocolId);
 }
 
-function classifyFamily({ action = "", protocolId = "", tokenSymbols = [], text = "", managedVault = false } = {}) {
+function classifyFamily({ action = "", protocolId = "", tokenSymbols = [], text = "", assetFamilies = [], managedVault = false } = {}) {
   const upperAction = String(action || "").toUpperCase();
-  const btc = hasBtcExposure(tokenSymbols, text);
-  const stable = hasStableExposure(tokenSymbols, text);
+  const btc = assetFamilies.includes("btc_like");
+  const eth = assetFamilies.includes("eth_like");
+  const stable = assetFamilies.includes("stablecoin");
+  const gold = assetFamilies.includes("tokenized_gold");
+  const reserve = assetFamilies.includes("tokenized_reserve");
+  const bluechip = assetFamilies.includes("other_bluechip");
   const lpLike = /liquidity|pool|amm|clamm|uniswap|quickswap|sushiswap|aerodrome|hydrex/i.test(text);
+  const fixedYieldLike = FIXED_YIELD_PROTOCOLS.has(protocolId) || /\bpt[-_\s]|fixed yield|principal token|implied apy/i.test(text);
+  const lendingLike = upperAction === "LEND" || upperAction === "SUPPLY" || upperAction === "HOLD";
 
-  if (!btc) return "non_btc";
-  if (upperAction === "BORROW" && stable) return "btc_collateral_stable_borrow";
-  if (managedVault) return "managed_btc_vault";
-  if (lpLike) return "stable_btc_lp";
-  if ((upperAction === "LEND" || upperAction === "SUPPLY" || upperAction === "HOLD") && !stable) return "wrapped_btc_lending";
-  return "btc_misc";
+  if (btc) {
+    if (upperAction === "BORROW" && stable) return "btc_collateral_stable_borrow";
+    if (managedVault) return "managed_btc_vault";
+    if (fixedYieldLike) return "btc_fixed_yield";
+    if (lpLike) return "stable_btc_lp";
+    if (lendingLike && !stable) return "wrapped_btc_lending";
+    return "btc_misc";
+  }
+
+  if (eth) {
+    if (upperAction === "BORROW" && stable) return "eth_collateral_stable_borrow";
+    if (fixedYieldLike) return "eth_fixed_yield";
+    if (lendingLike || managedVault) return "eth_destination_lending";
+  }
+
+  if (stable) {
+    if (fixedYieldLike) return "stable_fixed_yield";
+    return "stable_treasury_carry";
+  }
+
+  if (gold) return "tokenized_gold_rotation";
+  if (reserve) return "tokenized_reserve_sleeve";
+  if (bluechip) return "other_bluechip_rotation";
+  return "non_core_asset";
 }
 
-function mapToStrategy({ family = "", protocolId = "", chain = "" } = {}) {
+function mapToStrategy({ family = "", protocolId = "", chain = "", tokenSymbols = [], managedVault = false } = {}) {
   if (family === "btc_collateral_stable_borrow" && ["morpho", "aave", "euler"].includes(protocolId)) {
     return { strategyId: "recursive_stablecoin_lending_loop", executionSurface: "stableBorrow" };
   }
   if (family === "wrapped_btc_lending" && DIRECT_LENDING_PROTOCOLS.has(protocolId)) {
     return { strategyId: "recursive_wrapped_btc_lending_loop", executionSurface: "lending" };
   }
+  if (family === "btc_fixed_yield" && protocolId === "pendle" && chain === "base" && tokenSymbols.some((symbol) => /lbtc/i.test(symbol))) {
+    return { strategyId: "pendle-pt-lbtc-base", executionSurface: "fixedYield" };
+  }
+  if (
+    family === "btc_fixed_yield" &&
+    protocolId === "pendle" &&
+    chain === "bsc" &&
+    tokenSymbols.some((symbol) => /solvbtc|bbn/i.test(symbol))
+  ) {
+    return { strategyId: "pendle-pt-solvbtc-bbn-bsc", executionSurface: "fixedYield" };
+  }
   if (family === "stable_btc_lp" && protocolId === "aerodrome" && chain === "base") {
     return { strategyId: "aerodrome-cl-base", executionSurface: "clLp" };
   }
-  return { strategyId: null, executionSurface: family === "stable_btc_lp" ? "clLp" : managedVaultLike ? "managedVault" : "unknown" };
+  if (["eth_collateral_stable_borrow", "eth_destination_lending", "eth_fixed_yield"].includes(family)) {
+    return {
+      strategyId: "eth_destination_deployment",
+      executionSurface:
+        family === "eth_collateral_stable_borrow"
+          ? "stableBorrow"
+          : family === "eth_fixed_yield"
+            ? "fixedYield"
+            : "ethLending",
+    };
+  }
+  if (["stable_treasury_carry", "stable_fixed_yield", "other_bluechip_rotation"].includes(family)) {
+    return {
+      strategyId: "gateway_native_asset_conversion_sleeve",
+      executionSurface:
+        family === "stable_fixed_yield"
+          ? "fixedYield"
+          : family === "stable_treasury_carry"
+            ? "stableCarry"
+            : "assetRotation",
+    };
+  }
+  if (["tokenized_gold_rotation", "tokenized_reserve_sleeve"].includes(family)) {
+    return { strategyId: "tokenized_reserve_sleeve", executionSurface: "reserveAllocation" };
+  }
+  return {
+    strategyId: null,
+    executionSurface:
+      family === "stable_btc_lp"
+        ? "clLp"
+        : managedVault
+          ? "managedVault"
+          : family === "non_core_asset"
+            ? "unknown"
+            : "assetRotation",
+  };
 }
 
 export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportunity = new Map(), now = null } = {}) {
@@ -140,14 +245,16 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
   const rewardSymbols = rewardTokenSymbols(opportunity, relatedCampaigns);
   const text = [opportunity?.name, opportunity?.description, protocolId, opportunity?.type].filter(Boolean).join(" ");
   const managedVault = managedVaultLike({ opportunity, protocolId, text });
+  const assetFamilies = detectAssetFamilies(tokenSymbols, text);
   const family = classifyFamily({
     action: opportunity?.action,
     protocolId,
     tokenSymbols,
     text,
+    assetFamilies,
     managedVault,
   });
-  const mapping = mapToStrategy({ family, protocolId, chain });
+  const mapping = mapToStrategy({ family, protocolId, chain, tokenSymbols, managedVault });
   const latestEnd = latestCampaignEnd(opportunity, relatedCampaigns, nowSeconds);
   const remainingHours = latestEnd ? Math.round((((latestEnd * 1000) - nowMs) / 3_600_000) * 100) / 100 : null;
   const aprPct = finite(opportunity?.apr);
@@ -176,7 +283,14 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     rewardTokenTypes: rewardTypes,
     hasPointRewards: rewardTypes.includes("POINT"),
     hasBtcExposure: hasBtcExposure(tokenSymbols, text),
+    hasEthExposure: hasEthExposure(tokenSymbols, text),
     hasStableExposure: hasStableExposure(tokenSymbols, text),
+    hasGoldExposure: hasGoldExposure(tokenSymbols, text),
+    hasReserveExposure: hasReserveExposure(tokenSymbols, text),
+    hasOtherBluechipExposure: hasOtherBluechipExposure(tokenSymbols, text),
+    assetFamilies,
+    hasSupportedAssetExposure: assetFamilies.length > 0,
+    btcPaybackCompatible: assetFamilies.length > 0,
     family,
     managedVault,
     requiresRangeManagement: family === "stable_btc_lp",

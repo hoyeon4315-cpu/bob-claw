@@ -516,7 +516,7 @@ function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview 
     ...(dashboardStatus?.prelive?.notes || []),
     measuredLeaderReview?.hypothesisGuard || null,
     dashboardStatus?.gateway?.ethFamilyWatch?.routeCount > 0
-      ? "ETH-family routes stay observe-only until route persistence, amount diversity, and ETH-family overfit audit all clear."
+      ? "ETH-family routes remain evidence-gated until route persistence, amount diversity, and ETH-family overfit audit all clear."
       : null,
     !readyForManualReview
       ? "Do not promote any route to canary or live execution while review blockers, stale inputs, or missing pre-live evidence remain."

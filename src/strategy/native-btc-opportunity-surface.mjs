@@ -346,7 +346,7 @@ export function buildNativeBtcOpportunitySurface({
       thesis: "Move BTC into ETH on supported chains for tactical positioning or collateral deployment.",
       supportedChains: ethRoutes.map((route) => route.dstChain),
       liveRouteCount: ethRoutes.length,
-      blockers: ["adds market-risk drift", "Ethereum L1 remains observe-only in live ring"],
+      blockers: ["adds market-risk drift", "Ethereum fee domain still needs positive-EV confirmation"],
     }),
     strategyTemplate({
       id: "eth_destination_deployment",
@@ -359,7 +359,7 @@ export function buildNativeBtcOpportunitySurface({
       thesis: "Route BTC into ETH, then deploy into chain-native DeFi actions where ETH is the required arrival asset.",
       supportedChains: ethRoutes.map((route) => route.dstChain),
       liveRouteCount: ethRoutes.length,
-      blockers: ["ETH branch in repo remains underobserved", "destination action scoring missing"],
+      blockers: ["ETH arrival evidence is still thin across chains", "destination action scoring missing"],
     }),
     strategyTemplate({
       id: "gold_rotation",

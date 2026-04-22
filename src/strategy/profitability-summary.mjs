@@ -48,10 +48,10 @@ function buildEthFollowUp(recommendationCode = null, verdictCode = null) {
       label: "watch ETH family surface",
     };
   }
-  if (recommendationCode === "eth_l1_policy_override_disabled") {
+  if (recommendationCode === "eth_l1_positive_ev_unconfirmed") {
     return {
-      code: "review_eth_policy_override",
-      label: "review ETH policy override",
+      code: "measure_eth_fee_domain",
+      label: "measure ETH fee domain",
     };
   }
   if (

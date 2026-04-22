@@ -79,6 +79,7 @@ export function buildMerklOpportunityReport({
       opportunityCount: opportunities.length,
       campaignCount: campaigns.length,
       btcRelevantCount: evaluated.filter((item) => item.hasBtcExposure).length,
+      multiAssetRelevantCount: evaluated.filter((item) => item.hasSupportedAssetExposure).length,
       topCandidateId: topCandidates[0]?.opportunityId || null,
       topCandidateStrategyId: topCandidates[0]?.mappedStrategyId || null,
       rotationCandidateCount: rotationPlan.length,

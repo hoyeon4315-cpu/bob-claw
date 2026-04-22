@@ -6,7 +6,8 @@
 - **Operator = user**. Single-account mode. Multi-depositor vaulting (ERC-4626 shares, per-user cost basis) is out of scope until explicitly unlocked by a committed diff to this document.
 - Capital sizing is operator-controlled per strategy. There is no project-wide ring-fenced wallet — the operator decides which wallet a given strategy uses and what cap that wallet runs at, declared in the strategy's config.
 - Primary product objective: a native-BTC payback agent. Gateway / Instant Swap quote verification is the **transport and settlement lane**, not the alpha source by itself.
-- Active strategy lanes: destination-chain BTC yield and lending loops, wrapper-BTC arbitrage across Gateway-supported chains, stable entry/exit loops, and other deterministic yield sleeves whose unwind cost is measured.
+- Active strategy lanes: destination-chain BTC yield and lending loops, wrapper-BTC arbitrage across Gateway-supported chains, stable entry/exit loops, ETH-family deployment, tokenized reserve / gold sleeves, and other deterministic yield sleeves whose unwind cost is measured.
+- Intermediate operating inventory may include ETH, stablecoins, tokenized gold, tokenized reserve assets, and other approved bluechips when deterministic unwind rules, explicit risk caps, and a measured BTC return path exist. The product still settles PnL and payback in BTC first.
 - Lane selection is evidence-driven. If the Gateway route/arb lane has no positive measured edge, it moves to infrastructure/reevaluation mode and the highest evidence-backed strategy lane becomes primary.
 - Ethereum L1 trading is allowed when fee analysis shows positive expected value after gas and slippage.
 - **All 11 BOB Gateway official destinations are in scope** (Ethereum, BOB L2, Base, BNB, Avalanche, Unichain, Berachain, Optimism, Soneium, Sei, Sonic). Arbitrum and Polygon are NOT Gateway destinations as of 2026-04 — treat them as post-Gateway manual bridge only. See `docs/research/bob-ecosystem.md`.
@@ -171,19 +172,21 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
   - BTC proxy spreads: `measured_below_policy` with thin/noisy coverage; keep as reevaluation lane, not primary alpha.
   - BTC stable entry/exit loops: `measured_below_policy`
   - BTC triangular/flash: `measured_below_policy`
-  - Direct ETH-family Gateway: `unobserved`
-  - ETH/stable mixed loops: `unobserved`
+  - Direct ETH-family Gateway: `thin_coverage`
+  - ETH/stable mixed loops: `thin_coverage`
   - ETH mixed triangle: `analysis_only`
   - ETH mixed flash: `analysis_only`
   - Lending-protocol looping: `operator_hold` for wrapped-BTC lending-loop variants. Repo auto-build support and some receipts exist, but the operator's current judgment is that economics are not good enough for further promotion.
   - Wrapped BTC lending loop: `operator_hold` / not a primary lane. Limit work to unwind safety, evidence archiving, or explicit operator-directed reactivation.
+  - ETH destination deployment: `design_scaffold` / allowed research and implementation target when fee domain, unwind cost, and BTC return path are measured.
+  - Gateway native asset conversion sleeve: `design_scaffold` / intended for ETH, stable, gold, reserve, and other approved asset-family deployment with BTC payback compatibility.
   - **Payback engine: `scaffolded_active_carry`** — scheduler/accumulator/config exist and are reporting BTC-denominated pending carry. Current blocker is `planned_payback_below_minimum`, not missing payback code.
 - If the user asks why ETH was "not validated", clarify that ETH was investigated and measured; the current outcome is "no confirmed edge," not "skipped work."
 - Use this ETH explanation:
   - no measured multichain ETH-family Gateway surface yet
   - no measured mixed ETH/stable closed loop yet
   - ETH mixed triangle and flash paths are still analysis-only because the contract path is not generalized
-  - therefore ETH lanes stay observe-only until a measured edge appears, even though `liveTrading` itself is no longer hard-blocked
+  - therefore ETH lanes stay evidence-gated until a measured edge appears; they are not blanket observe-only, but they still need positive-EV and unwind evidence before promotion
 - W4–W7 status (2026-04-22):
   - W4: 9 strategy adapters in `run-strategy-tick.mjs` registry: beefy-folding-vault, pendle-pt-lbtc-base, aerodrome-cl-base, pendle-pt-solvbtc-bbn-bsc, berachain-bend-bex-bgt, gmx-v2-perp-basis-avax, stablecoin-spread-loop, proxy-spread-expansion, tokenized-reserve-sleeve.
   - W5: `destination-venues.mjs` + `stable-venues.mjs` registries wired into `allocator-core.mjs` as protocol fallback.

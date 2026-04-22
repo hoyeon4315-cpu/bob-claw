@@ -24,13 +24,6 @@ function recommendation(item = {}, queueItem = null) {
     };
   }
 
-  if (item.chain === "ethereum") {
-    return {
-      status: "observe_only_policy",
-      nextAction: "require_explicit_policy_reapproval",
-    };
-  }
-
   if (queueItem?.nextAction === "document_platform_surface" || item.category === "platform") {
     return {
       status: "manual_contract_review",

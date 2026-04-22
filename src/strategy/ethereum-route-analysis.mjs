@@ -248,9 +248,9 @@ function recommendation({
 
   if (scores.policyBlockedCount > 0) {
     return {
-      code: "eth_l1_policy_override_disabled",
-      label: "ETH L1 policy override is still disabled",
-      detail: "ETH capability exists, but an explicit policy override is still disabling Ethereum L1 routes in the current scoring pass.",
+      code: "eth_l1_positive_ev_unconfirmed",
+      label: "ETH L1 still needs positive-EV confirmation",
+      detail: "ETH capability exists, but current scoring still sees Ethereum-L1 fee and policy friction that must be cleared with fresh positive-EV evidence rather than a blanket lane ban.",
     };
   }
 
