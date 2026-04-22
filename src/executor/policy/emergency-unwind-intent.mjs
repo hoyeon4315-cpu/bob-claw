@@ -28,6 +28,10 @@ export function buildEmergencyUnwindIntent({
     amountUsd: Number.isFinite(amountUsd) ? amountUsd : 0,
     executionReason: "risk_unwind",
     observedAt: now,
+    positionState: {
+      currentHealthFactor: positionState?.currentHealthFactor ?? metadata?.healthFactorPath ?? null,
+      currentLiquidationBufferPct: positionState?.currentLiquidationBufferPct ?? metadata?.liquidationBufferPath ?? null,
+    },
     metadata: {
       ...metadata,
       emergencyUnwindPath: Array.isArray(emergencyUnwindPath) ? emergencyUnwindPath : [],

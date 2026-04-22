@@ -41,12 +41,14 @@ export function evaluateHealthFactorCheck({
   const projectedLiquidationBufferPct =
     intent.liquidationBuffer?.projectedPostPct ?? intent.positionState?.projectedLiquidationBufferPct ?? null;
 
+  const isEmergencyUnwind = intent.intentType === "emergency_unwind";
+
   if (isFiniteNumber(currentHealthFactor) && isFiniteNumber(leverageConfig.healthFactorMin) && currentHealthFactor < leverageConfig.healthFactorMin) {
-    blockers.push("health_factor_below_min_pre_trade");
+    if (!isEmergencyUnwind) blockers.push("health_factor_below_min_pre_trade");
     triggers.push("health_factor_below_min");
   }
   if (isFiniteNumber(projectedHealthFactor) && isFiniteNumber(leverageConfig.healthFactorMin) && projectedHealthFactor < leverageConfig.healthFactorMin) {
-    blockers.push("health_factor_below_min_post_trade");
+    if (!isEmergencyUnwind) blockers.push("health_factor_below_min_post_trade");
     triggers.push("projected_health_factor_below_min");
   }
   if (
@@ -54,7 +56,7 @@ export function evaluateHealthFactorCheck({
     isFiniteNumber(leverageConfig.liquidationBufferPct) &&
     currentLiquidationBufferPct < leverageConfig.liquidationBufferPct
   ) {
-    blockers.push("liquidation_buffer_below_min_pre_trade");
+    if (!isEmergencyUnwind) blockers.push("liquidation_buffer_below_min_pre_trade");
     triggers.push("liquidation_buffer_below_min");
   }
   if (
@@ -62,7 +64,7 @@ export function evaluateHealthFactorCheck({
     isFiniteNumber(leverageConfig.liquidationBufferPct) &&
     projectedLiquidationBufferPct < leverageConfig.liquidationBufferPct
   ) {
-    blockers.push("liquidation_buffer_below_min_post_trade");
+    if (!isEmergencyUnwind) blockers.push("liquidation_buffer_below_min_post_trade");
     triggers.push("projected_liquidation_buffer_below_min");
   }
 
@@ -72,7 +74,7 @@ export function evaluateHealthFactorCheck({
     decision: blockers.length > 0 ? "BLOCK" : "ALLOW",
     blockers: unique(blockers),
     triggers: unique(triggers),
-    requiresUnwind: triggers.length > 0,
+    requiresUnwind: isEmergencyUnwind ? true : triggers.length > 0,
     emergencyUnwindPath: strategyCaps?.leverage?.emergencyUnwindPath || null,
   };
 }

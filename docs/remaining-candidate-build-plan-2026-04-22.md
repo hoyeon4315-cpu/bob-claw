@@ -1084,6 +1084,7 @@ bootstrap 우선순위:
 - `src/status/leverage-auto-unwind-status.mjs` — watcher + audit 병합 4-state status
 - `test/executor-policy-index.test.mjs` — emergency_unwind intent가 cap-check와 hf-check를 통과하는 검증
 - `test/leverage-auto-unwind-status.test.mjs` — 4-state status combiner 검증
+- `test/emergency-unwind-integration.test.mjs` — end-to-end: intent 생성 → policy → mock signer → broadcast → receipt → audit log
 
 #### W9-C. tiny live canary evidence closure — 완료
 
