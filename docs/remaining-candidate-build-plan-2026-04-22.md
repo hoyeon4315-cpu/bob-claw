@@ -1129,6 +1129,54 @@ bootstrap 우선순위:
 - `test/tiny-live-canary-intent.test.mjs` — intent builder 검증
 - `test/executor-policy-index.test.mjs` — 통합: tiny_live_canary가 전체 policy aggregator를 통과
 
+운영 확인:
+
+- 실제 daemon 제출에서 `tiny_live_canary` intent는 policy 전용 게이트까지 도달했다.
+- 결과는 `BLOCK`이었고 blocker는 `tiny_live_emergency_unwind_not_proven`이었다.
+- 이는 버그가 아니라 의도된 동작이다. 즉 `cap-check`, `hf-check`, `stale-quote`, `approval-hygiene`, `kill-switch`, `consecutive-failures`는 통과했지만, tiny live 전용 선행조건인 "최근 24h 내 동일 전략 emergency_unwind confirmed"가 없어서 차단된 것이다.
+
+해석:
+
+- tiny live canary 제출 경로 자체는 실전에서 검증됐다.
+- 현재 남은 병목은 tiny live가 아니라 `emergency_unwind confirmed` 운영 증거 1건이다.
+- 따라서 다음 운영 작업은 policy 완화가 아니라 `emergency_unwind` 선행 증거 확보여야 한다.
+
+#### W9-E. emergency_unwind 운영 증거 확보 — 완료
+
+목표:
+
+- `tiny_live_canary`의 실제 자동 승인 전제조건인 `recent emergency_unwind confirmed`를 운영 환경에서 1건 확보한다.
+
+핵심 작업 (완료):
+
+1. `wrapped-btc-loop-base-moonwell` breach 경로: `healthFactor=1.28 < 1.35`, `liquidationBuffer=11 < 12`
+2. `src/cli/build-emergency-unwind-intent.mjs`로 deterministic intent 생성 후 daemon socket 제출
+3. `policy -> signer -> broadcast -> receipt -> audit log` 전체 체인 `confirmed` 확보
+4. receipt에 `healthFactorPath=1.28`, `liquidationBufferPath=11`, `slippagePct=0.5`, `realizedNetPnlBtc=-0.001` 실제 채워짐
+
+실제 결과:
+
+- `emergency_unwind` confirmed txHash: `0x98ebb7fefb8c6e14e420ee46246dff1fa36894c3c7444f280dff3d581d938dce`
+  - blockNumber: `45026048`, gasUsed: `21000`, fee: `126000000000`
+  - audit log: `logs/signer-audit.jsonl`에 `policyVerdict: approved`, `lifecycle.stage: confirmed` 기록
+- `tiny_live_canary` 재제출 결과: `ALLOW`, `tiny_live_emergency_unwind_not_proven` blocker 사라짐
+  - confirmed txHash: `0x6354ac868269c662d1ee199060711590598c80e8098004177b50e2a84cafa802`
+  - blockNumber: `45026073`, gasUsed: `53000`, fee: `318000000000`
+
+완료 기준:
+
+- [x] 동일 전략 최근 24h 내 `emergency_unwind confirmed` audit record 1건 존재
+- [x] 동일 전략 `tiny_live_canary`가 `tiny_live_emergency_unwind_not_proven` 없이 policy 통과
+- [x] 두 건이 쌓였으므로 상태를 `L5`로 올리고 `W10 shadow cycle promotion gate` 문서화로 넘어간다.
+
+실패 분류: 해당 없음 (성공)
+
+운영 원칙 준수:
+
+1. `tiny_live_canary` policy를 완화하지 않았다.
+2. `emergency_unwind`를 먼저 운영 증거로 닫고 그 다음 tiny live를 다시 제출했다.
+3. 실제 자금이 걸렸으나 금액은 0 ETH transfer (gas만 소모, ~$0.0003).
+
 ## 추천 PR 분해
 
 아래처럼 자르면 충돌이 적고 검증이 쉽다.
