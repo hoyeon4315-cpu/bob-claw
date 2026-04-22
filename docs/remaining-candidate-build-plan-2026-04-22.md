@@ -33,15 +33,16 @@ Updated: 2026-04-22
 
 - `docs/research/*` 일부 메모는 현재 소스보다 오래되었을 수 있다.
 - 현재 ground truth는 "문서 주장"보다 `src/`와 `data/*.json`이 우선이다.
-- 현재 `run-strategy-tick.mjs`는 이미 존재하지만 등록 adapter가 `beefy-folding-vault` 하나뿐이라, 본 계획에서는 이를 "backbone 초안 존재" 상태로 본다.
+- 2026-04-22 재점검 기준 현재 `run-strategy-tick.mjs`에는 9개 adapter가 등록돼 있다. 아래 workstream 본문은 "초기 빌드 순서" 기록으로 유지하되, 현시점 우선순위 판단은 이 문서의 `상태 보정`과 `공식 11개 체인 maturity matrix`를 우선한다.
 
 ## 범위
 
 이번 계획의 범위는 다음과 같다.
 
 - 남아 있는 전략 후보 전부
-- 아직 strategy surface에 안 올라온 Gateway 공식 체인 (`optimism`, `sei`)
+- Gateway 공식 11개 체인 중 아직 strategy / allocator / promotion maturity가 낮은 체인
 - destination venue registry / promotion gate / allocator 확장
+- Gateway를 funding rail로 사용하는 native token / ETH-like destination deployment
 - shadow / canary / promotion / receipt / dashboard 연동
 
 이번 계획에서 제외하는 것:
@@ -69,6 +70,66 @@ Updated: 2026-04-22
 1. 이미 있는 minimal live proof를 전략별 repeatable micro-canary로 승격
 2. canary / rescue / unwind 도중 native gas 부족으로 막히지 않도록 자동 gas bootstrap 경로를 완성
 
+## 리스크 자동관리 현황 재점검 (2026-04-22)
+
+이 문서는 현재 상태를 "리스크 자동관리 완료"로 쓰지 않는다.
+
+사용자 질문 기준으로는 아래처럼 나눠서 보는 것이 정확하다.
+
+### 실제 signer / policy 경로에 이미 붙어 있는 것
+
+- `src/executor/signer/daemon.mjs`는 intent를 signer로 보내기 전에 항상 `evaluateIntentPolicies()`를 호출한다.
+- `src/executor/policy/index.mjs`는 현재 `kill_switch`, `consecutive_failures`, `cap_check`, `hf_check`, `stale_quote`, `approval_hygiene`를 실제 block/allow verdict로 묶고 있다.
+- `src/executor/policy/cap-check.mjs`는 단순 per-tx cap만 보는 것이 아니라 `perDay`, `perChain`, `maxDailyLossUsd`, `maxFailedGasCost24hUsd`와 함께 `portfolio_chain_cap_exceeded`, `portfolio_protocol_cap_exceeded`, `portfolio_btc_denomination_floor_breached`까지 계산한다.
+- `src/executor/policy/hf-check.mjs`는 leverage intent에서 pre-trade / post-trade `healthFactor`와 `liquidationBufferPct`를 실제 blocker로 막고, `requiresUnwind`와 `emergencyUnwindPath`도 같이 반환한다.
+
+즉 아래 항목은 "문서상 아이디어"가 아니라 실제 signer path에 연결된 리스크 차단으로 봐도 된다.
+
+1. 헬스팩터 하한
+2. 청산버퍼 하한
+3. per-strategy / per-chain / per-day cap
+4. 일일 손실 한도
+5. failed gas burn budget
+6. stale quote 차단
+7. approval hygiene
+8. 연속 실패 auto-pause
+9. 포트폴리오 수준 protocol / chain / BTC-denominated share guard
+
+### 실전자동 관리 현황 (2026-04-22 세션 완료)
+
+- **W9-A 완료**: `src/executor/policy/index.mjs`가 `evaluateLiquidityWatch`와 `evaluateConcentrationGuard`를 메인 signer policy aggregator에 연결했다.
+  - liquidity breach 시 `pause_new_entries` / `queue_unwind`를 구분 기록한다.
+  - concentration breach 시 `concentration_guard_reject_intent`를 기록한다.
+  - `riskContext`를 통해 `liquiditySnapshot`, `currentAllocations`, `totalOperatingCapitalUsd`를 공통 schema로 받는다.
+- **W9-B 완료**: `evaluateIntentPolicies`가 `requiresUnwind`와 `emergencyUnwindPath`를 상위 결과로 전파한다.
+  - `buildEmergencyUnwindIntent`가 deterministic skeleton intent를 생성한다.
+  - `cap-check`는 `emergency_unwind` intent를 인식하고 일부 cap을 우회한다.
+  - daemon이 receipt에 `healthFactorPath`, `liquidationBufferPath`, `slippagePct`, `realizedNetPnlBtc`를 강제 기록한다.
+  - `buildLeverageAutoUnwindStatus`가 watcher 상태와 signer audit을 병합해 `auto_unwind_ready / submitted / confirmed / failed`를 구분 노출한다.
+- **W9-C 완료**: 전략 adapter 9개가 4단계 micro-canary ladder를 사용한다.
+  - `not_started -> micro_canary_ready -> minimal_live_proof_exists -> micro_canary_repeatable`
+  - `buildMicroCanarySlice`가 `lastFailureReason`과 `realizedNetUsd`를 per-strategy로 기록한다.
+
+짧게 말하면:
+
+- `HF / 청산버퍼 / cap / stale quote / failure budget / liquidity / concentration`이 모두 메인 signer policy path에 연결됐다.
+- `emergency_unwind` intent 생성, policy 통과, receipt 필드 기록, dashboard 4-state 노출이 구현됐다.
+- 실제 on-chain broadcast까지의 end-to-end 증거는 proposer가 `emergency_unwind` intent를 daemon에 제출하면 자동으로 policy -> signer -> receipt path를 탄다.
+- 남은 것: 실제 생산 환경에서 `emergency_unwind` intent를 한 번 이상 확인한 것.
+
+### 실전 소액 테스트 판정
+
+- 소액 실전 테스트는 "전혀 없음"이 아니다.
+- 최소 라이브 증명은 이미 있다. 예: `Base -> BOB wBTC.OFT` `1000 sats` end-to-end minimal live proof, native asset DEX live proofs, wrapped-BTC loop signer-backed OOS/live roundtrip evidence.
+- 다만 `docs/current-status.md` 기준 현재 단계는 여전히 `tiny_live_canary_review`이며, `manual approval before live canary`가 남아 있다.
+- 따라서 현재 판정은 `minimal_live_proof_exists` 또는 일부 `review_only_canary_candidate`이지, "반복 가능한 전략 실전 소액 canary가 fully autonomous로 운영 중"은 아니다.
+
+이 문서의 다음 작업은 "실전 소액 테스트를 새로 발명"하는 것이 아니라 아래를 닫는 것이다.
+
+1. minimal live proof를 전략별 `micro_canary_repeatable`까지 승격
+2. rescue / unwind / off-ramp / payback의 gas bootstrap을 실전자동화
+3. watcher breach가 실제 signer-backed unwind intent로 이어지게 마감
+
 ## 현재 후보 인벤토리
 
 | Bucket | ID | Chain | 주요 프로토콜 | 현재 상태 | 핵심 blocker |
@@ -85,7 +146,209 @@ Updated: 2026-04-22
 | Reserve sleeve | `tokenized_reserve_sleeve` | Ethereum / Base | PAXG / XAUT / USDY / bIB01 | design scaffold | issuer allowlist, exit liquidity measurements, risk policy |
 | Wrapped BTC allocator | `destination_wrapped_btc_rotation` | Multi-chain | chain-specific venues | research priority | destination venue registry, unwind scoring, per-chain receipts |
 | Stable treasury sleeve | `stablecoin_treasury_rotation` | Base / Ethereum / BSC | Aave / Venus / stable venues | research priority | exit cost ranking, stable destination registry, round-trip economics |
+| Direct ETH deployment | `eth_destination_deployment` | Base / Ethereum / BSC | Moonwell / Aave / Aerodrome / Uniswap / PancakeSwap | planning-only economics packet | ETH arrival is underobserved, destination scoring missing |
+| Indirect native/ETH deployment | `gateway_native_asset_conversion_sleeve` | Avalanche / Sonic / Berachain / Unichain / Soneium / BOB | BENQI / Shadow / Silo / Bend / Kodiak / Kyo / Uniswap / Velodrome | research priority | safe local conversion proof, allowlist, unwind cost, receipt schema |
 | Chain onboarding | `optimism`, `sei` | Optimism / Sei | destination TBD | not on strategy surface | registry entries, gas snapshots, venue mapping, quote coverage |
+
+## 상태 보정 (2026-04-22 재점검)
+
+이 문서 초안 작성 후 W0~W7의 registry / allocator / dashboard 연동 작업이 이미 반영됐다.
+
+아래 W1~W7 본문은 "무엇을 어떤 순서로 닫았는가"를 설명하는 기록으로 유지하고, 지금 남은 일은 체인별 maturity gap을 메우는 쪽에 더 가깝다.
+
+운영 산출물 기준 한줄 요약:
+
+- `data/strategy-snapshot.json`: `implementedStrategyCount=8`, `candidateForValidationCount=0`, `secondaryScaffoldCount=4`, `deterministicCandidateCount=6`
+- `src/cli/run-strategy-tick.mjs`: 9개 adapter registry 반영 완료
+- `data/native-btc-opportunity-surface.json`: native BTC live route 21개, 이 중 `wrapped_btc=10`, `stablecoin=5`, `eth_like=3`, `store_of_value=2`, `other=3`
+- `src/config/destination-venues.mjs`: wrapped-BTC venue registry는 `base`, `bsc`, `avalanche`, `bera`, `bob`, `sonic`, `soneium`, `unichain` confirmed, `optimism`, `sei`는 `template_only`
+- `src/config/stable-venues.mjs`: stable venue registry는 `base`, `ethereum`, `bsc`만 confirmed, `optimism`, `sei`는 `template_only`
+- `data/destination-economics-packet.json`: `eth_destination_deployment` economics template는 현재 `base`, `bsc`까지만 존재
+- `data/allocator-core.json`: active-ready는 `base`, `bsc`; review-only는 `avalanche`, `bera`; blocked-only는 `sonic`, `unichain`, `soneium`
+- `data/destination-promotion-gate.json`: 총 38개 항목 중 `promotable=4`, `blocked=34`; 상위 blocker는 `evidence_policy_incomplete`, `evidence_stale`, `allowlist_decision_missing`
+
+핵심 해석:
+
+- 이제 "아예 runner가 없다"는 문제는 많이 줄었다.
+- 대신 "공식 체인 이름은 들어갔지만, allocator/promotion evidence가 부족하다"는 문제가 남아 있다.
+- `sonic`, `soneium`, `unichain`은 더 이상 `template_only`가 아니라 "registry는 있으나 아직 blocked/review-only"로 보는 편이 맞다.
+- `optimism`, `sei`는 여전히 `template_only`가 맞다.
+- `ethereum`은 stable venue는 있지만 wrapped-BTC destination venue registry가 비어 있고, `bob`은 wrapped venue는 있지만 stable venue와 dedicated adapter가 약하다.
+- direct `BTC -> ETH-like` live arrival은 현재 `base`, `ethereum`, `bsc` 3체인만 보인다. 다른 체인의 native token / ETH-like 전략은 대부분 `Gateway -> wBTC.OFT 도착 -> safe local conversion` 구조가 필요하다.
+
+## Gateway-first Native / ETH 자산 연구 결과
+
+짧은 결론:
+
+1. 가능하다. BOB Gateway는 공식적으로 native BTC를 "임의 자산" 또는 "임의 DeFi position"까지 한 번에 보낼 수 있는 방향을 열어 두고 있다.
+2. 하지만 실제 build order는 `direct arrival`과 `indirect conversion`을 분리해야 한다.
+3. 따라서 가장 먼저 구축할 대상은 `base / ethereum / bsc`의 direct ETH-like deployment이고, 그 다음이 `wBTC.OFT -> local native/ETH conversion`이 필요한 체인들이다.
+
+공식 문서 기준 핵심 사실:
+
+- BOB Gateway 공식 문서는 `stake`, `swap`, `lending`, `LP positions`, `custom actions`를 모두 지원 use case로 명시한다.
+- Gateway custom action 공식 블로그는 destination chain에서 arbitrary call을 실행할 수 있다고 설명하며, 예시로 `Base Aave 예치`와 `Unichain liquidity provision`을 든다.
+- 즉 "BTC -> destination ETH/native asset -> LP or lending loop"는 제품 방향과 어긋나는 확장이 아니라, 오히려 Gateway가 원래 의도한 programmable settlement에 가깝다.
+
+repo와 외부 자료를 함께 봤을 때의 전략적 의미:
+
+- 현재 repo live surface에서는 direct `eth_like` 도착이 `base`, `ethereum`, `bsc`에만 보인다.
+- 따라서 direct ETH deployment는 지금 바로 build plan에 올릴 수 있다.
+- 반면 `avalanche`, `sonic`, `bera`, `unichain`, `soneium`, `bob`의 native token 전략은 direct arrival이 아니라, `wBTC.OFT arrival -> trusted DEX swap -> native/ETH-like venue deployment`로 설계해야 한다.
+- 이 두 부류를 섞으면 route proof는 있는데 destination proof가 없거나, 반대로 protocol idea는 있는데 Gateway-first 원칙이 흐려진다.
+
+### 체인군별 연구 결론
+
+| Cluster | Chains | Gateway 진입 방식 | 1차 후보 전략 | 왜 이 순서인지 | 현재 핵심 blocker |
+|---|---|---|---|---|---|
+| Direct ETH-like | Base / Ethereum / BSC | `BTC -> ETH-like` direct arrival | ETH lending loop, ETH-stable LP, ETH-BTC LP | Gateway를 가장 직접적으로 활용하면서 local conversion 단계를 줄일 수 있음 | destination scoring, allowlist, economics packet 부족 |
+| Indirect native / ETH-like | Avalanche / Sonic / Berachain / Unichain / Soneium / BOB | `BTC -> wBTC.OFT -> trusted local swap -> native/ETH-like` | native token LP, staked-native loop, ETH-like collateral sleeve | 공식 체인 범위를 넓게 쓰되 Gateway를 funding rail로 고정 가능 | safe conversion proof, router allowlist, unwind cost, native gas bootstrap |
+| Discovery only | Optimism / Sei | 아직 route/venue template 위주 | 추후 ETH/native sleeve | 공식 체인이지만 venue/route evidence가 아직 얇음 | `template_only`, quote freshness, venue confirmation |
+
+### 체인별 1차 연구 후보
+
+| Chain | 추천 진입 자산 | 1차 후보 프로토콜/형태 | 구축 우선도 | 메모 |
+|---|---|---|---|---|
+| Base | ETH | Moonwell / Aave 계열 WETH loop, Aerodrome / Uniswap ETH LP | 최우선 | direct ETH arrival가 있어 가장 Gateway-first 구현이 쉽다 |
+| Ethereum | ETH | Aave WETH loop, Uniswap WETH/USDC or WETH/WBTC LP | 연구 우선, live는 신중 | direct ETH arrival는 되지만 gas domain이 비싸다 |
+| BSC | ETH 또는 이후 WBNB | PancakeSwap ETH LP, Venus 계열 ETH/BNB 담보 루프 | 우선 | direct ETH-like arrival가 있어 direct sleeve 출발점으로 적합 |
+| Avalanche | AVAX / sAVAX / WETH | BENQI lending or AVAX staking sleeve, native/ETH LP | 중간 | direct native arrival는 안 보이고 local conversion이 필요 |
+| Sonic | S / wS / ETH-like | Shadow CL LP, Silo lending/loop | 높음 | Sonic은 native/DEX 활성이 강해 indirect sleeve 후보가 명확하다 |
+| Berachain | BERA / HONEY | Bend loop, Kodiak Islands / Sweetened Islands LP | 높음 | PoL/BGT 인센티브로 LP sleeve 근거가 강하지만 router allowlist가 더 필요 |
+| Unichain | ETH-like | Uniswap 중심 LP, 이후 lending sleeve | 높음 | official custom-action example가 LP 쪽에 있다 |
+| Soneium | ETH-like | Kyo / Uniswap 계열 LP | 중간 | direct ETH arrival는 안 보이고 local conversion route 검증이 선행돼야 한다 |
+| BOB | ETH-like | Velodrome LP, 이후 Avalon/Euler 계열 collateral sleeve 검토 | 중간 | BOB 내부 native/ETH deployment는 장점이 있지만 venue scoring이 약하다 |
+| Optimism | ETH | Moonwell / Aave / Velodrome 계열 후보 탐색 | 낮음 | 아직 template-only라 discovery부터 해야 한다 |
+| Sei | SEI / ETH-like | native/DEX + lending 후보 탐색 | 낮음 | 아직 template-only라 discovery부터 해야 한다 |
+
+### Gateway-first 원칙으로 다시 정리한 설계 규칙
+
+1. 출발은 항상 native BTC다.
+2. direct arrival가 있으면 `BTC -> target asset`을 먼저 쓴다.
+3. direct arrival가 없으면 `BTC -> wBTC.OFT -> trusted local conversion -> target asset`만 허용한다.
+4. manual bridge나 사후 수동 재정렬을 steady-state로 두지 않는다.
+5. LP / loop / collateral sleeve 모두 payback unwind까지 포함한 deterministic receipt chain이 있어야 한다.
+
+### 외부 자료 근거
+
+- [BOB Gateway Overview](https://docs.gobob.xyz/gateway)
+- [BOB Gateway API Overview](https://docs.gobob.xyz/api-reference/overview)
+- [Custom DeFi Actions Now Integrated in BOB Gateway SDK](https://www.gobob.xyz/blog/custom-defi-actions-now-integrated-in-bob-gateway-sdk)
+- [Moonwell Asset Risk Parameters](https://docs.moonwell.fi/moonwell/protocol-information/asset-risk-parameters)
+- [Moonwell Interest Rate Curves](https://docs.moonwell.fi/moonwell/protocol-information/interest-rate-curves)
+- [Aave Supply Tokens](https://aave.com/help/supplying/supply-tokens)
+- [BENQI Core Markets](https://docs.benqi.fi/benqi-markets/core-markets)
+- [Shadow Docs](https://docs.shadow.so/)
+- [Silo Intro](https://docs.silo.finance/docs/users/intro/)
+- [Berachain Bend Docs](https://docs.bend.berachain.com/)
+- [Kodiak Island Liquidity Provision](https://documentation.kodiak.finance/protocol/islands/island-liquidity-provision)
+- [Kyo Finance Contract Addresses](https://docs.kyo.finance/resources/contract-addresses)
+- [Unichain Mainnet is Here](https://blog.uniswap.org/unichain-mainnet-is-here)
+- [Uniswap Docs](https://docs.uniswap.org/)
+
+## 공식 11개 체인 Maturity Matrix
+
+아래 표는 "공식 체인 목록에 있느냐"와 "실제로 전략 surface까지 올라왔느냐"를 분리해서 본 현황이다.
+
+| Chain | Wrapped-BTC venue registry | Stable venue registry | Dedicated strategy adapter / tick surface | Allocator / promotion 상태 | 현재 판정 | 남은 핵심 작업 |
+|---|---|---|---|---|---|---|
+| Base | confirmed | confirmed | 있음 (`recursive`, `pendle`, `aerodrome`, `beefy`) | active-ready / 일부 blocked | 가장 성숙 | repeatable micro-canary, stale evidence 정리 |
+| BSC | confirmed | confirmed | 있음 (`pendle-pt-solvbtc-bbn-bsc`) | active-ready / 일부 blocked | 가장 성숙 | custom action receipt, post-fee economics 보강 |
+| Avalanche | confirmed | 없음 | 있음 (`gmx-v2-perp-basis-avax`) | review-only | 부분 구축 | stable arrival, indirect stable quote, evidence freshness |
+| Berachain | confirmed | 없음 | 있음 (`berachain-bend-bex-bgt`) | review-only | 부분 구축 | router/stable gap, claim/economics 증거 축적 |
+| BOB | confirmed | 없음 | 전용 adapter 없음 | promotion 항목은 있으나 전부 blocked | infra만 있고 전략 약함 | dedicated adapter, allowlist/economics/evidence 정리 |
+| Unichain | confirmed | 없음 | 전용 adapter 없음 | blocked-only | route prep는 있으나 전략 미완 | dedicated adapter, stable venue, receipt/evidence 누적 |
+| Soneium | confirmed | 없음 | 전용 adapter 없음 | blocked-only | route prep는 있으나 전략 미완 | dedicated adapter, router gap, stable venue, evidence freshness |
+| Sonic | confirmed | 없음 | 전용 adapter 없음 | blocked-only | route prep는 있으나 전략 미완 | dedicated adapter, stable venue, quote refresh, repeatable evidence |
+| Optimism | template_only | template_only | 없음 | promotion 항목 없음 | 미구축에 가까움 | venue 확인, gas/quote coverage, adapter scaffold |
+| Sei | template_only | template_only | 없음 | promotion 항목 없음 | 미구축에 가까움 | venue 확인, gas/quote coverage, adapter scaffold |
+| Ethereum | 없음 | confirmed | 전용 chain adapter 없음 | destination promotion 표면 약함 | 부분 구축 | wrapped-BTC destination registry, ETH/BTC destination candidate 명시 |
+
+보조 메모:
+
+- `docs/current-status.md` 기준 transport/prep surface는 `base->unichain` active canary, `base->soneium` prep candidate, `base->sonic` prep candidate까지는 올라와 있다.
+- 따라서 `unichain`, `soneium`, `sonic`은 "체인 자체를 새로 등록"하는 단계보다 "전략 adapter와 allocator 승격 증거를 붙이는 단계"로 보는 것이 정확하다.
+- 반대로 `optimism`, `sei`는 아직도 체인 registry/venue/quote coverage 자체를 더 확보해야 한다.
+
+## 문서에 추가해야 할 추적 축
+
+앞으로 체인 계획 문서에는 아래 축을 모든 공식 체인에 공통으로 남긴다.
+
+1. `official_chain_listed`와 `strategy_surface_present`를 분리 기록
+2. `wrapped_btc_venue_confirmed`, `stable_venue_confirmed`, `template_only`를 분리 기록
+3. `adapter_scaffolded`, `tick_connected`, `receipt_backed`, `allocator_ready`를 단계별로 분리 기록
+4. `transport proof exists`와 `strategy evidence exists`를 절대 같은 말로 쓰지 않기
+5. `route prep candidate`, `micro_canary_ready`, `micro_canary_repeatable`를 체인별로 같이 기록
+6. `direct_target_asset_arrival`와 `indirect_via_wrapped_btc_conversion`을 분리 기록
+7. local conversion이 필요한 체인은 `trusted_swap_route`, `conversion_receipt`, `native_gas_bootstrap`까지 같이 추적
+
+## 추가 연구가 필요한 항목
+
+### 1. `sonic` / `soneium` / `unichain` 전략화 연구
+
+이 세 체인은 "공식 체인 추가" 자체는 끝났지만, 전략 surface가 비어 있어 체인 존재감이 transport/prep 수준에 머물러 있다.
+
+필수 연구:
+
+1. wrapped-BTC venue별 entry / unwind / withdrawal delay 실측
+2. stable arrival or indirect stable exit 경로 실측
+3. canary-ready receipt schema와 unwind proof 정리
+4. route proof를 chain-level strategy adapter로 승격할 수 있는지 검토
+
+### 2. `optimism` / `sei` venue 발굴 연구
+
+이 둘은 아직 `template_only`라서, "registry 있음" 이상의 증거가 더 필요하다.
+
+필수 연구:
+
+1. 공식 Gateway 지원 상태 재검증
+2. wrapped-BTC / stable venue 실명 후보 확인
+3. gas snapshot과 quote freshness 반복 수집
+4. destination-promotion-gate에 넣을 경제성 필드 정의
+
+### 3. `ethereum` / `bob` 보강 연구
+
+두 체인은 공식 체인이지만 현재 문서와 구현에서 상대적으로 덜 선명하다.
+
+필수 연구:
+
+1. `ethereum` wrapped-BTC destination registry를 둘지, ETH-family 전용 lane으로 따로 분리할지 설계 확정
+2. `bob`에서 Euler/Avalon/Velodrome 중 어느 surface가 실제 primary venue인지 결정
+3. 두 체인 모두 allowlist decision과 economics evidence를 promotion artifact까지 연결
+
+### 4. 공통 evidence hygiene 연구
+
+현재 destination promotion blocker 상위권이 대부분 "새 전략 발굴"이 아니라 "증거 관리 미완"에 가깝다.
+
+필수 연구:
+
+1. `evidence_stale`를 줄이는 refresh cadence
+2. `allowlist_decision_missing` 해소용 protocol risk rubric
+3. `economics_inputs_missing` 해소용 공통 measurement schema
+4. strategy adapter와 allocator가 같은 receipt/evidence source를 재사용하도록 통합
+
+### 5. native / ETH destination 연구
+
+이 축은 이번 문서 갱신에서 새로 확정한 영역이다.
+
+필수 연구:
+
+1. direct ETH arrival 체인(`base`, `ethereum`, `bsc`)용 `eth_destination_deployment` economics packet 완성
+2. indirect native conversion 체인용 `wBTC.OFT -> native/ETH-like` trusted route 확보
+3. LP 전략과 lending loop 전략을 separate risk class로 분리
+4. `directional market risk`가 있는 native/ETH sleeve를 payback 정책과 어떻게 공존시킬지 rule화
+
+### 6. 실전자동 리스크 오케스트레이션 연구
+
+이 항목은 새 체인 확장보다 우선순위가 높다.
+
+필수 연구:
+
+1. `liquidity-watch`, `concentration-guard`를 signer policy aggregator에 실제 연결
+2. pool utilization / withdrawal queue / allocation candidate 입력 schema를 strategy snapshot loader에서 공통화
+3. leverage breach 시 `report only`가 아니라 deterministic `emergency_unwind` intent 생성 경로를 daemon에 연결
+4. risk breach -> unwind intent -> signer receipt -> realized unwind cost / HF path를 하나의 audit chain으로 기록
+5. dashboard/status에서 `risk blocked`, `pause new entries`, `auto unwind submitted`, `auto unwind confirmed`를 구분 노출
 
 ## 우선순위 원칙
 
@@ -689,6 +952,161 @@ bootstrap 우선순위:
 - rescue / unwind / offramp / payback 실패 건마다 bootstrap 판정이 같이 남는다.
 - "가스가 없어서 구출 실패"는 허용되는 종료 상태가 아니다.
 
+### W8. Gateway-first Native / ETH Asset Deployment
+
+목표:
+
+- Bob Gateway를 funding rail로 유지한 채 native token / ETH-like destination deployment를 전략 surface로 올린다.
+- `direct arrival`와 `indirect conversion`을 섞지 않고, 증거와 리스크 모델을 분리한다.
+
+#### W8-A. arrival / conversion registry
+
+핵심 작업:
+
+1. chain별 `direct_target_asset_arrival` 여부를 registry로 고정
+2. `eth_like`, `native_token`, `staked_native`를 asset family로 분리
+3. direct arrival가 없으면 `wBTC.OFT -> local swap`을 conversion lane으로 명시
+4. conversion lane에 `trusted_router`, `quote freshness`, `receipt proof`, `gas bootstrap` 필드를 추가
+
+수정 대상:
+
+- 신규 `src/config/eth-venues.mjs`
+- 신규 `src/config/native-asset-venues.mjs`
+- 신규 `src/config/destination-asset-conversions.mjs`
+- `src/strategy/native-btc-opportunity-surface.mjs`
+- `src/strategy/allocator-core.mjs`
+
+완료 기준:
+
+- 모든 공식 체인에 대해 direct vs indirect native/ETH arrival class가 명시된다.
+- silent omission 없이 "왜 해당 체인이 native/ETH sleeve 후보인지"가 artifact로 나온다.
+
+#### W8-B. direct ETH deployment (`base`, `ethereum`, `bsc`)
+
+핵심 작업:
+
+1. `eth_destination_deployment`를 planning-only가 아니라 tick-connected candidate로 승격
+2. Base / Ethereum / BSC 각각에 대해 1개 이상 deterministic destination sleeve를 고정
+3. ETH lending loop와 ETH LP를 separate mode로 분리
+4. destination economics packet에 `grossReturnBps`, `unwindSlippageBps`, `withdrawDelay`, `btcReentryCostBps`를 채운다
+
+추천 1차 후보:
+
+- Base: WETH lending loop, WETH/cbBTC or WETH/USDC LP
+- Ethereum: WETH lending loop or WETH/USDC LP
+- BSC: ETH LP, 이후 WBNB/ETH 변형
+
+완료 기준:
+
+- `base:eth_destination_deployment`와 `bsc:eth_destination_deployment`가 economics packet completeness를 가진다.
+- `ethereum`도 direct ETH arrival candidate로 명시되고, gas domain 때문에 왜 observe-only인지 artifact에서 읽힌다.
+
+#### W8-C. indirect native / ETH-like deployment
+
+핵심 작업:
+
+1. `wBTC.OFT -> native/ETH-like` safe conversion proof를 체인별로 수집
+2. native token LP와 lending loop를 분리해서 candidate 정의
+3. local conversion step도 entry receipt에 포함
+4. unwind 시 `native/ETH-like -> wBTC.OFT -> BTC` 경로 비용을 BTC 기준으로 기록
+
+우선 체인:
+
+- Sonic
+- Unichain
+- Berachain
+- Soneium
+- Avalanche
+- BOB
+
+완료 기준:
+
+- 최소 3개 체인에서 trusted conversion proof가 생긴다.
+- conversion-only 체인도 `route proof는 있는데 destination proof가 없음` 상태로 남지 않는다.
+
+#### W8-D. LP / looping risk policy
+
+핵심 작업:
+
+1. LP sleeve와 lending loop를 다른 risk class로 분리
+2. `directional exposure`, `basis risk`, `IL risk`, `liquidation risk`를 policy field로 명시
+3. native/ETH sleeve의 payback contribution을 BTC mark-to-market 기준으로 통일
+4. emergency unwind 기준을 `native token drawdown`과 `BTC-denominated drawdown` 두 축으로 나눈다
+
+완료 기준:
+
+- native/ETH 전략도 payback / drawdown / rescue 규칙 아래 deterministic하게 들어온다.
+- "그냥 ETH/네이티브로 바꿔서 들고 있는 것"과 "전략적으로 배치된 sleeve"가 artifact에서 구분된다.
+
+### W9. Real Risk Automation Closure
+
+목표:
+
+- 현재 부분적으로 흩어져 있는 risk logic을 실제 signer/runtime 경로까지 마감한다.
+- "차단은 되지만 자동 구출/언와인드는 아직 리포트 수준"인 상태를 끝낸다.
+
+#### W9-A. liquidity / concentration main-path wiring — 완료
+
+핵심 작업:
+
+1. `src/executor/risk/liquidity-watch.mjs`를 `src/executor/policy/index.mjs` signer aggregator에 연결
+2. `src/executor/risk/concentration-guard.mjs`를 allocator candidate와 signer intent 둘 다에서 공통 사용
+3. strategy별 snapshot loader가 `utilizationPct`, `utilizationSustainedMinutes`, `withdrawalQueueBlocks`, `candidateAllocationUsd`를 같은 schema로 제공하게 정리
+4. risk breach 시 `reject_intent`, `pause_new_entries`, `queue_unwind`를 구분 기록
+
+완료 기준:
+
+- signer path가 HF뿐 아니라 liquidity / concentration breach도 deterministic하게 차단한다.
+- "유동성 쏠림"과 "집중도 초과"가 테스트가 아니라 실제 policy result artifact에 보인다.
+
+증거:
+- `test/executor-policy-index.test.mjs` — liquidity pause_new_entries, queue_unwind, concentration guard reject 모두 policy BLOCK 검증
+- `test/risk-daemons.test.mjs` — liquidity-watch granular action 검증
+
+#### W9-B. emergency unwind execution closure — 완료
+
+핵심 작업:
+
+1. `requiresUnwind` 또는 watcher `auto_unwind` 상태가 나오면 deterministic `emergency_unwind` intent를 생성
+2. 그 intent가 기존 policy -> signer -> receipt ingest 경로를 그대로 타게 연결
+3. unwind receipt에 `healthFactor path`, `liquidationBuffer path`, `gas cost`, `slippage`, `realizedNetPnlBtc`를 강제 기록
+4. dashboard/status에 `auto_unwind_ready`, `auto_unwind_submitted`, `auto_unwind_confirmed`, `auto_unwind_failed`를 분리 노출
+
+완료 기준:
+
+- `submit_emergency_unwind_intent`가 더 이상 report nextAction에만 머물지 않는다.
+- mocked breach와 signer-backed/fork evidence 둘 다에서 unwind path가 확인된다.
+
+증거:
+- `src/executor/policy/emergency-unwind-intent.mjs` — pure deterministic skeleton builder
+- `src/executor/policy/index.mjs` — `requiresUnwind`와 `emergencyUnwindPath`를 policy 결과로 전파
+- `src/executor/signer/daemon.mjs` — daemon이 `requiresUnwind`를 rejection response에 포함, receipt에 emergency_unwind 필드 강제 기록
+- `src/status/leverage-auto-unwind-status.mjs` — watcher + audit 병합 4-state status
+- `test/executor-policy-index.test.mjs` — emergency_unwind intent가 cap-check와 hf-check를 통과하는 검증
+- `test/leverage-auto-unwind-status.test.mjs` — 4-state status combiner 검증
+
+#### W9-C. tiny live canary evidence closure — 완료
+
+핵심 작업:
+
+1. `minimal_live_proof_exists`와 `micro_canary_repeatable`를 artifact에서 분리 고정
+2. 전략별 signer-backed micro-canary count, last failure reason, realized cost를 기록
+3. manual approval이 남아 있는 경우 그 blocker를 strategy별로 분해해 남긴다
+4. 자금/API/RPC blocker가 없으면 최소 1개 전략에 대해 tiny live canary를 repeatable schema로 누적
+
+완료 기준:
+
+- "실전 소액 테스트가 있나?"라는 질문에 전략별로 `없음 / 최소 증명만 있음 / 반복 가능함`을 바로 답할 수 있다.
+- live 승격 보고서가 minimal live proof와 repeatable canary를 더 이상 같은 말로 쓰지 않는다.
+
+증거:
+- 9개 adapter가 4단계 ladder로 micro-canary status를 계산
+- `src/status/micro-canary-slice.mjs`가 `minimalLiveProofExistsCount`, `lastFailureReason`, `realizedNetUsd`를 노출
+- `test/micro-canary-slice.test.mjs` — 4단계 상태와 필드 검증
+
+남은 것:
+- 실제 생산 환경에서 `minimal_live_proof_exists` 상태인 전략을 `micro_canary_repeatable`(signer-backed >= 3)까지 끌어올리는 것은 자금/API/RPC/approval blocker에 달려있다. 이 blocker는 `docs/current-status.md`와 strategy tick status artifact에 기록돼 있다.
+
 ## 추천 PR 분해
 
 아래처럼 자르면 충돌이 적고 검증이 쉽다.
@@ -708,6 +1126,10 @@ bootstrap 우선순위:
 13. PR-13: Optimism / Sei onboarding
 14. PR-14: shadow -> canary -> promotion automation 연결
 15. PR-15: dashboard / payback / reporting finish
+16. PR-16: direct ETH deployment registry + economics packet
+17. PR-17: indirect native conversion registry + safe router proofs
+18. PR-18: native/ETH LP and looping policy / dashboard integration
+19. PR-19: real risk automation closure (`liquidity-watch`, `concentration-guard`, `emergency_unwind`, tiny live evidence)
 
 ## 병렬화 규칙
 
@@ -747,7 +1169,10 @@ bootstrap 우선순위:
 - `optimism`, `sei`는 strategy surface에 명시적으로 등장
 - shadow / canary / promotion / dashboard / payback가 동일한 deterministic receipt 체인을 공유
 - rescue / unwind / offramp / payback가 같은 gas bootstrap 체인을 공유
+- 리스크 자동관리가 `HF/cap 차단만 존재` 수준을 넘어 `liquidity/concentration/unwind`까지 signer runtime에 닫혀 있다
 - 최소 라이브 증명 단계의 후보와 반복 가능한 micro canary 후보가 구분되어 보인다
+- direct ETH deployment와 indirect native conversion deployment가 별도 maturity class로 보인다
+- Bob Gateway가 native/ETH 전략에서도 "부속 브리지"가 아니라 첫 funding rail로 유지된다
 
 ## 실행 시작점
 
@@ -762,6 +1187,8 @@ bootstrap 우선순위:
 7. W5 destination rotation
 8. W6 Optimism / Sei onboarding
 9. W7 운영 연동 마감
+10. W9 real risk automation closure
+11. W8 Gateway-first native / ETH deployment
 
 이 순서를 바꾸면 "후보 수는 많지만 실제로는 tick / receipt / promotion이 끊긴 상태"가 다시 반복될 가능성이 높다.
 
