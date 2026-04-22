@@ -26,6 +26,8 @@ import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategyS
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
+import { buildChainParitySlice } from "./chain-parity-slice.mjs";
+import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
@@ -171,6 +173,25 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     executorRuntime,
     promotionReport,
   }, { now });
+
+  // P1/P2 parity floor injection — deterministic, pure slices
+  const chainParity = buildChainParitySlice();
+  const strategyTickStatus =
+    (await readJsonIfExists(join(dataDir, "..", "dashboard", "public", "strategy-tick-status.json"))) ||
+    (await readJsonIfExists(join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"))) ||
+    null;
+  const strategyParity = buildStrategyParitySlice({
+    deterministicCandidates: deterministicStrategyCandidates,
+    secondaryStrategyScaffolds,
+    researchBoard: strategyResearchBoard,
+    strategyTickStatus,
+  });
+  dashboardStatus.strategy.chainParity = chainParity;
+  dashboardStatus.strategy.strategyParity = strategyParity;
+  dashboardStatus.strategy.promotionSummary = dashboardStatus.promotion;
+  dashboardStatus.strategy.microCanarySummary =
+    strategyTickStatus?.microCanary || { total: 0, byStrategy: {} };
+
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
   dashboardStatus.payback = await buildPaybackDashboardSlice({

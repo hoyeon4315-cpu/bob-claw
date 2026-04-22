@@ -39,6 +39,7 @@
     "report:btc-proxy-spreads": "node src/cli/report-btc-proxy-spreads.mjs",
     "report:native-btc-surface": "node src/cli/report-native-btc-opportunity-surface.mjs",
     "report:native-btc-plan": "node src/cli/report-native-btc-plan.mjs",
+    "report:strategy-tick-slice": "node src/cli/report-strategy-tick-slice.mjs --write",
     "report:strategy-catalog": "node src/cli/report-strategy-catalog.mjs",
     "report:strategy-execution-surfaces": "node src/cli/report-strategy-execution-surfaces.mjs",
     "report:strategy-research-board": "node src/cli/report-strategy-research-board.mjs",

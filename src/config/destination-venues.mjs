@@ -62,6 +62,12 @@ export const WRAPPED_BTC_VENUES = Object.freeze({
       Object.freeze({ protocol: "catex", family: "amm", asset: "wBTC.OFT/ETH" }),
     ]),
   }),
+  ethereum: Object.freeze({
+    chain: "ethereum",
+    venues: Object.freeze([]),
+    status: "template_only",
+    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+  }),
   optimism: Object.freeze({
     chain: "optimism",
     venues: Object.freeze([

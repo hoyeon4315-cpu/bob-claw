@@ -1789,11 +1789,17 @@ export function buildDashboardStatus(input, options = {}) {
     proxySpreadSummary: strategyBase.btcProxySpreads || null,
     now,
   });
+  const promotion = buildPromotionSlice(input.promotionReport || null);
   const strategy = {
     ...strategyBase,
     pivotPlan: summarizeStrategyPivotPlan(pivotPlan),
     yieldShadowBook: summarizeYieldShadowBook(yieldShadowBook),
     proxySpreadCoveragePlan: summarizeProxySpreadCoveragePlan(proxySpreadCoveragePlan),
+    // parity floor defaults — enriched by current-dashboard-context.mjs when data available
+    chainParity: null,
+    strategyParity: null,
+    promotionSummary: promotion,
+    microCanarySummary: { total: 0, byStrategy: {} },
   };
   const strategySnapshot = buildStrategySnapshot({
     dashboardStatus: {
@@ -1829,7 +1835,6 @@ export function buildDashboardStatus(input, options = {}) {
   });
   const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
   const executorRuntime = input.executorRuntime || null;
-  const promotion = buildPromotionSlice(input.promotionReport || null);
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
