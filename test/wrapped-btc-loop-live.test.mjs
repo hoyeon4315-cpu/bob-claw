@@ -156,7 +156,7 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
       body: {
         outAmounts: [
           outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-            ? "100000000"
+            ? "200000000"
             : "1332",
         ],
         pathId: "path-1",
@@ -200,7 +200,7 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:swap-borrow-to-collateral-1")).tx.gasLimit, "252000");
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral")).metadata.capCheckAmountUsd, 0);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:enter-collateral-market")).metadata.capCheckAmountUsd, 0);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).metadata.capCheckAmountUsd, 300);
+  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).metadata.capCheckAmountUsd, 750);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:borrow-usdc-1")).metadata.capCheckAmountUsd, 0);
 });
 
