@@ -99,7 +99,7 @@ test("native dex experiment plan surfaces routing failures cleanly", async () =>
   assert.equal(plan.steps.length, 0);
 });
 
-test("native dex experiment plan supports newly added bsc and ethereum wrapped-native routes", async () => {
+test("native dex experiment plan supports registered wrapped-native stable routes", async () => {
   const estimateGasImpl = async (chain) => ({
     observedAt: "2026-04-16T06:00:01.000Z",
     chain,
@@ -147,6 +147,15 @@ test("native dex experiment plan supports newly added bsc and ethereum wrapped-n
     senderAddress: "0x1111111111111111111111111111111111111111",
     outputToken: "usdc",
   });
+  const optimismPlan = await buildNativeDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl,
+    gasSnapshotImpl,
+    chain: "optimism",
+    amount: "100000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    outputToken: "usdc",
+  });
 
   assert.equal(bscPlan.planStatus, "ready");
   assert.equal(bscPlan.wrappedInputToken, WRAPPED_NATIVE_TOKENS.bsc);
@@ -154,6 +163,8 @@ test("native dex experiment plan supports newly added bsc and ethereum wrapped-n
   assert.equal(ethereumPlan.wrappedInputToken, WRAPPED_NATIVE_TOKENS.ethereum);
   assert.equal(unichainPlan.planStatus, "ready");
   assert.equal(unichainPlan.outputAsset.ticker, "USDC");
+  assert.equal(optimismPlan.planStatus, "ready");
+  assert.equal(optimismPlan.outputToken, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
 });
 
 test("native dex experiment execution waits for output token delivery proof", async () => {

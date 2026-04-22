@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  backfillMissingNativePricesUsd,
   buildPriceSnapshot,
   emptyPricesUsd,
   overlayObservedPricesUsd,
+  priceForAssetUsd,
   pricesFromSnapshot,
   shouldPersistPriceSnapshot,
 } from "../src/market/prices.mjs";
@@ -26,6 +28,20 @@ test("observed snapshots backfill missing btc and ethereum prices", () => {
   assert.equal(prices.nativeByChain.ethereum, 2242.72);
   assert.equal(prices.nativeByChain.base, 2242.72);
   assert.equal(prices.nativeByChain.bob, 2242.72);
+});
+
+test("missing BSC native price can be backfilled from Coinbase spot data", async () => {
+  const prices = await backfillMissingNativePricesUsd({
+    btc: null,
+    tokenByKey: { usd_stable: 1 },
+    nativeByChain: { bsc: null },
+  }, {
+    spotFetcher: async (symbol) => (symbol === "BNB" ? 650.25 : null),
+  });
+
+  assert.equal(prices.nativeByChain.bsc, 650.25);
+  assert.equal(prices.tokenByKey.bsc, 650.25);
+  assert.equal(priceForAssetUsd({ priceKey: "bsc" }, prices), 650.25);
 });
 
 test("price snapshots round-trip into scoring price maps", () => {

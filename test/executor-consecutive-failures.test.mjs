@@ -99,6 +99,73 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
   assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), true);
 });
 
+test("committed resume timestamp ignores older terminal failures without rewriting audit history", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: intentFixture({
+      strategyId: "native-dex-experiment",
+      chain: "optimism",
+      intentType: "dex_swap",
+      quote: { observedAt: "2026-04-22T15:17:00.000Z" },
+    }),
+    auditRecords: [
+      {
+        strategyId: "native-dex-experiment",
+        intentId: "fail-1",
+        timestamp: "2026-04-22T15:10:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "error" },
+      },
+      {
+        strategyId: "native-dex-experiment",
+        intentId: "fail-2",
+        timestamp: "2026-04-22T15:11:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "error" },
+      },
+      {
+        strategyId: "native-dex-experiment",
+        intentId: "fail-3",
+        timestamp: "2026-04-22T15:16:41.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+    ],
+    now: "2026-04-22T15:17:00.000Z",
+  });
+
+  assert.equal(policy.decision, "ALLOW");
+  assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), false);
+  const consecutiveResult = policy.results.find((item) => item.policy === "consecutive_failures");
+  assert.equal(consecutiveResult.metrics.consecutiveFailures, 0);
+  assert.equal(consecutiveResult.metrics.resumeAfter, "2026-04-22T15:16:42.000Z");
+});
+
+test("new failures after a committed resume timestamp are still counted", () => {
+  const state = buildConsecutiveFailureState({
+    strategyId: "native-dex-experiment",
+    resumeAfter: "2026-04-22T15:16:42.000Z",
+    auditRecords: [
+      {
+        strategyId: "native-dex-experiment",
+        intentId: "older-fail",
+        timestamp: "2026-04-22T15:16:41.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "error" },
+      },
+      {
+        strategyId: "native-dex-experiment",
+        intentId: "new-fail",
+        timestamp: "2026-04-22T15:17:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "error" },
+      },
+    ],
+  });
+
+  assert.equal(state.consecutiveFailures, 1);
+  assert.equal(state.latestFailureAt, "2026-04-22T15:17:00.000Z");
+});
+
 test("prelive fork sign-only rejections do not count as terminal failures", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "prelive_fork_execution",
