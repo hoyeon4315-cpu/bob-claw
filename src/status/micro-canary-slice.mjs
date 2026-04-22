@@ -1,7 +1,8 @@
 // W7 — Micro-canary dashboard slice.
 //
 // Summarizes the micro-canary stage of every strategy from a tick
-// report so the dashboard can display "not_started / ready / repeatable"
+// report so the dashboard can display
+// "not_started / micro_canary_ready / minimal_live_proof_exists / micro_canary_repeatable"
 // without reading raw JSONL.
 //
 // Pure function. No I/O.
@@ -14,6 +15,9 @@ export function buildMicroCanarySlice(reports = []) {
   const ready = reports.filter(
     (r) => r?.microCanaryStatus === "micro_canary_ready",
   );
+  const minimalLiveProof = reports.filter(
+    (r) => r?.microCanaryStatus === "minimal_live_proof_exists",
+  );
   const repeatable = reports.filter(
     (r) => r?.microCanaryStatus === "micro_canary_repeatable",
   );
@@ -25,6 +29,8 @@ export function buildMicroCanarySlice(reports = []) {
         signerBackedCount: r?.evidence?.signerBackedCount ?? 0,
         passedCount: r?.evidence?.passedCount ?? 0,
         mode: r?.mode || "blocked",
+        lastFailureReason: r?.blockers?.[0] || null,
+        realizedNetUsd: r?.evidence?.realizedNetUsd ?? null,
       },
     ]),
   );
@@ -32,6 +38,7 @@ export function buildMicroCanarySlice(reports = []) {
     total,
     notStartedCount: notStarted.length,
     readyCount: ready.length,
+    minimalLiveProofExistsCount: minimalLiveProof.length,
     repeatableCount: repeatable.length,
     byStrategy: Object.freeze(byStrategy),
     generatedAt: new Date().toISOString(),

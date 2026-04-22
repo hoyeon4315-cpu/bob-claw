@@ -323,9 +323,11 @@ export function evaluateTokenizedReserveAdapter({
     intent,
     microCanaryStatus: evidence.signerBackedCount >= 3
       ? "micro_canary_repeatable"
-      : evidence.signerBackedCount > 0
-      ? "micro_canary_ready"
-      : "not_started",
+      : evidence.signerBackedCount >= 1
+        ? "minimal_live_proof_exists"
+        : shadowReady
+          ? "micro_canary_ready"
+          : "not_started",
   });
 }
 

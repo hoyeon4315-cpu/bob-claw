@@ -96,6 +96,7 @@ async function handleIntentCommand({
     auditRecords,
     activeBudgetUsd: args.activeBudgetUsd,
     killSwitchPath: args.killSwitchPath,
+    riskContext: intent.metadata?.riskContext || null,
   });
 
   if (policy.decision !== "ALLOW") {
@@ -113,6 +114,8 @@ async function handleIntentCommand({
       status: "rejected",
       policy,
       notification,
+      requiresUnwind: policy.requiresUnwind || false,
+      emergencyUnwindPath: policy.emergencyUnwindPath || null,
     };
   }
 
@@ -169,7 +172,16 @@ async function handleIntentCommand({
             broadcast,
             realized: serializedReceipt
               ? {
+                  ...serializedReceipt,
                   actualKnownCostUsd: null,
+                  ...(intent.intentType === "emergency_unwind"
+                    ? {
+                        healthFactorPath: intent.metadata?.healthFactorPath ?? null,
+                        liquidationBufferPath: intent.metadata?.liquidationBufferPath ?? null,
+                        slippagePct: intent.metadata?.slippagePct ?? null,
+                        realizedNetPnlBtc: intent.metadata?.realizedNetPnlBtc ?? null,
+                      }
+                    : {}),
                 }
               : null,
             error:

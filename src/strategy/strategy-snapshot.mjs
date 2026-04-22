@@ -5,6 +5,7 @@ import { summarizeAllocatorCore } from "./allocator-core.mjs";
 import { buildCapitalExpansionReview, summarizeCapitalExpansionReview } from "./capital-expansion-review.mjs";
 import { summarizeDeterministicStrategyCandidates } from "./deterministic-strategy-candidates.mjs";
 import { summarizeLeverageAutoUnwindRuntimeReports } from "../defi/leverage-auto-unwind-runtime.mjs";
+import { buildLeverageAutoUnwindStatus } from "../status/leverage-auto-unwind-status.mjs";
 import { summarizePhase1Revalidation } from "./phase1-revalidation.mjs";
 import { summarizePhase3StrategyValidation } from "./phase3-strategy-validation.mjs";
 import { summarizeProtocolMarketWatchers } from "./protocol-market-watchers.mjs";
@@ -325,6 +326,7 @@ export function buildStrategySnapshot({
   secondaryStrategyScaffolds = null,
   deterministicStrategyCandidates = null,
   leverageAutoUnwindRuntimeReports = [],
+  auditRecords = [],
   now = null,
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
@@ -397,6 +399,10 @@ export function buildStrategySnapshot({
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
   const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
   const leverageAutoUnwindRuntimeSummary = summarizeLeverageAutoUnwindRuntimeReports(leverageAutoUnwindRuntimeReports);
+  const leverageAutoUnwindExecutionStatus = buildLeverageAutoUnwindStatus({
+    runtimeReports: leverageAutoUnwindRuntimeReports,
+    auditRecords,
+  });
   const productCoverage = buildProductPlanningCoverage({
     dashboardStatus,
     strategySnapshot: {
@@ -457,6 +463,10 @@ export function buildStrategySnapshot({
       formulaTopGapId: formulaAudit?.summary?.topGap?.id || null,
       leverageRuntimeCount: leverageAutoUnwindRuntimeSummary?.runtimeCount ?? 0,
       leverageRuntimeTopPriorityId: leverageAutoUnwindRuntimeSummary?.topPriority?.strategyId || null,
+      leverageAutoUnwindReadyCount: leverageAutoUnwindExecutionStatus?.autoUnwindReadyCount ?? 0,
+      leverageAutoUnwindSubmittedCount: leverageAutoUnwindExecutionStatus?.submittedCount ?? 0,
+      leverageAutoUnwindConfirmedCount: leverageAutoUnwindExecutionStatus?.confirmedCount ?? 0,
+      leverageAutoUnwindFailedCount: leverageAutoUnwindExecutionStatus?.failedCount ?? 0,
       productCoverageReadyCount: productCoverage?.readyCount ?? 0,
       productCoverageBlockedCount: productCoverage?.blockedCount ?? 0,
       productCoverageMissingCount: productCoverage?.missingCount ?? 0,
@@ -478,6 +488,7 @@ export function buildStrategySnapshot({
       protocolMarketWatchers: protocolMarketWatchersSummary,
       formulaAudit,
       leverageAutoUnwindRuntime: leverageAutoUnwindRuntimeSummary,
+      leverageAutoUnwindExecutionStatus,
       strategyResearchBoard: strategyResearchSummary,
       secondaryStrategyScaffolds: secondaryScaffoldsSummary,
       deterministicStrategyCandidates: deterministicCandidatesSummary,

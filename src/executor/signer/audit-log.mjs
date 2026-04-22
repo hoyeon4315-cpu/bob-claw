@@ -30,6 +30,7 @@ export function buildSignerAuditRecord({
       intentType: intent.intentType,
       amountUsd: intent.amountUsd,
       mode: intent.mode,
+      metadata: intent.metadata || null,
     },
     amountUsd: intent.amountUsd,
     policyVerdict,
