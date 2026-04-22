@@ -38,7 +38,14 @@ export function evaluateLiquidityWatch(snapshot, thresholds = LIQUIDITY_WATCH_TH
 
   const ok = violations.length === 0;
   const severity = ok ? SEVERITY.INFO : SEVERITY.HALT_STRATEGY;
-  const action = ok ? "none" : "block_new_entries_queue_unwind";
+  let action = "none";
+  if (!ok) {
+    const hasWithdrawalQueue = violations.some((v) => v.kind === "withdrawal_queue_too_deep");
+    const hasUtilization = violations.some((v) => v.kind === "utilization_sustained_over_threshold");
+    if (hasWithdrawalQueue) action = "queue_unwind";
+    else if (hasUtilization) action = "pause_new_entries";
+    else action = "block_new_entries_queue_unwind";
+  }
   return makeVerdict({
     moduleId: `liquidity-watch:${poolId}`,
     ok, severity, action, violations, details,

@@ -85,7 +85,7 @@ test("oft-watcher: mint/burn ratio 2.0 trips (kelp pattern)", () => {
 });
 
 // --- liquidity-watch ---
-test("liquidity-watch: 95% utilization sustained 60m trips halt_strategy", () => {
+test("liquidity-watch: 95% utilization sustained 60m trips pause_new_entries", () => {
   const v = evaluateLiquidityWatch({
     poolId: "moonwell-usdc",
     utilizationPct: 0.97,
@@ -93,6 +93,29 @@ test("liquidity-watch: 95% utilization sustained 60m trips halt_strategy", () =>
   });
   assert.equal(v.ok, false);
   assert.equal(v.severity, SEVERITY.HALT_STRATEGY);
+  assert.equal(v.action, "pause_new_entries");
+});
+
+test("liquidity-watch: deep withdrawal queue trips queue_unwind", () => {
+  const v = evaluateLiquidityWatch({
+    poolId: "moonwell-usdc",
+    utilizationPct: 0.80,
+    utilizationSustainedMinutes: 0,
+    withdrawalQueueBlocks: 600,
+  });
+  assert.equal(v.ok, false);
+  assert.equal(v.action, "queue_unwind");
+});
+
+test("liquidity-watch: both violations default to queue_unwind", () => {
+  const v = evaluateLiquidityWatch({
+    poolId: "moonwell-usdc",
+    utilizationPct: 0.97,
+    utilizationSustainedMinutes: 60,
+    withdrawalQueueBlocks: 600,
+  });
+  assert.equal(v.ok, false);
+  assert.equal(v.action, "queue_unwind");
 });
 
 test("liquidity-watch: 95% utilization for 30m does NOT trip (not sustained)", () => {
