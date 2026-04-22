@@ -1350,6 +1350,24 @@ Evidence:
 - 실패/비용/효율/증거 stale에 따른 강등 규칙이 문서와 status pipeline에 반영된다.
 - `demotion-policy.mjs`가 4개 trigger 평가, stage slice가 override 적용.
 
+### L6 기준 (W10 -> L6 승격 gate)
+
+`L6` = `live_ready` 전략이 최소 1개 존재하고, 그 상태가 지속 가능하다는 의미.
+
+필수 조건 (모두 충족 시 L6 진입):
+
+1. `promotionVerdict === "live_ready"`인 전략이 `strategy-tick-status.json`에 기록됨
+2. 해당 전략의 `demotionTriggers === []` (강등 trigger 없음)
+3. `autoExecute: true` committed diff가 해당 전략 caps에 존재
+4. `evaluatePromotionEvidence()` fast-track threshold 충족 (signer-backed receipts ≥ 2, consecutive success ≥ 1, etc.)
+5. 실제 on-chain signer-backed receipt이 `logs/signer-audit.jsonl`에 기록됨 (txHash 확인 가능)
+
+금지 사항 (하나라도 해당 시 L6 보류):
+
+- `autoExecute`를 committed diff 없이 runtime에서만 올린 경우
+- `live_ready` 판단에 simulator-only receipt이 섞인 경우
+- `demotionTriggers`가 비어있지 않은데 무시한 경우
+
 ### W10 최종 산출물
 
 1. `docs/remaining-candidate-build-plan-2026-04-22.md`의 W10 섹션
