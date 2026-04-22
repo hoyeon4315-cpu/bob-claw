@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import { buildEmergencyUnwindIntent } from "../src/executor/policy/emergency-unwind-intent.mjs";
+import { buildTinyLiveCanaryIntent } from "../src/executor/policy/tiny-live-canary-intent.mjs";
 
 function baseIntent(overrides = {}) {
   return {
@@ -157,4 +158,87 @@ test("emergency unwind intent passes cap-check and hf-check via policy", async (
     now: "2026-04-22T00:00:00.000Z",
   });
   assert.equal(policy.decision, "ALLOW");
+});
+
+test("tiny_live_canary passes policy when all gates met", async () => {
+  const intent = buildTinyLiveCanaryIntent({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    chain: "base",
+    amountUsd: 25,
+    microCanaryStatus: "minimal_live_proof_exists",
+    now: "2026-04-22T00:00:00.000Z",
+  });
+  const policy = await evaluateIntentPolicies({
+    intent,
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intent: { intentType: "emergency_unwind" },
+        lifecycle: { stage: "confirmed" },
+        observedAt: "2026-04-22T00:00:00.000Z",
+      },
+    ],
+    riskContext: {
+      microCanaryStatus: "minimal_live_proof_exists",
+    },
+    now: "2026-04-22T00:00:00.000Z",
+  });
+  assert.equal(policy.decision, "ALLOW");
+  const tinyLiveResult = policy.results.find((r) => r.policy === "tiny_live_canary");
+  assert.ok(tinyLiveResult);
+  assert.equal(tinyLiveResult.decision, "ALLOW");
+});
+
+test("tiny_live_canary blocked when microCanaryStatus insufficient", async () => {
+  const intent = buildTinyLiveCanaryIntent({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    chain: "base",
+    amountUsd: 25,
+    microCanaryStatus: "micro_canary_ready",
+    now: "2026-04-22T00:00:00.000Z",
+  });
+  const policy = await evaluateIntentPolicies({
+    intent,
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intent: { intentType: "emergency_unwind" },
+        lifecycle: { stage: "confirmed" },
+        observedAt: "2026-04-22T00:00:00.000Z",
+      },
+    ],
+    riskContext: {
+      microCanaryStatus: "micro_canary_ready",
+    },
+    now: "2026-04-22T00:00:00.000Z",
+  });
+  assert.equal(policy.decision, "BLOCK");
+  assert.ok(policy.blockers.includes("tiny_live_micro_canary_stage_insufficient"));
+});
+
+test("tiny_live_canary blocked when amount exceeds tinyLivePerTxUsd", async () => {
+  const intent = buildTinyLiveCanaryIntent({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    chain: "base",
+    amountUsd: 100,
+    microCanaryStatus: "minimal_live_proof_exists",
+    now: "2026-04-22T00:00:00.000Z",
+  });
+  const policy = await evaluateIntentPolicies({
+    intent,
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intent: { intentType: "emergency_unwind" },
+        lifecycle: { stage: "confirmed" },
+        observedAt: "2026-04-22T00:00:00.000Z",
+      },
+    ],
+    riskContext: {
+      microCanaryStatus: "minimal_live_proof_exists",
+    },
+    now: "2026-04-22T00:00:00.000Z",
+  });
+  assert.equal(policy.decision, "BLOCK");
+  assert.ok(policy.blockers.includes("strategy_per_tx_cap_exceeded"));
 });

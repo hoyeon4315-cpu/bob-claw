@@ -5,6 +5,7 @@ import { evaluateConcentrationGuard } from "../risk/concentration-guard.mjs";
 import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
+import { evaluateTinyLiveCanaryPolicy } from "./tiny-live-canary-policy.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
 
@@ -76,6 +77,13 @@ export async function evaluateIntentPolicies({
     evaluateHealthFactorCheck({ intent, strategyCaps, now }),
     evaluateStaleQuote({ intent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
     evaluateApprovalHygiene({ intent, now }),
+    evaluateTinyLiveCanaryPolicy({
+      intent,
+      strategyCaps,
+      microCanaryStatus: riskContext?.microCanaryStatus || intent.metadata?.microCanaryStatus || null,
+      auditRecords,
+      now,
+    }),
     liquidityVerdict
       ? {
           policy: "liquidity_watch",

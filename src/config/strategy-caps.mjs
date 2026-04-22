@@ -384,6 +384,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 1_000_000,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
     leverage: Object.freeze({
       healthFactorMin: 1.35,
@@ -449,6 +450,9 @@ export function validateStrategyCapsConfig(config = {}) {
     }
     if (!config.caps.perChainUsd || typeof config.caps.perChainUsd !== "object" || Object.keys(config.caps.perChainUsd).length === 0) {
       errors.push("caps.perChainUsd must declare at least one chain budget");
+    }
+    if (config.caps.tinyLivePerTxUsd !== undefined && !isFiniteNumber(config.caps.tinyLivePerTxUsd)) {
+      errors.push("caps.tinyLivePerTxUsd must be a finite number when provided");
     }
   }
   if (config.leverage) {
