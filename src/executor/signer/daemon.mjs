@@ -83,7 +83,7 @@ async function readAddressInfoOrNull(getter) {
   }
 }
 
-async function handleIntentCommand({
+export async function handleIntentCommand({
   message,
   signers,
   args,
