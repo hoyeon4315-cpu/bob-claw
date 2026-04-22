@@ -27,6 +27,7 @@ import {
 } from "../strategy/promotion-evidence.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
+import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
 
 const DEFAULT_STRATEGIES = ["beefy-folding-vault", "wrapped-btc-loop-base-moonwell"];
 
@@ -115,6 +116,14 @@ function main() {
         })),
       receiptCountTotal: receipts.length,
       receiptCountSignerBacked: receipts.filter((r) => r?.source === "signer").length,
+      demotion: (() => {
+        const d = evaluateDemotionPolicy({ strategyId: sid, receipts, nowMs });
+        return {
+          demoted: d.demoted,
+          triggers: d.triggers.map((t) => t.kind),
+          signerBackedReceiptCount: d.evidence?.signerBackedReceiptCount ?? 0,
+        };
+      })(),
       promotion: {
         fastTrack: {
           eligible: promotionFastTrack.eligible,
@@ -144,8 +153,11 @@ function main() {
   const promotionEvidence = Object.fromEntries(
     strategyRows.map((s) => [s.strategyId, { eligible: s.promotion.fastTrack.eligible }]),
   );
+  const demotionEvidence = Object.fromEntries(
+    strategyRows.map((s) => [s.strategyId, { demoted: s.demotion.demoted, triggers: s.demotion.triggers }]),
+  );
   const microCanarySlice = buildMicroCanarySlice(dedupedLatestReports);
-  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, promotionEvidence);
+  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, promotionEvidence, demotionEvidence);
 
   const slice = {
     schemaVersion: 2,

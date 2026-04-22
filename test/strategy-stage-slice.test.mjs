@@ -128,6 +128,42 @@ describe("buildStrategyStageSlice", () => {
     const slice = buildStrategyStageSlice([]);
     assert.ok(/\d{4}-\d{2}-\d{2}T/.test(slice.generatedAt));
   });
+
+  test("demotion overrides live_ready back to live_candidate", () => {
+    const reports = [
+      reportFixture({ strategyId: "dem1", mode: "live_candidate" }),
+      reportFixture({ strategyId: "dem2", mode: "live_candidate" }),
+    ];
+    const promotionEvidence = {
+      dem1: { eligible: true },
+      dem2: { eligible: true },
+    };
+    const demotionEvidence = {
+      dem1: { demoted: true, triggers: ["recent_failure_burst"] },
+      dem2: { demoted: false, triggers: [] },
+    };
+    const slice = buildStrategyStageSlice(reports, promotionEvidence, demotionEvidence);
+    assert.equal(slice.liveReadyCount, 1);
+    assert.equal(slice.liveCandidateCount, 1);
+    assert.equal(slice.byStrategy.dem1.promotionVerdict, "live_candidate");
+    assert.equal(slice.byStrategy.dem2.promotionVerdict, "live_ready");
+    assert.deepEqual(slice.byStrategy.dem1.demotionTriggers, ["recent_failure_burst"]);
+    assert.deepEqual(slice.byStrategy.dem2.demotionTriggers, []);
+  });
+
+  test("demotion does not affect non-live_ready strategies", () => {
+    const reports = [
+      reportFixture({ strategyId: "blk", mode: "blocked" }),
+      reportFixture({ strategyId: "shd", mode: "shadow_ready" }),
+    ];
+    const demotionEvidence = {
+      blk: { demoted: true, triggers: ["stale_evidence"] },
+      shd: { demoted: true, triggers: ["stale_evidence"] },
+    };
+    const slice = buildStrategyStageSlice(reports, {}, demotionEvidence);
+    assert.equal(slice.byStrategy.blk.promotionVerdict, "blocked");
+    assert.equal(slice.byStrategy.shd.promotionVerdict, "shadow_ready");
+  });
 });
 
 describe("summarizeStageDistribution", () => {
@@ -157,5 +193,19 @@ describe("summarizeStageDistribution", () => {
       assert.ok(Object.isFrozen(dist[stage]));
     }
     assert.ok(Object.isFrozen(dist));
+  });
+
+  test("demotion moves live_ready count to live_candidate in distribution", () => {
+    const reports = [
+      reportFixture({ strategyId: "a", mode: "live_candidate" }),
+      reportFixture({ strategyId: "b", mode: "live_candidate" }),
+    ];
+    const promotionEvidence = { a: { eligible: true }, b: { eligible: true } };
+    const demotionEvidence = { a: { demoted: true, triggers: ["x"] }, b: { demoted: false, triggers: [] } };
+    const dist = summarizeStageDistribution(reports, promotionEvidence, demotionEvidence);
+    assert.equal(dist.live_ready.count, 1);
+    assert.deepEqual(dist.live_ready.strategyIds, ["b"]);
+    assert.equal(dist.live_candidate.count, 1);
+    assert.deepEqual(dist.live_candidate.strategyIds, ["a"]);
   });
 });
