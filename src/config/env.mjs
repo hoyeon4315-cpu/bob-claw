@@ -66,6 +66,7 @@ export function getChainRpcUrls(chainName, fallback) {
 
 export const config = {
   gatewayApiBase: getEnv("BOB_GATEWAY_API_BASE", "https://gateway-api-mainnet.gobob.xyz"),
+  merklApiBase: getEnv("BOB_CLAW_MERKL_API_BASE", "https://api.merkl.xyz"),
   verifyRecipient: getEnv("BOB_CLAW_VERIFY_RECIPIENT", "0x000000000000000000000000000000000000dEaD"),
   estimateFrom: getEnv("BOB_CLAW_ESTIMATE_FROM", null),
   verifyBtcRecipient: getEnv("BOB_CLAW_VERIFY_BTC_RECIPIENT", "1BitcoinEaterAddressDontSendf59kuE"),
