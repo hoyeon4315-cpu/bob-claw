@@ -86,6 +86,7 @@ export async function buildGasZipNativeRefuelPlan({
   srcChain,
   dstChain,
   amountWei,
+  minimumDestinationWei = null,
   senderAddress,
   recipient,
   strategyId = GAS_ZIP_NATIVE_REFUEL_STRATEGY_ID,
@@ -111,6 +112,8 @@ export async function buildGasZipNativeRefuelPlan({
   if (!dstConfig) throw new Error(`Gas.Zip outbound config missing for ${dstChain}`);
 
   const normalizedAmountWei = toPositiveIntegerString(amountWei, "amountWei");
+  const normalizedMinimumDestinationWei =
+    minimumDestinationWei == null ? null : toPositiveIntegerString(minimumDestinationWei, "minimumDestinationWei");
   const amountUsd = amountUsdFromWei(normalizedAmountWei, tokenAsset(srcChain, ZERO_TOKEN), await priceReader());
   const strategyCaps = assertStrategyCaps(strategyId);
   const policyVerdict = gasZipAcceptsAction({
@@ -250,6 +253,7 @@ export async function buildGasZipNativeRefuelPlan({
         gasZipContractAddress: srcConfig.contractAddress,
         gasZipSettlementProof: "destination_native_balance_delta",
         gasZipExpectedDestinationWei: String(quote.quote.expected),
+        ...(normalizedMinimumDestinationWei ? { gasZipMinimumDestinationWei: normalizedMinimumDestinationWei } : {}),
       },
     };
   } catch (error) {
@@ -269,6 +273,7 @@ export async function buildGasZipNativeRefuelPlan({
     senderAddress,
     recipient,
     amountWei: normalizedAmountWei,
+    minimumDestinationWei: normalizedMinimumDestinationWei,
     amountUsd,
     srcAsset: tokenAsset(srcChain, ZERO_TOKEN),
     dstAsset: tokenAsset(dstChain, ZERO_TOKEN),
@@ -350,7 +355,7 @@ export async function executeGasZipNativeRefuelPlan({
         asset: plan.dstAsset,
         owner: plan.recipient,
         initialBalance: destinationBalanceBefore,
-        requiredDelta: plan.quote?.expectedOutputWei || "0",
+        requiredDelta: plan.minimumDestinationWei || plan.quote?.expectedOutputWei || "0",
         readErc20BalanceImpl,
         readNativeBalanceImpl,
         timeoutMs: destinationSettlementTimeoutMs,

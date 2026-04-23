@@ -12,6 +12,7 @@ import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
+const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
 const GATEWAY_BTC_ONRAMP_MIN_SATS = 5000n;
 
 function isFiniteNumber(value) {
@@ -35,7 +36,7 @@ function ceilUnitsFromDecimalAmount(amountDecimal, decimals) {
   return scaled > 0 ? String(scaled) : null;
 }
 
-function estimateInputAmountFromSource({ job, source }) {
+function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = INPUT_BUFFER_MULTIPLIER }) {
   const targetUsd = job?.estimatedAssetValueUsd;
   const sourceUsd = source?.estimatedUsd;
   const sourceDecimal = source?.actualDecimal;
@@ -47,7 +48,10 @@ function estimateInputAmountFromSource({ job, source }) {
   }
   const sourceAsset = tokenAsset(source.chain, source.token || ZERO_TOKEN);
   const sourceUnitUsd = sourceUsd / sourceDecimal;
-  const inputDecimal = Math.min(sourceDecimal, (targetUsd * INPUT_BUFFER_MULTIPLIER) / sourceUnitUsd);
+  const buffer = Number.isFinite(inputBufferMultiplier) && inputBufferMultiplier > 0
+    ? inputBufferMultiplier
+    : INPUT_BUFFER_MULTIPLIER;
+  const inputDecimal = Math.min(sourceDecimal, (targetUsd * buffer) / sourceUnitUsd);
   return ceilUnitsFromDecimalAmount(inputDecimal, sourceAsset.decimals);
 }
 
@@ -70,6 +74,9 @@ function gatewayOnrampAmountSats({ job, source }) {
 
 function outputAmountForCoverage(plan, executor) {
   if (!plan) return null;
+  if (executor === "gas_zip_native_refuel") {
+    return plan.quote?.expectedOutputWei || plan.quote?.outputAmount || null;
+  }
   if (executor === "gateway_btc_onramp") {
     return plan.gasRefill || plan.quote?.gasRefill || null;
   }
@@ -235,10 +242,17 @@ export async function buildTreasuryRefillExecutionPlan({
   } else if (executor === "gas_zip_native_refuel") {
     const targetAmount = positiveBigInt(job.targetAmount);
     if (!targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
+    const amount = estimateInputAmountFromSource({
+      job,
+      source,
+      inputBufferMultiplier: GAS_ZIP_INPUT_BUFFER_MULTIPLIER,
+    });
+    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     plan = await buildGasZipPlanImpl({
       srcChain: source.chain,
       dstChain: job.chain,
-      amountWei: targetAmount.toString(),
+      amountWei: amount,
+      minimumDestinationWei: targetAmount.toString(),
       senderAddress,
       recipient: senderAddress,
       auditRecords,
