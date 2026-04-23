@@ -139,3 +139,42 @@ test("merkl normalizer extracts YO vault binding from raw opportunity", () => {
   assert.equal(item.protocolBinding.shareTokenAddress, "0x0000000f2eB9f69274678c76222B35eEc7588a65");
   assert.equal(item.protocolBinding.assetSymbol, "USDC");
 });
+
+test("merkl normalizer extracts Summer Finance vault binding from raw opportunity", () => {
+  const item = normalizeMerklOpportunity({
+    id: "7759132104627022749",
+    chainId: 1,
+    chain: { name: "Ethereum" },
+    protocol: { id: "summerfinance", name: "Summer Finance" },
+    type: "ERC20LOGPROCESSOR",
+    action: "LEND",
+    name: "Deposit wETH on Summer Finance (lower risk)",
+    description: "Earn rewards by depositing wETH on Summer Finance",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x67e536797570b3d8919Df052484273815A0aB506",
+    depositUrl: "https://summer.fi/earn/mainnet/position/0x67e536797570b3d8919df052484273815a0ab506",
+    tokens: [
+      {
+        displaySymbol: "LVWETH",
+        address: "0x67e536797570b3d8919Df052484273815A0aB506",
+        decimals: 18,
+        verified: false,
+        type: "TOKEN",
+      },
+      {
+        displaySymbol: "wETH",
+        address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        decimals: 18,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.equal(item.protocolBinding.vaultAddress, "0x67e536797570b3d8919Df052484273815A0aB506");
+  assert.equal(item.protocolBinding.assetAddress, "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+  assert.equal(item.protocolBinding.shareTokenAddress, "0x67e536797570b3d8919Df052484273815A0aB506");
+  assert.equal(item.protocolBinding.assetSymbol, "wETH");
+  assert.equal(item.protocolBinding.shareTokenSymbol, "LVWETH");
+});
