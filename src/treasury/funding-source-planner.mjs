@@ -1,5 +1,10 @@
 import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
+import {
+  BRIDGE_PROVIDERS,
+  fallbackProvidersWhenGatewayPaused,
+} from "../config/bridge-providers.mjs";
 import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction, gasZipInboundChain } from "../config/gas-zip.mjs";
+import { isGatewayMethod } from "../config/gateway.mjs";
 import { dexProvidersForChain } from "../dex/providers.mjs";
 
 const METHOD_PROFILES = {
@@ -57,6 +62,38 @@ const METHOD_PROFILES = {
     expectedLatencyMs: 300_000,
     requiresReserveState: true,
     reserveReplenishmentKnown: false,
+    manualFundingDependency: false,
+  },
+  cross_chain_bridge_across: {
+    fixedCostUsd: 0.15,
+    variableCostBps: 25,
+    expectedLatencyMs: 180_000,
+    requiresReserveState: false,
+    reserveReplenishmentKnown: true,
+    manualFundingDependency: false,
+  },
+  cross_chain_bridge_lifi: {
+    fixedCostUsd: 0.25,
+    variableCostBps: 45,
+    expectedLatencyMs: 300_000,
+    requiresReserveState: false,
+    reserveReplenishmentKnown: true,
+    manualFundingDependency: false,
+  },
+  cross_chain_bridge_relay: {
+    fixedCostUsd: 0.1,
+    variableCostBps: 15,
+    expectedLatencyMs: 60_000,
+    requiresReserveState: false,
+    reserveReplenishmentKnown: true,
+    manualFundingDependency: false,
+  },
+  cross_chain_bridge_stargate: {
+    fixedCostUsd: 0.3,
+    variableCostBps: 60,
+    expectedLatencyMs: 240_000,
+    requiresReserveState: false,
+    reserveReplenishmentKnown: true,
     manualFundingDependency: false,
   },
   external_manual_funding: {
@@ -447,13 +484,28 @@ function crossChainExecutorSupport(action, selectedSource) {
   };
 }
 
-function crossChainCandidate(action, plan, policy, routeContext = null) {
+function crossChainCandidate(action, plan, policy, routeContext = null, gatewayAvailability = null) {
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   const directInventoryMode = policy.walletMode === "single_wallet";
+  const gatewayAvailable = gatewayAvailability?.available !== false;
   const executorSupport = crossChainExecutorSupport(action, selectedSource);
   const method = executorSupport.intermediateSwapRequired
     ? "cross_chain_swap_via_btc_intermediate"
     : "cross_chain_bridge_or_swap";
+  if (!gatewayAvailable && isGatewayMethod(method)) {
+    return candidateRecord({
+      action,
+      method,
+      source: selectedSource
+        ? describeSourceAsset(selectedSource.chain, selectedSource.token, sourceAmountMetadata(selectedSource))
+        : null,
+      availability: "manual_only",
+      preferred: false,
+      missingInputs: [gatewayAvailability?.reason || "gateway_operator_paused"],
+      notes:
+        "BOB Gateway is currently disabled (committed flag or runtime state file). Gateway-backed cross-chain methods are not selectable until the pause clears. Route through an alternate bridge provider or manual funding instead.",
+    });
+  }
   const coversTarget =
     action.type === "refill_token"
       ? sourceInventoryCoversTargetAmount(action, selectedSource)
@@ -569,6 +621,57 @@ function gasRefuelCandidate(action, plan, policy) {
   });
 }
 
+function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContext = null } = {}) {
+  // Only emit alt-bridge candidates when Gateway is unavailable. Under
+  // normal operation Gateway remains the primary BTC-family lane and
+  // these entries would just add noise to the chooser.
+  if (gatewayAvailable) return [];
+  if (action?.type !== "refill_token" && action?.type !== "refill_native") return [];
+  const selectedSource = selectCrossChainSource(action, plan, routeContext);
+  if (!selectedSource) return [];
+  const targetAsset = action.type === "refill_token"
+    ? tokenAsset(action.chain, action.token)
+    : null;
+  const rawFamily = targetAsset?.family || null;
+  const assetFamily = rawFamily
+    ? (rawFamily === "wrapped_btc" || rawFamily === "native_btc" ? "btc"
+      : rawFamily === "usd" || rawFamily === "stablecoin" ? "stable"
+      : rawFamily)
+    : null;
+  const fallbackProviders = fallbackProvidersWhenGatewayPaused({
+    srcChain: selectedSource.chain,
+    dstChain: action.chain,
+    assetFamily,
+  });
+  if (fallbackProviders.length === 0) return [];
+  return fallbackProviders.map((provider) => {
+    const method = provider.methodIds[0];
+    const isLive = provider.status === "live";
+    const missingInputs = isLive
+      ? []
+      : [`bridge_provider_executor_missing:${provider.id}`];
+    const coversTarget =
+      action.type === "refill_token"
+        ? sourceInventoryCoversTargetAmount(action, selectedSource)
+        : sourceInventoryCoversTargetValue(action, selectedSource);
+    if (!coversTarget) missingInputs.push("source_inventory_below_target_amount");
+    const availability = isLive && coversTarget ? "ready" : "conditional";
+    return candidateRecord({
+      action,
+      method,
+      source: describeSourceAsset(selectedSource.chain, selectedSource.token, sourceAmountMetadata(selectedSource)),
+      availability,
+      preferred: isLive && coversTarget,
+      requiresReserveState: false,
+      reserveReplenishmentKnown: true,
+      missingInputs,
+      notes: isLive
+        ? `Gateway fallback via ${provider.label} (live executor).`
+        : `Gateway fallback via ${provider.label}; catalog entry only — executor helper is a design scaffold and must be implemented before auto-selection.`,
+    });
+  });
+}
+
 function manualFundingCandidate(action) {
   return candidateRecord({
     action,
@@ -665,8 +768,9 @@ function estimateCapitalFragmentationDrag({ selections = [], routeContext = null
   };
 }
 
-export function buildFundingSourceCandidates(action, plan, policy, routeContext = null) {
+export function buildFundingSourceCandidates(action, plan, policy, routeContext = null, gatewayAvailability = null) {
   const candidates = [];
+  const gatewayAvailable = gatewayAvailability?.available !== false;
   if (policy.walletMode === "dual_wallet") {
     candidates.push(reserveTransferCandidate(action, true));
   }
@@ -680,7 +784,8 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
   }
 
   if (policy.refillPolicy.enableCrossChainRefill) {
-    candidates.push(crossChainCandidate(action, plan, policy, routeContext));
+    candidates.push(crossChainCandidate(action, plan, policy, routeContext, gatewayAvailability));
+    candidates.push(...alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContext }));
   }
 
   if (policy.refillPolicy.enableGasRefuelFallback && action.type === "refill_native") {
@@ -691,13 +796,19 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
   return candidates;
 }
 
-export function buildFundingSourcePlan({ plan, policy, routeContext = null, supplementalInventory = null }) {
+export function buildFundingSourcePlan({
+  plan,
+  policy,
+  routeContext = null,
+  supplementalInventory = null,
+  gatewayAvailability = null,
+}) {
   const resolvedPlan = {
     ...plan,
     inventory: mergeObservedInventory(plan?.inventory || null, supplementalInventory),
   };
   const selections = (resolvedPlan.actions || []).map((action) => {
-    const candidates = buildFundingSourceCandidates(action, resolvedPlan, policy, routeContext);
+    const candidates = buildFundingSourceCandidates(action, resolvedPlan, policy, routeContext, gatewayAvailability);
     const selected = chooseCandidate(candidates);
     return {
       resourceKey: resourceKeyForRefillAction(action),
@@ -759,6 +870,9 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null, supp
   if (!reserveReplenishmentKnown && selections.length > 0) reasons.push("reserve_replenishment_unmodelled");
   if (selections.some((item) => item.requiresManualFunding)) reasons.push("manual_funding_dependency");
   if (selections.some((item) => item.missingInputs.includes("bootstrap_native_required"))) reasons.push("bootstrap_native_required");
+  if (gatewayAvailability && gatewayAvailability.available === false) {
+    reasons.push(gatewayAvailability.reason || "gateway_operator_paused");
+  }
 
   let effectiveSystemNetPnlUsd = null;
   const routeBaseNetUsd = preferredRouteNetUsd(routeContext);
@@ -802,6 +916,14 @@ export function buildFundingSourcePlan({ plan, policy, routeContext = null, supp
       : null,
     inventory: resolvedPlan.inventory,
     reasons,
+    gatewayAvailability: gatewayAvailability
+      ? {
+          available: gatewayAvailability.available === true,
+          reason: gatewayAvailability.reason || null,
+          stateFile: gatewayAvailability.stateFile || null,
+          observedAt: gatewayAvailability.observedAt || null,
+        }
+      : null,
     selections,
     summary: {
       ...summary,
