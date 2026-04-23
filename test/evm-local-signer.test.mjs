@@ -109,6 +109,20 @@ test("evm signer catches up when chain pending nonce advances externally", async
   assert.equal(next.metadata.nonce, 24);
 });
 
+test("evm signer can reset nonce cache after dropped or timed-out broadcasts", async () => {
+  const provider = buildProvider({ pendingNonce: 3 });
+  const signer = buildSigner(provider);
+
+  const first = await signer.signIntent(intent(), { reserveNonce: true });
+  const second = await signer.signIntent(intent(), { reserveNonce: true });
+  signer.resetNonceManagers("base");
+  const retried = await signer.signIntent(intent(), { reserveNonce: true });
+
+  assert.equal(first.metadata.nonce, 3);
+  assert.equal(second.metadata.nonce, 4);
+  assert.equal(retried.metadata.nonce, 3);
+});
+
 test("evm signer builds transactions through the next RPC when the active RPC fails", async () => {
   const calls = [];
   const providers = new Map([

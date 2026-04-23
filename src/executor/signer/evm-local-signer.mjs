@@ -162,6 +162,15 @@ export class EvmLocalKeySigner extends SignerInterface {
     return this.nonceManagerForProviderIndex(chain, activeIndex);
   }
 
+  resetNonceManagers(chain = null) {
+    const prefix = chain ? `${chain}:` : null;
+    for (const [key, manager] of this.nonceManagers.entries()) {
+      if (!prefix || key.startsWith(prefix)) {
+        manager.reset();
+      }
+    }
+  }
+
   async getAddress(chain = "bob") {
     const wallet = await this.wallet(chain);
     return wallet.address;
@@ -217,33 +226,43 @@ export class EvmLocalKeySigner extends SignerInterface {
   }
 
   async broadcastSignedIntent(signedEnvelope) {
-    return this.withRpcFallback(signedEnvelope.chain, "broadcastSignedIntent", async (provider) => {
-      try {
-        const response = await provider.broadcastTransaction(signedEnvelope.signedTx);
-        return {
-          txHash: response.hash,
-          nonce: response.nonce,
-          from: response.from,
-          to: response.to,
-        };
-      } catch (error) {
-        if (isLikelyAlreadyBroadcast(error)) {
+    try {
+      return await this.withRpcFallback(signedEnvelope.chain, "broadcastSignedIntent", async (provider) => {
+        try {
+          const response = await provider.broadcastTransaction(signedEnvelope.signedTx);
           return {
-            txHash: signedEnvelope.txHash,
-            nonce: signedEnvelope.metadata?.nonce ?? null,
-            from: signedEnvelope.metadata?.from ?? null,
-            to: signedEnvelope.metadata?.to ?? null,
+            txHash: response.hash,
+            nonce: response.nonce,
+            from: response.from,
+            to: response.to,
           };
+        } catch (error) {
+          if (isLikelyAlreadyBroadcast(error)) {
+            return {
+              txHash: signedEnvelope.txHash,
+              nonce: signedEnvelope.metadata?.nonce ?? null,
+              from: signedEnvelope.metadata?.from ?? null,
+              to: signedEnvelope.metadata?.to ?? null,
+            };
+          }
+          throw error;
         }
-        throw error;
-      }
-    });
+      });
+    } catch (error) {
+      this.resetNonceManagers(signedEnvelope.chain);
+      throw error;
+    }
   }
 
   async waitForTransaction(chain, txHash, { confirmations = 1, timeoutMs = 120_000 } = {}) {
-    return this.withRpcFallback(chain, "waitForTransaction", async (provider) => (
-      provider.waitForTransaction(txHash, confirmations, timeoutMs)
-    ));
+    try {
+      return await this.withRpcFallback(chain, "waitForTransaction", async (provider) => (
+        provider.waitForTransaction(txHash, confirmations, timeoutMs)
+      ));
+    } catch (error) {
+      this.resetNonceManagers(chain);
+      throw error;
+    }
   }
 }
 
