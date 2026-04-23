@@ -85,6 +85,16 @@ export function acrossTokenAddress(chain, ticker) {
   return chainTokens[String(ticker || "").toLowerCase()] || null;
 }
 
+export function acrossTickerForToken(chain, tokenAddress) {
+  const chainTokens = ACROSS_SUPPORTED_TOKENS[String(chain || "").toLowerCase()] || null;
+  if (!chainTokens || !tokenAddress) return null;
+  const needle = String(tokenAddress).toLowerCase();
+  for (const [ticker, addr] of Object.entries(chainTokens)) {
+    if (String(addr).toLowerCase() === needle) return ticker;
+  }
+  return null;
+}
+
 export function acrossSupportsPair({ srcChain, dstChain, ticker } = {}) {
   const normalizedTicker = String(ticker || "").toLowerCase();
   const src = acrossTokenAddress(srcChain, normalizedTicker);

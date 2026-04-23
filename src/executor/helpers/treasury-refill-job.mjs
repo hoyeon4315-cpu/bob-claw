@@ -10,6 +10,8 @@ import {
 import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "./gateway-btc-onramp.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
+import { buildAcrossBridgePlan } from "./across-bridge.mjs";
+import { acrossTickerForToken } from "../../config/across.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
 const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
@@ -146,6 +148,7 @@ export function refillExecutorForJob(job = {}) {
   }
   if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
   if (job.executionMethod === "cross_chain_swap_via_btc_intermediate") return "cross_chain_btc_intermediate";
+  if (job.executionMethod === "cross_chain_bridge_across") return "across_bridge";
   return null;
 }
 
@@ -162,6 +165,7 @@ export async function buildTreasuryRefillExecutionPlan({
   buildGatewayBtcPlanImpl = buildGatewayBtcConsolidationPlan,
   buildGatewayBtcOnrampPlanImpl = buildGatewayBtcOnrampPlan,
   buildGasZipPlanImpl = buildGasZipNativeRefuelPlan,
+  buildAcrossBridgePlanImpl = buildAcrossBridgePlan,
 } = {}) {
   if (!job) throw new Error("Treasury refill job is required");
   if (!senderAddress) throw new Error("Treasury refill sender address is required");
@@ -259,6 +263,21 @@ export async function buildTreasuryRefillExecutionPlan({
       destinationBalanceStatus,
       destinationNativeDecimal,
       destinationMinBalanceDecimal,
+    });
+  } else if (executor === "across_bridge") {
+    const amount = job.type === "refill_native"
+      ? estimateInputAmountFromSource({ job, source })
+      : positiveBigInt(job.targetAmount)?.toString() || null;
+    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    const ticker = acrossTickerForToken(source.chain, source.token);
+    if (!ticker) return blockedPreparation({ job, executor, blockedReason: "across_ticker_unsupported" });
+    plan = await buildAcrossBridgePlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      ticker,
+      amount,
+      senderAddress,
+      recipient: senderAddress,
     });
   } else if (executor === "cross_chain_btc_intermediate") {
     // Step 1: DEX swap source token → wBTC.OFT on source chain
