@@ -47,7 +47,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
   across: Object.freeze({
     id: "across",
     label: "Across Protocol v3",
-    status: "design_scaffold",
+    status: "live",
     methodIds: Object.freeze(["cross_chain_bridge_across"]),
     supportedChains: Object.freeze([
       "ethereum",
@@ -56,7 +56,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
       "unichain",
       "arbitrum",
       "polygon",
-      "bnb",
+      "bsc",
     ]),
     assetFamilies: Object.freeze(["eth", "stable", "btc"]),
     fixedCostUsdEstimate: 0.15,
@@ -64,7 +64,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
     latencyMsEstimate: 180_000,
     gatewayBacked: false,
     notes:
-      "Lowest observed fee intent-based bridge; permissionless API at /suggested-fees + SpokePool.deposit. Target as first Gateway fallback for USDC/WETH/wBTC rebalances on EVM chains.",
+      "Lowest observed fee intent-based bridge; permissionless API at /suggested-fees + SpokePool.deposit. Live-proven on Base -> Optimism USDC; source SpokePool code preflight blocks unsupported/no-code chain deployments.",
   }),
   lifi: Object.freeze({
     id: "lifi",
