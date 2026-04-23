@@ -6,6 +6,7 @@ import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
+import { applyMerklCanaryExecutionReadiness } from "../../strategy/merkl-canary-execution-readiness.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
 
@@ -78,15 +79,36 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
   };
 }
 
-export function selectErc4626QueueItem(queue = {}, { opportunityId = null, chain = null } = {}) {
+export function selectErc4626QueueItem(
+  queue = {},
+  {
+    opportunityId = null,
+    chain = null,
+    inventorySnapshot = null,
+    canaryExecutions = [],
+    now = new Date().toISOString(),
+  } = {},
+) {
   const items = queue?.queue || [];
-  const filtered = items.filter((item) => {
+  const filtered = items
+    .filter((item) => {
     if (opportunityId && String(item.opportunityId) !== String(opportunityId)) return false;
     if (chain && item.chain !== chain) return false;
     return item.protocolBindingPlan?.bindingKind === "erc4626_vault_supply_withdraw" &&
       item.protocolBindingPlan?.status === "binding_ready";
-  });
-  return filtered[0] || null;
+    })
+    .map((item) => item.executionReadiness
+      ? item
+      : applyMerklCanaryExecutionReadiness(item, {
+        inventorySnapshot,
+        canaryExecutions,
+        now,
+      }));
+
+  if (opportunityId || chain) return filtered[0] || null;
+
+  const executable = filtered.filter((item) => item.executionReadiness?.status === "inventory_ready");
+  return executable[0] || null;
 }
 
 export async function buildErc4626ProtocolCanaryPlan({

@@ -96,11 +96,16 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
     topQueueId: summary.topQueueId || null,
     topOpportunityId: summary.topOpportunityId || null,
     topNextAction: summary.topNextAction || null,
+    topExecutableOpportunityId: summary.topExecutableOpportunityId || null,
     chainCount: summary.chainCount ?? 0,
     protocolBindingReadyCount: summary.protocolBindingReadyCount ?? 0,
     protocolBindingRequiredCount: summary.protocolBindingRequiredCount ?? 0,
     unsupportedProtocolBindingCount: summary.unsupportedProtocolBindingCount ?? 0,
     chainRouteGapCount: summary.chainRouteGapCount ?? 0,
+    executableNowCount: summary.executableNowCount ?? 0,
+    cooldownActiveCount: summary.cooldownActiveCount ?? 0,
+    nativeGasGapCount: summary.nativeGasGapCount ?? 0,
+    executorMissingCount: summary.executorMissingCount ?? 0,
     topQueue: top
       ? {
           opportunityId: top.opportunityId || null,
@@ -111,6 +116,7 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
           priorityScore: top.priorityScore ?? null,
           capabilityGaps: top.capabilityGaps || [],
           protocolBindingStatus: top.protocolBindingPlan?.status || null,
+          executionReadiness: top.executionReadiness?.status || null,
         }
       : null,
   };

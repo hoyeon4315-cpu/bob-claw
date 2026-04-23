@@ -46,3 +46,62 @@ test("erc4626 protocol canary selects binding-ready queue item and builds approv
   assert.equal(plan.steps[1].intent.intentType, "erc4626_deposit");
   assert.equal(plan.minimumRedeemAssetDelta, "9500");
 });
+
+test("erc4626 protocol canary auto-selection prefers inventory-ready candidates", () => {
+  const queue = {
+    queue: [
+      {
+        queueId: "merkl:eth-morpho",
+        opportunityId: "eth-morpho",
+        rank: 1,
+        chain: "ethereum",
+        protocolId: "morpho",
+        entryAssets: ["USDC"],
+        protocolBindingPlan: {
+          status: "binding_ready",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          resolvedBinding: {
+            vaultAddress: "0x1111111111111111111111111111111111111111",
+            assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            shareTokenAddress: "0x1111111111111111111111111111111111111111",
+          },
+        },
+      },
+      {
+        queueId: "merkl:base-morpho",
+        opportunityId: "base-morpho",
+        rank: 2,
+        chain: "base",
+        protocolId: "morpho",
+        entryAssets: ["USDC"],
+        protocolBindingPlan: {
+          status: "binding_ready",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          resolvedBinding: {
+            vaultAddress: "0x2222222222222222222222222222222222222222",
+            assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            shareTokenAddress: "0x2222222222222222222222222222222222222222",
+          },
+        },
+      },
+    ],
+  };
+  const inventorySnapshot = {
+    native: [{ chain: "base", actual: "100", actualDecimal: 0.001 }],
+    tokens: [{
+      chain: "base",
+      ticker: "USDC",
+      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      actual: "414771",
+      actualDecimal: 0.414771,
+    }],
+  };
+
+  const queueItem = selectErc4626QueueItem(queue, {
+    inventorySnapshot,
+    now: "2026-04-24T02:00:00.000Z",
+  });
+
+  assert.equal(queueItem.opportunityId, "base-morpho");
+  assert.equal(queueItem.executionReadiness.status, "inventory_ready");
+});
