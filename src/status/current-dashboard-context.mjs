@@ -35,6 +35,57 @@ import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
 
+function summarizeMerklCandidate(candidate = null) {
+  if (!candidate) return null;
+  return {
+    opportunityId: candidate.opportunityId || null,
+    chain: candidate.chain || null,
+    protocolId: candidate.protocolId || null,
+    name: candidate.name || null,
+    family: candidate.family || null,
+    mappedStrategyId: candidate.mappedStrategyId || null,
+    score: candidate.score ?? null,
+    campaignRemainingHours: candidate.campaignRemainingHours ?? null,
+    validationMode: candidate.validationMode || null,
+    decision: candidate.decision || null,
+  };
+}
+
+function summarizeMerklOpportunityStatus(report = null, alerts = []) {
+  if (!report) return null;
+  const latestAlert = alerts.at(-1) || null;
+  const summary = report.summary || {};
+  return {
+    generatedAt: report.generatedAt || null,
+    policyProfile: report.policyProfile || null,
+    validationModel: report.validationModel || null,
+    opportunityCount: summary.opportunityCount ?? 0,
+    campaignCount: summary.campaignCount ?? 0,
+    candidateCount: summary.candidateCount ?? 0,
+    liveCanaryCandidateCount: summary.liveCanaryCandidateCount ?? 0,
+    multiAssetRelevantCount: summary.multiAssetRelevantCount ?? 0,
+    rotationCandidateCount: summary.rotationCandidateCount ?? 0,
+    highOverfitRiskCount: summary.highOverfitRiskCount ?? 0,
+    topCandidate: summarizeMerklCandidate(report.topCandidates?.[0] || null),
+    topCandidates: (report.topCandidates || []).slice(0, 5).map(summarizeMerklCandidate),
+    latestAlert: latestAlert
+      ? {
+          observedAt: latestAlert.observedAt || null,
+          updateDetected: latestAlert.diff?.changed === true,
+          addedCount: latestAlert.diff?.addedOpportunityIds?.length ?? 0,
+          removedCount: latestAlert.diff?.removedOpportunityIds?.length ?? 0,
+          newlyExpiringCount: latestAlert.diff?.newlyExpiringIds?.length ?? 0,
+          endedCount: latestAlert.diff?.endedIds?.length ?? 0,
+          topCandidateId: latestAlert.reportSummary?.topCandidateId || null,
+        }
+      : null,
+    nextAction:
+      (summary.liveCanaryCandidateCount ?? 0) > 0
+        ? "queue_merkl_candidate_tiny_live_canary"
+        : "continue_merkl_watch",
+  };
+}
+
 export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
@@ -129,6 +180,10 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
      readJsonIfExists(join(dataDir, "promotion-latest.json")),
    ]);
+  const [merklOpportunityReport, merklOpportunityAlerts] = await Promise.all([
+    readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
+    readJsonl(dataDir, "merkl-opportunity-alerts"),
+  ]);
   const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
     capitalAuditReport,
@@ -205,6 +260,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     scoreSnapshot: state.scoreSnapshot || null,
   });
   dashboardStatus.strategy.canarySelectionGap = canarySelectionGap;
+  dashboardStatus.strategy.merklOpportunitySummary = summarizeMerklOpportunityStatus(
+    merklOpportunityReport,
+    merklOpportunityAlerts,
+  );
+  dashboardStatus.dataCounts.merklOpportunityReportPresent = merklOpportunityReport ? 1 : 0;
+  dashboardStatus.dataCounts.merklOpportunityAlertCount = merklOpportunityAlerts.length;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,
     canaryInputs,
@@ -690,6 +751,8 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       wrappedBtcLoopOosEvidence,
       milestoneValidationGates,
       v1InfraDrills,
+      merklOpportunityReport,
+      merklOpportunityAlerts,
     },
   };
 }

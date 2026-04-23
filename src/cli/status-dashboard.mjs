@@ -384,6 +384,11 @@ async function main() {
       `deterministicCandidates=candidates:${status.strategy.strategySnapshot.deterministicCandidates.candidateCount ?? 0} readyForDryRun:${status.strategy.strategySnapshot.deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked:${status.strategy.strategySnapshot.deterministicCandidates.receiptBackedCount ?? 0} top:${status.strategy.strategySnapshot.deterministicCandidates.topCandidate?.id || "none"} next:${status.strategy.strategySnapshot.deterministicCandidates.nextAction?.code || "none"}`,
     );
   }
+  if (status.strategy?.merklOpportunitySummary) {
+    console.log(
+      `merklOpportunities=candidates:${status.strategy.merklOpportunitySummary.candidateCount ?? 0} liveCanary:${status.strategy.merklOpportunitySummary.liveCanaryCandidateCount ?? 0} top:${status.strategy.merklOpportunitySummary.topCandidate?.opportunityId || "none"} strategy:${status.strategy.merklOpportunitySummary.topCandidate?.mappedStrategyId || "none"} next:${status.strategy.merklOpportunitySummary.nextAction || "none"}`,
+    );
+  }
   if (status.strategy?.strategySnapshot?.formulaAudit) {
     console.log(
       `formulaAudit=implemented:${status.strategy.strategySnapshot.formulaAudit.summary?.implementedCount ?? 0} partial:${status.strategy.strategySnapshot.formulaAudit.summary?.partialCount ?? 0} missing:${status.strategy.strategySnapshot.formulaAudit.summary?.missingCount ?? 0} topGap:${status.strategy.strategySnapshot.formulaAudit.summary?.topGap?.id || "none"}`,
