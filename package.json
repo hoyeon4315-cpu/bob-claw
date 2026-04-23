@@ -136,6 +136,7 @@
     "executor:payback-scheduler:loop": "node src/cli/run-payback-scheduler.mjs --loop",
     "executor:native-dex-experiment": "node src/cli/run-native-dex-experiment.mjs",
     "executor:token-dex-experiment": "node src/cli/run-token-dex-experiment.mjs",
+    "executor:erc4626-protocol-canary": "node src/cli/run-erc4626-protocol-canary.mjs",
     "executor:live-canary-sweep": "node src/cli/run-live-canary-sweep.mjs",
     "executor:wrapped-btc-loop-handoff": "node src/cli/run-wrapped-btc-loop-handoff.mjs",
     "executor:proxy-spread-experiment": "node src/cli/run-proxy-spread-experiment.mjs",

@@ -247,6 +247,35 @@ export const STRATEGY_CAPS = Object.freeze({
         unichain: Object.freeze({ minUsd: 3, targetUsd: 6 }),
       }),
   }),
+  "gateway_native_asset_conversion_sleeve": Object.freeze({
+    strategyId: "gateway_native_asset_conversion_sleeve",
+    label: "Gateway native-asset conversion sleeve",
+    autoExecute: true,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["morpho", "aave", "euler", "odos"]),
+      assetFamily: "multi_asset_yield",
+      btcDenominated: false,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 0.25,
+      perDayUsd: 2,
+      perChainUsd: Object.freeze({
+        base: 1,
+        ethereum: 1,
+        optimism: 1,
+        sei: 1,
+      }),
+      maxDailyLossUsd: 2,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+      optimism: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      sei: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
   "proxy-spread-experiment": Object.freeze({
     strategyId: "proxy-spread-experiment",
     label: "BTC proxy spread experiment",

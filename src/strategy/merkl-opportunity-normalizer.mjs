@@ -4,6 +4,7 @@ const ETH_SYMBOL_RE = /^(eth|weth|weth\.e|steth|wsteth|cbeth|reth|weeth|ezeth|rs
 const GOLD_SYMBOL_RE = /^(paxg|xaut|xau₮)$/i;
 const RESERVE_SYMBOL_RE = /^(usdy|bib01|ousg|ustb|buidl|ustbl)$/i;
 const OTHER_APPROVED_SYMBOL_RE = /^(sol|wsol|link|uni|aero|pendle|ena|ondo)$/i;
+const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/u;
 const MANAGED_VAULT_PROTOCOLS = new Set(["superform", "ichi"]);
 const DIRECT_LENDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "bend", "avalon", "benqi"]);
 const FIXED_YIELD_PROTOCOLS = new Set(["pendle"]);
@@ -45,6 +46,14 @@ function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
 
+function isAddress(value) {
+  return ADDRESS_RE.test(String(value || "").trim());
+}
+
+function sameAddress(left, right) {
+  return isAddress(left) && isAddress(right) && String(left).toLowerCase() === String(right).toLowerCase();
+}
+
 function unixSeconds(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
@@ -61,6 +70,18 @@ function tokenSymbolsFromOpportunity(opportunity = {}) {
     ...(opportunity.tokens || []).map((token) => token?.displaySymbol || token?.symbol),
     ...((opportunity.rewardsRecord?.breakdowns || []).map((item) => item?.token?.displaySymbol || item?.token?.symbol)),
   ]);
+}
+
+function tokenDetailsFromOpportunity(opportunity = {}) {
+  return (opportunity.tokens || [])
+    .filter((token) => token?.address)
+    .map((token) => ({
+      symbol: token?.displaySymbol || token?.symbol || null,
+      address: token?.address || null,
+      decimals: Number.isFinite(token?.decimals) ? token.decimals : null,
+      verified: token?.verified === true,
+      type: token?.type || null,
+    }));
 }
 
 function rewardTokenTypes(opportunity = {}, campaigns = []) {
@@ -233,6 +254,73 @@ function mapToStrategy({ family = "", protocolId = "", chain = "", tokenSymbols 
   };
 }
 
+function tokenLooksLikeUnderlying(token = {}, assetFamilies = []) {
+  const symbol = token.symbol || "";
+  if (assetFamilies.includes("stablecoin") && STABLE_SYMBOL_RE.test(symbol)) return true;
+  if (assetFamilies.includes("eth_like") && ETH_SYMBOL_RE.test(symbol)) return true;
+  if (assetFamilies.includes("btc_like") && BTC_SYMBOL_RE.test(symbol)) return true;
+  if (assetFamilies.includes("tokenized_gold") && GOLD_SYMBOL_RE.test(symbol)) return true;
+  if (assetFamilies.includes("tokenized_reserve") && RESERVE_SYMBOL_RE.test(symbol)) return true;
+  if (assetFamilies.includes("other_bluechip") && OTHER_APPROVED_SYMBOL_RE.test(symbol)) return true;
+  return token.verified === true;
+}
+
+function chooseUnderlyingToken(tokens = [], { explorerAddress = null, assetFamilies = [] } = {}) {
+  const candidates = tokens.filter((token) => isAddress(token.address) && !sameAddress(token.address, explorerAddress));
+  return (
+    candidates.find((token) => token.verified && tokenLooksLikeUnderlying(token, assetFamilies)) ||
+    candidates.find((token) => tokenLooksLikeUnderlying(token, assetFamilies)) ||
+    candidates.find((token) => token.verified) ||
+    candidates[0] ||
+    null
+  );
+}
+
+function choosePositionToken(tokens = [], explorerAddress = null) {
+  return tokens.find((token) => sameAddress(token.address, explorerAddress)) || null;
+}
+
+function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = "", executionSurface = "", assetFamilies = [] } = {}) {
+  const explorerAddress = isAddress(opportunity.explorerAddress) ? opportunity.explorerAddress : null;
+  const tokens = tokenDetailsFromOpportunity(opportunity);
+  const underlyingToken = chooseUnderlyingToken(tokens, { explorerAddress, assetFamilies });
+  const positionToken = choosePositionToken(tokens, explorerAddress);
+
+  if (["morpho", "euler"].includes(protocolId)) {
+    if (!explorerAddress || !underlyingToken?.address || sameAddress(explorerAddress, underlyingToken.address)) return null;
+    return {
+      source: "merkl_opportunity",
+      vaultAddress: explorerAddress,
+      assetAddress: underlyingToken.address,
+      assetSymbol: underlyingToken.symbol,
+      assetDecimals: underlyingToken.decimals,
+      shareTokenAddress: positionToken?.address || explorerAddress,
+      shareTokenSymbol: positionToken?.symbol || null,
+      depositUrl: opportunity.depositUrl || null,
+    };
+  }
+
+  if (protocolId === "aave") {
+    const assetToken = underlyingToken;
+    const aToken =
+      positionToken ||
+      tokens.find((token) => /^a/i.test(token.symbol || "") && !sameAddress(token.address, assetToken?.address)) ||
+      null;
+    if (!assetToken?.address && !aToken?.address) return null;
+    return {
+      source: "merkl_opportunity",
+      assetAddress: assetToken?.address || null,
+      assetSymbol: assetToken?.symbol || null,
+      assetDecimals: assetToken?.decimals ?? null,
+      aTokenAddress: aToken?.address || explorerAddress || null,
+      aTokenSymbol: aToken?.symbol || null,
+      depositUrl: opportunity.depositUrl || null,
+    };
+  }
+
+  return null;
+}
+
 export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportunity = new Map(), now = null } = {}) {
   const observedAt = now || new Date().toISOString();
   const nowMs = new Date(observedAt).getTime();
@@ -240,6 +328,7 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
   const chain = canonicalChainName(opportunity?.chain?.name || "");
   const protocolId = lower(opportunity?.protocol?.id || opportunity?.protocol?.name);
   const tokenSymbols = tokenSymbolsFromOpportunity(opportunity);
+  const tokenDetails = tokenDetailsFromOpportunity(opportunity);
   const relatedCampaigns = campaignsByOpportunity.get(String(opportunity?.id || "")) || [];
   const rewardTypes = rewardTokenTypes(opportunity, relatedCampaigns);
   const rewardSymbols = rewardTokenSymbols(opportunity, relatedCampaigns);
@@ -255,6 +344,12 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     managedVault,
   });
   const mapping = mapToStrategy({ family, protocolId, chain, tokenSymbols, managedVault });
+  const protocolBinding = buildProtocolBindingFromOpportunity({
+    opportunity,
+    protocolId,
+    executionSurface: mapping.executionSurface,
+    assetFamilies,
+  });
   const latestEnd = latestCampaignEnd(opportunity, relatedCampaigns, nowSeconds);
   const remainingHours = latestEnd ? Math.round((((latestEnd * 1000) - nowMs) / 3_600_000) * 100) / 100 : null;
   const aprPct = finite(opportunity?.apr);
@@ -276,9 +371,13 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     action: opportunity?.action || null,
     name: opportunity?.name || null,
     description: opportunity?.description || null,
+    identifier: opportunity?.identifier || null,
+    depositUrl: opportunity?.depositUrl || null,
+    explorerAddress: isAddress(opportunity?.explorerAddress) ? opportunity.explorerAddress : null,
     status: opportunity?.status || null,
     liveCampaigns: Number(opportunity?.liveCampaigns || 0),
     tokenSymbols,
+    tokenDetails,
     rewardTokenSymbols: rewardSymbols,
     rewardTokenTypes: rewardTypes,
     hasPointRewards: rewardTypes.includes("POINT"),
@@ -296,6 +395,7 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     requiresRangeManagement: family === "stable_btc_lp",
     mappedStrategyId: mapping.strategyId,
     executionSurface: mapping.executionSurface,
+    protocolBinding,
     operatorHold: OPERATOR_HELD_STRATEGIES.has(mapping.strategyId),
     tvlUsd: finite(opportunity?.tvl),
     aprPct,

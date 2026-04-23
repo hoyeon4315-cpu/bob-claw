@@ -195,6 +195,39 @@ function outputForDexExecution(execution) {
   };
 }
 
+function routeContextForErc4626Canary(execution) {
+  const plan = execution?.plan;
+  if (!plan?.chain || !plan?.assetAddress || !plan?.shareTokenAddress) return null;
+  return {
+    routeKey: `${plan.chain}:${plan.assetAddress}->${plan.chain}:${plan.shareTokenAddress}->${plan.chain}:${plan.assetAddress}`,
+    amount: plan.amount,
+    srcChain: plan.chain,
+    dstChain: plan.chain,
+    srcAsset: {
+      chain: plan.chain,
+      token: plan.assetAddress,
+    },
+    dstAsset: {
+      chain: plan.chain,
+      token: plan.assetAddress,
+    },
+    inputUsd: finiteNumber(plan.amountUsd),
+    outputUsd: finiteNumber(plan.amountUsd),
+    netEdgeUsd: null,
+    executionGasUsd: null,
+    nativeCostUsd: null,
+  };
+}
+
+function outputForErc4626Canary(execution) {
+  return {
+    actualOutputUnits: execution?.redeemProof?.observedDelta || null,
+    chain: execution?.plan?.chain || null,
+    token: execution?.plan?.assetAddress || null,
+    priceUsd: null,
+  };
+}
+
 function outputForGatewayConsolidation(execution) {
   const plan = execution?.plan;
   return {
@@ -228,6 +261,13 @@ function ingestionDescriptorForExecution(execution) {
       kind: "token_dex_experiment",
       routeContext: routeContextForDexExecution(execution),
       output: outputForDexExecution(execution),
+    };
+  }
+  if (strategyId === "gateway_native_asset_conversion_sleeve") {
+    return {
+      kind: "erc4626_protocol_canary",
+      routeContext: routeContextForErc4626Canary(execution),
+      output: outputForErc4626Canary(execution),
     };
   }
   if (strategyId === "gateway-btc-funding-transfer") {

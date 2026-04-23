@@ -26,6 +26,8 @@ test("protocol canary bindings define deterministic Morpho deposit and withdraw 
   });
   assert.equal(ready.status, "binding_ready");
   assert.deepEqual(ready.missingBindingFields, []);
+  assert.equal(ready.resolvedBinding.vaultAddress, "0x1111111111111111111111111111111111111111");
+  assert.equal(ready.resolvedBinding.assetAddress, "0x2222222222222222222222222222222222222222");
 });
 
 test("protocol canary bindings cover Aave and Euler without enabling unsupported protocols", () => {
