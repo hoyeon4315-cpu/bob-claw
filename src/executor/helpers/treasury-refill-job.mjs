@@ -10,7 +10,7 @@ import {
 import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "./gateway-btc-onramp.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
-import { buildAcrossBridgePlan } from "./across-bridge.mjs";
+import { buildAcrossBridgePlan, executeAcrossBridgePlan } from "./across-bridge.mjs";
 import { acrossTickerForToken } from "../../config/across.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
@@ -355,6 +355,7 @@ export async function executeTreasuryRefillExecutionPlan({
   executeGatewayBtcPlanImpl = executeGatewayBtcConsolidationPlan,
   executeGatewayBtcOnrampPlanImpl = executeGatewayBtcOnrampPlan,
   executeGasZipPlanImpl = executeGasZipNativeRefuelPlan,
+  executeAcrossBridgePlanImpl = executeAcrossBridgePlan,
   ...executionOptions
 } = {}) {
   if (preparation?.status !== "ready" || !preparation?.plan) {
@@ -374,6 +375,9 @@ export async function executeTreasuryRefillExecutionPlan({
   }
   if (preparation.executor === "gas_zip_native_refuel") {
     return executeGasZipPlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
+  if (preparation.executor === "across_bridge") {
+    return executeAcrossBridgePlanImpl({ plan: preparation.plan, ...executionOptions });
   }
   if (preparation.executor === "cross_chain_btc_intermediate") {
     const step1Result = await executeTokenDexPlanImpl({ plan: preparation.plan.step1.plan, ...executionOptions });
