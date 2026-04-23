@@ -105,3 +105,42 @@ test("erc4626 protocol canary auto-selection prefers inventory-ready candidates"
   assert.equal(queueItem.opportunityId, "base-morpho");
   assert.equal(queueItem.executionReadiness.status, "inventory_ready");
 });
+
+test("erc4626 protocol canary also supports Euler eVault bindings", async () => {
+  const queue = {
+    queue: [
+      {
+        queueId: "merkl:eth-euler",
+        opportunityId: "eth-euler",
+        chain: "ethereum",
+        protocolId: "euler",
+        name: "Supply PYUSD",
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        protocolBindingPlan: {
+          status: "binding_ready",
+          bindingKind: "euler_evault_deposit_withdraw",
+          resolvedBinding: {
+            vaultAddress: "0xba98fC35C9dfd69178AD5dcE9FA29c64554783b5",
+            assetAddress: "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+            assetSymbol: "PYUSD",
+            assetDecimals: 6,
+            shareTokenSymbol: "ePYUSD-6",
+          },
+        },
+      },
+    ],
+  };
+
+  const queueItem = selectErc4626QueueItem(queue, { opportunityId: "eth-euler" });
+  const plan = await buildErc4626ProtocolCanaryPlan({
+    queueItem,
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "10000",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    now: "2026-04-23T00:00:00.000Z",
+  });
+
+  assert.equal(queueItem.protocolId, "euler");
+  assert.equal(plan.bindingKind, "euler_evault_deposit_withdraw");
+  assert.equal(plan.shareTokenAddress, "0xba98fC35C9dfd69178AD5dcE9FA29c64554783b5");
+});

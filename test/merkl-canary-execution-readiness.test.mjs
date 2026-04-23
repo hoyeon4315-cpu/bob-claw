@@ -104,3 +104,31 @@ test("latestTreasuryInventoryForAddress selects the latest matching snapshot", (
 
   assert.equal(snapshot.observedAt, "2026-04-24T00:20:00.000Z");
 });
+
+test("merkl canary execution readiness treats Aave pool canaries as supported when bindings are present", () => {
+  const readiness = buildMerklCanaryExecutionReadiness({
+    queueItem: {
+      opportunityId: "aave-eth-rseth",
+      chain: "ethereum",
+      entryAssets: ["rsETH", "aEthrsETH"],
+      protocolBindingPlan: {
+        bindingKind: "aave_v3_pool_supply_withdraw",
+        resolvedBinding: {
+          poolAddress: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+          assetAddress: "0xA1290d69c65A6Fe4DF752f95823fae25cB99e5A7",
+          aTokenAddress: "0x2D62109243b87C4bA3EE7bA1D91B0dD0A074d7b1",
+          poolAddressProviderAddress: "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
+        },
+      },
+    },
+    inventorySnapshot: {
+      native: [],
+      tokens: [],
+    },
+    now: "2026-04-24T00:30:00.000Z",
+  });
+
+  assert.equal(readiness.status, "inventory_missing");
+  assert.equal(readiness.executorSupported, true);
+  assert.equal(readiness.reasons.includes("protocol_executor_missing"), false);
+});
