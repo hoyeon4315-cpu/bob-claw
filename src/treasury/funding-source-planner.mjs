@@ -1,4 +1,5 @@
 import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
+import { acrossSupportsPair } from "../config/across.mjs";
 import {
   BRIDGE_PROVIDERS,
   fallbackProvidersWhenGatewayPaused,
@@ -655,13 +656,25 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
         ? sourceInventoryCoversTargetAmount(action, selectedSource)
         : sourceInventoryCoversTargetValue(action, selectedSource);
     if (!coversTarget) missingInputs.push("source_inventory_below_target_amount");
-    const availability = isLive && coversTarget ? "ready" : "conditional";
+    // For Across specifically, also check the token/chain pair matches
+    // the committed registry — otherwise the quote call would fail at
+    // runtime with `pair unsupported`. If unsupported, demote to
+    // conditional with an explicit missing input rather than emitting
+    // a candidate the executor cannot honour.
+    if (provider.id === "across" && action.type === "refill_token") {
+      const ticker = String(action.ticker || "").toLowerCase();
+      if (!acrossSupportsPair({ srcChain: selectedSource.chain, dstChain: action.chain, ticker })) {
+        missingInputs.push("across_pair_unsupported");
+      }
+    }
+    const ready = isLive && coversTarget && missingInputs.length === 0;
+    const availability = ready ? "ready" : "conditional";
     return candidateRecord({
       action,
       method,
       source: describeSourceAsset(selectedSource.chain, selectedSource.token, sourceAmountMetadata(selectedSource)),
       availability,
-      preferred: isLive && coversTarget,
+      preferred: ready,
       requiresReserveState: false,
       reserveReplenishmentKnown: true,
       missingInputs,
