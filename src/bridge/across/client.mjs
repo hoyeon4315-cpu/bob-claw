@@ -25,7 +25,15 @@ export class AcrossClient {
     this.timeoutMs = timeoutMs;
   }
 
-  async suggestedFees({ inputToken, outputToken, originChainId, destinationChainId, amount, recipient = null }) {
+  async suggestedFees({
+    inputToken,
+    outputToken,
+    originChainId,
+    destinationChainId,
+    amount,
+    recipient = null,
+    allowUnmatchedDecimals = false,
+  }) {
     const params = new URLSearchParams({
       inputToken,
       outputToken,
@@ -34,6 +42,7 @@ export class AcrossClient {
       amount: String(amount),
     });
     if (recipient) params.set("recipient", recipient);
+    if (allowUnmatchedDecimals) params.set("allowUnmatchedDecimals", "true");
     return this.#requestJson(`/suggested-fees?${params.toString()}`);
   }
 

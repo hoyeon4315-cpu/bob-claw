@@ -163,6 +163,7 @@ export async function buildAcrossBridgePlan({
       destinationChainId: request.destinationChainId,
       amount: request.amount,
       recipient: request.recipient,
+      allowUnmatchedDecimals: request.allowUnmatchedDecimals,
     });
     quoteLatencyMs = response.latencyMs;
     quote = normalizeAcrossQuote({ request, responseBody: response.body, now, policy }).quote;

@@ -27,7 +27,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
       "ethereum",
       "bob",
       "base",
-      "bnb",
+      "bsc",
       "avalanche",
       "unichain",
       "bera",
