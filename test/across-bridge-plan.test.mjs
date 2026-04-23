@@ -92,6 +92,33 @@ test("buildAcrossBridgePlan surfaces quote failure", async () => {
   assert.equal(plan.executionReady, false);
 });
 
+test("buildAcrossBridgePlan uses fallback deposit gas when pre-approval estimate reverts", async () => {
+  let estimateCount = 0;
+  const plan = await buildAcrossBridgePlan({
+    srcChain: "base",
+    dstChain: "optimism",
+    ticker: "usdc",
+    amount: "100000000",
+    senderAddress: SENDER,
+    clientFactory: mockClientFactory(okBody()),
+    priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    estimateGasImpl: async () => {
+      estimateCount += 1;
+      if (estimateCount === 1) return { gasUnits: "50000", gasPriceWei: "1000000000", rpcUrl: "mock:base" };
+      const error = new Error("All RPC endpoints failed gas estimate for chain: base");
+      error.name = "GasEstimateError";
+      error.attempts = [{ message: "execution reverted: insufficient allowance" }];
+      throw error;
+    },
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.approvalGasPreflight.gasLimit, "60000");
+  assert.equal(plan.gasPreflight.fallback, true);
+  assert.equal(plan.gasPreflight.fallbackReason, "deposit_estimate_reverted_before_approval");
+  assert.equal(plan.steps[1].intent.tx.gasLimit, "540000");
+});
+
 test("buildAcrossBridgePlan rejects unsupported pair", async () => {
   await assert.rejects(
     buildAcrossBridgePlan({
@@ -158,4 +185,42 @@ test("executeAcrossBridgePlan sends signer intent and waits for destination toke
   assert.equal(execution.destinationProof.observedDelta, "99000000");
   assert.deepEqual(execution.stepResults.map((item) => item.id), ["approve_across_spokepool", "across_deposit_v3"]);
   assert.equal(execution.receiptIngest.appended, true);
+});
+
+test("executeAcrossBridgePlan blocks before signing when source balance is below input amount", async () => {
+  const plan = await buildAcrossBridgePlan({
+    srcChain: "base",
+    dstChain: "optimism",
+    ticker: "usdc",
+    amount: "100000000",
+    senderAddress: SENDER,
+    clientFactory: mockClientFactory(okBody()),
+    priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
+  });
+  let signerCalled = false;
+  let caught = null;
+  try {
+    await executeAcrossBridgePlan({
+      plan,
+      sendCommand: async () => {
+        signerCalled = true;
+        return { status: "ok", broadcast: { txHash: "0xshould-not-run" } };
+      },
+      readErc20BalanceImpl: async (chain, token) => {
+        const normalized = String(token).toLowerCase();
+        if (chain === "base" && normalized === acrossTokenAddress("base", "usdc").toLowerCase()) {
+          return { rpcUrl: "mock:base", balance: "50000000" };
+        }
+        return { rpcUrl: `mock:${chain}`, balance: "0" };
+      },
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.equal(signerCalled, false);
+  assert.equal(caught?.name, "InsufficientSourceBalance");
+  assert.equal(caught.partialExecution.blockedReason, "insufficient_source_balance");
+  assert.equal(caught.partialExecution.error.requiredAmount, "100000000");
 });
