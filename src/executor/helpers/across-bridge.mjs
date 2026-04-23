@@ -23,7 +23,7 @@ import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { AcrossClient } from "../../bridge/across/client.mjs";
 import { buildAcrossQuoteRequest, normalizeAcrossQuote } from "../../bridge/across/quote.mjs";
 import { SPOKE_POOL_DEPOSIT_ABI, ZERO_ADDRESS } from "../../bridge/across/spoke-pool-abi.mjs";
-import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
+import { classifyGasEstimateError, estimateGas, readContractCode } from "../../gas/rpc-gas.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -48,6 +48,30 @@ function applyGasBuffer(gasUnits, bufferBps = DEFAULT_ACROSS_GAS_BUFFER_BPS) {
 function serializeAcrossError(error) {
   if (!(error instanceof Error)) return { message: String(error) };
   return { name: error.name, message: error.message, details: error.details || null };
+}
+
+async function assertContractCode({
+  chain,
+  address,
+  role,
+  chainConfig,
+  readCodeImpl = readContractCode,
+}) {
+  const code = await readCodeImpl(chain, address, chainConfig);
+  if (code?.hasCode === true || (typeof code?.code === "string" && code.code !== "0x")) {
+    return code;
+  }
+  const error = new Error(`Across ${role} has no contract code on ${chain}: ${address}`);
+  error.name = "ContractCodeMissing";
+  error.reason = role === "spokepool" ? "across_spokepool_code_missing" : "across_token_code_missing";
+  error.details = {
+    chain,
+    address,
+    role,
+    code: code?.code || null,
+    rpcUrl: code?.rpcUrl || null,
+  };
+  throw error;
 }
 
 function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
@@ -126,6 +150,7 @@ export async function buildAcrossBridgePlan({
   clientFactory = null,
   priceReader = getCoinGeckoPricesUsd,
   estimateGasImpl = estimateGas,
+  readCodeImpl = readContractCode,
   gasBufferBps = DEFAULT_ACROSS_GAS_BUFFER_BPS,
   skipPreflight = false,
   strategyId = ACROSS_BRIDGE_STRATEGY_ID,
@@ -190,6 +215,22 @@ export async function buildAcrossBridgePlan({
   let steps = [];
   if (quote && !blockedReason && !skipPreflight) {
     try {
+      const [spokePoolCode, srcTokenCode] = await Promise.all([
+        assertContractCode({
+          chain: srcChain,
+          address: spokePool,
+          role: "spokepool",
+          chainConfig: srcChainConfig,
+          readCodeImpl,
+        }),
+        assertContractCode({
+          chain: srcChain,
+          address: srcTokenAddr,
+          role: "token",
+          chainConfig: srcChainConfig,
+          readCodeImpl,
+        }),
+      ]);
       const calldata = encodeDepositCalldata(quote, senderAddress);
       const approvalCalldata = ERC20_INTERFACE.encodeFunctionData("approve", [spokePool, quote.inputAmount]);
       const approvalGasEstimate = await estimateGasImpl(
@@ -226,6 +267,16 @@ export async function buildAcrossBridgePlan({
       };
       gasPreflight = {
         ...gasEstimate,
+        contractCode: {
+          spokePool: {
+            hasCode: true,
+            rpcUrl: spokePoolCode.rpcUrl || null,
+          },
+          srcToken: {
+            hasCode: true,
+            rpcUrl: srcTokenCode.rpcUrl || null,
+          },
+        },
         gasBufferBps: Math.max(10_000, Number(gasBufferBps) || 10_000),
         gasLimit: String(gasLimit),
         gasLimitHex: `0x${gasLimit.toString(16)}`,
@@ -298,7 +349,7 @@ export async function buildAcrossBridgePlan({
         ...steps[1].intent,
       };
     } catch (error) {
-      blockedReason = classifyGasEstimateError(error) || "across_preflight_failed";
+      blockedReason = error.reason || classifyGasEstimateError(error) || "across_preflight_failed";
       preflightError = serializeAcrossError(error);
     }
   }
