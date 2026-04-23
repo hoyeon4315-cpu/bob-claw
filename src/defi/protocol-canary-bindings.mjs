@@ -57,6 +57,26 @@ const PROTOCOL_BINDINGS = Object.freeze({
       "Euler borrow canaries require the EVC/account controller and oracle fields before policy can evaluate liquidation risk.",
     ]),
   }),
+  yo: Object.freeze({
+    protocolId: "yo",
+    supportedSurfaces: Object.freeze(["stableCarry", "ethLending", "reserveAllocation"]),
+    bindingKind: "erc4626_vault_supply_withdraw",
+    requiredBindingFields: Object.freeze(["vaultAddress", "assetAddress"]),
+    optionalBindingFields: Object.freeze(["shareTokenAddress", "referralCode"]),
+    approvalTargetField: "vaultAddress",
+    canaryActions: Object.freeze([
+      "approve_exact_asset_to_vault",
+      "deposit_asset_for_shares",
+      "verify_share_balance_delta",
+      "withdraw_or_redeem_shares",
+      "verify_asset_balance_delta",
+      "revoke_or_zero_idle_allowance",
+    ]),
+    notes: Object.freeze([
+      "YO vault opportunities expose ERC-4626-compatible vault addresses in Merkl explorerAddress/depositUrl fields.",
+      "Only tiny deposit/redeem canaries are automated until reward accounting and unwind costs are receipt-backed.",
+    ]),
+  }),
 });
 
 function normalize(value) {

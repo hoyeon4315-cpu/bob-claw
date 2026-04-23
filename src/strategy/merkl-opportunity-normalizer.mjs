@@ -288,7 +288,7 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
   const underlyingToken = chooseUnderlyingToken(tokens, { explorerAddress, assetFamilies });
   const positionToken = choosePositionToken(tokens, explorerAddress);
 
-  if (["morpho", "euler"].includes(protocolId)) {
+  if (["morpho", "euler", "yo"].includes(protocolId)) {
     if (!explorerAddress || !underlyingToken?.address || sameAddress(explorerAddress, underlyingToken.address)) return null;
     return {
       source: "merkl_opportunity",
