@@ -32,6 +32,7 @@
     "advance:canary": "node src/cli/advance-canary.mjs",
     "watch:canary-readiness": "node src/cli/watch-canary-readiness.mjs",
     "watch:merkl-opportunities": "node src/cli/watch-merkl-opportunities.mjs",
+    "report:merkl-canary-queue": "node src/cli/report-merkl-canary-queue.mjs",
     "write:session-handoff": "node src/cli/write-session-handoff.mjs",
     "reconcile:receipt": "node src/cli/reconcile-receipt.mjs",
     "report:receipt-ledger": "node src/cli/report-receipt-ledger.mjs",

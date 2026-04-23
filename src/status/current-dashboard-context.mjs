@@ -86,6 +86,33 @@ function summarizeMerklOpportunityStatus(report = null, alerts = []) {
   };
 }
 
+function summarizeMerklCanaryQueueStatus(queue = null) {
+  if (!queue) return null;
+  const summary = queue.summary || {};
+  const top = queue.queue?.[0] || null;
+  return {
+    generatedAt: queue.generatedAt || null,
+    queueCount: summary.queueCount ?? 0,
+    topQueueId: summary.topQueueId || null,
+    topOpportunityId: summary.topOpportunityId || null,
+    topNextAction: summary.topNextAction || null,
+    chainCount: summary.chainCount ?? 0,
+    protocolAdapterRequiredCount: summary.protocolAdapterRequiredCount ?? 0,
+    chainRouteGapCount: summary.chainRouteGapCount ?? 0,
+    topQueue: top
+      ? {
+          opportunityId: top.opportunityId || null,
+          chain: top.chain || null,
+          protocolId: top.protocolId || null,
+          mappedStrategyId: top.mappedStrategyId || null,
+          canaryKind: top.canaryKind || null,
+          priorityScore: top.priorityScore ?? null,
+          capabilityGaps: top.capabilityGaps || [],
+        }
+      : null,
+  };
+}
+
 export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
@@ -180,9 +207,10 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
      readJsonIfExists(join(dataDir, "promotion-latest.json")),
    ]);
-  const [merklOpportunityReport, merklOpportunityAlerts] = await Promise.all([
+  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
+    readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
   ]);
   const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
@@ -264,8 +292,10 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     merklOpportunityReport,
     merklOpportunityAlerts,
   );
+  dashboardStatus.strategy.merklCanaryQueueSummary = summarizeMerklCanaryQueueStatus(merklCanaryQueue);
   dashboardStatus.dataCounts.merklOpportunityReportPresent = merklOpportunityReport ? 1 : 0;
   dashboardStatus.dataCounts.merklOpportunityAlertCount = merklOpportunityAlerts.length;
+  dashboardStatus.dataCounts.merklCanaryQueuePresent = merklCanaryQueue ? 1 : 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,
     canaryInputs,
