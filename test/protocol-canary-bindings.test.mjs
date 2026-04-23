@@ -97,3 +97,17 @@ test("protocol canary bindings cover Summer Finance ERC-4626 vault canaries", ()
   assert.equal(ready.bindingKind, "erc4626_vault_supply_withdraw");
   assert.equal(ready.resolvedBinding.assetAddress, "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
 });
+
+test("protocol canary bindings classify Yei as Aave-like but require a pool binding", () => {
+  const missingPool = buildProtocolCanaryBindingPlan({
+    opportunity: { protocolId: "yei", executionSurface: "stableCarry" },
+    binding: {
+      assetAddress: "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+      aTokenAddress: "0x817B3C191092694C65f25B4d38D4935a8aB65616",
+    },
+  });
+
+  assert.equal(missingPool.bindingKind, "aave_v3_pool_supply_withdraw");
+  assert.equal(missingPool.status, "binding_required");
+  assert.deepEqual(missingPool.missingBindingFields, ["poolAddress"]);
+});

@@ -302,7 +302,7 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
     };
   }
 
-  if (protocolId === "aave") {
+  if (["aave", "yei"].includes(protocolId)) {
     const assetToken = underlyingToken;
     const aToken =
       positionToken ||

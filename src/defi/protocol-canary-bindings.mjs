@@ -38,6 +38,26 @@ const PROTOCOL_BINDINGS = Object.freeze({
       "Aave canaries stop at supply/withdraw unless the queue item explicitly requests a borrow leg and health-factor checks.",
     ]),
   }),
+  yei: Object.freeze({
+    protocolId: "yei",
+    supportedSurfaces: Object.freeze(["stableCarry", "stableBorrow"]),
+    bindingKind: "aave_v3_pool_supply_withdraw",
+    requiredBindingFields: Object.freeze(["poolAddress", "assetAddress", "aTokenAddress"]),
+    optionalBindingFields: Object.freeze(["poolAddressProviderAddress", "marketName", "referralCode"]),
+    approvalTargetField: "poolAddress",
+    canaryActions: Object.freeze([
+      "approve_exact_asset_to_pool",
+      "supply_asset_to_pool",
+      "verify_atoken_balance_delta",
+      "withdraw_asset_from_pool",
+      "verify_asset_balance_delta",
+      "revoke_or_zero_idle_allowance",
+    ]),
+    notes: Object.freeze([
+      "Yei opportunities are Aave-style supplies, but signing requires a pinned pool or addresses-provider binding first.",
+      "Borrow-leg campaigns still require health-factor and liquidation-buffer checks before live execution.",
+    ]),
+  }),
   euler: Object.freeze({
     protocolId: "euler",
     supportedSurfaces: Object.freeze(["lending", "stableBorrow", "stableCarry", "ethLending"]),
@@ -108,7 +128,7 @@ function missingFields(binding = {}, fields = []) {
 }
 
 function missingBindingFields(template = {}, binding = {}) {
-  if (template.protocolId === "aave") {
+  if (["aave", "yei"].includes(template.protocolId)) {
     const missing = [];
     if (!binding.poolAddress && !binding.poolAddressProviderAddress) missing.push("poolAddress");
     if (!binding.assetAddress) missing.push("assetAddress");

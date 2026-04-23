@@ -178,3 +178,41 @@ test("merkl normalizer extracts Summer Finance vault binding from raw opportunit
   assert.equal(item.protocolBinding.assetSymbol, "wETH");
   assert.equal(item.protocolBinding.shareTokenSymbol, "LVWETH");
 });
+
+test("merkl normalizer extracts Yei Aave-style asset and aToken binding but leaves pool unresolved", () => {
+  const item = normalizeMerklOpportunity({
+    id: "3178084911286839159",
+    chainId: 1329,
+    chain: { name: "Sei" },
+    protocol: { id: "yei", name: "yei" },
+    type: "AAVE_SUPPLY",
+    action: "LEND",
+    name: "Lend USDC on Yei",
+    description: "Earn rewards by lending USDC on Yei.",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x817B3C191092694C65f25B4d38D4935a8aB65616",
+    depositUrl: "https://app.yei.finance/reserve-overview/?underlyingAsset=0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+    tokens: [
+      {
+        displaySymbol: "aYeiNativeUSDC",
+        address: "0x817B3C191092694C65f25B4d38D4935a8aB65616",
+        decimals: 6,
+        verified: false,
+        type: "TOKEN",
+      },
+      {
+        displaySymbol: "USDC",
+        address: "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+        decimals: 6,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.equal(item.protocolBinding.assetAddress, "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392");
+  assert.equal(item.protocolBinding.aTokenAddress, "0x817B3C191092694C65f25B4d38D4935a8aB65616");
+  assert.equal(item.protocolBinding.poolAddress, null);
+  assert.equal(item.protocolBinding.poolAddressProviderAddress, null);
+});
