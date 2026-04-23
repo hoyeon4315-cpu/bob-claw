@@ -130,6 +130,7 @@
     "executor:gateway-btc-onramp": "node src/cli/run-gateway-btc-onramp.mjs",
     "executor:gateway-btc-offramp": "node src/cli/run-gateway-btc-offramp.mjs",
     "executor:gateway-btc-consolidation": "node src/cli/run-gateway-btc-consolidation.mjs",
+    "executor:across-bridge": "node src/cli/run-across-bridge.mjs",
     "executor:gas-zip-refuel": "node src/cli/run-gas-zip-refuel.mjs",
     "executor:payback-scheduler": "node src/cli/run-payback-scheduler.mjs",
     "executor:payback-scheduler:once": "node src/cli/run-payback-scheduler.mjs --once",
