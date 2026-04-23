@@ -66,3 +66,19 @@ test("protocol canary bindings cover Aave and Euler without enabling unsupported
   });
   assert.equal(unknown.status, "unsupported_protocol_binding");
 });
+
+test("protocol canary bindings cover YO ERC-4626 vault canaries", () => {
+  const ready = buildProtocolCanaryBindingPlan({
+    opportunity: { protocolId: "yo", executionSurface: "stableCarry" },
+    binding: {
+      vaultAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      shareTokenAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+    },
+  });
+
+  assert.equal(ready.status, "binding_ready");
+  assert.equal(ready.bindingKind, "erc4626_vault_supply_withdraw");
+  assert.equal(ready.resolvedBinding.vaultAddress, "0x0000000f2eB9f69274678c76222B35eEc7588a65");
+  assert.equal(ready.canaryActions.includes("deposit_asset_for_shares"), true);
+});

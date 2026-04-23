@@ -238,10 +238,12 @@ export async function runMerklCanaryAutopilot({
   }
 
   const queue = await readJson(queuePath);
-  const [inventoryRecords, canaryExecutions] = await Promise.all([
+  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
+    readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
   ]);
+  const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const selection = selectMerklCanaryAutopilotCandidate(queue, {
     maxUsd,

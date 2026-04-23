@@ -107,3 +107,35 @@ test("merkl normalizer keeps Aave pool binding explicit while extracting asset a
   assert.equal(mainnetItem.protocolBinding.poolAddressProviderAddress, "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e");
   assert.equal(mainnetItem.protocolBinding.poolAddress, "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2");
 });
+
+test("merkl normalizer extracts YO vault binding from raw opportunity", () => {
+  const item = normalizeMerklOpportunity({
+    id: "13747891056392346282",
+    chainId: 8453,
+    chain: { name: "Base" },
+    protocol: { id: "yo", name: "yo" },
+    type: "ERC20LOGPROCESSOR",
+    action: "HOLD",
+    name: "Deposit USDC to YO",
+    description: "Earn rewards by depositing USDC to YO on Base",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+    depositUrl: "https://app.yo.xyz/vault/base/0x0000000f2eB9f69274678c76222B35eEc7588a65",
+    tokens: [
+      {
+        displaySymbol: "USDC",
+        address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        decimals: 6,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.equal(item.chain, "base");
+  assert.equal(item.protocolBinding.vaultAddress, "0x0000000f2eB9f69274678c76222B35eEc7588a65");
+  assert.equal(item.protocolBinding.assetAddress, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  assert.equal(item.protocolBinding.shareTokenAddress, "0x0000000f2eB9f69274678c76222B35eEc7588a65");
+  assert.equal(item.protocolBinding.assetSymbol, "USDC");
+});

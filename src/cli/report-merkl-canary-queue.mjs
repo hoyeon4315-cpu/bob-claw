@@ -32,10 +32,12 @@ async function readJson(path) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const report = await readJson(join(config.dataDir, "merkl-opportunities-report.json"));
-  const [inventoryRecords, canaryExecutions] = await Promise.all([
+  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
+    readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
   ]);
+  const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, report?.address || inventoryRecords.at(-1)?.address || null);
   const queue = buildMerklCanaryQueue({
     report,
