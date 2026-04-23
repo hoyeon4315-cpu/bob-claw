@@ -34,6 +34,9 @@ export const ACROSS_BRIDGE_STRATEGY_ID = "across-bridge";
 export const DEFAULT_ACROSS_GAS_BUFFER_BPS = 12_000;
 
 const SPOKE_INTERFACE = new Interface(SPOKE_POOL_DEPOSIT_ABI);
+const ERC20_INTERFACE = new Interface([
+  "function approve(address spender,uint256 amount)",
+]);
 
 function applyGasBuffer(gasUnits, bufferBps = DEFAULT_ACROSS_GAS_BUFFER_BPS) {
   const units = BigInt(gasUnits || 0);
@@ -138,40 +141,51 @@ export async function buildAcrossBridgePlan({
   }
 
   let gasPreflight = null;
+  let approvalGasPreflight = null;
   let preflightError = null;
   let intent = null;
+  let steps = [];
   if (quote && !blockedReason && !skipPreflight) {
     try {
       const calldata = encodeDepositCalldata(quote, senderAddress);
+      const approvalCalldata = ERC20_INTERFACE.encodeFunctionData("approve", [spokePool, quote.inputAmount]);
+      const approvalGasEstimate = await estimateGasImpl(
+        srcChain,
+        { from: senderAddress, to: quote.inputToken, data: approvalCalldata, valueWei: "0" },
+        srcChainConfig,
+      );
       const gasEstimate = await estimateGasImpl(
         srcChain,
         { from: senderAddress, to: spokePool, data: calldata, valueWei: "0" },
         srcChainConfig,
       );
+      const approvalGasLimit = applyGasBuffer(approvalGasEstimate.gasUnits, gasBufferBps);
       const gasLimit = applyGasBuffer(gasEstimate.gasUnits, gasBufferBps);
+      approvalGasPreflight = {
+        ...approvalGasEstimate,
+        gasBufferBps: Math.max(10_000, Number(gasBufferBps) || 10_000),
+        gasLimit: String(approvalGasLimit),
+        gasLimitHex: `0x${approvalGasLimit.toString(16)}`,
+      };
       gasPreflight = {
         ...gasEstimate,
         gasBufferBps: Math.max(10_000, Number(gasBufferBps) || 10_000),
         gasLimit: String(gasLimit),
         gasLimitHex: `0x${gasLimit.toString(16)}`,
       };
-      intent = {
+      const buildIntent = ({ intentType, tx, approval = null, metadata = {} }) => ({
         strategyId,
         chain: srcChain,
         family: "evm",
-        intentType: "across_bridge_deposit",
+        intentType,
         method: "cross_chain_bridge_across",
         amountUsd,
         mode: "live",
         observedAt: new Date(now * 1000).toISOString(),
         executionReason: "strategy_execution",
+        approval,
         quote: { ...quote, calldata, spokePool, quoteLatencyMs },
-        tx: {
-          to: spokePool,
-          data: calldata,
-          value: "0",
-          gasLimit: String(gasLimit),
-        },
+        tx,
         strategyConfig: { intentTtlMs: strategyCaps.intentTtlMs },
         metadata: {
           acrossInputToken: quote.inputToken,
@@ -180,7 +194,50 @@ export async function buildAcrossBridgePlan({
           acrossRelayFeePct: quote.relayFeePct,
           acrossFillDeadline: quote.fillDeadline,
           acrossQuoteTimestamp: quote.quoteTimestamp,
+          ...metadata,
         },
+      });
+      steps = [
+        {
+          id: "approve_across_spokepool",
+          intent: buildIntent({
+            intentType: "approve_exact",
+            approval: {
+              token: quote.inputToken,
+              spender: spokePool,
+              amount: quote.inputAmount,
+              mode: "per_tx",
+            },
+            tx: {
+              to: quote.inputToken,
+              data: approvalCalldata,
+              value: "0",
+              gasLimit: String(approvalGasLimit),
+            },
+            metadata: {
+              capCheckAmountUsd: 0,
+              acrossStep: "approve_spokepool",
+            },
+          }),
+        },
+        {
+          id: "across_deposit_v3",
+          intent: buildIntent({
+            intentType: "across_bridge_deposit",
+            tx: {
+              to: spokePool,
+              data: calldata,
+              value: "0",
+              gasLimit: String(gasLimit),
+            },
+            metadata: {
+              acrossStep: "deposit_v3",
+            },
+          }),
+        },
+      ];
+      intent = {
+        ...steps[1].intent,
       };
     } catch (error) {
       blockedReason = classifyGasEstimateError(error) || "across_preflight_failed";
@@ -212,8 +269,10 @@ export async function buildAcrossBridgePlan({
     quoteLatencyMs,
     amountUsd,
     spokePool,
+    approvalGasPreflight,
     gasPreflight,
     intent,
+    steps,
     settlementRequirements: [
       "across_destination_output_amount_delta_proof_required",
       "across_deposit_id_recorded",
@@ -255,44 +314,52 @@ export async function executeAcrossBridgePlan({
       })
     : null;
 
-  const signerResult = await sendCommand({
-    socketPath,
-    timeoutMs,
-    message: {
-      command: "sign_and_broadcast",
-      intent: plan.intent,
-      awaitConfirmation,
-      confirmations,
-      timeoutMs: confirmationTimeoutMs,
-    },
-  });
-  const stepResults = [{ id: "across_deposit_v3", signerResult }];
-  if (signerResult?.status !== "ok" || !signerResult?.broadcast?.txHash) {
-    return {
-      schemaVersion: 1,
-      observedAt: new Date().toISOString(),
-      settlementStatus: signerResult?.status === "rejected" ? "signer_rejected" : "signer_error",
-      plan,
-      signerResult,
-      stepResults,
-      sourceBalanceBefore: {
-        ...sourceBalanceBefore,
-        ticker: plan.srcAsset?.ticker || null,
-        token: plan.srcToken || null,
-        chain: plan.srcChain,
+  const executionSteps = Array.isArray(plan.steps) && plan.steps.length > 0
+    ? plan.steps
+    : [{ id: "across_deposit_v3", intent: plan.intent }];
+  const stepResults = [];
+  let signerResult = null;
+  for (const step of executionSteps) {
+    const result = await sendCommand({
+      socketPath,
+      timeoutMs,
+      message: {
+        command: "sign_and_broadcast",
+        intent: step.intent,
+        awaitConfirmation,
+        confirmations,
+        timeoutMs: confirmationTimeoutMs,
       },
-      sourceBalanceAfter: null,
-      destinationBalanceBefore: destinationBalanceBefore
-        ? {
-            ...destinationBalanceBefore,
-            ticker: plan.dstAsset?.ticker || null,
-            token: plan.dstToken || null,
-            chain: plan.dstChain,
-          }
-        : null,
-      destinationBalanceAfter: null,
-      destinationProof: null,
-    };
+    });
+    stepResults.push({ id: step.id, signerResult: result });
+    signerResult = result;
+    if (result?.status !== "ok" || !result?.broadcast?.txHash) {
+      return {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        settlementStatus: result?.status === "rejected" ? "signer_rejected" : "signer_error",
+        plan,
+        signerResult: result,
+        stepResults,
+        sourceBalanceBefore: {
+          ...sourceBalanceBefore,
+          ticker: plan.srcAsset?.ticker || null,
+          token: plan.srcToken || null,
+          chain: plan.srcChain,
+        },
+        sourceBalanceAfter: null,
+        destinationBalanceBefore: destinationBalanceBefore
+          ? {
+              ...destinationBalanceBefore,
+              ticker: plan.dstAsset?.ticker || null,
+              token: plan.dstToken || null,
+              chain: plan.dstChain,
+            }
+          : null,
+        destinationBalanceAfter: null,
+        destinationProof: null,
+      };
+    }
   }
 
   const destinationProof = awaitDestinationSettlement

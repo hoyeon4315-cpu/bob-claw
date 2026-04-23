@@ -41,6 +41,12 @@ test("buildAcrossBridgePlan produces ready intent with encoded calldata", async 
   assert.equal(plan.planStatus, "ready");
   assert.equal(plan.executionReady, true);
   assert.equal(plan.spokePool, acrossSpokePool("base"));
+  assert.equal(plan.steps.length, 2);
+  assert.equal(plan.steps[0].id, "approve_across_spokepool");
+  assert.equal(plan.steps[0].intent.intentType, "approve_exact");
+  assert.equal(plan.steps[0].intent.approval.mode, "per_tx");
+  assert.equal(plan.steps[0].intent.approval.amount, "100000000");
+  assert.equal(plan.steps[1].id, "across_deposit_v3");
   assert.ok(plan.intent.tx.data.startsWith("0x"));
   const decoded = IFACE.decodeFunctionData("depositV3", plan.intent.tx.data);
   assert.equal(decoded[0].toLowerCase(), SENDER.toLowerCase());
@@ -144,10 +150,12 @@ test("executeAcrossBridgePlan sends signer intent and waits for destination toke
     sleepImpl: async () => {},
   });
 
+  assert.equal(signerMessages.length, 2);
   assert.equal(signerMessages[0].command, "sign_and_broadcast");
-  assert.equal(signerMessages[0].intent.intentType, "across_bridge_deposit");
+  assert.equal(signerMessages[0].intent.intentType, "approve_exact");
+  assert.equal(signerMessages[1].intent.intentType, "across_bridge_deposit");
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.destinationProof.observedDelta, "99000000");
-  assert.equal(execution.stepResults[0].id, "across_deposit_v3");
+  assert.deepEqual(execution.stepResults.map((item) => item.id), ["approve_across_spokepool", "across_deposit_v3"]);
   assert.equal(execution.receiptIngest.appended, true);
 });
