@@ -82,3 +82,18 @@ test("protocol canary bindings cover YO ERC-4626 vault canaries", () => {
   assert.equal(ready.resolvedBinding.vaultAddress, "0x0000000f2eB9f69274678c76222B35eEc7588a65");
   assert.equal(ready.canaryActions.includes("deposit_asset_for_shares"), true);
 });
+
+test("protocol canary bindings cover Summer Finance ERC-4626 vault canaries", () => {
+  const ready = buildProtocolCanaryBindingPlan({
+    opportunity: { protocolId: "summerfinance", executionSurface: "ethLending" },
+    binding: {
+      vaultAddress: "0x67e536797570b3d8919Df052484273815A0aB506",
+      assetAddress: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      shareTokenAddress: "0x67e536797570b3d8919Df052484273815A0aB506",
+    },
+  });
+
+  assert.equal(ready.status, "binding_ready");
+  assert.equal(ready.bindingKind, "erc4626_vault_supply_withdraw");
+  assert.equal(ready.resolvedBinding.assetAddress, "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+});

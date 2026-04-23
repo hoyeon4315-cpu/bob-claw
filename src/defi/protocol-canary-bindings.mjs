@@ -77,6 +77,26 @@ const PROTOCOL_BINDINGS = Object.freeze({
       "Only tiny deposit/redeem canaries are automated until reward accounting and unwind costs are receipt-backed.",
     ]),
   }),
+  summerfinance: Object.freeze({
+    protocolId: "summerfinance",
+    supportedSurfaces: Object.freeze(["stableCarry", "ethLending"]),
+    bindingKind: "erc4626_vault_supply_withdraw",
+    requiredBindingFields: Object.freeze(["vaultAddress", "assetAddress"]),
+    optionalBindingFields: Object.freeze(["shareTokenAddress", "referralCode"]),
+    approvalTargetField: "vaultAddress",
+    canaryActions: Object.freeze([
+      "approve_exact_asset_to_vault",
+      "deposit_asset_for_shares",
+      "verify_share_balance_delta",
+      "withdraw_or_redeem_shares",
+      "verify_asset_balance_delta",
+      "revoke_or_zero_idle_allowance",
+    ]),
+    notes: Object.freeze([
+      "Summer Finance earn positions expose ERC-4626-compatible vault addresses in Merkl explorerAddress/depositUrl fields.",
+      "Ethereum L1 execution still requires gas-efficient notional, inventory, and policy approval before signing.",
+    ]),
+  }),
 });
 
 function normalize(value) {
