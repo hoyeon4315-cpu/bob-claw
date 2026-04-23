@@ -1,29 +1,32 @@
 import { Interface } from "ethers";
 import { tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
-import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
+import { simulateTransactionCall } from "../../evm/transaction-read.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyMerklCanaryExecutionReadiness } from "../../strategy/merkl-canary-execution-readiness.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
 
-export const ERC4626_PROTOCOL_CANARY_STRATEGY_ID = "gateway_native_asset_conversion_sleeve";
-const ERC4626_LIKE_BINDING_KINDS = new Set(["erc4626_vault_supply_withdraw", "euler_evault_deposit_withdraw"]);
+export const AAVE_PROTOCOL_CANARY_STRATEGY_ID = "gateway_native_asset_conversion_sleeve";
 
 const ERC20_INTERFACE = new Interface([
   "function approve(address spender,uint256 amount)",
 ]);
 
-const ERC4626_INTERFACE = new Interface([
-  "function deposit(uint256 assets,address receiver) returns (uint256 shares)",
-  "function redeem(uint256 shares,address receiver,address owner) returns (uint256 assets)",
+const AAVE_POOL_INTERFACE = new Interface([
+  "function supply(address asset,uint256 amount,address onBehalfOf,uint16 referralCode)",
+  "function withdraw(address asset,uint256 amount,address to) returns (uint256)",
 ]);
 
-const DEFAULT_DEPOSIT_GAS_UNITS = 420_000;
-const DEFAULT_REDEEM_GAS_UNITS = 260_000;
+const AAVE_PROVIDER_INTERFACE = new Interface([
+  "function getPool() view returns (address)",
+]);
+
+const DEFAULT_SUPPLY_GAS_UNITS = 360_000;
+const DEFAULT_WITHDRAW_GAS_UNITS = 280_000;
 
 function assertAddress(value, label) {
   const normalized = String(value || "").trim();
@@ -80,7 +83,7 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
   };
 }
 
-export function selectErc4626QueueItem(
+export function selectAaveQueueItem(
   queue = {},
   {
     opportunityId = null,
@@ -93,18 +96,18 @@ export function selectErc4626QueueItem(
   const items = queue?.queue || [];
   const filtered = items
     .filter((item) => {
-    if (opportunityId && String(item.opportunityId) !== String(opportunityId)) return false;
-    if (chain && item.chain !== chain) return false;
-    return ERC4626_LIKE_BINDING_KINDS.has(item.protocolBindingPlan?.bindingKind || "") &&
-      item.protocolBindingPlan?.status === "binding_ready";
+      if (opportunityId && String(item.opportunityId) !== String(opportunityId)) return false;
+      if (chain && item.chain !== chain) return false;
+      return item.protocolBindingPlan?.bindingKind === "aave_v3_pool_supply_withdraw" &&
+        item.protocolBindingPlan?.status === "binding_ready";
     })
     .map((item) => item.executionReadiness
       ? item
       : applyMerklCanaryExecutionReadiness(item, {
-        inventorySnapshot,
-        canaryExecutions,
-        now,
-      }));
+          inventorySnapshot,
+          canaryExecutions,
+          now,
+        }));
 
   if (opportunityId || chain) return filtered[0] || null;
 
@@ -112,12 +115,32 @@ export function selectErc4626QueueItem(
   return executable[0] || null;
 }
 
-export async function buildErc4626ProtocolCanaryPlan({
+export async function resolveAavePoolAddress({
+  chain,
+  binding = {},
+  simulateTransactionCallImpl = simulateTransactionCall,
+} = {}) {
+  if (!chain) throw new Error("chain is required");
+  if (!getEvmChainConfig(chain)) throw new Error(`Unsupported EVM chain: ${chain}`);
+  if (binding.poolAddress) return assertAddress(binding.poolAddress, "poolAddress");
+
+  const poolAddressProviderAddress = assertAddress(binding.poolAddressProviderAddress, "poolAddressProviderAddress");
+  const call = await simulateTransactionCallImpl(chain, {
+    to: poolAddressProviderAddress,
+    data: AAVE_PROVIDER_INTERFACE.encodeFunctionData("getPool", []),
+    value: "0",
+  });
+  const [poolAddress] = AAVE_PROVIDER_INTERFACE.decodeFunctionResult("getPool", call.returnData || "0x");
+  return assertAddress(poolAddress, "poolAddress");
+}
+
+export async function buildAaveProtocolCanaryPlan({
   queueItem,
   senderAddress,
   amount,
-  strategyId = queueItem?.mappedStrategyId || ERC4626_PROTOCOL_CANARY_STRATEGY_ID,
+  strategyId = queueItem?.mappedStrategyId || AAVE_PROTOCOL_CANARY_STRATEGY_ID,
   estimateGasImpl = estimateGas,
+  simulateTransactionCallImpl = simulateTransactionCall,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   minimumReturnBps = 9_500,
   now = new Date().toISOString(),
@@ -129,14 +152,22 @@ export async function buildErc4626ProtocolCanaryPlan({
   const strategyCaps = assertStrategyCaps(strategyId);
   const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
   const chain = queueItem.chain;
-  const vaultAddress = assertAddress(binding.vaultAddress, "vaultAddress");
+  const poolAddress = await resolveAavePoolAddress({
+    chain,
+    binding,
+    simulateTransactionCallImpl,
+  });
   const assetAddress = assertAddress(binding.assetAddress, "assetAddress");
-  const shareTokenAddress = assertAddress(binding.shareTokenAddress || vaultAddress, "shareTokenAddress");
+  const aTokenAddress = assertAddress(binding.aTokenAddress, "aTokenAddress");
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
-  const assetDecimals = Number.isInteger(binding.assetDecimals) ? binding.assetDecimals : tokenAsset(chain, assetAddress).decimals;
+  const assetMetadata = tokenAsset(chain, assetAddress, {
+    ticker: binding.assetSymbol || tokenAsset(chain, assetAddress).ticker,
+    decimals: Number.isInteger(binding.assetDecimals) ? binding.assetDecimals : tokenAsset(chain, assetAddress).decimals,
+  });
+  const assetDecimals = assetMetadata.decimals;
   const amountUsd = amountUsdFromUnits(normalizedAmount, assetDecimals) ?? 0;
-  const capAmountUsd = amountUsd;
   const buffer = Math.max(10_000, Number(gasBufferBps) || DEFAULT_GATEWAY_GAS_BUFFER_BPS);
+  const referralCode = Number.isInteger(Number(binding.referralCode)) ? Number(binding.referralCode) : 0;
 
   let approveGas = null;
   try {
@@ -145,7 +176,7 @@ export async function buildErc4626ProtocolCanaryPlan({
       {
         from: senderAddress,
         to: assetAddress,
-        data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, normalizedAmount]),
+        data: ERC20_INTERFACE.encodeFunctionData("approve", [poolAddress, normalizedAmount]),
         valueWei: "0",
       },
       getEvmChainConfig(chain),
@@ -154,10 +185,15 @@ export async function buildErc4626ProtocolCanaryPlan({
     approveGas = { gasUnits: 80_000 };
   }
 
-  const depositData = ERC4626_INTERFACE.encodeFunctionData("deposit", [normalizedAmount, senderAddress]);
+  const supplyData = AAVE_POOL_INTERFACE.encodeFunctionData("supply", [
+    assetAddress,
+    normalizedAmount,
+    senderAddress,
+    referralCode,
+  ]);
   const steps = [
     {
-      id: "approve_asset_to_vault",
+      id: "approve_asset_to_pool",
       intent: buildIntent({
         strategyId,
         chain,
@@ -167,13 +203,13 @@ export async function buildErc4626ProtocolCanaryPlan({
         intentType: "approve_exact",
         approval: {
           token: assetAddress,
-          spender: vaultAddress,
+          spender: poolAddress,
           amount: normalizedAmount,
           mode: "per_tx",
         },
         tx: {
           to: assetAddress,
-          data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, normalizedAmount]),
+          data: ERC20_INTERFACE.encodeFunctionData("approve", [poolAddress, normalizedAmount]),
           value: "0",
           gasLimit: gasLimitWithFallback(approveGas, 80_000, buffer),
         },
@@ -181,33 +217,36 @@ export async function buildErc4626ProtocolCanaryPlan({
           capCheckAmountUsd: 0,
           opportunityId: queueItem.opportunityId,
           protocol: queueItem.protocolId,
-          vaultAddress,
+          marketName: binding.marketName || null,
+          poolAddress,
           assetAddress,
+          shareTokenAddress: aTokenAddress,
         },
       }),
     },
     {
-      id: "deposit_asset_to_vault",
+      id: "supply_asset_to_pool",
       intent: buildIntent({
         strategyId,
         chain,
         amountUsd,
         now,
         ttlMs: strategyCaps.intentTtlMs,
-        intentType: "erc4626_deposit",
+        intentType: "aave_supply",
         tx: {
-          to: vaultAddress,
-          data: depositData,
+          to: poolAddress,
+          data: supplyData,
           value: "0",
-          gasLimit: String(applyGasBuffer(DEFAULT_DEPOSIT_GAS_UNITS, buffer)),
+          gasLimit: String(applyGasBuffer(DEFAULT_SUPPLY_GAS_UNITS, buffer)),
         },
         metadata: {
-          capCheckAmountUsd: capAmountUsd,
+          capCheckAmountUsd: amountUsd,
           opportunityId: queueItem.opportunityId,
           protocol: queueItem.protocolId,
-          vaultAddress,
+          marketName: binding.marketName || null,
+          poolAddress,
           assetAddress,
-          shareTokenAddress,
+          shareTokenAddress: aTokenAddress,
         },
       }),
     },
@@ -224,30 +263,32 @@ export async function buildErc4626ProtocolCanaryPlan({
     protocolId: queueItem.protocolId,
     bindingKind: queueItem.protocolBindingPlan?.bindingKind || null,
     name: queueItem.name,
-    vaultAddress,
+    poolAddress,
+    poolAddressProviderAddress: binding.poolAddressProviderAddress || null,
+    marketName: binding.marketName || null,
     assetAddress,
-    shareTokenAddress,
+    shareTokenAddress: aTokenAddress,
     amount: normalizedAmount,
     amountUsd,
     minimumReturnBps,
     minimumRedeemAssetDelta: minimumRedeemDelta(normalizedAmount, minimumReturnBps),
     asset: tokenAsset(chain, assetAddress, {
-      ticker: binding.assetSymbol || tokenAsset(chain, assetAddress).ticker,
-      family: "stablecoin",
+      ticker: binding.assetSymbol || assetMetadata.ticker,
+      family: assetMetadata.family || "stablecoin",
       decimals: assetDecimals,
-      priceKey: "usd_stable",
+      priceKey: assetMetadata.priceKey || null,
     }),
-    shareAsset: tokenAsset(chain, shareTokenAddress, {
-      ticker: binding.shareTokenSymbol || "VaultShare",
+    shareAsset: tokenAsset(chain, aTokenAddress, {
+      ticker: binding.aTokenSymbol || "aToken",
       family: "protocol_share",
-      decimals: 18,
+      decimals: assetDecimals,
       priceKey: null,
     }),
     steps,
   };
 }
 
-export async function executeErc4626ProtocolCanaryPlan({
+export async function executeAaveProtocolCanaryPlan({
   plan,
   sendCommand = sendSignerCommand,
   receiptIngest = appendExecutionReceiptReconciliation,
@@ -264,7 +305,7 @@ export async function executeErc4626ProtocolCanaryPlan({
   sleepImpl = sleep,
 } = {}) {
   if (!Array.isArray(plan?.steps) || plan.steps.length !== 2) {
-    throw new Error("ERC4626 protocol canary plan must have approve and deposit steps");
+    throw new Error("Aave protocol canary plan must have approve and supply steps");
   }
   const assetBalanceBefore = await readEvmAssetBalance({
     asset: plan.asset,
@@ -292,23 +333,23 @@ export async function executeErc4626ProtocolCanaryPlan({
 
   const stepResults = [];
   for (const step of steps) {
-    if (step.id === "deposit_asset_to_vault") {
-      let depositGas = null;
+    if (step.id === "supply_asset_to_pool") {
+      let supplyGas = null;
       try {
-        depositGas = await estimateGasImpl(
+        supplyGas = await estimateGasImpl(
           plan.chain,
           {
             from: plan.senderAddress,
-            to: plan.vaultAddress,
+            to: plan.poolAddress,
             data: step.intent.tx.data,
             valueWei: "0",
           },
           getEvmChainConfig(plan.chain),
         );
       } catch {
-        depositGas = { gasUnits: DEFAULT_DEPOSIT_GAS_UNITS };
+        supplyGas = { gasUnits: DEFAULT_SUPPLY_GAS_UNITS };
       }
-      step.intent.tx.gasLimit = gasLimitWithFallback(depositGas, DEFAULT_DEPOSIT_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS);
+      step.intent.tx.gasLimit = gasLimitWithFallback(supplyGas, DEFAULT_SUPPLY_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS);
     }
 
     const result = await sendCommand({
@@ -354,64 +395,68 @@ export async function executeErc4626ProtocolCanaryPlan({
     };
   }
 
-  const shareDelta = (BigInt(shareProof.settledBalance) - BigInt(shareBalanceBefore.balance ?? 0)).toString();
-  let redeemGas = null;
+  let withdrawGas = null;
+  const withdrawData = AAVE_POOL_INTERFACE.encodeFunctionData("withdraw", [
+    plan.assetAddress,
+    plan.amount,
+    plan.senderAddress,
+  ]);
   try {
-    redeemGas = await estimateGasImpl(
+    withdrawGas = await estimateGasImpl(
       plan.chain,
       {
         from: plan.senderAddress,
-        to: plan.vaultAddress,
-        data: ERC4626_INTERFACE.encodeFunctionData("redeem", [shareDelta, plan.senderAddress, plan.senderAddress]),
+        to: plan.poolAddress,
+        data: withdrawData,
         valueWei: "0",
       },
       getEvmChainConfig(plan.chain),
     );
   } catch {
-    redeemGas = { gasUnits: DEFAULT_REDEEM_GAS_UNITS };
+    withdrawGas = { gasUnits: DEFAULT_WITHDRAW_GAS_UNITS };
   }
 
-  const redeemIntent = buildIntent({
+  const withdrawIntent = buildIntent({
     strategyId: plan.strategyId,
     chain: plan.chain,
     amountUsd: 0,
     now: new Date().toISOString(),
     ttlMs: assertStrategyCaps(plan.strategyId).intentTtlMs,
-    intentType: "erc4626_redeem",
+    intentType: "aave_withdraw",
     tx: {
-      to: plan.vaultAddress,
-      data: ERC4626_INTERFACE.encodeFunctionData("redeem", [shareDelta, plan.senderAddress, plan.senderAddress]),
+      to: plan.poolAddress,
+      data: withdrawData,
       value: "0",
-      gasLimit: gasLimitWithFallback(redeemGas, DEFAULT_REDEEM_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS),
+      gasLimit: gasLimitWithFallback(withdrawGas, DEFAULT_WITHDRAW_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS),
     },
     metadata: {
       capCheckAmountUsd: 0,
       opportunityId: plan.opportunityId,
       protocol: plan.protocolId,
-      vaultAddress: plan.vaultAddress,
+      marketName: plan.marketName || null,
+      poolAddress: plan.poolAddress,
       assetAddress: plan.assetAddress,
       shareTokenAddress: plan.shareTokenAddress,
-      shareDelta,
     },
   });
 
-  const redeemResult = await sendCommand({
+  const withdrawResult = await sendCommand({
     socketPath,
     timeoutMs,
     message: {
       command: "sign_and_broadcast",
-      intent: redeemIntent,
+      intent: withdrawIntent,
       awaitConfirmation,
       confirmations,
       timeoutMs: confirmationTimeoutMs,
     },
   });
-  if (redeemResult?.status !== "ok" || !redeemResult?.broadcast?.txHash) {
-    const error = new Error(redeemResult?.error?.message || "Signer did not complete erc4626_redeem");
-    error.name = redeemResult?.error?.name || "SignerExecutionFailed";
+  if (withdrawResult?.status !== "ok" || !withdrawResult?.broadcast?.txHash) {
+    const error = new Error(withdrawResult?.error?.message || "Signer did not complete aave_withdraw");
+    error.name = withdrawResult?.error?.name || "SignerExecutionFailed";
     throw error;
   }
-  stepResults.push({ id: "redeem_shares_from_vault", signerResult: redeemResult });
+  stepResults.push({ id: "withdraw_asset_from_pool", signerResult: withdrawResult });
 
   const redeemProof = await waitForEvmAssetDelta({
     asset: plan.asset,

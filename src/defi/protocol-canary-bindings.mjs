@@ -24,7 +24,7 @@ const PROTOCOL_BINDINGS = Object.freeze({
     supportedSurfaces: Object.freeze(["lending", "stableBorrow", "stableCarry", "ethLending"]),
     bindingKind: "aave_v3_pool_supply_withdraw",
     requiredBindingFields: Object.freeze(["poolAddress", "assetAddress", "aTokenAddress"]),
-    optionalBindingFields: Object.freeze(["referralCode"]),
+    optionalBindingFields: Object.freeze(["poolAddressProviderAddress", "marketName", "referralCode"]),
     approvalTargetField: "poolAddress",
     canaryActions: Object.freeze([
       "approve_exact_asset_to_pool",
@@ -67,6 +67,17 @@ function missingFields(binding = {}, fields = []) {
   return fields.filter((field) => !binding[field]);
 }
 
+function missingBindingFields(template = {}, binding = {}) {
+  if (template.protocolId === "aave") {
+    const missing = [];
+    if (!binding.poolAddress && !binding.poolAddressProviderAddress) missing.push("poolAddress");
+    if (!binding.assetAddress) missing.push("assetAddress");
+    if (!binding.aTokenAddress) missing.push("aTokenAddress");
+    return missing;
+  }
+  return missingFields(binding, template.requiredBindingFields);
+}
+
 function pickBindingFields(binding = {}, fields = []) {
   return Object.fromEntries(
     fields
@@ -94,7 +105,7 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
 
   const surface = opportunity.executionSurface || null;
   const unsupportedSurface = surface && !template.supportedSurfaces.includes(surface);
-  const missing = missingFields(binding || {}, template.requiredBindingFields);
+  const missing = missingBindingFields(template, binding || {});
   const resolvedBinding = {
     ...pickBindingFields(binding || {}, template.requiredBindingFields),
     ...pickBindingFields(binding || {}, template.optionalBindingFields),

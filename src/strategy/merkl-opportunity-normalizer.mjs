@@ -6,6 +6,8 @@ const RESERVE_SYMBOL_RE = /^(usdy|bib01|ousg|ustb|buidl|ustbl)$/i;
 const OTHER_APPROVED_SYMBOL_RE = /^(sol|wsol|link|uni|aero|pendle|ena|ondo)$/i;
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/u;
 const MANAGED_VAULT_PROTOCOLS = new Set(["superform", "ichi"]);
+import { resolveAaveMarketBinding } from "../defi/aave-market-addresses.mjs";
+
 const DIRECT_LENDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "bend", "avalon", "benqi"]);
 const FIXED_YIELD_PROTOCOLS = new Set(["pendle"]);
 const OPERATOR_HELD_STRATEGIES = new Set(["recursive_wrapped_btc_lending_loop"]);
@@ -306,6 +308,10 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
       positionToken ||
       tokens.find((token) => /^a/i.test(token.symbol || "") && !sameAddress(token.address, assetToken?.address)) ||
       null;
+    const marketBinding = resolveAaveMarketBinding({
+      chain: opportunity?.chain?.name,
+      depositUrl: opportunity.depositUrl,
+    });
     if (!assetToken?.address && !aToken?.address) return null;
     return {
       source: "merkl_opportunity",
@@ -314,6 +320,9 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
       assetDecimals: assetToken?.decimals ?? null,
       aTokenAddress: aToken?.address || explorerAddress || null,
       aTokenSymbol: aToken?.symbol || null,
+      marketName: marketBinding.marketName,
+      poolAddress: marketBinding.poolAddress,
+      poolAddressProviderAddress: marketBinding.poolAddressProviderAddress,
       depositUrl: opportunity.depositUrl || null,
     };
   }

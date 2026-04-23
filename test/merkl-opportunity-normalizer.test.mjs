@@ -72,5 +72,38 @@ test("merkl normalizer keeps Aave pool binding explicit while extracting asset a
 
   assert.equal(item.protocolBinding.assetAddress, "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD");
   assert.equal(item.protocolBinding.aTokenAddress, "0xE3190143Eb552456F88464662f0c0C4aC67A77eB");
-  assert.equal(item.protocolBinding.poolAddress, undefined);
+  assert.equal(item.protocolBinding.marketName, null);
+  assert.equal(item.protocolBinding.poolAddressProviderAddress, null);
+
+  const mainnetItem = normalizeMerklOpportunity({
+    id: "10132453683713477765",
+    chainId: 1,
+    chain: { name: "Ethereum" },
+    protocol: { id: "aave", name: "Aave" },
+    type: "AAVE_SUPPLY",
+    action: "LEND",
+    name: "Lend rsETH on Aave",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x2D62109243b87C4bA3EE7bA1D91B0dD0A074d7b1",
+    depositUrl: "https://app.aave.com/reserve-overview/?underlyingAsset=0xA1290d69c65A6Fe4DF752f95823fae25cB99e5A7&marketName=proto_mainnet_v3",
+    tokens: [
+      {
+        displaySymbol: "aEthrsETH",
+        address: "0x2D62109243b87C4bA3EE7bA1D91B0dD0A074d7b1",
+        decimals: 18,
+        verified: true,
+      },
+      {
+        displaySymbol: "rsETH",
+        address: "0xA1290d69c65A6Fe4DF752f95823fae25cB99e5A7",
+        decimals: 18,
+        verified: true,
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.equal(mainnetItem.protocolBinding.marketName, "proto_mainnet_v3");
+  assert.equal(mainnetItem.protocolBinding.poolAddressProviderAddress, "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e");
+  assert.equal(mainnetItem.protocolBinding.poolAddress, "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2");
 });

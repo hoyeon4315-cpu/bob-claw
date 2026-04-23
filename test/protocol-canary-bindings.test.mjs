@@ -33,9 +33,24 @@ test("protocol canary bindings define deterministic Morpho deposit and withdraw 
 test("protocol canary bindings cover Aave and Euler without enabling unsupported protocols", () => {
   const aave = buildProtocolCanaryBindingPlan({
     opportunity: { protocolId: "aave", executionSurface: "ethLending" },
+    binding: {
+      poolAddress: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      assetAddress: "0xA1290d69c65A6Fe4DF752f95823fae25cB99e5A7",
+      aTokenAddress: "0x2D62109243b87C4bA3EE7bA1D91B0dD0A074d7b1",
+      poolAddressProviderAddress: "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
+      marketName: "proto_mainnet_v3",
+    },
   });
   assert.equal(aave.bindingKind, "aave_v3_pool_supply_withdraw");
-  assert.deepEqual(aave.missingBindingFields, ["poolAddress", "assetAddress", "aTokenAddress"]);
+  assert.equal(aave.status, "binding_ready");
+  assert.deepEqual(aave.missingBindingFields, []);
+  assert.equal(aave.resolvedBinding.marketName, "proto_mainnet_v3");
+  assert.equal(aave.resolvedBinding.poolAddressProviderAddress, "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e");
+
+  const aaveMissing = buildProtocolCanaryBindingPlan({
+    opportunity: { protocolId: "aave", executionSurface: "ethLending" },
+  });
+  assert.deepEqual(aaveMissing.missingBindingFields, ["poolAddress", "assetAddress", "aTokenAddress"]);
 
   const euler = buildProtocolCanaryBindingPlan({
     opportunity: { protocolId: "euler", executionSurface: "stableBorrow" },

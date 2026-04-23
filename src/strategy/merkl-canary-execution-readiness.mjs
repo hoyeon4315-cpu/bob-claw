@@ -1,5 +1,9 @@
 const DEFAULT_EXECUTION_COOLDOWN_MS = 60 * 60 * 1000;
-const AUTOMATED_CANARY_BINDINGS = new Set(["erc4626_vault_supply_withdraw"]);
+const AUTOMATED_CANARY_BINDINGS = new Set([
+  "erc4626_vault_supply_withdraw",
+  "euler_evault_deposit_withdraw",
+  "aave_v3_pool_supply_withdraw",
+]);
 
 function normalized(value) {
   return String(value || "").trim().toLowerCase();

@@ -276,6 +276,35 @@ export const STRATEGY_CAPS = Object.freeze({
       sei: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
+  "eth_destination_deployment": Object.freeze({
+    strategyId: "eth_destination_deployment",
+    label: "ETH destination deployment",
+    autoExecute: true,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["aave", "morpho", "pendle", "gearbox", "summerfinance", "yo", "ethstrat"]),
+      assetFamily: "eth_like_yield",
+      btcDenominated: false,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 5,
+      perDayUsd: 25,
+      perChainUsd: Object.freeze({
+        base: 5,
+        ethereum: 10,
+        optimism: 5,
+        sei: 5,
+      }),
+      maxDailyLossUsd: 25,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+      optimism: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      sei: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
   "proxy-spread-experiment": Object.freeze({
     strategyId: "proxy-spread-experiment",
     label: "BTC proxy spread experiment",
