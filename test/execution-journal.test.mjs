@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildExecutionAttemptEvent,
   buildExecutionBlockedEvent,
+  buildBridgeFallbackTriggeredEvent,
   buildExecutionFundingSnapshotEvent,
   buildExecutionFundingOutcomeEvent,
   buildExecutionReconciliationEvent,
@@ -145,6 +146,26 @@ test("blocked execution events preserve blockers and funding-source context", ()
   assert.equal(blocked.fundingSource.method, "cross_chain_bridge_or_swap");
   assert.equal(blocked.riskDecision.decision, "REVIEW");
   assert.deepEqual(blocked.reviewReasons, []);
+});
+
+test("bridge fallback events record provider advance context", () => {
+  const event = buildBridgeFallbackTriggeredEvent({
+    job: jobFixture(),
+    fromExecutionMethod: "cross_chain_bridge_or_swap",
+    toExecutionMethod: "cross_chain_bridge_across",
+    failureCount: 3,
+    failureThreshold: 3,
+    candidateIndex: 1,
+    observedAt: "2026-04-22T05:10:00.000Z",
+  });
+
+  assert.equal(event.eventType, "bridge_fallback_triggered");
+  assert.equal(event.status, "fallback_triggered");
+  assert.equal(event.executionMethod, "cross_chain_bridge_across");
+  assert.equal(event.fromExecutionMethod, "cross_chain_bridge_or_swap");
+  assert.equal(event.toExecutionMethod, "cross_chain_bridge_across");
+  assert.equal(event.failureCount, 3);
+  assert.equal(event.resourceKey, "bob:native");
 });
 
 test("funding snapshot events preserve live quote and gas context", () => {

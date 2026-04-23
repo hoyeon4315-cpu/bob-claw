@@ -50,6 +50,7 @@ test("refill jobs are deterministic and carry execution constraints", () => {
   assert.equal(jobs.jobs[0].executionMethod, "same_chain_token_to_native_swap");
   assert.equal(jobs.jobs[1].executionMethod, "same_chain_native_to_token_swap");
   assert.equal(jobs.jobs[0].candidateMethods.some((item) => item.method === "same_chain_token_to_native_swap"), true);
+  assert.equal(jobs.jobs[0].candidateMethods.find((item) => item.method === "same_chain_token_to_native_swap").source.chain, "bob");
   assert.equal(jobs.jobs[0].fundingSource.selectionStatus, "ready");
   assert.equal(jobs.jobs[0].jobId, buildTreasuryRefillJobs({ plan: planFixture(), policy, fundingSourcePlan }).jobs[0].jobId);
 });
