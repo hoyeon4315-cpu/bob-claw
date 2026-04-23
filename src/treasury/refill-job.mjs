@@ -211,10 +211,13 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
     const candidateMethods = (selection?.candidates || []).map((item) => ({
       method: item.method,
       availability: item.availability,
+      source: item.source || null,
       expectedExecutionRefillCostUsd: item.expectedExecutionRefillCostUsd,
       expectedReserveReplenishmentCostUsd: item.expectedReserveReplenishmentCostUsd,
       expectedLatencyMs: item.expectedLatencyMs,
       requiresBootstrapNative: item.requiresBootstrapNative,
+      requiresManualFunding: item.manualFundingDependency,
+      requiresReserveState: item.requiresReserveState,
       preferred: item.preferred,
       manualFundingDependency: item.manualFundingDependency,
       missingInputs: item.missingInputs,

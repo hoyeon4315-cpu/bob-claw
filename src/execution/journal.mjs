@@ -109,6 +109,51 @@ export function buildExecutionBlockedEvent({
   };
 }
 
+export function buildBridgeFallbackTriggeredEvent({
+  job,
+  fromExecutionMethod,
+  toExecutionMethod,
+  failureCount,
+  failureThreshold,
+  candidateIndex = null,
+  actor = "treasury_refill_runner",
+  mode = "live_execution",
+  observedAt,
+} = {}) {
+  if (!job) throw new Error("bridge fallback job is required");
+  const eventObservedAt = observedAt || new Date().toISOString();
+  return {
+    schemaVersion: 1,
+    observedAt: eventObservedAt,
+    eventType: "bridge_fallback_triggered",
+    status: "fallback_triggered",
+    jobId: job.jobId,
+    attemptId: deterministicId({
+      type: "bridge_fallback_triggered",
+      jobId: job.jobId,
+      fromExecutionMethod,
+      toExecutionMethod,
+      failureCount,
+      observedAt: eventObservedAt,
+    }),
+    actor,
+    mode,
+    chain: job.chain,
+    type: job.type,
+    asset: job.asset,
+    token: job.token || null,
+    targetAmount: job.targetAmount,
+    targetAmountDecimal: job.targetAmountDecimal,
+    resourceKey: job.resourceKey || null,
+    fromExecutionMethod,
+    toExecutionMethod,
+    executionMethod: toExecutionMethod,
+    failureCount,
+    failureThreshold,
+    candidateIndex,
+  };
+}
+
 export function buildExecutionSubmissionEvent({ job, txHash, actor = "manual_submit", observedAt }) {
   const eventObservedAt = observedAt || new Date().toISOString();
   return {
@@ -355,5 +400,6 @@ export function buildExecutionFundingOutcomeEvent({
     destinationBalanceAfter: compactBalanceSnapshot(execution.destinationBalanceAfter),
     destinationProof: execution.destinationProof || null,
     receiptIngest: execution.receiptIngest || null,
+    error: execution.error || null,
   };
 }

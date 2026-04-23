@@ -23,6 +23,7 @@ import {
 } from "../executor/helpers/treasury-refill-job.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { readRefillJobById } from "../executor/helpers/refill-job-store.mjs";
+import { resolveRefillBridgeFallback } from "../executor/helpers/refill-fallback.mjs";
 
 export function parseArgs(argv) {
   const flags = new Set(argv);
@@ -91,8 +92,19 @@ async function main() {
     readJsonl(config.dataDir, "receipt-reconciliations"),
     getCoinGeckoPricesUsd().catch(() => emptyPricesUsd()),
   ]);
-  const job = jobs;
+  let job = jobs;
   if (!job) throw new Error(`Job not found: ${args.jobId}`);
+  const store = new JsonlStore(config.dataDir);
+  const fallbackResolution = resolveRefillBridgeFallback({
+    job,
+    events,
+    mode: args.execute ? args.mode : "live_quote_snapshot",
+  });
+  job = fallbackResolution.job;
+  if (fallbackResolution.fallbackEvent) {
+    await store.append("execution-journal", fallbackResolution.fallbackEvent);
+    events.push(fallbackResolution.fallbackEvent);
+  }
   const resolved = await resolveOperationalAddress({ explicitAddress: job.address || null, dataDir: config.dataDir });
 
   const executionGate = canStartExecution(events, args.jobId, { force: args.force });
@@ -111,7 +123,6 @@ async function main() {
       ],
       fundingSource,
     });
-    const store = new JsonlStore(config.dataDir);
     await store.append("execution-journal", event);
     if (args.json) {
       console.log(safeJsonStringify(event, 2));
@@ -160,7 +171,6 @@ async function main() {
       fundingSource,
       riskDecision,
     });
-    const store = new JsonlStore(config.dataDir);
     await store.append("execution-journal", event);
     if (args.json) {
       console.log(safeJsonStringify(event, 2));
@@ -180,7 +190,6 @@ async function main() {
     destinationMinBalanceDecimal: job.destinationMinBalanceDecimal || null,
   });
 
-  const store = new JsonlStore(config.dataDir);
   if (preparation.status !== "ready") {
     const event = buildExecutionBlockedEvent({
       job,
@@ -232,7 +241,16 @@ async function main() {
         name: error.name || "ExecutionFailed",
         message: error.message,
       };
-      if (execution && !execution.error) {
+      if (!execution) {
+        execution = {
+          schemaVersion: 1,
+          observedAt: new Date().toISOString(),
+          settlementStatus: "failed",
+          executor: preparation.executor,
+          stepResults: [],
+          error: executionError,
+        };
+      } else if (!execution.error) {
         execution.error = executionError;
       }
     }
@@ -250,7 +268,14 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(safeJsonStringify({ preparation, snapshotEvent, execution, outcomeEvent, error: executionError }, 2));
+    console.log(safeJsonStringify({
+      fallbackEvent: fallbackResolution.fallbackEvent,
+      preparation,
+      snapshotEvent,
+      execution,
+      outcomeEvent,
+      error: executionError,
+    }, 2));
     if (executionError) process.exitCode = 1;
     return;
   }
