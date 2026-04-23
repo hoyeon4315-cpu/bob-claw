@@ -1,4 +1,5 @@
 import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
+import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings.mjs";
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
 const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle"]);
@@ -170,6 +171,7 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
     ],
     capabilityGaps: capabilityGaps(item),
     preflightSteps: buildPreflightSteps(item),
+    protocolBindingPlan: buildProtocolCanaryBindingPlan({ opportunity: item }),
   };
 }
 
