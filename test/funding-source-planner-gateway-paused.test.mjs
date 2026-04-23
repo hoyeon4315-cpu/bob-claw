@@ -85,18 +85,18 @@ test("planner emits alternate bridge candidates when Gateway paused and fallback
     },
   });
   const methods = new Set(funding.selections[0].candidates.map((c) => c.method));
-  // Base <-> Unichain is supported by across + lifi + relay + stargate in
-  // the registry scaffold. All arrive as conditional (design_scaffold).
+  // Base <-> Unichain is represented by live Across plus design-scaffold
+  // aggregators. Across is live, but this fixture uses wBTC.OFT, which is not
+  // an Across-supported ticker.
   assert.ok(methods.has("cross_chain_bridge_across"), "Across candidate emitted");
   assert.ok(methods.has("cross_chain_bridge_lifi"), "LiFi candidate emitted");
-  for (const method of ["cross_chain_bridge_across", "cross_chain_bridge_lifi"]) {
-    const candidate = funding.selections[0].candidates.find((c) => c.method === method);
-    assert.equal(candidate.availability, "conditional");
-    assert.ok(
-      candidate.missingInputs.some((input) => input.startsWith("bridge_provider_executor_missing:")),
-      `${method} missingInputs flags missing executor`,
-    );
-  }
+  const across = funding.selections[0].candidates.find((c) => c.method === "cross_chain_bridge_across");
+  assert.equal(across.availability, "conditional");
+  assert.ok(across.missingInputs.includes("across_pair_unsupported"));
+  assert.ok(!across.missingInputs.some((input) => input.startsWith("bridge_provider_executor_missing:")));
+  const lifi = funding.selections[0].candidates.find((c) => c.method === "cross_chain_bridge_lifi");
+  assert.equal(lifi.availability, "conditional");
+  assert.ok(lifi.missingInputs.some((input) => input.startsWith("bridge_provider_executor_missing:")));
 });
 
 test("planner leaves Gateway candidates selectable when Gateway available", () => {
