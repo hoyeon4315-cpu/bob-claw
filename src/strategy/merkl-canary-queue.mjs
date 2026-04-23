@@ -3,7 +3,7 @@ import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings
 import { applyMerklCanaryExecutionReadiness } from "./merkl-canary-execution-readiness.mjs";
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
-const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle"]);
+const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle", "yei"]);
 
 const EXECUTION_TEMPLATES = Object.freeze({
   lending: Object.freeze({
