@@ -32,6 +32,7 @@ import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAsset
 
 export const ACROSS_BRIDGE_STRATEGY_ID = "across-bridge";
 export const DEFAULT_ACROSS_GAS_BUFFER_BPS = 12_000;
+export const DEFAULT_ACROSS_DEPOSIT_GAS_UNITS = 450_000;
 
 const SPOKE_INTERFACE = new Interface(SPOKE_POOL_DEPOSIT_ABI);
 const ERC20_INTERFACE = new Interface([
@@ -47,6 +48,47 @@ function applyGasBuffer(gasUnits, bufferBps = DEFAULT_ACROSS_GAS_BUFFER_BPS) {
 function serializeAcrossError(error) {
   if (!(error instanceof Error)) return { message: String(error) };
   return { name: error.name, message: error.message, details: error.details || null };
+}
+
+function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
+  const available = BigInt(sourceBalanceBefore?.balance ?? 0);
+  const required = BigInt(plan?.quote?.inputAmount || plan?.request?.amount || 0);
+  if (available >= required) return;
+
+  const error = new Error(`Insufficient source balance: required ${required.toString()}, available ${available.toString()}`);
+  error.name = "InsufficientSourceBalance";
+  error.partialExecution = {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    settlementStatus: "blocked",
+    blockedReason: "insufficient_source_balance",
+    plan,
+    stepResults: [],
+    sourceBalanceBefore: {
+      ...sourceBalanceBefore,
+      ticker: plan.srcAsset?.ticker || null,
+      token: plan.srcToken || null,
+      chain: plan.srcChain,
+    },
+    sourceBalanceAfter: null,
+    destinationBalanceBefore: destinationBalanceBefore
+      ? {
+          ...destinationBalanceBefore,
+          ticker: plan.dstAsset?.ticker || null,
+          token: plan.dstToken || null,
+          chain: plan.dstChain,
+        }
+      : null,
+    destinationBalanceAfter: null,
+    destinationProof: null,
+    error: {
+      name: error.name,
+      message: error.message,
+      requiredAmount: required.toString(),
+      availableBalance: available.toString(),
+    },
+  };
+  throw error;
 }
 
 function amountUsdFromAmount(amountRaw, asset, prices) {
@@ -154,11 +196,25 @@ export async function buildAcrossBridgePlan({
         { from: senderAddress, to: quote.inputToken, data: approvalCalldata, valueWei: "0" },
         srcChainConfig,
       );
-      const gasEstimate = await estimateGasImpl(
-        srcChain,
-        { from: senderAddress, to: spokePool, data: calldata, valueWei: "0" },
-        srcChainConfig,
-      );
+      let gasEstimate = null;
+      let depositGasFallbackReason = null;
+      try {
+        gasEstimate = await estimateGasImpl(
+          srcChain,
+          { from: senderAddress, to: spokePool, data: calldata, valueWei: "0" },
+          srcChainConfig,
+        );
+      } catch (error) {
+        const classified = classifyGasEstimateError(error);
+        if (classified !== "execution_reverted" && classified !== "erc20_allowance_insufficient") throw error;
+        depositGasFallbackReason = "deposit_estimate_reverted_before_approval";
+        gasEstimate = {
+          gasUnits: String(DEFAULT_ACROSS_DEPOSIT_GAS_UNITS),
+          gasPriceWei: approvalGasEstimate.gasPriceWei ?? null,
+          rpcUrl: approvalGasEstimate.rpcUrl ?? null,
+          fallback: true,
+        };
+      }
       const approvalGasLimit = applyGasBuffer(approvalGasEstimate.gasUnits, gasBufferBps);
       const gasLimit = applyGasBuffer(gasEstimate.gasUnits, gasBufferBps);
       approvalGasPreflight = {
@@ -172,6 +228,7 @@ export async function buildAcrossBridgePlan({
         gasBufferBps: Math.max(10_000, Number(gasBufferBps) || 10_000),
         gasLimit: String(gasLimit),
         gasLimitHex: `0x${gasLimit.toString(16)}`,
+        fallbackReason: depositGasFallbackReason,
       };
       const buildIntent = ({ intentType, tx, approval = null, metadata = {} }) => ({
         strategyId,
@@ -313,6 +370,7 @@ export async function executeAcrossBridgePlan({
         readNativeBalanceImpl,
       })
     : null;
+  assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore });
 
   const executionSteps = Array.isArray(plan.steps) && plan.steps.length > 0
     ? plan.steps
