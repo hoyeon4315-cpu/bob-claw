@@ -21,7 +21,7 @@ export const ACROSS_SPOKE_POOLS = Object.freeze({
   arbitrum: "0xe35e9842fceaCA96570B734083f4a58e8F7C5f2A",
   base: "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64",
   unichain: "0xa88FEF8d70B8b0f3f9D6F739dB52c63dA3e1CA04",
-  bnb: "0xe35e9842fceaCA96570B734083f4a58e8F7C5f2A",
+  bsc: "0xe35e9842fceaCA96570B734083f4a58e8F7C5f2A",
 });
 
 // Supported token registry per chain. Keys are lower-case tickers so
@@ -57,7 +57,7 @@ export const ACROSS_SUPPORTED_TOKENS = Object.freeze({
     usdc: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
     weth: "0x4200000000000000000000000000000000000006",
   }),
-  bnb: Object.freeze({
+  bsc: Object.freeze({
     usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
   }),
 });

@@ -31,6 +31,7 @@ test("AcrossClient.suggestedFees issues GET with expected query params", async (
     destinationChainId: 10,
     amount: "10000",
     recipient: "0xre",
+    allowUnmatchedDecimals: true,
   });
   assert.ok(capturedUrl.startsWith("https://example/api/suggested-fees?"));
   assert.ok(capturedUrl.includes("inputToken=0xin"));
@@ -39,6 +40,7 @@ test("AcrossClient.suggestedFees issues GET with expected query params", async (
   assert.ok(capturedUrl.includes("destinationChainId=10"));
   assert.ok(capturedUrl.includes("amount=10000"));
   assert.ok(capturedUrl.includes("recipient=0xre"));
+  assert.ok(capturedUrl.includes("allowUnmatchedDecimals=true"));
   assert.equal(body.outputAmount, "9900");
 });
 

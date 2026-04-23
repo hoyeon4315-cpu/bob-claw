@@ -6,6 +6,7 @@
 // the caller never has to branch on vendor-specific edge cases.
 
 import { getEvmChainConfig } from "../../config/chains.mjs";
+import { tokenAsset } from "../../assets/tokens.mjs";
 import {
   ACROSS_DEFAULT_POLICY,
   acrossSpokePool,
@@ -29,16 +30,21 @@ export function buildAcrossQuoteRequest({ srcChain, dstChain, ticker, amount, re
   if (!acrossSupportsPair({ srcChain, dstChain, ticker })) {
     throw new Error(`across quote: pair unsupported src=${srcChain} dst=${dstChain} ticker=${ticker}`);
   }
+  const inputToken = acrossTokenAddress(srcChain, ticker);
+  const outputToken = acrossTokenAddress(dstChain, ticker);
+  const inputDecimals = tokenAsset(srcChain, inputToken).decimals;
+  const outputDecimals = tokenAsset(dstChain, outputToken).decimals;
   return {
     srcChain,
     dstChain,
     ticker,
-    inputToken: acrossTokenAddress(srcChain, ticker),
-    outputToken: acrossTokenAddress(dstChain, ticker),
+    inputToken,
+    outputToken,
     originChainId: chainIdFor(srcChain),
     destinationChainId: chainIdFor(dstChain),
     amount: String(amount),
     recipient,
+    allowUnmatchedDecimals: Number.isInteger(inputDecimals) && Number.isInteger(outputDecimals) && inputDecimals !== outputDecimals,
   };
 }
 
