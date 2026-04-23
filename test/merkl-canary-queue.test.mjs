@@ -56,6 +56,32 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
         overfitFlags: [],
       },
       {
+        opportunityId: "base-morpho-usdc",
+        decision: "candidate",
+        validationMode: "tiny_live_canary_only",
+        chain: "base",
+        protocolId: "morpho",
+        protocolName: "Morpho",
+        name: "Supply USDC to Base Morpho",
+        family: "stable_treasury_carry",
+        assetFamilies: ["stablecoin"],
+        tokenSymbols: ["USDC"],
+        hasStableExposure: true,
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        executionSurface: "stableCarry",
+        campaignRemainingHours: 100,
+        aprPct: 6,
+        nativeAprPct: 4,
+        tvlUsd: 4_000_000,
+        score: 88,
+        overfitRisk: "minimal",
+        overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: "0x3333333333333333333333333333333333333333",
+          assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+      },
+      {
         opportunityId: "held-wbtc-loop",
         decision: "watch",
         validationMode: "research_only",
@@ -63,11 +89,29 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
       },
     ],
   };
+  const inventorySnapshot = {
+    native: [{ chain: "base", asset: "ETH", actual: "100", actualDecimal: 0.001, status: "below_target" }],
+    tokens: [{
+      chain: "base",
+      ticker: "USDC",
+      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      actual: "414771",
+      actualDecimal: 0.414771,
+      estimatedUsd: 0.414771,
+      status: "refill_required",
+    }],
+  };
 
-  const queue = buildMerklCanaryQueue({ report, now: "2026-04-23T00:00:00.000Z" });
-  assert.equal(queue.summary.queueCount, 2);
+  const queue = buildMerklCanaryQueue({
+    report,
+    now: "2026-04-23T00:00:00.000Z",
+    inventorySnapshot,
+  });
+  assert.equal(queue.summary.queueCount, 3);
   assert.equal(queue.summary.topOpportunityId, "eth-morpho-usdc");
-  assert.equal(queue.summary.protocolBindingReadyCount, 1);
+  assert.equal(queue.summary.topExecutableOpportunityId, "base-morpho-usdc");
+  assert.equal(queue.summary.executableNowCount, 1);
+  assert.equal(queue.summary.protocolBindingReadyCount, 2);
   assert.equal(queue.summary.protocolBindingRequiredCount, 1);
   assert.equal(queue.queue[0].queueStatus, "queued_for_tiny_live_canary_preflight");
   assert.equal(queue.queue[0].canaryKind, "deposit_withdraw_tiny_stable_carry");
@@ -75,6 +119,7 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.queue[0].capabilityGaps.includes("protocol_position_binding_required"), false);
   assert.equal(queue.queue[0].protocolBindingPlan.status, "binding_ready");
   assert.deepEqual(queue.queue[0].entryAssets, ["USDC"]);
-  assert.equal(queue.summary.byStrategy.gateway_native_asset_conversion_sleeve, 1);
+  assert.equal(queue.queue[1].executionReadiness.status, "inventory_ready");
+  assert.equal(queue.summary.byStrategy.gateway_native_asset_conversion_sleeve, 2);
   assert.equal(queue.summary.byStrategy.eth_destination_deployment, 1);
 });

@@ -391,7 +391,7 @@ async function main() {
   }
   if (status.strategy?.merklCanaryQueueSummary) {
     console.log(
-      `merklCanaryQueue=queued:${status.strategy.merklCanaryQueueSummary.queueCount ?? 0} top:${status.strategy.merklCanaryQueueSummary.topOpportunityId || "none"} action:${status.strategy.merklCanaryQueueSummary.topNextAction || "none"} bindingReady:${status.strategy.merklCanaryQueueSummary.protocolBindingReadyCount ?? 0} bindingRequired:${status.strategy.merklCanaryQueueSummary.protocolBindingRequiredCount ?? 0} routeGaps:${status.strategy.merklCanaryQueueSummary.chainRouteGapCount ?? 0}`,
+      `merklCanaryQueue=queued:${status.strategy.merklCanaryQueueSummary.queueCount ?? 0} top:${status.strategy.merklCanaryQueueSummary.topOpportunityId || "none"} topExecutable:${status.strategy.merklCanaryQueueSummary.topExecutableOpportunityId || "none"} action:${status.strategy.merklCanaryQueueSummary.topNextAction || "none"} bindingReady:${status.strategy.merklCanaryQueueSummary.protocolBindingReadyCount ?? 0} executableNow:${status.strategy.merklCanaryQueueSummary.executableNowCount ?? 0} executorMissing:${status.strategy.merklCanaryQueueSummary.executorMissingCount ?? 0} cooldown:${status.strategy.merklCanaryQueueSummary.cooldownActiveCount ?? 0} routeGaps:${status.strategy.merklCanaryQueueSummary.chainRouteGapCount ?? 0}`,
     );
   }
   if (status.strategy?.strategySnapshot?.formulaAudit) {

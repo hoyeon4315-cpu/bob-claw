@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import {
   buildErc4626ProtocolCanaryPlan,
@@ -11,6 +12,8 @@ import {
   selectErc4626QueueItem,
 } from "../executor/helpers/erc4626-protocol-canary.mjs";
 import { preflightLiveCanarySweep } from "../executor/live-canary-sweep.mjs";
+import { signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
+import { latestTreasuryInventoryForAddress } from "../strategy/merkl-canary-execution-readiness.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -29,6 +32,8 @@ function parseArgs(argv) {
     opportunityId: entries["opportunity-id"] || null,
     chain: entries.chain || null,
     amount: entries.amount || "10000",
+    socketPath: resolve(entries["socket-path"] || signerSocketPath()),
+    timeoutMs: entries["timeout-ms"] ? Number(entries["timeout-ms"]) : signerClientTimeoutMs(),
   };
 }
 
@@ -47,7 +52,10 @@ function toJsonSafe(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const preflight = await preflightLiveCanarySweep();
+  const preflight = await preflightLiveCanarySweep({
+    socketPath: args.socketPath,
+    timeoutMs: args.timeoutMs,
+  });
   if (preflight.status !== "ready") {
     const report = {
       schemaVersion: 1,
@@ -62,12 +70,19 @@ async function main() {
   }
 
   const queue = await readJson(join(config.dataDir, "merkl-canary-queue.json"));
+  const [inventoryRecords, canaryExecutions] = await Promise.all([
+    readJsonl(config.dataDir, "treasury-inventory"),
+    readJsonl(config.dataDir, "erc4626-protocol-canaries"),
+  ]);
+  const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const queueItem = selectErc4626QueueItem(queue, {
     opportunityId: args.opportunityId,
     chain: args.chain,
+    inventorySnapshot,
+    canaryExecutions,
   });
   if (!queueItem) {
-    throw new Error("No binding-ready ERC4626 queue item matched the requested filters");
+    throw new Error("No inventory-ready ERC4626 queue item matched the requested filters");
   }
 
   const plan = await buildErc4626ProtocolCanaryPlan({
@@ -76,7 +91,11 @@ async function main() {
     amount: args.amount,
   });
   const execution = args.execute
-    ? await executeErc4626ProtocolCanaryPlan({ plan })
+    ? await executeErc4626ProtocolCanaryPlan({
+      plan,
+      socketPath: args.socketPath,
+      timeoutMs: args.timeoutMs,
+    })
     : null;
   const report = {
     schemaVersion: 1,
@@ -96,6 +115,7 @@ async function main() {
       protocolId: queueItem.protocolId,
       name: queueItem.name,
       priorityScore: queueItem.priorityScore,
+      executionReadiness: queueItem.executionReadiness?.status || null,
     },
     plan,
     execution,

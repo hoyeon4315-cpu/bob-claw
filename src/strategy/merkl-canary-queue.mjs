@@ -1,5 +1,6 @@
 import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
 import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings.mjs";
+import { applyMerklCanaryExecutionReadiness } from "./merkl-canary-execution-readiness.mjs";
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
 const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle"]);
@@ -181,7 +182,14 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
   };
 }
 
-export function buildMerklCanaryQueue({ report = null, policy = MERKL_OPPORTUNITY_POLICY, limit = null, now = null } = {}) {
+export function buildMerklCanaryQueue({
+  report = null,
+  policy = MERKL_OPPORTUNITY_POLICY,
+  limit = null,
+  now = null,
+  inventorySnapshot = null,
+  canaryExecutions = [],
+} = {}) {
   const sourceItems = report?.opportunities || report?.topCandidates || [];
   const candidates = sourceItems
     .filter((item) => item?.decision === "candidate")
@@ -191,7 +199,14 @@ export function buildMerklCanaryQueue({ report = null, policy = MERKL_OPPORTUNIT
     .sort(compareQueue);
   const queue = candidates
     .slice(0, Number.isFinite(limit) && limit > 0 ? limit : candidates.length)
-    .map((item, index) => buildQueueItem(item, index, policy));
+    .map((item, index) => buildQueueItem(item, index, policy))
+    .map((item) => applyMerklCanaryExecutionReadiness(item, {
+      inventorySnapshot,
+      canaryExecutions,
+      now: now || new Date().toISOString(),
+    }));
+
+  const executableQueue = queue.filter((item) => item.executionReadiness?.status === "inventory_ready");
 
   return {
     schemaVersion: 1,
@@ -208,6 +223,8 @@ export function buildMerklCanaryQueue({ report = null, policy = MERKL_OPPORTUNIT
       topQueueId: queue[0]?.queueId || null,
       topOpportunityId: queue[0]?.opportunityId || null,
       topNextAction: queue[0]?.nextAction || null,
+      topExecutableQueueId: executableQueue[0]?.queueId || null,
+      topExecutableOpportunityId: executableQueue[0]?.opportunityId || null,
       chainCount: Object.keys(countBy(queue, (item) => item.chain)).length,
       byChain: countBy(queue, (item) => item.chain),
       byStrategy: countBy(queue, (item) => item.mappedStrategyId),
@@ -217,6 +234,10 @@ export function buildMerklCanaryQueue({ report = null, policy = MERKL_OPPORTUNIT
       protocolBindingRequiredCount: queue.filter((item) => item.capabilityGaps.includes("protocol_position_binding_required")).length,
       unsupportedProtocolBindingCount: queue.filter((item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding").length,
       chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
+      executableNowCount: executableQueue.length,
+      cooldownActiveCount: queue.filter((item) => item.executionReadiness?.status === "cooldown_active").length,
+      nativeGasGapCount: queue.filter((item) => item.executionReadiness?.status === "native_gas_missing").length,
+      executorMissingCount: queue.filter((item) => item.executionReadiness?.status === "executor_missing").length,
     },
     queue,
   };
