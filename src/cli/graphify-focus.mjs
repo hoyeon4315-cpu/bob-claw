@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const APP_GRAPH = join(ROOT, "src/graphify-out/graph.json");
@@ -17,6 +17,8 @@ function printHelp() {
   console.log("  npm run graph:focus -- path <from> <to>");
   console.log("  npm run graph:focus -- query <question> [--budget=N]");
   console.log("  npm run graph:focus -- report [--root] [--lines=N]");
+  console.log("  npm run graph:focus -- status");
+  console.log("  npm run graph:focus -- update [--root|--all]");
   console.log("");
   console.log("Defaults:");
   console.log("  graph: src/graphify-out/graph.json");
@@ -40,6 +42,7 @@ function parseArgs(argv) {
     mode: mode || "help",
     positionals,
     root: flags.has("--root"),
+    all: flags.has("--all"),
     budget: options.budget ? Number(options.budget) : 700,
     lines: options.lines ? Number(options.lines) : 120,
   };
@@ -60,7 +63,68 @@ function runGraphify(args) {
   });
 }
 
+function runGraphifyUpdate(target) {
+  const outputDir = target === "src" ? join(ROOT, "src/graphify-out") : join(ROOT, "graphify-out");
+  const graph = join(outputDir, "graph.json");
+  const report = join(outputDir, "GRAPH_REPORT.md");
+  const graphBefore = existsSync(graph) ? statSync(graph).mtimeMs : 0;
+  const reportBefore = existsSync(report) ? statSync(report).mtimeMs : 0;
+  const result = spawnSync("graphify", ["update", target], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  if (result.status === 0) return output;
+  const graphUpdated = existsSync(graph) && statSync(graph).mtimeMs > graphBefore;
+  const reportUpdated = existsSync(report) && statSync(report).mtimeMs > reportBefore;
+  if (output.includes("too large for HTML viz") && graphUpdated && reportUpdated) {
+    return `Graph JSON/report updated for ${target}; HTML viz skipped because the graph is over graphify's size limit.`;
+  }
+  if (output === "Nothing to update or rebuild failed — check output above.") {
+    return `No graph update needed for ${target}.`;
+  }
+  throw new Error(output || `graphify update ${target} failed with exit code ${result.status}`);
+}
+
+function formatTimestamp(filePath) {
+  if (!existsSync(filePath)) return "missing";
+  return statSync(filePath).mtime.toISOString();
+}
+
+function staleMarkerState(staleMarker, graph) {
+  if (!existsSync(staleMarker)) return "no";
+  if (existsSync(graph) && statSync(staleMarker).mtime <= statSync(graph).mtime) {
+    return "stale marker only";
+  }
+  return "yes";
+}
+
+function graphState(label, baseDir) {
+  const outputDir = join(ROOT, baseDir);
+  const graph = join(outputDir, "graph.json");
+  const report = join(outputDir, "GRAPH_REPORT.md");
+  const html = join(outputDir, "graph.html");
+  const staleMarker = join(outputDir, "needs_update");
+  return [
+    `${label}:`,
+    `  graph: ${formatTimestamp(graph)}`,
+    `  report: ${formatTimestamp(report)}`,
+    `  html: ${formatTimestamp(html)}`,
+    `  needs_update: ${staleMarkerState(staleMarker, graph)}`,
+  ].join("\n");
+}
+
+function printStatus() {
+  console.log("Graphify focus status");
+  console.log(graphState("app", "src/graphify-out"));
+  console.log(graphState("root", "graphify-out"));
+  console.log(runGraphify(["hook", "status"]).trim());
+}
+
 function printReport(filePath, lineCount) {
+  if (!existsSync(filePath)) {
+    throw new Error(`Graph report not found: ${filePath}. Run npm run graph:focus -- update${filePath === ROOT_REPORT ? " --root" : ""}.`);
+  }
   const contents = readFileSync(filePath, "utf8");
   const lines = contents.split(/\r?\n/u).slice(0, Math.max(1, lineCount));
   console.log(lines.join("\n"));
@@ -105,12 +169,31 @@ function main() {
     return;
   }
 
+  if (args.mode === "status") {
+    printStatus();
+    return;
+  }
+
+  if (args.mode === "update") {
+    const targets = args.all ? ["src", "."] : [args.root ? "." : "src"];
+    for (const target of targets) {
+      console.log(runGraphifyUpdate(target));
+    }
+    return;
+  }
+
   throw new Error(`Unsupported graph:focus mode: ${args.mode}`);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
+const isCli = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+
+if (isCli) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  }
 }
+
+export { parseArgs };
