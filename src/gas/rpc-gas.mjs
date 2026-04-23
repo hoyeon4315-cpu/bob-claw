@@ -142,6 +142,42 @@ export async function estimateGas(chainName, tx, chainConfig = EVM_CHAINS[chainN
   throw error;
 }
 
+export async function readContractCode(chainName, address, chainConfig = EVM_CHAINS[chainName], options = {}) {
+  if (!chainConfig) {
+    throw new Error(`No RPC config for chain: ${chainName}`);
+  }
+  if (!address) {
+    throw new Error("Missing contract address for code read");
+  }
+
+  const rpcUrls = uniqueRpcUrls(chainConfig);
+  const attempts = [];
+
+  for (const rpcUrl of rpcUrls) {
+    const startedAt = Date.now();
+    try {
+      const code = await rpc(rpcUrl, "eth_getCode", [address, "latest"], options);
+      return {
+        observedAt: new Date().toISOString(),
+        chain: chainName,
+        rpcUrl,
+        latencyMs: Date.now() - startedAt,
+        address,
+        code,
+        hasCode: typeof code === "string" && code !== "0x",
+        rpcFallbacksTried: attempts.length,
+      };
+    } catch (error) {
+      attempts.push(endpointError(rpcUrl, error));
+    }
+  }
+
+  const error = new Error(`All RPC endpoints failed code read for chain: ${chainName}`);
+  error.name = "CodeReadError";
+  error.attempts = attempts;
+  throw error;
+}
+
 export function classifyGasEstimateError(error) {
   const messages = [error.message, ...(error.attempts || []).map((attempt) => attempt.message)].filter(Boolean).join(" | ");
   if (/insufficient funds/i.test(messages)) return "insufficient_funds";

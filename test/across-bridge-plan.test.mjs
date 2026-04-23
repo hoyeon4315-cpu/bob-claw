@@ -27,6 +27,10 @@ function okBody({ outputAmount = "99000000", relayPct = "1000000000000000", time
   };
 }
 
+async function codeReaderOk() {
+  return { code: "0x01", hasCode: true, rpcUrl: "mock:rpc" };
+}
+
 test("buildAcrossBridgePlan produces ready intent with encoded calldata", async () => {
   const plan = await buildAcrossBridgePlan({
     srcChain: "base",
@@ -36,6 +40,7 @@ test("buildAcrossBridgePlan produces ready intent with encoded calldata", async 
     senderAddress: SENDER,
     clientFactory: mockClientFactory(okBody()),
     priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    readCodeImpl: codeReaderOk,
     estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
   });
   assert.equal(plan.planStatus, "ready");
@@ -64,6 +69,7 @@ test("buildAcrossBridgePlan enforces perTxMaxUsd cap", async () => {
     senderAddress: SENDER,
     clientFactory: mockClientFactory(okBody({ outputAmount: "594000000" })),
     priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    readCodeImpl: codeReaderOk,
     estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
   });
   assert.equal(plan.planStatus, "blocked");
@@ -85,6 +91,7 @@ test("buildAcrossBridgePlan surfaces quote failure", async () => {
       },
     }),
     priceReader: async () => ({ "base:usdc": 1 }),
+    readCodeImpl: codeReaderOk,
     estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
   });
   assert.equal(plan.planStatus, "blocked");
@@ -102,6 +109,7 @@ test("buildAcrossBridgePlan uses fallback deposit gas when pre-approval estimate
     senderAddress: SENDER,
     clientFactory: mockClientFactory(okBody()),
     priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    readCodeImpl: codeReaderOk,
     estimateGasImpl: async () => {
       estimateCount += 1;
       if (estimateCount === 1) return { gasUnits: "50000", gasPriceWei: "1000000000", rpcUrl: "mock:base" };
@@ -117,6 +125,31 @@ test("buildAcrossBridgePlan uses fallback deposit gas when pre-approval estimate
   assert.equal(plan.gasPreflight.fallback, true);
   assert.equal(plan.gasPreflight.fallbackReason, "deposit_estimate_reverted_before_approval");
   assert.equal(plan.steps[1].intent.tx.gasLimit, "540000");
+});
+
+test("buildAcrossBridgePlan blocks when source SpokePool has no contract code", async () => {
+  const plan = await buildAcrossBridgePlan({
+    srcChain: "base",
+    dstChain: "optimism",
+    ticker: "usdc",
+    amount: "100000000",
+    senderAddress: SENDER,
+    clientFactory: mockClientFactory(okBody()),
+    priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    readCodeImpl: async (_chain, address) => ({
+      code: address.toLowerCase() === acrossSpokePool("base").toLowerCase() ? "0x" : "0x01",
+      hasCode: address.toLowerCase() !== acrossSpokePool("base").toLowerCase(),
+      rpcUrl: "mock:rpc",
+    }),
+    estimateGasImpl: async () => {
+      throw new Error("estimateGas should not run for no-code SpokePool");
+    },
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "across_spokepool_code_missing");
+  assert.equal(plan.executionReady, false);
+  assert.equal(plan.preflightError.name, "ContractCodeMissing");
 });
 
 test("buildAcrossBridgePlan rejects unsupported pair", async () => {
@@ -141,6 +174,7 @@ test("executeAcrossBridgePlan sends signer intent and waits for destination toke
     senderAddress: SENDER,
     clientFactory: mockClientFactory(okBody()),
     priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    readCodeImpl: codeReaderOk,
     estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
   });
   const srcToken = acrossTokenAddress("base", "usdc").toLowerCase();
@@ -196,6 +230,7 @@ test("executeAcrossBridgePlan blocks before signing when source balance is below
     senderAddress: SENDER,
     clientFactory: mockClientFactory(okBody()),
     priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    readCodeImpl: codeReaderOk,
     estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
   });
   let signerCalled = false;
