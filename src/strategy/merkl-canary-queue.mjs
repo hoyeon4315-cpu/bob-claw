@@ -97,7 +97,7 @@ function compareQueue(left, right) {
 }
 
 function entryAssets(item = {}) {
-  const symbols = item.tokenSymbols || [];
+  const symbols = item.entryTokenSymbols?.length ? item.entryTokenSymbols : item.tokenSymbols || [];
   if (item.hasStableExposure) return symbols.filter((symbol) => /^usd|dai|gho|eurc|usdt|usdc|pyusd|usde|usds/i.test(symbol));
   if (item.hasEthExposure) return symbols.filter((symbol) => /eth/i.test(symbol));
   if (item.hasBtcExposure) return symbols.filter((symbol) => /btc/i.test(symbol));

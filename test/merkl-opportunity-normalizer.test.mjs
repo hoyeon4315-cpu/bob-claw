@@ -216,3 +216,104 @@ test("merkl normalizer extracts Yei Aave-style asset and aToken binding but leav
   assert.equal(item.protocolBinding.poolAddress, null);
   assert.equal(item.protocolBinding.poolAddressProviderAddress, null);
 });
+
+test("merkl normalizer does not classify reward tokens as entry exposure", () => {
+  const item = normalizeMerklOpportunity({
+    id: "10493052639122543771",
+    chainId: 8453,
+    chain: { name: "Base" },
+    protocol: { id: "zyfai", name: "ZyFAI" },
+    type: "ENCOMPASSING",
+    action: "DROP",
+    name: "Stakers Rewards ZFI",
+    description: "Visit your dashboard to check if you've earned rewards from this airdrop",
+    status: "LIVE",
+    liveCampaigns: 1,
+    rewardsRecord: {
+      breakdowns: [{ token: { displaySymbol: "USDC", symbol: "USDC", type: "TOKEN" } }],
+    },
+    tokens: [
+      {
+        displaySymbol: "ZFI",
+        address: "0xD080eD3c74a20250a2c9821885203034ACD2D5ae",
+        decimals: 18,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.deepEqual(item.tokenSymbols, ["ZFI", "USDC"]);
+  assert.deepEqual(item.entryTokenSymbols, ["ZFI"]);
+  assert.equal(item.hasStableExposure, false);
+  assert.equal(item.family, "non_core_asset");
+  assert.equal(item.mappedStrategyId, null);
+});
+
+test("merkl normalizer keeps sSTRAT out of ETH-family deployment without an ETH-like entry token", () => {
+  const item = normalizeMerklOpportunity({
+    id: "5223009618040121985",
+    chainId: 1,
+    chain: { name: "Ethereum" },
+    protocol: { id: "ethstrat", name: "Eth Strat" },
+    type: "ERC20LOGPROCESSOR",
+    action: "HOLD",
+    name: "Hold Staked STRAT (sSTRAT)",
+    description: "Earn rewards by holding sSTRAT",
+    status: "LIVE",
+    liveCampaigns: 1,
+    rewardsRecord: {
+      breakdowns: [{ token: { displaySymbol: "wETH", symbol: "wETH", type: "TOKEN" } }],
+    },
+    tokens: [
+      {
+        displaySymbol: "sSTRAT",
+        address: "0xD6664390E0485Cd609d4D04b430e84e945a51994",
+        decimals: 18,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.deepEqual(item.tokenSymbols, ["sSTRAT", "wETH"]);
+  assert.deepEqual(item.entryTokenSymbols, ["sSTRAT"]);
+  assert.equal(item.hasEthExposure, false);
+  assert.equal(item.family, "non_core_asset");
+  assert.equal(item.mappedStrategyId, null);
+});
+
+test("merkl normalizer keeps LP pool campaigns off the stable carry executor surface", () => {
+  const item = normalizeMerklOpportunity({
+    id: "6207461710940594551",
+    chainId: 10,
+    chain: { name: "Optimism" },
+    protocol: { id: "uniswap", name: "Uniswap" },
+    type: "UNISWAP_V3",
+    action: "POOL",
+    name: "Provide liquidity through Arcadia to Uniswap USDC-WETH 0.3%",
+    description: "Earn rewards by providing liquidity to the Uniswap USDC-WETH pool on Optimism",
+    status: "LIVE",
+    liveCampaigns: 1,
+    tokens: [
+      {
+        displaySymbol: "USDC",
+        address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        decimals: 6,
+        verified: true,
+        type: "TOKEN",
+      },
+      {
+        displaySymbol: "wETH",
+        address: "0x4200000000000000000000000000000000000006",
+        decimals: 18,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-04-23T13:11:00.000Z" });
+
+  assert.equal(item.family, "stable_eth_lp");
+  assert.equal(item.executionSurface, "clLp");
+  assert.equal(item.mappedStrategyId, null);
+});
