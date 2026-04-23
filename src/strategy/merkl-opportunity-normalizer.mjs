@@ -86,6 +86,10 @@ function tokenDetailsFromOpportunity(opportunity = {}) {
     }));
 }
 
+function entryTokenSymbolsFromDetails(tokens = []) {
+  return unique(tokens.map((token) => token?.symbol).filter(Boolean));
+}
+
 function rewardTokenTypes(opportunity = {}, campaigns = []) {
   return unique([
     ...((opportunity.rewardsRecord?.breakdowns || []).map((item) => item?.token?.type)),
@@ -187,6 +191,7 @@ function classifyFamily({ action = "", protocolId = "", tokenSymbols = [], text 
   }
 
   if (stable) {
+    if (lpLike) return eth ? "stable_eth_lp" : "stable_alt_lp";
     if (fixedYieldLike) return "stable_fixed_yield";
     return "stable_treasury_carry";
   }
@@ -217,6 +222,9 @@ function mapToStrategy({ family = "", protocolId = "", chain = "", tokenSymbols 
   }
   if (family === "stable_btc_lp" && protocolId === "aerodrome" && chain === "base") {
     return { strategyId: "aerodrome-cl-base", executionSurface: "clLp" };
+  }
+  if (["stable_eth_lp", "stable_alt_lp"].includes(family)) {
+    return { strategyId: null, executionSurface: "clLp" };
   }
   if (["eth_collateral_stable_borrow", "eth_destination_lending", "eth_fixed_yield"].includes(family)) {
     return {
@@ -338,12 +346,15 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
   const protocolId = lower(opportunity?.protocol?.id || opportunity?.protocol?.name);
   const tokenSymbols = tokenSymbolsFromOpportunity(opportunity);
   const tokenDetails = tokenDetailsFromOpportunity(opportunity);
+  const entryTokenSymbols = entryTokenSymbolsFromDetails(tokenDetails);
   const relatedCampaigns = campaignsByOpportunity.get(String(opportunity?.id || "")) || [];
   const rewardTypes = rewardTokenTypes(opportunity, relatedCampaigns);
   const rewardSymbols = rewardTokenSymbols(opportunity, relatedCampaigns);
   const text = [opportunity?.name, opportunity?.description, protocolId, opportunity?.type].filter(Boolean).join(" ");
   const managedVault = managedVaultLike({ opportunity, protocolId, text });
-  const assetFamilies = detectAssetFamilies(tokenSymbols, text);
+  const exposureSymbols = entryTokenSymbols.length > 0 ? entryTokenSymbols : tokenSymbols;
+  const exposureText = entryTokenSymbols.length > 0 ? "" : text;
+  const assetFamilies = detectAssetFamilies(exposureSymbols, exposureText);
   const family = classifyFamily({
     action: opportunity?.action,
     protocolId,
@@ -386,16 +397,17 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     status: opportunity?.status || null,
     liveCampaigns: Number(opportunity?.liveCampaigns || 0),
     tokenSymbols,
+    entryTokenSymbols,
     tokenDetails,
     rewardTokenSymbols: rewardSymbols,
     rewardTokenTypes: rewardTypes,
     hasPointRewards: rewardTypes.includes("POINT"),
-    hasBtcExposure: hasBtcExposure(tokenSymbols, text),
-    hasEthExposure: hasEthExposure(tokenSymbols, text),
-    hasStableExposure: hasStableExposure(tokenSymbols, text),
-    hasGoldExposure: hasGoldExposure(tokenSymbols, text),
-    hasReserveExposure: hasReserveExposure(tokenSymbols, text),
-    hasOtherBluechipExposure: hasOtherBluechipExposure(tokenSymbols, text),
+    hasBtcExposure: hasBtcExposure(exposureSymbols, exposureText),
+    hasEthExposure: hasEthExposure(exposureSymbols, exposureText),
+    hasStableExposure: hasStableExposure(exposureSymbols, exposureText),
+    hasGoldExposure: hasGoldExposure(exposureSymbols, exposureText),
+    hasReserveExposure: hasReserveExposure(exposureSymbols, exposureText),
+    hasOtherBluechipExposure: hasOtherBluechipExposure(exposureSymbols, exposureText),
     assetFamilies,
     hasSupportedAssetExposure: assetFamilies.length > 0,
     btcPaybackCompatible: assetFamilies.length > 0,
