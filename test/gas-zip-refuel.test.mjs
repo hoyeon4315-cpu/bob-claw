@@ -67,6 +67,7 @@ test("Gas.Zip build plan wires direct-deposit tx and destination proof target", 
 });
 
 test("Gas.Zip refill preparation becomes ready once executor exists and proof is post-settlement only", async () => {
+  let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
       jobId: "job-gaszip",
@@ -80,6 +81,46 @@ test("Gas.Zip refill preparation becomes ready once executor exists and proof is
         source: {
           chain: "base",
           token: "0x0000000000000000000000000000000000000000",
+          actual: "10000000000000000",
+          actualDecimal: 0.01,
+          estimatedUsd: 20,
+        },
+      },
+    },
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    buildGasZipPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+      planStatus: "ready",
+      quote: { expectedOutputWei: "1100000000000000" },
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "gas_zip_native_refuel");
+  assert.equal(capturedInput.amountWei, "312000000000000");
+  assert.equal(capturedInput.minimumDestinationWei, "1000000000000000");
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
+test("Gas.Zip refill preparation blocks when expected destination output is below target", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-gaszip-underfilled",
+      type: "refill_native",
+      chain: "bsc",
+      targetAmount: "1000000000000000",
+      estimatedAssetValueUsd: 0.6,
+      executionMethod: "gas_refuel_bridge_gas_zip",
+      fundingSource: {
+        selectionStatus: "ready",
+        source: {
+          chain: "base",
+          token: "0x0000000000000000000000000000000000000000",
+          actual: "10000000000000000",
+          actualDecimal: 0.01,
+          estimatedUsd: 20,
         },
       },
     },
@@ -90,8 +131,10 @@ test("Gas.Zip refill preparation becomes ready once executor exists and proof is
     }),
   });
 
-  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.status, "blocked");
   assert.equal(preparation.executor, "gas_zip_native_refuel");
+  assert.equal(preparation.blockedReason, "executor_output_below_refill_target");
+  assert.equal(preparation.coverage.coversTarget, false);
 });
 
 test("Gas.Zip execution waits for destination native delta and ingests receipt", async () => {
@@ -114,8 +157,9 @@ test("Gas.Zip execution waits for destination native delta and ingests receipt",
         priceKey: "bsc",
       },
       quote: {
-        expectedOutputWei: "990",
+        expectedOutputWei: "1000",
       },
+      minimumDestinationWei: "990",
     },
     sendCommand: async () => ({
       status: "ok",
@@ -153,5 +197,6 @@ test("Gas.Zip execution waits for destination native delta and ingests receipt",
 
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.destinationProof.observedDelta, "990");
+  assert.equal(execution.destinationProof.requiredDelta, "990");
   assert.equal(execution.receiptIngest.appended, true);
 });
