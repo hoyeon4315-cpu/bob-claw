@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Interface } from "ethers";
-import { buildAcrossBridgePlan } from "../src/executor/helpers/across-bridge.mjs";
+import { buildAcrossBridgePlan, executeAcrossBridgePlan } from "../src/executor/helpers/across-bridge.mjs";
 import { SPOKE_POOL_DEPOSIT_ABI } from "../src/bridge/across/spoke-pool-abi.mjs";
 import { acrossSpokePool, acrossTokenAddress } from "../src/config/across.mjs";
 
@@ -97,4 +97,57 @@ test("buildAcrossBridgePlan rejects unsupported pair", async () => {
     }),
     /pair unsupported/,
   );
+});
+
+test("executeAcrossBridgePlan sends signer intent and waits for destination token delta", async () => {
+  const plan = await buildAcrossBridgePlan({
+    srcChain: "base",
+    dstChain: "optimism",
+    ticker: "usdc",
+    amount: "100000000",
+    senderAddress: SENDER,
+    clientFactory: mockClientFactory(okBody()),
+    priceReader: async () => ({ "base:usdc": 1, "optimism:usdc": 1 }),
+    estimateGasImpl: async () => ({ gasUnits: "150000", gasPriceWei: "1000000000" }),
+  });
+  const srcToken = acrossTokenAddress("base", "usdc").toLowerCase();
+  const dstToken = acrossTokenAddress("optimism", "usdc").toLowerCase();
+  const balances = {
+    [`base:${srcToken}`]: ["100000000", "0"],
+    [`optimism:${dstToken}`]: ["0", "99000000"],
+  };
+  const signerMessages = [];
+  const execution = await executeAcrossBridgePlan({
+    plan,
+    sendCommand: async ({ message }) => {
+      signerMessages.push(message);
+      return {
+        status: "ok",
+        broadcast: { txHash: "0xacross" },
+        receipt: { status: 1, gasUsed: "150000", effectiveGasPrice: "1000000000" },
+        signed: { metadata: { from: SENDER, to: plan.spokePool, nonce: 7 } },
+      };
+    },
+    readErc20BalanceImpl: async (chain, token) => {
+      const key = `${chain}:${String(token).toLowerCase()}`;
+      const queue = balances[key];
+      assert.ok(queue, `unexpected balance read ${key}`);
+      const value = queue.length > 1 ? queue.shift() : queue[0];
+      return { rpcUrl: `mock:${chain}`, balance: value };
+    },
+    receiptIngest: async ({ execution: ingested }) => ({
+      appended: true,
+      reason: "ingested",
+      txHash: ingested.signerResult.broadcast.txHash,
+    }),
+    destinationPollIntervalMs: 0,
+    sleepImpl: async () => {},
+  });
+
+  assert.equal(signerMessages[0].command, "sign_and_broadcast");
+  assert.equal(signerMessages[0].intent.intentType, "across_bridge_deposit");
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.destinationProof.observedDelta, "99000000");
+  assert.equal(execution.stepResults[0].id, "across_deposit_v3");
+  assert.equal(execution.receiptIngest.appended, true);
 });

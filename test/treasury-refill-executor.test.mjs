@@ -276,6 +276,20 @@ test("treasury refill executor dispatches Gateway onramp preparations", async ()
   assert.equal(execution.plan.marker, "onramp");
 });
 
+test("treasury refill executor dispatches Across bridge preparations", async () => {
+  const execution = await executeTreasuryRefillExecutionPlan({
+    preparation: {
+      status: "ready",
+      executor: "across_bridge",
+      plan: { planStatus: "ready", marker: "across" },
+    },
+    executeAcrossBridgePlanImpl: async ({ plan }) => ({ settlementStatus: "delivered", plan }),
+  });
+
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.plan.marker, "across");
+});
+
 test("treasury refill executor maps cross-chain intermediate swap to composite plan", async () => {
   assert.equal(refillExecutorForJob({
     executionMethod: "cross_chain_swap_via_btc_intermediate",

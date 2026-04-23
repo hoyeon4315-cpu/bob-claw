@@ -25,6 +25,10 @@ import { buildAcrossQuoteRequest, normalizeAcrossQuote } from "../../bridge/acro
 import { SPOKE_POOL_DEPOSIT_ABI, ZERO_ADDRESS } from "../../bridge/across/spoke-pool-abi.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
+import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
+import { sendSignerCommand } from "../signer/client.mjs";
+import { classifySettlementTimeout } from "./gas-zip-rate-limit.mjs";
+import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
 
 export const ACROSS_BRIDGE_STRATEGY_ID = "across-bridge";
 export const DEFAULT_ACROSS_GAS_BUFFER_BPS = 12_000;
@@ -92,7 +96,9 @@ export async function buildAcrossBridgePlan({
   const strategyCaps = assertStrategyCaps(strategyId);
   const spokePool = acrossSpokePool(srcChain);
   const srcTokenAddr = acrossTokenAddress(srcChain, ticker);
+  const dstTokenAddr = acrossTokenAddress(dstChain, ticker);
   const srcAsset = tokenAsset(srcChain, srcTokenAddr);
+  const dstAsset = tokenAsset(dstChain, dstTokenAddr);
 
   const request = buildAcrossQuoteRequest({ srcChain, dstChain, ticker, amount, recipient });
   const client = clientFactory
@@ -195,6 +201,12 @@ export async function buildAcrossBridgePlan({
     strategyId,
     senderAddress,
     recipient: recipient || senderAddress,
+    srcChain,
+    dstChain,
+    srcToken: srcTokenAddr,
+    dstToken: dstTokenAddr,
+    srcAsset,
+    dstAsset,
     request,
     quote,
     quoteLatencyMs,
@@ -207,6 +219,169 @@ export async function buildAcrossBridgePlan({
       "across_deposit_id_recorded",
     ],
   };
+}
+
+export async function executeAcrossBridgePlan({
+  plan,
+  sendCommand = sendSignerCommand,
+  receiptIngest = appendExecutionReceiptReconciliation,
+  readErc20BalanceImpl,
+  readNativeBalanceImpl,
+  socketPath,
+  timeoutMs,
+  awaitConfirmation = true,
+  confirmations = 1,
+  confirmationTimeoutMs = 120_000,
+  awaitDestinationSettlement = true,
+  destinationSettlementTimeoutMs = defaultSettlementTimeoutMs(null),
+  destinationPollIntervalMs = 10_000,
+  sleepImpl = sleep,
+} = {}) {
+  if (!plan?.intent || !plan?.gasPreflight) {
+    throw new Error(`Across bridge plan is not executable: ${plan?.blockedReason || "missing_intent"}`);
+  }
+  const sourceBalanceBefore = await readEvmAssetBalance({
+    asset: plan.srcAsset,
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const destinationBalanceBefore = awaitDestinationSettlement
+    ? await readEvmAssetBalance({
+        asset: plan.dstAsset,
+        owner: plan.recipient,
+        readErc20BalanceImpl,
+        readNativeBalanceImpl,
+      })
+    : null;
+
+  const signerResult = await sendCommand({
+    socketPath,
+    timeoutMs,
+    message: {
+      command: "sign_and_broadcast",
+      intent: plan.intent,
+      awaitConfirmation,
+      confirmations,
+      timeoutMs: confirmationTimeoutMs,
+    },
+  });
+  const stepResults = [{ id: "across_deposit_v3", signerResult }];
+  if (signerResult?.status !== "ok" || !signerResult?.broadcast?.txHash) {
+    return {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      settlementStatus: signerResult?.status === "rejected" ? "signer_rejected" : "signer_error",
+      plan,
+      signerResult,
+      stepResults,
+      sourceBalanceBefore: {
+        ...sourceBalanceBefore,
+        ticker: plan.srcAsset?.ticker || null,
+        token: plan.srcToken || null,
+        chain: plan.srcChain,
+      },
+      sourceBalanceAfter: null,
+      destinationBalanceBefore: destinationBalanceBefore
+        ? {
+            ...destinationBalanceBefore,
+            ticker: plan.dstAsset?.ticker || null,
+            token: plan.dstToken || null,
+            chain: plan.dstChain,
+          }
+        : null,
+      destinationBalanceAfter: null,
+      destinationProof: null,
+    };
+  }
+
+  const destinationProof = awaitDestinationSettlement
+    ? classifySettlementTimeout(await waitForEvmAssetDelta({
+        asset: plan.dstAsset,
+        owner: plan.recipient,
+        initialBalance: destinationBalanceBefore,
+        requiredDelta: plan.quote?.outputAmount || "0",
+        readErc20BalanceImpl,
+        readNativeBalanceImpl,
+        timeoutMs: destinationSettlementTimeoutMs,
+        pollIntervalMs: destinationPollIntervalMs,
+        sleepImpl,
+      }))
+    : null;
+  const sourceBalanceAfter = await readEvmAssetBalance({
+    asset: plan.srcAsset,
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const destinationBalanceAfter = destinationProof
+    ? {
+        proofSource: destinationProof.proofSource,
+        rpcUrl: destinationProof.rpcUrl || null,
+        balance: BigInt(destinationProof.settledBalance),
+      }
+    : awaitDestinationSettlement
+      ? await readEvmAssetBalance({
+          asset: plan.dstAsset,
+          owner: plan.recipient,
+          readErc20BalanceImpl,
+          readNativeBalanceImpl,
+        })
+      : null;
+
+  const execution = {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    settlementStatus: destinationProof?.status || "source_confirmed_only",
+    plan,
+    signerResult,
+    stepResults,
+    sourceBalanceBefore: {
+      ...sourceBalanceBefore,
+      ticker: plan.srcAsset?.ticker || null,
+      token: plan.srcToken || null,
+      chain: plan.srcChain,
+    },
+    sourceBalanceAfter: {
+      ...sourceBalanceAfter,
+      ticker: plan.srcAsset?.ticker || null,
+      token: plan.srcToken || null,
+      chain: plan.srcChain,
+    },
+    destinationBalanceBefore: destinationBalanceBefore
+      ? {
+          ...destinationBalanceBefore,
+          ticker: plan.dstAsset?.ticker || null,
+          token: plan.dstToken || null,
+          chain: plan.dstChain,
+        }
+      : null,
+    destinationBalanceAfter: destinationBalanceAfter
+      ? {
+          ...destinationBalanceAfter,
+          ticker: plan.dstAsset?.ticker || null,
+          token: plan.dstToken || null,
+          chain: plan.dstChain,
+        }
+      : null,
+    destinationProof,
+  };
+  if (typeof receiptIngest !== "function") return execution;
+  try {
+    return {
+      ...execution,
+      receiptIngest: await receiptIngest({ execution }),
+    };
+  } catch (error) {
+    return {
+      ...execution,
+      receiptIngest: {
+        appended: false,
+        reason: "ingest_failed",
+        error: error.message,
+      },
+    };
+  }
 }
 
 export { applyGasBuffer, encodeDepositCalldata };

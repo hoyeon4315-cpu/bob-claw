@@ -160,6 +160,32 @@ function routeContextForGatewayExecution(execution) {
   };
 }
 
+function routeContextForAcrossExecution(execution) {
+  const plan = execution?.plan;
+  if (!plan?.srcChain || !plan?.srcToken || !plan?.dstChain || !plan?.dstToken) {
+    return null;
+  }
+  return {
+    routeKey: `${plan.srcChain}:${plan.srcToken}->${plan.dstChain}:${plan.dstToken}`,
+    amount: plan.quote?.inputAmount || plan.request?.amount || null,
+    srcChain: plan.srcChain,
+    dstChain: plan.dstChain,
+    srcAsset: {
+      chain: plan.srcChain,
+      token: plan.srcToken,
+    },
+    dstAsset: {
+      chain: plan.dstChain,
+      token: plan.dstToken,
+    },
+    inputUsd: finiteNumber(plan.amountUsd),
+    outputUsd: null,
+    netEdgeUsd: null,
+    executionGasUsd: null,
+    nativeCostUsd: null,
+  };
+}
+
 function routeContextForGasZipExecution(execution) {
   const plan = execution?.plan;
   if (!plan?.srcChain || !plan?.dstChain) return null;
@@ -238,6 +264,16 @@ function outputForGatewayConsolidation(execution) {
   };
 }
 
+function outputForAcrossExecution(execution) {
+  const plan = execution?.plan;
+  return {
+    actualOutputUnits: execution?.destinationProof?.observedDelta || null,
+    chain: plan?.dstChain || null,
+    token: plan?.dstToken || null,
+    priceUsd: null,
+  };
+}
+
 function outputForGatewayOfframp(execution) {
   return {
     actualOutputUnits: execution?.destinationProof?.observedDelta || null,
@@ -275,6 +311,13 @@ function ingestionDescriptorForExecution(execution) {
       kind: "gateway_btc_consolidation",
       routeContext: routeContextForGatewayExecution(execution),
       output: outputForGatewayConsolidation(execution),
+    };
+  }
+  if (strategyId === "across-bridge") {
+    return {
+      kind: "across_bridge",
+      routeContext: routeContextForAcrossExecution(execution),
+      output: outputForAcrossExecution(execution),
     };
   }
   if (strategyId === "gateway-btc-offramp") {
@@ -348,7 +391,7 @@ export async function appendExecutionReceiptReconciliation({
   const prices = await priceReader().catch(() => emptyPricesUsd());
   const receiptRecord = buildReceiptReconciliation({
     kind: descriptor.kind,
-    chain: execution?.plan?.chain || execution?.plan?.route?.srcChain || null,
+    chain: execution?.plan?.chain || execution?.plan?.route?.srcChain || execution?.plan?.srcChain || null,
     txHash,
     routeContext: descriptor.routeContext,
     receipt,
