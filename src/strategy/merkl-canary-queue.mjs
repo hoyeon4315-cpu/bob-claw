@@ -105,11 +105,13 @@ function entryAssets(item = {}) {
   return symbols.slice(0, 4);
 }
 
-function capabilityGaps(item = {}) {
+function capabilityGaps(item = {}, protocolBindingPlan = null) {
   const gaps = ["current_inventory_entry_route_required"];
   if (!LIVE_PROVEN_DEX_CHAINS.has(item.chain)) gaps.push("chain_live_dex_route_unproven_or_missing_stable_output");
   if (item.chain === "ethereum") gaps.push("ethereum_l1_gas_ev_positive_check_required");
-  if (PROTOCOL_BINDING_PROTOCOLS.has(item.protocolId)) gaps.push("protocol_position_adapter_required");
+  if (PROTOCOL_BINDING_PROTOCOLS.has(item.protocolId) && protocolBindingPlan?.status !== "binding_ready") {
+    gaps.push("protocol_position_binding_required");
+  }
   if (item.executionSurface === "fixedYield") gaps.push("maturity_or_secondary_exit_quote_required");
   if (item.executionSurface === "stableBorrow") gaps.push("health_factor_and_liquidation_buffer_required");
   return gaps;
@@ -138,6 +140,10 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
     canaryKind: "enter_exit_tiny_generic_position",
     nextAction: "build_generic_protocol_canary",
   };
+  const protocolBindingPlan = buildProtocolCanaryBindingPlan({
+    opportunity: item,
+    binding: item.protocolBinding,
+  });
   return {
     queueId: `merkl:${item.opportunityId}`,
     rank: index + 1,
@@ -169,9 +175,9 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
       "unwind_path_required_before_entry",
       "btc_payback_path_required_before_scale",
     ],
-    capabilityGaps: capabilityGaps(item),
+    capabilityGaps: capabilityGaps(item, protocolBindingPlan),
     preflightSteps: buildPreflightSteps(item),
-    protocolBindingPlan: buildProtocolCanaryBindingPlan({ opportunity: item }),
+    protocolBindingPlan,
   };
 }
 
@@ -207,7 +213,9 @@ export function buildMerklCanaryQueue({ report = null, policy = MERKL_OPPORTUNIT
       byStrategy: countBy(queue, (item) => item.mappedStrategyId),
       byExecutionSurface: countBy(queue, (item) => item.executionSurface),
       highOverfitRiskCount: queue.filter((item) => item.overfitRisk === "high").length,
-      protocolAdapterRequiredCount: queue.filter((item) => item.capabilityGaps.includes("protocol_position_adapter_required")).length,
+      protocolBindingReadyCount: queue.filter((item) => item.protocolBindingPlan?.status === "binding_ready").length,
+      protocolBindingRequiredCount: queue.filter((item) => item.capabilityGaps.includes("protocol_position_binding_required")).length,
+      unsupportedProtocolBindingCount: queue.filter((item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding").length,
       chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
     },
     queue,

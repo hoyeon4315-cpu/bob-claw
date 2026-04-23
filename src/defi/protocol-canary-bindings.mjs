@@ -67,6 +67,14 @@ function missingFields(binding = {}, fields = []) {
   return fields.filter((field) => !binding[field]);
 }
 
+function pickBindingFields(binding = {}, fields = []) {
+  return Object.fromEntries(
+    fields
+      .filter((field) => binding[field] !== undefined && binding[field] !== null)
+      .map((field) => [field, binding[field]]),
+  );
+}
+
 export function resolveProtocolCanaryBinding(protocolId) {
   return PROTOCOL_BINDINGS[normalize(protocolId)] || null;
 }
@@ -87,6 +95,18 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
   const surface = opportunity.executionSurface || null;
   const unsupportedSurface = surface && !template.supportedSurfaces.includes(surface);
   const missing = missingFields(binding || {}, template.requiredBindingFields);
+  const resolvedBinding = {
+    ...pickBindingFields(binding || {}, template.requiredBindingFields),
+    ...pickBindingFields(binding || {}, template.optionalBindingFields),
+    ...pickBindingFields(binding || {}, [
+      "assetSymbol",
+      "assetDecimals",
+      "shareTokenSymbol",
+      "aTokenSymbol",
+      "depositUrl",
+      "source",
+    ]),
+  };
   const status = unsupportedSurface
     ? "unsupported_execution_surface"
     : missing.length > 0
@@ -102,6 +122,7 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
     requiredBindingFields: [...template.requiredBindingFields],
     optionalBindingFields: [...template.optionalBindingFields],
     missingBindingFields: missing,
+    resolvedBinding,
     approvalTargetField: template.approvalTargetField,
     canaryActions: [...template.canaryActions],
     notes: [...template.notes],

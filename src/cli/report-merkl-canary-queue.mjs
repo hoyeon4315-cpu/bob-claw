@@ -45,7 +45,9 @@ async function main() {
   console.log(`topOpportunity=${queue.summary.topOpportunityId || "n/a"}`);
   console.log(`topNextAction=${queue.summary.topNextAction || "n/a"}`);
   console.log(`chainCount=${queue.summary.chainCount}`);
-  console.log(`protocolAdapterRequiredCount=${queue.summary.protocolAdapterRequiredCount}`);
+  console.log(`protocolBindingReadyCount=${queue.summary.protocolBindingReadyCount}`);
+  console.log(`protocolBindingRequiredCount=${queue.summary.protocolBindingRequiredCount}`);
+  console.log(`unsupportedProtocolBindingCount=${queue.summary.unsupportedProtocolBindingCount}`);
   console.log(`chainRouteGapCount=${queue.summary.chainRouteGapCount}`);
   for (const item of queue.queue.slice(0, 5)) {
     console.log(

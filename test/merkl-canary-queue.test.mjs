@@ -28,6 +28,10 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
         score: 90,
         overfitRisk: "minimal",
         overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: "0x1111111111111111111111111111111111111111",
+          assetAddress: "0x2222222222222222222222222222222222222222",
+        },
       },
       {
         opportunityId: "base-aave-weth",
@@ -63,10 +67,13 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   const queue = buildMerklCanaryQueue({ report, now: "2026-04-23T00:00:00.000Z" });
   assert.equal(queue.summary.queueCount, 2);
   assert.equal(queue.summary.topOpportunityId, "eth-morpho-usdc");
+  assert.equal(queue.summary.protocolBindingReadyCount, 1);
+  assert.equal(queue.summary.protocolBindingRequiredCount, 1);
   assert.equal(queue.queue[0].queueStatus, "queued_for_tiny_live_canary_preflight");
   assert.equal(queue.queue[0].canaryKind, "deposit_withdraw_tiny_stable_carry");
   assert.ok(queue.queue[0].capabilityGaps.includes("ethereum_l1_gas_ev_positive_check_required"));
-  assert.ok(queue.queue[0].capabilityGaps.includes("protocol_position_adapter_required"));
+  assert.equal(queue.queue[0].capabilityGaps.includes("protocol_position_binding_required"), false);
+  assert.equal(queue.queue[0].protocolBindingPlan.status, "binding_ready");
   assert.deepEqual(queue.queue[0].entryAssets, ["USDC"]);
   assert.equal(queue.summary.byStrategy.gateway_native_asset_conversion_sleeve, 1);
   assert.equal(queue.summary.byStrategy.eth_destination_deployment, 1);
