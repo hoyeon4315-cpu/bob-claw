@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateMerklPositionExit, executeAavePortfolioExit } from "../src/executor/merkl-portfolio-exit.mjs";
+import { evaluateMerklPositionExit } from "../src/executor/merkl-portfolio-exit.mjs";
+import { executeAavePortfolioExit } from "../src/executor/helpers/merkl-portfolio-exit-executors.mjs";
 
 function position(overrides = {}) {
   return {
