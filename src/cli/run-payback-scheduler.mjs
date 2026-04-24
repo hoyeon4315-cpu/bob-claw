@@ -30,7 +30,32 @@ export function parseArgs(argv) {
     loop: flags.has("--loop"),
     once: flags.has("--once") || !flags.has("--loop"),
     execute: flags.has("--execute"),
+    socketPath: options["socket-path"] || undefined,
+    timeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : undefined,
+    awaitConfirmation: !flags.has("--no-await-confirmation"),
+    awaitDestinationSettlement: !flags.has("--no-await-destination-settlement"),
+    confirmations: options.confirmations ? Number(options.confirmations) : undefined,
+    confirmationTimeoutMs: options["confirmation-timeout-ms"] ? Number(options["confirmation-timeout-ms"]) : undefined,
+    destinationSettlementTimeoutMs: options["destination-timeout-ms"] ? Number(options["destination-timeout-ms"]) : undefined,
+    destinationPollIntervalMs: options["destination-poll-interval-ms"] ? Number(options["destination-poll-interval-ms"]) : undefined,
+    bitcoinSettlementTimeoutMs: options["bitcoin-settlement-timeout-ms"] ? Number(options["bitcoin-settlement-timeout-ms"]) : undefined,
+    bitcoinPollIntervalMs: options["bitcoin-poll-interval-ms"] ? Number(options["bitcoin-poll-interval-ms"]) : undefined,
     pollIntervalMs: options["poll-interval-ms"] ? Number(options["poll-interval-ms"]) : undefined,
+  };
+}
+
+function executionOptionsFromArgs(args) {
+  return {
+    socketPath: args.socketPath,
+    timeoutMs: args.timeoutMs,
+    awaitConfirmation: args.awaitConfirmation,
+    awaitDestinationSettlement: args.awaitDestinationSettlement,
+    confirmations: args.confirmations,
+    confirmationTimeoutMs: args.confirmationTimeoutMs,
+    destinationSettlementTimeoutMs: args.destinationSettlementTimeoutMs,
+    destinationPollIntervalMs: args.destinationPollIntervalMs,
+    bitcoinSettlementTimeoutMs: args.bitcoinSettlementTimeoutMs,
+    bitcoinPollIntervalMs: args.bitcoinPollIntervalMs,
   };
 }
 
@@ -98,6 +123,7 @@ async function main() {
           ...tickOptions,
           auditLogLines,
           receiptStore,
+          executionOptions: executionOptionsFromArgs(args),
         });
         if (args.write) await persistResult(tickResult);
         if (!args.json) printTickSummary(tickResult);
@@ -114,6 +140,7 @@ async function main() {
     receiptStore,
     paybackConfig: PAYBACK_CONFIG,
     execute: args.execute,
+    executionOptions: executionOptionsFromArgs(args),
   });
 
   if (args.write || args.execute) await persistResult(result);

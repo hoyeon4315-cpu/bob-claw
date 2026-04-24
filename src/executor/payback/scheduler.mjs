@@ -1001,6 +1001,7 @@ export async function submitCompositePaybackPlan({
   consolidationExecutor = executeGatewayBtcConsolidationPlan,
   offrampExecutor = executeGatewayBtcOfframpPlan,
   disbursementRecordBuilder = buildPaybackDisbursementRecord,
+  executionOptions = {},
   now = new Date().toISOString(),
 } = {}) {
   if (!Array.isArray(compositePlan?.steps) || compositePlan.steps.length === 0) {
@@ -1012,7 +1013,7 @@ export async function submitCompositePaybackPlan({
       stepResults.push({
         id: step.id,
         kind: step.kind,
-        execution: await tokenDexExecutor({ plan: step.plan }),
+        execution: await tokenDexExecutor({ plan: step.plan, ...executionOptions }),
       });
       continue;
     }
@@ -1020,15 +1021,24 @@ export async function submitCompositePaybackPlan({
       stepResults.push({
         id: step.id,
         kind: step.kind,
-        execution: await consolidationExecutor({ plan: step.plan }),
+        execution: await consolidationExecutor({ plan: step.plan, ...executionOptions }),
       });
       continue;
     }
     if (step.kind === "gateway_btc_offramp") {
+      const offrampExecutionOptions = {
+        ...executionOptions,
+        awaitBitcoinSettlement:
+          executionOptions.awaitBitcoinSettlement ?? executionOptions.awaitDestinationSettlement,
+        bitcoinSettlementTimeoutMs:
+          executionOptions.bitcoinSettlementTimeoutMs ?? executionOptions.destinationSettlementTimeoutMs,
+        bitcoinPollIntervalMs:
+          executionOptions.bitcoinPollIntervalMs ?? executionOptions.destinationPollIntervalMs,
+      };
       stepResults.push({
         id: step.id,
         kind: step.kind,
-        execution: await offrampExecutor({ plan: step.plan }),
+        execution: await offrampExecutor({ plan: step.plan, ...offrampExecutionOptions }),
       });
       continue;
     }
@@ -1065,6 +1075,7 @@ export async function runPaybackSchedulerTick({
   tokenDexExecutor = executeTokenDexExperimentPlan,
   consolidationExecutor = executeGatewayBtcConsolidationPlan,
   offrampExecutor = executeGatewayBtcOfframpPlan,
+  executionOptions = {},
 } = {}) {
   const decision = await buildPaybackDecision({
     auditLogLines,
@@ -1113,6 +1124,7 @@ export async function runPaybackSchedulerTick({
         tokenDexExecutor,
         consolidationExecutor,
         offrampExecutor,
+        executionOptions,
       })
     : null;
   return {
