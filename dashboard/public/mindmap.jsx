@@ -1,3 +1,4 @@
+// v2 2026-04-24 — smoother zoom, Gateway hides on focus, LP PairBadge closer to chip
 // Flow map — Bitcoin L1 source on top, BOB Gateway (cross-chain platform) center, 11 L2 destinations around.
 // Tap chain to zoom + hide others; tap background to reset. No manual close buttons.
 // Layout invariants (mirrored from src/dashboard/mindmap-layout.mjs, unit-tested
