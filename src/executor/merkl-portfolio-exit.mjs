@@ -13,6 +13,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { activeMerklPortfolioPositions, merklPortfolioScore } from "./merkl-portfolio-allocator.mjs";
+import { resolveAavePoolAddress } from "./helpers/aave-protocol-canary.mjs";
 import { sendSignerCommand } from "./signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./helpers/gateway-btc-consolidation.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./helpers/settlement-proof.mjs";
@@ -21,7 +22,12 @@ const ERC4626_INTERFACE = new Interface([
   "function redeem(uint256 shares,address receiver,address owner) returns (uint256 assets)",
 ]);
 
+const AAVE_POOL_INTERFACE = new Interface([
+  "function withdraw(address asset,uint256 amount,address to) returns (uint256)",
+]);
+
 const DEFAULT_REDEEM_GAS_UNITS = 260_000;
+const DEFAULT_AAVE_WITHDRAW_GAS_UNITS = 280_000;
 
 function finite(value) {
   const parsed = Number(value);
@@ -41,6 +47,27 @@ function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps = DEFAULT_GATEWAY
 
 function queueItemByOpportunity(queue = {}, opportunityId = null) {
   return (queue.queue || []).find((item) => String(item.opportunityId) === String(opportunityId)) || null;
+}
+
+function bindingForPosition(position = {}, queueItem = null) {
+  return {
+    ...(queueItem?.protocolBindingPlan?.resolvedBinding || {}),
+    poolAddress: position.poolAddress || queueItem?.protocolBindingPlan?.resolvedBinding?.poolAddress || null,
+    poolAddressProviderAddress:
+      position.poolAddressProviderAddress || queueItem?.protocolBindingPlan?.resolvedBinding?.poolAddressProviderAddress || null,
+    marketName: position.marketName || queueItem?.protocolBindingPlan?.resolvedBinding?.marketName || null,
+  };
+}
+
+function hydratePositionFromQueue(position = {}, queue = {}) {
+  const queueItem = queueItemByOpportunity(queue, position?.opportunityId);
+  const binding = bindingForPosition(position, queueItem);
+  return {
+    ...position,
+    poolAddress: binding.poolAddress || position.poolAddress || null,
+    poolAddressProviderAddress: binding.poolAddressProviderAddress || position.poolAddressProviderAddress || null,
+    marketName: binding.marketName || position.marketName || null,
+  };
 }
 
 export function evaluateMerklPositionExit({
@@ -108,6 +135,41 @@ function buildExitIntent({ position, senderAddress, shareAmount, now }) {
       assetAddress: position.assetAddress,
       shareTokenAddress: position.shareTokenAddress,
       shareDelta: shareAmount,
+      positionId: position.positionId,
+    },
+  };
+}
+
+function buildAaveWithdrawIntent({ position, senderAddress, poolAddress, withdrawAmount, now }) {
+  const strategyCaps = assertStrategyCaps(position.strategyId);
+  return {
+    strategyId: position.strategyId,
+    chain: position.chain,
+    family: "evm",
+    intentType: "aave_withdraw",
+    amountUsd: 0,
+    mode: "live",
+    observedAt: now,
+    executionReason: "strategy_execution",
+    tx: {
+      to: poolAddress,
+      data: AAVE_POOL_INTERFACE.encodeFunctionData("withdraw", [position.assetAddress, withdrawAmount, senderAddress]),
+      value: "0",
+      gasLimit: String(applyGasBuffer(DEFAULT_AAVE_WITHDRAW_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS)),
+    },
+    strategyConfig: {
+      intentTtlMs: strategyCaps.intentTtlMs,
+    },
+    metadata: {
+      skipAutoIngest: true,
+      capCheckAmountUsd: 0,
+      opportunityId: position.opportunityId,
+      protocol: position.protocolId,
+      marketName: position.marketName || null,
+      poolAddress,
+      assetAddress: position.assetAddress,
+      shareTokenAddress: position.shareTokenAddress,
+      shareDelta: withdrawAmount,
       positionId: position.positionId,
     },
   };
@@ -236,6 +298,136 @@ export async function executeErc4626PortfolioExit({
   };
 }
 
+export async function executeAavePortfolioExit({
+  position,
+  senderAddress,
+  sendCommand = sendSignerCommand,
+  readErc20BalanceImpl,
+  readNativeBalanceImpl,
+  estimateGasImpl = estimateGas,
+  socketPath,
+  timeoutMs,
+  awaitConfirmation = true,
+  confirmations = 1,
+  confirmationTimeoutMs = 120_000,
+  settlementTimeoutMs = defaultSettlementTimeoutMs(0, { minimumMs: 60_000, extraSeconds: 0 }),
+  pollIntervalMs = 5_000,
+  sleepImpl = sleep,
+} = {}) {
+  if (!position) throw new Error("position is required");
+  if (position.bindingKind !== "aave_v3_pool_supply_withdraw") {
+    throw new Error(`Unsupported position binding for Aave exit: ${position.bindingKind}`);
+  }
+  if (!getEvmChainConfig(position.chain)) throw new Error(`Unsupported EVM chain: ${position.chain}`);
+  const now = new Date().toISOString();
+  const asset = tokenAsset(position.chain, position.assetAddress, {
+    ticker: "USDC",
+    family: "stablecoin",
+    decimals: 6,
+    priceKey: "usd_stable",
+  });
+  const shareAsset = tokenAsset(position.chain, position.shareTokenAddress, {
+    ticker: "aToken",
+    family: "protocol_share",
+    decimals: asset.decimals,
+    priceKey: null,
+  });
+  const poolAddress = await resolveAavePoolAddress({
+    chain: position.chain,
+    binding: {
+      poolAddress: position.poolAddress,
+      poolAddressProviderAddress: position.poolAddressProviderAddress,
+    },
+  });
+  const assetBalanceBefore = await readEvmAssetBalance({
+    asset,
+    owner: senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const shareBalanceBefore = await readEvmAssetBalance({
+    asset: shareAsset,
+    owner: senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const currentShares = BigInt(shareBalanceBefore.balance || 0);
+  const recordedShares = BigInt(position.shareDelta || position.amount || 0);
+  const withdrawAmount = (recordedShares > 0n && recordedShares < currentShares ? recordedShares : currentShares).toString();
+  if (BigInt(withdrawAmount) <= 0n) throw new Error("No Aave aToken balance available to withdraw");
+
+  const intent = buildAaveWithdrawIntent({ position, senderAddress, poolAddress, withdrawAmount, now });
+  try {
+    const gas = await estimateGasImpl(
+      position.chain,
+      {
+        from: senderAddress,
+        to: poolAddress,
+        data: intent.tx.data,
+        valueWei: "0",
+      },
+      getEvmChainConfig(position.chain),
+    );
+    intent.tx.gasLimit = gasLimitWithFallback(gas, DEFAULT_AAVE_WITHDRAW_GAS_UNITS);
+  } catch {
+    intent.tx.gasLimit = gasLimitWithFallback(null, DEFAULT_AAVE_WITHDRAW_GAS_UNITS);
+  }
+
+  const signerResult = await sendCommand({
+    socketPath,
+    timeoutMs,
+    message: {
+      command: "sign_and_broadcast",
+      intent,
+      awaitConfirmation,
+      confirmations,
+      timeoutMs: confirmationTimeoutMs,
+    },
+  });
+  if (signerResult?.status !== "ok" || !signerResult?.broadcast?.txHash) {
+    const error = new Error(signerResult?.error?.message || "Signer did not complete Aave portfolio exit");
+    error.name = signerResult?.error?.name || "SignerExecutionFailed";
+    throw error;
+  }
+
+  const redeemProof = await waitForEvmAssetDelta({
+    asset,
+    owner: senderAddress,
+    initialBalance: assetBalanceBefore,
+    requiredDelta: minimumRedeemDelta(withdrawAmount),
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+    timeoutMs: settlementTimeoutMs,
+    pollIntervalMs,
+    sleepImpl,
+  });
+  const shareBalanceAfter = await readEvmAssetBalance({
+    asset: shareAsset,
+    owner: senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    settlementStatus: redeemProof.status === "delivered" ? "position_closed" : "withdraw_delta_timeout",
+    position: { ...position, poolAddress },
+    signerResult,
+    assetBalanceBefore,
+    shareBalanceBefore,
+    shareBalanceAfter,
+    redeemProof,
+    destinationProof: redeemProof.status === "delivered"
+      ? {
+          status: "delivered",
+          proofSource: redeemProof.proofSource,
+          observedDelta: redeemProof.observedDelta,
+          requiredDelta: redeemProof.requiredDelta,
+        }
+      : null,
+  };
+}
+
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
@@ -252,6 +444,23 @@ function exitRecord({ evaluation, execution }) {
     txHash: execution.signerResult?.broadcast?.txHash || null,
     redeemProof: execution.redeemProof,
   };
+}
+
+async function executePortfolioExitPosition({ position, senderAddress, socketPath, timeoutMs }) {
+  if (position.bindingKind === "aave_v3_pool_supply_withdraw") {
+    return executeAavePortfolioExit({
+      position,
+      senderAddress,
+      socketPath,
+      timeoutMs,
+    });
+  }
+  return executeErc4626PortfolioExit({
+    position,
+    senderAddress,
+    socketPath,
+    timeoutMs,
+  });
 }
 
 export async function runMerklPortfolioExit({
@@ -297,8 +506,11 @@ export async function runMerklPortfolioExit({
   const store = new JsonlStore(config.dataDir);
   if (execute) {
     for (const evaluation of exitReady) {
-      const position = positions.find((item) => item.positionId === evaluation.positionId);
-      const execution = await executeErc4626PortfolioExit({
+      const position = hydratePositionFromQueue(
+        positions.find((item) => item.positionId === evaluation.positionId),
+        queue,
+      );
+      const execution = await executePortfolioExitPosition({
         position,
         senderAddress: preflight.senderAddress,
         socketPath,

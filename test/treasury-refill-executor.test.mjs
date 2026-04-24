@@ -449,6 +449,82 @@ test("treasury refill executor maps cross-chain intermediate swap to composite p
   assert.equal(preparation.coverage.coversTarget !== false, true);
 });
 
+test("treasury refill executor builds BSC USDT to Base USDC composite refill preview", async () => {
+  let dexInput = null;
+  let gatewayInput = null;
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const bscUsdt = "0x55d398326f99059fF775485246999027B3197955";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-bsc-usdt-base-usdc",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: baseUsdc,
+      targetAmount: "1000000",
+      targetAmountDecimal: 1,
+      estimatedAssetValueUsd: 1,
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: bscUsdt,
+          actual: "300000000000000000000",
+          actualDecimal: 300,
+          estimatedUsd: 300,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      dexInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-24T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "token-dex-experiment",
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: WBTC_OFT_TOKEN,
+        amount: input.amount,
+        minimumOutputAmount: "1500",
+        steps: [{ id: "swap" }],
+      };
+    },
+    buildGatewayBtcPlanImpl: async (input) => {
+      gatewayInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-24T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "gateway-btc-funding-transfer",
+        route: {
+          srcChain: input.srcChain,
+          dstChain: input.dstChain,
+          srcToken: input.srcToken,
+          dstToken: input.dstToken,
+        },
+        amount: input.amount,
+        amountUsd: 1,
+        quote: { outputAmount: { amount: "1000000" } },
+        gasPreflight: { gasUnits: 100000 },
+        intent: { strategyId: "gateway-btc-funding-transfer" },
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "cross_chain_btc_intermediate");
+  assert.equal(dexInput.chain, "bsc");
+  assert.equal(dexInput.inputToken, bscUsdt);
+  assert.equal(dexInput.outputToken, "wbtc.oft");
+  assert.equal(gatewayInput.srcChain, "bsc");
+  assert.equal(gatewayInput.dstChain, "base");
+  assert.equal(gatewayInput.dstToken, baseUsdc);
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor blocks composite plan when DEX step fails", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {

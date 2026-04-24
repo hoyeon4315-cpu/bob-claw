@@ -471,6 +471,14 @@ function crossChainExecutorSupport(action, selectedSource) {
         notes: "Source token is not BTC-family but target is; swap source token to wBTC.OFT on source chain then bridge via Gateway consolidation.",
       };
     }
+    if (!isBtcLikeAsset(sourceAsset) && targetAsset?.family === "stablecoin" && dexProvidersForChain(selectedSource.chain).length > 0) {
+      return {
+        supported: true,
+        intermediateSwapRequired: true,
+        missingInputs: [],
+        notes: "Source token is not BTC-family; swap it to wBTC.OFT on the source chain, then use Gateway to request target-chain stablecoin inventory.",
+      };
+    }
     return {
       supported: false,
       missingInputs: ["cross_chain_token_refill_executor_missing"],
@@ -507,8 +515,13 @@ function crossChainCandidate(action, plan, policy, routeContext = null, gatewayA
         "BOB Gateway is currently disabled (committed flag or runtime state file). Gateway-backed cross-chain methods are not selectable until the pause clears. Route through an alternate bridge provider or manual funding instead.",
     });
   }
+  const sameTokenRefill =
+    action.type === "refill_token" &&
+    selectedSource &&
+    selectedSource.chain === action.chain &&
+    normalized(selectedSource.token) === normalized(action.token);
   const coversTarget =
-    action.type === "refill_token"
+    action.type === "refill_token" && sameTokenRefill
       ? sourceInventoryCoversTargetAmount(action, selectedSource)
       : sourceInventoryCoversTargetValue(action, selectedSource);
   if (!selectedSource) {

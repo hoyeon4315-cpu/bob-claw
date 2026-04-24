@@ -759,6 +759,86 @@ test("cross-chain refill from non-BTC source uses intermediate swap method when 
   assert.deepEqual(funding.selections[0].missingInputs, []);
 });
 
+test("cross-chain BSC USDT refill can target Base USDC through BTC intermediate", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "bsc",
+          actual: "300000000000000000000",
+          actualDecimal: 300,
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          ticker: "USDT",
+          estimatedUsd: 300,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "1000000",
+        refillAmountDecimal: 1,
+        refillEstimatedUsd: 1,
+        rationale: "Base USDC Merkl entry inventory",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "bsc");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "USDT");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.deepEqual(funding.selections[0].missingInputs, []);
+});
+
+test("cross-chain BSC USDT refill can target Ethereum USDC through BTC intermediate", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "bsc",
+          actual: "300000000000000000000",
+          actualDecimal: 300,
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          ticker: "USDT",
+          estimatedUsd: 300,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "ethereum",
+        ticker: "USDC",
+        token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        refillAmount: "1000000",
+        refillAmountDecimal: 1,
+        refillEstimatedUsd: 1,
+        rationale: "Ethereum USDC Merkl entry inventory",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "bsc");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "USDT");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.deepEqual(funding.selections[0].missingInputs, []);
+});
+
 test("cross-chain refill prefers direct BTC-family source over intermediate swap", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateMerklPositionExit } from "../src/executor/merkl-portfolio-exit.mjs";
+import { evaluateMerklPositionExit, executeAavePortfolioExit } from "../src/executor/merkl-portfolio-exit.mjs";
 
 function position(overrides = {}) {
   return {
@@ -71,4 +71,60 @@ test("force exit bypasses min hold blocker", () => {
   assert.equal(result.status, "exit_ready");
   assert.ok(result.triggers.includes("force_exit_requested"));
   assert.equal(result.blockers.length, 0);
+});
+
+test("Aave portfolio exit withdraws through the pool and verifies asset delta", async () => {
+  const calls = [];
+  let capturedIntent = null;
+  const sender = "0x2222222222222222222222222222222222222222";
+  const assetAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const shareTokenAddress = "0x3333333333333333333333333333333333333333";
+  const poolAddress = "0x1111111111111111111111111111111111111111";
+  const result = await executeAavePortfolioExit({
+    position: {
+      ...position({
+        chain: "ethereum",
+        protocolId: "aave",
+        bindingKind: "aave_v3_pool_supply_withdraw",
+        assetAddress,
+        shareTokenAddress,
+        poolAddress,
+        amount: "250000",
+        shareDelta: "250000",
+      }),
+    },
+    senderAddress: sender,
+    sendCommand: async ({ message }) => {
+      capturedIntent = message.intent;
+      return { status: "ok", broadcast: { txHash: "0xaavewithdraw" } };
+    },
+    estimateGasImpl: async () => ({ gasUnits: 180_000 }),
+    readErc20BalanceImpl: async (chain, token, owner) => {
+      calls.push({ chain, token, owner });
+      if (token.toLowerCase() === assetAddress.toLowerCase()) {
+        return {
+          rpcUrl: "mock",
+          balance: calls.filter((call) => call.token.toLowerCase() === assetAddress.toLowerCase()).length === 1
+            ? "1000000"
+            : "1240000",
+        };
+      }
+      return {
+        rpcUrl: "mock",
+        balance: calls.filter((call) => call.token.toLowerCase() === shareTokenAddress.toLowerCase()).length === 1
+          ? "250000"
+          : "0",
+      };
+    },
+    settlementTimeoutMs: 0,
+    pollIntervalMs: 0,
+    sleepImpl: async () => {},
+  });
+
+  assert.equal(result.settlementStatus, "position_closed");
+  assert.equal(capturedIntent.intentType, "aave_withdraw");
+  assert.equal(capturedIntent.tx.to, poolAddress);
+  assert.equal(capturedIntent.metadata.poolAddress, poolAddress);
+  assert.equal(result.redeemProof.requiredDelta, "237500");
+  assert.equal(result.redeemProof.observedDelta, "240000");
 });
