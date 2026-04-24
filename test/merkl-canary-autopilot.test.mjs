@@ -39,12 +39,12 @@ function queueItem(overrides = {}) {
   };
 }
 
-test("sizes Merkl canary amount to the committed per-tx cap and inventory", () => {
+test("sizes Merkl canary amount to the committed tiny cap and inventory", () => {
   const sizing = sizeMerklCanaryAmount(queueItem());
 
   assert.equal(sizing.status, "ready");
-  assert.equal(sizing.amount, "250000");
-  assert.equal(sizing.amountUsd, 0.25);
+  assert.equal(sizing.amount, "414771");
+  assert.equal(sizing.amountUsd, 0.414771);
 });
 
 test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
@@ -60,10 +60,10 @@ test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
         strategyId: "gateway_native_asset_conversion_sleeve",
         chain: "base",
         intentType: "erc4626_deposit",
-        amountUsd: 1,
-        metadata: { capCheckAmountUsd: 1 },
+        amountUsd: 10,
+        metadata: { capCheckAmountUsd: 10 },
       },
-      amountUsd: 1,
+      amountUsd: 10,
     }],
   });
 
@@ -86,10 +86,10 @@ test("selection skips candidates whose committed chain cap is exhausted", () => 
           strategyId: "gateway_native_asset_conversion_sleeve",
           chain: "base",
           intentType: "erc4626_deposit",
-          amountUsd: 1,
-          metadata: { capCheckAmountUsd: 1 },
-        },
-        amountUsd: 1,
+        amountUsd: 10,
+        metadata: { capCheckAmountUsd: 10 },
+      },
+        amountUsd: 10,
       }],
     },
   );

@@ -245,7 +245,11 @@ export async function runMerklCanaryAutopilot({
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
 } = {}) {
-  const preflight = await preflightLiveCanarySweep({ socketPath, timeoutMs });
+  const preflight = await preflightLiveCanarySweep({
+    socketPath,
+    timeoutMs,
+    requireLiveBaseline: false,
+  });
   if (preflight.status !== "ready") {
     const report = {
       schemaVersion: 1,

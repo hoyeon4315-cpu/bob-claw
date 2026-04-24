@@ -472,6 +472,7 @@ export async function preflightLiveCanarySweep({
   readSignerHealthImpl = readSignerHealth,
   buildDashboardContextImpl = buildCurrentDashboardContext,
   killSwitchExistsImpl = existsSync,
+  requireLiveBaseline = true,
 } = {}) {
   if (killSwitchPath && killSwitchExistsImpl(killSwitchPath)) {
     return {
@@ -502,9 +503,9 @@ export async function preflightLiveCanarySweep({
     };
   }
 
-  const context = await buildDashboardContextImpl({ dataDir: config.dataDir });
+  const context = requireLiveBaseline ? await buildDashboardContextImpl({ dataDir: config.dataDir }) : null;
   const liveBaseline = context?.dashboardStatus?.liveBaseline || null;
-  if (liveBaseline?.liveTrading !== "ALLOWED" || liveBaseline?.status !== "ready") {
+  if (requireLiveBaseline && (liveBaseline?.liveTrading !== "ALLOWED" || liveBaseline?.status !== "ready")) {
     return {
       status: "blocked",
       blockedReason: "live_baseline_blocked",

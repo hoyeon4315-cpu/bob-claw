@@ -102,6 +102,52 @@ test("preflight blocks when kill switch file is present", async () => {
   assert.equal(result.blockedReason, "kill_switch_present");
 });
 
+test("preflight can skip route live-baseline for independent protocol canaries", async () => {
+  const result = await preflightLiveCanarySweep({
+    killSwitchPath: "/tmp/kill",
+    killSwitchExistsImpl: () => false,
+    readSignerHealthImpl: async () => ({
+      status: "ok",
+      addresses: {
+        base: ADDRESS,
+        bitcoin: "bc1qexample",
+      },
+    }),
+    buildDashboardContextImpl: async () => {
+      throw new Error("dashboard context should not be loaded");
+    },
+    requireLiveBaseline: false,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.senderAddress, ADDRESS);
+  assert.equal(result.liveBaseline, null);
+});
+
+test("preflight keeps route live-baseline gate by default", async () => {
+  const result = await preflightLiveCanarySweep({
+    killSwitchPath: "/tmp/kill",
+    killSwitchExistsImpl: () => false,
+    readSignerHealthImpl: async () => ({
+      status: "ok",
+      addresses: {
+        base: ADDRESS,
+      },
+    }),
+    buildDashboardContextImpl: async () => ({
+      dashboardStatus: {
+        liveBaseline: {
+          status: "blocked",
+          liveTrading: "BLOCKED",
+        },
+      },
+    }),
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.blockedReason, "live_baseline_blocked");
+});
+
 test("sweep continues after per-candidate plan blocker and quarantines signer-uncertain chain", async () => {
   const inventory = {
     observedAt: "2026-04-23T00:00:00.000Z",
