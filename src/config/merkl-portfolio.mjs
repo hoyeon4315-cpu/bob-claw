@@ -21,6 +21,8 @@ export const MERKL_PORTFOLIO_POLICY = Object.freeze({
     aave: 40,
   }),
   minPositionUsd: 0.25,
+  minEthereumNotionalUsd: 10,
+  allowSmallEthereumProofBackedEntries: true,
   reserveSourceInventoryPct: 0.05,
   minCanaryProofsBeforeScale: 1,
   minHoldMinutes: 60,

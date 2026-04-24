@@ -48,6 +48,7 @@
     "report:native-btc-plan": "node src/cli/report-native-btc-plan.mjs",
     "report:strategy-tick-slice": "node src/cli/report-strategy-tick-slice.mjs --write",
     "report:strategy-catalog": "node src/cli/report-strategy-catalog.mjs",
+    "report:live-deployment-priorities": "node src/cli/report-live-deployment-priorities.mjs",
     "report:strategy-execution-surfaces": "node src/cli/report-strategy-execution-surfaces.mjs",
     "report:strategy-research-board": "node src/cli/report-strategy-research-board.mjs",
     "report:deterministic-strategy-candidates": "node src/cli/report-deterministic-strategy-candidates.mjs",

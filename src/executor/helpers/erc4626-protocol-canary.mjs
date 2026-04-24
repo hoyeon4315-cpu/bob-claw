@@ -147,7 +147,9 @@ export async function buildErc4626ProtocolCanaryPlan({
   } catch {
     allowanceBefore = null;
   }
-  const allowanceCoversAmount = BigInt(allowanceBefore?.allowance ?? 0) >= BigInt(normalizedAmount);
+  const allowanceAmount = BigInt(allowanceBefore?.allowance ?? 0);
+  const allowanceCoversAmount = allowanceAmount >= BigInt(normalizedAmount);
+  const allowanceNeedsZeroReset = !allowanceCoversAmount && allowanceAmount > 0n;
 
   let approveGas = null;
   if (!allowanceCoversAmount) {
@@ -169,6 +171,37 @@ export async function buildErc4626ProtocolCanaryPlan({
 
   const depositData = ERC4626_INTERFACE.encodeFunctionData("deposit", [normalizedAmount, senderAddress]);
   const steps = [
+    ...(allowanceNeedsZeroReset ? [{
+      id: "reset_asset_allowance",
+      intent: buildIntent({
+        strategyId,
+        chain,
+        amountUsd: 0,
+        now,
+        ttlMs: strategyCaps.intentTtlMs,
+        intentType: "approve_exact",
+        approval: {
+          token: assetAddress,
+          spender: vaultAddress,
+          amount: "0",
+          mode: "per_tx",
+        },
+        tx: {
+          to: assetAddress,
+          data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, "0"]),
+          value: "0",
+          gasLimit: gasLimitWithFallback(approveGas, 80_000, buffer),
+        },
+        metadata: {
+          capCheckAmountUsd: 0,
+          opportunityId: queueItem.opportunityId,
+          protocol: queueItem.protocolId,
+          vaultAddress,
+          assetAddress,
+          approvalResetReason: "existing_allowance_below_required_amount",
+        },
+      }),
+    }] : []),
     ...(!allowanceCoversAmount ? [{
       id: "approve_asset_to_vault",
       intent: buildIntent({
@@ -262,6 +295,7 @@ export async function buildErc4626ProtocolCanaryPlan({
           allowance: BigInt(allowanceBefore.allowance ?? 0).toString(),
           rpcUrl: allowanceBefore.rpcUrl || null,
           skippedApproval: allowanceCoversAmount,
+          resetBeforeApproval: allowanceNeedsZeroReset,
         }
       : null,
   };

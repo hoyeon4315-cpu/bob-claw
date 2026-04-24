@@ -181,3 +181,42 @@ test("erc4626 protocol canary skips approval when existing allowance covers amou
   assert.equal(plan.steps[0].id, "deposit_asset_to_vault");
   assert.equal(plan.allowanceBefore.skippedApproval, true);
 });
+
+test("erc4626 protocol canary resets partial allowance before exact approval", async () => {
+  const queueItem = {
+    queueId: "merkl:eth-usdt",
+    opportunityId: "eth-usdt",
+    chain: "ethereum",
+    protocolId: "morpho",
+    name: "Supply USDT",
+    mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0xbeef003C68896c7D2c3c60d363e8d71a49Ab2bf9",
+        assetAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        shareTokenAddress: "0xbeef003C68896c7D2c3c60d363e8d71a49Ab2bf9",
+        assetSymbol: "USDT",
+        assetDecimals: 6,
+      },
+    },
+  };
+
+  const plan = await buildErc4626ProtocolCanaryPlan({
+    queueItem,
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "15000000",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 10_000_000n, rpcUrl: "memory" }),
+    now: "2026-04-24T00:00:00.000Z",
+  });
+
+  assert.equal(plan.steps.length, 3);
+  assert.equal(plan.steps[0].id, "reset_asset_allowance");
+  assert.equal(plan.steps[0].intent.approval.amount, "0");
+  assert.equal(plan.steps[1].id, "approve_asset_to_vault");
+  assert.equal(plan.steps[1].intent.approval.amount, "15000000");
+  assert.equal(plan.steps[2].id, "deposit_asset_to_vault");
+  assert.equal(plan.allowanceBefore.resetBeforeApproval, true);
+});

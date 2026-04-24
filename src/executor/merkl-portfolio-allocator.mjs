@@ -192,6 +192,8 @@ export function buildMerklPortfolioAllocationPlan({
     const protocolActiveUsd = activeProtocolUsd.get(queueItem.protocolId) || 0;
     const sizing = sizeMerklCanaryAmount(queueItem, {
       maxUsd: Math.min(policy.perOpportunityMaxUsd, runBudgetUsd || policy.perOpportunityMaxUsd),
+      minEthereumNotionalUsd: finite(policy.minEthereumNotionalUsd) ?? undefined,
+      allowInefficientEthereum: Boolean(policy.allowSmallEthereumProofBackedEntries && canaryProof),
       useTinyLiveCap: false,
       auditRecords,
       now,
@@ -261,6 +263,8 @@ export function buildMerklPortfolioAllocationPlan({
     }
     const resized = sizeMerklCanaryAmount(candidate.queueItem, {
       maxUsd: targetUsd,
+      minEthereumNotionalUsd: finite(policy.minEthereumNotionalUsd) ?? undefined,
+      allowInefficientEthereum: Boolean(policy.allowSmallEthereumProofBackedEntries && candidate.canaryProofObservedAt),
       useTinyLiveCap: false,
       auditRecords,
       now,

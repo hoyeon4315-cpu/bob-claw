@@ -323,10 +323,10 @@ export const STRATEGY_CAPS = Object.freeze({
     }),
     caps: Object.freeze({
       perTxUsd: 75,
-      perDayUsd: 400,
+      perDayUsd: 550,
       perChainUsd: Object.freeze({
         base: 100,
-        ethereum: 250,
+        ethereum: 350,
         optimism: 25,
         sei: 15,
       }),
