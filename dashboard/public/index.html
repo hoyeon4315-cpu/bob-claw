@@ -300,20 +300,20 @@
       const pair = (s.pair || []).filter(Boolean).map(p => p.toUpperCase()).join(' / ');
       const type = s.type;
       if (type === 'loop') {
-        return (s.loops ? `×${s.loops} ` : '') + '루프 레버리지' + (pair ? ` · ${pair}` : '');
+        return (s.loops ? `×${s.loops} ` : '') + 'Loop Leverage' + (pair ? ` · ${pair}` : '');
       }
-      if (type === 'pt') return 'PT 고정금리' + (pair ? ' · ' + pair : '');
-      if (type === 'cl_lp') return 'CL 유동성 공급' + (pair ? ' · ' + pair : '');
-      if (type === 'lp' || type === 'lp_bgt') return '유동성 공급' + (pair ? ' · ' + pair : '');
-      if (type === 'basis') return '베이시스 차익' + (s.apyPct != null ? ' · APR ' + s.apyPct.toFixed(1) + '%' : '');
-      if (type === 'fold') return '레버리지 파밍' + (s.loops ? ' · ×' + s.loops : '') + (pair ? ' · ' + pair : '');
-      if (type === 'bridge') return '크로스체인 브릿지' + (pair ? ' · ' + pair : '');
-      if (type === 'payback') return '상환 경로' + (pair ? ' · ' + pair : '');
-      if (type === 'arb') return '아비트라지' + (pair ? ' · ' + pair : '');
-      if (type === 'swap') return '스왑' + (pair ? ' · ' + pair : '');
-      if (type === 'canary') return '캐너리 테스트' + (pair ? ' · ' + pair : '');
-      if (type === 'reserve') return '리저브' + (pair ? ' · ' + pair : '');
-      if (type === 'refuel') return 'Gas 리필';
+      if (type === 'pt') return 'PT Fixed Yield' + (pair ? ' · ' + pair : '');
+      if (type === 'cl_lp') return 'CL Liquidity' + (pair ? ' · ' + pair : '');
+      if (type === 'lp' || type === 'lp_bgt') return 'Liquidity Pool' + (pair ? ' · ' + pair : '');
+      if (type === 'basis') return 'Basis Arbitrage' + (s.apyPct != null ? ' · APR ' + s.apyPct.toFixed(1) + '%' : '');
+      if (type === 'fold') return 'Leverage Farm' + (s.loops ? ' · ×' + s.loops : '') + (pair ? ' · ' + pair : '');
+      if (type === 'bridge') return 'Cross-chain Bridge' + (pair ? ' · ' + pair : '');
+      if (type === 'payback') return 'Payback Route' + (pair ? ' · ' + pair : '');
+      if (type === 'arb') return 'Arbitrage' + (pair ? ' · ' + pair : '');
+      if (type === 'swap') return 'Swap' + (pair ? ' · ' + pair : '');
+      if (type === 'canary') return 'Canary Test' + (pair ? ' · ' + pair : '');
+      if (type === 'reserve') return 'Reserve' + (pair ? ' · ' + pair : '');
+      if (type === 'refuel') return 'Gas Refuel';
       return pair || s.type;
     }
 
