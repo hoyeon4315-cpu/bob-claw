@@ -342,7 +342,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
           <>
             <text y={R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1D1D1F"
               style={{ fontFamily:'-apple-system, system-ui', textTransform:'capitalize' }}>
-              {strategy.label || strategy.protocol}
+              {strategy.strategies?.[0]?.label || strategy.label || strategy.protocol}
             </text>
             <text y={R + 26} textAnchor="middle" fontSize="10" fontWeight="600" fill={typeInk}
               style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.8 }}>
@@ -350,8 +350,14 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
             </text>
           </>
         )}
-        {strategy.pair?.length > 0 && !selected && (
-          <text y={R + 10} textAnchor="middle" fontSize="8" fontWeight="500" fill="#8A8A8D"
+        {!selected && (
+          <text y={R + 10} textAnchor="middle" fontSize="9" fontWeight="600" fill="#555"
+            style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2, textTransform:'capitalize' }}>
+            {strategy.label || strategy.protocol}
+          </text>
+        )}
+        {selected && strategy.pair?.length > 0 && (
+          <text y={R + 38} textAnchor="middle" fontSize="8" fontWeight="500" fill="#8A8A8D"
             style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
             {strategy.pair.map(p => p.toUpperCase()).join(' / ')}
           </text>
