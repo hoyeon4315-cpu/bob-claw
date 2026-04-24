@@ -103,6 +103,20 @@ describe("evaluateDemotionPolicy", () => {
     assert.equal(result.triggers[0].kind, "round_trip_efficiency_below_threshold");
   });
 
+  test("zero gross success skips efficiency demotion because there is no measured efficiency", () => {
+    const nowMs = Date.now();
+    const receipts = [
+      receiptFixture({
+        realizedProfitSats: 0,
+        roundTripCostSats: 0,
+        tsMs: nowMs - 3600_000,
+      }),
+    ];
+    const result = evaluateDemotionPolicy({ strategyId: "s1", receipts, nowMs });
+    assert.equal(result.demoted, false);
+    assert.deepEqual(result.triggers, []);
+  });
+
   test("filters receipts outside lookback", () => {
     const nowMs = Date.now();
     const oldReceipt = receiptFixture({

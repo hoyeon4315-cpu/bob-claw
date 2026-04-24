@@ -111,8 +111,8 @@ export function evaluateDemotionPolicy({
     const totalCost = costs.reduce((a, b) => a + b, 0);
     const totalProfit = profits.reduce((a, b) => a + b, 0);
     const gross = totalProfit + totalCost;
-    const efficiency = gross > 0 ? (gross - totalCost) / gross : 0;
-    if (efficiency < thresholds.minRecentRoundTripEfficiency) {
+    const efficiency = gross > 0 ? (gross - totalCost) / gross : null;
+    if (efficiency !== null && efficiency < thresholds.minRecentRoundTripEfficiency) {
       triggers.push({
         kind: "round_trip_efficiency_below_threshold",
         have: Number(efficiency.toFixed(4)),

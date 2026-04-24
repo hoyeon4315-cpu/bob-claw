@@ -25,11 +25,16 @@ import {
   PROMOTION_THRESHOLDS,
   PROMOTION_THRESHOLDS_STRICT,
 } from "../strategy/promotion-evidence.mjs";
+import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
 
 const DEFAULT_STRATEGIES = ["beefy-folding-vault", "wrapped-btc-loop-base-moonwell", "gateway_native_asset_conversion_sleeve"];
+const OPERATOR_HELD_STRATEGIES = new Set([
+  "wrapped-btc-loop-base-moonwell",
+  "recursive_wrapped_btc_lending_loop",
+]);
 
 function parseArgs(argv) {
   const out = { json: false, quiet: false, strategies: [] };
@@ -114,6 +119,14 @@ function main() {
       lookbackDays: 14,
       thresholds: PROMOTION_THRESHOLDS_STRICT,
     });
+    const strategyCaps = getStrategyCaps(sid);
+    const autoExecute = strategyCaps?.autoExecute === true;
+    const operatorHold = OPERATOR_HELD_STRATEGIES.has(sid);
+    const demotion = evaluateDemotionPolicy({ strategyId: sid, receipts, nowMs });
+    const liveEligible = promotionFastTrack.eligible === true
+      && autoExecute
+      && operatorHold !== true
+      && demotion.demoted !== true;
 
     return {
       strategyId: sid,
@@ -135,14 +148,22 @@ function main() {
         })),
       receiptCountTotal: receipts.length,
       receiptCountSignerBacked: receipts.filter((r) => r?.source === "signer").length,
-      demotion: (() => {
-        const d = evaluateDemotionPolicy({ strategyId: sid, receipts, nowMs });
-        return {
-          demoted: d.demoted,
-          triggers: d.triggers.map((t) => t.kind),
-          signerBackedReceiptCount: d.evidence?.signerBackedReceiptCount ?? 0,
-        };
-      })(),
+      autoExecute,
+      operatorHold,
+      liveEligibility: {
+        liveEligible,
+        blockers: [
+          ...(promotionFastTrack.eligible ? [] : ["promotion_evidence_not_eligible"]),
+          ...(autoExecute ? [] : ["strategy_auto_execute_disabled"]),
+          ...(operatorHold ? ["operator_hold"] : []),
+          ...(demotion.demoted ? ["demotion_policy_triggered"] : []),
+        ],
+      },
+      demotion: {
+        demoted: demotion.demoted,
+        triggers: demotion.triggers.map((t) => t.kind),
+        signerBackedReceiptCount: demotion.evidence?.signerBackedReceiptCount ?? 0,
+      },
       promotion: {
         fastTrack: {
           eligible: promotionFastTrack.eligible,
@@ -170,7 +191,7 @@ function main() {
   const dedupedLatestReports = [...latestReportSummariesByStrategy.values()];
 
   const promotionEvidence = Object.fromEntries(
-    strategyRows.map((s) => [s.strategyId, { eligible: s.promotion.fastTrack.eligible }]),
+    strategyRows.map((s) => [s.strategyId, { eligible: s.liveEligibility.liveEligible }]),
   );
   const demotionEvidence = Object.fromEntries(
     strategyRows.map((s) => [s.strategyId, { demoted: s.demotion.demoted, triggers: s.demotion.triggers }]),
@@ -193,6 +214,8 @@ function main() {
       strategiesWithTick: strategyRows.filter((s) => s.lastTickAt).length,
       strategiesMissingCaps: strategyRows.filter((s) => s.capsConfigured === false).length,
       strategiesEligibleFastTrack: strategyRows.filter((s) => s.promotion.fastTrack.eligible).length,
+      strategiesLiveEligible: strategyRows.filter((s) => s.liveEligibility.liveEligible).length,
+      strategiesOperatorHold: strategyRows.filter((s) => s.operatorHold).length,
       strategiesEligibleStrict: strategyRows.filter((s) => s.promotion.strict.eligible).length,
       totalSignerBackedReceipts: strategyRows.reduce((acc, s) => acc + s.receiptCountSignerBacked, 0),
     },
