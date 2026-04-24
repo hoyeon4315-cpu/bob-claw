@@ -59,10 +59,7 @@ const DEFAULT_STRATEGIES = [
   "eth_destination_deployment",
   "onchain_btc_perp_basis",
 ];
-const OPERATOR_HELD_STRATEGIES = new Set([
-  "wrapped-btc-loop-base-moonwell",
-  "recursive_wrapped_btc_lending_loop",
-]);
+const OPERATOR_HELD_STRATEGIES = new Set([]);
 
 function parseArgs(argv) {
   const out = { json: false, quiet: false, strategies: [] };
