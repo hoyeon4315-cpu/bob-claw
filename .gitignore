@@ -13,7 +13,15 @@ state/
 .playwright-cli/
 .cloudflare/
 .wrangler/
-.claude/
+.claude/*
+!.claude/agents/
+!.claude/agents/*.md
+!.claude/agent-memory/
+!.claude/agent-memory/**/MEMORY.md
+!.claude/settings.json
+!.claude/launch.json
+.claude/settings.local.json
+.claude/agent-memory-local/
 .codex/
 graphify-out/
 src/graphify-out/

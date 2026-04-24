@@ -8,6 +8,7 @@
 - 규칙, 단계, 운영 원칙, 최신 blocker, 보고 형식: `AGENTS.md`
 - 사실 근거와 수치 출처: `docs/research/*.md`
 - 구현 전반 흐름: `docs/codex-playbook.md`
+- Claude/Ollama/subagent 운용: `docs/ai-agent-operations.md`
 - graphify 사용 기준: `AGENTS.md`의 `graphify` 섹션
 
 충돌 시 항상 `AGENTS.md`가 우선이다.
@@ -17,8 +18,9 @@
 작업 시작 시 아래 순서로 본다.
 
 1. `AGENTS.md`
-2. 관련 코드
-3. 필요한 경우에만 `docs/research/*.md`
+2. `docs/README.md`
+3. 관련 코드
+4. 필요한 경우에만 `docs/research/*.md`
 
 `CLAUDE.md`만 읽고 판단하지 말고, 항상 `AGENTS.md`를 기준으로 작업한다.
 
@@ -93,5 +95,6 @@ graphify는 “코드 연결 관계를 좁힐 때” 먼저 쓴다.
 Claude도 Codex와 **같은 기준으로** 일해야 한다.
 
 - 최신 규칙은 중복 복사하지 말고 `AGENTS.md`를 참조한다.
+- Ollama/Kimi/subagent 실행법은 `docs/ai-agent-operations.md`를 따른다.
 - 오래된 요약 규칙을 Claude 전용 로컬 진실처럼 유지하지 않는다.
 - blocker, 단계, strategy 상태는 고정 기억으로 말하지 말고 필요 시 최신 산출물로 다시 확인한다.

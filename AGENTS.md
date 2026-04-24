@@ -212,6 +212,12 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
   - Extra Gateway expansion chains (`bera`, `bsc`, `soneium`, `unichain`) have preview-ready Base `wBTC.OFT` funding routes; treasury/refill planning now emits explicit gas bootstrap jobs instead of silently stopping.
   - Strategy execution surfaces now report `missingExecutorCount = 0` for stablecoin entry/exit loops and mixed ETH/stable loops; these lanes run through dedicated analysis probes (`report:lane-reclassification`, `report:secondary-strategy-scaffolds`, `analyze:ethereum-routes`) and are no longer blocked by "no runner at all", though still not live-ready.
   - Merkl portfolio live-capital validation is active and multi-position: Base YO is filled to about `75` USD, Ethereum Aave Horizon RLUSD is open at `25` USD, Ethereum Morpho Clearstar USDC Core V2 is open at `75` USD, and Ethereum Morpho Steakhouse Prime Instant V2 is open at `50` USD. Live funding/refill receipts exist for BSC USDT -> Base USDC and BSC USDT -> Ethereum USDC/USDT/RLUSD through LI.FI. Additional deployment is blocked by refill inventory, Ethereum gas, unsupported protocol bindings, or chain/per-day caps, not by lack of Merkl candidates.
+  - **Protocol Binding Registry (2026-04-24):** `src/executor/protocol-binding-registry.mjs` now centralizes all protocol dispatch. `merkl-portfolio-allocator.mjs`, `merkl-portfolio-exit.mjs`, and `merkl-canary-autopilot.mjs` all query the registry instead of hard-coded `Set` checks and `if/else` dispatch. Adding a new ERC4626-compatible protocol requires zero code changes elsewhere — call `registerErc4626LikeBinding("new_protocol_deposit_withdraw")` and it auto-wires plan builder, executor, and exit handler. Custom interfaces (non-ERC4626) still need a new helper module + manual registry entry.
+  - **Merkl Portfolio Orchestrator (2026-04-24):** `npm run executor:merkl-portfolio-orchestrator` runs a single tick: Phase 1 exit stale positions, Phase 2 refresh treasury inventory, Phase 3 allocate freed capital into the highest-scoring opportunity. Loop mode available via `:loop` script. This replaces the separate exit-then-manually-wait-then-allocator workflow.
+
+## Protocol Binding Registry
+
+Detailed Merkl binding and orchestrator instructions live in `docs/merkl-protocol-bindings.md`. Keep this section as a pointer so `AGENTS.md` stays focused on operating rules and current memory.
 
 ## graphify
 
