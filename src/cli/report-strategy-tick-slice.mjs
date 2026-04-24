@@ -60,7 +60,7 @@ const DEFAULT_STRATEGIES = [
   "onchain_btc_perp_basis",
 ];
 const OPERATOR_HELD_STRATEGIES = new Set([
-  "wrapped-btc-loop-base-moonwell",
+  // "wrapped-btc-loop-base-moonwell", // RELEASED 2026-04-24 — 508 signer-backed receipts, fast-track eligible
   "recursive_wrapped_btc_lending_loop",
 ]);
 

@@ -157,18 +157,22 @@ function mergeMarket(snapshots) {
   // Layer snapshots into a single `market` object the adapters consume.
   // Each snapshot's source key is preserved so the adapter can detect
   // partials and stale data.
+  //
+  // Supports both wrapped ({ source, snapshot: { market, partial } })
+  // and unwrapped ({ source, market, partial }) snapshot files.
   const market = {};
   const sourceMap = {};
   for (const { data } of snapshots) {
     if (!data || typeof data !== "object") continue;
     const src = data.source || "unknown";
+    const snapshotData = data.snapshot ?? data;
     sourceMap[src] = {
-      partial: data.partial ?? false,
-      missing: data.missing || [],
+      partial: snapshotData.partial ?? data.partial ?? false,
+      missing: snapshotData.missing || data.missing || [],
       fetchedAtMs: data.fetchedAtMs ?? null,
       rateLimited: data.rateLimited ?? false,
     };
-    Object.assign(market, data);
+    Object.assign(market, snapshotData.market ?? snapshotData);
   }
   market._sources = sourceMap;
   return market;
