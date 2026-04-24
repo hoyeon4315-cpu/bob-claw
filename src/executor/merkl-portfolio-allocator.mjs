@@ -9,26 +9,18 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import {
-  buildAaveProtocolCanaryPlan,
-  executeAaveProtocolCanaryPlan,
-} from "./helpers/aave-protocol-canary.mjs";
-import {
-  buildErc4626ProtocolCanaryPlan,
-  executeErc4626ProtocolCanaryPlan,
-} from "./helpers/erc4626-protocol-canary.mjs";
-import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
 } from "../strategy/merkl-canary-execution-readiness.mjs";
+import {
+  isSupportedBindingKind,
+  resolvePlanBuilder,
+  resolvePlanExecutor,
+} from "./protocol-binding-registry.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { sizeMerklCanaryAmount } from "./merkl-canary-autopilot.mjs";
 
-const SUPPORTED_HOLD_BINDINGS = new Set([
-  "erc4626_vault_supply_withdraw",
-  "euler_evault_deposit_withdraw",
-  "aave_v3_pool_supply_withdraw",
-]);
 
 function finite(value) {
   if (value == null || value === "") return null;
@@ -200,7 +192,7 @@ export function buildMerklPortfolioAllocationPlan({
     });
     const score = merklPortfolioScore(queueItem, { policy, canaryProof });
     const blockers = [];
-    if (!SUPPORTED_HOLD_BINDINGS.has(bindingKind(queueItem))) blockers.push("hold_executor_missing");
+    if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("hold_executor_missing");
     if (!canaryProof) blockers.push("live_canary_proof_required_before_hold");
     if (sameOpportunityActive(activePositions, queueItem) && !policy.allowTopUps) blockers.push("opportunity_already_open");
     if ((finite(queueItem.campaignRemainingHours) ?? Number.POSITIVE_INFINITY) < policy.minRemainingHoursForEntry) {
@@ -327,18 +319,6 @@ export function buildMerklPortfolioAllocationPlan({
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
-}
-
-function builderFor(queueItem) {
-  return bindingKind(queueItem) === "aave_v3_pool_supply_withdraw"
-    ? buildAaveProtocolCanaryPlan
-    : buildErc4626ProtocolCanaryPlan;
-}
-
-function executorFor(queueItem) {
-  return bindingKind(queueItem) === "aave_v3_pool_supply_withdraw"
-    ? executeAaveProtocolCanaryPlan
-    : executeErc4626ProtocolCanaryPlan;
 }
 
 function txHashForStep(execution = {}, stepIds = []) {
@@ -475,8 +455,16 @@ export async function runMerklPortfolioAllocator({
   if (execute) {
     for (const allocation of plan.entryQueue) {
       const queueItem = allocation.queueItem;
-      const buildPlan = builderFor(queueItem);
-      const executePlan = executorFor(queueItem);
+      const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
+      const executePlan = resolvePlanExecutor(bindingKind(queueItem));
+      if (!buildPlan || !executePlan) {
+        executions.push({
+          opportunityId: queueItem.opportunityId,
+          status: "blocked",
+          blockers: ["hold_executor_missing"],
+        });
+        continue;
+      }
       const protocolPlan = await buildPlan({
         queueItem,
         senderAddress: preflight.senderAddress,

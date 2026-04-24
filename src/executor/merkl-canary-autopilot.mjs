@@ -8,25 +8,18 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
-import {
-  buildAaveProtocolCanaryPlan,
-  executeAaveProtocolCanaryPlan,
-} from "./helpers/aave-protocol-canary.mjs";
-import {
-  buildErc4626ProtocolCanaryPlan,
-  executeErc4626ProtocolCanaryPlan,
-} from "./helpers/erc4626-protocol-canary.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
 } from "../strategy/merkl-canary-execution-readiness.mjs";
+import {
+  isSupportedBindingKind,
+  resolveIntentType,
+  resolvePlanBuilder,
+  resolvePlanExecutor,
+} from "./protocol-binding-registry.mjs";
 
-const SUPPORTED_BINDING_KINDS = new Set([
-  "erc4626_vault_supply_withdraw",
-  "euler_evault_deposit_withdraw",
-  "aave_v3_pool_supply_withdraw",
-]);
 
 const DEFAULT_MIN_ETHEREUM_NOTIONAL_USD = 25;
 
@@ -109,7 +102,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
   );
 
   const blockers = [];
-  if (!SUPPORTED_BINDING_KINDS.has(bindingKind(queueItem))) blockers.push("unsupported_binding_kind");
+  if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("unsupported_binding_kind");
   if (readiness.status !== "inventory_ready") blockers.push(readiness.status || "inventory_not_ready");
   if (!matchedToken?.actual) blockers.push("matched_token_missing");
   if (!Number.isFinite(hardCapUsd) || hardCapUsd <= 0) blockers.push("no_positive_cap_or_inventory_usd");
@@ -125,7 +118,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       intent: {
         strategyId,
         chain: queueItem.chain,
-        intentType: "erc4626_deposit",
+        intentType: resolveIntentType(bindingKind(queueItem)) || "erc4626_deposit",
         amountUsd: hardCapUsd,
         mode: "live",
         executionReason: "strategy_execution",
@@ -305,14 +298,23 @@ export async function runMerklCanaryAutopilot({
   }
 
   const { queueItem, sizing } = selection.selected;
-  const buildPlan =
-    bindingKind(queueItem) === "aave_v3_pool_supply_withdraw"
-      ? buildAaveProtocolCanaryPlan
-      : buildErc4626ProtocolCanaryPlan;
-  const executePlan =
-    bindingKind(queueItem) === "aave_v3_pool_supply_withdraw"
-      ? executeAaveProtocolCanaryPlan
-      : executeErc4626ProtocolCanaryPlan;
+  const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
+  const executePlan = resolvePlanExecutor(bindingKind(queueItem));
+  if (!buildPlan || !executePlan) {
+    const report = {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      mode: execute ? "execute" : "preview",
+      status: "blocked",
+      blockedReason: "unsupported_binding_kind",
+      summary: {
+        queueCount: queue.queue?.length || 0,
+        readyCount: 1,
+      },
+    };
+    if (write) await writeAutopilotReport(report);
+    return report;
+  }
   const plan = await buildPlan({
     queueItem,
     senderAddress: preflight.senderAddress,
@@ -360,4 +362,4 @@ async function writeAutopilotReport(report) {
   await new JsonlStore(config.dataDir).append("merkl-canary-autopilot-runs", JSON.parse(safeJsonStringify(report)));
 }
 
-export { DEFAULT_MIN_ETHEREUM_NOTIONAL_USD, SUPPORTED_BINDING_KINDS };
+export { DEFAULT_MIN_ETHEREUM_NOTIONAL_USD };
