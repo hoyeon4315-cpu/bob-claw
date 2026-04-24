@@ -38,6 +38,10 @@ import { evaluateGmxBasisAdapter, buildDefaultGmxBasisConfig } from "../strategy
 import { evaluateStablecoinSpreadAdapter, buildDefaultStablecoinSpreadConfig } from "../strategy/stablecoin-spread-loop-adapter.mjs";
 import { evaluateProxySpreadAdapter, buildDefaultProxySpreadConfig } from "../strategy/proxy-spread-expansion-adapter.mjs";
 import { evaluateTokenizedReserveAdapter, buildDefaultTokenizedReserveConfig } from "../strategy/tokenized-reserve-sleeve-adapter.mjs";
+import {
+  evaluateGatewayNativeAssetConversionSleeveAdapter,
+  buildDefaultGatewayNativeAssetConversionSleeveConfig,
+} from "../strategy/gateway-native-asset-conversion-sleeve-adapter.mjs";
 
 const ADAPTERS = Object.freeze({
   "beefy-folding-vault": {
@@ -93,6 +97,12 @@ const ADAPTERS = Object.freeze({
     buildConfig: buildDefaultTokenizedReserveConfig,
     snapshotPrefixes: ["pendle-", "solv-", "gateway-", "bsc-"],
     protocol: "pendle",
+  },
+  "gateway_native_asset_conversion_sleeve": {
+    evaluate: evaluateGatewayNativeAssetConversionSleeveAdapter,
+    buildConfig: buildDefaultGatewayNativeAssetConversionSleeveConfig,
+    snapshotPrefixes: [],
+    protocol: "merkl",
   },
 });
 

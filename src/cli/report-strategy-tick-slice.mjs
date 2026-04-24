@@ -29,7 +29,7 @@ import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
 
-const DEFAULT_STRATEGIES = ["beefy-folding-vault", "wrapped-btc-loop-base-moonwell"];
+const DEFAULT_STRATEGIES = ["beefy-folding-vault", "wrapped-btc-loop-base-moonwell", "gateway_native_asset_conversion_sleeve"];
 
 function parseArgs(argv) {
   const out = { json: false, quiet: false, strategies: [] };
@@ -70,10 +70,16 @@ function main() {
   const strategies = args.strategies.length > 0 ? args.strategies : DEFAULT_STRATEGIES;
   const tickPath = resolve(args["tick-log"] || "logs/strategy-tick.jsonl");
   const auditPath = resolve(args.audit || "logs/signer-audit.jsonl");
+  const reconciliationsPath = resolve(args.reconciliations || "data/receipt-reconciliations.jsonl");
   const outPath = resolve(args.out || "dashboard/public/strategy-tick-status.json");
 
   const ticks = readJsonlSafe(tickPath);
   const audit = readJsonlSafe(auditPath);
+  const reconciliations = readJsonlSafe(reconciliationsPath);
+  const reconciliationByTxHash = new Map();
+  for (const rec of reconciliations) {
+    if (rec.txHash) reconciliationByTxHash.set(String(rec.txHash).toLowerCase(), rec);
+  }
   const latestByStrategy = latestTickPerStrategy(ticks);
   const nowMs = Date.now();
 
@@ -81,7 +87,20 @@ function main() {
     const tick = latestByStrategy.get(sid) || null;
     const tickBlocker = tick?.blockers?.find((b) => b.strategyId === sid) || null;
     const tickSnapshot = tick?.snapshotSummary?.find((item) => item?.strategyId === sid) || null;
-    const receipts = audit.filter((r) => r?.strategyId === sid);
+    const receipts = audit
+      .filter((r) => r?.strategyId === sid)
+      .map((r) => {
+        const txHash = r.broadcast?.txHash || r.lifecycle?.txHash || r.txHash || null;
+        const rec = txHash ? reconciliationByTxHash.get(String(txHash).toLowerCase()) : null;
+        return {
+          ...r,
+          tsMs: Date.parse(r.timestamp || r.observedAt || 0),
+          source: r.source || (r.broadcast?.txHash ? "signer" : null),
+          outcome: r.outcome || (["confirmed", "broadcasted", "signed"].includes(r.lifecycle?.stage) ? "success" : (r.error ? "failure" : "pending")),
+          txHash,
+          realizedProfitSats: Math.max(0, rec?.realized?.realizedNetPnlSats ?? 0),
+        };
+      });
 
     const promotionFastTrack = evaluatePromotionEvidence({
       strategyId: sid,
