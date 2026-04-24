@@ -495,6 +495,167 @@ export const STRATEGY_CAPS = Object.freeze({
       base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
     }),
   }),
+  "recursive_stablecoin_lending_loop": Object.freeze({
+    strategyId: "recursive_stablecoin_lending_loop",
+    label: "Recursive stablecoin lending loop",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["morpho", "aave", "euler"]),
+      assetFamily: "stablecoin",
+      btcDenominated: false,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 5,
+      perDayUsd: 25,
+      perChainUsd: Object.freeze({
+        base: 25,
+        ethereum: 25,
+      }),
+      maxDailyLossUsd: 25,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 5,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
+  "destination_wrapped_btc_rotation": Object.freeze({
+    strategyId: "destination_wrapped_btc_rotation",
+    label: "Destination wrapped-BTC rotation",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway", "odos"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        base: 100,
+        bob: 100,
+        bsc: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      bob: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      bsc: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
+  "stablecoin_treasury_rotation": Object.freeze({
+    strategyId: "stablecoin_treasury_rotation",
+    label: "Stablecoin treasury rotation",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway", "odos"]),
+      assetFamily: "stablecoin",
+      btcDenominated: false,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 10,
+      perDayUsd: 50,
+      perChainUsd: Object.freeze({
+        base: 50,
+        ethereum: 50,
+      }),
+      maxDailyLossUsd: 50,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
+  "gateway_proxy_spread_rebalance_recheck": Object.freeze({
+    strategyId: "gateway_proxy_spread_rebalance_recheck",
+    label: "Gateway proxy spread rebalance recheck",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway", "odos"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        base: 100,
+        ethereum: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
+  "macro_asset_rotation": Object.freeze({
+    strategyId: "macro_asset_rotation",
+    label: "Macro asset rotation",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gateway", "odos"]),
+      assetFamily: "multi_asset",
+      btcDenominated: false,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 10,
+      perDayUsd: 50,
+      perChainUsd: Object.freeze({
+        base: 50,
+        ethereum: 50,
+      }),
+      maxDailyLossUsd: 50,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
+  "onchain_btc_perp_basis": Object.freeze({
+    strategyId: "onchain_btc_perp_basis",
+    label: "On-chain BTC perp basis",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gmx"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        avalanche: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
+    }),
+    leverage: Object.freeze({
+      healthFactorMin: 1.2,
+      liquidationBufferPct: 10,
+      emergencyUnwindPath: Object.freeze([
+        "close perp position",
+        "settle funding",
+        "bridge or swap back to settlement path",
+      ]),
+    }),
+    gasFloat: Object.freeze({
+      avalanche: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
 });
 
 function isFiniteNumber(value) {
