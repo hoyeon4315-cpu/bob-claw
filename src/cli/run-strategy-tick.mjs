@@ -28,6 +28,7 @@ import { resolve, join, dirname } from "node:path";
 import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { buildScoredAllocation } from "../strategy/scored-capital-allocation.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
 import { evaluatePendlePtLbtcAdapter, buildDefaultPendlePtLbtcConfig } from "../strategy/pendle-pt-lbtc-adapter.mjs";
@@ -463,6 +464,18 @@ async function main() {
     now: new Date().toISOString(),
   });
 
+  // ── Scored capital allocation layer ──
+  const scoredCandidates = (result.builder.candidates || [])
+    .filter((c) => c.sourceMode !== "blocked");
+  const totalAvailableSats = scoredCandidates.reduce(
+    (sum, c) => sum + (c.proposedAllocationSats || 0),
+    0,
+  );
+  const scoredAllocation = buildScoredAllocation({
+    candidates: scoredCandidates,
+    totalAvailableSats,
+  });
+
   const tickRecord = {
     schemaVersion: 1,
     tickAt: result.observedAt,
@@ -476,6 +489,14 @@ async function main() {
       blockers: [...(r.blockers || [])],
     })),
     dispatchSummary: result.dispatch?.summary || null,
+    scoredAllocation: scoredAllocation?.summary || null,
+    scoredAllocationDetails: (scoredAllocation?.allocations || []).map((a) => ({
+      strategyId: a.strategyId,
+      chain: a.chain,
+      protocol: a.protocol,
+      allocatedSats: a.allocatedSats,
+      score: a.score,
+    })),
     candidateCount: result.builder.candidateCount,
     skippedCount: result.builder.skippedCount,
     errorCount: result.errors.length,
