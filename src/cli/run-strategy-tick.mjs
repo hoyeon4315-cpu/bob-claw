@@ -53,8 +53,39 @@ import { buildDefaultRecursiveLendingLoopConfig } from "../strategy/recursive-le
 import { resolveWrappedBtcLoopBindingSupport } from "../strategy/wrapped-btc-loop-bindings.mjs";
 import { buildMoonwellWrappedBtcLoopIntent } from "../executor/helpers/moonwell-intent-builder.mjs";
 import { buildVaultDepositIntent } from "../executor/helpers/vault-intent-builder.mjs";
+import { buildSwapIntent } from "../executor/helpers/swap-intent-builder.mjs";
 
 const ERC20_BALANCE_ABI = ["function balanceOf(address owner) view returns (uint256)"];
+const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+const BASE_WETH_TOKEN = "0x4200000000000000000000000000000000000006";
+
+const STRATEGY_SWAP_ROUTES = Object.freeze({
+  destination_wrapped_btc_rotation: Object.freeze({
+    chain: "base",
+    inputToken: BASE_USDC_TOKEN,
+    outputToken: BASE_CBBTC_TOKEN,
+    inputDecimals: 6,
+    inputPriceUsd: 1,
+    source: "destination_wrapped_btc_rotation_builder",
+  }),
+  stablecoin_treasury_rotation: Object.freeze({
+    chain: "base",
+    inputToken: BASE_USDC_TOKEN,
+    outputToken: BASE_CBBTC_TOKEN,
+    inputDecimals: 6,
+    inputPriceUsd: 1,
+    source: "stablecoin_treasury_rotation_builder",
+  }),
+  macro_asset_rotation: Object.freeze({
+    chain: "base",
+    inputToken: BASE_USDC_TOKEN,
+    outputToken: BASE_WETH_TOKEN,
+    inputDecimals: 6,
+    inputPriceUsd: 1,
+    source: "macro_asset_rotation_builder",
+  }),
+});
 
 async function queryErc20Balance(chain, tokenAddress, ownerAddress) {
   if (!ownerAddress) return 0n;
@@ -530,6 +561,54 @@ async function main() {
     amountUsd = Math.min(amountUsd, perTxUsd);
     if (amountUsd <= 0) continue;
     let strategyIntentsBuilt = false;
+    let suppressGenericFallback = false;
+
+    // ── Auto-capital-routing: when cbBTC strategies blocked by balance,
+    //     prepend a USDC → cbBTC swap on Base BEFORE attempting main builder ──
+    if ([
+      "wrapped-btc-loop-base-moonwell",
+      "beefy-folding-vault",
+    ].includes(alloc.strategyId)) {
+      const operatorAddress = strategyOperatorMap[alloc.strategyId];
+      const usdcBalance = await queryErc20Balance(alloc.chain, BASE_USDC_TOKEN, operatorAddress);
+      const cbBTC = getProtocolAddress("moonwell", "base", "markets.cbBTC.asset") || BASE_CBBTC_TOKEN;
+      const cbBTCBalance = await queryErc20Balance(alloc.chain, cbBTC, operatorAddress);
+      const requiredUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
+      const swapAmountUsd = Math.min(amountUsd, Number(usdcBalance) / 1e6);
+      if (cbBTCBalance < BigInt(requiredUnits)) suppressGenericFallback = true;
+      if (cbBTCBalance < BigInt(requiredUnits) && swapAmountUsd >= 1) {
+        try {
+          const inputAmount = String(Math.floor(swapAmountUsd * 1e6));
+          const plan = await buildSwapIntent({
+            strategyId: alloc.strategyId,
+            chain: alloc.chain,
+            amountUsd: swapAmountUsd,
+            inputToken: BASE_USDC_TOKEN,
+            outputToken: cbBTC,
+            inputAmount,
+            inputDecimals: 6,
+            inputPriceUsd: 1,
+            senderAddress: operatorAddress,
+            now: result.observedAt,
+            estimateGasImpl: () => { throw new Error("skip"); },
+          });
+          for (const step of plan.steps || []) {
+            step.intent.metadata = {
+              ...step.intent.metadata,
+              source: "auto_capital_rebalance",
+              rebalanceFor: alloc.strategyId,
+              rebalanceReason: "cbbtc_balance_below_required",
+              requiredOutputUnits: requiredUnits,
+              observedOutputUnits: cbBTCBalance.toString(),
+            };
+            generatedIntents.push(normalizeExecutionIntent(step.intent));
+          }
+          if (!args.quiet) console.error(`  auto-rebalance: USDC -> cbBTC ${swapAmountUsd} USD for ${alloc.strategyId}`);
+        } catch (err) {
+          if (!args.quiet) console.error(`  auto-rebalance failed for ${alloc.strategyId}: ${err.message}`);
+        }
+      }
+    }
 
     // ── Moonwell wrapped-BTC loop (Base) ──
     if (alloc.strategyId === "wrapped-btc-loop-base-moonwell" && btcPriceUsd > 0) {
@@ -657,8 +736,49 @@ async function main() {
       }
     }
 
+    // ── Stablecoin / macro / destination rotation (swap via DEX) ──
+    if (!strategyIntentsBuilt && STRATEGY_SWAP_ROUTES[alloc.strategyId]) {
+      const operatorAddress = strategyOperatorMap[alloc.strategyId];
+      const route = STRATEGY_SWAP_ROUTES[alloc.strategyId];
+      const inputAmount = String(Math.floor((amountUsd / route.inputPriceUsd) * (10 ** route.inputDecimals)));
+      const inputBalance = await queryErc20Balance(route.chain, route.inputToken, operatorAddress);
+      if (inputBalance < BigInt(inputAmount)) {
+        suppressGenericFallback = true;
+        if (!args.quiet) {
+          console.error(`  skip ${alloc.strategyId}: input balance ${inputBalance} < required ${inputAmount}`);
+        }
+        continue;
+      }
+      try {
+        const plan = await buildSwapIntent({
+          strategyId: alloc.strategyId,
+          chain: route.chain,
+          amountUsd,
+          inputToken: route.inputToken,
+          outputToken: route.outputToken,
+          inputAmount,
+          inputDecimals: route.inputDecimals,
+          inputPriceUsd: route.inputPriceUsd,
+          senderAddress: operatorAddress,
+          now: result.observedAt,
+          estimateGasImpl: () => { throw new Error("skip"); },
+        });
+        for (const step of plan.steps || []) {
+          step.intent.metadata = {
+            ...step.intent.metadata,
+            source: route.source,
+          };
+          generatedIntents.push(normalizeExecutionIntent(step.intent));
+        }
+        strategyIntentsBuilt = true;
+      } catch (err) {
+        if (!args.quiet) console.error(`  swap builder failed for ${alloc.strategyId}: ${err.message}`);
+        strategyIntentsBuilt = false;
+      }
+    }
+
     // ── Generic fallback intent ──
-    if (!strategyIntentsBuilt) {
+    if (!strategyIntentsBuilt && !suppressGenericFallback) {
       const intentType = intentTypeForFamily(family);
       const raw = {
         strategyId: alloc.strategyId,
