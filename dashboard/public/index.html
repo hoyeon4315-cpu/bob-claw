@@ -69,10 +69,10 @@
 <body>
   <div id="root" class="stage"><div class="boot">loading live status…</div></div>
 
-  <script type="text/babel" data-presets="env,react" src="./logos.jsx?v=2"></script>
-  <script type="text/babel" data-presets="env,react" src="./data.jsx?v=2"></script>
-  <script type="text/babel" data-presets="env,react" src="./ios-frame.jsx?v=2"></script>
-  <script type="text/babel" data-presets="env,react" src="./mindmap.jsx?v=2"></script>
+  <script type="text/babel" data-presets="env,react" src="./logos.jsx?v=3"></script>
+  <script type="text/babel" data-presets="env,react" src="./data.jsx?v=3"></script>
+  <script type="text/babel" data-presets="env,react" src="./ios-frame.jsx?v=3"></script>
+  <script type="text/babel" data-presets="env,react" src="./mindmap.jsx?v=3"></script>
 
   <script type="text/babel" data-presets="env,react">
     const { useState, useEffect, useRef } = React;
@@ -181,7 +181,7 @@
       );
     }
 
-    function FlowPane() {
+    function FlowPane({ refreshTick }) {
       const items = HOLDINGS?.all || [];
       const pending = HOLDINGS?.pending;
       const totalUsd = HOLDINGS?.totalUsd != null ? HOLDINGS.totalUsd : items.reduce((s, a) => s + (a.usd || 0), 0);
@@ -199,7 +199,7 @@
               height: '100%', borderRadius: 18, overflow: 'hidden',
               background: 'var(--card)', border: '0.5px solid var(--line)',
             }}>
-              <Mindmap/>
+              <Mindmap motionSpeed={1.4} refreshTick={refreshTick}/>
             </div>
           </div>
 
@@ -238,7 +238,8 @@
       );
     }
 
-    function DefiPane() {
+    function DefiPane({ refreshTick }) {
+      void refreshTick;
       const byProtocol = STRATEGIES.reduce((acc, s) => {
         (acc[s.protocol] ||= []).push(s);
         return acc;
@@ -307,7 +308,8 @@
       );
     }
 
-    function AssetsPane() {
+    function AssetsPane({ refreshTick }) {
+      void refreshTick;
       const items = HOLDINGS?.all || [];
       const total = items.reduce((s, a) => s + (a.usd || 0), 0);
       const pending = HOLDINGS?.pending;
@@ -354,6 +356,12 @@
 
     function App() {
       const [tab, setTab] = useState('flow');
+      const [refreshTick, setRefreshTick] = useState(0);
+      useEffect(() => {
+        const handler = () => setRefreshTick(t => t + 1);
+        window.addEventListener('dashboard:datarefresh', handler);
+        return () => window.removeEventListener('dashboard:datarefresh', handler);
+      }, []);
       const gen = KPI?.generatedAt ? new Date(KPI.generatedAt).toLocaleString() : null;
       const src = KPI?.source || 'pending';
       return (
@@ -368,9 +376,9 @@
           </div>
           <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' }}>
             <TabView tabs={TABS} active={tab} onChange={setTab}>
-              <FlowPane/>
-              <DefiPane/>
-              <AssetsPane/>
+              <FlowPane refreshTick={refreshTick}/>
+              <DefiPane refreshTick={refreshTick}/>
+              <AssetsPane refreshTick={refreshTick}/>
             </TabView>
           </div>
         </div>

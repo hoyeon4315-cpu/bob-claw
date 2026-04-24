@@ -105,8 +105,36 @@ async function bootData() {
   const microByNormalized = {};
   for (const [k, v] of Object.entries(microById)) microByNormalized[normalizeStrategyId(k)] = v;
 
-  // Fold live flags onto the catalog.
-  const STRATEGIES = STRATEGY_CATALOG.map(s => {
+  // Dynamic strategy discovery: catalog + tick + micro.
+  const knownProtocols = new Set(STRATEGY_CATALOG.map(s => s.protocol));
+
+  function deriveFallbackMeta(id) {
+    const lower = id.toLowerCase();
+    const chain = CHAINS.find(c => lower.includes(c.id))?.id || 'base';
+    const protocol = [...knownProtocols].find(p => lower.includes(p)) || 'unknown';
+    return {
+      id,
+      label: id.split(/[-_]/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      sub: `${chain.charAt(0).toUpperCase() + chain.slice(1)} · ${protocol.charAt(0).toUpperCase() + protocol.slice(1)}`,
+      chain,
+      protocol,
+      type: 'candidate',
+      pair: ['usdc', 'usdc'],
+      loops: null,
+      capUsd: null,
+      desc: `Auto-discovered strategy ${id}.`,
+    };
+  }
+
+  const allIds = new Set([
+    ...STRATEGY_CATALOG.map(s => s.id),
+    ...Object.keys(tickByNormalized),
+    ...Object.keys(microByNormalized),
+  ]);
+
+  const STRATEGIES = Array.from(allIds).map(id => {
+    const catalogEntry = STRATEGY_CATALOG.find(s => s.id === id);
+    const s = catalogEntry || deriveFallbackMeta(id);
     const isPrimary = s.id === primaryId;
     const live = isPrimary ? primaryPolicy : null;
     const normalizedId = normalizeStrategyId(s.id);
@@ -114,14 +142,12 @@ async function bootData() {
     const micro = microByNormalized[normalizedId] || microById[s.id] || null;
     const tickMode = parity?.promotionVerdict || parity?.tickMode || null;
 
-    // Status: tick parity wins when available.
     let statusLabel;
     if (tickMode === 'live_candidate') statusLabel = 'LIVE CANDIDATE';
     else if (tickMode === 'fast_track_eligible') statusLabel = 'FAST TRACK';
     else if (tickMode === 'shadow_ready') statusLabel = 'SHADOW';
     else if (tickMode === 'blocked') statusLabel = 'BLOCKED';
     else {
-      // Fallback to lane policy / defaults.
       const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
       if (isPrimary) {
         statusLabel = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'LIVE' : 'DRY RUN');
@@ -190,6 +216,16 @@ async function bootData() {
   return true;
 }
 
+function startDashboardPolling(intervalMs = 30000) {
+  if (window._DASHBOARD_POLL) clearInterval(window._DASHBOARD_POLL);
+  window._DASHBOARD_POLL = setInterval(async () => {
+    try {
+      await bootData();
+      window.dispatchEvent(new CustomEvent('dashboard:datarefresh'));
+    } catch {}
+  }, intervalMs);
+}
+
 function liveAprFor(strategy, aprMap) {
   if (!aprMap || !strategy) return null;
   const key = `${strategy.protocol}:${strategy.chain}`;
@@ -221,3 +257,4 @@ function apyHint(id) {
 
 Object.assign(window, { CHAINS, STRATEGIES: [], KPI: { source:'pending' }, HOLDINGS: { all: [] } });
 window.DATA_READY = bootData();
+window.DATA_READY.then(() => startDashboardPolling(30000));

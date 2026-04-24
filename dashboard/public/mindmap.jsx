@@ -13,6 +13,25 @@ const T_FAST = 450;
 const T_MED = 320;
 const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.75;
 
+const PHYS = {
+  REPULSION_K: 0.9,
+  SPRING_K: 0.045,
+  DAMPING: 0.92,
+  SUBSTEPS: 2,
+  PAD: 6,
+};
+
+function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
+  if (!svg) return { x: 0, y: 0 };
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const svgPt = pt.matrixTransform(ctm.inverse());
+  return { x: (svgPt.x - tx) / zoom, y: (svgPt.y - ty) / zoom };
+}
+
 // Mindmap shows only protocols where user capital is parked.
 // Hidden: pure swap/refuel/arb routing (odos, gaszip). Kept: lending, loops, LPs,
 // payback, and BOB Gateway as the BTC <-> EVM entrypoint.
@@ -372,17 +391,81 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected }) {
   );
 }
 
-function Mindmap({ motionSpeed = 1.4 }) {
+function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
   const [selectedChain, setSelectedChain] = useState(null);
   const [selectedProtocolId, setSelectedProtocolId] = useState(null);
   const [time, setTime] = useState(0);
   const rafRef = useRef();
+  const physicsRef = useRef(new Map());
+  const dragRef = useRef(null);
+  const svgRef = useRef(null);
 
   useEffect(() => {
     let last = performance.now();
     const tick = (now) => {
-      setTime(t => t + (now - last) * 0.001 * motionSpeed);
+      const dt = (now - last) * 0.001;
       last = now;
+
+      // Physics solver (substeps for stability)
+      const bodies = physicsRef.current;
+      const list = Array.from(bodies.values());
+      for (let step = 0; step < PHYS.SUBSTEPS; step++) {
+        // Spring + damping
+        for (const b of list) {
+          if (b.isDragging) { b.vx = 0; b.vy = 0; continue; }
+          const fx = (b.anchorX - b.x) * PHYS.SPRING_K;
+          const fy = (b.anchorY - b.y) * PHYS.SPRING_K;
+          b.vx += fx / b.mass;
+          b.vy += fy / b.mass;
+        }
+        // Pairwise repulsion
+        for (let i = 0; i < list.length; i++) {
+          for (let j = i + 1; j < list.length; j++) {
+            const a = list[i];
+            const b = list[j];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const minDist = a.radius + b.radius + PHYS.PAD;
+            if (dist < minDist) {
+              const overlap = minDist - dist;
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const force = PHYS.REPULSION_K * overlap;
+              if (!a.isDragging) { a.vx -= (force * nx) / a.mass; a.vy -= (force * ny) / a.mass; }
+              if (!b.isDragging) { b.vx += (force * nx) / b.mass; b.vy += (force * ny) / b.mass; }
+            }
+          }
+        }
+        // Orbit exclusion: loop rings push other bodies away
+        for (const b of list) {
+          if (!b.orbitRadius) continue;
+          for (const other of list) {
+            if (other === b) continue;
+            const dx = other.x - b.x;
+            const dy = other.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const minDist = b.orbitRadius + other.radius + PHYS.PAD;
+            if (dist < minDist) {
+              const overlap = minDist - dist;
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const force = PHYS.REPULSION_K * overlap * 1.5;
+              if (!other.isDragging) { other.vx += (force * nx) / other.mass; other.vy += (force * ny) / other.mass; }
+            }
+          }
+        }
+        // Integrate
+        for (const b of list) {
+          if (b.isDragging) continue;
+          b.x += b.vx;
+          b.y += b.vy;
+          b.vx *= PHYS.DAMPING;
+          b.vy *= PHYS.DAMPING;
+        }
+      }
+
+      setTime(t => t + dt * motionSpeed);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -407,7 +490,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
       (m[s.chain] ||= []).push(s);
     }
     return m;
-  }, []);
+  }, [refreshTick]);
 
   const protocolsByChain = useMemo(() => {
     const mapped = {};
@@ -416,6 +499,67 @@ function Mindmap({ motionSpeed = 1.4 }) {
     });
     return mapped;
   }, [strategiesByChain]);
+
+  const btcPos = { x: 0, y: -(ringR + chainSize * 1.7) };
+
+  const protocolBloom = useMemo(() => {
+    if (!selectedChain) return {};
+    const p = ringPos[selectedChain];
+    if (!p) return {};
+    const strats = protocolsByChain[selectedChain] || [];
+    const baseA = Math.atan2(p.y, p.x);
+    const chipR = 28 * 1.1;
+    const R = bloomRadiusForCount(strats.length, chipR, 110, 14);
+    const out = {};
+    strats.forEach((s, i) => {
+      const t = strats.length === 1 ? 0 : (i / (strats.length - 1)) - 0.5;
+      const a = baseA + t * PROTOCOL_BLOOM_SPREAD;
+      out[s.id] = { x: p.x + Math.cos(a)*R, y: p.y + Math.sin(a)*R };
+    });
+    return out;
+  }, [protocolsByChain, selectedChain, ringPos]);
+
+  // Sync physics bodies when layout changes
+  useEffect(() => {
+    const bodies = physicsRef.current;
+    const ensure = (id, anchorX, anchorY, radius, mass, opts = {}) => {
+      if (!bodies.has(id)) {
+        bodies.set(id, { id, x: anchorX, y: anchorY, anchorX, anchorY, vx: 0, vy: 0, radius, mass, isDragging: false, ...opts });
+      } else {
+        const b = bodies.get(id);
+        b.anchorX = anchorX; b.anchorY = anchorY;
+        b.radius = radius; b.mass = mass;
+        Object.assign(b, opts);
+        if (!b.isDragging) { b.x = anchorX; b.y = anchorY; }
+      }
+    };
+
+    destChains.forEach(c => {
+      const p = ringPos[c.id];
+      ensure(`chain:${c.id}`, p.x, p.y, chainSize * 0.9, 3);
+    });
+    ensure('chain:bitcoin', btcPos.x, btcPos.y, chainSize * 0.95 * 0.9, 3);
+    ensure('gateway:center', 0, 0, gatewaySize * 1.6, 5, { draggable: false });
+
+    if (selectedChain) {
+      const strats = protocolsByChain[selectedChain] || [];
+      strats.forEach(s => {
+        const pp = protocolBloom[s.id];
+        if (!pp) return;
+        const chipR = 28 * 1.1;
+        ensure(`proto:${s.id}`, pp.x, pp.y, chipR + 4, 1, { orbitRadius: s.type === 'loop' ? chipR * 1.8 + 6 : 0 });
+      });
+    }
+
+    // Remove stale protocol bodies
+    for (const [id] of bodies) {
+      if (id.startsWith('proto:')) {
+        const sid = id.slice(6);
+        const still = selectedChain && (protocolsByChain[selectedChain] || []).some(s => s.id === sid);
+        if (!still) bodies.delete(id);
+      }
+    }
+  }, [ringPos, selectedChain, protocolsByChain, protocolBloom, chainSize, gatewaySize, destChains, btcPos.x, btcPos.y]);
 
   const liveChains = new Set(STRATEGIES.filter(s => s.status === 'LIVE').map(s => s.chain));
 
