@@ -76,7 +76,17 @@ test("run-payback-scheduler parseArgs reads loop and poll settings", () => {
     "--write",
     "--loop",
     "--execute",
+    "--socket-path=/tmp/payback-signer.sock",
+    "--timeout-ms=45000",
+    "--confirmations=2",
+    "--confirmation-timeout-ms=180000",
+    "--destination-timeout-ms=240000",
+    "--destination-poll-interval-ms=3000",
+    "--bitcoin-settlement-timeout-ms=600000",
+    "--bitcoin-poll-interval-ms=15000",
     "--poll-interval-ms=900000",
+    "--no-await-confirmation",
+    "--no-await-destination-settlement",
   ]);
 
   assert.equal(args.json, true);
@@ -84,6 +94,16 @@ test("run-payback-scheduler parseArgs reads loop and poll settings", () => {
   assert.equal(args.loop, true);
   assert.equal(args.once, false);
   assert.equal(args.execute, true);
+  assert.equal(args.socketPath, "/tmp/payback-signer.sock");
+  assert.equal(args.timeoutMs, 45000);
+  assert.equal(args.awaitConfirmation, false);
+  assert.equal(args.awaitDestinationSettlement, false);
+  assert.equal(args.confirmations, 2);
+  assert.equal(args.confirmationTimeoutMs, 180000);
+  assert.equal(args.destinationSettlementTimeoutMs, 240000);
+  assert.equal(args.destinationPollIntervalMs, 3000);
+  assert.equal(args.bitcoinSettlementTimeoutMs, 600000);
+  assert.equal(args.bitcoinPollIntervalMs, 15000);
   assert.equal(args.pollIntervalMs, 900000);
 });
 

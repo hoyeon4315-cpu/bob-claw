@@ -404,3 +404,62 @@ test("payback disbursement helper accepts minimal offramp-only composite plan", 
   assert.equal(record.realizedRoundTripCostSats, 3_200);
   assert.equal(record.plannedPaybackSats, 60_000);
 });
+
+test("payback submission forwards signer and settlement options to every executable step", async () => {
+  const calls = [];
+  await submitCompositePaybackPlan({
+    compositePlan: {
+      plannedPaybackSats: 60_000,
+      estimatedOfframpCostSats: 3_000,
+      recipient: "bc1qrecipient",
+      senderAddress: "0xsender",
+      route: { reserveChain: "base" },
+      decisionLog: { inputs: {}, applied: {} },
+      steps: [
+        { id: "swap", kind: "token_dex_swap", plan: { marker: "swap" } },
+        { id: "bridge", kind: "gateway_btc_consolidation", plan: { marker: "bridge" } },
+        { id: "offramp", kind: "gateway_btc_offramp", plan: { marker: "offramp" } },
+      ],
+    },
+    executionOptions: {
+      socketPath: "/tmp/payback.sock",
+      timeoutMs: 45_000,
+      awaitConfirmation: false,
+      awaitDestinationSettlement: false,
+      confirmations: 2,
+      confirmationTimeoutMs: 180_000,
+      destinationSettlementTimeoutMs: 240_000,
+      destinationPollIntervalMs: 3_000,
+    },
+    tokenDexExecutor: async (input) => {
+      calls.push({ kind: "swap", input });
+      return { settlementStatus: "delivered" };
+    },
+    consolidationExecutor: async (input) => {
+      calls.push({ kind: "bridge", input });
+      return { settlementStatus: "delivered" };
+    },
+    offrampExecutor: async (input) => {
+      calls.push({ kind: "offramp", input });
+      return {
+        settlementStatus: "source_confirmed_only",
+        destinationProof: null,
+      };
+    },
+    disbursementRecordBuilder: null,
+  });
+
+  assert.deepEqual(calls.map((item) => item.kind), ["swap", "bridge", "offramp"]);
+  for (const call of calls) {
+    assert.equal(call.input.socketPath, "/tmp/payback.sock");
+    assert.equal(call.input.timeoutMs, 45_000);
+    assert.equal(call.input.awaitConfirmation, false);
+    assert.equal(call.input.confirmations, 2);
+    assert.equal(call.input.confirmationTimeoutMs, 180_000);
+  }
+  assert.equal(calls[0].input.awaitDestinationSettlement, false);
+  assert.equal(calls[1].input.awaitDestinationSettlement, false);
+  assert.equal(calls[2].input.awaitBitcoinSettlement, false);
+  assert.equal(calls[2].input.bitcoinSettlementTimeoutMs, 240_000);
+  assert.equal(calls[2].input.bitcoinPollIntervalMs, 3_000);
+});
