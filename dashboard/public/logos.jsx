@@ -57,7 +57,7 @@ function protoSources(id, size) {
     babylon:   [llama('babylon')],
     solv:      [llama('solv-protocol'), llama('solv')],
   };
-  return map[id] || [];
+  return map[id] || [llama(id)];
 }
 
 function MultiImgMark({ sources, size, rounded = true, bg = 'transparent', fallback }) {
