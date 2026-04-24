@@ -1,13 +1,13 @@
 export const MERKL_PORTFOLIO_POLICY = Object.freeze({
   profileId: "aggressive_merkl_portfolio_v1",
-  maxActiveUsd: 300,
+  maxActiveUsd: 350,
   maxNewPositionsPerRun: 8,
   maxOpenPositions: 20,
   perOpportunityMaxUsd: 75,
   allowTopUps: true,
   chainMaxUsd: Object.freeze({
     base: 80,
-    ethereum: 200,
+    ethereum: 250,
     bsc: 60,
     optimism: 25,
     sei: 15,
