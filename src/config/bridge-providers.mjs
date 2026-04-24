@@ -68,7 +68,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
   lifi: Object.freeze({
     id: "lifi",
     label: "LI.FI Aggregator",
-    status: "design_scaffold",
+    status: "live",
     methodIds: Object.freeze(["cross_chain_bridge_lifi"]),
     supportedChains: Object.freeze([
       "ethereum",
@@ -88,7 +88,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
     latencyMsEstimate: 300_000,
     gatewayBacked: false,
     notes:
-      "Aggregator (Hop, Connext, Stargate, Symbiosis, cBridge). Broadest chain coverage; higher variable cost because it routes through underlying bridges with slippage.",
+      "Aggregator /quote executor. Used as a deterministic fallback when BOB Gateway has no route for a non-BTC refill path.",
   }),
   relay: Object.freeze({
     id: "relay",

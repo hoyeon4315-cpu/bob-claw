@@ -6,6 +6,14 @@ const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_CBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
+const MERKL_PORTFOLIO_REFILL_POLICY = {
+  id: "merkl_portfolio_stable_carry_refill",
+  category: "yield",
+  economicsMode: "holding_period_carry",
+  strategyType: "merkl_portfolio_stable_carry",
+  actionType: "treasury_refill_for_yield",
+  perTradeCapUsd: 75,
+};
 
 function normalizedAddress(value) {
   return String(value || "").toLowerCase();
@@ -160,10 +168,11 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         rationale: "Keeps reverse-route readiness without overfunding.",
       }),
       tokenPolicy("base", BASE_USDC_TOKEN, {
-        minBalance: "250",
-        targetBalance: "300",
-        maxBalance: "1000",
-        rationale: "Positive Base USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
+        minBalance: "25",
+        targetBalance: "68",
+        maxBalance: "150",
+        rationale: "Merkl portfolio live-capital validation float on Base; refill cost is evaluated as holding-period carry, not same-tick route alpha.",
+        strategyPolicy: MERKL_PORTFOLIO_REFILL_POLICY,
       }),
       tokenPolicy("base", BASE_CBTC_TOKEN, {
         minBalance: "0",

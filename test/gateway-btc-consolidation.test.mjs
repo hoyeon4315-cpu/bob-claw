@@ -8,6 +8,8 @@ import {
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
 import { GatewayError } from "../src/gateway/client.mjs";
 
+const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
 function gatewayClientFixture() {
   return {
     getQuote: async () => ({
@@ -189,6 +191,57 @@ test("gateway btc consolidation preview can skip preflight and still preserve qu
   assert.equal(plan.intent, null);
   assert.equal(plan.gasPreflight, null);
   assert.equal(plan.quote.route.dstChain, "bera");
+});
+
+test("gateway btc consolidation allows BTC-family source into stablecoin destination", async () => {
+  let capturedParams = null;
+  const plan = await buildGatewayBtcConsolidationPlan({
+    client: {
+      getQuote: async (params) => {
+        capturedParams = params;
+        return {
+          latencyMs: 123,
+          body: {
+            layerZero: {
+              inputAmount: { amount: "9500", address: WBTC_OFT_TOKEN, chain: "bsc" },
+              outputAmount: { amount: "68000000", address: BASE_USDC_TOKEN, chain: "base" },
+              fees: { amount: "0", address: WBTC_OFT_TOKEN, chain: "bsc" },
+              executionFees: { amount: "0", address: WBTC_OFT_TOKEN, chain: "bsc" },
+              estimatedTimeInSecs: 60,
+              tx: {
+                to: WBTC_OFT_TOKEN,
+                data: "0xc7c7f5b3",
+                value: "1",
+                chain: "bsc",
+              },
+            },
+          },
+        };
+      },
+    },
+    priceReader: async () => ({ btc: 100_000, tokenByKey: { btc: 100_000 } }),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-24T03:00:01.000Z",
+      chain: "bsc",
+      rpcUrl: "https://rpc.example",
+      latencyMs: 25,
+      gasUnits: 240_000,
+      gasUnitsHex: "0x3a980",
+      rpcFallbacksTried: 0,
+    }),
+    srcChain: "bsc",
+    dstChain: "base",
+    srcToken: WBTC_OFT_TOKEN,
+    dstToken: BASE_USDC_TOKEN,
+    amount: "9500",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(capturedParams.dstToken, BASE_USDC_TOKEN);
+  assert.equal(plan.dstAsset.ticker, "USDC");
+  assert.equal(plan.quote.outputAmount.amount, "68000000");
 });
 
 test("gateway btc consolidation plan forwards gas refill for destination native bootstrap", async () => {

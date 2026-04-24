@@ -103,6 +103,45 @@ test("allocator opens a weighted hold entry only after live canary proof", () =>
   assert.equal(plan.entryQueue[0].targetUsd, 0.25);
 });
 
+test("allocator uses portfolio active budget when maxUsd is omitted", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [queueItem()] },
+    inventorySnapshot,
+    canaryExecutions,
+    policy: {
+      maxActiveUsd: 1,
+      perOpportunityMaxUsd: 1,
+      maxNewPositionsPerRun: 3,
+      minPositionUsd: 0.05,
+    },
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.runBudgetUsd, 1);
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].targetUsd, 0.95);
+  assert.equal(plan.entryQueue[0].targetAmount, "950000");
+});
+
+test("allocator treats explicit maxUsd zero as no new run budget", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [queueItem()] },
+    inventorySnapshot,
+    canaryExecutions,
+    maxUsd: 0,
+    policy: {
+      maxActiveUsd: 1,
+      perOpportunityMaxUsd: 1,
+      maxNewPositionsPerRun: 3,
+      minPositionUsd: 0.05,
+    },
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.runBudgetUsd, 0);
+  assert.equal(plan.summary.entryReadyCount, 0);
+});
+
 test("allocator blocks hold entries that have not completed a live canary", () => {
   const plan = buildMerklPortfolioAllocationPlan({
     queue: { queue: [queueItem()] },
@@ -161,7 +200,7 @@ test("active position loader keeps only positions without a close event", () => 
   assert.equal(active[0].positionId, "p2");
 });
 
-test("allocator blocks duplicate opportunity when a position is already open", () => {
+test("allocator tops up an already open opportunity within the per-opportunity cap", () => {
   const plan = buildMerklPortfolioAllocationPlan({
     queue: { queue: [queueItem()] },
     inventorySnapshot,
@@ -176,6 +215,38 @@ test("allocator blocks duplicate opportunity when a position is already open", (
       },
     ],
     maxUsd: 0.25,
+    policy: {
+      maxActiveUsd: 1,
+      perOpportunityMaxUsd: 0.45,
+      minPositionUsd: 0.05,
+    },
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].entryAction, "top_up");
+  assert.equal(plan.entryQueue[0].targetUsd, 0.2);
+  assert.equal(plan.entryQueue[0].targetAmount, "200000");
+});
+
+test("allocator can still block duplicate opportunities when top-ups are disabled", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [queueItem()] },
+    inventorySnapshot,
+    canaryExecutions,
+    positionRecords: [
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "p1",
+        opportunityId: "opp-1",
+        amountUsd: 0.25,
+      },
+    ],
+    maxUsd: 0.25,
+    policy: {
+      allowTopUps: false,
+    },
     now: "2026-04-24T06:00:00.000Z",
   });
 

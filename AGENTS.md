@@ -18,6 +18,7 @@
 - Do not treat a transport route as the product goal. A route can be technically proven while still not being a profitable strategy.
 - Treat all profit claims as hypotheses until replay/shadow/live receipt data confirms them.
 - If data says no trade, no trade.
+- **Operator override (2026-04-24):** Merkl portfolio monetization is now in live-capital validation mode. Do not add more paper-only phase gates before execution. If the Merkl allocator/exit/refill path has committed caps, supported executor binding, inventory, required receipt proof, clear kill-switch, and deterministic policy approval, run it live within cap. The capital at risk is the validation sample.
 - **Operator override (2026-04-22):** `wrapped-btc-loop-base-moonwell` and the broader wrapped-BTC lending-loop lane are on hold until an explicit committed diff removes the hold. Treat the current economics as insufficient, do not present that lane as primary alpha, and do not spend additional live-promotion effort on it unless the task is unwind/safety/receipt cleanup or the operator explicitly reopens the lane.
 - If route alpha is exhausted, stop route brute-force and switch the primary review lane to receipt-backed strategy evidence.
 - Overfitting guards: no strategy goes live solely on a single-period or single-pair backtest. At minimum, Walk-Forward purged/embargoed CV + at least one regime change in the sample window. Detail in `docs/research/ops-costs.md`.
@@ -210,6 +211,7 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
   - Native BTC off-ramp is now proven live from Base, Avalanche, and Sonic through `executor:gateway-btc-offramp`. **This is the prerequisite the payback engine consumes — the Base → BOB → BTC L1 path is end-to-end live-proven as of this document's timestamp.**
   - Extra Gateway expansion chains (`bera`, `bsc`, `soneium`, `unichain`) have preview-ready Base `wBTC.OFT` funding routes; treasury/refill planning now emits explicit gas bootstrap jobs instead of silently stopping.
   - Strategy execution surfaces now report `missingExecutorCount = 0` for stablecoin entry/exit loops and mixed ETH/stable loops; these lanes run through dedicated analysis probes (`report:lane-reclassification`, `report:secondary-strategy-scaffolds`, `analyze:ethereum-routes`) and are no longer blocked by "no runner at all", though still not live-ready.
+  - Merkl portfolio live-capital validation is active: Base YO old tiny position was exited, BSC USDT -> Base USDC refill was delivered through LI.FI with receipt reconciliation, and Base YO is now filled to the committed `25` USD per-opportunity cap. Additional Merkl deployment is blocked by next-opportunity inventory/proof/cap readiness, not by missing Base YO hold code.
 
 ## graphify
 

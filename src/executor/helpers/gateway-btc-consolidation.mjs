@@ -242,8 +242,8 @@ export async function buildGatewayBtcConsolidationPlan({
   const normalizedDstToken = normalizeTokenAddress(dstToken, "dstToken");
   const srcAsset = tokenAsset(srcChain, normalizedSrcToken);
   const dstAsset = tokenAsset(dstChain, normalizedDstToken);
-  if (!isBtcLikeAsset(srcAsset) || !isBtcLikeAsset(dstAsset)) {
-    throw new Error("Gateway consolidation only supports BTC-family assets");
+  if (!isBtcLikeAsset(srcAsset)) {
+    throw new Error("Gateway consolidation requires a BTC-family source asset");
   }
 
   const normalizedAmount = toPositiveIntegerString(amount, "amount");

@@ -60,10 +60,10 @@ test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
         strategyId: "gateway_native_asset_conversion_sleeve",
         chain: "base",
         intentType: "erc4626_deposit",
-        amountUsd: 10,
-        metadata: { capCheckAmountUsd: 10 },
+        amountUsd: 50,
+        metadata: { capCheckAmountUsd: 50 },
       },
-      amountUsd: 10,
+      amountUsd: 50,
     }],
   });
 
@@ -83,13 +83,13 @@ test("selection skips candidates whose committed chain cap is exhausted", () => 
         policyVerdict: "approved",
         lifecycle: { stage: "confirmed" },
         intent: {
-          strategyId: "gateway_native_asset_conversion_sleeve",
-          chain: "base",
-          intentType: "erc4626_deposit",
-        amountUsd: 10,
-        metadata: { capCheckAmountUsd: 10 },
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        intentType: "erc4626_deposit",
+        amountUsd: 50,
+        metadata: { capCheckAmountUsd: 50 },
       },
-        amountUsd: 10,
+        amountUsd: 50,
       }],
     },
   );
@@ -115,7 +115,9 @@ test("blocks Ethereum canaries when committed caps are below the gas-efficiency 
         estimatedUsd: 250,
       },
     },
-  }));
+  }), {
+    maxUsd: 5,
+  });
 
   assert.equal(sizing.status, "blocked");
   assert.ok(sizing.blockers.includes("cap_too_low_for_ethereum_gas_efficiency"));
@@ -144,7 +146,7 @@ test("selects the highest priority non-Ethereum ready candidate", () => {
 
   const selection = selectMerklCanaryAutopilotCandidate({ queue: [ethereum, base] });
 
-  assert.equal(selection.readyCount, 1);
+  assert.equal(selection.readyCount, 2);
   assert.equal(selection.selected.queueItem.opportunityId, "base");
 });
 

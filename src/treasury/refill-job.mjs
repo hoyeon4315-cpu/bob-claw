@@ -225,16 +225,17 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       notes: item.notes,
     }));
     const selectedMethod = selection?.selectedMethod || candidateMethods.find((item) => item.preferred)?.method || candidateMethods[0]?.method || null;
-      return {
-        schemaVersion: 1,
-        jobId: deterministicJobId(basis),
-        createdAt: plan.observedAt,
-        address: plan.address,
-        status: "planned",
-        requiresManualReview: false,
-        reviewReasons: [],
-        priority: priorityForAction(action),
-        type: action.type,
+    return {
+      schemaVersion: 1,
+      jobId: deterministicJobId(basis),
+      createdAt: plan.observedAt,
+      address: plan.address,
+      status: "planned",
+      requiresManualReview: false,
+      reviewReasons: [],
+      priority: priorityForAction(action),
+      type: action.type,
+      strategyPolicy: action.strategyPolicy || null,
       candidateMethods,
       executionMethod: selectedMethod,
       chain: action.chain,

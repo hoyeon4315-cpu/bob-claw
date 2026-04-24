@@ -186,6 +186,32 @@ function routeContextForAcrossExecution(execution) {
   };
 }
 
+function routeContextForLifiExecution(execution) {
+  const plan = execution?.plan;
+  if (!plan?.srcChain || !plan?.srcToken || !plan?.dstChain || !plan?.dstToken) {
+    return null;
+  }
+  return {
+    routeKey: `${plan.srcChain}:${plan.srcToken}->${plan.dstChain}:${plan.dstToken}`,
+    amount: plan.amount || null,
+    srcChain: plan.srcChain,
+    dstChain: plan.dstChain,
+    srcAsset: {
+      chain: plan.srcChain,
+      token: plan.srcToken,
+    },
+    dstAsset: {
+      chain: plan.dstChain,
+      token: plan.dstToken,
+    },
+    inputUsd: finiteNumber(plan.amountUsd),
+    outputUsd: null,
+    netEdgeUsd: null,
+    executionGasUsd: null,
+    nativeCostUsd: null,
+  };
+}
+
 function routeContextForGasZipExecution(execution) {
   const plan = execution?.plan;
   if (!plan?.srcChain || !plan?.dstChain) return null;
@@ -274,6 +300,16 @@ function outputForAcrossExecution(execution) {
   };
 }
 
+function outputForLifiExecution(execution) {
+  const plan = execution?.plan;
+  return {
+    actualOutputUnits: execution?.destinationProof?.observedDelta || null,
+    chain: plan?.dstChain || null,
+    token: plan?.dstToken || null,
+    priceUsd: null,
+  };
+}
+
 function outputForGatewayOfframp(execution) {
   return {
     actualOutputUnits: execution?.destinationProof?.observedDelta || null,
@@ -318,6 +354,13 @@ function ingestionDescriptorForExecution(execution) {
       kind: "across_bridge",
       routeContext: routeContextForAcrossExecution(execution),
       output: outputForAcrossExecution(execution),
+    };
+  }
+  if (strategyId === "lifi-bridge") {
+    return {
+      kind: "lifi_bridge",
+      routeContext: routeContextForLifiExecution(execution),
+      output: outputForLifiExecution(execution),
     };
   }
   if (strategyId === "gateway-btc-offramp") {

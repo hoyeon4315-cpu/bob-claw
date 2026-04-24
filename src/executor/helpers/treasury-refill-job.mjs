@@ -12,6 +12,7 @@ import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
 import { buildAcrossBridgePlan, executeAcrossBridgePlan } from "./across-bridge.mjs";
 import { acrossTickerForToken } from "../../config/across.mjs";
+import { buildLifiBridgePlan, executeLifiBridgePlan } from "./lifi-bridge.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
 const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
@@ -85,6 +86,9 @@ function outputAmountForCoverage(plan, executor) {
   if (executor === "gateway_btc_consolidation") {
     return plan.gasRefill || plan.quote?.gasRefill || plan.quote?.outputAmount?.amount || null;
   }
+  if (executor === "lifi_bridge") {
+    return plan.minimumOutputAmount || plan.expectedOutputAmount || null;
+  }
   return plan.minimumOutputAmount || plan.quote?.outputAmount || null;
 }
 
@@ -97,6 +101,10 @@ function coverageForPlan({ plan, job, executor }) {
     minimumOutputAmount: outputAmount?.toString() || outputAmountForCoverage(plan, executor),
     coversTarget,
   };
+}
+
+function isNoRoutePlan(plan = null) {
+  return plan?.planStatus === "blocked" && plan?.blockedReason === "no_route";
 }
 
 function blockedPreparation({ job, executor = null, blockedReason, plan = null, coverage = null }) {
@@ -166,6 +174,7 @@ export async function buildTreasuryRefillExecutionPlan({
   buildGatewayBtcOnrampPlanImpl = buildGatewayBtcOnrampPlan,
   buildGasZipPlanImpl = buildGasZipNativeRefuelPlan,
   buildAcrossBridgePlanImpl = buildAcrossBridgePlan,
+  buildLifiBridgePlanImpl = buildLifiBridgePlan,
 } = {}) {
   if (!job) throw new Error("Treasury refill job is required");
   if (!senderAddress) throw new Error("Treasury refill sender address is required");
@@ -300,7 +309,7 @@ export async function buildTreasuryRefillExecutionPlan({
     const gatewayAmount = step1Plan.minimumOutputAmount;
     const gasRefill = job.type === "refill_native" ? job.targetAmount : null;
 
-    const step2Plan = await buildGatewayBtcPlanImpl({
+    let step2Plan = await buildGatewayBtcPlanImpl({
       srcChain: source.chain,
       dstChain: job.chain,
       srcToken: WBTC_OFT_TOKEN,
@@ -311,6 +320,68 @@ export async function buildTreasuryRefillExecutionPlan({
       gasRefill,
     });
 
+    let step3Plan = null;
+    if (
+      isNoRoutePlan(step2Plan) &&
+      job.type === "refill_token" &&
+      !isBtcLikeAsset(tokenAsset(job.chain, job.token))
+    ) {
+      step2Plan = await buildGatewayBtcPlanImpl({
+        srcChain: source.chain,
+        dstChain: job.chain,
+        srcToken: WBTC_OFT_TOKEN,
+        dstToken: WBTC_OFT_TOKEN,
+        amount: gatewayAmount,
+        senderAddress,
+        recipient: senderAddress,
+        gasRefill,
+      });
+      if (step2Plan.planStatus === "ready") {
+        const destinationWrappedBtcAmount = step2Plan.quote?.outputAmount?.amount;
+        if (!destinationWrappedBtcAmount) {
+          return blockedPreparation({ job, executor, blockedReason: "gateway_output_amount_unavailable", plan: step2Plan });
+        }
+        step3Plan = await buildTokenDexPlanImpl({
+          chain: job.chain,
+          amount: destinationWrappedBtcAmount,
+          senderAddress,
+          inputToken: WBTC_OFT_TOKEN,
+          outputToken: job.token,
+        });
+        if (step3Plan.planStatus !== "ready") {
+          return blockedPreparation({ job, executor, blockedReason: step3Plan.blockedReason || "destination_dex_step_blocked", plan: step3Plan });
+        }
+      }
+    }
+
+    if (step2Plan.planStatus !== "ready" && isNoRoutePlan(step2Plan) && job.type === "refill_token") {
+      const lifiAmount = estimateInputAmountFromSource({ job, source });
+      if (lifiAmount) {
+        const lifiPlan = await buildLifiBridgePlanImpl({
+          srcChain: source.chain,
+          dstChain: job.chain,
+          srcToken: source.token,
+          dstToken: job.token,
+          amount: lifiAmount,
+          senderAddress,
+          recipient: senderAddress,
+        });
+        if (lifiPlan.planStatus === "ready") {
+          const lifiCoverage = coverageForPlan({ plan: lifiPlan, job, executor: "lifi_bridge" });
+          if (lifiCoverage.coversTarget !== false) {
+            return readyPreparation({ job, executor: "lifi_bridge", plan: lifiPlan, coverage: lifiCoverage });
+          }
+          return blockedPreparation({
+            job,
+            executor: "lifi_bridge",
+            blockedReason: "executor_output_below_refill_target",
+            plan: lifiPlan,
+            coverage: lifiCoverage,
+          });
+        }
+      }
+    }
+
     if (step2Plan.planStatus !== "ready") {
       return blockedPreparation({ job, executor, blockedReason: step2Plan.blockedReason || "gateway_step_blocked", plan: step2Plan });
     }
@@ -320,6 +391,7 @@ export async function buildTreasuryRefillExecutionPlan({
       executor: "cross_chain_btc_intermediate",
       step1: { type: "dex_swap", plan: step1Plan },
       step2: { type: "gateway_consolidation", plan: step2Plan },
+      ...(step3Plan ? { step3: { type: "destination_dex_swap", plan: step3Plan } } : {}),
     };
   }
 
@@ -333,7 +405,11 @@ export async function buildTreasuryRefillExecutionPlan({
   }
 
   const coverage = executor === "cross_chain_btc_intermediate"
-    ? coverageForPlan({ plan: plan.step2.plan, job, executor: "gateway_btc_consolidation" })
+    ? coverageForPlan({
+        plan: plan.step3?.plan || plan.step2.plan,
+        job,
+        executor: plan.step3 ? "token_dex_experiment" : "gateway_btc_consolidation",
+      })
     : coverageForPlan({ plan, job, executor });
   if (coverage.coversTarget === false) {
     return blockedPreparation({
@@ -356,6 +432,7 @@ export async function executeTreasuryRefillExecutionPlan({
   executeGatewayBtcOnrampPlanImpl = executeGatewayBtcOnrampPlan,
   executeGasZipPlanImpl = executeGasZipNativeRefuelPlan,
   executeAcrossBridgePlanImpl = executeAcrossBridgePlan,
+  executeLifiBridgePlanImpl = executeLifiBridgePlan,
   ...executionOptions
 } = {}) {
   if (preparation?.status !== "ready" || !preparation?.plan) {
@@ -379,16 +456,23 @@ export async function executeTreasuryRefillExecutionPlan({
   if (preparation.executor === "across_bridge") {
     return executeAcrossBridgePlanImpl({ plan: preparation.plan, ...executionOptions });
   }
+  if (preparation.executor === "lifi_bridge") {
+    return executeLifiBridgePlanImpl({ plan: preparation.plan, ...executionOptions });
+  }
   if (preparation.executor === "cross_chain_btc_intermediate") {
     const step1Result = await executeTokenDexPlanImpl({ plan: preparation.plan.step1.plan, ...executionOptions });
     const step2Result = await executeGatewayBtcPlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+    const step3Result = preparation.plan.step3
+      ? await executeTokenDexPlanImpl({ plan: preparation.plan.step3.plan, ...executionOptions })
+      : null;
     return {
       schemaVersion: 1,
       observedAt: new Date().toISOString(),
-      settlementStatus: step2Result.settlementStatus || "source_confirmed_only",
+      settlementStatus: step3Result?.settlementStatus || step2Result.settlementStatus || "source_confirmed_only",
       executor: "cross_chain_btc_intermediate",
       step1Result,
       step2Result,
+      ...(step3Result ? { step3Result } : {}),
     };
   }
   throw new Error(`Unsupported treasury refill executor: ${preparation.executor || "missing"}`);

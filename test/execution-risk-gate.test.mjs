@@ -314,6 +314,42 @@ test("live risk gate blocks when strategy per-trade cap is exceeded", () => {
   assert.equal(decision.blockers.includes("strategy_per_trade_cap_exceeded"), true);
 });
 
+test("live risk gate caps refill jobs against target exposure, not only sampled route size", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      estimatedAssetValueUsd: 74,
+      strategyPolicy: {
+        id: "merkl_portfolio_stable_carry_refill",
+        category: "yield",
+        economicsMode: "holding_period_carry",
+        perTradeCapUsd: 25,
+      },
+      systemEconomics: {
+        tradeReadiness: "insufficient_data",
+        routeInputUsd: 4,
+        routeNetEdgeUsd: -0.8,
+        routeExecutableNetEdgeUsd: null,
+        effectiveSystemNetPnlUsd: -1.1,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "BLOCKED");
+  assert.equal(decision.blockers.includes("strategy_per_trade_cap_exceeded"), true);
+  assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), false);
+  assert.equal(decision.metrics.exposureUsd, 74);
+  assert.equal(decision.metrics.holdingPeriodCarryStrategy, true);
+});
+
 test("live risk gate blocks leverage jobs with missing unwind and health controls", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({

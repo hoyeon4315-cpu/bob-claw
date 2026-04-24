@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { merklPortfolioPolicy } from "../config/merkl-portfolio.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -19,6 +20,8 @@ import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
 } from "../strategy/merkl-canary-execution-readiness.mjs";
+import { scanTreasuryInventory } from "../treasury/inventory.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { sizeMerklCanaryAmount } from "./merkl-canary-autopilot.mjs";
 
 const SUPPORTED_HOLD_BINDINGS = new Set([
@@ -28,6 +31,7 @@ const SUPPORTED_HOLD_BINDINGS = new Set([
 ]);
 
 function finite(value) {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -121,6 +125,12 @@ function sameOpportunityActive(positions = [], queueItem = {}) {
   return positions.some((position) => String(position.opportunityId) === String(queueItem.opportunityId));
 }
 
+function activeOpportunityUsd(positions = [], queueItem = {}) {
+  return positions
+    .filter((position) => String(position.opportunityId) === String(queueItem.opportunityId))
+    .reduce((sum, position) => sum + (finite(position.amountUsd) ?? 0), 0);
+}
+
 function tokenKey(queueItem = {}) {
   const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
   return `${queueItem.chain}:${String(binding.assetAddress || queueItem.executionReadiness?.matchedToken?.token || "").toLowerCase()}`;
@@ -165,6 +175,7 @@ export function buildMerklPortfolioAllocationPlan({
       now,
     });
     const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
+    const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
     const sizing = sizeMerklCanaryAmount(queueItem, {
       maxUsd: Math.min(policy.perOpportunityMaxUsd, runBudgetUsd || policy.perOpportunityMaxUsd),
       auditRecords,
@@ -174,7 +185,7 @@ export function buildMerklPortfolioAllocationPlan({
     const blockers = [];
     if (!SUPPORTED_HOLD_BINDINGS.has(bindingKind(queueItem))) blockers.push("hold_executor_missing");
     if (!canaryProof) blockers.push("live_canary_proof_required_before_hold");
-    if (sameOpportunityActive(activePositions, queueItem)) blockers.push("opportunity_already_open");
+    if (sameOpportunityActive(activePositions, queueItem) && !policy.allowTopUps) blockers.push("opportunity_already_open");
     if ((finite(queueItem.campaignRemainingHours) ?? Number.POSITIVE_INFINITY) < policy.minRemainingHoursForEntry) {
       blockers.push("campaign_too_close_to_expiry");
     }
@@ -192,6 +203,7 @@ export function buildMerklPortfolioAllocationPlan({
       queueItem,
       score,
       canaryProofObservedAt: canaryProof?.observedAt || null,
+      opportunityActiveUsd,
       sizing,
       status: blockers.length ? "blocked" : "candidate",
       blockers,
@@ -214,7 +226,7 @@ export function buildMerklPortfolioAllocationPlan({
     const remainingTokenUsd = tokenBudgetUsd.get(key) ?? 0;
     const targetUsd = Math.min(
       finite(candidate.sizing.amountUsd) ?? 0,
-      policy.perOpportunityMaxUsd,
+      Math.max(0, policy.perOpportunityMaxUsd - (finite(candidate.opportunityActiveUsd) ?? 0)),
       remainingBudgetUsd,
       remainingTokenUsd,
     );
@@ -244,6 +256,7 @@ export function buildMerklPortfolioAllocationPlan({
       ...candidate,
       sizing: resized,
       status: "enter_ready",
+      entryAction: candidate.opportunityActiveUsd > 0 ? "top_up" : "open",
       targetUsd: resized.amountUsd,
       targetAmount: resized.amount,
       blockers: [],
@@ -348,6 +361,7 @@ function buildPositionRecord({ allocation, plan, execution, now = new Date().toI
 export async function runMerklPortfolioAllocator({
   execute = false,
   write = false,
+  refreshInventory = true,
   queuePath = join(config.dataDir, "merkl-canary-queue.json"),
   socketPath,
   timeoutMs,
@@ -381,7 +395,44 @@ export async function runMerklPortfolioAllocator({
     readJsonl("logs", "signer-audit").catch(() => []),
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
-  const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
+  const store = new JsonlStore(config.dataDir);
+  let inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
+  let inventoryRefresh = {
+    attempted: false,
+    status: inventorySnapshot ? "stored_snapshot" : "missing",
+    observedAt: inventorySnapshot?.observedAt || null,
+    error: null,
+  };
+  if (refreshInventory) {
+    inventoryRefresh = {
+      attempted: true,
+      status: "refreshing",
+      observedAt: null,
+      error: null,
+    };
+    try {
+      const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+      inventorySnapshot = await scanTreasuryInventory({
+        policy: validateTreasuryPolicy(buildDefaultTreasuryPolicy()),
+        address: preflight.senderAddress,
+        prices,
+      });
+      await store.append("treasury-inventory", inventorySnapshot);
+      inventoryRefresh = {
+        attempted: true,
+        status: "live_scan",
+        observedAt: inventorySnapshot.observedAt,
+        error: null,
+      };
+    } catch (error) {
+      inventoryRefresh = {
+        attempted: true,
+        status: inventorySnapshot ? "fallback_stored_snapshot" : "failed",
+        observedAt: inventorySnapshot?.observedAt || null,
+        error: error.message,
+      };
+    }
+  }
   const plan = buildMerklPortfolioAllocationPlan({
     queue,
     inventorySnapshot,
@@ -393,7 +444,6 @@ export async function runMerklPortfolioAllocator({
   });
 
   const executions = [];
-  const store = new JsonlStore(config.dataDir);
   if (execute) {
     for (const allocation of plan.entryQueue) {
       const queueItem = allocation.queueItem;
@@ -451,6 +501,7 @@ export async function runMerklPortfolioAllocator({
       senderAddress: preflight.senderAddress,
       killSwitchPath: preflight.killSwitchPath,
     },
+    inventoryRefresh,
     plan,
     executions,
   };

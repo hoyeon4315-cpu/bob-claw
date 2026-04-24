@@ -65,6 +65,41 @@ test("refill jobs stop requiring manual review when plan is refill-ready", () =>
   assert.equal(jobs.summary.mediumPriorityCount, 1);
 });
 
+test("refill jobs preserve strategy policy metadata for holding-period carry funding", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "74000000",
+        refillAmountDecimal: 74,
+        refillEstimatedUsd: 74,
+        rationale: "Merkl portfolio live-capital validation float.",
+        strategyPolicy: {
+          id: "merkl_portfolio_stable_carry_refill",
+          category: "yield",
+          economicsMode: "holding_period_carry",
+          perTradeCapUsd: 75,
+        },
+      },
+    ],
+    inventory: {
+      native: [{ chain: "base", actualDecimal: 0.005 }],
+      tokens: [],
+    },
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy });
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.jobs.length, 1);
+  assert.equal(jobs.jobs[0].strategyPolicy.id, "merkl_portfolio_stable_carry_refill");
+  assert.equal(jobs.jobs[0].strategyPolicy.economicsMode, "holding_period_carry");
+});
+
 test("dual wallet mode prefers reserve transfers", () => {
   const policy = validateTreasuryPolicy({ ...buildDefaultTreasuryPolicy(), walletMode: "dual_wallet" });
   const fundingSourcePlan = buildFundingSourcePlan({ plan: planFixture("REFILL_REQUIRED"), policy });

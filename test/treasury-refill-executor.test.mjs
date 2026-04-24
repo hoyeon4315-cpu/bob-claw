@@ -525,6 +525,185 @@ test("treasury refill executor builds BSC USDT to Base USDC composite refill pre
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor falls back to destination DEX when Gateway lacks stablecoin route", async () => {
+  const gatewayCalls = [];
+  const dexCalls = [];
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const bscUsdt = "0x55d398326f99059fF775485246999027B3197955";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-bsc-usdt-base-usdc-fallback",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: baseUsdc,
+      targetAmount: "68000000",
+      targetAmountDecimal: 68,
+      estimatedAssetValueUsd: 68,
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: bscUsdt,
+          actual: "300000000000000000000",
+          actualDecimal: 300,
+          estimatedUsd: 300,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      dexCalls.push(input);
+      if (input.chain === "bsc") {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-04-24T00:00:00.000Z",
+          planStatus: "ready",
+          chain: input.chain,
+          inputToken: input.inputToken,
+          outputToken: WBTC_OFT_TOKEN,
+          amount: input.amount,
+          minimumOutputAmount: "95000",
+          steps: [{ id: "source_swap" }],
+        };
+      }
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-24T00:00:00.000Z",
+        planStatus: "ready",
+        chain: input.chain,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "68100000",
+        steps: [{ id: "destination_swap" }],
+      };
+    },
+    buildGatewayBtcPlanImpl: async (input) => {
+      gatewayCalls.push(input);
+      if (input.dstToken === baseUsdc) {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-04-24T00:00:00.000Z",
+          planStatus: "blocked",
+          blockedReason: "no_route",
+          route: {
+            srcChain: input.srcChain,
+            dstChain: input.dstChain,
+            srcToken: input.srcToken,
+            dstToken: input.dstToken,
+          },
+        };
+      }
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-24T00:00:00.000Z",
+        planStatus: "ready",
+        route: {
+          srcChain: input.srcChain,
+          dstChain: input.dstChain,
+          srcToken: input.srcToken,
+          dstToken: input.dstToken,
+        },
+        amount: input.amount,
+        quote: { outputAmount: { amount: "94500" } },
+        gasPreflight: { gasUnits: 100000 },
+        intent: { strategyId: "gateway-btc-funding-transfer" },
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(gatewayCalls.length, 2);
+  assert.equal(gatewayCalls[0].dstToken, baseUsdc);
+  assert.equal(gatewayCalls[1].dstToken, WBTC_OFT_TOKEN);
+  assert.equal(dexCalls[1].chain, "base");
+  assert.equal(dexCalls[1].inputToken, WBTC_OFT_TOKEN);
+  assert.equal(dexCalls[1].outputToken, baseUsdc);
+  assert.equal(preparation.plan.step3.type, "destination_dex_swap");
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
+test("treasury refill executor falls back to LI.FI when Gateway has no BTC-family route", async () => {
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const bscUsdt = "0x55d398326f99059fF775485246999027B3197955";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-bsc-usdt-base-usdc-lifi",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: baseUsdc,
+      targetAmount: "68000000",
+      targetAmountDecimal: 68,
+      estimatedAssetValueUsd: 68,
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: bscUsdt,
+          actual: "300000000000000000000",
+          actualDecimal: 300,
+          estimatedUsd: 300,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async () => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-24T00:00:00.000Z",
+      planStatus: "ready",
+      minimumOutputAmount: "95000",
+      steps: [{ id: "source_swap" }],
+    }),
+    buildGatewayBtcPlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-24T00:00:00.000Z",
+      planStatus: "blocked",
+      blockedReason: "no_route",
+      route: {
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+      },
+    }),
+    buildLifiBridgePlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-24T00:00:00.000Z",
+      planStatus: "ready",
+      srcChain: input.srcChain,
+      dstChain: input.dstChain,
+      srcToken: input.srcToken,
+      dstToken: input.dstToken,
+      amount: input.amount,
+      minimumOutputAmount: "74400000",
+      expectedOutputAmount: "74800000",
+      steps: [{ id: "approve_lifi_spender" }, { id: "lifi_bridge" }],
+    }),
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "lifi_bridge");
+  assert.equal(preparation.plan.srcToken, bscUsdt);
+  assert.equal(preparation.plan.dstToken, baseUsdc);
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
+test("treasury refill executor dispatches LI.FI fallback preparations", async () => {
+  const execution = await executeTreasuryRefillExecutionPlan({
+    preparation: {
+      status: "ready",
+      executor: "lifi_bridge",
+      plan: { planStatus: "ready", marker: "lifi" },
+    },
+    executeLifiBridgePlanImpl: async ({ plan }) => ({ settlementStatus: "delivered", plan }),
+  });
+
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.plan.marker, "lifi");
+});
+
 test("treasury refill executor blocks composite plan when DEX step fails", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
@@ -600,4 +779,41 @@ test("treasury refill executor executes composite plan sequentially", async () =
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.step1Result.plan.marker, "dex-step");
   assert.equal(execution.step2Result.plan.marker, "gateway-step");
+});
+
+test("treasury refill executor executes composite fallback destination swap", async () => {
+  const executionOrder = [];
+  const execution = await executeTreasuryRefillExecutionPlan({
+    preparation: {
+      status: "ready",
+      executor: "cross_chain_btc_intermediate",
+      plan: {
+        planStatus: "ready",
+        step1: {
+          type: "dex_swap",
+          plan: { planStatus: "ready", marker: "source-dex-step" },
+        },
+        step2: {
+          type: "gateway_consolidation",
+          plan: { planStatus: "ready", marker: "gateway-step" },
+        },
+        step3: {
+          type: "destination_dex_swap",
+          plan: { planStatus: "ready", marker: "destination-dex-step" },
+        },
+      },
+    },
+    executeTokenDexPlanImpl: async ({ plan }) => {
+      executionOrder.push(plan.marker);
+      return { settlementStatus: "delivered", plan };
+    },
+    executeGatewayBtcPlanImpl: async ({ plan }) => {
+      executionOrder.push(plan.marker);
+      return { settlementStatus: "delivered", plan };
+    },
+  });
+
+  assert.deepEqual(executionOrder, ["source-dex-step", "gateway-step", "destination-dex-step"]);
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.step3Result.plan.marker, "destination-dex-step");
 });

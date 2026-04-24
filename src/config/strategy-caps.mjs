@@ -34,7 +34,7 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: true,
     }),
     caps: Object.freeze({
-      perTxUsd: 50,
+      perTxUsd: 75,
       perDayUsd: 1_000_000,
       perChainUsd: Object.freeze({
         bob: 1_000_000,
@@ -201,6 +201,37 @@ export const STRATEGY_CAPS = Object.freeze({
       polygon: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
+  "lifi-bridge": Object.freeze({
+    strategyId: "lifi-bridge",
+    label: "LI.FI cross-chain bridge fallback",
+    autoExecute: true,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["lifi"]),
+      assetFamily: "cross_chain",
+      btcDenominated: false,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 75,
+      perDayUsd: 150,
+      perChainUsd: Object.freeze({
+        bsc: 150,
+        base: 150,
+        ethereum: 75,
+        optimism: 75,
+        unichain: 75,
+      }),
+      maxDailyLossUsd: 25,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      bsc: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+      optimism: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      unichain: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
   "native-dex-experiment": Object.freeze({
     strategyId: "native-dex-experiment",
     label: "Native asset DEX experiment",
@@ -291,16 +322,16 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: false,
     }),
     caps: Object.freeze({
-      perTxUsd: 1,
-      perDayUsd: 10,
+      perTxUsd: 25,
+      perDayUsd: 100,
       perChainUsd: Object.freeze({
-        base: 10,
-        ethereum: 5,
-        optimism: 1,
-        sei: 1,
+        base: 50,
+        ethereum: 75,
+        optimism: 10,
+        sei: 10,
       }),
-      tinyLivePerTxUsd: 1,
-      maxDailyLossUsd: 2,
+      tinyLivePerTxUsd: 25,
+      maxDailyLossUsd: 25,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
     }),
     gasFloat: Object.freeze({

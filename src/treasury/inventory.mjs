@@ -132,6 +132,7 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       estimatedUsd: usdValueFromUnits(actual, item.decimals, priceUsd),
       status,
       rationale: item.rationale,
+      strategyPolicy: item.strategyPolicy || null,
       rpcUrl: tokenBalances[key]?.rpcUrl || null,
     };
   });

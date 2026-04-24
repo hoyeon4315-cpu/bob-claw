@@ -26,6 +26,7 @@ function parseArgs(argv) {
     execute: flags.has("--execute"),
     json: flags.has("--json"),
     write: flags.has("--write"),
+    refreshInventory: !flags.has("--no-refresh-inventory"),
     maxUsd: entries["max-usd"] ? Number(entries["max-usd"]) : null,
     policy,
     socketPath: resolve(entries["socket-path"] || signerSocketPath()),
@@ -77,6 +78,7 @@ async function main() {
     policy: args.policy,
     socketPath: args.socketPath,
     timeoutMs: args.timeoutMs,
+    refreshInventory: args.refreshInventory,
   });
   if (args.json) console.log(safeJsonStringify(report, 2));
   else printSummary(report);

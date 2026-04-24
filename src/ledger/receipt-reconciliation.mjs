@@ -220,6 +220,7 @@ export function buildReceiptReconciliation({
     "gas_zip_native_refuel",
     "gateway_btc_consolidation",
     "gateway_btc_offramp",
+    "lifi_bridge",
   ].includes(kind);
 
   return {

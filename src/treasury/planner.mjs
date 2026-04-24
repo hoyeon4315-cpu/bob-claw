@@ -30,6 +30,7 @@ function nativeAction(item, policy) {
     refillEstimatedUsd: item.refillEstimatedUsd,
     maxSingleRefillCostUsd: policy.refillPolicy.maxSingleRefillCostUsd,
     rationale: item.rationale,
+    strategyPolicy: item.strategyPolicy || null,
   };
 }
 
@@ -48,6 +49,7 @@ function tokenAction(item, policy) {
     refillEstimatedUsd: item.refillEstimatedUsd,
     maxSingleRefillCostUsd: policy.refillPolicy.maxSingleRefillCostUsd,
     rationale: item.rationale,
+    strategyPolicy: item.strategyPolicy || null,
   };
 }
 

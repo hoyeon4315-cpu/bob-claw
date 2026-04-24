@@ -41,18 +41,19 @@ The allocator should not pick only the single top score. It should build a ranke
 4. inventory and native gas are present
 5. committed strategy caps pass
 6. campaign has enough time left
-7. no duplicate active position
+7. either no duplicate active position or top-up remains below the per-opportunity cap
 
-Default policy is in `src/config/merkl-portfolio.mjs`:
+Default live policy is in `src/config/merkl-portfolio.mjs`:
 
-- `maxActiveUsd=5`
-- `perOpportunityMaxUsd=1`
-- `maxNewPositionsPerRun=3`
-- `maxOpenPositions=8`
-- `minPositionUsd=0.05`
-- source inventory reserve: 10%
+- `maxActiveUsd=75`
+- `perOpportunityMaxUsd=25`
+- `allowTopUps=true`
+- `maxNewPositionsPerRun=5`
+- `maxOpenPositions=12`
+- `minPositionUsd=0.25`
+- source inventory reserve: 5%
 - minimum canary proofs before hold: 1
-- minimum hold time: 30 minutes
+- minimum hold time: 60 minutes
 
 Score components:
 
@@ -66,7 +67,7 @@ Score components:
 - overfit penalty
 - chain route gap penalty
 
-This makes the system aggressive across the opportunity universe while still requiring a receipt-backed entry/exit proof before leaving funds in a protocol.
+This makes the system aggressive across the opportunity universe while still requiring a receipt-backed entry/exit proof before leaving funds in a protocol. As of 2026-04-24, the operator has explicitly moved this lane from paper validation to live-capital validation: if committed caps, executor support, inventory, canary proof, and policy checks pass, the allocator should execute instead of waiting for more paper tests.
 
 ## Execution Architecture
 
@@ -74,7 +75,7 @@ New execution lane:
 
 ```bash
 npm run executor:merkl-portfolio-allocator -- --json --write
-npm run executor:merkl-portfolio-allocator -- --json --write --execute --max-usd=0.25 --max-new-positions=1
+npm run executor:merkl-portfolio-allocator -- --json --write --execute
 ```
 
 Files:
@@ -89,13 +90,15 @@ Files:
 
 Position entry:
 
-1. refresh Merkl queue and wallet inventory
+1. refresh Merkl queue and live wallet inventory
 2. rank all candidates
 3. select all entry-ready candidates within portfolio/cap/inventory budgets
 4. execute `approve_exact`
 5. execute protocol entry (`erc4626_deposit` or `aave_supply`)
 6. verify share/aToken balance delta
 7. append an open position record
+
+As of 2026-04-24, allocator runs refresh treasury inventory directly before sizing. `--no-refresh-inventory` is available for debugging stale snapshots only.
 
 Position exit:
 
@@ -112,7 +115,7 @@ The exit runner reads open positions and broadcasts `redeem` when:
 - policy/kill-switch requests unwind
 - operator caps or failed-gas budget force pause
 
-The current implementation supports ERC-4626/eVault-style exits. Aave-style `withdraw` should be added before the allocator is allowed to leave Aave positions open.
+The current implementation supports ERC-4626/eVault-style exits and Aave-style `withdraw`, so the allocator may leave either supported binding open when policy passes.
 
 ## Capital Routing Plan
 
@@ -125,10 +128,23 @@ Priority capital jobs:
 3. Expand protocol hold executors for Morpho/Euler vault-style opportunities on Ethereum only when gas-efficient notional is high enough.
 4. Keep Ethereum entries blocked below the gas-efficiency notional floor; small Ethereum dust should not be spent on yield entry.
 
+Implemented refill path:
+
+- Primary Gateway refill is attempted first when the source is BTC-family.
+- Non-BTC stable refill falls back to LI.FI when Gateway has no route.
+- BSC USDT -> Base USDC is live-proven through LI.FI and writes a `lifi_bridge` receipt reconciliation.
+
+Live execution receipts on 2026-04-24:
+
+- Base YO old tiny position exited: redeem tx `0xf2eb9bcb980172b6939403635b9234636518b12195655d438b52d96b1c76e450`, USDC delta `249997`.
+- Base YO first live hold opened: approve tx `0xf9f5c592527ed6410d449e005c9d9f7967b80a762e771258488aeb743e7332ef`, deposit tx `0x89afe5b4be06718b725cf5c85fdc70e4b0d879a4d5f406529b4e1b2e1fcd13f9`, amount `0.771367` USDC.
+- BSC USDT -> Base USDC refill delivered through LI.FI: approve tx `0xc0680d8b06261b0163ec08f47f033e3fab049072687f834f60f7b4e5567ed50f`, bridge tx `0x7a8f2e74f3ba392ee1040e4cc05c29579fbae0e24f8859ff82b2a3c4f36d2e9a`, Base USDC delta `74563528`.
+- Base YO top-up opened: approve tx `0xad8ec76c8cb2158893a8293a628972ebde2ae18924d9f1474281a1d3c26e5448`, deposit tx `0x62ebd0e77dde7b64a890177c594cdf72946e99cb04472446ea48538f880fe82e`, amount `24.228633` USDC, share delta `23164169`.
+
 ## Stage Definition
 
 - L5: live canary proof exists and allocator can open a real hold position inside caps.
 - L6: allocator loop runs unattended, opens multiple positions, monitors active positions, and exits automatically.
 - L7: capital routing keeps target chain/asset inventory filled so the allocator can consume most of the profitable opportunity surface without manual refill.
 
-Current target: move from L5 to L6 by opening the first Base YO hold position, running the exit monitor, then wiring deterministic refill jobs from BSC USDT into Base/Ethereum USDC.
+Current target: finish L6 by letting the allocator loop run on schedule, expanding beyond the single Base YO opportunity only when inventory, protocol binding, canary proof, and cap checks all pass. Base YO is now filled to the `25` USD per-opportunity cap; the remaining blocker is not code for that opportunity, but additional ready inventory/proofs for the next opportunity.

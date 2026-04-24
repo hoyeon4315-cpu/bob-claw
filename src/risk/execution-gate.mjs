@@ -18,6 +18,17 @@ function strategyPolicyFromJob(job = {}) {
   return job.strategyPolicy || job.strategyConfig || null;
 }
 
+function jobExposureUsd(job = {}) {
+  return [
+    job.systemEconomics?.routeInputUsd,
+    job.estimatedAssetValueUsd,
+    job.targetAmountUsd,
+    job.amountUsd,
+  ]
+    .filter(isFiniteNumber)
+    .reduce((max, value) => Math.max(max, value), null);
+}
+
 function fundingSourceAutoExecutable(fundingSource = null) {
   if (!fundingSource) return false;
   if (fundingSource.selectionStatus === "ready") return true;
@@ -127,6 +138,7 @@ export function buildExecutionRiskDecision({
   const strategyPolicy = strategyPolicyFromJob(job);
   const strategyId = strategyPolicy?.id || job.strategyId || job.strategyLabel || null;
   const perTradeCapUsd = strategyPolicy?.perTradeCapUsd ?? null;
+  const exposureUsd = jobExposureUsd(job);
   const leverageStrategy = isLeverageStrategy(job, strategyPolicy);
   const holdingPeriodCarryStrategy = isHoldingPeriodCarryStrategy(job, strategyPolicy);
   const leverageMissingFields = leverageStrategy ? missingLeverageFields(strategyPolicy) : [];
@@ -152,7 +164,7 @@ export function buildExecutionRiskDecision({
   if (mode === "live" && (strategyPolicy || strategyId) && !isFiniteNumber(perTradeCapUsd)) {
     blockers.push("strategy_per_trade_cap_missing");
   }
-  if (mode === "live" && isFiniteNumber(perTradeCapUsd) && isFiniteNumber(routeInputUsd) && routeInputUsd > perTradeCapUsd) {
+  if (mode === "live" && isFiniteNumber(perTradeCapUsd) && isFiniteNumber(exposureUsd) && exposureUsd > perTradeCapUsd) {
     blockers.push("strategy_per_trade_cap_exceeded");
   }
   if (mode === "live" && leverageStrategy && riskPolicy.leverage?.allowed === false) {
@@ -250,6 +262,7 @@ export function buildExecutionRiskDecision({
       effectiveSystemNetPnlUsd: effectiveNetPnlUsd ?? null,
       routeNetPnlUsd: routeNetPnlUsd ?? null,
       routeInputUsd: routeInputUsd ?? null,
+      exposureUsd: exposureUsd ?? null,
       strategyId,
       strategyPerTradeCapUsd: perTradeCapUsd ?? null,
       leverageStrategy,
