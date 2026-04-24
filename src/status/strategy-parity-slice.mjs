@@ -223,12 +223,17 @@ export function buildStrategyParitySlice({
       const mergedBlockers = tick.blockers?.length > 0
         ? tick.blockers
         : row.blockers.filter((b) => b !== "dry_run_receipt_missing");
+      // Only override promotionVerdict if tick provides a real signal.
+      const tickVerdictIsReal =
+        tick.promotionVerdict !== "blocked" ||
+        tick.blockers?.length > 0 ||
+        tick.microCanaryStatus !== "not_started";
       row = {
         ...row,
         microCanaryStatus: tick.microCanaryStatus,
-        promotionVerdict: tick.promotionVerdict,
+        promotionVerdict: tickVerdictIsReal ? tick.promotionVerdict : row.promotionVerdict,
         demotionSummary: tick.demotionSummary,
-        topBlocker: tick.topBlocker || row.topBlocker,
+        topBlocker: mergedBlockers[0] || tick.topBlocker || row.topBlocker,
         blockers: mergedBlockers,
       };
     }
