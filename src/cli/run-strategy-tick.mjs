@@ -47,6 +47,8 @@ import {
 } from "../strategy/gateway-native-asset-conversion-sleeve-adapter.mjs";
 import { buildDefaultWrappedBtcLendingLoopConfig } from "../strategy/wrapped-btc-lending-loop-slice.mjs";
 import { buildDefaultRecursiveLendingLoopConfig } from "../strategy/recursive-lending-loop-slice.mjs";
+import { resolveWrappedBtcLoopBindingSupport } from "../strategy/wrapped-btc-loop-bindings.mjs";
+import { buildMoonwellWrappedBtcLoopIntent } from "../executor/helpers/moonwell-intent-builder.mjs";
 
 function aggressiveEvaluate(baseEvaluate, defaultCapUsd = 25) {
   return function ({ config, market, receipts, now }) {
@@ -493,9 +495,52 @@ async function main() {
   const generatedIntents = [];
   for (const alloc of scoredAllocation?.allocations || []) {
     const family = DEFAULT_VENUE_METADATA[alloc.strategyId]?.family || "unknown";
-    const intentType = intentTypeForFamily(family);
     const amountUsd = (alloc.allocatedSats * btcPriceUsd) / 1e8;
     const caps = getStrategyCaps(alloc.strategyId);
+
+    if (alloc.strategyId === "wrapped-btc-loop-base-moonwell" && btcPriceUsd > 0) {
+      const support = resolveWrappedBtcLoopBindingSupport({
+        strategyId: alloc.strategyId,
+        strategyConfig: { chain: alloc.chain, protocol: alloc.protocol, collateralAsset: "cbBTC", borrowAsset: "USDC" },
+      });
+      if (support.executableFromRepo) {
+        const collateralUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
+        const borrowUnits = String(Math.floor((amountUsd * 0.5) * 1e6));
+        try {
+          const plan = await buildMoonwellWrappedBtcLoopIntent({
+            strategyId: alloc.strategyId,
+            chain: alloc.chain,
+            amountUsd,
+            collateralUnits,
+            borrowUnits,
+            collateralAssetAddress: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+            borrowAssetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            collateralMTokenAddress: support.knownContracts.collateralMarket.mTokenAddress,
+            borrowMTokenAddress: support.knownContracts.borrowMarket.mTokenAddress,
+            comptrollerAddress: support.knownContracts.comptroller.address,
+            now: result.observedAt,
+            estimateGasImpl: () => { throw new Error("skip"); },
+          });
+          for (const step of plan.steps || []) {
+            generatedIntents.push(normalizeExecutionIntent(step.intent));
+          }
+          continue;
+        } catch (err) {
+          generatedIntents.push({
+            strategyId: alloc.strategyId,
+            chain: alloc.chain,
+            amountUsd,
+            mode: "live",
+            observedAt: result.observedAt,
+            normalizationError: err.message,
+            metadata: { protocol: alloc.protocol, source: "moonwell_builder_failed" },
+          });
+          continue;
+        }
+      }
+    }
+
+    const intentType = intentTypeForFamily(family);
     const raw = {
       strategyId: alloc.strategyId,
       chain: alloc.chain,
