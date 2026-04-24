@@ -28,8 +28,8 @@ export const PROMOTION_THRESHOLDS = Object.freeze({
   // Was 5; lowered to 1 — single immediate prior success required.
   minConsecutiveSuccess: 1,
   // Minimum cumulative realized BTC profit (sats) over the lookback.
-  // Reduced to 200 sats (~$0.12 at $60k) to match dust-canary unit size.
-  minCumulativeProfitSats: 200,
+  // Set to 0 for dust-canary execution evidence (profit not required).
+  minCumulativeProfitSats: 0,
   // Maximum tolerated failures over the lookback window. Stays at 1.
   maxFailureCount: 1,
   // Lookback window — was 14d; 3d to align with dust-canary cadence.
