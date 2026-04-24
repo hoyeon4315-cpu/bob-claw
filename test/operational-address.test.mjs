@@ -15,7 +15,7 @@ test("operational address falls back to latest treasury inventory when env defau
       dataDir: process.env.BOB_CLAW_DATA_DIR,
     });
 
-    assert.equal(resolved.address, "0x96262be63aa687563789225c2fe898c27a3b0ae4");
+    assert.equal(resolved.address.toLowerCase(), "0x96262be63aa687563789225c2fe898c27a3b0ae4");
     assert.equal(resolved.source, "latest_treasury_inventory");
     assert.equal(resolved.audit.issues.includes("configured_address_stale_vs_resolved_cycle_address"), true);
   } finally {
