@@ -36,12 +36,24 @@ const STRATEGY_CATALOG = [
   { id: 'aerodrome-cl-base',                     label: 'Aerodrome CL',             sub: 'Base · Aerodrome',          chain: 'base',      protocol: 'aerodrome', type: 'cl_lp',  pair: ['cbbtc','usdc'],            capUsd: null, desc: 'Concentrated liquidity LP on Aerodrome Base.' },
   { id: 'pendle-pt-solvbtc-bbn-bsc',            label: 'Pendle PT-SolvBTC',        sub: 'BSC · Pendle',              chain: 'bsc',       protocol: 'pendle',   type: 'pt',      pair: ['solvbtc','usdc'],          capUsd: null, desc: 'PT-SolvBTC.BBN direct via Gateway Custom Action on BSC.' },
   { id: 'berachain-bend-bex-bgt',               label: 'Berachain Bend+BEX',       sub: 'Bera · Bend',               chain: 'bera',      protocol: 'bend',     type: 'lp_bgt',  pair: ['wbtc','honey'],            capUsd: null, desc: 'Bend collateral + BEX LP with BGT rewards on Berachain.' },
-  { id: 'gmx-v2-perp-basis-avax',              label: 'GMX V2 perp basis',         sub: 'Avax · GMX',                chain: 'avalanche', protocol: 'gmx',      type: 'basis',   pair: ['btc.b','usdc'],            capUsd: null, desc: 'Delta-neutral perp basis via GMX V2 on Avalanche.' },
-  { id: 'stablecoin-spread-loop',               label: 'Stable spread loop',       sub: 'Base · Moonwell',           chain: 'base',      protocol: 'moonwell', type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Stablecoin supply-borrow spread loop on Base.' },
-  { id: 'proxy-spread-expansion',               label: 'Proxy spread expansion',   sub: 'Base · Morpho',             chain: 'base',      protocol: 'morpho',   type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Leveraged proxy stable spread via Morpho on Base.' },
-  { id: 'tokenized-reserve-sleeve',             label: 'Tokenized reserve',        sub: 'BSC · Pendle',              chain: 'bsc',       protocol: 'pendle',   type: 'reserve', pair: ['pt-solvbtc','usdc'],       capUsd: null, desc: 'Tokenized BTC reserve sleeve on BSC.' },
-  { id: 'gateway_native_asset_conversion_sleeve', label: 'Gateway native sleeve',  sub: 'Base · Merkl',              chain: 'base',      protocol: 'merkl',    type: 'canary',  pair: ['usdc','usdc'],             capUsd: 0.25, desc: 'Dust canary for Merkl ERC4626 vaults via Gateway.' },
+  { id: 'stablecoin_spread_loop',               label: 'Stable spread loop',       sub: 'Base · Moonwell',           chain: 'base',      protocol: 'moonwell', type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Stablecoin supply-borrow spread loop on Base.' },
+  { id: 'proxy_spread_expansion',               label: 'Proxy spread expansion',   sub: 'Base · Morpho',             chain: 'base',      protocol: 'morpho',   type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Leveraged proxy stable spread via Morpho on Base.' },
+  { id: 'tokenized_reserve_sleeve',             label: 'Tokenized reserve',        sub: 'BSC · Pendle',              chain: 'bsc',       protocol: 'pendle',   type: 'reserve', pair: ['pt-solvbtc','usdc'],       capUsd: null, desc: 'Tokenized BTC reserve sleeve on BSC.' },
+  { id: 'gateway_native_asset_conversion_sleeve', label: 'Gateway native sleeve',  sub: 'Base · Gateway',            chain: 'base',      protocol: 'gateway',  type: 'canary',  pair: ['usdc','usdc'],             capUsd: 0.25, desc: 'Multi-protocol yield sleeve via Gateway. Merkl-sourced.' },
+  // Tick-registered strategies missing from earlier catalog
+  { id: 'recursive_stablecoin_lending_loop',    label: 'Recursive stable lending', sub: 'Base · Morpho/Aave',        chain: 'base',      protocol: 'morpho',   type: 'loop',    pair: ['wbtc','usdc'],             capUsd: null, desc: 'Recursive stablecoin lending loop via Merkl-discovered venues.' },
+  { id: 'destination_wrapped_btc_rotation',     label: 'Wrapped BTC rotation',     sub: 'Multi-chain · Gateway',   chain: 'base',      protocol: 'gateway',  type: 'arb',     pair: ['wbtc','cbbtc'],            capUsd: null, desc: 'Destination-chain wrapped-BTC rotation.' },
+  { id: 'stablecoin_treasury_rotation',         label: 'Stable treasury rotation', sub: 'Multi-chain · Gateway',   chain: 'base',      protocol: 'gateway',  type: 'canary',  pair: ['usdc','usdt'],             capUsd: null, desc: 'Stablecoin treasury rotation across destinations.' },
+  { id: 'gateway_proxy_spread_rebalance_recheck', label: 'Proxy spread rebalance', sub: 'Base · Gateway',          chain: 'base',      protocol: 'gateway',  type: 'arb',     pair: ['wbtc','cbbtc'],            capUsd: null, desc: 'Gateway proxy spread rebalance recheck.' },
+  { id: 'macro_asset_rotation',                 label: 'Macro asset rotation',     sub: 'Multi-chain · Gateway',   chain: 'base',      protocol: 'gateway',  type: 'canary',  pair: ['usdc','usdt'],             capUsd: null, desc: 'Macro-level asset rotation sleeve.' },
+  { id: 'eth_destination_deployment',           label: 'ETH destination deploy',   sub: 'Ethereum · Multi',        chain: 'ethereum',  protocol: 'aave',     type: 'canary',  pair: ['eth','usdc'],              capUsd: null, desc: 'ETH-family destination deployment scaffold.' },
+  { id: 'onchain_btc_perp_basis',               label: 'BTC perp basis',           sub: 'Avalanche · GMX',         chain: 'avalanche', protocol: 'gmx',      type: 'basis',   pair: ['btc.b','usdc'],            capUsd: null, desc: 'Delta-neutral BTC perp basis via GMX V2.' },
 ];
+
+function normalizeStrategyId(id) {
+  // Tick parity uses snake_case; catalog uses kebab-case.
+  return String(id || '').replace(/-/g, '_');
+}
 
 function deriveStatus(live) {
   if (live?.autoExecute === true && live?.blockers?.length === 0) return 'LIVE';
@@ -87,23 +99,42 @@ async function bootData() {
   const tickById = strategyParity.byStrategy || {};
   const microById = microCanary.byStrategy || {};
 
+  // Build normalized tick lookup tables.
+  const tickByNormalized = {};
+  for (const [k, v] of Object.entries(tickById)) tickByNormalized[normalizeStrategyId(k)] = v;
+  const microByNormalized = {};
+  for (const [k, v] of Object.entries(microById)) microByNormalized[normalizeStrategyId(k)] = v;
+
   // Fold live flags onto the catalog.
   const STRATEGIES = STRATEGY_CATALOG.map(s => {
     const isPrimary = s.id === primaryId;
     const live = isPrimary ? primaryPolicy : null;
-    const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
-    const statusLabel = isPrimary
-      ? (Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'LIVE' : 'DRY RUN'))
-      : (defaultAutoExec(s.id) ? 'LIVE' : (s.id === 'recursive_wrapped_btc_lending_loop' ? 'DRY RUN' : 'CANDIDATE'));
+    const normalizedId = normalizeStrategyId(s.id);
+    const parity = tickByNormalized[normalizedId] || tickById[s.id] || null;
+    const micro = microByNormalized[normalizedId] || microById[s.id] || null;
+    const tickMode = parity?.promotionVerdict || parity?.tickMode || null;
+
+    // Status: tick parity wins when available.
+    let statusLabel;
+    if (tickMode === 'live_candidate') statusLabel = 'LIVE CANDIDATE';
+    else if (tickMode === 'fast_track_eligible') statusLabel = 'FAST TRACK';
+    else if (tickMode === 'shadow_ready') statusLabel = 'SHADOW';
+    else if (tickMode === 'blocked') statusLabel = 'BLOCKED';
+    else {
+      // Fallback to lane policy / defaults.
+      const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
+      if (isPrimary) {
+        statusLabel = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'LIVE' : 'DRY RUN');
+      } else {
+        statusLabel = defaultAutoExec(s.id) ? 'LIVE' : 'CANDIDATE';
+      }
+    }
+
     const earnedUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
-    const parity = tickById[s.id] || null;
-    const micro = microById[s.id] || null;
-    const tickMode = parity?.promotionVerdict || null;
-    const tickStatusLabel = tickMode === 'live_candidate' ? 'LIVE CANDIDATE' : tickMode === 'shadow_ready' ? 'SHADOW' : tickMode === 'blocked' ? 'BLOCKED' : statusLabel;
     return {
       ...s,
-      autoExecute: autoExec,
-      status: tickStatusLabel || statusLabel,
+      autoExecute: defaultAutoExec(s.id),
+      status: statusLabel,
       earnedUsd,
       apyPct: liveAprFor(s, liveApr) ?? apyHint(s.id),
       tickMode,

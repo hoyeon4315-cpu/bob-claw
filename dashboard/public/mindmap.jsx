@@ -243,8 +243,8 @@ function PairBadge({ x, y, pair, size = 14 }) {
   );
 }
 
-const TYPE_LABEL = { loop: 'LOOP', bridge: 'BRIDGE', payback: 'PAYBACK', arb: 'ARB', swap: 'DEX', refuel: 'REFUEL', lp: 'LP', cl_lp: 'LP', lp_bgt: 'LP' };
-const TYPE_INK   = { loop: '#1C7A3E', bridge: '#3A3A3D', payback: '#7A5C0D', arb: '#5B3DBF', swap: '#0A84FF', refuel: '#8A5C0D', lp: '#0A84FF', cl_lp: '#0A84FF', lp_bgt: '#0A84FF' };
+const TYPE_LABEL = { loop: 'LOOP', bridge: 'BRIDGE', payback: 'PAYBACK', arb: 'ARB', swap: 'DEX', refuel: 'REFUEL', lp: 'LP', cl_lp: 'LP', lp_bgt: 'LP', canary: 'CANARY', fold: 'FOLD', pt: 'PT', basis: 'BASIS', reserve: 'RESERVE' };
+const TYPE_INK   = { loop: '#1C7A3E', bridge: '#3A3A3D', payback: '#7A5C0D', arb: '#5B3DBF', swap: '#0A84FF', refuel: '#8A5C0D', lp: '#0A84FF', cl_lp: '#0A84FF', lp_bgt: '#0A84FF', canary: '#7A5C0D', fold: '#1C7A3E', pt: '#5B3DBF', basis: '#0A84FF', reserve: '#3A3A3D' };
 
 function prettifyProtocolLabel(protocol) {
   const acronyms = { gmx: 'GMX' };
