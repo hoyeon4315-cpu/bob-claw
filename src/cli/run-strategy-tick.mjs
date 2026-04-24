@@ -28,6 +28,7 @@ import { resolve, join, dirname } from "node:path";
 import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { getProtocolAddress } from "../config/protocol-addresses.mjs";
 import { buildScoredAllocation, DEFAULT_VENUE_METADATA } from "../strategy/scored-capital-allocation.mjs";
 import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
@@ -497,7 +498,9 @@ async function main() {
     const family = DEFAULT_VENUE_METADATA[alloc.strategyId]?.family || "unknown";
     const amountUsd = (alloc.allocatedSats * btcPriceUsd) / 1e8;
     const caps = getStrategyCaps(alloc.strategyId);
+    let strategyIntentsBuilt = false;
 
+    // ── Moonwell wrapped-BTC loop (Base) ──
     if (alloc.strategyId === "wrapped-btc-loop-base-moonwell" && btcPriceUsd > 0) {
       const support = resolveWrappedBtcLoopBindingSupport({
         strategyId: alloc.strategyId,
@@ -513,8 +516,8 @@ async function main() {
             amountUsd,
             collateralUnits,
             borrowUnits,
-            collateralAssetAddress: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
-            borrowAssetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            collateralAssetAddress: getProtocolAddress("moonwell", "base", "markets.cbBTC.asset"),
+            borrowAssetAddress: getProtocolAddress("moonwell", "base", "markets.USDC.asset"),
             collateralMTokenAddress: support.knownContracts.collateralMarket.mTokenAddress,
             borrowMTokenAddress: support.knownContracts.borrowMarket.mTokenAddress,
             comptrollerAddress: support.knownContracts.comptroller.address,
@@ -524,7 +527,7 @@ async function main() {
           for (const step of plan.steps || []) {
             generatedIntents.push(normalizeExecutionIntent(step.intent));
           }
-          continue;
+          strategyIntentsBuilt = true;
         } catch (err) {
           generatedIntents.push({
             strategyId: alloc.strategyId,
@@ -535,26 +538,70 @@ async function main() {
             normalizationError: err.message,
             metadata: { protocol: alloc.protocol, source: "moonwell_builder_failed" },
           });
-          continue;
+          strategyIntentsBuilt = true;
         }
       }
     }
 
-    const intentType = intentTypeForFamily(family);
-    const raw = {
-      strategyId: alloc.strategyId,
-      chain: alloc.chain,
-      intentType,
-      amountUsd,
-      mode: "live",
-      observedAt: result.observedAt,
-      strategyConfig: { intentTtlMs: caps?.intentTtlMs ?? 300_000 },
-      metadata: { protocol: alloc.protocol, skipAutoIngest: true, source: "scored_allocation" },
-    };
-    try {
-      generatedIntents.push(normalizeExecutionIntent(raw));
-    } catch (err) {
-      generatedIntents.push({ ...raw, normalizationError: err.message });
+    // ── Beefy folding vault (Base) ──
+    if (!strategyIntentsBuilt && alloc.strategyId === "beefy-folding-vault") {
+      const beefyVault = getProtocolAddress("beefy", "base", "vault");
+      if (beefyVault?.verified) {
+        // TODO: buildBeefyVaultIntent({ vaultAddress: beefyVault.address, assetAddress: beefyVault.asset, ... })
+        // For now, fall through to generic intent
+      }
+    }
+
+    // ── Pendle PT LBTC (Base) ──
+    if (!strategyIntentsBuilt && alloc.strategyId === "pendle-pt-lbtc-base") {
+      const pendleRouter = getProtocolAddress("pendle", "base", "router");
+      if (pendleRouter?.verified) {
+        // TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })
+      }
+    }
+
+    // ── Aerodrome CL (Base) ──
+    if (!strategyIntentsBuilt && alloc.strategyId === "aerodrome-cl-base") {
+      const aerodromePool = getProtocolAddress("aerodrome", "base", "pool");
+      if (aerodromePool?.verified) {
+        // TODO: buildAerodromeClIntent({ poolAddress: aerodromePool.address, ... })
+      }
+    }
+
+    // ── GMX V2 perp basis (Avalanche) ──
+    if (!strategyIntentsBuilt && alloc.strategyId === "gmx-v2-perp-basis-avax") {
+      const gmxRouter = getProtocolAddress("gmx", "avalanche", "exchangeRouter");
+      if (gmxRouter?.verified) {
+        // TODO: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })
+      }
+    }
+
+    // ── Berachain Bend/BEX/BGT ──
+    if (!strategyIntentsBuilt && alloc.strategyId === "berachain-bend-bex-bgt") {
+      const bendPool = getProtocolAddress("bend", "bera", "bendPool");
+      if (bendPool?.verified) {
+        // TODO: buildBerachainIntent({ poolAddress: bendPool.address, ... })
+      }
+    }
+
+    // ── Generic fallback intent ──
+    if (!strategyIntentsBuilt) {
+      const intentType = intentTypeForFamily(family);
+      const raw = {
+        strategyId: alloc.strategyId,
+        chain: alloc.chain,
+        intentType,
+        amountUsd,
+        mode: "live",
+        observedAt: result.observedAt,
+        strategyConfig: { intentTtlMs: caps?.intentTtlMs ?? 300_000 },
+        metadata: { protocol: alloc.protocol, skipAutoIngest: true, source: "scored_allocation" },
+      };
+      try {
+        generatedIntents.push(normalizeExecutionIntent(raw));
+      } catch (err) {
+        generatedIntents.push({ ...raw, normalizationError: err.message });
+      }
     }
   }
 
