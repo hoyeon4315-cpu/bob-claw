@@ -8,6 +8,10 @@ import {
   PROMOTION_THRESHOLDS_STRICT,
 } from "../src/strategy/promotion-evidence.mjs";
 import { buildPromotionReport, loadAuditReceipts } from "../src/cli/promotion-pr-preview.mjs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const NOW = Date.parse("2026-04-21T00:00:00Z");
 const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -333,5 +337,32 @@ describe("promotion-pr-preview CLI helpers", () => {
     assert.equal(report.summary.blockedCount, 1);
     assert.equal(report.reports[0].strategyId, "recursive_wrapped_btc_lending_loop");
     assert.equal(typeof report.generatedAt, "string");
+  });
+
+  test("CLI --write --quiet writes report to disk and suppresses stdout", () => {
+    const dir = mkdtempSync(join(tmpdir(), "promo-cli-"));
+    const out = join(dir, "nested", "promo.json");
+    try {
+      const res = spawnSync(
+        process.execPath,
+        [
+          "src/cli/promotion-pr-preview.mjs",
+          "--lookback-days=14",
+          "--write=" + out,
+          "--quiet",
+          "--audit=/nonexistent/audit.jsonl",
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(res.status, 0, `CLI failed: ${res.stderr}`);
+      assert.equal(res.stdout.trim(), "", "stdout should be empty under --quiet");
+      assert.equal(existsSync(out), true);
+      const parsed = JSON.parse(readFileSync(out, "utf8"));
+      assert.equal(parsed.lookbackDays, 14);
+      assert.ok(Array.isArray(parsed.reports));
+      assert.equal(typeof parsed.summary.eligibleCount, "number");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

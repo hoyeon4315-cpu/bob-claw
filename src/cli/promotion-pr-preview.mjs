@@ -12,7 +12,7 @@
 //   node src/cli/promotion-pr-preview.mjs --lookback-days=21
 //   node src/cli/promotion-pr-preview.mjs --audit=<path>
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -31,6 +31,8 @@ function parseArgs(argv) {
     if (a.startsWith("--strategy=")) out.strategy = a.split("=")[1];
     else if (a.startsWith("--lookback-days=")) out.lookbackDays = Number(a.split("=")[1]);
     else if (a.startsWith("--audit=")) out.audit = a.split("=")[1];
+    else if (a.startsWith("--write=")) out.write = a.split("=")[1];
+    else if (a === "--quiet") out.quiet = true;
   }
   return out;
 }
@@ -97,7 +99,14 @@ async function main() {
     strategyIds: ids,
     lookbackDays: args.lookbackDays,
   });
-  process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  if (args.write) {
+    const target = resolve(args.write);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, JSON.stringify(report, null, 2) + "\n");
+  }
+  if (!args.quiet) {
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  }
 }
 
 if (import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
