@@ -48,6 +48,16 @@ function countBy(items = [], fn) {
   }, {});
 }
 
+function capabilityGapCounts(queue = []) {
+  const counts = {};
+  for (const item of queue) {
+    for (const gap of item.capabilityGaps || []) {
+      counts[gap] = (counts[gap] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function overfitPenalty(item = {}) {
   if (item.overfitRisk === "high") return 18;
   if (item.overfitRisk === "medium") return 8;
@@ -207,6 +217,14 @@ export function buildMerklCanaryQueue({
     }));
 
   const executableQueue = queue.filter((item) => item.executionReadiness?.status === "inventory_ready");
+  const readinessByStatus = countBy(queue, (item) => item.executionReadiness?.status);
+  const gapCounts = capabilityGapCounts(queue);
+  const topBlockingReason =
+    queue.length === 0
+      ? null
+      : executableQueue.length > 0
+        ? "executable_candidate_available"
+        : queue[0]?.executionReadiness?.status || queue[0]?.capabilityGaps?.[0] || "unknown";
 
   return {
     schemaVersion: 1,
@@ -238,6 +256,9 @@ export function buildMerklCanaryQueue({
       cooldownActiveCount: queue.filter((item) => item.executionReadiness?.status === "cooldown_active").length,
       nativeGasGapCount: queue.filter((item) => item.executionReadiness?.status === "native_gas_missing").length,
       executorMissingCount: queue.filter((item) => item.executionReadiness?.status === "executor_missing").length,
+      readinessByStatus,
+      capabilityGapCounts: gapCounts,
+      topBlockingReason,
     },
     queue,
   };
