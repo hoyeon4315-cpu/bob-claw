@@ -80,6 +80,39 @@ test("strategy dispatch blocks unsupported requested modes", async () => {
   assert.equal(record.strategyResults[0].blockedReason, "requested_mode_not_supported");
 });
 
+test("strategy dispatch allows stable loop analysis scripts", async () => {
+  const record = await executeStrategyDispatch({
+    strategies: [
+      strategyFixture({
+        id: "stablecoin_entry_exit_loops",
+        selectedMode: "analysis",
+        selectedCommands: [
+          {
+            command: "npm run report:stable-loop-executor -- --write",
+            script: "report:stable-loop-executor",
+          },
+          {
+            command: "npm run report:lane-reclassification -- --write",
+            script: "report:lane-reclassification",
+          },
+          {
+            command: "npm run report:secondary-strategy-scaffolds -- --write",
+            script: "report:secondary-strategy-scaffolds",
+          },
+        ],
+      }),
+    ],
+    execute: false,
+  });
+
+  assert.equal(record.strategyResults[0].executionStatus, "preview");
+  assert.deepEqual(record.strategyResults[0].scripts, [
+    "report:stable-loop-executor",
+    "report:lane-reclassification",
+    "report:secondary-strategy-scaffolds",
+  ]);
+});
+
 test("strategy dispatch exposes live admission blockers for live requests", async () => {
   const record = await executeStrategyDispatch({
     strategies: [strategyFixture({
