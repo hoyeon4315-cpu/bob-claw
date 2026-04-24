@@ -84,3 +84,72 @@ test("report-strategy-tick-slice surfaces cap and gas observation state", async 
     { chain: "base", reason: "actual_balance_unobserved" },
   ]);
 });
+
+test("report-strategy-tick-slice joins reconciled sats profit into promotion evidence", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-profit-"));
+  const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
+  const auditLog = join(cwd, "logs", "signer-audit.jsonl");
+  const reconciliationsLog = join(cwd, "data", "receipt-reconciliations.jsonl");
+  const outPath = join(cwd, "dashboard", "public", "strategy-tick-status.json");
+  const strategyId = "gateway_native_asset_conversion_sleeve";
+
+  await writeJsonl(tickLog, [
+    {
+      schemaVersion: 1,
+      tickAt: new Date().toISOString(),
+      strategies: [strategyId],
+      snapshotSummary: [{ strategyId, capsConfigured: true }],
+      blockers: [{ strategyId, mode: "live", blockers: [] }],
+      dispatchSummary: { allowCount: 0, denyCount: 0 },
+      candidateCount: 0,
+    },
+  ]);
+  await writeJsonl(auditLog, [
+    {
+      strategyId,
+      observedAt: new Date(Date.now() - 60_000).toISOString(),
+      broadcast: { txHash: "0xaaa" },
+      lifecycle: { stage: "confirmed" },
+    },
+    {
+      strategyId,
+      observedAt: new Date(Date.now() - 30_000).toISOString(),
+      broadcast: { txHash: "0xbbb" },
+      lifecycle: { stage: "confirmed" },
+    },
+  ]);
+  await writeJsonl(reconciliationsLog, [
+    {
+      txHash: "0xaaa",
+      realized: { realizedNetPnlSats: 120 },
+    },
+    {
+      txHash: "0xbbb",
+      realized: { realizedNetPnlSats: 130 },
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "src/cli/report-strategy-tick-slice.mjs"),
+      `--tick-log=${tickLog}`,
+      `--audit=${auditLog}`,
+      `--reconciliations=${reconciliationsLog}`,
+      `--out=${outPath}`,
+      `--strategy=${strategyId}`,
+    ],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const slice = JSON.parse(await readFile(outPath, "utf8"));
+  const row = slice.strategies[0];
+  assert.equal(row.strategyId, strategyId);
+  assert.equal(row.receiptCountSignerBacked, 2);
+  assert.equal(row.promotion.fastTrack.eligible, true);
+  assert.equal(slice.summary.strategiesEligibleFastTrack, 1);
+});
