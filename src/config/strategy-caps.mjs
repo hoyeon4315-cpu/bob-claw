@@ -188,7 +188,6 @@ export const STRATEGY_CAPS = Object.freeze({
         ethereum: 5_000,
         arbitrum: 5_000,
         polygon: 5_000,
-        bsc: 5_000,
       }),
       maxDailyLossUsd: 200,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
@@ -200,7 +199,6 @@ export const STRATEGY_CAPS = Object.freeze({
       ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
       arbitrum: Object.freeze({ minUsd: 3, targetUsd: 6 }),
       polygon: Object.freeze({ minUsd: 3, targetUsd: 6 }),
-      bsc: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
   "native-dex-experiment": Object.freeze({

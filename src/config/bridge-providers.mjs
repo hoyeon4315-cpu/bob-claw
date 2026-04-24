@@ -56,7 +56,6 @@ export const BRIDGE_PROVIDERS = Object.freeze({
       "unichain",
       "arbitrum",
       "polygon",
-      "bsc",
     ]),
     assetFamilies: Object.freeze(["eth", "stable", "btc"]),
     fixedCostUsdEstimate: 0.15,
@@ -64,7 +63,7 @@ export const BRIDGE_PROVIDERS = Object.freeze({
     latencyMsEstimate: 180_000,
     gatewayBacked: false,
     notes:
-      "Lowest observed fee intent-based bridge; permissionless API at /suggested-fees + SpokePool.deposit. Live-proven on Base -> Optimism USDC; source SpokePool code preflight blocks unsupported/no-code chain deployments.",
+      "Lowest observed fee intent-based bridge; permissionless API at /suggested-fees + SpokePool.deposit. Live-proven on Base -> Optimism USDC; BSC is excluded until a chain-local SpokePool deployment is verified.",
   }),
   lifi: Object.freeze({
     id: "lifi",
