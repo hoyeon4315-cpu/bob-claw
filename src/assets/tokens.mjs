@@ -46,6 +46,7 @@ const KNOWN_TOKEN_DEFINITIONS = Object.freeze([
   { token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6", ticker: "USDC", family: "stablecoin", icon: "usdc", decimals: 6, priceKey: "usd_stable" },
   { token: "0x55d398326f99059fF775485246999027B3197955", ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 18, priceKey: "usd_stable" },
   { token: "0xdAC17F958D2ee523a2206206994597C13D831ec7", ticker: "USDT", family: "stablecoin", icon: "usdt", decimals: 6, priceKey: "usd_stable" },
+  { token: "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD", ticker: "RLUSD", family: "stablecoin", icon: "usdc", decimals: 18, priceKey: "usd_stable" },
   { token: SOLVBTC_TOKEN, ticker: "solvBTC", family: "wrapped_btc", icon: "btc", decimals: 18, priceKey: "btc" },
   { token: WRAPPED_NATIVE_TOKENS.base, ticker: "WETH", family: "native_or_wrapped", icon: "eth", decimals: 18, priceKey: "ethereum" },
   { token: WRAPPED_NATIVE_TOKENS.avalanche, ticker: "WAVAX", family: "native_or_wrapped", icon: "native", decimals: 18, priceKey: "avalanche" },

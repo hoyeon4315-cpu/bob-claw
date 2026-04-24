@@ -15,11 +15,14 @@ import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
+const ETHEREUM_USDC_TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const ETHEREUM_USDT_TOKEN = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const ETHEREUM_RLUSD_TOKEN = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
 
-test("default treasury policy validates and enables bob/base", () => {
+test("default treasury policy validates and enables live Merkl deployment chains", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
 
-  assert.deepEqual(policy.activeChains, ["bob", "base"]);
+  assert.deepEqual(policy.activeChains, ["bob", "base", "ethereum"]);
   assert.equal(getNativeBalancePolicy(policy, "bob").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "base").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "ethereum").enabled, true);
@@ -41,9 +44,24 @@ test("threshold helpers convert decimals to raw units", () => {
     maxBalance: "100000",
   });
   assert.deepEqual(tokenThresholdUnits(policy, "base", BASE_USDC_TOKEN), {
-    minBalance: "250000000",
-    targetBalance: "300000000",
-    maxBalance: "1000000000",
+    minBalance: "25000000",
+    targetBalance: "68000000",
+    maxBalance: "150000000",
+  });
+  assert.deepEqual(tokenThresholdUnits(policy, "ethereum", ETHEREUM_USDC_TOKEN), {
+    minBalance: "25000000",
+    targetBalance: "90000000",
+    maxBalance: "150000000",
+  });
+  assert.deepEqual(tokenThresholdUnits(policy, "ethereum", ETHEREUM_USDT_TOKEN), {
+    minBalance: "25000000",
+    targetBalance: "60000000",
+    maxBalance: "100000000",
+  });
+  assert.deepEqual(tokenThresholdUnits(policy, "ethereum", ETHEREUM_RLUSD_TOKEN), {
+    minBalance: "10000000000000000000",
+    targetBalance: "35000000000000000000",
+    maxBalance: "75000000000000000000",
   });
   assert.deepEqual(tokenThresholdUnits(policy, "bsc", BSC_USDC_TOKEN), {
     minBalance: "250000000000000000000",

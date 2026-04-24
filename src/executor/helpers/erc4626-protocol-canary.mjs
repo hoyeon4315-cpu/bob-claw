@@ -4,6 +4,7 @@ import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
+import { readErc20Allowance } from "../../evm/account-state.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyMerklCanaryExecutionReadiness } from "../../strategy/merkl-canary-execution-readiness.mjs";
@@ -118,6 +119,7 @@ export async function buildErc4626ProtocolCanaryPlan({
   amount,
   strategyId = queueItem?.mappedStrategyId || ERC4626_PROTOCOL_CANARY_STRATEGY_ID,
   estimateGasImpl = estimateGas,
+  readErc20AllowanceImpl = readErc20Allowance,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   minimumReturnBps = 9_500,
   now = new Date().toISOString(),
@@ -137,26 +139,37 @@ export async function buildErc4626ProtocolCanaryPlan({
   const amountUsd = amountUsdFromUnits(normalizedAmount, assetDecimals) ?? 0;
   const capAmountUsd = amountUsd;
   const buffer = Math.max(10_000, Number(gasBufferBps) || DEFAULT_GATEWAY_GAS_BUFFER_BPS);
+  let allowanceBefore = null;
+  try {
+    allowanceBefore = await readErc20AllowanceImpl(chain, assetAddress, senderAddress, vaultAddress, {
+      chainConfig: getEvmChainConfig(chain),
+    });
+  } catch {
+    allowanceBefore = null;
+  }
+  const allowanceCoversAmount = BigInt(allowanceBefore?.allowance ?? 0) >= BigInt(normalizedAmount);
 
   let approveGas = null;
-  try {
-    approveGas = await estimateGasImpl(
-      chain,
-      {
-        from: senderAddress,
-        to: assetAddress,
-        data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, normalizedAmount]),
-        valueWei: "0",
-      },
-      getEvmChainConfig(chain),
-    );
-  } catch {
-    approveGas = { gasUnits: 80_000 };
+  if (!allowanceCoversAmount) {
+    try {
+      approveGas = await estimateGasImpl(
+        chain,
+        {
+          from: senderAddress,
+          to: assetAddress,
+          data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, normalizedAmount]),
+          valueWei: "0",
+        },
+        getEvmChainConfig(chain),
+      );
+    } catch {
+      approveGas = { gasUnits: 80_000 };
+    }
   }
 
   const depositData = ERC4626_INTERFACE.encodeFunctionData("deposit", [normalizedAmount, senderAddress]);
   const steps = [
-    {
+    ...(!allowanceCoversAmount ? [{
       id: "approve_asset_to_vault",
       intent: buildIntent({
         strategyId,
@@ -185,7 +198,7 @@ export async function buildErc4626ProtocolCanaryPlan({
           assetAddress,
         },
       }),
-    },
+    }] : []),
     {
       id: "deposit_asset_to_vault",
       intent: buildIntent({
@@ -244,6 +257,13 @@ export async function buildErc4626ProtocolCanaryPlan({
       priceKey: null,
     }),
     steps,
+    allowanceBefore: allowanceBefore
+      ? {
+          allowance: BigInt(allowanceBefore.allowance ?? 0).toString(),
+          rpcUrl: allowanceBefore.rpcUrl || null,
+          skippedApproval: allowanceCoversAmount,
+        }
+      : null,
   };
 }
 
@@ -264,8 +284,8 @@ export async function executeErc4626ProtocolCanaryPlan({
   sleepImpl = sleep,
   exitAfterProof = true,
 } = {}) {
-  if (!Array.isArray(plan?.steps) || plan.steps.length !== 2) {
-    throw new Error("ERC4626 protocol canary plan must have approve and deposit steps");
+  if (!Array.isArray(plan?.steps) || !plan.steps.some((step) => step.id === "deposit_asset_to_vault")) {
+    throw new Error("ERC4626 protocol canary plan must have a deposit step");
   }
   const assetBalanceBefore = await readEvmAssetBalance({
     asset: plan.asset,

@@ -78,6 +78,16 @@ function activeUsd(positions = []) {
   return positions.reduce((sum, item) => sum + (finite(item.amountUsd) ?? 0), 0);
 }
 
+function activeBy(positions = [], keyFn = () => "") {
+  const values = new Map();
+  for (const position of positions) {
+    const key = keyFn(position);
+    if (!key) continue;
+    values.set(key, (values.get(key) || 0) + (finite(position.amountUsd) ?? 0));
+  }
+  return values;
+}
+
 function scoreTvl(tvlUsd) {
   const tvl = finite(tvlUsd);
   if (tvl == null || tvl <= 0) return 0;
@@ -162,6 +172,8 @@ export function buildMerklPortfolioAllocationPlan({
   const policy = merklPortfolioPolicy(policyInput);
   const activePositions = activeMerklPortfolioPositions(positionRecords);
   const activePositionUsd = activeUsd(activePositions);
+  const activeChainUsd = activeBy(activePositions, (position) => position.chain);
+  const activeProtocolUsd = activeBy(activePositions, (position) => position.protocolId);
   const runBudgetUsd = Math.max(0, Math.min(
     finite(maxUsd) ?? Number.POSITIVE_INFINITY,
     policy.maxActiveUsd - activePositionUsd,
@@ -176,8 +188,11 @@ export function buildMerklPortfolioAllocationPlan({
     });
     const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
     const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
+    const chainActiveUsd = activeChainUsd.get(queueItem.chain) || 0;
+    const protocolActiveUsd = activeProtocolUsd.get(queueItem.protocolId) || 0;
     const sizing = sizeMerklCanaryAmount(queueItem, {
       maxUsd: Math.min(policy.perOpportunityMaxUsd, runBudgetUsd || policy.perOpportunityMaxUsd),
+      useTinyLiveCap: false,
       auditRecords,
       now,
     });
@@ -204,6 +219,8 @@ export function buildMerklPortfolioAllocationPlan({
       score,
       canaryProofObservedAt: canaryProof?.observedAt || null,
       opportunityActiveUsd,
+      chainActiveUsd,
+      protocolActiveUsd,
       sizing,
       status: blockers.length ? "blocked" : "candidate",
       blockers,
@@ -224,9 +241,13 @@ export function buildMerklPortfolioAllocationPlan({
       tokenBudgetUsd.set(key, Math.max(0, tokenUsd * (1 - policy.reserveSourceInventoryPct)));
     }
     const remainingTokenUsd = tokenBudgetUsd.get(key) ?? 0;
+    const chainLimitUsd = finite(policy.chainMaxUsd?.[candidate.queueItem.chain]) ?? Number.POSITIVE_INFINITY;
+    const protocolLimitUsd = finite(policy.protocolMaxUsd?.[candidate.queueItem.protocolId]) ?? Number.POSITIVE_INFINITY;
     const targetUsd = Math.min(
       finite(candidate.sizing.amountUsd) ?? 0,
       Math.max(0, policy.perOpportunityMaxUsd - (finite(candidate.opportunityActiveUsd) ?? 0)),
+      Math.max(0, chainLimitUsd - (finite(candidate.chainActiveUsd) ?? 0)),
+      Math.max(0, protocolLimitUsd - (finite(candidate.protocolActiveUsd) ?? 0)),
       remainingBudgetUsd,
       remainingTokenUsd,
     );
@@ -240,6 +261,7 @@ export function buildMerklPortfolioAllocationPlan({
     }
     const resized = sizeMerklCanaryAmount(candidate.queueItem, {
       maxUsd: targetUsd,
+      useTinyLiveCap: false,
       auditRecords,
       now,
     });
@@ -283,6 +305,8 @@ export function buildMerklPortfolioAllocationPlan({
       queueCount: queue.queue?.length || 0,
       activePositionCount: activePositions.length,
       activePositionUsd,
+      activeChainUsd: Object.fromEntries(activeChainUsd),
+      activeProtocolUsd: Object.fromEntries(activeProtocolUsd),
       runBudgetUsd,
       entryReadyCount: entryQueue.length,
       blockedCount: allocations.filter((item) => item.status === "blocked").length,

@@ -36,6 +36,7 @@ test("erc4626 protocol canary selects binding-ready queue item and builds approv
     senderAddress: "0x2222222222222222222222222222222222222222",
     amount: "10000",
     estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 0n, rpcUrl: "memory" }),
     now: "2026-04-23T00:00:00.000Z",
   });
 
@@ -137,10 +138,46 @@ test("erc4626 protocol canary also supports Euler eVault bindings", async () => 
     senderAddress: "0x2222222222222222222222222222222222222222",
     amount: "10000",
     estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 0n, rpcUrl: "memory" }),
     now: "2026-04-23T00:00:00.000Z",
   });
 
   assert.equal(queueItem.protocolId, "euler");
   assert.equal(plan.bindingKind, "euler_evault_deposit_withdraw");
   assert.equal(plan.shareTokenAddress, "0xba98fC35C9dfd69178AD5dcE9FA29c64554783b5");
+});
+
+test("erc4626 protocol canary skips approval when existing allowance covers amount", async () => {
+  const queueItem = {
+    queueId: "merkl:eth-usdt",
+    opportunityId: "eth-usdt",
+    chain: "ethereum",
+    protocolId: "morpho",
+    name: "Supply USDT",
+    mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0xbeef003C68896c7D2c3c60d363e8d71a49Ab2bf9",
+        assetAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        shareTokenAddress: "0xbeef003C68896c7D2c3c60d363e8d71a49Ab2bf9",
+        assetSymbol: "USDT",
+        assetDecimals: 6,
+      },
+    },
+  };
+
+  const plan = await buildErc4626ProtocolCanaryPlan({
+    queueItem,
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "50000000",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 62436737n, rpcUrl: "memory" }),
+    now: "2026-04-24T00:00:00.000Z",
+  });
+
+  assert.equal(plan.steps.length, 1);
+  assert.equal(plan.steps[0].id, "deposit_asset_to_vault");
+  assert.equal(plan.allowanceBefore.skippedApproval, true);
 });

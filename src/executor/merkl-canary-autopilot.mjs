@@ -81,6 +81,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
   maxUsd = null,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
+  useTinyLiveCap = true,
   auditRecords = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -101,7 +102,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
     };
   }
   const hardCapUsd = Math.min(
-    finite(strategyCaps.caps.tinyLivePerTxUsd) ?? strategyCaps.caps.perTxUsd,
+    useTinyLiveCap ? (finite(strategyCaps.caps.tinyLivePerTxUsd) ?? strategyCaps.caps.perTxUsd) : strategyCaps.caps.perTxUsd,
     perChainCapUsd(strategyCaps, queueItem.chain),
     finite(maxUsd) ?? Number.POSITIVE_INFINITY,
     finite(matchedToken?.estimatedUsd) ?? Number.POSITIVE_INFINITY,

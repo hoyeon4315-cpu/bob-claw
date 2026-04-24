@@ -61,6 +61,23 @@ function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps) {
   return String(applyGasBuffer(baseUnits, gasBufferBps));
 }
 
+function assetSpentProof({ before, after, amount }) {
+  const initial = BigInt(before?.balance ?? 0);
+  const settled = BigInt(after?.balance ?? 0);
+  const observedDelta = initial - settled;
+  const requiredDelta = BigInt(amount || 0);
+  return {
+    status: observedDelta >= requiredDelta ? "delivered" : "unproven",
+    proofSource: after?.proofSource || before?.proofSource || "erc20_balance_delta",
+    initialBalance: initial.toString(),
+    settledBalance: settled.toString(),
+    observedDelta: observedDelta.toString(),
+    requiredDelta: requiredDelta.toString(),
+    observedAt: new Date().toISOString(),
+    rpcUrl: after?.rpcUrl || before?.rpcUrl || null,
+  };
+}
+
 function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {} }) {
   return {
     strategyId,
@@ -383,33 +400,45 @@ export async function executeAaveProtocolCanaryPlan({
     pollIntervalMs,
     sleepImpl,
   });
+  const assetBalanceAfterSupply = await readEvmAssetBalance({
+    asset: plan.asset,
+    owner: plan.senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const supplyProof = assetSpentProof({
+    before: assetBalanceBefore,
+    after: assetBalanceAfterSupply,
+    amount: plan.amount,
+  });
   if (shareProof.status !== "delivered") {
-    return {
-      schemaVersion: 1,
-      observedAt: new Date().toISOString(),
-      settlementStatus: "share_delta_timeout",
-      plan,
-      stepResults,
-      assetBalanceBefore,
-      shareBalanceBefore,
-      shareProof,
-    };
+    if (supplyProof.status !== "delivered") {
+      return {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        settlementStatus: "share_delta_timeout",
+        plan,
+        stepResults,
+        assetBalanceBefore,
+        assetBalanceAfterSupply,
+        shareBalanceBefore,
+        shareProof,
+        supplyProof,
+      };
+    }
   }
 
   if (!exitAfterProof) {
-    const assetBalanceAfter = await readEvmAssetBalance({
-      asset: plan.asset,
-      owner: plan.senderAddress,
-      readErc20BalanceImpl,
-      readNativeBalanceImpl,
-    });
     const shareBalanceAfter = await readEvmAssetBalance({
       asset: plan.shareAsset,
       owner: plan.senderAddress,
       readErc20BalanceImpl,
       readNativeBalanceImpl,
     });
-    const shareDelta = (BigInt(shareProof.settledBalance) - BigInt(shareBalanceBefore.balance ?? 0)).toString();
+    const proof = shareProof.status === "delivered" ? shareProof : supplyProof;
+    const observedDelta = shareProof.status === "delivered"
+      ? (BigInt(shareProof.settledBalance) - BigInt(shareBalanceBefore.balance ?? 0)).toString()
+      : supplyProof.observedDelta;
     return {
       schemaVersion: 1,
       observedAt: new Date().toISOString(),
@@ -417,21 +446,22 @@ export async function executeAaveProtocolCanaryPlan({
       plan,
       stepResults,
       assetBalanceBefore,
-      assetBalanceAfter,
+      assetBalanceAfter: assetBalanceAfterSupply,
       shareBalanceBefore,
       shareBalanceAfter,
       shareProof,
+      supplyProof,
       positionProof: {
         status: "delivered",
-        proofSource: shareProof.proofSource,
-        observedDelta: shareDelta,
-        requiredDelta: "1",
+        proofSource: proof.proofSource,
+        observedDelta,
+        requiredDelta: shareProof.status === "delivered" ? "1" : plan.amount,
       },
       destinationProof: {
         status: "delivered",
-        proofSource: shareProof.proofSource,
-        observedDelta: shareDelta,
-        requiredDelta: "1",
+        proofSource: proof.proofSource,
+        observedDelta,
+        requiredDelta: shareProof.status === "delivered" ? "1" : plan.amount,
       },
     };
   }

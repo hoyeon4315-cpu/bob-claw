@@ -22,9 +22,9 @@ Observed surface:
 - Live/relevant candidates after policy filter: 63
 - Watchlist: 71
 - Blocked: 266
-- Candidate groups: Ethereum stable carry is the deepest surface, mostly Morpho; Base YO is the currently executable live path.
-- Queue executable now: 1 (`13747891056392346282`, Base / YO / USDC ERC-4626-like vault)
-- Wallet slice: about USD 386.86 total visible inventory, dominated by BSC USDT. The current yield-entry bottleneck is not total capital, but getting inventory onto the right chain/asset and executor surface.
+- Candidate groups: Ethereum stable carry is the deepest surface, mostly Morpho; Base YO, Ethereum Morpho USDC, Ethereum Morpho USDT, Ethereum Euler RLUSD, and Ethereum Aave RLUSD now have live-capital receipts.
+- Queue executable now: 40+ candidates when Ethereum USDC/USDT/RLUSD inventory is present; many remaining candidates are blocked by missing PYUSD/USDS/XAUt/USDY/rsETH inventory or unsupported protocol binding.
+- Wallet slice after live deployment: most usable stable inventory has been converted into open Merkl positions. The current bottleneck is refill inventory and Ethereum gas, not lack of Merkl candidates.
 
 Important live proof:
 
@@ -45,11 +45,13 @@ The allocator should not pick only the single top score. It should build a ranke
 
 Default live policy is in `src/config/merkl-portfolio.mjs`:
 
-- `maxActiveUsd=75`
-- `perOpportunityMaxUsd=25`
+- `maxActiveUsd=300`
+- `perOpportunityMaxUsd=75`
 - `allowTopUps=true`
-- `maxNewPositionsPerRun=5`
-- `maxOpenPositions=12`
+- `maxNewPositionsPerRun=8`
+- `maxOpenPositions=20`
+- chain caps: Base 80, Ethereum 200, smaller expansion-chain caps until route inventory is proven
+- protocol caps: YO 80, Morpho 170, Euler 60, Aave 40
 - `minPositionUsd=0.25`
 - source inventory reserve: 5%
 - minimum canary proofs before hold: 1
@@ -95,7 +97,7 @@ Position entry:
 3. select all entry-ready candidates within portfolio/cap/inventory budgets
 4. execute `approve_exact`
 5. execute protocol entry (`erc4626_deposit` or `aave_supply`)
-6. verify share/aToken balance delta
+6. verify share/aToken balance delta; for Aave-style assets with opaque share-token accounting, accept successful supply receipt plus asset-balance-decrease proof
 7. append an open position record
 
 As of 2026-04-24, allocator runs refresh treasury inventory directly before sizing. `--no-refresh-inventory` is available for debugging stale snapshots only.
@@ -140,6 +142,22 @@ Live execution receipts on 2026-04-24:
 - Base YO first live hold opened: approve tx `0xf9f5c592527ed6410d449e005c9d9f7967b80a762e771258488aeb743e7332ef`, deposit tx `0x89afe5b4be06718b725cf5c85fdc70e4b0d879a4d5f406529b4e1b2e1fcd13f9`, amount `0.771367` USDC.
 - BSC USDT -> Base USDC refill delivered through LI.FI: approve tx `0xc0680d8b06261b0163ec08f47f033e3fab049072687f834f60f7b4e5567ed50f`, bridge tx `0x7a8f2e74f3ba392ee1040e4cc05c29579fbae0e24f8859ff82b2a3c4f36d2e9a`, Base USDC delta `74563528`.
 - Base YO top-up opened: approve tx `0xad8ec76c8cb2158893a8293a628972ebde2ae18924d9f1474281a1d3c26e5448`, deposit tx `0x62ebd0e77dde7b64a890177c594cdf72946e99cb04472446ea48538f880fe82e`, amount `24.228633` USDC, share delta `23164169`.
+- Ethereum USDT funded from BSC USDT through LI.FI: approve tx `0x806646934a7cefd01b3fdcdcdfd1adbf7c7aac0442fb071f5044ffcb9b5c9c2f`, bridge tx `0x86ca7937296e7e5f054821e9001ccf51565b98c5f1b6187216a04066c3fc3bf4`, delivered `65.722882` USDT. Realized cost: `-365` sats.
+- Ethereum RLUSD funded from BSC USDT through LI.FI: approve tx `0xa372fa133b71dcd600de5ac3e498e9f03c8275a4f0c1a178c4554ccd660910b9`, bridge tx `0x5b99743959d0355e52b8af5a8e90530c8727986d79a913ce695ddc420ba8999d`, delivered `38.362240814168466` RLUSD. Realized cost: `-1655` sats.
+- Ethereum USDC funded from BSC USDT through LI.FI: approve tx `0x999201ad49a2f1c3bdbe7df70f112ecd60e8482c37035853cea8eeb6d993d597`, bridge tx `0x137a2497e8b50488c5a0005bc2d0c76ff0895685a7fca6ea72ed936794d06112`, delivered `98.350675` USDC delta. Realized cost: `-703` sats.
+- Base YO additional top-up opened to the active Base cap: approve tx `0xf905ac40bb23eedcd8d6d5bb2e5d1aa0b9b4b3c4e2609ea7787f5c098eeb4762`, deposit tx `0x393c5505016ec425ee3b3374a1e4b84498f5ac01187a9b5fcffa2fe23380d436`, amount `47.856712` USDC.
+- Base YO final cap-fill opened: approve tx `0x1c7625b04dfd0b199d12c5436e28bf0e7ac8dd248cf658f1bc3bb2a3c5dbc715`, deposit tx `0x0ed67404cb60ce704e1d8dc528861be3ec193c769a773e7952d512cecf9c753d`, amount `2.143287` USDC.
+- Ethereum Aave Horizon RLUSD hold opened: approve tx `0x21c2e6b741900be74eadeab0b1add389bb41a3366d707c62fbd735ca6f7a62ac`, supply tx `0x9c6c662c43ad104e5c8f760d14062952e131bbbbc99e24ea6636ac055b2ce1f7`, amount `25` RLUSD. Share-token delta was opaque, so the open-position proof is the `25` RLUSD asset-balance decrease plus successful Aave supply receipt.
+- Ethereum Morpho Clearstar USDC Core V2 hold opened: approve tx `0x309314b231c1a6ae67d337b4d39b987db74c610f04713ef00de29fa32836d9d3`, deposit tx `0x3ffa4e3a9aa58594a57f64fc7928fcb95189c0fbd2a1e8c98945f973f4af3de9`, amount `75` USDC.
+- Ethereum Morpho Steakhouse Prime Instant V2 hold opened: reused existing USDT allowance from the prior policy-blocked attempt, deposit tx `0xa6aec9a4557e9f0811c5b89f9dcec954462df6247ff4a3cd7598699e480706f7`, amount `50` USDT.
+
+Current open allocation after these receipts:
+
+- Base / YO / USDC: about `75` USD active
+- Ethereum / Aave Horizon / RLUSD: `25` USD active
+- Ethereum / Morpho Clearstar USDC Core V2: `75` USD active
+- Ethereum / Morpho Steakhouse Prime Instant V2: `50` USD active
+- Total active Merkl book: about `225` USD
 
 ## Stage Definition
 
@@ -147,4 +165,4 @@ Live execution receipts on 2026-04-24:
 - L6: allocator loop runs unattended, opens multiple positions, monitors active positions, and exits automatically.
 - L7: capital routing keeps target chain/asset inventory filled so the allocator can consume most of the profitable opportunity surface without manual refill.
 
-Current target: finish L6 by letting the allocator loop run on schedule, expanding beyond the single Base YO opportunity only when inventory, protocol binding, canary proof, and cap checks all pass. Base YO is now filled to the `25` USD per-opportunity cap; the remaining blocker is not code for that opportunity, but additional ready inventory/proofs for the next opportunity.
+Current target: finish L6 by letting the allocator loop run on schedule and by refilling the next entry assets. The live book is no longer single-opportunity: Base YO, Ethereum Aave RLUSD, and two Ethereum Morpho vaults are open. Remaining blockers are mostly refill inventory, Ethereum gas, and unsupported protocol bindings for lower-readiness opportunities.

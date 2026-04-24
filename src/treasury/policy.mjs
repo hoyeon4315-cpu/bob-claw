@@ -6,6 +6,9 @@ const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_CBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
+const ETHEREUM_USDC_TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const ETHEREUM_USDT_TOKEN = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const ETHEREUM_RLUSD_TOKEN = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
 const MERKL_PORTFOLIO_REFILL_POLICY = {
   id: "merkl_portfolio_stable_carry_refill",
   category: "yield",
@@ -152,7 +155,7 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       maxRefillCost24hUsd: 3,
     },
     supportedChains: Object.keys(nativeBalances),
-    activeChains: ["bob", "base"],
+    activeChains: ["bob", "base", "ethereum"],
     nativeBalances,
     tokenInventories: [
       tokenPolicy("bob", WBTC_OFT_TOKEN, {
@@ -179,6 +182,33 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         targetBalance: "0.001",
         maxBalance: "0.005",
         rationale: "Moonwell wrapped-BTC lending loop collateral on Base.",
+      }),
+      tokenPolicy("ethereum", ETHEREUM_USDC_TOKEN, {
+        minBalance: "25",
+        targetBalance: "90",
+        maxBalance: "150",
+        rationale: "Ethereum Morpho/YO Merkl stable-carry inventory; routed from BSC stablecoin float when live-capital validation is active.",
+        strategyPolicy: {
+          ...MERKL_PORTFOLIO_REFILL_POLICY,
+          perTradeCapUsd: 100,
+        },
+      }),
+      tokenPolicy("ethereum", ETHEREUM_USDT_TOKEN, {
+        minBalance: "25",
+        targetBalance: "60",
+        maxBalance: "100",
+        rationale: "Ethereum Morpho USDT vault inventory for Steakhouse and related Merkl stable-carry campaigns.",
+        strategyPolicy: MERKL_PORTFOLIO_REFILL_POLICY,
+      }),
+      tokenPolicy("ethereum", ETHEREUM_RLUSD_TOKEN, {
+        minBalance: "10",
+        targetBalance: "35",
+        maxBalance: "75",
+        rationale: "Ethereum Euler/Aave RLUSD Merkl inventory; smaller cap until RLUSD entry and exit receipts are live-proven.",
+        strategyPolicy: {
+          ...MERKL_PORTFOLIO_REFILL_POLICY,
+          perTradeCapUsd: 35,
+        },
       }),
       tokenPolicy("bsc", BSC_USDC_TOKEN, {
         minBalance: "250",

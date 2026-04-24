@@ -55,6 +55,7 @@ async function main() {
   const preflight = await preflightLiveCanarySweep({
     socketPath: args.socketPath,
     timeoutMs: args.timeoutMs,
+    requireLiveBaseline: false,
   });
   if (preflight.status !== "ready") {
     const report = {
