@@ -14,9 +14,9 @@ const T_MED = 320;
 const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.75;
 
 const PHYS = {
-  REPULSION_K: 0.9,
-  SPRING_K: 0.045,
-  DAMPING: 0.92,
+  REPULSION_K: 0.5,
+  SPRING_K: 0.06,
+  DAMPING: 0.88,
   SUBSTEPS: 2,
   PAD: 6,
 };
@@ -49,7 +49,7 @@ function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
   const requiredChord = 2 * chipR + padding;
   const required = requiredChord / (2 * Math.sin(gap / 2));
-  const maxR = 110; // viewport-aware cap so chips stay visible
+  const maxR = 95; // viewport-aware cap so chips stay visible
   return Math.max(minR, Math.min(maxR, required));
 }
 
@@ -652,7 +652,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     const availW = VB_W - reserveSide * 2;
     const availH = VB_H - reserveTop - cardReserveBottom;
     const fitZoom = Math.min(availW / width, availH / height);
-    const zoom = clamp(fitZoom, 0.65, selectedProtocolId ? 1.55 : 1.35);
+    const zoom = clamp(fitZoom, 0.6, selectedProtocolId ? 1.55 : 1.35);
     const focus = {
       x: (finalBounds.minX + finalBounds.maxX) / 2,
       y: (finalBounds.minY + finalBounds.maxY) / 2,
