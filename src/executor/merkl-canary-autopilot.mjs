@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tokenAsset } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
 import { getStrategyCaps, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
+import { evaluateCapCheck } from "./policy/cap-check.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -80,6 +81,8 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
   maxUsd = null,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
+  auditRecords = [],
+  now = new Date().toISOString(),
 } = {}) {
   const readiness = queueItem.executionReadiness || {};
   const matchedToken = readiness.matchedToken || null;
@@ -115,6 +118,25 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
     hardCapUsd < minEthereumNotionalUsd
   ) {
     blockers.push("cap_too_low_for_ethereum_gas_efficiency");
+  }
+  if (strategyCaps && validation.ok && Number.isFinite(hardCapUsd) && hardCapUsd > 0) {
+    const capCheck = evaluateCapCheck({
+      intent: {
+        strategyId,
+        chain: queueItem.chain,
+        intentType: "erc4626_deposit",
+        amountUsd: hardCapUsd,
+        mode: "live",
+        executionReason: "strategy_execution",
+        metadata: {
+          capCheckAmountUsd: hardCapUsd,
+        },
+      },
+      strategyCaps,
+      auditRecords,
+      now,
+    });
+    blockers.push(...capCheck.blockers);
   }
 
   if (blockers.length) {
@@ -244,6 +266,7 @@ export async function runMerklCanaryAutopilot({
     readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
+  const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const selection = selectMerklCanaryAutopilotCandidate(queue, {
     maxUsd,
@@ -251,6 +274,7 @@ export async function runMerklCanaryAutopilot({
     allowInefficientEthereum,
     inventorySnapshot,
     canaryExecutions,
+    auditRecords,
   });
   if (!selection.selected) {
     const report = {

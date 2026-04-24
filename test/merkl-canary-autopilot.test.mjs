@@ -47,6 +47,58 @@ test("sizes Merkl canary amount to the committed per-tx cap and inventory", () =
   assert.equal(sizing.amountUsd, 0.25);
 });
 
+test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
+  const sizing = sizeMerklCanaryAmount(queueItem(), {
+    now: "2026-04-24T01:40:00.000Z",
+    auditRecords: [{
+      strategyId: "gateway_native_asset_conversion_sleeve",
+      chain: "base",
+      timestamp: "2026-04-24T01:20:00.000Z",
+      policyVerdict: "approved",
+      lifecycle: { stage: "confirmed" },
+      intent: {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        intentType: "erc4626_deposit",
+        amountUsd: 1,
+        metadata: { capCheckAmountUsd: 1 },
+      },
+      amountUsd: 1,
+    }],
+  });
+
+  assert.equal(sizing.status, "blocked");
+  assert.ok(sizing.blockers.includes("strategy_per_chain_cap_exceeded"));
+});
+
+test("selection skips candidates whose committed chain cap is exhausted", () => {
+  const selection = selectMerklCanaryAutopilotCandidate(
+    { queue: [queueItem()] },
+    {
+      now: "2026-04-24T01:40:00.000Z",
+      auditRecords: [{
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        timestamp: "2026-04-24T01:20:00.000Z",
+        policyVerdict: "approved",
+        lifecycle: { stage: "confirmed" },
+        intent: {
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          chain: "base",
+          intentType: "erc4626_deposit",
+          amountUsd: 1,
+          metadata: { capCheckAmountUsd: 1 },
+        },
+        amountUsd: 1,
+      }],
+    },
+  );
+
+  assert.equal(selection.readyCount, 0);
+  assert.equal(selection.selected, null);
+  assert.ok(selection.candidates[0].sizing.blockers.includes("strategy_per_chain_cap_exceeded"));
+});
+
 test("blocks Ethereum canaries when committed caps are below the gas-efficiency notional floor", () => {
   const sizing = sizeMerklCanaryAmount(queueItem({
     chain: "ethereum",
