@@ -3,6 +3,8 @@
 // Exposes every strategy candidate (existing + new) with the same maturity
 // schema so the dashboard can compare them side-by-side.
 //
+import { getStrategyCaps } from "../config/strategy-caps.mjs";
+
 // Pure function. No I/O.
 
 const NEW_CANDIDATE_IDS = Object.freeze([
@@ -112,6 +114,27 @@ function resolveFromResearch(board, id) {
   };
 }
 
+function resolveFromCaps(id) {
+  const caps = getStrategyCaps(id);
+  if (!caps) return null;
+  const chains = Object.keys(caps.caps?.perChainUsd || {});
+  const hasLeverage = Boolean(caps.leverage);
+  return {
+    strategyId: id,
+    chainSet: chains.length > 0 ? chains : ["base"],
+    adapterTickConnected: true,
+    marketLoader: true,
+    receiptSchema: false,
+    microCanaryStatus: "not_started",
+    promotionVerdict: caps.autoExecute ? "blocked" : "blocked",
+    demotionSummary: { demoted: false, triggers: [] },
+    topBlocker: "dry_run_receipt_missing",
+    blockers: ["dry_run_receipt_missing"],
+    maturity: "caps_configured",
+    source: "caps_registry",
+  };
+}
+
 function resolveFromTick(tickStatus, id) {
   const s = tickStatus?.strategies?.find((x) => x.strategyId === id);
   const stage = tickStatus?.strategyStage?.byStrategy?.[id];
@@ -178,6 +201,7 @@ export function buildStrategyParitySlice({
       resolveFromDeterministic(det, id) ||
       resolveFromScaffold(scaff, id) ||
       resolveFromResearch(research, id) ||
+      resolveFromCaps(id) ||
       fallbackCandidate(id);
 
     const tick = resolveFromTick(strategyTickStatus, id);

@@ -656,6 +656,144 @@ export const STRATEGY_CAPS = Object.freeze({
       avalanche: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
+  "beefy-folding-vault": Object.freeze({
+    strategyId: "beefy-folding-vault",
+    label: "Beefy folding vault",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["beefy"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        bsc: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      bsc: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
+  "pendle-pt-lbtc-base": Object.freeze({
+    strategyId: "pendle-pt-lbtc-base",
+    label: "Pendle PT-LBTC Base",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["pendle"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        base: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
+  "aerodrome-cl-base": Object.freeze({
+    strategyId: "aerodrome-cl-base",
+    label: "Aerodrome concentrated liquidity Base",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["aerodrome"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        base: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
+  "pendle-pt-solvbtc-bbn-bsc": Object.freeze({
+    strategyId: "pendle-pt-solvbtc-bbn-bsc",
+    label: "Pendle PT-SolvBTC.BBN BSC",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["pendle", "gateway"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        bsc: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      bsc: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
+  "berachain-bend-bex-bgt": Object.freeze({
+    strategyId: "berachain-bend-bex-bgt",
+    label: "Berachain Bend + BEX + BGT",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["bend", "bex"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        bera: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      bera: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
+  "gmx-v2-perp-basis-avax": Object.freeze({
+    strategyId: "gmx-v2-perp-basis-avax",
+    label: "GMX V2 perp basis Avalanche",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["gmx"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 25,
+      perDayUsd: 100,
+      perChainUsd: Object.freeze({
+        avalanche: 100,
+      }),
+      maxDailyLossUsd: 100,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+    }),
+    gasFloat: Object.freeze({
+      avalanche: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+    }),
+  }),
 });
 
 function isFiniteNumber(value) {
