@@ -99,6 +99,54 @@ test("planner emits alternate bridge candidates when Gateway paused and fallback
   assert.ok(lifi.missingInputs.some((input) => input.startsWith("bridge_provider_executor_missing:")));
 });
 
+test("planner suppresses Across for BSC while BSC SpokePool is unverified", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: {
+      schemaVersion: 1,
+      observedAt: "2026-04-24T00:00:00.000Z",
+      address: "0x000000000000000000000000000000000000dEaD",
+      decision: "REVIEW_REFILL_PLAN",
+      inventory: {
+        native: [
+          { chain: "bsc", actual: "50000000000000000", actualDecimal: 0.05, estimatedUsd: 30 },
+        ],
+        tokens: [
+          {
+            chain: "bsc",
+            actual: "5000000000000000000",
+            actualDecimal: 5,
+            token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+            ticker: "USDC",
+            estimatedUsd: 5,
+          },
+        ],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          refillAmount: "1000000",
+          refillAmountDecimal: 1,
+          refillEstimatedUsd: 1,
+          rationale: "Base USDC route buffer",
+        },
+      ],
+    },
+    policy,
+    gatewayAvailability: {
+      available: false,
+      reason: "gateway_runtime_disabled_state_file_present",
+      observedAt: "2026-04-24T00:00:00.000Z",
+    },
+  });
+
+  const methods = new Set(funding.selections[0].candidates.map((c) => c.method));
+  assert.ok(!methods.has("cross_chain_bridge_across"));
+});
+
 test("planner leaves Gateway candidates selectable when Gateway available", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const funding = buildFundingSourcePlan({

@@ -485,10 +485,10 @@ test("recursive wrapped BTC loop caps are declared but do not auto-execute live 
   assert.equal(dryRunResult.decision, "ALLOW");
 });
 
-test("Across bridge caps use repo BSC chain key", () => {
+test("Across bridge caps exclude BSC until a chain-local SpokePool is verified", () => {
   const caps = assertStrategyCaps("across-bridge");
 
-  assert.equal(caps.caps.perChainUsd.bsc, 5_000);
+  assert.equal(caps.caps.perChainUsd.bsc, undefined);
   assert.equal(caps.caps.perChainUsd.bnb, undefined);
 
   const result = evaluateCapCheck({
@@ -503,6 +503,6 @@ test("Across bridge caps use repo BSC chain key", () => {
     auditRecords: [],
   });
 
-  assert.equal(result.decision, "ALLOW");
-  assert.equal(result.blockers.includes("strategy_per_chain_cap_missing"), false);
+  assert.equal(result.decision, "BLOCK");
+  assert.equal(result.blockers.includes("strategy_per_chain_cap_missing"), true);
 });

@@ -7,9 +7,9 @@ test("acrossSupportsPair accepts Base<->Optimism USDC", () => {
   assert.equal(acrossSupportsPair({ srcChain: "base", dstChain: "optimism", ticker: "usdc" }), true);
 });
 
-test("acrossSupportsPair uses repo chain key bsc for BNB Chain", () => {
-  assert.equal(acrossSupportsPair({ srcChain: "bsc", dstChain: "base", ticker: "usdc" }), true);
-  assert.equal(acrossTokenAddress("bsc", "usdc"), "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d");
+test("acrossSupportsPair excludes BSC until a chain-local SpokePool is verified", () => {
+  assert.equal(acrossSupportsPair({ srcChain: "bsc", dstChain: "base", ticker: "usdc" }), false);
+  assert.equal(acrossTokenAddress("bsc", "usdc"), null);
 });
 
 test("acrossSupportsPair rejects unsupported chain", () => {
@@ -36,16 +36,16 @@ test("buildAcrossQuoteRequest resolves token addresses and chainIds", () => {
   assert.equal(req.allowUnmatchedDecimals, false);
 });
 
-test("buildAcrossQuoteRequest flags unmatched decimals for BSC USDC routes", () => {
-  const req = buildAcrossQuoteRequest({
-    srcChain: "bsc",
-    dstChain: "base",
-    ticker: "usdc",
-    amount: "1000000000000000000",
-  });
-  assert.equal(req.originChainId, 56);
-  assert.equal(req.destinationChainId, 8453);
-  assert.equal(req.allowUnmatchedDecimals, true);
+test("buildAcrossQuoteRequest rejects BSC USDC routes while BSC is unverified", () => {
+  assert.throws(
+    () => buildAcrossQuoteRequest({
+      srcChain: "bsc",
+      dstChain: "base",
+      ticker: "usdc",
+      amount: "1000000000000000000",
+    }),
+    /pair unsupported/,
+  );
 });
 
 test("buildAcrossQuoteRequest throws on unsupported pair", () => {
