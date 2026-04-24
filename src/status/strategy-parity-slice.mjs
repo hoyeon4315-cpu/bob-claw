@@ -140,15 +140,28 @@ function resolveFromTick(tickStatus, id) {
   const stage = tickStatus?.strategyStage?.byStrategy?.[id];
   const micro = tickStatus?.microCanary?.byStrategy?.[id];
   if (!s && !stage && !micro) return null;
+  const hasReceipts = (s?.receiptCountTotal ?? 0) > 0;
+  const hasSignerBacked = (s?.receiptCountSignerBacked ?? 0) > 0;
+  const baseVerdict = stage?.promotionVerdict || s?.lastTickMode || "blocked";
+  const baseBlockers = s?.lastTickBlockers || [];
+  // Remove dry_run_receipt_missing when receipts exist.
+  const cleanedBlockers = hasReceipts
+    ? baseBlockers.filter((b) => b !== "dry_run_receipt_missing")
+    : baseBlockers;
+  // If no tick record but receipts exist, promote to shadow_ready.
+  const promotionVerdict =
+    baseVerdict === "blocked" && !s?.lastTickAt && hasSignerBacked
+      ? "shadow_ready"
+      : baseVerdict;
   return {
     microCanaryStatus: micro?.microCanaryStatus || s?.microCanaryStatus || "not_started",
-    promotionVerdict: stage?.promotionVerdict || s?.lastTickMode || "blocked",
+    promotionVerdict,
     demotionSummary: {
       demoted: s?.demotion?.demoted || false,
       triggers: s?.demotion?.triggers || [],
     },
-    topBlocker: stage?.topBlocker || s?.lastTickBlockers?.[0] || null,
-    blockers: s?.lastTickBlockers || [],
+    topBlocker: cleanedBlockers[0] || stage?.topBlocker || null,
+    blockers: cleanedBlockers,
   };
 }
 
@@ -206,13 +219,17 @@ export function buildStrategyParitySlice({
 
     const tick = resolveFromTick(strategyTickStatus, id);
     if (tick) {
+      // Merge tick-derived blockers with row blockers, removing stale entries.
+      const mergedBlockers = tick.blockers?.length > 0
+        ? tick.blockers
+        : row.blockers.filter((b) => b !== "dry_run_receipt_missing");
       row = {
         ...row,
         microCanaryStatus: tick.microCanaryStatus,
         promotionVerdict: tick.promotionVerdict,
         demotionSummary: tick.demotionSummary,
         topBlocker: tick.topBlocker || row.topBlocker,
-        blockers: tick.blockers?.length > 0 ? tick.blockers : row.blockers,
+        blockers: mergedBlockers,
       };
     }
 
