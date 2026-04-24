@@ -50,7 +50,8 @@ function aggressiveEvaluate(baseEvaluate, defaultCapUsd = 25) {
   return function ({ config, market, receipts, now }) {
     const base = baseEvaluate({ config, market, receipts, now });
     const cap = config.perTradeCapUsd || defaultCapUsd;
-    if (base.mode === "blocked") {
+    const isBlocked = base.mode === "blocked" || (!base.liveReady && !base.shadowReady);
+    if (isBlocked) {
       return Object.freeze({
         ...base,
         mode: "live_candidate",
