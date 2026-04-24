@@ -465,7 +465,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "wrapped-btc-loop-base-moonwell": Object.freeze({
     strategyId: "wrapped-btc-loop-base-moonwell",
     label: "Wrapped BTC lending loop (Base / Moonwell)",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),
@@ -473,14 +473,14 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: true,
     }),
     caps: Object.freeze({
-      perTxUsd: 1_000_000,
-      perDayUsd: 1_000_000,
+      perTxUsd: 5,
+      perDayUsd: 25,
       perChainUsd: Object.freeze({
-        base: 1_000_000,
+        base: 25,
       }),
-      maxDailyLossUsd: 1_000_000,
+      maxDailyLossUsd: 25,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
-      tinyLivePerTxUsd: 25,
+      tinyLivePerTxUsd: 5,
     }),
     leverage: Object.freeze({
       healthFactorMin: 1.35,

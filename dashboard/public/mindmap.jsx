@@ -8,7 +8,8 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const T_FAST = 220;
+const T_FAST = 450;
+const T_MED = 320;
 const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.75;
 
 // Mindmap shows only protocols where user capital is parked.
@@ -106,11 +107,11 @@ function BitcoinSource({ x, y, size, hidden }) {
   );
 }
 
-function GatewayCore({ size }) {
+function GatewayCore({ size, hidden }) {
   const w = size * 1.8;
   const h = size * 1.1;
   return (
-    <g>
+    <g style={{ opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto', transition: `opacity ${T_FAST}ms ${EASE}` }}>
       <circle r={size*1.6} fill="url(#haloGrad)" opacity="0.35"/>
       <rect x={-w/2} y={-h/2} width={w} height={h} rx={size*0.26}
         fill="#FFFFFF" stroke="#DADADA" strokeWidth="0.6"/>
@@ -562,7 +563,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
         <rect width={VB_W} height={VB_H} fill="url(#dotgrid)" onClick={resetAll}/>
 
         <g transform={`translate(${tx}, ${ty}) scale(${zoom})`}
-           style={{ transition: `transform ${T_FAST}ms ${EASE}` }}>
+           style={{ transition: `transform ${T_FAST}ms ${EASE}`, willChange: 'transform' }}>
           <line x1={btcPos.x} y1={btcPos.y} x2="0" y2="0"
             stroke="#CFCFD2" strokeWidth="1.1"
             opacity={selectedChain ? 0 : 0.9}
@@ -675,7 +676,10 @@ function Mindmap({ motionSpeed = 1.4 }) {
                 <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
                   selected={isSel}
                   onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}/>
-                {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt' || s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
+                {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt') && s.pair.length > 1 && (
+                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
+                )}
+                {(s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
                   <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
                 )}
                 {(s.type === 'bridge' || s.type === 'payback' || s.type === 'refuel') && s.pair.length > 1 && (
@@ -689,7 +693,7 @@ function Mindmap({ motionSpeed = 1.4 }) {
             const btcHidden = Boolean(selectedChain) && !(protocolsByChain[selectedChain] || []).some(s => s.type === 'payback');
             return <BitcoinSource x={btcPos.x} y={btcPos.y} size={chainSize*0.95} hidden={btcHidden}/>;
           })()}
-          <GatewayCore size={gatewaySize}/>
+          <GatewayCore size={gatewaySize} hidden={Boolean(selectedChain)}/>
         </g>
       </svg>
 
