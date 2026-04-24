@@ -303,6 +303,7 @@ export async function executeAaveProtocolCanaryPlan({
   settlementTimeoutMs = defaultSettlementTimeoutMs(0, { minimumMs: 60_000, extraSeconds: 0 }),
   pollIntervalMs = 5_000,
   sleepImpl = sleep,
+  exitAfterProof = true,
 } = {}) {
   if (!Array.isArray(plan?.steps) || plan.steps.length !== 2) {
     throw new Error("Aave protocol canary plan must have approve and supply steps");
@@ -392,6 +393,46 @@ export async function executeAaveProtocolCanaryPlan({
       assetBalanceBefore,
       shareBalanceBefore,
       shareProof,
+    };
+  }
+
+  if (!exitAfterProof) {
+    const assetBalanceAfter = await readEvmAssetBalance({
+      asset: plan.asset,
+      owner: plan.senderAddress,
+      readErc20BalanceImpl,
+      readNativeBalanceImpl,
+    });
+    const shareBalanceAfter = await readEvmAssetBalance({
+      asset: plan.shareAsset,
+      owner: plan.senderAddress,
+      readErc20BalanceImpl,
+      readNativeBalanceImpl,
+    });
+    const shareDelta = (BigInt(shareProof.settledBalance) - BigInt(shareBalanceBefore.balance ?? 0)).toString();
+    return {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      settlementStatus: "position_opened",
+      plan,
+      stepResults,
+      assetBalanceBefore,
+      assetBalanceAfter,
+      shareBalanceBefore,
+      shareBalanceAfter,
+      shareProof,
+      positionProof: {
+        status: "delivered",
+        proofSource: shareProof.proofSource,
+        observedDelta: shareDelta,
+        requiredDelta: "1",
+      },
+      destinationProof: {
+        status: "delivered",
+        proofSource: shareProof.proofSource,
+        observedDelta: shareDelta,
+        requiredDelta: "1",
+      },
     };
   }
 
