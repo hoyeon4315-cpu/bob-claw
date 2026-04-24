@@ -49,7 +49,7 @@ function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
   const requiredChord = 2 * chipR + padding;
   const required = requiredChord / (2 * Math.sin(gap / 2));
-  const maxR = 140; // viewport-aware cap so chips stay visible
+  const maxR = 110; // viewport-aware cap so chips stay visible
   return Math.max(minR, Math.min(maxR, required));
 }
 
@@ -173,7 +173,7 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDra
           xmlns="http://www.w3.org/1999/xhtml"
           type="button"
           aria-label={`${chain.name} chain`}
-          onPointerDown={(e) => { onDragStart?.(e); handleTap(e); }}
+          onPointerDown={(e) => { onDragStart?.(e); }}
           onClick={(event) => event.stopPropagation?.()}
           style={{
             width: '100%',
@@ -384,7 +384,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
           xmlns="http://www.w3.org/1999/xhtml"
           type="button"
           aria-label={`${strategy.label || strategy.protocol} protocol`}
-          onPointerDown={(e) => { onDragStart?.(e); handleTap(e); }}
+          onPointerDown={(e) => { onDragStart?.(e); }}
           onClick={(event) => event.stopPropagation?.()}
           style={{
             width: '100%',
@@ -652,7 +652,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     const availW = VB_W - reserveSide * 2;
     const availH = VB_H - reserveTop - cardReserveBottom;
     const fitZoom = Math.min(availW / width, availH / height);
-    const zoom = clamp(fitZoom, 0.8, selectedProtocolId ? 1.55 : 1.35);
+    const zoom = clamp(fitZoom, 0.65, selectedProtocolId ? 1.55 : 1.35);
     const focus = {
       x: (finalBounds.minX + finalBounds.maxX) / 2,
       y: (finalBounds.minY + finalBounds.maxY) / 2,
@@ -689,28 +689,41 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     return { x: fallbackX, y: fallbackY };
   }
 
-  function handleDragStart(e, bodyId) {
+  function handleDragStart(e, bodyId, onTap) {
     const body = physicsRef.current.get(bodyId);
     if (!body) return;
     if (body.draggable === false) return;
     e.stopPropagation?.();
     e.preventDefault?.();
-    body.isDragging = true;
-    dragRef.current = bodyId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const downAt = performance.now();
+    let moved = false;
     const svg = svgRef.current;
 
     const move = (ev) => {
-      const local = screenToLocal(svg, ev.clientX, ev.clientY, zoom, tx, ty);
-      body.x = local.x;
-      body.y = local.y;
-      body.vx = 0;
-      body.vy = 0;
+      const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+      if (!moved && dist > 3) {
+        moved = true;
+        body.isDragging = true;
+        dragRef.current = bodyId;
+      }
+      if (moved) {
+        const local = screenToLocal(svg, ev.clientX, ev.clientY, zoom, tx, ty);
+        body.x = local.x;
+        body.y = local.y;
+        body.vx = 0;
+        body.vy = 0;
+      }
     };
     const up = () => {
-      body.isDragging = false;
-      dragRef.current = null;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      body.isDragging = false;
+      dragRef.current = null;
+      if (!moved && performance.now() - downAt < 250) {
+        onTap?.();
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -797,8 +810,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
                 key={c.id} chain={c} x={pos.x} y={pos.y} size={chainSize}
                 hidden={hidden} active={active}
                 labelBelow={ringPos[c.id].y >= 0}
-                onTap={() => { setSelectedProtocolId(null); setSelectedChain(prev => prev === c.id ? null : c.id); }}
-                onDragStart={(e) => handleDragStart(e, `chain:${c.id}`)}
+                onDragStart={(e) => handleDragStart(e, `chain:${c.id}`, () => { setSelectedProtocolId(null); setSelectedChain(prev => prev === c.id ? null : c.id); })}
               />
             );
           })}
@@ -862,7 +874,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
                 <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
                   selected={isSel}
                   onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}
-                  onDragStart={(e) => handleDragStart(e, `proto:${s.id}`)}/>
+                  onDragStart={(e) => handleDragStart(e, `proto:${s.id}`, () => setSelectedProtocolId(prev => prev === s.id ? null : s.id))}/>
                 {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt') && s.pair.length > 1 && (
                   <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
                 )}
