@@ -50,6 +50,7 @@ import { buildDefaultWrappedBtcLendingLoopConfig } from "../strategy/wrapped-btc
 import { buildDefaultRecursiveLendingLoopConfig } from "../strategy/recursive-lending-loop-slice.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "../strategy/wrapped-btc-loop-bindings.mjs";
 import { buildMoonwellWrappedBtcLoopIntent } from "../executor/helpers/moonwell-intent-builder.mjs";
+import { buildVaultDepositIntent } from "../executor/helpers/vault-intent-builder.mjs";
 
 function aggressiveEvaluate(baseEvaluate, defaultCapUsd = 25) {
   return function ({ config, market, receipts, now }) {
@@ -419,9 +420,15 @@ async function main() {
       snapshotPaths: snapshots.map((s) => s.path),
     });
     const market = mergeMarket(snapshots);
-    const config = { ...adapter.buildConfig(), id: sid };
     const receipts = loadReceipts(auditPath, [sid]);
     const caps = getStrategyCaps(sid);
+    const rawConfig = adapter.buildConfig();
+    const config = {
+      ...rawConfig,
+      id: sid,
+      perTradeCapUsd: rawConfig.perTradeCapUsd || (caps?.perTxUsd ?? 25),
+      perDayCapUsd: rawConfig.perDayCapUsd || (caps?.perDayUsd ?? 1_000_000),
+    };
     const gasObservation = caps
       ? buildObservedGasFloats({
           strategyCaps: caps,
@@ -547,8 +554,34 @@ async function main() {
     if (!strategyIntentsBuilt && alloc.strategyId === "beefy-folding-vault") {
       const beefyVault = getProtocolAddress("beefy", "base", "vault");
       if (beefyVault?.verified) {
-        // TODO: buildBeefyVaultIntent({ vaultAddress: beefyVault.address, assetAddress: beefyVault.asset, ... })
-        // For now, fall through to generic intent
+        try {
+          const plan = await buildVaultDepositIntent({
+            strategyId: alloc.strategyId,
+            chain: alloc.chain,
+            amountUsd,
+            vaultAddress: beefyVault.address,
+            assetAddress: beefyVault.asset,
+            assetDecimals: beefyVault.decimals || 18,
+            assetPriceUsd: btcPriceUsd,
+            now: result.observedAt,
+            estimateGasImpl: () => { throw new Error("skip"); },
+          });
+          for (const step of plan.steps || []) {
+            generatedIntents.push(normalizeExecutionIntent(step.intent));
+          }
+          strategyIntentsBuilt = true;
+        } catch (err) {
+          generatedIntents.push({
+            strategyId: alloc.strategyId,
+            chain: alloc.chain,
+            amountUsd,
+            mode: "live",
+            observedAt: result.observedAt,
+            normalizationError: err.message,
+            metadata: { protocol: alloc.protocol, source: "vault_builder_failed" },
+          });
+          strategyIntentsBuilt = true;
+        }
       }
     }
 

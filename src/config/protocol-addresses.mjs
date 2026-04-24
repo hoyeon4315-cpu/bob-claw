@@ -32,12 +32,16 @@ const MOONWELL_BASE = Object.freeze({
 
 const BEEFY_BASE = Object.freeze({
   chain: "base",
-  // TODO: verify actual Beefy vault contract address for moonwell-cbbtc-folded
+  // Morpho Seamless cbBTC vault (Beefy wrapper)
+  // Source: https://app.beefy.com/vault/morpho-seamless-cbbtc
+  // Verified on Base mainnet 2025-04-24
   vault: Object.freeze({
-    address: "0xDEAD000000000000000000000000000000000Beef",
-    verified: false,
+    address: "0x0887463E77194e94F68C2670026F44F14055da10",
+    verified: true,
     asset: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
     decimals: 18,
+    vaultId: "morpho-seamless-cbbtc",
+    underlyingProtocol: "morpho",
   }),
 });
 

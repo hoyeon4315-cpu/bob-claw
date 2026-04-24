@@ -32,8 +32,8 @@ const DEFAULT_CONFIG = Object.freeze({
   isLeverage: true, // underlying protocol uses leverage; vault abstracts it
   chain: "base",
   vaultProtocol: "beefy",
-  vaultId: "moonwell-cbbtc-folded",
-  underlyingProtocol: "moonwell",
+  vaultId: "morpho-seamless-cbbtc",
+  underlyingProtocol: "morpho",
   sourceAsset: "BTC",
   bridgedAsset: "cbBTC",
   perTradeCapUsd: 0, // shadow until receipts
