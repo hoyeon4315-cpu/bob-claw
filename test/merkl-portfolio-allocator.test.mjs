@@ -229,6 +229,42 @@ test("allocator tops up an already open opportunity within the per-opportunity c
   assert.equal(plan.entryQueue[0].targetAmount, "200000");
 });
 
+test("allocator can top up immediately after a delivered canary without canary cooldown blocking hold entry", () => {
+  const now = "2026-04-24T06:02:00.000Z";
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [queueItem()] },
+    inventorySnapshot,
+    canaryExecutions: [
+      {
+        observedAt: "2026-04-24T06:01:00.000Z",
+        mode: "execute",
+        queueItem: { opportunityId: "opp-1" },
+        execution: { settlementStatus: "delivered" },
+      },
+    ],
+    positionRecords: [
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "p1",
+        opportunityId: "opp-1",
+        amountUsd: 0.25,
+      },
+    ],
+    maxUsd: 0.25,
+    policy: {
+      maxActiveUsd: 1,
+      perOpportunityMaxUsd: 0.45,
+      minPositionUsd: 0.05,
+    },
+    now,
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].entryAction, "top_up");
+  assert.equal(plan.entryQueue[0].targetUsd, 0.2);
+});
+
 test("allocator can still block duplicate opportunities when top-ups are disabled", () => {
   const plan = buildMerklPortfolioAllocationPlan({
     queue: { queue: [queueItem()] },

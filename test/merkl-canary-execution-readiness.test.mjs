@@ -95,6 +95,40 @@ test("merkl canary execution readiness enforces a recent execution cooldown", ()
   assert.equal(readiness.cooldownUntil, "2026-04-24T00:10:00.000Z");
 });
 
+test("merkl canary execution readiness does not use vault shares as entry inventory", () => {
+  const queueItem = {
+    opportunityId: "yo-base",
+    chain: "base",
+    entryAssets: ["USDC", "yoUSD"],
+    protocolBindingPlan: {
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        shareTokenAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      },
+    },
+  };
+
+  const readiness = buildMerklCanaryExecutionReadiness({
+    queueItem,
+    inventorySnapshot: {
+      native: [{ chain: "base", asset: "ETH", actual: "100", estimatedUsd: 1 }],
+      tokens: [
+        {
+          chain: "base",
+          ticker: "yoUSD",
+          token: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+          actual: "75000000",
+          estimatedUsd: 75,
+        },
+      ],
+    },
+  });
+
+  assert.equal(readiness.status, "inventory_missing");
+  assert.equal(readiness.matchedToken, null);
+});
+
 test("latestTreasuryInventoryForAddress selects the latest matching snapshot", () => {
   const snapshot = latestTreasuryInventoryForAddress([
     { address: "0xabc", observedAt: "2026-04-24T00:00:00.000Z" },

@@ -38,11 +38,16 @@ function matchingEntryAssets(queueItem = {}, token = {}) {
 function matchingInventoryToken(queueItem = {}, inventorySnapshot = null) {
   const tokens = inventorySnapshot?.tokens || [];
   const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
+  const underlying = tokens.find((token) => {
+    if (token.chain !== queueItem.chain || !positiveUnits(token.actual)) return false;
+    if (sameAddress(token.token, binding.assetAddress)) return true;
+    return matchingEntryAssets(queueItem, token);
+  });
+  if (underlying && !sameAddress(underlying.token, binding.shareTokenAddress)) return underlying;
   return tokens.find((token) => {
     if (token.chain !== queueItem.chain || !positiveUnits(token.actual)) return false;
     if (sameAddress(token.token, binding.assetAddress)) return true;
-    if (sameAddress(token.token, binding.shareTokenAddress)) return true;
-    return matchingEntryAssets(queueItem, token);
+    return matchingEntryAssets(queueItem, token) && !sameAddress(token.token, binding.shareTokenAddress);
   }) || null;
 }
 

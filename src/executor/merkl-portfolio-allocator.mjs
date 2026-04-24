@@ -177,6 +177,7 @@ export function buildMerklPortfolioAllocationPlan({
       inventorySnapshot,
       canaryExecutions,
       now,
+      cooldownMs: 0,
     });
     const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
     const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
