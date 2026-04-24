@@ -151,5 +151,79 @@ test("report-strategy-tick-slice joins reconciled sats profit into promotion evi
   assert.equal(row.strategyId, strategyId);
   assert.equal(row.receiptCountSignerBacked, 2);
   assert.equal(row.promotion.fastTrack.eligible, true);
+  assert.equal(row.liveEligibility.liveEligible, true);
   assert.equal(slice.summary.strategiesEligibleFastTrack, 1);
+  assert.equal(slice.summary.strategiesLiveEligible, 1);
+});
+
+test("report-strategy-tick-slice excludes operator-held wrapped BTC loop from live eligible count", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-hold-"));
+  const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
+  const auditLog = join(cwd, "logs", "signer-audit.jsonl");
+  const outPath = join(cwd, "dashboard", "public", "strategy-tick-status.json");
+  const strategyId = "wrapped-btc-loop-base-moonwell";
+  const now = Date.now();
+
+  await writeJsonl(tickLog, [
+    {
+      schemaVersion: 1,
+      tickAt: new Date(now).toISOString(),
+      strategies: [strategyId],
+      reportSummaries: [
+        {
+          strategyId,
+          mode: "live_candidate",
+          blockerCount: 0,
+          blockers: [],
+        },
+      ],
+      snapshotSummary: [{ strategyId, capsConfigured: true }],
+      blockers: [{ strategyId, mode: "live_candidate", blockers: [] }],
+      dispatchSummary: { allowCount: 0, denyCount: 0 },
+      candidateCount: 0,
+    },
+  ]);
+  await writeJsonl(auditLog, [
+    {
+      strategyId,
+      observedAt: new Date(now - 60_000).toISOString(),
+      broadcast: { txHash: "0x111" },
+      lifecycle: { stage: "confirmed" },
+    },
+    {
+      strategyId,
+      observedAt: new Date(now - 30_000).toISOString(),
+      broadcast: { txHash: "0x222" },
+      lifecycle: { stage: "confirmed" },
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "src/cli/report-strategy-tick-slice.mjs"),
+      `--tick-log=${tickLog}`,
+      `--audit=${auditLog}`,
+      `--out=${outPath}`,
+      `--strategy=${strategyId}`,
+    ],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const slice = JSON.parse(await readFile(outPath, "utf8"));
+  const row = slice.strategies[0];
+  assert.equal(row.promotion.fastTrack.eligible, true);
+  assert.equal(row.operatorHold, true);
+  assert.equal(row.autoExecute, false);
+  assert.equal(row.liveEligibility.liveEligible, false);
+  assert.equal(row.liveEligibility.blockers.includes("strategy_auto_execute_disabled"), true);
+  assert.equal(row.liveEligibility.blockers.includes("operator_hold"), true);
+  assert.equal(slice.summary.strategiesEligibleFastTrack, 1);
+  assert.equal(slice.summary.strategiesLiveEligible, 0);
+  assert.equal(slice.summary.strategiesOperatorHold, 1);
+  assert.equal(slice.strategyStage.liveReadyCount, 0);
 });
