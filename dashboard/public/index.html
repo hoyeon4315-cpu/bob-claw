@@ -296,6 +296,27 @@
       );
     }
 
+    function strategyDesc(s) {
+      const pair = (s.pair || []).filter(Boolean).map(p => p.toUpperCase()).join(' / ');
+      const type = s.type;
+      if (type === 'loop') {
+        return (s.loops ? `×${s.loops} 循环杠杆` : '循环杠杆') + (pair ? ` · ${pair}` : '');
+      }
+      if (type === 'pt') return `PT 固定利率${pair ? ' · ' + pair : ''}`;
+      if (type === 'cl_lp') return `CL 流动性${pair ? ' · ' + pair : ''}`;
+      if (type === 'lp' || type === 'lp_bgt') return `流动性${pair ? ' · ' + pair : ''}`;
+      if (type === 'basis') return `基差套利${s.apyPct != null ? ' · APR ' + s.apyPct.toFixed(1) + '%' : ''}`;
+      if (type === 'fold') return `杠杆挖矿${s.loops ? ' · ×' + s.loops : ''}${pair ? ' · ' + pair : ''}`;
+      if (type === 'bridge') return `跨链桥接${pair ? ' · ' + pair : ''}`;
+      if (type === 'payback') return '偿还路径' + (pair ? ' · ' + pair : '');
+      if (type === 'arb') return `套利${pair ? ' · ' + pair : ''}`;
+      if (type === 'swap') return `兑换${pair ? ' · ' + pair : ''}`;
+      if (type === 'canary') return '金丝雀测试' + (pair ? ' · ' + pair : '');
+      if (type === 'reserve') return `储备${pair ? ' · ' + pair : ''}`;
+      if (type === 'refuel') return 'Gas 补给';
+      return pair || s.type;
+    }
+
     function StrategyRow({ s, isLast }) {
       const chain = CHAINS.find(c => c.id === s.chain);
       return (
@@ -310,8 +331,10 @@
             <div style={{ fontSize: 12.5, fontWeight: 500, letterSpacing: -0.1 }}>{s.label}</div>
             <div style={{ fontSize: 10.5, color: 'var(--ink-3)', marginTop: 1 }}>
               {chain?.name}
-              {s.loops ? ` · ×${s.loops}` : ''}
               {s.apyPct != null ? ` · ${s.apyPct.toFixed(1)}%` : ''}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 1 }}>
+              {strategyDesc(s)}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
