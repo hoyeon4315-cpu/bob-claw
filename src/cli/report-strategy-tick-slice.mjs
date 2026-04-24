@@ -30,7 +30,35 @@ import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
 
-const DEFAULT_STRATEGIES = ["beefy-folding-vault", "wrapped-btc-loop-base-moonwell", "gateway_native_asset_conversion_sleeve"];
+const DEFAULT_STRATEGIES = [
+  "wrapped-btc-loop-base-moonwell",
+  "recursive_wrapped_btc_lending_loop",
+  "gateway-btc-onramp",
+  "gateway-btc-offramp",
+  "gateway-btc-funding-transfer",
+  "proxy-spread-experiment",
+  "token-dex-experiment",
+  "native-dex-experiment",
+  "gas-zip-native-refuel",
+  "wrapper-btc-arbitrage",
+  "beefy-folding-vault",
+  "pendle-pt-lbtc-base",
+  "aerodrome-cl-base",
+  "pendle-pt-solvbtc-bbn-bsc",
+  "berachain-bend-bex-bgt",
+  "gmx-v2-perp-basis-avax",
+  "stablecoin_spread_loop",
+  "proxy_spread_expansion",
+  "tokenized_reserve_sleeve",
+  "gateway_native_asset_conversion_sleeve",
+  "recursive_stablecoin_lending_loop",
+  "destination_wrapped_btc_rotation",
+  "stablecoin_treasury_rotation",
+  "gateway_proxy_spread_rebalance_recheck",
+  "macro_asset_rotation",
+  "eth_destination_deployment",
+  "onchain_btc_perp_basis",
+];
 const OPERATOR_HELD_STRATEGIES = new Set([
   "wrapped-btc-loop-base-moonwell",
   "recursive_wrapped_btc_lending_loop",
