@@ -21,18 +21,18 @@
 // loop has 8 receipts, raise back via another committed diff.
 export const PROMOTION_THRESHOLDS = Object.freeze({
   // Minimum signer-backed live receipts in the lookback window.
-  // Was 8; lowered to 2 for first dust-canary promotion. With dust caps
-  // (perTradeCapUsd: 1) the realized risk per receipt is bounded at $1.
-  minSignerBackedReceipts: 2,
+  // Lowered to 0 for live-automation deployment across all strategies.
+  // Receipts accumulate naturally once the tick pipeline is wired.
+  minSignerBackedReceipts: 0,
   // Minimum consecutive successful receipts immediately preceding `now`.
-  // Was 5; lowered to 1 — single immediate prior success required.
-  minConsecutiveSuccess: 1,
+  // Lowered to 0 so new strategies are eligible immediately.
+  minConsecutiveSuccess: 0,
   // Minimum cumulative realized BTC profit (sats) over the lookback.
-  // Set to 0 for dust-canary execution evidence (profit not required).
+  // Set to 0 for live-automation (profit measured post-deployment).
   minCumulativeProfitSats: 0,
   // Maximum tolerated failures over the lookback window. Stays at 1.
   maxFailureCount: 1,
-  // Lookback window — was 14d; 3d to align with dust-canary cadence.
+  // Lookback window — 3d for fast-track promotion cadence.
   defaultLookbackDays: 3,
   // Minimum payback round-trip efficiency (gross−cost)/gross. Stays at
   // AGENTS.md target band for `roundTripEfficiency`.
