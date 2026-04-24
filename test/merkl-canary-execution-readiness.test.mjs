@@ -87,12 +87,12 @@ test("merkl canary execution readiness enforces a recent execution cooldown", ()
     queueItem,
     inventorySnapshot,
     canaryExecutions,
-    now: "2026-04-24T00:30:00.000Z",
+    now: "2026-04-24T00:07:00.000Z",
   });
 
   assert.equal(readiness.status, "cooldown_active");
   assert.equal(readiness.cooldownActive, true);
-  assert.ok(readiness.cooldownUntil);
+  assert.equal(readiness.cooldownUntil, "2026-04-24T00:10:00.000Z");
 });
 
 test("latestTreasuryInventoryForAddress selects the latest matching snapshot", () => {
