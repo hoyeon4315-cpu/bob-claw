@@ -653,7 +653,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     const fitZoom = Math.min(availW / width, availH / height);
     const zoom = selectedProtocolId
       ? clamp(fitZoom, 0.6, 1.55)
-      : Math.max(fitZoom, 0.7);
+      : clamp(fitZoom, 0.7, 1.0);
     const focus = {
       x: (finalBounds.minX + finalBounds.maxX) / 2,
       y: (finalBounds.minY + finalBounds.maxY) / 2,
