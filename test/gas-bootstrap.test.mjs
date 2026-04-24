@@ -30,7 +30,32 @@ describe("gas-bootstrap", () => {
     assert.equal(r.reason, "gas_below_floor");
     assert.ok(r.bootstrapPlan);
     assert.equal(r.bootstrapPlan.type, "gas_topup");
+    assert.equal(r.bootstrapPlan.queueRole, "prerequisite_before_original_intent");
     assert.equal(r.bootstrapPlan.targetChain, "base");
+  });
+
+  test("gas bootstrap rejects refill cost above expected edge", () => {
+    const r = evaluateGasBootstrap({
+      intent: { chain: "base", amountUsd: 100 },
+      gasFloats: {
+        base: { actualWei: "500000000000000", targetWei: "1000000000000000000" },
+        bob: { actualWei: "2000000000000000000", targetWei: "1000000000000000000" },
+      },
+      hopCatalog: [
+        {
+          from: { chain: "bob", asset: "ETH" },
+          to: { chain: "base", asset: "ETH" },
+          kind: "gas_topup",
+          estimatedFeeBps: 5,
+          estimatedCostWei: "100000000000000",
+          estimatedCostUsd: 2,
+        },
+      ],
+      expectedEdgeUsd: 1,
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, "bootstrap_failed");
+    assert.equal(r.reason, "bootstrap_cost_exceeds_expected_edge");
   });
 
   test("no bootstrap path → bootstrap_failed", () => {

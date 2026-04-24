@@ -65,12 +65,16 @@ test("execution surfaces classify missing runners separately from runnable obser
    assert.equal(gateway.liveCapable, true);
   assert.equal(gateway.selectedMode, "shadow");
   assert.equal(gateway.fallbackReason, "route_specific_executor_inputs_required");
+  assert.equal(gateway.liveAdmissionBlockers.includes("route_specific_executor_inputs_required"), true);
   assert.equal(proxy.liveCapable, true);
   assert.equal(proxy.selectedMode, "shadow");
   assert.equal(proxy.fallbackReason, "route_specific_executor_inputs_required");
+  assert.equal(proxy.liveAdmissionBlockers.includes("route_specific_executor_inputs_required"), true);
   assert.equal(ethGateway.liveCapable, true);
   assert.equal(ethGateway.selectedMode, "shadow");
   assert.equal(ethGateway.fallbackReason, "multichain_eth_surface_unconfirmed");
+  assert.equal(ethGateway.liveAdmissionBlockers.includes("live_trading_blocked"), true);
+  assert.equal(ethGateway.liveAdmissionBlockers.includes("multichain_eth_surface_unconfirmed"), true);
   assert.equal(ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-onramp"), true);
   assert.equal(ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-offramp"), true);
   assert.equal(stable.capabilityBucket, "dry_run_or_shadow_only");
@@ -80,5 +84,6 @@ test("execution surfaces classify missing runners separately from runnable obser
   assert.equal(ethMixedStable.selectedCommands.some((command) => command.script === "analyze:ethereum-routes"), true);
   assert.equal(btcFlash.selectedMode, "dry_run");
   assert.equal(btcFlash.currentLiveEligible, false);
+  assert.equal(btcFlash.liveAdmissionBlockers.includes("flash_live_admission_blocked"), true);
   assert.equal(report.summary.missingExecutorCount, 0);
 });

@@ -79,7 +79,7 @@ test("payback status cli reports missing destination env and supports destinatio
   assert.equal(blocked.status, 0, blocked.stderr || blocked.stdout);
   const blockedReport = JSON.parse(blocked.stdout);
   assert.equal(blockedReport.payback.scheduler.status, "blocked");
-  assert.equal(blockedReport.payback.scheduler.reason, "payback_btc_destination_missing");
+  assert.equal(blockedReport.payback.scheduler.reason, "missing_destination_config");
   assert.equal(blockedReport.payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");
   assert.equal(blockedReport.payback.scheduler.minimumPaybackProgress.source, "after_destination");
   assert.equal(blockedReport.payback.scheduler.minimumPaybackProgress.reason, "planning_required");

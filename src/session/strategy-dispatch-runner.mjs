@@ -12,6 +12,14 @@ export const DEFAULT_ALLOWED_STRATEGY_DISPATCH_SCRIPTS = new Set([
   "analyze:triangular-spreads",
   "audit:eth-family-overfit",
   "collect:triangular-spreads",
+  "executor:gateway-btc-consolidation",
+  "executor:gateway-btc-offramp",
+  "executor:gateway-btc-onramp",
+  "executor:live-canary-sweep",
+  "executor:merkl-canary-autopilot",
+  "executor:native-dex-experiment",
+  "executor:payback-scheduler",
+  "executor:token-dex-experiment",
   "flash:dryrun",
   "report:btc-proxy-spreads",
   "report:strategy-execution-surfaces",
@@ -66,7 +74,10 @@ function requestedCommandsForStrategy(strategy, requestedMode) {
     return {
       mode,
       commands,
-      blockedReason: "requested_mode_not_supported",
+      blockedReason:
+        mode === "live" && Array.isArray(strategy.liveAdmissionBlockers) && strategy.liveAdmissionBlockers.length
+          ? strategy.liveAdmissionBlockers[0]
+          : "requested_mode_not_supported",
     };
   }
   return {
@@ -112,6 +123,7 @@ async function executeStrategyItem(
     liveCapable: Boolean(strategy.liveCapable),
     currentLiveEligible: Boolean(strategy.currentLiveEligible),
     blockedReason: selection.blockedReason || null,
+    liveAdmissionBlockers: Array.isArray(strategy.liveAdmissionBlockers) ? strategy.liveAdmissionBlockers : [],
     fallbackReason: strategy.fallbackReason || null,
     scripts: scriptsForCommands(selection.commands),
   };

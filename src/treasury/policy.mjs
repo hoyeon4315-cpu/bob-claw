@@ -196,7 +196,7 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
     ],
     refillPolicy: {
       requireActiveChain: false,
-      requireRouteDemandSignal: true,
+      requireRouteDemandSignal: false,
       maxPendingJobs: 4,
       minHoursBetweenRefillsPerChain: 6,
       maxSingleRefillCostUsd: 0.5,

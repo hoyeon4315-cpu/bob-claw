@@ -80,6 +80,20 @@ test("strategy dispatch blocks unsupported requested modes", async () => {
   assert.equal(record.strategyResults[0].blockedReason, "requested_mode_not_supported");
 });
 
+test("strategy dispatch exposes live admission blockers for live requests", async () => {
+  const record = await executeStrategyDispatch({
+    strategies: [strategyFixture({
+      liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+    })],
+    execute: false,
+    requestedMode: "live",
+  });
+
+  assert.equal(record.strategyResults[0].executionStatus, "blocked");
+  assert.equal(record.strategyResults[0].blockedReason, "route_specific_executor_inputs_required");
+  assert.deepEqual(record.strategyResults[0].liveAdmissionBlockers, ["route_specific_executor_inputs_required"]);
+});
+
 test("strategy dispatch summary aggregates execute and preview runs", () => {
   const summary = buildStrategyDispatchSummary([
     {

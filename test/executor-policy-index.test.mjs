@@ -161,9 +161,9 @@ test("emergency unwind intent passes cap-check and hf-check via policy", async (
   assert.equal(policy.decision, "ALLOW");
 });
 
-test("tiny_live_canary policy can pass while operator hold still blocks live execution", async () => {
+test("tiny_live_canary policy can pass while autoExecute disabled blocks live execution", async () => {
   const intent = buildTinyLiveCanaryIntent({
-    strategyId: "wrapped-btc-loop-base-moonwell",
+    strategyId: "recursive_wrapped_btc_lending_loop",
     chain: "base",
     amountUsd: 25,
     microCanaryStatus: "minimal_live_proof_exists",
@@ -173,7 +173,7 @@ test("tiny_live_canary policy can pass while operator hold still blocks live exe
     intent,
     auditRecords: [
       {
-        strategyId: "wrapped-btc-loop-base-moonwell",
+        strategyId: "recursive_wrapped_btc_lending_loop",
         intent: { intentType: "emergency_unwind" },
         lifecycle: { stage: "confirmed" },
         observedAt: "2026-04-22T00:00:00.000Z",

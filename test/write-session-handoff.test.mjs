@@ -106,9 +106,9 @@ test("write-session-handoff includes payback readiness summary and preview comma
   assert.match(doc, /Auto-unwind runtime: count=\d+ top=`.*` status=`.*` triggers=.* next=`.*`/);
   assert.match(doc, /## Live Baseline/);
   assert.match(doc, /Blocker counts: refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+ total=\d+/);
-  assert.match(doc, /Operator blocker: status=`payback_destination_env_missing` env=`PAYBACK_BTC_DEST_ADDR` next=`set_payback_btc_destination_env`/);
+  assert.match(doc, /Operator blocker: status=`missing_destination_config` env=`PAYBACK_BTC_DEST_ADDR` next=`set_payback_btc_destination_env`/);
   assert.match(doc, /## Payback Readiness/);
-  assert.match(doc, /Scheduler: status=`blocked` reason=`payback_btc_destination_missing` next=`set_payback_btc_destination_env`/);
+  assert.match(doc, /Scheduler: status=`blocked` reason=`missing_destination_config` next=`set_payback_btc_destination_env`/);
   assert.match(doc, /Required env: `PAYBACK_BTC_DEST_ADDR`/);
   assert.match(doc, /After destination is set: status=`carry` reason=`planned_payback_below_minimum` grossTarget=`50 sats` minPayback=`50,000 sats` remaining=`49,950 sats` progress=`0.10%`/);
   assert.match(doc, /Preview command: `npm run report:payback-status -- --json`/);

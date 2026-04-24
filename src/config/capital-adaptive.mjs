@@ -13,6 +13,12 @@ export const CAPITAL_ADAPTIVE_RATIOS = Object.freeze({
   maxDailyLossBtcShare: 0.03,
   maxFailedGasCost24hShare: 0.01,
   minOperatingFloorSats: 50_000,
+  capTiers: Object.freeze({
+    probe: Object.freeze({ perTxBtcShare: 0.0025, perDayBtcShare: 0.01, maxDailyLossBtcShare: 0.0025 }),
+    tiny: Object.freeze({ perTxBtcShare: 0.01, perDayBtcShare: 0.05, maxDailyLossBtcShare: 0.01 }),
+    pilot: Object.freeze({ perTxBtcShare: 0.05, perDayBtcShare: 0.20, maxDailyLossBtcShare: 0.03 }),
+    operating: Object.freeze({ perTxBtcShare: 0.10, perDayBtcShare: 0.35, maxDailyLossBtcShare: 0.05 }),
+  }),
   perStrategyShares: Object.freeze({
     S1_moonwell_usdc_pendle_pt_lbtc: 0.25,
     S2_pendle_pt_solvbtc_bbn: 0.20,
@@ -54,6 +60,14 @@ export function deriveCaps(operatingBtcSats, ratios = CAPITAL_ADAPTIVE_RATIOS) {
   for (const [id, share] of Object.entries(ratios.perStrategyShares)) {
     perStrategyBtcSats[id] = floorSats(operatingBtcSats * share);
   }
+  const capTiers = {};
+  for (const [tier, tierRatios] of Object.entries(ratios.capTiers || {})) {
+    capTiers[tier] = Object.freeze({
+      perTxBtcSats: floorSats(operatingBtcSats * tierRatios.perTxBtcShare),
+      perDayBtcSats: floorSats(operatingBtcSats * tierRatios.perDayBtcShare),
+      maxDailyLossBtcSats: floorSats(operatingBtcSats * tierRatios.maxDailyLossBtcShare),
+    });
+  }
 
   return Object.freeze({
     operatingBtcSats,
@@ -64,6 +78,7 @@ export function deriveCaps(operatingBtcSats, ratios = CAPITAL_ADAPTIVE_RATIOS) {
     maxDailyLossBtcSats,
     maxFailedGasCost24hBtcSats,
     perStrategyBtcSats: Object.freeze(perStrategyBtcSats),
+    capTiers: Object.freeze(capTiers),
     newEntriesAllowed: !belowFloor,
     appliedRatios: ratios,
   });
@@ -78,6 +93,14 @@ export function projectToUsd(caps, btcPriceUsd) {
   for (const [id, sats] of Object.entries(caps.perStrategyBtcSats)) {
     perStrategyUsd[id] = satsToUsd(sats);
   }
+  const capTiersUsd = {};
+  for (const [tier, values] of Object.entries(caps.capTiers || {})) {
+    capTiersUsd[tier] = {
+      perTxUsd: satsToUsd(values.perTxBtcSats),
+      perDayUsd: satsToUsd(values.perDayBtcSats),
+      maxDailyLossUsd: satsToUsd(values.maxDailyLossBtcSats),
+    };
+  }
   return {
     operatingUsd: satsToUsd(caps.operatingBtcSats),
     perTxUsd: satsToUsd(caps.perTxBtcSats),
@@ -85,6 +108,7 @@ export function projectToUsd(caps, btcPriceUsd) {
     maxDailyLossUsd: satsToUsd(caps.maxDailyLossBtcSats),
     maxFailedGasCost24hUsd: satsToUsd(caps.maxFailedGasCost24hBtcSats),
     perStrategyUsd,
+    capTiersUsd,
     btcPriceUsd,
     projectionOnly: true,
   };

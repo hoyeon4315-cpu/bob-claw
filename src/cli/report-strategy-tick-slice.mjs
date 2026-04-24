@@ -60,7 +60,7 @@ const DEFAULT_STRATEGIES = [
   "onchain_btc_perp_basis",
 ];
 const OPERATOR_HELD_STRATEGIES = new Set([
-  // "wrapped-btc-loop-base-moonwell", // RELEASED 2026-04-24 — 508 signer-backed receipts, fast-track eligible
+  "wrapped-btc-loop-base-moonwell",
   "recursive_wrapped_btc_lending_loop",
 ]);
 
@@ -148,8 +148,9 @@ function main() {
       thresholds: PROMOTION_THRESHOLDS_STRICT,
     });
     const strategyCaps = getStrategyCaps(sid);
-    const autoExecute = strategyCaps?.autoExecute === true;
     const operatorHold = OPERATOR_HELD_STRATEGIES.has(sid);
+    const capAutoExecute = strategyCaps?.autoExecute === true;
+    const autoExecute = capAutoExecute && operatorHold !== true;
     const demotion = evaluateDemotionPolicy({ strategyId: sid, receipts, nowMs });
     const liveEligible = promotionFastTrack.eligible === true
       && autoExecute

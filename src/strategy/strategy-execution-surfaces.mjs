@@ -27,6 +27,22 @@ function flashLiveAllowed(policy = null) {
   return FLASH_LIVE_ALLOWED.has(String(policy?.flashLiveAdmission || "").trim());
 }
 
+function liveAdmissionBlockers({
+  entry,
+  liveAllowed,
+  flashAllowed = true,
+  requiresFlash = false,
+  extra = [],
+  statusRequired = null,
+} = {}) {
+  return compact([
+    !liveAllowed ? "live_trading_blocked" : null,
+    requiresFlash && !flashAllowed ? "flash_live_admission_blocked" : null,
+    statusRequired && entry?.status !== statusRequired ? `status_not_${statusRequired}` : null,
+    ...(extra || []),
+  ]);
+}
+
 function laneForGroup(group = null) {
   if (group === "btcFamilies") return "btc_family";
   if (group === "ethBranches") return "eth_branch";
@@ -68,6 +84,11 @@ function buildSurface(entry, { group, policy }) {
     case "gateway_wrapped_btc_loops": {
       const selectedMode = "shadow";
       const selectedCommands = entry.commands || [];
+      const blockers = liveAdmissionBlockers({
+        entry,
+        liveAllowed,
+        extra: ["route_specific_executor_inputs_required"],
+      });
       return {
         ...shared,
         capabilityBucket: "dry_run_or_shadow_only",
@@ -77,12 +98,18 @@ function buildSurface(entry, { group, policy }) {
         selectedMode,
         fallbackReason: "route_specific_executor_inputs_required",
         missingCapabilities: [],
+        liveAdmissionBlockers: blockers,
         selectedCommands: withScripts(selectedCommands),
       };
     }
     case "btc_proxy_spreads": {
       const selectedMode = "shadow";
       const selectedCommands = proxyCommands(entry, selectedMode);
+      const blockers = liveAdmissionBlockers({
+        entry,
+        liveAllowed,
+        extra: ["route_specific_executor_inputs_required"],
+      });
       return {
         ...shared,
         capabilityBucket: "dry_run_or_shadow_only",
@@ -92,6 +119,7 @@ function buildSurface(entry, { group, policy }) {
         selectedMode,
         fallbackReason: "route_specific_executor_inputs_required",
         missingCapabilities: [],
+        liveAdmissionBlockers: blockers,
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -107,6 +135,11 @@ function buildSurface(entry, { group, policy }) {
         selectedMode,
         fallbackReason: "analysis_probe_only",
         missingCapabilities: [],
+        liveAdmissionBlockers: liveAdmissionBlockers({
+          entry,
+          liveAllowed,
+          extra: ["analysis_probe_only", "live_executor_not_bound"],
+        }),
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -114,6 +147,13 @@ function buildSurface(entry, { group, policy }) {
       const currentLiveEligible = entry.status === "candidate_for_validation" && liveAllowed && flashAllowed;
       const selectedMode = currentLiveEligible ? "live" : "dry_run";
       const selectedCommands = triangleCommands(entry, selectedMode);
+      const blockers = liveAdmissionBlockers({
+        entry,
+        liveAllowed,
+        flashAllowed,
+        requiresFlash: true,
+        statusRequired: "candidate_for_validation",
+      });
       return {
         ...shared,
         capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
@@ -132,12 +172,18 @@ function buildSurface(entry, { group, policy }) {
           !flashAllowed ? "flash_live_admission_blocked" : null,
           !liveAllowed ? "live_trading_blocked" : null,
         ]),
+        liveAdmissionBlockers: currentLiveEligible ? [] : blockers,
         selectedCommands: withScripts(selectedCommands),
       };
     }
     case "eth_family_gateway": {
       const selectedMode = "shadow";
       const selectedCommands = entry.commands || [];
+      const blockers = liveAdmissionBlockers({
+        entry,
+        liveAllowed,
+        extra: ["multichain_eth_surface_unconfirmed"],
+      });
       return {
         ...shared,
         capabilityBucket: "dry_run_or_shadow_only",
@@ -147,6 +193,7 @@ function buildSurface(entry, { group, policy }) {
         selectedMode,
         fallbackReason: "multichain_eth_surface_unconfirmed",
         missingCapabilities: ["multichain_eth_surface_unconfirmed"],
+        liveAdmissionBlockers: blockers,
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -162,6 +209,11 @@ function buildSurface(entry, { group, policy }) {
         selectedMode,
         fallbackReason: "analysis_probe_only",
         missingCapabilities: [],
+        liveAdmissionBlockers: liveAdmissionBlockers({
+          entry,
+          liveAllowed,
+          extra: ["analysis_probe_only", "live_executor_not_bound"],
+        }),
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -177,6 +229,11 @@ function buildSurface(entry, { group, policy }) {
         selectedMode,
         fallbackReason: "mixed_triangle_branch_observe_only",
         missingCapabilities: [],
+        liveAdmissionBlockers: liveAdmissionBlockers({
+          entry,
+          liveAllowed,
+          extra: ["mixed_triangle_branch_observe_only", "live_executor_not_bound"],
+        }),
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -184,6 +241,14 @@ function buildSurface(entry, { group, policy }) {
       const currentLiveEligible = entry.status === "candidate_for_validation" && liveAllowed && flashAllowed;
       const selectedMode = currentLiveEligible ? "live" : "dry_run";
       const selectedCommands = mixedFlashCommands(entry, selectedMode);
+      const blockers = liveAdmissionBlockers({
+        entry,
+        liveAllowed,
+        flashAllowed,
+        requiresFlash: true,
+        statusRequired: "candidate_for_validation",
+        extra: ["contract_not_generalized"],
+      });
       return {
         ...shared,
         capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
@@ -203,6 +268,7 @@ function buildSurface(entry, { group, policy }) {
           !flashAllowed ? "flash_live_admission_blocked" : null,
           !liveAllowed ? "live_trading_blocked" : null,
         ]),
+        liveAdmissionBlockers: currentLiveEligible ? [] : blockers,
         selectedCommands: withScripts(selectedCommands),
       };
     }
@@ -216,6 +282,7 @@ function buildSurface(entry, { group, policy }) {
         selectedMode: "analysis",
         fallbackReason: "unclassified_strategy_surface",
         missingCapabilities: ["unclassified_strategy_surface"],
+        liveAdmissionBlockers: ["unclassified_strategy_surface"],
         selectedCommands: withScripts(entry.commands || []),
       };
     }

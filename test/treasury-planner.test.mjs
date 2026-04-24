@@ -111,7 +111,7 @@ test("planner emits refill actions for active route-demand items", () => {
   assert.equal(plan.summary.noDemandBlockerCount, 0);
 });
 
-test("planner blocks token refill without demand signal", () => {
+test("planner can refill without route-demand signal in aggressive treasury mode", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = buildTreasuryPlan({
     policy,
@@ -119,12 +119,11 @@ test("planner blocks token refill without demand signal", () => {
     routeDemand: [],
   });
 
-  assert.equal(plan.blockers.some((item) => item.type === "native_refill_blocked_no_demand"), true);
-  assert.equal(plan.blockers.some((item) => item.type === "token_refill_blocked_no_demand"), true);
-  assert.equal(plan.blockers.find((item) => item.type === "native_refill_blocked_no_demand").refillAmountDecimal, 0.004);
-  assert.equal(plan.blockers.find((item) => item.type === "token_refill_blocked_no_demand").refillEstimatedUsd, 17.5);
-  assert.equal(plan.actions.length, 0);
-  assert.equal(plan.summary.noDemandBlockerCount, 2);
+  assert.equal(plan.blockers.some((item) => item.type === "native_refill_blocked_no_demand"), false);
+  assert.equal(plan.blockers.some((item) => item.type === "token_refill_blocked_no_demand"), false);
+  assert.equal(plan.actions.some((item) => item.type === "refill_native" && item.chain === "bob"), true);
+  assert.equal(plan.actions.some((item) => item.type === "refill_token" && item.chain === "bob"), true);
+  assert.equal(plan.summary.noDemandBlockerCount, 0);
 });
 
 test("planner promotes observe-only supported chains into refill actions when route demand targets destination gas", () => {
@@ -225,7 +224,7 @@ test("planner uses token-specific demand when a chain has multiple modeled token
   });
 
   assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"), true);
-  assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"), false);
+  assert.equal(plan.actions.some((item) => item.chain === "base" && item.token === "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"), true);
 });
 
 test("planner accepts same-chain stablecoin alias coverage for chain-level demand", () => {

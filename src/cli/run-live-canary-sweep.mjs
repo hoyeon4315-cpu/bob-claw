@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { setTimeout as delay } from "node:timers/promises";
 import { signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { runLiveCanarySweep } from "../executor/live-canary-sweep.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
@@ -25,9 +26,13 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     write: flags.has("--write"),
     execute: flags.has("--execute"),
+    loop: flags.has("--loop"),
     chains: options.chains ? parseCsv(options.chains) : null,
     excludeChains: options["exclude-chains"] ? parseCsv(options["exclude-chains"]) : [],
     limit: options.limit ? Number(options.limit) : 8,
+    intervalMs: options["interval-ms"] ? Number(options["interval-ms"]) : 60_000,
+    chainQuarantineMs: options["chain-quarantine-ms"] ? Number(options["chain-quarantine-ms"]) : undefined,
+    outputAssetCooldownMs: options["output-asset-cooldown-ms"] ? Number(options["output-asset-cooldown-ms"]) : undefined,
     tinyUsd: options["tiny-usd"] ? Number(options["tiny-usd"]) : undefined,
     nativeTinyUsd: options["native-tiny-usd"] ? Number(options["native-tiny-usd"]) : undefined,
     minHoldingUsd: options["min-holding-usd"] ? Number(options["min-holding-usd"]) : undefined,
@@ -53,27 +58,34 @@ function compactResult(result) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const report = await runLiveCanarySweep(args);
+  let report = null;
+  do {
+    report = await runLiveCanarySweep(args);
 
-  if (args.json) {
-    console.log(safeJsonStringify(report, 2));
-  } else {
-    console.log(`mode=${report.mode}`);
-    console.log(`status=${report.status}`);
-    console.log(`blockedReason=${report.blockedReason || "none"}`);
-    console.log(`candidateCount=${report.summary.candidateCount}`);
-    console.log(`previewReady=${report.summary.previewReadyCount}`);
-    console.log(`executed=${report.summary.executedCount}`);
-    console.log(`delivered=${report.summary.deliveredCount}`);
-    console.log(`blocked=${report.summary.blockedCount}`);
-    for (const result of report.results.map(compactResult).slice(0, 20)) {
-      console.log(
-        `${result.status} ${result.chain || "n/a"} ${result.kind || "n/a"} ${result.routeKey || "n/a"} blocked=${result.blockedReason || "none"} tx=${result.lastTxHash || "n/a"}`,
-      );
+    if (args.json) {
+      console.log(safeJsonStringify(report, 2));
+    } else {
+      console.log(`mode=${report.mode}`);
+      console.log(`status=${report.status}`);
+      console.log(`blockedReason=${report.blockedReason || "none"}`);
+      console.log(`candidateCount=${report.summary.candidateCount}`);
+      console.log(`previewReady=${report.summary.previewReadyCount}`);
+      console.log(`executed=${report.summary.executedCount}`);
+      console.log(`delivered=${report.summary.deliveredCount}`);
+      console.log(`blocked=${report.summary.blockedCount}`);
+      console.log(`quarantined=${report.summary.quarantinedCount || 0}`);
+      for (const result of report.results.map(compactResult).slice(0, 20)) {
+        console.log(
+          `${result.status} ${result.chain || "n/a"} ${result.kind || "n/a"} ${result.routeKey || "n/a"} blocked=${result.blockedReason || "none"} tx=${result.lastTxHash || "n/a"}`,
+        );
+      }
     }
-  }
 
-  if (report.status === "blocked" || report.status === "stopped") {
+    if (!args.loop) break;
+    await delay(Math.max(1_000, args.intervalMs));
+  } while (true);
+
+  if (report?.status === "blocked" || report?.status === "stopped") {
     process.exitCode = 1;
   }
 }

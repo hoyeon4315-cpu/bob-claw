@@ -153,7 +153,7 @@ function liveBaselineLines(liveBaseline = null) {
     if (blocker.code === "fund_and_approve_wallet") {
       return `- Operator blocker: decision=\`${blocker.decision || "unknown"}\` reasons=${blocker.reasons?.join(",") || "none"} actions=${blocker.actions?.map(summarizeBaselineAction).join(" · ") || "none"}`;
     }
-    if (blocker.code === "payback_destination_env_missing") {
+    if (blocker.code === "payback_destination_env_missing" || blocker.code === "missing_destination_config") {
       return `- Operator blocker: status=\`${blocker.code}\` env=\`${blocker.requiredEnvName || "n/a"}\` next=\`${blocker.nextActionCode || "none"}\``;
     }
     return `- Operator blocker: status=\`${blocker.code}\``;

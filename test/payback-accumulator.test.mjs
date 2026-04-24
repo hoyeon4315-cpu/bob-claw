@@ -329,3 +329,31 @@ test("payback accumulator excludes delivered payback receipts from gross profit"
   assert.equal(snapshot.paidBackSats_lifetime, 4_200);
   assert.equal(snapshot.pendingDeferredSats, 0);
 });
+
+test("payback accumulator only counts payback-eligible realized pnl from receipt ledger", () => {
+  const snapshot = snapshotPaybackAccumulator([], {
+    receiptReconciliations: [
+      {
+        observedAt: "2026-04-16T01:00:00.000Z",
+        kind: "token_dex_experiment",
+        pnl: {
+          classification: "execution_evidence_cost",
+          realizedPnlSats: 1000,
+          paybackEligibleRealizedPnlSats: 0,
+        },
+      },
+      {
+        observedAt: "2026-04-16T02:00:00.000Z",
+        kind: "strategy_harvest",
+        pnl: {
+          classification: "strategy_realized_pnl",
+          realizedPnlSats: 5000,
+          paybackEligibleRealizedPnlSats: 5000,
+        },
+      },
+    ],
+  }, {});
+
+  assert.equal(snapshot.grossProfitSats_period, 5_000);
+  assert.equal(snapshot.pendingDeferredSats, 5_000);
+});

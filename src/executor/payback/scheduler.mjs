@@ -429,18 +429,20 @@ export async function buildPaybackDecision({
     recipientOverride,
   });
   if (!recipient.ok) {
+    const reason = "missing_destination_config";
     return {
       schemaVersion: 1,
       observedAt: now,
       policy,
       snapshot,
       status: "blocked",
-      reason: recipient.reason,
+      reason,
       decisionLog: {
         observedAt: now,
-        reason: recipient.reason,
+        reason,
         inputs: {
           bitcoinDestAddressEnv: recipient.envName,
+          underlyingReason: recipient.reason,
         },
       },
     };
@@ -599,6 +601,7 @@ export async function buildPaybackDecision({
     observedAt: now,
     policy,
     snapshot,
+    recipient: recipient.recipient,
     reserveState: reserve.reserveState,
     status: "plan",
     reason: "planning_required",
@@ -651,7 +654,7 @@ export async function buildCompositePaybackPlan({
   const policy = loadPaybackPolicyConfig(paybackConfig);
   const health = await signerHealthReader();
   const senderAddress = decision.reserveState?.senderAddress || health?.addresses?.base || null;
-  const recipient = getEnv(policy.destinationPath.bitcoinDestAddressEnv, null);
+  const recipient = decision.recipient || getEnv(policy.destinationPath.bitcoinDestAddressEnv, null);
   if (!senderAddress) {
     return {
       schemaVersion: 1,

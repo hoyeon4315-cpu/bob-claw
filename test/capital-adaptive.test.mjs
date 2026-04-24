@@ -33,6 +33,10 @@ test("deriveCaps: 1 BTC => 5M / 20M / 3M sats", () => {
   assert.equal(c.perTxBtcSats, 5_000_000);
   assert.equal(c.perDayBtcSats, 20_000_000);
   assert.equal(c.maxDailyLossBtcSats, 3_000_000);
+  assert.equal(c.capTiers.probe.perTxBtcSats, 250_000);
+  assert.equal(c.capTiers.tiny.perTxBtcSats, 1_000_000);
+  assert.equal(c.capTiers.pilot.perTxBtcSats, 5_000_000);
+  assert.equal(c.capTiers.operating.perTxBtcSats, 10_000_000);
   assert.equal(c.newEntriesAllowed, true);
 });
 
@@ -81,6 +85,8 @@ test("projectToUsd: display-only conversion", () => {
   const usd = projectToUsd(caps, 100_000);
   assert.equal(usd.operatingUsd, 100_000);
   assert.equal(usd.perTxUsd, 5_000);
+  assert.equal(usd.capTiersUsd.probe.perTxUsd, 250);
+  assert.equal(usd.capTiersUsd.operating.perTxUsd, 10_000);
   assert.equal(usd.projectionOnly, true);
 });
 

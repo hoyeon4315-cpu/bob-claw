@@ -45,6 +45,13 @@ function minimumPaybackProgress(payback = null) {
   return payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
 }
 
+function isMissingPaybackDestination(payback = null) {
+  return (
+    payback?.scheduler?.reason === "payback_btc_destination_missing" ||
+    payback?.scheduler?.reason === "missing_destination_config"
+  );
+}
+
 function primaryReviewCandidate(dashboardStatus = null) {
   return dashboardStatus?.prelive?.reviewPackage || null;
 }
@@ -116,11 +123,11 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
   } else if (nextStep?.decision === "FUND_AND_APPROVE_WALLET" && strategyPrimary) {
     suppressedRouteBlockers.push("fund_and_approve_wallet");
   }
-  if (payback?.scheduler?.reason === "payback_btc_destination_missing") {
+  if (isMissingPaybackDestination(payback)) {
     operator.push(
       createBlocker(
         "operator",
-        "payback_destination_env_missing",
+        payback.scheduler.reason || "missing_destination_config",
         "Set the Bitcoin payback destination before the scheduler can emit a live payback intent.",
         {
           requiredEnvName: payback.scheduler.requiredEnvName || null,

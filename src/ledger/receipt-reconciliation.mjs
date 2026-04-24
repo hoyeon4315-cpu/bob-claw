@@ -212,6 +212,15 @@ export function buildReceiptReconciliation({
         ? finiteOrNull(actualOutputValueUsd - expectedInputUsd - actualKnownCostUsd)
         : null;
   const realizedNetPnlSats = integerOrNull(usdToSats(realizedNetPnlUsd, btcUsd));
+  const estimatedNetPnlUsd = expectedNetPnl(routeContext);
+  const estimatedNetPnlSats = integerOrNull(usdToSats(estimatedNetPnlUsd, btcUsd));
+  const isEvidenceCanary = [
+    "native_dex_experiment",
+    "token_dex_experiment",
+    "gas_zip_native_refuel",
+    "gateway_btc_consolidation",
+    "gateway_btc_offramp",
+  ].includes(kind);
 
   return {
     schemaVersion: 1,
@@ -256,6 +265,14 @@ export function buildReceiptReconciliation({
       : null,
     pricing: {
       btcUsd: finiteOrNull(btcUsd),
+    },
+    pnl: {
+      accountingUnit: "sats",
+      paperPnlSats: null,
+      estimatedPnlSats: estimatedNetPnlSats,
+      realizedPnlSats: realizedNetPnlSats,
+      paybackEligibleRealizedPnlSats: isEvidenceCanary ? 0 : realizedNetPnlSats,
+      classification: isEvidenceCanary ? "execution_evidence_cost" : "strategy_realized_pnl",
     },
     output: {
       asset: outputAssetFromContext(routeContext, normalizedOutput),

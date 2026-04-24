@@ -5,6 +5,7 @@ const BTC_SATS = 100_000_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_PROFIT_SATS_PATHS = Object.freeze([
+  "pnl.paybackEligibleRealizedPnlSats",
   "realized.grossProfitSats",
   "realized.realizedGrossProfitSats",
   "realized.realizedNetProfitSats",

@@ -5,6 +5,14 @@ import { buildPaybackDecision } from "./scheduler.mjs";
 
 const PREVIEW_BTC_DESTINATION = "bc1qpayback0000000000000000000000000000000";
 
+function isMissingDestinationDecision(decision = null) {
+  return (
+    decision?.reason === "payback_btc_destination_missing" ||
+    decision?.reason === "missing_destination_config" ||
+    decision?.decisionLog?.inputs?.underlyingReason === "payback_btc_destination_missing"
+  );
+}
+
 function normalizeTimestamp(value) {
   if (!value) return null;
   const ms = new Date(value).getTime();
@@ -216,7 +224,7 @@ export async function buildPaybackDashboardSlice({
       })
     : null;
   const previewAfterDestination =
-    typeof decisionBuilder === "function" && decision?.reason === "payback_btc_destination_missing"
+    typeof decisionBuilder === "function" && isMissingDestinationDecision(decision)
       ? await decisionBuilder({
           auditLogLines: resolvedAuditLogLines,
           receiptStore: resolvedReceiptStore,
@@ -256,7 +264,7 @@ export async function buildPaybackDashboardSlice({
         "decisionLog.inputs.bitcoinDestAddressEnv",
       ]),
       nextAction:
-        decision?.reason === "payback_btc_destination_missing"
+        isMissingDestinationDecision(decision)
           ? "set_payback_btc_destination_env"
           : null,
       minimumPaybackProgress:

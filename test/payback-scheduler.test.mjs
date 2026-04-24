@@ -159,6 +159,56 @@ test("payback scheduler carries when planned payback is below minimum", async ()
   assert.equal(result.reason, "planned_payback_below_minimum");
 });
 
+test("payback decision reports missing destination config before carry", async () => {
+  delete process.env.PAYBACK_BTC_DEST_ADDR;
+
+  const result = await buildPaybackDecision({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "40000",
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 200_000,
+    }),
+    getEnvImpl: () => null,
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.reason, "missing_destination_config");
+  assert.equal(result.decisionLog.inputs.underlyingReason, "payback_btc_destination_missing");
+});
+
+test("composite payback plan reuses decision recipient for preview", async () => {
+  const decision = await buildPaybackDecision({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "80000",
+    },
+    accumulatorSnapshot: accumulatorFixture,
+    recipientOverride: "bc1qoverride",
+  });
+
+  const result = await buildCompositePaybackPlan({
+    decision,
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    signerHealthReader: async () => ({
+      addresses: {
+        base: "0x1111111111111111111111111111111111111111",
+      },
+    }),
+    consolidationPlanBuilder: async () => consolidationPlanFixture(),
+    offrampPlanBuilder: async () => offrampPlanFixture(),
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.compositePlan.recipient, "bc1qoverride");
+});
+
 test("composite payback plan reuses existing helper intent formats and passes policy checks", async () => {
   process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
 

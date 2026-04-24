@@ -19,6 +19,7 @@ export function evaluateGasBootstrap({
   gasFloats = {},
   hopCatalog = [],
   minGasWei = null,
+  expectedEdgeUsd = null,
 }) {
   const chain = keyFor(intent.chain);
   if (!chain) {
@@ -74,6 +75,24 @@ export function evaluateGasBootstrap({
       originalIntent: intent,
     };
   }
+  if (
+    Number.isFinite(expectedEdgeUsd) &&
+    Number.isFinite(bootstrapHop.estimatedCostUsd) &&
+    bootstrapHop.estimatedCostUsd > expectedEdgeUsd
+  ) {
+    return {
+      ok: false,
+      status: "bootstrap_failed",
+      reason: "bootstrap_cost_exceeds_expected_edge",
+      chain,
+      actualWei: String(actualWei),
+      neededWei: String(neededWei),
+      expectedEdgeUsd,
+      bootstrapCostUsd: bootstrapHop.estimatedCostUsd,
+      bootstrapPlan: null,
+      originalIntent: intent,
+    };
+  }
 
   return {
     ok: false,
@@ -84,6 +103,7 @@ export function evaluateGasBootstrap({
     neededWei: String(neededWei),
     bootstrapPlan: {
       type: "gas_topup",
+      queueRole: "prerequisite_before_original_intent",
       targetChain: chain,
       sourceChain: bootstrapHop.from.chain,
       sourceAsset: bootstrapHop.from.asset,

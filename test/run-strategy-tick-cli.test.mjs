@@ -15,7 +15,7 @@ async function writeJsonl(baseDir, name, records) {
   await writeFile(path, body ? `${body}\n` : "", "utf8");
 }
 
-test("run-strategy-tick reports missing cap configuration instead of fabricating gas floats", async () => {
+test("run-strategy-tick reports committed cap configuration without fabricating gas floats", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-run-strategy-tick-"));
   const dataDir = join(cwd, "data");
   const snapshotDir = join(dataDir, "snapshots");
@@ -52,7 +52,9 @@ test("run-strategy-tick reports missing cap configuration instead of fabricating
   const payload = JSON.parse(result.stdout);
   const summary = payload.tickRecord.snapshotSummary[0];
   assert.equal(summary.strategyId, "beefy-folding-vault");
-  assert.equal(summary.capsConfigured, false);
-  assert.equal(summary.gasFloatSummary.configuredChainCount, 0);
+  assert.equal(summary.capsConfigured, true);
+  assert.equal(summary.gasFloatSummary.configuredChainCount, 1);
   assert.equal(summary.gasFloatSummary.observedChainCount, 0);
+  assert.equal(summary.gasFloatSummary.chains[0].chain, "bsc");
+  assert.equal(summary.gasFloatSummary.chains[0].missingReason, "actual_balance_unobserved");
 });

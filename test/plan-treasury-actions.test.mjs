@@ -65,8 +65,9 @@ test("plan treasury actions uses stored inventory snapshot by default", async ()
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const output = JSON.parse(result.stdout);
   assert.equal(output.inventorySource, "stored_snapshot");
-  assert.equal(output.blockers[0].type, "native_refill_blocked_no_demand");
-  assert.equal(Math.abs(output.blockers[0].refillEstimatedUsd - 6.6) < 1e-9, true);
+  assert.equal(output.actions[0].type, "refill_native");
+  assert.equal(Math.abs(output.actions[0].refillEstimatedUsd - 6.6) < 1e-9, true);
+  assert.equal(output.summary.noDemandBlockerCount, 0);
 });
 
 test("plan treasury output formatter guards non-finite values", () => {

@@ -3,10 +3,12 @@ import { test } from "node:test";
 import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS } from "../src/assets/tokens.mjs";
 import {
   applyOutputAssetLocks,
+  applyPersistentSweepState,
   buildLiveCanaryCandidates,
   decimalToUnits,
   preflightLiveCanarySweep,
   runLiveCanarySweep,
+  updateLiveCanarySweepStateFromResults,
 } from "../src/executor/live-canary-sweep.mjs";
 
 const ADDRESS = "0x1111111111111111111111111111111111111111";
@@ -100,7 +102,7 @@ test("preflight blocks when kill switch file is present", async () => {
   assert.equal(result.blockedReason, "kill_switch_present");
 });
 
-test("sweep continues after per-candidate plan blocker but stops after signer uncertainty", async () => {
+test("sweep continues after per-candidate plan blocker and quarantines signer-uncertain chain", async () => {
   const inventory = {
     observedAt: "2026-04-23T00:00:00.000Z",
     totalUsd: 2,
@@ -153,11 +155,15 @@ test("sweep continues after per-candidate plan blocker but stops after signer un
     now: "2026-04-23T00:00:00.000Z",
   });
 
-  assert.equal(report.status, "stopped");
+  assert.equal(report.status, "completed");
   assert.equal(report.results[0].status, "blocked");
   assert.equal(report.results[0].blockedReason, "routing_unavailable");
   assert.equal(report.results[1].status, "execution_failed");
-  assert.equal(report.summary.globalStopReason, "global_safety_stop_after_execution_error");
+  assert.equal(report.results[1].blockedReason, "chain_quarantine_after_receipt_uncertainty");
+  assert.equal(report.results[1].quarantineChain, "sonic");
+  assert.equal(report.summary.globalStopReason, null);
+  assert.equal(report.summary.quarantinedCount, 1);
+  assert.equal(report.state.quarantinedChains.sonic.reason, "chain_quarantine_after_receipt_uncertainty");
 });
 
 test("sweep limit counts only executable candidates, not plan blockers", async () => {
@@ -226,4 +232,61 @@ test("sweep limit counts only executable candidates, not plan blockers", async (
   assert.equal(report.results[1].status, "blocked");
   assert.equal(report.results[2].status, "preview_ready");
   assert.equal(report.summary.previewReadyCount, 1);
+});
+
+test("persistent sweep state blocks quarantined chains and cooled output assets", () => {
+  const now = "2026-04-23T00:00:00.000Z";
+  const candidates = applyPersistentSweepState([
+    {
+      id: "base",
+      status: "candidate",
+      kind: "token_dex",
+      chain: "base",
+      outputToken: "0x4200000000000000000000000000000000000006",
+    },
+    {
+      id: "sonic",
+      status: "candidate",
+      kind: "token_dex",
+      chain: "sonic",
+      outputToken: "0x039e2fb66102314ce7b64ce5ce3e5183bc94ad38",
+    },
+  ], {
+    quarantinedChains: {
+      sonic: { until: "2026-04-23T00:30:00.000Z", reason: "receipt_uncertain" },
+    },
+    outputAssetCooldowns: {
+      "base:0x4200000000000000000000000000000000000006": {
+        until: "2026-04-23T00:10:00.000Z",
+        reason: "output_asset_touched",
+      },
+    },
+  }, { now });
+
+  assert.equal(candidates[0].status, "blocked");
+  assert.equal(candidates[0].blockedReason, "output_asset_cooldown_active");
+  assert.equal(candidates[1].status, "blocked");
+  assert.equal(candidates[1].blockedReason, "chain_quarantined_after_uncertain_receipt");
+});
+
+test("sweep state records output cooldowns for touched assets", () => {
+  const state = updateLiveCanarySweepStateFromResults({
+    results: [
+      {
+        status: "source_confirmed_only",
+        candidate: {
+          id: "token_dex:base:usdc->base:weth",
+          chain: "base",
+          outputToken: "0x4200000000000000000000000000000000000006",
+        },
+        execution: { lastTxHash: "0xabc" },
+      },
+    ],
+    now: "2026-04-23T00:00:00.000Z",
+    outputAssetCooldownMs: 60_000,
+  });
+
+  const key = "base:0x4200000000000000000000000000000000000006";
+  assert.equal(state.outputAssetCooldowns[key].lastTxHash, "0xabc");
+  assert.equal(state.outputAssetCooldowns[key].until, "2026-04-23T00:01:00.000Z");
 });

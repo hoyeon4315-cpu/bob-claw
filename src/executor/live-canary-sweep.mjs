@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, normalizeToken, tokenAsset } from "../assets/tokens.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
@@ -16,6 +17,8 @@ import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./he
 
 const DEFAULT_TINY_USD = 0.1;
 const DEFAULT_MIN_HOLDING_USD = 0.02;
+const DEFAULT_CHAIN_QUARANTINE_MS = 30 * 60_000;
+const DEFAULT_OUTPUT_ASSET_COOLDOWN_MS = 10 * 60_000;
 const TOKEN_MAX_BALANCE_BPS = 2_500;
 const NATIVE_MAX_BALANCE_BPS = 500;
 
@@ -212,6 +215,77 @@ export function applyOutputAssetLocks(candidates = []) {
   });
 }
 
+function statePath(dataDir = config.dataDir) {
+  return join(dataDir, "live-canary-sweep-state.json");
+}
+
+function nowMs(value) {
+  const ms = new Date(value || Date.now()).getTime();
+  return Number.isFinite(ms) ? ms : Date.now();
+}
+
+function isoAfter(base, deltaMs) {
+  return new Date(nowMs(base) + Math.max(0, Number(deltaMs) || 0)).toISOString();
+}
+
+function outputAssetKey(candidate = {}) {
+  if (!candidate?.chain || !candidate?.outputToken) return null;
+  return `${candidate.chain}:${normalizeToken(candidate.outputToken)}`;
+}
+
+export async function readLiveCanarySweepState({ dataDir = config.dataDir, state = null } = {}) {
+  if (state && typeof state === "object") return state;
+  try {
+    const parsed = JSON.parse(await readFile(statePath(dataDir), "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
+}
+
+export async function writeLiveCanarySweepState({ state, dataDir = config.dataDir } = {}) {
+  const nextState = {
+    schemaVersion: 1,
+    ...(state || {}),
+  };
+  await writeTextIfChanged(statePath(dataDir), `${safeJsonStringify(nextState, 2)}\n`);
+  return nextState;
+}
+
+function activeUntil(value, now) {
+  const untilMs = new Date(value || 0).getTime();
+  return Number.isFinite(untilMs) && untilMs > nowMs(now);
+}
+
+export function applyPersistentSweepState(candidates = [], state = {}, { now = new Date().toISOString() } = {}) {
+  const quarantinedChains = state?.quarantinedChains || {};
+  const outputCooldowns = state?.outputAssetCooldowns || {};
+  return candidates.map((candidate) => {
+    if (candidate.status !== "candidate") return candidate;
+    const quarantine = quarantinedChains[candidate.chain];
+    if (activeUntil(quarantine?.until, now)) {
+      return {
+        ...candidate,
+        status: "blocked",
+        blockedReason: "chain_quarantined_after_uncertain_receipt",
+        quarantine,
+      };
+    }
+    const outputKey = outputAssetKey(candidate);
+    const cooldown = outputKey ? outputCooldowns[outputKey] : null;
+    if (activeUntil(cooldown?.until, now)) {
+      return {
+        ...candidate,
+        status: "blocked",
+        blockedReason: "output_asset_cooldown_active",
+        cooldown,
+      };
+    }
+    return candidate;
+  });
+}
+
 function summarizePlan(plan = null) {
   if (!plan) return null;
   return {
@@ -264,9 +338,27 @@ function summarizeExecution(execution = null, error = null) {
   };
 }
 
-function shouldStopAfterExecutionError(error = null) {
+function classifyExecutionError(error = null) {
   const text = `${error?.name || ""} ${error?.message || ""}`.toLowerCase();
-  return /policy|reject|timeout|timed out|socket|eperm|econnrefused|nonce/u.test(text);
+  if (/timeout|timed out|nonce|receipt|replacement|underpriced/u.test(text)) {
+    return {
+      blockedReason: "chain_quarantine_after_receipt_uncertainty",
+      quarantineChain: true,
+      shouldStopGlobally: false,
+    };
+  }
+  if (/policy|reject|socket|eperm|econnrefused|signer/u.test(text)) {
+    return {
+      blockedReason: "global_safety_stop_after_execution_error",
+      quarantineChain: false,
+      shouldStopGlobally: true,
+    };
+  }
+  return {
+    blockedReason: "execution_error",
+    quarantineChain: false,
+    shouldStopGlobally: false,
+  };
 }
 
 function countsTowardExecutionLimit(result = {}) {
@@ -360,13 +452,15 @@ async function evaluateCandidate({
     };
   } catch (error) {
     const partialExecution = error.partialExecution || null;
+    const classification = classifyExecutionError(error);
     return {
       candidate,
       status: "execution_failed",
-      blockedReason: shouldStopAfterExecutionError(error) ? "global_safety_stop_after_execution_error" : "execution_error",
+      blockedReason: classification.blockedReason,
       plan: summarizePlan(plan),
       execution: summarizeExecution(partialExecution, error),
-      shouldStopGlobally: shouldStopAfterExecutionError(error),
+      shouldStopGlobally: classification.shouldStopGlobally,
+      quarantineChain: classification.quarantineChain ? candidate.chain : null,
     };
   }
 }
@@ -454,9 +548,14 @@ export async function runLiveCanarySweep({
   tinyUsd = DEFAULT_TINY_USD,
   nativeTinyUsd = DEFAULT_TINY_USD,
   minHoldingUsd = DEFAULT_MIN_HOLDING_USD,
+  chainQuarantineMs = DEFAULT_CHAIN_QUARANTINE_MS,
+  outputAssetCooldownMs = DEFAULT_OUTPUT_ASSET_COOLDOWN_MS,
   socketPath = signerSocketPath(),
   timeoutMs = signerClientTimeoutMs(),
   inventory = null,
+  state = null,
+  readStateImpl = readLiveCanarySweepState,
+  writeStateImpl = writeLiveCanarySweepState,
   preflightImpl = preflightLiveCanarySweep,
   scanInventoryImpl = scanWholeWalletInventory,
   buildTokenDexPlanImpl = buildTokenDexExperimentPlan,
@@ -495,14 +594,15 @@ export async function runLiveCanarySweep({
     bitcoinAddress: preflight.bitcoinAddress,
     scanInventoryImpl,
   });
-  const candidates = buildLiveCanaryCandidates({
+  const persistedState = await readStateImpl({ dataDir, state });
+  const candidates = applyPersistentSweepState(buildLiveCanaryCandidates({
     inventory: resolvedInventory,
     chains,
     excludeChains,
     tinyUsd,
     nativeTinyUsd,
     minHoldingUsd,
-  });
+  }), persistedState, { now });
 
   const results = [];
   let executableSeen = 0;
@@ -550,6 +650,14 @@ export async function runLiveCanarySweep({
     }
   }
 
+  const nextState = updateLiveCanarySweepStateFromResults({
+    state: persistedState,
+    results,
+    now,
+    chainQuarantineMs,
+    outputAssetCooldownMs,
+  });
+
   const report = {
     schemaVersion: 1,
     observedAt: now,
@@ -573,17 +681,68 @@ export async function runLiveCanarySweep({
     },
     candidates,
     results,
+    state: nextState,
     summary: {
       candidateCount: candidates.length,
       previewReadyCount: results.filter((item) => item.status === "preview_ready").length,
       executedCount: results.filter((item) => item.execution?.lastTxHash).length,
       deliveredCount: results.filter((item) => item.status === "delivered").length,
       blockedCount: results.filter((item) => item.status === "blocked").length,
+      quarantinedCount: results.filter((item) => item.quarantineChain).length,
       globalStopReason,
     },
   };
-  if (write) await writeLiveCanarySweepReport({ report, dataDir });
+  if (write) {
+    await writeLiveCanarySweepReport({ report, dataDir });
+    await writeStateImpl({ state: nextState, dataDir });
+  }
   return report;
+}
+
+export function updateLiveCanarySweepStateFromResults({
+  state = {},
+  results = [],
+  now = new Date().toISOString(),
+  chainQuarantineMs = DEFAULT_CHAIN_QUARANTINE_MS,
+  outputAssetCooldownMs = DEFAULT_OUTPUT_ASSET_COOLDOWN_MS,
+} = {}) {
+  const next = {
+    schemaVersion: 1,
+    updatedAt: now,
+    quarantinedChains: { ...(state?.quarantinedChains || {}) },
+    outputAssetCooldowns: { ...(state?.outputAssetCooldowns || {}) },
+  };
+
+  for (const result of results || []) {
+    const chain = result?.quarantineChain || null;
+    if (chain) {
+      next.quarantinedChains[chain] = {
+        reason: result.blockedReason || "receipt_uncertain",
+        until: isoAfter(now, chainQuarantineMs),
+        lastCandidateId: result.candidate?.id || null,
+        lastTxHash: result.execution?.lastTxHash || null,
+      };
+      continue;
+    }
+    const key = outputAssetKey(result?.candidate);
+    if (!key) continue;
+    if (result?.execution?.lastTxHash || result?.status === "delivered" || result?.status === "source_confirmed_only") {
+      next.outputAssetCooldowns[key] = {
+        reason: "output_asset_touched",
+        until: isoAfter(now, outputAssetCooldownMs),
+        lastCandidateId: result.candidate?.id || null,
+        lastTxHash: result.execution?.lastTxHash || null,
+      };
+    }
+  }
+
+  for (const [chain, value] of Object.entries(next.quarantinedChains)) {
+    if (!activeUntil(value?.until, now)) delete next.quarantinedChains[chain];
+  }
+  for (const [key, value] of Object.entries(next.outputAssetCooldowns)) {
+    if (!activeUntil(value?.until, now)) delete next.outputAssetCooldowns[key];
+  }
+  return next;
 }
 
 export async function writeLiveCanarySweepReport({ report, dataDir = config.dataDir } = {}) {
