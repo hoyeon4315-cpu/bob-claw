@@ -191,19 +191,22 @@ function loadJsonlIfExists(path) {
 }
 
 function buildAdaptiveCapitalPlan(strategyIds) {
-  // Minimal plan — gives every requested strategy default open caps of
-  // $1/$5 (dust canary). Operator must still flip `autoExecute:true` in
-  // src/config/strategy-caps.mjs before signer would broadcast; this
-  // plan is what the dispatcher expects from upstream cap evaluation.
+  // Read caps from committed config; fallback to dust defaults.
   return {
     newEntriesAllowed: true,
-    strategies: strategyIds.map((id) => ({
-      strategyId: id,
-      autoExecute: false,                       // hard off until operator commits otherwise
-      newEntriesAllowed: true,
-      effectiveCapsUsd: { perTxUsd: 1, perDayUsd: 5 },
-      bindingConstraint: { perTxUsd: "static_cap" },
-    })),
+    strategies: strategyIds.map((id) => {
+      const caps = getStrategyCaps(id);
+      return {
+        strategyId: id,
+        autoExecute: caps?.autoExecute ?? false,
+        newEntriesAllowed: true,
+        effectiveCapsUsd: {
+          perTxUsd: caps?.caps?.perTxUsd ?? 1,
+          perDayUsd: caps?.caps?.perDayUsd ?? 5,
+        },
+        bindingConstraint: { perTxUsd: "static_cap" },
+      };
+    }),
   };
 }
 
