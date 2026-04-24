@@ -11,12 +11,12 @@ const { useState, useEffect, useRef, useMemo } = React;
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const T_FAST = 450;
 const T_MED = 320;
-const PROTOCOL_BLOOM_SPREAD = Math.PI;
+const PROTOCOL_BLOOM_SPREAD = 2 * Math.PI;
 
 const PHYS = {
-  REPULSION_K: 0.5,
-  SPRING_K: 0.06,
-  DAMPING: 0.88,
+  REPULSION_K: 0.3,
+  SPRING_K: 0.10,
+  DAMPING: 0.94,
   SUBSTEPS: 2,
   PAD: 6,
 };
@@ -46,10 +46,46 @@ function isMindmapVisible(strategy) {
 
 function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   if (!Number.isFinite(count) || count <= 1) return minR;
-  const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
+  const gap = PROTOCOL_BLOOM_SPREAD / count;
   const requiredChord = 2 * chipR + padding;
   const required = requiredChord / (2 * Math.sin(gap / 2));
   return Math.max(minR, required);
+}
+
+function clampBloomToViewport(p, R, chipR, vbW, vbH) {
+  const minR = 78;
+  const minX = chipR + 10;
+  const maxX = vbW - chipR - 10;
+  const minY = chipR + 10;
+  const maxY = vbH - chipR - 10;
+  const candidates = [
+    { dx: 0, dy: R },
+    { dx: R * 0.71, dy: R * 0.71 },
+    { dx: R, dy: 0 },
+    { dx: R * 0.71, dy: -R * 0.71 },
+    { dx: 0, dy: -R },
+    { dx: -R * 0.71, dy: -R * 0.71 },
+    { dx: -R, dy: 0 },
+    { dx: -R * 0.71, dy: R * 0.71 },
+  ];
+  const cx = vbW / 2;
+  const cy = vbH / 2 + 50;
+  const localX = cx + p.x;
+  const localY = cy + p.y;
+  let worst = Infinity;
+  for (const c of candidates) {
+    const x = localX + c.dx;
+    const y = localY + c.dy;
+    const dLeft = x - minX;
+    const dRight = maxX - x;
+    const dTop = y - minY;
+    const dBottom = maxY - y;
+    worst = Math.min(worst, dLeft, dRight, dTop, dBottom);
+  }
+  if (worst < 0) {
+    return Math.max(minR, R + worst);
+  }
+  return R;
 }
 
 function placeRing(chains, radius) {
@@ -442,8 +478,16 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
               const nx = dx / dist;
               const ny = dy / dist;
               const force = PHYS.REPULSION_K * overlap;
-              if (!a.isDragging) { a.vx -= (force * nx) / a.mass; a.vy -= (force * ny) / a.mass; }
-              if (!b.isDragging) { b.vx += (force * nx) / b.mass; b.vy += (force * ny) / b.mass; }
+              const aDrag = a.isDragging;
+              const bDrag = b.isDragging;
+              if (aDrag && !bDrag) {
+                a.vx -= (force * nx) / a.mass; a.vy -= (force * ny) / a.mass;
+              } else if (!aDrag && bDrag) {
+                b.vx += (force * nx) / b.mass; b.vy += (force * ny) / b.mass;
+              } else {
+                if (!aDrag) { a.vx -= (force * nx) / a.mass; a.vy -= (force * ny) / a.mass; }
+                if (!bDrag) { b.vx += (force * nx) / b.mass; b.vy += (force * ny) / b.mass; }
+              }
             }
           }
         }
@@ -461,7 +505,16 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
               const nx = dx / dist;
               const ny = dy / dist;
               const force = PHYS.REPULSION_K * overlap * 1.5;
-              if (!other.isDragging) { other.vx += (force * nx) / other.mass; other.vy += (force * ny) / other.mass; }
+              const otherDrag = other.isDragging;
+              const bDrag2 = b.isDragging;
+              if (otherDrag && !bDrag2) {
+                other.vx += (force * nx) / other.mass; other.vy += (force * ny) / other.mass;
+              } else if (!otherDrag && bDrag2) {
+                b.vx -= (force * nx) / b.mass; b.vy -= (force * ny) / b.mass;
+              } else {
+                if (!otherDrag) { other.vx += (force * nx) / other.mass; other.vy += (force * ny) / other.mass; }
+                if (!bDrag2) { b.vx -= (force * nx) / b.mass; b.vy -= (force * ny) / b.mass; }
+              }
             }
           }
         }
@@ -517,13 +570,14 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     const p = ringPos[selectedChain];
     if (!p) return {};
     const strats = protocolsByChain[selectedChain] || [];
-    const baseA = Math.atan2(p.y, p.x);
     const chipR = 28 * 1.1;
-    const R = bloomRadiusForCount(strats.length, chipR, 110, 14);
+    const rawR = bloomRadiusForCount(strats.length, chipR, 78, 14);
+    const R = rawR;
     const out = {};
+    const step = PROTOCOL_BLOOM_SPREAD / strats.length;
+    const startA = Math.PI / 2 - PROTOCOL_BLOOM_SPREAD / 2;
     strats.forEach((s, i) => {
-      const t = strats.length === 1 ? 0 : (i / (strats.length - 1)) - 0.5;
-      const a = baseA + t * PROTOCOL_BLOOM_SPREAD;
+      const a = startA + i * step;
       out[s.id] = { x: p.x + Math.cos(a)*R, y: p.y + Math.sin(a)*R };
     });
     return out;
@@ -540,7 +594,6 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
         b.anchorX = anchorX; b.anchorY = anchorY;
         b.radius = radius; b.mass = mass;
         Object.assign(b, opts);
-        if (!b.isDragging) { b.x = anchorX; b.y = anchorY; }
       }
     };
 

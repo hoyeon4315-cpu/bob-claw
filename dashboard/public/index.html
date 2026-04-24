@@ -246,19 +246,41 @@
       }, {});
       return (
         <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
-          {Object.entries(byProtocol).map(([proto, list]) => (
-            <div key={proto} style={{ marginBottom: 16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, padding: '0 4px 8px' }}>
-                <ProtocolLogo id={proto} size={24}/>
-                <div style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize', letterSpacing: -0.1 }}>{proto}</div>
-                <div style={{ flex: 1 }}/>
-                <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{list.length} strategies</div>
+          {Object.entries(byProtocol).map(([proto, list]) => {
+            const protoEarned = list.reduce((sum, s) => sum + (s.earnedUsd || 0), 0);
+            const liveCount = list.filter(s => s.status === 'LIVE').length;
+            return (
+              <div key={proto} style={{
+                marginBottom: 14,
+                background: 'var(--card)',
+                borderRadius: 18,
+                border: '0.5px solid var(--line)',
+                overflow: 'hidden',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, padding: '12px 14px 10px' }}>
+                  <ProtocolLogo id={proto} size={36}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, textTransform: 'capitalize', letterSpacing: -0.1 }}>{proto}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
+                      {list.length} strategies{liveCount > 0 ? ` · ${liveCount} LIVE` : ''}
+                    </div>
+                  </div>
+                  {protoEarned > 0 && (
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)', letterSpacing: -0.3 }}>
+                        +${protoEarned.toFixed(0)}
+                      </div>
+                      <div style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>earned</div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ padding: '0 14px' }}>
+                  {list.map((s, i) => <StrategyRow key={s.id} s={s} isLast={i === list.length - 1}/>)}
+                </div>
               </div>
-              <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
-                {list.map((s, i) => <StrategyRow key={s.id} s={s} isLast={i === list.length - 1}/>)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -268,40 +290,37 @@
       const chain = CHAINS.find(c => c.id === s.chain);
       return (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '12px 14px', position: 'relative',
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 0', position: 'relative',
         }}>
-          <div style={{ position:'relative', width:32, height:32, flexShrink:0 }}>
-            <ChainLogo id={s.chain} size={32}/>
-            <div style={{ position:'absolute', bottom:-2, right:-2, background:'#fff', borderRadius:'50%', padding:1, border:'0.5px solid var(--line)' }}>
-              <ProtocolLogo id={s.protocol} size={14}/>
-            </div>
+          <div style={{ position:'relative', width:28, height:28, flexShrink:0 }}>
+            <ChainLogo id={s.chain} size={28}/>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 500, letterSpacing: -0.1 }}>{s.label}</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 500, letterSpacing: -0.1 }}>{s.label}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--ink-3)', marginTop: 1 }}>
               {chain?.name}
-              {s.loops ? ` · ×${s.loops} loops` : ''}
-              {s.apyPct != null ? ` · ${s.apyPct.toFixed(1)}% APY` : ''}
+              {s.loops ? ` · ×${s.loops}` : ''}
+              {s.apyPct != null ? ` · ${s.apyPct.toFixed(1)}%` : ''}
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: s.earnedUsd > 0 ? 'var(--green)' : 'var(--ink-4)', letterSpacing: -0.2 }}>
-              {s.earnedUsd > 0 ? `+$${s.earnedUsd.toFixed(2)}` : '—'}
-            </div>
-            <div style={{
-              display:'inline-block', fontSize: 8.5, fontWeight: 600, padding: '1.5px 5px', borderRadius: 4,
-              border: `0.5px solid ${statusInk}`, color: statusInk, letterSpacing: 0.5, marginTop: 3,
-            }}>{s.status}</div>
-            {s.microCanaryStatus && s.microCanaryStatus !== 'not_started' && (
-              <div style={{ fontSize: 8, color: 'var(--ink-4)', marginTop: 2 }}>
-                {s.microCanaryStatus.replace(/_/g, ' ')}
-                {s.blockerCount > 0 ? ` · ${s.blockerCount} blocker${s.blockerCount > 1 ? 's' : ''}` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {s.earnedUsd > 0 && (
+              <div style={{
+                fontSize: 12, fontWeight: 600, color: '#fff',
+                background: 'var(--green)', borderRadius: 999,
+                padding: '2px 8px', letterSpacing: -0.2,
+              }}>
+                +${s.earnedUsd.toFixed(0)}
               </div>
             )}
+            <div style={{
+              fontSize: 8.5, fontWeight: 600, padding: '1.5px 5px', borderRadius: 4,
+              border: `0.5px solid ${statusInk}`, color: statusInk, letterSpacing: 0.5,
+            }}>{s.status}</div>
           </div>
           {!isLast && <div style={{
-            position: 'absolute', left: 58, right: 0, bottom: 0, height: 0.5,
+            position: 'absolute', left: 38, right: 0, bottom: 0, height: 0.5,
             background: 'var(--line)',
           }}/>}
         </div>
