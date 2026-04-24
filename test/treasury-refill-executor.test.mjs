@@ -290,6 +290,94 @@ test("treasury refill executor dispatches Across bridge preparations", async () 
   assert.equal(execution.plan.marker, "across");
 });
 
+test("treasury refill executor builds verified Across token refill preview", async () => {
+  let capturedInput = null;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-across-base-optimism",
+      type: "refill_token",
+      chain: "optimism",
+      asset: "USDC",
+      token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+      targetAmount: "1000000",
+      targetAmountDecimal: 1,
+      estimatedAssetValueUsd: 1,
+      executionMethod: "cross_chain_bridge_across",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "1580760",
+          actualDecimal: 1.58076,
+          estimatedUsd: 1.58,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildAcrossBridgePlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-24T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "across-bridge",
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        ticker: input.ticker,
+        senderAddress: input.senderAddress,
+        recipient: input.recipient,
+        amount: input.amount,
+        amountUsd: 1,
+        quote: { outputAmount: "1000000" },
+        gasPreflight: { gasUnits: 100000 },
+        intent: { strategyId: "across-bridge" },
+        steps: [{ id: "approve_across_spokepool" }, { id: "across_deposit_v3" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "across_bridge");
+  assert.equal(preparation.coverage.coversTarget, true);
+  assert.equal(capturedInput.srcChain, "base");
+  assert.equal(capturedInput.dstChain, "optimism");
+  assert.equal(capturedInput.ticker, "usdc");
+  assert.equal(capturedInput.amount, "1000000");
+});
+
+test("treasury refill executor blocks unsupported Across source before builder", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-across-bsc-base",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      targetAmount: "1000000",
+      targetAmountDecimal: 1,
+      estimatedAssetValueUsd: 1,
+      executionMethod: "cross_chain_bridge_across",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+          actual: "5000000000000000000",
+          actualDecimal: 5,
+          estimatedUsd: 5,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildAcrossBridgePlanImpl: async () => {
+      throw new Error("Across builder must not run for unsupported source");
+    },
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.executor, "across_bridge");
+  assert.equal(preparation.blockedReason, "across_ticker_unsupported");
+});
+
 test("treasury refill executor maps cross-chain intermediate swap to composite plan", async () => {
   assert.equal(refillExecutorForJob({
     executionMethod: "cross_chain_swap_via_btc_intermediate",
