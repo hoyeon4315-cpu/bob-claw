@@ -38,6 +38,7 @@ import { evaluateGmxBasisAdapter, buildDefaultGmxBasisConfig } from "../strategy
 import { evaluateStablecoinSpreadAdapter, buildDefaultStablecoinSpreadConfig } from "../strategy/stablecoin-spread-loop-adapter.mjs";
 import { evaluateProxySpreadAdapter, buildDefaultProxySpreadConfig } from "../strategy/proxy-spread-expansion-adapter.mjs";
 import { evaluateTokenizedReserveAdapter, buildDefaultTokenizedReserveConfig } from "../strategy/tokenized-reserve-sleeve-adapter.mjs";
+import { evaluateOnchainBtcPerpBasisAdapter, buildDefaultOnchainBtcPerpBasisConfig } from "../strategy/onchain-btc-perp-basis-adapter.mjs";
 import {
   evaluateGatewayNativeAssetConversionSleeveAdapter,
   buildDefaultGatewayNativeAssetConversionSleeveConfig,
@@ -103,6 +104,12 @@ const ADAPTERS = Object.freeze({
     buildConfig: buildDefaultGatewayNativeAssetConversionSleeveConfig,
     snapshotPrefixes: [],
     protocol: "merkl",
+  },
+  "onchain-btc-perp-basis": {
+    evaluate: evaluateOnchainBtcPerpBasisAdapter,
+    buildConfig: buildDefaultOnchainBtcPerpBasisConfig,
+    snapshotPrefixes: ["gmx-", "gateway-", "avax-"],
+    protocol: "gmx",
   },
 });
 
