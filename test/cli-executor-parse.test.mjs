@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { parseArgs as parseGasZipArgs } from "../src/cli/run-gas-zip-refuel.mjs";
 import { parseArgs as parseCapitalManagerArgs } from "../src/cli/plan-capital-manager-refill-jobs.mjs";
-import { parseArgs as parsePaybackSchedulerArgs } from "../src/cli/run-payback-scheduler.mjs";
+import {
+  parseArgs as parsePaybackSchedulerArgs,
+  paybackDisbursementRecordFromTickResult,
+  persistResult as persistPaybackSchedulerResult,
+} from "../src/cli/run-payback-scheduler.mjs";
 
 test("run-gas-zip-refuel parseArgs reads execution and settlement options", () => {
   const args = parseGasZipArgs([
@@ -87,4 +94,42 @@ test("run-payback-scheduler parseArgs defaults to once mode", () => {
   assert.equal(args.once, true);
   assert.equal(args.execute, false);
   assert.equal(args.pollIntervalMs, undefined);
+});
+
+test("run-payback-scheduler persists executed payback disbursements to signer audit log", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "bob-claw-payback-persist-"));
+  const dataDir = join(tempDir, "data");
+  const logsDir = join(tempDir, "logs");
+  const disbursementRecord = {
+    schemaVersion: 1,
+    observedAt: "2026-04-24T00:00:00.000Z",
+    kind: "payback_disbursement",
+    strategyId: "gateway-btc-offramp",
+    periodId: "week-2026-17",
+    plannedPaybackSats: 60_000,
+    settledBalanceDeltaSats: 58_000,
+    gatewayOrderId: "order-1",
+    bitcoinTxid: "btc-tx-1",
+  };
+  const result = {
+    schemaVersion: 1,
+    observedAt: "2026-04-24T00:00:00.000Z",
+    status: "submitted",
+    execution: {
+      status: "submitted",
+      disbursementRecord,
+    },
+  };
+
+  assert.deepEqual(paybackDisbursementRecordFromTickResult(result), disbursementRecord);
+
+  await persistPaybackSchedulerResult(result, { dataDir, logsDir });
+
+  const tickLatest = JSON.parse(await readFile(join(dataDir, "payback-scheduler-tick-latest.json"), "utf8"));
+  const tickLines = (await readFile(join(dataDir, "payback-scheduler-ticks.jsonl"), "utf8")).trim().split("\n");
+  const auditLines = (await readFile(join(logsDir, "signer-audit.jsonl"), "utf8")).trim().split("\n");
+
+  assert.equal(tickLatest.status, "submitted");
+  assert.equal(tickLines.length, 1);
+  assert.deepEqual(JSON.parse(auditLines[0]), disbursementRecord);
 });
