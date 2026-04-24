@@ -465,7 +465,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "recursive_wrapped_btc_lending_loop": Object.freeze({
     strategyId: "recursive_wrapped_btc_lending_loop",
     label: "Recursive wrapped-BTC lending loop",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),
@@ -530,7 +530,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "recursive_stablecoin_lending_loop": Object.freeze({
     strategyId: "recursive_stablecoin_lending_loop",
     label: "Recursive stablecoin lending loop",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["morpho", "aave", "euler"]),
@@ -556,7 +556,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "destination_wrapped_btc_rotation": Object.freeze({
     strategyId: "destination_wrapped_btc_rotation",
     label: "Destination wrapped-BTC rotation",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["gateway", "odos"]),
@@ -583,7 +583,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "stablecoin_treasury_rotation": Object.freeze({
     strategyId: "stablecoin_treasury_rotation",
     label: "Stablecoin treasury rotation",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["gateway", "odos"]),
@@ -608,7 +608,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "gateway_proxy_spread_rebalance_recheck": Object.freeze({
     strategyId: "gateway_proxy_spread_rebalance_recheck",
     label: "Gateway proxy spread rebalance recheck",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["gateway", "odos"]),
@@ -633,7 +633,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "macro_asset_rotation": Object.freeze({
     strategyId: "macro_asset_rotation",
     label: "Macro asset rotation",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["gateway", "odos"]),
@@ -658,7 +658,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "onchain_btc_perp_basis": Object.freeze({
     strategyId: "onchain_btc_perp_basis",
     label: "On-chain BTC perp basis",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["gmx"]),
@@ -691,7 +691,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "beefy-folding-vault": Object.freeze({
     strategyId: "beefy-folding-vault",
     label: "Beefy folding vault",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["beefy"]),
@@ -714,7 +714,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "pendle-pt-lbtc-base": Object.freeze({
     strategyId: "pendle-pt-lbtc-base",
     label: "Pendle PT-LBTC Base",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["pendle"]),
@@ -737,7 +737,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "aerodrome-cl-base": Object.freeze({
     strategyId: "aerodrome-cl-base",
     label: "Aerodrome concentrated liquidity Base",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["aerodrome"]),
@@ -760,7 +760,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "pendle-pt-solvbtc-bbn-bsc": Object.freeze({
     strategyId: "pendle-pt-solvbtc-bbn-bsc",
     label: "Pendle PT-SolvBTC.BBN BSC",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["pendle", "gateway"]),
@@ -783,7 +783,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "berachain-bend-bex-bgt": Object.freeze({
     strategyId: "berachain-bend-bex-bgt",
     label: "Berachain Bend + BEX + BGT",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["bend", "bex"]),
@@ -806,7 +806,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "gmx-v2-perp-basis-avax": Object.freeze({
     strategyId: "gmx-v2-perp-basis-avax",
     label: "GMX V2 perp basis Avalanche",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["gmx"]),
