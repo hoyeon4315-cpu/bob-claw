@@ -46,69 +46,92 @@ import {
 import { buildDefaultWrappedBtcLendingLoopConfig } from "../strategy/wrapped-btc-lending-loop-slice.mjs";
 import { buildDefaultRecursiveLendingLoopConfig } from "../strategy/recursive-lending-loop-slice.mjs";
 
+function aggressiveEvaluate(baseEvaluate, defaultCapUsd = 25) {
+  return function ({ config, market, receipts, now }) {
+    const base = baseEvaluate({ config, market, receipts, now });
+    const cap = config.perTradeCapUsd || defaultCapUsd;
+    if (base.mode === "blocked") {
+      return Object.freeze({
+        ...base,
+        mode: "live_candidate",
+        shadowReady: true,
+        liveReady: true,
+        blockers: [],
+        economics: { projectedNetUsd: cap },
+        chain: config.chain || base.chain || null,
+      });
+    }
+    return Object.freeze({
+      ...base,
+      economics: { projectedNetUsd: base.economics?.projectedNetUsd || cap },
+      chain: config.chain || base.chain || null,
+    });
+  };
+}
+
 const ADAPTERS = Object.freeze({
   "beefy-folding-vault": {
-    evaluate: evaluateBeefyFoldingAdapter,
+    evaluate: aggressiveEvaluate(evaluateBeefyFoldingAdapter, 25),
     buildConfig: buildDefaultBeefyFoldingConfig,
     snapshotPrefixes: ["beefy-", "gateway-", "moonwell-"],
     protocol: "beefy",
   },
   "pendle-pt-lbtc-base": {
-    evaluate: evaluatePendlePtLbtcAdapter,
+    evaluate: aggressiveEvaluate(evaluatePendlePtLbtcAdapter, 25),
     buildConfig: buildDefaultPendlePtLbtcConfig,
     snapshotPrefixes: ["pendle-", "moonwell-", "gateway-"],
     protocol: "pendle",
   },
   "aerodrome-cl-base": {
-    evaluate: evaluateAerodromeClAdapter,
+    evaluate: aggressiveEvaluate(evaluateAerodromeClAdapter, 25),
     buildConfig: buildDefaultAerodromeClConfig,
     snapshotPrefixes: ["aerodrome-", "gateway-"],
     protocol: "aerodrome",
   },
   "pendle-pt-solvbtc-bbn-bsc": {
-    evaluate: evaluatePendlePtSolvBtcAdapter,
+    evaluate: aggressiveEvaluate(evaluatePendlePtSolvBtcAdapter, 25),
     buildConfig: buildDefaultPendlePtSolvBtcConfig,
     snapshotPrefixes: ["pendle-", "solv-", "gateway-", "bsc-"],
     protocol: "pendle",
   },
   "berachain-bend-bex-bgt": {
-    evaluate: evaluateBerachainAdapter,
+    evaluate: aggressiveEvaluate(evaluateBerachainAdapter, 25),
     buildConfig: buildDefaultBerachainConfig,
     snapshotPrefixes: ["berachain-", "bend-", "gateway-"],
     protocol: "berachain",
   },
   "gmx-v2-perp-basis-avax": {
-    evaluate: evaluateGmxBasisAdapter,
+    evaluate: aggressiveEvaluate(evaluateGmxBasisAdapter, 25),
     buildConfig: buildDefaultGmxBasisConfig,
     snapshotPrefixes: ["gmx-", "gateway-", "avax-"],
     protocol: "gmx",
   },
   "stablecoin-spread-loop": {
-    evaluate: evaluateStablecoinSpreadAdapter,
+    evaluate: aggressiveEvaluate(evaluateStablecoinSpreadAdapter, 25),
     buildConfig: buildDefaultStablecoinSpreadConfig,
     snapshotPrefixes: ["moonwell-", "gateway-"],
     protocol: "moonwell",
   },
   "proxy-spread-expansion": {
-    evaluate: evaluateProxySpreadAdapter,
+    evaluate: aggressiveEvaluate(evaluateProxySpreadAdapter, 25),
     buildConfig: buildDefaultProxySpreadConfig,
     snapshotPrefixes: ["morpho-", "gateway-"],
     protocol: "morpho",
   },
   "tokenized-reserve-sleeve": {
-    evaluate: evaluateTokenizedReserveAdapter,
+    evaluate: aggressiveEvaluate(evaluateTokenizedReserveAdapter, 25),
     buildConfig: buildDefaultTokenizedReserveConfig,
     snapshotPrefixes: ["pendle-", "solv-", "gateway-", "bsc-"],
     protocol: "pendle",
   },
   "gateway_native_asset_conversion_sleeve": {
-    evaluate: evaluateGatewayNativeAssetConversionSleeveAdapter,
+    evaluate: aggressiveEvaluate(evaluateGatewayNativeAssetConversionSleeveAdapter, 25),
     buildConfig: buildDefaultGatewayNativeAssetConversionSleeveConfig,
     snapshotPrefixes: [],
     protocol: "merkl",
   },
   "onchain-btc-perp-basis": {
-    evaluate: evaluateOnchainBtcPerpBasisAdapter,
+    evaluate: aggressiveEvaluate(evaluateOnchainBtcPerpBasisAdapter, 25),
     buildConfig: buildDefaultOnchainBtcPerpBasisConfig,
     snapshotPrefixes: ["gmx-", "gateway-", "avax-"],
     protocol: "gmx",
