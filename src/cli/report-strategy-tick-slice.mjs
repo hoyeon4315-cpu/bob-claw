@@ -190,6 +190,8 @@ function main() {
         triggers: demotion.triggers.map((t) => t.kind),
         signerBackedReceiptCount: demotion.evidence?.signerBackedReceiptCount ?? 0,
       },
+      scoredAllocation: (tick?.scoredAllocationDetails || [])
+        .find((a) => a.strategyId === sid) || null,
       promotion: {
         fastTrack: {
           eligible: promotionFastTrack.eligible,
