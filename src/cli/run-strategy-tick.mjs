@@ -43,6 +43,8 @@ import {
   evaluateGatewayNativeAssetConversionSleeveAdapter,
   buildDefaultGatewayNativeAssetConversionSleeveConfig,
 } from "../strategy/gateway-native-asset-conversion-sleeve-adapter.mjs";
+import { buildDefaultWrappedBtcLendingLoopConfig } from "../strategy/wrapped-btc-lending-loop-slice.mjs";
+import { buildDefaultRecursiveLendingLoopConfig } from "../strategy/recursive-lending-loop-slice.mjs";
 
 const ADAPTERS = Object.freeze({
   "beefy-folding-vault": {
@@ -111,7 +113,64 @@ const ADAPTERS = Object.freeze({
     snapshotPrefixes: ["gmx-", "gateway-", "avax-"],
     protocol: "gmx",
   },
+  "wrapped-btc-loop-base-moonwell": {
+    evaluate: evaluateWrappedBtcLendingLoopAdapter,
+    buildConfig: buildDefaultWrappedBtcLendingLoopConfig,
+    snapshotPrefixes: ["moonwell-", "gateway-"],
+    protocol: "moonwell",
+  },
+  "recursive_wrapped_btc_lending_loop": {
+    evaluate: evaluateRecursiveWrappedBtcLendingLoopAdapter,
+    buildConfig: () => buildDefaultRecursiveLendingLoopConfig("recursive_wrapped_btc_lending_loop"),
+    snapshotPrefixes: ["moonwell-", "gateway-"],
+    protocol: "moonwell",
+  },
+  "recursive_stablecoin_lending_loop": {
+    evaluate: evaluateRecursiveStablecoinLendingLoopAdapter,
+    buildConfig: () => buildDefaultRecursiveLendingLoopConfig("recursive_stablecoin_lending_loop"),
+    snapshotPrefixes: ["morpho-", "gateway-"],
+    protocol: "morpho",
+  },
 });
+
+function evaluateWrappedBtcLendingLoopAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 5;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
+
+function evaluateRecursiveWrappedBtcLendingLoopAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 5;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
+
+function evaluateRecursiveStablecoinLendingLoopAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 5;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
 
 function parseArgs(argv) {
   const out = { json: false, quiet: false, allowShadow: false, strategies: [] };
