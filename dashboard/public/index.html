@@ -241,14 +241,21 @@
     function DefiPane({ refreshTick }) {
       void refreshTick;
       const byProtocol = STRATEGIES.reduce((acc, s) => {
+        if (s.status !== 'LIVE') return acc;
         (acc[s.protocol] ||= []).push(s);
         return acc;
       }, {});
+      const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
       return (
         <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
-          {Object.entries(byProtocol).map(([proto, list]) => {
+          {entries.length === 0 && (
+            <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'var(--ink-3)' }}>
+              No live strategies
+            </div>
+          )}
+          {entries.map(([proto, list]) => {
             const protoEarned = list.reduce((sum, s) => sum + (s.earnedUsd || 0), 0);
-            const liveCount = list.filter(s => s.status === 'LIVE').length;
+            const protoCap = list.reduce((sum, s) => sum + (s.capUsd || 0), 0);
             return (
               <div key={proto} style={{
                 marginBottom: 14,
@@ -263,17 +270,21 @@
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, textTransform: 'capitalize', letterSpacing: -0.1 }}>{proto}</div>
                     <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
-                      {list.length} strategies{liveCount > 0 ? ` · ${liveCount} LIVE` : ''}
+                      {list.length} LIVE
                     </div>
                   </div>
-                  {protoEarned > 0 && (
-                    <div style={{ textAlign: 'right' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    {protoEarned > 0 && (
                       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)', letterSpacing: -0.3 }}>
                         +${protoEarned.toFixed(0)}
                       </div>
-                      <div style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>earned</div>
-                    </div>
-                  )}
+                    )}
+                    {protoCap > 0 && (
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>
+                        Cap ${protoCap.toLocaleString()}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div style={{ padding: '0 14px' }}>
                   {list.map((s, i) => <StrategyRow key={s.id} s={s} isLast={i === list.length - 1}/>)}
@@ -286,7 +297,6 @@
     }
 
     function StrategyRow({ s, isLast }) {
-      const statusInk = { 'LIVE':'#1C7A3E','DRY RUN':'#7A5C0D','CANDIDATE':'#6B6B6E','BLOCKED':'#8A1F1F' }[s.status] || '#555';
       const chain = CHAINS.find(c => c.id === s.chain);
       return (
         <div style={{
@@ -304,20 +314,17 @@
               {s.apyPct != null ? ` · ${s.apyPct.toFixed(1)}%` : ''}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ textAlign: 'right' }}>
             {s.earnedUsd > 0 && (
-              <div style={{
-                fontSize: 12, fontWeight: 600, color: '#fff',
-                background: 'var(--green)', borderRadius: 999,
-                padding: '2px 8px', letterSpacing: -0.2,
-              }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', letterSpacing: -0.2 }}>
                 +${s.earnedUsd.toFixed(0)}
               </div>
             )}
-            <div style={{
-              fontSize: 8.5, fontWeight: 600, padding: '1.5px 5px', borderRadius: 4,
-              border: `0.5px solid ${statusInk}`, color: statusInk, letterSpacing: 0.5,
-            }}>{s.status}</div>
+            {s.capUsd != null && s.capUsd > 0 && (
+              <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
+                Cap ${s.capUsd.toLocaleString()}
+              </div>
+            )}
           </div>
           {!isLast && <div style={{
             position: 'absolute', left: 38, right: 0, bottom: 0, height: 0.5,
