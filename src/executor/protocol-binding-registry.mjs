@@ -101,3 +101,39 @@ export function registerErc4626LikeBinding(bindingKind, { intentType = "erc4626_
     family: "erc4626",
   });
 }
+
+// ── Lending family: reuse Aave helpers with protocol-specific bindingKind ──
+
+export function registerLendingLikeBinding(bindingKind, { intentType = "aave_supply" } = {}) {
+  registerBinding({
+    bindingKind,
+    planBuilder: buildAaveProtocolCanaryPlan,
+    planExecutor: executeAaveProtocolCanaryPlan,
+    exitExecutor: executeAavePortfolioExit,
+    intentType,
+    family: "lending",
+  });
+}
+
+// ── Bulk register all multi-chain protocols ──
+
+registerLendingLikeBinding("compound_v3_pool_supply_withdraw");
+registerLendingLikeBinding("venus_pool_supply_withdraw");
+registerLendingLikeBinding("morpho_pool_supply_withdraw");
+registerLendingLikeBinding("benqi_pool_supply_withdraw");
+registerLendingLikeBinding("dolomite_pool_supply_withdraw");
+registerLendingLikeBinding("shadow_pool_supply_withdraw");
+registerLendingLikeBinding("avalon_pool_supply_withdraw");
+registerLendingLikeBinding("bend_pool_supply_withdraw");
+
+registerErc4626LikeBinding("beefy_vault_deposit_withdraw");
+registerErc4626LikeBinding("pendle_pt_vault_deposit_withdraw", { intentType: "erc4626_deposit" });
+registerErc4626LikeBinding("aerodrome_cl_lp_add_remove", { intentType: "lp_add_liquidity" });
+registerErc4626LikeBinding("velodrome_cl_lp_add_remove", { intentType: "lp_add_liquidity" });
+registerErc4626LikeBinding("pancakeswap_v3_lp_add_remove", { intentType: "lp_add_liquidity" });
+registerErc4626LikeBinding("uniswap_v3_lp_add_remove", { intentType: "lp_add_liquidity" });
+registerErc4626LikeBinding("catex_lp_add_remove", { intentType: "lp_add_liquidity" });
+registerErc4626LikeBinding("kyo_lp_add_remove", { intentType: "lp_add_liquidity" });
+
+// GMX perp uses Aave-style open/close for now (placeholder until perp-specific helper)
+registerLendingLikeBinding("gmx_v2_perp_open_close", { intentType: "perp_open" });
