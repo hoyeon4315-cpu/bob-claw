@@ -17,8 +17,8 @@ test("lane-aware live policy suppresses transport-only audit for auto-executable
     },
     reviewPackage: {
       candidateType: "strategy",
-      candidateId: "wrapped-btc-loop-base-moonwell",
-      candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      candidateId: "gateway_native_asset_conversion_sleeve",
+      candidateLabel: "Gateway native-asset conversion sleeve",
     },
     prelive: {
       currentStage: "tiny_live_canary_review",
@@ -51,7 +51,7 @@ test("lane-aware live policy replaces transport-only audit with real baseline bl
     },
     reviewPackage: {
       candidateType: "strategy",
-      candidateId: "wrapped-btc-loop-base-moonwell",
+      candidateId: "gateway_native_asset_conversion_sleeve",
     },
     prelive: {
       currentStage: "tiny_live_canary_review",

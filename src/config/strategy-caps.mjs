@@ -512,7 +512,6 @@ export function listStrategyCaps() {
 function effectiveActiveStrategyCapUsd(config = {}) {
   const perChainCaps = Object.values(config?.caps?.perChainUsd || {}).filter(isFiniteNumber);
   const candidates = [
-    config?.caps?.perTxUsd,
     config?.caps?.perDayUsd,
     perChainCaps.length > 0 ? Math.max(...perChainCaps) : null,
   ].filter(isFiniteNumber);
