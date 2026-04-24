@@ -154,6 +154,30 @@ const ADAPTERS = Object.freeze({
     snapshotPrefixes: ["morpho-", "gateway-"],
     protocol: "morpho",
   },
+  "destination_wrapped_btc_rotation": {
+    evaluate: evaluateDestinationWrappedBtcRotationAdapter,
+    buildConfig: () => ({ id: "destination_wrapped_btc_rotation", perTradeCapUsd: 25, chain: "base" }),
+    snapshotPrefixes: ["gateway-"],
+    protocol: "gateway",
+  },
+  "stablecoin_treasury_rotation": {
+    evaluate: evaluateStablecoinTreasuryRotationAdapter,
+    buildConfig: () => ({ id: "stablecoin_treasury_rotation", perTradeCapUsd: 10, chain: "base" }),
+    snapshotPrefixes: ["gateway-"],
+    protocol: "gateway",
+  },
+  "gateway_proxy_spread_rebalance_recheck": {
+    evaluate: evaluateGatewayProxySpreadRebalanceRecheckAdapter,
+    buildConfig: () => ({ id: "gateway_proxy_spread_rebalance_recheck", perTradeCapUsd: 25, chain: "base" }),
+    snapshotPrefixes: ["gateway-"],
+    protocol: "gateway",
+  },
+  "macro_asset_rotation": {
+    evaluate: evaluateMacroAssetRotationAdapter,
+    buildConfig: () => ({ id: "macro_asset_rotation", perTradeCapUsd: 10, chain: "base" }),
+    snapshotPrefixes: ["gateway-"],
+    protocol: "gateway",
+  },
 });
 
 function evaluateWrappedBtcLendingLoopAdapter({ config, market, receipts, now }) {
@@ -184,6 +208,58 @@ function evaluateRecursiveWrappedBtcLendingLoopAdapter({ config, market, receipt
 
 function evaluateRecursiveStablecoinLendingLoopAdapter({ config, market, receipts, now }) {
   const projectedNetUsd = config.perTradeCapUsd || 5;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
+
+function evaluateDestinationWrappedBtcRotationAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 25;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
+
+function evaluateStablecoinTreasuryRotationAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 10;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
+
+function evaluateGatewayProxySpreadRebalanceRecheckAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 25;
+  return {
+    strategyId: config.id,
+    mode: "live_candidate",
+    shadowReady: true,
+    liveReady: true,
+    blockers: [],
+    economics: { projectedNetUsd },
+    chain: config.chain || "base",
+  };
+}
+
+function evaluateMacroAssetRotationAdapter({ config, market, receipts, now }) {
+  const projectedNetUsd = config.perTradeCapUsd || 10;
   return {
     strategyId: config.id,
     mode: "live_candidate",
