@@ -64,23 +64,25 @@ export const WRAPPED_BTC_VENUES = Object.freeze({
   }),
   ethereum: Object.freeze({
     chain: "ethereum",
-    venues: Object.freeze([]),
-    status: "template_only",
-    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", asset: "wBTC.OFT" }),
+      Object.freeze({ protocol: "morpho", family: "lending", asset: "wBTC.OFT" }),
+      Object.freeze({ protocol: "euler_v2", family: "lending", asset: "wBTC.OFT" }),
+      Object.freeze({ protocol: "uniswap_v3", family: "cl_lp", asset: "wBTC.OFT/ETH" }),
+    ]),
   }),
   optimism: Object.freeze({
     chain: "optimism",
     venues: Object.freeze([
       Object.freeze({ protocol: "aave_v3", family: "lending", asset: "wBTC.OFT" }),
+      Object.freeze({ protocol: "velodrome", family: "amm", asset: "wBTC.OFT/ETH" }),
     ]),
-    status: "template_only",
-    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
   }),
   sei: Object.freeze({
     chain: "sei",
-    venues: Object.freeze([]),
-    status: "template_only",
-    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", asset: "wBTC.OFT" }),
+    ]),
   }),
 });
 

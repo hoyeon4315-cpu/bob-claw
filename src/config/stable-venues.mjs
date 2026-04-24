@@ -31,15 +31,58 @@ export const STABLE_VENUES = Object.freeze({
   }),
   optimism: Object.freeze({
     chain: "optimism",
-    venues: Object.freeze([]),
-    status: "template_only",
-    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "velodrome", family: "amm_stable", depositAsset: "USDC", pairAsset: "USDT" }),
+    ]),
+  }),
+  avalanche: Object.freeze({
+    chain: "avalanche",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "benqi", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
+  }),
+  bera: Object.freeze({
+    chain: "bera",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "dolomite", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
+  }),
+  bob: Object.freeze({
+    chain: "bob",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "euler_v2", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
+  }),
+  sonic: Object.freeze({
+    chain: "sonic",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "shadow", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
+  }),
+  soneium: Object.freeze({
+    chain: "soneium",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "kyo", family: "amm_stable", depositAsset: "USDC", pairAsset: "USDT" }),
+    ]),
+  }),
+  unichain: Object.freeze({
+    chain: "unichain",
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+      Object.freeze({ protocol: "catex", family: "amm_stable", depositAsset: "USDC", pairAsset: "USDT" }),
+    ]),
   }),
   sei: Object.freeze({
     chain: "sei",
-    venues: Object.freeze([]),
-    status: "template_only",
-    blockers: Object.freeze(["no_current_destination_venue", "venue_unconfirmed"]),
+    venues: Object.freeze([
+      Object.freeze({ protocol: "aave_v3", family: "lending", depositAsset: "USDC", borrowAsset: "USDT" }),
+    ]),
   }),
 });
 
