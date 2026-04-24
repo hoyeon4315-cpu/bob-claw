@@ -87,7 +87,7 @@ test("planner emits alternate bridge candidates when Gateway paused and fallback
   const methods = new Set(funding.selections[0].candidates.map((c) => c.method));
   // Base <-> Unichain is represented by live Across plus design-scaffold
   // aggregators. Across is live, but this fixture uses wBTC.OFT, which is not
-  // an Across-supported ticker.
+  // an Across-supported ticker. LiFi is live and the source amount covers target.
   assert.ok(methods.has("cross_chain_bridge_across"), "Across candidate emitted");
   assert.ok(methods.has("cross_chain_bridge_lifi"), "LiFi candidate emitted");
   const across = funding.selections[0].candidates.find((c) => c.method === "cross_chain_bridge_across");
@@ -95,8 +95,8 @@ test("planner emits alternate bridge candidates when Gateway paused and fallback
   assert.ok(across.missingInputs.includes("across_pair_unsupported"));
   assert.ok(!across.missingInputs.some((input) => input.startsWith("bridge_provider_executor_missing:")));
   const lifi = funding.selections[0].candidates.find((c) => c.method === "cross_chain_bridge_lifi");
-  assert.equal(lifi.availability, "conditional");
-  assert.ok(lifi.missingInputs.some((input) => input.startsWith("bridge_provider_executor_missing:")));
+  assert.equal(lifi.availability, "ready");
+  assert.equal(lifi.missingInputs.length, 0);
 });
 
 test("planner suppresses Across for BSC while BSC SpokePool is unverified", () => {

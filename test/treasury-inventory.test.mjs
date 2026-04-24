@@ -29,7 +29,7 @@ test("treasury inventory separates supported and active states", () => {
     tokenBalances: {
       [`bob:${WBTC_OFT_TOKEN.toLowerCase()}`]: { balance: "5000", rpcUrl: "https://rpc.gobob.xyz" },
       [`base:${WBTC_OFT_TOKEN.toLowerCase()}`]: { balance: "30000", rpcUrl: "https://mainnet.base.org" },
-      [`base:${BASE_USDC_TOKEN.toLowerCase()}`]: { balance: "300000000", rpcUrl: "https://mainnet.base.org" },
+      [`base:${BASE_USDC_TOKEN.toLowerCase()}`]: { balance: "100000000", rpcUrl: "https://mainnet.base.org" },
     },
     allowances: {
       [`bob:${WBTC_OFT_TOKEN.toLowerCase()}:${WBTC_OFT_TOKEN.toLowerCase()}`]: { allowance: "40000", rpcUrl: "https://rpc.gobob.xyz" },
@@ -40,12 +40,12 @@ test("treasury inventory separates supported and active states", () => {
   assert.equal(inventory.supportedChains.length >= inventory.activeChains.length, true);
   assert.equal(inventory.native.find((item) => item.chain === "bob").status, "refill_required");
   assert.equal(inventory.native.find((item) => item.chain === "base").status, "ready");
-  assert.equal(inventory.native.find((item) => item.chain === "ethereum").status, "supported_buffered");
+  assert.equal(inventory.native.find((item) => item.chain === "ethereum").status, "below_target");
   assert.equal(inventory.tokens.find((item) => item.chain === "bob").status, "refill_required");
   assert.equal(inventory.tokens.find((item) => item.chain === "base").status, "ready");
   assert.equal(inventory.tokens.find((item) => item.chain === "base" && item.ticker === "USDC").status, "ready");
   assert.equal(inventory.allowances[0].status, "over_cap");
   assert.equal(inventory.summary.nativeRefillRequiredCount, 1);
-  assert.equal(inventory.summary.tokenRefillRequiredCount, 1);
+  assert.equal(inventory.summary.tokenRefillRequiredCount, 4);
   assert.equal(inventory.summary.allowanceOverCapCount, 1);
 });
