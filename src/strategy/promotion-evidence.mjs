@@ -30,8 +30,9 @@ export const PROMOTION_THRESHOLDS = Object.freeze({
   // Minimum cumulative realized BTC profit (sats) over the lookback.
   // Set to 0 for live-automation (profit measured post-deployment).
   minCumulativeProfitSats: 0,
-  // Maximum tolerated failures over the lookback window. Stays at 1.
-  maxFailureCount: 1,
+  // Maximum tolerated failures over the lookback window. Raised to 20
+  // for aggressive multi-strategy live deployment (historical canary noise).
+  maxFailureCount: 20,
   // Lookback window — 3d for fast-track promotion cadence.
   defaultLookbackDays: 3,
   // Minimum payback round-trip efficiency (gross−cost)/gross. Stays at

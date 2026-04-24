@@ -28,7 +28,8 @@ import { resolve, join, dirname } from "node:path";
 import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
-import { buildScoredAllocation } from "../strategy/scored-capital-allocation.mjs";
+import { buildScoredAllocation, DEFAULT_VENUE_METADATA } from "../strategy/scored-capital-allocation.mjs";
+import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
 import { evaluatePendlePtLbtcAdapter, buildDefaultPendlePtLbtcConfig } from "../strategy/pendle-pt-lbtc-adapter.mjs";
@@ -476,6 +477,42 @@ async function main() {
     totalAvailableSats,
   });
 
+  function intentTypeForFamily(family) {
+    const map = {
+      lending: "aave_supply",
+      lp: "add_liquidity",
+      vault: "vault_deposit",
+      perp: "perp_open",
+      yield: "yield_deposit",
+      rotation: "swap",
+      spread: "swap",
+    };
+    return map[family] || "strategy_execution";
+  }
+
+  const generatedIntents = [];
+  for (const alloc of scoredAllocation?.allocations || []) {
+    const family = DEFAULT_VENUE_METADATA[alloc.strategyId]?.family || "unknown";
+    const intentType = intentTypeForFamily(family);
+    const amountUsd = (alloc.allocatedSats * btcPriceUsd) / 1e8;
+    const caps = getStrategyCaps(alloc.strategyId);
+    const raw = {
+      strategyId: alloc.strategyId,
+      chain: alloc.chain,
+      intentType,
+      amountUsd,
+      mode: "live",
+      observedAt: result.observedAt,
+      strategyConfig: { intentTtlMs: caps?.intentTtlMs ?? 300_000 },
+      metadata: { protocol: alloc.protocol, skipAutoIngest: true, source: "scored_allocation" },
+    };
+    try {
+      generatedIntents.push(normalizeExecutionIntent(raw));
+    } catch (err) {
+      generatedIntents.push({ ...raw, normalizationError: err.message });
+    }
+  }
+
   const tickRecord = {
     schemaVersion: 1,
     tickAt: result.observedAt,
@@ -497,6 +534,7 @@ async function main() {
       allocatedSats: a.allocatedSats,
       score: a.score,
     })),
+    generatedIntents,
     candidateCount: result.builder.candidateCount,
     skippedCount: result.builder.skippedCount,
     errorCount: result.errors.length,

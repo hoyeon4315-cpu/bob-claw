@@ -192,6 +192,7 @@ function main() {
       },
       scoredAllocation: (tick?.scoredAllocationDetails || [])
         .find((a) => a.strategyId === sid) || null,
+      generatedIntentCount: (tick?.generatedIntents || []).filter((i) => i.strategyId === sid).length,
       promotion: {
         fastTrack: {
           eligible: promotionFastTrack.eligible,
@@ -246,6 +247,8 @@ function main() {
       strategiesOperatorHold: strategyRows.filter((s) => s.operatorHold).length,
       strategiesEligibleStrict: strategyRows.filter((s) => s.promotion.strict.eligible).length,
       totalSignerBackedReceipts: strategyRows.reduce((acc, s) => acc + s.receiptCountSignerBacked, 0),
+      strategiesWithGeneratedIntents: strategyRows.filter((s) => s.generatedIntentCount > 0).length,
+      totalGeneratedIntents: strategyRows.reduce((acc, s) => acc + s.generatedIntentCount, 0),
     },
     microCanary: microCanarySlice,
     strategyStage: strategyStageSlice,
@@ -261,7 +264,7 @@ function main() {
       console.log(`strategy-tick slice written: ${outPath}`);
       console.log(`  ticks=${slice.tickCountTotal} strategies=${slice.summary.strategiesTracked}`);
       console.log(`  withTick=${slice.summary.strategiesWithTick} eligibleFastTrack=${slice.summary.strategiesEligibleFastTrack} eligibleStrict=${slice.summary.strategiesEligibleStrict}`);
-      console.log(`  totalSignerBackedReceipts=${slice.summary.totalSignerBackedReceipts}`);
+      console.log(`  totalSignerBackedReceipts=${slice.summary.totalSignerBackedReceipts} generatedIntents=${slice.summary.totalGeneratedIntents}`);
     }
   }
 }
