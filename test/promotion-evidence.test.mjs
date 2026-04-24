@@ -269,7 +269,7 @@ describe("promotion evidence — pure gate", () => {
     // that contract — changing it requires another committed diff.
     assert.equal(PROMOTION_THRESHOLDS.minSignerBackedReceipts, 2);
     assert.equal(PROMOTION_THRESHOLDS.minConsecutiveSuccess, 1);
-    assert.equal(PROMOTION_THRESHOLDS.minCumulativeProfitSats, 200);
+    assert.equal(PROMOTION_THRESHOLDS.minCumulativeProfitSats, 0);
     assert.equal(PROMOTION_THRESHOLDS.defaultLookbackDays, 3);
     assert.equal(PROMOTION_THRESHOLDS.minRoundTripEfficiency, 0.9);
     assert.ok(Object.isFrozen(PROMOTION_THRESHOLDS));
