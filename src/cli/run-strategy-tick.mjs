@@ -31,6 +31,7 @@ import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { getProtocolAddress } from "../config/protocol-addresses.mjs";
 import { getEvmChainConfig } from "../config/chains.mjs";
 import { Contract, JsonRpcProvider } from "ethers";
+import { tokenAsset } from "../assets/tokens.mjs";
 import { buildScoredAllocation, DEFAULT_VENUE_METADATA } from "../strategy/scored-capital-allocation.mjs";
 import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
@@ -59,6 +60,16 @@ const ERC20_BALANCE_ABI = ["function balanceOf(address owner) view returns (uint
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BASE_WETH_TOKEN = "0x4200000000000000000000000000000000000006";
+const CBBTC_DECIMALS = 8;
+const CBBTC_REBALANCE_BUFFER_BPS = 2_000;
+const MOONWELL_MIN_BORROW_USD = 25;
+const MISSING_EXECUTOR_STRATEGIES = new Set([
+  "pendle-pt-lbtc-base",
+  "aerodrome-cl-base",
+  "pendle-pt-solvbtc-bbn-bsc",
+  "berachain-bend-bex-bgt",
+  "gmx-v2-perp-basis-avax",
+]);
 
 const STRATEGY_SWAP_ROUTES = Object.freeze({
   destination_wrapped_btc_rotation: Object.freeze({
@@ -561,7 +572,7 @@ async function main() {
     amountUsd = Math.min(amountUsd, perTxUsd);
     if (amountUsd <= 0) continue;
     let strategyIntentsBuilt = false;
-    let suppressGenericFallback = false;
+    let suppressGenericFallback = MISSING_EXECUTOR_STRATEGIES.has(alloc.strategyId);
 
     // ── Auto-capital-routing: when cbBTC strategies blocked by balance,
     //     prepend a USDC → cbBTC swap on Base BEFORE attempting main builder ──
@@ -573,8 +584,9 @@ async function main() {
       const usdcBalance = await queryErc20Balance(alloc.chain, BASE_USDC_TOKEN, operatorAddress);
       const cbBTC = getProtocolAddress("moonwell", "base", "markets.cbBTC.asset") || BASE_CBBTC_TOKEN;
       const cbBTCBalance = await queryErc20Balance(alloc.chain, cbBTC, operatorAddress);
-      const requiredUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
-      const swapAmountUsd = Math.min(amountUsd, Number(usdcBalance) / 1e6);
+      const requiredUnits = String(Math.floor((amountUsd / btcPriceUsd) * (10 ** CBBTC_DECIMALS)));
+      const bufferedAmountUsd = amountUsd * (1 + CBBTC_REBALANCE_BUFFER_BPS / 10_000);
+      const swapAmountUsd = Math.min(bufferedAmountUsd, perTxUsd, Number(usdcBalance) / 1e6);
       if (cbBTCBalance < BigInt(requiredUnits)) suppressGenericFallback = true;
       if (cbBTCBalance < BigInt(requiredUnits) && swapAmountUsd >= 1) {
         try {
@@ -617,8 +629,10 @@ async function main() {
         strategyConfig: { chain: alloc.chain, protocol: alloc.protocol, collateralAsset: "cbBTC", borrowAsset: "USDC" },
       });
       if (support.executableFromRepo) {
-        const collateralUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
-        const borrowUnits = String(Math.floor((amountUsd * 0.5) * 1e6));
+        const collateralUnits = String(Math.floor((amountUsd / btcPriceUsd) * (10 ** CBBTC_DECIMALS)));
+        const borrowUnits = amountUsd >= MOONWELL_MIN_BORROW_USD
+          ? String(Math.floor((amountUsd * 0.5) * 1e6))
+          : null;
         const operatorAddress = strategyOperatorMap[alloc.strategyId];
         const cbBTC = getProtocolAddress("moonwell", "base", "markets.cbBTC.asset");
         const cbBTCBalance = await queryErc20Balance(alloc.chain, cbBTC, operatorAddress);
@@ -642,6 +656,11 @@ async function main() {
               estimateGasImpl: () => { throw new Error("skip"); },
             });
             for (const step of plan.steps || []) {
+              step.intent.metadata = {
+                ...step.intent.metadata,
+                borrowSkippedReason: borrowUnits ? null : "dust_collateral_below_borrow_min_usd",
+                minBorrowUsd: MOONWELL_MIN_BORROW_USD,
+              };
               generatedIntents.push(normalizeExecutionIntent(step.intent));
             }
             strategyIntentsBuilt = true;
@@ -666,25 +685,39 @@ async function main() {
       const beefyVault = getProtocolAddress("beefy", "base", "vault");
       if (beefyVault?.verified) {
         const operatorAddress = strategyOperatorMap[alloc.strategyId];
-        const depositUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
+        const assetDecimals = tokenAsset(alloc.chain, beefyVault.asset).decimals ?? CBBTC_DECIMALS;
+        const depositUnits = String(Math.floor((amountUsd / btcPriceUsd) * (10 ** assetDecimals)));
         const assetBalance = await queryErc20Balance(alloc.chain, beefyVault.asset, operatorAddress);
-        if (assetBalance < BigInt(depositUnits)) {
+        const executableDepositUnits = assetBalance < BigInt(depositUnits) ? assetBalance : BigInt(depositUnits);
+        if (executableDepositUnits <= 0n) {
           if (!args.quiet) console.error(`  skip ${alloc.strategyId}: asset balance ${assetBalance} < required ${depositUnits}`);
           strategyIntentsBuilt = true;
         } else {
+          const executableAmountUsd = Math.min(amountUsd, (Number(executableDepositUnits) / (10 ** assetDecimals)) * btcPriceUsd);
+          if (assetBalance < BigInt(depositUnits) && !args.quiet) {
+            console.error(`  clamp ${alloc.strategyId}: deposit ${executableDepositUnits} units from balance < requested ${depositUnits}`);
+          }
           try {
             const plan = await buildVaultDepositIntent({
               strategyId: alloc.strategyId,
               chain: alloc.chain,
-              amountUsd,
+              amountUsd: executableAmountUsd,
               vaultAddress: beefyVault.address,
               assetAddress: beefyVault.asset,
-              assetDecimals: beefyVault.decimals || 18,
+              assetDecimals,
               assetPriceUsd: btcPriceUsd,
+              assetAmount: executableDepositUnits.toString(),
+              senderAddress: operatorAddress,
               now: result.observedAt,
               estimateGasImpl: () => { throw new Error("skip"); },
             });
             for (const step of plan.steps || []) {
+              step.intent.metadata = {
+                ...step.intent.metadata,
+                requestedAssetUnits: depositUnits,
+                executableAssetUnits: executableDepositUnits.toString(),
+                balanceClampApplied: assetBalance < BigInt(depositUnits),
+              };
               generatedIntents.push(normalizeExecutionIntent(step.intent));
             }
             strategyIntentsBuilt = true;
@@ -709,6 +742,8 @@ async function main() {
       const pendleRouter = getProtocolAddress("pendle", "base", "router");
       if (pendleRouter?.verified) {
         // TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })
+      } else if (!args.quiet) {
+        console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }
     }
 
@@ -717,6 +752,8 @@ async function main() {
       const aerodromePool = getProtocolAddress("aerodrome", "base", "pool");
       if (aerodromePool?.verified) {
         // TODO: buildAerodromeClIntent({ poolAddress: aerodromePool.address, ... })
+      } else if (!args.quiet) {
+        console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }
     }
 
@@ -725,6 +762,8 @@ async function main() {
       const gmxRouter = getProtocolAddress("gmx", "avalanche", "exchangeRouter");
       if (gmxRouter?.verified) {
         // TODO: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })
+      } else if (!args.quiet) {
+        console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }
     }
 
@@ -733,6 +772,8 @@ async function main() {
       const bendPool = getProtocolAddress("bend", "bera", "bendPool");
       if (bendPool?.verified) {
         // TODO: buildBerachainIntent({ poolAddress: bendPool.address, ... })
+      } else if (!args.quiet) {
+        console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }
     }
 

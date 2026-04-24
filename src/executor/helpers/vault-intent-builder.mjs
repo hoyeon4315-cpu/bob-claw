@@ -77,6 +77,7 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
  * @param {string} opts.assetAddress
  * @param {number} opts.assetDecimals
  * @param {number} [opts.assetPriceUsd]
+ * @param {string|bigint} [opts.assetAmount] - explicit asset units, preferred when clamping to wallet balance
  * @param {string} [opts.senderAddress]
  * @param {number} [opts.gasBufferBps]
  * @param {string} [opts.now]
@@ -90,6 +91,7 @@ export async function buildVaultDepositIntent({
   assetAddress,
   assetDecimals = 18,
   assetPriceUsd = null,
+  assetAmount = null,
   senderAddress = null,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   now = new Date().toISOString(),
@@ -103,7 +105,9 @@ export async function buildVaultDepositIntent({
   const asset = assertAddress(assetAddress, "assetAddress");
 
   let normalizedAmount = null;
-  if (assetPriceUsd != null && Number.isFinite(assetPriceUsd) && assetPriceUsd > 0) {
+  if (assetAmount != null) {
+    normalizedAmount = toPositiveIntegerString(assetAmount, "assetAmount");
+  } else if (assetPriceUsd != null && Number.isFinite(assetPriceUsd) && assetPriceUsd > 0) {
     normalizedAmount = toPositiveIntegerString(
       unitsFromUsd(amountUsd, assetPriceUsd, assetDecimals) || Math.floor(amountUsd * 1e6),
       "amount",
