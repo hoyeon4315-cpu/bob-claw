@@ -64,12 +64,21 @@ function printTickSummary(result) {
   }
 }
 
-async function persistResult(result) {
+export function paybackDisbursementRecordFromTickResult(result = {}) {
+  return result?.execution?.disbursementRecord || null;
+}
+
+export async function persistResult(result, { dataDir = config.dataDir, logsDir = join(process.cwd(), "logs") } = {}) {
   await writeTextIfChanged(
-    join(config.dataDir, "payback-scheduler-tick-latest.json"),
+    join(dataDir, "payback-scheduler-tick-latest.json"),
     `${JSON.stringify(result, null, 2)}\n`,
   );
-  await new JsonlStore(config.dataDir).append("payback-scheduler-ticks", result);
+  await new JsonlStore(dataDir).append("payback-scheduler-ticks", result);
+
+  const disbursementRecord = paybackDisbursementRecordFromTickResult(result);
+  if (disbursementRecord) {
+    await new JsonlStore(logsDir).append("signer-audit", disbursementRecord);
+  }
 }
 
 async function main() {
