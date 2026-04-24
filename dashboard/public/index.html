@@ -300,20 +300,20 @@
       const pair = (s.pair || []).filter(Boolean).map(p => p.toUpperCase()).join(' / ');
       const type = s.type;
       if (type === 'loop') {
-        return (s.loops ? `×${s.loops} 循环杠杆` : '循环杠杆') + (pair ? ` · ${pair}` : '');
+        return (s.loops ? `×${s.loops} ` : '') + '루프 레버리지' + (pair ? ` · ${pair}` : '');
       }
-      if (type === 'pt') return `PT 固定利率${pair ? ' · ' + pair : ''}`;
-      if (type === 'cl_lp') return `CL 流动性${pair ? ' · ' + pair : ''}`;
-      if (type === 'lp' || type === 'lp_bgt') return `流动性${pair ? ' · ' + pair : ''}`;
-      if (type === 'basis') return `基差套利${s.apyPct != null ? ' · APR ' + s.apyPct.toFixed(1) + '%' : ''}`;
-      if (type === 'fold') return `杠杆挖矿${s.loops ? ' · ×' + s.loops : ''}${pair ? ' · ' + pair : ''}`;
-      if (type === 'bridge') return `跨链桥接${pair ? ' · ' + pair : ''}`;
-      if (type === 'payback') return '偿还路径' + (pair ? ' · ' + pair : '');
-      if (type === 'arb') return `套利${pair ? ' · ' + pair : ''}`;
-      if (type === 'swap') return `兑换${pair ? ' · ' + pair : ''}`;
-      if (type === 'canary') return '金丝雀测试' + (pair ? ' · ' + pair : '');
-      if (type === 'reserve') return `储备${pair ? ' · ' + pair : ''}`;
-      if (type === 'refuel') return 'Gas 补给';
+      if (type === 'pt') return 'PT 고정금리' + (pair ? ' · ' + pair : '');
+      if (type === 'cl_lp') return 'CL 유동성 공급' + (pair ? ' · ' + pair : '');
+      if (type === 'lp' || type === 'lp_bgt') return '유동성 공급' + (pair ? ' · ' + pair : '');
+      if (type === 'basis') return '베이시스 차익' + (s.apyPct != null ? ' · APR ' + s.apyPct.toFixed(1) + '%' : '');
+      if (type === 'fold') return '레버리지 파밍' + (s.loops ? ' · ×' + s.loops : '') + (pair ? ' · ' + pair : '');
+      if (type === 'bridge') return '크로스체인 브릿지' + (pair ? ' · ' + pair : '');
+      if (type === 'payback') return '상환 경로' + (pair ? ' · ' + pair : '');
+      if (type === 'arb') return '아비트라지' + (pair ? ' · ' + pair : '');
+      if (type === 'swap') return '스왑' + (pair ? ' · ' + pair : '');
+      if (type === 'canary') return '캐너리 테스트' + (pair ? ' · ' + pair : '');
+      if (type === 'reserve') return '리저브' + (pair ? ' · ' + pair : '');
+      if (type === 'refuel') return 'Gas 리필';
       return pair || s.type;
     }
 
