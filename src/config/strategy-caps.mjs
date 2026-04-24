@@ -702,6 +702,7 @@ export const STRATEGY_CAPS = Object.freeze({
       perTxUsd: 25,
       perDayUsd: 100,
       perChainUsd: Object.freeze({
+        base: 100,
         bsc: 100,
       }),
       maxDailyLossUsd: 100,
