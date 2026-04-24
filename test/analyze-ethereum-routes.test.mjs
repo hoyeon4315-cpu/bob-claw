@@ -205,6 +205,6 @@ test("analyze-ethereum-routes reports capability, policy block, and writes JSON 
   assert.equal(analysis.ethFamily.viability.measuredLoopCount, 0);
   assert.equal(analysis.ethFamily.verdict.code, "no_measured_loops");
   assert.equal(analysis.scores.policyBlockedCount, 2);
-  assert.equal(analysis.recommendation.code, "eth_l1_policy_override_disabled");
+  assert.equal(analysis.recommendation.code, "eth_l1_positive_ev_unconfirmed");
   assert.equal(written.scores.tradeReadiness.ethereum_l1_policy_override_disabled, 2);
 });

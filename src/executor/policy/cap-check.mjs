@@ -251,7 +251,7 @@ export function evaluateCapCheck({
     now,
   });
 
-  if (intent.mode !== "dry_run" && strategyCaps.autoExecute !== true) {
+  if (!isEmergencyIntent && intent.mode !== "dry_run" && strategyCaps.autoExecute !== true) {
     blockers.push("strategy_auto_execute_disabled");
   }
   if (!isEmergencyIntent && !isFiniteNumber(perTxCapUsd)) {

@@ -1430,8 +1430,8 @@ test("dashboard status exposes ETH profitability and ETH strategy track when ETH
 
   assert.equal(status.strategy.ethProfitability.routeCount, 1);
   assert.equal(status.strategy.ethProfitability.gatewayRouteCount, 1);
-  assert.equal(status.strategy.ethProfitability.recommendationCode, "eth_l1_policy_override_disabled");
-  assert.equal(status.strategy.ethProfitability.followUpActionCode, "review_eth_policy_override");
+  assert.equal(status.strategy.ethProfitability.recommendationCode, "eth_l1_positive_ev_unconfirmed");
+  assert.equal(status.strategy.ethProfitability.followUpActionCode, "measure_eth_fee_domain");
   assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "eth_family_loop"), true);
 });
 
