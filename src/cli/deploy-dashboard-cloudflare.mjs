@@ -91,6 +91,10 @@ async function main() {
     ["pages", "deploy", DASHBOARD_DIR, "--project-name", args.projectName, "--branch", args.productionBranch],
     env,
   );
+
+  const url = `https://${args.projectName}.pages.dev`;
+  console.log(`Deployed to ${url}`);
+  console.log(`Verify cache headers: curl -I ${url}/dashboard-status.json`);
 }
 
 main().catch((error) => {

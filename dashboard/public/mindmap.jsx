@@ -145,7 +145,7 @@ function GatewayCore({ size, hidden }) {
   );
 }
 
-function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow }) {
+function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDragStart }) {
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
@@ -172,7 +172,7 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow }) {
           xmlns="http://www.w3.org/1999/xhtml"
           type="button"
           aria-label={`${chain.name} chain`}
-          onPointerDown={handleTap}
+          onPointerDown={(e) => { onDragStart?.(e); handleTap(e); }}
           onClick={(event) => event.stopPropagation?.()}
           style={{
             width: '100%',
@@ -319,7 +319,7 @@ function groupStrategiesByProtocol(strategies = []) {
   });
 }
 
-function ProtocolChip({ strategy, x, y, size, onTap, selected }) {
+function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
   const R = size * 1.1;
   const typeLabel = TYPE_LABEL[strategy.type] || strategy.type.toUpperCase();
   const typeInk = TYPE_INK[strategy.type] || '#555';
@@ -373,7 +373,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected }) {
           xmlns="http://www.w3.org/1999/xhtml"
           type="button"
           aria-label={`${strategy.label || strategy.protocol} protocol`}
-          onPointerDown={handleTap}
+          onPointerDown={(e) => { onDragStart?.(e); handleTap(e); }}
           onClick={(event) => event.stopPropagation?.()}
           style={{
             width: '100%',
@@ -563,41 +563,30 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
 
   const liveChains = new Set(STRATEGIES.filter(s => s.status === 'LIVE').map(s => s.chain));
 
-  const btcPos = { x: 0, y: -(ringR + chainSize * 1.7) };
-
-  const srcCurve = useMemo(() => ({
-    ...curvePath(btcPos.x, btcPos.y, 0, 0, 0),
-    x1: btcPos.x, y1: btcPos.y, x2: 0, y2: 0,
-  }), [btcPos.x, btcPos.y]);
+  const srcCurve = useMemo(() => {
+    const b = physicsRef.current.get('chain:bitcoin');
+    const g = physicsRef.current.get('gateway:center');
+    const bx = b ? b.x : btcPos.x;
+    const by = b ? b.y : btcPos.y;
+    const gx = g ? g.x : 0;
+    const gy = g ? g.y : 0;
+    return { ...curvePath(bx, by, gx, gy, 0), x1: bx, y1: by, x2: gx, y2: gy };
+  }, [btcPos.x, btcPos.y, time]);
 
   const destCurves = useMemo(() => {
     const m = {};
+    const g = physicsRef.current.get('gateway:center');
+    const gx = g ? g.x : 0;
+    const gy = g ? g.y : 0;
     destChains.forEach(c => {
-      const p = ringPos[c.id];
-      const cp = curvePath(0, 0, p.x, p.y, 0.1);
-      m[c.id] = { ...cp, x1: 0, y1: 0, x2: p.x, y2: p.y };
+      const body = physicsRef.current.get(`chain:${c.id}`);
+      const px = body ? body.x : ringPos[c.id].x;
+      const py = body ? body.y : ringPos[c.id].y;
+      const cp = curvePath(gx, gy, px, py, 0.1);
+      m[c.id] = { ...cp, x1: gx, y1: gy, x2: px, y2: py };
     });
     return m;
-  }, [ringPos]);
-
-  const protocolBloom = useMemo(() => {
-    if (!selectedChain) return {};
-    const p = ringPos[selectedChain];
-    if (!p) return {};
-    const strats = protocolsByChain[selectedChain] || [];
-    const baseA = Math.atan2(p.y, p.x);
-    const chipR = 28 * 1.1;
-    // Bloom sits OUTSIDE the chain — push protocol chips far enough that the
-    // chain disc + label and the chip + pair badge never collide.
-    const R = bloomRadiusForCount(strats.length, chipR, 110, 14);
-    const out = {};
-    strats.forEach((s, i) => {
-      const t = strats.length === 1 ? 0 : (i / (strats.length - 1)) - 0.5;
-      const a = baseA + t * PROTOCOL_BLOOM_SPREAD;
-      out[s.id] = { x: p.x + Math.cos(a)*R, y: p.y + Math.sin(a)*R };
-    });
-    return out;
-  }, [protocolsByChain, selectedChain, ringPos]);
+  }, [ringPos, time]);
 
   const selectionTransform = useMemo(() => {
     if (!selectedChain) {
@@ -683,6 +672,39 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
 
   const { zoom, tx, ty } = selectionTransform;
 
+  function getNodePos(id, fallbackX, fallbackY) {
+    const body = physicsRef.current.get(id);
+    if (body) return { x: body.x, y: body.y };
+    return { x: fallbackX, y: fallbackY };
+  }
+
+  function handleDragStart(e, bodyId) {
+    const body = physicsRef.current.get(bodyId);
+    if (!body) return;
+    if (body.draggable === false) return;
+    e.stopPropagation?.();
+    e.preventDefault?.();
+    body.isDragging = true;
+    dragRef.current = bodyId;
+    const svg = svgRef.current;
+
+    const move = (ev) => {
+      const local = screenToLocal(svg, ev.clientX, ev.clientY, zoom, tx, ty);
+      body.x = local.x;
+      body.y = local.y;
+      body.vx = 0;
+      body.vy = 0;
+    };
+    const up = () => {
+      body.isDragging = false;
+      dragRef.current = null;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
   const resetAll = () => { setSelectedChain(null); setSelectedProtocolId(null); };
 
   return (
@@ -694,7 +716,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
       background: 'linear-gradient(180deg, #FAFAFA 0%, #F3F3F4 100%)',
       borderRadius: 20, overflow:'hidden',
     }}>
-      <svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet">
+      <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet">
         <defs>
           <pattern id="dotgrid" width="14" height="14" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.7" fill="#E0E0E2"/>
@@ -709,10 +731,16 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
 
         <g transform={`translate(${tx}, ${ty}) scale(${zoom})`}
            style={{ transition: `transform ${T_FAST}ms ${EASE}`, willChange: 'transform' }}>
-          <line x1={btcPos.x} y1={btcPos.y} x2="0" y2="0"
-            stroke="#CFCFD2" strokeWidth="1.1"
-            opacity={selectedChain ? 0 : 0.9}
-            style={{ transition: `opacity ${T_FAST}ms ${EASE}` }}/>
+          {(() => {
+            const btc = getNodePos('chain:bitcoin', btcPos.x, btcPos.y);
+            const g = getNodePos('gateway:center', 0, 0);
+            return (
+              <line x1={btc.x} y1={btc.y} x2={g.x} y2={g.y}
+                stroke="#CFCFD2" strokeWidth="1.1"
+                opacity={selectedChain ? 0 : 0.9}
+                style={{ transition: `opacity ${T_FAST}ms ${EASE}` }}/>
+            );
+          })()}
 
           {destChains.map((c) => {
             const curve = destCurves[c.id];
@@ -750,15 +778,16 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
           })}
 
           {destChains.map((c) => {
-            const p = ringPos[c.id];
+            const pos = getNodePos(`chain:${c.id}`, ringPos[c.id].x, ringPos[c.id].y);
             const active = selectedChain === c.id;
             const hidden = selectedChain && !active;
             return (
               <ChainNode
-                key={c.id} chain={c} x={p.x} y={p.y} size={chainSize}
+                key={c.id} chain={c} x={pos.x} y={pos.y} size={chainSize}
                 hidden={hidden} active={active}
-                labelBelow={p.y >= 0}
+                labelBelow={ringPos[c.id].y >= 0}
                 onTap={() => { setSelectedProtocolId(null); setSelectedChain(prev => prev === c.id ? null : c.id); }}
+                onDragStart={(e) => handleDragStart(e, `chain:${c.id}`)}
               />
             );
           })}
@@ -769,9 +798,9 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
 
 
           {selectedChain && (protocolsByChain[selectedChain] || []).map((s) => {
-            const pp = protocolBloom[s.id];
-            if (!pp) return null;
-            const chain = ringPos[selectedChain];
+            const pp = getNodePos(`proto:${s.id}`, protocolBloom[s.id]?.x ?? 0, protocolBloom[s.id]?.y ?? 0);
+            const chain = getNodePos(`chain:${selectedChain}`, ringPos[selectedChain].x, ringPos[selectedChain].y);
+            if (!protocolBloom[s.id]) return null;
             const isSel = selectedProtocolId === s.id;
             const chipSize = 28;
             const connector = {
@@ -782,6 +811,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
             const flowDur = 2.4 / motionSpeed;
             const tFlow = ((time) % flowDur) / flowDur;
             const isSwap = s.type === 'bridge' || s.type === 'payback' || s.type === 'swap' || s.type === 'arb';
+            const btc = getNodePos('chain:bitcoin', btcPos.x, btcPos.y);
             return (
               <g key={'proto-'+s.id}>
                 <line x1={chain.x} y1={chain.y} x2={pp.x} y2={pp.y}
@@ -798,13 +828,13 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
                   <g style={{ animation: `fadeIn 180ms ${EASE} both` }}>
                     {/* Return path from protocol back toward Bitcoin */}
                     {(() => {
-                      const ret = curvePath(pp.x, pp.y, btcPos.x, btcPos.y, -0.18);
+                      const ret = curvePath(pp.x, pp.y, btc.x, btc.y, -0.18);
                       const dur = 3.2 / motionSpeed;
                       const t = ((time + 0.5) % dur) / dur;
                       return (
                         <>
                           <path d={ret.d} fill="none" stroke="#F2A33B" strokeWidth="1" strokeDasharray="3 3" opacity="0.6"/>
-                          <FlowToken curve={{ ...ret, x1: pp.x, y1: pp.y, x2: btcPos.x, y2: btcPos.y }}
+                          <FlowToken curve={{ ...ret, x1: pp.x, y1: pp.y, x2: btc.x, y2: btc.y }}
                             progress={t} assetId="btc" size={12} sourceChainId="bitcoin"/>
                         </>
                       );
@@ -820,7 +850,8 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
                 )}
                 <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
                   selected={isSel}
-                  onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}/>
+                  onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}
+                  onDragStart={(e) => handleDragStart(e, `proto:${s.id}`)}/>
                 {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt') && s.pair.length > 1 && (
                   <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
                 )}
@@ -836,7 +867,8 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
 
           {(() => {
             const btcHidden = Boolean(selectedChain) && !(protocolsByChain[selectedChain] || []).some(s => s.type === 'payback');
-            return <BitcoinSource x={btcPos.x} y={btcPos.y} size={chainSize*0.95} hidden={btcHidden}/>;
+            const btc = getNodePos('chain:bitcoin', btcPos.x, btcPos.y);
+            return <BitcoinSource x={btc.x} y={btc.y} size={chainSize*0.95} hidden={btcHidden}/>;
           })()}
           <GatewayCore size={gatewaySize} hidden={Boolean(selectedChain)}/>
         </g>
