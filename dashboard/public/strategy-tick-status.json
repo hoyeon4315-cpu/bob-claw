@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-04-24T12:20:03.829Z",
+  "generatedAt": "2026-04-24T13:03:30.806Z",
   "fastTrackThresholds": {
     "minSignerBackedReceipts": 0,
     "minConsecutiveSuccess": 0,
@@ -17,16 +17,16 @@
     "defaultLookbackDays": 14,
     "minRoundTripEfficiency": 0.9
   },
-  "tickCountTotal": 40,
-  "latestTickAt": "2026-04-24T12:19:42.840Z",
+  "tickCountTotal": 43,
+  "latestTickAt": "2026-04-24T13:02:26.431Z",
   "strategies": [
     {
       "strategyId": "wrapped-btc-loop-base-moonwell",
-      "lastTickAt": "2026-04-24T12:19:42.840Z",
+      "lastTickAt": "2026-04-24T13:02:26.431Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
-      "lastTickCandidateCount": 6,
-      "lastTickAllowCount": 6,
+      "lastTickCandidateCount": 3,
+      "lastTickAllowCount": 3,
       "lastTickDenyCount": 0,
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
@@ -72,7 +72,7 @@
     },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
-      "lastTickAt": "2026-04-24T12:13:13.347Z",
+      "lastTickAt": "2026-04-24T13:02:26.431Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 3,
@@ -322,7 +322,7 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 47
+        "signerBackedReceiptCount": 34
       },
       "scoredAllocation": null,
       "generatedIntentCount": 0,
@@ -366,7 +366,7 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 98
+        "signerBackedReceiptCount": 62
       },
       "scoredAllocation": null,
       "generatedIntentCount": 0,
@@ -476,11 +476,11 @@
     },
     {
       "strategyId": "beefy-folding-vault",
-      "lastTickAt": "2026-04-24T12:19:42.840Z",
+      "lastTickAt": "2026-04-24T13:02:26.431Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
-      "lastTickCandidateCount": 6,
-      "lastTickAllowCount": 6,
+      "lastTickCandidateCount": 3,
+      "lastTickAllowCount": 3,
       "lastTickDenyCount": 0,
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
@@ -500,8 +500,14 @@
         "triggers": [],
         "signerBackedReceiptCount": 2
       },
-      "scoredAllocation": null,
-      "generatedIntentCount": 0,
+      "scoredAllocation": {
+        "strategyId": "beefy-folding-vault",
+        "chain": "base",
+        "protocol": "beefy",
+        "allocatedSats": 41665,
+        "score": 0.401666
+      },
+      "generatedIntentCount": 2,
       "promotion": {
         "fastTrack": {
           "eligible": true,
@@ -1287,12 +1293,12 @@
     "strategiesOperatorHold": 0,
     "strategiesEligibleStrict": 0,
     "totalSignerBackedReceipts": 1088,
-    "strategiesWithGeneratedIntents": 7,
-    "totalGeneratedIntents": 10
+    "strategiesWithGeneratedIntents": 8,
+    "totalGeneratedIntents": 12
   },
   "microCanary": {
-    "total": 6,
-    "notStartedCount": 6,
+    "total": 3,
+    "notStartedCount": 3,
     "readyCount": 0,
     "minimalLiveProofExistsCount": 0,
     "repeatableCount": 0,
@@ -1313,31 +1319,7 @@
         "lastFailureReason": null,
         "realizedNetUsd": null
       },
-      "pendle-pt-lbtc-base": {
-        "microCanaryStatus": "not_started",
-        "signerBackedCount": 0,
-        "passedCount": 0,
-        "mode": "live_candidate",
-        "lastFailureReason": null,
-        "realizedNetUsd": null
-      },
-      "aerodrome-cl-base": {
-        "microCanaryStatus": "not_started",
-        "signerBackedCount": 0,
-        "passedCount": 0,
-        "mode": "live_candidate",
-        "lastFailureReason": null,
-        "realizedNetUsd": null
-      },
-      "gmx-v2-perp-basis-avax": {
-        "microCanaryStatus": "not_started",
-        "signerBackedCount": 0,
-        "passedCount": 0,
-        "mode": "live_candidate",
-        "lastFailureReason": null,
-        "realizedNetUsd": null
-      },
-      "berachain-bend-bex-bgt": {
+      "recursive_wrapped_btc_lending_loop": {
         "microCanaryStatus": "not_started",
         "signerBackedCount": 0,
         "passedCount": 0,
@@ -1346,14 +1328,14 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-04-24T12:20:03.833Z"
+    "generatedAt": "2026-04-24T13:03:30.810Z"
   },
   "strategyStage": {
-    "total": 6,
+    "total": 3,
     "blockedCount": 0,
     "shadowReadyCount": 0,
     "liveCandidateCount": 0,
-    "liveReadyCount": 6,
+    "liveReadyCount": 3,
     "byStrategy": {
       "wrapped-btc-loop-base-moonwell": {
         "mode": "live_candidate",
@@ -1377,51 +1359,18 @@
         "promotionEligible": true,
         "demotionTriggers": []
       },
-      "pendle-pt-lbtc-base": {
+      "recursive_wrapped_btc_lending_loop": {
         "mode": "live_candidate",
         "promotionVerdict": "live_ready",
         "shadowReady": true,
         "liveReady": true,
         "blockerCount": 0,
         "topBlocker": null,
-        "projectedNetUsd": 25,
-        "promotionEligible": true,
-        "demotionTriggers": []
-      },
-      "aerodrome-cl-base": {
-        "mode": "live_candidate",
-        "promotionVerdict": "live_ready",
-        "shadowReady": true,
-        "liveReady": true,
-        "blockerCount": 0,
-        "topBlocker": null,
-        "projectedNetUsd": 25,
-        "promotionEligible": true,
-        "demotionTriggers": []
-      },
-      "gmx-v2-perp-basis-avax": {
-        "mode": "live_candidate",
-        "promotionVerdict": "live_ready",
-        "shadowReady": true,
-        "liveReady": true,
-        "blockerCount": 0,
-        "topBlocker": null,
-        "projectedNetUsd": 25,
-        "promotionEligible": true,
-        "demotionTriggers": []
-      },
-      "berachain-bend-bex-bgt": {
-        "mode": "live_candidate",
-        "promotionVerdict": "live_ready",
-        "shadowReady": true,
-        "liveReady": true,
-        "blockerCount": 0,
-        "topBlocker": null,
-        "projectedNetUsd": 25,
+        "projectedNetUsd": 300,
         "promotionEligible": true,
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-04-24T12:20:03.833Z"
+    "generatedAt": "2026-04-24T13:03:30.810Z"
   }
 }
