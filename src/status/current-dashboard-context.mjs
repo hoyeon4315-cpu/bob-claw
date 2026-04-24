@@ -106,6 +106,9 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
     cooldownActiveCount: summary.cooldownActiveCount ?? 0,
     nativeGasGapCount: summary.nativeGasGapCount ?? 0,
     executorMissingCount: summary.executorMissingCount ?? 0,
+    readinessByStatus: summary.readinessByStatus || {},
+    capabilityGapCounts: summary.capabilityGapCounts || {},
+    topBlockingReason: summary.topBlockingReason || null,
     topQueue: top
       ? {
           opportunityId: top.opportunityId || null,

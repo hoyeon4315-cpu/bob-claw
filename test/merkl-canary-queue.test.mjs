@@ -112,6 +112,9 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.summary.topOpportunityId, "eth-morpho-usdc");
   assert.equal(queue.summary.topExecutableOpportunityId, "base-morpho-usdc");
   assert.equal(queue.summary.executableNowCount, 1);
+  assert.equal(queue.summary.topBlockingReason, "executable_candidate_available");
+  assert.equal(queue.summary.readinessByStatus.inventory_ready, 1);
+  assert.equal(queue.summary.capabilityGapCounts.current_inventory_entry_route_required, 2);
   assert.equal(queue.summary.protocolBindingReadyCount, 2);
   assert.equal(queue.summary.protocolBindingRequiredCount, 1);
   assert.equal(queue.queue[0].queueStatus, "queued_for_tiny_live_canary_preflight");
@@ -123,4 +126,52 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.queue[1].executionReadiness.status, "inventory_ready");
   assert.equal(queue.summary.byStrategy.gateway_native_asset_conversion_sleeve, 2);
   assert.equal(queue.summary.byStrategy.eth_destination_deployment, 1);
+});
+
+test("merkl canary queue summarizes the top blocker when no candidate is executable", () => {
+  const report = {
+    generatedAt: "2026-04-23T00:00:00.000Z",
+    policyProfile: "aggressive_multi_asset_payback_v2",
+    opportunities: [
+      {
+        opportunityId: "eth-morpho-usdc",
+        decision: "candidate",
+        validationMode: "tiny_live_canary_only",
+        chain: "ethereum",
+        protocolId: "morpho",
+        protocolName: "Morpho",
+        name: "Supply USDC to Morpho",
+        family: "stable_treasury_carry",
+        assetFamilies: ["stablecoin"],
+        tokenSymbols: ["USDC"],
+        entryTokenSymbols: ["USDC"],
+        hasStableExposure: true,
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        executionSurface: "stableCarry",
+        campaignRemainingHours: 80,
+        aprPct: 8,
+        nativeAprPct: 5,
+        tvlUsd: 5_000_000,
+        score: 90,
+        overfitRisk: "minimal",
+        overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: "0x1111111111111111111111111111111111111111",
+          assetAddress: "0x2222222222222222222222222222222222222222",
+        },
+      },
+    ],
+  };
+
+  const queue = buildMerklCanaryQueue({
+    report,
+    now: "2026-04-23T00:00:00.000Z",
+    inventorySnapshot: { native: [], tokens: [] },
+  });
+
+  assert.equal(queue.summary.queueCount, 1);
+  assert.equal(queue.summary.executableNowCount, 0);
+  assert.equal(queue.summary.topBlockingReason, "inventory_missing");
+  assert.equal(queue.summary.readinessByStatus.inventory_missing, 1);
+  assert.equal(queue.summary.capabilityGapCounts.ethereum_l1_gas_ev_positive_check_required, 1);
 });
