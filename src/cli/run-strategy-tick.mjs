@@ -29,6 +29,8 @@ import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { getProtocolAddress } from "../config/protocol-addresses.mjs";
+import { getEvmChainConfig } from "../config/chains.mjs";
+import { Contract, JsonRpcProvider } from "ethers";
 import { buildScoredAllocation, DEFAULT_VENUE_METADATA } from "../strategy/scored-capital-allocation.mjs";
 import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
@@ -51,6 +53,22 @@ import { buildDefaultRecursiveLendingLoopConfig } from "../strategy/recursive-le
 import { resolveWrappedBtcLoopBindingSupport } from "../strategy/wrapped-btc-loop-bindings.mjs";
 import { buildMoonwellWrappedBtcLoopIntent } from "../executor/helpers/moonwell-intent-builder.mjs";
 import { buildVaultDepositIntent } from "../executor/helpers/vault-intent-builder.mjs";
+
+const ERC20_BALANCE_ABI = ["function balanceOf(address owner) view returns (uint256)"];
+
+async function queryErc20Balance(chain, tokenAddress, ownerAddress) {
+  if (!ownerAddress) return 0n;
+  const cfg = getEvmChainConfig(chain);
+  if (!cfg?.rpcUrl) return 0n;
+  const provider = new JsonRpcProvider(cfg.rpcUrl);
+  const contract = new Contract(tokenAddress, ERC20_BALANCE_ABI, provider);
+  try {
+    const bal = await contract.balanceOf(ownerAddress);
+    return bal;
+  } catch {
+    return 0n;
+  }
+}
 
 function aggressiveEvaluate(baseEvaluate, defaultCapUsd = 25) {
   return function ({ config, market, receipts, now }) {
@@ -454,6 +472,7 @@ async function main() {
       evaluate: adapter.evaluate,
       config,
       market,
+      operatorAddress: gasObservation.operatorAddress,
       receipts,
       protocol: adapter.protocol,
       gasFloats,
@@ -500,11 +519,16 @@ async function main() {
     return map[family] || "strategy_execution";
   }
 
+  const strategyOperatorMap = Object.fromEntries(entries.map((e) => [e.strategyId, e.operatorAddress]));
+
   const generatedIntents = [];
   for (const alloc of scoredAllocation?.allocations || []) {
     const family = DEFAULT_VENUE_METADATA[alloc.strategyId]?.family || "unknown";
-    const amountUsd = (alloc.allocatedSats * btcPriceUsd) / 1e8;
     const caps = getStrategyCaps(alloc.strategyId);
+    const perTxUsd = caps?.caps?.perTxUsd ?? 25;
+    let amountUsd = (alloc.allocatedSats * btcPriceUsd) / 1e8;
+    amountUsd = Math.min(amountUsd, perTxUsd);
+    if (amountUsd <= 0) continue;
     let strategyIntentsBuilt = false;
 
     // ── Moonwell wrapped-BTC loop (Base) ──
@@ -516,36 +540,44 @@ async function main() {
       if (support.executableFromRepo) {
         const collateralUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
         const borrowUnits = String(Math.floor((amountUsd * 0.5) * 1e6));
-        try {
-          const plan = await buildMoonwellWrappedBtcLoopIntent({
-            strategyId: alloc.strategyId,
-            chain: alloc.chain,
-            amountUsd,
-            collateralUnits,
-            borrowUnits,
-            collateralAssetAddress: getProtocolAddress("moonwell", "base", "markets.cbBTC.asset"),
-            borrowAssetAddress: getProtocolAddress("moonwell", "base", "markets.USDC.asset"),
-            collateralMTokenAddress: support.knownContracts.collateralMarket.mTokenAddress,
-            borrowMTokenAddress: support.knownContracts.borrowMarket.mTokenAddress,
-            comptrollerAddress: support.knownContracts.comptroller.address,
-            now: result.observedAt,
-            estimateGasImpl: () => { throw new Error("skip"); },
-          });
-          for (const step of plan.steps || []) {
-            generatedIntents.push(normalizeExecutionIntent(step.intent));
+        const operatorAddress = strategyOperatorMap[alloc.strategyId];
+        const cbBTC = getProtocolAddress("moonwell", "base", "markets.cbBTC.asset");
+        const cbBTCBalance = await queryErc20Balance(alloc.chain, cbBTC, operatorAddress);
+        if (cbBTCBalance < BigInt(collateralUnits)) {
+          if (!args.quiet) console.error(`  skip ${alloc.strategyId}: cbBTC balance ${cbBTCBalance} < required ${collateralUnits}`);
+          strategyIntentsBuilt = true;
+        } else {
+          try {
+            const plan = await buildMoonwellWrappedBtcLoopIntent({
+              strategyId: alloc.strategyId,
+              chain: alloc.chain,
+              amountUsd,
+              collateralUnits,
+              borrowUnits,
+              collateralAssetAddress: cbBTC,
+              borrowAssetAddress: getProtocolAddress("moonwell", "base", "markets.USDC.asset"),
+              collateralMTokenAddress: support.knownContracts.collateralMarket.mTokenAddress,
+              borrowMTokenAddress: support.knownContracts.borrowMarket.mTokenAddress,
+              comptrollerAddress: support.knownContracts.comptroller.address,
+              now: result.observedAt,
+              estimateGasImpl: () => { throw new Error("skip"); },
+            });
+            for (const step of plan.steps || []) {
+              generatedIntents.push(normalizeExecutionIntent(step.intent));
+            }
+            strategyIntentsBuilt = true;
+          } catch (err) {
+            generatedIntents.push({
+              strategyId: alloc.strategyId,
+              chain: alloc.chain,
+              amountUsd,
+              mode: "live",
+              observedAt: result.observedAt,
+              normalizationError: err.message,
+              metadata: { protocol: alloc.protocol, source: "moonwell_builder_failed" },
+            });
+            strategyIntentsBuilt = true;
           }
-          strategyIntentsBuilt = true;
-        } catch (err) {
-          generatedIntents.push({
-            strategyId: alloc.strategyId,
-            chain: alloc.chain,
-            amountUsd,
-            mode: "live",
-            observedAt: result.observedAt,
-            normalizationError: err.message,
-            metadata: { protocol: alloc.protocol, source: "moonwell_builder_failed" },
-          });
-          strategyIntentsBuilt = true;
         }
       }
     }
@@ -554,33 +586,41 @@ async function main() {
     if (!strategyIntentsBuilt && alloc.strategyId === "beefy-folding-vault") {
       const beefyVault = getProtocolAddress("beefy", "base", "vault");
       if (beefyVault?.verified) {
-        try {
-          const plan = await buildVaultDepositIntent({
-            strategyId: alloc.strategyId,
-            chain: alloc.chain,
-            amountUsd,
-            vaultAddress: beefyVault.address,
-            assetAddress: beefyVault.asset,
-            assetDecimals: beefyVault.decimals || 18,
-            assetPriceUsd: btcPriceUsd,
-            now: result.observedAt,
-            estimateGasImpl: () => { throw new Error("skip"); },
-          });
-          for (const step of plan.steps || []) {
-            generatedIntents.push(normalizeExecutionIntent(step.intent));
+        const operatorAddress = strategyOperatorMap[alloc.strategyId];
+        const depositUnits = String(Math.floor((amountUsd / btcPriceUsd) * 1e8));
+        const assetBalance = await queryErc20Balance(alloc.chain, beefyVault.asset, operatorAddress);
+        if (assetBalance < BigInt(depositUnits)) {
+          if (!args.quiet) console.error(`  skip ${alloc.strategyId}: asset balance ${assetBalance} < required ${depositUnits}`);
+          strategyIntentsBuilt = true;
+        } else {
+          try {
+            const plan = await buildVaultDepositIntent({
+              strategyId: alloc.strategyId,
+              chain: alloc.chain,
+              amountUsd,
+              vaultAddress: beefyVault.address,
+              assetAddress: beefyVault.asset,
+              assetDecimals: beefyVault.decimals || 18,
+              assetPriceUsd: btcPriceUsd,
+              now: result.observedAt,
+              estimateGasImpl: () => { throw new Error("skip"); },
+            });
+            for (const step of plan.steps || []) {
+              generatedIntents.push(normalizeExecutionIntent(step.intent));
+            }
+            strategyIntentsBuilt = true;
+          } catch (err) {
+            generatedIntents.push({
+              strategyId: alloc.strategyId,
+              chain: alloc.chain,
+              amountUsd,
+              mode: "live",
+              observedAt: result.observedAt,
+              normalizationError: err.message,
+              metadata: { protocol: alloc.protocol, source: "vault_builder_failed" },
+            });
+            strategyIntentsBuilt = true;
           }
-          strategyIntentsBuilt = true;
-        } catch (err) {
-          generatedIntents.push({
-            strategyId: alloc.strategyId,
-            chain: alloc.chain,
-            amountUsd,
-            mode: "live",
-            observedAt: result.observedAt,
-            normalizationError: err.message,
-            metadata: { protocol: alloc.protocol, source: "vault_builder_failed" },
-          });
-          strategyIntentsBuilt = true;
         }
       }
     }
@@ -680,12 +720,48 @@ async function main() {
   mkdirSync(dirname(outPath), { recursive: true });
   appendFileSync(outPath, JSON.stringify(tickRecord) + "\n");
 
+  // ── Auto-broadcast generated intents to signer daemon ──
+  let broadcastCount = 0;
+  let broadcastFail = 0;
+  if (generatedIntents.length > 0) {
+    const { sendSignerCommand } = await import("../executor/signer/client.mjs");
+    for (const intent of generatedIntents) {
+      if (intent.normalizationError) {
+        broadcastFail++;
+        if (!args.quiet) console.error(`  skip broadcast (normalization error): ${intent.strategyId} ${intent.intentType} – ${intent.normalizationError}`);
+        continue;
+      }
+      try {
+        const result = await sendSignerCommand({
+          message: {
+            command: "sign_and_broadcast",
+            intent,
+            awaitConfirmation: true,
+            confirmations: 1,
+            timeoutMs: 120_000,
+          },
+        });
+        if (result.status === "ok") {
+          broadcastCount++;
+          if (!args.quiet) console.log(`  broadcast ok: ${intent.strategyId} ${intent.intentType} txHash=${result.broadcast?.txHash || "n/a"}`);
+        } else {
+          broadcastFail++;
+          if (!args.quiet) console.error(`  broadcast failed: ${intent.strategyId} ${intent.intentType} – ${result.error?.message || result.status}`);
+        }
+      } catch (err) {
+        broadcastFail++;
+        if (!args.quiet) console.error(`  broadcast error: ${intent.strategyId} ${intent.intentType} – ${err.message}`);
+      }
+    }
+  }
+
   if (!args.quiet) {
     if (args.json) {
-      console.log(JSON.stringify({ outPath, tickRecord }));
+      console.log(JSON.stringify({ outPath, tickRecord, broadcastCount, broadcastFail }));
     } else {
       console.log(`tick written: ${outPath}`);
       console.log(`  strategies=${args.strategies.length} candidates=${tickRecord.candidateCount} allow=${tickRecord.dispatchSummary?.allowCount ?? 0} deny=${tickRecord.dispatchSummary?.denyCount ?? 0}`);
+      console.log(`  intents=${generatedIntents.length} broadcasted=${broadcastCount} failed=${broadcastFail}`);
       for (const b of tickRecord.blockers) {
         console.log(`  ${b.strategyId} [${b.mode}] blockers=${b.blockers.join(",") || "(none)"}`);
       }

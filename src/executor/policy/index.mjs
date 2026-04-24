@@ -76,6 +76,7 @@ export async function evaluateIntentPolicies({
       intent,
       auditRecords,
       resumeAfter: strategyCaps.resumeAfterFailureAt || null,
+      maxConsecutiveFailures: strategyCaps.maxConsecutiveFailures ?? undefined,
       now,
     }),
     evaluateCapCheck({ intent, strategyCaps, auditRecords, activeBudgetUsd, now }),

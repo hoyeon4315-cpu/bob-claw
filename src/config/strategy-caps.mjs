@@ -809,6 +809,7 @@ export const STRATEGY_CAPS = Object.freeze({
     strategyId: "beefy-folding-vault",
     label: "Beefy folding vault",
     autoExecute: true,
+    resumeAfterFailureAt: "2026-04-24T13:47:00.000Z",
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["beefy"]),
