@@ -6,6 +6,14 @@ function isFiniteNumber(value) {
   return Number.isFinite(value);
 }
 
+function parseApprovalAmount(value) {
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
 export function evaluateApprovalHygiene({
   intent = {},
   maxApprovalTtlMs = 3_600_000,
@@ -32,7 +40,8 @@ export function evaluateApprovalHygiene({
     blockers.push("unlimited_approval_forbidden");
   }
   if (approval.mode === "permit2" || approval.mode === "per_tx") {
-    if (!(BigInt(approval.amount ?? 0) > 0n)) {
+    const amount = parseApprovalAmount(approval.amount);
+    if (amount === null || amount < 0n) {
       blockers.push("approval_exact_amount_missing");
     }
   } else if (approval.mode === "time_boxed") {

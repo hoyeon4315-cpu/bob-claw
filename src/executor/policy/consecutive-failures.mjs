@@ -14,6 +14,16 @@ function resumeAfterTimestamp(resumeAfter = null) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
+function isApprovalRevocationIntent(intent = {}) {
+  if (intent.intentType !== "approve_exact") return false;
+  if (!intent.approval) return false;
+  try {
+    return BigInt(intent.approval.amount ?? -1) === 0n;
+  } catch {
+    return false;
+  }
+}
+
 function terminalOutcome(record = {}) {
   const stage = record.lifecycle?.stage || null;
   if (record.strategyId === "prelive_fork_execution" && stage === "rejected" && !record.broadcast) {
@@ -78,6 +88,23 @@ export function evaluateConsecutiveFailures({
   resumeAfter = null,
   now = new Date().toISOString(),
 } = {}) {
+  if (isApprovalRevocationIntent(intent)) {
+    return {
+      policy: "consecutive_failures",
+      observedAt: now,
+      decision: "ALLOW",
+      blockers: [],
+      metrics: {
+        maxConsecutiveFailures,
+        consecutiveFailures: 0,
+        terminalRecordCount: 0,
+        lastTerminalStatus: null,
+        latestFailureAt: null,
+        resumeAfter,
+        bypassReason: "approval_revocation",
+      },
+    };
+  }
   const state = buildConsecutiveFailureState({
     strategyId: intent.strategyId,
     auditRecords,

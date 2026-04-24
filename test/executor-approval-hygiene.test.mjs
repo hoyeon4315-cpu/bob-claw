@@ -61,3 +61,18 @@ test("approval hygiene allows exact per-tx approvals", () => {
 
   assert.equal(result.decision, "ALLOW");
 });
+
+test("approval hygiene allows zero exact approvals for revocation", () => {
+  const result = evaluateApprovalHygiene({
+    intent: {
+      approval: {
+        mode: "per_tx",
+        token: "0xabc",
+        spender: "0xdef",
+        amount: "0",
+      },
+    },
+  });
+
+  assert.equal(result.decision, "ALLOW");
+});

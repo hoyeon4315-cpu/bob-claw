@@ -99,6 +99,53 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
   assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), true);
 });
 
+test("approval revocations bypass consecutive failure blocking", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: intentFixture({
+      strategyId: "gateway_native_asset_conversion_sleeve",
+      intentType: "approve_exact",
+      amountUsd: 0,
+      approval: {
+        mode: "per_tx",
+        token: "0xabc",
+        spender: "0xdef",
+        amount: "0",
+      },
+      metadata: {
+        capCheckAmountUsd: 0,
+      },
+    }),
+    auditRecords: [
+      {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        intentId: "fail-1",
+        timestamp: "2026-04-24T01:35:22.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+      {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        intentId: "fail-2",
+        timestamp: "2026-04-24T01:36:22.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+      {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        intentId: "fail-3",
+        timestamp: "2026-04-24T01:37:22.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+    ],
+    now: "2026-04-24T01:38:00.000Z",
+  });
+
+  assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), false);
+  const consecutiveResult = policy.results.find((item) => item.policy === "consecutive_failures");
+  assert.equal(consecutiveResult.metrics.bypassReason, "approval_revocation");
+});
+
 test("committed resume timestamp ignores older terminal failures without rewriting audit history", async () => {
   const policy = await evaluateIntentPolicies({
     intent: intentFixture({
