@@ -71,11 +71,11 @@ async function bootData() {
   let status = null;
   let holdings = null;
   try {
-    const resp = await fetch('./dashboard-status.json', { cache: 'no-store' });
+    const resp = await fetch(`./dashboard-status.json?t=${Date.now()}`, { cache: 'no-store' });
     if (resp.ok) status = await resp.json();
   } catch {}
   try {
-    const resp = await fetch('./wallet-holdings.json', { cache: 'no-store' });
+    const resp = await fetch(`./wallet-holdings.json?t=${Date.now()}`, { cache: 'no-store' });
     if (resp.ok) holdings = await resp.json();
   } catch {}
 

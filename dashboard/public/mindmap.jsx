@@ -49,7 +49,8 @@ function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
   const requiredChord = 2 * chipR + padding;
   const required = requiredChord / (2 * Math.sin(gap / 2));
-  return Math.max(minR, required);
+  const maxR = 140; // viewport-aware cap so chips stay visible
+  return Math.max(minR, Math.min(maxR, required));
 }
 
 function placeRing(chains, radius) {
@@ -341,10 +342,12 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
         {selected && (
           <>
             <text y={R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1D1D1F"
+              stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
               style={{ fontFamily:'-apple-system, system-ui', textTransform:'capitalize' }}>
               {strategy.strategies?.[0]?.label || strategy.label || strategy.protocol}
             </text>
             <text y={R + 26} textAnchor="middle" fontSize="10" fontWeight="600" fill={typeInk}
+              stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
               style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.8 }}>
               {typeLabel}
             </text>
@@ -352,12 +355,14 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
         )}
         {!selected && (
           <text y={R + 10} textAnchor="middle" fontSize="9" fontWeight="600" fill="#555"
+            stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
             style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2, textTransform:'capitalize' }}>
             {strategy.label || strategy.protocol}
           </text>
         )}
         {selected && strategy.pair?.length > 0 && (
           <text y={R + 38} textAnchor="middle" fontSize="8" fontWeight="500" fill="#8A8A8D"
+            stroke="#FFFFFF" strokeWidth="2" paintOrder="stroke"
             style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
             {strategy.pair.map(p => p.toUpperCase()).join(' / ')}
           </text>
@@ -647,7 +652,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     const availW = VB_W - reserveSide * 2;
     const availH = VB_H - reserveTop - cardReserveBottom;
     const fitZoom = Math.min(availW / width, availH / height);
-    const zoom = clamp(fitZoom, 1, selectedProtocolId ? 1.55 : 1.18);
+    const zoom = clamp(fitZoom, 0.8, selectedProtocolId ? 1.55 : 1.35);
     const focus = {
       x: (finalBounds.minX + finalBounds.maxX) / 2,
       y: (finalBounds.minY + finalBounds.maxY) / 2,
