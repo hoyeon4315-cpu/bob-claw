@@ -40,6 +40,7 @@ const STRATEGY_CATALOG = [
   { id: 'stablecoin-spread-loop',               label: 'Stable spread loop',       sub: 'Base · Moonwell',           chain: 'base',      protocol: 'moonwell', type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Stablecoin supply-borrow spread loop on Base.' },
   { id: 'proxy-spread-expansion',               label: 'Proxy spread expansion',   sub: 'Base · Morpho',             chain: 'base',      protocol: 'morpho',   type: 'loop',    pair: ['usdc','usdt'],             capUsd: null, desc: 'Leveraged proxy stable spread via Morpho on Base.' },
   { id: 'tokenized-reserve-sleeve',             label: 'Tokenized reserve',        sub: 'BSC · Pendle',              chain: 'bsc',       protocol: 'pendle',   type: 'reserve', pair: ['pt-solvbtc','usdc'],       capUsd: null, desc: 'Tokenized BTC reserve sleeve on BSC.' },
+  { id: 'gateway_native_asset_conversion_sleeve', label: 'Gateway native sleeve',  sub: 'Base · Merkl',              chain: 'base',      protocol: 'merkl',    type: 'canary',  pair: ['usdc','usdc'],             capUsd: 0.25, desc: 'Dust canary for Merkl ERC4626 vaults via Gateway.' },
 ];
 
 function deriveStatus(live) {
