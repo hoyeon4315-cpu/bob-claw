@@ -82,7 +82,7 @@ function outputAmountForCoverage(plan, executor) {
     return plan.quote?.expectedOutputWei || plan.quote?.outputAmount || null;
   }
   if (executor === "gateway_btc_onramp") {
-    return plan.gasRefill || plan.quote?.gasRefill || null;
+    return plan.gasRefill || plan.quote?.gasRefill || plan.quote?.outputAmount?.amount || null;
   }
   if (executor === "gateway_btc_consolidation") {
     return plan.gasRefill || plan.quote?.gasRefill || plan.quote?.outputAmount?.amount || null;
@@ -151,7 +151,7 @@ export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "gas_refuel_bridge_gas_zip" && job.type === "refill_native") return "gas_zip_native_refuel";
   if (
     job.executionMethod === "cross_chain_bridge_or_swap" &&
-    job.type === "refill_native" &&
+    (job.type === "refill_native" || job.type === "refill_token") &&
     job.fundingSource?.source?.chain === "bitcoin"
   ) {
     return "gateway_btc_onramp";
@@ -260,8 +260,8 @@ export async function buildTreasuryRefillExecutionPlan({
       recipient: senderAddress,
       amountSats,
       dstChain: job.chain,
-      dstToken: WBTC_OFT_TOKEN,
-      gasRefill: gasRefill?.toString() || null,
+      dstToken: job.type === "refill_native" ? WBTC_OFT_TOKEN : job.token,
+      gasRefill: job.type === "refill_native" ? gasRefill?.toString() || null : null,
       allowUnfundedPreview: true,
     });
   } else if (executor === "gas_zip_native_refuel") {

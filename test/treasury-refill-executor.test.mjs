@@ -171,6 +171,63 @@ test("treasury refill executor maps bitcoin-funded native refill to Gateway onra
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor maps bitcoin-funded token refill to Gateway onramp", async () => {
+  let capturedInput = null;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-token-bitcoin-source",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "9000",
+      targetAmountDecimal: 0.00009,
+      estimatedAssetValueUsd: 6.98,
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          ticker: "BTC",
+          actual: "45799",
+          actualDecimal: 0.00045799,
+          estimatedUsd: 35.51,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    bitcoinSenderAddress: "bc1qsource000000000000000000000000000000000",
+    buildGatewayBtcOnrampPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-25T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "gateway-btc-onramp",
+        senderAddress: input.senderAddress,
+        recipient: input.recipient,
+        dstChain: input.dstChain,
+        dstToken: input.dstToken,
+        amountSats: input.amountSats,
+        gasRefill: input.gasRefill,
+        quote: { outputAmount: { amount: "9000" } },
+        intent: { strategyId: "gateway-btc-onramp" },
+      };
+    },
+  });
+
+  assert.equal(refillExecutorForJob({
+    executionMethod: "cross_chain_bridge_or_swap",
+    type: "refill_token",
+    fundingSource: { source: { chain: "bitcoin" } },
+  }), "gateway_btc_onramp");
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "gateway_btc_onramp");
+  assert.equal(capturedInput.dstToken, WBTC_OFT_TOKEN);
+  assert.equal(capturedInput.gasRefill, null);
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor blocks gateway onramp native refill when bitcoin source is below gateway minimum", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob({
