@@ -9,6 +9,7 @@ import {
   buildRepresentativeTargets,
 } from "../src/strategy/representative-chain-coverage.mjs";
 import { selectDestinationRepresentativeCandidate } from "../src/executor/destination-representative-autopilot.mjs";
+import { buildDestinationRepresentativeCandidates } from "../src/executor/destination-representative-autopilot.mjs";
 
 const OFFICIAL_REPO_CHAINS = [
   "ethereum",
@@ -139,4 +140,35 @@ test("destination representative selector prefers larger ready inventory before 
   ]);
 
   assert.equal(selected.templateId, "soneium:stablecoin_lending_carry");
+});
+
+test("destination representative candidates skip templates with prior execution failure", () => {
+  const candidates = buildDestinationRepresentativeCandidates({
+    allocator: {
+      diversifiedPortfolioDraft: {
+        activeDraft: [
+          { id: "soneium:stablecoin_lending_carry", chain: "soneium", protocols: ["aave-v3"], planningEligibility: "allocation_ready" },
+        ],
+      },
+    },
+    inventorySnapshot: {
+      native: [
+        { chain: "soneium", asset: "ETH", actual: "1000000000000000", actualDecimal: 0.001, estimatedUsd: 2 },
+      ],
+      tokens: [
+        {
+          chain: "soneium",
+          ticker: "USDC",
+          token: DESTINATION_REPRESENTATIVE_BINDINGS["soneium:stablecoin_lending_carry"].assetAddress,
+          actual: "3000000",
+          actualDecimal: 3,
+          estimatedUsd: 3,
+        },
+      ],
+    },
+    failedTemplates: new Set(["soneium:stablecoin_lending_carry"]),
+  });
+
+  assert.equal(candidates[0].status, "blocked");
+  assert.ok(candidates[0].blockers.includes("previous_representative_execution_failed"));
 });

@@ -187,6 +187,16 @@ function deliveredRepresentativeTemplates(records = []) {
   return delivered;
 }
 
+function failedRepresentativeTemplates(records = []) {
+  const failed = new Set();
+  for (const record of records || []) {
+    if (!record?.executionError && record?.blockedReason !== "destination_representative_execution_error") continue;
+    const templateId = record?.summary?.selected?.templateId || record?.plan?.templateId;
+    if (templateId) failed.add(templateId);
+  }
+  return failed;
+}
+
 function bindingBackedAllocatorItems(allocatorItems = []) {
   const byTemplate = new Map();
   for (const item of allocatorItems || []) {
@@ -213,6 +223,7 @@ export function buildDestinationRepresentativeCandidates({
   merklQueue = null,
   inventorySnapshot = null,
   deliveredTemplates = new Set(),
+  failedTemplates = new Set(),
   positionRecords = [],
 } = {}) {
   const queuedChains = merklQueuedChains(merklQueue);
@@ -228,6 +239,15 @@ export function buildDestinationRepresentativeCandidates({
           protocols: item.protocols || [],
           status: "covered",
           blockers: [],
+        };
+      }
+      if (failedTemplates.has(item.id)) {
+        return {
+          templateId: item.id,
+          chain: item.chain,
+          protocols: item.protocols || [],
+          status: "blocked",
+          blockers: ["previous_representative_execution_failed"],
         };
       }
       const binding = representativeBindingForTemplate(item.id);
@@ -407,11 +427,13 @@ export async function runDestinationRepresentativeAutopilot({
   ]);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const deliveredTemplates = deliveredRepresentativeTemplates(representativeRuns);
+  const failedTemplates = failedRepresentativeTemplates(representativeRuns);
   const candidates = buildDestinationRepresentativeCandidates({
     allocator,
     merklQueue,
     inventorySnapshot,
     deliveredTemplates,
+    failedTemplates,
     positionRecords,
   });
   const selected = selectDestinationRepresentativeCandidate(candidates);
