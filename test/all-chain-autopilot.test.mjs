@@ -238,6 +238,21 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("run-auto-kill-check.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        triggered: false,
+        alreadyArmed: false,
+        killSwitchWritten: false,
+        killSwitchPath: "./state/kill.switch",
+        triggers: [],
+      },
+    };
+  }
   throw new Error(`unexpected command ${name}`);
 }
 

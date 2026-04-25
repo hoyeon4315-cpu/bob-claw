@@ -337,6 +337,17 @@ function compactPayback(report = null) {
   };
 }
 
+function compactAutoKill(report = null) {
+  if (!report) return null;
+  return {
+    triggered: report.triggered === true,
+    alreadyArmed: report.alreadyArmed === true,
+    killSwitchWritten: report.killSwitchWritten === true,
+    killSwitchPath: report.killSwitchPath ?? null,
+    triggers: Array.isArray(report.triggers) ? report.triggers.map((trigger) => trigger.trigger).filter(Boolean) : [],
+  };
+}
+
 function stepStatus(step = {}) {
   return step.json?.status || step.json?.record?.batchStatus || step.json?.decision || step.json?.event?.status || null;
 }
@@ -364,6 +375,9 @@ function stepIsRecoverable(step, steps) {
   }
   if (step.name === "live_canary_sweep") {
     return true;
+  }
+  if (step.name === "auto_kill_check") {
+    return step.json?.triggered === true;
   }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
@@ -592,6 +606,15 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  const autoKillResult = await runJsonStep({
+    name: "auto_kill_check",
+    args: ["src/cli/run-auto-kill-check.mjs", "--json"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
   const summary = {
     officialChainCount: chains.length,
     refillJobCount: refillPlan?.summary?.jobCount ?? 0,
@@ -615,6 +638,7 @@ export async function runAllChainAutopilot({
     portfolio: compactPortfolio(portfolioResult.json),
     strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json),
     payback: compactPayback(paybackResult.json),
+    autoKill: compactAutoKill(autoKillResult.json),
   };
 
   const hardFailures = steps.filter((step) => !step.ok && !stepIsRecoverable(step, steps));
