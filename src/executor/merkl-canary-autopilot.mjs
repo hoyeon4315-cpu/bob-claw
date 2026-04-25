@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tokenAsset } from "../assets/tokens.mjs";
+import { tokenAsset, ZERO_TOKEN } from "../assets/tokens.mjs";
 import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { config } from "../config/env.mjs";
 import { getStrategyCaps, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
@@ -10,6 +10,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
+import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
@@ -251,6 +252,142 @@ function compactRepresentativeCoverage(queue = {}) {
   return queue.representativeCoverage?.summary || queue.summary?.representativeCoverage || null;
 }
 
+function scaledUsdEstimate({ priorUnits, priorUsd, liveUnits }) {
+  const priorAmount = BigInt(priorUnits || 0);
+  const liveAmount = BigInt(liveUnits || 0);
+  const priorEstimate = Number(priorUsd);
+  if (liveAmount <= 0n || priorAmount <= 0n || !Number.isFinite(priorEstimate) || priorEstimate <= 0) return 0;
+  return Number((liveAmount * decimalUsdToMicros(priorEstimate)) / priorAmount) / 1_000_000;
+}
+
+export async function buildLiveMerklInventorySnapshot({
+  queueItem,
+  senderAddress,
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
+} = {}) {
+  if (!queueItem) throw new Error("queueItem is required");
+  if (!senderAddress) throw new Error("senderAddress is required");
+  const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
+  const tokenBalance = await readErc20BalanceImpl(queueItem.chain, binding.assetAddress, senderAddress);
+  const nativeBalance = await readNativeBalanceImpl(queueItem.chain, senderAddress);
+  const priorToken = queueItem.executionReadiness?.matchedToken || null;
+  const priorNative = queueItem.executionReadiness?.matchedNative || null;
+  return {
+    address: senderAddress,
+    observedAt: new Date().toISOString(),
+    native: [
+      {
+        chain: queueItem.chain,
+        asset: priorNative?.asset || tokenAsset(queueItem.chain, ZERO_TOKEN).ticker,
+        token: ZERO_TOKEN,
+        actual: nativeBalance.balanceWei.toString(),
+        actualDecimal: priorNative?.actualDecimal ?? null,
+        estimatedUsd: scaledUsdEstimate({
+          priorUnits: priorNative?.actual,
+          priorUsd: priorNative?.estimatedUsd,
+          liveUnits: nativeBalance.balanceWei.toString(),
+        }),
+        rpcUrl: nativeBalance.rpcUrl || null,
+      },
+    ],
+    tokens: [
+      {
+        chain: queueItem.chain,
+        token: binding.assetAddress,
+        ticker: priorToken?.ticker || tokenAsset(queueItem.chain, binding.assetAddress).ticker,
+        actual: tokenBalance.balance.toString(),
+        actualDecimal: priorToken?.actualDecimal ?? null,
+        estimatedUsd: scaledUsdEstimate({
+          priorUnits: priorToken?.actual,
+          priorUsd: priorToken?.estimatedUsd,
+          liveUnits: tokenBalance.balance.toString(),
+        }),
+        rpcUrl: tokenBalance.rpcUrl || null,
+      },
+    ],
+  };
+}
+
+export async function refreshMerklAutopilotSelectionForExecute({
+  selected,
+  senderAddress,
+  canaryExecutions = [],
+  now = new Date().toISOString(),
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
+  sizingOptions = {},
+} = {}) {
+  if (!selected?.queueItem) throw new Error("selected queue item is required");
+  const inventorySnapshot = await buildLiveMerklInventorySnapshot({
+    queueItem: selected.queueItem,
+    senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const queueItem = applyMerklCanaryExecutionReadiness(selected.queueItem, {
+    inventorySnapshot,
+    canaryExecutions,
+    now,
+  });
+  const sizing = sizeMerklCanaryAmount(queueItem, {
+    ...sizingOptions,
+    now,
+  });
+  return {
+    queueItem,
+    sizing,
+    inventorySnapshot,
+  };
+}
+
+function merklExecutionErrorReport({
+  error,
+  execute,
+  preflight,
+  queue,
+  queueItem,
+  sizing,
+  readyCount,
+  representativeCoverage,
+} = {}) {
+  const message = error?.message || String(error);
+  let blockedReason = null;
+  if (/Insufficient asset balance:/iu.test(message)) blockedReason = "insufficient_live_asset_balance";
+  if (/All RPC endpoints failed for chain:/iu.test(message)) blockedReason = "live_inventory_refresh_failed";
+  if (!blockedReason) throw error;
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    mode: execute ? "execute" : "preview",
+    status: "blocked",
+    blockedReason,
+    error: {
+      name: error?.name || "Error",
+      message,
+    },
+    preflight: {
+      status: preflight.status,
+      senderAddress: preflight.senderAddress,
+      liveBaseline: preflight.liveBaseline,
+      killSwitchPath: preflight.killSwitchPath,
+    },
+    summary: {
+      queueCount: queue.queue?.length || 0,
+      readyCount,
+      representativeCoverage,
+      selectedOpportunityId: queueItem?.opportunityId || null,
+      selectedChain: queueItem?.chain || null,
+      selectedProtocolId: queueItem?.protocolId || null,
+      selectedBindingKind: bindingKind(queueItem),
+      selectedAmount: sizing?.amount || null,
+      selectedAmountUsd: sizing?.amountUsd ?? null,
+    },
+    queueItem,
+    sizing,
+  };
+}
+
 export async function runMerklCanaryAutopilot({
   execute = false,
   write = false,
@@ -320,7 +457,69 @@ export async function runMerklCanaryAutopilot({
     return report;
   }
 
-  const { queueItem, sizing } = selection.selected;
+  let { queueItem, sizing } = selection.selected;
+  const representativeCoverage = compactRepresentativeCoverage(queue);
+  if (execute) {
+    try {
+      const refreshed = await refreshMerklAutopilotSelectionForExecute({
+        selected: selection.selected,
+        senderAddress: preflight.senderAddress,
+        canaryExecutions,
+        now: new Date().toISOString(),
+        sizingOptions: {
+          maxUsd,
+          minEthereumNotionalUsd,
+          allowInefficientEthereum,
+          auditRecords,
+        },
+      });
+      queueItem = refreshed.queueItem;
+      sizing = refreshed.sizing;
+    } catch (error) {
+      const report = merklExecutionErrorReport({
+        error,
+        execute,
+        preflight,
+        queue,
+        queueItem,
+        sizing,
+        readyCount: selection.readyCount,
+        representativeCoverage,
+      });
+      if (write) await writeAutopilotReport(report);
+      return report;
+    }
+    if (sizing.status !== "ready") {
+      const report = {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        mode: "execute",
+        status: "blocked",
+        blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+        preflight: {
+          status: preflight.status,
+          senderAddress: preflight.senderAddress,
+          liveBaseline: preflight.liveBaseline,
+          killSwitchPath: preflight.killSwitchPath,
+        },
+        summary: {
+          queueCount: queue.queue?.length || 0,
+          readyCount: selection.readyCount,
+          representativeCoverage,
+          selectedOpportunityId: queueItem.opportunityId,
+          selectedChain: queueItem.chain,
+          selectedProtocolId: queueItem.protocolId,
+          selectedBindingKind: bindingKind(queueItem),
+          selectedAmount: null,
+          selectedAmountUsd: null,
+        },
+        queueItem,
+        sizing,
+      };
+      if (write) await writeAutopilotReport(report);
+      return report;
+    }
+  }
   const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
   const executePlan = resolvePlanExecutor(bindingKind(queueItem));
   if (!buildPlan || !executePlan) {
@@ -328,29 +527,46 @@ export async function runMerklCanaryAutopilot({
       schemaVersion: 1,
       observedAt: new Date().toISOString(),
       mode: execute ? "execute" : "preview",
-      status: "blocked",
-      blockedReason: "unsupported_binding_kind",
-      summary: {
-        queueCount: queue.queue?.length || 0,
-        readyCount: 1,
-        representativeCoverage: compactRepresentativeCoverage(queue),
-      },
-    };
+        status: "blocked",
+        blockedReason: "unsupported_binding_kind",
+        summary: {
+          queueCount: queue.queue?.length || 0,
+          readyCount: 1,
+          representativeCoverage,
+        },
+      };
+      if (write) await writeAutopilotReport(report);
+      return report;
+    }
+  let plan;
+  let execution = null;
+  try {
+    plan = await buildPlan({
+      queueItem,
+      senderAddress: preflight.senderAddress,
+      amount: sizing.amount,
+    });
+    execution = execute
+      ? await executePlan({
+          plan,
+          socketPath,
+          timeoutMs,
+        })
+      : null;
+  } catch (error) {
+    const report = merklExecutionErrorReport({
+      error,
+      execute,
+      preflight,
+      queue,
+      queueItem,
+      sizing,
+      readyCount: selection.readyCount,
+      representativeCoverage,
+    });
     if (write) await writeAutopilotReport(report);
     return report;
   }
-  const plan = await buildPlan({
-    queueItem,
-    senderAddress: preflight.senderAddress,
-    amount: sizing.amount,
-  });
-  const execution = execute
-    ? await executePlan({
-        plan,
-        socketPath,
-        timeoutMs,
-      })
-    : null;
   const report = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -365,7 +581,7 @@ export async function runMerklCanaryAutopilot({
     summary: {
       queueCount: queue.queue?.length || 0,
       readyCount: selection.readyCount,
-      representativeCoverage: compactRepresentativeCoverage(queue),
+      representativeCoverage,
       selectedOpportunityId: queueItem.opportunityId,
       selectedChain: queueItem.chain,
       selectedProtocolId: queueItem.protocolId,

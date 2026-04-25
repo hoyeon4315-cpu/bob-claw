@@ -36,6 +36,53 @@ export function parseArgs(argv) {
   };
 }
 
+function serializeError(error) {
+  return {
+    name: error?.name || "Error",
+    message: error?.message || String(error),
+  };
+}
+
+export async function resolveCapitalManagerTreasuryInventory({
+  refreshInventory = false,
+  context = {},
+  policy,
+  address,
+  prices,
+  scanInventory = scanTreasuryInventory,
+} = {}) {
+  if (!refreshInventory && context.inventorySnapshot) {
+    return {
+      treasuryInventory: context.inventorySnapshot,
+      inventorySource: "stored_snapshot",
+      inventoryRefreshError: null,
+    };
+  }
+
+  const fallbackInventory = context.inventorySnapshot || null;
+  try {
+    const treasuryInventory = await scanInventory({
+      policy,
+      address,
+      prices,
+      continueOnError: Boolean(fallbackInventory),
+      fallbackInventory,
+    });
+    return {
+      treasuryInventory,
+      inventorySource: refreshInventory ? "live_scan" : "live_scan",
+      inventoryRefreshError: null,
+    };
+  } catch (error) {
+    if (!fallbackInventory) throw error;
+    return {
+      treasuryInventory: fallbackInventory,
+      inventorySource: "stored_snapshot_fallback",
+      inventoryRefreshError: serializeError(error),
+    };
+  }
+}
+
 async function readJsonIfExists(path) {
   try {
     return JSON.parse(await readFile(path, "utf8"));
@@ -56,10 +103,17 @@ async function main() {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const strategyCaps = listStrategyCaps({ includeInactive: args.includeInactive }) || [];
-  const treasuryInventory =
-    !args.refreshInventory && context.inventorySnapshot
-      ? context.inventorySnapshot
-      : await scanTreasuryInventory({ policy, address: resolved.address, prices });
+  const {
+    treasuryInventory,
+    inventorySource,
+    inventoryRefreshError,
+  } = await resolveCapitalManagerTreasuryInventory({
+    refreshInventory: args.refreshInventory,
+    context,
+    policy,
+    address: resolved.address,
+    prices,
+  });
 
   const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
@@ -112,7 +166,8 @@ async function main() {
   if (args.json) {
     console.log(JSON.stringify({
       ...result,
-      inventorySource: !args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan",
+      inventorySource,
+      inventoryRefreshError,
       routeDemandSignalCount: (routeDemand?.signals || []).length,
     }, null, 2));
     return;

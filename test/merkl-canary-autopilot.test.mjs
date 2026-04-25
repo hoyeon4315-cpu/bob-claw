@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  refreshMerklAutopilotSelectionForExecute,
   selectMerklCanaryAutopilotCandidate,
   sizeMerklCanaryAmount,
 } from "../src/executor/merkl-canary-autopilot.mjs";
@@ -186,4 +187,41 @@ test("refreshes queue readiness from latest canary executions before selecting",
   assert.equal(selection.readyCount, 0);
   assert.equal(selection.selected, null);
   assert.ok(selection.candidates[0].sizing.blockers.includes("cooldown_active"));
+});
+
+test("refreshes execute sizing from live balances before Merkl canary execution", async () => {
+  const selected = {
+    queueItem: queueItem({
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          actual: "5370245",
+          estimatedUsd: 5.370245,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "1000000000000000",
+          estimatedUsd: 2,
+        },
+      },
+    }),
+    sizing: {
+      status: "ready",
+      amount: "5370245",
+      amountUsd: 5.370245,
+    },
+  };
+
+  const refreshed = await refreshMerklAutopilotSelectionForExecute({
+    selected,
+    senderAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    readErc20BalanceImpl: async () => ({ balance: 100024n, rpcUrl: "https://mainnet.base.org" }),
+    readNativeBalanceImpl: async () => ({ balanceWei: 1000000000000000n, rpcUrl: "https://mainnet.base.org" }),
+  });
+
+  assert.equal(refreshed.queueItem.executionReadiness.matchedToken.actual, "100024");
+  assert.equal(refreshed.sizing.status, "ready");
+  assert.equal(refreshed.sizing.amount, "100024");
+  assert.equal(refreshed.sizing.amountUsd, 0.100024);
 });

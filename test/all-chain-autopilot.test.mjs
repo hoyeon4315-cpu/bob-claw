@@ -967,3 +967,47 @@ test("all-chain autopilot keeps parsed refill execution failures as blockers", a
   assert.equal(report.refillExecutions[0].executionStatus, "failed");
   assert.equal(report.refillExecutions[0].executionBlockedReason, "Signer daemon response timed out after 30000ms");
 });
+
+test("all-chain autopilot treats Merkl canary blocked json as recoverable during execute", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("run-merkl-canary-autopilot.mjs")) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: JSON.stringify({
+          status: "blocked",
+          blockedReason: "insufficient_live_asset_balance",
+          summary: {
+            selectedChain: "base",
+            selectedProtocolId: "yo",
+            selectedBindingKind: "erc4626_vault_supply_withdraw",
+            selectedAmountUsd: 0.100024,
+          },
+        }),
+        stderr: "Error: Insufficient asset balance",
+        json: {
+          status: "blocked",
+          blockedReason: "insufficient_live_asset_balance",
+          summary: {
+            selectedChain: "base",
+            selectedProtocolId: "yo",
+            selectedBindingKind: "erc4626_vault_supply_withdraw",
+            selectedAmountUsd: 0.100024,
+          },
+        },
+        error: { name: "Error", message: "Error: Insufficient asset balance" },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.summary.merklCanary.blockedReason, "insufficient_live_asset_balance");
+});
