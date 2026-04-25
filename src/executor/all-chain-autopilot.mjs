@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
-import { config } from "../config/env.mjs";
+import { config, getEnv } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -337,6 +337,17 @@ function compactPayback(report = null) {
   };
 }
 
+function compactAutoKill(report = null) {
+  if (!report) return null;
+  return {
+    triggered: report.triggered === true,
+    alreadyArmed: report.alreadyArmed === true,
+    killSwitchWritten: report.killSwitchWritten === true,
+    killSwitchPath: report.killSwitchPath ?? null,
+    triggers: Array.isArray(report.triggers) ? report.triggers.map((trigger) => trigger.trigger).filter(Boolean) : [],
+  };
+}
+
 function stepStatus(step = {}) {
   return step.json?.status || step.json?.record?.batchStatus || step.json?.decision || step.json?.event?.status || null;
 }
@@ -364,6 +375,12 @@ function stepIsRecoverable(step, steps) {
   }
   if (step.name === "live_canary_sweep") {
     return true;
+  }
+  if (step.name === "auto_kill_check") {
+    return step.json?.triggered === true;
+  }
+  if (step.name === "btc_oracle_snapshot") {
+    return Array.isArray(step.json?.samples);
   }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
@@ -592,6 +609,36 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
+  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", join("data", "oracles", "btc-latest.json"));
+  await runJsonStep({
+    name: "btc_oracle_snapshot",
+    args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json", `--oracles-path=${oraclesPathArg}`];
+  if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
+  const autoKillResult = await runJsonStep({
+    name: "auto_kill_check",
+    args: autoKillArgs,
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  await runJsonStep({
+    name: "auto_kill_dashboard_slice",
+    args: ["src/cli/report-auto-kill-events.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
   const summary = {
     officialChainCount: chains.length,
     refillJobCount: refillPlan?.summary?.jobCount ?? 0,
@@ -615,6 +662,7 @@ export async function runAllChainAutopilot({
     portfolio: compactPortfolio(portfolioResult.json),
     strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json),
     payback: compactPayback(paybackResult.json),
+    autoKill: compactAutoKill(autoKillResult.json),
   };
 
   const hardFailures = steps.filter((step) => !step.ok && !stepIsRecoverable(step, steps));
