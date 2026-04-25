@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   activeMerklPortfolioPositions,
   buildMerklPortfolioAllocationPlan,
+  executionErrorBlockers,
   merklPortfolioScore,
 } from "../src/executor/merkl-portfolio-allocator.mjs";
 
@@ -288,4 +289,12 @@ test("allocator can still block duplicate opportunities when top-ups are disable
 
   assert.equal(plan.summary.entryReadyCount, 0);
   assert.ok(plan.allocations[0].blockers.includes("opportunity_already_open"));
+});
+
+test("allocator downgrades live balance races to a blocked execution", () => {
+  assert.deepEqual(
+    executionErrorBlockers(new Error("Insufficient asset balance: required 111570916, available 104493122")),
+    ["insufficient_asset_balance"],
+  );
+  assert.deepEqual(executionErrorBlockers(new Error("rpc failed")), ["portfolio_execution_error"]);
 });

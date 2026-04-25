@@ -328,6 +328,12 @@ function txHashForStep(execution = {}, stepIds = []) {
     ?.signerResult?.broadcast?.txHash || null;
 }
 
+export function executionErrorBlockers(error) {
+  const message = error?.message || String(error || "");
+  if (/Insufficient asset balance/u.test(message)) return ["insufficient_asset_balance"];
+  return ["portfolio_execution_error"];
+}
+
 function buildPositionRecord({ allocation, plan, execution, now = new Date().toISOString() } = {}) {
   const entryTxHash = txHashForStep(execution, ["deposit_asset_to_vault", "supply_asset_to_pool"]);
   const positionId = `merkl:${plan.chain}:${plan.opportunityId}:${entryTxHash || now}`;
@@ -477,12 +483,30 @@ export async function runMerklPortfolioAllocator({
         senderAddress: preflight.senderAddress,
         amount: allocation.targetAmount,
       });
-      const execution = await executePlan({
-        plan: protocolPlan,
-        socketPath,
-        timeoutMs,
-        exitAfterProof: false,
-      });
+      let execution = null;
+      try {
+        execution = await executePlan({
+          plan: protocolPlan,
+          socketPath,
+          timeoutMs,
+          exitAfterProof: false,
+        });
+      } catch (error) {
+        executions.push({
+          opportunityId: queueItem.opportunityId,
+          status: "blocked",
+          blockers: executionErrorBlockers(error),
+          error: {
+            message: error?.message || String(error),
+          },
+          plan: {
+            chain: protocolPlan.chain,
+            amount: protocolPlan.amount,
+            assetAddress: protocolPlan.assetAddress,
+          },
+        });
+        continue;
+      }
       const positionRecord = execution.settlementStatus === "position_opened"
         ? buildPositionRecord({
             allocation: { ...allocation, policy: plan.policy },

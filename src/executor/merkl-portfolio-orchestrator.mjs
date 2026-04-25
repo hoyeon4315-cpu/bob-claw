@@ -32,7 +32,8 @@ function compactAllocatorReport(report = {}) {
     deployments: (report.executions || []).map((item) => ({
       opportunityId: item.opportunityId,
       status: item.status,
-      txHash: item.txHash,
+      txHash: item.txHash || item.txHashes?.[0] || null,
+      blockers: item.blockers || [],
     })),
   };
 }
