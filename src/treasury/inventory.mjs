@@ -54,7 +54,60 @@ function chainConfig(chain) {
   };
 }
 
-export function buildTreasuryInventory({ policy, address, nativeBalances = {}, tokenBalances = {}, allowances = {}, prices = null, observedAt }) {
+function errorSummary(error) {
+  if (!error) return null;
+  return {
+    name: error.name || "Error",
+    message: error.message || String(error),
+  };
+}
+
+function fallbackNativeBalance(fallbackInventory, chain) {
+  const item = fallbackInventory?.native?.find((entry) => entry.chain === chain);
+  return item ? { balanceWei: item.actual || "0", rpcUrl: item.rpcUrl || null, staleFallback: true } : null;
+}
+
+function fallbackTokenBalance(fallbackInventory, chain, token) {
+  const key = normalizedAddress(token);
+  const item = fallbackInventory?.tokens?.find((entry) => entry.chain === chain && normalizedAddress(entry.token) === key);
+  return item ? { balance: item.actual || "0", rpcUrl: item.rpcUrl || null, staleFallback: true } : null;
+}
+
+function fallbackAllowance(fallbackInventory, chain, token, spender) {
+  const tokenKey = normalizedAddress(token);
+  const spenderKey = normalizedAddress(spender);
+  const item = fallbackInventory?.allowances?.find(
+    (entry) => entry.chain === chain && normalizedAddress(entry.token) === tokenKey && normalizedAddress(entry.spender) === spenderKey,
+  );
+  return item ? { allowance: item.actual || "0", rpcUrl: item.rpcUrl || null, staleFallback: true } : null;
+}
+
+async function readInventoryItem({ label, read, fallback, continueOnError, scanErrors }) {
+  try {
+    return await read();
+  } catch (error) {
+    if (!continueOnError) throw error;
+    const summary = errorSummary(error);
+    scanErrors.push({ label, ...summary });
+    return {
+      ...(fallback || {}),
+      rpcUrl: fallback?.rpcUrl || null,
+      staleFallback: Boolean(fallback),
+      scanError: summary,
+    };
+  }
+}
+
+export function buildTreasuryInventory({
+  policy,
+  address,
+  nativeBalances = {},
+  tokenBalances = {},
+  allowances = {},
+  prices = null,
+  observedAt,
+  scanErrors = [],
+}) {
   const activeChains = new Set(policy.activeChains || []);
   const native = listSupportedChains(policy).map((chain) => {
     const item = getNativeBalancePolicy(policy, chain);
@@ -93,6 +146,8 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       status,
       rationale: item.rationale,
       rpcUrl: nativeBalances[chain]?.rpcUrl || null,
+      staleFallback: Boolean(nativeBalances[chain]?.staleFallback),
+      scanError: nativeBalances[chain]?.scanError || null,
     };
   });
 
@@ -134,6 +189,8 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       rationale: item.rationale,
       strategyPolicy: item.strategyPolicy || null,
       rpcUrl: tokenBalances[key]?.rpcUrl || null,
+      staleFallback: Boolean(tokenBalances[key]?.staleFallback),
+      scanError: tokenBalances[key]?.scanError || null,
     };
   });
 
@@ -155,6 +212,8 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
       status: allowanceStatus({ actual, maxApproval }),
       rationale: item.rationale,
       rpcUrl: allowances[key]?.rpcUrl || null,
+      staleFallback: Boolean(allowances[key]?.staleFallback),
+      scanError: allowances[key]?.scanError || null,
     };
   });
 
@@ -176,34 +235,58 @@ export function buildTreasuryInventory({ policy, address, nativeBalances = {}, t
         native.filter((item) => item.status.startsWith("over_max")).length +
         tokens.filter((item) => item.status.startsWith("over_max")).length,
       allowanceOverCapCount: allowanceItems.filter((item) => item.status === "over_cap").length,
+      scanErrorCount: scanErrors.length,
       estimatedWalletUsd: [...native, ...tokens]
         .map((item) => item.estimatedUsd)
         .filter(Number.isFinite)
         .reduce((sum, value) => sum + value, 0),
     },
+    scanErrors,
   };
 }
 
-export async function scanTreasuryInventory({ policy, address, prices = null, fetchImpl = fetch }) {
+export async function scanTreasuryInventory({ policy, address, prices = null, fetchImpl = fetch, continueOnError = false, fallbackInventory = null }) {
   const supportedChains = listSupportedChains(policy);
   const tokenItems = policy.tokenInventories || [];
   const allowanceItems = policy.allowanceCaps || [];
+  const scanErrors = [];
 
   const nativeEntries = await Promise.all(
-    supportedChains.map(async (chain) => [chain, await readNativeBalance(chain, address, { fetchImpl, chainConfig: chainConfig(chain) })]),
+    supportedChains.map(async (chain) => [
+      chain,
+      await readInventoryItem({
+        label: `native:${chain}`,
+        continueOnError,
+        scanErrors,
+        fallback: fallbackNativeBalance(fallbackInventory, chain),
+        read: () => readNativeBalance(chain, address, { fetchImpl, chainConfig: chainConfig(chain) }),
+      }),
+    ]),
   );
   const tokenEntries = await Promise.all(
     tokenItems.map(async (item) => [
       `${item.chain}:${normalizedAddress(item.token)}`,
-      await readErc20Balance(item.chain, item.token, address, { fetchImpl, chainConfig: chainConfig(item.chain) }),
+      await readInventoryItem({
+        label: `token:${item.chain}:${normalizedAddress(item.token)}`,
+        continueOnError,
+        scanErrors,
+        fallback: fallbackTokenBalance(fallbackInventory, item.chain, item.token),
+        read: () => readErc20Balance(item.chain, item.token, address, { fetchImpl, chainConfig: chainConfig(item.chain) }),
+      }),
     ]),
   );
   const allowanceEntries = await Promise.all(
     allowanceItems.map(async (item) => [
       `${item.chain}:${normalizedAddress(item.token)}:${normalizedAddress(item.spender)}`,
-      await readErc20Allowance(item.chain, item.token, address, item.spender, {
-        fetchImpl,
-        chainConfig: chainConfig(item.chain),
+      await readInventoryItem({
+        label: `allowance:${item.chain}:${normalizedAddress(item.token)}:${normalizedAddress(item.spender)}`,
+        continueOnError,
+        scanErrors,
+        fallback: fallbackAllowance(fallbackInventory, item.chain, item.token, item.spender),
+        read: () => readErc20Allowance(item.chain, item.token, address, item.spender, {
+          fetchImpl,
+          chainConfig: chainConfig(item.chain),
+        }),
       }),
     ]),
   );
@@ -215,5 +298,6 @@ export async function scanTreasuryInventory({ policy, address, prices = null, fe
     tokenBalances: Object.fromEntries(tokenEntries),
     allowances: Object.fromEntries(allowanceEntries),
     prices,
+    scanErrors,
   });
 }

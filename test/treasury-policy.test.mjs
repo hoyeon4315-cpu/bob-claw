@@ -22,10 +22,24 @@ const ETHEREUM_RLUSD_TOKEN = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
 test("default treasury policy validates and enables live Merkl deployment chains", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
 
-  assert.deepEqual(policy.activeChains, ["bob", "base", "ethereum"]);
+  assert.deepEqual(policy.activeChains, [
+    "ethereum",
+    "bob",
+    "base",
+    "bsc",
+    "avalanche",
+    "unichain",
+    "bera",
+    "optimism",
+    "soneium",
+    "sei",
+    "sonic",
+  ]);
   assert.equal(getNativeBalancePolicy(policy, "bob").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "base").enabled, true);
   assert.equal(getNativeBalancePolicy(policy, "ethereum").enabled, true);
+  assert.equal(getNativeBalancePolicy(policy, "optimism").enabled, true);
+  assert.equal(getNativeBalancePolicy(policy, "sei").enabled, true);
   assert.equal(policy.capital.activeBudgetUsd, 1_000_000);
   assert.equal(referenceBudgetUsd(policy), 1_000_000);
 });
@@ -64,14 +78,19 @@ test("threshold helpers convert decimals to raw units", () => {
     maxBalance: "75000000000000000000",
   });
   assert.deepEqual(tokenThresholdUnits(policy, "bsc", BSC_USDC_TOKEN), {
-    minBalance: "250000000000000000000",
-    targetBalance: "300000000000000000000",
-    maxBalance: "1000000000000000000000",
+    minBalance: "1000000000000000000",
+    targetBalance: "3000000000000000000",
+    maxBalance: "50000000000000000000",
   });
   assert.deepEqual(tokenThresholdUnits(policy, "bsc", BSC_USDT_TOKEN), {
-    minBalance: "250000000000000000000",
-    targetBalance: "300000000000000000000",
-    maxBalance: "1000000000000000000000",
+    minBalance: "1000000000000000000",
+    targetBalance: "3000000000000000000",
+    maxBalance: "50000000000000000000",
+  });
+  assert.deepEqual(tokenThresholdUnits(policy, "optimism", WBTC_OFT_TOKEN), {
+    minBalance: "3000",
+    targetBalance: "10000",
+    maxBalance: "50000",
   });
 });
 

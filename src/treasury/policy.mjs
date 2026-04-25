@@ -9,6 +9,19 @@ const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
 const ETHEREUM_USDC_TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const ETHEREUM_USDT_TOKEN = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const ETHEREUM_RLUSD_TOKEN = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
+const GATEWAY_DESTINATION_CHAINS = Object.freeze([
+  "ethereum",
+  "bob",
+  "base",
+  "bsc",
+  "avalanche",
+  "unichain",
+  "bera",
+  "optimism",
+  "soneium",
+  "sei",
+  "sonic",
+]);
 const MERKL_PORTFOLIO_REFILL_POLICY = {
   id: "merkl_portfolio_stable_carry_refill",
   category: "yield",
@@ -84,6 +97,16 @@ function tokenPolicy(chain, token, overrides = {}) {
   };
 }
 
+function gatewayWbtcPolicy(chain, overrides = {}) {
+  return tokenPolicy(chain, WBTC_OFT_TOKEN, {
+    minBalance: "0.00003",
+    targetBalance: "0.0001",
+    maxBalance: "0.0005",
+    rationale: "Tiny all-chain Gateway wrapped-BTC buffer for automated route proof, canary prep, and payback return-path validation.",
+    ...overrides,
+  });
+}
+
 export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
   const activeBudgetUsd = Number.isFinite(walletTotalUsd) && walletTotalUsd > 0
     ? walletTotalUsd
@@ -103,7 +126,13 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       maxBalance: "0.015",
       rationale: "Reverse BTC-family route candidate and likely first secondary active chain.",
     }),
-    avalanche: nativePolicy("avalanche"),
+    avalanche: nativePolicy("avalanche", {
+      enabled: true,
+      minBalance: "0.02",
+      targetBalance: "0.05",
+      maxBalance: "0.5",
+      rationale: "Gateway destination chain; keep AVAX gas ready for automated canary, refill, and unwind receipts.",
+    }),
     bera: nativePolicy("bera", {
       enabled: true,
       minBalance: "0.005",
@@ -125,6 +154,20 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       maxBalance: "0.015",
       rationale: "Ethereum L1 is allowed when measured execution remains positive after gas and slippage.",
     }),
+    optimism: nativePolicy("optimism", {
+      enabled: true,
+      minBalance: "0.0005",
+      targetBalance: "0.001",
+      maxBalance: "0.005",
+      rationale: "Gateway destination chain; bootstrap ETH gas should be maintained when route demand appears.",
+    }),
+    sei: nativePolicy("sei", {
+      enabled: true,
+      minBalance: "0.5",
+      targetBalance: "1",
+      maxBalance: "10",
+      rationale: "Gateway destination chain; bootstrap SEI gas is required before routed inventory can be used.",
+    }),
     soneium: nativePolicy("soneium", {
       enabled: true,
       minBalance: "0.0005",
@@ -132,7 +175,13 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       maxBalance: "0.005",
       rationale: "Gateway expansion chain; bootstrap ETH gas should be maintained when route demand appears.",
     }),
-    sonic: nativePolicy("sonic"),
+    sonic: nativePolicy("sonic", {
+      enabled: true,
+      minBalance: "2",
+      targetBalance: "5",
+      maxBalance: "150",
+      rationale: "Gateway destination chain; keep a small S gas float so routed inventory is not stranded.",
+    }),
     unichain: nativePolicy("unichain", {
       enabled: true,
       minBalance: "0.0005",
@@ -154,22 +203,31 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       fragmentationDragPct: 0.005,
       maxRefillCost24hUsd: 3,
     },
-    supportedChains: Object.keys(nativeBalances),
-    activeChains: ["bob", "base", "ethereum"],
+    supportedChains: GATEWAY_DESTINATION_CHAINS,
+    activeChains: GATEWAY_DESTINATION_CHAINS,
     nativeBalances,
     tokenInventories: [
-      tokenPolicy("bob", WBTC_OFT_TOKEN, {
+      gatewayWbtcPolicy("ethereum"),
+      gatewayWbtcPolicy("bob", {
         minBalance: "0.0001",
         targetBalance: "0.0003",
         maxBalance: "0.001",
         rationale: "Current 10k sat canary-prep route plus retry margin.",
       }),
-      tokenPolicy("base", WBTC_OFT_TOKEN, {
+      gatewayWbtcPolicy("base", {
         minBalance: "0.0001",
         targetBalance: "0.0003",
         maxBalance: "0.001",
         rationale: "Keeps reverse-route readiness without overfunding.",
       }),
+      gatewayWbtcPolicy("bsc"),
+      gatewayWbtcPolicy("avalanche"),
+      gatewayWbtcPolicy("unichain"),
+      gatewayWbtcPolicy("bera"),
+      gatewayWbtcPolicy("optimism"),
+      gatewayWbtcPolicy("soneium"),
+      gatewayWbtcPolicy("sei"),
+      gatewayWbtcPolicy("sonic"),
       tokenPolicy("base", BASE_USDC_TOKEN, {
         minBalance: "25",
         targetBalance: "68",
@@ -211,16 +269,16 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         },
       }),
       tokenPolicy("bsc", BSC_USDC_TOKEN, {
-        minBalance: "250",
-        targetBalance: "300",
-        maxBalance: "1000",
-        rationale: "Positive BSC stablecoin -> native BTC offramp candidate is commonly expressed as USDC, so keep the direct settlement token modeled explicitly.",
+        minBalance: "1",
+        targetBalance: "3",
+        maxBalance: "50",
+        rationale: "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
       }),
       tokenPolicy("bsc", BSC_USDT_TOKEN, {
-        minBalance: "250",
-        targetBalance: "300",
-        maxBalance: "1000",
-        rationale: "Direct BSC stablecoin arrival can land as USDT; treat it as equivalent treasury buffer instead of ignoring live stable inventory already on-chain.",
+        minBalance: "1",
+        targetBalance: "3",
+        maxBalance: "50",
+        rationale: "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
       }),
     ],
     allowanceCaps: [

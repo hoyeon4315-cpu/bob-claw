@@ -56,7 +56,13 @@ async function main() {
   const inventory =
     !args.refreshInventory && context.inventorySnapshot
       ? context.inventorySnapshot
-      : await scanTreasuryInventory({ policy, address: resolved.address, prices });
+      : await scanTreasuryInventory({
+          policy,
+          address: resolved.address,
+          prices,
+          continueOnError: args.refreshInventory,
+          fallbackInventory: context.inventorySnapshot,
+        });
   const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
@@ -95,12 +101,14 @@ async function main() {
     console.log(JSON.stringify({
       ...jobs,
       inventorySource: !args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan",
+      inventoryScanErrorCount: inventory.summary?.scanErrorCount ?? 0,
     }, null, 2));
     return;
   }
 
   console.log(`decision=${jobs.decision}`);
   console.log(`inventorySource=${!args.refreshInventory && context.inventorySnapshot ? "stored_snapshot" : "live_scan"}`);
+  console.log(`inventoryScanErrorCount=${inventory.summary?.scanErrorCount ?? 0}`);
   console.log(`requiresManualReview=${jobs.requiresManualReview}`);
   console.log(`jobCount=${jobs.summary.jobCount}`);
   console.log(`estimatedAssetValueUsd=${jobs.summary.estimatedAssetValueUsd.toFixed(4)}`);

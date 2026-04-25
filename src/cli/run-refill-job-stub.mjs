@@ -15,6 +15,7 @@ import {
 import { readExecutionGuards } from "../execution/guards.mjs";
 import { validateTreasuryPolicy, buildDefaultTreasuryPolicy } from "../treasury/policy.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
+import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { buildDefaultRiskPolicy } from "../risk/policy.mjs";
 import { buildExecutionRiskDecision, buildExecutionRiskState } from "../risk/execution-gate.mjs";
 import {
@@ -147,11 +148,21 @@ async function main() {
   }).catch(() => null);
 
   const treasuryPolicy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
-  const inventory = await scanTreasuryInventory({
+  let inventory = null;
+  let inventorySource = "live_scan";
+  const context = await resolveShadowCycleContext({
+    dataDir: config.dataDir,
+    explicitAddress: resolved.address,
+    configuredAddress: config.estimateFrom,
+  });
+  inventory = await scanTreasuryInventory({
     policy: treasuryPolicy,
     address: resolved.address,
     prices,
+    continueOnError: true,
+    fallbackInventory: context.inventorySnapshot,
   });
+  if ((inventory.summary?.scanErrorCount ?? 0) > 0) inventorySource = "partial_live_scan";
   const riskState = buildExecutionRiskState({
     receiptRecords,
     executionEvents: events,
@@ -270,6 +281,7 @@ async function main() {
   if (args.json) {
     console.log(safeJsonStringify({
       fallbackEvent: fallbackResolution.fallbackEvent,
+      inventorySource,
       preparation,
       snapshotEvent,
       execution,
