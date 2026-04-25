@@ -121,9 +121,9 @@ function destinationRepresentativeStableInventoryPolicies() {
     .map((binding) => tokenPolicy(binding.chain, binding.assetAddress, {
       ticker: binding.assetSymbol,
       decimals: binding.assetDecimals,
-      minBalance: "1",
-      targetBalance: "4",
-      maxBalance: "12",
+      minBalance: "0.75",
+      targetBalance: "3",
+      maxBalance: "9",
       rationale: `Representative ${binding.assetSymbol} buffer for ${binding.chain} live-capital validation; capital manager may refill this before the destination representative autopilot deploys the capped canary.`,
       strategyPolicy: {
         ...REPRESENTATIVE_STABLE_REFILL_POLICY,
