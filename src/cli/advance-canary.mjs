@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
+import { activeRoute, buildAdvanceSummary, routeArgs, scoringArgsForStep } from "./advance-canary-helpers.mjs";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -16,13 +23,14 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
   };
 }
 
 function runNodeScript(script, args = []) {
-  const result = spawnSync(process.execPath, [script, ...args], {
+  const result = spawnSync(process.execPath, [resolve(ROOT, script), ...args], {
     cwd: process.cwd(),
+    env: process.env,
     encoding: "utf8",
   });
   if (result.status !== 0) {
@@ -34,12 +42,9 @@ function runNodeScript(script, args = []) {
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 }
 
-function routeArgs(address, route) {
-  return [`--address=${address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`];
-}
-
-function activeRoute(step, fallbackRoute = null) {
-  return step?.route || fallbackRoute || null;
+function commandFailureReason(error) {
+  const detail = [error?.stderr, error?.stdout, error?.message].find((value) => typeof value === "string" && value.trim());
+  return detail ? detail.trim().split(/\r?\n/u).pop() : "command_failed";
 }
 
 function printStep(step, prefix = "current") {
@@ -66,10 +71,24 @@ function printStep(step, prefix = "current") {
   }
 }
 
+function writeSessionHandoff() {
+  runNodeScript("src/cli/write-session-handoff.mjs");
+}
+
+async function writeAdvanceSummary(summary) {
+  const path = resolve(config.dataDir, "advance-canary-latest.json");
+  await writeFile(path, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  console.log(`advanceSummary=${path}`);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  args.address = resolved.address;
   const initial = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
   let next = initial.nextStep;
+  const actions = [];
+  let afterWalletCheckStep = null;
 
   if (args.json) {
     const output = { initial: next, ran: [] };
@@ -77,44 +96,133 @@ async function main() {
       let route = activeRoute(next);
       if (next.decision === "RUN_EXACT_GAS") {
         runNodeScript("src/cli/check-estimator-wallet.mjs", routeArgs(args.address, route));
+        actions.push("check-estimator-wallet");
         const refreshed = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
         next = refreshed.nextStep;
+        afterWalletCheckStep = next;
         output.afterWalletCheck = next;
         route = activeRoute(next, route);
         if (next.decision === "RUN_EXACT_GAS") {
-          runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
-          output.ran.push("estimate-gateway-gas");
+          try {
+            runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
+            actions.push("estimate-gateway-gas");
+            output.ran.push("estimate-gateway-gas");
+          } catch (error) {
+            actions.push("estimate-gateway-gas_failed");
+            output.ran.push("estimate-gateway-gas_failed");
+            output.exactGasFailure = {
+              reason: commandFailureReason(error),
+              routeKey: route.routeKey,
+              amount: route.amount,
+            };
+            await writeAdvanceSummary(buildAdvanceSummary({
+              address: args.address,
+              initialStep: initial.nextStep,
+              afterWalletCheckStep,
+              finalStep: next,
+              actions,
+            }));
+            console.log(JSON.stringify(output, null, 2));
+            return;
+          }
         }
       }
-      runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+      runNodeScript("src/cli/score-gateway.mjs", scoringArgsForStep(next, route));
       runNodeScript("src/cli/status-dashboard.mjs");
+      actions.push("score-gateway", "status-dashboard");
       output.ran.push("score-gateway", "status-dashboard");
-      output.final = (await loadState(args.address)).nextStep;
+      output.final = (await loadCanaryState({ address: args.address, dataDir: config.dataDir })).nextStep;
     }
+    await writeAdvanceSummary(buildAdvanceSummary({
+      address: args.address,
+      initialStep: initial.nextStep,
+      afterWalletCheckStep,
+      finalStep: output.final || initial.nextStep,
+      actions,
+    }));
     console.log(JSON.stringify(output, null, 2));
     return;
   }
 
   printStep(next, "current");
 
-  if (next.decision === "FUND_AND_APPROVE_WALLET" || next.decision.startsWith("BLOCKED")) return;
+  if (next.decision === "FUND_AND_APPROVE_WALLET" || next.decision.startsWith("BLOCKED")) {
+    await writeAdvanceSummary(buildAdvanceSummary({
+      address: args.address,
+      initialStep: initial.nextStep,
+      finalStep: initial.nextStep,
+      actions,
+    }));
+    runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+    writeSessionHandoff();
+    return;
+  }
   let route = activeRoute(next);
-  if (!route) return;
+  if (!route) {
+    await writeAdvanceSummary(buildAdvanceSummary({
+      address: args.address,
+      initialStep: initial.nextStep,
+      finalStep: initial.nextStep,
+      actions,
+    }));
+    runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+    writeSessionHandoff();
+    return;
+  }
 
   if (next.decision === "RUN_EXACT_GAS") {
     runNodeScript("src/cli/check-estimator-wallet.mjs", routeArgs(args.address, route));
+    actions.push("check-estimator-wallet");
     const afterWalletCheck = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
     next = afterWalletCheck.nextStep;
+    afterWalletCheckStep = next;
     printStep(next, "afterWalletCheck");
     route = activeRoute(next, route);
-    if (next.decision !== "RUN_EXACT_GAS") return;
+    if (next.decision !== "RUN_EXACT_GAS") {
+      await writeAdvanceSummary(buildAdvanceSummary({
+        address: args.address,
+        initialStep: initial.nextStep,
+        afterWalletCheckStep,
+        finalStep: next,
+        actions,
+      }));
+      runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+      writeSessionHandoff();
+      return;
+    }
 
-    runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
+    try {
+      runNodeScript("src/cli/estimate-gateway-gas.mjs", [`--from=${args.address}`, `--route-key=${route.routeKey}`, `--amount=${route.amount}`]);
+      actions.push("estimate-gateway-gas");
+    } catch (error) {
+      console.log(`exactGasCommandStatus=failed`);
+      console.log(`exactGasFailureReason=${commandFailureReason(error)}`);
+      actions.push("estimate-gateway-gas_failed");
+      await writeAdvanceSummary(buildAdvanceSummary({
+        address: args.address,
+        initialStep: initial.nextStep,
+        afterWalletCheckStep,
+        finalStep: next,
+        actions,
+      }));
+      runNodeScript("src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]);
+      writeSessionHandoff();
+      return;
+    }
   }
 
-  runNodeScript("src/cli/score-gateway.mjs", ["--write"]);
+  runNodeScript("src/cli/score-gateway.mjs", scoringArgsForStep(next, route));
   runNodeScript("src/cli/status-dashboard.mjs");
+  actions.push("score-gateway", "status-dashboard");
   const finalState = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+  await writeAdvanceSummary(buildAdvanceSummary({
+    address: args.address,
+    initialStep: initial.nextStep,
+    afterWalletCheckStep,
+    finalStep: finalState.nextStep,
+    actions,
+  }));
+  writeSessionHandoff();
   printStep(finalState.nextStep, "final");
 }
 

@@ -1,0 +1,447 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildExecutionRunbook } from "../src/prelive/execution-runbook.mjs";
+import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../src/prelive/prelive-validation.mjs";
+
+function blockedDashboardStatus() {
+  return {
+    overall: {
+      liveTrading: "BLOCKED",
+    },
+    prelive: {
+      currentStage: "shadow_replay",
+      shadowReplay: {
+        ready: false,
+        status: "shadow_replay_blocked",
+        blockers: ["manual_canary_review_not_ready"],
+      },
+      mechanicalSimulation: {
+        ready: false,
+        status: "mechanical_simulation_blocked",
+        blockers: ["shadow_replay_not_ready"],
+        successCount: 0,
+        targetSuccessCount: 50,
+        failureCount: 0,
+      },
+      forkExecution: {
+        ready: false,
+        status: "fork_execution_blocked",
+        blockers: ["mechanical_simulation_not_ready"],
+        planCount: 1,
+        submittedCount: 0,
+        confirmedCount: 0,
+        targetConfirmedCount: 3,
+        pendingOutputCount: 0,
+        failedCount: 0,
+      },
+      tinyLiveCanary: {
+        ready: false,
+        status: "tiny_canary_blocked",
+        blockers: ["shadow_replay_not_ready", "mechanical_simulation_not_ready", "fork_execution_not_ready"],
+      },
+    },
+  };
+}
+
+function blockedReviewPackage() {
+  return {
+    readyForManualReview: false,
+    reviewBlockers: ["shadow_replay_not_ready"],
+    liveBlockers: ["audit_blocks_live"],
+    remediationPlan: {
+      nextAction: {
+        code: "refresh_gateway_quote",
+        label: "refresh gateway quote",
+        command: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
+      },
+    },
+    manualReviewCandidate: {
+      routeKey: "bob:0x0555->base:0x0555",
+      routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+      amount: "10000",
+      tradeReadiness: "insufficient_data",
+    },
+  };
+}
+
+function strategySnapshotSummary() {
+  return {
+    activeBudgetUsd: null,
+    planningBudgetUsd: null,
+    candidateForValidationCount: 0,
+    topImplementedStrategy: {
+      id: "stablecoin_entry_exit_loops",
+    },
+    topPivot: {
+      id: "gateway_base_btc_yield",
+    },
+    proxyCoverageNextAction: "expand_amount_ladder",
+    yieldTopProfileId: "research_pilot",
+  };
+}
+
+function blockedRunbook() {
+  return buildExecutionRunbook({
+    dashboardStatus: blockedDashboardStatus(),
+    reviewPackage: blockedReviewPackage(),
+    strategySnapshot: {
+      summary: {
+        topImplementedStrategyId: "stablecoin_entry_exit_loops",
+        topPivotId: "gateway_base_btc_yield",
+        planningBudgetUsd: null,
+      },
+      currentSystem: {
+        activeBudgetUsd: null,
+      },
+    },
+    canaryInputs: {
+      gatewayQuote: { state: "stale", ageMinutes: 61 },
+      exactGas: { state: "fresh", ageMinutes: 2 },
+      srcGas: { state: "fresh", ageMinutes: 2 },
+      dexQuote: { state: "fresh", ageMinutes: 2 },
+      bitcoinFee: { state: "not_required", ageMinutes: null },
+      marketSnapshot: { state: "fresh", ageMinutes: 2 },
+    },
+    nextStep: {
+      route: {
+        routeKey: "bob:0x0555->base:0x0555",
+        label: "bob->base wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        srcChain: "bob",
+        dstChain: "base",
+      },
+    },
+    address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+  });
+}
+
+test("prelive validation reports blocked readiness without inventing budget lanes", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: blockedDashboardStatus(),
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: blockedRunbook(),
+    reviewPackage: blockedReviewPackage(),
+    connectedRefreshPackage: {
+      status: "network_refresh_required",
+      summary: {
+        requiredRefreshCount: 1,
+      },
+    },
+    exactRouteForkPackage: {
+      readiness: {
+        technicalStatus: "submit_ready",
+        economicStatus: "blocked_no_net_edge",
+      },
+    },
+  });
+
+  assert.equal(report.validationStatus, "blocked");
+  assert.equal(report.summary.nextActionCode, "refresh_gateway_quote");
+  assert.equal(report.budgets.activeBudgetUsd, null);
+  assert.equal(report.budgets.planningBudgetUsd, null);
+  assert.equal(report.blockers.includes("shadow_replay_not_ready"), true);
+  assert.equal(report.warnings.includes("live_execution_locked"), true);
+  assert.equal(report.warnings.includes("connected_refresh_required"), true);
+  assert.equal(report.warnings.includes("technical_ready_economic_blocked"), true);
+
+  const summary = summarizePreliveValidationReport(report);
+  assert.equal(summary.validationStatus, "blocked");
+  assert.equal(summary.nextActionCode, "refresh_gateway_quote");
+  assert.equal(summary.topPivotId, "gateway_base_btc_yield");
+  assert.equal(summary.connectedRefreshStatus, "network_refresh_required");
+  assert.equal(summary.exactRouteForkEconomicStatus, "blocked_no_net_edge");
+});
+
+test("prelive validation flips to manual review ready when all stages are complete", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: {
+      overall: { liveTrading: "BLOCKED" },
+      prelive: { currentStage: "tiny_live_canary_review" },
+    },
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        { id: "shadow_replay", complete: true },
+        { id: "mechanical_simulation", complete: true },
+        { id: "fork_execution", complete: true },
+        { id: "manual_canary_review", complete: true },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 4,
+        blockedCount: 0,
+        readyForManualReview: true,
+        nextStageId: "manual_canary_review",
+        nextActionCode: "manual_canary_review_only",
+        nextActionCommand: null,
+      },
+      currentStageId: "tiny_live_canary_review",
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      reviewBlockers: [],
+      liveBlockers: [],
+    },
+  });
+
+  assert.equal(report.validationStatus, "ready_for_manual_review");
+  assert.equal(report.summary.readyForManualReview, true);
+  assert.equal(report.readinessPct, 100);
+});
+
+test("prelive validation suppresses route-only warnings when a strategy candidate is manual-review ready", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: {
+      overall: { liveTrading: "BLOCKED" },
+      prelive: { currentStage: "tiny_live_canary_review" },
+    },
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        { id: "shadow_replay", complete: true },
+        { id: "mechanical_simulation", complete: true },
+        { id: "fork_execution", complete: true },
+        { id: "manual_canary_review", complete: true },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 4,
+        blockedCount: 0,
+        readyForManualReview: true,
+        nextStageId: "manual_canary_review",
+        nextActionCode: "manual_canary_review_only",
+        nextActionCommand: null,
+      },
+      currentStageId: "tiny_live_canary_review",
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      reviewBlockers: [],
+      liveBlockers: ["audit_blocks_live"],
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+      },
+    },
+    connectedRefreshPackage: {
+      status: "network_refresh_required",
+      summary: {
+        requiredRefreshCount: 2,
+      },
+    },
+    exactRouteForkPackage: {
+      readiness: {
+        technicalStatus: "submit_ready",
+        economicStatus: "blocked_no_net_edge",
+      },
+    },
+  });
+
+  assert.equal(report.validationStatus, "ready_for_manual_review");
+  assert.equal(report.summary.nextActionCode, null);
+  assert.equal(report.warnings.includes("no_policy_ready_implemented_strategy"), false);
+  assert.equal(report.warnings.includes("proxy_surface_still_needs_refresh"), false);
+  assert.equal(report.warnings.includes("connected_refresh_required"), false);
+  assert.equal(report.warnings.includes("technical_ready_economic_blocked"), false);
+});
+
+test("prelive validation ignores stale live blockers after lane-aware live policy allows trading", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: {
+      overall: {
+        liveTrading: "ALLOWED",
+        blockers: [],
+      },
+      prelive: { currentStage: "tiny_live_canary_review" },
+    },
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        { id: "shadow_replay", complete: true },
+        { id: "mechanical_simulation", complete: true },
+        { id: "fork_execution", complete: true },
+        { id: "manual_canary_review", complete: true },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 4,
+        blockedCount: 0,
+        readyForManualReview: true,
+        nextStageId: "manual_canary_review",
+        nextActionCode: "manual_canary_review_only",
+        nextActionCommand: null,
+      },
+      currentStageId: "tiny_live_canary_review",
+    },
+    reviewPackage: {
+      readyForManualReview: true,
+      reviewBlockers: [],
+      liveBlockers: ["audit_blocks_live"],
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+      },
+    },
+  });
+
+  assert.equal(report.validationStatus, "ready_for_manual_review");
+  assert.deepEqual(report.blockers, []);
+  assert.equal(report.warnings.includes("live_execution_locked"), false);
+});
+
+test("prelive validation prefers the strategy candidate next action over blocked route hold", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: blockedDashboardStatus(),
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        {
+          id: "shadow_replay",
+          complete: false,
+          blockers: ["blocked_dex_quote"],
+          nextAction: {
+            code: "hold_dex_quote",
+            label: "hold on blocked DEX quote",
+            command: null,
+          },
+        },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 0,
+        blockedCount: 1,
+        readyForManualReview: false,
+        nextStageId: "shadow_replay",
+        nextActionCode: "hold_dex_quote",
+        nextActionCommand: null,
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: false,
+      reviewBlockers: ["signer_backed_oos_receipts_missing"],
+      liveBlockers: [],
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_evidence_blocked",
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          label: "collect wrapped loop OOS receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+    },
+  });
+
+  assert.equal(report.summary.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(report.summary.nextActionCommand, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+});
+
+test("prelive validation can lift the strategy remediation next action from the review package", () => {
+  const report = buildPreliveValidationReport({
+    dashboardStatus: blockedDashboardStatus(),
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: {
+      stages: [
+        {
+          id: "shadow_replay",
+          complete: false,
+          blockers: ["stale_gateway_quote"],
+          nextAction: {
+            code: "refresh_gateway_quote",
+            label: "refresh gateway quote",
+            command: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
+          },
+        },
+      ],
+      summary: {
+        stageCount: 4,
+        completeCount: 0,
+        blockedCount: 1,
+        readyForManualReview: false,
+        nextStageId: "shadow_replay",
+        nextActionCode: "refresh_gateway_quote",
+        nextActionCommand: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
+      },
+    },
+    reviewPackage: {
+      readyForManualReview: false,
+      reviewBlockers: ["signer_backed_oos_receipts_missing"],
+      liveBlockers: [],
+      remediationPlan: {
+        nextAction: {
+          code: "collect_wrapped_btc_loop_oos_receipts",
+          label: "collect wrapped btc loop oos receipts",
+          command: "npm run ingest:wrapped-btc-loop-receipt -- --write",
+        },
+      },
+      primaryLiveCandidate: {
+        candidateType: "strategy",
+        candidateId: "wrapped-btc-loop-base-moonwell",
+        candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+        tradeReadiness: "strategy_evidence_blocked",
+      },
+    },
+  });
+
+  assert.equal(report.summary.nextActionCode, "collect_wrapped_btc_loop_oos_receipts");
+  assert.equal(report.summary.nextActionCommand, "npm run ingest:wrapped-btc-loop-receipt -- --write");
+});
+
+test("prelive validation follows blocked current-route hold before queued refresh batch", () => {
+  const runbook = buildExecutionRunbook({
+    dashboardStatus: blockedDashboardStatus(),
+    reviewPackage: {
+      ...blockedReviewPackage(),
+      remediationPlan: {
+        nextAction: {
+          code: "execute_refresh_batch",
+          label: "execute refresh batch",
+          command: "npm run run:shadow-refresh-batch -- --execute --continue-on-failure --limit=4",
+        },
+      },
+    },
+    strategySnapshot: {
+      summary: {
+        topImplementedStrategyId: "stablecoin_entry_exit_loops",
+        topPivotId: "gateway_base_btc_yield",
+        planningBudgetUsd: null,
+      },
+      currentSystem: {
+        activeBudgetUsd: null,
+      },
+    },
+    canaryInputs: {
+      gatewayQuote: { state: "fresh", ageMinutes: 2 },
+      exactGas: { state: "fresh", ageMinutes: 2 },
+      srcGas: { state: "fresh", ageMinutes: 2 },
+      dexQuote: { state: "blocked", ageMinutes: 1, failureReason: "odos_chain_not_supported" },
+      bitcoinFee: { state: "not_required", ageMinutes: null },
+      marketSnapshot: { state: "fresh", ageMinutes: 2 },
+    },
+    nextStep: {
+      route: {
+        routeKey: "avalanche:0x0555->bera:0x0555",
+        label: "avalanche->bera wBTC.OFT->wBTC.OFT",
+        amount: "10000",
+        srcChain: "avalanche",
+        dstChain: "bera",
+      },
+    },
+  });
+
+  const report = buildPreliveValidationReport({
+    dashboardStatus: blockedDashboardStatus(),
+    strategySnapshot: strategySnapshotSummary(),
+    executionRunbook: runbook,
+    reviewPackage: {
+      ...blockedReviewPackage(),
+      reviewBlockers: ["shadow_replay_not_ready", "blocked_dex_quote"],
+    },
+  });
+
+  assert.equal(report.summary.nextActionCode, "hold_dex_quote");
+  assert.equal(report.nextAction.command, null);
+});

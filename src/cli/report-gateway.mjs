@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { GatewayError, classifyGatewayBlockedReason } from "../gateway/client.mjs";
 
 const NATIVE_PRICE_IDS = {
   avalanche: "avalanche-2",
@@ -88,6 +89,25 @@ function groupBy(items, keyFn) {
   return groups;
 }
 
+function failureBlockedReason(failure) {
+  const details = failure?.error?.details || null;
+  if (!details) return null;
+  const error = new GatewayError(failure?.error?.message || "Gateway request failed", details);
+  return classifyGatewayBlockedReason(error);
+}
+
+function formatFailureReasonCounts(failures) {
+  const counts = new Map();
+  for (const failure of failures) {
+    const reason = failureBlockedReason(failure) || "unknown";
+    counts.set(reason, (counts.get(reason) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([reason, count]) => `${reason}:${count}`)
+    .join(",") || "none";
+}
+
 async function main() {
   const quotes = await readJsonl("gateway-quotes");
   const failures = await readJsonl("gateway-quote-failures");
@@ -98,8 +118,16 @@ async function main() {
   const malformedQuotes = quotes.length - validQuotes.length;
   const routeGroups = groupBy(validQuotes, (quote) => quote.routeKey);
   const failureGroups = groupBy(failures, (failure) => failure.routeKey);
+  const latestSuccess = quotes.at(-1) || null;
+  const latestFailure = failures.at(-1) || null;
 
   console.log(`quotes=${quotes.length} validQuotes=${validQuotes.length} malformedOrLegacy=${malformedQuotes} failures=${failures.length}`);
+  console.log(`latestSuccessAt=${latestSuccess?.observedAt || "none"}`);
+  console.log(`latestSuccessRoute=${latestSuccess?.routeKey || "none"}`);
+  console.log(`latestFailureAt=${latestFailure?.observedAt || "none"}`);
+  console.log(`latestFailureRoute=${latestFailure?.routeKey || "none"}`);
+  console.log(`latestFailureReason=${failureBlockedReason(latestFailure) || "none"}`);
+  console.log(`failureReasonCounts=${formatFailureReasonCounts(failures)}`);
 
   const sortedRouteGroups = [...routeGroups.entries()].sort(([a], [b]) => a.localeCompare(b));
 

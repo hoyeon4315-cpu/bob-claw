@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
-import { config } from "../config/env.mjs";
+import { config, getChainRpcUrls } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { EVM_CHAINS } from "../chains/registry.mjs";
 import { readErc20Allowance, readErc20Balance, readNativeBalance, summarizeRequirement } from "../evm/account-state.mjs";
 import { getGasSnapshot } from "../gas/rpc-gas.mjs";
+import { hydrateStoredOfframpQuoteExecution } from "../gateway/executable-quote.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
 import { matchesRouteSelection } from "../estimator/route-filter.mjs";
+import { requiresAllowanceForQuote } from "../estimator/wallet-readiness.mjs";
 
 const SCHEMA_VERSION = 1;
 
@@ -23,7 +27,7 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : 12,
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
   };
@@ -53,9 +57,40 @@ function skipReason(quote) {
   return null;
 }
 
+function chainConfig(chain) {
+  return {
+    ...EVM_CHAINS[chain],
+    rpcUrls: getChainRpcUrls(chain, EVM_CHAINS[chain]?.rpcUrls || [EVM_CHAINS[chain]?.rpcUrl].filter(Boolean)),
+  };
+}
+
+function latestGasSnapshotForChain(gasSnapshots, chain) {
+  return [...(gasSnapshots || [])]
+    .filter((item) => item.chain === chain)
+    .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
+}
+
+function latestTreasuryInventoryForAddress(records, address) {
+  return [...(records || [])]
+    .filter((item) => String(item.address || "").toLowerCase() === String(address || "").toLowerCase())
+    .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
+}
+
+function accountStateFallbackError(error) {
+  return {
+    name: error.name,
+    message: error.message,
+    attempts: error.attempts || [],
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  args.address = resolved.address;
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
+  const storedGasSnapshots = await readJsonl(config.dataDir, "gas-snapshots");
+  const treasuryInventory = latestTreasuryInventoryForAddress(await readJsonl(config.dataDir, "treasury-inventory"), args.address);
   const store = new JsonlStore(config.dataDir);
   const runId = `${new Date().toISOString()}-${Math.random().toString(16).slice(2)}`;
   const gasByChain = new Map();
@@ -69,66 +104,167 @@ async function main() {
   const results = [];
 
   async function gasSnapshot(chain) {
-    if (!gasByChain.has(chain)) gasByChain.set(chain, getGasSnapshot(chain));
+    if (!gasByChain.has(chain)) {
+      gasByChain.set(
+        chain,
+        (async () => {
+          try {
+            return {
+              ...(await getGasSnapshot(chain, chainConfig(chain))),
+              source: "live_rpc",
+            };
+          } catch (error) {
+            const fallback = latestGasSnapshotForChain(storedGasSnapshots, chain);
+            if (!fallback) throw error;
+            return {
+              ...fallback,
+              source: "stored_snapshot",
+              liveRpcError: {
+                name: error.name,
+                message: error.message,
+                attempts: error.attempts || [],
+              },
+            };
+          }
+        })(),
+      );
+    }
     return gasByChain.get(chain);
   }
 
   async function nativeBalance(chain) {
     const key = `${chain}:${args.address.toLowerCase()}`;
-    if (!nativeByChain.has(key)) nativeByChain.set(key, readNativeBalance(chain, args.address));
+    if (!nativeByChain.has(key)) {
+      nativeByChain.set(
+        key,
+        (async () => {
+          try {
+            return {
+              ...(await readNativeBalance(chain, args.address, { chainConfig: chainConfig(chain) })),
+              source: "live_rpc",
+            };
+          } catch (error) {
+            const fallback = (treasuryInventory?.native || []).find((item) => item.chain === chain) || null;
+            if (!fallback) throw error;
+            return {
+              rpcUrl: fallback.rpcUrl || null,
+              balanceWei: BigInt(fallback.actual || 0),
+              source: "stored_inventory",
+              observedAt: treasuryInventory?.observedAt || null,
+              liveRpcError: accountStateFallbackError(error),
+            };
+          }
+        })(),
+      );
+    }
     return nativeByChain.get(key);
   }
 
   async function tokenBalance(chain, token) {
     const key = `${chain}:${token.toLowerCase()}:${args.address.toLowerCase()}`;
-    if (!tokenBalanceByKey.has(key)) tokenBalanceByKey.set(key, readErc20Balance(chain, token, args.address));
+    if (!tokenBalanceByKey.has(key)) {
+      tokenBalanceByKey.set(
+        key,
+        (async () => {
+          try {
+            return {
+              ...(await readErc20Balance(chain, token, args.address, { chainConfig: chainConfig(chain) })),
+              source: "live_rpc",
+            };
+          } catch (error) {
+            const fallback = (treasuryInventory?.tokens || []).find(
+              (item) => item.chain === chain && String(item.token || "").toLowerCase() === String(token || "").toLowerCase(),
+            ) || null;
+            if (!fallback) throw error;
+            return {
+              rpcUrl: fallback.rpcUrl || null,
+              balance: BigInt(fallback.actual || 0),
+              source: "stored_inventory",
+              observedAt: treasuryInventory?.observedAt || null,
+              liveRpcError: accountStateFallbackError(error),
+            };
+          }
+        })(),
+      );
+    }
     return tokenBalanceByKey.get(key);
   }
 
   async function allowance(chain, token, spender) {
     const key = `${chain}:${token.toLowerCase()}:${args.address.toLowerCase()}:${spender.toLowerCase()}`;
-    if (!allowanceByKey.has(key)) allowanceByKey.set(key, readErc20Allowance(chain, token, args.address, spender));
+    if (!allowanceByKey.has(key)) {
+      allowanceByKey.set(
+        key,
+        (async () => {
+          try {
+            return {
+              ...(await readErc20Allowance(chain, token, args.address, spender, { chainConfig: chainConfig(chain) })),
+              source: "live_rpc",
+            };
+          } catch (error) {
+            const fallback = (treasuryInventory?.allowances || []).find(
+              (item) =>
+                item.chain === chain &&
+                String(item.token || "").toLowerCase() === String(token || "").toLowerCase() &&
+                String(item.spender || "").toLowerCase() === String(spender || "").toLowerCase(),
+            ) || null;
+            if (!fallback) throw error;
+            return {
+              rpcUrl: fallback.rpcUrl || null,
+              allowance: BigInt(fallback.actual || 0),
+              source: "stored_inventory",
+              observedAt: treasuryInventory?.observedAt || null,
+              liveRpcError: accountStateFallbackError(error),
+            };
+          }
+        })(),
+      );
+    }
     return allowanceByKey.get(key);
   }
 
   for (const quote of selected) {
-    const reason = skipReason(quote);
+    const executableQuote = await hydrateStoredOfframpQuoteExecution(quote, { senderAddress: args.address }).catch(() => quote);
+    const reason = skipReason(executableQuote);
     if (reason) {
       const failure = {
         schemaVersion: SCHEMA_VERSION,
         runId,
         observedAt: new Date().toISOString(),
         address: args.address,
-        routeKey: quote.routeKey,
-        amount: quote.amount,
-        srcChain: quote.route.srcChain,
-        dstChain: quote.route.dstChain,
+        routeKey: executableQuote.routeKey,
+        amount: executableQuote.amount,
+        srcChain: executableQuote.route.srcChain,
+        dstChain: executableQuote.route.dstChain,
         reason,
       };
       await store.append("estimator-wallet-readiness-failures", failure);
       results.push({ ok: false, ...failure });
-      if (!args.json) console.log(`${quote.route.srcChain}->${quote.route.dstChain} skipped reason=${reason}`);
+      if (!args.json) console.log(`${executableQuote.route.srcChain}->${executableQuote.route.dstChain} skipped reason=${reason}`);
       continue;
     }
 
-    const srcAsset = await resolveTokenAsset(quote.route.srcChain, quote.route.srcToken);
-    const snapshot = await gasSnapshot(quote.route.srcChain);
+    const srcAsset = await resolveTokenAsset(executableQuote.route.srcChain, executableQuote.route.srcToken);
+    const snapshot = await gasSnapshot(executableQuote.route.srcChain);
     const gasBudgetWei = BigInt(snapshot.gasPriceWei) * BigInt(snapshot.fallbackGasUnits);
-    const txValueWei = BigInt(quote.txValueWei || 0);
+    const txValueWei = BigInt(executableQuote.txValueWei || 0);
     const nativeRequiredWei = txValueWei + gasBudgetWei;
-    const nativeState = await nativeBalance(quote.route.srcChain);
+    const nativeState = await nativeBalance(executableQuote.route.srcChain);
     const nativeRequirement = summarizeRequirement(nativeState.balanceWei, nativeRequiredWei);
 
     let tokenRequirement = null;
     let allowanceRequirement = null;
+    let tokenState = null;
+    let allowanceState = null;
     if (!srcAsset.isNative) {
-      const [tokenState, allowanceState] = await Promise.all([
-        tokenBalance(quote.route.srcChain, quote.route.srcToken),
-        allowance(quote.route.srcChain, quote.route.srcToken, quote.txTo),
+      const needsAllowance = requiresAllowanceForQuote(executableQuote);
+      [tokenState, allowanceState] = await Promise.all([
+        tokenBalance(executableQuote.route.srcChain, executableQuote.route.srcToken),
+        needsAllowance ? allowance(executableQuote.route.srcChain, executableQuote.route.srcToken, executableQuote.txTo) : Promise.resolve(null),
       ]);
-      const inputUnits = BigInt(quote.inputAmount);
+      const inputUnits = BigInt(executableQuote.inputAmount);
       tokenRequirement = summarizeRequirement(tokenState.balance, inputUnits);
-      allowanceRequirement = summarizeRequirement(allowanceState.allowance, inputUnits);
+      allowanceRequirement = needsAllowance ? summarizeRequirement(allowanceState.allowance, inputUnits) : null;
     }
 
     const record = {
@@ -136,20 +272,26 @@ async function main() {
       runId,
       observedAt: new Date().toISOString(),
       address: args.address,
-      routeKey: quote.routeKey,
-      amount: quote.amount,
-      srcChain: quote.route.srcChain,
-      dstChain: quote.route.dstChain,
-      srcToken: quote.route.srcToken,
+      routeKey: executableQuote.routeKey,
+      amount: executableQuote.amount,
+      srcChain: executableQuote.route.srcChain,
+      dstChain: executableQuote.route.dstChain,
+      srcToken: executableQuote.route.srcToken,
       srcTicker: srcAsset.ticker,
-      txTo: quote.txTo,
+      txTo: executableQuote.txTo,
       txValueWei: txValueWei.toString(),
-      txDataBytes: quote.txDataBytes,
+      txDataBytes: executableQuote.txDataBytes,
+      executionHydratedFromOrder: executableQuote.executionHydratedFromOrder || false,
+      executionOrderId: executableQuote.executionOrderId || null,
+      gasSnapshotObservedAt: snapshot.observedAt || null,
+      gasSnapshotSource: snapshot.source || "live_rpc",
       fallbackGasUnits: snapshot.fallbackGasUnits,
       gasPriceWei: snapshot.gasPriceWei,
       gasBudgetWei: gasBudgetWei.toString(),
       native: {
         rpcUrl: nativeState.rpcUrl,
+        source: nativeState.source || "live_rpc",
+        observedAt: nativeState.observedAt || null,
         balanceWei: nativeState.balanceWei.toString(),
         requiredWei: nativeRequiredWei.toString(),
         ok: nativeRequirement.ok,
@@ -157,7 +299,9 @@ async function main() {
       },
       token: tokenRequirement
         ? {
-            token: quote.route.srcToken,
+            token: executableQuote.route.srcToken,
+            source: tokenState.source || "live_rpc",
+            observedAt: tokenState.observedAt || null,
             balance: tokenRequirement.actual,
             required: tokenRequirement.required,
             ok: tokenRequirement.ok,
@@ -166,7 +310,9 @@ async function main() {
         : null,
       allowance: allowanceRequirement
         ? {
-            spender: quote.txTo,
+            spender: executableQuote.txTo,
+            source: allowanceState.source || "live_rpc",
+            observedAt: allowanceState.observedAt || null,
             allowance: allowanceRequirement.actual,
             required: allowanceRequirement.required,
             ok: allowanceRequirement.ok,

@@ -1,0 +1,246 @@
+// Gas.Zip rate-limiting and policy enforcement.
+//
+// Enforces per-chain daily max, per-chain max open jobs, minimum hours
+// between refills per chain, and destination-balance-already-met gates.
+// These config values were previously defined but never enforced.
+
+import { GAS_ZIP_DEFAULT_POLICY, GAS_ZIP_OUTBOUND_CHAINS } from "../../config/gas-zip.mjs";
+import { buildDefaultTreasuryPolicy } from "../../treasury/policy.mjs";
+
+const GAS_ZIP_STRATEGY_ID = "gas-zip-native-refuel";
+
+const NEAR_MATCH_THRESHOLD_BPS = 50; // 0.5% = near-match
+
+// Build a reverse map from chainId -> chain name
+const CHAIN_ID_TO_NAME = Object.fromEntries(
+  Object.entries(GAS_ZIP_OUTBOUND_CHAINS).map(([name, cfg]) => [cfg.chainId, name]),
+);
+
+function resolveDstChainName(record) {
+  // Prefer destination chainId from metadata (most reliable)
+  const dstChainId = record.intent?.metadata?.gasZipDestinationChainId;
+  if (dstChainId && CHAIN_ID_TO_NAME[dstChainId]) {
+    return CHAIN_ID_TO_NAME[dstChainId];
+  }
+  // Fallback: try shortId
+  const dstShortId = record.intent?.metadata?.gasZipDestinationShortId;
+  if (dstShortId != null) {
+    for (const [name, cfg] of Object.entries(GAS_ZIP_OUTBOUND_CHAINS)) {
+      if (cfg.shortId === Number(dstShortId)) return name;
+    }
+  }
+  // Last resort: use source chain name (not ideal but covers non-metadata records)
+  return null;
+}
+
+function hoursAgo(isoTimestamp, nowIso) {
+  const ts = new Date(isoTimestamp).getTime();
+  const now = new Date(nowIso).getTime();
+  return (now - ts) / 3_600_000;
+}
+
+function successfulBroadcast(record = {}) {
+  return (
+    ["approved", "signed", "broadcasted", "confirmed"].includes(record.policyVerdict) ||
+    ["broadcasted", "signed", "confirmed"].includes(record.lifecycle?.stage)
+  );
+}
+
+function isGasZipRecord(record = {}) {
+  return record.strategyId === GAS_ZIP_STRATEGY_ID;
+}
+
+function isTerminalFailure(record = {}) {
+  const stage = record.lifecycle?.stage;
+  if (stage === "error" || stage === "reverted") return true;
+  if (record.policyVerdict === "rejected") return true;
+  return false;
+}
+
+/**
+ * Build a per-chain Gas.Zip execution state from audit records
+ * and Gas.Zip execution records.
+ * This is the state needed to enforce rate limits.
+ */
+export function buildGasZipRateState({
+  auditRecords = [],
+  gasZipExecutions = [],
+  now = new Date().toISOString(),
+  gasZipPolicy = GAS_ZIP_DEFAULT_POLICY,
+  treasuryPolicy = buildDefaultTreasuryPolicy(),
+} = {}) {
+  const refillPolicy = treasuryPolicy?.refillPolicy || {};
+  const minHours = Number.isFinite(refillPolicy.minHoursBetweenRefillsPerChain)
+    ? refillPolicy.minHoursBetweenRefillsPerChain
+    : 6;
+
+  const dayStart = new Date(now).toISOString().slice(0, 10);
+
+  // Collect all Gas.Zip audit records from today
+  const todayRecords = auditRecords.filter((r) => {
+    if (!isGasZipRecord(r)) return false;
+    const ts = r.timestamp || r.observedAt || "";
+    return ts.startsWith(dayStart);
+  });
+
+  // Per-chain accumulators
+  const dailyVolumeUsd = {};
+  const lastRefillTimestamp = {};
+  const openJobCount = {};
+
+  for (const record of todayRecords) {
+    const srcChain = record.chain || record.intent?.chain || "unknown";
+    const targetChain = resolveDstChainName(record) || srcChain;
+    const amountUsd = Number(record.amountUsd || record.intent?.amountUsd || 0);
+
+    // Skip terminal failures from volume counting
+    if (isTerminalFailure(record)) continue;
+
+    // Only count successful broadcasts toward daily volume
+    if (successfulBroadcast(record)) {
+      dailyVolumeUsd[targetChain] = (dailyVolumeUsd[targetChain] || 0) + amountUsd;
+      // Track most recent successful broadcast timestamp
+      const ts = record.timestamp || record.observedAt || "";
+      if (!lastRefillTimestamp[targetChain] || ts > lastRefillTimestamp[targetChain]) {
+        lastRefillTimestamp[targetChain] = ts;
+      }
+    }
+
+    // Count open (in-flight) jobs: signed or broadcasted but not confirmed/failed
+    const stage = record.lifecycle?.stage;
+    if (stage === "signed" || stage === "broadcasted") {
+      openJobCount[targetChain] = (openJobCount[targetChain] || 0) + 1;
+    }
+  }
+
+  // Supplement from Gas.Zip execution records (which have dstChain directly)
+  for (const exec of gasZipExecutions) {
+    const ts = exec.observedAt || "";
+    if (!ts.startsWith(dayStart)) continue;
+    const dstChain = exec.plan?.dstChain;
+    if (!dstChain) continue;
+    const amountUsd = Number(exec.plan?.amountUsd || 0);
+    const status = exec.settlementStatus || "";
+    // Only count delivered or near-match toward volume
+    if ((status === "delivered" || status === "near_match_timeout") && amountUsd > 0) {
+      if (!dailyVolumeUsd[dstChain] || ts > (lastRefillTimestamp[dstChain] || "")) {
+        // Use execution record if audit record didn't already capture this chain
+        // (handles the case where audit records lack destination metadata)
+        if (!dailyVolumeUsd[dstChain]) {
+          dailyVolumeUsd[dstChain] = amountUsd;
+          lastRefillTimestamp[dstChain] = ts;
+        }
+      }
+    }
+    // Count in-flight: unproven_timeout still means the tx went through
+    if (status === "unproven_timeout" || status === "near_match_timeout" || status === "delivered") {
+      // Not open anymore — already settled (even if unproven)
+    }
+  }
+
+  return {
+    observedAt: now,
+    dailyVolumeUsd,
+    lastRefillTimestamp,
+    openJobCount,
+    minHoursBetweenRefills: minHours,
+    perChainDailyMaxUsd: gasZipPolicy.perChainDailyMaxRefuelUsd,
+    perChainMaxOpenJobs: gasZipPolicy.perChainMaxOpenJobs,
+  };
+}
+
+/**
+ * Evaluate whether a Gas.Zip refuel is allowed given the current rate state
+ * and destination balance.
+ */
+export function evaluateGasZipRateLimit({
+  dstChain,
+  amountUsd,
+  rateState,
+  destinationBalanceStatus = null, // "ready" | "supported_buffered" | "refill_required" | etc
+  destinationNativeDecimal = null, // current balance in native decimal
+  destinationMinBalanceDecimal = null, // minimum balance threshold
+  now = new Date().toISOString(),
+}) {
+  const blockers = [];
+
+  // 1. Destination already meets or exceeds minimum — no refill needed
+  if (destinationBalanceStatus && ["ready", "supported_buffered", "over_max_supported", "observe_only_balance_present"].includes(destinationBalanceStatus)) {
+    blockers.push("gas_zip_destination_already_meets_minimum");
+  }
+  // Also check numerically if we have balance data
+  if (
+    Number.isFinite(destinationNativeDecimal) &&
+    Number.isFinite(destinationMinBalanceDecimal) &&
+    destinationMinBalanceDecimal > 0 &&
+    destinationNativeDecimal >= destinationMinBalanceDecimal
+  ) {
+    if (!blockers.includes("gas_zip_destination_already_meets_minimum")) {
+      blockers.push("gas_zip_destination_already_meets_minimum");
+    }
+  }
+
+  // 2. Per-chain daily max
+  const dailyUsed = rateState.dailyVolumeUsd[dstChain] || 0;
+  const dailyMax = Number.isFinite(rateState.perChainDailyMaxUsd) ? rateState.perChainDailyMaxUsd : 25;
+  if (Number.isFinite(amountUsd) && dailyUsed + amountUsd > dailyMax) {
+    blockers.push("gas_zip_per_chain_daily_max_exceeded");
+  }
+
+  // 3. Per-chain max open jobs
+  const openJobs = rateState.openJobCount[dstChain] || 0;
+  const maxOpen = Number.isFinite(rateState.perChainMaxOpenJobs) ? rateState.perChainMaxOpenJobs : 1;
+  if (openJobs >= maxOpen) {
+    blockers.push("gas_zip_per_chain_max_open_jobs_exceeded");
+  }
+
+  // 4. Min hours between refills per chain
+  const lastTs = rateState.lastRefillTimestamp[dstChain];
+  if (lastTs) {
+    const elapsed = hoursAgo(lastTs, now);
+    if (elapsed < rateState.minHoursBetweenRefills) {
+      blockers.push("gas_zip_min_hours_between_refills_not_elapsed");
+    }
+  }
+
+  return {
+    decision: blockers.length > 0 ? "BLOCK" : "ALLOW",
+    blockers,
+    metrics: {
+      dstChain,
+      amountUsd: Number.isFinite(amountUsd) ? amountUsd : null,
+      dailyUsedUsd: dailyUsed,
+      dailyMaxUsd: dailyMax,
+      openJobs,
+      maxOpenJobs: maxOpen,
+      lastRefillTimestamp: lastTs || null,
+      minHoursBetweenRefills: rateState.minHoursBetweenRefills,
+      destinationBalanceStatus,
+      destinationNativeDecimal,
+      destinationMinBalanceDecimal,
+    },
+  };
+}
+
+/**
+ * Classify an unproven_timeout settlement as near_match_timeout
+ * when observedDelta is within NEAR_MATCH_THRESHOLD_BPS of requiredDelta.
+ * Does NOT relax the delivery proof standard — only improves reporting.
+ */
+export function classifySettlementTimeout(proof) {
+  if (!proof || proof.status !== "unproven_timeout") return proof;
+
+  const observed = BigInt(proof.observedDelta || "0");
+  const required = BigInt(proof.requiredDelta || "0");
+
+  // Avoid division by zero
+  if (required === 0n) return proof;
+
+  // |required - observed| / required * 10000
+  const diffBps = Number((required - observed) * 10000n / required);
+
+  if (diffBps >= 0 && diffBps <= NEAR_MATCH_THRESHOLD_BPS) {
+    return { ...proof, status: "near_match_timeout", nearMatchBps: diffBps };
+  }
+  return proof;
+}

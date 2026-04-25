@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bob-claw-ui",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "http-server", "dashboard/public", "-p", "5173", "-c-1", "--silent"],
+      "port": 5173
+    }
+  ]
+}

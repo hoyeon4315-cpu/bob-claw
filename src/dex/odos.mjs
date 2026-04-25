@@ -18,7 +18,7 @@ export const ODOS_CHAIN_IDS = {
 export const STABLE_QUOTE_TOKENS = {
   avalanche: {
     ticker: "USDC",
-    token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6",
+    token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
     decimals: 6,
   },
   base: {
@@ -36,7 +36,178 @@ export const STABLE_QUOTE_TOKENS = {
     token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     decimals: 6,
   },
+  optimism: {
+    ticker: "USDC",
+    token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    decimals: 6,
+  },
+  sonic: {
+    ticker: "USDC",
+    token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+    decimals: 6,
+  },
+  unichain: {
+    ticker: "USDC",
+    token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+    decimals: 6,
+  },
 };
+
+const COMMON_SAFE_AMMS = [
+  "Uniswap V2",
+  "Uniswap V3",
+  "Uniswap V4",
+  "Curve",
+  "Curve V2",
+  "SushiSwap",
+  "SushiSwap V3",
+  "Balancer V2",
+  "Balancer V3",
+  "PancakeSwap V2",
+  "PancakeSwap V3",
+  "Maverick V2",
+  "DODO",
+  "KyberSwap",
+  "WooFi",
+];
+
+const SAFE_CHAIN_SOURCE_WHITELISTS = {
+  ethereum: [
+    ...COMMON_SAFE_AMMS,
+  ],
+  optimism: [
+    "Uniswap V3",
+    "Curve",
+    "Velodrome",
+    "Velodrome V2",
+    "SushiSwap",
+    "PancakeSwap V3",
+    "KyberSwap",
+    "WooFi",
+  ],
+  bsc: [
+    "PancakeSwap V2",
+    "PancakeSwap V3",
+    "Uniswap V3",
+    "Curve",
+    "SushiSwap",
+    "DODO",
+    "KyberSwap",
+    "WooFi",
+  ],
+  unichain: [
+    "Uniswap V2",
+    "Uniswap V3",
+    "PancakeSwap V3",
+    "Curve",
+    "SushiSwap",
+  ],
+  sonic: [
+    "Uniswap V2",
+    "Uniswap V3",
+    "Curve",
+    "SushiSwap",
+  ],
+  avalanche: [
+    "TraderJoe",
+    "TraderJoe V2",
+    "Uniswap V3",
+    "Curve",
+    "SushiSwap",
+    "KyberSwap",
+    "WooFi",
+  ],
+  base: [
+    "Uniswap V2",
+    "Uniswap V3",
+    "Uniswap V4",
+    "Aerodrome",
+    "Aerodrome SlipStream",
+    "Curve",
+    "Curve V2",
+    "SushiSwap",
+    "SushiSwap V3",
+    "BaseSwap",
+    "BaseSwap V3",
+    "PancakeSwap V2",
+    "PancakeSwap V3",
+    "Maverick V2",
+    "Balancer V2",
+    "Balancer V3",
+    "DODO",
+    "WooFi",
+    "KyberSwap",
+    "AlienBase",
+    "DackieSwap",
+  ],
+  arbitrum: [
+    "Uniswap V3",
+    "Curve",
+    "SushiSwap",
+    "Balancer V2",
+    "PancakeSwap V3",
+    "Camelot",
+    "DODO",
+    "KyberSwap",
+    "WooFi",
+  ],
+};
+
+export const ODOS_SAFE_SOURCE_WHITELISTS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(SAFE_CHAIN_SOURCE_WHITELISTS).map(([chain, sources]) => [
+      chain,
+      Object.freeze([...new Set(sources)]),
+    ]),
+  ),
+);
+
+function normalizeSourceList(list) {
+  if (!Array.isArray(list)) return null;
+  const normalized = [...new Set(list.map((item) => String(item || "").trim()).filter(Boolean))];
+  return normalized.length ? normalized.sort((left, right) => left.localeCompare(right)) : null;
+}
+
+function sameSourceList(left, right) {
+  const normalizedLeft = normalizeSourceList(left) || [];
+  const normalizedRight = normalizeSourceList(right) || [];
+  if (normalizedLeft.length !== normalizedRight.length) return false;
+  return normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+export function odosSafeSourceWhitelist(chain) {
+  const normalizedChain = String(chain || "").toLowerCase();
+  const sources = ODOS_SAFE_SOURCE_WHITELISTS[normalizedChain];
+  return sources ? [...sources] : null;
+}
+
+export function odosRoutingConfig(chain, { sourceWhitelist = null, sourceBlacklist = null, allowUnsafe = false } = {}) {
+  const safeWhitelist = odosSafeSourceWhitelist(chain);
+  const resolvedWhitelist = normalizeSourceList(sourceWhitelist) || (!allowUnsafe ? safeWhitelist : null);
+  const resolvedBlacklist = normalizeSourceList(sourceBlacklist);
+  const routingMode = resolvedWhitelist ? "whitelist" : resolvedBlacklist ? "blacklist" : "unrestricted";
+  const executionTrust = resolvedWhitelist && sameSourceList(resolvedWhitelist, safeWhitelist)
+    ? "safe_whitelist"
+    : "quote_only_untrusted";
+  return {
+    sourceWhitelist: resolvedWhitelist,
+    sourceBlacklist: resolvedBlacklist,
+    routingMode,
+    executionTrust,
+  };
+}
+
+export function isTrustedExecutableDexQuote(quote) {
+  if (!quote) return false;
+  if (quote.provider && quote.provider !== "odos") return true;
+  const safeWhitelist = odosSafeSourceWhitelist(quote.chain);
+  if (!safeWhitelist) return false;
+  return sameSourceList(quote.sourceWhitelist, safeWhitelist);
+}
+
+export function filterTrustedExecutableDexQuotes(quotes = []) {
+  return (quotes || []).filter((quote) => isTrustedExecutableDexQuote(quote));
+}
 
 export function odosTokenAddress(chain, token) {
   if (isZeroToken(token)) {
@@ -55,6 +226,56 @@ export function canQuoteWithOdos(chain, token, outputToken = STABLE_QUOTE_TOKENS
   return { ok: true, inputToken, outputToken };
 }
 
+export function defaultDexQuoteProvider(chain) {
+  if (ODOS_CHAIN_IDS[chain]) return "odos";
+  return null;
+}
+
+export function noSupportedRouterReason(chain) {
+  const chainId = EVM_CHAINS[chain]?.chainId;
+  return Number.isFinite(chainId) ? `no_supported_router_for_chain:${chainId}` : "odos_chain_not_supported";
+}
+
+export function normalizeDexSupportReason(reason, chain) {
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) return reason || null;
+  if (normalizedReason === "odos_chain_not_supported") {
+    return noSupportedRouterReason(chain);
+  }
+  return normalizedReason;
+}
+
+export function canQuoteWithDex(chain, token, outputToken = STABLE_QUOTE_TOKENS[chain]) {
+  const provider = defaultDexQuoteProvider(chain);
+  if (!provider) {
+    return {
+      ok: false,
+      provider: null,
+      reason: noSupportedRouterReason(chain),
+    };
+  }
+  if (provider === "odos") {
+    return {
+      ...canQuoteWithOdos(chain, token, outputToken),
+      provider,
+    };
+  }
+  return {
+    ok: false,
+    provider: null,
+    reason: noSupportedRouterReason(chain),
+  };
+}
+
+export function isStructuralDexSupportFailure(reason) {
+  if (!reason) return false;
+  return [
+    "odos_chain_not_supported",
+    "stable_quote_token_missing",
+    "input_token_not_evm",
+  ].includes(reason) || String(reason).startsWith("no_supported_router_for_chain:");
+}
+
 export class OdosClient {
   constructor({ baseUrl = ODOS_API_BASE, fetchImpl = fetch } = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
@@ -65,7 +286,16 @@ export class OdosClient {
     return this.#getJson("/info/chains");
   }
 
-  async quote({ chain, inputToken, outputToken, amount, userAddr, slippageLimitPercent = 0.5 }) {
+  async quote({
+    chain,
+    inputToken,
+    outputToken,
+    amount,
+    userAddr,
+    slippageLimitPercent = 0.5,
+    sourceWhitelist = null,
+    sourceBlacklist = null,
+  }) {
     const chainId = ODOS_CHAIN_IDS[chain];
     if (!chainId) throw new Error(`Odos chain unsupported: ${chain}`);
     const body = {
@@ -78,7 +308,18 @@ export class OdosClient {
       disableRFQs: true,
       compact: true,
     };
+    const normalizedWhitelist = normalizeSourceList(sourceWhitelist);
+    const normalizedBlacklist = normalizeSourceList(sourceBlacklist);
+    if (normalizedWhitelist) body.sourceWhitelist = normalizedWhitelist;
+    if (normalizedBlacklist) body.sourceBlacklist = normalizedBlacklist;
     return this.#postJson("/sor/quote/v3", body);
+  }
+
+  async assemble({ pathId, userAddr }) {
+    return this.#postJson("/sor/assemble", {
+      pathId,
+      userAddr,
+    });
   }
 
   async #getJson(path) {
@@ -125,17 +366,34 @@ export class OdosClient {
   }
 }
 
-export function normalizeOdosQuote({ chain, source, amount, inputToken, outputToken, outputTicker, outputDecimals, result }) {
+export function normalizeOdosQuote({
+  chain,
+  source,
+  amount,
+  inputToken,
+  outputToken,
+  inputTicker = null,
+  inputDecimals = null,
+  outputTicker,
+  outputDecimals,
+  quoteType = "token_to_stable",
+  result,
+  sourceWhitelist = null,
+  sourceBlacklist = null,
+}) {
   const body = result.body;
+  const routing = odosRoutingConfig(chain, { sourceWhitelist, sourceBlacklist, allowUnsafe: true });
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     observedAt: new Date().toISOString(),
     provider: "odos",
-    quoteType: "token_to_stable",
+    quoteType,
     source,
     chain,
     chainId: ODOS_CHAIN_IDS[chain],
     inputToken,
+    inputTicker,
+    inputDecimals,
     outputToken,
     outputTicker,
     outputDecimals,
@@ -151,6 +409,80 @@ export function normalizeOdosQuote({ chain, source, amount, inputToken, outputTo
     gweiPerGas: body.gweiPerGas ?? null,
     blockNumber: body.blockNumber ?? null,
     pathId: body.pathId || null,
+    sourceWhitelist: routing.sourceWhitelist,
+    sourceBlacklist: routing.sourceBlacklist,
+    routingMode: routing.routingMode,
+    executionTrust: routing.executionTrust,
     latencyMs: result.latencyMs,
   };
+}
+
+export function attachOdosAssembly(quote, result) {
+  const transaction = result?.body?.transaction || {};
+  const txData = transaction.data || null;
+  return {
+    ...quote,
+    txTo: transaction.to || null,
+    txData,
+    txValueWei: String(transaction.value ?? "0"),
+    txGasLimit: transaction.gas ?? transaction.gasLimit ?? null,
+    txDataBytes: txData ? Math.max(0, (txData.length - 2) / 2) : null,
+    assembleLatencyMs: result?.latencyMs ?? null,
+  };
+}
+
+export class OdosProvider {
+  constructor({ client = new OdosClient() } = {}) {
+    this.client = client;
+  }
+
+  get name() {
+    return "odos";
+  }
+
+  supportsChain(chain) {
+    return !!ODOS_CHAIN_IDS[chain];
+  }
+
+  async quote({
+    chain,
+    inputToken,
+    outputToken,
+    amount,
+    senderAddress,
+    slippageBps = 50,
+    sourceWhitelist = null,
+    sourceBlacklist = null,
+  } = {}) {
+    const routing = odosRoutingConfig(chain, { sourceWhitelist, sourceBlacklist });
+    const quoted = await this.client.quote({
+      chain,
+      inputToken,
+      outputToken,
+      amount,
+      userAddr: senderAddress,
+      slippageLimitPercent: Number(slippageBps) / 100,
+      sourceWhitelist: routing.sourceWhitelist,
+      sourceBlacklist: routing.sourceBlacklist,
+    });
+    return normalizeOdosQuote({
+      chain,
+      source: "odos_provider",
+      amount,
+      inputToken,
+      outputToken,
+      quoteType: "token_to_token",
+      result: quoted,
+      sourceWhitelist: routing.sourceWhitelist,
+      sourceBlacklist: routing.sourceBlacklist,
+    });
+  }
+
+  async assemble({ quote, senderAddress } = {}) {
+    const assembled = await this.client.assemble({
+      pathId: quote.pathId,
+      userAddr: senderAddress,
+    });
+    return attachOdosAssembly(quote, assembled);
+  }
 }

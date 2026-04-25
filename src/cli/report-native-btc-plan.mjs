@@ -1,0 +1,1090 @@
+#!/usr/bin/env node
+
+import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { config } from "../config/env.mjs";
+import { tokenAsset } from "../assets/tokens.mjs";
+import { buildGatewayBtcOnrampPlan } from "../executor/helpers/gateway-btc-onramp.mjs";
+import {
+  buildWrappedBtcLoopHandoffCommands,
+  isWrappedBtcLoopDepositHandoffCandidate,
+} from "../executor/helpers/wrapped-btc-loop-handoff.mjs";
+import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
+import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
+
+function parseArgs(argv) {
+  const flags = new Set(argv);
+  const options = Object.fromEntries(
+    argv
+      .filter((arg) => arg.startsWith("--") && arg.includes("="))
+      .map((arg) => {
+        const [key, ...valueParts] = arg.slice(2).split("=");
+        return [key, valueParts.join("=")];
+      }),
+  );
+  return {
+    json: flags.has("--json"),
+    amountSats: options["amount-sats"] ? Number(options["amount-sats"]) : 100_000,
+    sender: options.sender || null,
+    recipient: options.recipient || null,
+    socketPath: options["socket-path"] || signerSocketPath(),
+    timeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : signerClientTimeoutMs(),
+  };
+}
+
+async function readJson(path) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function currentStage(state) {
+  return state.stages.find((stage) => stage.id === state.currentStageId) || state.stages.find((stage) => stage.status === "in_progress") || null;
+}
+
+function packetHead(packet = null) {
+  return packet?.summary?.topPacketItems?.[0] || packet?.items?.[0] || null;
+}
+
+function compactAction(action = null) {
+  if (!action) return null;
+  return {
+    code: action.code || null,
+    label: action.label || null,
+    command: action.command || null,
+  };
+}
+
+function unique(values = []) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+function normalizeAssetSymbol(value = null) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function assetsMatch(left = null, right = null) {
+  const normalizedLeft = normalizeAssetSymbol(left);
+  const normalizedRight = normalizeAssetSymbol(right);
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+}
+
+function isStableAsset(asset = null) {
+  const ticker = String(asset?.ticker || "").toUpperCase();
+  return asset?.family === "stablecoin" || ticker === "USDC" || ticker === "USDT" || ticker === "OUSDT";
+}
+
+function allocatorCandidateById(allocatorCore = null, candidateId = null) {
+  if (!candidateId) return null;
+  return (allocatorCore?.candidates || []).find((item) => item.id === candidateId) || null;
+}
+
+function enrichAllocationItem(item = null, allocatorCore = null) {
+  if (!item) return null;
+  const candidate = allocatorCandidateById(allocatorCore, item.templateId || item.id || null);
+  return {
+    templateId: item.templateId || item.id || null,
+    label: item.label || candidate?.label || null,
+    chain: item.chain || candidate?.chain || null,
+    familyId: item.familyId || null,
+    assetFamily: candidate?.assetFamily || null,
+    protocols: candidate?.protocols || [],
+    allocationUsd: item.allocationUsd ?? null,
+    estimatedNetBps: item.estimatedNetBps ?? null,
+    estimatedNetUsd: item.estimatedNetUsd ?? null,
+    blockers: item.blockers || candidate?.blockers || [],
+    nextAction: compactAction(item.nextAction || candidate?.nextAction || null),
+  };
+}
+
+function topReviewOnlyAllocations(promotionGate = null, allocatorCore = null, limit = 3) {
+  return (promotionGate?.summary?.topReviewOnly || [])
+    .slice(0, limit)
+    .map((item) =>
+      enrichAllocationItem(
+        {
+          templateId: item.templateId,
+          label: item.label,
+          chain: item.chain,
+          familyId: item.familyId,
+          blockers: item.blockers || [],
+          nextAction: item.nextAction || null,
+        },
+        allocatorCore,
+      ),
+    )
+    .filter(Boolean);
+}
+
+function authoritativeSources(surface = null) {
+  return (
+    surface?.executionSupport?.authoritativeSources ||
+    surface?.bindingSupport?.authoritativeSources ||
+    []
+  )
+    .slice(0, 4)
+    .map((item) => ({
+      label: item.label || null,
+      url: item.url || null,
+    }));
+}
+
+function buildPrimaryStrategyCandidate(strategyResearchBoard = null, recursiveWrappedBtcLoop = null, wrappedBtcLendingLoopSlice = null) {
+  const candidate =
+    (strategyResearchBoard?.candidates || []).find((item) => item.status === "receipt_backed_validation_ready") ||
+    strategyResearchBoard?.candidates?.[0] ||
+    null;
+  if (!candidate) return null;
+
+  const recursiveSurface =
+    recursiveWrappedBtcLoop?.strategy?.id === candidate.id ? recursiveWrappedBtcLoop : null;
+  const wrappedSurface =
+    wrappedBtcLendingLoopSlice?.strategy?.id === candidate.id ? wrappedBtcLendingLoopSlice : null;
+  const surface = recursiveSurface || wrappedSurface || null;
+
+  return {
+    id: candidate.id,
+    label: candidate.label || null,
+    category: candidate.category || null,
+    status: candidate.status || null,
+    whyNow: candidate.whyNow || null,
+    chain: surface?.strategy?.chain || null,
+    protocol: surface?.strategy?.protocol || null,
+    collateralAsset: surface?.strategy?.collateralAsset || null,
+    borrowAsset: surface?.strategy?.borrowAsset || null,
+    arrivalFamily: candidate?.evidence?.arrivalFamily || null,
+    perTradeCapUsd: surface?.strategy?.perTradeCapUsd ?? null,
+    readyForDryRun: surface?.readiness?.readyForDryRun ?? candidate?.evidence?.readyForDryRun ?? null,
+    readyForLive: surface?.readiness?.readyForLive ?? null,
+    executionSupportStatus:
+      surface?.executionSupport?.status ||
+      surface?.bindingSupport?.status ||
+      candidate?.evidence?.executionSupportStatus ||
+      null,
+    requiredInfrastructure: candidate.requiredInfrastructure || [],
+    promotionPrerequisites: candidate.promotionPrerequisites || [],
+    failureModes: candidate.failureModes || [],
+    nextAction: compactAction(candidate.nextAction || null),
+    authoritativeSources: authoritativeSources(surface),
+  };
+}
+
+function buildPaybackGate(payback = null) {
+  const scheduler = payback?.scheduler || null;
+  const minimum = scheduler?.minimumPaybackProgress || null;
+  const carry = payback?.carry || null;
+  const expansion = payback?.expansionGate || null;
+
+  return {
+    status: scheduler?.status || null,
+    reason: scheduler?.reason || null,
+    pendingSats: carry?.pendingSats ?? payback?.accumulatorPendingSats ?? null,
+    remainingSatsToMinimum: carry?.remainingSatsToMinimum ?? minimum?.satsToMinimumPayback ?? null,
+    progressToMinimumRatio: carry?.progressToMinimumRatio ?? minimum?.progressToMinimumRatio ?? null,
+    requiredGrossProfitSats: minimum?.requiredGrossProfitSats ?? null,
+    roundTripEfficiencyPeriod: carry?.roundTripEfficiencyPeriod ?? payback?.kpi?.roundTripEfficiencyPeriod ?? null,
+    reserveChain: expansion?.reserveChain || null,
+    expansionEligible: expansion?.eligible ?? null,
+    expansionPeriodsRemaining: expansion?.periodsRemaining ?? null,
+    nextAction: scheduler?.nextAction || null,
+  };
+}
+
+function buildDepositReadiness({ state = null, nativeBtcOpportunitySurface = null, paybackGate = null, primaryStrategy = null, activeAllocation = null } = {}) {
+  const liveSurface = nativeBtcOpportunitySurface?.liveSurface || null;
+  const reserveChain = paybackGate?.reserveChain || null;
+  return {
+    nativeBtcRouteCount: liveSurface?.nativeBtcRouteCount ?? state?.groundTruth?.nativeBtcRouteCount ?? 0,
+    destinationChains: liveSurface?.destinationChains || state?.groundTruth?.destinationChains || [],
+    wrappedBtcRouteCount: liveSurface?.destinationFamilies?.wrappedBtc ?? state?.groundTruth?.wrappedBtcRouteCount ?? 0,
+    stablecoinRouteCount: liveSurface?.destinationFamilies?.stablecoin ?? state?.groundTruth?.stablecoinRouteCount ?? 0,
+    ethLikeRouteCount: liveSurface?.destinationFamilies?.ethLike ?? state?.groundTruth?.ethLikeRouteCount ?? 0,
+    preferredLandingChain: reserveChain || primaryStrategy?.chain || activeAllocation?.chain || null,
+    preferredLandingFamily: primaryStrategy?.arrivalFamily || activeAllocation?.assetFamily || null,
+    reserveChainAlignedWithPrimary: Boolean(reserveChain && primaryStrategy?.chain && reserveChain === primaryStrategy.chain),
+    currentCanaryEconomicStatus: state?.groundTruth?.currentCanaryEconomicStatus || null,
+    proxySpreadStatus: state?.groundTruth?.proxySpreadStatus || null,
+  };
+}
+
+function buildProfitabilityFramework({ state = null, primaryStrategy = null } = {}) {
+  return {
+    accountingUnit: "sats_first",
+    displayOrder: ["btc_first", "usd_projection_second"],
+    netRule:
+      "expected_yield_sats - (onramp_fee_sats + destination_gas_sats + offramp_fee_sats + slippage_buffer_sats)",
+    evidenceOrder: ["paper", "estimated", "realized"],
+    currentBlockers: {
+      exactRoute: state?.groundTruth?.currentCanaryEconomicStatus || null,
+      proxySpread: state?.groundTruth?.proxySpreadStatus || null,
+      primaryStrategy: {
+        id: primaryStrategy?.id || null,
+        status: primaryStrategy?.status || null,
+        readyForDryRun: primaryStrategy?.readyForDryRun ?? null,
+        readyForLive: primaryStrategy?.readyForLive ?? null,
+      },
+    },
+  };
+}
+
+function buildResearchReferences(primaryStrategy = null) {
+  return {
+    localDocs: [
+      {
+        kind: "rules",
+        path: "AGENTS.md",
+        focus: "BTC-first accounting, round-trip cost deduction, supported chains, payback and cap rules",
+      },
+      {
+        kind: "research",
+        path: "docs/research/bob-ecosystem.md",
+        focus: "Gateway mechanics, official destination chains, round-trip cost ranges, ecosystem facts",
+      },
+      {
+        kind: "research",
+        path: "docs/research/ops-costs.md",
+        focus: "gas float, variance floor, overfit checks, refresh cadence",
+      },
+      {
+        kind: "research",
+        path: "docs/research/strategies-and-risk.md",
+        focus: "loop math, protocol risk, allocation guardrails, BTCfi venue context",
+      },
+      {
+        kind: "research",
+        path: "docs/research/payback-rationale.md",
+        focus: "payback defaults, multiplier rationale, KPI bands, revalidation triggers",
+      },
+    ],
+    primaryProtocolSources: primaryStrategy?.authoritativeSources || [],
+  };
+}
+
+function previewAmountSats(amountSats) {
+  return Number.isInteger(amountSats) && amountSats > 0 ? amountSats : 100_000;
+}
+
+function preferredTickerOrderForFamily(family) {
+  if (family === "wrapped_btc") return ["wBTC.OFT", "WBTC", "uniBTC", "cbBTC", "solvBTC"];
+  if (family === "stablecoin") return ["USDC", "USDT", "oUSDT"];
+  if (family === "native_or_wrapped") return ["ETH", "WETH"];
+  return [];
+}
+
+function routeFamilyForAllocationAssetFamily(assetFamily = null) {
+  if (assetFamily === "stables") return "stablecoin";
+  if (assetFamily === "btc_wrappers") return "wrapped_btc";
+  return assetFamily;
+}
+
+function selectLiveRoute({ nativeBtcOpportunitySurface = null, chain = null, family = null } = {}) {
+  const routes = nativeBtcOpportunitySurface?.liveSurface?.liveRoutes || [];
+  const targetFamily = routeFamilyForAllocationAssetFamily(family);
+  const preferredTickers = preferredTickerOrderForFamily(targetFamily);
+  return routes
+    .filter((route) => route?.dstChain === chain && route?.dstFamily === targetFamily)
+    .sort((left, right) => {
+      const leftRank = preferredTickers.indexOf(left?.dstTicker);
+      const rightRank = preferredTickers.indexOf(right?.dstTicker);
+      const normalizedLeftRank = leftRank === -1 ? preferredTickers.length : leftRank;
+      const normalizedRightRank = rightRank === -1 ? preferredTickers.length : rightRank;
+      return normalizedLeftRank - normalizedRightRank || String(left?.routeKey).localeCompare(String(right?.routeKey));
+    })[0] || null;
+}
+
+function quoteTokenArg(route = null) {
+  const ticker = route?.dstTicker || null;
+  if (!ticker) return null;
+  if (ticker === "wBTC.OFT") return "wbtc.oft";
+  if (ticker === "USDC") return "usdc";
+  if (ticker === "USDT") return "usdt";
+  if (ticker === "oUSDT") return "ousdt";
+  if (ticker === "ETH") return "eth";
+  return route?.dstToken || null;
+}
+
+function escapeArg(value) {
+  return String(value).replace(/"/g, '\\"');
+}
+
+function depositCommandTemplate({ route = null, amountSats = 100_000, sender = null, recipient = null } = {}) {
+  if (!route) return null;
+  const tokenArg = quoteTokenArg(route);
+  const parts = [
+    "npm run executor:gateway-btc-onramp --",
+    `--dst-chain=${route.dstChain}`,
+    tokenArg ? `--dst-token=${tokenArg}` : null,
+    `--amount-sats=${previewAmountSats(amountSats)}`,
+    sender ? `--sender=${escapeArg(sender)}` : null,
+    recipient ? `--recipient=${escapeArg(recipient)}` : null,
+    "--json",
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+
+async function resolveDepositAddresses({ sender = null, recipient = null, socketPath, timeoutMs } = {}) {
+  if (sender && recipient) {
+    return {
+      status: "manual_override",
+      sender,
+      recipient,
+      source: "cli_args",
+      error: null,
+    };
+  }
+
+  try {
+    const health = await readSignerHealth({ socketPath, timeoutMs });
+    return {
+      status: "resolved",
+      sender: sender || health?.addresses?.bitcoin || null,
+      recipient: recipient || health?.addresses?.base || null,
+      source: "signer_health",
+      error: null,
+    };
+  } catch (error) {
+    return {
+      status: "blocked",
+      sender: sender || null,
+      recipient: recipient || null,
+      source: "signer_health_failed",
+      error: error.message,
+    };
+  }
+}
+
+async function buildDepositPreview(route = null, { amountSats, addresses } = {}) {
+  if (!route) {
+    return {
+      status: "blocked",
+      reason: "no_live_route_for_family",
+      planStatus: null,
+      blockedReason: "no_live_route_for_family",
+      gatewayCode: null,
+      gatewayMessage: null,
+    };
+  }
+
+  if (!addresses?.sender || !addresses?.recipient) {
+    return {
+      status: "blocked",
+      reason: "address_resolution_required",
+      planStatus: null,
+      blockedReason: "address_resolution_required",
+      gatewayCode: null,
+      gatewayMessage: addresses?.error || null,
+    };
+  }
+
+  try {
+    const plan = await buildGatewayBtcOnrampPlan({
+      senderAddress: addresses.sender,
+      recipient: addresses.recipient,
+      amountSats: previewAmountSats(amountSats),
+      dstChain: route.dstChain,
+      dstToken: quoteTokenArg(route),
+      allowUnfundedPreview: true,
+    });
+    return {
+      status: plan.planStatus === "ready" ? "preview_ready" : "blocked",
+      reason: plan.blockedReason || null,
+      planStatus: plan.planStatus,
+      blockedReason: plan.blockedReason || null,
+      gatewayCode: plan.gatewayError?.details?.body?.code || null,
+      gatewayMessage: plan.gatewayError?.details?.body?.error || plan.gatewayError?.message || null,
+      orderId: plan.order?.orderId || null,
+      depositAddress: plan.order?.address || null,
+      quote: plan.quote
+        ? {
+            inputAmount: plan.quote.inputAmount || null,
+            outputAmount: plan.quote.outputAmount || null,
+            estimatedTimeInSecs: plan.quote.estimatedTimeInSecs ?? null,
+          }
+        : null,
+    };
+  } catch (error) {
+    return {
+      status: "blocked",
+      reason: "preview_failed",
+      planStatus: null,
+      blockedReason: "preview_failed",
+      gatewayCode: null,
+      gatewayMessage: error.message,
+    };
+  }
+}
+
+function buildPrimaryStrategyPostArrivalPlan(path = null, { primaryStrategy = null, addresses = null } = {}) {
+  const landedAsset = path?.dstAsset?.ticker || null;
+  const targetAsset = primaryStrategy?.collateralAsset || null;
+  const aligned = assetsMatch(landedAsset, targetAsset);
+  const baseCommands = unique([
+    primaryStrategy?.nextAction?.command || null,
+    "npm run report:wrapped-btc-loop -- --json",
+    "npm run report:payback-status -- --json",
+  ]);
+
+  if (!landedAsset || !targetAsset) {
+    return {
+      status: "strategy_target_unknown",
+      reason: "strategy_target_unknown",
+      aligned: false,
+      landedAsset,
+      targetAsset,
+      commandChain: baseCommands,
+      notes: [
+        "The primary strategy is selected, but the required landing-versus-collateral asset match is still incomplete in the current report context.",
+      ],
+    };
+  }
+
+  if (!aligned) {
+    if (isWrappedBtcLoopDepositHandoffCandidate({
+      chain: path?.dstChain,
+      landedAsset,
+      targetAsset,
+    })) {
+      const handoffCommands = buildWrappedBtcLoopHandoffCommands({
+        amountSats: path?.amountSats,
+        senderAddress: addresses?.recipient || null,
+      });
+      return {
+        status: "conversion_handoff_ready",
+        reason: "wrapped_btc_to_collateral_conversion_available",
+        aligned,
+        landedAsset,
+        targetAsset,
+        commandChain: unique([
+          handoffCommands.previewHandoff,
+          handoffCommands.executeHandoff,
+          handoffCommands.loopIntentPreview,
+          handoffCommands.loopDryRun,
+          ...baseCommands,
+        ]),
+        notes: [
+          `${landedAsset} can be converted into ${targetAsset} on Base through the deterministic wrapped-BTC handoff helper before the loop entry surface is used.`,
+        ],
+      };
+    }
+    return {
+      status: "landing_asset_mismatch",
+      reason: "strategy_collateral_mismatch",
+      aligned,
+      landedAsset,
+      targetAsset,
+      commandChain: baseCommands,
+      notes: [
+        `${targetAsset} collateral is required before the current wrapped-BTC loop entry surface can build signer-ready entry calldata.`,
+      ],
+    };
+  }
+
+  const executorCommand = primaryStrategy?.readyForLive === true
+    ? "npm run executor:wrapped-btc-loop -- --json"
+    : primaryStrategy?.readyForDryRun
+      ? "npm run run:wrapped-btc-loop-dry-run -- --json"
+      : null;
+
+  return {
+    status: primaryStrategy?.readyForLive === true
+      ? "executor_live_ready"
+      : primaryStrategy?.readyForDryRun
+        ? "executor_dry_run_ready"
+        : "strategy_review_required",
+    reason: primaryStrategy?.readyForLive === true
+      ? "collateral_aligned_for_live_executor"
+      : primaryStrategy?.readyForDryRun
+        ? "collateral_aligned_for_dry_run"
+        : "strategy_review_required",
+    aligned,
+    landedAsset,
+    targetAsset,
+    commandChain: unique([
+      executorCommand,
+      ...baseCommands,
+    ]),
+    notes: [
+      primaryStrategy?.readyForLive === true
+        ? "Landing asset and strategy collateral are aligned, so the signer-backed executor surface is the next deterministic step."
+        : "Landing asset and strategy collateral are aligned, but this lane is still limited to dry-run / review surfaces before live promotion.",
+    ],
+  };
+}
+
+function buildActiveAllocationPostArrivalPlan(path = null, { allocation = null } = {}) {
+  const landedAsset = path?.dstAsset?.ticker || null;
+  const landedStable = isStableAsset(path?.dstAsset);
+  const targetAssetFamily = allocation?.assetFamily || null;
+  const aligned = targetAssetFamily === "stables" ? landedStable : true;
+  const commandChain = unique([
+    allocation?.nextAction?.command || null,
+    "npm run report:destination-allocation-plan -- --json",
+    "npm run report:allocator-core -- --json",
+    "npm run report:payback-status -- --json",
+  ]);
+
+  if (!landedAsset || !targetAssetFamily) {
+    return {
+      status: "allocation_target_unknown",
+      reason: "allocation_target_unknown",
+      aligned: false,
+      landedAsset,
+      targetAssetFamily,
+      commandChain,
+      notes: [
+        "The active allocation lane exists, but the arrival asset-family handoff is still incomplete in the current report context.",
+      ],
+    };
+  }
+
+  if (!aligned) {
+    return {
+      status: "landing_asset_mismatch",
+      reason: "allocation_asset_family_mismatch",
+      aligned,
+      landedAsset,
+      targetAssetFamily,
+      commandChain,
+      notes: [
+        `The active allocation lane expects ${targetAssetFamily}, so the landed asset must be converted into the allocator sleeve before deployment.`,
+      ],
+    };
+  }
+
+  return {
+    status: allocation?.nextAction?.command ? "allocator_next_action_ready" : "allocator_review_surface_only",
+    reason: allocation?.nextAction?.command ? "allocation_aligned_with_next_action" : "allocation_aligned_but_executor_missing",
+    aligned,
+    landedAsset,
+    targetAssetFamily,
+    commandChain,
+    notes: [
+      allocation?.nextAction?.command
+        ? "The landed asset is already aligned with the active allocation sleeve, and the allocator exposes a concrete next action."
+        : "The landed asset is already aligned with the active allocation sleeve, but the repo currently exposes review / allocator surfaces rather than a dedicated signer-owned deployment command.",
+    ],
+  };
+}
+
+function buildPostArrivalPlan(path = null, { primaryStrategy = null, allocation = null, addresses = null } = {}) {
+  if (!path) {
+    return {
+      status: "path_missing",
+      reason: "path_missing",
+      aligned: false,
+      commandChain: [],
+      notes: [],
+    };
+  }
+  if (path.kind === "primary_strategy") {
+    return buildPrimaryStrategyPostArrivalPlan(path, { primaryStrategy, addresses });
+  }
+  if (path.kind === "active_allocation") {
+    return buildActiveAllocationPostArrivalPlan(path, { allocation });
+  }
+  return {
+    status: "path_kind_unknown",
+    reason: "path_kind_unknown",
+    aligned: false,
+    commandChain: [],
+    notes: [],
+  };
+}
+
+function preferredDepositCommand(path = null, addressResolution = null) {
+  if (!path) return null;
+  return addressResolution?.status === "resolved"
+    ? path.commandTemplates?.autoAddress || null
+    : path.commandTemplates?.manualAddress || null;
+}
+
+function preflightCommandsForPath(path = null, { addressResolution = null } = {}) {
+  if (!path) return [];
+  return unique([
+    addressResolution?.status === "resolved" ? null : "npm run executor:send-intent -- --command=health --json",
+    path.kind === "primary_strategy" ? "npm run report:wrapped-btc-loop -- --json" : null,
+    path.kind === "active_allocation" ? "npm run report:destination-allocation-plan -- --json" : null,
+  ]);
+}
+
+function buildRecommendedWorkflow(path = null, { addressResolution = null } = {}) {
+  if (!path) return null;
+  return {
+    kind: path.kind,
+    label: path.label,
+    depositCommandSource: addressResolution?.status === "resolved" ? "auto_address" : "manual_address",
+    depositCommand: preferredDepositCommand(path, addressResolution),
+    preflightCommands: preflightCommandsForPath(path, { addressResolution }),
+    postArrivalStatus: path.postArrivalPlan?.status || null,
+    postArrivalReason: path.postArrivalPlan?.reason || null,
+    postArrivalCommands: path.postArrivalPlan?.commandChain || [],
+  };
+}
+
+function buildDepositPath(route, {
+  kind,
+  label,
+  reason,
+  primaryStrategy = null,
+  allocation = null,
+  amountSats,
+  addresses,
+  preview,
+} = {}) {
+  const path = {
+    kind,
+    label,
+    reason,
+    dstChain: route?.dstChain || null,
+    dstToken: route?.dstToken || null,
+    dstAsset: route ? tokenAsset(route.dstChain, route.dstToken) : null,
+    routeKey: route?.routeKey || null,
+    amountSats: previewAmountSats(amountSats),
+    executionReadiness:
+      kind === "primary_strategy"
+        ? primaryStrategy?.readyForLive === true
+          ? "live_ready"
+          : primaryStrategy?.readyForDryRun
+            ? "dry_run_ready_only"
+            : "research_only"
+        : allocation
+          ? "allocation_ready_review_surface"
+          : "unknown",
+    commandTemplates: {
+      autoAddress: depositCommandTemplate({ route, amountSats }),
+      manualAddress: depositCommandTemplate({
+        route,
+        amountSats,
+        sender: addresses?.sender || "<btc_sender_address>",
+        recipient: addresses?.recipient || "<destination_evm_address>",
+      }),
+    },
+    preview,
+  };
+  const postArrivalPlan = buildPostArrivalPlan(path, {
+    primaryStrategy,
+    allocation,
+    addresses,
+  });
+  return {
+    ...path,
+    postArrivalPlan,
+    postArrivalCommands: postArrivalPlan.commandChain,
+  };
+}
+
+async function buildDepositExecution({
+  nativeBtcOpportunitySurface = null,
+  primaryStrategy = null,
+  activeAllocation = null,
+  amountSats,
+  sender = null,
+  recipient = null,
+  socketPath,
+  timeoutMs,
+} = {}) {
+  const addresses = await resolveDepositAddresses({
+    sender,
+    recipient,
+    socketPath,
+    timeoutMs,
+  });
+  const primaryRoute = selectLiveRoute({
+    nativeBtcOpportunitySurface,
+    chain: primaryStrategy?.chain || null,
+    family: primaryStrategy?.arrivalFamily || null,
+  });
+  const activeRoute = selectLiveRoute({
+    nativeBtcOpportunitySurface,
+    chain: activeAllocation?.chain || null,
+    family: activeAllocation?.assetFamily || null,
+  });
+  const [primaryPreview, activePreview] = await Promise.all([
+    buildDepositPreview(primaryRoute, { amountSats, addresses }),
+    buildDepositPreview(activeRoute, { amountSats, addresses }),
+  ]);
+  const paths = [
+    buildDepositPath(primaryRoute, {
+      kind: "primary_strategy",
+      label: primaryStrategy?.label || "Primary strategy landing",
+      reason:
+        primaryStrategy?.whyNow ||
+        "Land into the current highest-priority wrapped-BTC strategy lane.",
+      primaryStrategy,
+      amountSats,
+      addresses,
+      preview: primaryPreview,
+    }),
+    buildDepositPath(activeRoute, {
+      kind: "active_allocation",
+      label: activeAllocation?.label || "Immediate allocation-ready landing",
+      reason: "Land into the currently allocation-ready destination sleeve while the primary strategy remains review-only.",
+      primaryStrategy,
+      allocation: activeAllocation,
+      amountSats,
+      addresses,
+      preview: activePreview,
+    }),
+  ].filter((item) => item.routeKey || item.preview?.blockedReason);
+
+  const recommendedPath =
+    paths.find((item) => item.postArrivalPlan?.status === "executor_live_ready") ||
+    paths.find((item) => item.postArrivalPlan?.status === "allocator_next_action_ready") ||
+    paths.find((item) => item.postArrivalPlan?.status === "allocator_review_surface_only") ||
+    paths.find((item) => item.executionReadiness === "live_ready") ||
+    paths.find((item) => item.kind === "active_allocation") ||
+    paths[0] ||
+    null;
+
+  return {
+    amountSats: previewAmountSats(amountSats),
+    addressResolution: {
+      status: addresses.status,
+      source: addresses.source,
+      sender: addresses.sender,
+      recipient: addresses.recipient,
+      error: addresses.error,
+    },
+    recommendedPathKind: recommendedPath?.kind || null,
+    recommendedPathLabel: recommendedPath?.label || null,
+    recommendedWorkflow: buildRecommendedWorkflow(recommendedPath, {
+      addressResolution: addresses,
+    }),
+    paths,
+  };
+}
+
+function simpleKoreanSummary({ primaryStrategy = null, activeAllocation = null, paybackGate = null, depositReadiness = null } = {}) {
+  return [
+    primaryStrategy?.label
+      ? `전략 1순위는 ${primaryStrategy.label}`
+      : "전략 1순위는 아직 비어 있고",
+    activeAllocation?.label
+      ? `즉시 allocator 기준 active-ready는 ${activeAllocation.label}`
+      : "즉시 active-ready allocation은 없고",
+    paybackGate?.reason
+      ? `payback은 ${paybackGate.reason} 상태이며`
+      : "payback 상태는 추가 확인이 필요하며",
+    depositReadiness?.preferredLandingChain
+      ? `현재 기준 기본 착지 체인은 ${depositReadiness.preferredLandingChain}입니다.`
+      : "기본 착지 체인은 아직 고정되지 않았습니다.",
+  ].join(" ");
+}
+
+function stageBlockers(stage = null, { packet = null, promotionGate = null, allocationPlan = null } = {}) {
+  if (!stage) return [];
+
+  if (stage.id === "stage_5_destination_scoring") {
+    const blockers = [];
+    if (Number.isFinite(packet?.summary?.itemCount) && packet.summary.itemCount > 0) {
+      blockers.push(`economics_packet_remaining:${packet.summary.itemCount}`);
+    }
+    if (Number.isFinite(promotionGate?.summary?.reviewOnlyCount) && promotionGate.summary.reviewOnlyCount > 0) {
+      blockers.push(`allocation_review_only:${promotionGate.summary.reviewOnlyCount}`);
+    }
+    return blockers;
+  }
+
+  if (stage.id === "stage_6_overfit_and_truthfulness_gates") {
+    const blockers = [];
+    if (Number.isFinite(promotionGate?.summary?.reviewOnlyCount) && promotionGate.summary.reviewOnlyCount > 0) {
+      blockers.push(`review_only_candidates:${promotionGate.summary.reviewOnlyCount}`);
+    }
+    for (const item of promotionGate?.summary?.topAllocationBlockers || []) {
+      blockers.push(`${item.blocker}:${item.count}`);
+    }
+    return blockers;
+  }
+
+  if (stage.id === "stage_7_allocation_planner") {
+    const blockers = [];
+    if ((allocationPlan?.summary?.allocationReadyCount || 0) <= 0) blockers.push("no_allocation_ready_candidates");
+    if ((allocationPlan?.summary?.activeAllocationCount || 0) <= 0) blockers.push("no_active_allocations");
+    return blockers;
+  }
+
+  if (stage.id === "stage_8_reviewable_agent_loop") {
+    return packetHead(packet) ? ["next_action_should_be_persisted_from_packet_head"] : ["allocator_next_action_unknown"];
+  }
+
+  if (stage.id === "stage_9_execution_admission_preparation") {
+    return (allocationPlan?.summary?.allocationReadyCount || 0) > 0
+      ? ["allocator_candidates_need_manual_admission_review"]
+      : ["no_allocator_candidate_ready_for_admission"];
+  }
+
+  return [];
+}
+
+function nextAction(stage = null, { packet = null, promotionGate = null } = {}) {
+  if (!stage) return null;
+
+  if (stage.id === "stage_5_destination_scoring") {
+    const head = packetHead(packet);
+    return head
+      ? {
+          code: "measure_destination_economics",
+          label: `measure ${head.templateId}`,
+          command: head.commandSuggestion || null,
+        }
+      : null;
+  }
+
+  if (stage.id === "stage_6_overfit_and_truthfulness_gates") {
+    const reviewOnly = promotionGate?.summary?.topReviewOnly?.[0] || null;
+    return reviewOnly?.allocationGate?.nextAction || null;
+  }
+
+  if (stage.id === "stage_7_allocation_planner") {
+    return {
+      code: "review_destination_allocation_plan",
+      label: "review destination allocation plan",
+      command: "npm run report:destination-allocation-plan -- --json",
+    };
+  }
+
+  if (stage.id === "stage_8_reviewable_agent_loop") {
+    return {
+      code: "write_session_handoff",
+      label: "refresh session handoff artifacts",
+      command: "npm run write:session-handoff",
+    };
+  }
+
+  if (stage.id === "stage_9_execution_admission_preparation") {
+    return {
+      code: "build_prelive_review_package",
+      label: "rebuild prelive review package",
+      command: "npm run build:prelive-review-package -- --write",
+    };
+  }
+
+  return null;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const statePath = join(config.dataDir, "native-btc-capital-allocator-plan-state.json");
+  const state = await readJson(statePath);
+  const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
+  const stage = currentStage(state);
+  const [economicsPacket, nativeBtcOpportunitySurface] = await Promise.all([
+    readJsonIfExists(join(config.dataDir, "destination-economics-packet.json")),
+    readJsonIfExists(join(config.dataDir, "native-btc-opportunity-surface.json")),
+  ]);
+  const promotionGate = context.artifacts?.destinationPromotionGate || null;
+  const allocationPlan = context.artifacts?.destinationAllocationPlan || null;
+  const allocatorCore = context.artifacts?.allocatorCore || null;
+  const strategyResearchBoard = context.artifacts?.strategyResearchBoard || null;
+  const recursiveWrappedBtcLoop = context.artifacts?.recursiveWrappedBtcLoop || null;
+  const wrappedBtcLendingLoopSlice = context.artifacts?.wrappedBtcLendingLoopSlice || null;
+  const paybackGate = buildPaybackGate(context.dashboardStatus?.payback || null);
+  const activeAllocation = enrichAllocationItem(allocationPlan?.activePlan?.[0] || null, allocatorCore);
+  const reviewOnlyAllocations = topReviewOnlyAllocations(promotionGate, allocatorCore, 3);
+  const primaryStrategy = buildPrimaryStrategyCandidate(
+    strategyResearchBoard,
+    recursiveWrappedBtcLoop,
+    wrappedBtcLendingLoopSlice,
+  );
+  const depositReadiness = buildDepositReadiness({
+    state,
+    nativeBtcOpportunitySurface,
+    paybackGate,
+    primaryStrategy,
+    activeAllocation,
+  });
+  const depositExecution = await buildDepositExecution({
+    nativeBtcOpportunitySurface,
+    primaryStrategy,
+    activeAllocation,
+    amountSats: args.amountSats,
+    sender: args.sender,
+    recipient: args.recipient,
+    socketPath: args.socketPath,
+    timeoutMs: args.timeoutMs,
+  });
+  const completed = state.stages.filter((item) => item.status === "completed");
+  const remaining = state.stages.filter((item) => item.status !== "completed");
+  const destinationPacketHead = packetHead(economicsPacket);
+  const action = nextAction(stage, { packet: economicsPacket, promotionGate, allocationPlan });
+
+  const report = {
+    schemaVersion: 1,
+    statePath,
+    lastReviewedAt: state.lastReviewedAt,
+    currentStage: stage
+      ? {
+          id: stage.id,
+          label: stage.label,
+          status: stage.status,
+          verification: stage.verification || [],
+        }
+      : null,
+    progress: {
+      completedStageCount: completed.length,
+      remainingStageCount: remaining.length,
+      totalStageCount: state.stages.length,
+      progressPct: state.summary?.progressPct ?? null,
+    },
+    nextStages: remaining.slice(0, 3).map((item) => ({
+      id: item.id,
+      label: item.label,
+      status: item.status,
+    })),
+    stageBlockers: stageBlockers(stage, {
+      packet: economicsPacket,
+      promotionGate,
+      allocationPlan,
+    }),
+    nextAction: action,
+    destinationAllocator: {
+      packetHead: destinationPacketHead
+        ? {
+            templateId: destinationPacketHead.templateId,
+            chain: destinationPacketHead.chain,
+            familyId: destinationPacketHead.familyId,
+            label: destinationPacketHead.label,
+          }
+        : null,
+      packetItemCount: economicsPacket?.summary?.itemCount ?? 0,
+      promotableCount: promotionGate?.summary?.promotableCount ?? 0,
+      allocationReadyCount: promotionGate?.summary?.allocationReadyCount ?? 0,
+      reviewOnlyCount: promotionGate?.summary?.reviewOnlyCount ?? 0,
+      activeAllocationCount: allocationPlan?.summary?.activeAllocationCount ?? 0,
+      planningAllocationCount: allocationPlan?.summary?.planningAllocationCount ?? 0,
+    },
+    depositReadiness,
+    depositExecution,
+    allocationPriority: {
+      immediateAllocationReady: activeAllocation ? [activeAllocation] : [],
+      primaryStrategy,
+      expansionReviewOnly: reviewOnlyAllocations,
+      blockedLanes: [
+        {
+          id: "exact_route",
+          status: state.groundTruth?.currentCanaryEconomicStatus || null,
+        },
+        {
+          id: "proxy_spread",
+          status: state.groundTruth?.proxySpreadStatus || null,
+        },
+      ],
+    },
+    profitabilityFramework: buildProfitabilityFramework({
+      state,
+      primaryStrategy,
+    }),
+    paybackGate,
+    researchReferences: buildResearchReferences(primaryStrategy),
+    simpleKoreanSummary: simpleKoreanSummary({
+      primaryStrategy,
+      activeAllocation,
+      paybackGate,
+      depositReadiness,
+    }),
+    sessionStartChecklist: state.sessionStartChecklist || [],
+    groundTruth: state.groundTruth || {},
+  };
+
+  if (args.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  console.log(`currentStage=${report.currentStage?.label || "n/a"} (${report.currentStage?.status || "unknown"})`);
+  console.log(`progress=${report.progress.completedStageCount}/${report.progress.totalStageCount}`);
+  console.log(`remainingStages=${report.progress.remainingStageCount}`);
+  console.log(`progressPct=${report.progress.progressPct ?? "n/a"}`);
+  console.log(`lastReviewedAt=${report.lastReviewedAt || "n/a"}`);
+  console.log(`summary=${report.simpleKoreanSummary}`);
+  console.log("");
+  console.log("Current stage verification:");
+  for (const item of report.currentStage?.verification || []) {
+    console.log(`- ${item}`);
+  }
+  console.log("");
+  console.log("Next stages:");
+  for (const item of report.nextStages) {
+    console.log(`- ${item.label} (${item.status})`);
+  }
+  console.log("");
+  console.log("Allocator context:");
+  console.log(`- packetHead=${report.destinationAllocator.packetHead?.templateId || "n/a"}`);
+  console.log(`- packetItems=${report.destinationAllocator.packetItemCount}`);
+  console.log(`- promotable=${report.destinationAllocator.promotableCount}`);
+  console.log(`- allocationReady=${report.destinationAllocator.allocationReadyCount}`);
+  console.log(`- reviewOnly=${report.destinationAllocator.reviewOnlyCount}`);
+  console.log(`- activeAllocations=${report.destinationAllocator.activeAllocationCount}`);
+  console.log("");
+  console.log("Deposit readiness:");
+  console.log(`- preferredLandingChain=${report.depositReadiness.preferredLandingChain || "n/a"}`);
+  console.log(`- wrappedBtcRoutes=${report.depositReadiness.wrappedBtcRouteCount}`);
+  console.log(`- stablecoinRoutes=${report.depositReadiness.stablecoinRouteCount}`);
+  console.log(`- exactRouteStatus=${report.depositReadiness.currentCanaryEconomicStatus || "n/a"}`);
+  console.log(`- proxySpreadStatus=${report.depositReadiness.proxySpreadStatus || "n/a"}`);
+  console.log(`- depositPreviewAmountSats=${report.depositExecution.amountSats}`);
+  console.log(`- addressResolution=${report.depositExecution.addressResolution.status}`);
+  console.log(`- recommendedPath=${report.depositExecution.recommendedPathKind || "n/a"} ${report.depositExecution.recommendedPathLabel || ""}`.trim());
+  if (report.depositExecution.recommendedWorkflow) {
+    console.log(`- recommendedDepositCommandSource=${report.depositExecution.recommendedWorkflow.depositCommandSource}`);
+    console.log(`- recommendedPostArrivalStatus=${report.depositExecution.recommendedWorkflow.postArrivalStatus || "n/a"}`);
+    console.log(`- recommendedPostArrivalReason=${report.depositExecution.recommendedWorkflow.postArrivalReason || "n/a"}`);
+  }
+  if (report.depositExecution.addressResolution.error) {
+    console.log(`- addressResolutionError=${report.depositExecution.addressResolution.error}`);
+  }
+  if (report.depositExecution.paths.length > 0) {
+    console.log("");
+    console.log("Deposit paths:");
+    for (const path of report.depositExecution.paths) {
+      console.log(
+        `- ${path.kind} ${path.dstChain || "n/a"}:${path.dstAsset?.ticker || "n/a"} readiness=${path.executionReadiness} preview=${path.preview?.status || "n/a"} blocked=${path.preview?.blockedReason || "none"} postArrival=${path.postArrivalPlan?.status || "n/a"}`,
+      );
+    }
+  }
+  if (report.allocationPriority.primaryStrategy) {
+    console.log("");
+    console.log("Primary strategy:");
+    console.log(
+      `- ${report.allocationPriority.primaryStrategy.label} status=${report.allocationPriority.primaryStrategy.status} chain=${report.allocationPriority.primaryStrategy.chain || "n/a"} protocol=${report.allocationPriority.primaryStrategy.protocol || "n/a"}`,
+    );
+  }
+  if (report.allocationPriority.immediateAllocationReady.length > 0) {
+    console.log("");
+    console.log("Immediate allocation-ready:");
+    for (const item of report.allocationPriority.immediateAllocationReady) {
+      console.log(
+        `- ${item.templateId} chain=${item.chain || "n/a"} protocols=${item.protocols?.join(",") || "n/a"} netBps=${item.estimatedNetBps ?? "n/a"}`,
+      );
+    }
+  }
+  console.log("");
+  console.log("Payback gate:");
+  console.log(`- status=${report.paybackGate.status || "n/a"} reason=${report.paybackGate.reason || "n/a"}`);
+  console.log(`- pendingSats=${report.paybackGate.pendingSats ?? "n/a"}`);
+  console.log(`- remainingSatsToMinimum=${report.paybackGate.remainingSatsToMinimum ?? "n/a"}`);
+  console.log(`- reserveChain=${report.paybackGate.reserveChain || "n/a"}`);
+  if (report.stageBlockers.length > 0) {
+    console.log("");
+    console.log("Stage blockers:");
+    for (const item of report.stageBlockers) {
+      console.log(`- ${item}`);
+    }
+  }
+  if (report.nextAction) {
+    console.log("");
+    console.log(`nextAction=${report.nextAction.code || "n/a"} command=${report.nextAction.command || "n/a"}`);
+  }
+}
+
+main().catch((error) => {
+  console.error(error.stack || error.message);
+  process.exitCode = 1;
+});

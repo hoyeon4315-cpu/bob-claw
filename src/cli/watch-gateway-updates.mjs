@@ -11,16 +11,42 @@ function summarizeResult(result) {
   lines.push(`updateDetected=${result.updateDetected}`);
   lines.push(`changeReasons=${result.changeReasons.join(",") || "none"}`);
   lines.push(`routeCount=${result.snapshot.routeCount}`);
+  lines.push(`ethFamilyRouteCount=${result.ethFamily?.routeCount || 0}`);
   lines.push(`chains=${result.snapshot.chains.join(",")}`);
   lines.push(`routeHash=${result.snapshot.routeHash}`);
   lines.push(`schemaHash=${result.schemaHash}`);
   lines.push(`probeHealthHash=${result.probeHealthHash}`);
   lines.push(`addedRoutes=${result.diff.addedRoutes.length}`);
   lines.push(`removedRoutes=${result.diff.removedRoutes.length}`);
+  lines.push(`addedEthFamilyRoutes=${result.diff.addedEthFamilyRoutes.length}`);
+  lines.push(`removedEthFamilyRoutes=${result.diff.removedEthFamilyRoutes.length}`);
   lines.push(`addedChains=${result.diff.addedChains.join(",") || "none"}`);
   lines.push(`removedChains=${result.diff.removedChains.join(",") || "none"}`);
   lines.push(`probeOk=${result.probes.filter((probe) => probe.ok).length}/${result.probes.length}`);
   lines.push(`probeFailures=${result.probeFailures.length}`);
+
+  if (result.diff.addedRoutes.length > 0) {
+    lines.push("");
+    lines.push("--- Scan recommendations for new routes ---");
+    const routeArgs = result.diff.addedRoutes.slice(0, 10).map((rk) => `--route-key="${rk}"`);
+    for (const arg of routeArgs) {
+      lines.push(`  npm run scan:quote-surface -- ${arg}`);
+    }
+    if (result.diff.addedRoutes.length > 10) {
+      lines.push(`  ... and ${result.diff.addedRoutes.length - 10} more`);
+    }
+  }
+
+  if (result.diff.addedEthFamilyRoutes.length > 0 || result.diff.removedEthFamilyRoutes.length > 0) {
+    lines.push("");
+    lines.push("--- ETH-family follow-up ---");
+    for (const routeKey of result.diff.addedEthFamilyRoutes.slice(0, 10)) {
+      lines.push(`  npm run scan:quote-surface -- --route-key="${routeKey}"`);
+    }
+    lines.push("  npm run analyze:ethereum-routes -- --write");
+    lines.push("  npm run audit:eth-family-overfit");
+  }
+
   return lines.join("\n");
 }
 
@@ -37,6 +63,24 @@ function buildAlertRecord(result) {
     chains: result.snapshot.chains,
     routeHash: result.snapshot.routeHash,
     schemaHash: result.schemaHash,
+    ethFamily: {
+      routeCount: result.ethFamily?.routeCount || 0,
+      surfaceChanged: Boolean(result.ethFamily?.surfaceChanged),
+      chainPairs: result.ethFamily?.chainPairs || [],
+      addedRoutesCount: result.diff.addedEthFamilyRoutes.length,
+      removedRoutesCount: result.diff.removedEthFamilyRoutes.length,
+      addedRoutesSample: sample(result.diff.addedEthFamilyRoutes),
+      removedRoutesSample: sample(result.diff.removedEthFamilyRoutes),
+      addedChainPairs: result.diff.addedEthFamilyChainPairs || [],
+      removedChainPairs: result.diff.removedEthFamilyChainPairs || [],
+      followUpCommands:
+        result.diff.addedEthFamilyRoutes.length > 0 || result.diff.removedEthFamilyRoutes.length > 0
+          ? [
+              "npm run analyze:ethereum-routes -- --write",
+              "npm run audit:eth-family-overfit",
+            ]
+          : [],
+    },
     routeDiff: {
       changed: result.diff.changed,
       reason: result.diff.reason,
@@ -60,6 +104,14 @@ function buildAlertRecord(result) {
       latencyMs: probe.latencyMs || null,
       shape: probe.shape || null,
       error: probe.error || null,
+    })),
+    scanRecommendations: result.diff.addedRoutes.slice(0, 20).map((rk) => ({
+      routeKey: rk,
+      command: `npm run scan:quote-surface -- --route-key="${rk}"`,
+    })),
+    ethFamilyScanRecommendations: result.diff.addedEthFamilyRoutes.slice(0, 20).map((rk) => ({
+      routeKey: rk,
+      command: `npm run scan:quote-surface -- --route-key="${rk}"`,
     })),
   };
 }

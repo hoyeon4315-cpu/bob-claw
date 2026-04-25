@@ -4,6 +4,7 @@ export function formatGatewayUpdateAlert(result) {
     `observedAt: ${result.observedAt}`,
     `reasons: ${result.changeReasons.join(",") || "none"}`,
     `routeCount: ${result.snapshot.routeCount}`,
+    `ethFamilyRoutes: ${result.ethFamily?.routeCount || 0}`,
     `chains: ${result.snapshot.chains.join(",")}`,
     `addedRoutes: ${result.diff.addedRoutes.length}`,
     `removedRoutes: ${result.diff.removedRoutes.length}`,
@@ -11,11 +12,63 @@ export function formatGatewayUpdateAlert(result) {
     `probeFailures: ${result.probeFailures.length}`,
   ];
 
+  if ((result.diff?.addedEthFamilyRoutes?.length || 0) > 0 || (result.diff?.removedEthFamilyRoutes?.length || 0) > 0) {
+    const addedEthFamilyRoutes = result.diff?.addedEthFamilyRoutes?.length || 0;
+    const removedEthFamilyRoutes = result.diff?.removedEthFamilyRoutes?.length || 0;
+    lines.push(
+      `ethFamilySurface: +${addedEthFamilyRoutes} / -${removedEthFamilyRoutes}`,
+    );
+  }
+
   for (const failure of result.probeFailures.slice(0, 3)) {
     lines.push(`failure: ${failure.routeKey} ${failure.errorStatus || "no_status"} ${failure.errorCode || ""}`.trim());
   }
 
+  if ((result.diff?.addedEthFamilyRoutes?.length || 0) > 0) {
+    lines.push("next: scan new ETH-family routes, then run analyze:ethereum-routes and audit:eth-family-overfit");
+  }
+
   lines.push("liveTrading: still blocked until audit gates pass");
+  return lines.join("\n");
+}
+
+function shortHash(value) {
+  if (!value) return null;
+  const text = String(value);
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-6)}`;
+}
+
+export function formatPreliveForkExecutionAlert({ phase, plan = null, submission = null, receipt = null, audit = null }) {
+  const lines = [
+    "BOB Claw pre-live execution",
+    `phase: ${phase || "unknown"}`,
+  ];
+  const route = plan?.routeLabel || submission?.routeLabel || receipt?.routeLabel || plan?.routeKey || submission?.routeKey || receipt?.routeKey;
+  const amount = plan?.amount || submission?.amount || receipt?.amount;
+  const environment = plan?.targetEnvironment || submission?.targetEnvironment || receipt?.targetEnvironment || "external_signed_fork";
+  if (route) lines.push(`route: ${route}`);
+  if (amount) lines.push(`amount: ${amount}`);
+  lines.push(`environment: ${environment}`);
+  if (submission) {
+    lines.push(`submission: ${submission.submissionStatus || "unknown"}`);
+    if (submission.reason) lines.push(`submissionReason: ${submission.reason}`);
+    if (submission.txHash) lines.push(`txHash: ${shortHash(submission.txHash)}`);
+  }
+  if (receipt) {
+    lines.push(`receipt: ${receipt.reconciliationStatus || "unknown"}`);
+    lines.push(`failed: ${Boolean(receipt.flags?.failed)}`);
+    if (Number.isFinite(receipt.realized?.actualKnownCostUsd)) {
+      lines.push(`actualKnownCostUsd: ${receipt.realized.actualKnownCostUsd.toFixed(6)}`);
+    }
+    if (Number.isFinite(receipt.realized?.realizedNetPnlUsd)) {
+      lines.push(`realizedNetPnlUsd: ${receipt.realized.realizedNetPnlUsd.toFixed(6)}`);
+    }
+  }
+  if (audit) {
+    lines.push(`records: ${audit.status} missing=${audit.missingRecordCount}`);
+  }
+  lines.push("liveTrading: still blocked until explicit canary approval");
   return lines.join("\n");
 }
 

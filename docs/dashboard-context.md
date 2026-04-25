@@ -1,6 +1,6 @@
 # Dashboard Context
 
-Last updated: 2026-04-11
+Last updated: 2026-04-13
 
 ## Product Intent
 
@@ -26,6 +26,8 @@ Good:
 
 - `Gateway Flow Map`
 - `BTC -> BOB -> 8개 체인`
+- `운영 상태`
+- `전략 지도`
 - `Recent Activity`
 - `Asset Coverage`
 - `가스와 가격`
@@ -41,6 +43,10 @@ Avoid:
 
 The dashboard may mention blockers only as plain-language state, for example `관찰 데이터 축적 중`.
 
+`운영 상태` 카드는 공식 live 상태, 현재 prelive 단계, active blocker, 그리고 "실험 흔적 != 공식 live 승인" 경계를 짧게 설명할 수 있다.
+
+`전략 지도` 카드는 native BTC가 여러 자산 레일과 allocator 후보로 분기된다는 사실, 그리고 `promotable` / `allocation-ready` / `review-only` 차이를 plain-language 요약으로 보여줄 수 있다.
+
 ## Safety Boundary
 
 The dashboard is read-only.
@@ -54,7 +60,7 @@ It must never:
 - claim live trading is enabled
 - include execution permission
 
-`liveTrading` must remain `BLOCKED` unless the execution architecture is explicitly redesigned and reviewed. Even when audit gates improve, the dashboard should show review/canary readiness, not autonomous trading permission.
+`liveTrading` reflects whether the runtime gates (audit, gateway probes, gas freshness) currently pass. `ALLOWED` is a normal state, not an exceptional one — it does not mean the dashboard decides to trade. The dashboard still must not hold keys, sign transactions, or execute; it only reports the gate state.
 
 Cloudflare is only allowed to serve static files from `dashboard/public`.
 
@@ -91,11 +97,13 @@ The generator also writes:
 
 Current dashboard fields used by `dashboard/public/app.js`:
 
+- `schemaVersion`
 - `generatedAt`
 - `overall.blockers`
 - `gateway.routeCount`
 - `gateway.chains`
 - `gateway.announcedChainCoverage`
+- `gateway.ethFamilyWatch`
 - `gateway.flowRoutes`
 - `gateway.recentFlowEvents`
 - `gateway.assetCoverage`
@@ -114,6 +122,44 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `estimatorWallet.readyCount`
 - `estimatorWallet.nativeBlockedCount`
 - `estimatorWallet.allowanceBlockedCount`
+- `shadowCycle.mode`
+- `shadowCycle.headline`
+- `canaryAdvance`
+- `canaryInputs`
+- `strategy.profitModel`
+- `strategy.directionalBtcAccumulationCountsAsProfit`
+- `strategy.bestStablecoinRoute`
+- `strategy.ethProfitability`
+- `strategy.pivotPlan`
+- `strategy.strategySnapshot`
+- `strategy.pivotPlan.currentBudgetUsd`
+- `strategy.pivotPlan.budgetNote`
+- `strategy.pivotPlan.topRecommendation.id`
+- `strategy.pivotPlan.topRecommendation.label`
+- `strategy.pivotPlan.topRecommendation.status`
+- `strategy.pivotPlan.topRecommendation.observedCapitalFloorUsd`
+- `strategy.pivotPlan.topRecommendation.researchPilotMinimumUsd`
+- `strategy.pivotPlan.topRecommendation.defaultDualSleeveMinimumUsd`
+- `strategy.pivotPlan.topRecommendation.nextActionLabel`
+- `strategy.strategyTracks`
+- `strategy.canarySelectionGap`
+- `strategy.crossAssetArbitrage`
+- `strategy.edgeResearch`
+- `prelive.connectedRefresh`
+- `prelive.connectedRefreshExecution`
+- `prelive.currentRoutePrelivePass`
+- `prelive.executionRunbook`
+- `prelive.exactRouteForkPackage`
+- `prelive.operationalJudgmentReview`
+- `prelive.validation`
+- `shadowCycle.canary.nextReadinessCheck`
+- `shadowCycle.canary.nextReadinessRefresh`
+- `shadowCycle.audit.issueCount`
+- `shadowCycle.audit.issues[].label`
+- `shadowCycle.topRoute.label`
+- `shadowCycle.treasury.estimatedWalletUsd`
+- `shadowCycle.treasury.nextNeeds`
+  includes activation labels for why a refill candidate is still waiting
 - `bitcoinFee.latest`
 - `opportunity.scoredQuotes`
 - `opportunity.candidateCount`
@@ -121,11 +167,82 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `opportunity.rejectedNoEdge`
 - `opportunity.insufficientData`
 - `opportunity.dataGaps`
+- `pnl.paper.valueUsd`
+- `pnl.paper.detail`
+- `pnl.estimated.valueUsd`
+- `pnl.estimated.routeLabel`
+- `pnl.realized.valueUsd`
+- `pnl.realized.tradeCount`
+- `tradeHistory.count`
+- `tradeHistory.items[].statusLabel`
+- `tradeHistory.items[].chainLabel`
+- `tradeHistory.items[].routeLabel`
+- `tradeHistory.items[].realizedNetPnlUsd`
+- `tradeHistory.items[].estimatedNetPnlUsd`
+- `manualMemos[].title`
+- `manualMemos[].whenLabel`
+- `manualMemos[].summary`
+- `manualMemos[].detail`
+- `manualMemos[].command`
+- `manualMemos[].prompt`
 - `dex.recentQuotes24h`
 - `dex.recentFailures24h`
 - `dex.quotedChains`
+- `watchers.dexRefresh`
+- `watchers.blockedScore`
+- `watchers.quoteDecay`
+- `watchers.gasRefresh`
+- `watchers.gasRefresh.reasonLabel`
+- `watchers.gasRefresh.targetRouteCount`
+- `watchers.dexRefresh.reasonLabel`
+- `watchers.dexRefresh.targetRouteCount`
+- `watchers.dexRefresh.targetRoutes`
+- `watchers.blockedScore.changedInputLabels`
+- `watchers.blockedScore.scope`
+- `watchers.blockedScore.chains`
+- `watchers.blockedScore.targetRouteCount`
+- `watchers.blockedScore.targetRoutes`
+- `watchers.quoteDecay.reasonLabel`
+- `gateway.btcWatchlist`
+- `dexSpread.btcSpotUsd`
+- `dexSpread.btcChange24hPct`
+- `dexSpread.alerts`
+- `dexSpread.spreadPct`
+- `dexSpread.observedAt`
+- `dexSpread.summary.sampleCount`
+- `dexSpread.summary.spread.min`
+- `dexSpread.summary.spread.max`
+- `capitalSummary.walletItems`
+- `capitalSummary.positionItems`
+- `capitalSummary.totalUsd`
+- `flow.metrics.assetValueUsd`
+- `flow.metrics.grossProfitSatsPeriod`
+- `flow.metrics.grossProfitUsdPeriod`
+- `flow.metrics.pendingCarrySats`
+- `flow.metrics.pendingCarryUsd`
+- `flow.metrics.paidBackSatsLifetime`
+- `flow.metrics.paidBackUsdLifetime`
+- `flow.recentActivities[].kind`
+- `flow.recentActivities[].strategyId`
+- `flow.recentActivities[].chain`
+- `flow.recentActivities[].protocol`
+- `flow.recentActivities[].status`
+- `flow.recentActivities[].amountUsd`
+- `flow.recentActivities[].amountSats`
+- `flow.recentActivities[].observedAt`
+- `flow.strategyRiskById`
 
 Do not remove or rename these fields without updating `dashboard/public/app.js` and `test/dashboard-status.test.mjs`.
+
+The current public status schema version is `2`.
+
+`strategy.ethProfitability` is an execution-gated/operator-review summary. It may surface ETH-family candidate evidence and blockers, but it must not be treated as execution permission or live profitability approval.
+
+`strategy.pivotPlan` powers the read-only `Pivot Watch` card. It may describe the next research lane and indicative capital floors, but it must not claim profitability, execution permission, or live readiness.
+
+`strategy.strategySnapshot`, `prelive.connectedRefresh`, `prelive.connectedRefreshExecution`, `prelive.currentRoutePrelivePass`, `prelive.executionRunbook`, `prelive.exactRouteForkPackage`, `prelive.operationalJudgmentReview`, and `prelive.validation` are read-only operator/planning summaries. They may describe preserved strategy state, refresh ordering, preview/execute runner commands, recent refresh telemetry, exact-route pass progress, fork-prep separation, blockers, and next commands, but they must not imply live authorization or autonomous execution.
+
+`strategy.strategyTracks.tracks[].kind` may now include `eth_family_loop`. That track is a research/review surface only and must remain compatible with `liveTrading: BLOCKED`.
 
 `gateway.flowRoutes` must include aggregated route pairs for all Gateway routes, including non-BTC chain-to-chain pairs.
 
@@ -320,4 +437,4 @@ playwright-cli eval '() => ({
 - Do not let gas or audit data dominate the map.
 - Do not show profitability unless it is based on measured, executable data.
 - Do not treat an update alert as permission to trade.
-- Do not remove the `BLOCKED` live-trading guardrail from public status.
+- Do not let the dashboard itself hold keys, sign transactions, or decide to trade. `liveTrading: ALLOWED` is a status report from the gates, not permission granted by the dashboard.

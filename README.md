@@ -1,14 +1,14 @@
 # BOB Claw
 
-Start with [docs/current-status.md](docs/current-status.md).
+Start with [docs/README.md](docs/README.md).
 
-This repo is a verification harness for BOB Gateway / Instant Swap ideas. It is not approved for live autonomous trading.
+BOB Claw is a native-BTC payback agent: native BTC enters through BOB Gateway, destination-chain strategies harvest BTC-denominated profit, and the payback engine settles configured profit share back to Bitcoin L1. Runtime execution is controlled by committed caps, deterministic policy, signer approval, the kill-switch, and receipt proof.
 
 Useful commands:
 
+- `npm run graph:focus -- status`
+- `npm run report:strategy-catalog -- --json`
+- `npm run report:payback-status -- --json`
+- `npm run executor:merkl-portfolio-orchestrator`
 - `npm run advance:canary`
-- `npm run watch:canary-readiness`
-- `npm run plan:canary-next-step`
-- `npm run plan:canary-routes`
-- `npm run plan:estimator-wallet`
-- `npm run write:session-handoff`
+- `npm run ai:claude:kimi`

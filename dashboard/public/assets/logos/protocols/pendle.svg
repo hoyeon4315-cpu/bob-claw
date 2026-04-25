@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="pendle">
+  <title>pendle</title>
+  <circle cx="32" cy="32" r="32" fill="#00ADAB"/>
+  <text x="32" y="32" text-anchor="middle" dominant-baseline="central"
+        font-family="-apple-system, SF Pro Text, Helvetica Neue, Arial, sans-serif"
+        font-weight="700" font-size="28" fill="#FFFFFF"
+        letter-spacing="-0.5">PT</text>
+</svg>

@@ -1,4 +1,5 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { ETHEREUM_L1_PHASE_DISABLED_REASON, isEthereumL1Route } from "../risk/ethereum-l1-policy.mjs";
 
 export const BTC_DECIMALS = 8;
 
@@ -59,14 +60,36 @@ function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
 
-function classifyQuote({ quote, dataGaps, netEdgeUsd, netEdgePct, executableNetEdgeUsd, executableNetEdgePct, options }) {
+function exactGasGapForFailure(reason) {
+  if (reason === "erc20_allowance_insufficient") return "exact_src_execution_gas_allowance_insufficient";
+  if (reason === "erc20_balance_insufficient") return "exact_src_execution_gas_token_insufficient";
+  if (reason === "execution_reverted") return "exact_src_execution_gas_reverted";
+  return "exact_src_execution_gas_not_estimated";
+}
+
+function classifyQuote({
+  quote,
+  dataGaps,
+  netEdgeUsd,
+  netEdgePct,
+  executableNetEdgeUsd,
+  executableNetEdgePct,
+  effectiveSystemNetPnlUsd,
+  effectiveSystemNetPnlPct,
+  options,
+}) {
+  if (!options.allowEthereumL1Routes && isEthereumL1Route(quote?.route)) {
+    return ETHEREUM_L1_PHASE_DISABLED_REASON;
+  }
   if (dataGaps.length > 0) return "insufficient_data";
   if ((options.routeStats?.failureRate ?? 0) > (options.maxRouteFailureRate ?? 0.1)) return "reject_high_failure_rate";
   if (quote.quoteType === "offramp") return "observe_only_expensive_exit";
   if (quote.quoteType === "onramp") return "observe_only_slow_settlement";
   if (quote.quoteType !== "layerZero") return "unknown_quote_type";
-  const candidateNetEdgeUsd = Number.isFinite(executableNetEdgeUsd) ? executableNetEdgeUsd : netEdgeUsd;
-  const candidateNetEdgePct = Number.isFinite(executableNetEdgePct) ? executableNetEdgePct : netEdgePct;
+  const candidateNetEdgeUsd =
+    finiteOrNull(effectiveSystemNetPnlUsd) ?? finiteOrNull(executableNetEdgeUsd) ?? finiteOrNull(netEdgeUsd);
+  const candidateNetEdgePct =
+    finiteOrNull(effectiveSystemNetPnlPct) ?? finiteOrNull(executableNetEdgePct) ?? finiteOrNull(netEdgePct);
   if (!Number.isFinite(candidateNetEdgeUsd) || !Number.isFinite(candidateNetEdgePct)) return "insufficient_data";
   if (candidateNetEdgeUsd <= 0) return "reject_no_net_edge";
   if (candidateNetEdgeUsd < (options.minProfitUsd ?? 1)) return "reject_below_min_profit";
@@ -84,6 +107,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const bitcoinFee = options.bitcoinFee || null;
   const hasNativeBitcoinLeg = quote.route.srcChain === "bitcoin" || quote.route.dstChain === "bitcoin";
   const executionGasSource = options.executionGasSource || null;
+  const exactExecutionGasFailureReason = options.exactExecutionGasFailureReason || null;
 
   if (!Number.isInteger(srcAsset.decimals)) dataGaps.push("missing_src_token_decimals");
   if (!Number.isInteger(dstAsset.decimals)) dataGaps.push("missing_dst_token_decimals");
@@ -113,7 +137,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     dataGaps.push("missing_src_execution_gas");
   }
   if (quote.route.srcChain !== "bitcoin" && options.requireExactExecutionGas && executionGasSource !== "eth_estimateGas") {
-    dataGaps.push("exact_src_execution_gas_not_estimated");
+    dataGaps.push(exactGasGapForFailure(exactExecutionGasFailureReason));
   }
   if (hasNativeBitcoinLeg && !Number.isFinite(bitcoinFee?.estimatedFeeUsd)) {
     dataGaps.push("bitcoin_network_fee_not_modelled");
@@ -129,8 +153,23 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     (Number.isFinite(executionGasUsd) ? executionGasUsd : 0) +
     (Number.isFinite(gasShockBufferUsd) ? gasShockBufferUsd : 0) +
     (Number.isFinite(nativeBitcoinFeeUsd) ? nativeBitcoinFeeUsd : 0);
+  const treasuryExecutionRefillCostUsd = finiteOrNull(options.executionRefillExpectedCostUsd);
+  const treasuryReserveReplenishmentCostUsd = finiteOrNull(options.reserveReplenishmentExpectedCostUsd);
+  const expectedFailureCostUsd = finiteOrNull(options.expectedFailureCostUsd);
+  const capitalFragmentationDragUsd = finiteOrNull(options.capitalFragmentationDragUsd);
+  const treasuryAdjustedKnownCostUsd = knownCostUsd + (Number.isFinite(treasuryExecutionRefillCostUsd) ? treasuryExecutionRefillCostUsd : 0);
+  const effectiveSystemKnownCostUsd =
+    Number.isFinite(treasuryExecutionRefillCostUsd) &&
+    Number.isFinite(treasuryReserveReplenishmentCostUsd) &&
+    Number.isFinite(expectedFailureCostUsd) &&
+    Number.isFinite(capitalFragmentationDragUsd)
+      ? treasuryAdjustedKnownCostUsd + treasuryReserveReplenishmentCostUsd + expectedFailureCostUsd + capitalFragmentationDragUsd
+      : null;
   const netEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - knownCostUsd : null;
   const netEdgePct = Number.isFinite(netEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? netEdgeUsd / inputUsd : null;
+  const treasuryAdjustedNetEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
+  const treasuryAdjustedNetEdgePct =
+    Number.isFinite(treasuryAdjustedNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedNetEdgeUsd / inputUsd : null;
   const dexOutputQuoteAgeMinutes = minutesBetween(dexOutputQuote?.observedAt, options.now || new Date().toISOString());
   if (dexOutputQuote && dexOutputQuoteAgeMinutes !== null && dexOutputQuoteAgeMinutes > (options.maxDexQuoteAgeMinutes ?? 30)) {
     dataGaps.push("stale_dex_output_quote");
@@ -144,6 +183,12 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const executableNetEdgeUsd = Number.isFinite(executableTokenDeltaUsd) ? executableTokenDeltaUsd - knownCostUsd : null;
   const executableNetEdgePct =
     Number.isFinite(executableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? executableNetEdgeUsd / inputUsd : null;
+  const treasuryAdjustedExecutableNetEdgeUsd =
+    Number.isFinite(executableTokenDeltaUsd) ? executableTokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
+  const treasuryAdjustedExecutableNetEdgePct =
+    Number.isFinite(treasuryAdjustedExecutableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0
+      ? treasuryAdjustedExecutableNetEdgeUsd / inputUsd
+      : null;
   const outputInputValueRatio = Number.isFinite(inputUsd) && inputUsd > 0 && Number.isFinite(outputUsd) ? outputUsd / inputUsd : null;
   if (
     Number.isFinite(outputInputValueRatio) &&
@@ -153,6 +198,21 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     dataGaps.push("implausible_quote_value_ratio");
   }
   const breakEvenPct = Number.isFinite(inputUsd) && inputUsd > 0 ? knownCostUsd / inputUsd : null;
+  const treasuryAdjustedBreakEvenPct =
+    Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedKnownCostUsd / inputUsd : null;
+  const effectiveSystemNetPnlUsd = finiteOrNull(options.effectiveSystemNetPnlUsd) ??
+    (Number.isFinite(tokenDeltaUsd) && Number.isFinite(effectiveSystemKnownCostUsd) ? tokenDeltaUsd - effectiveSystemKnownCostUsd : null);
+  const effectiveSystemNetPnlPct =
+    Number.isFinite(effectiveSystemNetPnlUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? effectiveSystemNetPnlUsd / inputUsd : null;
+  const effectiveSystemBreakEvenPct =
+    Number.isFinite(inputUsd) &&
+    inputUsd > 0 &&
+    Number.isFinite(treasuryExecutionRefillCostUsd) &&
+    Number.isFinite(treasuryReserveReplenishmentCostUsd) &&
+    Number.isFinite(expectedFailureCostUsd) &&
+    Number.isFinite(capitalFragmentationDragUsd)
+      ? effectiveSystemKnownCostUsd / inputUsd
+      : null;
 
   return {
     observedAt: quote.observedAt,
@@ -171,17 +231,32 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     nativeCostUsd: finiteOrNull(nativeCostUsd),
     executionGasUsd: finiteOrNull(executionGasUsd),
     executionGasSource,
+    exactExecutionGasFailureReason,
     gasShockBufferUsd: finiteOrNull(gasShockBufferUsd),
     bitcoinFeeUsd: finiteOrNull(nativeBitcoinFeeUsd),
     knownCostUsd,
     netEdgeUsd: finiteOrNull(netEdgeUsd),
     netEdgePct: finiteOrNull(netEdgePct),
+    treasuryExecutionRefillCostUsd,
+    treasuryReserveReplenishmentCostUsd,
+    expectedFailureCostUsd,
+    capitalFragmentationDragUsd,
+    treasuryAdjustedKnownCostUsd: finiteOrNull(treasuryAdjustedKnownCostUsd),
+    treasuryAdjustedNetEdgeUsd: finiteOrNull(treasuryAdjustedNetEdgeUsd),
+    treasuryAdjustedNetEdgePct: finiteOrNull(treasuryAdjustedNetEdgePct),
     executableOutputUsd: finiteOrNull(executableOutputUsd),
     executableTokenDeltaUsd: finiteOrNull(executableTokenDeltaUsd),
     executableNetEdgeUsd: finiteOrNull(executableNetEdgeUsd),
     executableNetEdgePct: finiteOrNull(executableNetEdgePct),
+    treasuryAdjustedExecutableNetEdgeUsd: finiteOrNull(treasuryAdjustedExecutableNetEdgeUsd),
+    treasuryAdjustedExecutableNetEdgePct: finiteOrNull(treasuryAdjustedExecutableNetEdgePct),
+    effectiveSystemKnownCostUsd: finiteOrNull(effectiveSystemKnownCostUsd),
+    effectiveSystemNetPnlUsd,
+    effectiveSystemNetPnlPct: finiteOrNull(effectiveSystemNetPnlPct),
     outputInputValueRatio: finiteOrNull(outputInputValueRatio),
     breakEvenPct: finiteOrNull(breakEvenPct),
+    treasuryAdjustedBreakEvenPct: finiteOrNull(treasuryAdjustedBreakEvenPct),
+    effectiveSystemBreakEvenPct: finiteOrNull(effectiveSystemBreakEvenPct),
     gasSnapshotAgeMinutes: finiteOrNull(gasSnapshotAgeMinutes),
     estimatedTimeInSecs: quote.estimatedTimeInSecs,
     latencyMs: quote.latencyMs,
@@ -221,6 +296,16 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
           ageMinutes: finiteOrNull(dexOutputQuoteAgeMinutes),
         }
       : null,
-    tradeReadiness: classifyQuote({ quote, dataGaps, netEdgeUsd, netEdgePct, executableNetEdgeUsd, executableNetEdgePct, options }),
+    tradeReadiness: classifyQuote({
+      quote,
+      dataGaps,
+      netEdgeUsd,
+      netEdgePct,
+      executableNetEdgeUsd,
+      executableNetEdgePct,
+      effectiveSystemNetPnlUsd,
+      effectiveSystemNetPnlPct,
+      options,
+    }),
   };
 }

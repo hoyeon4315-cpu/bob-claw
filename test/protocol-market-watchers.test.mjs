@@ -1,0 +1,182 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../src/strategy/protocol-market-watchers.mjs";
+import { buildAllocatorCore } from "../src/strategy/allocator-core.mjs";
+
+test("protocol market watchers surface freshness and trust-tier blockers to the allocator", () => {
+  const watchers = buildProtocolMarketWatchers({
+    dashboardStatus: {
+      overall: { blockers: ["stale_gas_snapshots"] },
+    },
+    quoteLagLatest: {
+      generatedAt: "2026-04-15T01:00:00.000Z",
+      sampleCount: 500,
+      lagStats: { profitableSampleCount: 1, profitableSamplePct: 0.2 },
+      verdict: "profitable_dislocations_found",
+    },
+    dexSpreadLatest: {
+      observedAt: "2026-04-15T01:00:00.000Z",
+      chainCount: 7,
+      tokenCount: 11,
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: { id: "wrapped-btc-loop-base-moonwell", protocol: "moonwell" },
+      protocolAdapter: {
+        oracleModel: "protocol_oracle_with_btc_usd_sanity_check",
+        referenceOracles: ["chainlink", "pyth"],
+      },
+      oracleSanity: { status: "healthy", protocolDriftPct: 0.12 },
+      dryRunSummary: { autoUnwindPassCount: 2, dryRunReceiptRecorded: true },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["oos_receipt_window_below_policy", "protocol_trust_tier_not_recorded"],
+          evidence: { strategyId: "wrapped-btc-loop-base-moonwell" },
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts" },
+        },
+        {
+          id: "stablecoin_spread_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["overfit_gate_blocked", "protocol_trust_tier_not_recorded"],
+          evidence: { strategyId: "stablecoin_spread_loop", statusNew: "measured_overfit_blocked", netPnlMeasuredUsd: 1.2 },
+        },
+        {
+          id: "proxy_spread_expansion_validation",
+          overallStatus: "blocked",
+          blockers: ["overfit_gate_blocked", "receipt_backed_cross_wrapper_samples_missing"],
+          trustTierStatus: "market_structure_review_required",
+          evidence: { strategyId: "proxy_spread_expansion" },
+        },
+      ],
+    },
+    secondaryStrategyScaffolds: {
+      scaffolds: [
+        {
+          id: "stablecoin_spread_loop",
+          missingEvidence: ["borrow_spread_decay_samples"],
+          protocolTrack: { protocols: ["morpho", "aave_v3"] },
+        },
+      ],
+    },
+    now: "2026-04-15T13:00:00.000Z",
+  });
+
+  assert.equal(watchers.summary.watcherCount, 6);
+  assert.equal(watchers.summary.blockedCount >= 4, true);
+
+  const summary = summarizeProtocolMarketWatchers(watchers);
+  assert.equal(summary.topBlocked.id, "wrapped_btc_loop_market_watch");
+  assert.deepEqual(watchers.watchers[0].evidence.referenceOracles, ["chainlink", "pyth"]);
+  assert.equal(watchers.watchers[0].evidence.oracleStatus, "healthy");
+  const trustTierWatch = watchers.watchers.find((item) => item.id === "protocol_trust_tier_watch");
+  assert.deepEqual(trustTierWatch.targets.sort(), ["stablecoin_spread_loop", "wrapped-btc-loop-base-moonwell"]);
+  const codehashWatch = watchers.watchers.find((item) => item.id === "protocol_codehash_drift_watch");
+  assert.equal(codehashWatch.status, "observe");
+  assert.equal(codehashWatch.nextAction.code, "run_protocol_codehash_watch");
+
+  const allocator = buildAllocatorCore({
+    strategySnapshot: { currentSystem: { activeBudgetUsd: null }, summary: { planningBudgetUsd: null } },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["oos_receipt_window_below_policy"],
+          nextAction: { code: "collect_wrapped_btc_loop_oos_receipts" },
+        },
+      ],
+    },
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        label: "Wrapped BTC lending loop (Base / Moonwell)",
+        chain: "base",
+        protocol: "moonwell",
+      },
+    },
+    protocolMarketWatchers: watchers,
+    now: "2026-04-15T13:00:00.000Z",
+  });
+  const wrapped = allocator.candidates.find((item) => item.id === "wrapped-btc-loop-base-moonwell");
+  assert.ok(wrapped);
+  assert.equal(wrapped.blockers.includes("protocol_trust_tier_not_recorded"), true);
+  assert.equal(wrapped.blockers.includes("stale_gas_snapshots"), true);
+});
+
+test("protocol market watchers block protocol codehash drift but only observe missing baselines", () => {
+  const observeWatchers = buildProtocolMarketWatchers({
+    protocolCodehashWatch: {
+      summary: {
+        status: "observe",
+        targetCount: 2,
+        baselineMissingCount: 2,
+        driftCount: 0,
+        missingCodeCount: 0,
+        rpcErrorCount: 0,
+        nextAction: { code: "seed_protocol_codehash_baseline" },
+      },
+      items: [{ id: "moonwell_base_comptroller", status: "baseline_missing" }],
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+  const observeCodehash = observeWatchers.watchers.find((item) => item.id === "protocol_codehash_drift_watch");
+  assert.equal(observeCodehash.status, "observe");
+  assert.deepEqual(observeCodehash.blockers, []);
+
+  const blockedWatchers = buildProtocolMarketWatchers({
+    protocolCodehashWatch: {
+      summary: {
+        status: "blocked",
+        targetCount: 2,
+        baselineMissingCount: 0,
+        driftCount: 1,
+        missingCodeCount: 0,
+        rpcErrorCount: 0,
+        topBlockers: [{ blocker: "protocol_codehash_drift", count: 1 }],
+        nextAction: { code: "review_protocol_codehash_drift" },
+      },
+      items: [{ id: "moonwell_base_comptroller", status: "drift_detected" }],
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+  const blockedCodehash = blockedWatchers.watchers.find((item) => item.id === "protocol_codehash_drift_watch");
+  assert.equal(blockedCodehash.status, "blocked");
+  assert.deepEqual(blockedCodehash.blockers, ["protocol_codehash_drift"]);
+});
+
+test("protocol market watchers include recursive lending loop market watches", () => {
+  const watchers = buildProtocolMarketWatchers({
+    dashboardStatus: {
+      overall: { blockers: [] },
+    },
+    recursiveWrappedBtcLoop: {
+      strategy: { id: "recursive_wrapped_btc_lending_loop", label: "Recursive wrapped-BTC lending loop", protocol: "moonwell", arrivalFamily: "wrapped_btc" },
+      protocolAdapter: {
+        oracleModel: "protocol_oracle_with_btc_usd_sanity_check",
+        referenceOracles: ["chainlink", "pyth"],
+      },
+      oracleSanity: { status: "healthy", protocolDriftPct: 0.08 },
+      dryRunSummary: { autoUnwindPassCount: 2, dryRunReceiptRecorded: true, signerBackedRunCount: 0 },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "recursive_wrapped_btc_lending_loop_validation",
+          overallStatus: "blocked",
+          blockers: ["recursive_observed_receipts_missing"],
+          nextAction: { code: "collect_recursive_loop_observed_receipts" },
+        },
+      ],
+    },
+    now: "2026-04-17T19:50:00.000Z",
+  });
+
+  const recursiveWatch = watchers.watchers.find((item) => item.id === "recursive_wrapped_btc_lending_loop_market_watch");
+  assert.ok(recursiveWatch);
+  assert.equal(recursiveWatch.blockers.includes("recursive_observed_receipts_missing"), true);
+  assert.deepEqual(recursiveWatch.evidence.referenceOracles, ["chainlink", "pyth"]);
+  assert.equal(recursiveWatch.nextAction.code, "collect_recursive_loop_observed_receipts");
+});

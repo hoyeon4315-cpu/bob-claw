@@ -94,5 +94,7 @@ test("gas estimate normalizes transaction fields and reports gas units", async (
 
 test("gas estimate errors are classified", () => {
   assert.equal(classifyGasEstimateError({ message: "insufficient funds for gas * price + value" }), "insufficient_funds");
+  assert.equal(classifyGasEstimateError({ message: "execution reverted: ERC20: transfer amount exceeds allowance" }), "erc20_allowance_insufficient");
+  assert.equal(classifyGasEstimateError({ message: "execution reverted: ERC20: transfer amount exceeds balance" }), "erc20_balance_insufficient");
   assert.equal(classifyGasEstimateError({ message: "execution reverted" }), "execution_reverted");
 });

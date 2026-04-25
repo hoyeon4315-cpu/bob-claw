@@ -1,0 +1,487 @@
+- main [ref=e2]:
+  - region "BOB Gateway asset flow map" [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img "BOB Claw mascot" [ref=e6]
+        - generic [ref=e7]:
+          - paragraph [ref=e8]: BOB Gateway Radar
+          - heading "Gateway Flow Map" [level=1] [ref=e9]
+          - paragraph [ref=e10]: 지갑 추정 $25.02 · 중요 메모 3건 · Collect more shadow and realized data
+      - generic [ref=e13]: 자동 갱신 · 2분 전
+    - generic [ref=e14]:
+      - img "BOB Gateway route map"
+      - generic:
+        - generic:
+          - generic:
+            - img "BOB Gateway logo"
+          - strong: BOB Gateway
+        - generic:
+          - generic:
+            - img "Avalanche logo"
+          - strong: Avalanche
+          - generic:
+            - generic: $73k
+            - generic: +1.84%
+        - generic:
+          - generic:
+            - img "Base logo"
+          - strong: Base
+          - generic:
+            - generic: $71.6k
+            - generic: "-0.2%"
+        - generic:
+          - generic:
+            - img "Berachain logo"
+          - strong: Berachain
+          - generic:
+            - generic: $71.5k
+            - generic: 기준 wBTC
+            - generic: DEX 미지원
+        - generic:
+          - generic:
+            - img "Bitcoin logo"
+          - strong: Bitcoin
+          - generic:
+            - generic: BTC $71.7k
+        - generic:
+          - generic:
+            - img "BOB Mainnet logo"
+          - strong: BOB Mainnet
+          - generic:
+            - generic: $71.5k
+            - generic: 기준 wBTC
+            - generic: DEX 미지원
+        - generic:
+          - generic:
+            - img "BNB Chain logo"
+          - strong: BNB Chain
+          - generic:
+            - generic: $72.9k
+            - generic: +1.64%
+        - generic:
+          - generic:
+            - img "Ethereum logo"
+          - strong: Ethereum
+          - generic:
+            - generic: $72.9k
+            - generic: +1.66%
+        - generic:
+          - generic:
+            - img "Soneium logo"
+          - strong: Soneium
+          - generic:
+            - generic: $71.5k
+            - generic: 기준 wBTC
+            - generic: DEX 미지원
+        - generic:
+          - generic:
+            - img "Sonic logo"
+          - strong: Sonic
+          - generic:
+            - generic: $72.8k
+            - generic: +1.57%
+        - generic:
+          - generic:
+            - img "Unichain logo"
+          - strong: Unichain
+          - generic:
+            - generic: $73k
+            - generic: +1.77%
+        - generic:
+          - generic:
+            - img "Optimism logo"
+          - strong: Optimism
+          - generic:
+            - generic: $71.5k
+            - generic: 기준 wBTC
+            - generic: 실측 대기
+        - generic:
+          - generic:
+            - img "Sei logo"
+          - strong: Sei
+          - generic:
+            - generic: $71.5k
+            - generic: 기준 wBTC
+            - generic: 실측 대기
+      - generic:
+        - generic "wBTC.OFT from BNB Chain":
+          - generic "wBTC.OFT":
+            - img "wBTC.OFT"
+            - img "BNB Chain origin"
+        - generic "wBTC.OFT from BNB Chain":
+          - generic "wBTC.OFT":
+            - img "wBTC.OFT"
+            - img "BNB Chain origin"
+        - generic "wBTC.OFT from BNB Chain":
+          - generic "wBTC.OFT":
+            - img "wBTC.OFT"
+            - img "BNB Chain origin"
+      - generic [ref=e15]:
+        - generic [ref=e16]: Gateway Flow
+        - strong [ref=e17]: 10개 체인 연결 중
+        - generic [ref=e18]: 체인 실측 6/9 · wBTC 기준 $71.5k · 오래된 가격 6
+    - generic "dashboard summary" [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]: 라이브 경로
+        - strong [ref=e22]: "113"
+        - generic [ref=e23]: 10개 체인 연결
+      - generic [ref=e24]:
+        - generic [ref=e25]: BTC 기준가
+        - strong [ref=e26]: $71,522
+        - generic [ref=e27]: 24h -1.61%
+      - generic [ref=e28]:
+        - generic [ref=e29]: 최근 움직임
+        - strong [ref=e30]: "40"
+        - generic [ref=e31]: 최근 5개 흐름
+      - generic [ref=e32]:
+        - generic [ref=e33]: 중요 메모
+        - strong [ref=e34]: "3"
+        - generic [ref=e35]: 지금
+  - generic [ref=e36]:
+    - article [ref=e37]:
+      - generic [ref=e38]:
+        - heading "PnL" [level=2] [ref=e39]
+        - generic [ref=e40]: +$0
+      - generic [ref=e155]:
+        - generic [ref=e156]:
+          - generic [ref=e157]: Paper
+          - strong [ref=e158]: $-0.540631
+          - paragraph [ref=e159]: 가격 또는 가스 데이터가 아직 부족함
+          - generic [ref=e160]: bob->base wBTC.OFT->wBTC.OFT
+        - generic [ref=e161]:
+          - generic [ref=e162]: Estimated
+          - strong [ref=e163]: $65.13
+          - paragraph [ref=e164]: wallet readiness check
+          - generic [ref=e165]: base->avalanche wBTC.OFT->wBTC.OFT
+        - generic [ref=e166]:
+          - generic [ref=e167]: Realized
+          - strong [ref=e168]: $0
+          - paragraph [ref=e169]: 아직 receipt 기록 없음
+          - generic [ref=e170]: 확정 0 · 실패 0
+    - article [ref=e41]:
+      - generic [ref=e42]:
+        - heading "거래 기록" [level=2] [ref=e43]
+        - generic [ref=e44]: 0건
+      - generic [ref=e172]:
+        - strong [ref=e173]: 아직 실제 거래 기록이 없습니다
+        - generic [ref=e174]: receipt 또는 실행 이벤트가 생기면 최근 기록이 여기에 표시됩니다.
+    - article [ref=e45]:
+      - generic [ref=e46]:
+        - heading "최근 흐름" [level=2] [ref=e47]
+        - generic [ref=e48]: "5"
+      - generic [ref=e175]:
+        - generic [ref=e176]:
+          - generic "wBTC.OFT" [ref=e177]:
+            - img "wBTC.OFT" [ref=e178]
+          - generic [ref=e179]:
+            - strong [ref=e180]: BOB Mainnet -> BOB Gateway -> Base
+            - generic [ref=e181]: 6시간 전 · wBTC.OFT · 200,000 -> 200,000
+          - generic [ref=e182]: 체인 흐름
+        - generic [ref=e183]:
+          - generic "wBTC.OFT" [ref=e184]:
+            - img "wBTC.OFT" [ref=e185]
+          - generic [ref=e186]:
+            - strong [ref=e187]: BOB Mainnet -> BOB Gateway -> Base
+            - generic [ref=e188]: 6시간 전 · wBTC.OFT · 100,000 -> 100,000
+          - generic [ref=e189]: 체인 흐름
+        - generic [ref=e190]:
+          - generic "wBTC.OFT" [ref=e191]:
+            - img "wBTC.OFT" [ref=e192]
+          - generic [ref=e193]:
+            - strong [ref=e194]: BOB Mainnet -> BOB Gateway -> Base
+            - generic [ref=e195]: 6시간 전 · wBTC.OFT · 50,000 -> 50,000
+          - generic [ref=e196]: 체인 흐름
+        - generic [ref=e197]:
+          - generic "wBTC.OFT" [ref=e198]:
+            - img "wBTC.OFT" [ref=e199]
+          - generic [ref=e200]:
+            - strong [ref=e201]: BOB Mainnet -> BOB Gateway -> Base
+            - generic [ref=e202]: 6시간 전 · wBTC.OFT · 10,000 -> 10,000
+          - generic [ref=e203]: 체인 흐름
+        - generic [ref=e204]:
+          - generic "WBTC->wBTC.OFT" [ref=e205]:
+            - generic "WBTC" [ref=e206]:
+              - img "WBTC" [ref=e207]
+            - generic [ref=e208]: →
+            - generic "wBTC.OFT" [ref=e209]:
+              - img "wBTC.OFT" [ref=e210]
+          - generic [ref=e211]:
+            - strong [ref=e212]: Ethereum -> BOB Gateway -> Base
+            - generic [ref=e213]: 6시간 전 · WBTC -> wBTC.OFT · 200,000 -> 200,000
+          - generic [ref=e214]: 체인 흐름
+    - article [ref=e49]:
+      - generic [ref=e50]:
+        - heading "가스와 가격" [level=2] [ref=e51]
+        - generic [ref=e52]: 확인 필요
+      - generic [ref=e215]:
+        - generic [ref=e216]:
+          - generic [ref=e217]:
+            - img "BTC logo" [ref=e218]
+            - strong [ref=e219]: BTC fee
+          - generic [ref=e220]: $0.525514 · 4 sat/vB
+          - generic [ref=e221]: 41시간 전
+        - generic [ref=e222]:
+          - generic [ref=e223]:
+            - img "Avalanche logo" [ref=e224]
+            - strong [ref=e225]: Avalanche
+          - generic [ref=e226]: gas - · native -
+          - generic [ref=e227]: 12시간 전
+        - generic [ref=e228]:
+          - generic [ref=e229]:
+            - img "Berachain logo" [ref=e230]
+            - strong [ref=e231]: Berachain
+          - generic [ref=e232]: gas - · native -
+          - generic [ref=e233]: 12시간 전
+        - generic [ref=e234]:
+          - generic [ref=e235]:
+            - img "BNB Chain logo" [ref=e236]
+            - strong [ref=e237]: BNB Chain
+          - generic [ref=e238]: gas - · native -
+          - generic [ref=e239]: 12시간 전
+        - generic [ref=e240]:
+          - generic [ref=e241]:
+            - img "Sonic logo" [ref=e242]
+            - strong [ref=e243]: Sonic
+          - generic [ref=e244]: gas - · native -
+          - generic [ref=e245]: 12시간 전
+        - generic [ref=e246]:
+          - generic [ref=e247]:
+            - img "BOB Mainnet logo" [ref=e248]
+            - strong [ref=e249]: BOB Mainnet
+          - generic [ref=e250]: gas $0.000595 · native $2,286
+          - generic [ref=e251]: 12시간 전
+    - article [ref=e53]:
+      - generic [ref=e54]:
+        - heading "자산 커버리지" [level=2] [ref=e55]
+        - generic [ref=e56]: 20/20
+      - generic [ref=e252]:
+        - generic [ref=e253]:
+          - generic "wBTC.OFT" [ref=e254]:
+            - img "wBTC.OFT" [ref=e255]
+          - strong [ref=e256]: wBTC.OFT
+          - generic [ref=e257]: 138 quotes
+        - generic [ref=e258]:
+          - generic "WBTC->wBTC.OFT" [ref=e259]:
+            - img "WBTC->wBTC.OFT" [ref=e260]
+          - strong [ref=e261]: WBTC->wBTC.OFT
+          - generic [ref=e262]: 43 quotes
+        - generic [ref=e263]:
+          - generic "BTC->wBTC.OFT" [ref=e264]:
+            - img "BTC->wBTC.OFT" [ref=e265]
+          - strong [ref=e266]: BTC->wBTC.OFT
+          - generic [ref=e267]: 31 quotes
+        - generic [ref=e268]:
+          - generic "wBTC.OFT->WBTC" [ref=e269]:
+            - img "wBTC.OFT->WBTC" [ref=e270]
+          - strong [ref=e271]: wBTC.OFT->WBTC
+          - generic [ref=e272]: 18 quotes
+        - generic [ref=e273]:
+          - generic "wBTC.OFT->BTC" [ref=e274]:
+            - img "wBTC.OFT->BTC" [ref=e275]
+          - strong [ref=e276]: wBTC.OFT->BTC
+          - generic [ref=e277]: 15 quotes
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - strong [ref=e59]: BTC Watchlist
+          - generic [ref=e60]: 4 live · 6 watch
+        - generic [ref=e61]:
+          - generic [ref=e62]: Live
+          - strong [ref=e63]: BTC, uniBTC, WBTC, wBTC.OFT
+        - generic [ref=e64]:
+          - generic [ref=e65]: Watch
+          - strong [ref=e66]: FBTC, LBTC, solvBTC, SolvBTC.BBN +2
+        - generic [ref=e67]:
+          - generic [ref=e68]: Unknown
+          - strong [ref=e69]: base:0x1217BfE6c773EEC6cc4A38b5Dc45B92292B6E189
+    - article [ref=e70]:
+      - generic [ref=e71]:
+        - heading "기회 관찰" [level=2] [ref=e72]
+        - generic [ref=e73]: 후보 0
+      - generic [ref=e74]:
+        - strong [ref=e75]: 아직 깨끗한 엣지는 없습니다
+        - paragraph [ref=e76]: 199 gateway · 82/293 DEX 확인 · gas refresh needed
+    - article [ref=e77]:
+      - generic [ref=e78]:
+        - heading "중요 메모" [level=2] [ref=e79]
+        - generic [ref=e80]: 3개
+      - generic [ref=e278]:
+        - generic [ref=e279]:
+          - generic [ref=e280]:
+            - generic [ref=e281]: 지금
+            - generic [ref=e282]: 바로 보기
+          - strong [ref=e283]: 데이터 갱신 메모
+          - paragraph [ref=e284]: 판정에 쓰는 입력이 오래돼서 먼저 새로고침이 필요합니다.
+          - generic [ref=e285]: score · 판정 시점 차이 확인 필요
+          - generic [ref=e286]:
+            - generic [ref=e287]: 명령
+            - code [ref=e288]: npm run watch:canary-readiness
+          - generic [ref=e289]:
+            - generic [ref=e290]: 프롬프트
+            - code [ref=e291]: 현재 stale input만 갱신하고 dashboard 상태를 다시 만들어줘.
+        - generic [ref=e292]:
+          - generic [ref=e293]:
+            - generic [ref=e294]: 자금 준비 후
+            - generic [ref=e295]: 다음 확인
+          - strong [ref=e296]: 수동 재검증 메모
+          - paragraph [ref=e297]: base->avalanche wBTC.OFT->wBTC.OFT · 10,000 sats
+          - generic [ref=e298]: source token balance missing · source gas snapshot stale
+          - generic [ref=e299]:
+            - generic [ref=e300]: 명령
+            - code [ref=e301]: npm run check:estimator-wallet -- --route-key=base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4
+          - generic [ref=e302]:
+            - generic [ref=e303]: 프롬프트
+            - code [ref=e304]: 현재 measured leader base->avalanche wBTC.OFT->wBTC.OFT를 다시 점검하고 blocker와 다음 액션만 정리해줘.
+        - generic [ref=e305]:
+          - generic [ref=e306]:
+            - generic [ref=e307]: 수동 충전 전
+            - generic [ref=e308]: 나중 점검
+          - strong [ref=e309]: 가스 준비 메모
+          - paragraph [ref=e310]: base wBTC.OFT 준비 상태 확인
+          - generic [ref=e311]: 0.0003 wBTC.OFT · 예상 $21.89 · 지갑 기준 부족 $225
+          - generic [ref=e312]:
+            - generic [ref=e313]: 명령
+            - code [ref=e314]: npm run plan:treasury-actions -- --json
+          - generic [ref=e315]:
+            - generic [ref=e316]: 프롬프트
+            - code [ref=e317]: 현재 treasury blocker와 다음 refill 필요 금액만 짧게 정리해줘.
+    - article [ref=e81]:
+      - generic [ref=e82]:
+        - heading "Quote Lag" [level=2] [ref=e83]
+        - generic [ref=e84]: 측정 중
+      - generic [ref=e85]:
+        - strong [ref=e86]: 호가 지연 측정 중
+        - paragraph [ref=e87]: 61건 수집 · 최대 엣지 0.164% · 5분 전 갱신
+      - generic [ref=e318]:
+        - generic [ref=e319]:
+          - generic [ref=e320]: BTC→BOB wBTC.OFT
+          - generic [ref=e321]: +0.164%
+          - generic [ref=e322]: —
+        - generic [ref=e323]:
+          - generic [ref=e324]: ETH USDT→BTC (buy)
+          - generic [ref=e325]: "-0.102%"
+          - generic [ref=e326]: —
+        - generic [ref=e327]:
+          - generic [ref=e328]: Base USDC→BTC (buy)
+          - generic [ref=e329]: "-0.169%"
+          - generic [ref=e330]: —
+        - generic [ref=e331]:
+          - generic [ref=e332]: BTC→Base USDC (sell)
+          - generic [ref=e333]: "-0.376%"
+          - generic [ref=e334]: —
+        - generic [ref=e335]:
+          - generic [ref=e336]: BOB→Base wBTC.OFT
+          - generic [ref=e337]: 0.000%
+          - generic [ref=e338]: —
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - generic [ref=e90]: 수집 샘플
+          - strong [ref=e91]: "61"
+        - generic [ref=e92]:
+          - generic [ref=e93]: 최대 지연
+          - strong [ref=e94]: 0.164%
+        - generic [ref=e95]:
+          - generic [ref=e96]: 수익 기회
+          - strong [ref=e97]: 0건 (0%)
+        - generic [ref=e98]:
+          - generic [ref=e99]: BTC 가격 범위
+          - strong [ref=e100]: $71,392 – $71,773.935
+    - article [ref=e101]:
+      - generic [ref=e102]:
+        - heading "DEX 스프레드" [level=2] [ref=e103]
+        - generic [ref=e104]: 🟢 스프레드 확대
+      - generic [ref=e105]:
+        - strong [ref=e106]: 7체인 스프레드 0.551% · LBTC +0.234%
+        - paragraph [ref=e107]: 0.005 BTC 기준 · 11개 토큰 · 120분 전 · BTC $71,627 (-1.61%)
+      - generic [ref=e339]:
+        - generic [ref=e340]:
+          - generic [ref=e341]: base:LBTC
+          - generic [ref=e342]: $359.15
+          - generic [ref=e343]: gas $0.007
+        - generic [ref=e344]:
+          - generic [ref=e345]: base:cbBTC
+          - generic [ref=e346]: $358.31
+          - generic [ref=e347]: gas $0.005
+        - generic [ref=e348]:
+          - generic [ref=e349]: ethereum:cbBTC
+          - generic [ref=e350]: $358.03
+          - generic [ref=e351]: gas $0.155
+        - generic [ref=e352]:
+          - generic [ref=e353]: base:tBTC
+          - generic [ref=e354]: $357.97
+          - generic [ref=e355]: gas $0.005
+        - generic [ref=e356]:
+          - generic [ref=e357]: arbitrum:tBTC
+          - generic [ref=e358]: $357.93
+          - generic [ref=e359]: gas $0.022
+        - generic [ref=e360]:
+          - generic [ref=e361]: polygon:WBTC
+          - generic [ref=e362]: $357.76
+          - generic [ref=e363]: gas $0.006
+        - generic [ref=e364]:
+          - generic [ref=e365]: arbitrum:WBTC
+          - generic [ref=e366]: $357.53
+          - generic [ref=e367]: gas $0.017
+        - generic [ref=e368]:
+          - generic [ref=e369]: ethereum:WBTC
+          - generic [ref=e370]: $357.26
+          - generic [ref=e371]: gas $0.101
+        - generic [ref=e372]:
+          - generic [ref=e373]: avalanche:WBTC.e
+          - generic [ref=e374]: $357.20
+          - generic [ref=e375]: gas $0.000
+        - generic [ref=e376]:
+          - generic [ref=e377]: bsc:BTCB
+          - generic [ref=e378]: $357.20
+          - generic [ref=e379]: gas $0.010
+        - generic [ref=e380]:
+          - generic [ref=e381]: optimism:WBTC
+          - generic [ref=e382]: $357.18
+          - generic [ref=e383]: gas $0.000
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]: Max Spread
+          - strong [ref=e111]: 0.551% (max 0.672%)
+        - generic [ref=e112]:
+          - generic [ref=e113]: LBTC Premium
+          - strong [ref=e114]: 0.234%
+        - generic [ref=e115]:
+          - generic [ref=e116]: 수집 샘플
+          - strong [ref=e117]: "54"
+        - generic [ref=e118]:
+          - generic [ref=e119]: Best Token
+          - strong [ref=e120]: base:LBTC
+    - article [ref=e121]:
+      - generic [ref=e122]:
+        - heading "BTC 변동성 추적" [level=2] [ref=e123]
+        - generic [ref=e124]: 🔥 터보
+      - generic [ref=e125]:
+        - strong [ref=e126]: $71,627
+        - generic [ref=e127]: "-1.61%"
+      - generic [ref=e128]:
+        - generic "알림 상태" [ref=e129]: ✅
+        - generic "터보 모드" [ref=e384]: 🔥
+      - generic [ref=e130]:
+        - generic [ref=e131]:
+          - generic [ref=e132]: 수집 샘플
+          - strong [ref=e133]: "54"
+        - generic [ref=e134]:
+          - generic [ref=e135]: 스프레드 범위
+          - strong [ref=e136]: 0.283% – 0.672%
+        - generic [ref=e137]:
+          - generic [ref=e138]: 데이터 신선도
+          - strong [ref=e139]: 120분 전
+        - generic [ref=e140]:
+          - generic [ref=e141]: 알림
+          - strong [ref=e142]: 없음
+    - article [ref=e143]:
+      - generic [ref=e144]:
+        - heading "업데이트" [level=2] [ref=e145]
+        - generic [ref=e146]: 사이클
+      - generic [ref=e147]:
+        - strong [ref=e148]: 지갑 규모 보강 필요
+        - paragraph [ref=e149]: floor까지 $225 부족 · DEX 가격 Base 재확인 · BTC route 1개 다시 계산 · 현재 canary 경로 체인 가격이 오래됨 · Base wBTC.OFT $21.89 보강 후보 · 지갑 준비 점검이 더 필요함 · base->bob wBTC.OFT->wBTC.OFT · 외 1건 · 다음 점검 base->bob wBTC.OFT->wBTC.OFT · 지금 재점검 가능 · 외 2개 route · 관찰 시간 최소치 4/18 21:00 예상 · 약 6일 후 · 5s 7/8 · 15s 7/8 · 30s 7/8 · 체인 가격 6/9개 · stale 6 · missing 3 · 측정상 base->avalanche wBTC.OFT->wBTC.OFT는 더 좋아 보임 · source token balance missing · source gas snapshot stale · 외 2개 blocker · bob->base wBTC.OFT->wBTC.OFT · 가격 또는 가스 데이터가 아직 부족함 · 지갑 추정 $25.02 · 수요 대기 refill 2건
+      - generic [ref=e150]:
+        - generic [ref=e151]:
+          - strong [ref=e152]: 과적합 방지 차단 중
+          - generic [ref=e153]: 차단
+        - paragraph [ref=e154]: 관찰 시간 부족 · 시간대 다양성 부족 · 23.7h · 9 bucket · 남은 144h · 남은 15 bucket · 시간 게이트 최단 2026-04-18T12:00:56.658Z · shadow 기준 · warn 구형 레코드 남음

@@ -2,10 +2,15 @@
 
 import { EVM_CHAINS } from "../chains/registry.mjs";
 import { config, getChainRpcUrls } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { classifyGasEstimateError, estimateGas, gasUsdFromSnapshot, getGasSnapshot } from "../gas/rpc-gas.mjs";
+import {
+  classifyExecutableQuoteHydrationError,
+  hydrateStoredOfframpQuoteExecution,
+} from "../gateway/executable-quote.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { matchesRouteSelection } from "../estimator/route-filter.mjs";
 
 const SCHEMA_VERSION = 1;
@@ -23,7 +28,7 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     routeLimit: options["route-limit"] ? Number(options["route-limit"]) : 12,
-    from: options.from || config.estimateFrom,
+    from: options.from || null,
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
   };
@@ -64,8 +69,13 @@ function skipReason(quote) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.from, dataDir: config.dataDir });
+  args.from = resolved.address;
   const store = new JsonlStore(config.dataDir);
-  const prices = await getCoinGeckoPricesUsd();
+  const prices = await getCoinGeckoPricesUsd().catch((error) => {
+    console.warn(`warning: failed to fetch USD prices, gas USD estimates may be unavailable: ${error.message}`);
+    return emptyPricesUsd();
+  });
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
   const selectedQuotes = quotes
     .filter((quote) => quote.route?.srcChain !== "bitcoin")
@@ -83,64 +93,9 @@ async function main() {
   }
 
   for (const quote of selectedQuotes) {
-    const reason = skipReason(quote);
-    if (reason) {
-      const failure = {
-        schemaVersion: SCHEMA_VERSION,
-        runId,
-        observedAt: new Date().toISOString(),
-        routeKey: quote.routeKey,
-        amount: quote.amount,
-        srcChain: quote.route.srcChain,
-        dstChain: quote.route.dstChain,
-        reason,
-      };
-      await store.append("gateway-gas-estimate-failures", failure);
-      results.push({ ok: false, ...failure });
-      if (!args.json) console.log(`${quote.route.srcChain}->${quote.route.dstChain} skipped reason=${reason}`);
-      continue;
-    }
-
+    let executableQuote = quote;
     try {
-      const [estimate, snapshot] = await Promise.all([
-        estimateGas(
-          quote.route.srcChain,
-          {
-            from: args.from,
-            to: quote.txTo,
-            data: quote.txData,
-            valueWei: quote.txValueWei || "0",
-          },
-          chainConfig(quote.route.srcChain),
-        ),
-        snapshotFor(quote.route.srcChain),
-      ]);
-      const nativeUsd = prices.nativeByChain[quote.route.srcChain];
-      const estimatedGasUsd = gasUsdFromSnapshot(snapshot, nativeUsd, estimate.gasUnits);
-      const record = {
-        schemaVersion: SCHEMA_VERSION,
-        runId,
-        ...estimate,
-        routeKey: quote.routeKey,
-        amount: quote.amount,
-        srcChain: quote.route.srcChain,
-        dstChain: quote.route.dstChain,
-        txTo: quote.txTo,
-        txValueWei: quote.txValueWei,
-        txDataBytes: quote.txDataBytes,
-        from: args.from,
-        gasPriceWei: snapshot.gasPriceWei,
-        nativeUsd,
-        estimatedGasUsd,
-        source: "eth_estimateGas",
-      };
-      await store.append("gateway-gas-estimates", record);
-      results.push({ ok: true, ...record });
-      if (!args.json) {
-        console.log(
-          `${quote.route.srcChain}->${quote.route.dstChain} gasUnits=${record.gasUnits} gas=${formatUsd(record.estimatedGasUsd)} latency=${record.latencyMs}ms`,
-        );
-      }
+      executableQuote = await hydrateStoredOfframpQuoteExecution(quote, { senderAddress: args.from });
     } catch (error) {
       const failure = {
         schemaVersion: SCHEMA_VERSION,
@@ -150,17 +105,103 @@ async function main() {
         amount: quote.amount,
         srcChain: quote.route.srcChain,
         dstChain: quote.route.dstChain,
-        txTo: quote.txTo,
-        txValueWei: quote.txValueWei,
-        txDataBytes: quote.txDataBytes,
-        from: args.from,
-        reason: classifyGasEstimateError(error),
+        reason: classifyExecutableQuoteHydrationError(error) || "execution_quote_hydration_failed",
         error: { name: error.name, message: error.message, attempts: error.attempts || null },
       };
       await store.append("gateway-gas-estimate-failures", failure);
       results.push({ ok: false, ...failure });
       if (!args.json) console.log(`${quote.route.srcChain}->${quote.route.dstChain} failed reason=${failure.reason}`);
+      continue;
     }
+
+    const reason = skipReason(executableQuote);
+    if (reason) {
+      const failure = {
+        schemaVersion: SCHEMA_VERSION,
+        runId,
+        observedAt: new Date().toISOString(),
+        routeKey: executableQuote.routeKey,
+        amount: executableQuote.amount,
+        srcChain: executableQuote.route.srcChain,
+        dstChain: executableQuote.route.dstChain,
+        reason,
+      };
+      await store.append("gateway-gas-estimate-failures", failure);
+      results.push({ ok: false, ...failure });
+      if (!args.json) console.log(`${executableQuote.route.srcChain}->${executableQuote.route.dstChain} skipped reason=${reason}`);
+      continue;
+    }
+
+    try {
+      const [estimate, snapshot] = await Promise.all([
+        estimateGas(
+          executableQuote.route.srcChain,
+          {
+            from: args.from,
+            to: executableQuote.txTo,
+            data: executableQuote.txData,
+            valueWei: executableQuote.txValueWei || "0",
+          },
+          chainConfig(executableQuote.route.srcChain),
+        ),
+        snapshotFor(executableQuote.route.srcChain),
+      ]);
+      const nativeUsd = prices.nativeByChain[executableQuote.route.srcChain];
+      const estimatedGasUsd = gasUsdFromSnapshot(snapshot, nativeUsd, estimate.gasUnits);
+      const record = {
+        schemaVersion: SCHEMA_VERSION,
+        runId,
+        ...estimate,
+        routeKey: executableQuote.routeKey,
+        amount: executableQuote.amount,
+        srcChain: executableQuote.route.srcChain,
+        dstChain: executableQuote.route.dstChain,
+        txTo: executableQuote.txTo,
+        txValueWei: executableQuote.txValueWei,
+        txDataBytes: executableQuote.txDataBytes,
+        from: args.from,
+        gasPriceWei: snapshot.gasPriceWei,
+        nativeUsd,
+        estimatedGasUsd,
+        source: "eth_estimateGas",
+        executionHydratedFromOrder: executableQuote.executionHydratedFromOrder || false,
+        executionOrderId: executableQuote.executionOrderId || null,
+      };
+      await store.append("gateway-gas-estimates", record);
+      results.push({ ok: true, ...record });
+      if (!args.json) {
+        console.log(
+          `${executableQuote.route.srcChain}->${executableQuote.route.dstChain} gasUnits=${record.gasUnits} gas=${formatUsd(record.estimatedGasUsd)} latency=${record.latencyMs}ms`,
+        );
+      }
+    } catch (error) {
+      const failure = {
+        schemaVersion: SCHEMA_VERSION,
+        runId,
+        observedAt: new Date().toISOString(),
+        routeKey: executableQuote.routeKey,
+        amount: executableQuote.amount,
+        srcChain: executableQuote.route.srcChain,
+        dstChain: executableQuote.route.dstChain,
+        txTo: executableQuote.txTo,
+        txValueWei: executableQuote.txValueWei,
+        txDataBytes: executableQuote.txDataBytes,
+        from: args.from,
+        reason: classifyGasEstimateError(error),
+        error: { name: error.name, message: error.message, attempts: error.attempts || null },
+        executionHydratedFromOrder: executableQuote.executionHydratedFromOrder || false,
+        executionOrderId: executableQuote.executionOrderId || null,
+      };
+      await store.append("gateway-gas-estimate-failures", failure);
+      results.push({ ok: false, ...failure });
+      if (!args.json) console.log(`${executableQuote.route.srcChain}->${executableQuote.route.dstChain} failed reason=${failure.reason}`);
+    }
+  }
+
+  const targetedRouteSelection = Boolean(args.routeKey && args.amount);
+  const successCount = results.filter((item) => item.ok).length;
+  if (targetedRouteSelection && successCount === 0) {
+    process.exitCode = 1;
   }
 
   if (args.json) {

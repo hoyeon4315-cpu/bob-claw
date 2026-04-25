@@ -1,0 +1,152 @@
+{
+  "schema": "bobclaw-logo-manifest@1",
+  "chains": [
+    {
+      "id": "bitcoin",
+      "file": "chains/bitcoin.svg",
+      "color": "#F7931A"
+    },
+    {
+      "id": "bob",
+      "file": "chains/bob.svg",
+      "color": "#F25D2B"
+    },
+    {
+      "id": "ethereum",
+      "file": "chains/ethereum.svg",
+      "color": "#627EEA"
+    },
+    {
+      "id": "base",
+      "file": "chains/base.svg",
+      "color": "#0052FF"
+    },
+    {
+      "id": "bsc",
+      "file": "chains/bsc.svg",
+      "color": "#F0B90B"
+    },
+    {
+      "id": "avalanche",
+      "file": "chains/avalanche.svg",
+      "color": "#E84142"
+    },
+    {
+      "id": "unichain",
+      "file": "chains/unichain.svg",
+      "color": "#FF007A"
+    },
+    {
+      "id": "bera",
+      "file": "chains/bera.svg",
+      "color": "#814625"
+    },
+    {
+      "id": "optimism",
+      "file": "chains/optimism.svg",
+      "color": "#FF0420"
+    },
+    {
+      "id": "soneium",
+      "file": "chains/soneium.svg",
+      "color": "#000000"
+    },
+    {
+      "id": "sei",
+      "file": "chains/sei.svg",
+      "color": "#9D1F19"
+    },
+    {
+      "id": "sonic",
+      "file": "chains/sonic.svg",
+      "color": "#FE9A4D"
+    }
+  ],
+  "protocols": [
+    {
+      "id": "moonwell",
+      "file": "protocols/moonwell.svg",
+      "color": "#00D395"
+    },
+    {
+      "id": "morpho",
+      "file": "protocols/morpho.svg",
+      "color": "#2D4A7C"
+    },
+    {
+      "id": "aave",
+      "file": "protocols/aave.svg",
+      "color": "#B6509E"
+    },
+    {
+      "id": "euler",
+      "file": "protocols/euler.svg",
+      "color": "#39D0C9"
+    },
+    {
+      "id": "yo",
+      "file": "protocols/yo.svg",
+      "color": "#111113"
+    },
+    {
+      "id": "pendle",
+      "file": "protocols/pendle.svg",
+      "color": "#00ADAB"
+    },
+    {
+      "id": "aerodrome",
+      "file": "protocols/aerodrome.svg",
+      "color": "#1656F7"
+    },
+    {
+      "id": "beefy",
+      "file": "protocols/beefy.svg",
+      "color": "#4DB258"
+    },
+    {
+      "id": "gmx",
+      "file": "protocols/gmx.svg",
+      "color": "#2D52F5"
+    },
+    {
+      "id": "bend",
+      "file": "protocols/bend.svg",
+      "color": "#ED9D08"
+    },
+    {
+      "id": "bex",
+      "file": "protocols/bex.svg",
+      "color": "#814625"
+    },
+    {
+      "id": "k3capital",
+      "file": "protocols/k3capital.svg",
+      "color": "#6B3FA0"
+    },
+    {
+      "id": "babylon",
+      "file": "protocols/babylon.svg",
+      "color": "#CE6533"
+    },
+    {
+      "id": "solv",
+      "file": "protocols/solv.svg",
+      "color": "#1B1B1B"
+    },
+    {
+      "id": "gateway",
+      "file": "protocols/gateway.svg",
+      "color": "#F25D2B"
+    },
+    {
+      "id": "odos",
+      "file": "protocols/odos.svg",
+      "color": "#1F2937"
+    },
+    {
+      "id": "gaszip",
+      "file": "protocols/gaszip.svg",
+      "color": "#10B981"
+    }
+  ]
+}

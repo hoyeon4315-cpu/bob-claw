@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveTokenAsset } from "../assets/erc20-metadata.mjs";
+import { isBtcFamilyRoute, tokenAsset } from "../assets/tokens.mjs";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
 import { gasUsdFromSnapshot } from "../gas/rpc-gas.mjs";
+import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl, latestBy } from "../lib/jsonl-read.mjs";
-import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { scoreGatewayQuote } from "../scoring/gateway-score.mjs";
+import { buildShadowOpportunityObservation, observationKey, shouldPersistShadowObservation } from "../shadow/opportunity-observation.mjs";
+import { matchesRouteSelection } from "../estimator/route-filter.mjs";
+import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
+import { buildTreasuryPlan } from "../treasury/planner.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 
 function latestByRouteAndAmount(quotes) {
   const latest = new Map();
@@ -46,13 +55,14 @@ function routeStatsByKey(quotes, failures) {
   return stats;
 }
 
-function latestDexOutputQuoteByRoute(dexQuotes) {
+function latestDexOutputQuoteByRouteAndAmount(dexQuotes) {
   const latest = new Map();
-  for (const quote of dexQuotes) {
-    if (quote.source !== "gateway_dst_leg" || !quote.gatewayRouteKey) continue;
-    const existing = latest.get(quote.gatewayRouteKey);
+  for (const quote of filterTrustedExecutableDexQuotes(dexQuotes)) {
+    if (quote.source !== "gateway_dst_leg" || !quote.gatewayRouteKey || !quote.gatewayAmount) continue;
+    const key = selectionKey(quote.gatewayRouteKey, quote.gatewayAmount);
+    const existing = latest.get(key);
     if (!existing || new Date(quote.observedAt) > new Date(existing.observedAt)) {
-      latest.set(quote.gatewayRouteKey, quote);
+      latest.set(key, quote);
     }
   }
   return latest;
@@ -71,12 +81,84 @@ function latestByRouteAndAmountMap(items) {
   return latest;
 }
 
+function latestExactGasFailureByRouteAndAmountMap(items) {
+  return latestByRouteAndAmountMap(items);
+}
+
 function parseArgs(argv) {
   const flags = new Set(argv);
+  const options = Object.fromEntries(
+    argv
+      .filter((arg) => arg.startsWith("--") && arg.includes("="))
+      .map((arg) => {
+        const [key, ...valueParts] = arg.slice(2).split("=");
+        return [key, valueParts.join("=")];
+      }),
+  );
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
+    routeKey: options["route-key"] || null,
+    amount: options.amount || null,
+    touchChains: options["touch-chains"]
+      ? options["touch-chains"].split(",").map((item) => item.trim()).filter(Boolean)
+      : [],
+    dstChains: options["dst-chains"]
+      ? options["dst-chains"].split(",").map((item) => item.trim()).filter(Boolean)
+      : [],
+    shadowRolloverMs: options["shadow-rollover-ms"] ? Number(options["shadow-rollover-ms"]) : null,
   };
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function preferredScoreUsd(score) {
+  return (
+    score.effectiveSystemNetPnlUsd ??
+    score.treasuryAdjustedExecutableNetEdgeUsd ??
+    score.executableNetEdgeUsd ??
+    score.treasuryAdjustedNetEdgeUsd ??
+    score.netEdgeUsd ??
+    Number.NEGATIVE_INFINITY
+  );
+}
+
+function sortScores(scores) {
+  return [...scores].sort(
+    (a, b) => preferredScoreUsd(b) - preferredScoreUsd(a) || a.routeKey.localeCompare(b.routeKey),
+  );
+}
+
+function summarizeScores(scores, maxRouteFailureRate) {
+  return {
+    shadowCandidates: scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length,
+    dexBacked: scores.filter((score) => score.dex).length,
+    insufficientData: scores.filter((score) => score.tradeReadiness === "insufficient_data").length,
+    highFailureRate: scores.filter((score) => (score.routeStats?.failureRate ?? 0) > maxRouteFailureRate).length,
+    staleGas: scores.filter((score) => score.dataGaps.includes("stale_src_gas_snapshot")).length,
+    missingDecimals: scores.filter(
+      (score) => score.dataGaps.includes("missing_src_token_decimals") || score.dataGaps.includes("missing_dst_token_decimals"),
+    ).length,
+  };
+}
+
+function selectionKey(routeKey, amount) {
+  return `${routeKey}|${amount}`;
+}
+
+function mergeScores(existingScores, refreshedScores, replacedKeys) {
+  const replaceSet = new Set(replacedKeys);
+  return [
+    ...(existingScores || []).filter((score) => !replaceSet.has(selectionKey(score.routeKey, score.amount))),
+    ...refreshedScores,
+  ];
 }
 
 function formatUsd(value) {
@@ -94,27 +176,141 @@ function formatMinutes(value) {
   return `${value.toFixed(1)}m`;
 }
 
+function exactGasUsd(exactGas, nativeUsd) {
+  if (!exactGas) return null;
+  if (Number.isFinite(exactGas.estimatedGasUsd)) return exactGas.estimatedGasUsd;
+  if (!Number.isFinite(nativeUsd)) return null;
+  if (!Number.isFinite(Number(exactGas.gasUnits)) || !exactGas.gasPriceWei) return null;
+  return (Number(BigInt(exactGas.gasPriceWei)) / 1e18) * Number(exactGas.gasUnits) * nativeUsd;
+}
+
+function minutesBetween(older, newer) {
+  if (!older || !newer) return null;
+  return (new Date(newer).getTime() - new Date(older).getTime()) / 60_000;
+}
+
+function isDexAffectedDstRoute(quote, dstChains = []) {
+  if (!quote?.route?.dstChain || !dstChains.includes(quote.route.dstChain)) return false;
+  return tokenAsset(quote.route.dstChain, quote.route.dstToken).family === "wrapped_btc";
+}
+
+function isTouchedBtcFamilyRoute(quote, touchChains = []) {
+  if (!quote?.route || touchChains.length === 0) return false;
+  if (!isBtcFamilyRoute(quote.route)) return false;
+  return touchChains.includes(quote.route.srcChain) || touchChains.includes(quote.route.dstChain);
+}
+
+function sameAddress(left, right) {
+  return String(left || "").toLowerCase() !== "" && String(left || "").toLowerCase() === String(right || "").toLowerCase();
+}
+
+function latestInventoryForAddress(records, address) {
+  const filtered = address ? records.filter((item) => sameAddress(item.address, address)) : records;
+  return [...filtered].sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
+}
+
+function routeDemandFromQuote(quote) {
+  return [
+    { chain: quote.route.srcChain },
+    { chain: quote.route.srcChain, token: quote.route.srcToken },
+  ];
+}
+
+function routeContextFromScore(score) {
+  return {
+    routeKey: score.routeKey,
+    amount: score.amount,
+    inputUsd: score.inputUsd ?? null,
+    netEdgeUsd: score.netEdgeUsd ?? null,
+    executableNetEdgeUsd: score.executableNetEdgeUsd ?? null,
+    knownCostUsd: score.knownCostUsd ?? null,
+    routeFailureRate: score.routeStats?.failureRate ?? null,
+    tradeReadiness: score.tradeReadiness ?? null,
+  };
+}
+
+function buildFundingSourcePlanForQuote({ quote, score, inventory, policy }) {
+  if (!inventory) return null;
+  const treasuryPlan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: routeDemandFromQuote(quote),
+  });
+  return buildFundingSourcePlan({
+    plan: treasuryPlan,
+    policy,
+    routeContext: routeContextFromScore(score),
+  });
+}
+
 function assetText(asset) {
   return `${asset.ticker}/${asset.decimals ?? "?"}d`;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if ((args.routeKey && !args.amount) || (!args.routeKey && args.amount)) {
+    throw new Error("Pass both --route-key and --amount together for selective scoring");
+  }
+  if (args.routeKey && (args.dstChains.length > 0 || args.touchChains.length > 0)) {
+    throw new Error("Use either exact route selection or chain selection, not both");
+  }
+  if (args.dstChains.length > 0 && args.touchChains.length > 0) {
+    throw new Error("Use either --dst-chains or --touch-chains, not both");
+  }
   const now = new Date().toISOString();
+  const scorePath = join(config.dataDir, "gateway-scores.json");
   const allQuotes = await readJsonl(config.dataDir, "gateway-quotes");
   const failures = await readJsonl(config.dataDir, "gateway-quote-failures");
   const dexQuotes = await readJsonl(config.dataDir, "dex-quotes");
+  const priceSnapshots = await readJsonl(config.dataDir, "market-price-snapshots");
   const bitcoinFeeSnapshots = await readJsonl(config.dataDir, "bitcoin-fee-snapshots");
   const gasEstimateSnapshots = await readJsonl(config.dataDir, "gateway-gas-estimates");
-  const quotes = latestByRouteAndAmount(allQuotes);
+  const gasEstimateFailures = await readJsonl(config.dataDir, "gateway-gas-estimate-failures");
+  const gasSnapshotRecords = await readJsonl(config.dataDir, "gas-snapshots");
+  const inventoryRecords = await readJsonl(config.dataDir, "treasury-inventory");
+  const shadowObservationRecords = args.write ? await readJsonl(config.dataDir, "gateway-shadow-observations") : [];
+  const latestQuotes = latestByRouteAndAmount(allQuotes);
   const routeStats = routeStatsByKey(allQuotes, failures);
-  const dexOutputQuotes = latestDexOutputQuoteByRoute(dexQuotes);
+  const dexOutputQuotes = latestDexOutputQuoteByRouteAndAmount(dexQuotes);
   const gasEstimates = latestByRouteAndAmountMap(gasEstimateSnapshots);
-  const gasSnapshots = latestBy(await readJsonl(config.dataDir, "gas-snapshots"), (snapshot) => snapshot.chain);
+  const gasEstimateFailureMap = latestExactGasFailureByRouteAndAmountMap(gasEstimateFailures);
+  const gasSnapshots = latestBy(gasSnapshotRecords, (snapshot) => snapshot.chain);
   const bitcoinFee = bitcoinFeeSnapshots.at(-1) || null;
-  const prices = await getCoinGeckoPricesUsd();
+  const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
+  const useObservedPrices = latestObservedPrices && isFreshPriceSnapshot(latestObservedPrices, { now });
+  const livePrices = useObservedPrices ? null : await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+  const basePrices = useObservedPrices ? pricesFromSnapshot(latestObservedPrices) : livePrices;
+  const prices = overlayObservedPricesUsd(basePrices, {
+    gasSnapshots: gasSnapshotRecords,
+    bitcoinFeeSnapshots,
+  });
+  const resolved = await resolveOperationalAddress({ dataDir: config.dataDir });
+  const latestInventory = latestInventoryForAddress(inventoryRecords, resolved.address);
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const tokenCache = new Map();
   const maxRouteFailureRate = 0.1;
+  const selective = Boolean((args.routeKey && args.amount) || args.dstChains.length > 0 || args.touchChains.length > 0);
+  const previousSnapshot = selective && args.write ? await readJsonIfExists(scorePath) : null;
+  const selectionFilters = {
+    routeKey: args.routeKey,
+    amount: args.amount,
+    touchChains: args.touchChains,
+    dstChains: args.dstChains,
+  };
+  const quotes = selective
+    ? latestQuotes
+        .filter((quote) => matchesRouteSelection(quote, selectionFilters))
+        .filter((quote) => {
+          if (args.dstChains.length > 0) return isDexAffectedDstRoute(quote, args.dstChains);
+          if (args.touchChains.length > 0) return isTouchedBtcFamilyRoute(quote, args.touchChains);
+          return true;
+        })
+    : latestQuotes;
+
+  if (args.routeKey && args.amount && quotes.length === 0) {
+    throw new Error(`No latest quote found for route ${args.routeKey} amount=${args.amount}`);
+  }
 
   async function resolveCached(chain, token) {
     const key = `${chain}:${String(token).toLowerCase()}`;
@@ -124,7 +320,8 @@ async function main() {
     return tokenCache.get(key);
   }
 
-  const scores = [];
+  const refreshedScores = [];
+  const refreshedShadowObservations = [];
   for (const quote of quotes) {
     const snapshot = gasSnapshots.get(quote.route.srcChain);
     const [srcAsset, dstAsset] = await Promise.all([
@@ -132,54 +329,113 @@ async function main() {
       resolveCached(quote.route.dstChain, quote.route.dstToken),
     ]);
     const exactGas = gasEstimates.get(`${quote.routeKey}|${quote.amount}`) || null;
-    const executionGasUsd = Number.isFinite(exactGas?.estimatedGasUsd)
-      ? exactGas.estimatedGasUsd
+    const exactGasFailure = gasEstimateFailureMap.get(`${quote.routeKey}|${quote.amount}`) || null;
+    const latestExactGasSuccessMs = exactGas?.observedAt ? new Date(exactGas.observedAt).getTime() : null;
+    const latestExactGasFailureMs = exactGasFailure?.observedAt ? new Date(exactGasFailure.observedAt).getTime() : null;
+    const activeExactGasFailure =
+      latestExactGasFailureMs !== null &&
+      (latestExactGasSuccessMs === null || latestExactGasFailureMs >= latestExactGasSuccessMs)
+        ? exactGasFailure
+        : null;
+    const exactGasAgeMinutes = minutesBetween(exactGas?.observedAt || null, now);
+    const exactGasEstimatedUsd = exactGasUsd(exactGas, prices.nativeByChain[quote.route.srcChain]);
+    const exactGasFresh =
+      Number.isFinite(exactGasEstimatedUsd) &&
+      (!Number.isFinite(exactGasAgeMinutes) || exactGasAgeMinutes <= 30);
+    const exactGasUsable = Number.isFinite(exactGasEstimatedUsd);
+    const executionGasUsd = exactGasFresh
+      ? exactGasEstimatedUsd
       : snapshot
         ? gasUsdFromSnapshot(snapshot, prices.nativeByChain[quote.route.srcChain])
-        : null;
-    scores.push(
+        : exactGasUsable
+          ? exactGasEstimatedUsd
+          : null;
+    const executionGasSource = exactGasFresh ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : exactGasUsable ? "eth_estimateGas" : null;
+    const gasObservedAt = exactGasFresh ? exactGas?.observedAt || null : snapshot?.observedAt || exactGas?.observedAt || null;
+    const scoreBaseOptions = {
+      srcAsset,
+      dstAsset,
+      executionGasUsd,
+      executionGasSource,
+      exactExecutionGasFailureReason: activeExactGasFailure?.reason || null,
+      allowEthereumL1Routes: config.approveEthereumL1Routes,
+      gasObservedAt,
+      routeStats: routeStats.get(quote.routeKey),
+      dexOutputQuote: dexOutputQuotes.get(selectionKey(quote.routeKey, quote.amount)),
+      bitcoinFee,
+      requireExactExecutionGas: true,
+      maxRouteFailureRate,
+      gasBufferMultiplier: 2,
+      maxGasSnapshotAgeMinutes: 30,
+      now,
+    };
+    const preliminaryScore =
       scoreGatewayQuote(quote, prices, {
-        srcAsset,
-        dstAsset,
-        executionGasUsd,
-        executionGasSource: exactGas ? "eth_estimateGas" : snapshot ? "fallback_gas_units" : null,
-        gasObservedAt: exactGas?.observedAt || snapshot?.observedAt || null,
-        routeStats: routeStats.get(quote.routeKey),
-        dexOutputQuote: dexOutputQuotes.get(quote.routeKey),
-        bitcoinFee,
-        requireExactExecutionGas: true,
-        maxRouteFailureRate,
-        gasBufferMultiplier: 2,
-        maxGasSnapshotAgeMinutes: 30,
+        ...scoreBaseOptions,
+      });
+    const fundingSourcePlan = buildFundingSourcePlanForQuote({
+      quote,
+      score: preliminaryScore,
+      inventory: latestInventory,
+      policy,
+    });
+    const score = scoreGatewayQuote(quote, prices, {
+      ...scoreBaseOptions,
+      executionRefillExpectedCostUsd: fundingSourcePlan?.summary?.executionRefillExpectedCostUsd ?? null,
+      reserveReplenishmentExpectedCostUsd: fundingSourcePlan?.summary?.reserveReplenishmentExpectedCostUsd ?? null,
+      expectedFailureCostUsd: fundingSourcePlan?.summary?.expectedFailureCostUsd ?? null,
+      capitalFragmentationDragUsd: fundingSourcePlan?.summary?.capitalFragmentationDragUsd ?? null,
+      effectiveSystemNetPnlUsd: fundingSourcePlan?.summary?.effectiveSystemNetPnlUsd ?? null,
+    });
+    refreshedScores.push(score);
+    refreshedShadowObservations.push(
+      buildShadowOpportunityObservation({
+        score,
+        fundingSourcePlan,
         now,
+        priceObservedAt: useObservedPrices ? latestObservedPrices?.observedAt || null : now,
+        inventoryObservedAt: latestInventory?.observedAt || null,
       }),
     );
   }
 
-  scores.sort((a, b) => (b.netEdgeUsd ?? -Infinity) - (a.netEdgeUsd ?? -Infinity) || a.routeKey.localeCompare(b.routeKey));
+  const scores = sortScores(
+    selective && previousSnapshot
+      ? mergeScores(
+          previousSnapshot.scores || [],
+          refreshedScores,
+          quotes.map((quote) => selectionKey(quote.routeKey, quote.amount)),
+        )
+      : refreshedScores,
+  );
 
   const result = {
     schemaVersion: 1,
     generatedAt: now,
-    priceObservedAt: now,
+    priceObservedAt: useObservedPrices ? latestObservedPrices.observedAt : now,
+    priceSource: useObservedPrices ? latestObservedPrices.source || "snapshot" : "live_fetch",
     btcUsd: prices.btc,
     scoredQuotes: scores.length,
-    summary: {
-      shadowCandidates: scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length,
-      dexBacked: scores.filter((score) => score.dex).length,
-      insufficientData: scores.filter((score) => score.tradeReadiness === "insufficient_data").length,
-      highFailureRate: scores.filter((score) => (score.routeStats?.failureRate ?? 0) > maxRouteFailureRate).length,
-      staleGas: scores.filter((score) => score.dataGaps.includes("stale_src_gas_snapshot")).length,
-      missingDecimals: scores.filter(
-        (score) => score.dataGaps.includes("missing_src_token_decimals") || score.dataGaps.includes("missing_dst_token_decimals"),
-      ).length,
-    },
+    summary: summarizeScores(scores, maxRouteFailureRate),
     scores,
   };
 
   if (args.write) {
-    const path = join(config.dataDir, "gateway-scores.json");
-    await writeFile(path, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    await writeFile(scorePath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    const store = new JsonlStore(config.dataDir);
+    const latestShadowByKey = new Map([...latestBy(shadowObservationRecords, observationKey).entries()]);
+    let appendedShadowObservations = 0;
+    for (const observation of refreshedShadowObservations) {
+      const previousObservation = latestShadowByKey.get(observationKey(observation)) || null;
+      const decision = shouldPersistShadowObservation(previousObservation, observation, {
+        maxUnchangedAgeMs: Number.isFinite(args.shadowRolloverMs) ? args.shadowRolloverMs : undefined,
+      });
+      if (!decision.shouldPersist) continue;
+      await store.append("gateway-shadow-observations", observation);
+      latestShadowByKey.set(observationKey(observation), observation);
+      appendedShadowObservations += 1;
+    }
+    result.shadowObservationAppends = appendedShadowObservations;
   }
 
   if (args.json) {
@@ -189,11 +445,23 @@ async function main() {
 
   console.log(`btcUsd=${prices.btc}`);
   console.log(`scoredQuotes=${scores.length}`);
+  if (selective) {
+    if (args.routeKey) {
+      console.log(`selection routeKey=${args.routeKey} amount=${args.amount} refreshed=${refreshedScores.length}`);
+    } else if (args.touchChains.length > 0) {
+      console.log(`selection touchChains=${args.touchChains.join(",")} refreshed=${refreshedScores.length}`);
+    } else {
+      console.log(`selection dstChains=${args.dstChains.join(",")} refreshed=${refreshedScores.length}`);
+    }
+  }
+  if (args.write) {
+    console.log(`shadowObservations=${result.shadowObservationAppends ?? refreshedShadowObservations.length}`);
+  }
   console.log(
     `summary shadowCandidates=${result.summary.shadowCandidates} insufficientData=${result.summary.insufficientData} highFailureRate=${result.summary.highFailureRate} staleGas=${result.summary.staleGas} missingDecimals=${result.summary.missingDecimals}`,
   );
 
-  for (const score of scores) {
+  for (const score of selective ? refreshedScores : scores) {
     console.log(
       [
         `${score.srcChain}->${score.dstChain}`,
@@ -209,8 +477,14 @@ async function main() {
         `btcFee=${formatUsd(score.bitcoinFeeUsd)}`,
         `gasBuffer=${formatUsd(score.gasShockBufferUsd)}`,
         `knownCost=${formatUsd(score.knownCostUsd)}`,
+        `refillCost=${formatUsd(score.treasuryExecutionRefillCostUsd)}`,
         `netEdge=${formatUsd(score.netEdgeUsd)}`,
         `execNet=${formatUsd(score.executableNetEdgeUsd)}`,
+        `treasuryNet=${formatUsd(score.treasuryAdjustedNetEdgeUsd)}`,
+        `treasuryExecNet=${formatUsd(score.treasuryAdjustedExecutableNetEdgeUsd)}`,
+        `failureDrag=${formatUsd(score.expectedFailureCostUsd)}`,
+        `fragmentationDrag=${formatUsd(score.capitalFragmentationDragUsd)}`,
+        `systemNet=${formatUsd(score.effectiveSystemNetPnlUsd)}`,
         `edge=${formatPct(score.netEdgePct)}`,
         `execEdge=${formatPct(score.executableNetEdgePct)}`,
         `failRate=${formatPct(score.routeStats?.failureRate)}`,

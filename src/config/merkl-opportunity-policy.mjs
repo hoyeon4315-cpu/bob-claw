@@ -1,0 +1,93 @@
+export const MERKL_OPPORTUNITY_POLICY = Object.freeze({
+  profileId: "aggressive_multi_asset_payback_v2",
+  api: Object.freeze({
+    opportunityPageSize: 100,
+    campaignPageSize: 100,
+    maxOpportunityPages: 4,
+    maxCampaignPages: 4,
+    requestTimeoutMs: 15_000,
+  }),
+  entry: Object.freeze({
+    minHoursRemainingForNewEntry: 36,
+    minHoursRemainingForScaleUp: 96,
+    rotationLookaheadHours: 48,
+    eligibleEntryChains: Object.freeze([
+      "ethereum",
+      "base",
+      "bob",
+      "bsc",
+      "avalanche",
+      "bera",
+      "optimism",
+      "sei",
+      "soneium",
+      "sonic",
+      "unichain",
+    ]),
+    minLiveCampaignCount: 1,
+    minTvlUsdByFamily: Object.freeze({
+      btc_collateral_stable_borrow: 1_000_000,
+      wrapped_btc_lending: 750_000,
+      btc_fixed_yield: 1_500_000,
+      stable_btc_lp: 2_500_000,
+      managed_btc_vault: 5_000_000,
+      eth_collateral_stable_borrow: 1_500_000,
+      eth_destination_lending: 1_000_000,
+      eth_fixed_yield: 2_000_000,
+      stable_treasury_carry: 2_000_000,
+      stable_fixed_yield: 2_500_000,
+      tokenized_gold_rotation: 750_000,
+      tokenized_reserve_sleeve: 1_000_000,
+      other_bluechip_rotation: 2_500_000,
+      btc_misc: 2_000_000,
+      non_core_asset: 5_000_000,
+      unknown: 2_500_000,
+    }),
+    supportedExecutionSurfaces: Object.freeze({
+      lending: true,
+      stableBorrow: true,
+      clLp: false,
+      managedVault: false,
+      ethLending: true,
+      stableCarry: true,
+      fixedYield: true,
+      reserveAllocation: true,
+      assetRotation: true,
+    }),
+    supportedAssetFamilies: Object.freeze([
+      "btc_like",
+      "eth_like",
+      "stablecoin",
+      "tokenized_gold",
+      "tokenized_reserve",
+      "other_bluechip",
+    ]),
+    hardRejectRewardTokenTypes: Object.freeze(["POINT"]),
+  }),
+  scoring: Object.freeze({
+    btcPaybackCompatibility: 20,
+    directBtcExposure: 10,
+    coreAssetFamily: 12,
+    supportedStrategyMapping: 20,
+    chainInCoreScope: 12,
+    sufficientDuration: 10,
+    sufficientTvl: 10,
+    nativeYieldKnown: 8,
+    rewardTokenIsTransferable: 8,
+    singleCampaignPenalty: 6,
+    shortDurationPenalty: 10,
+    incentiveDominancePenalty: 8,
+    lowTvlHighAprPenalty: 12,
+    managedVaultPenalty: 10,
+    unsupportedExecutionSurfacePenalty: 20,
+    operatorHoldPenalty: 100,
+  }),
+});
+
+export function minTvlForFamily(family, policy = MERKL_OPPORTUNITY_POLICY) {
+  return policy.entry.minTvlUsdByFamily[family] ?? policy.entry.minTvlUsdByFamily.unknown;
+}
+
+export function chainEligibleForEntry(chain, policy = MERKL_OPPORTUNITY_POLICY) {
+  return policy.entry.eligibleEntryChains.includes(chain);
+}

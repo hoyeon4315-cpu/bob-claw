@@ -1,20 +1,10 @@
 #!/usr/bin/env node
 
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { classifyGatewayAssetUniverse, isBtcFamilyRoute, tokenAsset } from "../assets/tokens.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
-
-const BTC_FAMILY = new Set(
-  [
-    "0x0000000000000000000000000000000000000000",
-    "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
-    "0x236f8c0a61dA474dB21B693fB2ea7AAB0c803894",
-  ].map((token) => token.toLowerCase()),
-);
-
-function isBtcFamilyRoute(route) {
-  return BTC_FAMILY.has(route.srcToken.toLowerCase()) && BTC_FAMILY.has(route.dstToken.toLowerCase());
-}
 
 function countBy(items, keyFn) {
   const counts = new Map();
@@ -25,50 +15,139 @@ function countBy(items, keyFn) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
-function tokenSymbol(token) {
-  const normalized = token.toLowerCase();
-  if (normalized === "0x0000000000000000000000000000000000000000") return "native";
-  if (normalized === "0x0555e30da8f98308edb960aa94c0db47230d2b9c") return "Gateway BTC";
-  if (normalized === "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599") return "Ethereum WBTC";
-  if (normalized === "0x236f8c0a61da474db21b693fb2ea7aab0c803894") return "uniBTC-like";
-  return token;
+function tokenSymbol(chain, token) {
+  if (String(token).toLowerCase() === "0x0000000000000000000000000000000000000000") return "native";
+  const asset = tokenAsset(chain, token);
+  return asset?.ticker && asset.ticker !== "Token" ? asset.ticker : token;
 }
 
-async function main() {
-  const client = new GatewayClient({ baseUrl: config.gatewayApiBase });
-  const result = await client.getRoutes();
-  const routes = result.body;
+function parseArgs(argv) {
+  const flags = new Set(argv);
+  return {
+    json: flags.has("--json"),
+  };
+}
+
+function sourceLabel(item) {
+  return item?.source?.label ? ` source=${item.source.label}` : "";
+}
+
+export function buildGatewayInventorySummary(routes = []) {
   const summary = summarizeRoutes(routes);
   const chains = [...new Set(routes.flatMap((route) => [route.srcChain, route.dstChain]))].sort();
   const btcRoutes = routes.filter(isBtcFamilyRoute);
   const bobRoutes = routes.filter((route) => route.srcChain === "bob" || route.dstChain === "bob");
+  const assetUniverse = classifyGatewayAssetUniverse(routes);
+  const tokenCounts = countBy(
+    routes.flatMap((route) => [
+      { chain: route.srcChain, token: route.srcToken },
+      { chain: route.dstChain, token: route.dstToken },
+    ]),
+    (item) => `${item.chain}:${item.token}`,
+  ).map(([key, count]) => {
+    const separator = key.indexOf(":");
+    const chain = separator >= 0 ? key.slice(0, separator) : null;
+    const token = separator >= 0 ? key.slice(separator + 1) : key;
+    return {
+      chain,
+      token,
+      ticker: tokenSymbol(chain, token),
+      count,
+    };
+  });
+  const bobTouchingBtcRoutes = bobRoutes
+    .filter(isBtcFamilyRoute)
+    .sort((a, b) => routeKey(a).localeCompare(routeKey(b)))
+    .map((route) => ({
+      routeKey: routeKey(route),
+      srcChain: route.srcChain,
+      srcTicker: tokenSymbol(route.srcChain, route.srcToken),
+      dstChain: route.dstChain,
+      dstTicker: tokenSymbol(route.dstChain, route.dstToken),
+    }));
 
-  console.log(`routes=${routes.length}`);
-  console.log(`chains=${chains.length} ${chains.join(", ")}`);
-  console.log(`btcFamilyRoutes=${btcRoutes.length}`);
-  console.log(`bobTouchingRoutes=${bobRoutes.length}`);
+  return {
+    routes: routes.length,
+    chains,
+    btcFamilyRoutes: btcRoutes.length,
+    bobTouchingRoutes: bobRoutes.length,
+    chainPairs: summary.chainPairs,
+    tokenCounts,
+    observedBtcLikeAssets: assetUniverse.observedBtcLikeAssets,
+    btcWatchlistObserved: assetUniverse.watchlistObserved,
+    btcWatchlistMissing: assetUniverse.watchlistMissing,
+    unknownAssets: assetUniverse.unknownAssets,
+    bobTouchingBtcRoutes,
+  };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const client = new GatewayClient({ baseUrl: config.gatewayApiBase });
+  const result = await client.getRoutes();
+  const routes = result.body;
+  const inventory = buildGatewayInventorySummary(routes);
+
+  if (args.json) {
+    console.log(JSON.stringify(inventory, null, 2));
+    return;
+  }
+
+  console.log(`routes=${inventory.routes}`);
+  console.log(`chains=${inventory.chains.length} ${inventory.chains.join(", ")}`);
+  console.log(`btcFamilyRoutes=${inventory.btcFamilyRoutes}`);
+  console.log(`bobTouchingRoutes=${inventory.bobTouchingRoutes}`);
 
   console.log("");
   console.log("Chain pair counts:");
-  for (const item of summary.chainPairs) {
+  for (const item of inventory.chainPairs) {
     console.log(`  ${item.pair}: ${item.count}`);
   }
 
   console.log("");
   console.log("Token counts:");
-  for (const [token, count] of countBy(routes.flatMap((route) => [route.srcToken, route.dstToken]), (token) => token)) {
-    console.log(`  ${tokenSymbol(token)} ${token}: ${count}`);
+  for (const item of inventory.tokenCounts) {
+    console.log(`  ${item.chain}:${item.ticker} ${item.token}: ${item.count}`);
+  }
+
+  console.log("");
+  console.log("Observed BTC-like assets:");
+  for (const asset of inventory.observedBtcLikeAssets) {
+    console.log(`  ${asset.chain}:${asset.ticker} ${asset.token}`);
+  }
+
+  console.log("");
+  console.log("BTC watchlist missing from live routes:");
+  if (inventory.btcWatchlistMissing.length === 0) {
+    console.log("  none");
+  } else {
+    for (const item of inventory.btcWatchlistMissing) {
+      console.log(`  ${item.chain || "*"}:${item.ticker} status=${item.status}${sourceLabel(item)}`);
+    }
+  }
+
+  console.log("");
+  console.log("Unknown token addresses requiring review:");
+  if (inventory.unknownAssets.length === 0) {
+    console.log("  none");
+  } else {
+    for (const asset of inventory.unknownAssets) {
+      console.log(`  ${asset.chain}:${asset.token}`);
+    }
   }
 
   console.log("");
   console.log("BOB-touching BTC-family routes:");
-  for (const route of bobRoutes.filter(isBtcFamilyRoute).sort((a, b) => routeKey(a).localeCompare(routeKey(b)))) {
-    console.log(`  ${route.srcChain}:${tokenSymbol(route.srcToken)} -> ${route.dstChain}:${tokenSymbol(route.dstToken)}`);
+  for (const route of inventory.bobTouchingBtcRoutes) {
+    console.log(`  ${route.srcChain}:${route.srcTicker} -> ${route.dstChain}:${route.dstTicker}`);
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

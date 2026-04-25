@@ -49,6 +49,16 @@ function requiredFundingActions(candidate, fundingPlan) {
   return actions;
 }
 
+function economicPrepRejectionReasons(candidate = {}) {
+  if (Number.isFinite(candidate.effectiveSystemNetPnlUsd) && candidate.effectiveSystemNetPnlUsd <= 0) {
+    return ["effective_system_net_pnl_not_positive"];
+  }
+  if (Number.isFinite(candidate.executableNetEdgeUsd) && candidate.executableNetEdgeUsd <= 0) {
+    return ["executable_net_edge_not_positive"];
+  }
+  return [];
+}
+
 export function determineCanaryNextStep({ routePlan, fundingPlan }) {
   const best = routePlan?.topCandidates?.[0] || null;
 
@@ -63,6 +73,28 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
   }
 
   if (!best.viableForPrep) {
+    const staleGasOnly =
+      best.txReady &&
+      !best.prepBlockers?.length &&
+      !best.readinessFailureReason &&
+      (best.scoreDisqualifiers || []).length > 0 &&
+      (best.scoreDisqualifiers || []).every((reason) => reason === "stale_src_gas_snapshot");
+    if (staleGasOnly) {
+      return {
+        decision: "RUN_EXACT_GAS",
+        headline: "Rerun exact gas for the best route after stale gas data",
+        route: best,
+        actions: [
+          {
+            type: "estimate_exact_gas",
+            routeKey: best.routeKey,
+            amount: best.amount,
+            chain: best.srcChain,
+          },
+        ],
+        reasons: ["stale_src_gas_snapshot"],
+      };
+    }
     return {
       decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
       headline: "No viable route is ready for canary prep",
@@ -76,6 +108,20 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
     };
   }
 
+  const economicPrepReasons = economicPrepRejectionReasons(best);
+  if (economicPrepReasons.length) {
+    return {
+      decision: "BLOCKED_ECONOMICALLY_UNJUSTIFIED_PREP",
+      headline: "Transport route prep is blocked because instant route economics are non-positive",
+      blockerScope: "transport_route_prep",
+      economicsMode: "instant_route_edge",
+      strategyRailHint: "This only blocks transport-route prep. Yield/protocol rails should be evaluated with entry cost, carry, breakeven, unwind, and receipt proof.",
+      route: best,
+      actions: [],
+      reasons: [...economicPrepReasons, ...(best.tradeReadiness ? [best.tradeReadiness] : [])],
+    };
+  }
+
   if (best.prepBlockers?.length) {
     return {
       decision: "FUND_AND_APPROVE_WALLET",
@@ -83,6 +129,16 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
       route: best,
       actions: requiredFundingActions(best, fundingPlan),
       reasons: best.prepBlockers,
+    };
+  }
+
+  if ((best.scoreDisqualifiers || []).includes("exact_src_execution_gas_reverted")) {
+    return {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      headline: "Best prepared route is blocked by exact gas revert",
+      route: best,
+      actions: [],
+      reasons: ["exact_src_execution_gas_reverted"],
     };
   }
 
@@ -100,6 +156,26 @@ export function determineCanaryNextStep({ routePlan, fundingPlan }) {
         },
       ],
       reasons: ["exact_src_execution_gas_not_estimated"],
+    };
+  }
+
+  if (best.tradeReadiness === "shadow_candidate_review_only") {
+    return {
+      decision: "REVIEW_CANARY_CANDIDATE",
+      headline: "Best route is prepared for manual canary review",
+      route: best,
+      actions: [],
+      reasons: [],
+    };
+  }
+
+  if (best.tradeReadiness) {
+    return {
+      decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+      headline: "Best prepared route still fails objective score review",
+      route: best,
+      actions: [],
+      reasons: [best.tradeReadiness],
     };
   }
 

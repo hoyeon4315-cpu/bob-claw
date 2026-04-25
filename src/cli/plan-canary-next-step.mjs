@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState } from "../estimator/load-canary-state.mjs";
 
 function parseArgs(argv) {
@@ -15,7 +16,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    address: options.address || config.estimateFrom,
+    address: options.address || null,
   };
 }
 
@@ -26,7 +27,8 @@ function formatAmount(value, ticker) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { nextStep: next } = await loadCanaryState({ address: args.address, dataDir: config.dataDir });
+  const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  const { nextStep: next } = await loadCanaryState({ address: resolved.address, dataDir: config.dataDir });
 
   if (args.json) {
     console.log(JSON.stringify(next, null, 2));
