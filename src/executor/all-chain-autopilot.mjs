@@ -156,6 +156,8 @@ function refillPreviewRetryable(result = {}) {
 
 function compactRefillExecution(job, preview, execution = null) {
   const active = execution || preview;
+  const executionStatus = active?.json?.execution?.settlementStatus || active?.json?.outcomeEvent?.status || active?.json?.status || null;
+  const delivered = ["confirmed", "delivered", "succeeded"].includes(executionStatus);
   return {
     jobId: job.jobId,
     chain: job.chain,
@@ -165,10 +167,12 @@ function compactRefillExecution(job, preview, execution = null) {
     selectedExecutionMethod: preview?.json?.preparation?.executionMethod || job.executionMethod,
     previewStatus: refillPreviewStatus(preview),
     previewBlockedReason: refillPreviewBlockedReason(preview),
-    executed: Boolean(execution),
-    executionStatus: active?.json?.execution?.settlementStatus || active?.json?.outcomeEvent?.status || null,
+    attempted: Boolean(execution),
+    executed: delivered,
+    executionStatus,
     executionBlockedReason:
       active?.json?.event?.blockers?.[0] ||
+      active?.json?.blockers?.[0] ||
       active?.json?.preparation?.blockedReason ||
       classifyRefillRouteError(active) ||
       active?.json?.error?.message ||
@@ -444,6 +448,7 @@ export async function runAllChainAutopilot({
     officialChainCount: chains.length,
     refillJobCount: refillPlan?.summary?.jobCount ?? 0,
     autoRefillJobCount: autoRefillJobs.length,
+    refillAttemptedCount: refillExecutions.filter((item) => item.attempted).length,
     refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
     inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
     canarySweep: compactCanarySweep(canarySweepResult.json),

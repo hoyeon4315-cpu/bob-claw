@@ -379,6 +379,41 @@ test("live risk gate caps refill jobs against target exposure, not only sampled 
   assert.equal(decision.metrics.holdingPeriodCarryStrategy, true);
 });
 
+test("live risk gate ignores sampled route input when refill target exposure is lower", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      type: "refill_token",
+      estimatedAssetValueUsd: 68,
+      strategyPolicy: {
+        id: "merkl_portfolio_stable_carry_refill",
+        category: "yield",
+        economicsMode: "holding_period_carry",
+        perTradeCapUsd: 75,
+      },
+      systemEconomics: {
+        tradeReadiness: "insufficient_data",
+        routeInputUsd: 250,
+        routeNetEdgeUsd: -0.8,
+        routeExecutableNetEdgeUsd: null,
+        effectiveSystemNetPnlUsd: -1.1,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("strategy_per_trade_cap_exceeded"), false);
+  assert.equal(decision.metrics.exposureUsd, 68);
+});
+
 test("live risk gate blocks leverage jobs with missing unwind and health controls", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({

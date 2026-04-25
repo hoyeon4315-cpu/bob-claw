@@ -390,3 +390,66 @@ test("all-chain autopilot treats unsupported bridge refill previews as alternate
   assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
   assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
 });
+
+test("all-chain autopilot separates refill attempts from delivered executions", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "blocked-execute",
+              chain: "base",
+              asset: "USDC",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_across",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--execute")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: {
+            status: "blocked",
+            blockers: ["strategy_per_trade_cap_exceeded"],
+          },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: { preparation: { status: "ready", executionMethod: "cross_chain_bridge_across" } },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillAttemptedCount, 1);
+  assert.equal(report.summary.refillExecutedCount, 0);
+  assert.equal(report.refillExecutions[0].attempted, true);
+  assert.equal(report.refillExecutions[0].executed, false);
+  assert.equal(report.refillExecutions[0].executionStatus, "blocked");
+  assert.equal(report.refillExecutions[0].executionBlockedReason, "strategy_per_trade_cap_exceeded");
+});

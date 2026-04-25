@@ -23,14 +23,18 @@ function strategyPolicyFromJob(job = {}) {
 }
 
 function jobExposureUsd(job = {}) {
-  return [
-    job.systemEconomics?.routeInputUsd,
+  const directExposureValues = [
     job.estimatedAssetValueUsd,
     job.targetAmountUsd,
     job.amountUsd,
-  ]
-    .filter(isFiniteNumber)
-    .reduce((max, value) => Math.max(max, value), null);
+  ].filter(isFiniteNumber);
+  if (isRefillJob(job) && directExposureValues.length > 0) {
+    return directExposureValues.reduce((max, value) => Math.max(max, value), null);
+  }
+  return [
+    job.systemEconomics?.routeInputUsd,
+    ...directExposureValues,
+  ].filter(isFiniteNumber).reduce((max, value) => Math.max(max, value), null);
 }
 
 function fundingSourceAutoExecutable(fundingSource = null) {
