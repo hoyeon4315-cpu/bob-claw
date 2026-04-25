@@ -110,6 +110,7 @@ function refillPreviewBlockedReason(result = {}) {
   return result?.json?.preparation?.blockedReason ||
     result?.json?.event?.blockers?.[0] ||
     result?.json?.blockers?.[0] ||
+    classifyRefillRouteError(result) ||
     null;
 }
 
@@ -122,6 +123,35 @@ function forcedRefillMethodArgs(job = {}, activeMethod = null) {
     .filter(refillCandidateExecutable)
     .map((candidate) => candidate.method)
     .filter((method) => method && method !== activeMethod);
+}
+
+function commandErrorText(result = {}) {
+  return [
+    result?.error?.message,
+    result?.stderr,
+    result?.stdout,
+  ].filter(Boolean).join("\n");
+}
+
+function classifyRefillRouteError(result = {}) {
+  const text = commandErrorText(result).toLowerCase();
+  if (!text) return null;
+  if (/pair unsupported/u.test(text)) return "bridge_pair_unsupported";
+  if (/lifi.*quote.*reject|quote.*reject/u.test(text)) return "lifi_quote_rejected";
+  if (/no[_ ]route|route.*unsupported|unsupported.*route/u.test(text)) return "no_route";
+  return null;
+}
+
+function refillPreviewRetryable(result = {}) {
+  if (refillPreparationReady(result.json)) return false;
+  const reason = refillPreviewBlockedReason(result);
+  return [
+    "no_route",
+    "bridge_pair_unsupported",
+    "lifi_quote_rejected",
+    "route_unsupported",
+    "quote_unavailable",
+  ].includes(reason);
 }
 
 function compactRefillExecution(job, preview, execution = null) {
@@ -140,7 +170,9 @@ function compactRefillExecution(job, preview, execution = null) {
     executionBlockedReason:
       active?.json?.event?.blockers?.[0] ||
       active?.json?.preparation?.blockedReason ||
+      classifyRefillRouteError(active) ||
       active?.json?.error?.message ||
+      active?.error?.message ||
       null,
   };
 }
@@ -229,6 +261,15 @@ function stepIsRecoverable(step, steps) {
     const stderr = step.stderrSummary?.join("\n") || "";
     return /No treasury-inventory snapshots found/u.test(stderr);
   }
+  if (step.name?.startsWith("treasury_refill_preview:")) {
+    return [
+      "no_route",
+      "bridge_pair_unsupported",
+      "lifi_quote_rejected",
+      "route_unsupported",
+      "quote_unavailable",
+    ].includes(refillPreviewBlockedReason(step));
+  }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
 }
@@ -305,7 +346,7 @@ export async function runAllChainAutopilot({
       timeoutMs,
       steps,
     });
-    if (refillPreviewBlockedReason(preview) === "no_route") {
+    if (refillPreviewRetryable(preview)) {
       for (const method of forcedRefillMethodArgs(job, job.executionMethod)) {
         const alternatePreview = await runJsonStep({
           name: `treasury_refill_preview:${job.jobId}:${method}`,
@@ -316,7 +357,7 @@ export async function runAllChainAutopilot({
           steps,
         });
         preview = alternatePreview;
-        if (refillPreviewBlockedReason(preview) !== "no_route" || refillPreparationReady(preview.json)) break;
+        if (refillPreparationReady(preview.json) || !refillPreviewRetryable(preview)) break;
       }
     }
     let execution = null;

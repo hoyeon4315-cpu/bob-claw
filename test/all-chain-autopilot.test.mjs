@@ -294,3 +294,99 @@ test("all-chain autopilot retries refill jobs with executable alternate methods 
   assert.equal(report.refillExecutions[0].executionStatus, "delivered");
   assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
 });
+
+test("all-chain autopilot treats unsupported bridge refill previews as alternate-route blockers", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "unsupported-across",
+              chain: "optimism",
+              asset: "ETH",
+              type: "refill_native",
+              executionMethod: "cross_chain_bridge_across",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_across",
+                  availability: "ready",
+                  source: { chain: "base", token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf" },
+                  missingInputs: [],
+                },
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: { chain: "base", token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf" },
+                  missingInputs: [],
+                },
+                {
+                  method: "gas_refuel_bridge_gas_zip",
+                  availability: "conditional",
+                  source: { chain: "base", token: "0x0000000000000000000000000000000000000000" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (!args.some((item) => item === "--method=cross_chain_bridge_lifi" || item === "--method=gas_refuel_bridge_gas_zip")) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: "Error: across plan: pair unsupported src=base dst=optimism ticker=cbbtc",
+          json: null,
+          error: { name: "Error", message: "across plan: pair unsupported src=base dst=optimism ticker=cbbtc" },
+        };
+      }
+      if (args.includes("--method=cross_chain_bridge_lifi")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: { preparation: { status: "blocked", blockedReason: "lifi_quote_rejected" } },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "gas_refuel_bridge_gas_zip",
+          preparation: { status: "ready", executionMethod: "gas_refuel_bridge_gas_zip" },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.blockedReason, null);
+  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(report.refillExecutions[0].selectedExecutionMethod, "gas_refuel_bridge_gas_zip");
+  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
+  assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
+});
