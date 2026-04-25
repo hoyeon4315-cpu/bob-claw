@@ -144,6 +144,35 @@ function finalizeBounds(bounds) {
   return bounds;
 }
 
+function padBounds(bounds, x = 0, y = x) {
+  if (!bounds) return null;
+  return {
+    minX: bounds.minX - x,
+    minY: bounds.minY - y,
+    maxX: bounds.maxX + x,
+    maxY: bounds.maxY + y,
+  };
+}
+
+function fitBoundsInViewBox({ bounds, viewBox, safeArea, focus, minZoom, maxZoom }) {
+  if (!bounds) return null;
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
+  const availW = Math.max(1, viewBox.width - safeArea.left - safeArea.right);
+  const availH = Math.max(1, viewBox.height - safeArea.top - safeArea.bottom);
+  const fitZoom = Math.min(availW / width, availH / height);
+  const zoom = clamp(fitZoom, minZoom, maxZoom);
+  const targetTx = viewBox.width / 2 - focus.x * zoom;
+  const targetTy = safeArea.top + availH / 2 - focus.y * zoom;
+  const minTx = safeArea.left - bounds.minX * zoom;
+  const maxTx = viewBox.width - safeArea.right - bounds.maxX * zoom;
+  const minTy = safeArea.top - bounds.minY * zoom;
+  const maxTy = viewBox.height - safeArea.bottom - bounds.maxY * zoom;
+  const tx = minTx <= maxTx ? clamp(targetTx, minTx, maxTx) : (minTx + maxTx) / 2;
+  const ty = minTy <= maxTy ? clamp(targetTy, minTy, maxTy) : (minTy + maxTy) / 2;
+  return { zoom, tx, ty };
+}
+
 function BitcoinSource({ x, y, size, hidden }) {
   return (
     <g transform={`translate(${x}, ${y})`}
@@ -535,11 +564,11 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     return () => cancelAnimationFrame(rafRef.current);
   }, [motionSpeed]);
 
-  const VB_W = 380;
-  const VB_H = 540;
+  const VB_W = 360;
+  const VB_H = 520;
   const cx0 = VB_W / 2;
-  const cy0 = VB_H / 2 + 50;
-  const ringR = 132;
+  const cy0 = VB_H / 2 + 40;
+  const ringR = 138;
   const chainSize = 34;
   const gatewaySize = 22;
 
@@ -707,45 +736,26 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
       return { zoom: 1, tx: cx0 - chain.x, ty: cy0 - chain.y };
     }
 
-    const width = Math.max(120, finalBounds.maxX - finalBounds.minX);
-    const height = Math.max(120, finalBounds.maxY - finalBounds.minY);
-    // Reserve generous bottom for ChainCard / ProtocolCard so chips and flow
-    // tokens never hide under it.
-    const cardReserveBottom = selectedProtocolId ? 195 : 130;
-    const reserveTop = 36;
-    const reserveSide = 26;
-    const availW = VB_W - reserveSide * 2;
-    const availH = VB_H - reserveTop - cardReserveBottom;
-    const fitZoom = Math.min(availW / width, availH / height);
-    const zoom = selectedProtocolId
-      ? clamp(fitZoom, 0.6, 1.55)
-      : clamp(fitZoom, 0.7, 1.0);
+    const paddedBounds = padBounds(
+      finalBounds,
+      selectedProtocolId ? 16 : 12,
+      selectedProtocolId ? 18 : 14
+    );
+    const safeArea = selectedProtocolId
+      ? { top: 22, right: 16, bottom: 172, left: 16 }
+      : { top: 18, right: 12, bottom: 112, left: 12 };
     const focus = {
-      x: (finalBounds.minX + finalBounds.maxX) / 2,
-      y: (finalBounds.minY + finalBounds.maxY) / 2,
+      x: (paddedBounds.minX + paddedBounds.maxX) / 2,
+      y: (paddedBounds.minY + paddedBounds.maxY) / 2,
     };
-
-    // Center the focus inside the available (non-card) region.
-    const availCenterY = reserveTop + availH / 2;
-    let tx = cx0 - focus.x * zoom;
-    let ty = availCenterY - focus.y * zoom;
-
-    const minLeft = reserveSide;
-    const maxRight = VB_W - reserveSide;
-    const minTop = reserveTop;
-    const maxBottom = VB_H - cardReserveBottom;
-
-    const left = finalBounds.minX * zoom + tx;
-    const right = finalBounds.maxX * zoom + tx;
-    const top = finalBounds.minY * zoom + ty;
-    const bottom = finalBounds.maxY * zoom + ty;
-
-    if (left < minLeft) tx += minLeft - left;
-    if (right > maxRight) tx -= right - maxRight;
-    if (top < minTop) ty += minTop - top;
-    if (bottom > maxBottom) ty -= bottom - maxBottom;
-
-    return { zoom, tx, ty };
+    return fitBoundsInViewBox({
+      bounds: paddedBounds,
+      viewBox: { width: VB_W, height: VB_H },
+      safeArea,
+      focus,
+      minZoom: selectedProtocolId ? 0.78 : 0.92,
+      maxZoom: selectedProtocolId ? 1.72 : 1.18,
+    });
   }, [VB_W, VB_H, chainSize, cx0, cy0, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
 
   const { zoom, tx, ty } = selectionTransform;
