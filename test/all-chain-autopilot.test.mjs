@@ -256,6 +256,23 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("report-auto-kill-events.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        windowMs: 86400000,
+        totalEvaluations24h: 0,
+        triggerCounts: {},
+        lastEvent: null,
+        armedAt: null,
+      },
+    };
+  }
   if (name.endsWith("run-auto-kill-check.mjs")) {
     return {
       ok: true,

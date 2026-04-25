@@ -630,6 +630,15 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  await runJsonStep({
+    name: "auto_kill_dashboard_slice",
+    args: ["src/cli/report-auto-kill-events.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
   const summary = {
     officialChainCount: chains.length,
     refillJobCount: refillPlan?.summary?.jobCount ?? 0,
