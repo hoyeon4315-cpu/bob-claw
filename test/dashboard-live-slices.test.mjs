@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAllChainAutopilotDashboardSlice } from "../src/status/all-chain-autopilot-slice.mjs";
 import { buildCapitalSummarySlice } from "../src/status/capital-summary-slice.mjs";
+import { buildFlowDashboardSlice } from "../src/status/flow-slice.mjs";
 import { buildMerklActivePositions } from "../src/status/merkl-active-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "../src/status/treasury-holdings-slice.mjs";
 
@@ -180,4 +181,70 @@ test("capital summary combines wallet balances with deployed Merkl positions", (
   assert.equal(slice.totalUsd, 353.19);
   assert.equal(slice.activePositionCount, 2);
   assert.deepEqual(slice.positionItems.map((item) => item.protocol), ["yo", "euler"]);
+});
+
+test("flow dashboard slice compacts live activities and leverage hints for the flow tab", () => {
+  const slice = buildFlowDashboardSlice({
+    executionEvents: [
+      {
+        eventType: "execution_funding_outcome",
+        settlementStatus: "delivered",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        observedAt: "2026-04-25T06:10:00.000Z",
+        chain: "base",
+        asset: "cbBTC",
+        amountUsd: 42.5,
+        txHashes: ["0xabc"],
+      },
+    ],
+    merklPositionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        opportunityId: "y1",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        protocolId: "yo",
+        name: "YO USDC",
+        amountUsd: 12.25,
+        observedAt: "2026-04-25T06:05:00.000Z",
+        entryTxHash: "0xdef",
+      },
+    ],
+    payback: {
+      grossProfitSatsPeriod: 200000,
+      carry: { pendingSats: 150000 },
+      paidBackSatsLifetime: 50000,
+      lastPaybackSettledAt: "2026-04-25T05:30:00.000Z",
+      lastPaybackSettledSats: 25000,
+    },
+    capitalSummary: { totalUsd: 354.5 },
+    btcUsd: 100000,
+    wrappedBtcLendingLoopSlice: {
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        protocol: "moonwell",
+        targetHealthFactor: 1.8,
+        healthFactorMin: 1.35,
+        liquidationBufferPct: 14.5,
+      },
+      entryPlan: {
+        projectedHealthFactor: 1.92,
+        projectedLiquidationBufferPct: 18.2,
+      },
+    },
+    generatedAt: "2026-04-25T06:30:00.000Z",
+  });
+
+  assert.equal(slice.metrics.assetValueUsd, 354.5);
+  assert.equal(slice.metrics.grossProfitUsdPeriod, 200);
+  assert.equal(slice.metrics.pendingCarryUsd, 150);
+  assert.equal(slice.metrics.paidBackUsdLifetime, 50);
+  assert.equal(slice.recentActivities.length, 3);
+  assert.equal(slice.recentActivities[0].kind, "execution");
+  assert.equal(slice.recentActivities[1].kind, "position");
+  assert.equal(slice.recentActivities[2].kind, "payback");
+  assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedHealthFactor, 1.92);
+  assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedLiquidationBufferPct, 18.2);
 });

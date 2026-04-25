@@ -142,6 +142,33 @@
       const sign = n < 0 ? '-' : '';
       return sign + '$' + Math.abs(n).toFixed(2);
     }
+    function fmtUsdCompact(n) {
+      if (!Number.isFinite(n)) return '—';
+      const sign = n < 0 ? '-' : '';
+      return sign + '$' + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
+    function fmtPct(n, digits = 2) {
+      if (!Number.isFinite(n)) return '—';
+      return n.toFixed(digits) + '%';
+    }
+    function fmtWhen(value) {
+      if (!value) return '시간 미확인';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '시간 미확인';
+      return date.toLocaleString('ko-KR', {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+    function normalizeUiStrategyId(id) {
+      return String(id || '').replace(/-/g, '_');
+    }
+    function findStrategyById(id) {
+      const key = normalizeUiStrategyId(id);
+      return (window.STRATEGIES || []).find((item) => normalizeUiStrategyId(item.id) === key) || null;
+    }
 
     function StatCard({ label, main, sub, accent, onTap, tappable }) {
       return (
@@ -195,20 +222,184 @@
       return [prefix, item.reason].filter(Boolean).join(' · ');
     }
 
+    function activityStatusLabel(activity) {
+      const status = activity?.status;
+      if (status === 'delivered') return '체결';
+      if (status === 'confirmed') return '확정';
+      if (status === 'open') return '오픈';
+      if (status === 'settled') return '정산';
+      return status || '기록';
+    }
+
+    function activityStatusTone(activity) {
+      if (activity?.kind === 'payback') return { bg: '#FFF4E2', fg: '#8A520C' };
+      if (activity?.status === 'delivered' || activity?.status === 'confirmed' || activity?.status === 'open') {
+        return { bg: '#EAF6EE', fg: 'var(--green)' };
+      }
+      return { bg: '#ECECEE', fg: 'var(--ink-3)' };
+    }
+
+    function activityAmount(activity) {
+      if (Number.isFinite(activity?.amountUsd)) return fmtUsdCompact(activity.amountUsd);
+      if (Number.isFinite(activity?.amountSats)) return fmtSats(activity.amountSats);
+      if (Number.isFinite(activity?.realizedNetPnlUsd)) return fmtUsd(activity.realizedNetPnlUsd);
+      return '—';
+    }
+
+    function leverageHintForActivity(activity) {
+      const strategy = findStrategyById(activity?.strategyId);
+      const raw = window.FLOW?.strategyRiskById || {};
+      return strategy?.riskHint || raw?.[activity?.strategyId] || raw?.[normalizeUiStrategyId(activity?.strategyId)] || null;
+    }
+
+    function leverageHintLabel(hint) {
+      if (!hint) return null;
+      const bits = [];
+      const projectedHf = Number.isFinite(hint.projectedHealthFactor) ? hint.projectedHealthFactor : hint.targetHealthFactor;
+      const bufferPct = Number.isFinite(hint.projectedLiquidationBufferPct) ? hint.projectedLiquidationBufferPct : hint.liquidationBufferPct;
+      if (Number.isFinite(projectedHf)) bits.push(`HF ${projectedHf.toFixed(2)}`);
+      if (Number.isFinite(hint.healthFactorMin)) bits.push(`min ${hint.healthFactorMin.toFixed(2)}`);
+      if (Number.isFinite(bufferPct)) bits.push(`청산 버퍼 ${bufferPct.toFixed(2)}%`);
+      return bits.length ? bits.join(' · ') : null;
+    }
+
+    function FlowMetricGrid({ cards }) {
+      return (
+        <div style={{
+          margin: '8px 12px 0',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 6,
+          flexShrink: 0,
+        }}>
+          {cards.map((card) => (
+            <StatCard
+              key={card.label}
+              label={card.label}
+              main={card.main}
+              sub={card.sub}
+              accent={card.accent}
+              onTap={card.onTap}
+              tappable={Boolean(card.onTap)}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    function FlowActivityRow({ activity, isLast }) {
+      const strategy = findStrategyById(activity?.strategyId);
+      const tone = activityStatusTone(activity);
+      const riskLabel = leverageHintLabel(leverageHintForActivity(activity));
+      const title = activity?.kind === 'payback'
+        ? (strategy?.label || 'Gateway BTC offramp')
+        : (strategy?.label || activity?.detail || activity?.strategyId || 'Recent activity');
+      const subtitle = [
+        activity?.protocol || strategy?.protocol || null,
+        activity?.chain || strategy?.chain || null,
+        activity?.detail && activity?.detail !== title ? activity.detail : null,
+      ].filter(Boolean).join(' · ');
+
+      return (
+        <div style={{
+          padding: '7px 0',
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+          minWidth: 0,
+        }}>
+          <div style={{ width: 22, height: 22, flexShrink: 0, marginTop: 1 }}>
+            {activity?.kind === 'payback'
+              ? <ProtocolLogo id="gateway" size={22}/>
+              : (strategy?.protocol || activity?.protocol)
+                ? <ProtocolLogo id={strategy?.protocol || activity?.protocol} size={22}/>
+                : <ChainLogo id={activity?.chain || strategy?.chain} size={22}/>}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+              <div style={{
+                fontSize: 10.8,
+                fontWeight: 600,
+                letterSpacing: -0.15,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                minWidth: 0,
+              }}>
+                {title}
+              </div>
+              <span style={{
+                fontSize: 8.3,
+                padding: '1px 5px',
+                borderRadius: 999,
+                background: tone.bg,
+                color: tone.fg,
+                fontWeight: 700,
+                letterSpacing: 0.15,
+                flexShrink: 0,
+              }}>
+                {activityStatusLabel(activity)}
+              </span>
+            </div>
+            {subtitle && (
+              <div style={{
+                fontSize: 9.4,
+                color: 'var(--ink-3)',
+                marginTop: 1,
+                lineHeight: 1.3,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {subtitle}
+              </div>
+            )}
+            {riskLabel && (
+              <div style={{
+                fontSize: 9.1,
+                color: '#8A520C',
+                marginTop: 2,
+                lineHeight: 1.3,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {riskLabel}
+              </div>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: 10.8, fontWeight: 700, letterSpacing: -0.15 }}>
+              {activityAmount(activity)}
+            </div>
+            <div style={{ fontSize: 9.2, color: 'var(--ink-3)', marginTop: 1 }}>
+              {fmtWhen(activity?.observedAt)}
+            </div>
+          </div>
+          {!isLast && <div style={{ position: 'absolute', left: 30, right: 0, bottom: 0, height: 0.5, background: 'var(--line)' }}/>}
+        </div>
+      );
+    }
+
     function OpsStrip() {
       const ops = window.OPERATIONS;
       if (!ops?.present) return null;
+      const flow = window.FLOW || {};
+      const activities = flow?.recentActivities || [];
       const paybackSats = ops.payback?.pendingCarrySats;
       const blockers = ops.topBlockers || [];
+      const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod;
       const chips = [
         `카나리 ${ops.canary?.deliveredCount || 0}/${ops.canary?.executedCount || 0}`,
         `포지션 ${ops.portfolio?.openedCount || 0}`,
         `리필 ${ops.refill?.executedCount || 0}/${ops.refill?.autoJobCount || 0}`,
         `페이백 ${Number.isFinite(paybackSats) ? fmtSats(paybackSats) : '대기'}`,
+        `일드 ${Number.isFinite(grossYieldUsd) ? fmtUsdCompact(grossYieldUsd) : '—'}`,
       ];
       return (
         <div style={{
-          margin:'6px 12px 0', padding:'10px 12px',
+          margin:'6px 12px 0', padding:'9px 10px 8px',
           background:'var(--card)', border:'0.5px solid var(--line)', borderRadius:14,
           flexShrink:0, animation:`slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
         }}>
@@ -221,16 +412,16 @@
             }}/>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.2 }}>자동 운용 · {statusLabel(ops.status)}</div>
-              <div style={{ fontSize:10, color:'var(--ink-3)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              <div style={{ fontSize:9.6, color:'var(--ink-3)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                 {chips.join(' · ')}
               </div>
             </div>
           </div>
           {blockers.length > 0 && (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:8 }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:7 }}>
               {blockers.slice(0, 3).map((b, i) => (
                 <span key={i} style={{
-                  fontSize:9.5, padding:'2px 6px', borderRadius:5,
+                  fontSize:9.1, padding:'2px 6px', borderRadius:5,
                   background:'#FFF4E2', color:'#8A520C', fontWeight:600,
                   maxWidth:'100%', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
                 }}>
@@ -239,19 +430,45 @@
               ))}
             </div>
           )}
+          <div style={{
+            marginTop: 8,
+            maxHeight: 146,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            paddingRight: 2,
+          }}>
+            {activities.length === 0 && (
+              <div style={{ fontSize: 10, color: 'var(--ink-4)', padding: '4px 0 2px' }}>
+                최근 실제 실행 기록이 아직 없습니다.
+              </div>
+            )}
+            {activities.map((activity, index) => (
+              <FlowActivityRow
+                key={activity.id || `${activity.kind}-${index}`}
+                activity={activity}
+                isLast={index === activities.length - 1}
+              />
+            ))}
+          </div>
         </div>
       );
     }
 
     function FlowPane({ refreshTick }) {
+      const flow = window.FLOW || {};
       const items = HOLDINGS?.all || [];
       const pending = HOLDINGS?.pending;
       const positions = HOLDINGS?.positions || [];
       const totalUsd = HOLDINGS?.totalUsd != null
         ? HOLDINGS.totalUsd
         : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
-      const paidSats = KPI?.paidBack?.sats || 0;
-      const paidUsd  = KPI?.paidBack?.usd;
+      const assetValueUsd = Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : totalUsd;
+      const paidSats = flow?.metrics?.paidBackSatsLifetime ?? KPI?.paidBack?.sats ?? 0;
+      const paidUsd  = flow?.metrics?.paidBackUsdLifetime ?? KPI?.paidBack?.usd;
+      const carrySats = flow?.metrics?.pendingCarrySats ?? KPI?.pendingCarry?.sats ?? 0;
+      const carryUsd = flow?.metrics?.pendingCarryUsd ?? KPI?.pendingCarry?.usd;
+      const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod ?? KPI?.totalEarning?.usd;
+      const grossYieldSats = flow?.metrics?.grossProfitSatsPeriod ?? KPI?.totalEarning?.sats ?? 0;
       const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
       const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
       const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
@@ -268,16 +485,35 @@
             </div>
           </div>
 
-          <div style={{ margin: '8px 12px 0', flexShrink: 0 }}>
-            <TriCard cells={[
-              { label: 'Paid back', main: fmtSats(paidSats), sub: paidUsd != null ? fmtUsd(paidUsd) : '—' },
-              { label: 'Total APR', main: totalApr != null ? totalApr.toFixed(2) + '%' : '—',
-                sub: aprOpen ? 'cap-weighted' : 'tap', onTap: () => setAprOpen(o => !o),
-                accent: aprOpen ? 'var(--ink)' : undefined },
-              { label: 'Assets',   main: pending ? '—' : ('$' + (totalUsd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })),
-                sub: pending ? 'pending' : 'wallet + deployed' },
-            ]}/>
-          </div>
+          <FlowMetricGrid cards={[
+            {
+              label: 'Assets',
+              main: pending ? '—' : fmtUsdCompact(assetValueUsd || 0),
+              sub: pending ? 'pending' : 'wallet + deployed',
+            },
+            {
+              label: 'APR',
+              main: totalApr != null ? fmtPct(totalApr) : '—',
+              sub: aprOpen ? 'cap-weighted' : 'tap for note',
+              onTap: () => setAprOpen(o => !o),
+              accent: aprOpen ? 'var(--ink)' : undefined,
+            },
+            {
+              label: 'Paid back',
+              main: fmtSats(paidSats),
+              sub: paidUsd != null ? fmtUsdCompact(paidUsd) : '—',
+            },
+            {
+              label: 'Carry',
+              main: fmtSats(carrySats),
+              sub: carryUsd != null ? fmtUsdCompact(carryUsd) : 'unpaid',
+            },
+            {
+              label: 'Yield',
+              main: Number.isFinite(grossYieldUsd) ? fmtUsdCompact(grossYieldUsd) : fmtSats(grossYieldSats),
+              sub: 'all protocols',
+            },
+          ]}/>
           <OpsStrip/>
           {aprOpen && (
             <div style={{
@@ -423,6 +659,7 @@
     function StrategyRow({ s, isLast }) {
       const chain = CHAINS.find(c => c.id === s.chain);
       const live = s.status === 'LIVE';
+      const riskLabel = leverageHintLabel(s.riskHint);
       return (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
@@ -452,6 +689,11 @@
             <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.4 }}>
               {strategyMechanics(s)}
             </div>
+            {riskLabel && (
+              <div style={{ fontSize: 9.4, color: '#8A520C', marginTop: 2, lineHeight: 1.35 }}>
+                {riskLabel}
+              </div>
+            )}
           </div>
           <div style={{ textAlign: 'right' }}>
             {s.earnedUsd > 0 && (

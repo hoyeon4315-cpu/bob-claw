@@ -101,8 +101,8 @@ function ChainLogo({ id, size = 28, style = {} }) {
   const slug = CHAIN_SLUG[id];
   const label = (id || '?').slice(0, 1).toUpperCase();
   const sources = [];
-  if (slug) sources.push(LLAMA_CHAIN(slug, size));
   if (id) sources.push(LOCAL_CHAIN(id));
+  if (slug) sources.push(LLAMA_CHAIN(slug, size));
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }} data-chain-logo={id}>
       <MultiImgMark
@@ -137,10 +137,31 @@ function ProtocolLogo({ id, size = 22, style = {} }) {
   );
 }
 
-function assetSources(id) {
-  const size = 32;
+function normalizeAssetId(id = '') {
+  const raw = String(id || '').trim().toLowerCase();
+  const mapped = {
+    'wbtc.oft': 'wbtc',
+    'btc.b': 'wbtc',
+    btcb: 'wbtc',
+    wbnb: 'bnb',
+    'pt-solvbtc': 'solvbtc',
+    'pt-lbtc': 'lbtc',
+    rlusd: 'rlusd',
+    honey: 'honey',
+    s: 'sonic_native',
+  }[raw];
+  if (mapped) return mapped;
+  if (raw.startsWith('pt-')) return raw.slice(3);
+  if (raw.endsWith('.oft')) return raw.replace(/\.oft$/u, '');
+  return raw;
+}
+
+function assetSources(id, size = 32) {
+  const assetId = normalizeAssetId(id);
   const cg = (path) => `https://images.weserv.nl/?url=${encodeURIComponent('assets.coingecko.com/coins/images/' + path)}&w=${size*2}&h=${size*2}&output=png`;
   const spot = (sym) => `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/${sym}.svg`;
+  const twErc20 = (address) => wsrv(`https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${address}/logo.png`, size);
+  const prox = (url) => wsrv(url, size);
   const map = {
     btc:   [cg('1/standard/bitcoin.png'), spot('btc')],
     wbtc:  [cg('7598/standard/wrapped_bitcoin_wbtc.png'), spot('wbtc')],
@@ -154,13 +175,18 @@ function assetSources(id) {
     avax:  [cg('12559/standard/Avalanche_Circle_RedWhite_Trademark.png'), spot('avax')],
     bnb:   [cg('825/standard/bnb-icon2_2x.png'), spot('bnb')],
     sol:   [cg('4128/standard/solana.png'), spot('sol')],
+    rlusd: [twErc20('0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD'), prox('https://ripple.com/favicon.ico')],
+    lbtc:  [prox('https://app.lombard.finance/favicon.ico'), spot('btc')],
+    solvbtc: [prox('https://solv.finance/favicon.ico'), spot('btc')],
+    honey: [prox('https://www.berachain.com/favicon.ico')],
+    sonic_native: [LOCAL_CHAIN('sonic'), LLAMA_CHAIN('sonic', size)],
   };
-  return map[id] || [];
+  return map[assetId] || [];
 }
 
 function AssetLogo({ id, size = 16, style = {} }) {
-  const sources = assetSources(id);
-  const label = (id || '?').slice(0, 1).toUpperCase();
+  const sources = assetSources(id, size);
+  const label = normalizeAssetId(id || '?').slice(0, 1).toUpperCase();
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }}>
       <MultiImgMark

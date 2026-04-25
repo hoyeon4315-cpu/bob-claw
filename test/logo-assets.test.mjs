@@ -12,6 +12,7 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LOGOS_DIR = join(HERE, "..", "dashboard", "public", "assets", "logos");
+const LOGOS_RUNTIME = join(HERE, "..", "dashboard", "public", "logos.jsx");
 
 const REQUIRED_CHAINS = [
   "bitcoin", "bob", "ethereum", "base", "bsc", "avalanche", "unichain",
@@ -24,7 +25,7 @@ const REQUIRED_PROTOCOLS = [
 ];
 
 const EXPECTED_CHAIN_COUNT = 12;
-const EXPECTED_PROTOCOL_COUNT = 14;
+const EXPECTED_PROTOCOL_COUNT = 17;
 
 describe("T25 logo asset coverage", () => {
   test("chain marks declared, all required ids covered", () => {
@@ -123,6 +124,23 @@ describe("T25 manifest + license", () => {
     }
     for (const p of PROTOCOL_MARKS) {
       assert.ok(md.includes(`protocols/${p.id}.svg`), `LICENSES.md missing protocol row: ${p.id}`);
+    }
+  });
+});
+
+describe("dashboard logo runtime invariants", () => {
+  test("chain logos prefer local official SVGs before remote fallback", () => {
+    const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
+    assert.match(
+      runtime,
+      /if \(id\) sources\.push\(LOCAL_CHAIN\(id\)\);\s*if \(slug\) sources\.push\(LLAMA_CHAIN\(slug, size\)\);/m,
+    );
+  });
+
+  test("asset aliases cover live dashboard token symbols", () => {
+    const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
+    for (const token of ["'wbtc.oft': 'wbtc'", "'btc.b': 'wbtc'", "'pt-solvbtc': 'solvbtc'", "'pt-lbtc': 'lbtc'", "rlusd: 'rlusd'", "s: 'sonic_native'"]) {
+      assert.ok(runtime.includes(token), `missing asset alias mapping: ${token}`);
     }
   });
 });

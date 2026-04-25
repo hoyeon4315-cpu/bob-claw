@@ -78,6 +78,7 @@ async function bootData() {
   const merklActive = status?.strategy?.merklActivePositions || null;
   const operations = status?.operations?.allChainAutopilot || null;
   const capitalSummary = status?.capitalSummary || null;
+  const flow = status?.flow || null;
 
   const lanePolicy = status?.overall?.lanePolicy || {};
   const primaryId = lanePolicy?.candidateId || 'wrapped-btc-loop-base-moonwell';
@@ -95,6 +96,7 @@ async function bootData() {
   const chainParity = status?.strategy?.chainParity || {};
   const microCanary = status?.strategy?.microCanarySummary || {};
   const promotion = status?.strategy?.promotionSummary || {};
+  const riskById = flow?.strategyRiskById || {};
 
   const tickById = strategyParity.byStrategy || {};
   const microById = microCanary.byStrategy || {};
@@ -104,6 +106,8 @@ async function bootData() {
   for (const [k, v] of Object.entries(tickById)) tickByNormalized[normalizeStrategyId(k)] = v;
   const microByNormalized = {};
   for (const [k, v] of Object.entries(microById)) microByNormalized[normalizeStrategyId(k)] = v;
+  const riskByNormalized = {};
+  for (const [k, v] of Object.entries(riskById)) riskByNormalized[normalizeStrategyId(k)] = v;
 
   // Dynamic strategy discovery: catalog + tick + micro.
   const knownProtocols = new Set(STRATEGY_CATALOG.map(s => s.protocol));
@@ -170,20 +174,28 @@ async function bootData() {
       topBlocker: parity?.topBlocker || null,
       projectedNetUsd: null,
       lastTickAt: parity?.lastTickAt || null,
+      riskHint: riskByNormalized[normalizedId] || null,
     };
   });
 
   const btcUsd = status?.market?.btcUsd || status?.market?.btc?.usd || null;
-  const periodSats = Number(payback?.accumulatorPendingSats || 0);
-  const paidSatsLifetime = Number(payback?.paidBackSatsLifetime || 0);
+  const grossProfitSats = Number(flow?.metrics?.grossProfitSatsPeriod ?? payback?.grossProfitSatsPeriod ?? 0);
+  const pendingCarrySats = Number(flow?.metrics?.pendingCarrySats ?? payback?.carry?.pendingSats ?? payback?.accumulatorPendingSats ?? 0);
+  const paidSatsLifetime = Number(flow?.metrics?.paidBackSatsLifetime ?? payback?.paidBackSatsLifetime ?? 0);
+  const flowAssetValueUsd = Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : null;
+  const grossProfitUsd = Number.isFinite(flow?.metrics?.grossProfitUsdPeriod)
+    ? flow.metrics.grossProfitUsdPeriod
+    : satsToUsd(grossProfitSats, btcUsd);
 
   const totalEarnedUsd = STRATEGIES.reduce((acc, s) => acc + (s.earnedUsd || 0), 0);
 
   const KPI = {
-    totalEarning:  { sats: periodSats, usd: totalEarnedUsd > 0 ? totalEarnedUsd : satsToUsd(periodSats, btcUsd) },
+    totalEarning:  { sats: grossProfitSats, usd: grossProfitUsd ?? (totalEarnedUsd > 0 ? totalEarnedUsd : satsToUsd(grossProfitSats, btcUsd)) },
     nativeReserve: { sats: null, usd: null },
     paidBack:      { sats: paidSatsLifetime, usd: satsToUsd(paidSatsLifetime, btcUsd) },
-    periodDue:     { sats: periodSats, usd: satsToUsd(periodSats, btcUsd), eta: payback?.scheduler?.nextEtaLabel || '—' },
+    pendingCarry:  { sats: pendingCarrySats, usd: satsToUsd(pendingCarrySats, btcUsd) },
+    periodDue:     { sats: pendingCarrySats, usd: satsToUsd(pendingCarrySats, btcUsd), eta: payback?.scheduler?.nextEtaLabel || '—' },
+    assetValue:    { usd: flowAssetValueUsd },
     realizedUsd,
     source: status ? 'live' : 'fallback',
     generatedAt: status?.generatedAt || null,
@@ -231,6 +243,7 @@ async function bootData() {
   const merklItems = Array.isArray(merklActive?.items) ? merklActive.items : [];
   for (const m of merklItems) {
     if (!m?.chain || !m?.protocol) continue;
+    const normalizedId = normalizeStrategyId(m.id);
     STRATEGIES.push({
       id: m.id,
       label: m.label || `Merkl ${m.opportunityId}`,
@@ -255,10 +268,20 @@ async function bootData() {
       lastTickAt: m.lastObservedAt || null,
       source: 'merkl',
       opportunityId: m.opportunityId,
+      riskHint: riskByNormalized[normalizedId] || null,
     });
   }
 
-  Object.assign(window, { CHAINS: CHAINS_PARITY, STRATEGIES, KPI, HOLDINGS, MERKL_ACTIVE: merklActive, OPERATIONS: operations, RAW_STATUS: status });
+  Object.assign(window, {
+    CHAINS: CHAINS_PARITY,
+    STRATEGIES,
+    KPI,
+    HOLDINGS,
+    FLOW: flow || { metrics: {}, recentActivities: [], strategyRiskById: {} },
+    MERKL_ACTIVE: merklActive,
+    OPERATIONS: operations,
+    RAW_STATUS: status,
+  });
   return true;
 }
 
@@ -300,6 +323,13 @@ function apyHint(id) {
   })[id] ?? null;
 }
 
-Object.assign(window, { CHAINS, STRATEGIES: [], KPI: { source:'pending' }, HOLDINGS: { all: [] }, OPERATIONS: null });
+Object.assign(window, {
+  CHAINS,
+  STRATEGIES: [],
+  KPI: { source:'pending' },
+  HOLDINGS: { all: [] },
+  FLOW: { metrics: {}, recentActivities: [], strategyRiskById: {} },
+  OPERATIONS: null,
+});
 window.DATA_READY = bootData();
 window.DATA_READY.then(() => startDashboardPolling(30000));

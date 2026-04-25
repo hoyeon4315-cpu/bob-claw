@@ -212,6 +212,25 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `dexSpread.summary.sampleCount`
 - `dexSpread.summary.spread.min`
 - `dexSpread.summary.spread.max`
+- `capitalSummary.walletItems`
+- `capitalSummary.positionItems`
+- `capitalSummary.totalUsd`
+- `flow.metrics.assetValueUsd`
+- `flow.metrics.grossProfitSatsPeriod`
+- `flow.metrics.grossProfitUsdPeriod`
+- `flow.metrics.pendingCarrySats`
+- `flow.metrics.pendingCarryUsd`
+- `flow.metrics.paidBackSatsLifetime`
+- `flow.metrics.paidBackUsdLifetime`
+- `flow.recentActivities[].kind`
+- `flow.recentActivities[].strategyId`
+- `flow.recentActivities[].chain`
+- `flow.recentActivities[].protocol`
+- `flow.recentActivities[].status`
+- `flow.recentActivities[].amountUsd`
+- `flow.recentActivities[].amountSats`
+- `flow.recentActivities[].observedAt`
+- `flow.strategyRiskById`
 
 Do not remove or rename these fields without updating `dashboard/public/app.js` and `test/dashboard-status.test.mjs`.
 

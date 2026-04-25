@@ -132,6 +132,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
       event: "position_opened",
       status: "open",
       opportunityId: "merkl-test-1",
+      strategyId: "gateway_native_asset_conversion_sleeve",
       chain: "base",
       protocolId: "yo",
       name: "USDC Vault on Base",
@@ -139,6 +140,36 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
       observedAt: "2026-04-11T02:04:00.000Z",
     },
   ]);
+  await writeJsonl(dataDir, "execution-journal", [
+    {
+      eventType: "execution_funding_outcome",
+      settlementStatus: "delivered",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      observedAt: "2026-04-11T02:05:30.000Z",
+      chain: "base",
+      asset: "cbBTC",
+      amountUsd: 25.5,
+      txHashes: ["0xabc"],
+    },
+  ]);
+  await writeFile(
+    join(dataDir, "wrapped-btc-lending-loop-slice.json"),
+    `${JSON.stringify({
+      strategy: {
+        id: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        protocol: "moonwell",
+        targetHealthFactor: 1.8,
+        healthFactorMin: 1.3,
+        liquidationBufferPct: 12.5,
+      },
+      entryPlan: {
+        projectedHealthFactor: 1.78,
+        projectedLiquidationBufferPct: 15.2,
+      },
+    })}\n`,
+    "utf8",
+  );
   await writeFile(
     join(dataDir, "all-chain-autopilot-latest.json"),
     `${JSON.stringify({
@@ -448,7 +479,13 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(publicStatus.operations?.allChainAutopilot?.refill?.blockers?.[0]?.reason, "lifi_quote_rejected");
   assert.equal(publicStatus.strategy?.merklActivePositions?.activeCount, 1);
   assert.equal(publicStatus.walletHoldings?.pending, false);
+  assert.equal(publicStatus.flow?.metrics?.assetValueUsd, 30.01);
+  assert.equal(Array.isArray(publicStatus.flow?.recentActivities), true);
+  assert.equal(publicStatus.flow?.recentActivities?.[0]?.kind, "execution");
+  assert.equal(publicStatus.flow?.recentActivities?.[1]?.kind, "position");
+  assert.equal(publicStatus.flow?.strategyRiskById?.["wrapped-btc-loop-base-moonwell"]?.projectedHealthFactor, 1.78);
   assert.equal(publicStatus.dataCounts?.allChainAutopilotPresent, 1);
   assert.equal(publicStatus.dataCounts?.merklActivePositionCount, 1);
   assert.equal(publicStatus.dataCounts?.treasuryInventoryRecords, 1);
+  assert.equal(publicStatus.dataCounts?.flowPresent, 1);
 });
