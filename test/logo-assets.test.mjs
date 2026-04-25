@@ -129,11 +129,11 @@ describe("T25 manifest + license", () => {
 });
 
 describe("dashboard logo runtime invariants", () => {
-  test("chain logos prefer local official SVGs before remote fallback", () => {
+  test("chain logos prefer official remote artwork before placeholder fallback", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
     assert.match(
       runtime,
-      /if \(id\) sources\.push\(LOCAL_CHAIN\(id\)\);\s*if \(slug\) sources\.push\(LLAMA_CHAIN\(slug, size\)\);/m,
+      /if \(slug\) sources\.push\(LLAMA_CHAIN\(slug, size\)\);\s*if \(id\) sources\.push\(LOCAL_CHAIN\(id\)\);/m,
     );
   });
 
@@ -142,5 +142,15 @@ describe("dashboard logo runtime invariants", () => {
     for (const token of ["'wbtc.oft': 'wbtc'", "'btc.b': 'wbtc'", "'pt-solvbtc': 'solvbtc'", "'pt-lbtc': 'lbtc'", "rlusd: 'rlusd'", "s: 'sonic_native'"]) {
       assert.ok(runtime.includes(token), `missing asset alias mapping: ${token}`);
     }
+  });
+
+  test("protocol sources include official entries for live protocols missing from DeFiLlama", () => {
+    const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
+    assert.ok(runtime.includes("euler:     [prox('https://app.euler.finance/favicon.ico')]"));
+    assert.ok(runtime.includes("yo:        [prox('https://www.yo.xyz/favicon.ico')]"));
+    assert.match(
+      runtime,
+      /const sources = id \? \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\] : remote;/,
+    );
   });
 });
