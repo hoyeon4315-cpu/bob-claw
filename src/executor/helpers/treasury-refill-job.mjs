@@ -110,7 +110,10 @@ function coverageForPlan({ plan, job, executor }) {
   };
 }
 
-function refillCoverageAcceptable(coverage = {}) {
+function refillCoverageAcceptable(coverage = {}, executor = null) {
+  if (executor === "gas_zip_native_refuel") {
+    return coverage.coversTarget !== false;
+  }
   return coverage.coversTarget !== false || coverage.partialRefill === true;
 }
 
@@ -437,7 +440,7 @@ export async function buildTreasuryRefillExecutionPlan({
         executor: plan.step3 ? "token_dex_experiment" : "gateway_btc_consolidation",
       })
     : coverageForPlan({ plan, job, executor });
-  if (!refillCoverageAcceptable(coverage)) {
+  if (!refillCoverageAcceptable(coverage, executor)) {
     return blockedPreparation({
       job,
       executor,
