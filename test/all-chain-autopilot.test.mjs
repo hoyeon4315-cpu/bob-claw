@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   OFFICIAL_GATEWAY_DESTINATION_CHAINS,
+  defaultRunCommand,
   runAllChainAutopilot,
 } from "../src/executor/all-chain-autopilot.mjs";
 
@@ -1010,4 +1011,20 @@ test("all-chain autopilot treats Merkl canary blocked json as recoverable during
 
   assert.equal(report.status, "completed_with_blockers");
   assert.equal(report.summary.merklCanary.blockedReason, "insufficient_live_asset_balance");
+});
+
+test("defaultRunCommand does not retain a referenced child-process handle after the command resolves", async () => {
+  const countHandles = (name) =>
+    process._getActiveHandles().filter((handle) => handle?.constructor?.name === name).length;
+
+  const beforeChildProcessCount = countHandles("ChildProcess");
+  const result = await defaultRunCommand({
+    args: ["-e", "console.log(JSON.stringify({ ok: true }))"],
+    timeoutMs: 5_000,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(result.json, { ok: true });
+  assert.equal(countHandles("ChildProcess"), beforeChildProcessCount);
 });

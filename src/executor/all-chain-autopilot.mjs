@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -9,8 +8,6 @@ import {
   refillCandidateExecutable,
   refillExecutionCandidates,
 } from "./helpers/refill-fallback.mjs";
-
-const execFileAsync = promisify(execFile);
 
 export const OFFICIAL_GATEWAY_DESTINATION_CHAINS = Object.freeze([
   "ethereum",
@@ -40,46 +37,62 @@ function jsonFromStdout(stdout = "") {
 }
 
 export async function defaultRunCommand({ args, cwd = process.cwd(), timeoutMs = 300_000 } = {}) {
-  try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, args, {
-      cwd,
-      timeout: timeoutMs,
-      maxBuffer: 24 * 1024 * 1024,
-    });
-    let parsedJson = null;
+  const maxBuffer = 24 * 1024 * 1024;
+  const result = spawnSync(process.execPath, args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: timeoutMs,
+    maxBuffer,
+  });
+  const stdout = String(result.stdout || "");
+  const stderr = String(result.stderr || "");
+
+  function parseJson(stdoutText) {
     try {
-      parsedJson = jsonFromStdout(stdout);
+      return jsonFromStdout(stdoutText);
     } catch {
-      parsedJson = null;
+      return null;
     }
-    return {
-      ok: true,
-      exitCode: 0,
-      stdout,
-      stderr,
-      json: parsedJson,
-    };
-  } catch (error) {
-    let parsedJson = null;
-    if (error.stdout) {
-      try {
-        parsedJson = jsonFromStdout(error.stdout);
-      } catch {
-        parsedJson = null;
-      }
-    }
+  }
+
+  if (result.error) {
+    const timedOut = result.error.code === "ETIMEDOUT";
     return {
       ok: false,
-      exitCode: Number.isInteger(error.code) ? error.code : 1,
-      stdout: error.stdout || "",
-      stderr: error.stderr || error.message,
-      json: parsedJson,
+      exitCode: Number.isInteger(result.status) ? result.status : 1,
+      stdout,
+      stderr: stderr || result.error.message,
+      json: parseJson(stdout),
       error: {
-        name: error.name || "CommandFailed",
-        message: error.message,
+        name: result.error.name || "CommandFailed",
+        message: timedOut ? `Command timed out after ${timeoutMs}ms` : result.error.message,
       },
     };
   }
+
+  const exitCode = Number.isInteger(result.status) ? result.status : 1;
+  if (exitCode === 0) {
+    return {
+      ok: true,
+      exitCode,
+      stdout,
+      stderr,
+      json: parseJson(stdout),
+    };
+  }
+
+  return {
+    ok: false,
+    exitCode,
+    stdout,
+    stderr: stderr || (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
+    json: parseJson(stdout),
+    error: {
+      name: "CommandFailed",
+      message: stderr || (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
+    },
+  };
 }
 
 function commandStep(name, args, result) {
