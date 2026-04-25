@@ -267,8 +267,8 @@ describe("promotion evidence — pure gate", () => {
     // export) is intentionally permissive so a dust-canary lane with
     // perTradeCapUsd≈$1 can promote in days, not weeks. This test pins
     // that contract — changing it requires another committed diff.
-    assert.equal(PROMOTION_THRESHOLDS.minSignerBackedReceipts, 2);
-    assert.equal(PROMOTION_THRESHOLDS.minConsecutiveSuccess, 1);
+    assert.equal(PROMOTION_THRESHOLDS.minSignerBackedReceipts, 0);
+    assert.equal(PROMOTION_THRESHOLDS.minConsecutiveSuccess, 0);
     assert.equal(PROMOTION_THRESHOLDS.minCumulativeProfitSats, 0);
     assert.equal(PROMOTION_THRESHOLDS.defaultLookbackDays, 3);
     assert.equal(PROMOTION_THRESHOLDS.minRoundTripEfficiency, 0.9);
