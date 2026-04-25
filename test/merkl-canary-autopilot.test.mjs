@@ -124,7 +124,7 @@ test("blocks Ethereum canaries when committed caps are below the gas-efficiency 
   assert.ok(sizing.blockers.includes("cap_too_low_for_ethereum_gas_efficiency"));
 });
 
-test("selects the highest priority non-Ethereum ready candidate", () => {
+test("selects the highest priority ready candidate after gas and cap checks", () => {
   const base = queueItem({ opportunityId: "base", priorityScore: 90 });
   const ethereum = queueItem({
     opportunityId: "ethereum",
@@ -148,7 +148,7 @@ test("selects the highest priority non-Ethereum ready candidate", () => {
   const selection = selectMerklCanaryAutopilotCandidate({ queue: [ethereum, base] });
 
   assert.equal(selection.readyCount, 2);
-  assert.equal(selection.selected.queueItem.opportunityId, "base");
+  assert.equal(selection.selected.queueItem.opportunityId, "ethereum");
 });
 
 test("refreshes queue readiness from latest canary executions before selecting", () => {

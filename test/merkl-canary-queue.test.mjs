@@ -180,3 +180,63 @@ test("merkl canary queue summarizes the top blocker when no candidate is executa
   assert.equal(queue.summary.readinessByStatus.inventory_missing, 1);
   assert.equal(queue.summary.capabilityGapCounts.ethereum_l1_gas_ev_positive_check_required, 1);
 });
+
+test("merkl auto entry admits inventory-backed Ethereum vault canaries within live-validation caps", () => {
+  const report = {
+    generatedAt: "2026-04-25T00:00:00.000Z",
+    policyProfile: "aggressive_multi_asset_payback_v2",
+    opportunities: [
+      {
+        opportunityId: "eth-morpho-share-token-usdc",
+        decision: "candidate",
+        validationMode: "tiny_live_canary_only",
+        chain: "ethereum",
+        protocolId: "morpho",
+        protocolName: "Morpho",
+        name: "Supply USDC to Morpho share-token vault",
+        family: "stable_treasury_carry",
+        assetFamilies: ["stablecoin"],
+        tokenSymbols: ["USDC", "CSUSDCCORE"],
+        entryTokenSymbols: ["USDC", "CSUSDCCORE"],
+        hasStableExposure: true,
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        executionSurface: "stableCarry",
+        campaignRemainingHours: 96,
+        aprPct: 4,
+        nativeAprPct: 7,
+        tvlUsd: 5_000_000,
+        score: 90,
+        overfitRisk: "minimal",
+        overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: "0x1111111111111111111111111111111111111111",
+          assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          shareTokenAddress: "0x1111111111111111111111111111111111111111",
+        },
+      },
+    ],
+  };
+
+  const queue = buildMerklCanaryQueue({
+    report,
+    now: "2026-04-25T00:00:00.000Z",
+    inventorySnapshot: {
+      native: [{ chain: "ethereum", asset: "ETH", actual: "10000000000000000", estimatedUsd: 20 }],
+      tokens: [{
+        chain: "ethereum",
+        ticker: "USDC",
+        token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        actual: "50000000",
+        actualDecimal: 50,
+        estimatedUsd: 50,
+      }],
+    },
+  });
+
+  assert.equal(queue.summary.executableNowCount, 1);
+  assert.equal(queue.summary.autoExecutableNowCount, 1);
+  assert.equal(queue.queue[0].autoEntry.autoExecute, true);
+  assert.deepEqual(queue.queue[0].autoEntry.blockers, []);
+  assert.ok(queue.queue[0].capabilityGaps.includes("ethereum_l1_gas_ev_positive_check_required"));
+  assert.ok(queue.queue[0].capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output"));
+});

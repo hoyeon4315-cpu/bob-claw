@@ -6,6 +6,8 @@ export const MERKL_AUTO_ENTRY_POLICY = Object.freeze({
   requireProtocolBindingReady: true,
   allowedCapabilityGaps: Object.freeze([
     "current_inventory_entry_route_required",
+    "chain_live_dex_route_unproven_or_missing_stable_output",
+    "ethereum_l1_gas_ev_positive_check_required",
   ]),
   whitelistedEntrySymbols: Object.freeze([
     "BTC",
@@ -37,6 +39,8 @@ function normalizedSymbol(value) {
 
 function entrySymbolsWhitelisted(queueItem = {}, policy = MERKL_AUTO_ENTRY_POLICY) {
   const whitelist = new Set((policy.whitelistedEntrySymbols || []).map(normalizedSymbol));
+  const matchedSymbol = normalizedSymbol(queueItem.executionReadiness?.matchedToken?.ticker);
+  if (matchedSymbol && whitelist.has(matchedSymbol)) return true;
   const symbols = queueItem.entryAssets?.length
     ? queueItem.entryAssets
     : queueItem.tokenSymbols?.length

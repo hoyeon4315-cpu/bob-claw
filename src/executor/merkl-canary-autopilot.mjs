@@ -214,10 +214,6 @@ export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
   const ready = candidates
     .filter((item) => item.sizing.status === "ready")
     .sort((left, right) => {
-      if (left.queueItem.chain !== right.queueItem.chain) {
-        if (left.queueItem.chain === "ethereum") return 1;
-        if (right.queueItem.chain === "ethereum") return -1;
-      }
       if ((right.queueItem.priorityScore ?? 0) !== (left.queueItem.priorityScore ?? 0)) {
         return (right.queueItem.priorityScore ?? 0) - (left.queueItem.priorityScore ?? 0);
       }
