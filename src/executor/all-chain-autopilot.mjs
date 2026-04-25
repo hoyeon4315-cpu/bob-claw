@@ -212,6 +212,7 @@ export async function runAllChainAutopilot({
   chains = OFFICIAL_GATEWAY_DESTINATION_CHAINS,
   maxRefillJobs = 4,
   canaryLimit = 11,
+  canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,
   runCommandImpl = defaultRunCommand,
   dataDir = config.dataDir,
@@ -284,7 +285,7 @@ export async function runAllChainAutopilot({
     ], "--execute", execute),
     runCommandImpl,
     cwd,
-    timeoutMs,
+    timeoutMs: canaryTimeoutMs,
     steps,
   });
 

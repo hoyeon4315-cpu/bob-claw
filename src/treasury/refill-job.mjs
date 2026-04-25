@@ -53,6 +53,12 @@ function fundingSourceReviewReasons(fundingSource) {
   return [...new Set(reasons)];
 }
 
+function jobExecutionCostUsd(job) {
+  const fundingCost = finiteOrNull(job.fundingSource?.expectedExecutionRefillCostUsd);
+  if (fundingCost != null) return fundingCost;
+  return finiteOrNull(job.estimatedAssetValueUsd) ?? Number.POSITIVE_INFINITY;
+}
+
 function routeNetUsd(routeContext = null) {
   return finiteOrNull(routeContext?.executableNetEdgeUsd) ?? finiteOrNull(routeContext?.netEdgeUsd);
 }
@@ -303,9 +309,24 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
   const deferredJobIds = new Set(
     planReasons.includes("too_many_pending_refills") ? rankedJobIds.slice(refillPolicy.maxPendingJobs || 0) : [],
   );
+  const dailyBudgetDeferredJobIds = new Set();
+  if (planReasons.includes("refill_cost_above_daily_cap")) {
+    const dailyBudgetUsd = finiteOrNull(policy.capital?.maxRefillCost24hUsd);
+    let usedBudgetUsd = 0;
+    for (const jobId of rankedJobIds) {
+      const job = draftJobs.find((item) => item.jobId === jobId);
+      const costUsd = jobExecutionCostUsd(job);
+      if (!Number.isFinite(dailyBudgetUsd) || !Number.isFinite(costUsd) || usedBudgetUsd + costUsd > dailyBudgetUsd) {
+        dailyBudgetDeferredJobIds.add(jobId);
+        continue;
+      }
+      usedBudgetUsd += costUsd;
+    }
+  }
   const jobs = draftJobs.map((job) => {
     const reviewReasons = [
-      ...explicitGlobalReviewReasons,
+      ...explicitGlobalReviewReasons.filter((reason) => reason !== "refill_cost_above_daily_cap"),
+      ...(dailyBudgetDeferredJobIds.has(job.jobId) ? ["refill_cost_above_daily_cap"] : []),
       ...(deferredJobIds.has(job.jobId) ? ["too_many_pending_refills"] : []),
       ...fundingSourceReviewReasons(job.fundingSource),
     ];

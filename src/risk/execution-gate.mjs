@@ -6,6 +6,10 @@ function isNativeRefillJob(job = {}) {
   return String(job?.type || "").toLowerCase() === "refill_native";
 }
 
+function isRefillJob(job = {}) {
+  return String(job?.type || "").toLowerCase().startsWith("refill_");
+}
+
 function hoursAgo(timestamp, now) {
   return (new Date(now).getTime() - new Date(timestamp).getTime()) / 3_600_000;
 }
@@ -216,10 +220,10 @@ export function buildExecutionRiskDecision({
     reviews.push("bootstrap_native_required");
   }
 
-  if (job.systemEconomics?.tradeReadiness && String(job.systemEconomics.tradeReadiness).startsWith("reject_")) {
+  if (!isRefillJob(job) && job.systemEconomics?.tradeReadiness && String(job.systemEconomics.tradeReadiness).startsWith("reject_")) {
     blockers.push("route_trade_rejected");
   }
-  if (isFiniteNumber(effectiveNetPnlUsd) && effectiveNetPnlUsd <= 0 && !isNativeRefillJob(job) && !holdingPeriodCarryStrategy) {
+  if (isFiniteNumber(effectiveNetPnlUsd) && effectiveNetPnlUsd <= 0 && !isRefillJob(job) && !holdingPeriodCarryStrategy) {
     blockers.push("system_net_pnl_non_positive");
   }
   // Profit-floor checks only apply when the policy actually sets a positive

@@ -164,3 +164,24 @@ test("all-chain autopilot reports recoverable blockers without failing the whole
   assert.equal(report.blockedReason, null);
   assert.equal(report.summary.refillJobCount, 2);
 });
+
+test("all-chain autopilot gives long-running canary sweep its own timeout", async () => {
+  const timeouts = {};
+  const timedCommand = ({ args, timeoutMs }) => {
+    timeouts[args[0]] = timeoutMs;
+    return fakeCommand({ args });
+  };
+
+  await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    timeoutMs: 123,
+    canaryTimeoutMs: 456,
+    dispatchTimeoutMs: 789,
+    runCommandImpl: timedCommand,
+  });
+
+  assert.equal(timeouts["src/cli/run-live-canary-sweep.mjs"], 456);
+  assert.equal(timeouts["src/cli/run-strategy-catalog-dispatcher.mjs"], 789);
+  assert.equal(timeouts["src/cli/run-merkl-canary-autopilot.mjs"], 123);
+});

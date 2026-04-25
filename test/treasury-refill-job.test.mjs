@@ -362,6 +362,68 @@ test("refill jobs combine pending overflow review with non-ready funding-source 
   assert.equal(jobs.jobs.every((job) => !job.reviewReasons.includes("cross_chain_native_refill_executor_missing")), true);
 });
 
+test("refill jobs apply daily cost cap to ranked overflow instead of blocking every job", () => {
+  const policy = validateTreasuryPolicy({
+    ...buildDefaultTreasuryPolicy(),
+    capital: {
+      ...buildDefaultTreasuryPolicy().capital,
+      maxRefillCost24hUsd: 0.5,
+    },
+    refillPolicy: {
+      ...buildDefaultTreasuryPolicy().refillPolicy,
+      maxPendingJobs: 5,
+    },
+  });
+  const plan = {
+    ...planFixture("REVIEW_REFILL_PLAN"),
+    reasons: ["refill_cost_above_daily_cap"],
+    actions: [
+      {
+        type: "refill_native",
+        chain: "bera",
+        asset: "BERA",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "10000000000000000",
+        refillAmountDecimal: 0.01,
+        refillEstimatedUsd: 0.004,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_native",
+        chain: "optimism",
+        asset: "ETH",
+        token: "0x0000000000000000000000000000000000000000",
+        refillAmount: "100000000000000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 0.22,
+        rationale: "Expansion chain bootstrap",
+      },
+      {
+        type: "refill_token",
+        chain: "ethereum",
+        ticker: "wBTC.OFT",
+        token: "0x0555",
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 7.5,
+        rationale: "Gateway buffer",
+      },
+    ],
+    inventory: {
+      native: [{ chain: "base", actualDecimal: 0.005 }],
+      tokens: [{ chain: "base", actual: "50000", actualDecimal: 0.0005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 35 }],
+    },
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy });
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.summary.autoQueuedJobCount > 0, true);
+  assert.equal(jobs.summary.manualReviewJobCount > 0, true);
+  assert.equal(jobs.jobs.some((job) => !job.requiresManualReview), true);
+  assert.equal(jobs.jobs.some((job) => job.reviewReasons.includes("refill_cost_above_daily_cap")), true);
+  assert.equal(jobs.jobs.every((job) => job.reviewReasons.filter((reason) => reason === "refill_cost_above_daily_cap").length <= 1), true);
+});
+
 test("refill jobs prefer higher-net fallback route context over weaker local matches", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

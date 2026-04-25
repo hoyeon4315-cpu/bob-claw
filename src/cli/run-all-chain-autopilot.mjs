@@ -31,6 +31,7 @@ function parseArgs(argv) {
     maxRefillJobs: entries["max-refill-jobs"] ? Number(entries["max-refill-jobs"]) : 4,
     canaryLimit: entries["canary-limit"] ? Number(entries["canary-limit"]) : 11,
     timeoutMs: entries["timeout-ms"] ? Number(entries["timeout-ms"]) : 300_000,
+    canaryTimeoutMs: entries["canary-timeout-ms"] ? Number(entries["canary-timeout-ms"]) : 600_000,
     dispatchTimeoutMs: entries["dispatch-timeout-ms"] ? Number(entries["dispatch-timeout-ms"]) : 600_000,
   };
 }

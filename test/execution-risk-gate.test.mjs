@@ -130,6 +130,7 @@ test("risk gate blocks jobs when economics or limits fail", () => {
       projectLossCapUsd: 300,
       dailyLossCapUsd: 5,
       canaryWalletFloorUsd: 250,
+      maxConsecutiveFailures: 3,
     },
     mode: "live",
     now: "2026-04-11T06:10:00.000Z",
@@ -168,6 +169,34 @@ test("risk gate allows native refill jobs to pass with negative system pnl when 
   });
 
   assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), false);
+});
+
+test("risk gate treats token refill as operating inventory, not instant alpha", () => {
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      type: "refill_token",
+      systemEconomics: {
+        tradeReadiness: "reject_no_net_edge",
+        routeInputUsd: 0.25,
+        routeNetEdgeUsd: -0.08,
+        routeExecutableNetEdgeUsd: -0.08,
+        effectiveSystemNetPnlUsd: -0.3,
+      },
+    }),
+    riskState: buildExecutionRiskState({
+      now: "2026-04-11T06:10:00.000Z",
+      inventory: inventoryFixture(280),
+      receiptRecords: [],
+      executionEvents: [],
+    }),
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("route_trade_rejected"), false);
   assert.equal(decision.blockers.includes("system_net_pnl_non_positive"), false);
 });
 
