@@ -98,8 +98,19 @@ function appendFlag(args, flag, enabled) {
   return enabled ? [...args, flag] : args;
 }
 
+function fundingSourceAutoExecutable(fundingSource) {
+  if (!fundingSource) return false;
+  if (fundingSource.selectionStatus === "ready") return true;
+  return (
+    fundingSource.selectionStatus === "conditional" &&
+    (fundingSource.missingInputs || []).length === 0 &&
+    (fundingSource.settlementRequirements || []).length > 0 &&
+    !fundingSource.requiresManualFunding
+  );
+}
+
 function refillJobIsAutoExecutable(job = {}) {
-  return !job.requiresManualReview && job.fundingSource?.selectionStatus === "ready";
+  return !job.requiresManualReview && fundingSourceAutoExecutable(job.fundingSource);
 }
 
 function refillPreparationReady(json = null) {
@@ -169,6 +180,7 @@ function compactRefillExecution(job, preview, execution = null) {
   const delivered = ["confirmed", "delivered", "succeeded"].includes(executionStatus);
   return {
     jobId: job.jobId,
+    refillSource: job.autopilotRefillSource || job.jobSourceStore || null,
     chain: job.chain,
     asset: job.asset,
     targetAmountDecimal: job.targetAmountDecimal ?? null,
@@ -193,12 +205,27 @@ function compactRefillExecution(job, preview, execution = null) {
 function compactInboundWatcher(report = null) {
   return {
     inboundEventCount: report?.summary?.inboundEventCount ?? 0,
+    operatingCapitalIngressCount: report?.summary?.operatingCapitalIngressCount ?? 0,
+    paybackExcludedCount: report?.summary?.paybackExcludedCount ?? 0,
     routeReadyCount: report?.summary?.routeReadyCount ?? 0,
     manualReviewCount: report?.summary?.manualReviewCount ?? 0,
     candidateQueueCount: report?.summary?.candidateQueueCount ?? 0,
     appendedEvents: report?.appended?.events ?? null,
     appendedJobs: report?.appended?.jobs ?? null,
     appendedPendingWhitelist: report?.appended?.pendingWhitelist ?? null,
+  };
+}
+
+function compactCapitalManager(report = null) {
+  return {
+    rebalanceDecision: report?.rebalancePlan?.decision || null,
+    capitalPlanDecision: report?.capitalPlan?.decision || null,
+    rebalanceActionCount: report?.rebalancePlan?.actions?.length ?? 0,
+    capitalActionCount: report?.capitalPlan?.summary?.actionCount ?? 0,
+    capitalBlockerCount: report?.capitalPlan?.summary?.blockerCount ?? 0,
+    refillJobCount: report?.jobs?.summary?.jobCount ?? 0,
+    autoRefillJobCount: (report?.jobs?.jobs || []).filter(refillJobIsAutoExecutable).length,
+    estimatedAssetValueUsd: report?.jobs?.summary?.estimatedAssetValueUsd ?? 0,
   };
 }
 
@@ -317,7 +344,7 @@ function compactCanarySweep(report = null) {
   };
 }
 
-function compactStrategyDispatch(report = null) {
+function compactStrategyDispatch(report = null, { capitalDispatchReadiness = null } = {}) {
   return {
     batchStatus: report?.record?.batchStatus || null,
     selectedCount: report?.record?.selectedCount ?? 0,
@@ -325,6 +352,7 @@ function compactStrategyDispatch(report = null) {
     failedCount: report?.summary?.failureCount ?? null,
     liveEligibleCount: report?.executionSurfaces?.summary?.liveEligibleCount ?? null,
     missingExecutorCount: report?.executionSurfaces?.summary?.missingExecutorCount ?? null,
+    capitalDispatchReadiness,
   };
 }
 
@@ -356,6 +384,9 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "treasury_refill_plan") {
     return steps.some((item) => item.name === "treasury_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
   }
+  if (step.name === "capital_manager_refill_plan") {
+    return steps.some((item) => item.name === "capital_manager_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
+  }
   if (step.name === "inbound_inventory_watcher") {
     const stderr = step.stderrSummary?.join("\n") || "";
     return /No treasury-inventory snapshots found/u.test(stderr);
@@ -384,6 +415,60 @@ function stepIsRecoverable(step, steps) {
   }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
+}
+
+function refillSourcePriority(source) {
+  if (source === "capital_manager") return 0;
+  if (source === "treasury") return 1;
+  if (source === "inbound_routing") return 2;
+  return 99;
+}
+
+function refillPriorityRank(job = {}) {
+  if (job.priority === "high") return 0;
+  if (job.priority === "medium") return 1;
+  if (job.priority === "low") return 2;
+  return 3;
+}
+
+function refillMergeKey(job = {}) {
+  if (job.sourceEventId) return `event:${job.sourceEventId}`;
+  if (job.resourceKey) return `resource:${job.resourceKey}`;
+  if (job.type && job.chain && (job.token || job.asset)) {
+    return `asset:${job.type}:${job.chain}:${job.token || job.asset}`;
+  }
+  return `job:${job.jobId}`;
+}
+
+function annotateRefillJobs(jobs = [], source = null) {
+  return (jobs || []).map((job) => ({
+    ...job,
+    autopilotRefillSource: source,
+  }));
+}
+
+function mergeAutopilotRefillJobs(jobGroups = []) {
+  const merged = new Map();
+  for (const { source, jobs = [] } of jobGroups) {
+    for (const job of annotateRefillJobs(jobs, source)) {
+      const key = refillMergeKey(job);
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, job);
+        continue;
+      }
+      if (refillSourcePriority(job.autopilotRefillSource) < refillSourcePriority(existing.autopilotRefillSource)) {
+        merged.set(key, job);
+      }
+    }
+  }
+  return [...merged.values()].sort((left, right) =>
+    refillPriorityRank(left) - refillPriorityRank(right) ||
+    refillSourcePriority(left.autopilotRefillSource) - refillSourcePriority(right.autopilotRefillSource) ||
+    String(left.chain || "").localeCompare(String(right.chain || "")) ||
+    String(left.asset || "").localeCompare(String(right.asset || "")) ||
+    String(left.jobId || "").localeCompare(String(right.jobId || "")),
+  );
 }
 
 async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }) {
@@ -438,6 +523,26 @@ export async function runAllChainAutopilot({
   }
   const refillPlan = refillPlanResult.json;
 
+  let capitalManagerRefillPlanResult = await runJsonStep({
+    name: "capital_manager_refill_plan",
+    args: ["src/cli/plan-capital-manager-refill-jobs.mjs", "--json", "--write", "--refresh-inventory"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  if (!capitalManagerRefillPlanResult.json) {
+    capitalManagerRefillPlanResult = await runJsonStep({
+      name: "capital_manager_refill_plan_stored_snapshot_fallback",
+      args: ["src/cli/plan-capital-manager-refill-jobs.mjs", "--json", "--write"],
+      runCommandImpl,
+      cwd,
+      timeoutMs,
+      steps,
+    });
+  }
+  const capitalManagerRefillPlan = capitalManagerRefillPlanResult.json;
+
   const inboundWatcherResult = await runJsonStep({
     name: "inbound_inventory_watcher",
     args: ["src/cli/run-inbound-inventory-watcher.mjs", "--json", "--write"],
@@ -447,7 +552,12 @@ export async function runAllChainAutopilot({
     steps,
   });
 
-  const autoRefillJobs = (refillPlan?.jobs || []).filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
+  const mergedRefillJobs = mergeAutopilotRefillJobs([
+    { source: "treasury", jobs: refillPlan?.jobs || [] },
+    { source: "capital_manager", jobs: capitalManagerRefillPlan?.jobs?.jobs || [] },
+    { source: "inbound_routing", jobs: inboundWatcherResult.json?.routingPlan?.jobs || [] },
+  ]);
+  const autoRefillJobs = mergedRefillJobs.filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
 
   for (const job of autoRefillJobs) {
     let preview = await runJsonStep({
@@ -509,6 +619,15 @@ export async function runAllChainAutopilot({
     }
     refillExecutions.push(compactRefillExecution(job, preview, execution));
   }
+
+  const capitalManagerExecutedCount = refillExecutions.filter(
+    (item) => item.refillSource === "capital_manager" && item.executed,
+  ).length;
+  const capitalDispatchReadiness =
+    capitalManagerRefillPlan?.capitalPlan?.decision === "REFILL_REQUIRED" && capitalManagerExecutedCount === 0
+      ? "rebalance_required_before_live_dispatch"
+      : "ready";
+  const allowLiveStrategyDispatch = execute && capitalDispatchReadiness === "ready";
 
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
@@ -592,7 +711,7 @@ export async function runAllChainAutopilot({
       "--write",
       "--continue-on-failure",
       "--mode=auto",
-    ], "--execute", execute),
+    ], "--execute", allowLiveStrategyDispatch),
     runCommandImpl,
     cwd,
     timeoutMs: dispatchTimeoutMs,
@@ -641,11 +760,20 @@ export async function runAllChainAutopilot({
 
   const summary = {
     officialChainCount: chains.length,
-    refillJobCount: refillPlan?.summary?.jobCount ?? 0,
+    refillJobCount: mergedRefillJobs.length,
+    treasuryRefillJobCount: refillPlan?.summary?.jobCount ?? 0,
+    capitalManagerRefillJobCount: capitalManagerRefillPlan?.jobs?.summary?.jobCount ?? 0,
+    inboundRouteJobCount: inboundWatcherResult.json?.routingPlan?.jobs?.length ?? 0,
     autoRefillJobCount: autoRefillJobs.length,
     refillAttemptedCount: refillExecutions.filter((item) => item.attempted).length,
     refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
+    autoRefillSourceCounts: autoRefillJobs.reduce((counts, job) => {
+      const key = job.autopilotRefillSource || "unknown";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {}),
     inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
+    capitalManager: compactCapitalManager(capitalManagerRefillPlan),
     canarySweep: compactCanarySweep(canarySweepResult.json),
     merklQueue: compactMerklQueue(merklQueueResult.json),
     destinationPromotionGate: {
@@ -660,7 +788,7 @@ export async function runAllChainAutopilot({
     destinationRepresentative: compactDestinationRepresentative(destinationRepresentativeResult.json),
     merklCanary: compactMerkl(merklCanaryResult.json),
     portfolio: compactPortfolio(portfolioResult.json),
-    strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json),
+    strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json, { capitalDispatchReadiness }),
     payback: compactPayback(paybackResult.json),
     autoKill: compactAutoKill(autoKillResult.json),
   };

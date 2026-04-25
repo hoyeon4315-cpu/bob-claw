@@ -257,6 +257,33 @@ function paybackMarkers(config) {
   };
 }
 
+function isOperatingCapitalIngressRecord(record) {
+  const capitalSource =
+    record?.capitalSource ??
+    record?.metadata?.capitalSource ??
+    record?.classification?.capitalSource ??
+    record?.job?.capitalSource ??
+    null;
+  const capitalFlow =
+    record?.capitalFlow ??
+    record?.metadata?.capitalFlow ??
+    record?.classification?.capitalFlow ??
+    null;
+  const paybackExclusion =
+    record?.paybackExclusion ??
+    record?.metadata?.paybackExclusion ??
+    record?.classification?.paybackExclusion ??
+    false;
+  const eventType = record?.event ?? record?.eventType ?? null;
+  return (
+    paybackExclusion === true ||
+    capitalSource === "operating_capital" ||
+    capitalFlow === "operating_capital_ingress" ||
+    eventType === "inbound_deposit_detected" ||
+    record?.type === "inbound_route"
+  );
+}
+
 function isPaybackRecord(record, markers) {
   if (!markers.strategyIds.size && !markers.intentTypes.size) return false;
   const strategyId =
@@ -575,7 +602,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
       sats: profitSatsFromRecord(record, store.marketPriceSnapshots, config),
       observedAtMs: latestTimestampMs([record]),
     }))
-    .filter((item) => !isPaybackRecord(item.record, markers) && Number.isFinite(item.sats) && item.sats > 0);
+    .filter((item) =>
+      !isPaybackRecord(item.record, markers) &&
+      !isOperatingCapitalIngressRecord(item.record) &&
+      Number.isFinite(item.sats) &&
+      item.sats > 0,
+    );
 
   const paybackRecords = allRecords
     .map((record) => ({

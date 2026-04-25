@@ -25,6 +25,22 @@
 - 모든 키는 OS keystore (`BURNER_EVM_KEY_PATH`, `BURNER_BTC_KEY_PATH`). LLM은 키 절대 접근 불가.
 - 모든 cap·payback 비율·임계치 변경은 **commit-only**. 런타임 변경 불가.
 
+### 1.1 macOS 런타임 부트스트랩
+
+- 정책 게이트와 실제 런타임은 별개다. `liveTrading=ALLOWED`가 떠도 daemon/watchdog가 안 돌면 자동 집행은 멈춘다.
+- 현재 로컬 진단 명령:
+  - `npm run ops:runtime-readiness`
+  - `npm run ops:runtime-readiness -- --strict`
+  - `npm run ops:full-automation-readiness`
+  - `npm run ops:full-automation-readiness -- --refresh`
+- launchd 자산 생성/설치:
+  - `npm run ops:launchd:write`
+  - `npm run ops:launchd:install`
+  - `npm run ops:launchd:status`
+- 호환 alias:
+  - `npm run signer:daemon`
+  - `npm run watchdog:run`
+
 ---
 
 ## 2. 자본 배치 모델

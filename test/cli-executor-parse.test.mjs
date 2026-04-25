@@ -6,6 +6,9 @@ import { test } from "node:test";
 
 import { parseArgs as parseGasZipArgs } from "../src/cli/run-gas-zip-refuel.mjs";
 import { parseArgs as parseCapitalManagerArgs } from "../src/cli/plan-capital-manager-refill-jobs.mjs";
+import { buildFullAutomationReadiness, parseArgs as parseFullAutomationArgs } from "../src/cli/check-full-automation-readiness.mjs";
+import { parseArgs as parseRuntimeReadinessArgs } from "../src/cli/check-executor-runtime.mjs";
+import { parseArgs as parseLaunchdArgs } from "../src/cli/manage-executor-launchd.mjs";
 import {
   parseArgs as parsePaybackSchedulerArgs,
   paybackDisbursementRecordFromTickResult,
@@ -114,6 +117,125 @@ test("run-payback-scheduler parseArgs defaults to once mode", () => {
   assert.equal(args.once, true);
   assert.equal(args.execute, false);
   assert.equal(args.pollIntervalMs, undefined);
+});
+
+test("check-executor-runtime parseArgs reads json and strict flags", () => {
+  const args = parseRuntimeReadinessArgs(["--json", "--strict"]);
+
+  assert.equal(args.json, true);
+  assert.equal(args.strict, true);
+});
+
+test("check-full-automation-readiness parseArgs reads refresh flags", () => {
+  const args = parseFullAutomationArgs(["--json", "--strict", "--refresh"]);
+
+  assert.equal(args.json, true);
+  assert.equal(args.strict, true);
+  assert.equal(args.refresh, true);
+});
+
+test("full automation readiness reports isolated ingress and capital plan state", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 2,
+        operatingCapitalIngressCount: 2,
+        paybackExcludedCount: 2,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 1 },
+        jobs: [{ requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 3 },
+      executionSurfaces: { summary: { liveEligibleCount: 1 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+  });
+
+  assert.equal(report.ready, true);
+  assert.equal(report.capitalManager.ready, true);
+  assert.equal(report.ingress.ready, true);
+  assert.equal(report.strategyDispatch.liveEligibleCount, 1);
+});
+
+test("full automation readiness blocks when no auto refill or live strategy is available", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 2 },
+        jobs: [{ requiresManualReview: true }, { requiresManualReview: true }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 8 },
+      executionSurfaces: { summary: { liveEligibleCount: 0 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+  });
+
+  assert.equal(report.ready, false);
+  assert.equal(report.capitalManager.ready, false);
+  assert.equal(report.strategyDispatch.ready, false);
+  assert.deepEqual(report.blockers, ["capital_rebalancer_not_ready", "strategy_dispatch_not_ready"]);
+});
+
+test("manage-executor-launchd parseArgs reads install and path overrides", () => {
+  const args = parseLaunchdArgs([
+    "--json",
+    "--install",
+    "--launch-agents-dir=/Users/test/Library/LaunchAgents",
+    "--log-dir=/tmp/bob-launchd",
+    "--node-path=/usr/local/bin/node",
+    "--uid=501",
+  ]);
+
+  assert.equal(args.json, true);
+  assert.equal(args.install, true);
+  assert.equal(args.launchAgentsDir, "/Users/test/Library/LaunchAgents");
+  assert.equal(args.logDir, "/tmp/bob-launchd");
+  assert.equal(args.nodePath, "/usr/local/bin/node");
+  assert.equal(args.uid, 501);
 });
 
 test("run-payback-scheduler persists executed payback disbursements to signer audit log", async () => {

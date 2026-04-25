@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ASSET_CLASSES, classifyInboundEvent } from "./asset-classifier.mjs";
+import { OPERATING_CAPITAL_INGRESS_FLOW, OPERATING_CAPITAL_SOURCE } from "./inventory-watcher.mjs";
 
 export const INBOUND_ROUTING_POLICY = Object.freeze({
   bitcoinOnrampTargetChain: "base",
@@ -48,6 +49,10 @@ function baseJob({ event, classification, strategyId, routeType, targetChain, st
     targetAmount: event.amount,
     targetAmountDecimal: event.amountDecimal,
     estimatedAssetValueUsd: event.estimatedUsd ?? null,
+    capitalSource: event.capitalSource || OPERATING_CAPITAL_SOURCE,
+    capitalFlow: event.capitalFlow || OPERATING_CAPITAL_INGRESS_FLOW,
+    paybackExclusion: event.paybackExclusion !== false,
+    paybackExclusionReason: event.paybackExclusionReason || OPERATING_CAPITAL_INGRESS_FLOW,
     strategyPolicy: {
       id: `${strategyId}_inbound_deposit`,
       category: "inbound_capital_routing",
@@ -58,6 +63,7 @@ function baseJob({ event, classification, strategyId, routeType, targetChain, st
       newTokenAutoWhitelist: false,
       signerRequired: true,
       deterministicPolicyApprovalRequired: true,
+      paybackExclusion: true,
     },
   };
 }
@@ -75,6 +81,10 @@ export function pendingWhitelistRecord({ event, classification }) {
     amount: event.amount,
     amountDecimal: event.amountDecimal,
     estimatedUsd: event.estimatedUsd ?? null,
+    capitalSource: event.capitalSource || OPERATING_CAPITAL_SOURCE,
+    capitalFlow: event.capitalFlow || OPERATING_CAPITAL_INGRESS_FLOW,
+    paybackExclusion: true,
+    paybackExclusionReason: event.paybackExclusionReason || OPERATING_CAPITAL_INGRESS_FLOW,
     reviewReason: classification.reviewReason,
     requiredAction: "commit_token_whitelist_or_leave_manual_only",
   };
