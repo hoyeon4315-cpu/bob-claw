@@ -122,10 +122,11 @@ function refillActionForUsdShortfall({ type, chain, token = ZERO_TOKEN, amountUs
 
 export function buildCapitalRebalancePlan({
   strategyCaps,
+  policy = null,
   balancesByChain = {},
   now = new Date().toISOString(),
 } = {}) {
-  const targets = buildTargetBalances({ strategyCaps, now });
+  const targets = buildTargetBalances({ strategyCaps, policy, now });
   const gasFloat = evaluateGasFloatKeeper({
     targetBalances: targets,
     balancesByChain,
@@ -298,7 +299,7 @@ export function buildCapitalManagerRefillJobs({
 } = {}) {
   const inventory = mergeCapitalInventory({ treasuryInventory, wholeWalletInventory });
   const balancesByChain = observedCapitalBalancesByChain({ inventory });
-  const rebalancePlan = buildCapitalRebalancePlan({ strategyCaps, balancesByChain, now });
+  const rebalancePlan = buildCapitalRebalancePlan({ strategyCaps, policy, balancesByChain, now });
   const capitalPlan = buildCapitalRebalanceRefillPlan({
     rebalancePlan,
     prices,

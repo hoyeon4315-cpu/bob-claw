@@ -4,9 +4,25 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function effectivePerStrategySettlementTargetUsd(strategy = {}, chain, policy = null) {
+  const perChainUsd = finite(strategy.caps?.perChainUsd?.[chain]);
+  const liveUnitUsd = finite(strategy.caps?.tinyLivePerTxUsd) ?? finite(strategy.caps?.perTxUsd);
+  const canaryStartUsdMax = finite(policy?.capital?.canaryStartUsdMax);
+  const maxIdleCapitalPerChainUsd = finite(policy?.capital?.maxIdleCapitalPerChainUsd);
+  const candidates = [
+    perChainUsd,
+    liveUnitUsd,
+    canaryStartUsdMax,
+    maxIdleCapitalPerChainUsd,
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  if (!candidates.length) return 0;
+  return Math.min(...candidates);
+}
+
 export function buildTargetBalances({
   strategyCaps = listStrategyCaps(),
   includeInactive = false,
+  policy = null,
   now = new Date().toISOString(),
 } = {}) {
   const chains = new Map();
@@ -23,9 +39,12 @@ export function buildTargetBalances({
       };
       const gasFloat = strategy.gasFloat?.[chain] || {};
       existing.strategyIds.push(strategy.strategyId);
-      existing.settlementTargetUsd += finite(perChainUsd) ?? 0;
-      existing.gasFloatMinUsd += finite(gasFloat.minUsd) ?? 0;
-      existing.gasFloatTargetUsd += finite(gasFloat.targetUsd) ?? 0;
+      existing.settlementTargetUsd = Math.max(
+        existing.settlementTargetUsd,
+        effectivePerStrategySettlementTargetUsd(strategy, chain, policy),
+      );
+      existing.gasFloatMinUsd = Math.max(existing.gasFloatMinUsd, finite(gasFloat.minUsd) ?? 0);
+      existing.gasFloatTargetUsd = Math.max(existing.gasFloatTargetUsd, finite(gasFloat.targetUsd) ?? 0);
       chains.set(chain, existing);
     }
   }
