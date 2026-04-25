@@ -394,6 +394,12 @@ async function main() {
       `merklCanaryQueue=queued:${status.strategy.merklCanaryQueueSummary.queueCount ?? 0} top:${status.strategy.merklCanaryQueueSummary.topOpportunityId || "none"} topExecutable:${status.strategy.merklCanaryQueueSummary.topExecutableOpportunityId || "none"} action:${status.strategy.merklCanaryQueueSummary.topNextAction || "none"} bindingReady:${status.strategy.merklCanaryQueueSummary.protocolBindingReadyCount ?? 0} executableNow:${status.strategy.merklCanaryQueueSummary.executableNowCount ?? 0} blocker:${status.strategy.merklCanaryQueueSummary.topBlockingReason || "none"} executorMissing:${status.strategy.merklCanaryQueueSummary.executorMissingCount ?? 0} cooldown:${status.strategy.merklCanaryQueueSummary.cooldownActiveCount ?? 0} routeGaps:${status.strategy.merklCanaryQueueSummary.chainRouteGapCount ?? 0}`,
     );
   }
+  if (status.operations?.allChainAutopilot?.present) {
+    const ops = status.operations.allChainAutopilot;
+    console.log(
+      `allChainAutopilot=${ops.status || "none"} chains:${ops.officialChainCount ?? 0} canary:${ops.canary?.deliveredCount ?? 0}/${ops.canary?.executedCount ?? 0} refill:${ops.refill?.executedCount ?? 0}/${ops.refill?.autoJobCount ?? 0} positions:${ops.portfolio?.openedCount ?? 0} payback:${ops.payback?.status || "none"} blocker:${ops.topBlockers?.[0]?.reason || "none"}`,
+    );
+  }
   if (status.strategy?.strategySnapshot?.formulaAudit) {
     console.log(
       `formulaAudit=implemented:${status.strategy.strategySnapshot.formulaAudit.summary?.implementedCount ?? 0} partial:${status.strategy.strategySnapshot.formulaAudit.summary?.partialCount ?? 0} missing:${status.strategy.strategySnapshot.formulaAudit.summary?.missingCount ?? 0} topGap:${status.strategy.strategySnapshot.formulaAudit.summary?.topGap?.id || "none"}`,

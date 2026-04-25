@@ -57,7 +57,7 @@ function normalizeStrategyId(id) {
 
 function deriveStatus(live) {
   if (live?.autoExecute === true && live?.blockers?.length === 0) return 'LIVE';
-  if (live?.autoExecute === true) return 'LIVE';
+  if (live?.autoExecute === true) return 'ARMED';
   if (live?.autoExecute === false && live?.preliveReady) return 'DRY RUN';
   return 'CANDIDATE';
 }
@@ -69,15 +69,14 @@ function satsToUsd(sats, btcUsd) {
 
 async function bootData() {
   let status = null;
-  let holdings = null;
   try {
     const resp = await fetch(`./dashboard-status.json?t=${Date.now()}`, { cache: 'no-store' });
     if (resp.ok) status = await resp.json();
   } catch {}
-  try {
-    const resp = await fetch(`./wallet-holdings.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (resp.ok) holdings = await resp.json();
-  } catch {}
+
+  const holdings = status?.walletHoldings || null;
+  const merklActive = status?.strategy?.merklActivePositions || null;
+  const operations = status?.operations?.allChainAutopilot || null;
 
   const lanePolicy = status?.overall?.lanePolicy || {};
   const primaryId = lanePolicy?.candidateId || 'wrapped-btc-loop-base-moonwell';
@@ -150,9 +149,9 @@ async function bootData() {
     else {
       const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
       if (isPrimary) {
-        statusLabel = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'LIVE' : 'DRY RUN');
+        statusLabel = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE' : (autoExec ? 'ARMED' : 'DRY RUN');
       } else {
-        statusLabel = defaultAutoExec(s.id) ? 'LIVE' : 'CANDIDATE';
+        statusLabel = defaultAutoExec(s.id) ? 'ARMED' : 'CANDIDATE';
       }
     }
 
@@ -212,7 +211,40 @@ async function bootData() {
     };
   });
 
-  Object.assign(window, { CHAINS: CHAINS_PARITY, STRATEGIES, KPI, HOLDINGS, RAW_STATUS: status });
+  // Merkl-active strategies — only positions currently open (live).
+  // Each Merkl item becomes a STRATEGIES entry so DefiPane (groups by protocol)
+  // and Mindmap pick them up automatically. Inactive opportunities are excluded.
+  const merklItems = Array.isArray(merklActive?.items) ? merklActive.items : [];
+  for (const m of merklItems) {
+    if (!m?.chain || !m?.protocol) continue;
+    STRATEGIES.push({
+      id: m.id,
+      label: m.label || `Merkl ${m.opportunityId}`,
+      sub: `${m.chain} · ${m.protocol}`,
+      chain: m.chain,
+      protocol: m.protocol,
+      type: m.type || 'lp',
+      pair: Array.isArray(m.pair) && m.pair.length ? m.pair : ['usdc'],
+      loops: null,
+      capUsd: Number.isFinite(m.capUsd) ? m.capUsd : null,
+      desc: `Merkl-discovered position. opportunity ${m.opportunityId}.`,
+      autoExecute: true,
+      status: 'LIVE',
+      earnedUsd: 0,
+      apyPct: liveAprFor({ protocol: m.protocol, chain: m.chain, type: m.type || 'lp' }, liveApr) ?? null,
+      tickMode: 'live_candidate',
+      tickBlockers: [],
+      microCanaryStatus: 'active',
+      blockerCount: 0,
+      topBlocker: null,
+      projectedNetUsd: null,
+      lastTickAt: m.lastObservedAt || null,
+      source: 'merkl',
+      opportunityId: m.opportunityId,
+    });
+  }
+
+  Object.assign(window, { CHAINS: CHAINS_PARITY, STRATEGIES, KPI, HOLDINGS, MERKL_ACTIVE: merklActive, OPERATIONS: operations, RAW_STATUS: status });
   return true;
 }
 
@@ -242,7 +274,6 @@ function liveAprFor(strategy, aprMap) {
 function defaultAutoExec(id) {
   return ![
     'gateway-instant-swap-verification',
-    'recursive_wrapped_btc_lending_loop',
     'wrapper-btc-arbitrage',
   ].includes(id);
 }
@@ -255,6 +286,6 @@ function apyHint(id) {
   })[id] ?? null;
 }
 
-Object.assign(window, { CHAINS, STRATEGIES: [], KPI: { source:'pending' }, HOLDINGS: { all: [] } });
+Object.assign(window, { CHAINS, STRATEGIES: [], KPI: { source:'pending' }, HOLDINGS: { all: [] }, OPERATIONS: null });
 window.DATA_READY = bootData();
 window.DATA_READY.then(() => startDashboardPolling(30000));

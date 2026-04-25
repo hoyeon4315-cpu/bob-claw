@@ -74,6 +74,21 @@
       "color": "#2D4A7C"
     },
     {
+      "id": "aave",
+      "file": "protocols/aave.svg",
+      "color": "#B6509E"
+    },
+    {
+      "id": "euler",
+      "file": "protocols/euler.svg",
+      "color": "#39D0C9"
+    },
+    {
+      "id": "yo",
+      "file": "protocols/yo.svg",
+      "color": "#111113"
+    },
+    {
       "id": "pendle",
       "file": "protocols/pendle.svg",
       "color": "#00ADAB"

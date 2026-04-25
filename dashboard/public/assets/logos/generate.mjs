@@ -1,5 +1,5 @@
-// Reproducible generator for the 22-asset T25 SVG set:
-//   11 BOB Gateway destination chains + 11 protocols touched by adapters S1..S7.
+// Reproducible generator for the dashboard placeholder SVG set:
+//   BOB Gateway destination chains + protocols touched by adapters/live positions.
 //
 // Why letter-mark placeholders instead of brand-supplied artwork?
 //   - We do NOT have signed brand-usage approval for every protocol/chain in
@@ -42,6 +42,9 @@ export const CHAIN_MARKS = Object.freeze([
 export const PROTOCOL_MARKS = Object.freeze([
   { id: "moonwell",   color: "#00D395", mark: "MW", ink: "#0B1F18" },
   { id: "morpho",     color: "#2D4A7C", mark: "Mo", ink: "#FFFFFF" },
+  { id: "aave",       color: "#B6509E", mark: "AA", ink: "#FFFFFF" },
+  { id: "euler",      color: "#39D0C9", mark: "EU", ink: "#0B1F18" },
+  { id: "yo",         color: "#111113", mark: "YO", ink: "#FFFFFF" },
   { id: "pendle",     color: "#00ADAB", mark: "PT", ink: "#FFFFFF" },
   { id: "aerodrome",  color: "#1656F7", mark: "AE", ink: "#FFFFFF" },
   { id: "beefy",      color: "#4DB258", mark: "BF", ink: "#FFFFFF" },

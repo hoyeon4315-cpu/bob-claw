@@ -25,9 +25,12 @@ import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../
 import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
+import { buildAllChainAutopilotDashboardSlice } from "./all-chain-autopilot-slice.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
+import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
+import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
@@ -173,6 +176,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      capitalAuditReport,
      v1InfraDrills,
      promotionReport,
+     allChainAutopilotLatest,
+     treasuryInventoryRecords,
+     merklPositionEvents,
    ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -218,6 +224,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonIfExists(join(dataDir, "capital-audit.json")),
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
      readJsonIfExists(join(dataDir, "promotion-latest.json")),
+     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
+     readJsonl(dataDir, "treasury-inventory"),
+     readJsonl(dataDir, "merkl-portfolio-positions"),
    ]);
   const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
@@ -305,9 +314,22 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     merklOpportunityAlerts,
   );
   dashboardStatus.strategy.merklCanaryQueueSummary = summarizeMerklCanaryQueueStatus(merklCanaryQueue);
+  dashboardStatus.strategy.merklActivePositions = buildMerklActivePositions(merklPositionEvents, {
+    generatedAt: dashboardStatus.generatedAt,
+  });
+  dashboardStatus.walletHoldings = buildTreasuryHoldingsSlice(treasuryInventoryRecords, {
+    generatedAt: dashboardStatus.generatedAt,
+  });
+  dashboardStatus.operations = {
+    allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotLatest),
+  };
   dashboardStatus.dataCounts.merklOpportunityReportPresent = merklOpportunityReport ? 1 : 0;
   dashboardStatus.dataCounts.merklOpportunityAlertCount = merklOpportunityAlerts.length;
   dashboardStatus.dataCounts.merklCanaryQueuePresent = merklCanaryQueue ? 1 : 0;
+  dashboardStatus.dataCounts.merklActivePositionCount =
+    dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
+  dashboardStatus.dataCounts.treasuryInventoryRecords = treasuryInventoryRecords.length;
+  dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotLatest ? 1 : 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,
     canaryInputs,
@@ -795,6 +817,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       v1InfraDrills,
       merklOpportunityReport,
       merklOpportunityAlerts,
+      merklPositionEvents,
+      treasuryInventoryRecords,
+      allChainAutopilotLatest,
     },
   };
 }

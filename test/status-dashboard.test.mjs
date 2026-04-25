@@ -127,6 +127,63 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
       },
     },
   ]);
+  await writeJsonl(dataDir, "merkl-portfolio-positions", [
+    {
+      event: "position_opened",
+      status: "open",
+      opportunityId: "merkl-test-1",
+      chain: "base",
+      protocolId: "yo",
+      name: "USDC Vault on Base",
+      amountUsd: 5,
+      observedAt: "2026-04-11T02:04:00.000Z",
+    },
+  ]);
+  await writeFile(
+    join(dataDir, "all-chain-autopilot-latest.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      observedAt: "2026-04-11T02:04:30.000Z",
+      mode: "execute",
+      status: "completed_with_blockers",
+      blockedReason: null,
+      chains: ["ethereum", "bob", "base"],
+      summary: {
+        officialChainCount: 11,
+        refillJobCount: 1,
+        autoRefillJobCount: 1,
+        refillAttemptedCount: 0,
+        refillExecutedCount: 0,
+        canarySweep: {
+          status: "completed",
+          executedCount: 1,
+          deliveredCount: 1,
+          blockedCount: 0,
+          chainsTouched: ["base"],
+        },
+        merklCanary: { status: "blocked", blockedReason: "no_autopilot_candidate_ready" },
+        portfolio: { status: "positions_opened", allocator: { deployments: [] } },
+        strategyDispatch: {
+          batchStatus: "succeeded",
+          selectedCount: 8,
+          successCount: 8,
+          failedCount: 0,
+          liveEligibleCount: 0,
+          missingExecutorCount: 0,
+        },
+        payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      },
+      refillExecutions: [
+        {
+          chain: "optimism",
+          asset: "wBTC.OFT",
+          previewBlockedReason: "lifi_quote_rejected",
+          executed: false,
+        },
+      ],
+    })}\n`,
+    "utf8",
+  );
   await writeJsonl(dataDir, "connected-refresh-runs", [
     {
       observedAt: "2026-04-11T02:00:00.000Z",
@@ -386,4 +443,12 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(typeof publicStatus.dataCounts?.preliveReviewPackagePresent, "number");
   assert.equal(typeof publicStatus.dataCounts?.connectedRefreshRuns, "number");
   assert.equal(typeof publicStatus.dataCounts?.currentRoutePrelivePasses, "number");
+  assert.equal(publicStatus.operations?.allChainAutopilot?.present, true);
+  assert.equal(publicStatus.operations?.allChainAutopilot?.canary?.deliveredCount, 1);
+  assert.equal(publicStatus.operations?.allChainAutopilot?.refill?.blockers?.[0]?.reason, "lifi_quote_rejected");
+  assert.equal(publicStatus.strategy?.merklActivePositions?.activeCount, 1);
+  assert.equal(publicStatus.walletHoldings?.pending, false);
+  assert.equal(publicStatus.dataCounts?.allChainAutopilotPresent, 1);
+  assert.equal(publicStatus.dataCounts?.merklActivePositionCount, 1);
+  assert.equal(publicStatus.dataCounts?.treasuryInventoryRecords, 1);
 });

@@ -624,6 +624,19 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     }
   }, [ringPos, selectedChain, protocolsByChain, protocolBloom, chainSize, gatewaySize, destChains, btcPos.x, btcPos.y]);
 
+  // Snap all bodies to anchors on selection change so zoom transition does
+  // not visually fight the spring solver (eliminates "튕김" jitter).
+  useEffect(() => {
+    const bodies = physicsRef.current;
+    for (const b of bodies.values()) {
+      if (b.isDragging) continue;
+      b.x = b.anchorX;
+      b.y = b.anchorY;
+      b.vx = 0;
+      b.vy = 0;
+    }
+  }, [selectedChain, selectedProtocolId]);
+
   const liveChains = new Set(STRATEGIES.filter(s => s.status === 'LIVE').map(s => s.chain));
 
   const srcCurve = useMemo(() => {
