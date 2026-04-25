@@ -321,6 +321,43 @@ test("Soneium Gateway route gaps keep LI.FI in the deterministic fallback ladder
   assert.ok(methods.includes("cross_chain_bridge_stargate"));
 });
 
+test("representative stable token refills use ticker fallback when token registry family is absent", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: {
+      ...planFixture("REFILL_REQUIRED"),
+      inventory: {
+        native: [
+          {
+            chain: "optimism",
+            actual: "5000000000000000",
+            actualDecimal: 0.005,
+            estimatedUsd: 10,
+          },
+        ],
+        tokens: [],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "soneium",
+          ticker: "USDC",
+          token: "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369",
+          refillAmount: "4000000",
+          refillAmountDecimal: 4,
+          refillEstimatedUsd: 4,
+          rationale: "Soneium representative USDC bootstrap",
+        },
+      ],
+    },
+    policy,
+  });
+
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "optimism");
+  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_token_refill_executor_missing"), false);
+});
+
 test("cross-chain BTC-family token refill stays conditional when observed source amount is below target", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

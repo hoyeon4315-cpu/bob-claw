@@ -1,15 +1,14 @@
 // Logo loader.
 //
 // Source priority:
-//   1. Local self-hosted SVG at /assets/logos/{chains|protocols}/<id>.svg
-//      (T25 — see ./assets/logos/LICENSES.md for license/attribution per id).
-//   2. Remote CDN fallback (DeFiLlama / CoinGecko / weserv proxy) for assets
-//      that are not yet shipped locally, or for asset-token icons (BTC, USDC,
-//      etc) that ride on the CDNs by design.
+//   1. Remote official or ecosystem logo source (DeFiLlama, protocol favicon,
+//      CoinGecko, TrustWallet, etc).
+//   2. Local self-hosted SVG fallback at /assets/logos/{chains|protocols}/<id>.svg.
+//      Today these are placeholder lettermarks for offline degradation only.
 //   3. Letter fallback if every source fails (offline, blocked, etc).
 //
-// The local SVG is loaded as an <img src> so the browser can cache it across
-// chain taps and so a missing file degrades gracefully via onError.
+// The local SVG is still loaded as an <img src> so a missing remote logo can
+// degrade gracefully, but it must not displace official brand artwork.
 
 const LLAMA_CHAIN = (slug, s) => `https://icons.llamao.fi/icons/chains/rsz_${slug}?w=${s*2}&h=${s*2}`;
 const TOKEN_SVG   = (sym) => `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/${sym}.svg`;
@@ -47,6 +46,8 @@ function protoSources(id, size) {
     gateway:  [llama('bob-gateway'), prox('https://www.gobob.xyz/favicon.ico')],
     gaszip:   [prox('https://www.gas.zip/favicon.ico')],
     morpho:    [llama('morpho-blue'), llama('morpho')],
+    euler:     [prox('https://app.euler.finance/favicon.ico')],
+    yo:        [prox('https://www.yo.xyz/favicon.ico')],
     pendle:    [llama('pendle')],
     aerodrome: [llama('aerodrome-v1'), llama('aerodrome')],
     beefy:     [llama('beefy')],
@@ -101,8 +102,8 @@ function ChainLogo({ id, size = 28, style = {} }) {
   const slug = CHAIN_SLUG[id];
   const label = (id || '?').slice(0, 1).toUpperCase();
   const sources = [];
-  if (id) sources.push(LOCAL_CHAIN(id));
   if (slug) sources.push(LLAMA_CHAIN(slug, size));
+  if (id) sources.push(LOCAL_CHAIN(id));
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }} data-chain-logo={id}>
       <MultiImgMark
@@ -116,7 +117,7 @@ function ChainLogo({ id, size = 28, style = {} }) {
 
 function ProtocolLogo({ id, size = 22, style = {} }) {
   const remote = protoSources(id, size);
-  const sources = id ? [LOCAL_PROTOCOL(id), ...remote] : remote;
+  const sources = id ? [...remote, LOCAL_PROTOCOL(id)] : remote;
   const label = (id || '?').slice(0, 1).toUpperCase();
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }} data-protocol-logo={id}>
@@ -179,7 +180,7 @@ function assetSources(id, size = 32) {
     lbtc:  [prox('https://app.lombard.finance/favicon.ico'), spot('btc')],
     solvbtc: [prox('https://solv.finance/favicon.ico'), spot('btc')],
     honey: [prox('https://www.berachain.com/favicon.ico')],
-    sonic_native: [LOCAL_CHAIN('sonic'), LLAMA_CHAIN('sonic', size)],
+    sonic_native: [LLAMA_CHAIN('sonic', size), LOCAL_CHAIN('sonic')],
   };
   return map[assetId] || [];
 }

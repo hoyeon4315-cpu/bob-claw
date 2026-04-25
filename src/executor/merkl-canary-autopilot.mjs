@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tokenAsset } from "../assets/tokens.mjs";
+import { tokenAsset, ZERO_TOKEN } from "../assets/tokens.mjs";
 import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { config } from "../config/env.mjs";
 import { getStrategyCaps, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
@@ -10,6 +10,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
+import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
@@ -179,6 +180,15 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
 }
 
 export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
+  const selection = selectMerklCanaryAutopilotCandidates(queue, { ...options, maxCandidates: 1 });
+  return {
+    selected: selection.selected[0] || null,
+    readyCount: selection.readyCount,
+    candidates: selection.candidates,
+  };
+}
+
+export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const candidates = (queue.queue || [])
     .map((queueItem) => {
       const refreshedItem = options.inventorySnapshot || options.canaryExecutions
@@ -210,20 +220,55 @@ export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
         sizing: sizeMerklCanaryAmount(refreshedItem, options),
       };
     });
+  const maxCandidates = Math.max(1, Number.isInteger(options.maxCandidates) ? options.maxCandidates : 6);
+  const maxPerChain = Math.max(1, Number.isInteger(options.maxPerChain) ? options.maxPerChain : 3);
+  const maxPerProtocol = Math.max(1, Number.isInteger(options.maxPerProtocol) ? options.maxPerProtocol : 4);
   const ready = candidates
     .filter((item) => item.sizing.status === "ready")
     .sort((left, right) => {
-      if (left.queueItem.chain !== right.queueItem.chain) {
-        if (left.queueItem.chain === "ethereum") return 1;
-        if (right.queueItem.chain === "ethereum") return -1;
-      }
       if ((right.queueItem.priorityScore ?? 0) !== (left.queueItem.priorityScore ?? 0)) {
         return (right.queueItem.priorityScore ?? 0) - (left.queueItem.priorityScore ?? 0);
       }
       return (right.sizing.amountUsd ?? 0) - (left.sizing.amountUsd ?? 0);
     });
+  const byChain = new Map();
+  for (const candidate of ready) {
+    const chain = candidate.queueItem.chain || "unknown";
+    if (!byChain.has(chain)) byChain.set(chain, []);
+    byChain.get(chain).push(candidate);
+  }
+  const chainOrder = [...byChain.keys()].sort((left, right) => {
+    const leftTop = byChain.get(left)?.[0];
+    const rightTop = byChain.get(right)?.[0];
+    return (rightTop?.queueItem.priorityScore ?? 0) - (leftTop?.queueItem.priorityScore ?? 0);
+  });
+  const selected = [];
+  const chainCounts = new Map();
+  const protocolCounts = new Map();
+  while (selected.length < maxCandidates) {
+    const before = selected.length;
+    for (const chain of chainOrder) {
+      if (selected.length >= maxCandidates) break;
+      if ((chainCounts.get(chain) || 0) >= maxPerChain) continue;
+      const chainQueue = byChain.get(chain) || [];
+      let candidate = null;
+      while (chainQueue.length) {
+        const next = chainQueue.shift();
+        const protocol = `${chain}:${next.queueItem.protocolId || "unknown"}`;
+        if ((protocolCounts.get(protocol) || 0) >= maxPerProtocol) continue;
+        candidate = next;
+        break;
+      }
+      if (!candidate) continue;
+      const protocol = `${chain}:${candidate.queueItem.protocolId || "unknown"}`;
+      selected.push(candidate);
+      chainCounts.set(chain, (chainCounts.get(chain) || 0) + 1);
+      protocolCounts.set(protocol, (protocolCounts.get(protocol) || 0) + 1);
+    }
+    if (selected.length === before) break;
+  }
   return {
-    selected: ready[0] || null,
+    selected,
     readyCount: ready.length,
     candidates,
   };
@@ -251,6 +296,142 @@ function compactRepresentativeCoverage(queue = {}) {
   return queue.representativeCoverage?.summary || queue.summary?.representativeCoverage || null;
 }
 
+function scaledUsdEstimate({ priorUnits, priorUsd, liveUnits }) {
+  const priorAmount = BigInt(priorUnits || 0);
+  const liveAmount = BigInt(liveUnits || 0);
+  const priorEstimate = Number(priorUsd);
+  if (liveAmount <= 0n || priorAmount <= 0n || !Number.isFinite(priorEstimate) || priorEstimate <= 0) return 0;
+  return Number((liveAmount * decimalUsdToMicros(priorEstimate)) / priorAmount) / 1_000_000;
+}
+
+export async function buildLiveMerklInventorySnapshot({
+  queueItem,
+  senderAddress,
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
+} = {}) {
+  if (!queueItem) throw new Error("queueItem is required");
+  if (!senderAddress) throw new Error("senderAddress is required");
+  const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
+  const tokenBalance = await readErc20BalanceImpl(queueItem.chain, binding.assetAddress, senderAddress);
+  const nativeBalance = await readNativeBalanceImpl(queueItem.chain, senderAddress);
+  const priorToken = queueItem.executionReadiness?.matchedToken || null;
+  const priorNative = queueItem.executionReadiness?.matchedNative || null;
+  return {
+    address: senderAddress,
+    observedAt: new Date().toISOString(),
+    native: [
+      {
+        chain: queueItem.chain,
+        asset: priorNative?.asset || tokenAsset(queueItem.chain, ZERO_TOKEN).ticker,
+        token: ZERO_TOKEN,
+        actual: nativeBalance.balanceWei.toString(),
+        actualDecimal: priorNative?.actualDecimal ?? null,
+        estimatedUsd: scaledUsdEstimate({
+          priorUnits: priorNative?.actual,
+          priorUsd: priorNative?.estimatedUsd,
+          liveUnits: nativeBalance.balanceWei.toString(),
+        }),
+        rpcUrl: nativeBalance.rpcUrl || null,
+      },
+    ],
+    tokens: [
+      {
+        chain: queueItem.chain,
+        token: binding.assetAddress,
+        ticker: priorToken?.ticker || tokenAsset(queueItem.chain, binding.assetAddress).ticker,
+        actual: tokenBalance.balance.toString(),
+        actualDecimal: priorToken?.actualDecimal ?? null,
+        estimatedUsd: scaledUsdEstimate({
+          priorUnits: priorToken?.actual,
+          priorUsd: priorToken?.estimatedUsd,
+          liveUnits: tokenBalance.balance.toString(),
+        }),
+        rpcUrl: tokenBalance.rpcUrl || null,
+      },
+    ],
+  };
+}
+
+export async function refreshMerklAutopilotSelectionForExecute({
+  selected,
+  senderAddress,
+  canaryExecutions = [],
+  now = new Date().toISOString(),
+  readErc20BalanceImpl = readErc20Balance,
+  readNativeBalanceImpl = readNativeBalance,
+  sizingOptions = {},
+} = {}) {
+  if (!selected?.queueItem) throw new Error("selected queue item is required");
+  const inventorySnapshot = await buildLiveMerklInventorySnapshot({
+    queueItem: selected.queueItem,
+    senderAddress,
+    readErc20BalanceImpl,
+    readNativeBalanceImpl,
+  });
+  const queueItem = applyMerklCanaryExecutionReadiness(selected.queueItem, {
+    inventorySnapshot,
+    canaryExecutions,
+    now,
+  });
+  const sizing = sizeMerklCanaryAmount(queueItem, {
+    ...sizingOptions,
+    now,
+  });
+  return {
+    queueItem,
+    sizing,
+    inventorySnapshot,
+  };
+}
+
+function merklExecutionErrorReport({
+  error,
+  execute,
+  preflight,
+  queue,
+  queueItem,
+  sizing,
+  readyCount,
+  representativeCoverage,
+} = {}) {
+  const message = error?.message || String(error);
+  let blockedReason = null;
+  if (/Insufficient asset balance:/iu.test(message)) blockedReason = "insufficient_live_asset_balance";
+  if (/All RPC endpoints failed for chain:/iu.test(message)) blockedReason = "live_inventory_refresh_failed";
+  if (!blockedReason) throw error;
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    mode: execute ? "execute" : "preview",
+    status: "blocked",
+    blockedReason,
+    error: {
+      name: error?.name || "Error",
+      message,
+    },
+    preflight: {
+      status: preflight.status,
+      senderAddress: preflight.senderAddress,
+      liveBaseline: preflight.liveBaseline,
+      killSwitchPath: preflight.killSwitchPath,
+    },
+    summary: {
+      queueCount: queue.queue?.length || 0,
+      readyCount,
+      representativeCoverage,
+      selectedOpportunityId: queueItem?.opportunityId || null,
+      selectedChain: queueItem?.chain || null,
+      selectedProtocolId: queueItem?.protocolId || null,
+      selectedBindingKind: bindingKind(queueItem),
+      selectedAmount: sizing?.amount || null,
+      selectedAmountUsd: sizing?.amountUsd ?? null,
+    },
+    queueItem,
+    sizing,
+  };
+}
+
 export async function runMerklCanaryAutopilot({
   execute = false,
   write = false,
@@ -258,6 +439,9 @@ export async function runMerklCanaryAutopilot({
   socketPath,
   timeoutMs,
   maxUsd = null,
+  maxCandidates = 6,
+  maxPerChain = 3,
+  maxPerProtocol = 4,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
 } = {}) {
@@ -288,15 +472,18 @@ export async function runMerklCanaryAutopilot({
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
-  const selection = selectMerklCanaryAutopilotCandidate(queue, {
+  const selection = selectMerklCanaryAutopilotCandidates(queue, {
     maxUsd,
+    maxCandidates,
+    maxPerChain,
+    maxPerProtocol,
     minEthereumNotionalUsd,
     allowInefficientEthereum,
     inventorySnapshot,
     canaryExecutions,
     auditRecords,
   });
-  if (!selection.selected) {
+  if (!selection.selected.length) {
     const report = {
       schemaVersion: 1,
       observedAt: new Date().toISOString(),
@@ -313,6 +500,8 @@ export async function runMerklCanaryAutopilot({
         queueCount: queue.queue?.length || 0,
         readyCount: 0,
         representativeCoverage: compactRepresentativeCoverage(queue),
+        selectedCount: 0,
+        selectedChains: [],
       },
       candidates: selection.candidates.map(compactCandidate).slice(0, 20),
     };
@@ -320,42 +509,135 @@ export async function runMerklCanaryAutopilot({
     return report;
   }
 
-  const { queueItem, sizing } = selection.selected;
-  const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
-  const executePlan = resolvePlanExecutor(bindingKind(queueItem));
-  if (!buildPlan || !executePlan) {
-    const report = {
-      schemaVersion: 1,
-      observedAt: new Date().toISOString(),
-      mode: execute ? "execute" : "preview",
-      status: "blocked",
-      blockedReason: "unsupported_binding_kind",
-      summary: {
-        queueCount: queue.queue?.length || 0,
-        readyCount: 1,
-        representativeCoverage: compactRepresentativeCoverage(queue),
-      },
-    };
-    if (write) await writeAutopilotReport(report);
-    return report;
-  }
-  const plan = await buildPlan({
-    queueItem,
-    senderAddress: preflight.senderAddress,
-    amount: sizing.amount,
-  });
-  const execution = execute
-    ? await executePlan({
+  const representativeCoverage = compactRepresentativeCoverage(queue);
+  const results = [];
+  for (const selected of selection.selected) {
+    let { queueItem, sizing } = selected;
+    if (sizing.status !== "ready") {
+      results.push({
+        status: "blocked",
+        blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+        queueItem,
+        sizing,
+      });
+      continue;
+    }
+    if (execute) {
+      try {
+        const refreshed = await refreshMerklAutopilotSelectionForExecute({
+          selected,
+          senderAddress: preflight.senderAddress,
+          canaryExecutions,
+          now: new Date().toISOString(),
+          sizingOptions: {
+            maxUsd,
+            minEthereumNotionalUsd,
+            allowInefficientEthereum,
+            auditRecords,
+          },
+        });
+        queueItem = refreshed.queueItem;
+        sizing = refreshed.sizing;
+      } catch (error) {
+        const errorReport = merklExecutionErrorReport({
+          error,
+          execute,
+          preflight,
+          queue,
+          queueItem,
+          sizing,
+          readyCount: selection.readyCount,
+          representativeCoverage,
+        });
+        results.push({
+          status: "blocked",
+          blockedReason: errorReport.blockedReason,
+          error: errorReport.error,
+          queueItem,
+          sizing,
+        });
+        continue;
+      }
+      if (sizing.status !== "ready") {
+        results.push({
+          status: "blocked",
+          blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+          queueItem,
+          sizing,
+        });
+        continue;
+      }
+    }
+    const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
+    const executePlan = resolvePlanExecutor(bindingKind(queueItem));
+    if (!buildPlan || !executePlan) {
+      results.push({
+        status: "blocked",
+        blockedReason: "unsupported_binding_kind",
+        queueItem,
+        sizing,
+      });
+      continue;
+    }
+    try {
+      const plan = await buildPlan({
+        queueItem,
+        senderAddress: preflight.senderAddress,
+        amount: sizing.amount,
+      });
+      const execution = execute
+        ? await executePlan({
+            plan,
+            socketPath,
+            timeoutMs,
+          })
+        : null;
+      results.push({
+        status: execution?.settlementStatus || "preview_ready",
+        queueItem,
+        sizing,
         plan,
-        socketPath,
-        timeoutMs,
-      })
-    : null;
+        execution,
+      });
+    } catch (error) {
+      const errorReport = merklExecutionErrorReport({
+        error,
+        execute,
+        preflight,
+        queue,
+        queueItem,
+        sizing,
+        readyCount: selection.readyCount,
+        representativeCoverage,
+      });
+      results.push({
+        status: "blocked",
+        blockedReason: errorReport.blockedReason,
+        error: errorReport.error,
+        queueItem,
+        sizing,
+      });
+    }
+  }
+  const firstReady = results.find((item) => item.status !== "blocked") || results[0] || {};
+  const deliveredCount = results.filter((item) => item.execution?.settlementStatus === "delivered").length;
+  const previewReadyCount = results.filter((item) => item.status === "preview_ready").length;
+  const blockedCount = results.filter((item) => item.status === "blocked").length;
+  const selectedChains = [...new Set(results.map((item) => item.queueItem?.chain).filter(Boolean))];
   const report = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     mode: execute ? "execute" : "preview",
-    status: execution?.settlementStatus || "preview_ready",
+    status: execute
+      ? deliveredCount > 0
+        ? "delivered"
+        : blockedCount === results.length
+          ? "blocked"
+          : "completed_with_blockers"
+      : previewReadyCount > 0
+        ? "preview_ready"
+        : "blocked",
+    blockedReason: blockedCount === results.length ? results[0]?.blockedReason || "no_autopilot_candidate_ready" : null,
     preflight: {
       status: preflight.status,
       senderAddress: preflight.senderAddress,
@@ -365,18 +647,24 @@ export async function runMerklCanaryAutopilot({
     summary: {
       queueCount: queue.queue?.length || 0,
       readyCount: selection.readyCount,
-      representativeCoverage: compactRepresentativeCoverage(queue),
-      selectedOpportunityId: queueItem.opportunityId,
-      selectedChain: queueItem.chain,
-      selectedProtocolId: queueItem.protocolId,
-      selectedBindingKind: bindingKind(queueItem),
-      selectedAmount: sizing.amount,
-      selectedAmountUsd: sizing.amountUsd,
+      representativeCoverage,
+      selectedCount: results.length,
+      selectedChains,
+      previewReadyCount,
+      deliveredCount,
+      blockedCount,
+      selectedOpportunityId: firstReady.queueItem?.opportunityId || null,
+      selectedChain: firstReady.queueItem?.chain || null,
+      selectedProtocolId: firstReady.queueItem?.protocolId || null,
+      selectedBindingKind: bindingKind(firstReady.queueItem),
+      selectedAmount: firstReady.sizing?.amount || null,
+      selectedAmountUsd: firstReady.sizing?.amountUsd ?? null,
     },
-    queueItem,
-    sizing,
-    plan,
-    execution,
+    queueItem: firstReady.queueItem || null,
+    sizing: firstReady.sizing || null,
+    plan: firstReady.plan || null,
+    execution: firstReady.execution || null,
+    results,
   };
   if (write) await writeAutopilotReport(report);
   return report;

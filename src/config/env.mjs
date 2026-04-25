@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 function stripWrappingQuotes(value) {
   if (value.length >= 2 && ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'")))) {
@@ -8,7 +9,7 @@ function stripWrappingQuotes(value) {
   return value;
 }
 
-function loadDotEnvFile(filePath) {
+export function loadDotEnvFile(filePath, env = process.env) {
   if (!existsSync(filePath)) return;
   const contents = readFileSync(filePath, "utf8");
   for (const rawLine of contents.split(/\r?\n/u)) {
@@ -17,13 +18,31 @@ function loadDotEnvFile(filePath) {
     const separatorIndex = line.indexOf("=");
     if (separatorIndex <= 0) continue;
     const key = line.slice(0, separatorIndex).trim();
-    if (!key || process.env[key] !== undefined) continue;
+    if (!key || env[key] !== undefined) continue;
     const value = stripWrappingQuotes(line.slice(separatorIndex + 1).trim());
-    process.env[key] = value;
+    env[key] = value;
   }
 }
 
-loadDotEnvFile(resolve(process.cwd(), ".env"));
+export function resolveDotEnvCandidatePaths({
+  cwd = process.cwd(),
+  moduleUrl = import.meta.url,
+} = {}) {
+  const cwdDotEnv = resolve(cwd, ".env");
+  const repoDotEnv = resolve(fileURLToPath(new URL("../../.env", moduleUrl)));
+  return [...new Set([cwdDotEnv, repoDotEnv])];
+}
+
+export function loadDotEnvCandidates(options = {}) {
+  const {
+    env = process.env,
+  } = options;
+  for (const candidatePath of resolveDotEnvCandidatePaths(options)) {
+    loadDotEnvFile(candidatePath, env);
+  }
+}
+
+loadDotEnvCandidates();
 
 export function getEnv(name, fallback = undefined) {
   const value = process.env[name];

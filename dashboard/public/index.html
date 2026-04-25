@@ -169,6 +169,51 @@
       const key = normalizeUiStrategyId(id);
       return (window.STRATEGIES || []).find((item) => normalizeUiStrategyId(item.id) === key) || null;
     }
+    function titleCaseLabel(value) {
+      return String(value || '')
+        .split(/[\s._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+    }
+    function normalizeChainId(value) {
+      const raw = String(value || '').trim().toLowerCase();
+      if (!raw) return null;
+      const alias = {
+        btc: 'bitcoin',
+        bitcoin: 'bitcoin',
+        eth: 'ethereum',
+        ethereum: 'ethereum',
+        avalanche: 'avalanche',
+        base: 'base',
+        berachain: 'bera',
+        bnb: 'bsc',
+        bsc: 'bsc',
+        bob: 'bob',
+        optimism: 'optimism',
+        sei: 'sei',
+        soneium: 'soneium',
+        sonic: 'sonic',
+        unichain: 'unichain',
+      }[raw];
+      if (alias) return alias;
+      const hit = (window.CHAINS || []).find((chain) => {
+        const chainName = String(chain?.name || '').trim().toLowerCase();
+        return chain?.id === raw || chainName === raw;
+      });
+      return hit?.id || null;
+    }
+    function displayChainName(id) {
+      const hit = (window.CHAINS || []).find((chain) => chain?.id === id);
+      return hit?.name || titleCaseLabel(id);
+    }
+    function displayProtocolName(id) {
+      return id ? titleCaseLabel(id) : null;
+    }
+    function parseRouteHint(label) {
+      const parts = String(label || '').split(/\s*→\s*/).map((part) => part.trim()).filter(Boolean);
+      return parts.length === 2 ? { source: parts[0], target: parts[1] } : null;
+    }
 
     function StatCard({ label, main, sub, accent, onTap, tappable }) {
       return (
@@ -224,11 +269,11 @@
 
     function activityStatusLabel(activity) {
       const status = activity?.status;
-      if (status === 'delivered') return '체결';
-      if (status === 'confirmed') return '확정';
-      if (status === 'open') return '오픈';
-      if (status === 'settled') return '정산';
-      return status || '기록';
+      if (status === 'delivered') return 'Delivered';
+      if (status === 'confirmed') return 'Confirmed';
+      if (status === 'open') return 'Open';
+      if (status === 'settled') return 'Settled';
+      return status ? titleCaseLabel(status) : 'Logged';
     }
 
     function activityStatusTone(activity) {
@@ -259,7 +304,7 @@
       const bufferPct = Number.isFinite(hint.projectedLiquidationBufferPct) ? hint.projectedLiquidationBufferPct : hint.liquidationBufferPct;
       if (Number.isFinite(projectedHf)) bits.push(`HF ${projectedHf.toFixed(2)}`);
       if (Number.isFinite(hint.healthFactorMin)) bits.push(`min ${hint.healthFactorMin.toFixed(2)}`);
-      if (Number.isFinite(bufferPct)) bits.push(`청산 버퍼 ${bufferPct.toFixed(2)}%`);
+      if (Number.isFinite(bufferPct)) bits.push(`liq buffer ${bufferPct.toFixed(2)}%`);
       return bits.length ? bits.join(' · ') : null;
     }
 
@@ -267,59 +312,140 @@
       return (
         <div style={{
           margin: '8px 12px 0',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 6,
+          display: 'flex',
+          alignItems: 'stretch',
+          padding: '10px 4px',
+          background: 'var(--card)',
+          borderRadius: 14,
+          border: '0.5px solid var(--line)',
           flexShrink: 0,
         }}>
-          {cards.map((card) => (
-            <StatCard
-              key={card.label}
-              label={card.label}
-              main={card.main}
-              sub={card.sub}
-              accent={card.accent}
-              onTap={card.onTap}
-              tappable={Boolean(card.onTap)}
-            />
+          {cards.map((card, index) => (
+            <React.Fragment key={card.label}>
+              <div
+                onClick={card.onTap}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: '0 6px',
+                  textAlign: 'center',
+                  cursor: card.onTap ? 'pointer' : 'default',
+                }}
+              >
+                <div style={{
+                  fontSize: 7.8,
+                  color: 'var(--ink-4)',
+                  letterSpacing: 0.9,
+                  textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {card.label}
+                </div>
+                <div style={{
+                  fontSize: 12.6,
+                  fontWeight: 700,
+                  letterSpacing: -0.25,
+                  marginTop: 2,
+                  color: card.accent || 'var(--ink)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {card.main}
+                </div>
+                <div style={{
+                  fontSize: 8.8,
+                  color: 'var(--ink-3)',
+                  marginTop: 1,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {card.sub}
+                </div>
+              </div>
+              {index < cards.length - 1 && <div style={{ width: 0.5, background: 'var(--line)' }}/>}
+            </React.Fragment>
           ))}
         </div>
       );
+    }
+
+    function RouteNode({ kind = 'text', id, label }) {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1 }}>
+          {kind === 'chain' && id ? <ChainLogo id={id} size={16}/> : null}
+          {kind === 'protocol' && id ? <ProtocolLogo id={id} size={16}/> : null}
+          <span style={{
+            minWidth: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {label}
+          </span>
+        </span>
+      );
+    }
+
+    function activityRouteSummary(activity, strategy) {
+      const hint = parseRouteHint(strategy?.sub || activity?.detail || '');
+      const sourceChainId = activity?.kind === 'payback'
+        ? normalizeChainId(strategy?.chain) || normalizeChainId(hint?.source) || normalizeChainId(activity?.chain)
+        : normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) || normalizeChainId(strategy?.chain);
+      const source = sourceChainId
+        ? { kind: 'chain', id: sourceChainId, label: displayChainName(sourceChainId) }
+        : { kind: 'text', id: null, label: 'Capital' };
+      const hintedTargetChainId = activity?.kind === 'payback' ? 'bitcoin' : normalizeChainId(hint?.target);
+      const protocolId = activity?.protocol || strategy?.protocol || null;
+      const target = hintedTargetChainId && hintedTargetChainId !== sourceChainId
+        ? { kind: 'chain', id: hintedTargetChainId, label: displayChainName(hintedTargetChainId) }
+        : protocolId
+          ? { kind: 'protocol', id: protocolId, label: displayProtocolName(protocolId) }
+          : hintedTargetChainId
+            ? { kind: 'chain', id: hintedTargetChainId, label: displayChainName(hintedTargetChainId) }
+            : { kind: 'text', id: null, label: strategy?.label || activity?.detail || 'Recent move' };
+      return {
+        source,
+        target,
+        title: strategy?.label || activity?.detail || target.label,
+      };
     }
 
     function FlowActivityRow({ activity, isLast }) {
       const strategy = findStrategyById(activity?.strategyId);
       const tone = activityStatusTone(activity);
       const riskLabel = leverageHintLabel(leverageHintForActivity(activity));
-      const title = activity?.kind === 'payback'
-        ? (strategy?.label || 'Gateway BTC offramp')
-        : (strategy?.label || activity?.detail || activity?.strategyId || 'Recent activity');
-      const subtitle = [
-        activity?.protocol || strategy?.protocol || null,
-        activity?.chain || strategy?.chain || null,
-        activity?.detail && activity?.detail !== title ? activity.detail : null,
-      ].filter(Boolean).join(' · ');
+      const route = activityRouteSummary(activity, strategy);
 
       return (
         <div style={{
-          padding: '7px 0',
+          padding: '9px 0',
           position: 'relative',
           display: 'flex',
           alignItems: 'flex-start',
-          gap: 8,
+          gap: 10,
           minWidth: 0,
         }}>
-          <div style={{ width: 22, height: 22, flexShrink: 0, marginTop: 1 }}>
-            {activity?.kind === 'payback'
-              ? <ProtocolLogo id="gateway" size={22}/>
-              : (strategy?.protocol || activity?.protocol)
-                ? <ProtocolLogo id={strategy?.protocol || activity?.protocol} size={22}/>
-                : <ChainLogo id={activity?.chain || strategy?.chain} size={22}/>}
-          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              minWidth: 0,
+              fontSize: 10.3,
+              fontWeight: 600,
+              letterSpacing: -0.15,
+            }}>
+              <RouteNode kind={route.source.kind} id={route.source.id} label={route.source.label}/>
+              <span style={{ color: 'var(--ink-4)', flexShrink: 0 }}>→</span>
+              <RouteNode kind={route.target.kind} id={route.target.id} label={route.target.label}/>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, marginTop: 4 }}>
               <div style={{
-                fontSize: 10.8,
+                fontSize: 10.4,
                 fontWeight: 600,
                 letterSpacing: -0.15,
                 whiteSpace: 'nowrap',
@@ -327,7 +453,7 @@
                 textOverflow: 'ellipsis',
                 minWidth: 0,
               }}>
-                {title}
+                {route.title}
               </div>
               <span style={{
                 fontSize: 8.3,
@@ -342,22 +468,9 @@
                 {activityStatusLabel(activity)}
               </span>
             </div>
-            {subtitle && (
-              <div style={{
-                fontSize: 9.4,
-                color: 'var(--ink-3)',
-                marginTop: 1,
-                lineHeight: 1.3,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>
-                {subtitle}
-              </div>
-            )}
             {riskLabel && (
               <div style={{
-                fontSize: 9.1,
+                fontSize: 8.9,
                 color: '#8A520C',
                 marginTop: 2,
                 lineHeight: 1.3,
@@ -370,83 +483,78 @@
             )}
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 10.8, fontWeight: 700, letterSpacing: -0.15 }}>
+            <div style={{ fontSize: 10.6, fontWeight: 700, letterSpacing: -0.15 }}>
               {activityAmount(activity)}
             </div>
             <div style={{ fontSize: 9.2, color: 'var(--ink-3)', marginTop: 1 }}>
               {fmtWhen(activity?.observedAt)}
             </div>
           </div>
-          {!isLast && <div style={{ position: 'absolute', left: 30, right: 0, bottom: 0, height: 0.5, background: 'var(--line)' }}/>}
+          {!isLast && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 0.5, background: 'var(--line)' }}/>}
         </div>
       );
     }
 
     function OpsStrip() {
-      const ops = window.OPERATIONS;
-      if (!ops?.present) return null;
       const flow = window.FLOW || {};
       const activities = flow?.recentActivities || [];
-      const paybackSats = ops.payback?.pendingCarrySats;
-      const blockers = ops.topBlockers || [];
-      const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod;
-      const chips = [
-        `카나리 ${ops.canary?.deliveredCount || 0}/${ops.canary?.executedCount || 0}`,
-        `포지션 ${ops.portfolio?.openedCount || 0}`,
-        `리필 ${ops.refill?.executedCount || 0}/${ops.refill?.autoJobCount || 0}`,
-        `페이백 ${Number.isFinite(paybackSats) ? fmtSats(paybackSats) : '대기'}`,
-        `일드 ${Number.isFinite(grossYieldUsd) ? fmtUsdCompact(grossYieldUsd) : '—'}`,
-      ];
+      const [expanded, setExpanded] = useState(false);
+      const visibleActivities = expanded ? activities : activities.slice(0, 3);
       return (
         <div style={{
-          margin:'6px 12px 0', padding:'9px 10px 8px',
+          margin:'6px 12px 0', padding:'10px 12px 8px',
           background:'var(--card)', border:'0.5px solid var(--line)', borderRadius:14,
           flexShrink:0, animation:`slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
             <div style={{
-              width:8, height:8, borderRadius:8,
-              background: ops.status === 'completed' ? 'var(--green)' : 'var(--accent)',
-              boxShadow:'0 0 0 3px rgba(242,163,59,0.13)',
-              flexShrink:0,
-            }}/>
+              width: 24, height: 24, borderRadius: 12,
+              background: '#FFF4E2',
+              color: '#8A520C',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 700, flexShrink: 0,
+            }}>H</div>
             <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.2 }}>자동 운용 · {statusLabel(ops.status)}</div>
+              <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.2 }}>History</div>
               <div style={{ fontSize:9.6, color:'var(--ink-3)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                {chips.join(' · ')}
+                Latest capital moves across chains and protocols
               </div>
             </div>
+            {activities.length > 3 && (
+              <button
+                onClick={() => setExpanded((value) => !value)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--ink-3)',
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  padding: 0,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {expanded ? 'Show less' : `Show more · ${activities.length}`}
+              </button>
+            )}
           </div>
-          {blockers.length > 0 && (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:7 }}>
-              {blockers.slice(0, 3).map((b, i) => (
-                <span key={i} style={{
-                  fontSize:9.1, padding:'2px 6px', borderRadius:5,
-                  background:'#FFF4E2', color:'#8A520C', fontWeight:600,
-                  maxWidth:'100%', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                }}>
-                  {blockerLabel(b)}
-                </span>
-              ))}
-            </div>
-          )}
           <div style={{
             marginTop: 8,
-            maxHeight: 146,
-            overflowY: 'auto',
+            maxHeight: expanded ? 228 : 'none',
+            overflowY: expanded ? 'auto' : 'hidden',
             overflowX: 'hidden',
             paddingRight: 2,
           }}>
             {activities.length === 0 && (
               <div style={{ fontSize: 10, color: 'var(--ink-4)', padding: '4px 0 2px' }}>
-                최근 실제 실행 기록이 아직 없습니다.
+                No settled capital move yet.
               </div>
             )}
-            {activities.map((activity, index) => (
+            {visibleActivities.map((activity, index) => (
               <FlowActivityRow
                 key={activity.id || `${activity.kind}-${index}`}
                 activity={activity}
-                isLast={index === activities.length - 1}
+                isLast={index === visibleActivities.length - 1}
               />
             ))}
           </div>
@@ -549,7 +657,7 @@
       }, {});
       const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
       return (
-        <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
+        <div className="tabpane" style={{ padding: '4px 12px 16px' }}>
           {entries.length === 0 && (
             <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'var(--ink-3)' }}>
               No live strategies
@@ -560,35 +668,35 @@
             const protoCap = list.reduce((sum, s) => sum + (s.capUsd || 0), 0);
             return (
               <div key={proto} style={{
-                marginBottom: 14,
+                marginBottom: 10,
                 background: 'var(--card)',
-                borderRadius: 18,
+                borderRadius: 16,
                 border: '0.5px solid var(--line)',
                 overflow: 'hidden',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10, padding: '12px 14px 10px' }}>
-                  <ProtocolLogo id={proto} size={36}/>
+                <div style={{ display:'flex', alignItems:'center', gap:10, padding: '11px 12px 9px' }}>
+                  <ProtocolLogo id={proto} size={30}/>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, textTransform: 'capitalize', letterSpacing: -0.1 }}>{proto}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
-                      {list.length} LIVE
+                    <div style={{ fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 }}>{displayProtocolName(proto)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
+                      {list.length} live position{list.length > 1 ? 's' : ''}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     {protoEarned > 0 && (
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)', letterSpacing: -0.3 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--green)', letterSpacing: -0.2 }}>
                         +${protoEarned.toFixed(0)}
                       </div>
                     )}
                     {protoCap > 0 && (
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>
                         Cap ${protoCap.toLocaleString()}
                       </div>
                     )}
                   </div>
                 </div>
-                <div style={{ padding: '0 14px' }}>
+                <div style={{ padding: '0 12px' }}>
                   {list.map((s, i) => <StrategyRow key={s.id} s={s} isLast={i === list.length - 1}/>)}
                 </div>
               </div>
@@ -603,20 +711,20 @@
     }
     function strategyKind(s) {
       const t = s.type;
-      if (t === 'loop')           return '루프 레버리지';
-      if (t === 'fold')           return '폴딩 볼트';
-      if (t === 'pt')             return 'PT 고정수익';
-      if (t === 'cl_lp')          return '집중유동성 LP';
-      if (t === 'lp' || t === 'lp_bgt') return '유동성 공급';
-      if (t === 'basis')          return '베이시스 차익';
-      if (t === 'bridge')         return '크로스체인 브릿지';
-      if (t === 'payback')        return '페이백 경로';
-      if (t === 'arb')            return '차익거래';
-      if (t === 'swap')           return '스왑 프로브';
-      if (t === 'canary')         return '카나리';
-      if (t === 'reserve')        return '리저브';
-      if (t === 'refuel')         return '가스 리필';
-      return s.type || '—';
+      if (t === 'loop') return 'Loop';
+      if (t === 'fold') return 'Fold';
+      if (t === 'pt') return 'PT';
+      if (t === 'cl_lp') return 'CL LP';
+      if (t === 'lp' || t === 'lp_bgt') return 'LP';
+      if (t === 'basis') return 'Basis';
+      if (t === 'bridge') return 'Bridge';
+      if (t === 'payback') return 'Payback';
+      if (t === 'arb') return 'Arb';
+      if (t === 'swap') return 'Swap';
+      if (t === 'canary') return 'Canary';
+      if (t === 'reserve') return 'Reserve';
+      if (t === 'refuel') return 'Refuel';
+      return titleCaseLabel(s.type || '—');
     }
     function strategyMechanics(s) {
       const toks = pairTokens(s);
@@ -627,7 +735,7 @@
         const cycles = s.loops || 1;
         const collat = toks[0] || '—';
         const borrow = toks[1] || '—';
-        return `${collat} 담보 → ${borrow} 차입 → 재예치 · ${cycles}사이클 · APR ${apr}`;
+        return `${collat} supply → ${borrow} borrow → redeposit · ${cycles}x · APR ${apr}`;
       }
       if (t === 'cl_lp' || t === 'lp' || t === 'lp_bgt') {
         if (toks.length >= 2) {
@@ -635,25 +743,43 @@
           return `${toks[0]} ${half} ↔ ${toks[1]} ${half} · APR ${apr}`;
         }
         const tot = cap > 0 ? '$' + cap.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
-        return `${toks[0]||'asset'} 단일 공급 ${tot} · APR ${apr}`;
+        return `${toks[0]||'asset'} single-sided ${tot} · APR ${apr}`;
       }
-      if (t === 'pt') {
-        return `${toks[0]||'PT'} 매수 후 만기까지 보유 · 고정 APR ${apr}`;
-      }
-      if (t === 'basis') {
-        return `${toks[0]||'?'} 현물 롱 + 무기한 숏 · 펀딩 ${apr}`;
-      }
-      if (t === 'bridge')  return `${toks[0]||'?'} → ${toks[1]||'?'} 자산 이동`;
-      if (t === 'payback') return `${toks[0]||'?'} → ${toks[1]||'?'} BTC L1 회수`;
-      if (t === 'arb')     return `${toks.join(' ↔ ')} 가격차 회수`;
-      if (t === 'reserve') return `${toks[0]||'?'} 토크나이즈 보관`;
-      if (t === 'canary')  return `${toks.join('/')} 소액 테스트`;
-      if (t === 'swap')    return `${toks.join(' → ')} 라우팅 측정`;
-      if (t === 'refuel')  return `${toks.join('/')} 가스 부족 보충`;
+      if (t === 'pt') return `${toks[0]||'PT'} hold to maturity · fixed APR ${apr}`;
+      if (t === 'basis') return `${toks[0]||'?'} spot long + perp short · funding ${apr}`;
+      if (t === 'bridge') return `${toks[0]||'?'} → ${toks[1]||'?'} transfer`;
+      if (t === 'payback') return `${toks[0]||'?'} → ${toks[1]||'?'} BTC payout`;
+      if (t === 'arb') return `${toks.join(' ↔ ')} spread capture`;
+      if (t === 'reserve') return `${toks[0]||'?'} tokenized reserve`;
+      if (t === 'canary') return `${toks.join('/')} micro canary`;
+      if (t === 'swap') return `${toks.join(' → ')} route probe`;
+      if (t === 'refuel') return `${toks.join('/')} gas refill`;
       return toks.join(' / ');
     }
     function strategyDesc(s) {
       return strategyKind(s) + ' · ' + strategyMechanics(s);
+    }
+
+    function AssetPairMarks({ pair = [], size = 14 }) {
+      const items = (pair || []).filter(Boolean).slice(0, 3);
+      if (items.length === 0) return null;
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          {items.map((asset, index) => (
+            <div
+              key={`${asset}-${index}`}
+              style={{
+                marginLeft: index === 0 ? 0 : -4,
+                borderRadius: 999,
+                boxShadow: '0 0 0 1px #fff',
+                background: '#fff',
+              }}
+            >
+              <AssetLogo id={asset} size={size}/>
+            </div>
+          ))}
+        </div>
+      );
     }
 
     function StrategyRow({ s, isLast }) {
@@ -663,52 +789,49 @@
       return (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 0', position: 'relative',
+          padding: '9px 0', position: 'relative',
         }}>
-          <div style={{ position:'relative', width:28, height:28, flexShrink:0 }}>
-            <ChainLogo id={s.chain} size={28}/>
+          <div style={{ position:'relative', width:44, height:30, flexShrink:0 }}>
+            <ChainLogo id={s.chain} size={24} style={{ position: 'absolute', left: 0, top: 3 }}/>
+            <div style={{ position: 'absolute', right: 0, bottom: 0 }}>
+              <AssetPairMarks pair={s.pair} size={14}/>
+            </div>
             {live && <span style={{
-              position:'absolute', right:-2, top:-2, width:8, height:8, borderRadius:8,
+              position:'absolute', left:16, top:0, width:8, height:8, borderRadius:8,
               background:'var(--green)', boxShadow:'0 0 0 1.5px #fff',
             }}/>}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 500, letterSpacing: -0.1, display:'flex', alignItems:'center', gap:6 }}>
+            <div style={{ fontSize: 12.1, fontWeight: 600, letterSpacing: -0.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {s.label}
-              <span style={{
-                fontSize: 8.5, padding: '1px 5px', borderRadius: 4,
-                background: live ? 'var(--green)' : '#ECECEE',
-                color: live ? '#fff' : 'var(--ink-3)',
-                fontWeight: 600, letterSpacing: 0.4,
-              }}>{strategyKind(s)}</span>
             </div>
-            <div style={{ fontSize: 10.5, color: 'var(--ink-3)', marginTop: 1 }}>
-              {chain?.name}
+            <div style={{ fontSize: 9.8, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {chain?.name || displayChainName(s.chain)} · {strategyKind(s)}
               {s.apyPct != null ? ` · APR ${s.apyPct.toFixed(2)}%` : ''}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.4 }}>
+            <div style={{ fontSize: 9.6, color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {strategyMechanics(s)}
             </div>
             {riskLabel && (
-              <div style={{ fontSize: 9.4, color: '#8A520C', marginTop: 2, lineHeight: 1.35 }}>
+              <div style={{ fontSize: 8.8, color: '#8A520C', marginTop: 2, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {riskLabel}
               </div>
             )}
           </div>
-          <div style={{ textAlign: 'right' }}>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
             {s.earnedUsd > 0 && (
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', letterSpacing: -0.2 }}>
+              <div style={{ fontSize: 11.4, fontWeight: 700, color: 'var(--green)', letterSpacing: -0.2 }}>
                 +${s.earnedUsd.toFixed(0)}
               </div>
             )}
             {s.capUsd != null && s.capUsd > 0 && (
-              <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
+              <div style={{ fontSize: 9.5, color: 'var(--ink-3)', marginTop: 1 }}>
                 Cap ${s.capUsd.toLocaleString()}
               </div>
             )}
           </div>
           {!isLast && <div style={{
-            position: 'absolute', left: 38, right: 0, bottom: 0, height: 0.5,
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: 0.5,
             background: 'var(--line)',
           }}/>}
         </div>

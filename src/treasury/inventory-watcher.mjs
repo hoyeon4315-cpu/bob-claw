@@ -4,6 +4,9 @@ import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildInboundRoutingPlan } from "./inbound-routing.mjs";
 
+export const OPERATING_CAPITAL_SOURCE = "operating_capital";
+export const OPERATING_CAPITAL_INGRESS_FLOW = "operating_capital_ingress";
+
 function normalizedToken(value) {
   return String(value || ZERO_TOKEN).toLowerCase();
 }
@@ -102,6 +105,10 @@ export function diffInventorySnapshots({
       schemaVersion: 1,
       eventId: eventId(basis),
       event: "inbound_deposit_detected",
+      capitalSource: OPERATING_CAPITAL_SOURCE,
+      capitalFlow: OPERATING_CAPITAL_INGRESS_FLOW,
+      paybackExclusion: true,
+      paybackExclusionReason: OPERATING_CAPITAL_INGRESS_FLOW,
       observedAt,
       previousObservedAt,
       address,
@@ -142,6 +149,8 @@ export function buildInventoryWatcherReport({
     previousObservedAt: previousSnapshot?.observedAt || null,
     summary: {
       inboundEventCount: events.length,
+      operatingCapitalIngressCount: events.filter((event) => event.capitalSource === OPERATING_CAPITAL_SOURCE).length,
+      paybackExcludedCount: events.filter((event) => event.paybackExclusion === true).length,
       routeReadyCount: routingPlan.summary.routeReadyCount,
       manualReviewCount: routingPlan.summary.manualReviewCount,
       candidateQueueCount: routingPlan.summary.candidateQueueCount,

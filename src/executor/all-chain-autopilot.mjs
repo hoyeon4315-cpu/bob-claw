@@ -1,7 +1,6 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { config } from "../config/env.mjs";
+import { config, getEnv } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -9,8 +8,6 @@ import {
   refillCandidateExecutable,
   refillExecutionCandidates,
 } from "./helpers/refill-fallback.mjs";
-
-const execFileAsync = promisify(execFile);
 
 export const OFFICIAL_GATEWAY_DESTINATION_CHAINS = Object.freeze([
   "ethereum",
@@ -40,46 +37,62 @@ function jsonFromStdout(stdout = "") {
 }
 
 export async function defaultRunCommand({ args, cwd = process.cwd(), timeoutMs = 300_000 } = {}) {
-  try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, args, {
-      cwd,
-      timeout: timeoutMs,
-      maxBuffer: 24 * 1024 * 1024,
-    });
-    let parsedJson = null;
+  const maxBuffer = 24 * 1024 * 1024;
+  const result = spawnSync(process.execPath, args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: timeoutMs,
+    maxBuffer,
+  });
+  const stdout = String(result.stdout || "");
+  const stderr = String(result.stderr || "");
+
+  function parseJson(stdoutText) {
     try {
-      parsedJson = jsonFromStdout(stdout);
+      return jsonFromStdout(stdoutText);
     } catch {
-      parsedJson = null;
+      return null;
     }
-    return {
-      ok: true,
-      exitCode: 0,
-      stdout,
-      stderr,
-      json: parsedJson,
-    };
-  } catch (error) {
-    let parsedJson = null;
-    if (error.stdout) {
-      try {
-        parsedJson = jsonFromStdout(error.stdout);
-      } catch {
-        parsedJson = null;
-      }
-    }
+  }
+
+  if (result.error) {
+    const timedOut = result.error.code === "ETIMEDOUT";
     return {
       ok: false,
-      exitCode: Number.isInteger(error.code) ? error.code : 1,
-      stdout: error.stdout || "",
-      stderr: error.stderr || error.message,
-      json: parsedJson,
+      exitCode: Number.isInteger(result.status) ? result.status : 1,
+      stdout,
+      stderr: stderr || result.error.message,
+      json: parseJson(stdout),
       error: {
-        name: error.name || "CommandFailed",
-        message: error.message,
+        name: result.error.name || "CommandFailed",
+        message: timedOut ? `Command timed out after ${timeoutMs}ms` : result.error.message,
       },
     };
   }
+
+  const exitCode = Number.isInteger(result.status) ? result.status : 1;
+  if (exitCode === 0) {
+    return {
+      ok: true,
+      exitCode,
+      stdout,
+      stderr,
+      json: parseJson(stdout),
+    };
+  }
+
+  return {
+    ok: false,
+    exitCode,
+    stdout,
+    stderr: stderr || (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
+    json: parseJson(stdout),
+    error: {
+      name: "CommandFailed",
+      message: stderr || (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
+    },
+  };
 }
 
 function commandStep(name, args, result) {
@@ -98,8 +111,19 @@ function appendFlag(args, flag, enabled) {
   return enabled ? [...args, flag] : args;
 }
 
+function fundingSourceAutoExecutable(fundingSource) {
+  if (!fundingSource) return false;
+  if (fundingSource.selectionStatus === "ready") return true;
+  return (
+    fundingSource.selectionStatus === "conditional" &&
+    (fundingSource.missingInputs || []).length === 0 &&
+    (fundingSource.settlementRequirements || []).length > 0 &&
+    !fundingSource.requiresManualFunding
+  );
+}
+
 function refillJobIsAutoExecutable(job = {}) {
-  return !job.requiresManualReview && job.fundingSource?.selectionStatus === "ready";
+  return !job.requiresManualReview && fundingSourceAutoExecutable(job.fundingSource);
 }
 
 function refillPreparationReady(json = null) {
@@ -160,6 +184,10 @@ function refillPreviewRetryable(result = {}) {
     "lifi_quote_rejected",
     "route_unsupported",
     "quote_unavailable",
+    "routing_unavailable",
+    "dex_quote_failed",
+    "across_ticker_unsupported",
+    "executor_output_below_refill_target",
   ].includes(reason);
 }
 
@@ -169,6 +197,7 @@ function compactRefillExecution(job, preview, execution = null) {
   const delivered = ["confirmed", "delivered", "succeeded"].includes(executionStatus);
   return {
     jobId: job.jobId,
+    refillSource: job.autopilotRefillSource || job.jobSourceStore || null,
     chain: job.chain,
     asset: job.asset,
     targetAmountDecimal: job.targetAmountDecimal ?? null,
@@ -193,6 +222,8 @@ function compactRefillExecution(job, preview, execution = null) {
 function compactInboundWatcher(report = null) {
   return {
     inboundEventCount: report?.summary?.inboundEventCount ?? 0,
+    operatingCapitalIngressCount: report?.summary?.operatingCapitalIngressCount ?? 0,
+    paybackExcludedCount: report?.summary?.paybackExcludedCount ?? 0,
     routeReadyCount: report?.summary?.routeReadyCount ?? 0,
     manualReviewCount: report?.summary?.manualReviewCount ?? 0,
     candidateQueueCount: report?.summary?.candidateQueueCount ?? 0,
@@ -202,10 +233,29 @@ function compactInboundWatcher(report = null) {
   };
 }
 
+function compactCapitalManager(report = null) {
+  return {
+    rebalanceDecision: report?.rebalancePlan?.decision || null,
+    capitalPlanDecision: report?.capitalPlan?.decision || null,
+    rebalanceActionCount: report?.rebalancePlan?.actions?.length ?? 0,
+    capitalActionCount: report?.capitalPlan?.summary?.actionCount ?? 0,
+    capitalBlockerCount: report?.capitalPlan?.summary?.blockerCount ?? 0,
+    refillJobCount: report?.jobs?.summary?.jobCount ?? 0,
+    autoRefillJobCount: (report?.jobs?.jobs || []).filter(refillJobIsAutoExecutable).length,
+    estimatedAssetValueUsd: report?.jobs?.summary?.estimatedAssetValueUsd ?? 0,
+  };
+}
+
 function compactMerkl(report = null) {
   return {
     status: report?.status || null,
     blockedReason: report?.blockedReason || null,
+    readyCount: report?.summary?.readyCount ?? 0,
+    selectedCount: report?.summary?.selectedCount ?? (report?.summary?.selectedChain ? 1 : 0),
+    selectedChains: report?.summary?.selectedChains || (report?.summary?.selectedChain ? [report.summary.selectedChain] : []),
+    previewReadyCount: report?.summary?.previewReadyCount ?? null,
+    deliveredCount: report?.summary?.deliveredCount ?? null,
+    blockedCount: report?.summary?.blockedCount ?? null,
     selectedChain: report?.summary?.selectedChain || null,
     selectedProtocolId: report?.summary?.selectedProtocolId || null,
     selectedBindingKind: report?.summary?.selectedBindingKind || null,
@@ -317,7 +367,7 @@ function compactCanarySweep(report = null) {
   };
 }
 
-function compactStrategyDispatch(report = null) {
+function compactStrategyDispatch(report = null, { capitalDispatchReadiness = null } = {}) {
   return {
     batchStatus: report?.record?.batchStatus || null,
     selectedCount: report?.record?.selectedCount ?? 0,
@@ -325,6 +375,7 @@ function compactStrategyDispatch(report = null) {
     failedCount: report?.summary?.failureCount ?? null,
     liveEligibleCount: report?.executionSurfaces?.summary?.liveEligibleCount ?? null,
     missingExecutorCount: report?.executionSurfaces?.summary?.missingExecutorCount ?? null,
+    capitalDispatchReadiness,
   };
 }
 
@@ -337,6 +388,17 @@ function compactPayback(report = null) {
   };
 }
 
+function compactAutoKill(report = null) {
+  if (!report) return null;
+  return {
+    triggered: report.triggered === true,
+    alreadyArmed: report.alreadyArmed === true,
+    killSwitchWritten: report.killSwitchWritten === true,
+    killSwitchPath: report.killSwitchPath ?? null,
+    triggers: Array.isArray(report.triggers) ? report.triggers.map((trigger) => trigger.trigger).filter(Boolean) : [],
+  };
+}
+
 function stepStatus(step = {}) {
   return step.json?.status || step.json?.record?.batchStatus || step.json?.decision || step.json?.event?.status || null;
 }
@@ -344,6 +406,9 @@ function stepStatus(step = {}) {
 function stepIsRecoverable(step, steps) {
   if (step.name === "treasury_refill_plan") {
     return steps.some((item) => item.name === "treasury_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
+  }
+  if (step.name === "capital_manager_refill_plan") {
+    return steps.some((item) => item.name === "capital_manager_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
   }
   if (step.name === "inbound_inventory_watcher") {
     const stderr = step.stderrSummary?.join("\n") || "";
@@ -365,8 +430,68 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "live_canary_sweep") {
     return true;
   }
+  if (step.name === "auto_kill_check") {
+    return step.json?.triggered === true;
+  }
+  if (step.name === "btc_oracle_snapshot") {
+    return Array.isArray(step.json?.samples);
+  }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
+}
+
+function refillSourcePriority(source) {
+  if (source === "capital_manager") return 0;
+  if (source === "treasury") return 1;
+  if (source === "inbound_routing") return 2;
+  return 99;
+}
+
+function refillPriorityRank(job = {}) {
+  if (job.priority === "high") return 0;
+  if (job.priority === "medium") return 1;
+  if (job.priority === "low") return 2;
+  return 3;
+}
+
+function refillMergeKey(job = {}) {
+  if (job.sourceEventId) return `event:${job.sourceEventId}`;
+  if (job.resourceKey) return `resource:${job.resourceKey}`;
+  if (job.type && job.chain && (job.token || job.asset)) {
+    return `asset:${job.type}:${job.chain}:${job.token || job.asset}`;
+  }
+  return `job:${job.jobId}`;
+}
+
+function annotateRefillJobs(jobs = [], source = null) {
+  return (jobs || []).map((job) => ({
+    ...job,
+    autopilotRefillSource: source,
+  }));
+}
+
+function mergeAutopilotRefillJobs(jobGroups = []) {
+  const merged = new Map();
+  for (const { source, jobs = [] } of jobGroups) {
+    for (const job of annotateRefillJobs(jobs, source)) {
+      const key = refillMergeKey(job);
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, job);
+        continue;
+      }
+      if (refillSourcePriority(job.autopilotRefillSource) < refillSourcePriority(existing.autopilotRefillSource)) {
+        merged.set(key, job);
+      }
+    }
+  }
+  return [...merged.values()].sort((left, right) =>
+    refillPriorityRank(left) - refillPriorityRank(right) ||
+    refillSourcePriority(left.autopilotRefillSource) - refillSourcePriority(right.autopilotRefillSource) ||
+    String(left.chain || "").localeCompare(String(right.chain || "")) ||
+    String(left.asset || "").localeCompare(String(right.asset || "")) ||
+    String(left.jobId || "").localeCompare(String(right.jobId || "")),
+  );
 }
 
 async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }) {
@@ -381,7 +506,7 @@ export async function runAllChainAutopilot({
   cwd = process.cwd(),
   timeoutMs = 300_000,
   chains = OFFICIAL_GATEWAY_DESTINATION_CHAINS,
-  maxRefillJobs = 4,
+  maxRefillJobs = 24,
   canaryLimit = 11,
   canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,
@@ -421,6 +546,26 @@ export async function runAllChainAutopilot({
   }
   const refillPlan = refillPlanResult.json;
 
+  let capitalManagerRefillPlanResult = await runJsonStep({
+    name: "capital_manager_refill_plan",
+    args: ["src/cli/plan-capital-manager-refill-jobs.mjs", "--json", "--write", "--refresh-inventory"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  if (!capitalManagerRefillPlanResult.json) {
+    capitalManagerRefillPlanResult = await runJsonStep({
+      name: "capital_manager_refill_plan_stored_snapshot_fallback",
+      args: ["src/cli/plan-capital-manager-refill-jobs.mjs", "--json", "--write"],
+      runCommandImpl,
+      cwd,
+      timeoutMs,
+      steps,
+    });
+  }
+  const capitalManagerRefillPlan = capitalManagerRefillPlanResult.json;
+
   const inboundWatcherResult = await runJsonStep({
     name: "inbound_inventory_watcher",
     args: ["src/cli/run-inbound-inventory-watcher.mjs", "--json", "--write"],
@@ -430,7 +575,12 @@ export async function runAllChainAutopilot({
     steps,
   });
 
-  const autoRefillJobs = (refillPlan?.jobs || []).filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
+  const mergedRefillJobs = mergeAutopilotRefillJobs([
+    { source: "treasury", jobs: refillPlan?.jobs || [] },
+    { source: "capital_manager", jobs: capitalManagerRefillPlan?.jobs?.jobs || [] },
+    { source: "inbound_routing", jobs: inboundWatcherResult.json?.routingPlan?.jobs || [] },
+  ]);
+  const autoRefillJobs = mergedRefillJobs.filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
 
   for (const job of autoRefillJobs) {
     let preview = await runJsonStep({
@@ -492,6 +642,15 @@ export async function runAllChainAutopilot({
     }
     refillExecutions.push(compactRefillExecution(job, preview, execution));
   }
+
+  const capitalManagerExecutedCount = refillExecutions.filter(
+    (item) => item.refillSource === "capital_manager" && item.executed,
+  ).length;
+  const capitalDispatchReadiness =
+    capitalManagerRefillPlan?.capitalPlan?.decision === "REFILL_REQUIRED" && capitalManagerExecutedCount === 0
+      ? "rebalance_required_before_live_dispatch"
+      : "ready";
+  const allowLiveStrategyDispatch = execute && capitalDispatchReadiness === "ready";
 
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
@@ -575,7 +734,7 @@ export async function runAllChainAutopilot({
       "--write",
       "--continue-on-failure",
       "--mode=auto",
-    ], "--execute", execute),
+    ], "--execute", allowLiveStrategyDispatch),
     runCommandImpl,
     cwd,
     timeoutMs: dispatchTimeoutMs,
@@ -592,13 +751,52 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
+  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", join("data", "oracles", "btc-latest.json"));
+  await runJsonStep({
+    name: "btc_oracle_snapshot",
+    args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json", `--oracles-path=${oraclesPathArg}`];
+  if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
+  const autoKillResult = await runJsonStep({
+    name: "auto_kill_check",
+    args: autoKillArgs,
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  await runJsonStep({
+    name: "auto_kill_dashboard_slice",
+    args: ["src/cli/report-auto-kill-events.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
   const summary = {
     officialChainCount: chains.length,
-    refillJobCount: refillPlan?.summary?.jobCount ?? 0,
+    refillJobCount: mergedRefillJobs.length,
+    treasuryRefillJobCount: refillPlan?.summary?.jobCount ?? 0,
+    capitalManagerRefillJobCount: capitalManagerRefillPlan?.jobs?.summary?.jobCount ?? 0,
+    inboundRouteJobCount: inboundWatcherResult.json?.routingPlan?.jobs?.length ?? 0,
     autoRefillJobCount: autoRefillJobs.length,
     refillAttemptedCount: refillExecutions.filter((item) => item.attempted).length,
     refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
+    autoRefillSourceCounts: autoRefillJobs.reduce((counts, job) => {
+      const key = job.autopilotRefillSource || "unknown";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {}),
     inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
+    capitalManager: compactCapitalManager(capitalManagerRefillPlan),
     canarySweep: compactCanarySweep(canarySweepResult.json),
     merklQueue: compactMerklQueue(merklQueueResult.json),
     destinationPromotionGate: {
@@ -613,8 +811,9 @@ export async function runAllChainAutopilot({
     destinationRepresentative: compactDestinationRepresentative(destinationRepresentativeResult.json),
     merklCanary: compactMerkl(merklCanaryResult.json),
     portfolio: compactPortfolio(portfolioResult.json),
-    strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json),
+    strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json, { capitalDispatchReadiness }),
     payback: compactPayback(paybackResult.json),
+    autoKill: compactAutoKill(autoKillResult.json),
   };
 
   const hardFailures = steps.filter((step) => !step.ok && !stepIsRecoverable(step, steps));

@@ -119,6 +119,39 @@ test("payback accumulator uses record pricing before newer market snapshots", ()
   assert.equal(snapshot.pendingDeferredSats, 10_000);
 });
 
+test("payback accumulator excludes operating capital ingress records from profit accounting", () => {
+  const auditLogLines = [
+    {
+      timestamp: "2026-04-16T01:00:00.000Z",
+      event: "inbound_deposit_detected",
+      capitalSource: "operating_capital",
+      capitalFlow: "operating_capital_ingress",
+      paybackExclusion: true,
+      realized: {
+        realizedNetPnlUsd: 999,
+      },
+    },
+    {
+      timestamp: "2026-04-16T02:00:00.000Z",
+      realized: {
+        realizedNetPnlUsd: 10,
+      },
+    },
+  ];
+  const receiptStore = {
+    marketPriceSnapshots: [
+      {
+        observedAt: "2026-04-16T00:59:00.000Z",
+        btcUsd: 100_000,
+      },
+    ],
+  };
+
+  const snapshot = snapshotPaybackAccumulator(auditLogLines, receiptStore, {});
+  assert.equal(snapshot.grossProfitSats_period, 10_000);
+  assert.equal(snapshot.pendingDeferredSats, 10_000);
+});
+
 test("payback accumulator computes documented KPI formulas from rolling capital and settled payback", () => {
   const auditLogLines = [
     {

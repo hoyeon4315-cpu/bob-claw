@@ -38,8 +38,8 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { state, dashboardStatus, triangleArtifacts } = await buildCurrentDashboardContext();
-  const executionSurfaces = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts });
+  const { state, dashboardStatus, triangleArtifacts, artifacts } = await buildCurrentDashboardContext();
+  const executionSurfaces = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
   let strategies = executionSurfaces.strategies || [];
   if (args.scope.length) {
     const scopeSet = new Set(args.scope);

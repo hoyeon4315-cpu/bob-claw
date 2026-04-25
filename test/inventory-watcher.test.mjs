@@ -55,8 +55,14 @@ test("inventory watcher report classifies routable and pending whitelist deposit
   });
 
   assert.equal(report.summary.inboundEventCount, 2);
+  assert.equal(report.summary.operatingCapitalIngressCount, 2);
+  assert.equal(report.summary.paybackExcludedCount, 2);
   assert.equal(report.summary.routeReadyCount, 1);
   assert.equal(report.summary.manualReviewCount, 1);
+  assert.equal(report.events[0].capitalSource, "operating_capital");
+  assert.equal(report.events[0].paybackExclusion, true);
+  assert.equal(report.routingPlan.jobs[0].capitalSource, "operating_capital");
+  assert.equal(report.routingPlan.jobs[0].paybackExclusion, true);
 });
 
 test("appendInventoryWatcherReport writes event, refill job, and whitelist queues", async () => {

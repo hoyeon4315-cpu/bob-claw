@@ -1,4 +1,5 @@
 import { tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
+import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-representative-bindings.mjs";
 import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
@@ -30,6 +31,13 @@ const MERKL_PORTFOLIO_REFILL_POLICY = {
   actionType: "treasury_refill_for_yield",
   perTradeCapUsd: 75,
 };
+const REPRESENTATIVE_STABLE_REFILL_POLICY = {
+  ...MERKL_PORTFOLIO_REFILL_POLICY,
+  id: "destination_representative_stable_refill",
+  strategyType: "destination_representative_stable_carry",
+  perTradeCapUsd: 3,
+};
+const EXPLICIT_REPRESENTATIVE_FLOAT_CHAINS = new Set(["ethereum", "base", "bsc"]);
 
 function normalizedAddress(value) {
   return String(value || "").toLowerCase();
@@ -105,6 +113,23 @@ function gatewayWbtcPolicy(chain, overrides = {}) {
     rationale: "Tiny all-chain Gateway wrapped-BTC buffer for automated route proof, canary prep, and payback return-path validation.",
     ...overrides,
   });
+}
+
+function destinationRepresentativeStableInventoryPolicies() {
+  return Object.values(DESTINATION_REPRESENTATIVE_BINDINGS)
+    .filter((binding) => !EXPLICIT_REPRESENTATIVE_FLOAT_CHAINS.has(binding.chain))
+    .map((binding) => tokenPolicy(binding.chain, binding.assetAddress, {
+      ticker: binding.assetSymbol,
+      decimals: binding.assetDecimals,
+      minBalance: "0.75",
+      targetBalance: "3",
+      maxBalance: "9",
+      rationale: `Representative ${binding.assetSymbol} buffer for ${binding.chain} live-capital validation; capital manager may refill this before the destination representative autopilot deploys the capped canary.`,
+      strategyPolicy: {
+        ...REPRESENTATIVE_STABLE_REFILL_POLICY,
+        perTradeCapUsd: binding.maxCanaryUsd,
+      },
+    }));
 }
 
 export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
@@ -201,7 +226,7 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       canaryStartUsdMax: 50,
       maxIdleCapitalPerChainUsd: 60,
       fragmentationDragPct: 0.005,
-      maxRefillCost24hUsd: 3,
+      maxRefillCost24hUsd: 12,
     },
     supportedChains: GATEWAY_DESTINATION_CHAINS,
     activeChains: GATEWAY_DESTINATION_CHAINS,
@@ -280,6 +305,7 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         maxBalance: "50",
         rationale: "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
       }),
+      ...destinationRepresentativeStableInventoryPolicies(),
     ],
     allowanceCaps: [
       {
@@ -294,7 +320,7 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
     refillPolicy: {
       requireActiveChain: false,
       requireRouteDemandSignal: false,
-      maxPendingJobs: 4,
+      maxPendingJobs: 24,
       minHoursBetweenRefillsPerChain: 6,
       maxSingleRefillCostUsd: 0.5,
       skipIfWalletValueBelowUsd: 0,

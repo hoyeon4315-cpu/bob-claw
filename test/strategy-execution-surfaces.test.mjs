@@ -87,3 +87,82 @@ test("execution surfaces classify missing runners separately from runnable obser
   assert.equal(btcFlash.liveAdmissionBlockers.includes("flash_live_admission_blocked"), true);
   assert.equal(report.summary.missingExecutorCount, 0);
 });
+
+test("execution surfaces include executor-backed live strategies when artifacts prove readiness", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 1.3552 },
+          realized: { valueUsd: 1.3552 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            oosSplitStatus: "signer_backed_window_recorded",
+            shockTestStatus: "live_roundtrip_recorded",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+              realizedNetCarryUsd: 0,
+            },
+          },
+        ],
+      },
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 3,
+          executableNowCount: 2,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-1",
+            protocolId: "yo",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 5.37 },
+            },
+            aprPct: 12,
+          },
+        ],
+      },
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(wrapped.currentLiveEligible, true);
+  assert.equal(wrapped.selectedMode, "live");
+  assert.equal(wrapped.selectedCommands[0].script, "executor:wrapped-btc-loop");
+  assert.equal(merkl.currentLiveEligible, true);
+  assert.equal(merkl.selectedMode, "live");
+  assert.equal(merkl.selectedCommands[0].script, "executor:merkl-canary-autopilot");
+  assert.equal(report.summary.liveEligibleCount, 2);
+});

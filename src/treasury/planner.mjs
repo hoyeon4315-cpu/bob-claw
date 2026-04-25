@@ -9,6 +9,12 @@ function refillActionType(item) {
   return item.asset ? "refill_native" : "refill_token";
 }
 
+function stablecoinFallbackPriceUsd(item = {}) {
+  const ticker = String(item.ticker || item.asset || "").toUpperCase();
+  if (ticker.startsWith("USDC") || ticker === "USDT" || ticker === "RLUSD") return 1;
+  return null;
+}
+
 function estimateActionCostUsd(item, policy) {
   const refillUsd = Number(item.refillEstimatedUsd || 0);
   const capped = Math.min(refillUsd, policy.refillPolicy.maxSingleRefillCostUsd);
@@ -54,7 +60,7 @@ function tokenAction(item, policy) {
 }
 
 function isStablecoinInventoryItem(item) {
-  return tokenAsset(item.chain, item.token).family === "stablecoin";
+  return tokenAsset(item.chain, item.token).family === "stablecoin" || stablecoinFallbackPriceUsd(item) === 1;
 }
 
 function stablecoinCoverageByChain(items = []) {
@@ -75,6 +81,9 @@ export function enrichInventoryWithRefillUsd(inventory) {
       Number.isFinite(item.refillToTargetDecimal) && Number.isFinite(item.priceUsd) ? item.refillToTargetDecimal * item.priceUsd : null,
   }));
   const tokens = inventory.tokens.map((item) => ({
+    ...item,
+    priceUsd: item.priceUsd ?? stablecoinFallbackPriceUsd(item),
+  })).map((item) => ({
     ...item,
     refillEstimatedUsd:
       Number.isFinite(item.refillToTargetDecimal) && Number.isFinite(item.priceUsd) ? item.refillToTargetDecimal * item.priceUsd : null,

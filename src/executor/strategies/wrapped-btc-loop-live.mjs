@@ -282,6 +282,14 @@ function sumFinite(values = []) {
   return finite.length > 0 ? round(finite.reduce((sum, value) => sum + value, 0), 6) : null;
 }
 
+function numericPath(values = []) {
+  return (values || []).filter(Number.isFinite).map((value) => round(value, 4));
+}
+
+function positiveNumericPath(values = []) {
+  return numericPath(values).filter((value) => value > 0);
+}
+
 export function buildWrappedBtcLoopReceiptContext({
   plan,
   entryResults = [],

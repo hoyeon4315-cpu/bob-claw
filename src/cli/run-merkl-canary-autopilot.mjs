@@ -30,6 +30,9 @@ function parseArgs(argv) {
     pollIntervalMs: entries["poll-interval-ms"] ? Number(entries["poll-interval-ms"]) : DEFAULT_POLL_INTERVAL_MS,
     maxConsecutiveFailures: entries["max-consecutive-failures"] ? Number(entries["max-consecutive-failures"]) : 3,
     maxUsd: entries["max-usd"] ? Number(entries["max-usd"]) : null,
+    maxCandidates: entries["max-candidates"] ? Number(entries["max-candidates"]) : undefined,
+    maxPerChain: entries["max-per-chain"] ? Number(entries["max-per-chain"]) : undefined,
+    maxPerProtocol: entries["max-per-protocol"] ? Number(entries["max-per-protocol"]) : undefined,
     minEthereumNotionalUsd: entries["min-ethereum-notional-usd"] ? Number(entries["min-ethereum-notional-usd"]) : undefined,
     allowInefficientEthereum: flags.has("--allow-inefficient-ethereum"),
     socketPath: resolve(entries["socket-path"] || signerSocketPath()),
@@ -57,6 +60,11 @@ function compact(report = {}) {
     selectedBindingKind: report.summary?.selectedBindingKind || null,
     selectedAmount: report.summary?.selectedAmount || null,
     selectedAmountUsd: report.summary?.selectedAmountUsd ?? null,
+    selectedCount: report.summary?.selectedCount ?? 0,
+    selectedChains: report.summary?.selectedChains || [],
+    previewReadyCount: report.summary?.previewReadyCount ?? 0,
+    deliveredCount: report.summary?.deliveredCount ?? 0,
+    blockedCount: report.summary?.blockedCount ?? 0,
     txHashes: (report.execution?.stepResults || [])
       .map((step) => step.signerResult?.broadcast?.txHash)
       .filter(Boolean),
@@ -69,6 +77,9 @@ function autopilotOptions(args) {
     execute: args.execute,
     write: args.write,
     maxUsd: args.maxUsd,
+    maxCandidates: args.maxCandidates,
+    maxPerChain: args.maxPerChain,
+    maxPerProtocol: args.maxPerProtocol,
     minEthereumNotionalUsd: args.minEthereumNotionalUsd,
     allowInefficientEthereum: args.allowInefficientEthereum,
     socketPath: args.socketPath,
@@ -82,6 +93,7 @@ function printSummary(report) {
   console.log(`status=${summary.status}`);
   console.log(`blockedReason=${summary.blockedReason || "none"}`);
   console.log(`readyCount=${summary.readyCount}`);
+  console.log(`selectedCount=${summary.selectedCount} chains=${summary.selectedChains.join(",") || "none"} previewReady=${summary.previewReadyCount} delivered=${summary.deliveredCount} blocked=${summary.blockedCount}`);
   console.log(`selected=${summary.selectedOpportunityId || "none"} chain=${summary.selectedChain || "n/a"} protocol=${summary.selectedProtocolId || "n/a"}`);
   console.log(`binding=${summary.selectedBindingKind || "n/a"} amount=${summary.selectedAmount || "n/a"} amountUsd=${summary.selectedAmountUsd ?? "n/a"}`);
   console.log(`txHashes=${summary.txHashes.join(",") || "none"}`);

@@ -7,6 +7,8 @@ import {
   placeChainRing,
   bloomRadiusForCount,
   computeProtocolBloom,
+  padBounds,
+  fitBoundsInViewBox,
   isFontSizeReadable,
 } from "../src/dashboard/mindmap-layout.mjs";
 
@@ -119,5 +121,42 @@ describe("bloomRadiusForCount + computeProtocolBloom: overlap-free", () => {
       () => computeProtocolBloom({ anchor: null, count: 3, chipR: 28 }),
       TypeError
     );
+  });
+});
+
+describe("fitBoundsInViewBox", () => {
+  test("pads bounds symmetrically before fitting", () => {
+    const padded = padBounds(
+      { minX: -20, minY: -10, maxX: 30, maxY: 40 },
+      { x: 6, y: 8 }
+    );
+    assert.deepEqual(padded, { minX: -26, minY: -18, maxX: 36, maxY: 48 });
+  });
+
+  test("keeps protocol focus inside the safe viewport while allowing zoom-in", () => {
+    const bounds = padBounds(
+      { minX: -58, minY: -102, maxX: 64, maxY: 54 },
+      { x: 14, y: 18 }
+    );
+    const safeArea = { left: 16, right: 16, top: 22, bottom: 172 };
+    const result = fitBoundsInViewBox({
+      bounds,
+      viewBox: { width: 360, height: 520 },
+      safeArea,
+      focus: { x: 6, y: -8 },
+      minZoom: 0.78,
+      maxZoom: 1.72,
+    });
+
+    assert.ok(result.zoom > 1, `expected focused zoom-in, got ${result.zoom}`);
+
+    const left = bounds.minX * result.zoom + result.tx;
+    const right = bounds.maxX * result.zoom + result.tx;
+    const top = bounds.minY * result.zoom + result.ty;
+    const bottom = bounds.maxY * result.zoom + result.ty;
+    assert.ok(left >= safeArea.left - 1e-6, `left overflow: ${left}`);
+    assert.ok(right <= 360 - safeArea.right + 1e-6, `right overflow: ${right}`);
+    assert.ok(top >= safeArea.top - 1e-6, `top overflow: ${top}`);
+    assert.ok(bottom <= 520 - safeArea.bottom + 1e-6, `bottom overflow: ${bottom}`);
   });
 });

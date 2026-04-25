@@ -25,6 +25,12 @@ function priceForAsset(chain, token, prices) {
   return prices?.tokenByKey?.[asset.priceKey] ?? prices?.nativeByChain?.[asset.priceKey] ?? null;
 }
 
+function stablecoinFallbackPriceUsd(item = {}) {
+  const ticker = String(item.ticker || item.asset || "").toUpperCase();
+  if (ticker.startsWith("USDC") || ticker === "USDT" || ticker === "RLUSD") return 1;
+  return null;
+}
+
 function bandStatus({ actual, min, target, max, active, enabled }) {
   if (!enabled) {
     return actual > 0n ? "observe_only_balance_present" : "inactive";
@@ -115,7 +121,7 @@ export function buildTreasuryInventory({
     const min = decimalToUnits(item.minBalance, item.decimals);
     const target = decimalToUnits(item.targetBalance, item.decimals);
     const max = decimalToUnits(item.maxBalance, item.decimals);
-    const priceUsd = priceForAsset(chain, item.token, prices);
+    const priceUsd = priceForAsset(chain, item.token, prices) ?? stablecoinFallbackPriceUsd(item);
     const status = bandStatus({
       actual,
       min,
@@ -157,7 +163,7 @@ export function buildTreasuryInventory({
     const min = decimalToUnits(item.minBalance, item.decimals);
     const target = decimalToUnits(item.targetBalance, item.decimals);
     const max = decimalToUnits(item.maxBalance, item.decimals);
-    const priceUsd = priceForAsset(item.chain, item.token, prices);
+    const priceUsd = priceForAsset(item.chain, item.token, prices) ?? stablecoinFallbackPriceUsd(item);
     const status = bandStatus({
       actual,
       min,

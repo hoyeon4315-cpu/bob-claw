@@ -441,12 +441,12 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
 
   for (const iteration of scaffold.entryPlan?.iterations || []) {
     const borrowUnits = decimalToUnits(iteration.borrowUsd, borrowAsset.decimals);
-    const recycledCollateralUnits = unitsFromUsd(
+    const plannedRecycledCollateralUnits = unitsFromUsd(
       iteration.recycledCollateralUsd,
       collateralPriceUsd,
       collateralAsset.decimals,
     );
-    if (!borrowUnits || !recycledCollateralUnits) {
+    if (!borrowUnits || !plannedRecycledCollateralUnits) {
       throw new Error(`Failed to derive entry units for iteration ${iteration.iteration}`);
     }
 
@@ -462,6 +462,24 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       client,
       gasBufferBps,
     });
+    const quotedRecycledCollateralUnits = BigInt(swap.swapStep.quote?.outputAmount || 0n);
+    if (quotedRecycledCollateralUnits <= 0n) {
+      throw new Error(`Odos returned no recycled collateral output for iteration ${iteration.iteration}`);
+    }
+    const appliedRecycledCollateralUnits = minBigInt(
+      plannedRecycledCollateralUnits,
+      quotedRecycledCollateralUnits,
+    );
+    if (appliedRecycledCollateralUnits <= 0n) {
+      throw new Error(`Failed to derive executable recycled collateral units for iteration ${iteration.iteration}`);
+    }
+    const appliedRecycledCollateralUsd = unitsToUsd(
+      appliedRecycledCollateralUnits,
+      collateralPriceUsd,
+      collateralAsset.decimals,
+    );
+    const recycledCollateralDownsized =
+      appliedRecycledCollateralUnits < BigInt(plannedRecycledCollateralUnits);
     const borrowGasLimit = await estimateBufferedGasLimit({
       chain: "base",
       from: signerAddress,
@@ -475,7 +493,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       chain: "base",
       from: signerAddress,
       to: collateralToken,
-      data: ERC20_INTERFACE.encodeFunctionData("approve", [collateralMarketAddress, recycledCollateralUnits]),
+      data: ERC20_INTERFACE.encodeFunctionData("approve", [collateralMarketAddress, appliedRecycledCollateralUnits.toString()]),
       estimateGasImpl,
       gasBufferBps,
       allowFailure: true,
@@ -484,7 +502,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       chain: "base",
       from: signerAddress,
       to: collateralMarketAddress,
-      data: MTOKEN_INTERFACE.encodeFunctionData("mint", [recycledCollateralUnits]),
+      data: MTOKEN_INTERFACE.encodeFunctionData("mint", [appliedRecycledCollateralUnits.toString()]),
       estimateGasImpl,
       gasBufferBps,
       allowFailure: true,
@@ -512,13 +530,17 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         chain: "base",
         token: collateralToken,
         spender: collateralMarketAddress,
-        amount: recycledCollateralUnits,
-        amountUsd: iteration.recycledCollateralUsd,
+        amount: appliedRecycledCollateralUnits.toString(),
+        amountUsd: appliedRecycledCollateralUsd,
         now,
         metadata: {
           kind: "approve_recycled_collateral",
           iteration: iteration.iteration,
           capCheckAmountUsd: 0,
+          plannedRecycledCollateralUnits,
+          quotedRecycledCollateralUnits: quotedRecycledCollateralUnits.toString(),
+          appliedRecycledCollateralUnits: appliedRecycledCollateralUnits.toString(),
+          recycledCollateralDownsized,
         },
         gasLimit: recycledApprovalGasLimit,
       }),
@@ -526,13 +548,17 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         id: `mint-recycled-collateral-${iteration.iteration}`,
         chain: "base",
         to: collateralMarketAddress,
-        data: MTOKEN_INTERFACE.encodeFunctionData("mint", [recycledCollateralUnits]),
-        amountUsd: iteration.recycledCollateralUsd,
+        data: MTOKEN_INTERFACE.encodeFunctionData("mint", [appliedRecycledCollateralUnits.toString()]),
+        amountUsd: appliedRecycledCollateralUsd,
         now,
         metadata: {
           kind: "deposit_recycled_collateral",
           iteration: iteration.iteration,
           capCheckAmountUsd: 0,
+          plannedRecycledCollateralUnits,
+          quotedRecycledCollateralUnits: quotedRecycledCollateralUnits.toString(),
+          appliedRecycledCollateralUnits: appliedRecycledCollateralUnits.toString(),
+          recycledCollateralDownsized,
         },
         gasLimit: recycledMintGasLimit,
       }),

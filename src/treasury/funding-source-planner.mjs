@@ -119,6 +119,11 @@ function normalized(value) {
   return String(value || "").toLowerCase();
 }
 
+function isStablecoinTicker(value) {
+  const ticker = String(value || "").toUpperCase();
+  return ticker.startsWith("USDC") || ticker === "USDT" || ticker === "RLUSD" || ticker === "DAI";
+}
+
 function resourceKeyForRefillAction(action) {
   return action.type === "refill_native" ? `${action.chain}:native` : `${action.chain}:${normalized(action.token)}`;
 }
@@ -456,6 +461,7 @@ function crossChainExecutorSupport(action, selectedSource) {
   if (action.type === "refill_token") {
     const sourceAsset = tokenAsset(selectedSource.chain, selectedSource.token);
     const targetAsset = tokenAsset(action.chain, action.token);
+    const targetIsStablecoin = targetAsset?.family === "stablecoin" || isStablecoinTicker(action.ticker || targetAsset?.ticker);
     if (isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset)) {
       return {
         supported: true,
@@ -471,7 +477,7 @@ function crossChainExecutorSupport(action, selectedSource) {
         notes: "Source token is not BTC-family but target is; swap source token to wBTC.OFT on source chain then bridge via Gateway consolidation.",
       };
     }
-    if (!isBtcLikeAsset(sourceAsset) && targetAsset?.family === "stablecoin" && dexProvidersForChain(selectedSource.chain).length > 0) {
+    if (!isBtcLikeAsset(sourceAsset) && targetIsStablecoin && dexProvidersForChain(selectedSource.chain).length > 0) {
       return {
         supported: true,
         intermediateSwapRequired: true,
@@ -640,7 +646,6 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
   // providers stay in the candidate list so autopilot can retry them when
   // the selected Gateway quote returns `no_route`.
   if (action?.type !== "refill_token" && action?.type !== "refill_native") return [];
-  if (gatewayAvailable !== false && action.chain !== "soneium") return [];
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   if (!selectedSource) return [];
   const targetAsset = action.type === "refill_token"
@@ -655,6 +660,8 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
       : rawFamily === "usd" || rawFamily === "stablecoin" ? "stable"
       : rawFamily)
     : null;
+  const stableTokenRefill = action.type === "refill_token" && assetFamily === "stable";
+  if (gatewayAvailable !== false && action.chain !== "soneium" && !stableTokenRefill) return [];
   const fallbackProviders = fallbackProvidersWhenGatewayPaused({
     srcChain: selectedSource.chain,
     dstChain: action.chain,

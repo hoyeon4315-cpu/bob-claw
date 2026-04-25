@@ -9,6 +9,10 @@ export const MINDMAP_FONT_FLOOR_PX = 10;
 export const READABLE_FONT_FLOOR_PX = 12;
 export const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.8;
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export function placeChainRing({ count, ringR, startAngle = -Math.PI / 2 }) {
   if (!Number.isFinite(count) || count <= 0) return [];
   if (!Number.isFinite(ringR) || ringR <= 0) {
@@ -52,6 +56,50 @@ export function computeProtocolBloom({ anchor, count, chipR, minR = 60, padding 
     });
   }
   return { radius: R, points: out };
+}
+
+export function padBounds(bounds, { x = 0, y = x } = {}) {
+  if (!bounds || !Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)
+    || !Number.isFinite(bounds.maxX) || !Number.isFinite(bounds.maxY)) {
+    throw new TypeError("padBounds: finite bounds required");
+  }
+  return {
+    minX: bounds.minX - x,
+    minY: bounds.minY - y,
+    maxX: bounds.maxX + x,
+    maxY: bounds.maxY + y,
+  };
+}
+
+export function fitBoundsInViewBox({
+  bounds,
+  viewBox,
+  safeArea,
+  focus,
+  minZoom = 0.5,
+  maxZoom = Infinity,
+}) {
+  if (!bounds || !viewBox || !safeArea || !focus) {
+    throw new TypeError("fitBoundsInViewBox: bounds, viewBox, safeArea, and focus are required");
+  }
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
+  const availW = viewBox.width - safeArea.left - safeArea.right;
+  const availH = viewBox.height - safeArea.top - safeArea.bottom;
+  if (!Number.isFinite(availW) || !Number.isFinite(availH) || availW <= 0 || availH <= 0) {
+    throw new TypeError("fitBoundsInViewBox: safeArea must leave positive drawable space");
+  }
+  const fitZoom = Math.min(availW / width, availH / height);
+  const zoom = clamp(fitZoom, minZoom, maxZoom);
+  const targetTx = viewBox.width / 2 - focus.x * zoom;
+  const targetTy = safeArea.top + availH / 2 - focus.y * zoom;
+  const minTx = safeArea.left - bounds.minX * zoom;
+  const maxTx = viewBox.width - safeArea.right - bounds.maxX * zoom;
+  const minTy = safeArea.top - bounds.minY * zoom;
+  const maxTy = viewBox.height - safeArea.bottom - bounds.maxY * zoom;
+  const tx = minTx <= maxTx ? clamp(targetTx, minTx, maxTx) : (minTx + maxTx) / 2;
+  const ty = minTy <= maxTy ? clamp(targetTy, minTy, maxTy) : (minTy + maxTy) / 2;
+  return { zoom, tx, ty, fitZoom };
 }
 
 export function isFontSizeReadable(px, { mode = "label" } = {}) {

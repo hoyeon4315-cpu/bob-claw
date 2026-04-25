@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   OFFICIAL_GATEWAY_DESTINATION_CHAINS,
+  defaultRunCommand,
   runAllChainAutopilot,
 } from "../src/executor/all-chain-autopilot.mjs";
 
@@ -29,6 +30,7 @@ function fakeCommand({ args }) {
             jobId: "auto-1",
             chain: "optimism",
             asset: "ETH",
+            resourceKey: "optimism:eth",
             targetAmountDecimal: 0.001,
             executionMethod: "cross_chain_bridge_or_swap",
             requiresManualReview: false,
@@ -38,10 +40,48 @@ function fakeCommand({ args }) {
             jobId: "manual-1",
             chain: "sei",
             asset: "SEI",
+            resourceKey: "sei:sei",
             requiresManualReview: true,
             fundingSource: { selectionStatus: "conditional" },
           },
         ],
+      },
+    };
+  }
+  if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        rebalancePlan: {
+          decision: "REBALANCE_REQUIRED",
+          actions: [{ type: "capital_rebalance", chain: "base", amountUsd: 50 }],
+        },
+        capitalPlan: {
+          decision: "REFILL_REQUIRED",
+          summary: {
+            actionCount: 1,
+            blockerCount: 0,
+          },
+        },
+        jobs: {
+          summary: { jobCount: 1, estimatedAssetValueUsd: 50 },
+          jobs: [
+            {
+              jobId: "cap-1",
+              chain: "base",
+              asset: "wBTC.OFT",
+              type: "refill_token",
+              resourceKey: "base:wbtc.oft",
+              targetAmountDecimal: 0.0005,
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+            },
+          ],
+        },
       },
     };
   }
@@ -66,9 +106,26 @@ function fakeCommand({ args }) {
       json: {
         summary: {
           inboundEventCount: 2,
+          operatingCapitalIngressCount: 2,
+          paybackExcludedCount: 2,
           routeReadyCount: 1,
           manualReviewCount: 1,
           candidateQueueCount: 0,
+        },
+        routingPlan: {
+          jobs: [
+            {
+              jobId: "inbound-1",
+              chain: "base",
+              asset: "wBTC.OFT",
+              type: "inbound_route",
+              sourceEventId: "event-1",
+              routeType: "btc_like_deploy_from_hub",
+              requiresManualReview: false,
+              capitalSource: "operating_capital",
+              paybackExclusion: true,
+            },
+          ],
         },
         appended: {
           events: 2,
@@ -238,6 +295,56 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("snapshot-btc-oracles.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        schemaVersion: 1,
+        asset: "btc",
+        observedAt: new Date().toISOString(),
+        samples: [
+          { source: "coinbase", priceUsd: 100000 },
+          { source: "binance", priceUsd: 100050 },
+        ],
+        errors: [],
+      },
+    };
+  }
+  if (name.endsWith("report-auto-kill-events.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        windowMs: 86400000,
+        totalEvaluations24h: 0,
+        triggerCounts: {},
+        lastEvent: null,
+        armedAt: null,
+      },
+    };
+  }
+  if (name.endsWith("run-auto-kill-check.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        triggered: false,
+        alreadyArmed: false,
+        killSwitchWritten: false,
+        killSwitchPath: "./state/kill.switch",
+        triggers: [],
+      },
+    };
+  }
   throw new Error(`unexpected command ${name}`);
 }
 
@@ -251,11 +358,16 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.status, "completed_with_blockers");
   assert.deepEqual(report.chains, OFFICIAL_GATEWAY_DESTINATION_CHAINS);
   assert.equal(report.summary.officialChainCount, 11);
-  assert.equal(report.summary.refillJobCount, 2);
-  assert.equal(report.summary.autoRefillJobCount, 1);
-  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(report.summary.refillJobCount, 4);
+  assert.equal(report.summary.treasuryRefillJobCount, 2);
+  assert.equal(report.summary.capitalManagerRefillJobCount, 1);
+  assert.equal(report.summary.inboundRouteJobCount, 1);
+  assert.equal(report.summary.autoRefillJobCount, 2);
+  assert.equal(report.summary.refillExecutedCount, 2);
   assert.deepEqual(report.summary.inboundInventory, {
     inboundEventCount: 2,
+    operatingCapitalIngressCount: 2,
+    paybackExcludedCount: 2,
     routeReadyCount: 1,
     manualReviewCount: 1,
     candidateQueueCount: 0,
@@ -263,6 +375,8 @@ test("all-chain autopilot wires every destination chain into one execution pass"
     appendedJobs: 1,
     appendedPendingWhitelist: 1,
   });
+  assert.equal(report.summary.capitalManager.capitalPlanDecision, "REFILL_REQUIRED");
+  assert.equal(report.summary.capitalManager.refillJobCount, 1);
   assert.equal(report.summary.canarySweep.executedCount, 1);
   assert.equal(report.summary.destinationPromotionGate.allocationReadyCount, 2);
   assert.deepEqual(report.summary.destinationAllocator.tier1ActiveReadyChains, ["base", "bsc"]);
@@ -270,6 +384,7 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.destinationRepresentative.selectedTemplateId, "bsc:stablecoin_lending_carry");
   assert.equal(report.summary.destinationRepresentative.proofStatus, "delivered");
   assert.equal(report.summary.strategyDispatch.missingExecutorCount, 0);
+  assert.equal(report.summary.strategyDispatch.capitalDispatchReadiness, "ready");
   assert.equal(report.summary.payback.pendingCarrySats, 601);
 });
 
@@ -300,7 +415,7 @@ test("all-chain autopilot reports recoverable blockers without failing the whole
   assert.equal(primaryPlanSeen, true);
   assert.equal(report.status, "completed_with_blockers");
   assert.equal(report.blockedReason, null);
-  assert.equal(report.summary.refillJobCount, 2);
+  assert.equal(report.summary.refillJobCount, 4);
 });
 
 test("all-chain autopilot gives long-running canary sweep its own timeout", async () => {
@@ -329,6 +444,19 @@ test("all-chain autopilot retries refill jobs with executable alternate methods 
   const command = ({ args }) => {
     const name = args[0];
     seen.push(args);
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
     if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
       return {
         ok: true,
@@ -409,6 +537,19 @@ test("all-chain autopilot treats unsupported bridge refill previews as alternate
   const command = ({ args }) => {
     const name = args[0];
     seen.push(args);
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
     if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
       return {
         ok: true,
@@ -505,6 +646,19 @@ test("all-chain autopilot promotes Soneium Gateway no_route previews to LI.FI wh
   const command = ({ args }) => {
     const name = args[0];
     seen.push(args);
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
     if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
       return {
         ok: true,
@@ -580,6 +734,19 @@ test("all-chain autopilot promotes Soneium Gateway no_route previews to LI.FI wh
 test("all-chain autopilot reports routing_exhausted after retryable providers reject", async () => {
   const command = ({ args }) => {
     const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
     if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
       return {
         ok: true,
@@ -645,6 +812,19 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
 test("all-chain autopilot separates refill attempts from delivered executions", async () => {
   const command = ({ args }) => {
     const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
     if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
       return {
         ok: true,
@@ -708,6 +888,19 @@ test("all-chain autopilot separates refill attempts from delivered executions", 
 test("all-chain autopilot keeps parsed refill execution failures as blockers", async () => {
   const command = ({ args }) => {
     const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
     if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
       return {
         ok: true,
@@ -774,4 +967,64 @@ test("all-chain autopilot keeps parsed refill execution failures as blockers", a
   assert.equal(report.summary.refillExecutedCount, 0);
   assert.equal(report.refillExecutions[0].executionStatus, "failed");
   assert.equal(report.refillExecutions[0].executionBlockedReason, "Signer daemon response timed out after 30000ms");
+});
+
+test("all-chain autopilot treats Merkl canary blocked json as recoverable during execute", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("run-merkl-canary-autopilot.mjs")) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: JSON.stringify({
+          status: "blocked",
+          blockedReason: "insufficient_live_asset_balance",
+          summary: {
+            selectedChain: "base",
+            selectedProtocolId: "yo",
+            selectedBindingKind: "erc4626_vault_supply_withdraw",
+            selectedAmountUsd: 0.100024,
+          },
+        }),
+        stderr: "Error: Insufficient asset balance",
+        json: {
+          status: "blocked",
+          blockedReason: "insufficient_live_asset_balance",
+          summary: {
+            selectedChain: "base",
+            selectedProtocolId: "yo",
+            selectedBindingKind: "erc4626_vault_supply_withdraw",
+            selectedAmountUsd: 0.100024,
+          },
+        },
+        error: { name: "Error", message: "Error: Insufficient asset balance" },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.summary.merklCanary.blockedReason, "insufficient_live_asset_balance");
+});
+
+test("defaultRunCommand does not retain a referenced child-process handle after the command resolves", async () => {
+  const countHandles = (name) =>
+    process._getActiveHandles().filter((handle) => handle?.constructor?.name === name).length;
+
+  const beforeChildProcessCount = countHandles("ChildProcess");
+  const result = await defaultRunCommand({
+    args: ["-e", "console.log(JSON.stringify({ ok: true }))"],
+    timeoutMs: 5_000,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(result.json, { ok: true });
+  assert.equal(countHandles("ChildProcess"), beforeChildProcessCount);
 });

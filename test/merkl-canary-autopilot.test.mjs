@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  refreshMerklAutopilotSelectionForExecute,
   selectMerklCanaryAutopilotCandidate,
+  selectMerklCanaryAutopilotCandidates,
   sizeMerklCanaryAmount,
 } from "../src/executor/merkl-canary-autopilot.mjs";
 
@@ -123,7 +125,7 @@ test("blocks Ethereum canaries when committed caps are below the gas-efficiency 
   assert.ok(sizing.blockers.includes("cap_too_low_for_ethereum_gas_efficiency"));
 });
 
-test("selects the highest priority non-Ethereum ready candidate", () => {
+test("selects the highest priority ready candidate after gas and cap checks", () => {
   const base = queueItem({ opportunityId: "base", priorityScore: 90 });
   const ethereum = queueItem({
     opportunityId: "ethereum",
@@ -147,7 +149,29 @@ test("selects the highest priority non-Ethereum ready candidate", () => {
   const selection = selectMerklCanaryAutopilotCandidate({ queue: [ethereum, base] });
 
   assert.equal(selection.readyCount, 2);
-  assert.equal(selection.selected.queueItem.opportunityId, "base");
+  assert.equal(selection.selected.queueItem.opportunityId, "ethereum");
+});
+
+test("batch selection spreads Merkl canaries across chains before repeating a chain", () => {
+  const ethereumA = queueItem({ opportunityId: "ethereum-a", chain: "ethereum", priorityScore: 130, executionReadiness: {
+    status: "inventory_ready",
+    matchedToken: { ticker: "USDC", actual: "100000000", estimatedUsd: 100 },
+    matchedNative: { asset: "ETH", actual: "100000000000000000", estimatedUsd: 250 },
+  } });
+  const ethereumB = queueItem({ opportunityId: "ethereum-b", chain: "ethereum", priorityScore: 120, executionReadiness: ethereumA.executionReadiness });
+  const base = queueItem({ opportunityId: "base", chain: "base", priorityScore: 90 });
+
+  const selection = selectMerklCanaryAutopilotCandidates(
+    { queue: [ethereumA, ethereumB, base] },
+    { maxCandidates: 3, maxPerChain: 2 },
+  );
+
+  assert.equal(selection.readyCount, 3);
+  assert.deepEqual(selection.selected.map((item) => item.queueItem.opportunityId), [
+    "ethereum-a",
+    "base",
+    "ethereum-b",
+  ]);
 });
 
 test("refreshes queue readiness from latest canary executions before selecting", () => {
@@ -186,4 +210,41 @@ test("refreshes queue readiness from latest canary executions before selecting",
   assert.equal(selection.readyCount, 0);
   assert.equal(selection.selected, null);
   assert.ok(selection.candidates[0].sizing.blockers.includes("cooldown_active"));
+});
+
+test("refreshes execute sizing from live balances before Merkl canary execution", async () => {
+  const selected = {
+    queueItem: queueItem({
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          actual: "5370245",
+          estimatedUsd: 5.370245,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "1000000000000000",
+          estimatedUsd: 2,
+        },
+      },
+    }),
+    sizing: {
+      status: "ready",
+      amount: "5370245",
+      amountUsd: 5.370245,
+    },
+  };
+
+  const refreshed = await refreshMerklAutopilotSelectionForExecute({
+    selected,
+    senderAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    readErc20BalanceImpl: async () => ({ balance: 100024n, rpcUrl: "https://mainnet.base.org" }),
+    readNativeBalanceImpl: async () => ({ balanceWei: 1000000000000000n, rpcUrl: "https://mainnet.base.org" }),
+  });
+
+  assert.equal(refreshed.queueItem.executionReadiness.matchedToken.actual, "100024");
+  assert.equal(refreshed.sizing.status, "ready");
+  assert.equal(refreshed.sizing.amount, "100024");
+  assert.equal(refreshed.sizing.amountUsd, 0.100024);
 });
