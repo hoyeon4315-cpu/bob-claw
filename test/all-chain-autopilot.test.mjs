@@ -238,6 +238,24 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("snapshot-btc-oracles.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        schemaVersion: 1,
+        asset: "btc",
+        observedAt: new Date().toISOString(),
+        samples: [
+          { source: "coinbase", priceUsd: 100000 },
+          { source: "binance", priceUsd: 100050 },
+        ],
+        errors: [],
+      },
+    };
+  }
   if (name.endsWith("run-auto-kill-check.mjs")) {
     return {
       ok: true,

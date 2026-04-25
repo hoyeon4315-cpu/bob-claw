@@ -379,6 +379,9 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "auto_kill_check") {
     return step.json?.triggered === true;
   }
+  if (step.name === "btc_oracle_snapshot") {
+    return Array.isArray(step.json?.samples);
+  }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
 }
@@ -607,10 +610,17 @@ export async function runAllChainAutopilot({
   });
 
   const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
-  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", null);
-  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json"];
+  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", join("data", "oracles", "btc-latest.json"));
+  await runJsonStep({
+    name: "btc_oracle_snapshot",
+    args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json", `--oracles-path=${oraclesPathArg}`];
   if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
-  if (oraclesPathArg) autoKillArgs.push(`--oracles-path=${oraclesPathArg}`);
   const autoKillResult = await runJsonStep({
     name: "auto_kill_check",
     args: autoKillArgs,
