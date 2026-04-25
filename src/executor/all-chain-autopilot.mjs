@@ -274,6 +274,10 @@ function stepIsRecoverable(step, steps) {
       "quote_unavailable",
     ].includes(refillPreviewBlockedReason(step));
   }
+  if (step.name?.startsWith("treasury_refill_execute:")) {
+    const executionStatus = step.json?.outcomeEvent?.status || step.json?.execution?.settlementStatus || step.json?.status || null;
+    return ["blocked", "failed", "unproven_timeout", "near_match_timeout"].includes(executionStatus);
+  }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
 }
@@ -376,6 +380,8 @@ export async function runAllChainAutopilot({
           "--json",
           "--execute",
           "--mode=live",
+          `--timeout-ms=${timeoutMs}`,
+          `--confirmation-timeout-ms=${timeoutMs}`,
         ],
         runCommandImpl,
         cwd,

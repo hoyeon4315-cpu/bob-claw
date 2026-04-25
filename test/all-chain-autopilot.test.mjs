@@ -293,6 +293,7 @@ test("all-chain autopilot retries refill jobs with executable alternate methods 
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "gas_refuel_bridge_gas_zip");
   assert.equal(report.refillExecutions[0].executionStatus, "delivered");
   assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
+  assert.equal(seen.some((args) => args.includes("--execute") && args.includes("--timeout-ms=300000")), true);
 });
 
 test("all-chain autopilot treats unsupported bridge refill previews as alternate-route blockers", async () => {
@@ -452,4 +453,75 @@ test("all-chain autopilot separates refill attempts from delivered executions", 
   assert.equal(report.refillExecutions[0].executed, false);
   assert.equal(report.refillExecutions[0].executionStatus, "blocked");
   assert.equal(report.refillExecutions[0].executionBlockedReason, "strategy_per_trade_cap_exceeded");
+});
+
+test("all-chain autopilot keeps parsed refill execution failures as blockers", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "timeout-execute",
+              chain: "base",
+              asset: "USDC",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_across",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--execute")) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: "Command failed",
+          json: {
+            execution: {
+              settlementStatus: "failed",
+              error: { message: "Signer daemon response timed out after 30000ms" },
+            },
+            outcomeEvent: {
+              status: "failed",
+            },
+            error: { message: "Signer daemon response timed out after 30000ms" },
+          },
+          error: { name: "Error", message: "Command failed" },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: { preparation: { status: "ready", executionMethod: "cross_chain_bridge_across" } },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+    timeoutMs: 120000,
+  });
+
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.blockedReason, null);
+  assert.equal(report.summary.refillAttemptedCount, 1);
+  assert.equal(report.summary.refillExecutedCount, 0);
+  assert.equal(report.refillExecutions[0].executionStatus, "failed");
+  assert.equal(report.refillExecutions[0].executionBlockedReason, "Signer daemon response timed out after 30000ms");
 });
