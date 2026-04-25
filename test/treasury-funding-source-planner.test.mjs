@@ -282,6 +282,45 @@ test("cross-chain BTC-family token refill is ready when Gateway consolidation ca
   assert.equal(funding.selections[0].missingInputs.length, 0);
 });
 
+test("Soneium Gateway route gaps keep LI.FI in the deterministic fallback ladder", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: {
+      ...planFixture("REFILL_REQUIRED"),
+      inventory: {
+        native: [],
+        tokens: [
+          {
+            chain: "base",
+            actual: "5000000",
+            actualDecimal: 5,
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            ticker: "USDC",
+            estimatedUsd: 5,
+          },
+        ],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "soneium",
+          ticker: "USDC",
+          token: "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369",
+          refillAmount: "3000000",
+          refillAmountDecimal: 3,
+          refillEstimatedUsd: 3,
+          rationale: "Soneium representative USDC bootstrap",
+        },
+      ],
+    },
+    policy,
+  });
+
+  const methods = funding.selections[0].candidates.map((candidate) => candidate.method);
+  assert.ok(methods.indexOf("cross_chain_bridge_lifi") > methods.indexOf("cross_chain_bridge_across"));
+  assert.ok(methods.includes("cross_chain_bridge_stargate"));
+});
+
 test("cross-chain BTC-family token refill stays conditional when observed source amount is below target", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

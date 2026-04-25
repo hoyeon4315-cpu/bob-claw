@@ -640,12 +640,16 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
   // providers stay in the candidate list so autopilot can retry them when
   // the selected Gateway quote returns `no_route`.
   if (action?.type !== "refill_token" && action?.type !== "refill_native") return [];
+  if (gatewayAvailable !== false && action.chain !== "soneium") return [];
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   if (!selectedSource) return [];
   const targetAsset = action.type === "refill_token"
     ? tokenAsset(action.chain, action.token)
     : null;
-  const rawFamily = targetAsset?.family || null;
+  const targetTicker = String(action.ticker || targetAsset?.ticker || "").toLowerCase();
+  const rawFamily = targetTicker === "usdc" || targetTicker === "usdt" || targetTicker === "dai"
+    ? "stablecoin"
+    : targetAsset?.family || null;
   const assetFamily = rawFamily
     ? (rawFamily === "wrapped_btc" || rawFamily === "native_btc" ? "btc"
       : rawFamily === "usd" || rawFamily === "stablecoin" ? "stable"
@@ -655,6 +659,13 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
     srcChain: selectedSource.chain,
     dstChain: action.chain,
     assetFamily,
+  }).sort((left, right) => {
+    const order = new Map([
+      ["across", 0],
+      ["lifi", 1],
+      ["stargate", 2],
+    ]);
+    return (order.get(left.id) ?? 99) - (order.get(right.id) ?? 99);
   });
   if (fallbackProviders.length === 0) return [];
   return fallbackProviders.map((provider) => {
@@ -686,7 +697,7 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
       method,
       source: describeSourceAsset(selectedSource.chain, selectedSource.token, sourceAmountMetadata(selectedSource)),
       availability,
-      preferred: ready,
+      preferred: false,
       requiresReserveState: false,
       reserveReplenishmentKnown: true,
       missingInputs,
