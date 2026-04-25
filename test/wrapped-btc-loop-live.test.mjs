@@ -200,7 +200,10 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:swap-borrow-to-collateral-1")).tx.gasLimit, "252000");
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral")).metadata.capCheckAmountUsd, 0);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:enter-collateral-market")).metadata.capCheckAmountUsd, 0);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).metadata.capCheckAmountUsd, 750);
+  const initialMint = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral"));
+  assert.equal(initialMint.metadata.capCheckAmountUsd, initialMint.amountUsd);
+  assert.equal(initialMint.metadata.capCheckAmountUsd > 0, true);
+  assert.equal(initialMint.metadata.capCheckAmountUsd <= 750, true);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:borrow-usdc-1")).metadata.capCheckAmountUsd, 0);
 });
 
@@ -283,6 +286,63 @@ test("wrapped loop live plan supports tiny borrow cycle override and full unwind
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")), true);
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-1")), true);
   assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-initial-collateral")), true);
+});
+
+test("wrapped loop live plan caps recycled collateral mint to Odos output", async () => {
+  const odosClient = {
+    quote: async ({ outputToken }) => ({
+      latencyMs: 10,
+      body: {
+        outAmounts: [
+          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+            ? "5000000"
+            : "1999",
+        ],
+        pathId: "path-borrow-low-output",
+      },
+    }),
+    assemble: async () => ({
+      latencyMs: 12,
+      body: {
+        transaction: {
+          to: "0x0000000000000000000000000000000000000d05",
+          data: "0x12345678",
+          value: "0",
+          gas: 210000,
+        },
+      },
+    }),
+  };
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 75000,
+      tokenByKey: {
+        btc: 75000,
+        usd_stable: 1,
+      },
+    },
+    odosClient,
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
+    perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: {
+      minIncrementUsd: 1,
+    },
+  });
+
+  const approve = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-recycled-collateral-1"));
+  const mint = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-recycled-collateral-1"));
+
+  assert.equal(approve.approval.amount, "1999");
+  assert.equal(mint.metadata.appliedRecycledCollateralUnits, "1999");
+  assert.equal(mint.metadata.quotedRecycledCollateralUnits, "1999");
+  assert.equal(BigInt(mint.metadata.plannedRecycledCollateralUnits) > BigInt(mint.metadata.appliedRecycledCollateralUnits), true);
+  assert.equal(mint.metadata.recycledCollateralDownsized, true);
 });
 
 test("wrapped loop live plan self-funds unwind repay with redeemed collateral when free USDC is short", async () => {
