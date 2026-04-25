@@ -73,8 +73,8 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: true,
     }),
     caps: Object.freeze({
-      perTxUsd: 75,
-      perDayUsd: 300,
+      perTxUsd: 500,
+      perDayUsd: 2_000,
       perChainUsd: Object.freeze({
         bitcoin: 1_000_000,
         base: 1_000_000,
@@ -101,7 +101,7 @@ export const STRATEGY_CAPS = Object.freeze({
       perDayUsd: 1_000_000,
       perChainUsd: Object.freeze({
         bob: 1_000_000,
-        base: 75,
+        base: 2_000,
         avalanche: 1_000_000,
         bera: 1_000_000,
         bsc: 1_000_000,
@@ -439,16 +439,22 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: false,
     }),
     caps: Object.freeze({
-      perTxUsd: 75,
-      perDayUsd: 550,
+      perTxUsd: 500,
+      perDayUsd: 5_000,
       perChainUsd: Object.freeze({
-        base: 100,
-        ethereum: 350,
-        optimism: 25,
-        sei: 15,
+        base: 2_000,
+        ethereum: 3_000,
+        optimism: 300,
+        sei: 150,
+        avalanche: 500,
+        bera: 300,
+        bsc: 750,
+        soneium: 300,
+        sonic: 500,
+        unichain: 300,
       }),
       tinyLivePerTxUsd: 25,
-      maxDailyLossUsd: 40,
+      maxDailyLossUsd: 500,
       maxFailedGasCost24hUsd: 5,
     }),
     gasFloat: Object.freeze({
@@ -456,6 +462,12 @@ export const STRATEGY_CAPS = Object.freeze({
       ethereum: Object.freeze({ minUsd: 10, targetUsd: 20 }),
       optimism: Object.freeze({ minUsd: 3, targetUsd: 6 }),
       sei: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      avalanche: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      bera: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      bsc: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      soneium: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      sonic: Object.freeze({ minUsd: 3, targetUsd: 6 }),
+      unichain: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
   "eth_destination_deployment": Object.freeze({
@@ -535,7 +547,7 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: true,
     }),
     caps: Object.freeze({
-      perTxUsd: 100,
+      perTxUsd: 500,
       perDayUsd: 1_000_000,
       perChainUsd: Object.freeze({
         bob: 1_000_000,
@@ -582,7 +594,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "recursive_wrapped_btc_lending_loop": Object.freeze({
     strategyId: "recursive_wrapped_btc_lending_loop",
     label: "Recursive wrapped-BTC lending loop",
-    autoExecute: true,
+    autoExecute: false,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),
@@ -614,7 +626,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "wrapped-btc-loop-base-moonwell": Object.freeze({
     strategyId: "wrapped-btc-loop-base-moonwell",
     label: "Wrapped BTC lending loop (Base / Moonwell)",
-    autoExecute: true,
+    autoExecute: false,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),

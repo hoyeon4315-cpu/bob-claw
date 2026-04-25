@@ -127,7 +127,8 @@ export function buildAdaptiveCapitalPlan({
     summary: Object.freeze({
       strategyCount: effective.length,
       autoExecuteCount: effective.filter((s) => s.autoExecute).length,
-      haltedByFloorCount: effective.filter((s) => !s.newEntriesAllowed).length,
+      haltedByFloorCount: adaptive.belowOperatingFloor ? effective.filter((s) => s.autoExecute).length : 0,
+      disabledStrategyCount: effective.filter((s) => !s.autoExecute).length,
     }),
   });
 }

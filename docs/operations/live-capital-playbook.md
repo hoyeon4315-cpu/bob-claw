@@ -58,7 +58,7 @@
 ### 2.3 자본 효율 원칙
 
 - **유휴 금지.** 24h 이상 무이용 자본은 자동 라우팅 후보. classifier가 카테고리 결정 → routing engine이 전략 선택.
-- **공격적 cap.** Phase 1에서 ×40 상향. 단일 손실 한도도 비례 증가하므로 **자동 kill-switch 트리거(Phase 4a)가 반드시 선행**.
+- **공격적 cap.** Merkl/Gateway 운영 cap은 상향하되 wrapped-BTC lending-loop는 `operator_hold`가 풀릴 때까지 제외한다. 단일 손실 한도 증가는 [src/config/auto-kill.mjs](../../src/config/auto-kill.mjs) 자동 kill-switch 트리거가 선행되어야 한다.
 - **순이익 음수면 거부.** 가스+슬리피지+round-trip 비용을 뺀 뒤에도 양수일 때만 진입. policy `min-net-profit` 게이트가 강제.
 
 ---
@@ -78,7 +78,7 @@
 
 | 카테고리 | 예시 | 자동 라우팅 |
 |---|---|---|
-| BTC-like | wBTC, cbBTC, lBTC, solvBTC, BTC | wrap → Merkl portfolio 또는 wrapped-loop |
+| BTC-like | wBTC, cbBTC, lBTC, solvBTC, BTC | Bitcoin이면 Gateway onramp, EVM이면 Base hub funding 또는 Merkl portfolio 후보 |
 | ETH-like | ETH, wETH, stETH | ETH-yield 전략 (현재 design_scaffold; 자동 라우팅은 candidate queue까지만, 자동 진입은 lane 활성화 후) |
 | stable | USDC, USDT, DAI, RLUSD | Aave/Morpho/Moonwell loop |
 | governance | OP, ARB 등 | 자동 라우팅 금지. payback 큐 |
@@ -101,8 +101,9 @@ opportunity-watch (5분 주기)
 priorityScore ≥ threshold AND
 protocol ∈ binding-registry AND
 asset ∈ whitelist AND
+inventory ready AND
 체인 cap 여유 있음
-   → autoExecute:true 자동 부여
+   → queue item autoEntry.autoExecute=true
    → merkl-canary-autopilot 진입
 
 기존 포지션 평가 (orchestrator 5분 주기)
@@ -141,7 +142,7 @@ exit 후 회수 자본 → Phase 2 라우팅 엔진 재진입
 | 트리거 | 임계치(초기) | 해제 조건 |
 |---|---|---|
 | 24h 누적 손실 | 운영 자본의 5% 또는 USD 1000 중 작은 값 | 사람 + commit으로 임계치 재확인 후 파일 삭제 |
-| 5분 내 consecutive failure | 동일 strategy 5회 | 실패 원인 분석 후 사람이 파일 삭제 |
+| 5분 내 consecutive failure | 동일 strategy 5회 또는 전체 8회 | 실패 원인 분석 후 사람이 파일 삭제 |
 | oracle 가격 다중 소스간 괴리 | 5% 이상 | 오라클 정상화 확인 후 사람이 파일 삭제 |
 | watchdog heartbeat 끊김 | 60초 (기존) | daemon 재기동 후 사람이 파일 삭제 |
 
@@ -258,6 +259,11 @@ exit 후 회수 자본 → Phase 2 라우팅 엔진 재진입
 | 적응형 자본 | [src/config/capital-adaptive.mjs](../../src/config/capital-adaptive.mjs) |
 | 체인 설정 | [src/config/chains.mjs](../../src/config/chains.mjs) |
 | payback | [src/config/payback.mjs](../../src/config/payback.mjs) |
+| 입금 감지 | [src/treasury/inventory-watcher.mjs](../../src/treasury/inventory-watcher.mjs) |
+| 입금 분류 | [src/treasury/asset-classifier.mjs](../../src/treasury/asset-classifier.mjs) |
+| 입금 라우팅 | [src/treasury/inbound-routing.mjs](../../src/treasury/inbound-routing.mjs) |
+| Merkl 자동 진입 | [src/config/merkl-auto-entry.mjs](../../src/config/merkl-auto-entry.mjs) |
+| Merkl 자동 철수 | [src/config/merkl-exit-rules.mjs](../../src/config/merkl-exit-rules.mjs) |
 | Merkl 진입 | `src/config/merkl-auto-entry.mjs` (Phase 3 신규) |
 | Merkl 철수 | `src/config/merkl-exit-rules.mjs` (Phase 3 신규) |
 | auto kill | `src/risk/auto-kill-triggers.mjs` (Phase 4a 신규) |

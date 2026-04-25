@@ -1,5 +1,7 @@
 import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
+import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings.mjs";
+import { isSupportedBindingKind } from "../executor/protocol-binding-registry.mjs";
 import { applyMerklCanaryExecutionReadiness } from "./merkl-canary-execution-readiness.mjs";
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
@@ -192,6 +194,15 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
   };
 }
 
+function attachAutoEntry(queueItem = {}) {
+  return {
+    ...queueItem,
+    autoEntry: evaluateMerklAutoEntry(queueItem, {
+      bindingSupported: isSupportedBindingKind(queueItem.protocolBindingPlan?.bindingKind),
+    }),
+  };
+}
+
 export function buildMerklCanaryQueue({
   report = null,
   policy = MERKL_OPPORTUNITY_POLICY,
@@ -214,9 +225,11 @@ export function buildMerklCanaryQueue({
       inventorySnapshot,
       canaryExecutions,
       now: now || new Date().toISOString(),
-    }));
+    }))
+    .map(attachAutoEntry);
 
   const executableQueue = queue.filter((item) => item.executionReadiness?.status === "inventory_ready");
+  const autoExecutableQueue = queue.filter((item) => item.autoEntry?.autoExecute === true);
   const readinessByStatus = countBy(queue, (item) => item.executionReadiness?.status);
   const gapCounts = capabilityGapCounts(queue);
   const topBlockingReason =
@@ -253,6 +266,7 @@ export function buildMerklCanaryQueue({
       unsupportedProtocolBindingCount: queue.filter((item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding").length,
       chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
       executableNowCount: executableQueue.length,
+      autoExecutableNowCount: autoExecutableQueue.length,
       cooldownActiveCount: queue.filter((item) => item.executionReadiness?.status === "cooldown_active").length,
       nativeGasGapCount: queue.filter((item) => item.executionReadiness?.status === "native_gas_missing").length,
       executorMissingCount: queue.filter((item) => item.executionReadiness?.status === "executor_missing").length,

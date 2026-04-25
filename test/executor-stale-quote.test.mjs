@@ -40,3 +40,35 @@ test("stale-quote allows fresh quotes", () => {
 
   assert.equal(result.decision, "ALLOW");
 });
+
+test("stale-quote applies ethereum-aware ttl to avoid gas-spike false positives", () => {
+  const result = evaluateStaleQuote({
+    intent: {
+      chain: "ethereum",
+      quote: {
+        observedAt: "2026-04-16T00:00:00.000Z",
+      },
+    },
+    maxAgeMs: 60_000,
+    now: "2026-04-16T00:01:20.000Z",
+  });
+
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.metrics.maxAgeMs, 90_000);
+});
+
+test("stale-quote keeps L2 quotes on the configured ttl", () => {
+  const result = evaluateStaleQuote({
+    intent: {
+      chain: "base",
+      quote: {
+        observedAt: "2026-04-16T00:00:00.000Z",
+      },
+    },
+    maxAgeMs: 60_000,
+    now: "2026-04-16T00:00:50.000Z",
+  });
+
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.metrics.maxAgeMs, 60_000);
+});

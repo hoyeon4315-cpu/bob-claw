@@ -61,6 +61,10 @@ test("runAutoKillCheck writes kill-switch file and event log on trigger", async 
     assert.equal(parsed.triggers[0].trigger, "oracle_divergence");
     const killPayload = JSON.parse(await readFile(killSwitchPath, "utf8"));
     assert.equal(killPayload.triggers[0].trigger, "oracle_divergence");
+    const auditLog = await readFile(join(rootDir, "logs", "signer-audit.jsonl"), "utf8");
+    const auditRecord = JSON.parse(auditLog.trim().split("\n").pop());
+    assert.equal(auditRecord.strategyId, "risk:auto-kill");
+    assert.equal(auditRecord.lifecycle.stage, "kill_switch_auto_triggered");
   });
 });
 

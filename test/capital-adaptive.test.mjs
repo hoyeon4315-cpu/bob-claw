@@ -18,13 +18,13 @@ test("deriveCaps: rejects non-integer or negative sats", () => {
   assert.throws(() => deriveCaps("100"));
 });
 
-test("deriveCaps: zero balance => zero caps, below floor, no new entries", () => {
+test("deriveCaps: zero balance => zero caps and no new entries", () => {
   const c = deriveCaps(0);
   assert.equal(c.perTxBtcSats, 0);
   assert.equal(c.perDayBtcSats, 0);
   assert.equal(c.maxDailyLossBtcSats, 0);
   assert.equal(c.newEntriesAllowed, false);
-  assert.equal(c.belowOperatingFloor, true);
+  assert.equal(c.belowOperatingFloor, false);
 });
 
 test("deriveCaps: 1 BTC => 5M / 20M / 3M sats", () => {
@@ -40,16 +40,10 @@ test("deriveCaps: 1 BTC => 5M / 20M / 3M sats", () => {
   assert.equal(c.newEntriesAllowed, true);
 });
 
-test("deriveCaps: balance just above floor enables new entries", () => {
-  const c = deriveCaps(50_000);
+test("deriveCaps: any positive operating balance enables aggressive warmup entries", () => {
+  const c = deriveCaps(1);
   assert.equal(c.belowOperatingFloor, false);
   assert.equal(c.newEntriesAllowed, true);
-});
-
-test("deriveCaps: balance just below floor blocks new entries", () => {
-  const c = deriveCaps(49_999);
-  assert.equal(c.belowOperatingFloor, true);
-  assert.equal(c.newEntriesAllowed, false);
 });
 
 test("deriveCaps: per-strategy caps scale with balance and sum to ratios total", () => {

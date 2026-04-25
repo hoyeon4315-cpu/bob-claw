@@ -4,8 +4,11 @@ import {
   backfillMissingNativePricesUsd,
   buildPriceSnapshot,
   emptyPricesUsd,
+  getMultiSourcePricesUsd,
+  mergePriceSourceSamples,
   overlayObservedPricesUsd,
   priceForAssetUsd,
+  priceSamplesFromSnapshot,
   pricesFromSnapshot,
   shouldPersistPriceSnapshot,
 } from "../src/market/prices.mjs";
@@ -133,4 +136,76 @@ test("price snapshots persist when unchanged data ages out or materially moves",
     }),
     { shouldPersist: true, reason: "material_price_change" },
   );
+});
+
+test("price source samples merge by median and ignore stale samples", () => {
+  const now = "2026-04-25T00:05:00.000Z";
+  const samples = [
+    ...priceSamplesFromSnapshot({
+      btc: 100,
+      tokenByKey: { btc: 100, wbtc: 100, usd_stable: 1 },
+      nativeByChain: { ethereum: 10 },
+    }, {
+      source: "a",
+      observedAt: now,
+    }),
+    ...priceSamplesFromSnapshot({
+      btc: 102,
+      tokenByKey: { btc: 102, wbtc: 102, usd_stable: 1 },
+      nativeByChain: { ethereum: 12 },
+    }, {
+      source: "b",
+      observedAt: now,
+    }),
+    ...priceSamplesFromSnapshot({
+      btc: 500,
+      tokenByKey: { btc: 500 },
+      nativeByChain: { ethereum: 50 },
+    }, {
+      source: "stale",
+      observedAt: "2026-04-24T00:00:00.000Z",
+    }),
+  ];
+  const merged = mergePriceSourceSamples(samples, { now, maxSampleAgeMs: 300_000 });
+
+  assert.equal(merged.btc, 101);
+  assert.equal(merged.tokenByKey.wbtc, 101);
+  assert.equal(merged.nativeByChain.ethereum, 11);
+  assert.equal(merged.sourceCount, 2);
+});
+
+test("multi-source prices preserve oracle samples for divergence checks", async () => {
+  const prices = await getMultiSourcePricesUsd({
+    now: "2026-04-25T00:00:00.000Z",
+    coingeckoFetcher: async () => ({
+      btc: 100,
+      tokenByKey: { btc: 100, wbtc: 100, ethereum: 10, usd_stable: 1 },
+      nativeByChain: { ethereum: 10, base: 10 },
+    }),
+    coinbaseFetcher: async () => ({
+      btc: 102,
+      tokenByKey: { btc: 102, wbtc: 102, ethereum: 12, usd_stable: 1 },
+      nativeByChain: { ethereum: 12, base: 12 },
+    }),
+  });
+
+  assert.equal(prices.btc, 101);
+  assert.equal(prices.nativeByChain.base, 11);
+  assert.equal(prices.sourceCount, 2);
+  assert.ok(prices.oracleSamples.length >= 2);
+});
+
+test("multi-source prices preserve oracle fields when every provider fails", async () => {
+  const prices = await getMultiSourcePricesUsd({
+    coingeckoFetcher: async () => {
+      throw new Error("coingecko_down");
+    },
+    coinbaseFetcher: async () => {
+      throw new Error("coinbase_down");
+    },
+  });
+
+  assert.equal(prices.btc, null);
+  assert.equal(prices.sourceCount, 0);
+  assert.deepEqual(prices.oracleSamples, []);
 });

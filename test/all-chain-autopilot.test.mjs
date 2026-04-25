@@ -57,6 +57,27 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("run-inbound-inventory-watcher.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        summary: {
+          inboundEventCount: 2,
+          routeReadyCount: 1,
+          manualReviewCount: 1,
+          candidateQueueCount: 0,
+        },
+        appended: {
+          events: 2,
+          jobs: 1,
+          pendingWhitelist: 1,
+        },
+      },
+    };
+  }
   if (name.endsWith("run-live-canary-sweep.mjs")) {
     return {
       ok: true,
@@ -130,6 +151,15 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.refillJobCount, 2);
   assert.equal(report.summary.autoRefillJobCount, 1);
   assert.equal(report.summary.refillExecutedCount, 1);
+  assert.deepEqual(report.summary.inboundInventory, {
+    inboundEventCount: 2,
+    routeReadyCount: 1,
+    manualReviewCount: 1,
+    candidateQueueCount: 0,
+    appendedEvents: 2,
+    appendedJobs: 1,
+    appendedPendingWhitelist: 1,
+  });
   assert.equal(report.summary.canarySweep.executedCount, 1);
   assert.equal(report.summary.strategyDispatch.missingExecutorCount, 0);
   assert.equal(report.summary.payback.pendingCarrySats, 601);

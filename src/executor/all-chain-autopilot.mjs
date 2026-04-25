@@ -126,6 +126,18 @@ function compactRefillExecution(job, preview, execution = null) {
   };
 }
 
+function compactInboundWatcher(report = null) {
+  return {
+    inboundEventCount: report?.summary?.inboundEventCount ?? 0,
+    routeReadyCount: report?.summary?.routeReadyCount ?? 0,
+    manualReviewCount: report?.summary?.manualReviewCount ?? 0,
+    candidateQueueCount: report?.summary?.candidateQueueCount ?? 0,
+    appendedEvents: report?.appended?.events ?? null,
+    appendedJobs: report?.appended?.jobs ?? null,
+    appendedPendingWhitelist: report?.appended?.pendingWhitelist ?? null,
+  };
+}
+
 function compactMerkl(report = null) {
   return {
     status: report?.status || null,
@@ -194,6 +206,10 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "treasury_refill_plan") {
     return steps.some((item) => item.name === "treasury_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
   }
+  if (step.name === "inbound_inventory_watcher") {
+    const stderr = step.stderrSummary?.join("\n") || "";
+    return /No treasury-inventory snapshots found/u.test(stderr);
+  }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
 }
@@ -249,6 +265,16 @@ export async function runAllChainAutopilot({
     });
   }
   const refillPlan = refillPlanResult.json;
+
+  const inboundWatcherResult = await runJsonStep({
+    name: "inbound_inventory_watcher",
+    args: ["src/cli/run-inbound-inventory-watcher.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
   const autoRefillJobs = (refillPlan?.jobs || []).filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
 
   for (const job of autoRefillJobs) {
@@ -337,6 +363,7 @@ export async function runAllChainAutopilot({
     refillJobCount: refillPlan?.summary?.jobCount ?? 0,
     autoRefillJobCount: autoRefillJobs.length,
     refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
+    inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
     canarySweep: compactCanarySweep(canarySweepResult.json),
     merklCanary: compactMerkl(merklCanaryResult.json),
     portfolio: compactPortfolio(portfolioResult.json),

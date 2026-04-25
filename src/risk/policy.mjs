@@ -8,7 +8,7 @@ export function buildDefaultRiskPolicy() {
     // Per-deployment daily loss cap. Operator may inject a value via env or
     // strategy config; default is no project-level daily cap.
     dailyLossCapUsd: null,
-    maxConsecutiveFailures: 10,
+    maxConsecutiveFailures: 3,
     maxFailedGasCost24hUsd: 3,
     // Wallet floor stays for the canary mode that still uses it; default null
     // disables the check for non-canary deployments.

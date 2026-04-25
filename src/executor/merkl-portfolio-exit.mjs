@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { merklPortfolioPolicy } from "../config/merkl-portfolio.mjs";
+import { evaluateMerklUnderperformExit } from "../config/merkl-exit-rules.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -67,6 +68,12 @@ export function evaluateMerklPositionExit({
     }
     const score = merklPortfolioScore(queueItem, { policy });
     if (score < policy.minScoreForEntry) triggers.push("portfolio_score_drops_below_entry_floor");
+    const underperform = evaluateMerklUnderperformExit({
+      position,
+      queueItem,
+      rules: policyInput.exitRules || {},
+    });
+    triggers.push(...underperform.triggers);
   }
   return {
     positionId: position?.positionId || null,

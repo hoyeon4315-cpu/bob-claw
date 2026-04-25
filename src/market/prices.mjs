@@ -21,6 +21,21 @@ const TOKEN_PRICE_IDS = {
 
 const ETH_LIKE_CHAINS = ["ethereum", "base", "bob", "optimism", "soneium", "unichain"];
 
+function median(values = []) {
+  const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const midpoint = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[midpoint];
+  return (sorted[midpoint - 1] + sorted[midpoint]) / 2;
+}
+
+function ageMs(observedAt, now) {
+  const observed = new Date(observedAt || 0).getTime();
+  const current = new Date(now || Date.now()).getTime();
+  if (!Number.isFinite(observed) || !Number.isFinite(current)) return null;
+  return Math.max(0, current - observed);
+}
+
 export function emptyPricesUsd() {
   return {
     btc: null,
@@ -253,6 +268,135 @@ async function fallbackPricesUsd() {
       unichain: eth,
     },
   });
+}
+
+export async function getCoinbaseReferencePricesUsd({ spotFetcher = fetchCoinbaseSpotUsd } = {}) {
+  const [btc, eth, bnb, avax] = await Promise.all([
+    spotFetcher("BTC"),
+    spotFetcher("ETH"),
+    spotFetcher("BNB").catch(() => null),
+    spotFetcher("AVAX").catch(() => null),
+  ]);
+  return backfillMissingNativePricesUsd({
+    btc,
+    tokenByKey: {
+      btc,
+      wbtc: btc,
+      ethereum: eth,
+      usd_stable: 1,
+      paxg: null,
+      xaut: null,
+      bsc: bnb,
+      avalanche: avax,
+    },
+    nativeByChain: {
+      avalanche: avax,
+      base: eth,
+      bera: null,
+      bob: eth,
+      bsc: bnb,
+      ethereum: eth,
+      optimism: eth,
+      sei: null,
+      soneium: eth,
+      sonic: null,
+      unichain: eth,
+    },
+  }, { spotFetcher });
+}
+
+function priceSamplesForMap(map = {}, { source, observedAt, namespace }) {
+  return Object.entries(map)
+    .filter(([, priceUsd]) => Number.isFinite(priceUsd))
+    .map(([key, priceUsd]) => ({
+      source,
+      observedAt,
+      namespace,
+      key,
+      priceUsd,
+    }));
+}
+
+export function priceSamplesFromSnapshot(prices = {}, { source = "unknown", observedAt = new Date().toISOString() } = {}) {
+  return [
+    Number.isFinite(prices.btc)
+      ? { source, observedAt, namespace: "root", key: "btc", priceUsd: prices.btc }
+      : null,
+    ...priceSamplesForMap(prices.tokenByKey || {}, { source, observedAt, namespace: "tokenByKey" }),
+    ...priceSamplesForMap(prices.nativeByChain || {}, { source, observedAt, namespace: "nativeByChain" }),
+  ].filter(Boolean);
+}
+
+export function mergePriceSourceSamples(samples = [], {
+  now = new Date().toISOString(),
+  maxSampleAgeMs = 300_000,
+} = {}) {
+  const empty = emptyPricesUsd();
+  const fresh = samples.filter((sample) => {
+    if (!Number.isFinite(sample?.priceUsd)) return false;
+    const sampleAgeMs = ageMs(sample.observedAt, now);
+    return sampleAgeMs == null || sampleAgeMs <= maxSampleAgeMs;
+  });
+  const valuesByField = new Map();
+  for (const sample of fresh) {
+    const key = `${sample.namespace}:${sample.key}`;
+    const list = valuesByField.get(key) || [];
+    list.push(sample.priceUsd);
+    valuesByField.set(key, list);
+  }
+  const tokenByKey = { ...empty.tokenByKey };
+  const nativeByChain = { ...empty.nativeByChain };
+  let btc = null;
+  for (const [key, values] of valuesByField) {
+    const [namespace, field] = key.split(":");
+    const value = median(values);
+    if (namespace === "root" && field === "btc") btc = value;
+    if (namespace === "tokenByKey") tokenByKey[field] = value;
+    if (namespace === "nativeByChain") nativeByChain[field] = value;
+  }
+  if (!Number.isFinite(btc)) btc = tokenByKey.btc;
+  if (!Number.isFinite(tokenByKey.btc)) tokenByKey.btc = btc;
+  if (!Number.isFinite(tokenByKey.wbtc)) tokenByKey.wbtc = btc;
+  if (!Number.isFinite(tokenByKey.usd_stable)) tokenByKey.usd_stable = 1;
+  return {
+    btc,
+    tokenByKey,
+    nativeByChain,
+    samples: fresh,
+    sourceCount: new Set(fresh.map((sample) => sample.source)).size,
+    observedAt: now,
+  };
+}
+
+export async function getMultiSourcePricesUsd({
+  now = new Date().toISOString(),
+  coingeckoFetcher = getCoinGeckoPricesUsd,
+  coinbaseFetcher = getCoinbaseReferencePricesUsd,
+} = {}) {
+  const settled = await Promise.allSettled([
+    coingeckoFetcher().then((prices) => ({ source: "coingecko", prices })),
+    coinbaseFetcher().then((prices) => ({ source: "coinbase", prices })),
+  ]);
+  const samples = settled.flatMap((item) => (
+    item.status === "fulfilled"
+      ? priceSamplesFromSnapshot(item.value.prices, { source: item.value.source, observedAt: now })
+      : []
+  ));
+  if (samples.length === 0) {
+    return {
+      ...emptyPricesUsd(),
+      oracleSamples: [],
+      sourceCount: 0,
+    };
+  }
+  const merged = mergePriceSourceSamples(samples, { now });
+  return {
+    btc: merged.btc,
+    tokenByKey: merged.tokenByKey,
+    nativeByChain: merged.nativeByChain,
+    oracleSamples: merged.samples,
+    sourceCount: merged.sourceCount,
+  };
 }
 
 export async function getCoinGeckoPricesUsd() {

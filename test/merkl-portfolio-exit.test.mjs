@@ -74,6 +74,31 @@ test("force exit bypasses min hold blocker", () => {
   assert.equal(result.blockers.length, 0);
 });
 
+test("exit evaluator triggers underperform exits after min hold", () => {
+  const result = evaluateMerklPositionExit({
+    position: position({
+      entryAprPct: 12,
+      rewardTokenPriceUsdAtEntry: 2,
+      volume24hUsdAtEntry: 1_000_000,
+    }),
+    queue: {
+      queue: [
+        queueItem({
+          aprPct: 5,
+          rewardTokenPriceUsd: 0.9,
+          volume24hUsd: 250_000,
+        }),
+      ],
+    },
+    now: "2026-04-24T06:50:00.000Z",
+  });
+
+  assert.equal(result.status, "exit_ready");
+  assert.ok(result.triggers.includes("realized_apr_below_entry_ratio"));
+  assert.ok(result.triggers.includes("reward_token_price_drop"));
+  assert.ok(result.triggers.includes("volume_24h_drop"));
+});
+
 test("Aave portfolio exit withdraws through the pool and verifies asset delta", async () => {
   const calls = [];
   let capturedIntent = null;

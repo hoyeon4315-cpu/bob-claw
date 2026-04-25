@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tokenAsset } from "../assets/tokens.mjs";
+import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { config } from "../config/env.mjs";
 import { getStrategyCaps, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
 import { evaluateCapCheck } from "./policy/cap-check.mjs";
@@ -187,8 +188,25 @@ export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
             now: options.now || new Date().toISOString(),
           })
         : queueItem;
+      const autoEntry = evaluateMerklAutoEntry(refreshedItem, {
+        bindingSupported: isSupportedBindingKind(bindingKind(refreshedItem)),
+      });
+      if (!autoEntry.autoExecute) {
+        return {
+          queueItem: { ...refreshedItem, autoEntry },
+          sizing: {
+            status: "blocked",
+            blockers: autoEntry.blockers,
+            strategyId: refreshedItem.mappedStrategyId,
+            capUsd: null,
+            amount: null,
+            amountUsd: null,
+            decimals: decimalsForQueueItem(refreshedItem),
+          },
+        };
+      }
       return {
-        queueItem: refreshedItem,
+        queueItem: { ...refreshedItem, autoEntry },
         sizing: sizeMerklCanaryAmount(refreshedItem, options),
       };
     });

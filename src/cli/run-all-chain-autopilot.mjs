@@ -42,6 +42,7 @@ function printSummary(report = {}) {
   console.log(`blockedReason=${report.blockedReason || "none"}`);
   console.log(`officialChains=${report.summary?.officialChainCount ?? 0}`);
   console.log(`refillJobs=${report.summary?.refillJobCount ?? 0} auto=${report.summary?.autoRefillJobCount ?? 0} executed=${report.summary?.refillExecutedCount ?? 0}`);
+  console.log(`inboundEvents=${report.summary?.inboundInventory?.inboundEventCount ?? 0} routed=${report.summary?.inboundInventory?.routeReadyCount ?? 0} appendedJobs=${report.summary?.inboundInventory?.appendedJobs ?? "n/a"}`);
   console.log(`canarySweep=${report.summary?.canarySweep?.status || "n/a"} ready=${report.summary?.canarySweep?.previewReadyCount ?? 0} executed=${report.summary?.canarySweep?.executedCount ?? 0}`);
   console.log(`merklCanary=${report.summary?.merklCanary?.status || "n/a"} chain=${report.summary?.merklCanary?.selectedChain || "n/a"} proof=${report.summary?.merklCanary?.proofStatus || "n/a"}`);
   console.log(`portfolio=${report.summary?.portfolio?.status || "n/a"} blocked=${report.summary?.portfolio?.blockedReason || "none"}`);

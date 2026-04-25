@@ -12,7 +12,7 @@ export const CAPITAL_ADAPTIVE_RATIOS = Object.freeze({
   perDayBtcShare: 0.20,
   maxDailyLossBtcShare: 0.03,
   maxFailedGasCost24hShare: 0.01,
-  minOperatingFloorSats: 50_000,
+  minOperatingFloorSats: 0,
   capTiers: Object.freeze({
     probe: Object.freeze({ perTxBtcShare: 0.0025, perDayBtcShare: 0.01, maxDailyLossBtcShare: 0.0025 }),
     tiny: Object.freeze({ perTxBtcShare: 0.01, perDayBtcShare: 0.05, maxDailyLossBtcShare: 0.01 }),
@@ -45,7 +45,7 @@ function assertSats(value, name) {
 export function deriveCaps(operatingBtcSats, ratios = CAPITAL_ADAPTIVE_RATIOS) {
   assertSats(operatingBtcSats, "operatingBtcSats");
 
-  const belowFloor = operatingBtcSats < ratios.minOperatingFloorSats;
+  const belowFloor = operatingBtcSats > 0 && operatingBtcSats < ratios.minOperatingFloorSats;
 
   const perTxBtcSats = floorSats(operatingBtcSats * ratios.perTxBtcShare);
   const perDayBtcSats = floorSats(operatingBtcSats * ratios.perDayBtcShare);
@@ -79,7 +79,7 @@ export function deriveCaps(operatingBtcSats, ratios = CAPITAL_ADAPTIVE_RATIOS) {
     maxFailedGasCost24hBtcSats,
     perStrategyBtcSats: Object.freeze(perStrategyBtcSats),
     capTiers: Object.freeze(capTiers),
-    newEntriesAllowed: !belowFloor,
+    newEntriesAllowed: operatingBtcSats > 0 && !belowFloor,
     appliedRatios: ratios,
   });
 }

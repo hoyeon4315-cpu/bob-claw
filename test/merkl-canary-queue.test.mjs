@@ -112,6 +112,7 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.summary.topOpportunityId, "eth-morpho-usdc");
   assert.equal(queue.summary.topExecutableOpportunityId, "base-morpho-usdc");
   assert.equal(queue.summary.executableNowCount, 1);
+  assert.equal(queue.summary.autoExecutableNowCount, 1);
   assert.equal(queue.summary.topBlockingReason, "executable_candidate_available");
   assert.equal(queue.summary.readinessByStatus.inventory_ready, 1);
   assert.equal(queue.summary.capabilityGapCounts.current_inventory_entry_route_required, 2);
@@ -124,6 +125,7 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.queue[0].protocolBindingPlan.status, "binding_ready");
   assert.deepEqual(queue.queue[0].entryAssets, ["USDC"]);
   assert.equal(queue.queue[1].executionReadiness.status, "inventory_ready");
+  assert.equal(queue.queue[1].autoEntry.autoExecute, true);
   assert.equal(queue.summary.byStrategy.gateway_native_asset_conversion_sleeve, 2);
   assert.equal(queue.summary.byStrategy.eth_destination_deployment, 1);
 });
@@ -171,6 +173,7 @@ test("merkl canary queue summarizes the top blocker when no candidate is executa
 
   assert.equal(queue.summary.queueCount, 1);
   assert.equal(queue.summary.executableNowCount, 0);
+  assert.equal(queue.summary.autoExecutableNowCount, 0);
   assert.equal(queue.summary.topBlockingReason, "inventory_missing");
   assert.equal(queue.summary.readinessByStatus.inventory_missing, 1);
   assert.equal(queue.summary.capabilityGapCounts.ethereum_l1_gas_ev_positive_check_required, 1);

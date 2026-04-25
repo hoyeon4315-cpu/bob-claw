@@ -33,6 +33,7 @@
 - Leverage strategies (lending loops, perps) declare `healthFactorMin`, `liquidationBufferPct`, and an emergency-unwind path in their config. A breach triggers automatic unwind, not a wait.
 - Auto-escalation of position size based on recent wins (martingale) is banned. Sizing comes from the strategy's declared caps, not from a streak counter.
 - **Payback never escalates sizing**. Accumulated BTC on the operator's L1 wallet is out of the operating perimeter. It does not loop back into the strategy float unless an explicit committed diff deposits it.
+- Inbound inventory automation may detect deposits and classify known assets, but it must not whitelist new tokens automatically. Unknown or governance tokens go only to `data/treasury/pending-whitelist.jsonl` until a committed token/config diff approves them.
 
 ## Risk Limits
 
@@ -73,6 +74,7 @@ Every executor, capital mover, strategy module, and the payback engine fit this 
 8. **Alerter** — Telegram. Reports cap utilization, pauses, kill events, daily PnL, **payback disbursements**. Read-only; no command-side signing from Telegram.
 9. **Payback Scheduler** — `src/executor/payback/scheduler.mjs` — cron-driven (default weekly). On tick: computes `plannedPaybackBtc` from the BTC Accumulator snapshot and `src/config/payback.mjs` policy, then emits a payback intent for Policy Engine validation. The intent is a composite: destination-chain profit-reserve → wrapped BTC swap (CoW/Uniswap v3) → LayerZero Composer to BOB L2 → Gateway `OfframpRegistry.createOrder()` → Bitcoin L1 destination address. No keys; intent only.
 10. **BTC Accumulator** — `src/executor/payback/accumulator.mjs` — pure function over the audit log + receipt store. Maintains a BTC-denominated rolling ledger: (a) harvest-period realized profit in BTC units, (b) lifetime paid-back BTC, (c) pending deferred payback, (d) per-KPI series for `BYR`, `CG`, `TBR`, `roundTripEfficiency`, `daysToBreakeven`. Writes a dashboard JSON slice but never mutates the audit log.
+11. **Inbound Inventory Watcher** — `src/treasury/inventory-watcher.mjs` — diffs treasury snapshots, appends known deposit events to `data/treasury/inbound-events.jsonl`, sends approved assets into refill/routing jobs, and sends unknown assets to the pending whitelist queue. No keys; no token auto-whitelisting.
 
 **Multichain is the default.** Every chain has its own RPC config, nonce manager, signer sub-account (or chain-indexed child key), and cap sub-budget. Strategies declare the chain set they touch. The payback engine MUST succeed end-to-end on at least Base → BOB L2 → Bitcoin L1 before any other chain is used as an intermediate profit-reserve location.
 
@@ -86,6 +88,7 @@ Every executor, capital mover, strategy module, and the payback engine fit this 
 | Propose cap changes via a committed diff | Raise caps (strategy or payback) at runtime through any side channel |
 | Read audit logs | Delete, rotate in place, or rewrite audit logs |
 | Configure a new chain by editing config | Move funds outside the Capital Manager |
+| Write inbound classification/routing policy | Auto-whitelist an unknown token at runtime |
 | Trigger a manual dev-mode run | Decide when to sign — that's policy code's call |
 
 **Audit log** — every sign attempt (approved, rejected, errored) and every payback disbursement appends to `logs/signer-audit.jsonl` with timestamp, strategy id (or `payback:<periodId>`), chain, intent hash, policy verdict, and (on broadcast) tx hash + receipt. On payback completion, also records Gateway order id and destination Bitcoin txid as a three-way receipt. Append-only. Never deleted. Never rotated in place.

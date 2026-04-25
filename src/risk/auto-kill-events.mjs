@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { evaluateAutoKillTriggers } from "./auto-kill-triggers.mjs";
 import { buildAutoKillConfig } from "../config/auto-kill.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
+import { appendSignerAuditRecord, buildSignerAuditRecord } from "../executor/signer/audit-log.mjs";
 
 export const AUTO_KILL_EVENTS_PATH = join("data", "risk", "auto-kill-events.jsonl");
 
@@ -34,6 +35,31 @@ async function writeKillSwitchFile(killSwitchPath, payload) {
   await mkdir(dirname(killSwitchPath), { recursive: true });
   await writeFile(killSwitchPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return killSwitchPath;
+}
+
+function buildAutoKillAuditRecord(eventRecord) {
+  return buildSignerAuditRecord({
+    intent: {
+      strategyId: "risk:auto-kill",
+      chain: "all",
+      intentId: `auto-kill:${eventRecord.evaluatedAt}`,
+      intentType: "kill_switch_auto_trigger",
+      amountUsd: 0,
+      mode: "risk_control",
+      metadata: {
+        triggers: eventRecord.triggers,
+        killSwitchPath: eventRecord.killSwitchPath,
+        alreadyArmed: eventRecord.alreadyArmed,
+      },
+    },
+    policyVerdict: "approved",
+    lifecycle: {
+      stage: "kill_switch_auto_triggered",
+      killSwitchPath: eventRecord.killSwitchPath,
+      alreadyArmed: eventRecord.alreadyArmed,
+    },
+    observedAt: eventRecord.evaluatedAt,
+  });
 }
 
 export async function runAutoKillCheck({
@@ -66,6 +92,7 @@ export async function runAutoKillCheck({
     alreadyArmed,
   };
   await appendEvent(eventRecord, { rootDir });
+  await appendSignerAuditRecord(buildAutoKillAuditRecord(eventRecord), { rootDir });
   let killSwitchWritten = false;
   if (killSwitchPath && !alreadyArmed) {
     await writeKillSwitchFile(killSwitchPath, eventRecord);

@@ -60,10 +60,10 @@ test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
         strategyId: "gateway_native_asset_conversion_sleeve",
         chain: "base",
         intentType: "erc4626_deposit",
-        amountUsd: 100,
-        metadata: { capCheckAmountUsd: 100 },
+        amountUsd: 2_000,
+        metadata: { capCheckAmountUsd: 2_000 },
       },
-      amountUsd: 100,
+      amountUsd: 2_000,
     }],
   });
 
@@ -81,15 +81,15 @@ test("selection skips candidates whose committed chain cap is exhausted", () => 
         chain: "base",
         timestamp: "2026-04-24T01:20:00.000Z",
         policyVerdict: "approved",
-        lifecycle: { stage: "confirmed" },
-        intent: {
-        strategyId: "gateway_native_asset_conversion_sleeve",
-        chain: "base",
-        intentType: "erc4626_deposit",
-        amountUsd: 100,
-        metadata: { capCheckAmountUsd: 100 },
-      },
-        amountUsd: 100,
+      lifecycle: { stage: "confirmed" },
+      intent: {
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          chain: "base",
+          intentType: "erc4626_deposit",
+          amountUsd: 2_000,
+          metadata: { capCheckAmountUsd: 2_000 },
+        },
+        amountUsd: 2_000,
       }],
     },
   );

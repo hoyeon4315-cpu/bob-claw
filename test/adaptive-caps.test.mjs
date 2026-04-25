@@ -28,18 +28,18 @@ test("rejects non-positive btc price", () => {
   assert.throws(() => buildAdaptiveCapitalPlan({ operatingBtcSats: SATS, btcPriceUsd: -1 }));
 });
 
-test("below operating floor => halt new entries", () => {
+test("aggressive warmup allows positive operating balances above the zero floor", () => {
   const plan = buildAdaptiveCapitalPlan({
     operatingBtcSats: 10_000,
     btcPriceUsd: PRICE,
     staticCaps: stubStatic,
   });
-  assert.equal(plan.belowOperatingFloor, true);
-  assert.equal(plan.newEntriesAllowed, false);
+  assert.equal(plan.belowOperatingFloor, false);
+  assert.equal(plan.newEntriesAllowed, true);
   for (const s of plan.strategies) {
-    assert.equal(s.newEntriesAllowed, false);
+    assert.equal(s.newEntriesAllowed, s.autoExecute);
   }
-  assert.ok(plan.summary.haltedByFloorCount >= 1);
+  assert.equal(plan.summary.haltedByFloorCount, 0);
 });
 
 test("effective cap = min(static, adaptive)", () => {
