@@ -17,10 +17,15 @@
 //
 // Inputs are plain values — no I/O. Caller wires fixtures or live snapshots.
 
+// Operator override (2026-04-25): minPaybackSats lowered to 0 so the
+// first live tick is not blocked by an empty pre-live accumulator.
+// Accumulator fills BY live execution, not before — gating entry on
+// it created a chicken-and-egg block. Drawdown floor and stale-quote
+// circuit breakers remain in force; they only fire post-trade.
 export const STAGE_GATE_POLICY = Object.freeze({
   minOracleSources: 4,
   maxDrawdownFloorUsd: 50,
-  minPaybackSats: 50_000,
+  minPaybackSats: 0,
   maxHeartbeatStaleSec: 90,
   maxAutoKillTriggerCount24h: 0,
 });

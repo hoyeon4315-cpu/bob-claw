@@ -10,7 +10,7 @@ Written 2026-04-25. Code-side prep is in. Stage 7 (autonomous live ops) requires
 2. **Auto-kill quiet 24h.** `dashboard/public/auto-kill-events.json` slice reports `triggerCount=0` in trailing 24h.
 3. **Drawdown above floor.** Realized 24h PnL `> -50 USD` (default `STAGE_GATE_POLICY.maxDrawdownFloorUsd`).
 4. **Oracle 4/4 reachable.** Last `snapshot-btc-oracles` run reports four reachable spot sources (Coinbase / Binance / Kraken / CoinGecko).
-5. **Payback ready.** `paybackSnapshot.reserveOk=true` AND accumulator pending `>= 50_000` sats (default).
+5. **Payback ready.** `paybackSnapshot.reserveOk=true`. Accumulator pending floor is 0 (operator override 2026-04-25): pre-live accumulator is empty by definition, so gating entry on it created a chicken-and-egg block. Drawdown floor and stale-quote rejection still cover post-trade risk.
 6. **Executor heartbeat fresh.** Last heartbeat age `<= 90s`.
 7. **No stale quotes.** Tick reports `staleQuoteCount=0`.
 

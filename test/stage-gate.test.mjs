@@ -7,7 +7,7 @@ const READY_INPUTS = Object.freeze({
   autoKill24h: { triggerCount: 0, lastArmedAt: null },
   drawdown24hUsd: -5,
   oracleSourcesReachable: 4,
-  paybackSnapshot: { reserveOk: true, accumulatorPendingSats: 60_000 },
+  paybackSnapshot: { reserveOk: true, accumulatorPendingSats: 0 },
   executorHeartbeat: { ageSec: 30 },
   staleQuoteCount: 0,
 });
@@ -59,10 +59,20 @@ test("oracle sources under floor blocks", () => {
   assert.ok(r.blockers.some((b) => b.kind === "oracle_sources_under_floor"));
 });
 
-test("payback below minimum blocks", () => {
+test("payback minimum is 0 (operator override) — pre-live accumulator passes", () => {
+  const r = evaluateStageGate({
+    ...READY_INPUTS,
+    paybackSnapshot: { reserveOk: true, accumulatorPendingSats: 0 },
+  });
+  assert.equal(r.ready, true);
+  assert.equal(r.blockers.length, 0);
+});
+
+test("payback below minimum blocks when policy threshold is non-zero", () => {
   const r = evaluateStageGate({
     ...READY_INPUTS,
     paybackSnapshot: { reserveOk: true, accumulatorPendingSats: 100 },
+    policy: { ...STAGE_GATE_POLICY, minPaybackSats: 1000 },
   });
   assert.ok(r.blockers.some((b) => b.kind === "payback_below_minimum"));
 });
@@ -111,7 +121,7 @@ test("signals echo input snapshot", () => {
   assert.equal(r.signals.drawdown24hUsd, -5);
   assert.equal(r.signals.oracleSourcesReachable, 4);
   assert.equal(r.signals.paybackReserveOk, true);
-  assert.equal(r.signals.paybackPendingSats, 60_000);
+  assert.equal(r.signals.paybackPendingSats, 0);
   assert.equal(r.signals.executorHeartbeatAgeSec, 30);
   assert.equal(r.signals.staleQuoteCount, 0);
 });
