@@ -238,6 +238,56 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("snapshot-btc-oracles.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        schemaVersion: 1,
+        asset: "btc",
+        observedAt: new Date().toISOString(),
+        samples: [
+          { source: "coinbase", priceUsd: 100000 },
+          { source: "binance", priceUsd: 100050 },
+        ],
+        errors: [],
+      },
+    };
+  }
+  if (name.endsWith("report-auto-kill-events.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        windowMs: 86400000,
+        totalEvaluations24h: 0,
+        triggerCounts: {},
+        lastEvent: null,
+        armedAt: null,
+      },
+    };
+  }
+  if (name.endsWith("run-auto-kill-check.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        triggered: false,
+        alreadyArmed: false,
+        killSwitchWritten: false,
+        killSwitchPath: "./state/kill.switch",
+        triggers: [],
+      },
+    };
+  }
   throw new Error(`unexpected command ${name}`);
 }
 

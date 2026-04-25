@@ -66,19 +66,30 @@ export function loadAuditReceipts(path) {
   return out;
 }
 
-export function buildPromotionReport({ receipts, nowMs, strategyIds, lookbackDays }) {
+export function buildPromotionReport({
+  receipts,
+  nowMs,
+  strategyIds,
+  lookbackDays,
+  thresholds = PROMOTION_THRESHOLDS,
+  walkForwardReport = null,
+  regimeWindow = null,
+}) {
   const reports = strategyIds.map((id) =>
     evaluatePromotionEvidence({
       strategyId: id,
       receipts,
       nowMs,
       lookbackDays,
+      thresholds,
+      walkForwardReport,
+      regimeWindow,
     })
   );
   return {
     generatedAt: new Date(nowMs).toISOString(),
     lookbackDays,
-    thresholds: PROMOTION_THRESHOLDS,
+    thresholds,
     summary: summarizePromotionEvidence(reports),
     reports,
   };
