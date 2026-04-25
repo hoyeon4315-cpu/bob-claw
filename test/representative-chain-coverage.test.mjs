@@ -8,6 +8,7 @@ import {
   buildRepresentativeChainCoverage,
   buildRepresentativeTargets,
 } from "../src/strategy/representative-chain-coverage.mjs";
+import { selectDestinationRepresentativeCandidate } from "../src/executor/destination-representative-autopilot.mjs";
 
 const OFFICIAL_REPO_CHAINS = [
   "ethereum",
@@ -111,4 +112,31 @@ test("representative coverage tracks queued, active, and missing chain venues wi
   const ethereum = coverage.chains.find((item) => item.chain === "ethereum");
   assert.equal(ethereum.status, "active_representative");
   assert.equal(ethereum.nextAction, "monitor_active_representative_receipts");
+});
+
+test("destination representative selector prefers larger ready inventory before dust candidates", () => {
+  const selected = selectDestinationRepresentativeCandidate([
+    {
+      templateId: "avalanche:stablecoin_lending_carry",
+      chain: "avalanche",
+      status: "ready",
+      matchedToken: { estimatedUsd: 0.84 },
+      matchedNative: { estimatedUsd: 5.9 },
+    },
+    {
+      templateId: "soneium:stablecoin_lending_carry",
+      chain: "soneium",
+      status: "ready",
+      matchedToken: { estimatedUsd: 3.29 },
+      matchedNative: { estimatedUsd: 1.29 },
+    },
+    {
+      templateId: "base:stablecoin_lending_carry",
+      chain: "base",
+      status: "covered",
+      matchedToken: { estimatedUsd: 20 },
+    },
+  ]);
+
+  assert.equal(selected.templateId, "soneium:stablecoin_lending_carry");
 });

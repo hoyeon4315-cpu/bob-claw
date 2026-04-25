@@ -318,6 +318,20 @@ function compactCandidate(candidate = null) {
   };
 }
 
+export function selectDestinationRepresentativeCandidate(candidates = []) {
+  return [...(candidates || [])]
+    .filter((item) => item.status === "ready")
+    .sort((left, right) => {
+      const leftUsd = finite(left.matchedToken?.estimatedUsd) ?? finite(left.amountUsd) ?? 0;
+      const rightUsd = finite(right.matchedToken?.estimatedUsd) ?? finite(right.amountUsd) ?? 0;
+      if (leftUsd !== rightUsd) return rightUsd - leftUsd;
+      const leftNativeUsd = finite(left.matchedNative?.estimatedUsd) ?? 0;
+      const rightNativeUsd = finite(right.matchedNative?.estimatedUsd) ?? 0;
+      if (leftNativeUsd !== rightNativeUsd) return rightNativeUsd - leftNativeUsd;
+      return String(left.templateId || "").localeCompare(String(right.templateId || ""));
+    })[0] || null;
+}
+
 function helperForBindingKind(bindingKind) {
   if (bindingKind === "compound_v2_ctoken_mint_redeem") {
     return {
@@ -400,7 +414,7 @@ export async function runDestinationRepresentativeAutopilot({
     deliveredTemplates,
     positionRecords,
   });
-  const selected = candidates.find((item) => item.status === "ready") || null;
+  const selected = selectDestinationRepresentativeCandidate(candidates);
 
   if (!selected) {
     const coveredCount = candidates.filter((item) => item.status === "covered").length;
