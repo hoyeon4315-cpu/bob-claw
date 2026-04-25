@@ -32,6 +32,10 @@ function positiveBigInt(value) {
   }
 }
 
+function normalizedToken(value) {
+  return String(value || "").toLowerCase();
+}
+
 function ceilUnitsFromDecimalAmount(amountDecimal, decimals) {
   if (!isFiniteNumber(amountDecimal) || !(amountDecimal > 0) || !Number.isInteger(decimals) || decimals < 0) {
     return null;
@@ -301,9 +305,12 @@ export async function buildTreasuryRefillExecutionPlan({
       recipient: senderAddress,
     });
   } else if (executor === "lifi_bridge") {
-    const amount = job.type === "refill_native"
-      ? estimateInputAmountFromSource({ job, source })
-      : positiveBigInt(job.targetAmount)?.toString() || null;
+    const sameTokenRefill =
+      job.type === "refill_token" &&
+      normalizedToken(source.token) === normalizedToken(job.token);
+    const amount = job.type === "refill_token" && sameTokenRefill
+      ? positiveBigInt(job.targetAmount)?.toString() || null
+      : estimateInputAmountFromSource({ job, source });
     if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     plan = await buildLifiBridgePlanImpl({
       srcChain: source.chain,

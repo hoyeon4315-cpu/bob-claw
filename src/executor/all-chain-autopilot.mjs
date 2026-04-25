@@ -184,6 +184,10 @@ function refillPreviewRetryable(result = {}) {
     "lifi_quote_rejected",
     "route_unsupported",
     "quote_unavailable",
+    "routing_unavailable",
+    "dex_quote_failed",
+    "across_ticker_unsupported",
+    "executor_output_below_refill_target",
   ].includes(reason);
 }
 
@@ -246,6 +250,12 @@ function compactMerkl(report = null) {
   return {
     status: report?.status || null,
     blockedReason: report?.blockedReason || null,
+    readyCount: report?.summary?.readyCount ?? 0,
+    selectedCount: report?.summary?.selectedCount ?? (report?.summary?.selectedChain ? 1 : 0),
+    selectedChains: report?.summary?.selectedChains || (report?.summary?.selectedChain ? [report.summary.selectedChain] : []),
+    previewReadyCount: report?.summary?.previewReadyCount ?? null,
+    deliveredCount: report?.summary?.deliveredCount ?? null,
+    blockedCount: report?.summary?.blockedCount ?? null,
     selectedChain: report?.summary?.selectedChain || null,
     selectedProtocolId: report?.summary?.selectedProtocolId || null,
     selectedBindingKind: report?.summary?.selectedBindingKind || null,
@@ -496,7 +506,7 @@ export async function runAllChainAutopilot({
   cwd = process.cwd(),
   timeoutMs = 300_000,
   chains = OFFICIAL_GATEWAY_DESTINATION_CHAINS,
-  maxRefillJobs = 4,
+  maxRefillJobs = 24,
   canaryLimit = 11,
   canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,

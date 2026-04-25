@@ -180,6 +180,15 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
 }
 
 export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
+  const selection = selectMerklCanaryAutopilotCandidates(queue, { ...options, maxCandidates: 1 });
+  return {
+    selected: selection.selected[0] || null,
+    readyCount: selection.readyCount,
+    candidates: selection.candidates,
+  };
+}
+
+export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const candidates = (queue.queue || [])
     .map((queueItem) => {
       const refreshedItem = options.inventorySnapshot || options.canaryExecutions
@@ -211,6 +220,9 @@ export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
         sizing: sizeMerklCanaryAmount(refreshedItem, options),
       };
     });
+  const maxCandidates = Math.max(1, Number.isInteger(options.maxCandidates) ? options.maxCandidates : 6);
+  const maxPerChain = Math.max(1, Number.isInteger(options.maxPerChain) ? options.maxPerChain : 3);
+  const maxPerProtocol = Math.max(1, Number.isInteger(options.maxPerProtocol) ? options.maxPerProtocol : 4);
   const ready = candidates
     .filter((item) => item.sizing.status === "ready")
     .sort((left, right) => {
@@ -219,8 +231,44 @@ export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
       }
       return (right.sizing.amountUsd ?? 0) - (left.sizing.amountUsd ?? 0);
     });
+  const byChain = new Map();
+  for (const candidate of ready) {
+    const chain = candidate.queueItem.chain || "unknown";
+    if (!byChain.has(chain)) byChain.set(chain, []);
+    byChain.get(chain).push(candidate);
+  }
+  const chainOrder = [...byChain.keys()].sort((left, right) => {
+    const leftTop = byChain.get(left)?.[0];
+    const rightTop = byChain.get(right)?.[0];
+    return (rightTop?.queueItem.priorityScore ?? 0) - (leftTop?.queueItem.priorityScore ?? 0);
+  });
+  const selected = [];
+  const chainCounts = new Map();
+  const protocolCounts = new Map();
+  while (selected.length < maxCandidates) {
+    const before = selected.length;
+    for (const chain of chainOrder) {
+      if (selected.length >= maxCandidates) break;
+      if ((chainCounts.get(chain) || 0) >= maxPerChain) continue;
+      const chainQueue = byChain.get(chain) || [];
+      let candidate = null;
+      while (chainQueue.length) {
+        const next = chainQueue.shift();
+        const protocol = `${chain}:${next.queueItem.protocolId || "unknown"}`;
+        if ((protocolCounts.get(protocol) || 0) >= maxPerProtocol) continue;
+        candidate = next;
+        break;
+      }
+      if (!candidate) continue;
+      const protocol = `${chain}:${candidate.queueItem.protocolId || "unknown"}`;
+      selected.push(candidate);
+      chainCounts.set(chain, (chainCounts.get(chain) || 0) + 1);
+      protocolCounts.set(protocol, (protocolCounts.get(protocol) || 0) + 1);
+    }
+    if (selected.length === before) break;
+  }
   return {
-    selected: ready[0] || null,
+    selected,
     readyCount: ready.length,
     candidates,
   };
@@ -391,6 +439,9 @@ export async function runMerklCanaryAutopilot({
   socketPath,
   timeoutMs,
   maxUsd = null,
+  maxCandidates = 6,
+  maxPerChain = 3,
+  maxPerProtocol = 4,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
 } = {}) {
@@ -421,15 +472,18 @@ export async function runMerklCanaryAutopilot({
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
-  const selection = selectMerklCanaryAutopilotCandidate(queue, {
+  const selection = selectMerklCanaryAutopilotCandidates(queue, {
     maxUsd,
+    maxCandidates,
+    maxPerChain,
+    maxPerProtocol,
     minEthereumNotionalUsd,
     allowInefficientEthereum,
     inventorySnapshot,
     canaryExecutions,
     auditRecords,
   });
-  if (!selection.selected) {
+  if (!selection.selected.length) {
     const report = {
       schemaVersion: 1,
       observedAt: new Date().toISOString(),
@@ -446,6 +500,8 @@ export async function runMerklCanaryAutopilot({
         queueCount: queue.queue?.length || 0,
         readyCount: 0,
         representativeCoverage: compactRepresentativeCoverage(queue),
+        selectedCount: 0,
+        selectedChains: [],
       },
       candidates: selection.candidates.map(compactCandidate).slice(0, 20),
     };
@@ -453,26 +509,98 @@ export async function runMerklCanaryAutopilot({
     return report;
   }
 
-  let { queueItem, sizing } = selection.selected;
   const representativeCoverage = compactRepresentativeCoverage(queue);
-  if (execute) {
-    try {
-      const refreshed = await refreshMerklAutopilotSelectionForExecute({
-        selected: selection.selected,
-        senderAddress: preflight.senderAddress,
-        canaryExecutions,
-        now: new Date().toISOString(),
-        sizingOptions: {
-          maxUsd,
-          minEthereumNotionalUsd,
-          allowInefficientEthereum,
-          auditRecords,
-        },
+  const results = [];
+  for (const selected of selection.selected) {
+    let { queueItem, sizing } = selected;
+    if (sizing.status !== "ready") {
+      results.push({
+        status: "blocked",
+        blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+        queueItem,
+        sizing,
       });
-      queueItem = refreshed.queueItem;
-      sizing = refreshed.sizing;
+      continue;
+    }
+    if (execute) {
+      try {
+        const refreshed = await refreshMerklAutopilotSelectionForExecute({
+          selected,
+          senderAddress: preflight.senderAddress,
+          canaryExecutions,
+          now: new Date().toISOString(),
+          sizingOptions: {
+            maxUsd,
+            minEthereumNotionalUsd,
+            allowInefficientEthereum,
+            auditRecords,
+          },
+        });
+        queueItem = refreshed.queueItem;
+        sizing = refreshed.sizing;
+      } catch (error) {
+        const errorReport = merklExecutionErrorReport({
+          error,
+          execute,
+          preflight,
+          queue,
+          queueItem,
+          sizing,
+          readyCount: selection.readyCount,
+          representativeCoverage,
+        });
+        results.push({
+          status: "blocked",
+          blockedReason: errorReport.blockedReason,
+          error: errorReport.error,
+          queueItem,
+          sizing,
+        });
+        continue;
+      }
+      if (sizing.status !== "ready") {
+        results.push({
+          status: "blocked",
+          blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+          queueItem,
+          sizing,
+        });
+        continue;
+      }
+    }
+    const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
+    const executePlan = resolvePlanExecutor(bindingKind(queueItem));
+    if (!buildPlan || !executePlan) {
+      results.push({
+        status: "blocked",
+        blockedReason: "unsupported_binding_kind",
+        queueItem,
+        sizing,
+      });
+      continue;
+    }
+    try {
+      const plan = await buildPlan({
+        queueItem,
+        senderAddress: preflight.senderAddress,
+        amount: sizing.amount,
+      });
+      const execution = execute
+        ? await executePlan({
+            plan,
+            socketPath,
+            timeoutMs,
+          })
+        : null;
+      results.push({
+        status: execution?.settlementStatus || "preview_ready",
+        queueItem,
+        sizing,
+        plan,
+        execution,
+      });
     } catch (error) {
-      const report = merklExecutionErrorReport({
+      const errorReport = merklExecutionErrorReport({
         error,
         execute,
         preflight,
@@ -482,92 +610,34 @@ export async function runMerklCanaryAutopilot({
         readyCount: selection.readyCount,
         representativeCoverage,
       });
-      if (write) await writeAutopilotReport(report);
-      return report;
-    }
-    if (sizing.status !== "ready") {
-      const report = {
-        schemaVersion: 1,
-        observedAt: new Date().toISOString(),
-        mode: "execute",
+      results.push({
         status: "blocked",
-        blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
-        preflight: {
-          status: preflight.status,
-          senderAddress: preflight.senderAddress,
-          liveBaseline: preflight.liveBaseline,
-          killSwitchPath: preflight.killSwitchPath,
-        },
-        summary: {
-          queueCount: queue.queue?.length || 0,
-          readyCount: selection.readyCount,
-          representativeCoverage,
-          selectedOpportunityId: queueItem.opportunityId,
-          selectedChain: queueItem.chain,
-          selectedProtocolId: queueItem.protocolId,
-          selectedBindingKind: bindingKind(queueItem),
-          selectedAmount: null,
-          selectedAmountUsd: null,
-        },
+        blockedReason: errorReport.blockedReason,
+        error: errorReport.error,
         queueItem,
         sizing,
-      };
-      if (write) await writeAutopilotReport(report);
-      return report;
+      });
     }
   }
-  const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
-  const executePlan = resolvePlanExecutor(bindingKind(queueItem));
-  if (!buildPlan || !executePlan) {
-    const report = {
-      schemaVersion: 1,
-      observedAt: new Date().toISOString(),
-      mode: execute ? "execute" : "preview",
-        status: "blocked",
-        blockedReason: "unsupported_binding_kind",
-        summary: {
-          queueCount: queue.queue?.length || 0,
-          readyCount: 1,
-          representativeCoverage,
-        },
-      };
-      if (write) await writeAutopilotReport(report);
-      return report;
-    }
-  let plan;
-  let execution = null;
-  try {
-    plan = await buildPlan({
-      queueItem,
-      senderAddress: preflight.senderAddress,
-      amount: sizing.amount,
-    });
-    execution = execute
-      ? await executePlan({
-          plan,
-          socketPath,
-          timeoutMs,
-        })
-      : null;
-  } catch (error) {
-    const report = merklExecutionErrorReport({
-      error,
-      execute,
-      preflight,
-      queue,
-      queueItem,
-      sizing,
-      readyCount: selection.readyCount,
-      representativeCoverage,
-    });
-    if (write) await writeAutopilotReport(report);
-    return report;
-  }
+  const firstReady = results.find((item) => item.status !== "blocked") || results[0] || {};
+  const deliveredCount = results.filter((item) => item.execution?.settlementStatus === "delivered").length;
+  const previewReadyCount = results.filter((item) => item.status === "preview_ready").length;
+  const blockedCount = results.filter((item) => item.status === "blocked").length;
+  const selectedChains = [...new Set(results.map((item) => item.queueItem?.chain).filter(Boolean))];
   const report = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     mode: execute ? "execute" : "preview",
-    status: execution?.settlementStatus || "preview_ready",
+    status: execute
+      ? deliveredCount > 0
+        ? "delivered"
+        : blockedCount === results.length
+          ? "blocked"
+          : "completed_with_blockers"
+      : previewReadyCount > 0
+        ? "preview_ready"
+        : "blocked",
+    blockedReason: blockedCount === results.length ? results[0]?.blockedReason || "no_autopilot_candidate_ready" : null,
     preflight: {
       status: preflight.status,
       senderAddress: preflight.senderAddress,
@@ -578,17 +648,23 @@ export async function runMerklCanaryAutopilot({
       queueCount: queue.queue?.length || 0,
       readyCount: selection.readyCount,
       representativeCoverage,
-      selectedOpportunityId: queueItem.opportunityId,
-      selectedChain: queueItem.chain,
-      selectedProtocolId: queueItem.protocolId,
-      selectedBindingKind: bindingKind(queueItem),
-      selectedAmount: sizing.amount,
-      selectedAmountUsd: sizing.amountUsd,
+      selectedCount: results.length,
+      selectedChains,
+      previewReadyCount,
+      deliveredCount,
+      blockedCount,
+      selectedOpportunityId: firstReady.queueItem?.opportunityId || null,
+      selectedChain: firstReady.queueItem?.chain || null,
+      selectedProtocolId: firstReady.queueItem?.protocolId || null,
+      selectedBindingKind: bindingKind(firstReady.queueItem),
+      selectedAmount: firstReady.sizing?.amount || null,
+      selectedAmountUsd: firstReady.sizing?.amountUsd ?? null,
     },
-    queueItem,
-    sizing,
-    plan,
-    execution,
+    queueItem: firstReady.queueItem || null,
+    sizing: firstReady.sizing || null,
+    plan: firstReady.plan || null,
+    execution: firstReady.execution || null,
+    results,
   };
   if (write) await writeAutopilotReport(report);
   return report;

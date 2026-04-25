@@ -28,7 +28,7 @@ function parseArgs(argv) {
     loop: flags.has("--loop"),
     intervalMs: entries["interval-ms"] ? Number(entries["interval-ms"]) : 300_000,
     chains: entries.chains ? parseCsv(entries.chains) : OFFICIAL_GATEWAY_DESTINATION_CHAINS,
-    maxRefillJobs: entries["max-refill-jobs"] ? Number(entries["max-refill-jobs"]) : 4,
+    maxRefillJobs: entries["max-refill-jobs"] ? Number(entries["max-refill-jobs"]) : 24,
     canaryLimit: entries["canary-limit"] ? Number(entries["canary-limit"]) : 11,
     timeoutMs: entries["timeout-ms"] ? Number(entries["timeout-ms"]) : 300_000,
     canaryTimeoutMs: entries["canary-timeout-ms"] ? Number(entries["canary-timeout-ms"]) : 600_000,

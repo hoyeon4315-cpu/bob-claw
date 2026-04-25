@@ -161,6 +161,42 @@ test("planner promotes observe-only supported chains into refill actions when ro
   assert.equal(action.refillAmountDecimal, 0.001);
 });
 
+test("planner estimates modeled stable refill value when oracle price is absent", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const inventory = inventoryFixture();
+  inventory.supportedChains = [...inventory.supportedChains, "soneium"];
+  inventory.activeChains = [...inventory.activeChains, "soneium"];
+  inventory.tokens.push({
+    chain: "soneium",
+    active: true,
+    enabled: true,
+    ticker: "USDC",
+    token: "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369",
+    actual: "0",
+    actualDecimal: 0,
+    targetBalance: "4000000",
+    targetBalanceDecimal: 4,
+    maxBalance: "12000000",
+    maxBalanceDecimal: 12,
+    refillToTarget: "4000000",
+    refillToTargetDecimal: 4,
+    priceUsd: null,
+    estimatedUsd: null,
+    status: "refill_required",
+    rationale: "Soneium representative USDC bootstrap",
+  });
+
+  const plan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: [{ chain: "soneium", token: "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369" }],
+  });
+
+  const action = plan.actions.find((item) => item.chain === "soneium" && item.ticker === "USDC");
+  assert.ok(action);
+  assert.equal(action.refillEstimatedUsd, 4);
+});
+
 test("planner flags demanded source tokens that are not modeled in treasury policy", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = buildTreasuryPlan({

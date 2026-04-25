@@ -12,6 +12,7 @@ import {
   validateTreasuryPolicy,
 } from "../src/treasury/policy.mjs";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../src/config/destination-representative-bindings.mjs";
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
@@ -42,6 +43,18 @@ test("default treasury policy validates and enables live Merkl deployment chains
   assert.equal(getNativeBalancePolicy(policy, "sei").enabled, true);
   assert.equal(policy.capital.activeBudgetUsd, 1_000_000);
   assert.equal(referenceBudgetUsd(policy), 1_000_000);
+});
+
+test("default treasury policy models representative stable inventory for every official destination", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+
+  for (const binding of Object.values(DESTINATION_REPRESENTATIVE_BINDINGS)) {
+    const inventoryPolicy = getTokenInventoryPolicy(policy, binding.chain, binding.assetAddress);
+    assert.ok(inventoryPolicy, `${binding.chain} representative stable inventory is modeled`);
+    assert.ok(Number(inventoryPolicy.targetBalance) >= binding.maxCanaryUsd);
+  }
+  assert.equal(policy.capital.maxRefillCost24hUsd, 12);
+  assert.equal(policy.refillPolicy.maxPendingJobs, 24);
 });
 
 test("threshold helpers convert decimals to raw units", () => {
