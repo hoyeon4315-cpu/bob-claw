@@ -91,6 +91,109 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("report-merkl-canary-queue.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        summary: {
+          queueCount: 2,
+          chainCount: 1,
+          byChain: { base: 2 },
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+          representativeCoverage: {
+            missingRepresentativeChainCount: 10,
+            missingChains: ["bsc", "avalanche"],
+            topMissingChain: "bsc",
+          },
+        },
+      },
+    };
+  }
+  if (name.endsWith("report-destination-promotion-gate.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        summary: {
+          allocationReadyCount: 2,
+          promotableCount: 4,
+        },
+      },
+    };
+  }
+  if (name.endsWith("report-allocator-core.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        summary: {
+          candidateCount: 4,
+          activeReadyCandidateCount: 2,
+          planningCandidateCount: 4,
+          topActiveReadyCandidateId: "base:stablecoin_lending_carry",
+          tier1ActiveReadyChains: ["base", "bsc"],
+          tier2ReviewOnlyChains: ["avalanche"],
+          tier3BlockedOnlyChains: ["sonic"],
+        },
+        diversifiedPortfolioDraft: {
+          activeDraft: [
+            {
+              id: "base:stablecoin_lending_carry",
+              chain: "base",
+              protocols: ["aave_v3"],
+              assetFamily: "stables",
+              planningEligibility: "allocation_ready",
+            },
+            {
+              id: "bsc:stablecoin_lending_carry",
+              chain: "bsc",
+              protocols: ["venus"],
+              assetFamily: "stables",
+              planningEligibility: "allocation_ready",
+            },
+          ],
+          reviewQueue: [
+            {
+              id: "avalanche:wrapped_btc_lending",
+              chain: "avalanche",
+              protocols: ["benqi"],
+              blockers: ["allocation_unwindSlippageBps_recheck_required"],
+            },
+          ],
+        },
+      },
+    };
+  }
+  if (name.endsWith("run-destination-representative-autopilot.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        status: args.includes("--execute") ? "delivered" : "preview_ready",
+        summary: {
+          candidateCount: 1,
+          readyCount: 1,
+          selected: {
+            templateId: "bsc:stablecoin_lending_carry",
+            chain: "bsc",
+            protocolId: "venus",
+          },
+          proofStatus: args.includes("--execute") ? "delivered" : null,
+          txHashes: args.includes("--execute") ? ["0xvenus"] : [],
+        },
+      },
+    };
+  }
   if (name.endsWith("run-merkl-canary-autopilot.mjs")) {
     return {
       ok: true,
@@ -161,6 +264,11 @@ test("all-chain autopilot wires every destination chain into one execution pass"
     appendedPendingWhitelist: 1,
   });
   assert.equal(report.summary.canarySweep.executedCount, 1);
+  assert.equal(report.summary.destinationPromotionGate.allocationReadyCount, 2);
+  assert.deepEqual(report.summary.destinationAllocator.tier1ActiveReadyChains, ["base", "bsc"]);
+  assert.deepEqual(report.summary.representativeExecutionCoverage.allocatorReadyButNotQueuedChains, ["bsc"]);
+  assert.equal(report.summary.destinationRepresentative.selectedTemplateId, "bsc:stablecoin_lending_carry");
+  assert.equal(report.summary.destinationRepresentative.proofStatus, "delivered");
   assert.equal(report.summary.strategyDispatch.missingExecutorCount, 0);
   assert.equal(report.summary.payback.pendingCarrySats, 601);
 });
@@ -390,6 +498,148 @@ test("all-chain autopilot treats unsupported bridge refill previews as alternate
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "gas_refuel_bridge_gas_zip");
   assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
   assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
+});
+
+test("all-chain autopilot promotes Soneium Gateway no_route previews to LI.FI when available", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "soneium-usdc",
+              chain: "soneium",
+              asset: "USDC",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_or_swap",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+                  missingInputs: [],
+                },
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (!args.includes("--method=cross_chain_bridge_lifi")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: { preparation: { status: "blocked", blockedReason: "no_route" } },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "cross_chain_bridge_lifi",
+          preparation: { status: "ready", executionMethod: "cross_chain_bridge_lifi" },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_lifi");
+  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
+});
+
+test("all-chain autopilot reports routing_exhausted after retryable providers reject", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "exhausted",
+              chain: "soneium",
+              asset: "USDC",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_or_swap",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+                  missingInputs: [],
+                },
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          preparation: {
+            status: "blocked",
+            blockedReason: args.includes("--method=cross_chain_bridge_lifi") ? "lifi_quote_rejected" : "no_route",
+          },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: false,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
 });
 
 test("all-chain autopilot separates refill attempts from delivered executions", async () => {

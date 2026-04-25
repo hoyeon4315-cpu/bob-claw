@@ -119,8 +119,17 @@ function refillPreviewStatus(result = {}) {
 }
 
 function forcedRefillMethodArgs(job = {}, activeMethod = null) {
+  const order = new Map([
+    ["cross_chain_bridge_or_swap", 0],
+    ["cross_chain_swap_via_btc_intermediate", 0],
+    ["cross_chain_bridge_across", 1],
+    ["cross_chain_bridge_lifi", 2],
+    ["cross_chain_bridge_stargate", 3],
+    ["gas_refuel_bridge_gas_zip", 4],
+  ]);
   return refillExecutionCandidates(job)
     .filter(refillCandidateExecutable)
+    .sort((left, right) => (order.get(left.method) ?? 99) - (order.get(right.method) ?? 99) || left.index - right.index)
     .map((candidate) => candidate.method)
     .filter((method) => method && method !== activeMethod);
 }
@@ -201,8 +210,83 @@ function compactMerkl(report = null) {
     selectedProtocolId: report?.summary?.selectedProtocolId || null,
     selectedBindingKind: report?.summary?.selectedBindingKind || null,
     selectedAmountUsd: report?.summary?.selectedAmountUsd ?? null,
+    representativeCoverage: report?.summary?.representativeCoverage || null,
     proofStatus: report?.execution?.destinationProof?.status || null,
     txHashes: (report?.execution?.stepResults || [])
+      .map((step) => step.signerResult?.broadcast?.txHash)
+      .filter(Boolean),
+  };
+}
+
+function compactMerklQueue(report = null) {
+  return {
+    queueCount: report?.summary?.queueCount ?? 0,
+    chainCount: report?.summary?.chainCount ?? 0,
+    byChain: report?.summary?.byChain || {},
+    executableNowCount: report?.summary?.executableNowCount ?? 0,
+    autoExecutableNowCount: report?.summary?.autoExecutableNowCount ?? 0,
+    representativeCoverage: report?.summary?.representativeCoverage || null,
+  };
+}
+
+function compactDestinationAllocator(report = null) {
+  return {
+    candidateCount: report?.summary?.candidateCount ?? 0,
+    activeReadyCandidateCount: report?.summary?.activeReadyCandidateCount ?? 0,
+    planningCandidateCount: report?.summary?.planningCandidateCount ?? 0,
+    topActiveReadyCandidateId: report?.summary?.topActiveReadyCandidateId || null,
+    tier1ActiveReadyChains: report?.summary?.tier1ActiveReadyChains || [],
+    tier2ReviewOnlyChains: report?.summary?.tier2ReviewOnlyChains || [],
+    tier3BlockedOnlyChains: report?.summary?.tier3BlockedOnlyChains || [],
+    activeDraft: (report?.diversifiedPortfolioDraft?.activeDraft || []).map((item) => ({
+      id: item.id,
+      chain: item.chain,
+      protocols: item.protocols || [],
+      assetFamily: item.assetFamily || null,
+      planningEligibility: item.planningEligibility || null,
+    })),
+    reviewQueue: (report?.diversifiedPortfolioDraft?.reviewQueue || []).map((item) => ({
+      id: item.id,
+      chain: item.chain,
+      protocols: item.protocols || [],
+      blockers: item.blockers || [],
+    })),
+  };
+}
+
+function compactRepresentativeExecutionCoverage({ merklQueue = null, destinationAllocator = null } = {}) {
+  const merklQueuedChains = new Set(Object.keys(merklQueue?.summary?.byChain || {}));
+  const merklMissingChains = merklQueue?.summary?.representativeCoverage?.missingChains || [];
+  const allocatorReadyChains = destinationAllocator?.summary?.tier1ActiveReadyChains || [];
+  const allocatorReviewOnlyChains = destinationAllocator?.summary?.tier2ReviewOnlyChains || [];
+  const allocatorReadyButNotQueuedChains = allocatorReadyChains.filter((chain) => !merklQueuedChains.has(chain));
+  return {
+    merklQueuedChains: [...merklQueuedChains],
+    merklMissingChains,
+    allocatorReadyChains,
+    allocatorReviewOnlyChains,
+    allocatorReadyButNotQueuedChains,
+    topAllocatorReadyButNotQueuedChain: allocatorReadyButNotQueuedChains[0] || null,
+    topAction: allocatorReadyButNotQueuedChains.length > 0
+      ? "wire_destination_allocator_candidate_to_protocol_canary_or_direct_executor"
+      : merklMissingChains.length > 0
+        ? "source_or_build_representative_opportunity"
+        : "monitor_active_representative_receipts",
+  };
+}
+
+function compactDestinationRepresentative(report = null) {
+  return {
+    status: report?.status || null,
+    blockedReason: report?.blockedReason || null,
+    candidateCount: report?.summary?.candidateCount ?? 0,
+    readyCount: report?.summary?.readyCount ?? 0,
+    coveredCount: report?.summary?.coveredCount ?? 0,
+    selectedTemplateId: report?.summary?.selected?.templateId || null,
+    selectedChain: report?.summary?.selected?.chain || null,
+    selectedProtocolId: report?.summary?.selected?.protocolId || null,
+    proofStatus: report?.summary?.proofStatus || report?.execution?.destinationProof?.status || null,
+    txHashes: report?.summary?.txHashes || (report?.execution?.stepResults || [])
       .map((step) => step.signerResult?.broadcast?.txHash)
       .filter(Boolean),
   };
@@ -277,6 +361,9 @@ function stepIsRecoverable(step, steps) {
   if (step.name?.startsWith("treasury_refill_execute:")) {
     const executionStatus = step.json?.outcomeEvent?.status || step.json?.execution?.settlementStatus || step.json?.status || null;
     return ["blocked", "failed", "unproven_timeout", "near_match_timeout"].includes(executionStatus);
+  }
+  if (step.name === "live_canary_sweep") {
+    return true;
   }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
@@ -367,6 +454,20 @@ export async function runAllChainAutopilot({
         preview = alternatePreview;
         if (refillPreparationReady(preview.json) || !refillPreviewRetryable(preview)) break;
       }
+      if (refillPreviewRetryable(preview)) {
+        preview = {
+          ...preview,
+          json: {
+            ...(preview.json || {}),
+            preparation: {
+              ...(preview.json?.preparation || {}),
+              status: "blocked",
+              blockedReason: "routing_exhausted",
+            },
+          },
+        };
+        steps[steps.length - 1] = commandStep(steps[steps.length - 1]?.name || `treasury_refill_preview:${job.jobId}`, steps[steps.length - 1]?.args || [], preview);
+      }
     }
     let execution = null;
     if (execute && refillPreparationReady(preview.json)) {
@@ -404,6 +505,47 @@ export async function runAllChainAutopilot({
     runCommandImpl,
     cwd,
     timeoutMs: canaryTimeoutMs,
+    steps,
+  });
+
+  const merklQueueResult = await runJsonStep({
+    name: "merkl_canary_queue_refresh",
+    args: ["src/cli/report-merkl-canary-queue.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  const destinationPromotionGateResult = await runJsonStep({
+    name: "destination_promotion_gate_refresh",
+    args: ["src/cli/report-destination-promotion-gate.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  const destinationAllocatorResult = await runJsonStep({
+    name: "destination_allocator_refresh",
+    args: ["src/cli/report-allocator-core.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  const destinationRepresentativeResult = await runJsonStep({
+    name: "destination_representative_autopilot",
+    args: appendFlag([
+      "src/cli/run-destination-representative-autopilot.mjs",
+      "--json",
+      "--write",
+      `--timeout-ms=${timeoutMs}`,
+    ], "--execute", execute),
+    runCommandImpl,
+    cwd,
+    timeoutMs,
     steps,
   });
 
@@ -458,6 +600,17 @@ export async function runAllChainAutopilot({
     refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
     inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
     canarySweep: compactCanarySweep(canarySweepResult.json),
+    merklQueue: compactMerklQueue(merklQueueResult.json),
+    destinationPromotionGate: {
+      allocationReadyCount: destinationPromotionGateResult.json?.summary?.allocationReadyCount ?? null,
+      promotableCount: destinationPromotionGateResult.json?.summary?.promotableCount ?? null,
+    },
+    destinationAllocator: compactDestinationAllocator(destinationAllocatorResult.json),
+    representativeExecutionCoverage: compactRepresentativeExecutionCoverage({
+      merklQueue: merklQueueResult.json,
+      destinationAllocator: destinationAllocatorResult.json,
+    }),
+    destinationRepresentative: compactDestinationRepresentative(destinationRepresentativeResult.json),
     merklCanary: compactMerkl(merklCanaryResult.json),
     portfolio: compactPortfolio(portfolioResult.json),
     strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json),
