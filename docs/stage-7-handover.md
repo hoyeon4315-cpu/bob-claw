@@ -1,73 +1,69 @@
 # Stage 7 Operator Handover
 
-Written 2026-04-25. Code-side prep is in. Stage 7 (autonomous live ops) requires operator action — not code — to flip live.
+Written 2026-04-25. System is designed for **unattended, multichain, fully-automated execution** (AGENTS.md L28-29). Operator's role is one-time setup, not per-tick supervision. Once the daemon is running with seed BTC, it handles 11-chain inventory rebalancing, gas top-ups, refill jobs, strategy dispatch, and payback accumulation autonomously.
 
 ## What `evaluateStageGate` checks
 
-`src/executor/policy/stage-gate.mjs` is the single advisory gate. All seven signals must clear:
+`src/executor/policy/stage-gate.mjs` is the single advisory gate. Seven signals; all must clear before stage-7 entry:
 
 1. **Kill-switch unarmed.** `KILL_SWITCH_PATH` file does not exist.
-2. **Auto-kill quiet 24h.** `dashboard/public/auto-kill-events.json` slice reports `triggerCount=0` in trailing 24h.
-3. **Drawdown above floor.** Realized 24h PnL `> -50 USD` (default `STAGE_GATE_POLICY.maxDrawdownFloorUsd`).
-4. **Oracle 4/4 reachable.** Last `snapshot-btc-oracles` run reports four reachable spot sources (Coinbase / Binance / Kraken / CoinGecko).
-5. **Payback ready.** `paybackSnapshot.reserveOk=true`. Accumulator pending floor is 0 (operator override 2026-04-25): pre-live accumulator is empty by definition, so gating entry on it created a chicken-and-egg block. Drawdown floor and stale-quote rejection still cover post-trade risk.
-6. **Executor heartbeat fresh.** Last heartbeat age `<= 90s`.
-7. **No stale quotes.** Tick reports `staleQuoteCount=0`.
+2. **Auto-kill quiet 24h.** `dashboard/public/auto-kill-events.json` reports `triggerCount=0`.
+3. **Drawdown above floor.** Realized 24h PnL `> -50 USD`.
+4. **Oracle 4/4 reachable.** `snapshot-btc-oracles` reports four reachable sources.
+5. **Payback reserveOk.** Accumulator pending floor is 0 (operator override 2026-04-25): accumulator fills BY live execution, not before.
+6. **Executor heartbeat fresh.** Age `<= 90s`.
+7. **No stale quotes.** `staleQuoteCount=0`.
 
-Any failure surfaces as `{kind, detail}` in `blockers`. Decision is `READY` or `BLOCKED`.
+## Operator one-time setup
 
-## Operator preflight checklist
+These are the only things code cannot do. After this, the system runs unattended.
 
-Before flipping `liveTrading=true`, confirm each of the below on the operator host. Code cannot do these:
-
-### Keys & signer
-- [ ] Signer daemon process running with keys loaded from OS keychain (not env, not file).
-- [ ] `signer-audit.jsonl` writable and append-only.
+### Keys & daemon (one-time)
+- [ ] Signer daemon running with keys in OS keychain (not env, not file).
 - [ ] `KILL_SWITCH_PATH` env set; touching that file halts execution.
+- [ ] `PAYBACK_BTC_DEST_ADDR` env = operator's L1 wallet for payback returns.
 
-### Inventory
-- [ ] Per-chain native gas float above per-chain floor (`src/config/treasury-floors.mjs`).
-- [ ] Base wallet has cbBTC ≥ first canary cap and USDC ≥ unwind buffer.
-- [ ] BTC L1 sender wallet `bc1q...` has confirmed funds ≥ Gateway minimum onramp sats.
+### Seed capital (one-time)
+- [ ] BTC L1 sender wallet `bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546` funded with seed sats above Gateway minimum onramp threshold.
 
-### Caps & policy (code, not runtime)
-- [ ] `src/config/strategy-caps.mjs` per-strategy `perTxUsd` / `perDayUsd` / `perChainUsd` reflect intended dust-canary sizing.
-- [ ] `PAYBACK_BTC_DEST_ADDR` env points to operator's L1 wallet — no testnet, no exchange deposit.
-- [ ] `src/config/auto-kill.mjs` thresholds reviewed; trigger debounces match operator tolerance.
+That is the **entire** operator preflight. The daemon does the rest.
 
-### External data
-- [ ] `data/treasury-inventory.jsonl` populated by latest `npm run snapshot:treasury-inventory` run.
-- [ ] `data/risk/auto-kill-events.jsonl` exists (created on first armed event; absence == clean).
-- [ ] `data/oracle-divergence.jsonl` (or path resolved by `AUTO_KILL_ORACLES_PATH`) being appended by `snapshot-btc-oracles` cron.
+## What the daemon does autonomously
 
-### Dashboards
-- [ ] `dashboard/public/dashboard-status.json` last write timestamp within last 5 min.
-- [ ] `dashboard/public/auto-kill-events.json` slice present.
-- [ ] `dashboard/public/strategy-tick-status.json` schema v2 readable.
+After seed BTC lands and the daemon starts, no further operator action is required:
+
+- **BTC L1 → 11-chain seeding.** `gateway-btc-onramp` pulls BTC from sender wallet, mints wBTC.OFT on Bob, propagates to Base/Avalanche/Sonic/etc via official Gateway routes.
+- **Inventory rebalancing.** `all-chain-autopilot.mjs` scans all 11 chains every tick, detects under-floor balances, generates refill jobs, executes them via Gateway / gas-zip / LI.FI / Across.
+- **Gas float top-ups.** Native gas under-floor → `gas_zip_native_refuel` automatically.
+- **Strategy dispatch.** Strategy registry (`run-strategy-tick.mjs`) selects eligible strategies, builds previews, signs intents through the daemon.
+- **Payback accumulation.** Realized BTC-denominated profit accrues in `data/payback/accumulator-snapshot.json`. Scheduler dispatches when threshold + reserve checks pass — operator does not decide ratio or timing.
+- **Risk gates.** Auto-kill triggers (`src/risk/auto-kill-triggers.mjs`) arm on drawdown / consecutive failure / oracle divergence / heartbeat staleness — daemon halts itself.
 
 ## What stays out of operator scope
 
-- Policy/cap edits during live ops — must be committed diff (CLAUDE.md non-negotiable #5).
-- Manual signer override — daemon owns signing; operator only writes the kill-switch file.
-- Payback ratio/timing decisions — `src/executor/payback/scheduler.mjs` decides deterministically.
+- Manual rebalancing across chains — daemon's `all-chain-autopilot` handles this every tick.
+- Manual capital movement — keys are in the daemon, not the operator's hand.
+- Cap or policy edits — committed diff only (CLAUDE.md non-negotiable #5).
+- Payback ratio / timing — `src/executor/payback/scheduler.mjs` decides deterministically.
 
 ## Time-window prerequisites
 
-Stage 7 promotion isn't instant after `evaluateStageGate` returns READY. Receipt accumulation is real-time:
+Stage 7 promotion isn't instant after stage-gate returns READY:
 
-- 3 days fast-track lookback (`PROMOTION_THRESHOLDS.defaultLookbackDays = 3`)
-- 14 days strict lookback (`PROMOTION_THRESHOLDS_STRICT.defaultLookbackDays = 14`)
-- Signer-backed receipt count starts at 0 on first run; first-day window will report blocked even with everything ready
+- Promotion lookback already 0/0 (commit `c3f5608`) — first signer-backed receipt = eligible to scale.
+- Drawdown floor & stale-quote circuit breakers fire post-trade only — no entry delay.
+- Oracle reachability is per-tick — fails fast if a source goes down.
 
-The wait is in the timeline, not the code.
+The only intrinsic wait is "first tick has not happened yet". Once seed BTC is in the sender wallet and the daemon ticks, receipts start accumulating.
 
 ## Expected first-tick output
 
-After stage-gate clears, first autonomous tick should write:
+After stage-gate clears, first autonomous tick writes:
 
-- `data/risk/auto-kill-events.jsonl` (append-only, possibly empty in clean run)
+- `data/risk/auto-kill-events.jsonl` (append-only)
 - `dashboard/public/auto-kill-events.json` (24h slice)
 - `data/strategy-tick-receipts.jsonl` (signer-backed receipts)
 - `data/payback/accumulator-snapshot.json` (BTC-denominated pending)
+- `logs/signer-audit.jsonl` — append-only record of every signed intent (CLAUDE.md non-negotiable #6).
 
-Operator watches these; signer-audit.jsonl is the only write that materially moves money.
+`signer-audit.jsonl` is the canonical record of capital movement. Operator monitors this; daemon writes it.
