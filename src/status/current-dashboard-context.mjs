@@ -833,12 +833,14 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
       wrappedBtcLoopDryRun,
       wrappedBtcLoopOosEvidence,
       milestoneValidationGates,
-      v1InfraDrills,
-      merklOpportunityReport,
-      merklOpportunityAlerts,
-      merklPositionEvents,
-      treasuryInventoryRecords,
-      allChainAutopilotLatest,
-    },
-  };
+       v1InfraDrills,
+       merklOpportunityReport,
+       merklOpportunityAlerts,
+       merklCanaryQueue,
+       merklPositionEvents,
+       treasuryInventoryRecords,
+       allChainAutopilotLatest,
+       wrappedBtcLoopLiveProof: enrichedWrappedBtcLoopLiveProof,
+     },
+   };
 }

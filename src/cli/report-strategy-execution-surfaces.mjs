@@ -15,8 +15,8 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { state, dashboardStatus, triangleArtifacts } = await buildCurrentDashboardContext();
-  const report = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts });
+  const { state, dashboardStatus, triangleArtifacts, artifacts } = await buildCurrentDashboardContext();
+  const report = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
 
   if (args.write) {
     await writeTextIfChanged(join(config.dataDir, "strategy-execution-surfaces.json"), `${JSON.stringify(report, null, 2)}\n`);
