@@ -247,6 +247,10 @@ function compactCandidate(item) {
   };
 }
 
+function compactRepresentativeCoverage(queue = {}) {
+  return queue.representativeCoverage?.summary || queue.summary?.representativeCoverage || null;
+}
+
 export async function runMerklCanaryAutopilot({
   execute = false,
   write = false,
@@ -308,6 +312,7 @@ export async function runMerklCanaryAutopilot({
       summary: {
         queueCount: queue.queue?.length || 0,
         readyCount: 0,
+        representativeCoverage: compactRepresentativeCoverage(queue),
       },
       candidates: selection.candidates.map(compactCandidate).slice(0, 20),
     };
@@ -328,6 +333,7 @@ export async function runMerklCanaryAutopilot({
       summary: {
         queueCount: queue.queue?.length || 0,
         readyCount: 1,
+        representativeCoverage: compactRepresentativeCoverage(queue),
       },
     };
     if (write) await writeAutopilotReport(report);
@@ -359,6 +365,7 @@ export async function runMerklCanaryAutopilot({
     summary: {
       queueCount: queue.queue?.length || 0,
       readyCount: selection.readyCount,
+      representativeCoverage: compactRepresentativeCoverage(queue),
       selectedOpportunityId: queueItem.opportunityId,
       selectedChain: queueItem.chain,
       selectedProtocolId: queueItem.protocolId,

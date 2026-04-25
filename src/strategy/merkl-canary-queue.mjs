@@ -3,6 +3,7 @@ import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings.mjs";
 import { isSupportedBindingKind } from "../executor/protocol-binding-registry.mjs";
 import { applyMerklCanaryExecutionReadiness } from "./merkl-canary-execution-readiness.mjs";
+import { buildRepresentativeChainCoverage } from "./representative-chain-coverage.mjs";
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
 const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle", "yei"]);
@@ -210,6 +211,7 @@ export function buildMerklCanaryQueue({
   now = null,
   inventorySnapshot = null,
   canaryExecutions = [],
+  positionRecords = [],
 } = {}) {
   const sourceItems = report?.opportunities || report?.topCandidates || [];
   const candidates = sourceItems
@@ -232,6 +234,12 @@ export function buildMerklCanaryQueue({
   const autoExecutableQueue = queue.filter((item) => item.autoEntry?.autoExecute === true);
   const readinessByStatus = countBy(queue, (item) => item.executionReadiness?.status);
   const gapCounts = capabilityGapCounts(queue);
+  const generatedAt = now || new Date().toISOString();
+  const representativeCoverage = buildRepresentativeChainCoverage({
+    queue,
+    positionRecords,
+    now: generatedAt,
+  });
   const topBlockingReason =
     queue.length === 0
       ? null
@@ -241,7 +249,7 @@ export function buildMerklCanaryQueue({
 
   return {
     schemaVersion: 1,
-    generatedAt: now || new Date().toISOString(),
+    generatedAt,
     sourceReportGeneratedAt: report?.generatedAt || null,
     policyProfile: report?.policyProfile || policy.profileId,
     automationModel: {
@@ -273,7 +281,9 @@ export function buildMerklCanaryQueue({
       readinessByStatus,
       capabilityGapCounts: gapCounts,
       topBlockingReason,
+      representativeCoverage: representativeCoverage.summary,
     },
+    representativeCoverage,
     queue,
   };
 }

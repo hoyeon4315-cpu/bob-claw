@@ -308,3 +308,78 @@ test("allocator downgrades live balance races to a blocked execution", () => {
   );
   assert.deepEqual(executionErrorBlockers(new Error("rpc failed")), ["portfolio_execution_error"]);
 });
+
+test("allocator diversification gate blocks the next Ethereum pick when current holdings are already concentrated there", () => {
+  const ethItem = queueItem({
+    opportunityId: "eth-next",
+    chain: "ethereum",
+    protocolId: "morpho",
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0x1111111111111111111111111111111111111111",
+        assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        shareTokenAddress: "0x1111111111111111111111111111111111111111",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const optimismItem = queueItem({
+    opportunityId: "op-next",
+    chain: "optimism",
+    protocolId: "aave",
+    priorityScore: 100,
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "aave_v3_pool_supply_withdraw",
+      resolvedBinding: {
+        assetAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        aTokenAddress: "0x2222222222222222222222222222222222222222",
+        poolAddress: "0x3333333333333333333333333333333333333333",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const proof = (opportunityId) => ({
+    observedAt: "2026-04-24T06:01:00.000Z",
+    mode: "execute",
+    queueItem: { opportunityId },
+    execution: { settlementStatus: "delivered" },
+  });
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [ethItem, optimismItem] },
+    inventorySnapshot: {
+      native: [
+        { chain: "ethereum", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
+        { chain: "optimism", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
+      ],
+      tokens: [
+        { chain: "ethereum", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+      ],
+    },
+    canaryExecutions: [proof("eth-next"), proof("op-next")],
+    positionRecords: [
+      { event: "position_opened", status: "open", positionId: "base-1", opportunityId: "base-1", chain: "base", protocolId: "yo", amountUsd: 75 },
+      { event: "position_opened", status: "open", positionId: "eth-1", opportunityId: "eth-1", chain: "ethereum", protocolId: "aave", amountUsd: 25 },
+      { event: "position_opened", status: "open", positionId: "eth-2", opportunityId: "eth-2", chain: "ethereum", protocolId: "morpho", amountUsd: 75 },
+      { event: "position_opened", status: "open", positionId: "eth-3", opportunityId: "eth-3", chain: "ethereum", protocolId: "morpho", amountUsd: 50 },
+    ],
+    maxUsd: 25,
+    policy: {
+      maxActiveUsd: 300,
+      perOpportunityMaxUsd: 25,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 2,
+    },
+    now: "2026-04-25T00:00:00.000Z",
+  });
+
+  const ethAllocation = plan.allocations.find((item) => item.queueItem.opportunityId === "eth-next");
+  assert.equal(ethAllocation.status, "blocked");
+  assert.ok(ethAllocation.blockers.includes("diversification_policy_rejected"));
+  assert.notEqual(plan.entryQueue[0]?.queueItem.chain, "ethereum");
+});

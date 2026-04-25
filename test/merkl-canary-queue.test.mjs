@@ -128,6 +128,8 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.queue[1].autoEntry.autoExecute, true);
   assert.equal(queue.summary.byStrategy.gateway_native_asset_conversion_sleeve, 2);
   assert.equal(queue.summary.byStrategy.eth_destination_deployment, 1);
+  assert.ok(queue.summary.representativeCoverage.missingRepresentativeChainCount > 0);
+  assert.equal(queue.representativeCoverage.policy.executionRule.includes("never bypass"), true);
 });
 
 test("merkl canary queue summarizes the top blocker when no candidate is executable", () => {

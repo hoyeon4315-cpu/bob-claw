@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { merklPortfolioPolicy } from "../config/merkl-portfolio.mjs";
+import { DIVERSIFICATION_POLICY, canAcceptNewAllocation, computeHhi } from "../config/diversification.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -78,6 +79,89 @@ function activeBy(positions = [], keyFn = () => "") {
     values.set(key, (values.get(key) || 0) + (finite(position.amountUsd) ?? 0));
   }
   return values;
+}
+
+function activeDiversificationAllocations(positions = [], denominatorUsd = null) {
+  const totalUsd = finite(denominatorUsd) ?? activeUsd(positions);
+  const allocations = {
+    perStrategy: {},
+    perChain: {},
+    perProtocol: {},
+    bobL2DirectShare: 0,
+  };
+  if (!(totalUsd > 0)) return allocations;
+  for (const position of positions || []) {
+    const usd = positionUsd(position);
+    if (!(usd > 0)) continue;
+    const share = usd / totalUsd;
+    const strategyId = position.strategyId || position.opportunityId || position.positionId;
+    if (strategyId) allocations.perStrategy[strategyId] = (allocations.perStrategy[strategyId] || 0) + share;
+    if (position.chain) allocations.perChain[position.chain] = (allocations.perChain[position.chain] || 0) + share;
+    if (position.protocolId) allocations.perProtocol[position.protocolId] = (allocations.perProtocol[position.protocolId] || 0) + share;
+  }
+  return allocations;
+}
+
+function positionUsd(position = {}) {
+  return finite(position.amountUsd) ?? finite(position.targetUsd) ?? finite(position.plan?.amountUsd) ?? 0;
+}
+
+function diversificationGateForAllocation({ activePositions = [], queueItem = {}, addUsd = 0 } = {}) {
+  const activePositionUsd = activeUsd(activePositions);
+  const candidateUsd = finite(addUsd) ?? 0;
+  const denominatorUsd = activePositionUsd + candidateUsd;
+  if (!(candidateUsd > 0) || !(denominatorUsd > 0)) {
+    return {
+      accepted: true,
+      verdict: { ok: true, violations: [] },
+      activeUsd: activePositionUsd,
+      candidateUsd,
+      addShare: 0,
+    };
+  }
+  if (denominatorUsd < 10) {
+    return {
+      accepted: true,
+      verdict: { ok: true, violations: [] },
+      activeUsd: activePositionUsd,
+      candidateUsd,
+      addShare: candidateUsd / denominatorUsd,
+      bypassed: true,
+    };
+  }
+  const result = canAcceptNewAllocation(
+    activeDiversificationAllocations(activePositions, denominatorUsd),
+    {
+      strategyId: queueItem.mappedStrategyId || queueItem.opportunityId,
+      chainId: queueItem.chain,
+      protocolIds: [queueItem.protocolId].filter(Boolean),
+      directHolding: false,
+      addShare: candidateUsd / denominatorUsd,
+    },
+  );
+  const candidateStrategyId = queueItem.mappedStrategyId || queueItem.opportunityId;
+  const candidateChainId = queueItem.chain;
+  const candidateProtocolIds = new Set([queueItem.protocolId].filter(Boolean));
+  const candidateSpecificViolations = (result.verdict?.violations || []).filter((violation) => {
+    if (violation.kind === "per_strategy_share_exceeded") return violation.id === candidateStrategyId;
+    if (violation.kind === "per_chain_share_exceeded") return violation.id === candidateChainId;
+    if (violation.kind === "per_protocol_share_exceeded") return candidateProtocolIds.has(violation.id);
+    if (violation.kind === "chain_not_gateway_official") return violation.id === candidateChainId;
+    return false;
+  });
+  const beforeHhi = computeHhi(activeDiversificationAllocations(activePositions, activePositionUsd).perStrategy);
+  const hhiWorsened =
+    (result.verdict?.hhi ?? 0) > DIVERSIFICATION_POLICY.hhiMax &&
+    (result.verdict?.hhi ?? 0) > beforeHhi;
+  const accepted = result.accepted || (candidateSpecificViolations.length === 0 && !hhiWorsened);
+  return {
+    ...result,
+    accepted,
+    activeUsd: activePositionUsd,
+    candidateUsd,
+    addShare: candidateUsd / denominatorUsd,
+    bypassed: false,
+  };
 }
 
 function scoreTvl(tvlUsd) {
@@ -201,6 +285,12 @@ export function buildMerklPortfolioAllocationPlan({
     }
     if (score < policy.minScoreForEntry) blockers.push("portfolio_score_below_entry_floor");
     if (sizing.status !== "ready") blockers.push(...(sizing.blockers || ["sizing_not_ready"]));
+    const diversification = diversificationGateForAllocation({
+      activePositions,
+      queueItem,
+      addUsd: sizing.amountUsd,
+    });
+    if (!diversification.accepted) blockers.push("diversification_policy_rejected");
     const needsCapitalJob =
       queueItem.capabilityGaps?.includes("current_inventory_entry_route_required") ||
       (sizing.blockers || []).some((blocker) => [
@@ -216,6 +306,14 @@ export function buildMerklPortfolioAllocationPlan({
       opportunityActiveUsd,
       chainActiveUsd,
       protocolActiveUsd,
+      diversification: {
+        accepted: diversification.accepted,
+        activeUsd: diversification.activeUsd,
+        candidateUsd: diversification.candidateUsd,
+        addShare: diversification.addShare,
+        bypassed: diversification.bypassed || false,
+        violations: diversification.verdict?.violations || [],
+      },
       sizing,
       status: blockers.length ? "blocked" : "candidate",
       blockers,
@@ -271,9 +369,39 @@ export function buildMerklPortfolioAllocationPlan({
       });
       continue;
     }
+    const resizedDiversification = diversificationGateForAllocation({
+      activePositions,
+      queueItem: candidate.queueItem,
+      addUsd: resized.amountUsd,
+    });
+    if (!resizedDiversification.accepted) {
+      allocations.push({
+        ...candidate,
+        sizing: resized,
+        diversification: {
+          accepted: false,
+          activeUsd: resizedDiversification.activeUsd,
+          candidateUsd: resizedDiversification.candidateUsd,
+          addShare: resizedDiversification.addShare,
+          bypassed: resizedDiversification.bypassed || false,
+          violations: resizedDiversification.verdict?.violations || [],
+        },
+        status: "blocked",
+        blockers: ["diversification_policy_rejected"],
+      });
+      continue;
+    }
     const allocation = {
       ...candidate,
       sizing: resized,
+      diversification: {
+        accepted: true,
+        activeUsd: resizedDiversification.activeUsd,
+        candidateUsd: resizedDiversification.candidateUsd,
+        addShare: resizedDiversification.addShare,
+        bypassed: resizedDiversification.bypassed || false,
+        violations: [],
+      },
       status: "enter_ready",
       entryAction: candidate.opportunityActiveUsd > 0 ? "top_up" : "open",
       targetUsd: resized.amountUsd,
@@ -393,6 +521,7 @@ function buildPositionRecord({ allocation, plan, execution, now = new Date().toI
     marketName: plan.marketName || null,
     assetAddress: plan.assetAddress,
     shareTokenAddress: plan.shareTokenAddress,
+    txHash: entryTxHash,
     entryTxHash,
     approvalTxHash: txHashForStep(execution, ["approve_asset_to_vault", "approve_asset_to_pool"]),
     score: allocation.score,
