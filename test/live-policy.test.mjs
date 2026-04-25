@@ -138,7 +138,7 @@ test("lane-aware live policy requires strategy auto-execute caps", () => {
   assert.equal(overall.lanePolicy.strategyPolicy.ok, false);
 });
 
-test("lane-aware live policy recognizes recursive loop caps but keeps live blocked until enabled", () => {
+test("lane-aware live policy recognizes reopened recursive loop caps", () => {
   const overall = applyLaneAwareLivePolicy({
     overall: {
       liveTrading: "BLOCKED",
@@ -166,13 +166,13 @@ test("lane-aware live policy recognizes recursive loop caps but keeps live block
   });
 
   const policy = overall.lanePolicy.strategyPolicy;
-  assert.equal(overall.liveTrading, "BLOCKED");
-  assert.equal(overall.blockers.includes("audit_blocks_live"), true);
+  assert.equal(overall.liveTrading, "ALLOWED");
+  assert.equal(overall.blockers.includes("audit_blocks_live"), false);
   assert.equal(overall.warnings.includes("strategy_caps_missing"), false);
-  assert.equal(overall.warnings.includes("strategy_auto_execute_disabled"), true);
+  assert.equal(overall.warnings.includes("strategy_auto_execute_disabled"), false);
   assert.equal(policy.strategyId, "recursive_wrapped_btc_lending_loop");
   assert.equal(policy.capValidation.ok, true);
-  assert.equal(policy.autoExecute, false);
+  assert.equal(policy.autoExecute, true);
   assert.equal(policy.caps.perTxUsd, 1_000_000);
   assert.equal(policy.caps.perChainUsd.base, 1_000_000);
   assert.deepEqual(policy.exposure.protocols, ["moonwell", "odos"]);

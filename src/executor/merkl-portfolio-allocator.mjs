@@ -328,9 +328,40 @@ function txHashForStep(execution = {}, stepIds = []) {
     ?.signerResult?.broadcast?.txHash || null;
 }
 
-export function executionErrorBlockers(error) {
+export function parseInsufficientAssetBalance(error) {
   const message = error?.message || String(error || "");
-  if (/Insufficient asset balance/u.test(message)) return ["insufficient_asset_balance"];
+  const match = message.match(/Insufficient asset balance:\s*required\s+(\d+),\s*available\s+(\d+)/u);
+  if (!match) return null;
+  return {
+    required: match[1],
+    available: match[2],
+  };
+}
+
+export function retryAmountFromAvailableBalance({ available, reservePct = 0.01 } = {}) {
+  let availableAmount = 0n;
+  try {
+    availableAmount = BigInt(available ?? 0);
+  } catch {
+    return null;
+  }
+  if (availableAmount <= 1n) return null;
+  const reserveBps = BigInt(Math.max(0, Math.min(2_500, Math.ceil((finite(reservePct) ?? 0.01) * 10_000))));
+  const retryAmount = (availableAmount * (10_000n - reserveBps)) / 10_000n;
+  return retryAmount > 0n && retryAmount < availableAmount ? retryAmount.toString() : (availableAmount - 1n).toString();
+}
+
+function proportionalUsd(amountUsd, retryAmount, originalAmount) {
+  const usd = finite(amountUsd);
+  if (usd == null) return null;
+  const retry = Number(retryAmount);
+  const original = Number(originalAmount);
+  if (!Number.isFinite(retry) || !Number.isFinite(original) || original <= 0) return usd;
+  return usd * (retry / original);
+}
+
+export function executionErrorBlockers(error) {
+  if (parseInsufficientAssetBalance(error)) return ["insufficient_asset_balance"];
   return ["portfolio_execution_error"];
 }
 
@@ -484,6 +515,8 @@ export async function runMerklPortfolioAllocator({
         amount: allocation.targetAmount,
       });
       let execution = null;
+      let executedPlan = protocolPlan;
+      let executedAllocation = allocation;
       try {
         execution = await executePlan({
           plan: protocolPlan,
@@ -492,25 +525,71 @@ export async function runMerklPortfolioAllocator({
           exitAfterProof: false,
         });
       } catch (error) {
-        executions.push({
-          opportunityId: queueItem.opportunityId,
-          status: "blocked",
-          blockers: executionErrorBlockers(error),
-          error: {
-            message: error?.message || String(error),
-          },
-          plan: {
-            chain: protocolPlan.chain,
-            amount: protocolPlan.amount,
-            assetAddress: protocolPlan.assetAddress,
-          },
-        });
-        continue;
+        const insufficient = parseInsufficientAssetBalance(error);
+        const retryAmount = insufficient
+          ? retryAmountFromAvailableBalance({
+              available: insufficient.available,
+              reservePct: plan.policy.reserveSourceInventoryPct,
+            })
+          : null;
+        if (retryAmount && BigInt(retryAmount) > 0n && BigInt(retryAmount) < BigInt(allocation.targetAmount)) {
+          const retryPlan = await buildPlan({
+            queueItem,
+            senderAddress: preflight.senderAddress,
+            amount: retryAmount,
+          });
+          try {
+            execution = await executePlan({
+              plan: retryPlan,
+              socketPath,
+              timeoutMs,
+              exitAfterProof: false,
+            });
+            executedPlan = retryPlan;
+            executedAllocation = {
+              ...allocation,
+              targetAmount: retryAmount,
+              targetUsd: proportionalUsd(allocation.targetUsd, retryAmount, allocation.targetAmount),
+            };
+          } catch (retryError) {
+            executions.push({
+              opportunityId: queueItem.opportunityId,
+              status: "blocked",
+              blockers: executionErrorBlockers(retryError),
+              retryAttempted: true,
+              error: {
+                message: retryError?.message || String(retryError),
+              },
+              plan: {
+                chain: retryPlan.chain,
+                amount: retryPlan.amount,
+                assetAddress: retryPlan.assetAddress,
+              },
+            });
+            continue;
+          }
+        } else {
+          executions.push({
+            opportunityId: queueItem.opportunityId,
+            status: "blocked",
+            blockers: executionErrorBlockers(error),
+            retryAttempted: Boolean(insufficient),
+            error: {
+              message: error?.message || String(error),
+            },
+            plan: {
+              chain: protocolPlan.chain,
+              amount: protocolPlan.amount,
+              assetAddress: protocolPlan.assetAddress,
+            },
+          });
+          continue;
+        }
       }
       const positionRecord = execution.settlementStatus === "position_opened"
         ? buildPositionRecord({
-            allocation: { ...allocation, policy: plan.policy },
-            plan: protocolPlan,
+            allocation: { ...executedAllocation, policy: plan.policy },
+            plan: executedPlan,
             execution,
             now: execution.observedAt,
           })

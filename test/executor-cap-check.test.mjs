@@ -441,10 +441,10 @@ test("buildStrategyCapState ignores prelive fork sign-only audit rows before bro
   assert.equal(state.perChainVolumeUsd.sonic ?? 0, 0);
 });
 
-test("recursive wrapped BTC loop caps are declared but do not auto-execute live yet", () => {
+test("recursive wrapped BTC loop caps are declared and reopened for live validation", () => {
   const caps = assertStrategyCaps("recursive_wrapped_btc_lending_loop");
 
-  assert.equal(caps.autoExecute, false);
+  assert.equal(caps.autoExecute, true);
   assert.equal(caps.caps.perTxUsd, 1_000_000);
   assert.equal(caps.caps.perChainUsd.base, 1_000_000);
   assert.deepEqual(caps.exposure.protocols, ["moonwell", "odos"]);
@@ -464,8 +464,8 @@ test("recursive wrapped BTC loop caps are declared but do not auto-execute live 
     auditRecords: [],
   });
 
-  assert.equal(liveResult.decision, "BLOCK");
-  assert.equal(liveResult.blockers.includes("strategy_auto_execute_disabled"), true);
+  assert.equal(liveResult.decision, "ALLOW");
+  assert.equal(liveResult.blockers.includes("strategy_auto_execute_disabled"), false);
   assert.equal(liveResult.blockers.includes("strategy_per_tx_cap_missing"), false);
   assert.equal(liveResult.blockers.includes("strategy_per_day_cap_missing"), false);
   assert.equal(liveResult.blockers.includes("strategy_per_chain_cap_missing"), false);

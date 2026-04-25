@@ -8,6 +8,14 @@ const EXECUTABLE_BRIDGE_METHODS = new Set([
   "cross_chain_bridge_across",
 ]);
 
+const EXECUTABLE_REFILL_METHODS = new Set([
+  ...EXECUTABLE_BRIDGE_METHODS,
+  "cross_chain_bridge_lifi",
+  "gas_refuel_bridge_gas_zip",
+  "same_chain_token_to_native_swap",
+  "same_chain_native_to_token_swap",
+]);
+
 const FAILURE_STATUSES = new Set([
   "failed",
   "execution_failed",
@@ -63,6 +71,10 @@ function selectedCandidateFromJob(job = {}) {
 }
 
 export function refillBridgeCandidates(job = {}) {
+  return refillExecutionCandidates(job).filter((candidate) => EXECUTABLE_BRIDGE_METHODS.has(candidate.method));
+}
+
+export function refillExecutionCandidates(job = {}) {
   const seen = new Set();
   const candidates = [];
   for (const candidate of [
@@ -71,7 +83,7 @@ export function refillBridgeCandidates(job = {}) {
   ]) {
     if (!candidate || seen.has(candidate.method)) continue;
     seen.add(candidate.method);
-    if (EXECUTABLE_BRIDGE_METHODS.has(candidate.method)) candidates.push(candidate);
+    if (EXECUTABLE_REFILL_METHODS.has(candidate.method)) candidates.push(candidate);
   }
   return candidates;
 }
@@ -95,15 +107,15 @@ function latestFallbackEvent({ events = [], job } = {}) {
     .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
 }
 
-function candidateExecutable(candidate = {}) {
-  if (!EXECUTABLE_BRIDGE_METHODS.has(candidate.method)) return false;
+export function refillCandidateExecutable(candidate = {}) {
+  if (!EXECUTABLE_REFILL_METHODS.has(candidate.method)) return false;
   if (candidate.requiresManualFunding || candidate.manualFundingDependency) return false;
   if ((candidate.missingInputs || []).length > 0) return false;
   if (!candidate.source?.chain || !candidate.source?.token) return false;
   return candidate.availability === "ready" || candidate.availability === "conditional";
 }
 
-function jobWithCandidate(job, candidate) {
+export function jobWithCandidate(job, candidate) {
   return {
     ...job,
     executionMethod: candidate.method,
@@ -121,6 +133,20 @@ function jobWithCandidate(job, candidate) {
       missingInputs: candidate.missingInputs || [],
       settlementRequirements: candidate.settlementRequirements || [],
     },
+  };
+}
+
+export function forceRefillExecutionMethod({ job, method } = {}) {
+  if (!job) return { job, candidate: null, error: "job_missing" };
+  const candidate = refillExecutionCandidates(job).find((item) => item.method === method) || null;
+  if (!candidate) return { job, candidate: null, error: `candidate_method_missing:${method || "missing"}` };
+  if (!refillCandidateExecutable(candidate)) {
+    return { job, candidate, error: `candidate_method_not_executable:${method}` };
+  }
+  return {
+    job: jobWithCandidate(job, candidate),
+    candidate,
+    error: null,
   };
 }
 
@@ -147,7 +173,7 @@ export function resolveRefillBridgeFallback({
     return { job: activeJob, activeMethod, fallbackEvent: null, failureCount, candidates };
   }
 
-  const nextCandidate = candidates.slice(activeIndex + 1).find(candidateExecutable) || null;
+  const nextCandidate = candidates.slice(activeIndex + 1).find(refillCandidateExecutable) || null;
   if (!nextCandidate) {
     return { job: activeJob, activeMethod, fallbackEvent: null, failureCount, candidates };
   }

@@ -5,6 +5,10 @@ import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import {
+  refillCandidateExecutable,
+  refillExecutionCandidates,
+} from "./helpers/refill-fallback.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +106,24 @@ function refillPreparationReady(json = null) {
   return json?.preparation?.status === "ready";
 }
 
+function refillPreviewBlockedReason(result = {}) {
+  return result?.json?.preparation?.blockedReason ||
+    result?.json?.event?.blockers?.[0] ||
+    result?.json?.blockers?.[0] ||
+    null;
+}
+
+function refillPreviewStatus(result = {}) {
+  return result?.json?.preparation?.status || result?.json?.event?.status || result?.json?.status || null;
+}
+
+function forcedRefillMethodArgs(job = {}, activeMethod = null) {
+  return refillExecutionCandidates(job)
+    .filter(refillCandidateExecutable)
+    .map((candidate) => candidate.method)
+    .filter((method) => method && method !== activeMethod);
+}
+
 function compactRefillExecution(job, preview, execution = null) {
   const active = execution || preview;
   return {
@@ -110,12 +132,9 @@ function compactRefillExecution(job, preview, execution = null) {
     asset: job.asset,
     targetAmountDecimal: job.targetAmountDecimal ?? null,
     executionMethod: job.executionMethod,
-    previewStatus: preview?.json?.preparation?.status || preview?.json?.event?.status || preview?.json?.status || null,
-    previewBlockedReason:
-      preview?.json?.preparation?.blockedReason ||
-      preview?.json?.event?.blockers?.[0] ||
-      preview?.json?.blockers?.[0] ||
-      null,
+    selectedExecutionMethod: preview?.json?.preparation?.executionMethod || job.executionMethod,
+    previewStatus: refillPreviewStatus(preview),
+    previewBlockedReason: refillPreviewBlockedReason(preview),
     executed: Boolean(execution),
     executionStatus: active?.json?.execution?.settlementStatus || active?.json?.outcomeEvent?.status || null,
     executionBlockedReason:
@@ -278,7 +297,7 @@ export async function runAllChainAutopilot({
   const autoRefillJobs = (refillPlan?.jobs || []).filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
 
   for (const job of autoRefillJobs) {
-    const preview = await runJsonStep({
+    let preview = await runJsonStep({
       name: `treasury_refill_preview:${job.jobId}`,
       args: ["src/cli/run-refill-job-stub.mjs", `--job-id=${job.jobId}`, "--json"],
       runCommandImpl,
@@ -286,11 +305,33 @@ export async function runAllChainAutopilot({
       timeoutMs,
       steps,
     });
+    if (refillPreviewBlockedReason(preview) === "no_route") {
+      for (const method of forcedRefillMethodArgs(job, job.executionMethod)) {
+        const alternatePreview = await runJsonStep({
+          name: `treasury_refill_preview:${job.jobId}:${method}`,
+          args: ["src/cli/run-refill-job-stub.mjs", `--job-id=${job.jobId}`, `--method=${method}`, "--json"],
+          runCommandImpl,
+          cwd,
+          timeoutMs,
+          steps,
+        });
+        preview = alternatePreview;
+        if (refillPreviewBlockedReason(preview) !== "no_route" || refillPreparationReady(preview.json)) break;
+      }
+    }
     let execution = null;
     if (execute && refillPreparationReady(preview.json)) {
+      const method = preview.json?.forcedMethod || null;
       execution = await runJsonStep({
         name: `treasury_refill_execute:${job.jobId}`,
-        args: ["src/cli/run-refill-job-stub.mjs", `--job-id=${job.jobId}`, "--json", "--execute", "--mode=live"],
+        args: [
+          "src/cli/run-refill-job-stub.mjs",
+          `--job-id=${job.jobId}`,
+          ...(method ? [`--method=${method}`] : []),
+          "--json",
+          "--execute",
+          "--mode=live",
+        ],
         runCommandImpl,
         cwd,
         timeoutMs,

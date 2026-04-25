@@ -215,3 +215,82 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(timeouts["src/cli/run-strategy-catalog-dispatcher.mjs"], 789);
   assert.equal(timeouts["src/cli/run-merkl-canary-autopilot.mjs"], 123);
 });
+
+test("all-chain autopilot retries refill jobs with executable alternate methods after no_route", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "gas-alt",
+              chain: "optimism",
+              asset: "ETH",
+              type: "refill_native",
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_or_swap",
+                  availability: "ready",
+                  source: { chain: "base", token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf" },
+                  missingInputs: [],
+                },
+                {
+                  method: "gas_refuel_bridge_gas_zip",
+                  availability: "conditional",
+                  source: { chain: "base", token: "0x0000000000000000000000000000000000000000" },
+                  missingInputs: [],
+                  settlementRequirements: ["gas_zip_destination_native_delta_proof_required"],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (!args.includes("--method=gas_refuel_bridge_gas_zip")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: { preparation: { status: "blocked", blockedReason: "no_route" } },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "gas_refuel_bridge_gas_zip",
+          preparation: { status: "ready", executionMethod: "gas_refuel_bridge_gas_zip" },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(report.refillExecutions[0].selectedExecutionMethod, "gas_refuel_bridge_gas_zip");
+  assert.equal(report.refillExecutions[0].executionStatus, "delivered");
+  assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
+});

@@ -161,7 +161,7 @@ test("emergency unwind intent passes cap-check and hf-check via policy", async (
   assert.equal(policy.decision, "ALLOW");
 });
 
-test("tiny_live_canary policy can pass while autoExecute disabled blocks live execution", async () => {
+test("tiny_live_canary policy passes for reopened recursive wrapped BTC loop", async () => {
   const intent = buildTinyLiveCanaryIntent({
     strategyId: "recursive_wrapped_btc_lending_loop",
     chain: "base",
@@ -184,8 +184,8 @@ test("tiny_live_canary policy can pass while autoExecute disabled blocks live ex
     },
     now: "2026-04-22T00:00:00.000Z",
   });
-  assert.equal(policy.decision, "BLOCK");
-  assert.ok(policy.blockers.includes("strategy_auto_execute_disabled"));
+  assert.equal(policy.decision, "ALLOW");
+  assert.equal(policy.blockers.includes("strategy_auto_execute_disabled"), false);
   const tinyLiveResult = policy.results.find((r) => r.policy === "tiny_live_canary");
   assert.ok(tinyLiveResult);
   assert.equal(tinyLiveResult.decision, "ALLOW");

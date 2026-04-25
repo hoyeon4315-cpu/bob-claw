@@ -10,7 +10,7 @@ import { resolveAaveMarketBinding } from "../defi/aave-market-addresses.mjs";
 
 const DIRECT_LENDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "bend", "avalon", "benqi"]);
 const FIXED_YIELD_PROTOCOLS = new Set(["pendle"]);
-const OPERATOR_HELD_STRATEGIES = new Set(["recursive_wrapped_btc_lending_loop"]);
+const OPERATOR_HELD_STRATEGIES = new Set([]);
 
 const CHAIN_NAME_MAP = Object.freeze({
   ethereum: "ethereum",

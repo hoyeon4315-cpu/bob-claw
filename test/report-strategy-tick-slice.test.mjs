@@ -156,7 +156,7 @@ test("report-strategy-tick-slice joins reconciled sats profit into promotion evi
   assert.equal(slice.summary.strategiesLiveEligible, 1);
 });
 
-test("report-strategy-tick-slice excludes operator-held wrapped BTC loop from live eligible count", async () => {
+test("report-strategy-tick-slice includes reopened wrapped BTC loop in live eligible count", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-hold-"));
   const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
   const auditLog = join(cwd, "logs", "signer-audit.jsonl");
@@ -217,13 +217,13 @@ test("report-strategy-tick-slice excludes operator-held wrapped BTC loop from li
   const slice = JSON.parse(await readFile(outPath, "utf8"));
   const row = slice.strategies[0];
   assert.equal(row.promotion.fastTrack.eligible, true);
-  assert.equal(row.operatorHold, true);
-  assert.equal(row.autoExecute, false);
-  assert.equal(row.liveEligibility.liveEligible, false);
-  assert.equal(row.liveEligibility.blockers.includes("strategy_auto_execute_disabled"), true);
-  assert.equal(row.liveEligibility.blockers.includes("operator_hold"), true);
+  assert.equal(row.operatorHold, false);
+  assert.equal(row.autoExecute, true);
+  assert.equal(row.liveEligibility.liveEligible, true);
+  assert.equal(row.liveEligibility.blockers.includes("strategy_auto_execute_disabled"), false);
+  assert.equal(row.liveEligibility.blockers.includes("operator_hold"), false);
   assert.equal(slice.summary.strategiesEligibleFastTrack, 1);
-  assert.equal(slice.summary.strategiesLiveEligible, 0);
-  assert.equal(slice.summary.strategiesOperatorHold, 1);
-  assert.equal(slice.strategyStage.liveReadyCount, 0);
+  assert.equal(slice.summary.strategiesLiveEligible, 1);
+  assert.equal(slice.summary.strategiesOperatorHold, 0);
+  assert.equal(slice.strategyStage.liveReadyCount, 1);
 });

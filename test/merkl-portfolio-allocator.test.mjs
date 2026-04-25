@@ -5,6 +5,8 @@ import {
   buildMerklPortfolioAllocationPlan,
   executionErrorBlockers,
   merklPortfolioScore,
+  parseInsufficientAssetBalance,
+  retryAmountFromAvailableBalance,
 } from "../src/executor/merkl-portfolio-allocator.mjs";
 
 function queueItem(overrides = {}) {
@@ -292,6 +294,14 @@ test("allocator can still block duplicate opportunities when top-ups are disable
 });
 
 test("allocator downgrades live balance races to a blocked execution", () => {
+  assert.deepEqual(
+    parseInsufficientAssetBalance(new Error("Insufficient asset balance: required 111570916, available 104493122")),
+    { required: "111570916", available: "104493122" },
+  );
+  assert.equal(
+    retryAmountFromAvailableBalance({ available: "104493122", reservePct: 0.05 }),
+    "99268465",
+  );
   assert.deepEqual(
     executionErrorBlockers(new Error("Insufficient asset balance: required 111570916, available 104493122")),
     ["insufficient_asset_balance"],

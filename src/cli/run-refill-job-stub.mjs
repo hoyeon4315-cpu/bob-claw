@@ -24,7 +24,10 @@ import {
 } from "../executor/helpers/treasury-refill-job.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { readRefillJobById } from "../executor/helpers/refill-job-store.mjs";
-import { resolveRefillBridgeFallback } from "../executor/helpers/refill-fallback.mjs";
+import {
+  forceRefillExecutionMethod,
+  resolveRefillBridgeFallback,
+} from "../executor/helpers/refill-fallback.mjs";
 
 export function parseArgs(argv) {
   const flags = new Set(argv);
@@ -42,6 +45,7 @@ export function parseArgs(argv) {
     execute: flags.has("--execute"),
     jobId: options["job-id"] || null,
     mode: options.mode || "dry_run",
+    method: options.method || null,
     socketPath: options["socket-path"] || signerSocketPath(),
     timeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : signerClientTimeoutMs(),
     awaitConfirmation: !flags.has("--no-await-confirmation"),
@@ -96,15 +100,20 @@ async function main() {
   let job = jobs;
   if (!job) throw new Error(`Job not found: ${args.jobId}`);
   const store = new JsonlStore(config.dataDir);
-  const fallbackResolution = resolveRefillBridgeFallback({
-    job,
-    events,
-    mode: args.execute ? args.mode : "live_quote_snapshot",
-  });
-  job = fallbackResolution.job;
-  if (fallbackResolution.fallbackEvent) {
-    await store.append("execution-journal", fallbackResolution.fallbackEvent);
-    events.push(fallbackResolution.fallbackEvent);
+  const methodResolution = args.method
+    ? forceRefillExecutionMethod({ job, method: args.method })
+    : resolveRefillBridgeFallback({
+        job,
+        events,
+        mode: args.execute ? args.mode : "live_quote_snapshot",
+      });
+  if (methodResolution.error) {
+    throw new Error(methodResolution.error);
+  }
+  job = methodResolution.job;
+  if (methodResolution.fallbackEvent) {
+    await store.append("execution-journal", methodResolution.fallbackEvent);
+    events.push(methodResolution.fallbackEvent);
   }
   const resolved = await resolveOperationalAddress({ explicitAddress: job.address || null, dataDir: config.dataDir });
 
@@ -280,7 +289,8 @@ async function main() {
 
   if (args.json) {
     console.log(safeJsonStringify({
-      fallbackEvent: fallbackResolution.fallbackEvent,
+      fallbackEvent: methodResolution.fallbackEvent || null,
+      forcedMethod: args.method || null,
       inventorySource,
       preparation,
       snapshotEvent,

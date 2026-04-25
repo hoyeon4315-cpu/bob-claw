@@ -704,6 +704,51 @@ test("treasury refill executor dispatches LI.FI fallback preparations", async ()
   assert.equal(execution.plan.marker, "lifi");
 });
 
+test("treasury refill executor can prepare direct LI.FI refill candidates", async () => {
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-direct-lifi",
+      type: "refill_token",
+      chain: "unichain",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "9000",
+      targetAmountDecimal: 0.00009,
+      estimatedAssetValueUsd: 7,
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: baseCbbtc,
+          actual: "33053",
+          actualDecimal: 0.00033053,
+          estimatedUsd: 25,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-25T00:00:00.000Z",
+      planStatus: "ready",
+      srcChain: input.srcChain,
+      dstChain: input.dstChain,
+      srcToken: input.srcToken,
+      dstToken: input.dstToken,
+      amount: input.amount,
+      minimumOutputAmount: "9100",
+      steps: [{ id: "lifi_bridge" }],
+    }),
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "lifi_bridge");
+  assert.equal(preparation.plan.srcToken, baseCbbtc);
+  assert.equal(preparation.plan.dstToken, WBTC_OFT_TOKEN);
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor blocks composite plan when DEX step fails", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {

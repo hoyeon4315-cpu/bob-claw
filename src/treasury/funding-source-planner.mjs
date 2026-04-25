@@ -636,10 +636,9 @@ function gasRefuelCandidate(action, plan, policy) {
 }
 
 function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContext = null } = {}) {
-  // Only emit alt-bridge candidates when Gateway is unavailable. Under
-  // normal operation Gateway remains the primary BTC-family lane and
-  // these entries would just add noise to the chooser.
-  if (gatewayAvailable) return [];
+  // Gateway remains the preferred BTC-family lane, but live non-Gateway
+  // providers stay in the candidate list so autopilot can retry them when
+  // the selected Gateway quote returns `no_route`.
   if (action?.type !== "refill_token" && action?.type !== "refill_native") return [];
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   if (!selectedSource) return [];

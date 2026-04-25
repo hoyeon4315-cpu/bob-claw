@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   consecutiveBridgeFailureCount,
+  forceRefillExecutionMethod,
+  refillCandidateExecutable,
   refillBridgeCandidates,
+  refillExecutionCandidates,
   resolveRefillBridgeFallback,
 } from "../src/executor/helpers/refill-fallback.mjs";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
@@ -93,6 +96,40 @@ test("refill bridge fallback candidates keep executable methods in rank order", 
     "cross_chain_bridge_across",
   ]);
   assert.equal(candidates[1].source.chain, "optimism");
+});
+
+test("refill execution candidates can force a non-bridge gas refuel fallback", () => {
+  const job = jobFixture({
+    type: "refill_native",
+    asset: "ETH",
+    executionMethod: "cross_chain_bridge_or_swap",
+    candidateMethods: [
+      ...jobFixture().candidateMethods,
+      {
+        method: "gas_refuel_bridge_gas_zip",
+        availability: "conditional",
+        source: {
+          chain: "base",
+          token: "0x0000000000000000000000000000000000000000",
+          actual: "10000000000000000",
+          actualDecimal: 0.01,
+          estimatedUsd: 20,
+        },
+        missingInputs: [],
+        settlementRequirements: ["gas_zip_destination_native_delta_proof_required"],
+      },
+    ],
+  });
+
+  const candidates = refillExecutionCandidates(job);
+  const gasZip = candidates.find((item) => item.method === "gas_refuel_bridge_gas_zip");
+  assert.equal(refillCandidateExecutable(gasZip), true);
+
+  const forced = forceRefillExecutionMethod({ job, method: "gas_refuel_bridge_gas_zip" });
+  assert.equal(forced.error, null);
+  assert.equal(forced.job.executionMethod, "gas_refuel_bridge_gas_zip");
+  assert.equal(forced.job.fundingSource.method, "gas_refuel_bridge_gas_zip");
+  assert.equal(forced.job.fundingSource.source.chain, "base");
 });
 
 test("refill bridge fallback advances after three consecutive failures", () => {

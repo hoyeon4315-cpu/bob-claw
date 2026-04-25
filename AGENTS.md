@@ -19,7 +19,7 @@
 - Treat all profit claims as hypotheses until replay/shadow/live receipt data confirms them.
 - If data says no trade, no trade.
 - **Operator override (2026-04-24):** Merkl portfolio monetization is now in live-capital validation mode. Do not add more paper-only phase gates before execution. If the Merkl allocator/exit/refill path has committed caps, supported executor binding, inventory, required receipt proof, clear kill-switch, and deterministic policy approval, run it live within cap. The capital at risk is the validation sample.
-- **Operator override (2026-04-22):** `wrapped-btc-loop-base-moonwell` and the broader wrapped-BTC lending-loop lane are on hold until an explicit committed diff removes the hold. Treat the current economics as insufficient, do not present that lane as primary alpha, and do not spend additional live-promotion effort on it unless the task is unwind/safety/receipt cleanup or the operator explicitly reopens the lane.
+- **Operator override (2026-04-25):** `wrapped-btc-loop-base-moonwell` and the broader wrapped-BTC lending-loop lane are reopened for live-capital validation. They may run only through committed caps, health-factor/liquidation-buffer policy, automatic unwind, receipt proof, and the same kill-switch path as every other live strategy.
 - If route alpha is exhausted, stop route brute-force and switch the primary review lane to receipt-backed strategy evidence.
 - Overfitting guards: no strategy goes live solely on a single-period or single-pair backtest. At minimum, Walk-Forward purged/embargoed CV + at least one regime change in the sample window. Detail in `docs/research/ops-costs.md`.
 
@@ -180,8 +180,8 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
   - ETH/stable mixed loops: `thin_coverage`
   - ETH mixed triangle: `analysis_only`
   - ETH mixed flash: `analysis_only`
-  - Lending-protocol looping: `operator_hold` for wrapped-BTC lending-loop variants. Repo auto-build support and some receipts exist, but the operator's current judgment is that economics are not good enough for further promotion.
-  - Wrapped BTC lending loop: `operator_hold` / not a primary lane. Limit work to unwind safety, evidence archiving, or explicit operator-directed reactivation.
+  - Lending-protocol looping: live-capital validation reopened for wrapped-BTC lending-loop variants; health-factor, liquidation-buffer, cap, unwind, and receipt gates remain mandatory.
+  - Wrapped BTC lending loop: reopened as a capped live-validation lane. Do not bypass policy, but do include it in automatic deployment when caps and inventory permit.
   - ETH destination deployment: `design_scaffold` / allowed research and implementation target when fee domain, unwind cost, and BTC return path are measured.
   - Gateway native asset conversion sleeve: `design_scaffold` / intended for ETH, stable, gold, reserve, and other approved asset-family deployment with BTC payback compatibility.
   - **Payback engine: `scaffolded_active_carry`** — scheduler/accumulator/config exist and are reporting BTC-denominated pending carry. Current blocker is `planned_payback_below_minimum`, not missing payback code.

@@ -157,6 +157,7 @@ export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
   if (job.executionMethod === "cross_chain_swap_via_btc_intermediate") return "cross_chain_btc_intermediate";
   if (job.executionMethod === "cross_chain_bridge_across") return "across_bridge";
+  if (job.executionMethod === "cross_chain_bridge_lifi") return "lifi_bridge";
   return null;
 }
 
@@ -284,6 +285,20 @@ export async function buildTreasuryRefillExecutionPlan({
       srcChain: source.chain,
       dstChain: job.chain,
       ticker,
+      amount,
+      senderAddress,
+      recipient: senderAddress,
+    });
+  } else if (executor === "lifi_bridge") {
+    const amount = job.type === "refill_native"
+      ? estimateInputAmountFromSource({ job, source })
+      : positiveBigInt(job.targetAmount)?.toString() || null;
+    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    plan = await buildLifiBridgePlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      srcToken: source.token,
+      dstToken: job.type === "refill_native" ? ZERO_TOKEN : job.token,
       amount,
       senderAddress,
       recipient: senderAddress,

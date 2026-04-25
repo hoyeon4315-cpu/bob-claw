@@ -58,7 +58,7 @@
 ### 2.3 자본 효율 원칙
 
 - **유휴 금지.** 24h 이상 무이용 자본은 자동 라우팅 후보. classifier가 카테고리 결정 → routing engine이 전략 선택.
-- **공격적 cap.** Merkl/Gateway 운영 cap은 상향하되 wrapped-BTC lending-loop는 `operator_hold`가 풀릴 때까지 제외한다. 단일 손실 한도 증가는 [src/config/auto-kill.mjs](../../src/config/auto-kill.mjs) 자동 kill-switch 트리거가 선행되어야 한다.
+- **공격적 cap.** Merkl/Gateway/wrapped-BTC lending-loop 운영 cap은 committed config로만 상향한다. 단일 손실 한도 증가는 [src/config/auto-kill.mjs](../../src/config/auto-kill.mjs) 자동 kill-switch 트리거가 선행되어야 한다.
 - **순이익 음수면 거부.** 가스+슬리피지+round-trip 비용을 뺀 뒤에도 양수일 때만 진입. policy `min-net-profit` 게이트가 강제.
 
 ---

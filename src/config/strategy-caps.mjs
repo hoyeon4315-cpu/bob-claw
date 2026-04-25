@@ -49,6 +49,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 1_000_000,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
       gasFloat: Object.freeze({
         bob: Object.freeze({ minUsd: 3, targetUsd: 6 }),
@@ -81,6 +82,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 1_000_000,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
@@ -594,7 +596,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "recursive_wrapped_btc_lending_loop": Object.freeze({
     strategyId: "recursive_wrapped_btc_lending_loop",
     label: "Recursive wrapped-BTC lending loop",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),
@@ -609,6 +611,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 1_000_000,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
     leverage: Object.freeze({
       healthFactorMin: 1.35,
@@ -626,7 +629,7 @@ export const STRATEGY_CAPS = Object.freeze({
   "wrapped-btc-loop-base-moonwell": Object.freeze({
     strategyId: "wrapped-btc-loop-base-moonwell",
     label: "Wrapped BTC lending loop (Base / Moonwell)",
-    autoExecute: false,
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),
@@ -634,14 +637,14 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: true,
     }),
     caps: Object.freeze({
-      perTxUsd: 5,
-      perDayUsd: 25,
+      perTxUsd: 500,
+      perDayUsd: 2_000,
       perChainUsd: Object.freeze({
-        base: 25,
+        base: 2_000,
       }),
-      maxDailyLossUsd: 25,
+      maxDailyLossUsd: 250,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
-      tinyLivePerTxUsd: 5,
+      tinyLivePerTxUsd: 25,
     }),
     leverage: Object.freeze({
       healthFactorMin: 1.35,
