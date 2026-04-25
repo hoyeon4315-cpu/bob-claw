@@ -17,6 +17,7 @@ import { buildLifiBridgePlan, executeLifiBridgePlan } from "./lifi-bridge.mjs";
 const INPUT_BUFFER_MULTIPLIER = 1.1;
 const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
 const GATEWAY_BTC_ONRAMP_MIN_SATS = 5000n;
+const PARTIAL_REFILL_MIN_COVERAGE_BPS = 8500n;
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
@@ -96,11 +97,21 @@ function coverageForPlan({ plan, job, executor }) {
   const outputAmount = positiveBigInt(outputAmountForCoverage(plan, executor));
   const targetAmount = positiveBigInt(job?.targetAmount);
   const coversTarget = outputAmount != null && targetAmount != null ? outputAmount >= targetAmount : null;
+  const coverageBps = outputAmount != null && targetAmount != null && targetAmount > 0n
+    ? (outputAmount * 10_000n) / targetAmount
+    : null;
   return {
     targetAmount: targetAmount?.toString() || job?.targetAmount || null,
     minimumOutputAmount: outputAmount?.toString() || outputAmountForCoverage(plan, executor),
     coversTarget,
+    coverageBps: coverageBps?.toString() || null,
+    partialRefill: coversTarget === false && coverageBps != null && coverageBps >= PARTIAL_REFILL_MIN_COVERAGE_BPS,
+    partialRefillMinCoverageBps: PARTIAL_REFILL_MIN_COVERAGE_BPS.toString(),
   };
+}
+
+function refillCoverageAcceptable(coverage = {}) {
+  return coverage.coversTarget !== false || coverage.partialRefill === true;
 }
 
 function isNoRoutePlan(plan = null) {
@@ -383,7 +394,7 @@ export async function buildTreasuryRefillExecutionPlan({
         });
         if (lifiPlan.planStatus === "ready") {
           const lifiCoverage = coverageForPlan({ plan: lifiPlan, job, executor: "lifi_bridge" });
-          if (lifiCoverage.coversTarget !== false) {
+          if (refillCoverageAcceptable(lifiCoverage)) {
             return readyPreparation({ job, executor: "lifi_bridge", plan: lifiPlan, coverage: lifiCoverage });
           }
           return blockedPreparation({
@@ -426,7 +437,7 @@ export async function buildTreasuryRefillExecutionPlan({
         executor: plan.step3 ? "token_dex_experiment" : "gateway_btc_consolidation",
       })
     : coverageForPlan({ plan, job, executor });
-  if (coverage.coversTarget === false) {
+  if (!refillCoverageAcceptable(coverage)) {
     return blockedPreparation({
       job,
       executor,

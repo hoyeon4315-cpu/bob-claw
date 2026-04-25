@@ -749,6 +749,95 @@ test("treasury refill executor can prepare direct LI.FI refill candidates", asyn
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor allows high-coverage partial LI.FI refills", async () => {
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-direct-lifi-partial",
+      type: "refill_token",
+      chain: "bera",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 8,
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: baseCbbtc,
+          actual: "33053",
+          actualDecimal: 0.00033053,
+          estimatedUsd: 25,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-25T00:00:00.000Z",
+      planStatus: "ready",
+      srcChain: input.srcChain,
+      dstChain: input.dstChain,
+      srcToken: input.srcToken,
+      dstToken: input.dstToken,
+      amount: input.amount,
+      minimumOutputAmount: "8700",
+      steps: [{ id: "lifi_bridge" }],
+    }),
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "lifi_bridge");
+  assert.equal(preparation.coverage.coversTarget, false);
+  assert.equal(preparation.coverage.partialRefill, true);
+  assert.equal(preparation.coverage.coverageBps, "8700");
+});
+
+test("treasury refill executor still blocks low-coverage partial LI.FI refills", async () => {
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-direct-lifi-low-partial",
+      type: "refill_token",
+      chain: "bera",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 8,
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: baseCbbtc,
+          actual: "33053",
+          actualDecimal: 0.00033053,
+          estimatedUsd: 25,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-25T00:00:00.000Z",
+      planStatus: "ready",
+      srcChain: input.srcChain,
+      dstChain: input.dstChain,
+      srcToken: input.srcToken,
+      dstToken: input.dstToken,
+      amount: input.amount,
+      minimumOutputAmount: "8400",
+      steps: [{ id: "lifi_bridge" }],
+    }),
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.blockedReason, "executor_output_below_refill_target");
+  assert.equal(preparation.coverage.partialRefill, false);
+  assert.equal(preparation.coverage.coverageBps, "8400");
+});
+
 test("treasury refill executor blocks composite plan when DEX step fails", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
