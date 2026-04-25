@@ -44,6 +44,11 @@
 - Max consecutive failures per strategy: 3 → auto-pause that strategy until the operator resumes it via a committed config flip.
 - Failed-gas budget guard (`maxFailedGasCost24hUsd`) is enforced by the daemon — a route burning gas without fills auto-pauses.
 - Drawdown kill-switch: if a strategy's realized 24h PnL drops below its `maxDailyLossUsd`, the daemon halts that strategy for the remainder of the day.
+- **Auto kill-switch triggers (system-wide).** `src/risk/auto-kill-triggers.mjs` evaluates four conditions every all-chain autopilot tick (`auto_kill_check` step). Any trip writes the kill-switch file at `$KILL_SWITCH_PATH`, halting every signer broadcast and the payback offramp. Resume is manual — `rm` the file after operator review. Defaults live in `src/config/auto-kill.mjs`; overrides require a committed diff.
+  - `cumulative_loss` — realized 24h net USD loss across the audit log breaches `thresholdUsd` (or `operatingCapitalFractionFloor` of operating capital, whichever is lower).
+  - `failure_burst_per_strategy` and `failure_burst` — per-strategy or global rejected/reverted/error count inside `windowMs`.
+  - `oracle_divergence` — multi-source price spread exceeds `maxDivergencePct`. Requires `$AUTO_KILL_ORACLES_PATH` to point at a JSON file with a `samples` array.
+  - `heartbeat_stale` — signer heartbeat older than `maxAgeMs`. Requires `$EXECUTOR_HEARTBEAT_PATH`.
 - Stale quotes rejected.
 - **Payback-specific caps (declared in `src/config/payback.mjs`):**
   - `baseRatio` — default payback fraction of realized harvest profit, BTC units. Default 0.20. Config-only change.
