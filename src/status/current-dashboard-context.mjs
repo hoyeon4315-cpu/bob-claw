@@ -26,6 +26,7 @@ import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategyS
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import { buildAllChainAutopilotDashboardSlice } from "./all-chain-autopilot-slice.mjs";
+import { buildCapitalSummarySlice } from "./capital-summary-slice.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
@@ -320,6 +321,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.walletHoldings = buildTreasuryHoldingsSlice(treasuryInventoryRecords, {
     generatedAt: dashboardStatus.generatedAt,
   });
+  dashboardStatus.capitalSummary = buildCapitalSummarySlice({
+    walletHoldings: dashboardStatus.walletHoldings,
+    merklActivePositions: dashboardStatus.strategy.merklActivePositions,
+    generatedAt: dashboardStatus.generatedAt,
+  });
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotLatest),
   };
@@ -329,6 +335,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.dataCounts.merklActivePositionCount =
     dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
   dashboardStatus.dataCounts.treasuryInventoryRecords = treasuryInventoryRecords.length;
+  dashboardStatus.dataCounts.capitalSummaryPresent = 1;
   dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotLatest ? 1 : 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,

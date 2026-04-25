@@ -77,6 +77,7 @@ async function bootData() {
   const holdings = status?.walletHoldings || null;
   const merklActive = status?.strategy?.merklActivePositions || null;
   const operations = status?.operations?.allChainAutopilot || null;
+  const capitalSummary = status?.capitalSummary || null;
 
   const lanePolicy = status?.overall?.lanePolicy || {};
   const primaryId = lanePolicy?.candidateId || 'wrapped-btc-loop-base-moonwell';
@@ -188,14 +189,27 @@ async function bootData() {
     generatedAt: status?.generatedAt || null,
   };
 
-  const HOLDINGS = holdings && Array.isArray(holdings.items)
+  const HOLDINGS = capitalSummary && Array.isArray(capitalSummary.walletItems)
+    ? {
+        all: capitalSummary.walletItems,
+        positions: Array.isArray(capitalSummary.positionItems) ? capitalSummary.positionItems : [],
+        totalUsd: Number.isFinite(capitalSummary.totalUsd) ? capitalSummary.totalUsd : null,
+        walletUsd: Number.isFinite(capitalSummary.walletUsd) ? capitalSummary.walletUsd : null,
+        deployedUsd: Number.isFinite(capitalSummary.deployedUsd) ? capitalSummary.deployedUsd : null,
+        pending: false,
+        generatedAt: capitalSummary.generatedAt || status?.generatedAt || null,
+      }
+    : holdings && Array.isArray(holdings.items)
     ? {
         all: holdings.items,
+        positions: [],
         totalUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
+        walletUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
+        deployedUsd: 0,
         pending: holdings.pending === true || holdings.items.length === 0,
         generatedAt: holdings.generatedAt || null,
       }
-    : { all: [], pending: true, totalUsd: null };
+    : { all: [], positions: [], pending: true, totalUsd: null, walletUsd: null, deployedUsd: null };
 
   // P1 — fold chain parity into CHAINS so the UI shows explicit maturity/blockers
   const CHAINS_PARITY = CHAINS.map(c => {

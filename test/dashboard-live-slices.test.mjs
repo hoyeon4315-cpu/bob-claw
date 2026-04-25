@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAllChainAutopilotDashboardSlice } from "../src/status/all-chain-autopilot-slice.mjs";
+import { buildCapitalSummarySlice } from "../src/status/capital-summary-slice.mjs";
 import { buildMerklActivePositions } from "../src/status/merkl-active-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "../src/status/treasury-holdings-slice.mjs";
 
@@ -143,4 +144,40 @@ test("treasury holdings slice normalizes latest inventory into dashboard balance
   assert.equal(slice.activeChainCount, 2);
   assert.equal(slice.refillRequiredCount, 3);
   assert.deepEqual(slice.items.map((item) => item.sym), ["eth", "wbtc"]);
+});
+
+test("capital summary combines wallet balances with deployed Merkl positions", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 205.5,
+      items: [{ sym: "usdc", usd: 100 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 96.25,
+        },
+        {
+          opportunityId: "b",
+          label: "Supply RLUSD on Euler",
+          chain: "ethereum",
+          protocol: "euler",
+          pair: ["rlusd"],
+          capUsd: 51.44,
+        },
+      ],
+    },
+    generatedAt: "2026-04-25T06:00:00.000Z",
+  });
+
+  assert.equal(slice.walletUsd, 205.5);
+  assert.equal(slice.deployedUsd, 147.69);
+  assert.equal(slice.totalUsd, 353.19);
+  assert.equal(slice.activePositionCount, 2);
+  assert.deepEqual(slice.positionItems.map((item) => item.protocol), ["yo", "euler"]);
 });

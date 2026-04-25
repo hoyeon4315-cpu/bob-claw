@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-04-25T05:52:05.369Z",
+  "generatedAt": "2026-04-25T06:28:23.198Z",
   "overall": {
     "severity": "review",
     "liveTrading": "ALLOWED",
@@ -58,7 +58,7 @@
   },
   "gateway": {
     "observedAt": "2026-04-24T02:20:27.503Z",
-    "ageMinutes": 1651.6311,
+    "ageMinutes": 1687.92825,
     "routeCount": 3,
     "chainCount": 2,
     "chains": [
@@ -5056,152 +5056,6 @@
     ],
     "recentFlowEvents": [
       {
-        "observedAt": "2026-04-25T01:38:31.318Z",
-        "srcChain": "soneium",
-        "dstChain": "avalanche",
-        "direction": "chain_to_chain",
-        "path": [
-          "soneium",
-          "bob_gateway",
-          "avalanche"
-        ],
-        "segments": [
-          {
-            "from": "soneium",
-            "to": "bob_gateway",
-            "asset": {
-              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "ticker": "wBTC.OFT",
-              "family": "wrapped_btc",
-              "icon": "wbtc",
-              "decimals": 8,
-              "priceKey": "btc",
-              "chain": "soneium",
-              "isNative": false
-            }
-          },
-          {
-            "from": "bob_gateway",
-            "to": "avalanche",
-            "asset": {
-              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "ticker": "wBTC.OFT",
-              "family": "wrapped_btc",
-              "icon": "wbtc",
-              "decimals": 8,
-              "priceKey": "btc",
-              "chain": "avalanche",
-              "isNative": false
-            }
-          }
-        ],
-        "asset": {
-          "ticker": "wBTC.OFT",
-          "family": "wrapped_btc",
-          "icon": "wbtc",
-          "src": {
-            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "ticker": "wBTC.OFT",
-            "family": "wrapped_btc",
-            "icon": "wbtc",
-            "decimals": 8,
-            "priceKey": "btc",
-            "chain": "soneium",
-            "isNative": false
-          },
-          "dst": {
-            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "ticker": "wBTC.OFT",
-            "family": "wrapped_btc",
-            "icon": "wbtc",
-            "decimals": 8,
-            "priceKey": "btc",
-            "chain": "avalanche",
-            "isNative": false
-          }
-        },
-        "quoteType": "layerZero",
-        "amount": "10000",
-        "inputAmount": "10000",
-        "outputAmount": "10000",
-        "feeRatio": 0,
-        "latencyMs": 716,
-        "estimatedTimeInSecs": 60
-      },
-      {
-        "observedAt": "2026-04-25T01:40:07.662Z",
-        "srcChain": "unichain",
-        "dstChain": "avalanche",
-        "direction": "chain_to_chain",
-        "path": [
-          "unichain",
-          "bob_gateway",
-          "avalanche"
-        ],
-        "segments": [
-          {
-            "from": "unichain",
-            "to": "bob_gateway",
-            "asset": {
-              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "ticker": "wBTC.OFT",
-              "family": "wrapped_btc",
-              "icon": "wbtc",
-              "decimals": 8,
-              "priceKey": "btc",
-              "chain": "unichain",
-              "isNative": false
-            }
-          },
-          {
-            "from": "bob_gateway",
-            "to": "avalanche",
-            "asset": {
-              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "ticker": "wBTC.OFT",
-              "family": "wrapped_btc",
-              "icon": "wbtc",
-              "decimals": 8,
-              "priceKey": "btc",
-              "chain": "avalanche",
-              "isNative": false
-            }
-          }
-        ],
-        "asset": {
-          "ticker": "wBTC.OFT",
-          "family": "wrapped_btc",
-          "icon": "wbtc",
-          "src": {
-            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "ticker": "wBTC.OFT",
-            "family": "wrapped_btc",
-            "icon": "wbtc",
-            "decimals": 8,
-            "priceKey": "btc",
-            "chain": "unichain",
-            "isNative": false
-          },
-          "dst": {
-            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "ticker": "wBTC.OFT",
-            "family": "wrapped_btc",
-            "icon": "wbtc",
-            "decimals": 8,
-            "priceKey": "btc",
-            "chain": "avalanche",
-            "isNative": false
-          }
-        },
-        "quoteType": "layerZero",
-        "amount": "10000",
-        "inputAmount": "10000",
-        "outputAmount": "10000",
-        "feeRatio": 0,
-        "latencyMs": 506,
-        "estimatedTimeInSecs": 60
-      },
-      {
         "observedAt": "2026-04-25T01:40:16.486Z",
         "srcChain": "soneium",
         "dstChain": "base",
@@ -7974,6 +7828,152 @@
         "feeRatio": 0,
         "latencyMs": 519,
         "estimatedTimeInSecs": 60
+      },
+      {
+        "observedAt": "2026-04-25T06:27:55.583Z",
+        "srcChain": "bsc",
+        "dstChain": "avalanche",
+        "direction": "chain_to_chain",
+        "path": [
+          "bsc",
+          "bob_gateway",
+          "avalanche"
+        ],
+        "segments": [
+          {
+            "from": "bsc",
+            "to": "bob_gateway",
+            "asset": {
+              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "ticker": "wBTC.OFT",
+              "family": "wrapped_btc",
+              "icon": "wbtc",
+              "decimals": 8,
+              "priceKey": "btc",
+              "chain": "bsc",
+              "isNative": false
+            }
+          },
+          {
+            "from": "bob_gateway",
+            "to": "avalanche",
+            "asset": {
+              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "ticker": "wBTC.OFT",
+              "family": "wrapped_btc",
+              "icon": "wbtc",
+              "decimals": 8,
+              "priceKey": "btc",
+              "chain": "avalanche",
+              "isNative": false
+            }
+          }
+        ],
+        "asset": {
+          "ticker": "wBTC.OFT",
+          "family": "wrapped_btc",
+          "icon": "wbtc",
+          "src": {
+            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+            "ticker": "wBTC.OFT",
+            "family": "wrapped_btc",
+            "icon": "wbtc",
+            "decimals": 8,
+            "priceKey": "btc",
+            "chain": "bsc",
+            "isNative": false
+          },
+          "dst": {
+            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+            "ticker": "wBTC.OFT",
+            "family": "wrapped_btc",
+            "icon": "wbtc",
+            "decimals": 8,
+            "priceKey": "btc",
+            "chain": "avalanche",
+            "isNative": false
+          }
+        },
+        "quoteType": "layerZero",
+        "amount": "10000",
+        "inputAmount": "10000",
+        "outputAmount": "10000",
+        "feeRatio": 0,
+        "latencyMs": 420,
+        "estimatedTimeInSecs": 60
+      },
+      {
+        "observedAt": "2026-04-25T06:28:20.379Z",
+        "srcChain": "bsc",
+        "dstChain": "soneium",
+        "direction": "chain_to_chain",
+        "path": [
+          "bsc",
+          "bob_gateway",
+          "soneium"
+        ],
+        "segments": [
+          {
+            "from": "bsc",
+            "to": "bob_gateway",
+            "asset": {
+              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "ticker": "wBTC.OFT",
+              "family": "wrapped_btc",
+              "icon": "wbtc",
+              "decimals": 8,
+              "priceKey": "btc",
+              "chain": "bsc",
+              "isNative": false
+            }
+          },
+          {
+            "from": "bob_gateway",
+            "to": "soneium",
+            "asset": {
+              "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "ticker": "wBTC.OFT",
+              "family": "wrapped_btc",
+              "icon": "wbtc",
+              "decimals": 8,
+              "priceKey": "btc",
+              "chain": "soneium",
+              "isNative": false
+            }
+          }
+        ],
+        "asset": {
+          "ticker": "wBTC.OFT",
+          "family": "wrapped_btc",
+          "icon": "wbtc",
+          "src": {
+            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+            "ticker": "wBTC.OFT",
+            "family": "wrapped_btc",
+            "icon": "wbtc",
+            "decimals": 8,
+            "priceKey": "btc",
+            "chain": "bsc",
+            "isNative": false
+          },
+          "dst": {
+            "token": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+            "ticker": "wBTC.OFT",
+            "family": "wrapped_btc",
+            "icon": "wbtc",
+            "decimals": 8,
+            "priceKey": "btc",
+            "chain": "soneium",
+            "isNative": false
+          }
+        },
+        "quoteType": "layerZero",
+        "amount": "10000",
+        "inputAmount": "10000",
+        "outputAmount": "10000",
+        "feeRatio": 0,
+        "latencyMs": 402,
+        "estimatedTimeInSecs": 60
       }
     ],
     "assetCoverage": {
@@ -8107,8 +8107,8 @@
           "ticker": "wBTC.OFT",
           "family": "wrapped_btc",
           "icon": "wbtc",
-          "quoteCount": 475,
-          "lastObservedAt": "2026-04-25T05:52:02.375Z"
+          "quoteCount": 477,
+          "lastObservedAt": "2026-04-25T06:28:20.379Z"
         },
         {
           "ticker": "WBTC->wBTC.OFT",
@@ -8508,11 +8508,11 @@
     }
   },
   "market": {
-    "observedAt": "2026-04-25T05:51:47.080Z",
-    "ageMinutes": 0.3048166666666667,
+    "observedAt": "2026-04-25T06:27:54.107Z",
+    "ageMinutes": 0.48485,
     "source": "coingecko_or_fallback",
-    "btcUsd": 77545,
-    "wbtcUsd": 77317,
+    "btcUsd": 77504,
+    "wbtcUsd": 77282,
     "chainPriceStaleMinutes": 60,
     "observedChainCount": 0,
     "missingChainCount": 1,
@@ -8521,9 +8521,9 @@
       {
         "chain": "bitcoin",
         "ticker": "BTC",
-        "usd": 77545,
-        "observedAt": "2026-04-25T05:51:47.080Z",
-        "ageMinutes": 0.3048166666666667,
+        "usd": 77504,
+        "observedAt": "2026-04-25T06:27:54.107Z",
+        "ageMinutes": 0.48485,
         "deltaPct": null,
         "stale": false,
         "source": "coingecko_or_fallback",
@@ -8561,124 +8561,124 @@
     "chains": [
       {
         "chain": "avalanche",
-        "observedAt": "2026-04-25T05:38:45.940Z",
-        "ageMinutes": 13.323816666666668,
-        "gasPriceWei": "26095693",
-        "blockNumber": 83823379,
-        "latencyMs": 352,
+        "observedAt": "2026-04-25T06:28:11.168Z",
+        "ageMinutes": 0.2005,
+        "gasPriceWei": "26418519",
+        "blockNumber": 83826217,
+        "latencyMs": 322,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.00006408319330010001,
-        "nativeUsd": 9.445
+        "fallbackTxUsd": 0.00006515070970589999,
+        "nativeUsd": 9.485
       },
       {
         "chain": "base",
-        "observedAt": "2026-04-25T05:38:46.207Z",
-        "ageMinutes": 13.319366666666667,
+        "observedAt": "2026-04-25T06:28:11.569Z",
+        "ageMinutes": 0.19381666666666666,
         "gasPriceWei": "6000000",
-        "blockNumber": 45153089,
-        "latencyMs": 264,
+        "blockNumber": 45154572,
+        "latencyMs": 398,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0036132018000000006,
-        "nativeUsd": 2316.155
+        "fallbackTxUsd": 0.0036122657999999998,
+        "nativeUsd": 2315.555
       },
       {
         "chain": "bera",
-        "observedAt": "2026-04-25T05:38:47.143Z",
-        "ageMinutes": 13.303766666666666,
-        "gasPriceWei": "55020",
-        "blockNumber": 20040404,
-        "latencyMs": 936,
+        "observedAt": "2026-04-25T06:28:12.482Z",
+        "ageMinutes": 0.1786,
+        "gasPriceWei": "100047",
+        "blockNumber": 20041887,
+        "latencyMs": 907,
         "fallbackGasUnits": 260000,
         "fallbackTxUsd": null,
         "nativeUsd": null
       },
       {
         "chain": "bob",
-        "observedAt": "2026-04-25T05:38:47.451Z",
-        "ageMinutes": 13.298633333333333,
+        "observedAt": "2026-04-25T06:28:12.833Z",
+        "ageMinutes": 0.17275,
         "gasPriceWei": "1000252",
-        "blockNumber": 32116770,
-        "latencyMs": 307,
+        "blockNumber": 32118252,
+        "latencyMs": 350,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0006023520544756001,
-        "nativeUsd": 2316.155
+        "fallbackTxUsd": 0.0006021960151636,
+        "nativeUsd": 2315.555
       },
       {
         "chain": "bsc",
-        "observedAt": "2026-04-25T05:38:47.654Z",
-        "ageMinutes": 13.29525,
+        "observedAt": "2026-04-25T06:28:13.031Z",
+        "ageMinutes": 0.16945,
         "gasPriceWei": "50000000",
-        "blockNumber": 94541098,
-        "latencyMs": 203,
+        "blockNumber": 94547681,
+        "latencyMs": 198,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.008276775,
-        "nativeUsd": 636.675
+        "fallbackTxUsd": 0.00827593,
+        "nativeUsd": 636.61
       },
       {
         "chain": "ethereum",
-        "observedAt": "2026-04-25T05:38:48.009Z",
-        "ageMinutes": 13.289333333333333,
-        "gasPriceWei": "87357016",
-        "blockNumber": 24954966,
-        "latencyMs": 353,
+        "observedAt": "2026-04-25T06:28:13.376Z",
+        "ageMinutes": 0.1637,
+        "gasPriceWei": "91417911",
+        "blockNumber": 24955211,
+        "latencyMs": 344,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0526064212423048,
-        "nativeUsd": 2316.155
+        "fallbackTxUsd": 0.055037632235457296,
+        "nativeUsd": 2315.555
       },
       {
         "chain": "optimism",
-        "observedAt": "2026-04-25T05:38:48.442Z",
-        "ageMinutes": 13.282116666666667,
-        "gasPriceWei": "1000367",
-        "blockNumber": 150748375,
-        "latencyMs": 433,
+        "observedAt": "2026-04-25T06:28:13.707Z",
+        "ageMinutes": 0.15818333333333334,
+        "gasPriceWei": "1000370",
+        "blockNumber": 150749858,
+        "latencyMs": 330,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0006024213075101001,
-        "nativeUsd": 2316.155
+        "fallbackTxUsd": 0.0006022670563909999,
+        "nativeUsd": 2315.555
       },
       {
         "chain": "sei",
-        "observedAt": "2026-04-25T05:38:48.669Z",
-        "ageMinutes": 13.278333333333334,
+        "observedAt": "2026-04-25T06:28:13.931Z",
+        "ageMinutes": 0.15445,
         "gasPriceWei": "55000000000",
-        "blockNumber": 204211900,
-        "latencyMs": 227,
+        "blockNumber": 204217681,
+        "latencyMs": 223,
         "fallbackGasUnits": 260000,
         "fallbackTxUsd": null,
         "nativeUsd": null
       },
       {
         "chain": "soneium",
-        "observedAt": "2026-04-25T05:38:49.168Z",
-        "ageMinutes": 13.270016666666667,
-        "gasPriceWei": "1000319",
-        "blockNumber": 21980388,
-        "latencyMs": 498,
+        "observedAt": "2026-04-25T06:28:14.374Z",
+        "ageMinutes": 0.14706666666666668,
+        "gasPriceWei": "1000306",
+        "blockNumber": 21981870,
+        "latencyMs": 442,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0006023924018957001,
-        "nativeUsd": 2316.155
+        "fallbackTxUsd": 0.0006022285255558,
+        "nativeUsd": 2315.555
       },
       {
         "chain": "sonic",
-        "observedAt": "2026-04-25T05:38:49.918Z",
-        "ageMinutes": 13.257516666666668,
+        "observedAt": "2026-04-25T06:28:15.120Z",
+        "ageMinutes": 0.13463333333333333,
         "gasPriceWei": "55000000000",
-        "blockNumber": 68679436,
-        "latencyMs": 749,
+        "blockNumber": 68682128,
+        "latencyMs": 745,
         "fallbackGasUnits": 260000,
         "fallbackTxUsd": null,
         "nativeUsd": null
       },
       {
         "chain": "unichain",
-        "observedAt": "2026-04-25T05:38:50.164Z",
-        "ageMinutes": 13.253416666666666,
+        "observedAt": "2026-04-25T06:28:15.379Z",
+        "ageMinutes": 0.13031666666666666,
         "gasPriceWei": "1500000",
-        "blockNumber": 46347168,
-        "latencyMs": 245,
+        "blockNumber": 46350133,
+        "latencyMs": 258,
         "fallbackGasUnits": 260000,
-        "fallbackTxUsd": 0.0009033004500000002,
-        "nativeUsd": 2316.155
+        "fallbackTxUsd": 0.0009030664499999999,
+        "nativeUsd": 2315.555
       }
     ],
     "lastFailure": {
@@ -8707,17 +8707,17 @@
     }
   },
   "executionGas": {
-    "estimateCount": 141,
+    "estimateCount": 143,
     "failureCount": 305,
-    "recentEstimateCount24h": 63,
+    "recentEstimateCount24h": 65,
     "recentFailureCount24h": 35,
     "latestEstimate": {
-      "observedAt": "2026-04-25T05:52:04.743Z",
-      "ageMinutes": 0.010433333333333333,
-      "srcChain": "soneium",
-      "dstChain": "bob",
-      "gasUnits": 307603,
-      "estimatedGasUsd": 0.0007125888545416011,
+      "observedAt": "2026-04-25T06:28:22.600Z",
+      "ageMinutes": 0.009966666666666667,
+      "srcChain": "bsc",
+      "dstChain": "soneium",
+      "gasUnits": 306652,
+      "estimatedGasUsd": 0.009760886486,
       "source": "eth_estimateGas"
     },
     "failureReasons": [
@@ -8757,7 +8757,7 @@
     "recentFailureCount24h": 0,
     "latestCheck": {
       "observedAt": "2026-04-22T21:35:09.121Z",
-      "ageMinutes": 3376.9374666666668,
+      "ageMinutes": 3413.2346166666666,
       "srcChain": "base",
       "dstChain": "bitcoin",
       "overallReady": false,
@@ -8777,8 +8777,8 @@
     ]
   },
   "shadowCycle": {
-    "observedAt": "2026-04-25T05:52:00.415Z",
-    "ageMinutes": 0.08256666666666666,
+    "observedAt": "2026-04-25T06:28:18.239Z",
+    "ageMinutes": 0.08265,
     "mode": "CANARY_PREP_BLOCKED",
     "headline": "Best prepared route is still economically blocked after refill costs",
     "blockerCount": 7,
@@ -8790,12 +8790,12 @@
       "readinessCheckCount": 0
     },
     "topRoute": {
-      "label": "soneium->bob wBTC.OFT->wBTC.OFT",
-      "amount": "100",
+      "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
+      "amount": "10000",
       "tradeReadiness": "insufficient_data",
       "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
       "tradeReadinessDetail": null,
-      "netEdgeUsd": -0.24682467219453974
+      "netEdgeUsd": -0.16055739443508288
     },
     "shadowRoster": {
       "candidateCount": 251,
@@ -8805,129 +8805,6 @@
         {
           "role": "active_canary",
           "roleLabel": "현재 canary",
-          "label": "soneium->bob wBTC.OFT->wBTC.OFT",
-          "amount": "100",
-          "srcChain": "soneium",
-          "dstChain": "bob",
-          "viableForPrep": true,
-          "txReady": true,
-          "tradeReadiness": "insufficient_data",
-          "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
-          "tradeReadinessDetail": null,
-          "prepFundingUsd": 0.7340962254416167,
-          "netEdgeUsd": -0.24682467219453974,
-          "prepBlockers": [
-            "native"
-          ],
-          "scoreDisqualifiers": [],
-          "readinessFailureReason": null,
-          "shadowPriorityScore": 10,
-          "shadowPriorityReason": "evidence_accumulating",
-          "evidence": {
-            "quoteSampleCount": 13,
-            "quoteFailureCount": 0,
-            "quoteAttemptCount": 13,
-            "quoteSuccessRate": 1,
-            "quoteLatencyP50Ms": 831,
-            "quoteLatencyP95Ms": 1388,
-            "shadowObservationCount": 42,
-            "latestQuoteObservedAt": "2026-04-25T03:06:39.736Z",
-            "latestFailureObservedAt": null,
-            "latestObservationObservedAt": "2026-04-25T05:46:28.803Z",
-            "latestObservedEdgeUsd": -1.4166195023600523,
-            "latestKnownCostUsd": 0.24643690719453976,
-            "latestExecutionGasUsd": 0.0006023052741108001,
-            "latestRouteFailureRate": 0,
-            "latestTradeReadiness": "insufficient_data",
-            "rejectionReasons": [
-              {
-                "reason": "reject_effective_system_pnl",
-                "count": 42
-              },
-              {
-                "reason": "reject_treasury_execution_refill_cost",
-                "count": 42
-              },
-              {
-                "reason": "treasury_route_refill_economically_unjustified",
-                "count": 42
-              },
-              {
-                "reason": "exact_src_execution_gas_not_estimated",
-                "count": 33
-              },
-              {
-                "reason": "insufficient_data",
-                "count": 33
-              }
-            ]
-          }
-        },
-        {
-          "role": "prep_candidate",
-          "roleLabel": "대안 prep 후보",
-          "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
-          "amount": "10000",
-          "srcChain": "bsc",
-          "dstChain": "avalanche",
-          "viableForPrep": true,
-          "txReady": true,
-          "tradeReadiness": "insufficient_data",
-          "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
-          "tradeReadinessDetail": null,
-          "prepFundingUsd": 7.560168495395036,
-          "netEdgeUsd": -0.10796120027671352,
-          "prepBlockers": [
-            "native",
-            "token"
-          ],
-          "scoreDisqualifiers": [],
-          "readinessFailureReason": null,
-          "shadowPriorityScore": 10,
-          "shadowPriorityReason": "evidence_accumulating",
-          "evidence": {
-            "quoteSampleCount": 6,
-            "quoteFailureCount": 0,
-            "quoteAttemptCount": 6,
-            "quoteSuccessRate": 1,
-            "quoteLatencyP50Ms": 393,
-            "quoteLatencyP95Ms": 448,
-            "shadowObservationCount": 45,
-            "latestQuoteObservedAt": "2026-04-25T03:06:46.290Z",
-            "latestFailureObservedAt": null,
-            "latestObservationObservedAt": "2026-04-25T05:46:28.803Z",
-            "latestObservedEdgeUsd": -1.2777560304422262,
-            "latestKnownCostUsd": 0.0691847002767153,
-            "latestExecutionGasUsd": 0.00828061,
-            "latestRouteFailureRate": 0,
-            "latestTradeReadiness": "insufficient_data",
-            "rejectionReasons": [
-              {
-                "reason": "reject_effective_system_pnl",
-                "count": 45
-              },
-              {
-                "reason": "reject_treasury_execution_refill_cost",
-                "count": 45
-              },
-              {
-                "reason": "exact_src_execution_gas_not_estimated",
-                "count": 38
-              },
-              {
-                "reason": "insufficient_data",
-                "count": 38
-              },
-              {
-                "reason": "treasury_route_refill_economically_unjustified",
-                "count": 25
-              }
-            ]
-          }
-        },
-        {
-          "role": "prep_candidate",
-          "roleLabel": "대안 prep 후보",
           "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
           "amount": "10000",
           "srcChain": "bsc",
@@ -8937,7 +8814,7 @@
           "tradeReadiness": "insufficient_data",
           "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
           "tradeReadinessDetail": null,
-          "prepFundingUsd": 7.613356487606885,
+          "prepFundingUsd": 7.612958612361516,
           "netEdgeUsd": -0.16055739443508288,
           "prepBlockers": [
             "native",
@@ -8999,7 +8876,7 @@
           "tradeReadiness": "insufficient_data",
           "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
           "tradeReadinessDetail": null,
-          "prepFundingUsd": 7.6133726707001745,
+          "prepFundingUsd": 7.612974785292259,
           "netEdgeUsd": -0.16062037026194717,
           "prepBlockers": [
             "native",
@@ -9061,7 +8938,7 @@
           "tradeReadiness": "insufficient_data",
           "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
           "tradeReadinessDetail": null,
-          "prepFundingUsd": 8.063122495953685,
+          "prepFundingUsd": 8.063389345628076,
           "netEdgeUsd": -0.7607882545230825,
           "prepBlockers": [
             "native",
@@ -9107,6 +8984,130 @@
               {
                 "reason": "treasury_route_refill_economically_unjustified",
                 "count": 22
+              }
+            ]
+          }
+        },
+        {
+          "role": "prep_candidate",
+          "roleLabel": "대안 prep 후보",
+          "label": "bsc->base wBTC.OFT->wBTC.OFT",
+          "amount": "10000",
+          "srcChain": "bsc",
+          "dstChain": "base",
+          "viableForPrep": true,
+          "txReady": true,
+          "tradeReadiness": "insufficient_data",
+          "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
+          "tradeReadinessDetail": null,
+          "prepFundingUsd": 8.107540943138684,
+          "netEdgeUsd": -1.175536707924887,
+          "prepBlockers": [
+            "native",
+            "token"
+          ],
+          "scoreDisqualifiers": [],
+          "readinessFailureReason": null,
+          "shadowPriorityScore": 10,
+          "shadowPriorityReason": "evidence_accumulating",
+          "evidence": {
+            "quoteSampleCount": 2,
+            "quoteFailureCount": 0,
+            "quoteAttemptCount": 2,
+            "quoteSuccessRate": 1,
+            "quoteLatencyP50Ms": 374,
+            "quoteLatencyP95Ms": 426,
+            "shadowObservationCount": 39,
+            "latestQuoteObservedAt": "2026-04-13T21:59:17.578Z",
+            "latestFailureObservedAt": null,
+            "latestObservationObservedAt": "2026-04-25T05:46:28.803Z",
+            "latestObservedEdgeUsd": -2.3453315380903996,
+            "latestKnownCostUsd": 1.1367602079248889,
+            "latestExecutionGasUsd": 0.00828061,
+            "latestRouteFailureRate": 0,
+            "latestTradeReadiness": "insufficient_data",
+            "rejectionReasons": [
+              {
+                "reason": "exact_src_execution_gas_not_estimated",
+                "count": 39
+              },
+              {
+                "reason": "insufficient_data",
+                "count": 39
+              },
+              {
+                "reason": "reject_effective_system_pnl",
+                "count": 39
+              },
+              {
+                "reason": "reject_treasury_execution_refill_cost",
+                "count": 39
+              },
+              {
+                "reason": "treasury_route_refill_economically_unjustified",
+                "count": 20
+              }
+            ]
+          }
+        },
+        {
+          "role": "prep_candidate",
+          "roleLabel": "대안 prep 후보",
+          "label": "bsc->ethereum wBTC.OFT->WBTC",
+          "amount": "10000",
+          "srcChain": "bsc",
+          "dstChain": "ethereum",
+          "viableForPrep": true,
+          "txReady": true,
+          "tradeReadiness": "insufficient_data",
+          "tradeReadinessLabel": "가격 또는 가스 데이터가 아직 부족함",
+          "tradeReadinessDetail": null,
+          "prepFundingUsd": 8.142130080638509,
+          "netEdgeUsd": -1.2376785801200327,
+          "prepBlockers": [
+            "native",
+            "token"
+          ],
+          "scoreDisqualifiers": [],
+          "readinessFailureReason": null,
+          "shadowPriorityScore": 10,
+          "shadowPriorityReason": "evidence_accumulating",
+          "evidence": {
+            "quoteSampleCount": 2,
+            "quoteFailureCount": 0,
+            "quoteAttemptCount": 2,
+            "quoteSuccessRate": 1,
+            "quoteLatencyP50Ms": 473,
+            "quoteLatencyP95Ms": 488,
+            "shadowObservationCount": 39,
+            "latestQuoteObservedAt": "2026-04-13T21:59:13.713Z",
+            "latestFailureObservedAt": null,
+            "latestObservationObservedAt": "2026-04-25T05:46:28.803Z",
+            "latestObservedEdgeUsd": -2.4074734102855455,
+            "latestKnownCostUsd": 1.1713710801200348,
+            "latestExecutionGasUsd": 0.00828061,
+            "latestRouteFailureRate": 0,
+            "latestTradeReadiness": "insufficient_data",
+            "rejectionReasons": [
+              {
+                "reason": "exact_src_execution_gas_not_estimated",
+                "count": 39
+              },
+              {
+                "reason": "reject_effective_system_pnl",
+                "count": 39
+              },
+              {
+                "reason": "reject_treasury_execution_refill_cost",
+                "count": 39
+              },
+              {
+                "reason": "insufficient_data",
+                "count": 30
+              },
+              {
+                "reason": "treasury_route_refill_economically_unjustified",
+                "count": 20
               }
             ]
           }
@@ -9157,11 +9158,11 @@
         "blockers": [],
         "blockerLabels": [],
         "currentCanary": {
-          "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "amount": "10000",
-          "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+          "label": "bsc->sonic wBTC.OFT->wBTC.OFT",
           "tradeReadiness": "insufficient_data",
-          "netUsd": -0.10796120027671352,
+          "netUsd": -0.16062037026194717,
           "executableNetUsd": null,
           "viableForPrep": true
         },
@@ -9245,7 +9246,7 @@
       },
       "evidenceCounts": {
         "denseShadowCandidates": 12,
-        "multiAmountCandidates": 3,
+        "multiAmountCandidates": 2,
         "multiHourCandidates": 12
       }
     },
@@ -9258,10 +9259,10 @@
         "code": "check_wallet_readiness",
         "label": "refresh wallet readiness",
         "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"100\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
-        "routeKey": "soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-        "routeLabel": "soneium->bob wBTC.OFT->wBTC.OFT",
-        "amount": "100",
+        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
+        "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        "routeLabel": "bsc->soneium wBTC.OFT->wBTC.OFT",
+        "amount": "10000",
         "routeKeys": [],
         "chains": [],
         "proxyGroup": null,
@@ -9277,9 +9278,9 @@
         "code": "check_wallet_readiness",
         "label": "refresh wallet readiness",
         "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
-        "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-        "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+        "command": "npm run check:estimator-wallet -- --route-key=\"bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
+        "routeKey": "bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+        "routeLabel": "bera->ethereum wBTC.OFT->WBTC",
         "amount": "10000",
         "routeKeys": [],
         "chains": [],
@@ -9296,9 +9297,9 @@
         "code": "check_wallet_readiness",
         "label": "refresh wallet readiness",
         "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
-        "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-        "routeLabel": "bsc->soneium wBTC.OFT->wBTC.OFT",
+        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
+        "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        "routeLabel": "bsc->base wBTC.OFT->wBTC.OFT",
         "amount": "10000",
         "routeKeys": [],
         "chains": [],
@@ -9518,26 +9519,6 @@
       {
         "role": "active_canary",
         "roleLabel": "현재 canary",
-        "label": "soneium->bob wBTC.OFT->wBTC.OFT",
-        "amount": "100",
-        "code": "check_wallet_readiness",
-        "actionLabel": "지갑 준비 점검",
-        "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"100\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
-      },
-      {
-        "role": "prep_candidate",
-        "roleLabel": "대안 prep 후보",
-        "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
-        "amount": "10000",
-        "code": "check_wallet_readiness",
-        "actionLabel": "지갑 준비 점검",
-        "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
-      },
-      {
-        "role": "prep_candidate",
-        "roleLabel": "대안 prep 후보",
         "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
         "amount": "10000",
         "code": "check_wallet_readiness",
@@ -9554,6 +9535,26 @@
         "actionLabel": "지갑 준비 점검",
         "reason": "native",
         "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+      },
+      {
+        "role": "prep_candidate",
+        "roleLabel": "대안 prep 후보",
+        "label": "bera->ethereum wBTC.OFT->WBTC",
+        "amount": "10000",
+        "code": "check_wallet_readiness",
+        "actionLabel": "지갑 준비 점검",
+        "reason": "native",
+        "command": "npm run check:estimator-wallet -- --route-key=\"bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+      },
+      {
+        "role": "prep_candidate",
+        "roleLabel": "대안 prep 후보",
+        "label": "bsc->base wBTC.OFT->wBTC.OFT",
+        "amount": "10000",
+        "code": "check_wallet_readiness",
+        "actionLabel": "지갑 준비 점검",
+        "reason": "native",
+        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
       }
     ],
     "treasury": {
@@ -9613,7 +9614,7 @@
   },
   "canaryAdvance": {
     "observedAt": "2026-04-19T19:52:29.151Z",
-    "ageMinutes": 7799.603633333333,
+    "ageMinutes": 7835.9007833333335,
     "address": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
     "actionCount": 0,
     "actions": [],
@@ -9674,13 +9675,13 @@
       },
       "evidenceCounts": {
         "denseShadowCandidates": 12,
-        "multiAmountCandidates": 3,
+        "multiAmountCandidates": 2,
         "multiHourCandidates": 12
       }
     },
     "crossAssetArbitrage": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:04.917Z",
+      "generatedAt": "2026-04-25T06:28:22.726Z",
       "assetFamily": "btc",
       "amountTolerancePct": 0.02,
       "entryCount": 11,
@@ -10976,96 +10977,169 @@
     },
     "dexEnvironment": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:05.544Z",
+      "generatedAt": "2026-04-25T06:28:23.385Z",
       "policy": {
         "maxLegAgeMinutes": 30,
         "minRepeatedSamples": 2,
         "maxExecutionRangePct": 0.01,
         "maxPriceImpactPct": 3
       },
-      "quoteCount": 915,
+      "quoteCount": 916,
       "legCount": 157,
       "monitoredRouteCount": 105,
-      "staleLegCount": 151,
-      "unstableLegCount": 4,
-      "thinLiquidityLegCount": 2,
+      "staleLegCount": 156,
+      "unstableLegCount": 0,
+      "thinLiquidityLegCount": 0,
       "singleSampleLegCount": 0,
-      "refreshNeededRouteCount": 105,
+      "refreshNeededRouteCount": 104,
       "unstableRouteCount": 0,
       "topRiskRoute": {
-        "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
+        "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
         "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-        "amount": "10000",
+        "amount": "1000",
         "legCount": 3,
-        "latestObservedAt": "2026-04-23T12:56:09.927Z",
+        "latestObservedAt": "2026-04-25T05:47:01.715Z",
         "staleLegCount": 3,
         "unstableLegCount": 0,
         "thinLiquidityLegCount": 0,
         "singleSampleLegCount": 0,
-        "latestExecutionRangePct": 0.03617156083441451,
-        "latestPriceImpactPct": 69.473716,
+        "latestExecutionRangePct": 0.0336533882620896,
+        "latestPriceImpactPct": 49.401474,
         "legs": [
           {
-            "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-            "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
+            "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_dst_leg|bsc|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+            "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
             "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "amount": "10000",
-            "source": "gateway_src_leg",
-            "chain": "base",
-            "inputTicker": "wBTC.OFT",
-            "outputTicker": "USDC",
-            "quoteCount": 8,
-            "latestObservedAt": "2026-04-22T04:22:07.513Z",
-            "ageMinutes": 4409.967183333333,
-            "latestExecutionUsdPerBtc": 77228.50679272384,
-            "executionRangePct": 0.03170755825500252,
-            "latestGasUsd": 0.0046458419344104634,
-            "gasRangePct": 0.5444112451905819,
-            "latestPriceImpactPct": 9.03483157142857,
-            "classification": "stale"
-          },
-          {
-            "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000|gateway_dst_leg|bsc|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
-            "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
-            "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "amount": "10000",
+            "amount": "1000",
             "source": "gateway_dst_leg",
             "chain": "bsc",
             "inputTicker": "wBTC.OFT",
             "outputTicker": "USDC",
-            "quoteCount": 7,
-            "latestObservedAt": "2026-04-22T04:22:10.675Z",
-            "ageMinutes": 4409.914483333333,
-            "latestExecutionUsdPerBtc": 77131.2161805541,
-            "executionRangePct": 0.030826024706578966,
-            "latestGasUsd": 0.010371101423662064,
-            "gasRangePct": 0.7711835681768328,
-            "latestPriceImpactPct": 69.473716,
+            "quoteCount": 14,
+            "latestObservedAt": "2026-04-25T05:47:01.715Z",
+            "ageMinutes": 41.36116666666667,
+            "latestExecutionUsdPerBtc": 76191.14415350951,
+            "executionRangePct": 0.0336533882620896,
+            "latestGasUsd": 0.008811418136862351,
+            "gasRangePct": 0.4656385308690325,
+            "latestPriceImpactPct": 0,
             "classification": "stale"
           },
           {
-            "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
-            "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
+            "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+            "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
             "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-            "amount": "10000",
+            "amount": "1000",
             "source": "gateway_src_entry_leg",
             "chain": "base",
             "inputTicker": "USDC",
             "outputTicker": "wBTC.OFT",
-            "quoteCount": 8,
-            "latestObservedAt": "2026-04-23T12:56:09.927Z",
-            "ageMinutes": 2455.92695,
-            "latestExecutionUsdPerBtc": 77616.16282426879,
-            "executionRangePct": 0.03617156083441451,
-            "latestGasUsd": 0.006125546765905547,
-            "gasRangePct": 0.683044664204838,
+            "quoteCount": 3,
+            "latestObservedAt": "2026-04-19T11:56:39.043Z",
+            "ageMinutes": 8311.739033333333,
+            "latestExecutionUsdPerBtc": 75469.4195655373,
+            "executionRangePct": 0.006957424267379725,
+            "latestGasUsd": 0.0030078002663009944,
+            "gasRangePct": 0.41135948169925574,
             "latestPriceImpactPct": 0,
+            "classification": "stale"
+          },
+          {
+            "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
+            "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+            "amount": "1000",
+            "source": "gateway_src_leg",
+            "chain": "base",
+            "inputTicker": "wBTC.OFT",
+            "outputTicker": "USDC",
+            "quoteCount": 10,
+            "latestObservedAt": "2026-04-25T05:47:01.253Z",
+            "ageMinutes": 41.36886666666667,
+            "latestExecutionUsdPerBtc": 76913.53471476301,
+            "executionRangePct": 0.024501169433176987,
+            "latestGasUsd": 0.00451327777688198,
+            "gasRangePct": 0.41661470883967394,
+            "latestPriceImpactPct": 49.401474,
             "classification": "stale"
           }
         ],
         "classification": "refresh_needed"
       },
       "routes": [
+        {
+          "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
+          "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          "amount": "1000",
+          "legCount": 3,
+          "latestObservedAt": "2026-04-25T05:47:01.715Z",
+          "staleLegCount": 3,
+          "unstableLegCount": 0,
+          "thinLiquidityLegCount": 0,
+          "singleSampleLegCount": 0,
+          "latestExecutionRangePct": 0.0336533882620896,
+          "latestPriceImpactPct": 49.401474,
+          "legs": [
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_dst_leg|bsc|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "1000",
+              "source": "gateway_dst_leg",
+              "chain": "bsc",
+              "inputTicker": "wBTC.OFT",
+              "outputTicker": "USDC",
+              "quoteCount": 14,
+              "latestObservedAt": "2026-04-25T05:47:01.715Z",
+              "ageMinutes": 41.36116666666667,
+              "latestExecutionUsdPerBtc": 76191.14415350951,
+              "executionRangePct": 0.0336533882620896,
+              "latestGasUsd": 0.008811418136862351,
+              "gasRangePct": 0.4656385308690325,
+              "latestPriceImpactPct": 0,
+              "classification": "stale"
+            },
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "1000",
+              "source": "gateway_src_entry_leg",
+              "chain": "base",
+              "inputTicker": "USDC",
+              "outputTicker": "wBTC.OFT",
+              "quoteCount": 3,
+              "latestObservedAt": "2026-04-19T11:56:39.043Z",
+              "ageMinutes": 8311.739033333333,
+              "latestExecutionUsdPerBtc": 75469.4195655373,
+              "executionRangePct": 0.006957424267379725,
+              "latestGasUsd": 0.0030078002663009944,
+              "gasRangePct": 0.41135948169925574,
+              "latestPriceImpactPct": 0,
+              "classification": "stale"
+            },
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "1000",
+              "source": "gateway_src_leg",
+              "chain": "base",
+              "inputTicker": "wBTC.OFT",
+              "outputTicker": "USDC",
+              "quoteCount": 10,
+              "latestObservedAt": "2026-04-25T05:47:01.253Z",
+              "ageMinutes": 41.36886666666667,
+              "latestExecutionUsdPerBtc": 76913.53471476301,
+              "executionRangePct": 0.024501169433176987,
+              "latestGasUsd": 0.00451327777688198,
+              "gasRangePct": 0.41661470883967394,
+              "latestPriceImpactPct": 49.401474,
+              "classification": "stale"
+            }
+          ],
+          "classification": "refresh_needed"
+        },
         {
           "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
           "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
@@ -11090,7 +11164,7 @@
               "outputTicker": "USDC",
               "quoteCount": 8,
               "latestObservedAt": "2026-04-22T04:22:07.513Z",
-              "ageMinutes": 4409.967183333333,
+              "ageMinutes": 4446.264533333333,
               "latestExecutionUsdPerBtc": 77228.50679272384,
               "executionRangePct": 0.03170755825500252,
               "latestGasUsd": 0.0046458419344104634,
@@ -11109,7 +11183,7 @@
               "outputTicker": "USDC",
               "quoteCount": 7,
               "latestObservedAt": "2026-04-22T04:22:10.675Z",
-              "ageMinutes": 4409.914483333333,
+              "ageMinutes": 4446.211833333334,
               "latestExecutionUsdPerBtc": 77131.2161805541,
               "executionRangePct": 0.030826024706578966,
               "latestGasUsd": 0.010371101423662064,
@@ -11128,11 +11202,84 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 8,
               "latestObservedAt": "2026-04-23T12:56:09.927Z",
-              "ageMinutes": 2455.92695,
+              "ageMinutes": 2492.2243,
               "latestExecutionUsdPerBtc": 77616.16282426879,
               "executionRangePct": 0.03617156083441451,
               "latestGasUsd": 0.006125546765905547,
               "gasRangePct": 0.683044664204838,
+              "latestPriceImpactPct": 0,
+              "classification": "stale"
+            }
+          ],
+          "classification": "refresh_needed"
+        },
+        {
+          "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001",
+          "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          "amount": "1001",
+          "legCount": 3,
+          "latestObservedAt": "2026-04-25T05:48:33.723Z",
+          "staleLegCount": 3,
+          "unstableLegCount": 0,
+          "thinLiquidityLegCount": 0,
+          "singleSampleLegCount": 0,
+          "latestExecutionRangePct": 0.03523459382567126,
+          "latestPriceImpactPct": 8.640222701754366,
+          "legs": [
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "1001",
+              "source": "gateway_src_leg",
+              "chain": "base",
+              "inputTicker": "wBTC.OFT",
+              "outputTicker": "USDC",
+              "quoteCount": 13,
+              "latestObservedAt": "2026-04-25T05:48:33.214Z",
+              "ageMinutes": 39.83618333333333,
+              "latestExecutionUsdPerBtc": 76923.31109232987,
+              "executionRangePct": 0.034202926197737446,
+              "latestGasUsd": 0.004513457552596444,
+              "gasRangePct": 0.4866861058081769,
+              "latestPriceImpactPct": 8.640222701754366,
+              "classification": "stale"
+            },
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001|gateway_dst_leg|bsc|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "1001",
+              "source": "gateway_dst_leg",
+              "chain": "bsc",
+              "inputTicker": "wBTC.OFT",
+              "outputTicker": "USDC",
+              "quoteCount": 14,
+              "latestObservedAt": "2026-04-25T05:48:33.723Z",
+              "ageMinutes": 39.8277,
+              "latestExecutionUsdPerBtc": 76320.74635440957,
+              "executionRangePct": 0.033646446907249244,
+              "latestGasUsd": 0.00752324489332563,
+              "gasRangePct": 0.295471758454112,
+              "latestPriceImpactPct": 0,
+              "classification": "stale"
+            },
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1001",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "1001",
+              "source": "gateway_src_entry_leg",
+              "chain": "base",
+              "inputTicker": "USDC",
+              "outputTicker": "wBTC.OFT",
+              "quoteCount": 5,
+              "latestObservedAt": "2026-04-23T12:52:08.429Z",
+              "ageMinutes": 2496.2492666666667,
+              "latestExecutionUsdPerBtc": 77631.2747701507,
+              "executionRangePct": 0.03523459382567126,
+              "latestGasUsd": 0.004565520832814884,
+              "gasRangePct": 0.4113291606361794,
               "latestPriceImpactPct": 0,
               "classification": "stale"
             }
@@ -11163,7 +11310,7 @@
               "outputTicker": "USDC",
               "quoteCount": 7,
               "latestObservedAt": "2026-04-22T06:03:41.316Z",
-              "ageMinutes": 4308.4038,
+              "ageMinutes": 4344.70115,
               "latestExecutionUsdPerBtc": 77798.23856557246,
               "executionRangePct": 0.038486709566019135,
               "latestGasUsd": 0.005027114851082888,
@@ -11182,7 +11329,7 @@
               "outputTicker": "USDC",
               "quoteCount": 8,
               "latestObservedAt": "2026-04-22T06:03:43.692Z",
-              "ageMinutes": 4308.3642,
+              "ageMinutes": 4344.66155,
               "latestExecutionUsdPerBtc": 77751.39216028205,
               "executionRangePct": 0.03856049522932402,
               "latestGasUsd": 0.010424587821116984,
@@ -11201,11 +11348,84 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 4,
               "latestObservedAt": "2026-04-23T12:58:09.961Z",
-              "ageMinutes": 2453.9263833333334,
+              "ageMinutes": 2490.2237333333333,
               "latestExecutionUsdPerBtc": 77646.96278437736,
               "executionRangePct": 0.036005334830539505,
               "latestGasUsd": 0.004571352065780524,
               "gasRangePct": 0.29442190740426066,
+              "latestPriceImpactPct": 0,
+              "classification": "stale"
+            }
+          ],
+          "classification": "refresh_needed"
+        },
+        {
+          "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300",
+          "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          "amount": "300",
+          "legCount": 3,
+          "latestObservedAt": "2026-04-25T05:46:43.463Z",
+          "staleLegCount": 3,
+          "unstableLegCount": 0,
+          "thinLiquidityLegCount": 0,
+          "singleSampleLegCount": 0,
+          "latestExecutionRangePct": 0.0415153056999634,
+          "latestPriceImpactPct": 0.06053194666667315,
+          "legs": [
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "300",
+              "source": "gateway_src_leg",
+              "chain": "base",
+              "inputTicker": "wBTC.OFT",
+              "outputTicker": "USDC",
+              "quoteCount": 18,
+              "latestObservedAt": "2026-04-25T05:46:42.889Z",
+              "ageMinutes": 41.674933333333335,
+              "latestExecutionUsdPerBtc": 76166.67349237234,
+              "executionRangePct": 0.03533621991156093,
+              "latestGasUsd": 0.0029660203559936644,
+              "gasRangePct": 0.015867567100448548,
+              "latestPriceImpactPct": 0.06053194666667315,
+              "classification": "stale"
+            },
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300|gateway_dst_leg|bsc|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "300",
+              "source": "gateway_dst_leg",
+              "chain": "bsc",
+              "inputTicker": "wBTC.OFT",
+              "outputTicker": "USDC",
+              "quoteCount": 17,
+              "latestObservedAt": "2026-04-25T05:46:43.463Z",
+              "ageMinutes": 41.665366666666664,
+              "latestExecutionUsdPerBtc": 74792.5316965993,
+              "executionRangePct": 0.0415153056999634,
+              "latestGasUsd": 0.006845623578254319,
+              "gasRangePct": 0.2881899753439845,
+              "latestPriceImpactPct": 0.03171775985663436,
+              "classification": "stale"
+            },
+            {
+              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|300",
+              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              "amount": "300",
+              "source": "gateway_src_entry_leg",
+              "chain": "base",
+              "inputTicker": "USDC",
+              "outputTicker": "wBTC.OFT",
+              "quoteCount": 7,
+              "latestObservedAt": "2026-04-23T12:56:01.003Z",
+              "ageMinutes": 2492.3730333333333,
+              "latestExecutionUsdPerBtc": 77795.94576627301,
+              "executionRangePct": 0.03063337446095499,
+              "latestGasUsd": 0.0030090115194850004,
+              "gasRangePct": 0.011252658939876191,
               "latestPriceImpactPct": 0,
               "classification": "stale"
             }
@@ -11236,7 +11456,7 @@
               "outputTicker": "USDC",
               "quoteCount": 7,
               "latestObservedAt": "2026-04-22T05:00:44.792Z",
-              "ageMinutes": 4371.345866666667,
+              "ageMinutes": 4407.643216666666,
               "latestExecutionUsdPerBtc": 77297.06928445125,
               "executionRangePct": 0.04754173267659927,
               "latestGasUsd": 0.004639742018884747,
@@ -11255,7 +11475,7 @@
               "outputTicker": "USDC",
               "quoteCount": 7,
               "latestObservedAt": "2026-04-22T05:00:46.922Z",
-              "ageMinutes": 4371.310366666667,
+              "ageMinutes": 4407.607716666666,
               "latestExecutionUsdPerBtc": 69756.80567064867,
               "executionRangePct": 0.08323759359249752,
               "latestGasUsd": 0.7447175362130072,
@@ -11274,7 +11494,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 11,
               "latestObservedAt": "2026-04-19T11:57:22.558Z",
-              "ageMinutes": 8274.716433333333,
+              "ageMinutes": 8311.013783333334,
               "latestExecutionUsdPerBtc": 75469.11134054323,
               "executionRangePct": 0.04163003279813498,
               "latestGasUsd": 0.004563391559594108,
@@ -11309,7 +11529,7 @@
               "outputTicker": "USDC",
               "quoteCount": 14,
               "latestObservedAt": "2026-04-22T05:32:11.723Z",
-              "ageMinutes": 4339.897016666667,
+              "ageMinutes": 4376.194366666667,
               "latestExecutionUsdPerBtc": 77994.21507390597,
               "executionRangePct": 0.056015148016960656,
               "latestGasUsd": 0.004823130980427109,
@@ -11328,7 +11548,7 @@
               "outputTicker": "USDC",
               "quoteCount": 15,
               "latestObservedAt": "2026-04-22T05:32:12.435Z",
-              "ageMinutes": 4339.88515,
+              "ageMinutes": 4376.1825,
               "latestExecutionUsdPerBtc": 67348.84416685054,
               "executionRangePct": 0.12479665124219501,
               "latestGasUsd": 2.6511702399297747,
@@ -11347,7 +11567,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 11,
               "latestObservedAt": "2026-04-19T11:56:51.238Z",
-              "ageMinutes": 8275.238433333334,
+              "ageMinutes": 8311.535783333333,
               "latestExecutionUsdPerBtc": 75439.54191538368,
               "executionRangePct": 0.02602894079818506,
               "latestGasUsd": 0.007686088102224745,
@@ -11382,7 +11602,7 @@
               "outputTicker": "USDC",
               "quoteCount": 6,
               "latestObservedAt": "2026-04-22T07:05:55.200Z",
-              "ageMinutes": 4246.1724,
+              "ageMinutes": 4282.46975,
               "latestExecutionUsdPerBtc": 74108.14280345883,
               "executionRangePct": 0.03791866015994598,
               "latestGasUsd": 1.8044467025905513,
@@ -11401,7 +11621,7 @@
               "outputTicker": "USDC",
               "quoteCount": 6,
               "latestObservedAt": "2026-04-22T07:05:54.384Z",
-              "ageMinutes": 4246.186,
+              "ageMinutes": 4282.48335,
               "latestExecutionUsdPerBtc": 77856.02616176143,
               "executionRangePct": 0.054155935936074144,
               "latestGasUsd": 0.004794983493384629,
@@ -11420,7 +11640,7 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 4,
               "latestObservedAt": "2026-04-18T08:02:39.087Z",
-              "ageMinutes": 9949.44095,
+              "ageMinutes": 9985.7383,
               "latestExecutionUsdPerBtc": 76905.36779189481,
               "executionRangePct": 0.04130158845783014,
               "latestGasUsd": 0.004690565616043362,
@@ -11455,7 +11675,7 @@
               "outputTicker": "USDC",
               "quoteCount": 59,
               "latestObservedAt": "2026-04-21T00:53:12.574Z",
-              "ageMinutes": 6058.882833333333,
+              "ageMinutes": 6095.180183333333,
               "latestExecutionUsdPerBtc": 75815.79878929132,
               "executionRangePct": 0.0412738563130524,
               "latestGasUsd": 0.01063061662494709,
@@ -11474,7 +11694,7 @@
               "outputTicker": "USDC",
               "quoteCount": 58,
               "latestObservedAt": "2026-04-21T02:24:03.630Z",
-              "ageMinutes": 5968.0319,
+              "ageMinutes": 6004.32925,
               "latestExecutionUsdPerBtc": 75433.43709888865,
               "executionRangePct": 0.07839568081628616,
               "latestGasUsd": 0.24950424498880133,
@@ -11493,7 +11713,7 @@
               "outputTicker": "WBTC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-20T23:09:18.736Z",
-              "ageMinutes": 6162.780133333334,
+              "ageMinutes": 6199.0774833333335,
               "latestExecutionUsdPerBtc": 75602.89188351255,
               "executionRangePct": null,
               "latestGasUsd": 0.21198576810797434,
@@ -11528,7 +11748,7 @@
               "outputTicker": "USDC",
               "quoteCount": 1,
               "latestObservedAt": "2026-04-18T22:28:09.794Z",
-              "ageMinutes": 9083.929166666667,
+              "ageMinutes": 9120.226516666668,
               "latestExecutionUsdPerBtc": 75556.27618979519,
               "executionRangePct": null,
               "latestGasUsd": 0.0046362031959460296,
@@ -11547,174 +11767,12 @@
               "outputTicker": "wBTC.OFT",
               "quoteCount": 5,
               "latestObservedAt": "2026-04-19T11:57:08.674Z",
-              "ageMinutes": 8274.947833333334,
+              "ageMinutes": 8311.245183333333,
               "latestExecutionUsdPerBtc": 75435.20254552945,
               "executionRangePct": 0.010909035841063893,
               "latestGasUsd": 0.0030090714647674406,
               "gasRangePct": 0.43179399732887214,
               "latestPriceImpactPct": 0.027843010949923593,
-              "classification": "stale"
-            }
-          ],
-          "classification": "refresh_needed"
-        },
-        {
-          "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000|335907",
-          "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000",
-          "amount": "335907",
-          "legCount": 2,
-          "latestObservedAt": "2026-04-18T23:31:58.405Z",
-          "staleLegCount": 2,
-          "unstableLegCount": 0,
-          "thinLiquidityLegCount": 0,
-          "singleSampleLegCount": 0,
-          "latestExecutionRangePct": 0.04192556553211062,
-          "latestPriceImpactPct": 0.023225293776763356,
-          "legs": [
-            {
-              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000|335907|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000|335907",
-              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000",
-              "amount": "335907",
-              "source": "gateway_src_leg",
-              "chain": "base",
-              "inputTicker": "wBTC.OFT",
-              "outputTicker": "USDC",
-              "quoteCount": 6,
-              "latestObservedAt": "2026-04-18T23:31:55.113Z",
-              "ageMinutes": 9020.17385,
-              "latestExecutionUsdPerBtc": 75663.8170066736,
-              "executionRangePct": 0.04192556553211062,
-              "latestGasUsd": 0.007838222799823357,
-              "gasRangePct": 1.01483051745339,
-              "latestPriceImpactPct": 0.023225293776763356,
-              "classification": "stale"
-            },
-            {
-              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000|335907|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
-              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000|335907",
-              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bitcoin:0x0000000000000000000000000000000000000000",
-              "amount": "335907",
-              "source": "gateway_src_entry_leg",
-              "chain": "base",
-              "inputTicker": "USDC",
-              "outputTicker": "wBTC.OFT",
-              "quoteCount": 6,
-              "latestObservedAt": "2026-04-18T23:31:58.405Z",
-              "ageMinutes": 9020.118983333334,
-              "latestExecutionUsdPerBtc": 75692.40507102563,
-              "executionRangePct": 0.04144233548129417,
-              "latestGasUsd": 0.004653449438646401,
-              "gasRangePct": 0.2938480311786196,
-              "latestPriceImpactPct": 0,
-              "classification": "stale"
-            }
-          ],
-          "classification": "refresh_needed"
-        },
-        {
-          "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
-          "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-          "amount": "1000",
-          "legCount": 2,
-          "latestObservedAt": "2026-04-23T12:56:56.906Z",
-          "staleLegCount": 2,
-          "unstableLegCount": 0,
-          "thinLiquidityLegCount": 0,
-          "singleSampleLegCount": 0,
-          "latestExecutionRangePct": 0.036871960440003335,
-          "latestPriceImpactPct": 21.2706525,
-          "legs": [
-            {
-              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
-              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "amount": "1000",
-              "source": "gateway_src_leg",
-              "chain": "base",
-              "inputTicker": "wBTC.OFT",
-              "outputTicker": "USDC",
-              "quoteCount": 6,
-              "latestObservedAt": "2026-04-23T12:56:49.191Z",
-              "ageMinutes": 2455.27255,
-              "latestExecutionUsdPerBtc": 77150.45254667656,
-              "executionRangePct": 0.03472157831229097,
-              "latestGasUsd": 0.004570989689742844,
-              "gasRangePct": 0.42988223278160914,
-              "latestPriceImpactPct": 21.2706525,
-              "classification": "stale"
-            },
-            {
-              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
-              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|1000",
-              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "amount": "1000",
-              "source": "gateway_src_entry_leg",
-              "chain": "base",
-              "inputTicker": "USDC",
-              "outputTicker": "wBTC.OFT",
-              "quoteCount": 5,
-              "latestObservedAt": "2026-04-23T12:56:56.906Z",
-              "ageMinutes": 2455.1439666666665,
-              "latestExecutionUsdPerBtc": 77743.00707201955,
-              "executionRangePct": 0.036871960440003335,
-              "latestGasUsd": 0.003011201862828724,
-              "gasRangePct": 0.4113915532129859,
-              "latestPriceImpactPct": 0.06887129691210239,
-              "classification": "stale"
-            }
-          ],
-          "classification": "refresh_needed"
-        },
-        {
-          "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
-          "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-          "amount": "10000",
-          "legCount": 2,
-          "latestObservedAt": "2026-04-20T23:09:47.639Z",
-          "staleLegCount": 2,
-          "unstableLegCount": 0,
-          "thinLiquidityLegCount": 0,
-          "singleSampleLegCount": 0,
-          "latestExecutionRangePct": 0.026642546007220325,
-          "latestPriceImpactPct": 4.786856692307684,
-          "legs": [
-            {
-              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000|gateway_src_leg|base|0x0555e30da8f98308edb960aa94c0db47230d2b9c|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
-              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "amount": "10000",
-              "source": "gateway_src_leg",
-              "chain": "base",
-              "inputTicker": "wBTC.OFT",
-              "outputTicker": "USDC",
-              "quoteCount": 2,
-              "latestObservedAt": "2026-04-20T23:09:41.382Z",
-              "ageMinutes": 6162.4027,
-              "latestExecutionUsdPerBtc": 75592.24816751023,
-              "executionRangePct": 0.01663726039621771,
-              "latestGasUsd": 0.002978699354517107,
-              "gasRangePct": 0.4466929816375247,
-              "latestPriceImpactPct": 0.01952760524387809,
-              "classification": "stale"
-            },
-            {
-              "legKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000|gateway_src_entry_leg|base|0x833589fcd6edb6e08f4c7c32d4f71b54bda02913|0x0555e30da8f98308edb960aa94c0db47230d2b9c",
-              "routeSelectionKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c|10000",
-              "routeKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-              "amount": "10000",
-              "source": "gateway_src_entry_leg",
-              "chain": "base",
-              "inputTicker": "USDC",
-              "outputTicker": "wBTC.OFT",
-              "quoteCount": 7,
-              "latestObservedAt": "2026-04-20T23:09:47.639Z",
-              "ageMinutes": 6162.2984166666665,
-              "latestExecutionUsdPerBtc": 75643.5183157042,
-              "executionRangePct": 0.026642546007220325,
-              "latestGasUsd": 0.004528780794773342,
-              "gasRangePct": 0.03538138327709433,
-              "latestPriceImpactPct": 4.786856692307684,
               "classification": "stale"
             }
           ],
@@ -11982,7 +12040,7 @@
     },
     "dexGatewayArbitrage": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:04.917Z",
+      "generatedAt": "2026-04-25T06:28:22.726Z",
       "amountTolerancePct": 0.02,
       "routeCount": 262,
       "bothDexSupportedRouteCount": 77,
@@ -12242,7 +12300,7 @@
     },
     "dexRouteUniverse": {
       "schemaVersion": 1,
-      "observedAt": "2026-04-25T05:52:01.851Z",
+      "observedAt": "2026-04-25T06:28:19.970Z",
       "family": "btc",
       "totalRoutes": 113,
       "familyRouteCount": 91,
@@ -12509,7 +12567,7 @@
     },
     "edgeViability": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:04.917Z",
+      "generatedAt": "2026-04-25T06:28:22.726Z",
       "minNetProfitUsd": 0,
       "minNetProfitPct": 0,
       "measuredLoopCount": 9,
@@ -12749,7 +12807,7 @@
     },
     "edgeResearch": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:04.917Z",
+      "generatedAt": "2026-04-25T06:28:22.726Z",
       "policy": {
         "minNetProfitUsd": 0.3,
         "minNetProfitPct": 0.005,
@@ -13217,7 +13275,7 @@
     },
     "noEdgePersistence": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:04.917Z",
+      "generatedAt": "2026-04-25T06:28:22.726Z",
       "routeCount": 91,
       "durableNoEdgeRouteCount": 1,
       "belowPolicyRouteCount": 1,
@@ -13406,16 +13464,16 @@
     },
     "btcProxySpreads": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:05.538Z",
+      "generatedAt": "2026-04-25T06:28:23.379Z",
       "amountTolerancePct": 0.02,
       "maxQuoteAgeMinutes": 30,
       "proxyTicker": null,
       "buyQuoteCount": 20,
       "sellQuoteCount": 38,
       "buyFreshCount": 0,
-      "sellFreshCount": 6,
-      "freshestQuoteAgeMinutes": 3.53025,
-      "stalestQuoteAgeMinutes": 9948.273216666666,
+      "sellFreshCount": 1,
+      "freshestQuoteAgeMinutes": 0.40136666666666665,
+      "stalestQuoteAgeMinutes": 9984.570566666667,
       "observedBuyProxyGroupCount": 1,
       "observedSellProxyGroupCount": 1,
       "observedBuyProxyCoverage": [
@@ -13488,7 +13546,7 @@
             "WBTC",
             "wBTC.OFT"
           ],
-          "latestObservedAt": "2026-04-25T05:48:33.723Z"
+          "latestObservedAt": "2026-04-25T06:27:59.297Z"
         }
       ],
       "proxyGroupCount": 1,
@@ -13577,8 +13635,8 @@
             "bsc",
             "ethereum"
           ],
-          "freshestBuyAgeMinutes": 2453.9262833333332,
-          "freshestSellAgeMinutes": 3.53025,
+          "freshestBuyAgeMinutes": 2490.2236333333335,
+          "freshestSellAgeMinutes": 0.40136666666666665,
           "nextAction": "expand_amount_ladder",
           "reason": "partial_amount_match"
         }
@@ -13648,8 +13706,8 @@
           "bsc",
           "ethereum"
         ],
-        "freshestBuyAgeMinutes": 2453.9262833333332,
-        "freshestSellAgeMinutes": 3.53025,
+        "freshestBuyAgeMinutes": 2490.2236333333335,
+        "freshestSellAgeMinutes": 0.40136666666666665,
         "nextAction": "expand_amount_ladder",
         "reason": "partial_amount_match"
       },
@@ -14107,22 +14165,22 @@
           "buyGatewayRouteKey": "ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "sellChain": "bsc",
           "sellStableTicker": "USDC",
-          "sellStableRevenueUsd": 7.726791228194902,
-          "sellGasUsd": 0.010333341725930626,
-          "sellObservedAt": "2026-04-25T03:24:10.921Z",
-          "sellGatewayRouteKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          "sellStableRevenueUsd": 7.716009783699383,
+          "sellGasUsd": 0.012213545527047372,
+          "sellObservedAt": "2026-04-25T06:27:59.297Z",
+          "sellGatewayRouteKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "buyActualOutputAmount": "10084",
           "sellInputAmount": "10000",
           "amountMismatchPct": 0.0084,
           "exactAmountMatch": true,
-          "rawSpreadUsd": -0.07848741175499097,
-          "rawSpreadPct": -0.01005568351567457,
+          "rawSpreadUsd": -0.08926885625050929,
+          "rawSpreadPct": -0.01143698519532704,
           "rebalanceRouteKey": "ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "rebalanceRoutePresent": true,
           "rebalanceKnownCostUsd": 0.6802810521478098,
           "rebalanceTradeReadiness": "insufficient_data",
-          "rebalanceAdjustedSpreadUsd": -0.7587684639028007,
-          "rebalanceAdjustedSpreadPct": -0.09721221994807244,
+          "rebalanceAdjustedSpreadUsd": -0.769549908398319,
+          "rebalanceAdjustedSpreadPct": -0.09859352162772492,
           "requiredProfitUsd": 0,
           "policyReadyAfterRebalance": false,
           "blockers": [
@@ -14517,22 +14575,22 @@
           "buyGatewayRouteKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "sellChain": "bsc",
           "sellStableTicker": "USDC",
-          "sellStableRevenueUsd": 7.726791228194902,
-          "sellGasUsd": 0.010333341725930626,
-          "sellObservedAt": "2026-04-25T03:24:10.921Z",
-          "sellGatewayRouteKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          "sellStableRevenueUsd": 7.716009783699383,
+          "sellGasUsd": 0.012213545527047372,
+          "sellObservedAt": "2026-04-25T06:27:59.297Z",
+          "sellGatewayRouteKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "buyActualOutputAmount": "10101",
           "sellInputAmount": "10000",
           "amountMismatchPct": 0.0101,
           "exactAmountMatch": true,
-          "rawSpreadUsd": -0.11934292545039327,
-          "rawSpreadPct": -0.015210411027059336,
+          "rawSpreadUsd": -0.1301243699459116,
+          "rawSpreadPct": -0.016584520146836403,
           "rebalanceRouteKey": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
           "rebalanceRoutePresent": true,
           "rebalanceKnownCostUsd": 1.7296865937393673,
           "rebalanceTradeReadiness": "insufficient_data",
-          "rebalanceAdjustedSpreadUsd": -1.8490295191897606,
-          "rebalanceAdjustedSpreadPct": -0.2356612164642515,
+          "rebalanceAdjustedSpreadUsd": -1.8598109636852789,
+          "rebalanceAdjustedSpreadPct": -0.23703532558402857,
           "requiredProfitUsd": 0,
           "policyReadyAfterRebalance": false,
           "blockers": [
@@ -14655,21 +14713,21 @@
       "tracks": [
         {
           "kind": "active_canary",
-          "label": "soneium->bob wBTC.OFT->wBTC.OFT",
-          "amount": "100",
+          "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
+          "amount": "10000",
           "status": "insufficient_data",
           "nextActionCode": "check_wallet_readiness",
           "reason": "native",
-          "command": "npm run check:estimator-wallet -- --route-key=\"soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"100\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+          "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
         },
         {
           "kind": "route_shadow",
-          "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+          "label": "bsc->sonic wBTC.OFT->wBTC.OFT",
           "amount": "10000",
           "status": "check_wallet_readiness",
           "nextActionCode": "check_wallet_readiness",
           "reason": "native",
-          "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+          "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
         },
         {
           "kind": "stable_loop",
@@ -14716,7 +14774,7 @@
     },
     "pivotPlan": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "currentBudgetUsd": 1000000,
       "referenceBudgetUsd": 1000000,
       "budgetScenarios": [
@@ -15014,7 +15072,7 @@
       ]
     },
     "yieldShadowBook": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "bookStatus": "pre_execution_only",
       "currentBudgetUsd": 1000000,
       "budgetScenarios": [
@@ -15049,7 +15107,7 @@
       }
     },
     "proxySpreadCoveragePlan": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "overfitAssessment": "moderate_overfit_risk",
       "planCount": 1,
       "actionableCount": 1,
@@ -15287,7 +15345,7 @@
           "blockers": []
         }
       },
-      "generatedAt": "2026-04-25T05:52:05.608Z"
+      "generatedAt": "2026-04-25T06:28:23.447Z"
     },
     "strategyParity": {
       "candidateCount": 27,
@@ -16506,7 +16564,7 @@
           "source": "caps_registry"
         }
       },
-      "generatedAt": "2026-04-25T05:52:05.608Z"
+      "generatedAt": "2026-04-25T06:28:23.448Z"
     },
     "promotionSummary": {
       "available": false,
@@ -16536,7 +16594,7 @@
       "generatedAt": "2026-04-24T20:48:39.319Z"
     },
     "strategySnapshot": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "liveTrading": "ALLOWED",
       "preliveStage": "shadow_replay",
       "activeBudgetUsd": 1000000,
@@ -16924,7 +16982,7 @@
       },
       "formulaAudit": {
         "schemaVersion": 1,
-        "generatedAt": "2026-04-25T05:52:05.369Z",
+        "generatedAt": "2026-04-25T06:28:23.198Z",
         "summary": {
           "entryCount": 7,
           "implementedCount": 3,
@@ -17279,11 +17337,11 @@
       "selectionCode": "measured_route_not_ready_for_canary",
       "selectionLabel": "Measured leader stays review-only until readiness and fresh-input blockers clear.",
       "currentCanary": {
-        "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
         "amount": "10000",
-        "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+        "label": "bsc->sonic wBTC.OFT->wBTC.OFT",
         "tradeReadiness": "insufficient_data",
-        "netUsd": -0.10796120027671352,
+        "netUsd": -0.16062037026194717,
         "executableNetUsd": null,
         "viableForPrep": true
       },
@@ -17467,7 +17525,7 @@
     },
     "merklActivePositions": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "activeCount": 6,
       "items": [
         {
@@ -17580,7 +17638,7 @@
   },
   "prelive": {
     "schemaVersion": 1,
-    "generatedAt": "2026-04-25T05:52:06.043Z",
+    "generatedAt": "2026-04-25T06:28:23.865Z",
     "liveTradingPolicy": "ALLOWED",
     "currentStage": "tiny_live_canary_review",
     "shadowReplay": {
@@ -17611,7 +17669,7 @@
     },
     "forkExecution": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:06.043Z",
+      "generatedAt": "2026-04-25T06:28:23.865Z",
       "planCount": 21,
       "submittedCount": 11,
       "submissionFailureCount": 0,
@@ -17668,7 +17726,7 @@
     },
     "executionAudit": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:06.043Z",
+      "generatedAt": "2026-04-25T06:28:23.865Z",
       "status": "complete",
       "blockers": [],
       "missingRecordCount": 0,
@@ -17770,23 +17828,23 @@
       {
         "rank": 1,
         "scope": "active_canary",
-        "label": "soneium->bob wBTC.OFT->wBTC.OFT",
+        "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
         "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"100\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
       },
       {
         "rank": 2,
         "scope": "prep_candidate",
-        "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+        "label": "bera->ethereum wBTC.OFT->WBTC",
         "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+        "command": "npm run check:estimator-wallet -- --route-key=\"bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
       },
       {
         "rank": 3,
         "scope": "prep_candidate",
-        "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
+        "label": "bsc->base wBTC.OFT->wBTC.OFT",
         "reason": "native",
-        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+        "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
       },
       {
         "rank": 4,
@@ -17804,7 +17862,7 @@
     ],
     "connectedRefreshExecution": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "runCount": 36,
       "previewCount": 1,
       "successCount": 19,
@@ -17871,7 +17929,7 @@
     },
     "currentRoutePrelivePass": {
       "schemaVersion": 1,
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "runCount": 44,
       "previewCount": 1,
       "readyForSignerCount": 0,
@@ -18062,7 +18120,7 @@
       }
     },
     "reviewPackage": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "packageStatus": "ready_for_manual_review",
       "readyForManualReview": true,
       "currentStage": "tiny_live_canary_review",
@@ -18083,20 +18141,20 @@
         "nextAction": {
           "rank": 1,
           "code": "native",
-          "label": "soneium->bob wBTC.OFT->wBTC.OFT",
+          "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
           "status": "ready",
           "reason": "native",
-          "command": "npm run check:estimator-wallet -- --route-key=\"soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"100\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
+          "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\""
         },
         "runnerCommand": "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3",
         "items": [
           {
             "rank": 1,
             "code": "native",
-            "label": "soneium->bob wBTC.OFT->wBTC.OFT",
+            "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
             "status": "ready",
             "reason": "native",
-            "command": "npm run check:estimator-wallet -- --route-key=\"soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bob:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"100\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
+            "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
             "resolves": [
               "shadow_replay_not_ready"
             ]
@@ -18104,10 +18162,10 @@
           {
             "rank": 2,
             "code": "native",
-            "label": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+            "label": "bera->ethereum wBTC.OFT->WBTC",
             "status": "ready",
             "reason": "native",
-            "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
+            "command": "npm run check:estimator-wallet -- --route-key=\"bera:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
             "resolves": [
               "shadow_replay_not_ready"
             ]
@@ -18115,10 +18173,10 @@
           {
             "rank": 3,
             "code": "native",
-            "label": "bsc->soneium wBTC.OFT->wBTC.OFT",
+            "label": "bsc->base wBTC.OFT->wBTC.OFT",
             "status": "ready",
             "reason": "native",
-            "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->soneium:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
+            "command": "npm run check:estimator-wallet -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --address=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\"",
             "resolves": [
               "shadow_replay_not_ready"
             ]
@@ -18279,7 +18337,7 @@
       "ethFamilyRouteCount": 0
     },
     "executionRunbook": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "liveTradingPolicy": "ALLOWED",
       "currentStageId": "tiny_live_canary_review",
       "stageCount": 4,
@@ -18290,14 +18348,14 @@
       "nextStageState": "complete",
       "nextActionCode": "manual_canary_review_only",
       "nextActionCommand": null,
-      "topRouteLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "topRouteLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "topRouteAmount": "10000",
       "exactRouteForkPlanId": null,
       "exactRouteForkPlanStatus": null,
       "exactRouteForkSubmitCommand": null
     },
     "validation": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "validationStatus": "ready_for_manual_review",
       "currentStageId": "tiny_live_canary_review",
       "readinessPct": 100,
@@ -18317,27 +18375,27 @@
       "topPivotId": "gateway_base_btc_yield"
     },
     "connectedRefresh": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "status": "network_refresh_required",
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
-      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
+      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
       "amount": "10000",
       "requiredRefreshCount": 3,
       "blockedInputCount": 0,
       "staleInputCount": 2,
       "missingInputCount": 1,
       "nextActionCode": "refresh_gateway_quote",
-      "nextActionCommand": "npm run verify:gateway -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amounts=\"10000\"",
+      "nextActionCommand": "npm run verify:gateway -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amounts=\"10000\"",
       "runnerPreviewCommand": "npm run run:connected-refresh-package",
       "runnerExecuteCommand": "npm run run:connected-refresh-package -- --execute",
-      "fullCommandChain": "npm run verify:gateway -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amounts=\"10000\" && npm run estimate:gateway-gas -- --from=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\" --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" && npm run quote:dex -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --include-stable-entry && npm run score:gateway -- --write --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" && npm run advance:canary && npm run build:prelive-review-package -- --write && npm run validate:prelive-readiness -- --write && npm run write:session-handoff"
+      "fullCommandChain": "npm run verify:gateway -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amounts=\"10000\" && npm run estimate:gateway-gas -- --from=\"0x96262bE63AA687563789225c2fE898c27a3b0AE4\" --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" && npm run quote:dex -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" --include-stable-entry && npm run score:gateway -- --write --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amount=\"10000\" && npm run advance:canary && npm run build:prelive-review-package -- --write && npm run validate:prelive-readiness -- --write && npm run write:session-handoff"
     },
     "exactRouteForkPackage": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "status": "missing_exact_route_plan",
       "planId": null,
-      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000",
       "technicalStatus": "missing_plan",
       "economicStatus": "blocked_insufficient_data",
@@ -18346,17 +18404,17 @@
       "forkConfirmedCount": 0,
       "forkTargetCount": 3,
       "nextActionCode": "refresh_gateway_quote",
-      "nextActionCommand": "npm run verify:gateway -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amounts=\"10000\""
+      "nextActionCommand": "npm run verify:gateway -- --route-key=\"bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c\" --amounts=\"10000\""
     },
     "operationalJudgmentReview": {
-      "generatedAt": "2026-04-25T05:52:05.369Z",
+      "generatedAt": "2026-04-25T06:28:23.198Z",
       "status": "aligned_for_manual_review",
       "issueCount": 0,
       "highSeverityCount": 0,
       "mediumSeverityCount": 0,
       "nextActionCode": null,
       "nextActionCommand": null,
-      "currentRouteKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"
+      "currentRouteKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"
     },
     "v1InfraDrills": {
       "status": "passed",
@@ -18372,7 +18430,7 @@
   "bitcoinFee": {
     "latest": {
       "observedAt": "2026-04-23T18:24:36.425Z",
-      "ageMinutes": 2127.4824,
+      "ageMinutes": 2163.77955,
       "source": "https://mempool.space/api",
       "feeRateSatVb": 4,
       "vbytes": 180,
@@ -18384,15 +18442,15 @@
     "snapshotCount": 6
   },
   "opportunity": {
-    "generatedAt": "2026-04-25T05:52:04.917Z",
-    "ageMinutes": 0.007533333333333334,
+    "generatedAt": "2026-04-25T06:28:22.726Z",
+    "ageMinutes": 0.007866666666666666,
     "stale": false,
     "scoredQuotes": 295,
     "candidateCount": 0,
     "dexBacked": 68,
-    "rejectedNoEdge": 7,
+    "rejectedNoEdge": 9,
     "highFailureRate": 28,
-    "insufficientData": 259,
+    "insufficientData": 257,
     "positiveInsufficientCount": 4,
     "topPositiveInsufficientRoute": {
       "srcChain": "bsc",
@@ -18419,7 +18477,7 @@
     "dataGaps": [
       {
         "gap": "exact_src_execution_gas_not_estimated",
-        "count": 125
+        "count": 123
       },
       {
         "gap": "exact_src_execution_gas_reverted",
@@ -18439,7 +18497,7 @@
     "paper": {
       "valueUsd": 2.297321981990133,
       "label": "관측 기준",
-      "routeLabel": "soneium->bob wBTC.OFT->wBTC.OFT",
+      "routeLabel": "bsc->soneium wBTC.OFT->wBTC.OFT",
       "detail": "가격 또는 가스 데이터가 아직 부족함"
     },
     "estimated": {
@@ -18464,7 +18522,7 @@
       {
         "id": "execution_attempt_blocked-0",
         "observedAt": "2026-04-25T05:39:18.942Z",
-        "ageMinutes": 12.773783333333334,
+        "ageMinutes": 49.070933333333336,
         "status": "blocked",
         "statusLabel": "blocked",
         "chain": "sei",
@@ -18480,7 +18538,7 @@
       {
         "id": "execution_attempt_blocked-1",
         "observedAt": "2026-04-25T05:39:15.856Z",
-        "ageMinutes": 12.825216666666666,
+        "ageMinutes": 49.122366666666665,
         "status": "blocked",
         "statusLabel": "blocked",
         "chain": "sei",
@@ -18496,7 +18554,7 @@
       {
         "id": "execution_attempt_blocked-2",
         "observedAt": "2026-04-25T05:39:12.301Z",
-        "ageMinutes": 12.884466666666667,
+        "ageMinutes": 49.18161666666666,
         "status": "blocked",
         "statusLabel": "blocked",
         "chain": "optimism",
@@ -18512,7 +18570,7 @@
       {
         "id": "execution_attempt_blocked-3",
         "observedAt": "2026-04-25T05:39:05.175Z",
-        "ageMinutes": 13.003233333333334,
+        "ageMinutes": 49.300383333333336,
         "status": "blocked",
         "statusLabel": "blocked",
         "chain": "optimism",
@@ -18528,7 +18586,7 @@
       {
         "id": "execution_attempt_blocked-4",
         "observedAt": "2026-04-25T05:38:58.753Z",
-        "ageMinutes": 13.110266666666666,
+        "ageMinutes": 49.40741666666667,
         "status": "blocked",
         "statusLabel": "blocked",
         "chain": "ethereum",
@@ -18544,7 +18602,7 @@
       {
         "id": "execution_attempt_blocked-5",
         "observedAt": "2026-04-25T05:38:56.061Z",
-        "ageMinutes": 13.155133333333334,
+        "ageMinutes": 49.452283333333334,
         "status": "blocked",
         "statusLabel": "blocked",
         "chain": "ethereum",
@@ -18562,31 +18620,31 @@
   "decisionInputs": {
     "staleAfterMinutes": 30,
     "scoreSnapshot": {
-      "observedAt": "2026-04-25T05:52:04.917Z",
-      "ageMinutes": 0.007533333333333334,
+      "observedAt": "2026-04-25T06:28:22.726Z",
+      "ageMinutes": 0.007866666666666666,
       "stale": false
     },
     "shadowCycle": {
-      "observedAt": "2026-04-25T05:52:00.415Z",
-      "ageMinutes": 0.08256666666666666,
+      "observedAt": "2026-04-25T06:28:18.239Z",
+      "ageMinutes": 0.08265,
       "stale": false
     },
     "quoteLag": {
       "observedAt": "2026-04-21T02:43:09.868Z",
-      "ageMinutes": 5948.925016666667,
+      "ageMinutes": 5985.222166666666,
       "stale": true
     },
     "dexSpread": {
       "observedAt": "2026-04-21T02:43:08.251Z",
-      "ageMinutes": 5948.9519666666665,
+      "ageMinutes": 5985.249116666667,
       "stale": true
     },
-    "scoreVsShadowCycleLagMinutes": 0.07503333333333333,
+    "scoreVsShadowCycleLagMinutes": 0.07478333333333334,
     "warnings": []
   },
   "researchSignals": {
     "generatedAt": "2026-04-13T23:03:35.517Z",
-    "ageMinutes": 16248.497533333333,
+    "ageMinutes": 16284.794683333334,
     "scoreObservedAt": "2026-04-13T23:03:29.316Z",
     "gateway": {
       "effectiveCurrentPassCount": 0,
@@ -18640,28 +18698,28 @@
   ],
   "dex": {
     "provider": "odos",
-    "quoteCount": 975,
-    "rawQuoteCount": 1387,
-    "failureCount": 717,
-    "recentQuotes24h": 69,
-    "recentFailures24h": 41,
+    "quoteCount": 976,
+    "rawQuoteCount": 1388,
+    "failureCount": 718,
+    "recentQuotes24h": 70,
+    "recentFailures24h": 42,
     "quotedChains": [
       "base",
       "bsc",
       "ethereum"
     ],
     "latestQuote": {
-      "observedAt": "2026-04-25T05:48:33.723Z",
+      "observedAt": "2026-04-25T06:27:59.297Z",
       "chain": "bsc",
-      "inputValueUsd": 0.7736565037579809,
-      "outputValueUsd": 0.7714939159009655,
-      "gasEstimateValueUsd": 0.00752324489332563,
+      "inputValueUsd": 7.729075768073713,
+      "outputValueUsd": 7.728223329226431,
+      "gasEstimateValueUsd": 0.012213545527047372,
       "priceImpactPct": 0
     },
     "skippedReasons": [
       {
         "reason": "odos_quote_failed",
-        "count": 307
+        "count": 308
       },
       {
         "reason": "no_supported_router_for_chain:60808",
@@ -18690,16 +18748,16 @@
     "shadow": "ALLOWED",
     "sampleSource": "shadow_observations",
     "firstObservedAt": "2026-04-11T12:00:56.658Z",
-    "lastObservedAt": "2026-04-25T05:52:04.917Z",
-    "shadowHours": 329.85229416666664,
-    "hourBuckets": 137,
+    "lastObservedAt": "2026-04-25T06:28:22.726Z",
+    "shadowHours": 330.4572411111111,
+    "hourBuckets": 138,
     "targetShadowHours": 168,
     "remainingShadowHours": 0,
     "targetHourBuckets": 24,
     "remainingHourBuckets": 0,
-    "earliestShadowWindowReadyAt": "2026-04-25T05:52:05.369Z",
-    "earliestHourBucketReadyAt": "2026-04-25T05:52:05.369Z",
-    "earliestTimeGateReadyAt": "2026-04-25T05:52:05.369Z",
+    "earliestShadowWindowReadyAt": "2026-04-25T06:28:23.198Z",
+    "earliestHourBucketReadyAt": "2026-04-25T06:28:23.198Z",
+    "earliestTimeGateReadyAt": "2026-04-25T06:28:23.198Z",
     "latencyP50Ms": 664,
     "latencyP95Ms": 3511,
     "executionGasP50Usd": 0.0009046401000000001,
@@ -18735,9 +18793,9 @@
         "survivalRatePct": 70.83333333333334
       }
     ],
-    "quotes": 855,
-    "activeQuotes": 393,
-    "shadowObservations": 11295,
+    "quotes": 857,
+    "activeQuotes": 395,
+    "shadowObservations": 11297,
     "failures": 46,
     "cloudflareFailures": 0,
     "sampledRoutes": 107,
@@ -18748,7 +18806,7 @@
       {
         "label": "shadow time window",
         "ok": true,
-        "detail": "329.85h observed, target 168h"
+        "detail": "330.46h observed, target 168h"
       },
       {
         "label": "BOB-neighbor route coverage",
@@ -18773,7 +18831,7 @@
       {
         "label": "time bucket diversity",
         "ok": true,
-        "detail": "137 hourly buckets, target 24"
+        "detail": "138 hourly buckets, target 24"
       },
       {
         "label": "failure rate",
@@ -18783,7 +18841,7 @@
       {
         "label": "fresh gas snapshots",
         "ok": true,
-        "detail": "13.3m old, target <= 30m"
+        "detail": "0.2m old, target <= 30m"
       }
     ],
     "warnings": [
@@ -18888,7 +18946,7 @@
   },
   "executorRuntime": {
     "heartbeatPath": "./state/executor-heartbeat.json",
-    "observedAt": "2026-04-25T05:52:03.518Z",
+    "observedAt": "2026-04-25T06:28:18.704Z",
     "heartbeatPresent": true,
     "pid": 42709,
     "signerSocketPath": "/Users/love/BOB Claw/state/executor-signer.sock",
@@ -18898,7 +18956,7 @@
     "watchdog": {
       "status": "healthy",
       "stale": false,
-      "ageMs": 1851,
+      "ageMs": 4494,
       "ttlMs": 60000
     },
     "runtimeStatus": "healthy",
@@ -19284,22 +19342,22 @@
     }
   },
   "dataCounts": {
-    "routesRecords": 545,
-    "quotes": 855,
+    "routesRecords": 547,
+    "quotes": 857,
     "quoteFailures": 46,
-    "gasSnapshots": 2018,
+    "gasSnapshots": 2030,
     "gasFailures": 214,
-    "priceSnapshots": 336,
+    "priceSnapshots": 337,
     "updateSnapshots": 10,
     "updateAlerts": 5,
-    "dexQuotes": 1387,
-    "dexFailures": 717,
+    "dexQuotes": 1388,
+    "dexFailures": 718,
     "bitcoinFeeSnapshots": 6,
-    "gatewayGasEstimates": 141,
+    "gatewayGasEstimates": 143,
     "gatewayGasEstimateFailures": 305,
     "estimatorWalletReadiness": 536,
     "estimatorWalletReadinessFailures": 27,
-    "shadowObservations": 11295,
+    "shadowObservations": 11297,
     "preliveSimulationRuns": 52,
     "preliveForkPlans": 21,
     "preliveForkSubmissions": 17,
@@ -19319,6 +19377,7 @@
     "merklCanaryQueuePresent": 1,
     "merklActivePositionCount": 6,
     "treasuryInventoryRecords": 129,
+    "capitalSummaryPresent": 1,
     "allChainAutopilotPresent": 1,
     "preliveReviewPackagePresent": 1,
     "liveBaselinePresent": 1,
@@ -19332,11 +19391,11 @@
     "containsExecutionPermission": false
   },
   "canaryInputs": {
-    "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
-    "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+    "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
+    "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
     "amount": "10000",
-    "scoreObservedAt": "2026-04-25T05:52:04.917Z",
-    "scoreAgeMinutes": 0.007533333333333334,
+    "scoreObservedAt": "2026-04-25T06:28:22.726Z",
+    "scoreAgeMinutes": 0.007866666666666666,
     "scoreTradeReadiness": "insufficient_data",
     "scoreDataGaps": [
       "exact_src_execution_gas_not_estimated"
@@ -19347,25 +19406,25 @@
     ],
     "gatewayQuote": {
       "state": "stale",
-      "observedAt": "2026-04-25T03:06:46.290Z",
-      "ageMinutes": 165.31798333333333
+      "observedAt": "2026-04-25T03:24:05.006Z",
+      "ageMinutes": 184.3032
     },
     "exactGas": {
       "state": "stale",
-      "observedAt": "2026-04-25T03:06:48.500Z",
-      "ageMinutes": 165.28115,
+      "observedAt": "2026-04-25T03:24:07.176Z",
+      "ageMinutes": 184.26703333333333,
       "failureReason": null,
       "failureReasons": []
     },
     "srcGas": {
       "state": "fresh",
-      "observedAt": "2026-04-25T05:38:47.654Z",
-      "ageMinutes": 13.29525
+      "observedAt": "2026-04-25T06:28:13.031Z",
+      "ageMinutes": 0.16945
     },
     "dexQuote": {
       "state": "missing",
-      "observedAt": "2026-04-25T03:06:49.387Z",
-      "ageMinutes": 165.26636666666667,
+      "observedAt": "2026-04-25T03:24:11.361Z",
+      "ageMinutes": 184.19728333333333,
       "failureReason": "odos_quote_failed",
       "failureReasons": [
         "odos_quote_failed"
@@ -19378,13 +19437,13 @@
     },
     "marketSnapshot": {
       "state": "fresh",
-      "observedAt": "2026-04-25T05:51:47.080Z",
-      "ageMinutes": 0.3048166666666667
+      "observedAt": "2026-04-25T06:27:54.107Z",
+      "ageMinutes": 0.48485
     }
   },
   "payback": {
     "schemaVersion": 1,
-    "observedAt": "2026-04-25T05:52:05.369Z",
+    "observedAt": "2026-04-25T06:28:23.198Z",
     "lastPaybackSettledAt": null,
     "lastPaybackSettledSats": null,
     "accumulatorPendingSats": 601,
@@ -19421,8 +19480,8 @@
     },
     "kpi": {
       "byrRolling12m": 0,
-      "cgRolling12m": 6.97352587244284,
-      "tbrRolling12m": 6.97352587244284,
+      "cgRolling12m": 6.974946614935788,
+      "tbrRolling12m": 6.974946614935788,
       "roundTripEfficiencyPeriod": 1,
       "daysToBreakeven": 0
     },
@@ -19444,12 +19503,12 @@
       "receiptReconciliationCount": 235,
       "liveWrappedLoopReceiptCount": 23,
       "treasuryInventoryCount": 129,
-      "marketPriceSnapshotCount": 336
+      "marketPriceSnapshotCount": 337
     }
   },
   "walletHoldings": {
     "schemaVersion": 1,
-    "generatedAt": "2026-04-25T05:52:05.369Z",
+    "generatedAt": "2026-04-25T06:28:23.198Z",
     "observedAt": "2026-04-24T21:09:36.445Z",
     "pending": false,
     "totalUsd": 205.5911380739955,
@@ -19622,6 +19681,253 @@
     ],
     "protocolApr": {}
   },
+  "capitalSummary": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-04-25T06:28:23.198Z",
+    "walletUsd": 205.5911380739955,
+    "deployedUsd": 379.38,
+    "totalUsd": 584.9711380739955,
+    "walletItemCount": 18,
+    "activePositionCount": 6,
+    "walletItems": [
+      {
+        "sym": "usdc",
+        "name": "USDC",
+        "chain": "ethereum",
+        "amount": 117.44307,
+        "usd": 117.44307,
+        "family": "token",
+        "status": "ready"
+      },
+      {
+        "sym": "cbbtc",
+        "name": "cbBTC",
+        "chain": "base",
+        "amount": 0.00033053,
+        "usd": 25.68813054,
+        "family": "token",
+        "status": "below_target"
+      },
+      {
+        "sym": "bnb",
+        "name": "BNB",
+        "chain": "bsc",
+        "amount": 0.023650499436306212,
+        "usd": 15.096586800182981,
+        "family": "native",
+        "status": "over_max_supported"
+      },
+      {
+        "sym": "eth",
+        "name": "ETH",
+        "chain": "ethereum",
+        "amount": 0.003299284981975437,
+        "usd": 7.676809288910267,
+        "family": "native",
+        "status": "below_target"
+      },
+      {
+        "sym": "eth",
+        "name": "ETH",
+        "chain": "base",
+        "amount": 0.003028307086398744,
+        "usd": 7.046295211703462,
+        "family": "native",
+        "status": "below_target"
+      },
+      {
+        "sym": "eth",
+        "name": "ETH",
+        "chain": "bob",
+        "amount": 0.002651331632105877,
+        "usd": 6.1691449549002755,
+        "family": "native",
+        "status": "below_target"
+      },
+      {
+        "sym": "usdc",
+        "name": "USDC",
+        "chain": "base",
+        "amount": 5.370245,
+        "usd": 5.370245,
+        "family": "token",
+        "status": "refill_required"
+      },
+      {
+        "sym": "s",
+        "name": "S",
+        "chain": "sonic",
+        "amount": 112.22844381334929,
+        "usd": 5.293741623902768,
+        "family": "native",
+        "status": "observe_only_balance_present"
+      },
+      {
+        "sym": "wbtc",
+        "name": "wBTC.OFT",
+        "chain": "base",
+        "amount": 0.00005296,
+        "usd": 4.11594528,
+        "family": "token",
+        "status": "refill_required"
+      },
+      {
+        "sym": "avax",
+        "name": "AVAX",
+        "chain": "avalanche",
+        "amount": 0.4175962119748156,
+        "usd": 3.950460165281756,
+        "family": "native",
+        "status": "observe_only_balance_present"
+      },
+      {
+        "sym": "usdc",
+        "name": "USDC",
+        "chain": "bsc",
+        "amount": 2.9624937090577634,
+        "usd": 2.9624937090577634,
+        "family": "token",
+        "status": "observe_only_low"
+      },
+      {
+        "sym": "eth",
+        "name": "ETH",
+        "chain": "unichain",
+        "amount": 0.000843807079147394,
+        "usd": 1.9633787498309476,
+        "family": "native",
+        "status": "supported_buffered"
+      },
+      {
+        "sym": "eth",
+        "name": "ETH",
+        "chain": "soneium",
+        "amount": 0.000558541292091882,
+        "usd": 1.299619463852312,
+        "family": "native",
+        "status": "supported_buffered"
+      },
+      {
+        "sym": "usdt",
+        "name": "USDT",
+        "chain": "bsc",
+        "amount": 1.0460983484099835,
+        "usd": 1.0460983484099835,
+        "family": "token",
+        "status": "observe_only_low"
+      },
+      {
+        "sym": "usdt",
+        "name": "USDT",
+        "chain": "ethereum",
+        "amount": 0.231028,
+        "usd": 0.231028,
+        "family": "token",
+        "status": "refill_required"
+      },
+      {
+        "sym": "bera",
+        "name": "BERA",
+        "chain": "bera",
+        "amount": 0.3057450437755186,
+        "usd": 0.12177855668083283,
+        "family": "native",
+        "status": "over_max_supported"
+      },
+      {
+        "sym": "rlusd",
+        "name": "RLUSD",
+        "chain": "ethereum",
+        "amount": 0.08444800128216923,
+        "usd": 0.08444800128216923,
+        "family": "token",
+        "status": "refill_required"
+      },
+      {
+        "sym": "wbtc",
+        "name": "wBTC.OFT",
+        "chain": "bob",
+        "amount": 4.1e-7,
+        "usd": 0.03186438,
+        "family": "token",
+        "status": "refill_required"
+      }
+    ],
+    "positionItems": [
+      {
+        "sym": "usdc",
+        "name": "Supply to Clearstar USDC Core V2 vault on Morpho on Ethereum",
+        "chain": "ethereum",
+        "protocol": "morpho",
+        "amount": null,
+        "usd": 111.69,
+        "family": "position",
+        "status": "deployed",
+        "opportunityId": "6112061466559197961",
+        "lastObservedAt": "2026-04-25T05:46:27.322Z"
+      },
+      {
+        "sym": "usdc",
+        "name": "Deposit USDC to YO",
+        "chain": "base",
+        "protocol": "yo",
+        "amount": null,
+        "usd": 96.25,
+        "family": "position",
+        "status": "deployed",
+        "opportunityId": "13747891056392346282",
+        "lastObservedAt": "2026-04-25T05:45:57.939Z"
+      },
+      {
+        "sym": "usdc",
+        "name": "Supply to Steakhouse Prime Instant V2 vault on Morpho on Ethereum",
+        "chain": "ethereum",
+        "protocol": "morpho",
+        "amount": null,
+        "usd": 65.68,
+        "family": "position",
+        "status": "deployed",
+        "opportunityId": "4722579239500632641",
+        "lastObservedAt": "2026-04-24T08:21:17.372Z"
+      },
+      {
+        "sym": "rlusd",
+        "name": "Supply RLUSD on Sentora RLUSD vault",
+        "chain": "ethereum",
+        "protocol": "euler",
+        "amount": null,
+        "usd": 51.44,
+        "family": "position",
+        "status": "deployed",
+        "opportunityId": "11011917105611148420",
+        "lastObservedAt": "2026-04-24T08:54:39.432Z"
+      },
+      {
+        "sym": "usdc",
+        "name": "Supply to Alpha USDC Forex V2 vault on Morpho on Ethereum",
+        "chain": "ethereum",
+        "protocol": "morpho",
+        "amount": null,
+        "usd": 29.32,
+        "family": "position",
+        "status": "deployed",
+        "opportunityId": "13599851929364274522",
+        "lastObservedAt": "2026-04-25T00:19:29.742Z"
+      },
+      {
+        "sym": "rlusd",
+        "name": "Lend RLUSD on Aave Horizon",
+        "chain": "ethereum",
+        "protocol": "aave",
+        "amount": null,
+        "usd": 25,
+        "family": "position",
+        "status": "deployed",
+        "opportunityId": "16069439808187088621",
+        "lastObservedAt": "2026-04-24T07:54:13.427Z"
+      }
+    ]
+  },
   "operations": {
     "allChainAutopilot": {
       "schemaVersion": 1,
@@ -19738,7 +20044,7 @@
   },
   "liveBaseline": {
     "schemaVersion": 1,
-    "generatedAt": "2026-04-25T05:52:05.369Z",
+    "generatedAt": "2026-04-25T06:28:23.198Z",
     "status": "ready",
     "liveTrading": "ALLOWED",
     "shadowTrading": "ALLOWED",
@@ -19749,8 +20055,8 @@
       "candidateLabel": "Wrapped BTC lending loop (Base / Moonwell)"
     },
     "route": {
-      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->avalanche:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeKey": "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->sonic:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000"
     },
     "counts": {
@@ -19789,7 +20095,7 @@
       "shouldRefresh": true,
       "reason": "missing_canary_route_inputs",
       "reasonLabel": "현재 canary route 입력 일부가 비어 있어 다시 측정 필요",
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000",
       "inputKeys": [
         "gateway_quote",
@@ -19810,7 +20116,7 @@
         "bsc"
       ],
       "chainCount": 1,
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000",
       "targetRouteCount": 1
     },
@@ -19820,15 +20126,15 @@
       "reasonLabel": "현재 canary 경로 체인 가격이 비어 있음",
       "chains": [
         "bsc",
-        "avalanche"
+        "sonic"
       ],
       "chainCount": 2,
       "scope": "route",
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000",
       "targetRouteCount": 1,
       "targetRoutes": [
-        "bsc->avalanche wBTC.OFT->wBTC.OFT"
+        "bsc->sonic wBTC.OFT->wBTC.OFT"
       ]
     },
     "blockedScore": {
@@ -19841,9 +20147,9 @@
       "chains": [],
       "targetRouteCount": 1,
       "targetRoutes": [
-        "bsc->avalanche wBTC.OFT->wBTC.OFT"
+        "bsc->sonic wBTC.OFT->wBTC.OFT"
       ],
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000"
     },
     "quoteDecay": {
@@ -19851,7 +20157,7 @@
       "reason": "due_decay_window",
       "reasonLabel": "다음 decay 측정 창이 열려 재확인 가능",
       "pendingWindowSeconds": 5,
-      "routeLabel": "bsc->avalanche wBTC.OFT->wBTC.OFT",
+      "routeLabel": "bsc->sonic wBTC.OFT->wBTC.OFT",
       "amount": "10000"
     },
     "dexEnvironment": {
@@ -19859,13 +20165,13 @@
       "reason": "stale_dex_environment",
       "reasonLabel": "DEX 실행환경이 오래되어 다시 quote 필요",
       "routeLabel": "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-      "amount": "10000",
+      "amount": "1000",
       "classification": "refresh_needed",
       "targetRouteCount": 3,
       "targetRoutes": [
+        "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=1000 (refresh_needed)",
         "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=10000 (refresh_needed)",
-        "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=25000 (refresh_needed)",
-        "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->ethereum:0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599 amount=10000 (refresh_needed)"
+        "base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c amount=1001 (refresh_needed)"
       ]
     },
     "gatewayCoverage": {

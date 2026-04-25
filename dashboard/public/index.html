@@ -246,7 +246,10 @@
     function FlowPane({ refreshTick }) {
       const items = HOLDINGS?.all || [];
       const pending = HOLDINGS?.pending;
-      const totalUsd = HOLDINGS?.totalUsd != null ? HOLDINGS.totalUsd : items.reduce((s, a) => s + (a.usd || 0), 0);
+      const positions = HOLDINGS?.positions || [];
+      const totalUsd = HOLDINGS?.totalUsd != null
+        ? HOLDINGS.totalUsd
+        : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
       const paidSats = KPI?.paidBack?.sats || 0;
       const paidUsd  = KPI?.paidBack?.usd;
       const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
@@ -272,7 +275,7 @@
                 sub: aprOpen ? 'cap-weighted' : 'tap', onTap: () => setAprOpen(o => !o),
                 accent: aprOpen ? 'var(--ink)' : undefined },
               { label: 'Assets',   main: pending ? '—' : ('$' + (totalUsd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })),
-                sub: pending ? 'pending' : 'live' },
+                sub: pending ? 'pending' : 'wallet + deployed' },
             ]}/>
           </div>
           <OpsStrip/>
@@ -472,7 +475,10 @@
 
     function AssetsPane({ refreshTick }) {
       const items = HOLDINGS?.all || [];
-      const total = items.reduce((s, a) => s + (a.usd || 0), 0);
+      const positions = HOLDINGS?.positions || [];
+      const total = Number.isFinite(HOLDINGS?.totalUsd)
+        ? HOLDINGS.totalUsd
+        : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
       const pending = HOLDINGS?.pending;
       const liveStrats = STRATEGIES.filter(s => s.status === 'LIVE');
       const stratsByAsset = {};
@@ -493,9 +499,14 @@
               </span>
               <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>USD</span>
             </div>
+            {!pending && (
+              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+                wallet {fmtUsd(HOLDINGS?.walletUsd)} · deployed {fmtUsd(HOLDINGS?.deployedUsd)}
+              </div>
+            )}
             {pending && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>treasury snapshot pending</div>}
           </div>
-          <div style={{ fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: 1.6, textTransform: 'uppercase', padding: '0 4px 8px' }}>Balances</div>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: 1.6, textTransform: 'uppercase', padding: '0 4px 8px' }}>Wallet balances</div>
           <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
             {items.length === 0 && (
               <div style={{ padding: '18px 14px', fontSize: 12, color: 'var(--ink-4)', textAlign: 'center' }}>
@@ -550,6 +561,30 @@
               </div>
             );})}
           </div>
+          {positions.length > 0 && (
+            <>
+              <div style={{ fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: 1.6, textTransform: 'uppercase', padding: '16px 4px 8px' }}>Deployed positions</div>
+              <div style={{ background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', overflow: 'hidden' }}>
+                {positions.map((p, i, arr) => (
+                  <div key={(p.opportunityId || p.name) + i} style={{
+                    display:'flex', alignItems:'flex-start', gap:12,
+                    padding:'12px 14px', position:'relative',
+                  }}>
+                    <ProtocolLogo id={p.protocol} size={28}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13.5, fontWeight:500, lineHeight:1.25 }}>{p.name}</div>
+                      <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>{p.chain} · {p.protocol}</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:13, fontWeight:600, letterSpacing:-0.2 }}>{fmtUsd(p.usd || 0)}</div>
+                      <div style={{ fontSize:10.5, color:'var(--green)', marginTop:1 }}>deployed</div>
+                    </div>
+                    {i !== arr.length-1 && <div style={{ position:'absolute', left:54, right:0, bottom:0, height:0.5, background:'var(--line)' }}/>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       );
     }
