@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
-import { config } from "../config/env.mjs";
+import { config, getEnv } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -606,9 +606,14 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
+  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", null);
+  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json"];
+  if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
+  if (oraclesPathArg) autoKillArgs.push(`--oracles-path=${oraclesPathArg}`);
   const autoKillResult = await runJsonStep({
     name: "auto_kill_check",
-    args: ["src/cli/run-auto-kill-check.mjs", "--json"],
+    args: autoKillArgs,
     runCommandImpl,
     cwd,
     timeoutMs,
