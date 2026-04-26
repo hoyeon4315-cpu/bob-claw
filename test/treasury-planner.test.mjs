@@ -126,6 +126,50 @@ test("planner can refill without route-demand signal in aggressive treasury mode
   assert.equal(plan.summary.noDemandBlockerCount, 0);
 });
 
+test("planner emits wrapped BTC loop collateral refill as strategy-scoped capital action", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const inventory = inventoryFixture();
+  inventory.supportedChains = [...inventory.supportedChains, "base"];
+  inventory.tokens.push({
+    chain: "base",
+    active: true,
+    enabled: true,
+    ticker: "cbBTC",
+    token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    actual: "0",
+    actualDecimal: 0,
+    targetBalance: "35000",
+    targetBalanceDecimal: 0.00035,
+    maxBalance: "500000",
+    maxBalanceDecimal: 0.005,
+    refillToTarget: "35000",
+    refillToTargetDecimal: 0.00035,
+    priceUsd: 70000,
+    estimatedUsd: 0,
+    status: "refill_required",
+    rationale: "Moonwell wrapped-BTC lending loop collateral on Base.",
+    strategyPolicy: {
+      id: "wrapped_btc_loop_collateral_refill",
+      category: "yield",
+      economicsMode: "holding_period_carry",
+      strategyType: "wrapped_btc_lending_loop",
+      actionType: "treasury_refill_for_leverage_collateral",
+      perTradeCapUsd: 30,
+    },
+  });
+
+  const plan = buildTreasuryPlan({
+    policy,
+    inventory,
+    routeDemand: [],
+  });
+
+  const action = plan.actions.find((item) => item.chain === "base" && item.ticker === "cbBTC");
+  assert.ok(action);
+  assert.equal(action.strategyPolicy.id, "wrapped_btc_loop_collateral_refill");
+  assert.equal(action.refillEstimatedUsd, 24.5);
+});
+
 test("planner promotes observe-only supported chains into refill actions when route demand targets destination gas", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const inventory = inventoryFixture();

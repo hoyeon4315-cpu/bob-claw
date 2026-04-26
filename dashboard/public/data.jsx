@@ -67,6 +67,38 @@ function satsToUsd(sats, btcUsd) {
   return (sats / 1e8) * btcUsd;
 }
 
+function capitalProtocolKey(chainId, protocolId) {
+  return chainId && protocolId ? `${chainId}:${protocolId}` : null;
+}
+
+function accumulateUsd(map, key, usd) {
+  if (!key || !Number.isFinite(usd) || usd <= 0) return;
+  map[key] = (map[key] || 0) + usd;
+}
+
+function buildCapitalMaps(holdings = null) {
+  const byChain = {};
+  const byProtocol = {};
+  const walletItems = Array.isArray(holdings?.all) ? holdings.all : [];
+  const positionItems = Array.isArray(holdings?.positions) ? holdings.positions : [];
+
+  walletItems.forEach((item) => {
+    accumulateUsd(byChain, item?.chain || null, Number(item?.usd));
+  });
+
+  positionItems.forEach((item) => {
+    const usd = Number(item?.usd);
+    accumulateUsd(byChain, item?.chain || null, usd);
+    accumulateUsd(byProtocol, capitalProtocolKey(item?.chain || null, item?.protocol || null), usd);
+  });
+
+  return {
+    byChain,
+    byProtocol,
+    generatedAt: holdings?.generatedAt || null,
+  };
+}
+
 async function bootData() {
   let status = null;
   try {
@@ -90,6 +122,28 @@ async function bootData() {
   const realizedUsd = pnl?.realized?.valueUsd;
 
   const liveApr = holdings?.protocolApr || {};
+  const HOLDINGS = capitalSummary && Array.isArray(capitalSummary.walletItems)
+    ? {
+        all: capitalSummary.walletItems,
+        positions: Array.isArray(capitalSummary.positionItems) ? capitalSummary.positionItems : [],
+        totalUsd: Number.isFinite(capitalSummary.totalUsd) ? capitalSummary.totalUsd : null,
+        walletUsd: Number.isFinite(capitalSummary.walletUsd) ? capitalSummary.walletUsd : null,
+        deployedUsd: Number.isFinite(capitalSummary.deployedUsd) ? capitalSummary.deployedUsd : null,
+        pending: false,
+        generatedAt: capitalSummary.generatedAt || status?.generatedAt || null,
+      }
+    : holdings && Array.isArray(holdings.items)
+    ? {
+        all: holdings.items,
+        positions: [],
+        totalUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
+        walletUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
+        deployedUsd: 0,
+        pending: holdings.pending === true || holdings.items.length === 0,
+        generatedAt: holdings.generatedAt || null,
+      }
+    : { all: [], positions: [], pending: true, totalUsd: null, walletUsd: null, deployedUsd: null };
+  const CAPITAL = buildCapitalMaps(HOLDINGS);
 
   // P3 — unified read from dashboard-status.json only
   const strategyParity = status?.strategy?.strategyParity || {};
@@ -145,6 +199,8 @@ async function bootData() {
     const parity = tickByNormalized[normalizedId] || tickById[s.id] || null;
     const micro = microByNormalized[normalizedId] || microById[s.id] || null;
     const tickMode = parity?.promotionVerdict || parity?.tickMode || null;
+    const protocolCapitalUsd = CAPITAL.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || 0;
+    const chainCapitalUsd = CAPITAL.byChain[s.chain] || 0;
 
     let statusLabel;
     if (tickMode === 'live_candidate') statusLabel = 'LIVE CANDIDATE';
@@ -175,6 +231,8 @@ async function bootData() {
       projectedNetUsd: null,
       lastTickAt: parity?.lastTickAt || null,
       riskHint: riskByNormalized[normalizedId] || null,
+      actualProtocolCapitalUsd: protocolCapitalUsd,
+      actualChainCapitalUsd: chainCapitalUsd,
     };
   });
 
@@ -201,33 +259,12 @@ async function bootData() {
     generatedAt: status?.generatedAt || null,
   };
 
-  const HOLDINGS = capitalSummary && Array.isArray(capitalSummary.walletItems)
-    ? {
-        all: capitalSummary.walletItems,
-        positions: Array.isArray(capitalSummary.positionItems) ? capitalSummary.positionItems : [],
-        totalUsd: Number.isFinite(capitalSummary.totalUsd) ? capitalSummary.totalUsd : null,
-        walletUsd: Number.isFinite(capitalSummary.walletUsd) ? capitalSummary.walletUsd : null,
-        deployedUsd: Number.isFinite(capitalSummary.deployedUsd) ? capitalSummary.deployedUsd : null,
-        pending: false,
-        generatedAt: capitalSummary.generatedAt || status?.generatedAt || null,
-      }
-    : holdings && Array.isArray(holdings.items)
-    ? {
-        all: holdings.items,
-        positions: [],
-        totalUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
-        walletUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
-        deployedUsd: 0,
-        pending: holdings.pending === true || holdings.items.length === 0,
-        generatedAt: holdings.generatedAt || null,
-      }
-    : { all: [], positions: [], pending: true, totalUsd: null, walletUsd: null, deployedUsd: null };
-
   // P1 — fold chain parity into CHAINS so the UI shows explicit maturity/blockers
   const CHAINS_PARITY = CHAINS.map(c => {
     const p = chainParity.byChain?.[c.id] || null;
     return {
       ...c,
+      capitalUsd: CAPITAL.byChain[c.id] || 0,
       wrappedBtcVenueStatus: p?.wrappedBtcVenueStatus || 'unknown',
       stableVenueStatus: p?.stableVenueStatus || 'unknown',
       nativeEthArrivalClass: p?.nativeEthArrivalClass || 'unknown',
@@ -269,6 +306,8 @@ async function bootData() {
       source: 'merkl',
       opportunityId: m.opportunityId,
       riskHint: riskByNormalized[normalizedId] || null,
+      actualProtocolCapitalUsd: CAPITAL.byProtocol[capitalProtocolKey(m.chain, m.protocol)] || 0,
+      actualChainCapitalUsd: CAPITAL.byChain[m.chain] || 0,
     });
   }
 
@@ -280,6 +319,7 @@ async function bootData() {
     FLOW: flow || { metrics: {}, recentActivities: [], strategyRiskById: {} },
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,
+    CAPITAL,
     RAW_STATUS: status,
   });
   return true;
@@ -330,6 +370,7 @@ Object.assign(window, {
   HOLDINGS: { all: [] },
   FLOW: { metrics: {}, recentActivities: [], strategyRiskById: {} },
   OPERATIONS: null,
+  CAPITAL: { byChain: {}, byProtocol: {}, generatedAt: null },
 });
 window.DATA_READY = bootData();
 window.DATA_READY.then(() => startDashboardPolling(30000));

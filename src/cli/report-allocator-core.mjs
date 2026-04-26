@@ -23,7 +23,7 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [strategySnapshot, phase3Validation, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds, destinationPromotionGate, destinationStrategyRegistry] = await Promise.all([
+  const [strategySnapshot, phase3Validation, wrappedBtcLendingLoopSlice, recursiveWrappedBtcLoop, recursiveStablecoinLoop, secondaryStrategyScaffolds, destinationPromotionGate, destinationStrategyRegistry, destinationRepresentative] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "strategy-snapshot.json")),
     readJsonIfExists(join(config.dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(config.dataDir, "wrapped-btc-lending-loop-slice.json")),
@@ -32,6 +32,7 @@ async function main() {
     readJsonIfExists(join(config.dataDir, "secondary-strategy-scaffolds.json")),
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
     readJsonIfExists(join(config.dataDir, "destination-strategy-registry.json")),
+    readJsonIfExists(join(config.dataDir, "destination-representative-autopilot-latest.json")),
   ]);
   const indirectStablecoinLaneInventory = buildIndirectStablecoinLaneInventory();
   const report = buildAllocatorCore({
@@ -43,6 +44,7 @@ async function main() {
     secondaryStrategyScaffolds,
     destinationPromotionGate,
     destinationStrategyRegistry,
+    destinationRepresentative,
     indirectStablecoinLaneInventory,
   });
 

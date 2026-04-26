@@ -1,0 +1,103 @@
+{
+  "generatedAt": "2026-04-25T01:17:57.212Z",
+  "schemaVersion": 1,
+  "activeCount": 6,
+  "items": [
+    {
+      "id": "merkl_13747891056392346282",
+      "opportunityId": "13747891056392346282",
+      "label": "Deposit USDC to YO",
+      "chain": "base",
+      "protocol": "yo",
+      "type": "lp",
+      "pair": [
+        "usdc"
+      ],
+      "capUsd": 75.25,
+      "score": 128.15,
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "lastObservedAt": "2026-04-24T07:50:32.513Z",
+      "source": "merkl"
+    },
+    {
+      "id": "merkl_6112061466559197961",
+      "opportunityId": "6112061466559197961",
+      "label": "Supply to Clearstar USDC Core V2 vault on Morpho on Ethereum",
+      "chain": "ethereum",
+      "protocol": "morpho",
+      "type": "lp",
+      "pair": [
+        "usdc"
+      ],
+      "capUsd": 75,
+      "score": 117.6,
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "lastObservedAt": "2026-04-24T07:54:38.545Z",
+      "source": "merkl"
+    },
+    {
+      "id": "merkl_4722579239500632641",
+      "opportunityId": "4722579239500632641",
+      "label": "Supply to Steakhouse Prime Instant V2 vault on Morpho on Ethereum",
+      "chain": "ethereum",
+      "protocol": "morpho",
+      "type": "lp",
+      "pair": [
+        "usdc"
+      ],
+      "capUsd": 65.68,
+      "score": 115.08,
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "lastObservedAt": "2026-04-24T08:21:17.372Z",
+      "source": "merkl"
+    },
+    {
+      "id": "merkl_11011917105611148420",
+      "opportunityId": "11011917105611148420",
+      "label": "Supply RLUSD on Sentora RLUSD vault",
+      "chain": "ethereum",
+      "protocol": "euler",
+      "type": "lp",
+      "pair": [
+        "rlusd"
+      ],
+      "capUsd": 51.44,
+      "score": 102.21,
+      "bindingKind": "euler_evault_deposit_withdraw",
+      "lastObservedAt": "2026-04-24T08:54:39.432Z",
+      "source": "merkl"
+    },
+    {
+      "id": "merkl_13599851929364274522",
+      "opportunityId": "13599851929364274522",
+      "label": "Supply to Alpha USDC Forex V2 vault on Morpho on Ethereum",
+      "chain": "ethereum",
+      "protocol": "morpho",
+      "type": "lp",
+      "pair": [
+        "usdc"
+      ],
+      "capUsd": 29.32,
+      "score": 116.96,
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "lastObservedAt": "2026-04-25T00:19:29.742Z",
+      "source": "merkl"
+    },
+    {
+      "id": "merkl_16069439808187088621",
+      "opportunityId": "16069439808187088621",
+      "label": "Lend RLUSD on Aave Horizon",
+      "chain": "ethereum",
+      "protocol": "aave",
+      "type": "lp",
+      "pair": [
+        "rlusd"
+      ],
+      "capUsd": 25,
+      "score": 84.91,
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "lastObservedAt": "2026-04-24T07:54:13.427Z",
+      "source": "merkl"
+    }
+  ]
+}

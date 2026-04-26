@@ -1,4 +1,5 @@
 import { resolveVenueProtocols } from "../config/destination-venues.mjs";
+import { representativeBindingForTemplate } from "../config/destination-representative-bindings.mjs";
 import { resolveStableProtocols } from "../config/stable-venues.mjs";
 
 const DIVERSIFICATION_TARGET_CHAINS = [
@@ -37,6 +38,46 @@ const DESTINATION_PROTOCOL_OVERRIDES = {
   "unichain:wrapped_btc_lp_positions": ["catex"],
 };
 
+const PROTOCOL_RISK_SCORE = Object.freeze({
+  aave_v3: 0.86,
+  aave: 0.84,
+  compound_v3: 0.84,
+  compound_v2: 0.78,
+  morpho: 0.78,
+  moonwell: 0.76,
+  euler: 0.74,
+  "euler-v2": 0.74,
+  euler_v2: 0.74,
+  venus: 0.70,
+  benqi: 0.68,
+  dolomite: 0.66,
+  erc4626: 0.64,
+  gateway: 0.82,
+  odos: 0.72,
+});
+
+const CHAIN_EXECUTION_SCORE = Object.freeze({
+  base: 0.92,
+  bsc: 0.84,
+  unichain: 0.78,
+  avalanche: 0.76,
+  optimism: 0.75,
+  sonic: 0.70,
+  soneium: 0.68,
+  bera: 0.64,
+  bob: 0.62,
+  ethereum: 0.58,
+  sei: 0.56,
+});
+
+const SCORE_WEIGHTS = Object.freeze({
+  evidence: 0.30,
+  execution: 0.25,
+  risk: 0.20,
+  return: 0.15,
+  diversification: 0.10,
+});
+
 function round(value, digits = 2) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
@@ -45,6 +86,11 @@ function round(value, digits = 2) {
 
 function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
+}
+
+function clamp(value, min = 0, max = 1) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
 }
 
 function candidate({
@@ -123,6 +169,59 @@ function destinationProtocolIds(item = {}) {
   }
   if (item?.familyId) return [item.familyId];
   return [];
+}
+
+function representativeProtocolIds(item = {}) {
+  if (Array.isArray(item?.protocols) && item.protocols.length > 0) return unique(item.protocols);
+  if (item?.protocolId) return unique([item.protocolId]);
+  const binding = representativeBindingForTemplate(item?.templateId);
+  if (binding?.protocolId) return unique([binding.protocolId]);
+  return destinationProtocolIds({
+    templateId: item?.templateId,
+    chain: item?.chain,
+    familyId: item?.familyId || "stablecoin_lending_carry",
+  });
+}
+
+function representativeCoverageCandidates(destinationRepresentative = null) {
+  return (destinationRepresentative?.candidates || [])
+    .filter((item) => item?.status === "covered" && item?.templateId && item?.chain)
+    .map((item) => candidate({
+      id: item.templateId,
+      label: item.label || "Representative stablecoin lending carry",
+      chain: item.chain,
+      protocols: representativeProtocolIds(item),
+      assetFamily: "stables",
+      category: "yield",
+      activeEligibility: "active_ready",
+      planningEligibility: "allocation_ready",
+      blockers: [],
+      evidence: {
+        source: "destination_representative_autopilot",
+        status: "covered",
+        latestObservedAt: destinationRepresentative.observedAt || null,
+        proofStatus: item.proofStatus || destinationRepresentative?.summary?.proofStatus || null,
+      },
+      nextAction: { code: "monitor_representative_receipts" },
+    }));
+}
+
+function mergeCandidatesById(candidates = []) {
+  const rank = (item = {}) => {
+    if (item.activeEligibility === "active_ready") return 0;
+    if (item.planningEligibility === "allocation_ready") return 1;
+    if (item.planningEligibility === "review_only") return 2;
+    return 3;
+  };
+  const byId = new Map();
+  for (const item of candidates) {
+    if (!item?.id) continue;
+    const existing = byId.get(item.id);
+    if (!existing || rank(item) < rank(existing) || (rank(item) === rank(existing) && (item.blockers || []).length < (existing.blockers || []).length)) {
+      byId.set(item.id, item);
+    }
+  }
+  return [...byId.values()];
 }
 
 function destinationGateCandidate(item = {}) {
@@ -333,10 +432,77 @@ function statusRank(candidate = null) {
   return 4;
 }
 
+function protocolRiskScore(protocols = []) {
+  const scores = (protocols || [])
+    .map((protocol) => PROTOCOL_RISK_SCORE[String(protocol || "").trim()] ?? 0.60)
+    .filter(Number.isFinite);
+  if (scores.length === 0) return 0.55;
+  return scores.reduce((sum, item) => sum + item, 0) / scores.length;
+}
+
+function evidenceScore(item = {}) {
+  if (item.activeEligibility === "active_ready" && item.evidence?.source === "destination_representative_autopilot") return 1;
+  if (item.activeEligibility === "active_ready") return 0.9;
+  if (item.planningEligibility === "allocation_ready") return 0.78;
+  if (item.planningEligibility === "review_only") return clamp(0.55 - (item.blockers || []).length * 0.06);
+  return clamp(0.25 - (item.blockers || []).length * 0.04);
+}
+
+function executionScore(item = {}) {
+  const base = CHAIN_EXECUTION_SCORE[item.chain] ?? 0.60;
+  if (item.evidence?.source === "destination_representative_autopilot") return clamp(base + 0.12);
+  if (item.activeEligibility === "active_ready") return base;
+  if (item.planningEligibility === "allocation_ready") return clamp(base - 0.08);
+  if (item.planningEligibility === "review_only") return clamp(base - 0.22);
+  return clamp(base - 0.40);
+}
+
+function returnScore(item = {}) {
+  const estimate =
+    Number(item.evidence?.estimatedNetBps) ??
+    Number(item.evidence?.grossReturnBps) ??
+    Number(item.evidence?.projectedAnnualNetCarryUsd) ??
+    null;
+  if (Number.isFinite(estimate) && estimate > 0) return clamp(estimate / 1_000);
+  if (item.assetFamily === "stables") return 0.58;
+  if (item.assetFamily === "btc_wrappers") return 0.52;
+  if (item.assetFamily === "reserve_assets") return 0.42;
+  return 0.46;
+}
+
+function buildCandidateScores(items = []) {
+  const chainCounts = new Map();
+  for (const item of items.filter((candidate) => candidate.activeEligibility === "active_ready")) {
+    chainCounts.set(item.chain, (chainCounts.get(item.chain) || 0) + 1);
+  }
+  return items.map((item) => {
+    const details = {
+      evidence: round(evidenceScore(item), 4),
+      execution: round(executionScore(item), 4),
+      risk: round(protocolRiskScore(item.protocols), 4),
+      return: round(returnScore(item), 4),
+      diversification: round(1 / (1 + (chainCounts.get(item.chain) || 0)), 4),
+    };
+    const score =
+      details.evidence * SCORE_WEIGHTS.evidence +
+      details.execution * SCORE_WEIGHTS.execution +
+      details.risk * SCORE_WEIGHTS.risk +
+      details.return * SCORE_WEIGHTS.return +
+      details.diversification * SCORE_WEIGHTS.diversification;
+    return {
+      ...item,
+      score: round(score, 4),
+      scoreDetails: details,
+    };
+  });
+}
+
 function compareCandidates(left = null, right = null) {
   const leftRank = statusRank(left);
   const rightRank = statusRank(right);
   if (leftRank !== rightRank) return leftRank - rightRank;
+  const scoreDelta = (right?.score ?? 0) - (left?.score ?? 0);
+  if (scoreDelta !== 0) return scoreDelta;
   const leftBlockers = left?.blockers?.length || 0;
   const rightBlockers = right?.blockers?.length || 0;
   if (leftBlockers !== rightBlockers) return leftBlockers - rightBlockers;
@@ -386,7 +552,7 @@ function preferredPortfolioCandidates(candidates = []) {
   return [...candidates].sort((left, right) => {
     const leftAnchor = left?.id === "recursive_wrapped_btc_lending_loop" ? 1 : 0;
     const rightAnchor = right?.id === "recursive_wrapped_btc_lending_loop" ? 1 : 0;
-    if (leftAnchor !== rightAnchor) return rightAnchor - leftAnchor;
+    if (leftAnchor !== rightAnchor && Math.abs((right?.score ?? 0) - (left?.score ?? 0)) < 0.08) return rightAnchor - leftAnchor;
     return compareCandidates(left, right);
   });
 }
@@ -415,7 +581,7 @@ function buildDiversifiedPortfolioDraft({ candidates = [], priorityChainExpansio
     if (selected.length >= 4) break;
   }
   const expansionQueue = (priorityChainExpansion?.perChain || [])
-    .filter((item) => item.reviewOnlyCount > 0 && item.topCandidate)
+    .filter((item) => item.activeReadyCount === 0 && item.reviewOnlyCount > 0 && item.topCandidate)
     .map((item) => ({
       chain: item.chain,
       ...item.topCandidate,
@@ -453,6 +619,22 @@ function capBlockers({ chain, protocols, assetFamily, perItemLimit, budgetUsd, c
     blockers.push("asset_family_cap_exceeded");
   }
   return blockers;
+}
+
+function remainingCapLimit({ chain, protocols, assetFamily, perItemLimit, budgetUsd, constraints, chainUsage, protocolUsage, assetFamilyUsage }) {
+  if (!Number.isFinite(budgetUsd) || !Number.isFinite(perItemLimit)) return perItemLimit;
+  const limits = [perItemLimit];
+  const chainCap = (constraints.capPerChainPct ?? 0) * budgetUsd;
+  if (chainCap > 0) limits.push(Math.max(0, chainCap - (chainUsage.get(chain) || 0)));
+  const protocolCap = (constraints.capPerProtocolPct ?? 0) * budgetUsd;
+  if (protocolCap > 0) {
+    for (const protocol of protocols || []) {
+      limits.push(Math.max(0, protocolCap - (protocolUsage.get(protocol) || 0)));
+    }
+  }
+  const assetCap = (constraints.capPerAssetFamilyPct ?? 0) * budgetUsd;
+  if (assetCap > 0) limits.push(Math.max(0, assetCap - (assetFamilyUsage.get(assetFamily) || 0)));
+  return round(Math.min(...limits));
 }
 
 function wrappedLoopCandidate({ wrappedBtcLendingLoopSlice = null, phase3Validation = null } = {}) {
@@ -546,12 +728,38 @@ function buildAllocationView(items = [], budgetUsd, constraints) {
       protocols: item.protocols,
       assetFamily: item.assetFamily,
       category: item.category,
+      score: item.score ?? null,
+      scoreDetails: item.scoreDetails ?? null,
       maxAllocationUsd: perItemLimit,
       blockers: item.blockers,
       nextAction: item.nextAction,
     };
 
     if (item.activeEligibility === "active_ready" && Number.isFinite(perItemLimit) && perItemLimit > 0) {
+      const allocationUsd = remainingCapLimit({
+        chain: item.chain,
+        protocols: item.protocols,
+        assetFamily: item.assetFamily,
+        perItemLimit,
+        budgetUsd,
+        constraints,
+        chainUsage,
+        protocolUsage,
+        assetFamilyUsage,
+      });
+      if (allocationUsd > 0) {
+        activePlan.push({
+          ...allocation,
+          maxAllocationUsd: allocationUsd,
+          partialCapAllocation: allocationUsd < perItemLimit,
+        });
+        chainUsage.set(item.chain, round((chainUsage.get(item.chain) || 0) + allocationUsd));
+        for (const protocol of item.protocols) {
+          protocolUsage.set(protocol, round((protocolUsage.get(protocol) || 0) + allocationUsd));
+        }
+        assetFamilyUsage.set(item.assetFamily, round((assetFamilyUsage.get(item.assetFamily) || 0) + allocationUsd));
+        continue;
+      }
       const exceeded = capBlockers({
         chain: item.chain,
         protocols: item.protocols,
@@ -631,6 +839,7 @@ export function buildAllocatorCore({
   protocolMarketWatchers = null,
   destinationPromotionGate = null,
   destinationStrategyRegistry = null,
+  destinationRepresentative = null,
   indirectStablecoinLaneInventory = null,
   now = null,
 } = {}) {
@@ -645,12 +854,13 @@ export function buildAllocatorCore({
     capPerAssetFamilyPct: 0.5,
     reserveSleeveMinPct: 0.05,
   };
-  const candidates = [
+  const rawCandidates = [
     recursiveLoopCandidate({ scaffold: recursiveWrappedBtcLoop, phase3Validation }),
     recursiveLoopCandidate({ scaffold: recursiveStablecoinLoop, phase3Validation }),
     recursiveWrappedBtcLoop ? null : wrappedLoopCandidate({ wrappedBtcLendingLoopSlice, phase3Validation }),
     ...((secondaryStrategyScaffolds?.scaffolds || []).map((item) => scaffoldCandidate(item, phase3Validation))),
     ...destinationGateCandidates(destinationPromotionGate),
+    ...representativeCoverageCandidates(destinationRepresentative),
   ]
     .filter((item) => item?.id)
     .map((item) => {
@@ -661,6 +871,7 @@ export function buildAllocatorCore({
         nextAction: item.nextAction || watcherNextAction(item.id, protocolMarketWatchers),
       };
     });
+  const candidates = buildCandidateScores(mergeCandidatesById(rawCandidates)).sort(compareCandidates);
   const activeView = buildAllocationView(candidates, budgets.activeBudgetUsd, constraints);
   const planningView = buildAllocationView(candidates, budgets.planningBudgetUsd, constraints);
   const chainCoverage = buildChainCoverageMatrix(destinationPromotionGate, destinationStrategyRegistry);
@@ -756,6 +967,8 @@ export function summarizeAllocatorCore(report = null) {
       ? {
           id: topActiveAllocation.id || null,
           label: topActiveAllocation.label || null,
+          score: topActiveAllocation.score ?? null,
+          scoreDetails: topActiveAllocation.scoreDetails || null,
           maxAllocationUsd: topActiveAllocation.maxAllocationPerStrategyUsd ?? topActiveAllocation.maxAllocationUsd ?? null,
         }
       : null,
@@ -763,6 +976,8 @@ export function summarizeAllocatorCore(report = null) {
       ? {
           id: topActiveReady.id || null,
           label: topActiveReady.label || null,
+          score: topActiveReady.score ?? null,
+          scoreDetails: topActiveReady.scoreDetails || null,
           blockers: topActiveReady.blockers || [],
         }
       : null,
@@ -770,6 +985,8 @@ export function summarizeAllocatorCore(report = null) {
       ? {
           id: topPlanning.id || null,
           label: topPlanning.label || null,
+          score: topPlanning.score ?? null,
+          scoreDetails: topPlanning.scoreDetails || null,
           maxAllocationUsd: topPlanning.maxAllocationPerStrategyUsd ?? topPlanning.maxAllocationUsd ?? null,
         }
       : null,

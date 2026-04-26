@@ -243,8 +243,10 @@ test("flow dashboard slice compacts live activities and leverage hints for the f
   assert.equal(slice.metrics.paidBackUsdLifetime, 50);
   assert.equal(slice.recentActivities.length, 3);
   assert.equal(slice.recentActivities[0].kind, "execution");
+  assert.equal(slice.recentActivities[0].finalAssetId, "cbBTC");
   assert.equal(slice.recentActivities[1].kind, "position");
   assert.equal(slice.recentActivities[2].kind, "payback");
+  assert.equal(slice.recentActivities[2].finalAssetId, "btc");
   assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedHealthFactor, 1.92);
   assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedLiquidationBufferPct, 18.2);
 });

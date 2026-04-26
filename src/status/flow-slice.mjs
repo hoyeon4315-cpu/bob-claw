@@ -58,6 +58,19 @@ function executionRealizedUsd(event = {}) {
   );
 }
 
+function eventFinalAssetLabel(event = {}) {
+  return (
+    stringOrNull(event.asset) ??
+    stringOrNull(event.symbol) ??
+    stringOrNull(event.outputAsset) ??
+    stringOrNull(event.receiptIngest?.receiptRecord?.output?.asset) ??
+    stringOrNull(event.receiptIngest?.receiptRecord?.output?.symbol) ??
+    stringOrNull(event.receiptIngest?.receiptRecord?.output?.ticker) ??
+    stringOrNull(event.receiptIngest?.receiptRecord?.routeContext?.dstTicker) ??
+    null
+  );
+}
+
 function isDeliveredExecution(event = {}) {
   if (!event?.strategyId) return false;
   if (event.eventType === "execution_funding_outcome" && event.settlementStatus === "delivered") return true;
@@ -82,6 +95,8 @@ function normalizeExecutionActivity(event = {}) {
     amountUsd: executionAmountUsd(event),
     amountSats: executionAmountSats(event),
     realizedNetPnlUsd: executionRealizedUsd(event),
+    finalAssetId: eventFinalAssetLabel(event),
+    finalAssetLabel: eventFinalAssetLabel(event),
     txHash,
     detail:
       stringOrNull(event.asset) ||
@@ -108,6 +123,8 @@ function normalizePositionActivity(event = {}) {
     amountUsd: finiteNumber(event.amountUsd),
     amountSats: null,
     realizedNetPnlUsd: null,
+    finalAssetId: stringOrNull(event.asset) ?? stringOrNull(event.assetSymbol) ?? null,
+    finalAssetLabel: stringOrNull(event.asset) ?? stringOrNull(event.assetSymbol) ?? null,
     txHash: stringOrNull(event.entryTxHash),
     detail: stringOrNull(event.name),
   });
@@ -129,6 +146,8 @@ function normalizePaybackActivity(payback = null, btcUsd = null) {
     amountUsd: satsToUsd(settledSats, btcUsd),
     amountSats: settledSats,
     realizedNetPnlUsd: null,
+    finalAssetId: "btc",
+    finalAssetLabel: "BTC",
     txHash: null,
     detail: "Bitcoin L1 settled",
   });

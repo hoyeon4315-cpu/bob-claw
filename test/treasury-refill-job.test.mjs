@@ -272,7 +272,14 @@ test("refill jobs use route candidates that match each action chain instead of o
 });
 
 test("refill jobs combine pending overflow review with non-ready funding-source reasons", () => {
-  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const basePolicy = buildDefaultTreasuryPolicy();
+  const policy = validateTreasuryPolicy({
+    ...basePolicy,
+    refillPolicy: {
+      ...basePolicy.refillPolicy,
+      maxPendingJobs: 4,
+    },
+  });
   const plan = {
     ...planFixture("REVIEW_REFILL_PLAN"),
     reasons: ["too_many_pending_refills"],

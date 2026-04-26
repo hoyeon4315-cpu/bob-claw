@@ -37,6 +37,9 @@ describe("dashboard home renewal source guard", () => {
     assert.match(historySection, /ProtocolLogo id=\{id\} size=\{16\}/);
     assert.match(historySection, /<RouteNode kind=\{route\.source\.kind\}/);
     assert.match(historySection, /<RouteNode kind=\{route\.target\.kind\}/);
+    assert.match(historySection, /deriveActivityFinalAsset/);
+    assert.match(historySection, /AssetLogo id=\{finalAsset\.id\} size=\{12\}/);
+    assert.match(historySection, /Arrived/);
 
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
@@ -64,5 +67,13 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(strategyRow, /APR/);
     assert.doesNotMatch(strategyRow, /[가-힣]/);
     assert.doesNotMatch(strategyRow, /badge/i);
+  });
+
+  test("flow pane expands the map above lower cards during focus mode", () => {
+    const flowPane = extractSection("function FlowPane", "function KpiCard");
+    assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
+    assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : 'calc\(56% - 4px\)'/);
+    assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
+    assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
   });
 });

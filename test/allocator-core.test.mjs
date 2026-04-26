@@ -669,3 +669,35 @@ test("allocator core summary indirectStableLane is null when no inventory provid
   const summary = summarizeAllocatorCore(report);
   assert.equal(summary.indirectStableLane, null);
 });
+
+test("allocator core treats delivered representative coverage as active scored allocation input", () => {
+  const report = buildAllocatorCore({
+    strategySnapshot: {
+      currentSystem: { activeBudgetUsd: 1_000 },
+      summary: { planningBudgetUsd: null },
+    },
+    phase3Validation: { validations: [] },
+    destinationRepresentative: {
+      observedAt: "2026-04-25T23:00:00.000Z",
+      candidates: [
+        {
+          templateId: "unichain:stablecoin_lending_carry",
+          chain: "unichain",
+          status: "covered",
+          protocolId: "euler-v2",
+        },
+      ],
+    },
+    now: "2026-04-25T23:00:01.000Z",
+  });
+
+  const unichain = report.candidates.find((item) => item.id === "unichain:stablecoin_lending_carry");
+  assert.ok(unichain, "delivered representative chain must become an allocator candidate");
+  assert.equal(unichain.activeEligibility, "active_ready");
+  assert.equal(unichain.evidence.source, "destination_representative_autopilot");
+  assert.equal(Number.isFinite(unichain.score), true);
+  assert.equal(report.activeView.activePlan.some((item) => item.id === "unichain:stablecoin_lending_carry"), true);
+
+  const summary = summarizeAllocatorCore(report);
+  assert.equal(Number.isFinite(summary.topActiveAllocation.score), true);
+});

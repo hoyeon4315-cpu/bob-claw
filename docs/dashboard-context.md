@@ -229,6 +229,8 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `flow.recentActivities[].status`
 - `flow.recentActivities[].amountUsd`
 - `flow.recentActivities[].amountSats`
+- `flow.recentActivities[].finalAssetId`
+- `flow.recentActivities[].finalAssetLabel`
 - `flow.recentActivities[].observedAt`
 - `flow.strategyRiskById`
 

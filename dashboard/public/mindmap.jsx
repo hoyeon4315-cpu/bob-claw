@@ -41,7 +41,12 @@ function isMindmapVisible(strategy) {
   if (!strategy) return false;
   if (MINDMAP_HIDDEN_PROTOCOLS.has(strategy.protocol)) return false;
   if (MINDMAP_HIDDEN_TYPES.has(strategy.type)) return false;
-  return true;
+  if (strategy.protocol === 'unknown') return false;
+  if (strategy.type === 'payback') {
+    const paybackUsd = Number(window?.FLOW?.metrics?.pendingCarryUsd || 0) + Number(window?.FLOW?.metrics?.paidBackUsdLifetime || 0);
+    return paybackUsd > 0;
+  }
+  return Number(strategy.actualProtocolCapitalUsd || 0) > 0;
 }
 
 function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
@@ -115,6 +120,34 @@ function bezierAt(x1, y1, cx, cy, x2, y2, t) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function formatCompactUsdLabel(value) {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  if (value >= 1000) return `$${Math.round(value).toLocaleString()}`;
+  if (value >= 100) return `$${Math.round(value)}`;
+  if (value >= 10) return `$${value.toFixed(0)}`;
+  if (value >= 1) return `$${value.toFixed(1)}`;
+  return `<$1`;
+}
+
+function StatPill({ x, y, label, scale = 1, tone = 'light' }) {
+  if (!label) return null;
+  const width = Math.max(28, label.length * 5.6 * scale + 10 * scale);
+  const height = 14 * scale;
+  const fill = tone === 'dark' ? '#111113' : 'rgba(255,255,255,0.94)';
+  const stroke = tone === 'dark' ? '#111113' : '#DADADA';
+  const color = tone === 'dark' ? '#F5F5F6' : '#555';
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ pointerEvents: 'none' }}>
+      <rect x={-width / 2} y={-height / 2} width={width} height={height} rx={height / 2}
+        fill={fill} stroke={stroke} strokeWidth="0.5"/>
+      <text textAnchor="middle" y={3.2 * scale} fontSize={8.2 * scale} fontWeight="700" fill={color}
+        style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
+        {label}
+      </text>
+    </g>
+  );
 }
 
 function createBounds() {
@@ -216,10 +249,13 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDra
     onTap?.();
   };
   const hitSize = size * 1.95;
+  const capitalLabel = formatCompactUsdLabel(chain.capitalUsd);
+  const nameY = labelBelow ? size * 0.92 : -size * 0.74;
+  const capitalY = labelBelow ? size * 1.24 : -size * 1.06;
   return (
     <g data-chain-id={chain.id} transform={`translate(${x}, ${y})`}
        style={{ cursor:'pointer', opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto',
-                 transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  transition: `opacity ${T_FAST}ms ${EASE}` }}>
       <g style={{ pointerEvents:'none' }}>
         <circle r={size*0.56} fill="#FFFFFF" stroke={active ? '#111113' : '#DADADA'} strokeWidth={active ? 1 : 0.6}/>
         <foreignObject x={-size*0.42} y={-size*0.42} width={size*0.84} height={size*0.84} style={{ pointerEvents:'none' }}>
@@ -227,10 +263,11 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDra
             <ChainLogo id={chain.id} size={size*0.78}/>
           </div>
         </foreignObject>
-        <text y={labelBelow ? size*0.94 : -size*0.72} textAnchor="middle" fontSize="11" fontWeight="500" fill="#555"
+        <text y={nameY} textAnchor="middle" fontSize="11" fontWeight="500" fill="#555"
           style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
           {chain.name}
         </text>
+        <StatPill x={0} y={capitalY} label={capitalLabel} scale={0.9}/>
       </g>
       <foreignObject x={-hitSize / 2} y={-hitSize / 2} width={hitSize} height={hitSize}>
         <button
@@ -375,6 +412,7 @@ function groupStrategiesByProtocol(strategies = []) {
       liveCount,
       earnedUsd: items.reduce((sum, item) => sum + (item.earnedUsd || 0), 0),
       capUsd: items.every((item) => item.capUsd == null) ? null : items.reduce((sum, item) => sum + (item.capUsd || 0), 0),
+      capitalUsd: Math.max(...items.map((item) => Number(item.actualProtocolCapitalUsd || 0)), 0),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
       apyPct: apyDenominator > 0 ? apyNumerator / apyDenominator : null,
       desc: items.length === 1
@@ -384,10 +422,11 @@ function groupStrategiesByProtocol(strategies = []) {
   });
 }
 
-function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
+function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragStart }) {
   const R = size * 1.1;
   const typeLabel = TYPE_LABEL[strategy.type] || strategy.type.toUpperCase();
   const typeInk = TYPE_INK[strategy.type] || '#555';
+  const capitalLabel = formatCompactUsdLabel(strategy.capitalUsd);
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
@@ -395,7 +434,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
   const hitSize = strategy.loops ? size * 4.1 : size * 3.2;
   return (
     <g data-protocol-id={strategy.id} transform={`translate(${x}, ${y})`}
-        style={{ cursor:'pointer' }}>
+        style={{ cursor:'pointer', opacity: dimmed ? 0.22 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
       <g style={{ pointerEvents:'none', animation: `chipIn 220ms ${EASE} both` }}>
         <circle r={R} fill="#FFFFFF" stroke={selected ? '#111113' : '#DADADA'} strokeWidth={selected ? 1.2 : 0.6}/>
         <foreignObject x={-R*0.82} y={-R*0.82} width={R*1.64} height={R*1.64} style={{ pointerEvents:'none' }}>
@@ -403,6 +442,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
             <ProtocolLogo id={strategy.protocol} size={R*1.18}/>
           </div>
         </foreignObject>
+        <StatPill x={0} y={-R - 12} label={capitalLabel} scale={0.82} tone={selected ? 'dark' : 'light'}/>
         {selected && (
           <>
             <text y={R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1D1D1F"
@@ -466,7 +506,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, onDragStart }) {
   );
 }
 
-function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
+function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const [selectedChain, setSelectedChain] = useState(null);
   const [selectedProtocolId, setSelectedProtocolId] = useState(null);
   const [time, setTime] = useState(0);
@@ -563,6 +603,14 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [motionSpeed]);
+
+  useEffect(() => {
+    onFocusChange?.({
+      layer: selectedProtocolId ? 'protocol' : selectedChain ? 'chain' : 'root',
+      selectedChain,
+      selectedProtocolId,
+    });
+  }, [onFocusChange, selectedChain, selectedProtocolId]);
 
   const VB_W = 360;
   const VB_H = 520;
@@ -703,9 +751,11 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
       ? strategies.filter((strategy) => strategy.id === selectedProtocolId)
       : strategies;
     const bounds = createBounds();
+    const chainLabelBelow = (ringPos[selectedChain]?.y ?? 0) >= 0;
 
     includeCircle(bounds, chain.x, chain.y, chainSize * 0.9);
-    includeRect(bounds, chain.x, chain.y + chainSize * 0.95, 72, 18);
+    includeRect(bounds, chain.x, chain.y + (chainLabelBelow ? chainSize * 1.08 : -(chainSize * 0.92)), 82, 18);
+    includeRect(bounds, chain.x, chain.y + (chainLabelBelow ? chainSize * 1.24 : -(chainSize * 1.06)), 76, 16);
 
     const hasPayback = focusStrategies.some(s => s.type === 'payback');
     if (hasPayback) {
@@ -719,6 +769,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
       const chipSize = 28;
       const chipRadius = chipSize * 1.1;
       includeCircle(bounds, point.x, point.y, chipRadius + 4);
+      includeRect(bounds, point.x, point.y - chipRadius - 12, 58, 16);
       includeRect(bounds, point.x, point.y + chipRadius + 10, 80, 14);
       includeRect(bounds, point.x, point.y + chipRadius + 18, 112, 38);
 
@@ -742,8 +793,8 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
       selectedProtocolId ? 18 : 14
     );
     const safeArea = selectedProtocolId
-      ? { top: 22, right: 16, bottom: 172, left: 16 }
-      : { top: 18, right: 12, bottom: 112, left: 12 };
+      ? { top: 20, right: 16, bottom: 124, left: 16 }
+      : { top: 16, right: 12, bottom: 82, left: 12 };
     const focus = {
       x: (paddedBounds.minX + paddedBounds.maxX) / 2,
       y: (paddedBounds.minY + paddedBounds.maxY) / 2,
@@ -806,7 +857,15 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
     window.addEventListener('pointerup', up);
   }
 
-  const resetAll = () => { setSelectedChain(null); setSelectedProtocolId(null); };
+  const stepBack = () => {
+    if (selectedProtocolId) {
+      setSelectedProtocolId(null);
+      return;
+    }
+    if (selectedChain) {
+      setSelectedChain(null);
+    }
+  };
 
   return (
     <div
@@ -817,7 +876,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
       background: 'linear-gradient(180deg, #FAFAFA 0%, #F3F3F4 100%)',
       borderRadius: 20, overflow:'hidden',
     }}>
-      <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet">
+      <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet" onClick={stepBack}>
         <defs>
           <pattern id="dotgrid" width="14" height="14" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.7" fill="#E0E0E2"/>
@@ -828,7 +887,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
           </radialGradient>
         </defs>
 
-        <rect width={VB_W} height={VB_H} fill="url(#dotgrid)" onClick={resetAll}/>
+        <rect width={VB_W} height={VB_H} fill="url(#dotgrid)" onClick={stepBack}/>
 
         <g transform={`translate(${tx}, ${ty}) scale(${zoom})`}
            style={{ transition: `transform ${T_FAST}ms ${EASE}`, willChange: 'transform' }}>
@@ -902,6 +961,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
             const chain = getNodePos(`chain:${selectedChain}`, ringPos[selectedChain].x, ringPos[selectedChain].y);
             if (!protocolBloom[s.id]) return null;
             const isSel = selectedProtocolId === s.id;
+            const dimmed = Boolean(selectedProtocolId) && !isSel;
             const chipSize = 28;
             const connector = {
               x1: chain.x, y1: chain.y,
@@ -916,16 +976,19 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
               <g key={'proto-'+s.id}>
                 <line x1={chain.x} y1={chain.y} x2={pp.x} y2={pp.y}
                   stroke="#B0B0B3" strokeWidth="0.8"
+                  opacity={dimmed ? 0.2 : 1}
                   style={{ animation: `fadeIn 180ms ${EASE} both` }}/>
-                <FlowToken curve={connector} progress={tFlow}
-                  assetId={s.pair[0]}
-                  swapAt={isSwap ? 0.5 : null}
-                  swapTo={s.pair[1]}
-                  sourceChainId={selectedChain}
-                  sourceChainAfterSwap={s.type === 'payback' ? 'bitcoin' : 'bob'}
-                  size={11}/>
+                <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  <FlowToken curve={connector} progress={tFlow}
+                    assetId={s.pair[0]}
+                    swapAt={isSwap ? 0.5 : null}
+                    swapTo={s.pair[1]}
+                    sourceChainId={selectedChain}
+                    sourceChainAfterSwap={s.type === 'payback' ? 'bitcoin' : 'bob'}
+                    size={11}/>
+                </g>
                 {s.type === 'payback' && (
-                  <g style={{ animation: `fadeIn 180ms ${EASE} both` }}>
+                  <g style={{ animation: `fadeIn 180ms ${EASE} both`, opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     {/* Return path from protocol back toward Bitcoin */}
                     {(() => {
                       const ret = curvePath(pp.x, pp.y, btc.x, btc.y, -0.18);
@@ -942,24 +1005,33 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
                   </g>
                 )}
                 {s.type === 'loop' && (
-                  <OrbitTokens cx={pp.x} cy={pp.y}
-                    radius={chipSize * 1.8}
-                    assets={s.pair}
-                    loops={s.loops}
-                    time={time} speed={0.55}/>
+                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                    <OrbitTokens cx={pp.x} cy={pp.y}
+                      radius={chipSize * 1.8}
+                      assets={s.pair}
+                      loops={s.loops}
+                      time={time} speed={0.55}/>
+                  </g>
                 )}
                 <ProtocolChip strategy={s} x={pp.x} y={pp.y} size={chipSize}
                   selected={isSel}
+                  dimmed={dimmed}
                   onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}
                   onDragStart={(e) => handleDragStart(e, `proto:${s.id}`, () => setSelectedProtocolId(prev => prev === s.id ? null : s.id))}/>
                 {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt') && s.pair.length > 1 && (
-                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
+                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                    <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
+                  </g>
                 )}
                 {(s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
-                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
+                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                    <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
+                  </g>
                 )}
                 {(s.type === 'bridge' || s.type === 'payback' || s.type === 'refuel') && s.pair.length > 1 && (
-                  <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
+                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                    <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
+                  </g>
                 )}
               </g>
             );
@@ -990,9 +1062,9 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0 }) {
 function ProtocolCard({ protocolNode }) {
   if (!protocolNode) return null;
   const chain = CHAINS.find(c => c.id === protocolNode.chain);
-  const statusInk = { 'LIVE':'#1C7A3E','DRY RUN':'#7A5C0D','CANDIDATE':'#6B6B6E','BLOCKED':'#8A1F1F' }[protocolNode.status] || '#555';
   const typeLabel = TYPE_LABEL[protocolNode.type] || protocolNode.type.toUpperCase();
   const typeInk = TYPE_INK[protocolNode.type] || '#555';
+  const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
   return (
     <div data-card-type="protocol" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1017,18 +1089,19 @@ function ProtocolCard({ protocolNode }) {
             <span style={{ fontSize:10, fontWeight:600, padding:'1px 5px', borderRadius:3, border:`0.5px solid ${typeInk}`, color:typeInk, letterSpacing:0.4 }}>{typeLabel}</span>
           </div>
         </div>
-        <div style={{
-          fontSize:10, fontWeight:600, padding:'2px 7px', borderRadius:4,
-          border: `0.5px solid ${statusInk}`,
-          color: statusInk, letterSpacing:0.4,
-        }}>{protocolNode.status}</div>
+        {capitalLabel && (
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#111113', letterSpacing:-0.2 }}>{capitalLabel}</div>
+            <div style={{ fontSize:9.5, color:'#6B6B6E', marginTop:1 }}>capital</div>
+          </div>
+        )}
       </div>
       <div style={{ marginTop:8, display:'flex', gap:12, flexWrap:'wrap' }}>
         <Metric label="Mapped" value={`${protocolNode.strategyCount}`}/>
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
+        <Metric label="Capital" value={capitalLabel || '—'}/>
         <Metric label="Earned" value={protocolNode.earnedUsd > 0 ? `$${protocolNode.earnedUsd.toFixed(2)}` : '—'} accent={protocolNode.earnedUsd > 0}/>
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
-        <Metric label="Cap" value={protocolNode.capUsd != null ? `$${protocolNode.capUsd}` : 'Adaptive'}/>
         {protocolNode.loops && <Metric label="Loops" value={`×${protocolNode.loops}`}/>}
       </div>
       <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:5, padding:'5px 8px', background:'#F5F5F6', borderRadius:8 }}>
@@ -1060,8 +1133,8 @@ function ChainCard({ chainId, strategies }) {
   const chain = CHAINS.find(c => c.id === chainId);
   if (!chain) return null;
   const live = strategies.filter(s => s.status === 'LIVE').length;
-  const totalCap = strategies.every((x) => x.capUsd == null) ? null : strategies.reduce((s, x) => s + (x.capUsd || 0), 0);
   const totalEarned = strategies.reduce((s, x) => s + (x.earnedUsd || 0), 0);
+  const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0));
   return (
     <div data-card-type="chain" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1087,7 +1160,7 @@ function ChainCard({ chainId, strategies }) {
       </div>
       <div style={{ marginTop:8, display:'flex', gap:14, flexWrap:'wrap' }}>
         <Metric label="Live" value={`${live}/${strategies.length}`}/>
-        <Metric label="Cap" value={totalCap != null ? `$${totalCap}` : 'Adaptive'}/>
+        <Metric label="Capital" value={capitalLabel || '—'}/>
         <Metric label="Earned" value={totalEarned > 0 ? `$${totalEarned.toFixed(2)}` : '—'} accent={totalEarned > 0}/>
       </div>
     </div>
