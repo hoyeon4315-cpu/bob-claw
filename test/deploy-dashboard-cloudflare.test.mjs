@@ -39,18 +39,16 @@ test("deploy preflight auto-discovers the default dashboard project across accou
         result_info: { page: 1, total_pages: 1 },
       },
     },
-    "/client/v4/accounts/acct-other/pages/projects?page=1&per_page=100": {
+    "/client/v4/accounts/acct-other/pages/projects": {
       body: {
         success: true,
         result: [{ name: "not-the-dashboard" }],
-        result_info: { page: 1, total_pages: 1 },
       },
     },
-    "/client/v4/accounts/acct-main/pages/projects?page=1&per_page=100": {
+    "/client/v4/accounts/acct-main/pages/projects": {
       body: {
         success: true,
         result: [{ name: "bob-claw-dashboard" }],
-        result_info: { page: 1, total_pages: 1 },
       },
     },
   });
@@ -79,11 +77,10 @@ test("deploy preflight lists candidates when project selection is ambiguous", as
         result_info: { page: 1, total_pages: 1 },
       },
     },
-    "/client/v4/accounts/acct-main/pages/projects?page=1&per_page=100": {
+    "/client/v4/accounts/acct-main/pages/projects": {
       body: {
         success: true,
         result: [{ name: "alpha-dashboard" }, { name: "beta-dashboard" }],
-        result_info: { page: 1, total_pages: 1 },
       },
     },
   });
@@ -113,11 +110,10 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
         result_info: { page: 1, total_pages: 1 },
       },
     },
-    "/client/v4/accounts/acct-main/pages/projects?page=1&per_page=100": {
+    "/client/v4/accounts/acct-main/pages/projects": {
       body: {
         success: true,
         result: [{ name: "bob-claw-dashboard" }],
-        result_info: { page: 1, total_pages: 1 },
       },
     },
   });
@@ -173,11 +169,10 @@ test("deploy main creates an explicit project when a single discovered account h
         result_info: { page: 1, total_pages: 1 },
       },
     },
-    "/client/v4/accounts/acct-main/pages/projects?page=1&per_page=100": {
+    "/client/v4/accounts/acct-main/pages/projects": {
       body: {
         success: true,
         result: [],
-        result_info: { page: 1, total_pages: 1 },
       },
     },
   });

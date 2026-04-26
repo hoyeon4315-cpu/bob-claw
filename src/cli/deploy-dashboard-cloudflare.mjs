@@ -97,21 +97,11 @@ async function listCloudflareAccounts({ apiToken, fetchFn }) {
 }
 
 async function listCloudflarePagesProjects({ accountId, apiToken, fetchFn }) {
-  const projects = [];
-  let page = 1;
-  while (true) {
-    const payload = await requestCloudflareApi(`/accounts/${accountId}/pages/projects?page=${page}&per_page=100`, {
-      apiToken,
-      fetchFn,
-    });
-    const batch = Array.isArray(payload?.result) ? payload.result : [];
-    projects.push(...batch);
-    const totalPages = Math.max(1, Number(payload?.result_info?.total_pages || 1));
-    if (page >= totalPages || batch.length === 0) {
-      return projects;
-    }
-    page += 1;
-  }
+  const payload = await requestCloudflareApi(`/accounts/${accountId}/pages/projects`, {
+    apiToken,
+    fetchFn,
+  });
+  return Array.isArray(payload?.result) ? payload.result : [];
 }
 
 function describeProjectCandidate(candidate) {
