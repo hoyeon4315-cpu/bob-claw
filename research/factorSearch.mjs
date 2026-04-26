@@ -120,7 +120,17 @@ export async function runTrackBSearch({
 } = {}) {
   if (!candidateDir) throw new TypeError("candidateDir is required");
   const sourcePanel = panel || loadResearchPanel();
-  const safeMax = Math.max(1, Math.min(3, Number(maxCandidates) || 1));
+  const safeMax = Math.max(0, Math.min(3, Number(maxCandidates) || 0));
+  if (safeMax === 0) {
+    syncTrackBCandidateWorkspace(candidateDir, []);
+    return Object.freeze({
+      observedAt: now,
+      generatedCount: 0,
+      oosEligibleCount: 0,
+      latestBlocker: "candidate_workspace_full",
+      generated: Object.freeze([]),
+    });
+  }
   const splits = buildResearchSplits(sourcePanel, {
     foldCount: Math.min(4, safeMax + 2),
     trainSize: 32,

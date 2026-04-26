@@ -305,7 +305,13 @@ function parseAgentPayload(stdout = "") {
 function materializeTrackACandidates({ candidateDir, proposals = [] }) {
   mkdirSync(candidateDir, { recursive: true });
   const existing = activeCandidateFiles(candidateDir);
-  const remainingSlots = Math.max(0, 3 - existing.length);
+  const proposalNames = new Set(
+    proposals
+      .map((proposal) => sanitizeCandidateName(proposal.name || proposal.filename || "agent_candidate"))
+      .filter(Boolean),
+  );
+  const occupiedByOthers = existing.filter((path) => !proposalNames.has(basename(path, ".mjs"))).length;
+  const remainingSlots = Math.max(0, 3 - occupiedByOthers);
   const written = [];
   for (const proposal of proposals.slice(0, remainingSlots)) {
     const candidateName = sanitizeCandidateName(proposal.name || proposal.filename || "agent_candidate");
@@ -503,9 +509,14 @@ async function main() {
     commit,
   });
 
+  const nonTrackBCandidates = activeCandidateFiles(args.candidateDir)
+    .filter((path) => classifyCandidatePath(path) !== "B")
+    .length;
+  const trackBSlotBudget = Math.max(0, Math.min(3, args.maxExperiments) - nonTrackBCandidates);
+
   const trackB = await runTrackBSearch({
     candidateDir: args.candidateDir,
-    maxCandidates: Math.min(3, args.maxExperiments),
+    maxCandidates: trackBSlotBudget,
     panel,
   });
   appendTrackBRun(args.dataDir, trackB);

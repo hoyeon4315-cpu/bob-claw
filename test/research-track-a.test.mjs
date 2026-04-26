@@ -43,6 +43,31 @@ test("Track A env runner materializes and scores an agent candidate", () => {
     assert.equal(existsSync(resultsPath), true);
     assert.match(readFileSync(resultsPath, "utf8"), /agent_momentum_bridge_01/);
     assert.match(readFileSync(join(dataDir, "research-track-a-runs.jsonl"), "utf8"), /"generatedCount":1/);
+
+    const rerun = spawnSync(
+      "npm",
+      [
+        "run",
+        "research",
+        "--",
+        "--max-experiments=1",
+        `--data-dir=${dataDir}`,
+        `--candidate-dir=${candidateDir}`,
+        `--results-path=${resultsPath}`,
+      ],
+      {
+        cwd: resolve("."),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          RESEARCH_AGENT_CMD: process.execPath,
+          RESEARCH_AGENT_ARGS: JSON.stringify([resolve("research", "trackA-agent.mjs"), "--max-experiments=1"]),
+          DEV_LOCK_PATH: join(dir, "DEV_LOCK"),
+        },
+      },
+    );
+    assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+    assert.match(rerun.stdout, /trackA: status=completed generated=1 oosEligible=0 blocker=none/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
