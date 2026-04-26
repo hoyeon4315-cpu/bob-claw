@@ -191,6 +191,20 @@
       if (ageMs < 3600000) return `${Math.round(ageMs / 60000)}m ago`;
       return `${Math.round(ageMs / 3600000)}h ago`;
     }
+    const HISTORY_FILTER_STORAGE_KEY = 'bob-claw:history-filter';
+    function readPersistedHistoryFilter() {
+      try {
+        const value = window.localStorage.getItem(HISTORY_FILTER_STORAGE_KEY);
+        return value || 'all';
+      } catch {
+        return 'all';
+      }
+    }
+    function writePersistedHistoryFilter(value) {
+      try {
+        window.localStorage.setItem(HISTORY_FILTER_STORAGE_KEY, value);
+      } catch {}
+    }
     function normalizeUiStrategyId(id) {
       return String(id || '').replace(/-/g, '_');
     }
@@ -597,7 +611,7 @@
       const inFlightTxCount = txActivities.filter((activity) => activity?.status === 'signed' || activity?.status === 'broadcasted').length;
       const confirmedTxCount = txActivities.filter((activity) => activity?.status === 'confirmed').length;
       const [expanded, setExpanded] = useState(false);
-      const [filter, setFilter] = useState('all');
+      const [filter, setFilter] = useState(() => readPersistedHistoryFilter());
       const filteredActivities = activities.filter((activity) => {
         if (filter === 'in_flight') return activity?.kind === 'transaction' && (activity?.status === 'signed' || activity?.status === 'broadcasted');
         if (filter === 'confirmed') return activity?.kind === 'transaction' && activity?.status === 'confirmed';
@@ -611,6 +625,14 @@
         { id: 'confirmed', label: `Confirmed ${confirmedTxCount}`, tone: { bg: '#EAF6EE', fg: 'var(--green)' }, hidden: confirmedTxCount === 0 },
         { id: 'tx', label: `TX ${txActivities.length}`, tone: { bg: '#ECECEE', fg: 'var(--ink-3)' }, hidden: txActivities.length === 0 },
       ].filter((item) => !item.hidden);
+      useEffect(() => {
+        const allowed = new Set(filterChips.map((item) => item.id));
+        if (!allowed.has(filter)) {
+          setFilter('all');
+          return;
+        }
+        writePersistedHistoryFilter(filter);
+      }, [filter, filterChips]);
       return (
         <div style={{
           margin: fill ? '0 12px' : '6px 12px 0', padding:'10px 12px 8px',

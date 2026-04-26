@@ -45,12 +45,19 @@ describe("dashboard home renewal source guard", () => {
     assert.match(historySection, /AssetLogo id=\{finalAsset\.id\} size=\{11\}/);
     assert.doesNotMatch(historySection, /Arrived/);
 
+    const utilitySection = extractSection("function formatStatusAge", "function normalizeUiStrategyId");
+    assert.match(utilitySection, /const HISTORY_FILTER_STORAGE_KEY = 'bob-claw:history-filter'/);
+    assert.match(utilitySection, /function readPersistedHistoryFilter\(\)/);
+    assert.match(utilitySection, /window\.localStorage\.getItem\(HISTORY_FILTER_STORAGE_KEY\)/);
+    assert.match(utilitySection, /function writePersistedHistoryFilter\(value\)/);
+    assert.match(utilitySection, /window\.localStorage\.setItem\(HISTORY_FILTER_STORAGE_KEY, value\)/);
+
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
     assert.match(opsStrip, /const txActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'transaction'\)/);
     assert.match(opsStrip, /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/);
     assert.match(opsStrip, /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/);
-    assert.match(opsStrip, /const \[filter, setFilter\] = useState\('all'\)/);
+    assert.match(opsStrip, /const \[filter, setFilter\] = useState\(\(\) => readPersistedHistoryFilter\(\)\)/);
     assert.match(opsStrip, /const filteredActivities = activities\.filter\(\(activity\) => \{/);
     assert.match(opsStrip, /id: 'all', label: `All \$\{activities\.length\}`/);
     assert.match(opsStrip, /id: 'in_flight', label: `In flight \$\{inFlightTxCount\}`/);
@@ -58,6 +65,9 @@ describe("dashboard home renewal source guard", () => {
     assert.match(opsStrip, /id: 'tx', label: `TX \$\{txActivities\.length\}`/);
     assert.match(opsStrip, /setExpanded\(false\);/);
     assert.match(opsStrip, /setFilter\(chip\.id\);/);
+    assert.match(opsStrip, /const allowed = new Set\(filterChips\.map\(\(item\) => item\.id\)\)/);
+    assert.match(opsStrip, /if \(!allowed\.has\(filter\)\)/);
+    assert.match(opsStrip, /writePersistedHistoryFilter\(filter\);/);
     assert.match(opsStrip, /filteredActivities\.slice\(0,\s*3\)/);
     assert.match(opsStrip, /expanded \? 'Show less' : `Show more · \$\{filteredActivities\.length\}`/);
     assert.match(opsStrip, /overflowY:\s*'auto'/);
