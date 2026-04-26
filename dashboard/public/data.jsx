@@ -115,6 +115,10 @@ function buildCapitalMaps(holdings = null) {
   return {
     byChain,
     byProtocol,
+    walletUsd: Number.isFinite(holdings?.walletUsd) ? holdings.walletUsd : null,
+    deployedUsd: Number.isFinite(holdings?.deployedUsd) ? holdings.deployedUsd : null,
+    totalUsd: Number.isFinite(holdings?.totalUsd) ? holdings.totalUsd : null,
+    pending: holdings?.pending === true,
     generatedAt: holdings?.generatedAt || null,
   };
 }
@@ -385,12 +389,36 @@ async function bootData() {
   return true;
 }
 
-function startDashboardPolling(intervalMs = 30000) {
+async function refreshDashboardData({ dispatch = true } = {}) {
+  if (!window._DASHBOARD_REFRESH_IN_FLIGHT) {
+    window._DASHBOARD_REFRESH_IN_FLIGHT = (async () => {
+      await bootData();
+      if (dispatch) {
+        window.dispatchEvent(new CustomEvent('dashboard:datarefresh'));
+      }
+    })().finally(() => {
+      window._DASHBOARD_REFRESH_IN_FLIGHT = null;
+    });
+  }
+  return window._DASHBOARD_REFRESH_IN_FLIGHT;
+}
+
+function setupDashboardRefreshHooks() {
+  if (window._DASHBOARD_REFRESH_HOOKS) return;
+  const refreshVisibleData = () => {
+    if (document.hidden) return;
+    refreshDashboardData().catch(() => {});
+  };
+  window.addEventListener('focus', refreshVisibleData);
+  document.addEventListener('visibilitychange', refreshVisibleData);
+  window._DASHBOARD_REFRESH_HOOKS = refreshVisibleData;
+}
+
+function startDashboardPolling(intervalMs = 10000) {
   if (window._DASHBOARD_POLL) clearInterval(window._DASHBOARD_POLL);
   window._DASHBOARD_POLL = setInterval(async () => {
     try {
-      await bootData();
-      window.dispatchEvent(new CustomEvent('dashboard:datarefresh'));
+      await refreshDashboardData();
     } catch {}
   }, intervalMs);
 }
@@ -430,7 +458,10 @@ Object.assign(window, {
   HOLDINGS: { all: [] },
   FLOW: { metrics: {}, recentActivities: [], strategyRiskById: {} },
   OPERATIONS: null,
-  CAPITAL: { byChain: {}, byProtocol: {}, generatedAt: null },
+  CAPITAL: { byChain: {}, byProtocol: {}, walletUsd: null, deployedUsd: null, totalUsd: null, pending: true, generatedAt: null },
 });
 window.DATA_READY = bootData();
-window.DATA_READY.then(() => startDashboardPolling(30000));
+window.DATA_READY.then(() => {
+  setupDashboardRefreshHooks();
+  startDashboardPolling(10000);
+});

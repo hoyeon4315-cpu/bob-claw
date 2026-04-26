@@ -47,8 +47,9 @@ describe("dashboard home renewal source guard", () => {
     assert.match(opsStrip, /History/);
     assert.match(opsStrip, /activities\.slice\(0,\s*3\)/);
     assert.match(opsStrip, /expanded \? 'Show less' : `Show more · \$\{activities\.length\}`/);
-    assert.match(opsStrip, /maxHeight:\s*expanded \? 228 : 'none'/);
-    assert.match(opsStrip, /overflowY:\s*expanded \? 'auto' : 'hidden'/);
+    assert.match(opsStrip, /overflowY:\s*'auto'/);
+    assert.match(opsStrip, /overscrollBehavior:\s*'contain'/);
+    assert.match(opsStrip, /display: 'flex', flexDirection: 'column'/);
   });
 });
 
@@ -80,7 +81,9 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : 'calc\(56% - 4px\)'/);
     assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
     assert.match(flowPane, /position: 'absolute'/);
+    assert.match(flowPane, /top: 'calc\(56% \+ 4px\)'/);
     assert.match(flowPane, /bottom: 0/);
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
+    assert.match(flowPane, /<OpsStrip fill=\{true\}\/>/);
   });
 });

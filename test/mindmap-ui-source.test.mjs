@@ -36,8 +36,9 @@ describe("mindmap source guard", () => {
   test("chain and protocol nodes render compact USD pills and bounded protocol cards", () => {
     assert.match(MINDMAP_JSX, /function StatPill\(/);
     assert.match(MINDMAP_JSX, /function formatYieldDisplay\(/);
-    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_MAX_HEIGHT = 152;/);
-    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 176;/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_MAX_HEIGHT = 132;/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 152;/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;/);
     assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(chain\.capitalUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(strategy\.capitalUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalY = labelBelow \? size \* 1\.46 : -size \* 1\.34;/);
@@ -45,6 +46,12 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /yieldMetricLabel\(protocolNode\.yieldBasis\)/);
     assert.match(MINDMAP_JSX, /maxHeight: PROTOCOL_CARD_MAX_HEIGHT/);
     assert.match(MINDMAP_JSX, /const visibleStrategies = protocolNode\.strategies\.slice\(0, PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT\);/);
+  });
+
+  test("selected protocol view keeps asset motion logo-only without duplicate pair text", () => {
+    assert.match(MINDMAP_JSX, /function AssetLogoTag\(/);
+    assert.doesNotMatch(MINDMAP_JSX, /function AssetTickerPill\(/);
+    assert.doesNotMatch(MINDMAP_JSX, /join\(' \/ '\)/);
   });
 
   test("focus mode dampens motion on zoomed protocol views", () => {

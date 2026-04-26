@@ -21,9 +21,9 @@ const PHYS = {
   PAD: 6,
 };
 
-const PROTOCOL_CARD_MAX_HEIGHT = 152;
-const PROTOCOL_CARD_SAFE_BOTTOM = 176;
-const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 3;
+const PROTOCOL_CARD_MAX_HEIGHT = 132;
+const PROTOCOL_CARD_SAFE_BOTTOM = 152;
+const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;
 
 function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
   if (!svg) return { x: 0, y: 0 };
@@ -367,45 +367,24 @@ function OrbitTokens({ cx, cy, radius, assets, loops, time, speed = 0.55 }) {
   );
 }
 
-function assetTickerLabel(assetId) {
-  return String(assetId || '').trim().toUpperCase();
-}
-
 function uniqueProtocolAssets(strategy) {
   return Array.from(new Set((strategy?.pair || []).filter(Boolean))).slice(0, 4);
 }
 
-function AssetTickerPill({ x, y, assetId }) {
-  const label = assetTickerLabel(assetId);
-  const width = Math.max(34, label.length * 6.6 + 22);
-  const height = 18;
+function AssetLogoTag({ x, y, assetId, size = 17 }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ pointerEvents: 'none' }}>
-      <rect
-        x={-width / 2}
-        y={-height / 2}
-        width={width}
-        height={height}
-        rx={height / 2}
+      <circle
+        r={size / 2 + 2.4}
         fill="rgba(255,255,255,0.94)"
         stroke="#DADADA"
         strokeWidth="0.5"
       />
-      <foreignObject x={-width / 2 + 4} y={-6.5} width={13} height={13} style={{ pointerEvents: 'none' }}>
+      <foreignObject x={-size / 2} y={-size / 2} width={size} height={size} style={{ pointerEvents: 'none' }}>
         <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none' }}>
-          <AssetLogo id={assetId} size={13}/>
+          <AssetLogo id={assetId} size={size}/>
         </div>
       </foreignObject>
-      <text
-        x={6}
-        y={3.4}
-        fontSize="8.3"
-        fontWeight="700"
-        fill="#555"
-        style={{ fontFamily: '-apple-system, system-ui', letterSpacing: 0.25 }}
-      >
-        {label}
-      </text>
     </g>
   );
 }
@@ -436,10 +415,10 @@ function ProtocolAssetMotion({ strategy, x, y, time, dimmed }) {
         speed={orbitSpeed}
       />
       {assets.map((assetId, index) => (
-        <AssetTickerPill
+        <AssetLogoTag
           key={`${strategy.id}-${assetId}-${index}`}
           x={startX + index * gap}
-          y={y + orbitRadius + 22}
+          y={y + orbitRadius + 19}
           assetId={assetId}
         />
       ))}
@@ -569,13 +548,6 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
             stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
             style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2, textTransform:'capitalize' }}>
             {strategy.label || strategy.protocol}
-          </text>
-        )}
-        {selected && strategy.pair?.length > 0 && (
-          <text y={R + 38} textAnchor="middle" fontSize="8" fontWeight="500" fill="#8A8A8D"
-            stroke="#FFFFFF" strokeWidth="2" paintOrder="stroke"
-            style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
-            {strategy.pair.map(p => p.toUpperCase()).join(' / ')}
           </text>
         )}
         {strategy.loops && (
@@ -1203,7 +1175,7 @@ function ProtocolCard({ protocolNode }) {
     <div data-card-type="protocol" style={{
       position:'absolute', left:8, right:8, bottom:8,
       background:'rgba(255,255,255,0.95)', backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
-      borderRadius:14, padding:'10px 12px',
+      borderRadius:14, padding:'9px 10px',
       boxShadow:'0 4px 16px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.08)',
       fontFamily:'-apple-system, system-ui',
       animation:`cardIn 200ms ${EASE} both`,
@@ -1232,7 +1204,7 @@ function ProtocolCard({ protocolNode }) {
           </div>
         )}
       </div>
-      <div style={{ marginTop:8, display:'flex', gap:12, flexWrap:'wrap' }}>
+      <div style={{ marginTop:7, display:'flex', gap:8, flexWrap:'wrap' }}>
         <Metric label="Mapped" value={`${protocolNode.strategyCount}`}/>
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
         <Metric label="Capital" value={capitalLabel || '—'}/>
@@ -1240,23 +1212,22 @@ function ProtocolCard({ protocolNode }) {
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
         {protocolNode.loops && <Metric label="Loops" value={`×${protocolNode.loops}`}/>}
       </div>
-      <div style={{ marginTop:6, display:'grid', gap:7 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 8px', background:'#F5F5F6', borderRadius:8 }}>
+      <div style={{ marginTop:5, display:'grid', gap:5 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 7px', background:'#F5F5F6', borderRadius:8 }}>
           <span style={{ fontSize:10, color:'#8A8A8D', textTransform:'uppercase', letterSpacing:0.5, fontWeight:600 }}>Pair</span>
           {protocolNode.pair.map(p => <AssetLogo key={p} id={p} size={14}/>)}
-          <span style={{ fontSize:12, fontWeight:500, color:'#1D1D1F', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{protocolNode.pair.map(p => p.toUpperCase()).join(' → ')}</span>
         </div>
         <div style={{
-          fontSize:11.5, lineHeight:1.42, color:'#3A3A3D',
-          display:'-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient:'vertical', overflow:'hidden',
+          fontSize:11.2, lineHeight:1.36, color:'#3A3A3D',
+          display:'-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient:'vertical', overflow:'hidden',
         }}>
           {protocolNode.desc}
         </div>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {visibleStrategies.map((strategy) => (
             <div key={strategy.id} style={{
-              padding:'4px 7px', borderRadius:999, background:'#F5F5F6',
-              fontSize:11, color:'#3A3A3D', lineHeight:1.2, maxWidth:'100%',
+              padding:'3px 7px', borderRadius:999, background:'#F5F5F6',
+              fontSize:10.5, color:'#3A3A3D', lineHeight:1.2, maxWidth:'100%',
             }}>
               <span style={{ display:'block', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                 {strategy.label}
@@ -1265,8 +1236,8 @@ function ProtocolCard({ protocolNode }) {
           ))}
           {hiddenStrategyCount > 0 && (
             <div style={{
-              padding:'4px 7px', borderRadius:999, background:'#ECECEE',
-              fontSize:11, color:'#6B6B6E', lineHeight:1.2,
+              padding:'3px 7px', borderRadius:999, background:'#ECECEE',
+              fontSize:10.5, color:'#6B6B6E', lineHeight:1.2,
             }}>
               +{hiddenStrategyCount} more
             </div>

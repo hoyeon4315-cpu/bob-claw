@@ -32,3 +32,15 @@ test("dashboard data source estimates yield for live positions instead of forcin
   assert.match(DATA_JSX, /yieldBasis: realizedYieldUsd > 0 \? 'realized' : \(estimatedYieldUsd > 0 \? 'estimated' : null\)/);
   assert.doesNotMatch(DATA_JSX, /earnedUsd:\s*0,\s*\n\s*apyPct:/);
 });
+
+test("dashboard data source refreshes on polling and window focus recovery", () => {
+  assert.match(DATA_JSX, /async function refreshDashboardData\(\{ dispatch = true \} = \{\}\)/);
+  assert.match(DATA_JSX, /if \(!window\._DASHBOARD_REFRESH_IN_FLIGHT\)/);
+  assert.match(DATA_JSX, /window\._DASHBOARD_REFRESH_IN_FLIGHT = \(async \(\) => \{/);
+  assert.match(DATA_JSX, /return window\._DASHBOARD_REFRESH_IN_FLIGHT;/);
+  assert.match(DATA_JSX, /function setupDashboardRefreshHooks\(\)/);
+  assert.match(DATA_JSX, /window\.addEventListener\('focus', refreshVisibleData\)/);
+  assert.match(DATA_JSX, /document\.addEventListener\('visibilitychange', refreshVisibleData\)/);
+  assert.match(DATA_JSX, /function startDashboardPolling\(intervalMs = 10000\)/);
+  assert.match(DATA_JSX, /startDashboardPolling\(10000\)/);
+});
