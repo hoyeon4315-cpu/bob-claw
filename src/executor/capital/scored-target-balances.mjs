@@ -7,8 +7,10 @@
 // allowlist/evidence-gated promotion-gate items.
 //
 // Promotion-gate items are still consulted as a *score source* (each
-// (chain, familyId) pair carries a destination score). When no score is
-// available, fall back to a minWeight floor.
+// (chain, familyId) pair carries a destination score). Lookup uses explicit
+// strategy/family ids first, then exposure-derived score families for
+// non-infra strategies. When no score is available, fall back to a minWeight
+// floor.
 //
 // Allocation algorithm:
 //   1. Build candidates = strategyCaps where autoExecute=true × perChainUsd > 0.
@@ -24,31 +26,78 @@ import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../all-chain-autopilot.mjs"
 const DEFAULT_REDUCED_WEIGHT_FACTOR = 0.3;
 const DEFAULT_MIN_WEIGHT = 0.1;
 const DEFAULT_ALLOWED_CHAINS = new Set(OFFICIAL_GATEWAY_DESTINATION_CHAINS);
+const INFRA_SCORE_FALLBACK_STRATEGY_IDS = new Set([
+  "gateway-btc-funding-transfer",
+  "gateway-btc-onramp",
+  "gateway-btc-offramp",
+  "gas-zip-native-refuel",
+  "across-bridge",
+  "lifi-bridge",
+  "native-dex-experiment",
+  "prelive_fork_execution",
+]);
+
+const SCORE_FAMILY_IDS_BY_ASSET_FAMILY = Object.freeze({
+  stablecoin: Object.freeze(["stablecoin_lending_carry", "stablecoin_lp_or_basis"]),
+  btc_wrappers: Object.freeze([
+    "wrapped_btc_destination_yield",
+    "wrapped_btc_lending",
+    "wrapped_btc_lp_positions",
+  ]),
+  eth_like_yield: Object.freeze(["eth_destination_deployment"]),
+  reserve: Object.freeze(["custom_destination_actions"]),
+  mixed_assets: Object.freeze(["custom_destination_actions"]),
+  multi_asset: Object.freeze(["custom_destination_actions"]),
+  multi_asset_yield: Object.freeze(["custom_destination_actions"]),
+  proxy: Object.freeze(["custom_destination_actions"]),
+});
 
 function finitePositive(value) {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function unique(values = []) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function buildPromotionScoreIndex(promotionGate) {
   const byTemplateId = new Map();
   const byChainFamily = new Map();
+  const byChainStrategy = new Map();
   for (const item of promotionGate?.items || []) {
     if (item?.templateId) byTemplateId.set(item.templateId, item);
     if (item?.chain && item?.familyId) {
       byChainFamily.set(`${item.chain}:${item.familyId}`, item);
     }
+    if (item?.chain && item?.strategyId) {
+      byChainStrategy.set(`${item.chain}:${item.strategyId}`, item);
+    }
   }
-  return { byTemplateId, byChainFamily };
+  return { byTemplateId, byChainFamily, byChainStrategy };
+}
+
+function scoreLookupIds(strategy) {
+  const explicit = Array.isArray(strategy.scoreFamilyIds) ? strategy.scoreFamilyIds : [];
+  const inferred = INFRA_SCORE_FALLBACK_STRATEGY_IDS.has(strategy.strategyId)
+    ? []
+    : SCORE_FAMILY_IDS_BY_ASSET_FAMILY[strategy.exposure?.assetFamily] || [];
+  return unique([
+    ...explicit,
+    strategy.familyId,
+    ...inferred,
+    strategy.strategyId,
+  ]);
 }
 
 function lookupPromotionItem(strategy, chain, scoreIndex) {
-  const familyId = strategy.familyId || strategy.strategyId || null;
-  if (familyId) {
-    const direct = scoreIndex.byChainFamily.get(`${chain}:${familyId}`);
+  const strategyDirect = scoreIndex.byChainStrategy.get(`${chain}:${strategy.strategyId}`);
+  if (strategyDirect) return strategyDirect;
+  for (const id of scoreLookupIds(strategy)) {
+    const direct = scoreIndex.byChainFamily.get(`${chain}:${id}`);
     if (direct) return direct;
+    const templateDirect = scoreIndex.byTemplateId.get(`${chain}:${id}`);
+    if (templateDirect) return templateDirect;
   }
-  const tplKey = `${chain}:${familyId || strategy.strategyId}`;
-  if (scoreIndex.byTemplateId.has(tplKey)) return scoreIndex.byTemplateId.get(tplKey);
   return null;
 }
 

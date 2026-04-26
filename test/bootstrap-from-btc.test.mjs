@@ -74,14 +74,8 @@ test("bootstrap-from-btc with diversification cap leaves residual buffer", () =>
 });
 
 test("bootstrap-from-btc with total weight zero falls back to equal split", () => {
-  const promotionGate = {
-    items: [
-      { templateId: "base:a", chain: "base", strategyId: "strategy-base", score: 0, gate: { status: "promotable" }, allocationGate: { status: "allocation_ready" } },
-      { templateId: "bsc:b", chain: "bsc", strategyId: "strategy-bsc", score: 0, gate: { status: "promotable" }, allocationGate: { status: "allocation_ready" } },
-    ],
-  };
   const report = buildBootstrapFromBtcReport({
-    promotionGate,
+    promotionGate: { items: [] },
     totalCapitalUsd: 600,
     strategyCaps: STRATEGY_CAPS,
     balancesByChain: {},

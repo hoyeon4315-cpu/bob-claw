@@ -104,6 +104,44 @@ test("autoExecute=false strategies are excluded", () => {
   assert.equal(result.perStrategy[0].chain, "base");
 });
 
+test("infers promotion score family from strategy exposure when familyId is absent", () => {
+  const caps = [
+    {
+      strategyId: "stable-carry",
+      autoExecute: true,
+      exposure: { assetFamily: "stablecoin" },
+      caps: { perChainUsd: { base: 1000 } },
+    },
+    {
+      strategyId: "unscored",
+      autoExecute: true,
+      caps: { perChainUsd: { bsc: 1000 } },
+    },
+  ];
+  const promotionGate = {
+    items: [
+      {
+        templateId: "base:stablecoin_lending_carry",
+        chain: "base",
+        familyId: "stablecoin_lending_carry",
+        score: 0.8,
+        allocationGate: { status: "allocation_ready" },
+      },
+    ],
+  };
+  const result = buildScoredTargetBalances({
+    promotionGate,
+    strategyCaps: caps,
+    totalCapitalUsd: 900,
+    diversificationPolicy: null,
+  });
+  const stable = result.perStrategy.find((s) => s.strategyId === "stable-carry");
+  const unscored = result.perStrategy.find((s) => s.strategyId === "unscored");
+  assert.equal(stable.score, 0.8);
+  assert.equal(stable.allocationGateStatus, "allocation_ready");
+  assert.ok(stable.allocationUsd > unscored.allocationUsd);
+});
+
 test("aggregates per-chain across multiple strategies on same chain", () => {
   const caps = [
     { strategyId: "a", familyId: "fa", autoExecute: true, caps: { perChainUsd: { base: 200 } } },

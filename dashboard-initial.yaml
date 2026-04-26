@@ -1,0 +1,507 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]: BOB Claw
+    - generic [ref=e7]: live · 2026. 4. 26. 오전 8:59:01
+  - generic [ref=e8]:
+    - tablist [ref=e9]:
+      - tab "Flow" [selected] [ref=e10] [cursor=pointer]
+      - tab "DeFi" [ref=e11] [cursor=pointer]
+      - tab "Assets" [ref=e12] [cursor=pointer]
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - img [ref=e19]:
+          - generic [ref=e21]:
+            - generic [ref=e35] [cursor=pointer]:
+              - generic:
+                - generic: BOB
+                - generic:
+                  - generic: $1.9
+              - button "BOB chain" [ref=e37]
+            - generic [ref=e38] [cursor=pointer]:
+              - generic:
+                - generic: Base
+                - generic:
+                  - generic: $154
+              - button "Base chain" [ref=e40]
+            - generic [ref=e41] [cursor=pointer]:
+              - generic:
+                - generic: Ethereum
+                - generic:
+                  - generic: $285
+              - button "Ethereum chain" [ref=e43]
+            - generic [ref=e44] [cursor=pointer]:
+              - generic:
+                - generic: BNB
+                - generic:
+                  - generic: $17
+              - button "BNB chain" [ref=e46]
+            - generic [ref=e47] [cursor=pointer]:
+              - generic:
+                - generic: Avalanche
+                - generic:
+                  - generic: $7.5
+              - button "Avalanche chain" [ref=e49]
+            - generic [ref=e50] [cursor=pointer]:
+              - generic:
+                - generic: Unichain
+                - generic:
+                  - generic: $5.7
+              - button "Unichain chain" [ref=e52]
+            - generic [ref=e53] [cursor=pointer]:
+              - generic:
+                - generic: Berachain
+                - generic:
+                  - generic: $11
+              - button "Berachain chain" [ref=e55]
+            - generic [ref=e56] [cursor=pointer]:
+              - generic:
+                - generic: Optimism
+                - generic:
+                  - generic: $6.8
+              - button "Optimism chain" [ref=e58]
+            - generic [ref=e59] [cursor=pointer]:
+              - generic:
+                - generic: Soneium
+                - generic:
+                  - generic: $12
+              - button "Soneium chain" [ref=e61]
+            - generic [ref=e62] [cursor=pointer]:
+              - generic:
+                - generic: Sei
+                - generic:
+                  - generic: <$1
+              - button "Sei chain" [ref=e64]
+            - generic [ref=e65] [cursor=pointer]:
+              - generic:
+                - generic: Sonic
+                - generic:
+                  - generic: $4.9
+              - button "Sonic chain" [ref=e67]
+            - generic [ref=e71]: Bitcoin L1
+            - generic [ref=e75]: BOB GATEWAY
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - generic [ref=e79]: Assets
+              - generic [ref=e80]: $506
+              - generic [ref=e81]: wallet + deployed
+            - generic [ref=e83] [cursor=pointer]:
+              - generic [ref=e84]: APR
+              - generic [ref=e85]: —
+              - generic [ref=e86]: tap for note
+            - generic [ref=e88]:
+              - generic [ref=e89]: Paid back
+              - generic [ref=e90]: —
+              - generic [ref=e91]: $0
+            - generic [ref=e93]:
+              - generic [ref=e94]: Carry
+              - generic [ref=e95]: 601 sats
+              - generic [ref=e96]: $0
+            - generic [ref=e98]:
+              - generic [ref=e99]: Yield
+              - generic [ref=e100]: $0
+              - generic [ref=e101]: all protocols
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - generic [ref=e104]: H
+              - generic [ref=e105]:
+                - generic [ref=e106]: History
+                - generic [ref=e107]: Latest capital moves across chains and protocols
+              - button "Show more · 8" [ref=e108] [cursor=pointer]
+            - generic [ref=e109]:
+              - generic [ref=e110]:
+                - generic [ref=e111]:
+                  - generic [ref=e112]:
+                    - generic [ref=e115]: Optimism
+                    - generic [ref=e116]: →
+                    - generic [ref=e119]: Gaszip
+                  - generic [ref=e120]:
+                    - generic [ref=e121]: Gas.Zip refuel
+                    - generic [ref=e122]: Delivered
+                  - generic [ref=e123]:
+                    - generic [ref=e124]: Arrived
+                    - generic [ref=e126]: ETH
+                - generic [ref=e127]:
+                  - generic [ref=e128]: $4
+                  - generic [ref=e129]: 4. 26. 오전 08:54
+              - generic [ref=e131]:
+                - generic [ref=e132]:
+                  - generic [ref=e133]:
+                    - generic [ref=e136]: Avalanche
+                    - generic [ref=e137]: →
+                    - generic [ref=e140]: Gaszip
+                  - generic [ref=e141]:
+                    - generic [ref=e142]: Gas.Zip refuel
+                    - generic [ref=e143]: Delivered
+                  - generic [ref=e144]:
+                    - generic [ref=e145]: Arrived
+                    - generic [ref=e147]: AVAX
+                - generic [ref=e148]:
+                  - generic [ref=e149]: $4
+                  - generic [ref=e150]: 4. 26. 오전 08:54
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - generic [ref=e154]:
+                    - generic [ref=e157]: Sonic
+                    - generic [ref=e158]: →
+                    - generic [ref=e161]: Odos
+                  - generic [ref=e162]:
+                    - generic [ref=e163]: Native DEX probe
+                    - generic [ref=e164]: Delivered
+                  - generic [ref=e165]:
+                    - generic [ref=e166]: Arrived
+                    - generic [ref=e168]: USDC
+                - generic [ref=e169]:
+                  - generic [ref=e170]: $3
+                  - generic [ref=e171]: 4. 26. 오전 08:45
+      - generic [ref=e173]:
+        - generic [ref=e174]:
+          - generic [ref=e177]:
+            - generic [ref=e178]: Moonwell
+            - generic [ref=e179]: 1 live position
+          - generic [ref=e191]:
+            - generic [ref=e192]: Wrapped BTC loop
+            - generic [ref=e193]: Base · Loop · APR 6.10%
+            - generic [ref=e194]: CBBTC supply → USDC borrow → redeposit · 3x · APR 6.10%
+            - generic [ref=e195]: HF 1.69 · min 1.35 · liq buffer 30.17%
+        - generic [ref=e196]:
+          - generic [ref=e197]:
+            - generic [ref=e199]:
+              - generic [ref=e200]: Yo
+              - generic [ref=e201]: 1 live position
+            - generic [ref=e203]: Cap $116.66
+          - generic [ref=e205]:
+            - generic [ref=e213]:
+              - generic [ref=e214]: Deposit USDC to YO
+              - generic [ref=e215]: Base · LP
+              - generic [ref=e216]: USDC single-sided $117 · APR —
+            - generic [ref=e218]: Cap $116.66
+        - generic [ref=e219]:
+          - generic [ref=e220]:
+            - generic [ref=e222]:
+              - generic [ref=e223]: Morpho
+              - generic [ref=e224]: 3 live positions
+            - generic [ref=e226]: Cap $206.9
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - generic [ref=e236]:
+                - generic [ref=e237]: Supply to Clearstar USDC Core V2 vault on Morpho on Ethereum
+                - generic [ref=e238]: Ethereum · LP
+                - generic [ref=e239]: USDC single-sided $112 · APR —
+              - generic [ref=e241]: Cap $111.9
+            - generic [ref=e243]:
+              - generic [ref=e251]:
+                - generic [ref=e252]: Supply to Steakhouse Prime Instant V2 vault on Morpho on Ethereum
+                - generic [ref=e253]: Ethereum · LP
+                - generic [ref=e254]: USDC single-sided $66 · APR —
+              - generic [ref=e256]: Cap $65.68
+            - generic [ref=e258]:
+              - generic [ref=e266]:
+                - generic [ref=e267]: Supply to Alpha USDC Forex V2 vault on Morpho on Ethereum
+                - generic [ref=e268]: Ethereum · LP
+                - generic [ref=e269]: USDC single-sided $29 · APR —
+              - generic [ref=e271]: Cap $29.32
+        - generic [ref=e272]:
+          - generic [ref=e273]:
+            - generic [ref=e275]:
+              - generic [ref=e276]: Euler
+              - generic [ref=e277]: 1 live position
+            - generic [ref=e279]: Cap $51.44
+          - generic [ref=e281]:
+            - generic [ref=e289]:
+              - generic [ref=e290]: Supply RLUSD on Sentora RLUSD vault
+              - generic [ref=e291]: Ethereum · LP
+              - generic [ref=e292]: RLUSD single-sided $51 · APR —
+            - generic [ref=e294]: Cap $51.44
+        - generic [ref=e295]:
+          - generic [ref=e296]:
+            - generic [ref=e298]:
+              - generic [ref=e299]: Aave
+              - generic [ref=e300]: 1 live position
+            - generic [ref=e302]: Cap $25
+          - generic [ref=e304]:
+            - generic [ref=e312]:
+              - generic [ref=e313]: Lend RLUSD on Aave Horizon
+              - generic [ref=e314]: Ethereum · LP
+              - generic [ref=e315]: RLUSD single-sided $25 · APR —
+            - generic [ref=e317]: Cap $25
+      - generic [ref=e318]:
+        - generic [ref=e319]:
+          - generic [ref=e320]: Total holdings
+          - generic [ref=e321]:
+            - generic [ref=e322]: $506.167
+            - generic [ref=e323]: USD
+          - generic [ref=e324]: wallet $106.17 · deployed $400.00
+        - generic [ref=e325]: Wallet balances
+        - generic [ref=e326]:
+          - generic [ref=e327]:
+            - generic [ref=e329]:
+              - generic [ref=e330]: wBTC.OFT
+              - generic [ref=e331]: base
+              - generic "Wrapped BTC loop" [ref=e333]: ● Loop · moonwell
+            - generic [ref=e334]:
+              - generic [ref=e335]: $29.004
+              - generic [ref=e336]: 0 wBTC.OFT
+          - generic [ref=e338]:
+            - generic [ref=e340]:
+              - generic [ref=e341]: wBTC.OFT
+              - generic [ref=e342]: bsc
+            - generic [ref=e343]:
+              - generic [ref=e344]: $8.55
+              - generic [ref=e345]: 0 wBTC.OFT
+          - generic [ref=e347]:
+            - generic [ref=e349]:
+              - generic [ref=e350]: ETH
+              - generic [ref=e351]: base
+            - generic [ref=e352]:
+              - generic [ref=e353]: $8.336
+              - generic [ref=e354]: 0.004 ETH
+          - generic [ref=e356]:
+            - generic [ref=e358]:
+              - generic [ref=e359]: wBTC.OFT
+              - generic [ref=e360]: soneium
+            - generic [ref=e361]:
+              - generic [ref=e362]: $7.729
+              - generic [ref=e363]: 0 wBTC.OFT
+          - generic [ref=e365]:
+            - generic [ref=e367]:
+              - generic [ref=e368]: wBTC.OFT
+              - generic [ref=e369]: bera
+            - generic [ref=e370]:
+              - generic [ref=e371]: $7.723
+              - generic [ref=e372]: 0 wBTC.OFT
+          - generic [ref=e374]:
+            - generic [ref=e376]:
+              - generic [ref=e377]: AVAX
+              - generic [ref=e378]: avalanche
+            - generic [ref=e379]:
+              - generic [ref=e380]: $5.921
+              - generic [ref=e381]: 0.633 AVAX
+          - generic [ref=e383]:
+            - generic [ref=e385]:
+              - generic [ref=e386]: ETH
+              - generic [ref=e387]: optimism
+            - generic [ref=e388]:
+              - generic [ref=e389]: $5.882
+              - generic [ref=e390]: 0.003 ETH
+          - generic [ref=e392]:
+            - generic [ref=e394]:
+              - generic [ref=e395]: BNB
+              - generic [ref=e396]: bsc
+            - generic [ref=e397]:
+              - generic [ref=e398]: $3.849
+              - generic [ref=e399]: 0.006 BNB
+          - generic [ref=e401]:
+            - generic [ref=e403]:
+              - generic [ref=e404]: USDC
+              - generic [ref=e405]: soneium
+            - generic [ref=e406]:
+              - generic [ref=e407]: $3.294
+              - generic [ref=e408]: 3.294 USDC
+          - generic [ref=e410]:
+            - generic [ref=e412]:
+              - generic [ref=e413]: USDC
+              - generic [ref=e414]: bera
+            - generic [ref=e415]:
+              - generic [ref=e416]: $3.291
+              - generic [ref=e417]: 3.291 USDC
+          - generic [ref=e419]:
+            - generic [ref=e421]:
+              - generic [ref=e422]: USDC
+              - generic [ref=e423]: unichain
+            - generic [ref=e424]:
+              - generic [ref=e425]: $3.246
+              - generic [ref=e426]: 3.246 USDC
+          - generic [ref=e428]:
+            - generic [ref=e430]:
+              - generic [ref=e431]: USDC
+              - generic [ref=e432]: sonic
+            - generic [ref=e433]:
+              - generic [ref=e434]: $3.163
+              - generic [ref=e435]: 3.163 USDC
+          - generic [ref=e437]:
+            - generic [ref=e439]:
+              - generic [ref=e440]: USDC
+              - generic [ref=e441]: bsc
+            - generic [ref=e442]:
+              - generic [ref=e443]: $3.063
+              - generic [ref=e444]: 3.063 USDC
+          - generic [ref=e446]:
+            - generic [ref=e448]:
+              - generic [ref=e449]: ETH
+              - generic [ref=e450]: bob
+            - generic [ref=e451]:
+              - generic [ref=e452]: $1.873
+              - generic [ref=e453]: 0.001 ETH
+          - generic [ref=e455]:
+            - generic [ref=e457]:
+              - generic [ref=e458]: S
+              - generic [ref=e459]: sonic
+            - generic [ref=e460]:
+              - generic [ref=e461]: $1.695
+              - generic [ref=e462]: 36.857 S
+          - generic [ref=e464]:
+            - generic [ref=e466]:
+              - generic [ref=e467]: ETH
+              - generic [ref=e468]: unichain
+            - generic [ref=e469]:
+              - generic [ref=e470]: $1.673
+              - generic [ref=e471]: 0.001 ETH
+          - generic [ref=e473]:
+            - generic [ref=e475]:
+              - generic [ref=e476]: ETH
+              - generic [ref=e477]: soneium
+            - generic [ref=e478]:
+              - generic [ref=e479]: $1.295
+              - generic [ref=e480]: 0.001 ETH
+          - generic [ref=e482]:
+            - generic [ref=e484]:
+              - generic [ref=e485]: USDT
+              - generic [ref=e486]: bsc
+            - generic [ref=e487]:
+              - generic [ref=e488]: $1.046
+              - generic [ref=e489]: 1.046 USDT
+          - generic [ref=e491]:
+            - generic [ref=e493]:
+              - generic [ref=e494]: ETH
+              - generic [ref=e495]: ethereum
+            - generic [ref=e496]:
+              - generic [ref=e497]: $0.943
+              - generic [ref=e498]: 0 ETH
+          - generic [ref=e500]:
+            - generic [ref=e502]:
+              - generic [ref=e503]: USDC
+              - generic [ref=e504]: optimism
+            - generic [ref=e505]:
+              - generic [ref=e506]: $0.932
+              - generic [ref=e507]: 0.932 USDC
+          - generic [ref=e509]:
+            - generic [ref=e511]:
+              - generic [ref=e512]: USDC
+              - generic [ref=e513]: avalanche
+            - generic [ref=e514]:
+              - generic [ref=e515]: $0.841
+              - generic [ref=e516]: 0.841 USDC
+          - generic [ref=e518]:
+            - generic [ref=e520]:
+              - generic [ref=e521]: wBTC.OFT
+              - generic [ref=e522]: avalanche
+            - generic [ref=e523]:
+              - generic [ref=e524]: $0.775
+              - generic [ref=e525]: 0 wBTC.OFT
+          - generic [ref=e527]:
+            - generic [ref=e529]:
+              - generic [ref=e530]: wBTC.OFT
+              - generic [ref=e531]: unichain
+            - generic [ref=e532]:
+              - generic [ref=e533]: $0.775
+              - generic [ref=e534]: 0 wBTC.OFT
+          - generic [ref=e536]:
+            - generic [ref=e538]:
+              - generic [ref=e539]: USDC
+              - generic [ref=e540]: ethereum
+              - generic [ref=e541]:
+                - generic "Supply to Clearstar USDC Core V2 vault on Morpho on Ethereum" [ref=e542]: ● LP · morpho
+                - generic "Supply to Steakhouse Prime Instant V2 vault on Morpho on Ethereum" [ref=e543]: ● LP · morpho
+                - generic "Supply to Alpha USDC Forex V2 vault on Morpho on Ethereum" [ref=e544]: ● LP · morpho
+            - generic [ref=e545]:
+              - generic [ref=e546]: $0.453
+              - generic [ref=e547]: 0.453 USDC
+          - generic [ref=e549]:
+            - generic [ref=e551]:
+              - generic [ref=e552]: USDT
+              - generic [ref=e553]: ethereum
+              - generic [ref=e554]:
+                - generic "Supply to Clearstar USDC Core V2 vault on Morpho on Ethereum" [ref=e555]: ● LP · morpho
+                - generic "Supply to Steakhouse Prime Instant V2 vault on Morpho on Ethereum" [ref=e556]: ● LP · morpho
+                - generic "Supply to Alpha USDC Forex V2 vault on Morpho on Ethereum" [ref=e557]: ● LP · morpho
+            - generic [ref=e558]:
+              - generic [ref=e559]: $0.231
+              - generic [ref=e560]: 0.231 USDT
+          - generic [ref=e562]:
+            - generic [ref=e564]:
+              - generic [ref=e565]: USDC
+              - generic [ref=e566]: base
+              - generic [ref=e567]:
+                - generic "Wrapped BTC loop" [ref=e568]: ● Loop · moonwell
+                - generic "Deposit USDC to YO" [ref=e569]: ● LP · yo
+            - generic [ref=e570]:
+              - generic [ref=e571]: $0.224
+              - generic [ref=e572]: 0.224 USDC
+          - generic [ref=e574]:
+            - generic [ref=e576]: S
+            - generic [ref=e577]:
+              - generic [ref=e578]: SEI
+              - generic [ref=e579]: sei
+            - generic [ref=e580]:
+              - generic [ref=e581]: $0.123
+              - generic [ref=e582]: 2.036 SEI
+          - generic [ref=e584]:
+            - generic [ref=e586]: B
+            - generic [ref=e587]:
+              - generic [ref=e588]: BERA
+              - generic [ref=e589]: bera
+            - generic [ref=e590]:
+              - generic [ref=e591]: $0.119
+              - generic [ref=e592]: 0.306 BERA
+          - generic [ref=e594]:
+            - generic [ref=e596]:
+              - generic [ref=e597]: RLUSD
+              - generic [ref=e598]: ethereum
+              - generic [ref=e599]:
+                - generic "Supply RLUSD on Sentora RLUSD vault" [ref=e600]: ● LP · euler
+                - generic "Lend RLUSD on Aave Horizon" [ref=e601]: ● LP · aave
+            - generic [ref=e602]:
+              - generic [ref=e603]: $0.084
+              - generic [ref=e604]: 0.084 RLUSD
+          - generic [ref=e606]:
+            - generic [ref=e608]:
+              - generic [ref=e609]: wBTC.OFT
+              - generic [ref=e610]: bob
+            - generic [ref=e611]:
+              - generic [ref=e612]: $0.032
+              - generic [ref=e613]: 0 wBTC.OFT
+        - generic [ref=e614]: Deployed positions
+        - generic [ref=e615]:
+          - generic [ref=e616]:
+            - generic [ref=e618]:
+              - generic [ref=e619]: Deposit USDC to YO
+              - generic [ref=e620]: base · yo
+            - generic [ref=e621]:
+              - generic [ref=e622]: $116.66
+              - generic [ref=e623]: deployed
+          - generic [ref=e625]:
+            - generic [ref=e627]:
+              - generic [ref=e628]: Supply to Clearstar USDC Core V2 vault on Morpho on Ethereum
+              - generic [ref=e629]: ethereum · morpho
+            - generic [ref=e630]:
+              - generic [ref=e631]: $111.90
+              - generic [ref=e632]: deployed
+          - generic [ref=e634]:
+            - generic [ref=e636]:
+              - generic [ref=e637]: Supply to Steakhouse Prime Instant V2 vault on Morpho on Ethereum
+              - generic [ref=e638]: ethereum · morpho
+            - generic [ref=e639]:
+              - generic [ref=e640]: $65.68
+              - generic [ref=e641]: deployed
+          - generic [ref=e643]:
+            - generic [ref=e645]:
+              - generic [ref=e646]: Supply RLUSD on Sentora RLUSD vault
+              - generic [ref=e647]: ethereum · euler
+            - generic [ref=e648]:
+              - generic [ref=e649]: $51.44
+              - generic [ref=e650]: deployed
+          - generic [ref=e652]:
+            - generic [ref=e654]:
+              - generic [ref=e655]: Supply to Alpha USDC Forex V2 vault on Morpho on Ethereum
+              - generic [ref=e656]: ethereum · morpho
+            - generic [ref=e657]:
+              - generic [ref=e658]: $29.32
+              - generic [ref=e659]: deployed
+          - generic [ref=e661]:
+            - generic [ref=e663]:
+              - generic [ref=e664]: Lend RLUSD on Aave Horizon
+              - generic [ref=e665]: ethereum · aave
+            - generic [ref=e666]:
+              - generic [ref=e667]: $25.00
+              - generic [ref=e668]: deployed
