@@ -204,8 +204,9 @@ test("capital manager wrapper emits wrapped-BTC settlement rebalance jobs from o
     now: "2026-04-20T12:00:00.000Z",
   });
 
-  assert.equal(result.rebalancePlan.actions.length, 1);
-  assert.equal(result.rebalancePlan.actions[0].type, "capital_rebalance");
+  const rebalanceActions = result.rebalancePlan.actions.filter((a) => a.type === "capital_rebalance");
+  assert.equal(rebalanceActions.length, 1);
+  assert.equal(rebalanceActions[0].chain, "soneium");
   assert.equal(result.capitalPlan.actions.length, 1);
   assert.equal(result.capitalPlan.actions[0].type, "refill_token");
   assert.equal(result.capitalPlan.actions[0].token, WBTC_OFT_TOKEN);

@@ -120,30 +120,141 @@ function refillActionForUsdShortfall({ type, chain, token = ZERO_TOKEN, amountUs
   };
 }
 
+export function buildCapitalRebalanceMatchedTransfers({ shortfalls = [], surpluses = [] } = {}) {
+  const transfers = [];
+  const sf = shortfalls.map((entry) => ({ ...entry }));
+  const su = surpluses.map((entry) => ({ ...entry }));
+  sf.sort((a, b) => (b.amountUsd || 0) - (a.amountUsd || 0));
+  su.sort((a, b) => (b.amountUsd || 0) - (a.amountUsd || 0));
+  let i = 0;
+  let j = 0;
+  while (i < sf.length && j < su.length) {
+    const need = sf[i];
+    const have = su[j];
+    if (!(need.amountUsd > 0)) {
+      i += 1;
+      continue;
+    }
+    if (!(have.amountUsd > 0)) {
+      j += 1;
+      continue;
+    }
+    if (need.chain === have.chain) {
+      j += 1;
+      continue;
+    }
+    const moveUsd = Math.min(need.amountUsd, have.amountUsd);
+    transfers.push({
+      from: have.chain,
+      to: need.chain,
+      amountUsd: moveUsd,
+    });
+    need.amountUsd -= moveUsd;
+    have.amountUsd -= moveUsd;
+    if (need.amountUsd <= 0) i += 1;
+    if (have.amountUsd <= 0) j += 1;
+  }
+  return transfers;
+}
+
 export function buildCapitalRebalancePlan({
   strategyCaps,
   policy = null,
   balancesByChain = {},
+  scoredTargets = null,
   now = new Date().toISOString(),
 } = {}) {
-  const targets = buildTargetBalances({ strategyCaps, policy, now });
+  const targets = scoredTargets && scoredTargets.perChain
+    ? {
+        schemaVersion: 1,
+        observedAt: scoredTargets.observedAt || now,
+        items: (scoredTargets.perChain || []).map((entry) => ({
+          chain: entry.chain,
+          strategyIds: entry.strategyIds || [],
+          settlementTargetUsd: entry.settlementTargetUsd || 0,
+          gasFloatMinUsd: 0,
+          gasFloatTargetUsd: 0,
+        })),
+        summary: {
+          chainCount: (scoredTargets.perChain || []).length,
+          totalSettlementTargetUsd: (scoredTargets.perChain || []).reduce(
+            (sum, entry) => sum + (entry.settlementTargetUsd || 0),
+            0,
+          ),
+          totalGasFloatTargetUsd: 0,
+        },
+        scored: true,
+      }
+    : buildTargetBalances({ strategyCaps, policy, now });
   const gasFloat = evaluateGasFloatKeeper({
     targetBalances: targets,
     balancesByChain,
     now,
   });
   const actions = [...gasFloat.actions];
+  const tolerance = Number.isFinite(policy?.capital?.rebalanceToleranceUsd)
+    ? policy.capital.rebalanceToleranceUsd
+    : 5;
+
+  const targetByChain = new Map();
+  const shortfalls = [];
+  const surpluses = [];
 
   for (const item of targets.items || []) {
+    targetByChain.set(item.chain, item.settlementTargetUsd || 0);
     const currentSettlementUsd = finite(balancesByChain[item.chain]?.settlementUsd) ?? 0;
     const shortfallUsd = Math.max(0, (item.settlementTargetUsd || 0) - currentSettlementUsd);
-    if (shortfallUsd > 0) {
+    if (shortfallUsd > tolerance) {
+      shortfalls.push({
+        chain: item.chain,
+        amountUsd: shortfallUsd,
+        targetUsd: item.settlementTargetUsd,
+        currentUsd: currentSettlementUsd,
+      });
       actions.push({
         type: "capital_rebalance",
         chain: item.chain,
         amountUsd: shortfallUsd,
         targetUsd: item.settlementTargetUsd,
         currentUsd: currentSettlementUsd,
+      });
+    }
+  }
+
+  for (const [chain, balance] of Object.entries(balancesByChain || {})) {
+    const targetUsd = targetByChain.get(chain) ?? 0;
+    const currentSettlementUsd = finite(balance?.settlementUsd) ?? 0;
+    const surplusUsd = currentSettlementUsd - targetUsd;
+    if (surplusUsd > tolerance) {
+      surpluses.push({
+        chain,
+        amountUsd: surplusUsd,
+        targetUsd,
+        currentUsd: currentSettlementUsd,
+      });
+    }
+  }
+
+  const matchedTransfers = buildCapitalRebalanceMatchedTransfers({ shortfalls, surpluses });
+  const matchedSourceUsdByChain = new Map();
+  for (const transfer of matchedTransfers) {
+    matchedSourceUsdByChain.set(
+      transfer.from,
+      (matchedSourceUsdByChain.get(transfer.from) || 0) + transfer.amountUsd,
+    );
+  }
+
+  for (const surplus of surpluses) {
+    const matched = matchedSourceUsdByChain.get(surplus.chain) || 0;
+    const residual = surplus.amountUsd - matched;
+    if (residual > tolerance) {
+      actions.push({
+        type: "capital_drain",
+        chain: surplus.chain,
+        amountUsd: residual,
+        currentUsd: surplus.currentUsd,
+        targetUsd: surplus.targetUsd,
+        matchedToShortfallUsd: matched,
       });
     }
   }
@@ -155,6 +266,9 @@ export function buildCapitalRebalancePlan({
     targets,
     gasFloat,
     actions,
+    matchedTransfers,
+    surpluses,
+    shortfalls,
   };
 }
 
@@ -295,11 +409,12 @@ export function buildCapitalManagerRefillJobs({
   routeCandidates = [],
   supplementalInventory = null,
   settlementTokenByChain = DEFAULT_SETTLEMENT_TOKEN_BY_CHAIN,
+  scoredTargets = null,
   now = new Date().toISOString(),
 } = {}) {
   const inventory = mergeCapitalInventory({ treasuryInventory, wholeWalletInventory });
   const balancesByChain = observedCapitalBalancesByChain({ inventory });
-  const rebalancePlan = buildCapitalRebalancePlan({ strategyCaps, policy, balancesByChain, now });
+  const rebalancePlan = buildCapitalRebalancePlan({ strategyCaps, policy, balancesByChain, scoredTargets, now });
   const capitalPlan = buildCapitalRebalanceRefillPlan({
     rebalancePlan,
     prices,
