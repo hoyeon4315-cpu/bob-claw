@@ -68,9 +68,9 @@ test("bootstrap-from-btc with diversification cap leaves residual buffer", () =>
   const totalAlloc = report.rebalancePlan.actions
     .filter((a) => a.type === "capital_rebalance")
     .reduce((sum, a) => sum + (a.amountUsd || 0), 0);
-  // each strategy gets weight share clipped to 0.25*1000=250 (or its own cap, whichever is smaller).
-  // base: weight 500→250, bsc: 300→250, unichain: 200→200. Sum=700.
-  assert.ok(Math.abs(totalAlloc - 700) < 0.001, `expected 700 with diversification cap, got ${totalAlloc}`);
+  // water-fill: base 500→cap 250, bsc 300→cap 250, unichain 200 + residual 100 → cap 250.
+  // All three saturate the 0.25*1000=250 perStrategyCap. Sum=750.
+  assert.ok(Math.abs(totalAlloc - 750) < 0.001, `expected 750 with diversification cap + water-fill, got ${totalAlloc}`);
 });
 
 test("bootstrap-from-btc with total weight zero falls back to equal split", () => {
