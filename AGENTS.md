@@ -163,6 +163,41 @@ This is a lane-aware build order, not a runtime phase gate. Runtime execution is
 6. Live operation with per-strategy caps, per-strategy unwind paths, watchdog, and receipt ingestor.
 7. Payback engine: Scheduler + Accumulator + policy config. Base → BOB L2 → Bitcoin L1 is the first required settlement path; other profit-reserve chains expand only after round-trip efficiency on Base exceeds 90% on at least 8 consecutive periods.
 
+## Dev Automation Lane
+
+The dev-automation lane is the pipeline by which a coding-session LLM (or the operator) discovers new routes, scaffolds new strategy modules, validates them, and promotes the ones that clear deterministic thresholds. The goal is that **the coding-session LLM is not throttled by safety policy when doing dev work, while the live system is not weakened in any way**.
+
+**Two independent file flags.** Live and dev are coordinated by separate file flags so they cannot interfere:
+
+| Flag | Default path | Effect |
+|---|---|---|
+| `$KILL_SWITCH_PATH` | `~/.bob-claw/KILL_SWITCH` | Halts every signer broadcast and the payback offramp. Toggle via `npm run kill:on` / `kill:off` / `kill:status` (or the `live:start` / `live:stop` / `live:status` bundle). All toggles append to `logs/kill-switch-audit.jsonl`. |
+| `$DEV_LOCK_PATH` | `~/.bob-claw/DEV_LOCK` | Pauses the dev-automation CLIs only (auto-validation, route discovery, auto-promotion runner). Live execution is **not** affected. Toggle via `npm run dev:lock` / `dev:unlock` / `dev:lock-status`. All toggles append to `logs/dev-lock-audit.jsonl`. |
+
+The operator (or a coding-session LLM acting on operator request) holds the dev-lock while hand-coding so background automation does not race with in-progress edits. The kill-switch is for live trade safety and is independent.
+
+**Auto-promotion gate (deterministic, never an LLM judgment call).** `src/config/auto-promotion.mjs` declares the thresholds — walk-forward Sharpe, max drawdown, regime-change minimum, sample-period minimum, shadow consecutive-positive periods, shadow net-of-measured-cost positivity, quote success rate, oracle divergence, slippage, and edge-above-cost-variance. `src/executor/auto-promotion-gate.mjs` is a pure function that takes an evidence file and the config and returns `{ passed, blockers, evaluated, initialCanaryCaps }`. Promotion to live is only allowed when `passed === true`. Threshold changes require a committed diff to `src/config/auto-promotion.mjs` with rationale.
+
+**What the coding-session LLM may do without policy obstruction:**
+
+- Generate route candidates, scaffold strategy modules, edit dispatcher registries, run any number of dry-runs / shadow / replay / WF-purged CV harnesses, write/update tests, ingest receipts, regenerate dashboards.
+- Toggle `$DEV_LOCK_PATH` and `$KILL_SWITCH_PATH` on explicit operator request, with `--reason="..."` (audit-logged).
+- Start, stop, and restart deterministic daemons (`executor:daemon`, `executor:watchdog`, autopilots, payback scheduler) on operator request.
+- Commit `autoExecute: true` for a new strategy **iff** its evidence file passes `evaluateAutoPromotion` against the current `auto-promotion.mjs` config and the strategy module declares the `initialCanaryCaps` from that config (or smaller). The promotion commit must reference the evidence file path.
+
+**What the coding-session LLM still may NOT do:**
+
+- Raise caps at runtime through any side channel — `initialCanaryCaps` are mechanical, and graduation to operator caps requires a separate operator-committed diff.
+- Bypass the policy engine, signer approval, or kill-switch.
+- Decide payback ratio, timing, or trigger at runtime.
+- Auto-whitelist an unknown token.
+- Promote a strategy whose evidence file is missing, stale, or has any non-empty `blockers` array.
+- Modify or delete `logs/signer-audit.jsonl`, `logs/kill-switch-audit.jsonl`, or `logs/dev-lock-audit.jsonl`.
+
+**What the live system enforces independent of the dev lane:**
+
+- Policy engine, per-strategy caps, HF/liquidation buffer, slippage guard, stale-quote rejection, consecutive-failure counter, drawdown kill-switch, and the four auto-kill triggers (`cumulative_loss`, `failure_burst`, `oracle_divergence`, `heartbeat_stale`) all fire on auto-promoted strategies exactly the same as on operator-committed strategies. The auto-promotion gate is in addition to those guards, not a replacement for them.
+
 ## Dashboard Context
 
 - Before changing dashboard UI, read `docs/dashboard-context.md`.
