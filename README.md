@@ -12,7 +12,22 @@ Run the unattended multichain loop:
 npm run executor:all-chain-autopilot -- --json --write --execute
 ```
 
-The loop refreshes gas, plans treasury/capital refills, executes auto-eligible refills, runs live canaries, refreshes Merkl and destination allocator state, runs representative destination canaries, dispatches strategy surfaces, ticks payback, snapshots BTC oracles, and evaluates auto-kill triggers.
+The loop refreshes gas, optionally bootstraps BTC-L1 capital into a score-weighted multichain target vector, plans treasury/capital refills (bidirectional: shortfall refill + over-target drain), executes auto-eligible refills, runs live canaries, refreshes Merkl and destination allocator state, runs representative destination canaries, dispatches strategy surfaces, ticks payback, snapshots BTC oracles, and evaluates auto-kill triggers.
+
+To bootstrap from BTC-only on Bitcoin L1, pass the wallet sats and the current BTC price; the autopilot computes a score-weighted target across promotable chain × strategy candidates and routes capital accordingly:
+
+```bash
+npm run executor:all-chain-autopilot -- --execute --write \
+  --bootstrap-btc-sats=<sats> --bootstrap-btc-price-usd=<usd>
+```
+
+Or compute the bootstrap plan in isolation:
+
+```bash
+npm run executor:bootstrap-from-btc -- --total-capital-usd=<usd> --write
+```
+
+Already-scattered assets (e.g., USDC dropped on BSC, surplus wBTC.OFT on a chain with no target) drain back to score-weighted targets via `capital_drain` actions emitted by the same loop.
 
 For readiness only:
 
