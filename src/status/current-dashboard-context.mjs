@@ -339,6 +339,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   });
   dashboardStatus.walletHoldings = buildTreasuryHoldingsSlice(treasuryInventoryRecords, {
     generatedAt: dashboardStatus.generatedAt,
+    merklPositionEvents,
   });
   dashboardStatus.capitalSummary = buildCapitalSummarySlice({
     walletHoldings: dashboardStatus.walletHoldings,

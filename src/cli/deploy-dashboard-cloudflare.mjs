@@ -323,6 +323,7 @@ export async function main({
   logger.log(formatPreflightSummary({ preflight, args }));
 
   if (!args.skipStatus) {
+    await runCommand("node", ["src/cli/inventory-treasury.mjs"], commandEnv);
     await runCommand("node", ["src/cli/status-dashboard.mjs"], commandEnv);
   }
 

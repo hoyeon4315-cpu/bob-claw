@@ -1,3 +1,5 @@
+import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+
 function latestByObservedAt(records = []) {
   return [...records]
     .filter((record) => record?.observedAt)
@@ -24,7 +26,79 @@ function inventoryItem(entry = {}, family) {
   };
 }
 
-export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Date().toISOString() } = {}) {
+function observedAtMs(value) {
+  const ts = new Date(value || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function stablecoinUsd(amount, asset) {
+  if (!Number.isFinite(amount) || !asset) return null;
+  return asset.family === "stablecoin" ? amount : null;
+}
+
+function buildMerklExitReconciliationItems(events = [], { afterObservedAt = null } = {}) {
+  const afterMs = observedAtMs(afterObservedAt);
+  const metaByOpportunity = new Map();
+  for (const event of events) {
+    if (!event?.opportunityId) continue;
+    const current = metaByOpportunity.get(event.opportunityId) || {};
+    metaByOpportunity.set(event.opportunityId, {
+      chain: event.chain || current.chain || null,
+      assetAddress: event.assetAddress || current.assetAddress || null,
+      name: event.name || current.name || null,
+      observedAt: event.observedAt || current.observedAt || null,
+    });
+  }
+
+  const reconciledByKey = new Map();
+  for (const event of events) {
+    if (!event?.opportunityId || !String(event.event || "").startsWith("position_exit")) continue;
+    const proof = event.redeemProof || {};
+    const balanceUnits = proof.assetBalance ?? proof.settledBalance ?? null;
+    if (!balanceUnits) continue;
+    if (observedAtMs(event.observedAt) <= afterMs) continue;
+    const meta = metaByOpportunity.get(event.opportunityId) || {};
+    if (!meta.chain || !meta.assetAddress) continue;
+    const asset = tokenAsset(meta.chain, meta.assetAddress);
+    const amount = unitsToDecimal(balanceUnits, asset.decimals);
+    if (!Number.isFinite(amount)) continue;
+    const key = `${meta.chain}:${normalizeSymbol(asset.ticker)}`;
+    const candidate = {
+      sym: normalizeSymbol(asset.ticker),
+      name: asset.ticker,
+      chain: meta.chain,
+      amount,
+      usd: stablecoinUsd(amount, asset),
+      family: asset.family === "stablecoin" ? "token" : "position_exit",
+      status: "reconciled_exit_proof",
+      observedAt: event.observedAt,
+    };
+    const current = reconciledByKey.get(key);
+    if (!current || observedAtMs(candidate.observedAt) >= observedAtMs(current.observedAt)) {
+      reconciledByKey.set(key, candidate);
+    }
+  }
+  return [...reconciledByKey.values()];
+}
+
+function applyReconciledExitBalances(items = [], events = [], latestObservedAt = null) {
+  if (!events.length) return items;
+  const reconciled = buildMerklExitReconciliationItems(events, { afterObservedAt: latestObservedAt });
+  if (!reconciled.length) return items;
+  const byKey = new Map(items.map((item) => [`${item.chain}:${item.sym}`, { ...item }]));
+  for (const item of reconciled) {
+    const key = `${item.chain}:${item.sym}`;
+    const current = byKey.get(key) || null;
+    byKey.set(key, {
+      ...current,
+      ...item,
+      usd: Number.isFinite(item.usd) ? item.usd : (current?.usd ?? 0),
+    });
+  }
+  return [...byKey.values()];
+}
+
+export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Date().toISOString(), merklPositionEvents = [] } = {}) {
   const latest = latestByObservedAt(records);
   if (!latest) {
     return {
@@ -39,10 +113,10 @@ export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Dat
     };
   }
 
-  const items = [
+  const items = applyReconciledExitBalances([
     ...(latest.native || []).map((entry) => inventoryItem(entry, "native")),
     ...(latest.tokens || []).map((entry) => inventoryItem(entry, "token")),
-  ]
+  ], merklPositionEvents, latest.observedAt)
     .filter((item) => item.usd > 0 || item.amount > 0)
     .sort((a, b) => (b.usd || 0) - (a.usd || 0));
 
@@ -51,7 +125,7 @@ export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Dat
     generatedAt,
     observedAt: latest.observedAt || null,
     pending: false,
-    totalUsd: Number.isFinite(latest.summary?.estimatedWalletUsd) ? latest.summary.estimatedWalletUsd : items.reduce((sum, item) => sum + item.usd, 0),
+    totalUsd: items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0),
     activeChainCount: latest.summary?.activeChainCount ?? latest.activeChains?.length ?? 0,
     supportedChainCount: latest.summary?.supportedChainCount ?? latest.supportedChains?.length ?? 0,
     refillRequiredCount:
