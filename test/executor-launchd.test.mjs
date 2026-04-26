@@ -5,12 +5,14 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   buildExecutorLaunchAgentSpecs,
+  buildLiveAutomationLaunchAgentSpecs,
+  buildStrategyAutomationLaunchAgentSpecs,
   parseLaunchctlPrint,
   readLaunchAgentStatus,
   renderLaunchAgentPlist,
 } from "../src/runtime/launchd.mjs";
 
-test("buildExecutorLaunchAgentSpecs wires daemon and watchdog launch agents", () => {
+test("buildExecutorLaunchAgentSpecs wires executor launch agents", () => {
   const specs = buildExecutorLaunchAgentSpecs({
     rootDir: "/repo",
     nodePath: "/usr/local/bin/node",
@@ -20,11 +22,9 @@ test("buildExecutorLaunchAgentSpecs wires daemon and watchdog launch agents", ()
     pathEnv: "/usr/local/bin:/usr/bin:/bin",
   });
 
-  assert.equal(specs.length, 2);
-  assert.equal(specs[0].id, "daemon");
+  assert.deepEqual(specs.map((spec) => spec.id), ["daemon", "watchdog"]);
   assert.equal(specs[0].programArguments[0], "/usr/local/bin/node");
   assert.equal(specs[0].scriptPath, "/repo/src/executor/signer/daemon.mjs");
-  assert.equal(specs[1].id, "watchdog");
   assert.equal(specs[1].scriptPath, "/repo/src/cli/run-executor-watchdog.mjs");
   assert.ok("PATH" in specs[0].environmentVariables);
   assert.ok("HOME" in specs[0].environmentVariables);
@@ -33,6 +33,44 @@ test("buildExecutorLaunchAgentSpecs wires daemon and watchdog launch agents", ()
   assert.match(daemonPlist, /com\.bobclaw\.executor-daemon/);
   assert.match(daemonPlist, /\/repo\/src\/executor\/signer\/daemon\.mjs/);
   assert.match(daemonPlist, /\/repo\/logs\/launchd\/executor-daemon\.out\.log/);
+});
+
+test("buildLiveAutomationLaunchAgentSpecs wires gate self-heal and all-chain autopilot agents", () => {
+  const specs = buildLiveAutomationLaunchAgentSpecs({
+    rootDir: "/repo",
+    nodePath: "/usr/local/bin/node",
+    launchAgentsDir: "/Users/test/Library/LaunchAgents",
+    logDir: "/repo/logs/launchd",
+    homeDir: "/Users/test",
+    pathEnv: "/usr/local/bin:/usr/bin:/bin",
+  });
+
+  assert.deepEqual(specs.map((spec) => spec.id), ["gate-self-heal", "all-chain-autopilot"]);
+  assert.equal(specs[0].scriptPath, "/repo/src/cli/run-gate-self-heal.mjs");
+  assert.ok(specs[0].programArguments.includes("--loop"));
+  assert.equal(specs[1].scriptPath, "/repo/src/cli/run-all-chain-autopilot.mjs");
+  assert.ok(specs[1].programArguments.includes("--write"));
+  assert.ok("PATH" in specs[0].environmentVariables);
+  assert.ok("HOME" in specs[0].environmentVariables);
+});
+
+test("buildStrategyAutomationLaunchAgentSpecs wires strategy evidence refresh agent", () => {
+  const specs = buildStrategyAutomationLaunchAgentSpecs({
+    rootDir: "/repo",
+    nodePath: "/usr/local/bin/node",
+    launchAgentsDir: "/Users/test/Library/LaunchAgents",
+    logDir: "/repo/logs/launchd",
+    homeDir: "/Users/test",
+    pathEnv: "/usr/local/bin:/usr/bin:/bin",
+  });
+
+  assert.equal(specs.length, 1);
+  assert.equal(specs[0].id, "strategy-evidence-refresh");
+  assert.equal(specs[0].scriptPath, "/repo/src/cli/run-strategy-evidence-refresh.mjs");
+  assert.ok(specs[0].programArguments.includes("--loop"));
+  assert.ok(specs[0].programArguments.includes("--continue-on-failure"));
+  assert.ok("PATH" in specs[0].environmentVariables);
+  assert.ok("HOME" in specs[0].environmentVariables);
 });
 
 test("parseLaunchctlPrint extracts pid, state, and exit code", () => {

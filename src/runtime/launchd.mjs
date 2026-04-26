@@ -36,9 +36,22 @@ function researchLaunchdSafeEnvironment() {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
 }
 
+function strategyAutomationLaunchdSafeEnvironment() {
+  const values = {
+    ...launchdSafeEnvironment(),
+    ...researchLaunchdSafeEnvironment(),
+  };
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
+}
+
 export const EXECUTOR_LAUNCHD_LABELS = Object.freeze({
   daemon: "com.bobclaw.executor-daemon",
   watchdog: "com.bobclaw.executor-watchdog",
+});
+
+export const LIVE_AUTOMATION_LAUNCHD_LABELS = Object.freeze({
+  gateSelfHeal: "com.bobclaw.gate-self-heal",
+  allChainAutopilot: "com.bobclaw.all-chain-autopilot",
 });
 
 export const DASHBOARD_LAUNCHD_LABELS = Object.freeze({
@@ -47,6 +60,10 @@ export const DASHBOARD_LAUNCHD_LABELS = Object.freeze({
 
 export const RESEARCH_LAUNCHD_LABELS = Object.freeze({
   daily: "com.bobclaw.research-daily",
+});
+
+export const STRATEGY_AUTOMATION_LAUNCHD_LABELS = Object.freeze({
+  evidenceRefresh: "com.bobclaw.strategy-evidence-refresh",
 });
 
 export function defaultLaunchAgentsDir(homeDir = process.env.HOME || homedir()) {
@@ -138,6 +155,69 @@ export function buildExecutorLaunchAgentSpecs({
   ];
 }
 
+export function buildLiveAutomationLaunchAgentSpecs({
+  rootDir = process.cwd(),
+  nodePath = process.execPath,
+  launchAgentsDir = defaultLaunchAgentsDir(),
+  logDir = defaultLaunchdLogDir(rootDir),
+  pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
+  homeDir = process.env.HOME || homedir(),
+} = {}) {
+  const resolvedRootDir = resolve(rootDir);
+  const resolvedNodePath = resolve(nodePath);
+  const resolvedLaunchAgentsDir = resolve(launchAgentsDir);
+  const resolvedLogDir = resolve(logDir);
+  const sharedEnvironment = {
+    PATH: pathEnv,
+    HOME: homeDir,
+    ...launchdSafeEnvironment(),
+  };
+  return [
+    {
+      id: "gate-self-heal",
+      label: LIVE_AUTOMATION_LAUNCHD_LABELS.gateSelfHeal,
+      description: "BOB Claw gate self-heal loop (clears benign dashboard blockers)",
+      scriptPath: resolve(resolvedRootDir, "src/cli/run-gate-self-heal.mjs"),
+      plistPath: join(resolvedLaunchAgentsDir, `${LIVE_AUTOMATION_LAUNCHD_LABELS.gateSelfHeal}.plist`),
+      stdoutPath: join(resolvedLogDir, "gate-self-heal.out.log"),
+      stderrPath: join(resolvedLogDir, "gate-self-heal.err.log"),
+      workingDirectory: resolvedRootDir,
+      programArguments: [
+        resolvedNodePath,
+        resolve(resolvedRootDir, "src/cli/run-gate-self-heal.mjs"),
+        "--loop",
+        "--intervalMs=1800000",
+      ],
+      environmentVariables: sharedEnvironment,
+      runAtLoad: true,
+      keepAlive: true,
+      throttleInterval: 30,
+      processType: "Background",
+    },
+    {
+      id: "all-chain-autopilot",
+      label: LIVE_AUTOMATION_LAUNCHD_LABELS.allChainAutopilot,
+      description: "BOB Claw multichain autopilot loop",
+      scriptPath: resolve(resolvedRootDir, "src/cli/run-all-chain-autopilot.mjs"),
+      plistPath: join(resolvedLaunchAgentsDir, `${LIVE_AUTOMATION_LAUNCHD_LABELS.allChainAutopilot}.plist`),
+      stdoutPath: join(resolvedLogDir, "all-chain-autopilot.out.log"),
+      stderrPath: join(resolvedLogDir, "all-chain-autopilot.err.log"),
+      workingDirectory: resolvedRootDir,
+      programArguments: [
+        resolvedNodePath,
+        resolve(resolvedRootDir, "src/cli/run-all-chain-autopilot.mjs"),
+        "--loop",
+        "--write",
+      ],
+      environmentVariables: sharedEnvironment,
+      runAtLoad: true,
+      keepAlive: true,
+      throttleInterval: 30,
+      processType: "Background",
+    },
+  ];
+}
+
 export function buildDashboardLaunchAgentSpecs({
   rootDir = process.cwd(),
   nodePath = process.execPath,
@@ -218,6 +298,49 @@ export function buildResearchLaunchAgentSpecs({
   ];
 }
 
+export function buildStrategyAutomationLaunchAgentSpecs({
+  rootDir = process.cwd(),
+  nodePath = process.execPath,
+  launchAgentsDir = defaultLaunchAgentsDir(),
+  logDir = defaultLaunchdLogDir(rootDir),
+  pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
+  homeDir = process.env.HOME || homedir(),
+} = {}) {
+  const resolvedRootDir = resolve(rootDir);
+  const resolvedNodePath = resolve(nodePath);
+  const resolvedLaunchAgentsDir = resolve(launchAgentsDir);
+  const resolvedLogDir = resolve(logDir);
+  const sharedEnvironment = {
+    PATH: pathEnv,
+    HOME: homeDir,
+    ...strategyAutomationLaunchdSafeEnvironment(),
+  };
+  return [
+    {
+      id: "strategy-evidence-refresh",
+      label: STRATEGY_AUTOMATION_LAUNCHD_LABELS.evidenceRefresh,
+      description: "BOB Claw strategy evidence refresh loop",
+      scriptPath: resolve(resolvedRootDir, "src/cli/run-strategy-evidence-refresh.mjs"),
+      plistPath: join(resolvedLaunchAgentsDir, `${STRATEGY_AUTOMATION_LAUNCHD_LABELS.evidenceRefresh}.plist`),
+      stdoutPath: join(resolvedLogDir, "strategy-evidence-refresh.out.log"),
+      stderrPath: join(resolvedLogDir, "strategy-evidence-refresh.err.log"),
+      workingDirectory: resolvedRootDir,
+      programArguments: [
+        resolvedNodePath,
+        resolve(resolvedRootDir, "src/cli/run-strategy-evidence-refresh.mjs"),
+        "--loop",
+        "--continue-on-failure",
+        "--intervalMs=1800000",
+      ],
+      environmentVariables: sharedEnvironment,
+      runAtLoad: true,
+      keepAlive: true,
+      throttleInterval: 30,
+      processType: "Background",
+    },
+  ];
+}
+
 export function renderLaunchAgentPlist(spec) {
   const payload = {
     Label: spec.label,
@@ -265,6 +388,24 @@ export async function writeExecutorLaunchAgents(options = {}) {
   };
 }
 
+export async function writeLiveAutomationLaunchAgents(options = {}) {
+  const specs = buildLiveAutomationLaunchAgentSpecs(options);
+  const writes = await Promise.all(
+    specs.map(async (spec) => ({
+      id: spec.id,
+      label: spec.label,
+      plistPath: spec.plistPath,
+      stdoutPath: spec.stdoutPath,
+      stderrPath: spec.stderrPath,
+      ...(await writeTextIfChanged(spec.plistPath, renderLaunchAgentPlist(spec))),
+    })),
+  );
+  return {
+    specs,
+    writes,
+  };
+}
+
 export async function writeDashboardLaunchAgents(options = {}) {
   const specs = buildDashboardLaunchAgentSpecs(options);
   const writes = await Promise.all(
@@ -285,6 +426,24 @@ export async function writeDashboardLaunchAgents(options = {}) {
 
 export async function writeResearchLaunchAgents(options = {}) {
   const specs = buildResearchLaunchAgentSpecs(options);
+  const writes = await Promise.all(
+    specs.map(async (spec) => ({
+      id: spec.id,
+      label: spec.label,
+      plistPath: spec.plistPath,
+      stdoutPath: spec.stdoutPath,
+      stderrPath: spec.stderrPath,
+      ...(await writeTextIfChanged(spec.plistPath, renderLaunchAgentPlist(spec))),
+    })),
+  );
+  return {
+    specs,
+    writes,
+  };
+}
+
+export async function writeStrategyAutomationLaunchAgents(options = {}) {
+  const specs = buildStrategyAutomationLaunchAgentSpecs(options);
   const writes = await Promise.all(
     specs.map(async (spec) => ({
       id: spec.id,

@@ -206,6 +206,16 @@ async function executeStrategyItem(
     };
   }
 
+  if (!execute) {
+    return {
+      ...base,
+      executionStatus: "preview",
+      guardReasons: [],
+      stepCount: steps.length,
+      steps: previewSteps(steps),
+    };
+  }
+
   const guardMode = selection.mode === "live" ? "live" : "dry_run";
   const guards = await readGuards({
     emergencyStopPath: config.emergencyStopFlagPath,
@@ -217,16 +227,6 @@ async function executeStrategyItem(
       ...base,
       executionStatus: "blocked",
       blockedReason: guards.reasons[0] || "execution_guard_blocked",
-      guardReasons: guards.reasons || [],
-      stepCount: steps.length,
-      steps: previewSteps(steps),
-    };
-  }
-
-  if (!execute) {
-    return {
-      ...base,
-      executionStatus: "preview",
       guardReasons: guards.reasons || [],
       stepCount: steps.length,
       steps: previewSteps(steps),
