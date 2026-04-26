@@ -47,7 +47,7 @@ function protoSources(id, size) {
     gateway:  [llama('bob-gateway'), prox('https://www.gobob.xyz/favicon.ico')],
     gaszip:   [prox('https://www.gas.zip/favicon.ico')],
     morpho:    [llama('morpho-blue'), llama('morpho')],
-    euler:     [prox('https://app.euler.finance/favicon.ico')],
+    euler:     [prox('https://www.euler.finance/branding/euler-symbol-color.svg'), prox('https://app.euler.finance/favicon.ico')],
     yo:        [prox('https://www.yo.xyz/favicon.ico')],
     pendle:    [llama('pendle')],
     aerodrome: [llama('aerodrome-v1'), llama('aerodrome')],

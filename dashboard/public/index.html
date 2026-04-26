@@ -145,7 +145,9 @@
     function fmtUsdCompact(n) {
       if (!Number.isFinite(n)) return '—';
       const sign = n < 0 ? '-' : '';
-      return sign + '$' + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+      const abs = Math.abs(n);
+      if (abs > 0 && abs < 1) return sign + '<$1';
+      return sign + '$' + abs.toLocaleString(undefined, { maximumFractionDigits: 0 });
     }
     function fmtPct(n, digits = 2) {
       if (!Number.isFinite(n)) return '—';
@@ -643,6 +645,12 @@
       const carryUsd = flow?.metrics?.pendingCarryUsd ?? KPI?.pendingCarry?.usd;
       const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod ?? KPI?.totalEarning?.usd;
       const grossYieldSats = flow?.metrics?.grossProfitSatsPeriod ?? KPI?.totalEarning?.sats ?? 0;
+      const yieldMain = grossYieldSats > 0
+        ? fmtSats(grossYieldSats)
+        : (Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : '—');
+      const yieldSub = Number.isFinite(grossYieldUsd) && grossYieldUsd > 0
+        ? `${fmtUsdCompact(grossYieldUsd)} · all protocols`
+        : 'all protocols';
       const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
       const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
       const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
@@ -704,8 +712,8 @@
               },
               {
                 label: 'Yield',
-                main: Number.isFinite(grossYieldUsd) ? fmtUsdCompact(grossYieldUsd) : fmtSats(grossYieldSats),
-                sub: 'all protocols',
+                main: yieldMain,
+                sub: yieldSub,
               },
             ]}/>
             <OpsStrip/>

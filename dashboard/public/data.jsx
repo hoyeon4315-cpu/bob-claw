@@ -62,6 +62,13 @@ function deriveStatus(live) {
   return 'CANDIDATE';
 }
 
+function cleanUnknown(value) {
+  if (typeof value !== 'string') return value ?? null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === 'unknown') return null;
+  return value;
+}
+
 function satsToUsd(sats, btcUsd) {
   if (!Number.isFinite(sats) || !Number.isFinite(btcUsd)) return null;
   return (sats / 1e8) * btcUsd;
@@ -169,11 +176,15 @@ async function bootData() {
   function deriveFallbackMeta(id) {
     const lower = id.toLowerCase();
     const chain = CHAINS.find(c => lower.includes(c.id))?.id || 'base';
-    const protocol = [...knownProtocols].find(p => lower.includes(p)) || 'unknown';
+    const protocol = cleanUnknown([...knownProtocols].find(p => lower.includes(p)) || null);
+    const chainLabel = chain.charAt(0).toUpperCase() + chain.slice(1);
+    const protocolLabel = protocol
+      ? protocol.charAt(0).toUpperCase() + protocol.slice(1)
+      : 'Strategy';
     return {
       id,
       label: id.split(/[-_]/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-      sub: `${chain.charAt(0).toUpperCase() + chain.slice(1)} · ${protocol.charAt(0).toUpperCase() + protocol.slice(1)}`,
+      sub: `${chainLabel} · ${protocolLabel}`,
       chain,
       protocol,
       type: 'candidate',
@@ -265,12 +276,12 @@ async function bootData() {
     return {
       ...c,
       capitalUsd: CAPITAL.byChain[c.id] || 0,
-      wrappedBtcVenueStatus: p?.wrappedBtcVenueStatus || 'unknown',
-      stableVenueStatus: p?.stableVenueStatus || 'unknown',
-      nativeEthArrivalClass: p?.nativeEthArrivalClass || 'unknown',
+      wrappedBtcVenueStatus: cleanUnknown(p?.wrappedBtcVenueStatus),
+      stableVenueStatus: cleanUnknown(p?.stableVenueStatus),
+      nativeEthArrivalClass: cleanUnknown(p?.nativeEthArrivalClass),
       strategySurfacePresence: p?.strategySurfacePresence ?? 0,
-      currentMaturity: p?.currentMaturity || 'unknown',
-      topBlocker: p?.topBlocker || null,
+      currentMaturity: cleanUnknown(p?.currentMaturity),
+      topBlocker: cleanUnknown(p?.topBlocker) || null,
     };
   });
 

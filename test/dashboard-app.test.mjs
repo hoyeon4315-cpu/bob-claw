@@ -29,6 +29,8 @@ describe("dashboard home renewal source guard", () => {
     for (const label of labels) {
       assert.match(flowPane, new RegExp(`label:\\s*'${label.replace(" ", "\\s+")}'`));
     }
+    assert.match(flowPane, /const yieldMain = grossYieldSats > 0/);
+    assert.match(flowPane, /fmtUsdCompact\(grossYieldUsd\)\} · all protocols/);
   });
 
   test("history card defaults to 3 rows with expand/collapse and scroll guard", () => {

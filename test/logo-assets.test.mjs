@@ -146,9 +146,17 @@ describe("dashboard logo runtime invariants", () => {
 
   test("protocol sources include official entries for live protocols missing from DeFiLlama", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
-    assert.ok(runtime.includes("euler:     [prox('https://app.euler.finance/favicon.ico')]"));
+    assert.ok(runtime.includes("euler:     [prox('https://www.euler.finance/branding/euler-symbol-color.svg'), prox('https://app.euler.finance/favicon.ico')]"));
     assert.ok(runtime.includes("yo:        [prox('https://www.yo.xyz/favicon.ico')]"));
     assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler'\]\);/);
     assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
+  });
+
+  test("local Euler fallback is branded artwork, not the old lettermark placeholder", () => {
+    const svg = readFileSync(join(LOGOS_DIR, "protocols", "euler.svg"), "utf8");
+    assert.match(svg, /fill="#2AE5B9"/);
+    assert.match(svg, /fill="#FCBF22"/);
+    assert.match(svg, /fill="#FF7829"/);
+    assert.doesNotMatch(svg, />EU</);
   });
 });

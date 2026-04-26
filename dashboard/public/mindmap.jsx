@@ -39,9 +39,9 @@ const MINDMAP_HIDDEN_PROTOCOLS = new Set(['odos', 'gaszip']);
 const MINDMAP_HIDDEN_TYPES = new Set(['refuel']);
 function isMindmapVisible(strategy) {
   if (!strategy) return false;
+  if (!strategy.protocol) return false;
   if (MINDMAP_HIDDEN_PROTOCOLS.has(strategy.protocol)) return false;
   if (MINDMAP_HIDDEN_TYPES.has(strategy.type)) return false;
-  if (strategy.protocol === 'unknown') return false;
   if (strategy.type === 'payback') {
     const paybackUsd = Number(window?.FLOW?.metrics?.pendingCarryUsd || 0) + Number(window?.FLOW?.metrics?.paidBackUsdLifetime || 0);
     return paybackUsd > 0;
@@ -250,8 +250,8 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDra
   };
   const hitSize = size * 1.95;
   const capitalLabel = formatCompactUsdLabel(chain.capitalUsd);
-  const nameY = labelBelow ? size * 0.92 : -size * 0.74;
-  const capitalY = labelBelow ? size * 1.24 : -size * 1.06;
+  const nameY = labelBelow ? size * 0.98 : -size * 0.82;
+  const capitalY = labelBelow ? size * 1.46 : -size * 1.34;
   return (
     <g data-chain-id={chain.id} transform={`translate(${x}, ${y})`}
        style={{ cursor:'pointer', opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto',
@@ -442,7 +442,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
             <ProtocolLogo id={strategy.protocol} size={R*1.18}/>
           </div>
         </foreignObject>
-        <StatPill x={0} y={-R - 12} label={capitalLabel} scale={0.82} tone={selected ? 'dark' : 'light'}/>
+        <StatPill x={0} y={-R - 17} label={capitalLabel} scale={0.76} tone={selected ? 'dark' : 'light'}/>
         {selected && (
           <>
             <text y={R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1D1D1F"
@@ -754,8 +754,8 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     const chainLabelBelow = (ringPos[selectedChain]?.y ?? 0) >= 0;
 
     includeCircle(bounds, chain.x, chain.y, chainSize * 0.9);
-    includeRect(bounds, chain.x, chain.y + (chainLabelBelow ? chainSize * 1.08 : -(chainSize * 0.92)), 82, 18);
-    includeRect(bounds, chain.x, chain.y + (chainLabelBelow ? chainSize * 1.24 : -(chainSize * 1.06)), 76, 16);
+    includeRect(bounds, chain.x, chain.y + (chainLabelBelow ? chainSize * 0.98 : -(chainSize * 0.82)), 82, 18);
+    includeRect(bounds, chain.x, chain.y + (chainLabelBelow ? chainSize * 1.46 : -(chainSize * 1.34)), 76, 16);
 
     const hasPayback = focusStrategies.some(s => s.type === 'payback');
     if (hasPayback) {
@@ -769,7 +769,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       const chipSize = 28;
       const chipRadius = chipSize * 1.1;
       includeCircle(bounds, point.x, point.y, chipRadius + 4);
-      includeRect(bounds, point.x, point.y - chipRadius - 12, 58, 16);
+      includeRect(bounds, point.x, point.y - chipRadius - 17, 58, 16);
       includeRect(bounds, point.x, point.y + chipRadius + 10, 80, 14);
       includeRect(bounds, point.x, point.y + chipRadius + 18, 112, 38);
 
