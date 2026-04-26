@@ -336,6 +336,7 @@ async function notifyPreliveForkTransition(payload) {
       botToken: config.telegramBotToken,
       chatId: config.telegramChatId,
       text: formatPreliveForkExecutionAlert(payload),
+      category: "prelive_execution",
     });
   } catch (error) {
     console.error(`telegram notify failed: ${error.message}`);

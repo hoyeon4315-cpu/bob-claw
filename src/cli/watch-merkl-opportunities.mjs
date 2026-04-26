@@ -73,6 +73,7 @@ async function main() {
       botToken: config.telegramBotToken,
       chatId: config.telegramChatId,
       text: formatAlert(result, report),
+      category: "merkl_opportunity",
     });
     console.log(`telegram=${telegramResult.sent ? "sent" : `skipped:${telegramResult.reason}`}`);
   }

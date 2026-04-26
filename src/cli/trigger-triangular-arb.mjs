@@ -399,7 +399,7 @@ async function runCycle(args, profile, datasetNames, store, session) {
         `Gas: $${best.totalGas.toFixed(3)} | Capital: $${args.capital}`,
         simulation ? `Sim: ${simulation.ok ? "✅ PASS" : "❌ " + (simulation.error || "").slice(0, 60)}` : "Mode: dry-run",
       ].join("\n");
-      await sendTelegramMessage({ botToken, chatId, text });
+      await sendTelegramMessage({ botToken, chatId, text, category: "triangular_opportunity" });
     }
   } catch (_) { /* don't block on telegram failure */ }
 
@@ -464,7 +464,7 @@ async function runCycle(args, profile, datasetNames, store, session) {
               const text = success
                 ? `🔥 *LIVE TRADE SUCCESS*\nRoute: \`${best.label}\`\nProfit: $${best.netProfit.toFixed(2)}\nTX: ${txHash}`
                 : `⚠️ *Trade Reverted*\nRoute: \`${best.label}\`\nGas lost: ~$0.004\nTX: ${txHash}`;
-              await sendTelegramMessage({ botToken, chatId, text });
+               await sendTelegramMessage({ botToken, chatId, text, category: "live_execution_result" });
             }
           }
         } catch (_) {}

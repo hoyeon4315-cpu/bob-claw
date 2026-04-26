@@ -137,6 +137,7 @@ async function main() {
       botToken: config.telegramBotToken,
       chatId: config.telegramChatId,
       text: formatGatewayUpdateAlert(result),
+      category: "gateway_update",
     });
     console.log(`telegram=${telegramResult.sent ? "sent" : `skipped:${telegramResult.reason}`}`);
   }

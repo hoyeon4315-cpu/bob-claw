@@ -174,7 +174,7 @@ async function notify(text) {
     console.log("[auto-analyze] Telegram not configured, skipping notify.");
     return;
   }
-  await sendTelegramMessage({ botToken, chatId, text });
+  await sendTelegramMessage({ botToken, chatId, text, category: "research_analysis" });
 }
 
 async function main() {

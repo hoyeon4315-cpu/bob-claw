@@ -754,6 +754,7 @@ export async function notifyCanaryDecision({ botToken, chatId, nextStep, fetchIm
     botToken,
     chatId,
     text: formatCanaryTelegramAlert(nextStep),
+    category: "canary_readiness",
     fetchImpl,
   });
 }

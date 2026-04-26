@@ -38,6 +38,7 @@ export async function notifyPolicyRejection({
       botToken,
       chatId,
       text: formatPolicyRejectionAlert({ intent, policy }),
+      category: "strategy_halt",
     });
   } catch (error) {
     return {

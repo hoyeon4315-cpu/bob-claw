@@ -27,6 +27,7 @@ export function createWatchdogAlerter({
       botToken,
       chatId,
       text: formatWatchdogAlert(payload),
+      category: "watchdog_halt",
     });
 }
 

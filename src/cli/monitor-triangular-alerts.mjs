@@ -275,6 +275,7 @@ async function main() {
         text:
           `🔔 BOB Claw Alert (${profile.label})\n${route.label}\nNet: $${route.netProfit.toFixed(2)} (${route.netPct.toFixed(3)}%)\n` +
           `Gas: $${route.totalGas.toFixed(3)}\nCapital: $${args.capital} | Flash: ${args.flashFeePct}%`,
+        category: "triangular_opportunity",
       }).catch((error) => {
         console.error(
           `Telegram alert failed for ${profile.label} ${route.label} capital=${args.capital} flash=${args.flashFeePct}%: ${error.message}`,

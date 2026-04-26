@@ -1,3 +1,9 @@
+import {
+  TELEGRAM_ALERT_MODE,
+  isImmediateTelegramAlertCategory,
+  normalizeTelegramAlertCategory,
+} from "../config/telegram.mjs";
+
 export function formatGatewayUpdateAlert(result) {
   const lines = [
     "BOB Claw update alert",
@@ -72,9 +78,34 @@ export function formatPreliveForkExecutionAlert({ phase, plan = null, submission
   return lines.join("\n");
 }
 
-export async function sendTelegramMessage({ botToken, chatId, text, fetchImpl = fetch }) {
+export function buildTelegramDeliveryDecision({ category = null } = {}) {
+  const normalizedCategory = normalizeTelegramAlertCategory(category);
+  return {
+    mode: TELEGRAM_ALERT_MODE,
+    category: normalizedCategory,
+    allowed: isImmediateTelegramAlertCategory(normalizedCategory),
+  };
+}
+
+export async function sendTelegramMessage({ botToken, chatId, text, category = null, fetchImpl = fetch }) {
+  const delivery = buildTelegramDeliveryDecision({ category });
+  if (!delivery.allowed) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: "telegram_category_suppressed",
+      category: delivery.category,
+      mode: delivery.mode,
+    };
+  }
   if (!botToken || !chatId) {
-    return { sent: false, skipped: true, reason: "telegram_not_configured" };
+    return {
+      sent: false,
+      skipped: true,
+      reason: "telegram_not_configured",
+      category: delivery.category,
+      mode: delivery.mode,
+    };
   }
 
   const response = await fetchImpl(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -100,5 +131,12 @@ export async function sendTelegramMessage({ botToken, chatId, text, fetchImpl = 
     throw new Error(`Telegram send failed with status ${response.status}: ${JSON.stringify(body)}`);
   }
 
-  return { sent: true, skipped: false, status: response.status, body };
+  return {
+    sent: true,
+    skipped: false,
+    status: response.status,
+    body,
+    category: delivery.category,
+    mode: delivery.mode,
+  };
 }
