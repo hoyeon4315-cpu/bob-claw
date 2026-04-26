@@ -6,6 +6,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
+import { buildStrategyDispatchPlanningBridge } from "../session/strategy-dispatch-planning-bridge.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 import { buildStrategyDispatchSummary, executeStrategyDispatch } from "../session/strategy-dispatch-runner.mjs";
 import { defaultRunCommand as runRefreshCommand } from "../session/shadow-refresh-runner.mjs";
@@ -27,6 +28,8 @@ function parseArgs(argv) {
     continueOnFailure: flags.has("--continue-on-failure"),
     mode: options.mode || "auto",
     commandTimeoutMs: options["command-timeout-ms"] ? Number(options["command-timeout-ms"]) : null,
+    orchestratorRunId: options["orchestrator-run-id"] || null,
+    orchestratorSource: options["orchestrator-source"] || null,
     scope: options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [],
     bucket: options.bucket ? options.bucket.split(",").map((item) => item.trim()).filter(Boolean) : [],
   };
@@ -42,6 +45,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { state, dashboardStatus, triangleArtifacts, artifacts } = await buildCurrentDashboardContext();
   const executionSurfaces = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
+  const planningBridge = buildStrategyDispatchPlanningBridge({
+    autonomousDiscoveryBoard: artifacts.autonomousDiscoveryBoard || null,
+    executionSurfaces,
+  });
   let strategies = executionSurfaces.strategies || [];
   if (args.scope.length) {
     const scopeSet = new Set(args.scope);
@@ -56,6 +63,10 @@ async function main() {
     strategies,
     execute: args.execute,
     requestedMode: args.mode,
+    orchestration: {
+      source: args.orchestratorSource || "run_strategy_catalog_dispatcher",
+      runId: args.orchestratorRunId || null,
+    },
     stopOnFailure: !args.continueOnFailure,
     ...(Number.isFinite(args.commandTimeoutMs) && args.commandTimeoutMs > 0
       ? {
@@ -66,10 +77,14 @@ async function main() {
         }
       : {}),
   });
+  const enrichedRecord = {
+    ...record,
+    planningBridge,
+  };
 
   if (args.execute) {
     const store = new JsonlStore(config.dataDir);
-    await store.append("strategy-dispatch-runs", record);
+    await store.append("strategy-dispatch-runs", enrichedRecord);
   }
 
   const allRecords = args.execute || args.write ? await readJsonl(config.dataDir, "strategy-dispatch-runs") : [];
@@ -83,10 +98,11 @@ async function main() {
     });
   }
 
-  const summary = args.execute ? persistedSummary : buildStrategyDispatchSummary([record]);
+  const summary = args.execute ? persistedSummary : buildStrategyDispatchSummary([enrichedRecord]);
   const output = {
     executionSurfaces,
-    record,
+    planningBridge,
+    record: enrichedRecord,
     summary,
     persistedSummary,
   };
@@ -96,12 +112,13 @@ async function main() {
     return;
   }
 
-  console.log(`mode=${record.mode}`);
-  console.log(`requestedMode=${record.requestedMode}`);
-  console.log(`selectedCount=${record.selectedCount}`);
-  console.log(`batchStatus=${record.batchStatus}`);
-  console.log(`stopReason=${record.stopReason || "none"}`);
-  for (const result of record.strategyResults || []) {
+  console.log(`mode=${enrichedRecord.mode}`);
+  console.log(`requestedMode=${enrichedRecord.requestedMode}`);
+  console.log(`selectedCount=${enrichedRecord.selectedCount}`);
+  console.log(`batchStatus=${enrichedRecord.batchStatus}`);
+  console.log(`stopReason=${enrichedRecord.stopReason || "none"}`);
+  console.log(`planningBridge=${planningBridge?.authority || "none"} top=${planningBridge?.topCandidateId || "none"} candidates=${planningBridge?.candidateCount ?? 0}`);
+  for (const result of enrichedRecord.strategyResults || []) {
     console.log(
       [
         "strategy",

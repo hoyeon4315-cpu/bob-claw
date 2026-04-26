@@ -65,6 +65,12 @@ test("runAutoKillCheck writes kill-switch file and event log on trigger", async 
     const auditRecord = JSON.parse(auditLog.trim().split("\n").pop());
     assert.equal(auditRecord.strategyId, "risk:auto-kill");
     assert.equal(auditRecord.lifecycle.stage, "kill_switch_auto_triggered");
+    const killSwitchAuditLog = await readFile(join(rootDir, "logs", "kill-switch-audit.jsonl"), "utf8");
+    const killSwitchAuditRecord = JSON.parse(killSwitchAuditLog.trim().split("\n").pop());
+    assert.equal(killSwitchAuditRecord.action, "halt");
+    assert.equal(killSwitchAuditRecord.actor, "risk:auto-kill");
+    assert.equal(killSwitchAuditRecord.previousState, "running");
+    assert.equal(killSwitchAuditRecord.metadata.source, "auto_kill");
   });
 });
 
@@ -97,5 +103,9 @@ test("runAutoKillCheck does not overwrite an already-armed kill-switch", async (
       .trim()
       .split("\n");
     assert.equal(eventLines.length, 2, "every check appends an event");
+    const killSwitchAuditLines = (await readFile(join(rootDir, "logs", "kill-switch-audit.jsonl"), "utf8"))
+      .trim()
+      .split("\n");
+    assert.equal(killSwitchAuditLines.length, 1, "kill-switch audit only appends on state change");
   });
 });

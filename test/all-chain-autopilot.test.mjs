@@ -416,6 +416,8 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.strategyDispatch.missingExecutorCount, 0);
   assert.equal(report.summary.strategyDispatch.capitalDispatchReadiness, "ready");
   assert.equal(report.summary.payback.pendingCarrySats, 601);
+  assert.equal(report.summary.executionGate.liveCapableStepExecution, true);
+  assert.equal(report.summary.executionGate.blockedReason, null);
 });
 
 test("all-chain autopilot reports recoverable blockers without failing the whole pass", async () => {
@@ -473,6 +475,57 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-strategy-catalog-dispatcher.mjs") && args.includes("--command-timeout-ms=789")), true);
+});
+
+test("all-chain autopilot runs auto-kill before live-capable steps and suppresses execute when armed", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    const name = args[0];
+    if (name.endsWith("run-auto-kill-check.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          triggered: true,
+          alreadyArmed: false,
+          killSwitchWritten: true,
+          killSwitchPath: "./state/kill.switch",
+          triggers: [{ trigger: "failure_burst" }],
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  const commandNames = seen.map((args) => args[0]);
+  assert.equal(
+    commandNames.indexOf("src/cli/run-auto-kill-check.mjs") < commandNames.indexOf("src/cli/run-live-canary-sweep.mjs"),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs" && args.includes("--execute")),
+    false,
+  );
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs" && args.includes("--execute")),
+    false,
+  );
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-payback-scheduler.mjs" && args.includes("--execute")),
+    false,
+  );
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
+  assert.equal(report.summary.executionGate.blockedReason, "auto_kill_triggered");
 });
 
 test("all-chain autopilot retries refill jobs with executable alternate methods after no_route", async () => {

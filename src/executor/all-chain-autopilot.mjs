@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
@@ -385,13 +386,23 @@ function compactStrategyDispatch(report = null, { capitalDispatchReadiness = nul
   const currentSucceeded = currentResults.filter((item) => item.executionStatus === "succeeded").length;
   const currentFailed = currentResults.filter((item) => item.executionStatus === "failed").length;
   return {
+    dispatchId: report?.record?.dispatchId || null,
     batchStatus: report?.record?.batchStatus || null,
     selectedCount: report?.record?.selectedCount ?? 0,
     successCount: currentResults.length ? currentSucceeded : report?.summary?.successCount ?? null,
     failedCount: currentResults.length ? currentFailed : report?.summary?.failureCount ?? null,
     liveEligibleCount: report?.executionSurfaces?.summary?.liveEligibleCount ?? null,
     missingExecutorCount: report?.executionSurfaces?.summary?.missingExecutorCount ?? null,
+    orchestrationSource: report?.record?.orchestration?.source || null,
+    orchestratorRunId: report?.record?.orchestration?.runId || null,
     capitalDispatchReadiness,
+    planningBridge: report?.planningBridge
+      ? {
+          authority: report.planningBridge.authority || null,
+          candidateCount: report.planningBridge.candidateCount ?? 0,
+          topCandidateId: report.planningBridge.topCandidateId || null,
+        }
+      : null,
   };
 }
 
@@ -431,6 +442,42 @@ function compactAutoKill(report = null) {
     killSwitchWritten: report.killSwitchWritten === true,
     killSwitchPath: report.killSwitchPath ?? null,
     triggers: Array.isArray(report.triggers) ? report.triggers.map((trigger) => trigger.trigger).filter(Boolean) : [],
+  };
+}
+
+function buildLiveExecutionGate({ execute = false, autoKillStep = null } = {}) {
+  if (!execute) {
+    return {
+      requestedExecute: false,
+      liveCapableStepExecution: false,
+      blockedReason: null,
+    };
+  }
+  if (!autoKillStep?.ok || !autoKillStep?.json) {
+    return {
+      requestedExecute: true,
+      liveCapableStepExecution: false,
+      blockedReason: "auto_kill_check_unavailable",
+    };
+  }
+  if (autoKillStep.json.triggered === true) {
+    return {
+      requestedExecute: true,
+      liveCapableStepExecution: false,
+      blockedReason: "auto_kill_triggered",
+    };
+  }
+  if (autoKillStep.json.alreadyArmed === true) {
+    return {
+      requestedExecute: true,
+      liveCapableStepExecution: false,
+      blockedReason: "kill_switch_armed",
+    };
+  }
+  return {
+    requestedExecute: true,
+    liveCapableStepExecution: true,
+    blockedReason: null,
   };
 }
 
@@ -604,6 +651,7 @@ export async function runAllChainAutopilot({
   bootstrapTotalCapitalUsd = null,
 } = {}) {
   const observedAt = new Date().toISOString();
+  const autopilotRunId = randomUUID();
   const steps = [];
   const refillExecutions = [];
 
@@ -639,6 +687,32 @@ export async function runAllChainAutopilot({
       steps,
     });
   }
+
+  const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
+  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", join("data", "oracles", "btc-latest.json"));
+  await runJsonStep({
+    name: "btc_oracle_snapshot",
+    args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json", `--oracles-path=${oraclesPathArg}`];
+  if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
+  const autoKillResult = await runJsonStep({
+    name: "auto_kill_check",
+    args: autoKillArgs,
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  const liveExecutionGate = buildLiveExecutionGate({
+    execute,
+    autoKillStep: autoKillResult,
+  });
+  const allowLiveCapableExecution = liveExecutionGate.liveCapableStepExecution === true;
 
   let refillPlanResult = await runJsonStep({
     name: "treasury_refill_plan",
@@ -734,7 +808,7 @@ export async function runAllChainAutopilot({
       }
     }
     let execution = null;
-    if (execute && refillPreparationReady(preview.json)) {
+    if (allowLiveCapableExecution && refillPreparationReady(preview.json)) {
       const method = preview.json?.forcedMethod || null;
       execution = await runJsonStep({
         name: `treasury_refill_execute:${job.jobId}`,
@@ -764,7 +838,7 @@ export async function runAllChainAutopilot({
     capitalManagerRefillPlan?.capitalPlan?.decision === "REFILL_REQUIRED" && capitalManagerExecutedCount === 0
       ? "refill_pending_individual_strategy_gates_enforced"
       : "ready";
-  const allowLiveStrategyDispatch = execute;
+  const allowLiveStrategyDispatch = allowLiveCapableExecution;
 
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
@@ -775,7 +849,7 @@ export async function runAllChainAutopilot({
       `--chains=${chains.join(",")}`,
       `--limit=${canaryLimit}`,
       `--timeout-ms=${canaryTimeoutMs}`,
-    ], "--execute", execute),
+    ], "--execute", allowLiveCapableExecution),
     runCommandImpl,
     cwd,
     timeoutMs: canaryTimeoutMs,
@@ -816,7 +890,7 @@ export async function runAllChainAutopilot({
       "--json",
       "--write",
       `--timeout-ms=${timeoutMs}`,
-    ], "--execute", execute),
+    ], "--execute", allowLiveCapableExecution),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -830,7 +904,7 @@ export async function runAllChainAutopilot({
       "--json",
       "--write",
       `--timeout-ms=${timeoutMs}`,
-    ], "--execute", execute),
+    ], "--execute", allowLiveCapableExecution),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -844,7 +918,7 @@ export async function runAllChainAutopilot({
       "--json",
       "--write",
       `--timeout-ms=${timeoutMs}`,
-    ], "--execute", execute),
+    ], "--execute", allowLiveCapableExecution),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -880,7 +954,7 @@ export async function runAllChainAutopilot({
       timeoutMs,
       steps,
     });
-    if (execute && wrappedBtcHandoffPreview.json?.plan?.handoffStatus === "conversion_ready") {
+    if (allowLiveCapableExecution && wrappedBtcHandoffPreview.json?.plan?.handoffStatus === "conversion_ready") {
       wrappedBtcHandoffExecution = await runJsonStep({
         name: "wrapped_btc_loop_handoff_execute",
         args: [
@@ -913,44 +987,25 @@ export async function runAllChainAutopilot({
   const strategyDispatchResult = await runJsonStep({
     name: "strategy_catalog_dispatch",
     args: appendFlag([
-      "src/cli/run-strategy-catalog-dispatcher.mjs",
-      "--json",
-      "--write",
-      "--continue-on-failure",
-      "--mode=auto",
-      `--command-timeout-ms=${dispatchTimeoutMs}`,
-    ], "--execute", allowLiveStrategyDispatch),
+        "src/cli/run-strategy-catalog-dispatcher.mjs",
+        "--json",
+        "--write",
+        "--continue-on-failure",
+        "--mode=auto",
+        "--orchestrator-source=all_chain_autopilot",
+        `--orchestrator-run-id=${autopilotRunId}`,
+        `--command-timeout-ms=${dispatchTimeoutMs}`,
+      ], "--execute", allowLiveStrategyDispatch),
     runCommandImpl,
     cwd,
     timeoutMs: dispatchTimeoutMs,
     steps,
   });
 
-  const paybackArgs = appendFlag(["src/cli/run-payback-scheduler.mjs", "--json", "--write", "--once"], "--execute", execute);
+  const paybackArgs = appendFlag(["src/cli/run-payback-scheduler.mjs", "--json", "--write", "--once"], "--execute", allowLiveCapableExecution);
   const paybackResult = await runJsonStep({
     name: "payback_scheduler",
     args: paybackArgs,
-    runCommandImpl,
-    cwd,
-    timeoutMs,
-    steps,
-  });
-
-  const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
-  const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", join("data", "oracles", "btc-latest.json"));
-  await runJsonStep({
-    name: "btc_oracle_snapshot",
-    args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
-    runCommandImpl,
-    cwd,
-    timeoutMs,
-    steps,
-  });
-  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json", `--oracles-path=${oraclesPathArg}`];
-  if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
-  const autoKillResult = await runJsonStep({
-    name: "auto_kill_check",
-    args: autoKillArgs,
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -1001,6 +1056,12 @@ export async function runAllChainAutopilot({
     strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json, { capitalDispatchReadiness }),
     payback: compactPayback(paybackResult.json),
     autoKill: compactAutoKill(autoKillResult.json),
+    executionGate: {
+      ...liveExecutionGate,
+      autopilotRunId,
+      autoKillTriggered: autoKillResult.json?.triggered === true,
+      killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
+    },
   };
 
   const hardFailures = steps.filter((step) => !step.ok && !stepIsRecoverable(step, steps));
@@ -1008,8 +1069,13 @@ export async function runAllChainAutopilot({
   const report = {
     schemaVersion: 1,
     observedAt,
+    autopilotRunId,
     mode: execute ? "execute" : "preview",
-    status: hardFailures.length > 0 ? "error" : blockedSteps.length > 0 ? "completed_with_blockers" : "completed",
+    status: hardFailures.length > 0
+      ? "error"
+      : blockedSteps.length > 0 || liveExecutionGate.blockedReason
+        ? "completed_with_blockers"
+        : "completed",
     blockedReason: hardFailures[0]?.error?.message || null,
     chains,
     summary,

@@ -106,11 +106,47 @@ function previewSteps(steps = []) {
   }));
 }
 
+function normalizeOrchestration(orchestration = null) {
+  if (!orchestration || typeof orchestration !== "object") return null;
+  return {
+    source: orchestration.source || "strategy_catalog_dispatcher",
+    runId: orchestration.runId || null,
+  };
+}
+
+function buildDispatchCommandEnv({
+  env = process.env,
+  dispatchId,
+  requestedMode,
+  selectedMode,
+  execute = false,
+  orchestration = null,
+  strategy = null,
+  phase = "strategy",
+} = {}) {
+  const normalizedOrchestration = normalizeOrchestration(orchestration);
+  const nextEnv = {
+    ...env,
+    BOB_DISPATCH_ID: dispatchId,
+    BOB_DISPATCH_EXECUTION_MODE: execute ? "execute" : "preview",
+    BOB_DISPATCH_REQUESTED_MODE: normalizeRequestedMode(requestedMode),
+    BOB_DISPATCH_SELECTED_MODE: normalizeRequestedMode(selectedMode),
+    BOB_DISPATCH_PHASE: phase,
+  };
+  if (normalizedOrchestration?.source) nextEnv.BOB_ORCHESTRATION_SOURCE = normalizedOrchestration.source;
+  if (normalizedOrchestration?.runId) nextEnv.BOB_ORCHESTRATION_RUN_ID = normalizedOrchestration.runId;
+  if (strategy?.id) nextEnv.BOB_STRATEGY_ID = strategy.id;
+  if (strategy?.lane) nextEnv.BOB_STRATEGY_LANE = strategy.lane;
+  return nextEnv;
+}
+
 async function executeStrategyItem(
   strategy,
   {
     execute = false,
     requestedMode = "auto",
+    dispatchId,
+    orchestration = null,
     cwd = process.cwd(),
     env = process.env,
     runCommand = defaultRunCommand,
@@ -119,7 +155,9 @@ async function executeStrategyItem(
   } = {},
 ) {
   const selection = requestedCommandsForStrategy(strategy, requestedMode);
+  const normalizedOrchestration = normalizeOrchestration(orchestration);
   const base = {
+    dispatchId,
     strategyId: strategy.id,
     label: strategy.label,
     lane: strategy.lane,
@@ -133,6 +171,7 @@ async function executeStrategyItem(
     liveAdmissionBlockers: Array.isArray(strategy.liveAdmissionBlockers) ? strategy.liveAdmissionBlockers : [],
     fallbackReason: strategy.fallbackReason || null,
     scripts: scriptsForCommands(selection.commands),
+    orchestration: normalizedOrchestration,
   };
 
   if (selection.blockedReason) {
@@ -196,7 +235,15 @@ async function executeStrategyItem(
 
   const executed = await runParsedRefreshSteps(steps, {
     cwd,
-    env,
+    env: buildDispatchCommandEnv({
+      env,
+      dispatchId,
+      requestedMode,
+      selectedMode: selection.mode,
+      execute,
+      orchestration: normalizedOrchestration,
+      strategy,
+    }),
     runCommand: async (details) => runCommand({ ...details, strategy }),
   });
   return {
@@ -212,6 +259,9 @@ async function executeFollowUpCommands(
   commands,
   {
     execute = false,
+    dispatchId,
+    requestedMode = "auto",
+    orchestration = null,
     cwd = process.cwd(),
     env = process.env,
     runCommand = defaultRunCommand,
@@ -245,7 +295,15 @@ async function executeFollowUpCommands(
     }
     const executed = await runParsedRefreshSteps(steps, {
       cwd,
-      env,
+      env: buildDispatchCommandEnv({
+        env,
+        dispatchId,
+        requestedMode,
+        selectedMode: "follow_up",
+        execute,
+        orchestration,
+        phase: "follow_up",
+      }),
       runCommand: async (details) => runCommand({ ...details, followUpCommand: command }),
     });
     results.push({
@@ -264,6 +322,8 @@ export async function executeStrategyDispatch({
   strategies = [],
   execute = false,
   requestedMode = "auto",
+  dispatchId = randomUUID(),
+  orchestration = null,
   stopOnFailure = true,
   followUpCommands = DEFAULT_STRATEGY_DISPATCH_FOLLOW_UP_COMMANDS,
   cwd = process.cwd(),
@@ -275,10 +335,13 @@ export async function executeStrategyDispatch({
 } = {}) {
   const results = [];
   let stopReason = null;
+  const normalizedOrchestration = normalizeOrchestration(orchestration);
   for (const strategy of strategies) {
     const result = await executeStrategyItem(strategy, {
       execute,
       requestedMode,
+      dispatchId,
+      orchestration: normalizedOrchestration,
       cwd,
       env,
       runCommand,
@@ -298,6 +361,9 @@ export async function executeStrategyDispatch({
       ? []
       : await executeFollowUpCommands(followUpCommands, {
           execute,
+          dispatchId,
+          requestedMode,
+          orchestration: normalizedOrchestration,
           cwd,
           env,
           runCommand,
@@ -319,7 +385,8 @@ export async function executeStrategyDispatch({
   return {
     schemaVersion: 1,
     observedAt: now,
-    dispatchId: randomUUID(),
+    dispatchId,
+    orchestration: normalizedOrchestration,
     mode: execute ? "execute" : "preview",
     requestedMode: normalizeRequestedMode(requestedMode),
     selectedCount: strategies.length,

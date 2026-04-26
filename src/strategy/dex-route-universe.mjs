@@ -5,6 +5,14 @@ function routeKey(route) {
   return `${route.srcChain}:${route.srcToken}->${route.dstChain}:${route.dstToken}`;
 }
 
+export function routeMatchesDexFamily(route, family = "btc") {
+  const tokenText = `${route?.srcToken || ""} ${route?.dstToken || ""}`.toLowerCase();
+  if (family === "eth") return isEthFamilyRoute(route) || /\beth\b|weth|steth|reth/.test(tokenText);
+  if (family === "btc") return isBtcFamilyRoute(route) || /btc|lbtc|solvbtc/.test(tokenText);
+  if (family === "stable") return /usd|usdc|usdt|dai|eurc|usde|usds|pyusd/.test(tokenText);
+  return true;
+}
+
 function entrySupport(route) {
   const stable = STABLE_QUOTE_TOKENS[route?.srcChain];
   const providerSupport = canQuoteWithDex(route.srcChain, route.srcToken, {
@@ -39,6 +47,20 @@ function blockerSummary(route) {
   return { classification, blockers, entry, exit };
 }
 
+export function analyzeDexRouteSupport(route) {
+  const summary = blockerSummary(route);
+  return {
+    routeKey: routeKey(route),
+    srcChain: route?.srcChain || null,
+    dstChain: route?.dstChain || null,
+    asset: routeAsset(route).ticker,
+    classification: summary.classification,
+    blockers: summary.blockers,
+    entry: summary.entry,
+    exit: summary.exit,
+  };
+}
+
 function groupCount(items, keyFn) {
   const counts = new Map();
   for (const item of items || []) {
@@ -68,12 +90,12 @@ export function buildDexRouteUniverseSummary({ routes = [], observedAt = null } 
   const familyLabel = options.familyLabel || "btc";
   const familyRoutes = (routes || []).filter(routeFilter);
   const analyzed = familyRoutes.map((route) => {
-    const summary = blockerSummary(route);
+    const summary = analyzeDexRouteSupport(route);
     return {
-      routeKey: routeKey(route),
-      srcChain: route.srcChain,
-      dstChain: route.dstChain,
-      asset: routeAsset(route).ticker,
+      routeKey: summary.routeKey,
+      srcChain: summary.srcChain,
+      dstChain: summary.dstChain,
+      asset: summary.asset,
       classification: summary.classification,
       blockers: summary.blockers,
     };

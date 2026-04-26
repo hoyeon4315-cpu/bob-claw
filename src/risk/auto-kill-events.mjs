@@ -6,10 +6,15 @@
 
 import { mkdir, writeFile, appendFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { evaluateAutoKillTriggers } from "./auto-kill-triggers.mjs";
 import { buildAutoKillConfig } from "../config/auto-kill.mjs";
-import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
+import {
+  appendKillSwitchAuditRecord,
+  buildKillSwitchAuditRecord,
+  resolveKillSwitchAuditPath,
+  resolveKillSwitchPath,
+} from "../executor/policy/kill-switch.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord } from "../executor/signer/audit-log.mjs";
 
 export const AUTO_KILL_EVENTS_PATH = join("data", "risk", "auto-kill-events.jsonl");
@@ -62,6 +67,16 @@ function buildAutoKillAuditRecord(eventRecord) {
   });
 }
 
+function buildAutoKillKillSwitchReason(triggers = []) {
+  const names = [...new Set(triggers.map((trigger) => trigger?.trigger).filter(Boolean))];
+  return names.length > 0 ? `auto_kill:${names.join(",")}` : "auto_kill:triggered";
+}
+
+function resolveAuditPath(rootDir, auditPath = resolveKillSwitchAuditPath()) {
+  if (!auditPath) return null;
+  return isAbsolute(auditPath) ? auditPath : join(rootDir, auditPath);
+}
+
 export async function runAutoKillCheck({
   auditRecords = [],
   oracleSamples = [],
@@ -96,6 +111,21 @@ export async function runAutoKillCheck({
   let killSwitchWritten = false;
   if (killSwitchPath && !alreadyArmed) {
     await writeKillSwitchFile(killSwitchPath, eventRecord);
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: buildAutoKillKillSwitchReason(eventRecord.triggers),
+        actor: "risk:auto-kill",
+        killSwitchPath,
+        previousState: "running",
+        now: eventRecord.evaluatedAt,
+        metadata: {
+          source: "auto_kill",
+          triggers: eventRecord.triggers,
+        },
+      }),
+      { auditPath: resolveAuditPath(rootDir) },
+    );
     killSwitchWritten = true;
   }
   return {

@@ -69,6 +69,47 @@ test("strategy dispatch executes selected commands and runs follow-ups", async (
   ]);
 });
 
+test("strategy dispatch propagates orchestration correlation into command env and record metadata", async () => {
+  const envSnapshots = [];
+  const record = await executeStrategyDispatch({
+    strategies: [strategyFixture()],
+    execute: true,
+    orchestration: {
+      source: "all_chain_autopilot",
+      runId: "autopilot-123",
+    },
+    readGuards: async () => ({ blocked: false, reasons: [] }),
+    runCommand: async ({ env }) => {
+      envSnapshots.push({
+        dispatchId: env.BOB_DISPATCH_ID,
+        source: env.BOB_ORCHESTRATION_SOURCE,
+        runId: env.BOB_ORCHESTRATION_RUN_ID,
+        strategyId: env.BOB_STRATEGY_ID || null,
+        phase: env.BOB_DISPATCH_PHASE,
+      });
+      return {
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        durationMs: 4,
+        stdout: "ok",
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(record.orchestration.source, "all_chain_autopilot");
+  assert.equal(record.orchestration.runId, "autopilot-123");
+  assert.ok(record.dispatchId);
+  assert.equal(record.strategyResults[0].dispatchId, record.dispatchId);
+  assert.equal(record.strategyResults[0].orchestration.source, "all_chain_autopilot");
+  assert.equal(envSnapshots[0].dispatchId, record.dispatchId);
+  assert.equal(envSnapshots[0].source, "all_chain_autopilot");
+  assert.equal(envSnapshots[0].runId, "autopilot-123");
+  assert.equal(envSnapshots[0].strategyId, "gateway_wrapped_btc_loops");
+  assert.equal(envSnapshots.at(-1).phase, "follow_up");
+});
+
 test("strategy dispatch blocks unsupported requested modes", async () => {
   const record = await executeStrategyDispatch({
     strategies: [strategyFixture()],

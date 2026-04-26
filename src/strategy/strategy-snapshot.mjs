@@ -3,6 +3,7 @@ import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "./pivot-plan
 import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "./proxy-spread-coverage-plan.mjs";
 import { summarizeAllocatorCore } from "./allocator-core.mjs";
 import { buildCapitalExpansionReview, summarizeCapitalExpansionReview } from "./capital-expansion-review.mjs";
+import { summarizeAutonomousDiscoveryBoard } from "./autonomous-discovery-board.mjs";
 import { summarizeDeterministicStrategyCandidates } from "./deterministic-strategy-candidates.mjs";
 import { summarizeLeverageAutoUnwindRuntimeReports } from "../defi/leverage-auto-unwind-runtime.mjs";
 import { buildLeverageAutoUnwindStatus } from "../status/leverage-auto-unwind-status.mjs";
@@ -325,6 +326,7 @@ export function buildStrategySnapshot({
   strategyResearchBoard = null,
   secondaryStrategyScaffolds = null,
   deterministicStrategyCandidates = null,
+  autonomousDiscoveryBoard = null,
   leverageAutoUnwindRuntimeReports = [],
   auditRecords = [],
   now = null,
@@ -398,6 +400,7 @@ export function buildStrategySnapshot({
   const strategyResearchSummary = summarizeStrategyResearchBoard(strategyResearchBoard || null);
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
   const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
+  const autonomousDiscoverySummary = summarizeAutonomousDiscoveryBoard(autonomousDiscoveryBoard || null);
   const leverageAutoUnwindRuntimeSummary = summarizeLeverageAutoUnwindRuntimeReports(leverageAutoUnwindRuntimeReports);
   const leverageAutoUnwindExecutionStatus = buildLeverageAutoUnwindStatus({
     runtimeReports: leverageAutoUnwindRuntimeReports,
@@ -449,6 +452,9 @@ export function buildStrategySnapshot({
       deterministicTopCandidateId: deterministicCandidatesSummary?.topCandidate?.id || null,
       deterministicReadyForDryRunCount: deterministicCandidatesSummary?.readyForDryRunCount ?? 0,
       deterministicReceiptBackedCount: deterministicCandidatesSummary?.receiptBackedCount ?? 0,
+      autonomousDiscoveryOpportunityCount: autonomousDiscoverySummary?.opportunityCount ?? 0,
+      autonomousDiscoveryReadyNowCount: autonomousDiscoverySummary?.readyNowCount ?? 0,
+      autonomousDiscoveryTopOpportunityId: autonomousDiscoverySummary?.topOpportunity?.id || null,
       phase3ValidationCount: phase3StrategyValidationSummary?.validationCount ?? 0,
       phase3PassedCount: phase3StrategyValidationSummary?.passedCount ?? 0,
       phase3TopBlockedId: phase3StrategyValidationSummary?.topBlocked?.id || null,
@@ -492,6 +498,7 @@ export function buildStrategySnapshot({
       strategyResearchBoard: strategyResearchSummary,
       secondaryStrategyScaffolds: secondaryScaffoldsSummary,
       deterministicStrategyCandidates: deterministicCandidatesSummary,
+      autonomousDiscoveryBoard: autonomousDiscoverySummary,
       productCoverage,
     },
     artifacts: {
@@ -513,6 +520,7 @@ export function buildStrategySnapshot({
         { kind: "strategy_research_board", path: "data/strategy-research-board.json" },
         { kind: "secondary_strategy_scaffolds", path: "data/secondary-strategy-scaffolds.json" },
         { kind: "deterministic_strategy_candidates", path: "data/deterministic-strategy-candidates.json" },
+        { kind: "autonomous_discovery_board", path: "data/autonomous-discovery-board.json" },
       ],
       generated: [{ kind: "strategy_snapshot", path: "data/strategy-snapshot.json" }],
     },
@@ -520,6 +528,7 @@ export function buildStrategySnapshot({
       "This snapshot preserves the implemented strategy families and planning layers in one machine-readable artifact.",
       "Live promotion depends on runtime gates, measured positive EV outside variance, and declared per-strategy caps rather than a repo-wide ring-fence.",
       "The capital expansion review reprioritizes active versus planning lanes without granting live authorization on its own.",
+      "The autonomous discovery board stays in the planning layer and never bypasses deterministic policy or signer checks.",
       "No strategy in this snapshot grants live execution permission while liveTrading stays BLOCKED.",
     ],
   };
@@ -578,6 +587,7 @@ export function summarizeStrategySnapshot(snapshot = null) {
     researchBoard: snapshot.planningLayers?.strategyResearchBoard || null,
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
     deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,
+    autonomousDiscoveryBoard: snapshot.planningLayers?.autonomousDiscoveryBoard || null,
     milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
     productCoverage: snapshot.planningLayers?.productCoverage || null,
     productCoverageTopGapId: snapshot.summary?.productCoverageTopGapId || null,

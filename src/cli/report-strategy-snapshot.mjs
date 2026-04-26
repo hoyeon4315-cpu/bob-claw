@@ -53,6 +53,7 @@ async function main() {
   const researchBoard = context.dashboardStatus?.strategy?.strategySnapshot?.researchBoard || null;
   const secondaryScaffolds = context.dashboardStatus?.strategy?.strategySnapshot?.secondaryStrategyScaffolds || null;
   const deterministicCandidates = context.dashboardStatus?.strategy?.strategySnapshot?.deterministicCandidates || null;
+  const autonomousDiscovery = context.dashboardStatus?.strategy?.strategySnapshot?.autonomousDiscoveryBoard || null;
   const phase3Validation = context.dashboardStatus?.strategy?.strategySnapshot?.phase3StrategyValidation || null;
   const allocatorCore = context.dashboardStatus?.strategy?.strategySnapshot?.allocatorCore || null;
   const protocolTrustTiers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolTrustTiers || null;
@@ -103,6 +104,11 @@ async function main() {
   if (deterministicCandidates) {
     console.log(
       `deterministic candidates=${deterministicCandidates.candidateCount ?? 0} readyForDryRun=${deterministicCandidates.readyForDryRunCount ?? 0} receiptBacked=${deterministicCandidates.receiptBackedCount ?? 0} top=${deterministicCandidates.topCandidate?.id || "n/a"} next=${deterministicCandidates.nextAction?.code || "n/a"}`,
+    );
+  }
+  if (autonomousDiscovery) {
+    console.log(
+      `autonomousDiscovery opportunities=${autonomousDiscovery.opportunityCount ?? 0} readyNow=${autonomousDiscovery.readyNowCount ?? 0} top=${autonomousDiscovery.topOpportunity?.id || "n/a"} next=${autonomousDiscovery.nextAction?.code || "n/a"}`,
     );
   }
   if (phase3Validation) {

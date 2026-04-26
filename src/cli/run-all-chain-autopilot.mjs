@@ -56,6 +56,7 @@ function printSummary(report = {}) {
   console.log(`portfolio=${report.summary?.portfolio?.status || "n/a"} blocked=${report.summary?.portfolio?.blockedReason || "none"}`);
   console.log(`strategyDispatch=${report.summary?.strategyDispatch?.batchStatus || "n/a"} liveEligible=${report.summary?.strategyDispatch?.liveEligibleCount ?? "n/a"} capitalReady=${report.summary?.strategyDispatch?.capitalDispatchReadiness || "n/a"}`);
   console.log(`payback=${report.summary?.payback?.status || "n/a"} reason=${report.summary?.payback?.reason || "none"} carrySats=${report.summary?.payback?.pendingCarrySats ?? "n/a"}`);
+  console.log(`executionGate=liveSteps:${report.summary?.executionGate?.liveCapableStepExecution === true ? "enabled" : "blocked"} reason=${report.summary?.executionGate?.blockedReason || "none"}`);
 }
 
 async function main() {

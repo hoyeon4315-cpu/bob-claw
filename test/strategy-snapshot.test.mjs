@@ -129,6 +129,31 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
       scoreSnapshot: { scores: [] },
     },
     triangleArtifacts: triangleArtifactsFixture(),
+    autonomousDiscoveryBoard: {
+      summary: {
+        opportunityCount: 3,
+        readyNowCount: 1,
+        topOpportunityId: "recursive_wrapped_btc_lending_loop",
+        nextAction: {
+          code: "record_recursive_loop_dry_run_receipt",
+          command: "npm run run:recursive-lending-loop-dry-run -- --strategy=recursive_wrapped_btc_lending_loop --write",
+        },
+      },
+      opportunities: [
+        {
+          id: "recursive_wrapped_btc_lending_loop",
+          label: "Recursive wrapped-BTC lending loop",
+          type: "deterministic_strategy",
+          lane: "strategy",
+          status: "repo_auto_build_supported",
+          priorityScore: 0.97,
+          nextAction: {
+            code: "record_recursive_loop_dry_run_receipt",
+            command: "npm run run:recursive-lending-loop-dry-run -- --strategy=recursive_wrapped_btc_lending_loop --write",
+          },
+        },
+      ],
+    },
     leverageAutoUnwindRuntimeReports: [
       {
         strategy: { id: "wrapped-btc-loop-base-moonwell", label: "Wrapped BTC lending loop (Base / Moonwell)", chain: "base", protocol: "moonwell" },
@@ -158,6 +183,8 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   assert.equal(snapshot.planningLayers.formulaAudit.summary.topGap.id, "advanced_overfit_statistics");
   assert.equal(snapshot.planningLayers.leverageAutoUnwindRuntime.runtimeCount, 2);
   assert.equal(snapshot.planningLayers.leverageAutoUnwindRuntime.topPriority.strategyId, "recursive_wrapped_btc_lending_loop");
+  assert.equal(snapshot.summary.autonomousDiscoveryOpportunityCount, 3);
+  assert.equal(snapshot.summary.autonomousDiscoveryTopOpportunityId, "recursive_wrapped_btc_lending_loop");
 
   const proxy = snapshot.implementedStrategies.find((item) => item.id === "btc_proxy_spreads");
   assert.ok(proxy);
@@ -173,6 +200,7 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   assert.equal(summary.capitalExpansionReview.approvalRequiredForPlanningLane, false);
   assert.equal(summary.formulaAudit.summary.missingCount, 1);
   assert.equal(summary.leverageAutoUnwindRuntime.topPriority.status, "pause_new_entries");
+  assert.equal(summary.autonomousDiscoveryBoard.topOpportunity.id, "recursive_wrapped_btc_lending_loop");
   assert.equal(summary.productCoverage.pillarCount, 3);
   assert.equal(summary.productCoverage.topGap.id, "payback_engine");
 });
