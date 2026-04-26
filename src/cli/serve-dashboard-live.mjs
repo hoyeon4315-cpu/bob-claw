@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
+import { buildDashboardPublic } from "./build-dashboard-public.mjs";
 import { createDashboardLiveServer, parseDashboardLiveArgs } from "../dashboard/live-server.mjs";
 
 async function main() {
   const options = parseDashboardLiveArgs(process.argv.slice(2));
+  await buildDashboardPublic({ publicDir: options.rootDir });
   const server = createDashboardLiveServer(options);
   const started = await server.start();
   console.log(`dashboardLive=${started.localUrl}`);

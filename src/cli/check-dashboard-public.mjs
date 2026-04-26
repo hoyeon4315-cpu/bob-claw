@@ -29,6 +29,9 @@ async function main() {
     if (report.missing.length > 0) {
       console.log(`missing=${report.missing.join(",")}`);
     }
+    if (report.browserBabelUsage.length > 0) {
+      console.log(`browserBabelUsage=${report.browserBabelUsage.join(",")}`);
+    }
   }
 
   if (!report.ok) {

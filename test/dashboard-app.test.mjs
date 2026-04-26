@@ -5,20 +5,32 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const APP_SOURCE = readFileSync(
+  join(HERE, "..", "dashboard", "public", "app.jsx"),
+  "utf8"
+);
 const INDEX_HTML = readFileSync(
   join(HERE, "..", "dashboard", "public", "index.html"),
   "utf8"
 );
 
 function extractSection(startMarker, endMarker) {
-  const start = INDEX_HTML.indexOf(startMarker);
+  const start = APP_SOURCE.indexOf(startMarker);
   assert.notEqual(start, -1, `missing start marker: ${startMarker}`);
-  const end = endMarker ? INDEX_HTML.indexOf(endMarker, start) : INDEX_HTML.length;
+  const end = endMarker ? APP_SOURCE.indexOf(endMarker, start) : APP_SOURCE.length;
   assert.notEqual(end, -1, `missing end marker: ${endMarker}`);
-  return INDEX_HTML.slice(start, end);
+  return APP_SOURCE.slice(start, end);
 }
 
 describe("dashboard home renewal source guard", () => {
+  test("dashboard shell loads prebuilt public scripts without browser Babel", () => {
+    assert.doesNotMatch(INDEX_HTML, /text\/babel/);
+    assert.doesNotMatch(INDEX_HTML, /@babel\/standalone/);
+    for (const asset of ["./logos.js", "./data.js", "./ios-frame.js", "./mindmap.js", "./app.js"]) {
+      assert.match(INDEX_HTML, new RegExp(asset.replace(".", "\\.")));
+    }
+  });
+
   test("flow home keeps five KPI metrics in one horizontal strip", () => {
     const metricStrip = extractSection("function FlowMetricGrid", "function RouteNode");
     assert.match(metricStrip, /display:\s*'flex'/);
@@ -133,7 +145,7 @@ describe("dashboard defi renewal source guard", () => {
   test("app header shows live source and freshness state", () => {
     const utilitySection = extractSection("function fmtWhen", "function normalizeUiStrategyId");
     assert.match(utilitySection, /function formatStatusAge/);
-    const appSection = extractSection("function App", "ReactDOM.createRoot");
+    const appSection = extractSection("function App", "\n\n(() => {");
     assert.match(appSection, /const liveStatus = window\.LIVE_STATUS \|\| \{\}/);
     assert.match(appSection, /const ageLabel = formatStatusAge\(statusAt\)/);
     assert.match(appSection, /liveStatus\.live\s*\?\s*\(liveStatus\.remote \? 'public live' : 'local live'\)/);

@@ -129,11 +129,15 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
   });
   const calls = [];
   const logs = [];
+  const buildCalls = [];
 
   await main({
     argv: [],
     env: { CLOUDFLARE_API_TOKEN: "token" },
     fetchFn,
+    buildPublic: async (options) => {
+      buildCalls.push(options);
+    },
     runCommand: async (command, args, commandEnv) => {
       calls.push({ command, args, commandEnv });
     },
@@ -144,6 +148,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
     },
   });
 
+  assert.deepEqual(buildCalls, [{ publicDir: "/Users/love/BOB Claw/dashboard/public" }]);
   assert.equal(calls.length, 4);
   assert.deepEqual(calls[0], {
     command: "node",
@@ -197,17 +202,22 @@ test("deploy main creates an explicit project when a single discovered account h
     },
   });
   const calls = [];
+  const buildCalls = [];
 
   await main({
     argv: ["--skip-status", "--create-project", "--project-name=custom-dashboard"],
     env: { CLOUDFLARE_API_TOKEN: "token" },
     fetchFn,
+    buildPublic: async (options) => {
+      buildCalls.push(options);
+    },
     runCommand: async (command, args) => {
       calls.push({ command, args });
     },
     logger: { log() {} },
   });
 
+  assert.deepEqual(buildCalls, [{ publicDir: "/Users/love/BOB Claw/dashboard/public" }]);
   assert.deepEqual(calls, [
     {
       command: "wrangler",

@@ -13,11 +13,11 @@ test("dashboard public source check accepts existing local script and link refer
       [
         '<link rel="icon" href="./favicon.ico"/>',
         '<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>',
-        '<script type="text/babel" src="./data.jsx?v=4"></script>',
+        '<script src="./data.js"></script>',
       ].join("\n"),
     );
     await writeFile(join(dir, "favicon.ico"), "");
-    await writeFile(join(dir, "data.jsx"), "const DASHBOARD_DATA = {};\n");
+    await writeFile(join(dir, "data.js"), "const DASHBOARD_DATA = {};\n");
 
     const report = await validateDashboardPublicSources({ publicDir: dir });
 
@@ -25,8 +25,9 @@ test("dashboard public source check accepts existing local script and link refer
     assert.deepEqual(report.missing, []);
     assert.deepEqual(
       report.localReferences.map((item) => item.path),
-      ["favicon.ico", "data.jsx"],
+      ["favicon.ico", "data.js"],
     );
+    assert.deepEqual(report.browserBabelUsage, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -37,13 +38,36 @@ test("dashboard public source check reports missing local references", async () 
   try {
     await writeFile(
       join(dir, "index.html"),
-      '<script type="text/babel" src="./missing.jsx?v=4"></script>',
+      '<script src="./missing.js"></script>',
     );
 
     const report = await validateDashboardPublicSources({ publicDir: dir });
 
     assert.equal(report.ok, false);
-    assert.deepEqual(report.missing, ["missing.jsx"]);
+    assert.deepEqual(report.missing, ["missing.js"]);
+    assert.deepEqual(report.browserBabelUsage, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard public source check rejects in-browser Babel usage", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-dashboard-check-"));
+  try {
+    await writeFile(
+      join(dir, "index.html"),
+      [
+        '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>',
+        '<script type="text/babel" src="./app.jsx"></script>',
+      ].join("\n"),
+    );
+    await writeFile(join(dir, "app.jsx"), "const App = () => null;\n");
+
+    const report = await validateDashboardPublicSources({ publicDir: dir });
+
+    assert.equal(report.ok, false);
+    assert.deepEqual(report.missing, []);
+    assert.deepEqual(report.browserBabelUsage, ["babel-standalone", "text-babel-script"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

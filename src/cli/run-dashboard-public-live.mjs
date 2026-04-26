@@ -3,6 +3,7 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
 import process from "node:process";
+import { buildDashboardPublic } from "./build-dashboard-public.mjs";
 import {
   createDashboardLiveServer,
   dashboardRuntimeStatePath,
@@ -46,6 +47,7 @@ function spawnLoggedProcess(command, args, { onLine = () => {} } = {}) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  await buildDashboardPublic({ publicDir: args.rootDir });
   const server = createDashboardLiveServer(args);
   const startedAt = new Date().toISOString();
   const local = await server.start();

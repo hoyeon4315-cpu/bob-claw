@@ -34,6 +34,17 @@ function localReferencesFromIndex(html) {
   return references;
 }
 
+function browserBabelUsageFromIndex(html) {
+  const issues = [];
+  if (/@babel\/standalone|babel(?:\.min)?\.js/iu.test(html)) {
+    issues.push("babel-standalone");
+  }
+  if (/\btype=["']text\/babel["']/iu.test(html)) {
+    issues.push("text-babel-script");
+  }
+  return issues;
+}
+
 async function exists(path) {
   try {
     await access(path, constants.F_OK);
@@ -47,6 +58,7 @@ export async function validateDashboardPublicSources({ publicDir = "dashboard/pu
   const indexPath = join(publicDir, "index.html");
   const html = await readFile(indexPath, "utf8");
   const localReferences = localReferencesFromIndex(html);
+  const browserBabelUsage = browserBabelUsageFromIndex(html);
   const missing = [];
 
   for (const reference of localReferences) {
@@ -56,9 +68,10 @@ export async function validateDashboardPublicSources({ publicDir = "dashboard/pu
   }
 
   return Object.freeze({
-    ok: missing.length === 0,
+    ok: missing.length === 0 && browserBabelUsage.length === 0,
     publicDir,
     indexPath,
+    browserBabelUsage: Object.freeze(browserBabelUsage),
     localReferences: Object.freeze(localReferences.map((item) => Object.freeze({ ...item }))),
     missing: Object.freeze([...new Set(missing)]),
   });

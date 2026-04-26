@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { buildDashboardPublic } from "./build-dashboard-public.mjs";
 import { loadDotEnvCandidates } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 
@@ -333,6 +334,7 @@ export async function main({
   env = process.env,
   fetchFn = globalThis.fetch,
   runCommand = run,
+  buildPublic = buildDashboardPublic,
   logger = console,
 } = {}) {
   const args = parseArgs(argv, env);
@@ -348,6 +350,7 @@ export async function main({
   };
 
   logger.log(formatPreflightSummary({ preflight, args }));
+  await buildPublic({ publicDir: DASHBOARD_DIR });
 
   await writeDashboardLiveRuntimeConfig({
     liveOrigin: args.disableLiveOrigin ? null : args.liveOrigin,
