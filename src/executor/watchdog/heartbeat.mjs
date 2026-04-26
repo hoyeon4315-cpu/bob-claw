@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export async function writeHeartbeat({
@@ -13,15 +13,20 @@ export async function writeHeartbeat({
     ...metadata,
   };
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await rename(tmpPath, path);
   return payload;
 }
 
 export async function readHeartbeat(path = "./state/executor-heartbeat.json") {
   try {
-    return JSON.parse(await readFile(path, "utf8"));
+    const raw = await readFile(path, "utf8");
+    if (!raw.trim()) return null;
+    return JSON.parse(raw);
   } catch (error) {
     if (error.code === "ENOENT") return null;
+    if (error instanceof SyntaxError) return null;
     throw error;
   }
 }

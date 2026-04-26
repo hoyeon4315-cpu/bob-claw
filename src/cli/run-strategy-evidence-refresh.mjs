@@ -178,6 +178,13 @@ export function buildStrategyEvidenceRefreshPlan({
   }
   if (!args.skipStrategyTick) {
     plan.push(buildNodeStep({
+      name: "strategy_tick",
+      script: "src/cli/run-strategy-tick.mjs",
+      args: ["--all-strategies", "--quiet", "--allow-shadow"],
+      timeoutMs: 900_000,
+      devAutomation: true,
+    }));
+    plan.push(buildNodeStep({
       name: "strategy_tick_slice",
       script: "src/cli/report-strategy-tick-slice.mjs",
       args: ["--quiet"],

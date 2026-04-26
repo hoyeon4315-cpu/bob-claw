@@ -339,15 +339,19 @@ function evaluateMacroAssetRotationAdapter({ config, market, receipts, now }) {
 }
 
 function parseArgs(argv) {
-  const out = { json: false, quiet: false, allowShadow: false, strategies: [] };
+  const out = { json: false, quiet: false, allowShadow: false, allStrategies: false, strategies: [] };
   for (const arg of argv.slice(2)) {
     if (arg === "--json") { out.json = true; continue; }
     if (arg === "--quiet") { out.quiet = true; continue; }
     if (arg === "--allow-shadow") { out.allowShadow = true; continue; }
+    if (arg === "--all-strategies") { out.allStrategies = true; continue; }
     const m = arg.match(/^--([^=]+)=(.*)$/);
     if (!m) continue;
     if (m[1] === "strategy") { out.strategies.push(m[2]); continue; }
     out[m[1]] = m[2];
+  }
+  if (out.allStrategies && out.strategies.length === 0) {
+    out.strategies = Object.keys(ADAPTERS);
   }
   return out;
 }
