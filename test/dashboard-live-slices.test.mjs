@@ -79,6 +79,7 @@ test("Merkl active positions aggregate open live-capital entries", () => {
       {
         event: "position_opened",
         status: "open",
+        positionId: "p1",
         opportunityId: "a",
         chain: "base",
         protocolId: "yo",
@@ -89,6 +90,7 @@ test("Merkl active positions aggregate open live-capital entries", () => {
       {
         event: "position_opened",
         status: "open",
+        positionId: "p2",
         opportunityId: "a",
         chain: "base",
         protocolId: "yo",
@@ -97,8 +99,19 @@ test("Merkl active positions aggregate open live-capital entries", () => {
         observedAt: "2026-04-25T02:00:00.000Z",
       },
       {
+        event: "position_exit_confirmed",
+        status: "closed",
+        positionId: "p1",
+        opportunityId: "a",
+        chain: "base",
+        protocolId: "yo",
+        amountUsd: 5.1,
+        observedAt: "2026-04-25T02:30:00.000Z",
+      },
+      {
         event: "position_closed",
         status: "closed",
+        positionId: "p3",
         opportunityId: "b",
         chain: "ethereum",
         protocolId: "morpho",
@@ -115,9 +128,11 @@ test("Merkl active positions aggregate open live-capital entries", () => {
   );
 
   assert.equal(slice.activeCount, 1);
+  assert.equal(slice.positionRecordCount, 1);
   assert.equal(slice.items[0].id, "merkl_a");
-  assert.equal(slice.items[0].capUsd, 6.3);
+  assert.equal(slice.items[0].capUsd, 1.2);
   assert.equal(slice.items[0].aprPct, 12);
+  assert.equal(slice.items[0].activePositionCount, 1);
   assert.deepEqual(slice.items[0].pair, ["usdc"]);
 });
 
@@ -147,7 +162,7 @@ test("treasury holdings slice normalizes latest inventory into dashboard balance
   );
 
   assert.equal(slice.pending, false);
-  assert.equal(slice.totalUsd, 20.5);
+  assert.equal(slice.totalUsd, 17);
   assert.equal(slice.activeChainCount, 2);
   assert.equal(slice.refillRequiredCount, 3);
   assert.deepEqual(slice.items.map((item) => item.sym), ["eth", "wbtc"]);

@@ -20,33 +20,64 @@ function inferType(name = "", protocolId = "") {
   return "lp";
 }
 
+function observedAtMs(value) {
+  const ms = Date.parse(value || "");
+  return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+}
+
+function positionEventKey(event = {}, index = 0) {
+  return String(
+    event.positionId ||
+    event.entryTxHash ||
+    event.txHash ||
+    event.id ||
+    `${event.opportunityId || "unknown"}:${event.observedAt || "unknown"}:${index}`,
+  );
+}
+
+function activePositionRecords(events = []) {
+  const byPositionId = new Map();
+  events.forEach((event, index) => {
+    const id = positionEventKey(event, index);
+    const current = byPositionId.get(id);
+    if (!current || observedAtMs(event.observedAt) >= observedAtMs(current.observedAt)) {
+      byPositionId.set(id, event);
+    }
+  });
+  return [...byPositionId.values()].filter((event) => event?.status === "open" || event?.event === "position_opened");
+}
+
 function aggregateByOpportunity(events = []) {
   const byId = new Map();
-  for (const event of events) {
-    if (!event?.opportunityId) continue;
-    const current = byId.get(event.opportunityId) || {
-      opportunityId: event.opportunityId,
+  for (const event of activePositionRecords(events)) {
+    const key = event?.opportunityId || positionEventKey(event);
+    const current = byId.get(key) || {
+      opportunityId: event.opportunityId || null,
       eventCount: 0,
       totalEntryUsd: 0,
+      lastObservedAt: null,
+      activePositionCount: 0,
     };
     current.eventCount += 1;
+    current.activePositionCount += 1;
     current.lastEvent = event.event || current.lastEvent;
     current.lastStatus = event.status || current.lastStatus;
-    current.lastObservedAt = event.observedAt || current.lastObservedAt;
+    current.lastObservedAt =
+      observedAtMs(event.observedAt) >= observedAtMs(current.lastObservedAt)
+        ? (event.observedAt || current.lastObservedAt)
+        : current.lastObservedAt;
     current.chain = event.chain || current.chain;
     current.protocolId = event.protocolId || current.protocolId;
     current.name = event.name || current.name;
     current.strategyId = event.strategyId || current.strategyId;
     current.bindingKind = event.bindingKind || current.bindingKind;
     current.score = Number.isFinite(event.score) ? event.score : current.score;
-    if (event.event === "position_opened" && Number.isFinite(event.amountUsd)) {
+    if (Number.isFinite(event.amountUsd)) {
       current.totalEntryUsd += event.amountUsd;
     }
-    byId.set(event.opportunityId, current);
+    byId.set(key, current);
   }
-  return [...byId.values()]
-    .filter((item) => item.lastStatus === "open" || item.lastEvent === "position_opened")
-    .sort((a, b) => (b.totalEntryUsd || 0) - (a.totalEntryUsd || 0));
+  return [...byId.values()].sort((a, b) => (b.totalEntryUsd || 0) - (a.totalEntryUsd || 0));
 }
 
 export function buildMerklActivePositions(
@@ -66,12 +97,14 @@ export function buildMerklActivePositions(
     score: position.score ?? null,
     bindingKind: position.bindingKind ?? null,
     lastObservedAt: position.lastObservedAt || null,
+    activePositionCount: position.activePositionCount ?? 1,
     source: "merkl",
   }));
   return {
     schemaVersion: 1,
     generatedAt,
     activeCount: items.length,
+    positionRecordCount: items.reduce((sum, item) => sum + (item.activePositionCount || 0), 0),
     items,
   };
 }
