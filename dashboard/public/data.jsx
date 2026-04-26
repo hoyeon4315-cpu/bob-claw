@@ -140,6 +140,7 @@ async function bootData() {
   const pnl = status?.pnl || {};
   // Pre-payback earning: realized PnL today (USD). Only reported on primary lane for now.
   const realizedUsd = pnl?.realized?.valueUsd;
+  const btcUsd = status?.market?.btcUsd || status?.market?.btc?.usd || null;
 
   const liveApr = holdings?.protocolApr || {};
   const HOLDINGS = capitalSummary && Array.isArray(capitalSummary.walletItems)
@@ -225,6 +226,16 @@ async function bootData() {
     const tickMode = parity?.promotionVerdict || parity?.tickMode || null;
     const protocolCapitalUsd = CAPITAL.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || 0;
     const chainCapitalUsd = CAPITAL.byChain[s.chain] || 0;
+    const allocatedSats = Number(parity?.scoredAllocation?.allocatedSats ?? 0);
+    const allocatedCapitalUsd = Number.isFinite(allocatedSats) && allocatedSats > 0
+      ? satsToUsd(allocatedSats, btcUsd)
+      : null;
+    const effectiveCapUsd = Number.isFinite(s.capUsd) && s.capUsd > 0
+      ? s.capUsd
+      : (allocatedCapitalUsd && allocatedCapitalUsd > 0 ? allocatedCapitalUsd : null);
+    const effectiveProtocolCapitalUsd = protocolCapitalUsd > 0
+      ? protocolCapitalUsd
+      : (allocatedCapitalUsd && allocatedCapitalUsd > 0 ? allocatedCapitalUsd : 0);
 
     let statusLabel;
     if (tickMode === 'live_candidate') statusLabel = 'LIVE CANDIDATE';
@@ -244,7 +255,7 @@ async function bootData() {
     const realizedYieldUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
     const estimatedYieldUsd = estimateYieldUsd({
       status: statusLabel,
-      capUsd: s.capUsd,
+      capUsd: effectiveCapUsd,
       apyPct,
       lastObservedAt: parity?.lastTickAt || null,
       generatedAt: status?.generatedAt || null,
@@ -267,12 +278,12 @@ async function bootData() {
       projectedNetUsd: null,
       lastTickAt: parity?.lastTickAt || null,
       riskHint: riskByNormalized[normalizedId] || null,
-      actualProtocolCapitalUsd: protocolCapitalUsd,
+      capUsd: effectiveCapUsd,
+      actualProtocolCapitalUsd: effectiveProtocolCapitalUsd,
       actualChainCapitalUsd: chainCapitalUsd,
     };
   });
 
-  const btcUsd = status?.market?.btcUsd || status?.market?.btc?.usd || null;
   const grossProfitSats = Number(flow?.metrics?.grossProfitSatsPeriod ?? payback?.grossProfitSatsPeriod ?? 0);
   const pendingCarrySats = Number(flow?.metrics?.pendingCarrySats ?? payback?.carry?.pendingSats ?? payback?.accumulatorPendingSats ?? 0);
   const paidSatsLifetime = Number(flow?.metrics?.paidBackSatsLifetime ?? payback?.paidBackSatsLifetime ?? 0);

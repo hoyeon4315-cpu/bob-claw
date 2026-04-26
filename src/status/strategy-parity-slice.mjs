@@ -160,6 +160,9 @@ function resolveFromTick(tickStatus, id) {
       demoted: s?.demotion?.demoted || false,
       triggers: s?.demotion?.triggers || [],
     },
+    tickMode: s?.lastTickMode || null,
+    lastTickAt: s?.lastTickAt || null,
+    scoredAllocation: s?.scoredAllocation || null,
     topBlocker: cleanedBlockers[0] || stage?.topBlocker || null,
     blockers: cleanedBlockers,
   };
@@ -233,6 +236,9 @@ export function buildStrategyParitySlice({
         microCanaryStatus: tick.microCanaryStatus,
         promotionVerdict: tickVerdictIsReal ? tick.promotionVerdict : row.promotionVerdict,
         demotionSummary: tick.demotionSummary,
+        tickMode: tick.tickMode,
+        lastTickAt: tick.lastTickAt,
+        scoredAllocation: tick.scoredAllocation,
         topBlocker: mergedBlockers[0] || tick.topBlocker || row.topBlocker,
         blockers: mergedBlockers,
       };

@@ -24,6 +24,10 @@ test("dashboard data source builds holdings/capital before strategy mapping", ()
 test("dashboard data source estimates yield for live positions instead of forcing zero", () => {
   assert.match(DATA_JSX, /function estimateYieldUsd\(/);
   assert.match(DATA_JSX, /const estimatedYieldUsd = estimateYieldUsd\(/);
+  assert.match(DATA_JSX, /const allocatedSats = Number\(parity\?\.scoredAllocation\?\.allocatedSats \?\? 0\)/);
+  assert.match(DATA_JSX, /const effectiveCapUsd = Number\.isFinite\(s\.capUsd\) && s\.capUsd > 0/);
+  assert.match(DATA_JSX, /capUsd: effectiveCapUsd/);
+  assert.match(DATA_JSX, /actualProtocolCapitalUsd: effectiveProtocolCapitalUsd/);
   assert.match(DATA_JSX, /const apyPct = Number\.isFinite\(m\.aprPct\)/);
   assert.match(DATA_JSX, /yieldBasis: realizedYieldUsd > 0 \? 'realized' : \(estimatedYieldUsd > 0 \? 'estimated' : null\)/);
   assert.doesNotMatch(DATA_JSX, /earnedUsd:\s*0,\s*\n\s*apyPct:/);
