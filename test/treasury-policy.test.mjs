@@ -11,7 +11,7 @@ import {
   tokenThresholdUnits,
   validateTreasuryPolicy,
 } from "../src/treasury/policy.mjs";
-import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
 import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../src/config/destination-representative-bindings.mjs";
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
@@ -80,6 +80,11 @@ test("threshold helpers convert decimals to raw units", () => {
     targetBalance: "90000000",
     maxBalance: "150000000",
   });
+  assert.deepEqual(tokenThresholdUnits(policy, "ethereum", ETHEREUM_WBTC_TOKEN), {
+    minBalance: "3000",
+    targetBalance: "10000",
+    maxBalance: "50000",
+  });
   assert.deepEqual(tokenThresholdUnits(policy, "ethereum", ETHEREUM_USDT_TOKEN), {
     minBalance: "25000000",
     targetBalance: "60000000",
@@ -105,6 +110,12 @@ test("threshold helpers convert decimals to raw units", () => {
     targetBalance: "10000",
     maxBalance: "50000",
   });
+});
+
+test("ethereum treasury policy tracks canonical WBTC instead of OFT mirror", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  assert.ok(getTokenInventoryPolicy(policy, "ethereum", ETHEREUM_WBTC_TOKEN));
+  assert.equal(getTokenInventoryPolicy(policy, "ethereum", WBTC_OFT_TOKEN), null);
 });
 
 test("allowance policy lookup is normalized", () => {

@@ -1,4 +1,4 @@
-import { tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
 import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-representative-bindings.mjs";
 import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 
@@ -239,8 +239,13 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
     supportedChains: GATEWAY_DESTINATION_CHAINS,
     activeChains: GATEWAY_DESTINATION_CHAINS,
     nativeBalances,
-    tokenInventories: [
-      gatewayWbtcPolicy("ethereum"),
+      tokenInventories: [
+      tokenPolicy("ethereum", ETHEREUM_WBTC_TOKEN, {
+        minBalance: "0.00003",
+        targetBalance: "0.0001",
+        maxBalance: "0.0005",
+        rationale: "Ethereum uses canonical WBTC for BTC-wrapper inventory; keep a tiny buffer for route proof and unwind readiness without probing non-canonical OFT addresses.",
+      }),
       gatewayWbtcPolicy("bob", {
         minBalance: "0.0001",
         targetBalance: "0.0003",

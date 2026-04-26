@@ -74,12 +74,12 @@ test("treasury inventory can continue past one chain RPC failure with stale fall
     policy,
     address: "0x000000000000000000000000000000000000dEaD",
     nativeBalances: {
-      ethereum: { balanceWei: "1230000000000000", rpcUrl: "https://fallback.example" },
+      bob: { balanceWei: "1230000000000000", rpcUrl: "https://fallback.example" },
     },
     observedAt: "2026-04-11T02:00:00.000Z",
   });
   const fetchImpl = async (url) => {
-    if (String(url).includes("ethereum") || String(url).includes("eth")) {
+    if (String(url).includes("gobob")) {
       return {
         ok: false,
         status: 503,
@@ -101,11 +101,11 @@ test("treasury inventory can continue past one chain RPC failure with stale fall
     fallbackInventory,
   });
 
-  const ethereum = inventory.native.find((item) => item.chain === "ethereum");
+  const bob = inventory.native.find((item) => item.chain === "bob");
   const base = inventory.native.find((item) => item.chain === "base");
-  assert.equal(ethereum.actual, "1230000000000000");
-  assert.equal(ethereum.staleFallback, true);
-  assert.match(ethereum.scanError.message, /All RPC endpoints failed/);
+  assert.equal(bob.actual, "1230000000000000");
+  assert.equal(bob.staleFallback, true);
+  assert.match(bob.scanError.message, /All RPC endpoints failed/);
   assert.equal(base.staleFallback, false);
   assert.equal(inventory.summary.scanErrorCount > 0, true);
 });
