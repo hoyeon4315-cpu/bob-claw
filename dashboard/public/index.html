@@ -1237,7 +1237,7 @@
       const statusAt = liveStatus.generatedAt || KPI?.generatedAt || null;
       const ageLabel = formatStatusAge(statusAt);
       const sourceLabel = liveStatus.live
-        ? 'local live'
+        ? (liveStatus.remote ? 'public live' : 'local live')
         : liveStatus.source === 'static-snapshot'
           ? 'snapshot fallback'
           : 'status pending';

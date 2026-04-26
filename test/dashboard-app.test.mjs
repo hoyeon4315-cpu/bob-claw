@@ -136,7 +136,7 @@ describe("dashboard defi renewal source guard", () => {
     const appSection = extractSection("function App", "(async () =>");
     assert.match(appSection, /const liveStatus = window\.LIVE_STATUS \|\| \{\}/);
     assert.match(appSection, /const ageLabel = formatStatusAge\(statusAt\)/);
-    assert.match(appSection, /liveStatus\.live\s*\?\s*'local live'/);
+    assert.match(appSection, /liveStatus\.live\s*\?\s*\(liveStatus\.remote \? 'public live' : 'local live'\)/);
     assert.match(appSection, /liveStatus\.source === 'static-snapshot'/);
     assert.match(appSection, /'snapshot fallback'/);
     assert.match(appSection, /'status pending'/);

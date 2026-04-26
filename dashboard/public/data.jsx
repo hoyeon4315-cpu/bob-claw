@@ -126,18 +126,43 @@ function buildCapitalMaps(holdings = null) {
 const LIVE_STATUS_PATH = './api/live-status';
 const LIVE_EVENTS_PATH = './api/live-events';
 const STATIC_STATUS_PATH = './dashboard-status.json';
+const LIVE_RUNTIME_PATH = './live-runtime.json';
 const LIVE_POLL_MS = 3000;
 const STATIC_POLL_MS = 10000;
 
+async function resolveConfiguredLiveRuntime() {
+  if (window._DASHBOARD_LIVE_RUNTIME) return window._DASHBOARD_LIVE_RUNTIME;
+  try {
+    const resp = await fetch(`${LIVE_RUNTIME_PATH}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`live runtime ${resp.status}`);
+    const payload = await resp.json();
+    window._DASHBOARD_LIVE_RUNTIME = payload && payload.enabled && payload.origin
+      ? {
+          enabled: true,
+          origin: String(payload.origin).replace(/\/$/, ''),
+          statusUrl: payload.statusUrl || `${String(payload.origin).replace(/\/$/, '')}/api/live-status`,
+          eventsUrl: payload.eventsUrl || `${String(payload.origin).replace(/\/$/, '')}/api/live-events`,
+        }
+      : { enabled: false, origin: null, statusUrl: null, eventsUrl: null };
+  } catch {
+    window._DASHBOARD_LIVE_RUNTIME = { enabled: false, origin: null, statusUrl: null, eventsUrl: null };
+  }
+  return window._DASHBOARD_LIVE_RUNTIME;
+}
+
 async function fetchStatusPayload() {
   const now = Date.now();
+  const runtime = await resolveConfiguredLiveRuntime();
   const endpoints = [
+    ...(runtime?.enabled
+      ? [{ url: `${runtime.statusUrl}?t=${now}`, source: 'remote-live-api', live: true, origin: runtime.origin, remote: true }]
+      : []),
     { url: `${LIVE_STATUS_PATH}?t=${now}`, source: 'live-api', live: true },
     { url: `${STATIC_STATUS_PATH}?t=${now}`, source: 'static-snapshot', live: false },
   ];
   for (const endpoint of endpoints) {
     try {
-      const resp = await fetch(endpoint.url, { cache: 'no-store' });
+      const resp = await fetch(endpoint.url, { cache: 'no-store', mode: endpoint.remote ? 'cors' : 'same-origin' });
       if (!resp.ok) continue;
       const status = await resp.json();
       return { status, source: endpoint.source, live: endpoint.live };
@@ -431,6 +456,7 @@ async function bootData(payload = null) {
       source: resolved?.source || 'fallback',
       live: Boolean(resolved?.live && status),
       generatedAt: status?.generatedAt || null,
+      remote: Boolean(resolved?.source === 'remote-live-api' || resolved?.source === 'remote-live-sse'),
     },
   });
   window._DASHBOARD_LIVE_AVAILABLE = Boolean(resolved?.live && status);
@@ -488,7 +514,11 @@ function setupLiveEventStream() {
   if (window._DASHBOARD_LIVE_STREAM) return;
   if (!window._DASHBOARD_LIVE_AVAILABLE || !window.EventSource) return;
   if (window._DASHBOARD_LIVE_STREAM_RETRY_AT && Date.now() < window._DASHBOARD_LIVE_STREAM_RETRY_AT) return;
-  const stream = new EventSource(`${LIVE_EVENTS_PATH}?t=${Date.now()}`);
+  const runtime = window._DASHBOARD_LIVE_RUNTIME;
+  const eventsPath = runtime?.enabled && runtime.eventsUrl
+    ? `${runtime.eventsUrl}?t=${Date.now()}`
+    : `${LIVE_EVENTS_PATH}?t=${Date.now()}`;
+  const stream = new EventSource(eventsPath);
   let opened = false;
   const handleSnapshot = async (event) => {
     try {

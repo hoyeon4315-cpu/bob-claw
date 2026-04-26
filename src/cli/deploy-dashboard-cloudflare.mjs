@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { loadDotEnvCandidates } from "../config/env.mjs";
+import { writeTextIfChanged } from "../lib/file-write.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DASHBOARD_DIR = resolve(ROOT, "dashboard/public");
@@ -12,6 +14,8 @@ const LOCAL_CF_XDG = resolve(ROOT, ".cloudflare/xdg");
 const CLOUDFLARE_API_ROOT = "https://api.cloudflare.com/client/v4";
 const DEFAULT_PAGES_PROJECT = "bob-claw-dashboard";
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+
+loadDotEnvCandidates();
 
 function getEnv(name, fallback = null, env = process.env) {
   const value = env[name];
@@ -32,8 +36,31 @@ export function parseArgs(argv, env = process.env) {
   return {
     createProject: flags.has("--create-project"),
     skipStatus: flags.has("--skip-status"),
+    disableLiveOrigin: flags.has("--disable-live-origin"),
     projectName: options["project-name"] || getEnv("BOB_CLAW_CF_PAGES_PROJECT", null, env),
     productionBranch: options["production-branch"] || getEnv("BOB_CLAW_CF_PRODUCTION_BRANCH", "main", env),
+    liveOrigin: options["live-origin"] || getEnv("BOB_CLAW_DASHBOARD_LIVE_ORIGIN", null, env),
+  };
+}
+
+export function buildDashboardLiveRuntimeConfig({ liveOrigin = null } = {}) {
+  const normalizedOrigin = liveOrigin ? String(liveOrigin).replace(/\/$/u, "") : null;
+  return {
+    enabled: Boolean(normalizedOrigin),
+    origin: normalizedOrigin,
+    statusUrl: normalizedOrigin ? `${normalizedOrigin}/api/live-status` : null,
+    eventsUrl: normalizedOrigin ? `${normalizedOrigin}/api/live-events` : null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function writeDashboardLiveRuntimeConfig({ liveOrigin = null, publicDir = DASHBOARD_DIR } = {}) {
+  const path = join(publicDir, "live-runtime.json");
+  const payload = buildDashboardLiveRuntimeConfig({ liveOrigin });
+  await writeTextIfChanged(path, `${JSON.stringify(payload, null, 2)}\n`);
+  return {
+    path,
+    payload,
   };
 }
 
@@ -321,6 +348,11 @@ export async function main({
   };
 
   logger.log(formatPreflightSummary({ preflight, args }));
+
+  await writeDashboardLiveRuntimeConfig({
+    liveOrigin: args.disableLiveOrigin ? null : args.liveOrigin,
+    publicDir: DASHBOARD_DIR,
+  });
 
   if (!args.skipStatus) {
     await runCommand("node", ["src/cli/inventory-treasury.mjs"], commandEnv);

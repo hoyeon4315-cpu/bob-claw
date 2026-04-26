@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildDashboardLiveRuntimeConfig,
   formatPreflightSummary,
   main,
   parseArgs,
@@ -66,6 +67,15 @@ test("deploy preflight auto-discovers the default dashboard project across accou
   assert.equal(preflight.projectSource, "default");
   assert.equal(preflight.projectExists, true);
   assert.equal(formatPreflightSummary({ preflight, args }), "Cloudflare preflight: account=acct-main (api) project=bob-claw-dashboard (default) branch=release createProject=off");
+});
+
+test("deploy args accept a live origin override", () => {
+  const args = parseArgs(["--live-origin=https://example.trycloudflare.com"], {});
+  assert.equal(args.liveOrigin, "https://example.trycloudflare.com");
+  assert.equal(args.disableLiveOrigin, false);
+  const payload = buildDashboardLiveRuntimeConfig({ liveOrigin: args.liveOrigin });
+  assert.equal(payload.enabled, true);
+  assert.equal(payload.eventsUrl, "https://example.trycloudflare.com/api/live-events");
 });
 
 test("deploy preflight lists candidates when project selection is ambiguous", async () => {

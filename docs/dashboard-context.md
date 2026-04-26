@@ -62,7 +62,7 @@ It must never:
 
 `liveTrading` reflects whether the runtime gates (audit, gateway probes, gas freshness) currently pass. `ALLOWED` is a normal state, not an exceptional one — it does not mean the dashboard decides to trade. The dashboard still must not hold keys, sign transactions, or execute; it only reports the gate state.
 
-Cloudflare is only allowed to serve static files from `dashboard/public`. If you need a live operator view, run a separate local read-only server; do not put Cloudflare in that path.
+Cloudflare Pages may still serve the static shell from `dashboard/public`, but a public live deployment may point the browser at a separate read-only Node live origin for `/api/live-status` and `/api/live-events`. That live origin must stay read-only and must not hold signing authority.
 
 ## Data Flow
 
@@ -71,6 +71,7 @@ Source JSONL files live under `data/`.
 The dashboard does not read those raw JSONL files directly. It reads public-safe status payloads:
 
 - `dashboard/public/dashboard-status.json`
+- `dashboard/public/live-runtime.json`
 - `/api/live-status`
 - `/api/live-events`
 
@@ -85,6 +86,8 @@ The generator also writes:
 - `data/dashboard-status.json`
 
 `data/dashboard-status.json` is the local copy. `dashboard/public/dashboard-status.json` is the read-only public copy. When a local live dashboard server is running, the browser may prefer `/api/live-status` and `/api/live-events`, but those endpoints must stay read-only and must reuse the same public status builders.
+
+If `dashboard/public/live-runtime.json` enables a remote origin, the browser may use that remote Node live origin first and keep `dashboard-status.json` as fallback.
 
 ## Important Files
 

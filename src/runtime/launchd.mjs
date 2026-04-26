@@ -15,6 +15,10 @@ function launchdSafeEnvironment() {
     BURNER_PRIVATE_KEY_PATH: getEnv("BURNER_PRIVATE_KEY_PATH", getEnv("BURNER_EVM_KEY_PATH", null)),
     BURNER_BTC_KEY_PATH: getEnv("BURNER_BTC_KEY_PATH", null),
     KILL_SWITCH_PATH: getEnv("KILL_SWITCH_PATH", null),
+    CLOUDFLARE_API_TOKEN: getEnv("CLOUDFLARE_API_TOKEN", null),
+    CLOUDFLARE_ACCOUNT_ID: getEnv("CLOUDFLARE_ACCOUNT_ID", null),
+    BOB_CLAW_CF_PAGES_PROJECT: getEnv("BOB_CLAW_CF_PAGES_PROJECT", null),
+    BOB_CLAW_CF_PRODUCTION_BRANCH: getEnv("BOB_CLAW_CF_PRODUCTION_BRANCH", null),
   };
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
 }
@@ -22,6 +26,10 @@ function launchdSafeEnvironment() {
 export const EXECUTOR_LAUNCHD_LABELS = Object.freeze({
   daemon: "com.bobclaw.executor-daemon",
   watchdog: "com.bobclaw.executor-watchdog",
+});
+
+export const DASHBOARD_LAUNCHD_LABELS = Object.freeze({
+  publicLive: "com.bobclaw.dashboard-public-live",
 });
 
 export function defaultLaunchAgentsDir(homeDir = process.env.HOME || homedir()) {
@@ -113,6 +121,43 @@ export function buildExecutorLaunchAgentSpecs({
   ];
 }
 
+export function buildDashboardLaunchAgentSpecs({
+  rootDir = process.cwd(),
+  nodePath = process.execPath,
+  launchAgentsDir = defaultLaunchAgentsDir(),
+  logDir = defaultLaunchdLogDir(rootDir),
+  pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
+  homeDir = process.env.HOME || homedir(),
+} = {}) {
+  const resolvedRootDir = resolve(rootDir);
+  const resolvedNodePath = resolve(nodePath);
+  const resolvedLaunchAgentsDir = resolve(launchAgentsDir);
+  const resolvedLogDir = resolve(logDir);
+  const sharedEnvironment = {
+    PATH: pathEnv,
+    HOME: homeDir,
+    ...launchdSafeEnvironment(),
+  };
+  return [
+    {
+      id: "public-live",
+      label: DASHBOARD_LAUNCHD_LABELS.publicLive,
+      description: "BOB Claw public live dashboard runtime",
+      scriptPath: resolve(resolvedRootDir, "src/cli/run-dashboard-public-live.mjs"),
+      plistPath: join(resolvedLaunchAgentsDir, `${DASHBOARD_LAUNCHD_LABELS.publicLive}.plist`),
+      stdoutPath: join(resolvedLogDir, "dashboard-public-live.out.log"),
+      stderrPath: join(resolvedLogDir, "dashboard-public-live.err.log"),
+      workingDirectory: resolvedRootDir,
+      programArguments: [resolvedNodePath, resolve(resolvedRootDir, "src/cli/run-dashboard-public-live.mjs")],
+      environmentVariables: sharedEnvironment,
+      runAtLoad: true,
+      keepAlive: true,
+      throttleInterval: 10,
+      processType: "Background",
+    },
+  ];
+}
+
 export function renderLaunchAgentPlist(spec) {
   const payload = {
     Label: spec.label,
@@ -143,6 +188,24 @@ export function renderLaunchAgentPlist(spec) {
 
 export async function writeExecutorLaunchAgents(options = {}) {
   const specs = buildExecutorLaunchAgentSpecs(options);
+  const writes = await Promise.all(
+    specs.map(async (spec) => ({
+      id: spec.id,
+      label: spec.label,
+      plistPath: spec.plistPath,
+      stdoutPath: spec.stdoutPath,
+      stderrPath: spec.stderrPath,
+      ...(await writeTextIfChanged(spec.plistPath, renderLaunchAgentPlist(spec))),
+    })),
+  );
+  return {
+    specs,
+    writes,
+  };
+}
+
+export async function writeDashboardLaunchAgents(options = {}) {
+  const specs = buildDashboardLaunchAgentSpecs(options);
   const writes = await Promise.all(
     specs.map(async (spec) => ({
       id: spec.id,

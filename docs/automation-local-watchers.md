@@ -6,7 +6,7 @@ Last updated: 2026-04-11
 
 The Mac mini is responsible for automated monitoring.
 
-Cloudflare remains dashboard-only. It does not decide, sign, or watch for protocol updates independently.
+Cloudflare remains dashboard-only. It does not decide, sign, or watch for protocol updates independently. When the public dashboard is upgraded to a live read-only mode, Cloudflare may still serve the static shell while the live data comes from a separate Node read-only origin.
 
 ## Watchers
 
@@ -124,6 +124,18 @@ npm run dashboard:serve
 ```
 
 Open `http://localhost:8787`.
+
+Public live runtime:
+
+```bash
+npm run dashboard:public:run
+```
+
+Persistent launchd install:
+
+```bash
+npm run dashboard:public:launchd:install
+```
 
 ## Telegram Integration
 
