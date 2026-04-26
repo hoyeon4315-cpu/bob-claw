@@ -593,6 +593,9 @@
     function OpsStrip({ fill = false }) {
       const flow = window.FLOW || {};
       const activities = flow?.recentActivities || [];
+      const txActivities = activities.filter((activity) => activity?.kind === 'transaction');
+      const inFlightTxCount = txActivities.filter((activity) => activity?.status === 'signed' || activity?.status === 'broadcasted').length;
+      const confirmedTxCount = txActivities.filter((activity) => activity?.status === 'confirmed').length;
       const [expanded, setExpanded] = useState(false);
       const visibleActivities = expanded ? activities : activities.slice(0, 3);
       return (
@@ -618,6 +621,37 @@
               <div style={{ fontSize:9.6, color:'var(--ink-3)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                 Latest capital moves across chains and protocols
               </div>
+              {(inFlightTxCount > 0 || confirmedTxCount > 0 || txActivities.length > 0) && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
+                  {inFlightTxCount > 0 && (
+                    <span style={{
+                      display:'inline-flex', alignItems:'center', padding:'1px 6px',
+                      borderRadius:999, background:'#FFF4E2', color:'#8A520C',
+                      fontSize:8.4, fontWeight:700, letterSpacing:0.15,
+                    }}>
+                      In flight {inFlightTxCount}
+                    </span>
+                  )}
+                  {confirmedTxCount > 0 && (
+                    <span style={{
+                      display:'inline-flex', alignItems:'center', padding:'1px 6px',
+                      borderRadius:999, background:'#EAF6EE', color:'var(--green)',
+                      fontSize:8.4, fontWeight:700, letterSpacing:0.15,
+                    }}>
+                      Confirmed {confirmedTxCount}
+                    </span>
+                  )}
+                  {txActivities.length > 0 && (
+                    <span style={{
+                      display:'inline-flex', alignItems:'center', padding:'1px 6px',
+                      borderRadius:999, background:'#ECECEE', color:'var(--ink-3)',
+                      fontSize:8.4, fontWeight:700, letterSpacing:0.15,
+                    }}>
+                      TX {txActivities.length}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             {activities.length > 3 && (
               <button

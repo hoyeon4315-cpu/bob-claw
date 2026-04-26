@@ -47,6 +47,12 @@ describe("dashboard home renewal source guard", () => {
 
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
+    assert.match(opsStrip, /const txActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'transaction'\)/);
+    assert.match(opsStrip, /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/);
+    assert.match(opsStrip, /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/);
+    assert.match(opsStrip, /In flight \{inFlightTxCount\}/);
+    assert.match(opsStrip, /Confirmed \{confirmedTxCount\}/);
+    assert.match(opsStrip, /TX \{txActivities\.length\}/);
     assert.match(opsStrip, /activities\.slice\(0,\s*3\)/);
     assert.match(opsStrip, /expanded \? 'Show less' : `Show more · \$\{activities\.length\}`/);
     assert.match(opsStrip, /overflowY:\s*'auto'/);
