@@ -17,6 +17,8 @@ test("strategy evidence refresh parseArgs reads loop and dispatch options", () =
     "--promotion-lookback-days=21",
     "--prelive-refresh-limit=3",
     "--prelive-simulation-limit=7",
+    "--research-stale-hours=26",
+    "--research-max-experiments=42",
     "--skip-gate-self-heal",
   ]);
 
@@ -30,6 +32,8 @@ test("strategy evidence refresh parseArgs reads loop and dispatch options", () =
   assert.equal(args.promotionLookbackDays, 21);
   assert.equal(args.preliveRefreshLimit, 3);
   assert.equal(args.preliveSimulationLimit, 7);
+  assert.equal(args.researchStaleHours, 26);
+  assert.equal(args.researchMaxExperiments, 42);
   assert.equal(args.skipGateSelfHeal, true);
 });
 
@@ -44,6 +48,7 @@ test("strategy evidence refresh plan wires deterministic artifact refresh comman
 
   assert.deepEqual(plan.map((step) => step.name), [
     "gate_self_heal",
+    "auto_research_refresh",
     "gas_slippage_variance",
     "lane_reclassification",
     "destination_promotion_gate",
@@ -55,31 +60,37 @@ test("strategy evidence refresh plan wires deterministic artifact refresh comman
   ]);
   assert.deepEqual(plan[0].args, ["--skip-dashboard"]);
   assert.equal(plan[0].devAutomation, true);
-  assert.deepEqual(plan[1].args, ["--write"]);
-  assert.ok(plan[4].args.includes("--execute"));
-  assert.ok(plan[4].args.includes("--continue-on-failure"));
-  assert.ok(plan[4].args.includes("--mode=auto"));
-  assert.ok(plan[4].args.includes("--orchestrator-source=unit_test"));
-  assert.ok(plan[4].args.includes("--orchestrator-run-id=run-123"));
-  assert.deepEqual(plan[5].args, [
+  assert.deepEqual(plan[1].args, [
+    "--continue-on-failure",
+    "--stale-hours=20",
+    "--max-experiments=100",
+  ]);
+  assert.deepEqual(plan[2].args, ["--write"]);
+  assert.ok(plan[5].args.includes("--execute"));
+  assert.ok(plan[5].args.includes("--continue-on-failure"));
+  assert.ok(plan[5].args.includes("--mode=auto"));
+  assert.ok(plan[5].args.includes("--orchestrator-source=unit_test"));
+  assert.ok(plan[5].args.includes("--orchestrator-run-id=run-123"));
+  assert.deepEqual(plan[6].args, [
     "--execute",
     "--write",
     "--continue-on-failure",
     "--refresh-limit=1",
     "--simulation-limit=4",
   ]);
-  assert.deepEqual(plan[6].args, [
+  assert.deepEqual(plan[7].args, [
     "--write=/repo/data/promotion-latest.json",
     "--quiet",
   ]);
-  assert.deepEqual(plan[7].args, ["--quiet"]);
-  assert.equal(plan[7].devAutomation, false);
-  assert.deepEqual(plan[8].args, ["--skip-shadow-cycle"]);
+  assert.deepEqual(plan[8].args, ["--quiet"]);
+  assert.equal(plan[8].devAutomation, false);
+  assert.deepEqual(plan[9].args, ["--skip-shadow-cycle"]);
 });
 
 test("strategy evidence refresh plan omits optional steps when skip flags are set", () => {
   const args = parseArgs([
     "--skip-gate-self-heal",
+    "--skip-auto-research",
     "--skip-variance",
     "--skip-lane-reclassification",
     "--skip-destination-promotion-gate",

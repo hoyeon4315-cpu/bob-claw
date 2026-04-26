@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import process from "node:process";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
+import { loadResearchFunnelSlice } from "../status/research-funnel-slice.mjs";
 import { buildLendingLoopResearchEntries } from "../strategy/lending-loop-research.mjs";
 import { buildStrategyResearchBoard } from "../strategy/strategy-research-board.mjs";
 
@@ -27,12 +30,18 @@ async function main() {
   const context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
   const [
     nativeBtcOpportunitySurface,
+    autoResearchSummary,
+    autoResearchPromotionIntents,
+    researchFunnel,
     recursiveWrappedBtcLoop,
     recursiveStablecoinLoop,
     recursiveWrappedBtcLoopDryRun,
     recursiveStablecoinLoopDryRun,
   ] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "native-btc-opportunity-surface.json")),
+    readJsonIfExists(join(config.dataDir, "research-score-latest.json")),
+    readJsonl(config.dataDir, "research-promotion-intents"),
+    loadResearchFunnelSlice({ rootDir: process.cwd(), dataDir: config.dataDir }),
     readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "recursive_stablecoin_lending_loop-scaffold.json")),
     readJsonIfExists(join(config.dataDir, "recursive_wrapped_btc_lending_loop-dry-run-latest.json")),
@@ -41,6 +50,9 @@ async function main() {
   const report = buildStrategyResearchBoard({
     laneReclassification: context.artifacts?.laneReclassification || null,
     nativeBtcOpportunitySurface,
+    autoResearchSummary,
+    autoResearchPromotionIntents,
+    researchFunnel,
     lendingLoopResearchEntries: buildLendingLoopResearchEntries(),
     recursiveLoopSurfaces: {
       recursive_wrapped_btc_lending_loop: {

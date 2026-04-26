@@ -6,6 +6,7 @@ import { test } from "node:test";
 import {
   buildExecutorLaunchAgentSpecs,
   buildLiveAutomationLaunchAgentSpecs,
+  buildResearchLaunchAgentSpecs,
   buildStrategyAutomationLaunchAgentSpecs,
   parseLaunchctlPrint,
   readLaunchAgentStatus,
@@ -50,8 +51,28 @@ test("buildLiveAutomationLaunchAgentSpecs wires gate self-heal and all-chain aut
   assert.ok(specs[0].programArguments.includes("--loop"));
   assert.equal(specs[1].scriptPath, "/repo/src/cli/run-all-chain-autopilot.mjs");
   assert.ok(specs[1].programArguments.includes("--write"));
+  assert.ok(specs[1].programArguments.includes("--execute"));
   assert.ok("PATH" in specs[0].environmentVariables);
   assert.ok("HOME" in specs[0].environmentVariables);
+});
+
+test("buildResearchLaunchAgentSpecs wires stale-aware auto research refresh agent", () => {
+  const specs = buildResearchLaunchAgentSpecs({
+    rootDir: "/repo",
+    nodePath: "/usr/local/bin/node",
+    launchAgentsDir: "/Users/test/Library/LaunchAgents",
+    logDir: "/repo/logs/launchd",
+    homeDir: "/Users/test",
+    pathEnv: "/usr/local/bin:/usr/bin:/bin",
+  });
+
+  assert.equal(specs.length, 1);
+  assert.equal(specs[0].id, "daily");
+  assert.equal(specs[0].scriptPath, "/repo/src/cli/run-auto-research-refresh.mjs");
+  assert.ok(specs[0].programArguments.includes("--stale-hours=20"));
+  assert.ok(specs[0].programArguments.includes("--max-experiments=100"));
+  assert.equal(specs[0].runAtLoad, false);
+  assert.equal(specs[0].keepAlive, false);
 });
 
 test("buildStrategyAutomationLaunchAgentSpecs wires strategy evidence refresh agent", () => {

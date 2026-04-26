@@ -262,6 +262,73 @@ function buildSurfaceResearchEntry(family = null) {
   };
 }
 
+function formatAutoResearchLabel(candidateName = "") {
+  return String(candidateName || "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function latestIntentByCandidate(intents = []) {
+  const latest = new Map();
+  for (const item of intents || []) {
+    const candidateName = item?.candidateName || null;
+    if (!candidateName) continue;
+    const existing = latest.get(candidateName);
+    if (!existing || new Date(item.ts || 0) > new Date(existing.ts || 0)) {
+      latest.set(candidateName, item);
+    }
+  }
+  return latest;
+}
+
+function buildAutoResearchEntry(candidate = null, intent = null, researchFunnel = null) {
+  if (!candidate?.candidateName) return null;
+  const passed = candidate.passed === true;
+  const track = candidate.track === "A" || candidate.track === "B" ? candidate.track : null;
+  const latestRunAt = researchFunnel?.summary?.latestRunAt || null;
+  return {
+    rank: passed ? (track === "A" ? 8 : 9) : (track === "A" ? 18 : 19),
+    id: candidate.candidateName,
+    label: formatAutoResearchLabel(candidate.candidateName),
+    category: "auto_research",
+    status: passed ? "candidate_for_validation" : "research_backlog",
+    whyNow: passed
+      ? "The auto-research loop produced a candidate that passed both the OOS gate and the auto-promotion gate, so it should enter deterministic review and strategy-module promotion."
+      : "The auto-research loop found a candidate, but it is still blocked by its OOS or auto-promotion evidence and should stay in research until those blockers clear.",
+    requiredInfrastructure: [
+      "committed strategy module",
+      "deterministic executor wiring",
+      "policy caps committed",
+    ],
+    failureModes: unique(candidate.blockers || []),
+    missingEvidence: unique(candidate.blockers || []),
+    promotionPrerequisites: [
+      "oos_gate_passed",
+      "auto_promotion_gate_passed",
+      "committed_strategy_module_exists",
+    ],
+    evidence: {
+      source: "karpathy_auto_research",
+      track,
+      passed,
+      latestRunAt,
+      promotionIntentAt: intent?.ts || null,
+      promotionAction: intent?.action || null,
+    },
+    nextAction: passed
+      ? {
+          code: "review_auto_research_promotion_intent",
+          command: "npm run auto:research-refresh",
+        }
+      : {
+          code: "rerun_auto_research_until_gate_passes",
+          command: "npm run auto:research-refresh",
+        },
+  };
+}
+
 function priority(entry = null) {
   const rank = Number.isFinite(entry?.rank) ? entry.rank : 999;
   const statusBias = {
@@ -289,6 +356,9 @@ export function buildStrategyResearchBoard({
   nativeBtcOpportunitySurface = null,
   lendingLoopResearchEntries = [],
   recursiveLoopSurfaces = null,
+  autoResearchSummary = null,
+  autoResearchPromotionIntents = [],
+  researchFunnel = null,
   now = null,
 } = {}) {
   const lanes = laneById(laneReclassification);
@@ -297,11 +367,15 @@ export function buildStrategyResearchBoard({
     nativeBtcOpportunitySurface?.rankedOpportunityFamilies ||
     nativeBtcOpportunitySurface?.families ||
     [];
+  const autoResearchIntents = latestIntentByCandidate(autoResearchPromotionIntents);
   const candidates = [
     buildStableLoopResearchEntry(lanes.get("stablecoin_entry_exit_loops") || null),
     buildProxySpreadResearchEntry(lanes.get("btc_proxy_spreads") || null),
     ...lendingLoopResearchEntries.map((entry) => buildLendingLoopEntry(entry, loopSurfaces.get(entry.id) || null)),
     ...(surfaceFamilies.map((family) => buildSurfaceResearchEntry(family))),
+    ...((autoResearchSummary?.candidates || []).map((candidate) =>
+      buildAutoResearchEntry(candidate, autoResearchIntents.get(candidate.candidateName) || null, researchFunnel)
+    )),
   ]
     .filter(Boolean)
     .sort((left, right) => {

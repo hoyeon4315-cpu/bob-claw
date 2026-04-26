@@ -108,6 +108,7 @@ async function loadTrackARunRecords(dataDir) {
 }
 
 function parseArgs(argv) {
+  const flags = new Set(argv);
   const options = Object.fromEntries(
     argv
       .filter((item) => item.startsWith("--") && item.includes("="))
@@ -120,6 +121,7 @@ function parseArgs(argv) {
     dataDir: options["data-dir"] || resolve("data"),
     outPath: options["out-path"] || resolve("data", "research-promotion-intents.jsonl"),
     summaryPath: options["summary-path"] || resolve("data", "research-score-latest.json"),
+    noEmitIntents: flags.has("--no-emit-intents"),
   };
 }
 
@@ -136,6 +138,7 @@ async function main() {
   const emitted = [];
   for (const score of scores) {
     if (!shouldEmitPromotionIntent(score)) continue;
+    if (args.noEmitIntents) continue;
     emitted.push(
       emitPromotionIntent({
         score,

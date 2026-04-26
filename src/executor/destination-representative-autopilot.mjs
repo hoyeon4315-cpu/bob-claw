@@ -33,6 +33,8 @@ import {
   executeErc4626VaultSupplyCanaryPlan,
 } from "./helpers/erc4626-vault-supply-canary.mjs";
 
+const DEFAULT_REPRESENTATIVE_FAILURE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
 function normalized(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -187,12 +189,35 @@ function deliveredRepresentativeTemplates(records = []) {
   return delivered;
 }
 
-function failedRepresentativeTemplates(records = []) {
-  const failed = new Set();
+export function failedRepresentativeTemplates(
+  records = [],
+  {
+    now = new Date().toISOString(),
+    cooldownMs = DEFAULT_REPRESENTATIVE_FAILURE_COOLDOWN_MS,
+  } = {},
+) {
+  const cutoffMs = new Date(now).getTime() - Math.max(0, Number(cooldownMs) || 0);
+  const latestDeliveredAt = new Map();
+  const latestFailedAt = new Map();
   for (const record of records || []) {
-    if (!record?.executionError && record?.blockedReason !== "destination_representative_execution_error") continue;
     const templateId = record?.summary?.selected?.templateId || record?.plan?.templateId;
-    if (templateId) failed.add(templateId);
+    if (!templateId) continue;
+    const observedAtMs = new Date(record?.observedAt || 0).getTime();
+    if (record?.status === "delivered" || record?.summary?.proofStatus === "delivered") {
+      const current = latestDeliveredAt.get(templateId) ?? -Infinity;
+      if (observedAtMs > current) latestDeliveredAt.set(templateId, observedAtMs);
+      continue;
+    }
+    if (!record?.executionError && record?.blockedReason !== "destination_representative_execution_error") continue;
+    const current = latestFailedAt.get(templateId) ?? -Infinity;
+    if (observedAtMs > current) latestFailedAt.set(templateId, observedAtMs);
+  }
+  const failed = new Set();
+  for (const [templateId, failedAtMs] of latestFailedAt.entries()) {
+    const deliveredAtMs = latestDeliveredAt.get(templateId) ?? -Infinity;
+    if (failedAtMs <= deliveredAtMs) continue;
+    if (Number.isFinite(cutoffMs) && failedAtMs < cutoffMs) continue;
+    failed.add(templateId);
   }
   return failed;
 }
@@ -427,7 +452,7 @@ export async function runDestinationRepresentativeAutopilot({
   ]);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const deliveredTemplates = deliveredRepresentativeTemplates(representativeRuns);
-  const failedTemplates = failedRepresentativeTemplates(representativeRuns);
+  const failedTemplates = failedRepresentativeTemplates(representativeRuns, { now: observedAt });
   const candidates = buildDestinationRepresentativeCandidates({
     allocator,
     merklQueue,

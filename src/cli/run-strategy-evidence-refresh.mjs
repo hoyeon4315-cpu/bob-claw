@@ -46,7 +46,10 @@ export function parseArgs(argv) {
     dispatchScope: options["dispatch-scope"] || null,
     dispatchBucket: options["dispatch-bucket"] || null,
     dispatchCommandTimeoutMs: parseNumberOption(options["dispatch-command-timeout-ms"], null),
+    researchStaleHours: parseNumberOption(options["research-stale-hours"], 20),
+    researchMaxExperiments: parseNumberOption(options["research-max-experiments"], 100),
     skipGateSelfHeal: parseBooleanFlag(flags, "--skip-gate-self-heal"),
+    skipAutoResearch: parseBooleanFlag(flags, "--skip-auto-research"),
     skipVariance: parseBooleanFlag(flags, "--skip-variance"),
     skipLaneReclassification: parseBooleanFlag(flags, "--skip-lane-reclassification"),
     skipDestinationPromotionGate: parseBooleanFlag(flags, "--skip-destination-promotion-gate"),
@@ -81,6 +84,19 @@ export function buildStrategyEvidenceRefreshPlan({
       script: "src/cli/run-gate-self-heal.mjs",
       args: ["--skip-dashboard"],
       timeoutMs: 600_000,
+      devAutomation: true,
+    }));
+  }
+  if (!args.skipAutoResearch) {
+    plan.push(buildNodeStep({
+      name: "auto_research_refresh",
+      script: "src/cli/run-auto-research-refresh.mjs",
+      args: [
+        "--continue-on-failure",
+        `--stale-hours=${args.researchStaleHours}`,
+        `--max-experiments=${args.researchMaxExperiments}`,
+      ],
+      timeoutMs: 1_200_000,
       devAutomation: true,
     }));
   }
@@ -200,12 +216,20 @@ async function readDashboardOverview() {
 }
 
 async function readArtifactSummary(dataDir = config.dataDir) {
-  const [promotion, strategyDispatch, preliveEvidence] = await Promise.all([
+  const [promotion, strategyDispatch, preliveEvidence, autoResearch] = await Promise.all([
     readJsonIfExists(join(dataDir, "promotion-latest.json")),
     readJsonIfExists(join(dataDir, "strategy-dispatch-summary.json")),
     readJsonIfExists(join(dataDir, "prelive-evidence-campaign-summary.json")),
+    readJsonIfExists(join(dataDir, "auto-research-refresh-latest.json")),
   ]);
   return {
+    autoResearch: autoResearch
+      ? {
+          observedAt: autoResearch.observedAt || null,
+          researchRunTriggered: autoResearch.researchRunTriggered === true,
+          ok: autoResearch.ok === true,
+        }
+      : null,
     promotion: promotion
       ? {
           generatedAt: promotion.generatedAt || null,

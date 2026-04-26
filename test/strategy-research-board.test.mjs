@@ -192,6 +192,55 @@ test("strategy research board marks signer-backed recursive loop receipts as val
   assert.equal(researchBoard.summary.statusCounts.receipt_backed_validation_ready, 1);
 });
 
+test("strategy research board includes Karpathy-style auto research candidates from promotion intents", () => {
+  const researchBoard = buildStrategyResearchBoard({
+    laneReclassification: { lanes: [] },
+    lendingLoopResearchEntries: [],
+    nativeBtcOpportunitySurface: null,
+    autoResearchSummary: {
+      candidates: [
+        {
+          candidateName: "agent_mean_reversion_base",
+          track: "A",
+          passed: true,
+          blockers: [],
+        },
+        {
+          candidateName: "factor_slow_momentum",
+          track: "B",
+          passed: false,
+          blockers: ["insufficient_sample_periods"],
+        },
+      ],
+    },
+    autoResearchPromotionIntents: [
+      {
+        ts: "2026-04-26T18:00:00.000Z",
+        action: "request_committed_canary_promotion",
+        track: "A",
+        candidateName: "agent_mean_reversion_base",
+      },
+    ],
+    researchFunnel: {
+      summary: {
+        latestRunAt: "2026-04-26T18:00:00.000Z",
+      },
+    },
+    now: "2026-04-26T18:05:00.000Z",
+  });
+
+  const passedCandidate = researchBoard.candidates.find((candidate) => candidate.id === "agent_mean_reversion_base");
+  const blockedCandidate = researchBoard.candidates.find((candidate) => candidate.id === "factor_slow_momentum");
+
+  assert.equal(passedCandidate.status, "candidate_for_validation");
+  assert.equal(passedCandidate.evidence.source, "karpathy_auto_research");
+  assert.equal(passedCandidate.evidence.promotionIntentAt, "2026-04-26T18:00:00.000Z");
+  assert.equal(passedCandidate.nextAction.code, "review_auto_research_promotion_intent");
+
+  assert.equal(blockedCandidate.status, "research_backlog");
+  assert.deepEqual(blockedCandidate.missingEvidence, ["insufficient_sample_periods"]);
+});
+
 test("flash floor decision reports owner setter availability and deploy-time 0.30 USDC default", () => {
   const report = buildFlashFloorDecision({
     contractSource: `

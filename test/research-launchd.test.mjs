@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildResearchLaunchAgentSpecs, RESEARCH_LAUNCHD_LABELS } from "../src/runtime/launchd.mjs";
 
-test("research launchd spec stays isolated from key env and runs the daily sidecar", () => {
+test("research launchd spec stays isolated from key env and runs the stale-aware auto research sidecar", () => {
   const [spec] = buildResearchLaunchAgentSpecs({
     rootDir: "/repo",
     nodePath: "/opt/homebrew/bin/node",
@@ -15,8 +15,9 @@ test("research launchd spec stays isolated from key env and runs the daily sidec
   assert.equal(spec.label, RESEARCH_LAUNCHD_LABELS.daily);
   assert.deepEqual(spec.programArguments, [
     "/opt/homebrew/bin/node",
-    "/repo/research/run.mjs",
-    "--daily",
+    "/repo/src/cli/run-auto-research-refresh.mjs",
+    "--continue-on-failure",
+    "--stale-hours=20",
     "--max-experiments=100",
   ]);
   assert.equal(spec.stdoutPath, "/repo/logs/launchd/research-daily.out.log");

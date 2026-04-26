@@ -129,6 +129,8 @@
     "research:track-b": "node research/factorSearch.mjs",
     "research:score": "node research/score.mjs",
     "research:daily": "node research/run.mjs --daily --max-experiments=100",
+    "auto:research-refresh": "node src/cli/run-auto-research-refresh.mjs",
+    "auto:research-refresh:loop": "node src/cli/run-auto-research-refresh.mjs --loop --continue-on-failure",
     "research:launchd:write": "node src/cli/manage-research-launchd.mjs --write",
     "research:launchd:install": "node src/cli/manage-research-launchd.mjs --install",
     "research:launchd:status": "node src/cli/manage-research-launchd.mjs --status",
