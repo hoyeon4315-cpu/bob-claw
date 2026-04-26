@@ -535,38 +535,40 @@
                 {riskLabel}
               </div>
             )}
-            {finalAsset && (
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                marginTop: 4,
-                padding: '2px 7px',
-                borderRadius: 999,
-                background: '#F5F5F6',
-                color: 'var(--ink-3)',
-                maxWidth: '100%',
-              }}>
-                <span style={{ fontSize: 8.4, fontWeight: 700, letterSpacing: 0.35, textTransform: 'uppercase', flexShrink: 0 }}>
-                  Arrived
-                </span>
-                <AssetLogo id={finalAsset.id} size={12}/>
-                <span style={{
-                  fontSize: 9.2,
-                  fontWeight: 600,
-                  color: 'var(--ink)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
-                  {finalAsset.label}
-                </span>
-              </div>
-            )}
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 10.6, fontWeight: 700, letterSpacing: -0.15 }}>
-              {activityAmount(activity)}
+          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 0 }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 6,
+              maxWidth: 148,
+            }}>
+              {finalAsset && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  minWidth: 0,
+                  color: 'var(--ink-3)',
+                }}>
+                  <AssetLogo id={finalAsset.id} size={11}/>
+                  <span style={{
+                    fontSize: 9.1,
+                    fontWeight: 600,
+                    color: 'var(--ink-3)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: 54,
+                  }}>
+                    {finalAsset.label}
+                  </span>
+                </div>
+              )}
+              <div style={{ fontSize: 10.6, fontWeight: 700, letterSpacing: -0.15 }}>
+                {activityAmount(activity)}
+              </div>
             </div>
             <div style={{ fontSize: 9.2, color: 'var(--ink-3)', marginTop: 1 }}>
               {fmtWhen(activity?.observedAt)}
@@ -674,7 +676,6 @@
       const [aprOpen, setAprOpen] = useState(false);
       return (
         <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: '0 0 56%', minHeight: 0, flexShrink: 0 }}/>
           <div style={{
             position: 'absolute',
             left: 12,
@@ -695,13 +696,12 @@
           </div>
 
           <div style={{
-            position: 'relative',
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
             zIndex: 1,
-            flex: '1 1 auto',
-            minHeight: 0,
-            overflowY: overlayActive ? 'hidden' : 'auto',
-            overflowX: 'hidden',
-            WebkitOverflowScrolling: 'touch',
+            paddingBottom: 8,
             opacity: overlayActive ? 0.28 : 1,
             transform: overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
             filter: overlayActive ? 'saturate(0.72)' : 'none',

@@ -367,6 +367,86 @@ function OrbitTokens({ cx, cy, radius, assets, loops, time, speed = 0.55 }) {
   );
 }
 
+function assetTickerLabel(assetId) {
+  return String(assetId || '').trim().toUpperCase();
+}
+
+function uniqueProtocolAssets(strategy) {
+  return Array.from(new Set((strategy?.pair || []).filter(Boolean))).slice(0, 4);
+}
+
+function AssetTickerPill({ x, y, assetId }) {
+  const label = assetTickerLabel(assetId);
+  const width = Math.max(34, label.length * 6.6 + 22);
+  const height = 18;
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ pointerEvents: 'none' }}>
+      <rect
+        x={-width / 2}
+        y={-height / 2}
+        width={width}
+        height={height}
+        rx={height / 2}
+        fill="rgba(255,255,255,0.94)"
+        stroke="#DADADA"
+        strokeWidth="0.5"
+      />
+      <foreignObject x={-width / 2 + 4} y={-6.5} width={13} height={13} style={{ pointerEvents: 'none' }}>
+        <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none' }}>
+          <AssetLogo id={assetId} size={13}/>
+        </div>
+      </foreignObject>
+      <text
+        x={6}
+        y={3.4}
+        fontSize="8.3"
+        fontWeight="700"
+        fill="#555"
+        style={{ fontFamily: '-apple-system, system-ui', letterSpacing: 0.25 }}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function ProtocolAssetMotion({ strategy, x, y, time, dimmed }) {
+  const assets = uniqueProtocolAssets(strategy);
+  if (!assets.length) return null;
+  const orbitRadius = strategy?.type === 'loop' ? 52 : strategy?.type === 'payback' ? 50 : 46;
+  const orbitLoops = Math.max(strategy?.loops || 0, assets.length + 1, 3);
+  const orbitSpeed = strategy?.type === 'payback'
+    ? 0.34
+    : strategy?.type === 'bridge'
+      ? 0.4
+      : strategy?.type === 'swap' || strategy?.type === 'arb'
+        ? 0.58
+        : 0.48;
+  const gap = 52;
+  const startX = x - ((assets.length - 1) * gap) / 2;
+  return (
+    <g style={{ opacity: dimmed ? 0.16 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+      <OrbitTokens
+        cx={x}
+        cy={y}
+        radius={orbitRadius}
+        assets={assets}
+        loops={orbitLoops}
+        time={time}
+        speed={orbitSpeed}
+      />
+      {assets.map((assetId, index) => (
+        <AssetTickerPill
+          key={`${strategy.id}-${assetId}-${index}`}
+          x={startX + index * gap}
+          y={y + orbitRadius + 22}
+          assetId={assetId}
+        />
+      ))}
+    </g>
+  );
+}
+
 function PairBadge({ x, y, pair, size = 14 }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ pointerEvents:'none' }}>
@@ -1029,6 +1109,15 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
                     sourceChainAfterSwap={s.type === 'payback' ? 'bitcoin' : 'bob'}
                     size={11}/>
                 </g>
+                {isSel && (
+                  <ProtocolAssetMotion
+                    strategy={s}
+                    x={pp.x}
+                    y={pp.y}
+                    time={time}
+                    dimmed={dimmed}
+                  />
+                )}
                 {s.type === 'payback' && (
                   <g style={{ animation: `fadeIn 180ms ${EASE} both`, opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     {/* Return path from protocol back toward Bitcoin */}
@@ -1046,7 +1135,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
                     })()}
                   </g>
                 )}
-                {s.type === 'loop' && (
+                {s.type === 'loop' && !isSel && (
                   <g style={{ opacity: selectedProtocolId ? (isSel ? 0.48 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     <OrbitTokens cx={pp.x} cy={pp.y}
                       radius={chipSize * 1.8}

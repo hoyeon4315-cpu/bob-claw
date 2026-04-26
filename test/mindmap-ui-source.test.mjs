@@ -24,6 +24,10 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /return Number\(strategy\.actualProtocolCapitalUsd \|\| 0\) > 0;/);
     assert.match(MINDMAP_JSX, /const focusPoint = selectedProtocolId \? \(protocolBloom\[selectedProtocolId\] \|\| null\) : null;/);
     assert.match(MINDMAP_JSX, /const focus = focusPoint/);
+    assert.match(MINDMAP_JSX, /function ProtocolAssetMotion\(/);
+    assert.match(MINDMAP_JSX, /function uniqueProtocolAssets\(/);
+    assert.match(MINDMAP_JSX, /{isSel && \(/);
+    assert.match(MINDMAP_JSX, /<ProtocolAssetMotion/);
     assert.match(MINDMAP_JSX, /const dimmed = Boolean\(selectedProtocolId\) && !isSel;/);
     assert.match(MINDMAP_JSX, /const chainDimmed = Boolean\(selectedProtocolId\) && active;/);
     assert.match(MINDMAP_JSX, /opacity: dimmed \? 0\.22 : 1/);

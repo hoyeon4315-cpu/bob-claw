@@ -40,8 +40,8 @@ describe("dashboard home renewal source guard", () => {
     assert.match(historySection, /<RouteNode kind=\{route\.source\.kind\}/);
     assert.match(historySection, /<RouteNode kind=\{route\.target\.kind\}/);
     assert.match(historySection, /deriveActivityFinalAsset/);
-    assert.match(historySection, /AssetLogo id=\{finalAsset\.id\} size=\{12\}/);
-    assert.match(historySection, /Arrived/);
+    assert.match(historySection, /AssetLogo id=\{finalAsset\.id\} size=\{11\}/);
+    assert.doesNotMatch(historySection, /Arrived/);
 
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
@@ -79,7 +79,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
     assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : 'calc\(56% - 4px\)'/);
     assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
-    assert.match(flowPane, /overflowY: overlayActive \? 'hidden' : 'auto'/);
+    assert.match(flowPane, /position: 'absolute'/);
+    assert.match(flowPane, /bottom: 0/);
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
   });
 });
