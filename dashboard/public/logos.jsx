@@ -37,7 +37,7 @@ function protoSources(id, size) {
   const tw = (domain) => wsrv(`https://raw.githubusercontent.com/trustwallet/assets/master/dapps/${domain}.png`, size);
   const prox = (url) => wsrv(url, size);
   const map = {
-    moonwell: [llama('moonwell'), cg('18246/standard/Moonwell_Logo.png')],
+    moonwell: [prox('https://moonwell.fi/moonwell.png'), llama('moonwell'), cg('18246/standard/Moonwell_Logo.png')],
     aave:     [llama('aave-v3'), llama('aave'), cg('12645/standard/aave-token-round.png')],
     compound: [llama('compound-v3'), llama('compound'), cg('10775/standard/COMP.png')],
     uniswap:  [llama('uniswap-v3'), llama('uniswap'), cg('12504/standard/uniswap-logo.png')],
@@ -48,7 +48,7 @@ function protoSources(id, size) {
     gaszip:   [prox('https://www.gas.zip/favicon.ico')],
     morpho:    [llama('morpho-blue'), llama('morpho')],
     euler:     [prox('https://www.euler.finance/branding/euler-symbol-color.svg'), prox('https://app.euler.finance/favicon.ico')],
-    yo:        [prox('https://www.yo.xyz/favicon.ico')],
+    yo:        [prox('https://yo.xyz/images/logo-green.svg'), prox('https://www.yo.xyz/images/logo.svg'), prox('https://www.yo.xyz/icon.svg'), prox('https://www.yo.xyz/favicon.ico')],
     pendle:    [llama('pendle')],
     aerodrome: [llama('aerodrome-v1'), llama('aerodrome')],
     beefy:     [llama('beefy')],

@@ -192,6 +192,7 @@
       return `${Math.round(ageMs / 3600000)}h ago`;
     }
     const HISTORY_FILTER_STORAGE_KEY = 'bob-claw:history-filter';
+    const HISTORY_EXPANDED_STORAGE_KEY = 'bob-claw:history-expanded';
     function readPersistedHistoryFilter() {
       try {
         const value = window.localStorage.getItem(HISTORY_FILTER_STORAGE_KEY);
@@ -203,6 +204,18 @@
     function writePersistedHistoryFilter(value) {
       try {
         window.localStorage.setItem(HISTORY_FILTER_STORAGE_KEY, value);
+      } catch {}
+    }
+    function readPersistedHistoryExpanded() {
+      try {
+        return window.localStorage.getItem(HISTORY_EXPANDED_STORAGE_KEY) === 'true';
+      } catch {
+        return false;
+      }
+    }
+    function writePersistedHistoryExpanded(value) {
+      try {
+        window.localStorage.setItem(HISTORY_EXPANDED_STORAGE_KEY, value ? 'true' : 'false');
       } catch {}
     }
     function normalizeUiStrategyId(id) {
@@ -251,7 +264,11 @@
       return hit?.name || titleCaseLabel(id);
     }
     function displayProtocolName(id) {
-      return id ? titleCaseLabel(id) : null;
+      const known = {
+        yo: 'YO',
+        gmx: 'GMX',
+      };
+      return id ? (known[String(id).toLowerCase()] || titleCaseLabel(id)) : null;
     }
     function parseRouteHint(label) {
       const parts = String(label || '').split(/\s*→\s*/).map((part) => part.trim()).filter(Boolean);
@@ -314,6 +331,10 @@
       const status = activity?.status;
       if (status === 'delivered') return 'Delivered';
       if (status === 'confirmed') return 'Confirmed';
+      if (status === 'broadcasted') return 'Broadcasted';
+      if (status === 'signed') return 'Signed';
+      if (status === 'rejected') return 'Rejected';
+      if (status === 'error') return 'Error';
       if (status === 'open') return 'Open';
       if (status === 'settled') return 'Settled';
       return status ? titleCaseLabel(status) : 'Logged';
@@ -321,6 +342,8 @@
 
     function activityStatusTone(activity) {
       if (activity?.kind === 'payback') return { bg: '#FFF4E2', fg: '#8A520C' };
+      if (activity?.status === 'rejected' || activity?.status === 'error') return { bg: '#FDECEC', fg: '#B42318' };
+      if (activity?.status === 'signed' || activity?.status === 'broadcasted') return { bg: '#FFF6E8', fg: '#8A520C' };
       if (activity?.status === 'delivered' || activity?.status === 'confirmed' || activity?.status === 'open') {
         return { bg: '#EAF6EE', fg: 'var(--green)' };
       }
@@ -328,9 +351,14 @@
     }
 
     function activityAmount(activity) {
-      if (Number.isFinite(activity?.amountUsd)) return fmtUsdCompact(activity.amountUsd);
-      if (Number.isFinite(activity?.amountSats)) return fmtSats(activity.amountSats);
-      if (Number.isFinite(activity?.realizedNetPnlUsd)) return fmtUsd(activity.realizedNetPnlUsd);
+      if (Number.isFinite(activity?.amountUsd) && activity.amountUsd > 0) return fmtUsdCompact(activity.amountUsd);
+      if (Number.isFinite(activity?.amountSats) && activity.amountSats > 0) return fmtSats(activity.amountSats);
+      if (Number.isFinite(activity?.realizedNetPnlUsd) && activity.realizedNetPnlUsd !== 0) return fmtUsd(activity.realizedNetPnlUsd);
+      const detail = String(activity?.detail || '').toLowerCase();
+      if (detail.includes('approve')) return 'Approve';
+      if (detail.includes('erc4626_deposit')) return 'Deposit';
+      if (detail.includes('erc4626_redeem')) return 'Redeem';
+      if (activity?.kind === 'transaction') return 'TX';
       return '—';
     }
 
@@ -612,7 +640,7 @@
       const paybackActivities = activities.filter((activity) => activity?.kind === 'payback');
       const inFlightTxCount = txActivities.filter((activity) => activity?.status === 'signed' || activity?.status === 'broadcasted').length;
       const confirmedTxCount = txActivities.filter((activity) => activity?.status === 'confirmed').length;
-      const [expanded, setExpanded] = useState(false);
+      const [expanded, setExpanded] = useState(() => readPersistedHistoryExpanded());
       const [filter, setFilter] = useState(() => readPersistedHistoryFilter());
       const filteredActivities = activities.filter((activity) => {
         if (filter === 'in_flight') return activity?.kind === 'transaction' && (activity?.status === 'signed' || activity?.status === 'broadcasted');
@@ -639,6 +667,9 @@
         }
         writePersistedHistoryFilter(filter);
       }, [filter, filterChips]);
+      useEffect(() => {
+        writePersistedHistoryExpanded(expanded);
+      }, [expanded]);
       return (
         <div style={{
           margin: fill ? '0 12px' : '6px 12px 0', padding:'10px 12px 8px',
@@ -1262,8 +1293,7 @@
       );
     }
 
-    (async () => {
-      try { if (window.DATA_READY) await window.DATA_READY; } catch {}
+    (() => {
       const root = document.getElementById('root');
       root.innerHTML = '';
       ReactDOM.createRoot(root).render(<App/>);

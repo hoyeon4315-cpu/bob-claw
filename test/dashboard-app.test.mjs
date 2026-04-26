@@ -133,7 +133,7 @@ describe("dashboard defi renewal source guard", () => {
   test("app header shows live source and freshness state", () => {
     const utilitySection = extractSection("function fmtWhen", "function normalizeUiStrategyId");
     assert.match(utilitySection, /function formatStatusAge/);
-    const appSection = extractSection("function App", "(async () =>");
+    const appSection = extractSection("function App", "ReactDOM.createRoot");
     assert.match(appSection, /const liveStatus = window\.LIVE_STATUS \|\| \{\}/);
     assert.match(appSection, /const ageLabel = formatStatusAge\(statusAt\)/);
     assert.match(appSection, /liveStatus\.live\s*\?\s*\(liveStatus\.remote \? 'public live' : 'local live'\)/);

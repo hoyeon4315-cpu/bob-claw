@@ -21,7 +21,9 @@ describe("mindmap source guard", () => {
 
   test("mindmap focuses protocols with capital and dims siblings on protocol zoom", () => {
     assert.match(MINDMAP_JSX, /if \(!strategy\.protocol\) return false;/);
-    assert.match(MINDMAP_JSX, /return Number\(strategy\.actualProtocolCapitalUsd \|\| 0\) > 0;/);
+    assert.match(MINDMAP_JSX, /return Number\(strategy\.actualProtocolCapitalUsd \|\| 0\) > 0/);
+    assert.match(MINDMAP_JSX, /Number\(strategy\.recentActivityCount \|\| 0\) > 0/);
+    assert.match(MINDMAP_JSX, /strategy\.surfaceOnly === 'mindmap'/);
     assert.match(MINDMAP_JSX, /const focusPoint = selectedProtocolId \? \(protocolBloom\[selectedProtocolId\] \|\| null\) : null;/);
     assert.match(MINDMAP_JSX, /const focus = focusPoint/);
     assert.match(MINDMAP_JSX, /function ProtocolAssetMotion\(/);
@@ -38,13 +40,14 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /function formatYieldDisplay\(/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_MAX_HEIGHT = 132;/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 152;/);
-    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(chain\.capitalUsd\)/);
-    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(strategy\.capitalUsd\)/);
+    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(chain\.capitalUsd \|\| 0\) > 0 \? chain\.capitalUsd : chain\.recentActivityUsd\)/);
+    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(strategy\.capitalUsd \|\| 0\) > 0 \? strategy\.capitalUsd : strategy\.recentActivityUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalY = labelBelow \? size \* 1\.46 : -size \* 1\.34;/);
     assert.match(MINDMAP_JSX, /includeRect\(bounds, point\.x, point\.y - chipRadius - 17, 58, 16\)/);
     assert.match(MINDMAP_JSX, /yieldMetricLabel\(protocolNode\.yieldBasis\)/);
     assert.match(MINDMAP_JSX, /maxHeight: PROTOCOL_CARD_MAX_HEIGHT/);
-    assert.match(MINDMAP_JSX, /const protocolAssets = uniqueProtocolAssets\(protocolNode\.strategies \|\| \[\]\);/);
+    assert.match(MINDMAP_JSX, /const protocolAssets = Array\.from\(new Set\(\[/);
+    assert.match(MINDMAP_JSX, /protocolNode\.recentActivityAssets/);
     assert.doesNotMatch(MINDMAP_JSX, /const visibleStrategies = protocolNode\.strategies\.slice\(0, PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT\);/);
     assert.doesNotMatch(MINDMAP_JSX, />Pair<\/span>/);
     assert.doesNotMatch(MINDMAP_JSX, /<Metric label="Mapped"/);

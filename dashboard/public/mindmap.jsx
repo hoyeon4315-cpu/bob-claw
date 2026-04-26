@@ -50,7 +50,10 @@ function isMindmapVisible(strategy) {
     const paybackUsd = Number(window?.FLOW?.metrics?.pendingCarryUsd || 0) + Number(window?.FLOW?.metrics?.paidBackUsdLifetime || 0);
     return paybackUsd > 0;
   }
-  return Number(strategy.actualProtocolCapitalUsd || 0) > 0;
+  return Number(strategy.actualProtocolCapitalUsd || 0) > 0
+    || Number(strategy.recentActivityCount || 0) > 0
+    || Number(strategy.recentActivityUsd || 0) > 0
+    || strategy.surfaceOnly === 'mindmap';
 }
 
 function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
@@ -269,7 +272,7 @@ function ChainNode({ chain, x, y, size, hidden, active, dimmed = false, onTap, l
     onTap?.();
   };
   const hitSize = size * 1.95;
-  const capitalLabel = formatCompactUsdLabel(chain.capitalUsd);
+  const capitalLabel = formatCompactUsdLabel(Number(chain.capitalUsd || 0) > 0 ? chain.capitalUsd : chain.recentActivityUsd);
   const nameY = labelBelow ? size * 0.98 : -size * 0.82;
   const capitalY = labelBelow ? size * 1.46 : -size * 1.34;
   return (
@@ -449,7 +452,7 @@ const TYPE_LABEL = { loop: 'LOOP', bridge: 'BRIDGE', payback: 'PAYBACK', arb: 'A
 const TYPE_INK   = { loop: '#1C7A3E', bridge: '#3A3A3D', payback: '#7A5C0D', arb: '#5B3DBF', swap: '#0A84FF', refuel: '#8A5C0D', lp: '#0A84FF', cl_lp: '#0A84FF', lp_bgt: '#0A84FF', canary: '#7A5C0D', fold: '#1C7A3E', pt: '#5B3DBF', basis: '#0A84FF', reserve: '#3A3A3D' };
 
 function prettifyProtocolLabel(protocol) {
-  const acronyms = { gmx: 'GMX' };
+  const acronyms = { gmx: 'GMX', yo: 'YO', bob: 'BOB' };
   return String(protocol || '')
     .split(/[-_]/g)
     .filter(Boolean)
@@ -484,6 +487,13 @@ function groupStrategiesByProtocol(strategies = []) {
     const liveCount = items.filter((item) => item.status === 'LIVE').length;
     const realizedYieldUsd = items.reduce((sum, item) => sum + (item.realizedYieldUsd || 0), 0);
     const estimatedYieldUsd = items.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
+    const recentActivityCount = items.reduce((sum, item) => sum + (Number(item.recentActivityCount || 0)), 0);
+    const recentActivityUsd = items.reduce((sum, item) => sum + (Number(item.recentActivityUsd || 0)), 0);
+    const recentActivityAssets = Array.from(new Set(items.flatMap((item) => item.recentActivityAssets || []))).slice(0, 4);
+    const latestActivityAt = items
+      .map((item) => item.latestActivityAt || null)
+      .filter(Boolean)
+      .sort((left, right) => new Date(right) - new Date(left))[0] || null;
     return {
       ...first,
       id: `${first.chain}:${first.protocol}`,
@@ -498,9 +508,16 @@ function groupStrategiesByProtocol(strategies = []) {
       estimatedYieldUsd,
       yieldBasis: realizedYieldUsd > 0 ? 'realized' : (estimatedYieldUsd > 0 ? 'estimated' : null),
       capUsd: items.every((item) => item.capUsd == null) ? null : items.reduce((sum, item) => sum + (item.capUsd || 0), 0),
-      capitalUsd: Math.max(...items.map((item) => Number(item.actualProtocolCapitalUsd || 0)), 0),
+      capitalUsd: Math.max(
+        ...items.map((item) => Math.max(Number(item.actualProtocolCapitalUsd || 0), Number(item.recentActivityUsd || 0))),
+        0,
+      ),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
       apyPct: apyDenominator > 0 ? apyNumerator / apyDenominator : null,
+      recentActivityCount,
+      recentActivityUsd,
+      recentActivityAssets,
+      latestActivityAt,
       desc: items.length === 1
         ? first.desc
         : `${items.length} strategies mapped to ${prettifyProtocolLabel(first.protocol)}.`,
@@ -510,7 +527,7 @@ function groupStrategiesByProtocol(strategies = []) {
 
 function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragStart }) {
   const R = size * 1.1;
-  const capitalLabel = formatCompactUsdLabel(strategy.capitalUsd);
+  const capitalLabel = formatCompactUsdLabel(Number(strategy.capitalUsd || 0) > 0 ? strategy.capitalUsd : strategy.recentActivityUsd);
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
@@ -782,7 +799,12 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     }
   }, [selectedChain, selectedProtocolId]);
 
-  const liveChains = new Set(STRATEGIES.filter(s => s.status === 'LIVE').map(s => s.chain));
+  const liveChains = new Set(
+    STRATEGIES
+      .filter((strategy) => strategy.status === 'LIVE' || Number(strategy.recentActivityCount || 0) > 0)
+      .map((strategy) => strategy.chain)
+      .filter(Boolean),
+  );
 
   const srcCurve = useMemo(() => {
     const b = physicsRef.current.get('chain:bitcoin');
@@ -1146,7 +1168,10 @@ function ProtocolCard({ protocolNode }) {
   const chain = CHAINS.find(c => c.id === protocolNode.chain);
   const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
   const yieldValue = formatYieldDisplay(protocolNode.earnedUsd, protocolNode.yieldBasis);
-  const protocolAssets = uniqueProtocolAssets(protocolNode.strategies || []);
+  const protocolAssets = Array.from(new Set([
+    ...uniqueProtocolAssets(protocolNode.strategies || []),
+    ...(protocolNode.recentActivityAssets || []),
+  ])).slice(0, 4);
   return (
     <div data-card-type="protocol" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1182,6 +1207,7 @@ function ProtocolCard({ protocolNode }) {
         <Metric label="Capital" value={capitalLabel || '—'}/>
         <Metric label={yieldMetricLabel(protocolNode.yieldBasis)} value={yieldValue || '—'} accent={protocolNode.earnedUsd > 0}/>
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
+        {protocolNode.recentActivityCount > 0 && <Metric label="Activity" value={`${protocolNode.recentActivityCount} tx`}/>}
       </div>
       {protocolAssets.length > 0 && (
         <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
@@ -1204,7 +1230,7 @@ function ChainCard({ chainId, strategies }) {
   const estimatedYield = strategies.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
   const totalEarned = realizedYield > 0 ? realizedYield : estimatedYield;
   const totalYieldBasis = realizedYield > 0 ? 'realized' : (estimatedYield > 0 ? 'estimated' : null);
-  const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0));
+  const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0) || Number(chain?.recentActivityUsd || 0));
   const totalYieldLabel = formatYieldDisplay(totalEarned, totalYieldBasis);
   return (
     <div data-card-type="chain" style={{
@@ -1233,6 +1259,7 @@ function ChainCard({ chainId, strategies }) {
         <Metric label="Live" value={`${live}/${strategies.length}`}/>
         <Metric label="Capital" value={capitalLabel || '—'}/>
         <Metric label={yieldMetricLabel(totalYieldBasis)} value={totalYieldLabel || '—'} accent={totalEarned > 0}/>
+        {chain?.recentActivityCount > 0 && <Metric label="Activity" value={`${chain.recentActivityCount} tx`}/>}
       </div>
     </div>
   );

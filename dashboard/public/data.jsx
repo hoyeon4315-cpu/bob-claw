@@ -123,12 +123,180 @@ function buildCapitalMaps(holdings = null) {
   };
 }
 
+function timestampMs(value) {
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function capitalizeWord(value) {
+  return String(value || '')
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .map((part) => {
+      const lower = part.toLowerCase();
+      if (lower === 'yo') return 'YO';
+      if (lower === 'gmx') return 'GMX';
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
+function inferActivityType(activity, strategy = null) {
+  const detail = String(activity?.detail || '').toLowerCase();
+  if (detail.includes('erc4626')) return 'lp';
+  if (detail.includes('approve')) return strategy?.type || 'canary';
+  if (detail.includes('redeem')) return 'lp';
+  return strategy?.type || 'canary';
+}
+
+function inferActivityAction(activity) {
+  const detail = String(activity?.detail || '').toLowerCase();
+  if (detail.includes('approve')) return 'approve';
+  if (detail.includes('erc4626_deposit')) return 'deposit';
+  if (detail.includes('erc4626_redeem')) return 'redeem';
+  if (detail.includes('bridge')) return 'bridge';
+  if (detail.includes('swap')) return 'swap';
+  return activity?.status || 'activity';
+}
+
+function addSurfaceAsset(summary, assetId) {
+  if (!assetId) return;
+  if (!summary.assets.includes(assetId)) summary.assets.push(assetId);
+}
+
+function updateLatestSurface(summary, observedAt) {
+  if (!observedAt) return;
+  if (!summary.latestAt || timestampMs(observedAt) > timestampMs(summary.latestAt)) {
+    summary.latestAt = observedAt;
+  }
+}
+
+function buildActivitySurfaces(activities = [], strategies = []) {
+  const byProtocol = {};
+  const byChain = {};
+  const syntheticByProtocol = {};
+  const strategyByNormalizedId = Object.fromEntries(
+    (strategies || []).map((strategy) => [normalizeStrategyId(strategy.id), strategy]),
+  );
+  const knownProtocolKeys = new Set(
+    (strategies || [])
+      .map((strategy) => capitalProtocolKey(strategy.chain, strategy.protocol))
+      .filter(Boolean),
+  );
+
+  for (const activity of activities || []) {
+    const strategy = strategyByNormalizedId[normalizeStrategyId(activity?.strategyId)] || null;
+    const chain = cleanUnknown(activity?.chain) || strategy?.chain || null;
+    const protocol = cleanUnknown(activity?.protocol) || strategy?.protocol || null;
+    const assetId = cleanUnknown(activity?.finalAssetId) || cleanUnknown(activity?.finalAssetLabel) || strategy?.pair?.[0] || null;
+    const observedAt = activity?.observedAt || null;
+    const action = inferActivityAction(activity);
+    const positiveUsd = Number.isFinite(activity?.amountUsd) && activity.amountUsd > 0 ? activity.amountUsd : 0;
+    if (chain) {
+      const chainSurface = (byChain[chain] ||= {
+        chain,
+        count: 0,
+        usd: 0,
+        latestAt: null,
+        assets: [],
+        actions: [],
+      });
+      chainSurface.count += 1;
+      chainSurface.usd += positiveUsd;
+      updateLatestSurface(chainSurface, observedAt);
+      addSurfaceAsset(chainSurface, assetId);
+      if (!chainSurface.actions.includes(action)) chainSurface.actions.push(action);
+    }
+    if (!chain || !protocol) continue;
+    const key = capitalProtocolKey(chain, protocol);
+    const protocolSurface = (byProtocol[key] ||= {
+      key,
+      chain,
+      protocol,
+      count: 0,
+      usd: 0,
+      latestAt: null,
+      assets: [],
+      actions: [],
+      statuses: [],
+    });
+    protocolSurface.count += 1;
+    protocolSurface.usd += positiveUsd;
+    updateLatestSurface(protocolSurface, observedAt);
+    addSurfaceAsset(protocolSurface, assetId);
+    if (!protocolSurface.actions.includes(action)) protocolSurface.actions.push(action);
+    if (activity?.status && !protocolSurface.statuses.includes(activity.status)) {
+      protocolSurface.statuses.push(activity.status);
+    }
+    if (knownProtocolKeys.has(key)) continue;
+    const synthetic = (syntheticByProtocol[key] ||= {
+      id: `activity:${chain}:${protocol}`,
+      label: capitalizeWord(protocol),
+      sub: `${capitalizeWord(chain)} · ${capitalizeWord(protocol)}`,
+      chain,
+      protocol,
+      type: inferActivityType(activity, strategy),
+      pair: assetId ? [assetId] : (Array.isArray(strategy?.pair) && strategy.pair.length ? strategy.pair : ['usdc']),
+      loops: null,
+      capUsd: null,
+      desc: `${capitalizeWord(protocol)} recent live activity.`,
+      autoExecute: false,
+      status: 'ACTIVE',
+      earnedUsd: 0,
+      realizedYieldUsd: 0,
+      estimatedYieldUsd: 0,
+      yieldBasis: null,
+      apyPct: null,
+      tickMode: 'live_activity',
+      tickBlockers: [],
+      microCanaryStatus: 'active',
+      blockerCount: 0,
+      topBlocker: null,
+      projectedNetUsd: null,
+      lastTickAt: observedAt,
+      riskHint: strategy?.riskHint || null,
+      actualProtocolCapitalUsd: 0,
+      actualChainCapitalUsd: 0,
+      surfaceOnly: 'mindmap',
+      recentActivityCount: 0,
+      recentActivityUsd: 0,
+      recentActivityAssets: [],
+      recentActivityActions: [],
+      latestActivityAt: null,
+    });
+    synthetic.recentActivityCount += 1;
+    synthetic.recentActivityUsd += positiveUsd;
+    synthetic.lastTickAt = observedAt || synthetic.lastTickAt;
+    synthetic.latestActivityAt = observedAt || synthetic.latestActivityAt;
+    addSurfaceAsset({ assets: synthetic.recentActivityAssets }, assetId);
+    if (!synthetic.recentActivityActions.includes(action)) synthetic.recentActivityActions.push(action);
+  }
+
+  return {
+    byProtocol,
+    byChain,
+    syntheticStrategies: Object.values(syntheticByProtocol),
+  };
+}
+
 const LIVE_STATUS_PATH = './api/live-status';
 const LIVE_EVENTS_PATH = './api/live-events';
 const STATIC_STATUS_PATH = './dashboard-status.json';
 const LIVE_RUNTIME_PATH = './live-runtime.json';
-const LIVE_POLL_MS = 3000;
-const STATIC_POLL_MS = 10000;
+const LIVE_POLL_MS = 1500;
+const STATIC_POLL_MS = 5000;
+
+async function fetchStaticStatusPayload() {
+  const now = Date.now();
+  try {
+    const resp = await fetch(`${STATIC_STATUS_PATH}?t=${now}`, { cache: 'no-store', mode: 'same-origin' });
+    if (!resp.ok) throw new Error(`static snapshot ${resp.status}`);
+    const status = await resp.json();
+    return { status, source: 'static-snapshot', live: false };
+  } catch {
+    return { status: null, source: 'unavailable', live: false };
+  }
+}
 
 async function resolveConfiguredLiveRuntime() {
   if (window._DASHBOARD_LIVE_RUNTIME) return window._DASHBOARD_LIVE_RUNTIME;
@@ -377,21 +545,6 @@ async function bootData(payload = null) {
     generatedAt: status?.generatedAt || null,
   };
 
-  // P1 — fold chain parity into CHAINS so the UI shows explicit maturity/blockers
-  const CHAINS_PARITY = CHAINS.map(c => {
-    const p = chainParity.byChain?.[c.id] || null;
-    return {
-      ...c,
-      capitalUsd: CAPITAL.byChain[c.id] || 0,
-      wrappedBtcVenueStatus: cleanUnknown(p?.wrappedBtcVenueStatus),
-      stableVenueStatus: cleanUnknown(p?.stableVenueStatus),
-      nativeEthArrivalClass: cleanUnknown(p?.nativeEthArrivalClass),
-      strategySurfacePresence: p?.strategySurfacePresence ?? 0,
-      currentMaturity: cleanUnknown(p?.currentMaturity),
-      topBlocker: cleanUnknown(p?.topBlocker) || null,
-    };
-  });
-
   // Merkl-active strategies — only positions currently open (live).
   // Each Merkl item becomes a STRATEGIES entry so DefiPane (groups by protocol)
   // and Mindmap pick them up automatically. Inactive opportunities are excluded.
@@ -442,12 +595,46 @@ async function bootData(payload = null) {
     });
   }
 
+  const activitySurfaces = buildActivitySurfaces(flow?.recentActivities || [], STRATEGIES);
+  for (const strategy of STRATEGIES) {
+    const activitySurface = activitySurfaces.byProtocol[capitalProtocolKey(strategy.chain, strategy.protocol)] || null;
+    if (!activitySurface) continue;
+    strategy.recentActivityCount = activitySurface.count;
+    strategy.recentActivityUsd = activitySurface.usd;
+    strategy.recentActivityAssets = activitySurface.assets;
+    strategy.recentActivityActions = activitySurface.actions;
+    strategy.latestActivityAt = activitySurface.latestAt;
+  }
+  STRATEGIES.push(...activitySurfaces.syntheticStrategies);
+
+  // P1 — fold chain parity into CHAINS so the UI shows explicit maturity/blockers
+  const CHAINS_PARITY = CHAINS.map(c => {
+    const p = chainParity.byChain?.[c.id] || null;
+    const chainSurface = activitySurfaces.byChain?.[c.id] || null;
+    return {
+      ...c,
+      capitalUsd: CAPITAL.byChain[c.id] || 0,
+      wrappedBtcVenueStatus: cleanUnknown(p?.wrappedBtcVenueStatus),
+      stableVenueStatus: cleanUnknown(p?.stableVenueStatus),
+      nativeEthArrivalClass: cleanUnknown(p?.nativeEthArrivalClass),
+      strategySurfacePresence: p?.strategySurfacePresence ?? 0,
+      currentMaturity: cleanUnknown(p?.currentMaturity),
+      topBlocker: cleanUnknown(p?.topBlocker) || null,
+      recentActivityCount: chainSurface?.count || 0,
+      recentActivityUsd: chainSurface?.usd || 0,
+      recentActivityAssets: chainSurface?.assets || [],
+      recentActivityActions: chainSurface?.actions || [],
+      latestActivityAt: chainSurface?.latestAt || null,
+    };
+  });
+
   Object.assign(window, {
     CHAINS: CHAINS_PARITY,
     STRATEGIES,
     KPI,
     HOLDINGS,
     FLOW: flow || { metrics: {}, recentActivities: [], strategyRiskById: {} },
+    ACTIVITY_SURFACES: activitySurfaces,
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,
     CAPITAL,
@@ -489,6 +676,16 @@ async function refreshDashboardData({ dispatch = true, payload = null } = {}) {
   return window._DASHBOARD_REFRESH_IN_FLIGHT;
 }
 
+async function bootstrapDashboardData() {
+  const initialSnapshot = await fetchStaticStatusPayload();
+  await bootData(initialSnapshot);
+  window.dispatchEvent(new CustomEvent('dashboard:datarefresh'));
+  if (!initialSnapshot?.live) {
+    void refreshDashboardData().catch(() => {});
+  }
+  return initialSnapshot;
+}
+
 function setupDashboardRefreshHooks() {
   if (window._DASHBOARD_REFRESH_HOOKS) return;
   const refreshVisibleData = () => {
@@ -524,7 +721,11 @@ function setupLiveEventStream() {
     try {
       const status = JSON.parse(event.data);
       await refreshDashboardData({
-        payload: { status, source: 'live-sse', live: true },
+        payload: {
+          status,
+          source: runtime?.enabled ? 'remote-live-sse' : 'live-sse',
+          live: true,
+        },
       });
     } catch {}
   };
@@ -583,7 +784,7 @@ Object.assign(window, {
   CAPITAL: { byChain: {}, byProtocol: {}, walletUsd: null, deployedUsd: null, totalUsd: null, pending: true, generatedAt: null },
   LIVE_STATUS: { source: 'pending', live: false, generatedAt: null },
 });
-window.DATA_READY = bootData();
+window.DATA_READY = bootstrapDashboardData();
 window.DATA_READY.then(() => {
   setupDashboardRefreshHooks();
   setupLiveEventStream();

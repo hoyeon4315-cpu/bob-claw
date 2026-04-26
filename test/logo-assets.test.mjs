@@ -147,7 +147,7 @@ describe("dashboard logo runtime invariants", () => {
   test("protocol sources include official entries for live protocols missing from DeFiLlama", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
     assert.ok(runtime.includes("euler:     [prox('https://www.euler.finance/branding/euler-symbol-color.svg'), prox('https://app.euler.finance/favicon.ico')]"));
-    assert.ok(runtime.includes("yo:        [prox('https://www.yo.xyz/favicon.ico')]"));
+    assert.ok(runtime.includes("yo:        [prox('https://yo.xyz/images/logo-green.svg'), prox('https://www.yo.xyz/images/logo.svg'), prox('https://www.yo.xyz/icon.svg'), prox('https://www.yo.xyz/favicon.ico')]"));
     assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler'\]\);/);
     assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
   });

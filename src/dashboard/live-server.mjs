@@ -8,12 +8,12 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 
 export const DEFAULT_PORT = 8787;
-export const DEFAULT_STREAM_MS = 3000;
-export const DEFAULT_SNAPSHOT_CACHE_MS = 1500;
-export const DEFAULT_REFRESH_TICK_MS = 3000;
-export const DEFAULT_WHOLE_WALLET_REFRESH_MS = 15000;
-export const DEFAULT_TREASURY_REFRESH_MS = 45000;
-export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 15000;
+export const DEFAULT_STREAM_MS = 1500;
+export const DEFAULT_SNAPSHOT_CACHE_MS = 750;
+export const DEFAULT_REFRESH_TICK_MS = 2000;
+export const DEFAULT_WHOLE_WALLET_REFRESH_MS = 8000;
+export const DEFAULT_TREASURY_REFRESH_MS = 20000;
+export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 6000;
 
 function finiteInteger(value, fallback) {
   const parsed = Number(value);
@@ -187,6 +187,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
   };
   const taskOrder = [tasks.wholeWallet, tasks.treasury, tasks.statusSnapshot];
   let refreshTimer = null;
+  let statusWarmTimer = null;
   let refreshPromise = null;
   let statusPromise = null;
   let lastStatusPayload = null;
@@ -303,6 +304,42 @@ export function createDashboardLiveServer(rawOptions = {}) {
     });
   }
 
+  async function computeLiveStatusPayload() {
+    try {
+      const context = await buildCurrentDashboardContext({
+        dataDir: options.dataDir,
+        address: options.address,
+      });
+      return {
+        ...context.dashboardStatus,
+        liveTransport: {
+          mode: "live_api",
+          source: "live-api",
+          snapshotPath: "/api/live-status",
+          eventsPath: "/api/live-events",
+          refreshIntervalMs: options.streamMs,
+          servedAt: new Date().toISOString(),
+        },
+        liveRuntime: runtimeState(),
+      };
+    } catch (error) {
+      const fallback = await loadStaticFallback(options.rootDir);
+      return {
+        ...fallback,
+        liveTransport: {
+          mode: "static_fallback",
+          source: "dashboard-status.json",
+          snapshotPath: "/api/live-status",
+          eventsPath: "/api/live-events",
+          refreshIntervalMs: options.streamMs,
+          servedAt: new Date().toISOString(),
+          error: error.message,
+        },
+        liveRuntime: runtimeState(),
+      };
+    }
+  }
+
   async function buildLiveStatus({ force = false } = {}) {
     if (!force && lastStatusPayload && Date.now() - lastStatusBuiltAtMs < options.snapshotCacheMs) {
       return lastStatusPayload;
@@ -310,37 +347,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     if (statusPromise) return statusPromise;
     statusPromise = (async () => {
       try {
-        const context = await buildCurrentDashboardContext({
-          dataDir: options.dataDir,
-          address: options.address,
-        });
-        lastStatusPayload = {
-          ...context.dashboardStatus,
-          liveTransport: {
-            mode: "live_api",
-            source: "live-api",
-            snapshotPath: "/api/live-status",
-            eventsPath: "/api/live-events",
-            refreshIntervalMs: options.streamMs,
-            servedAt: new Date().toISOString(),
-          },
-          liveRuntime: runtimeState(),
-        };
-      } catch (error) {
-        const fallback = await loadStaticFallback(options.rootDir);
-        lastStatusPayload = {
-          ...fallback,
-          liveTransport: {
-            mode: "static_fallback",
-            source: "dashboard-status.json",
-            snapshotPath: "/api/live-status",
-            eventsPath: "/api/live-events",
-            refreshIntervalMs: options.streamMs,
-            servedAt: new Date().toISOString(),
-            error: error.message,
-          },
-          liveRuntime: runtimeState(),
-        };
+        lastStatusPayload = await computeLiveStatusPayload();
       } finally {
         lastStatusBuiltAtMs = Date.now();
       }
@@ -495,6 +502,10 @@ export function createDashboardLiveServer(rawOptions = {}) {
           void maybeRunRefreshCycle();
         }, options.refreshTickMs);
       }
+      await buildLiveStatus({ force: true });
+      statusWarmTimer = setInterval(() => {
+        void buildLiveStatus({ force: true }).catch(() => {});
+      }, Math.max(options.streamMs, options.snapshotCacheMs));
       return {
         localUrl: `http://127.0.0.1:${options.port}`,
         snapshotUrl: `http://127.0.0.1:${options.port}/api/live-status`,
@@ -504,6 +515,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     async close() {
       shuttingDown = true;
       if (refreshTimer) clearInterval(refreshTimer);
+      if (statusWarmTimer) clearInterval(statusWarmTimer);
       if (server.listening) {
         await new Promise((resolvePromise, rejectPromise) =>
           server.close((error) => (error ? rejectPromise(error) : resolvePromise())),
