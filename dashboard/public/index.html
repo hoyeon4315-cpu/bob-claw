@@ -682,6 +682,9 @@
       const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
       const totalApr = aprDen > 0 ? aprNum / aprDen : null;
       const [aprOpen, setAprOpen] = useState(false);
+      const assetSub = pending
+        ? 'pending'
+        : (positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? 's' : ''}` : 'wallet only · 0 open positions');
       return (
         <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{
@@ -728,7 +731,7 @@
                 {
                   label: 'Assets',
                   main: pending ? '—' : fmtUsdCompact(assetValueUsd || 0),
-                  sub: pending ? 'pending' : 'wallet + deployed',
+                  sub: assetSub,
                 },
                 {
                   label: 'APR',
@@ -1011,7 +1014,7 @@
             </div>
             {!pending && (
               <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
-                wallet {fmtUsd(HOLDINGS?.walletUsd)} · deployed {fmtUsd(HOLDINGS?.deployedUsd)}
+                wallet {fmtUsd(HOLDINGS?.walletUsd)} · deployed {fmtUsd(HOLDINGS?.deployedUsd)} · open positions {positions.length}
               </div>
             )}
             {pending && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>treasury snapshot pending</div>}

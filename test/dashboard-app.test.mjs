@@ -31,6 +31,8 @@ describe("dashboard home renewal source guard", () => {
     }
     assert.match(flowPane, /const yieldMain = grossYieldSats > 0/);
     assert.match(flowPane, /fmtUsdCompact\(grossYieldUsd\)\} · all protocols/);
+    assert.match(flowPane, /wallet only · 0 open positions/);
+    assert.match(flowPane, /wallet \+ \$\{positions\.length\} open position/);
   });
 
   test("history card defaults to 3 rows with expand/collapse and scroll guard", () => {
@@ -73,6 +75,12 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(strategyRow, /fmtYieldTag\(s\.earnedUsd, s\.yieldBasis\)/);
     assert.doesNotMatch(strategyRow, /[가-힣]/);
     assert.doesNotMatch(strategyRow, /badge/i);
+  });
+
+  test("assets pane shows open position count alongside wallet and deployed balances", () => {
+    const assetsPane = extractSection("function AssetsPane", "function App");
+    assert.match(assetsPane, /open positions \{positions\.length\}/);
+    assert.match(assetsPane, /wallet \{fmtUsd\(HOLDINGS\?\.walletUsd\)\} · deployed \{fmtUsd\(HOLDINGS\?\.deployedUsd\)\}/);
   });
 
   test("flow pane expands the map above lower cards during focus mode", () => {
