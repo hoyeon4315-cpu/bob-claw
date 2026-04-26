@@ -88,9 +88,10 @@ test("bootstrap-from-btc with total weight zero falls back to equal split", () =
     diversificationPolicy: null,
   });
   const refills = report.rebalancePlan.actions.filter((a) => a.type === "capital_rebalance");
-  assert.equal(refills.length, 2);
+  // candidate set = autoExecute strategies (3) — promotionGate is score source only.
+  assert.equal(refills.length, 3);
   for (const refill of refills) {
-    assert.ok(Math.abs(refill.amountUsd - 300) < 0.001);
+    assert.ok(Math.abs(refill.amountUsd - 200) < 0.001);
   }
 });
 
