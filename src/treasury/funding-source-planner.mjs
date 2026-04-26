@@ -255,6 +255,7 @@ function candidateRecord({
   source = null,
   availability,
   preferred,
+  standbyFallback = false,
   requiresBootstrapNative = false,
   bootstrapNativeSatisfied = true,
   requiresReserveState = undefined,
@@ -272,6 +273,7 @@ function candidateRecord({
     method,
     availability,
     preferred,
+    standbyFallback,
     source,
     expectedExecutionRefillCostUsd,
     expectedReserveReplenishmentCostUsd:
@@ -645,9 +647,11 @@ function gasRefuelCandidate(action, plan, policy) {
 }
 
 function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContext = null } = {}) {
-  // Gateway remains the preferred BTC-family lane, but live non-Gateway
+  // Gateway remains the preferred first-choice lane, but live non-Gateway
   // providers stay in the candidate list so autopilot can retry them when
-  // the selected Gateway quote returns `no_route`.
+  // the selected Gateway path returns `no_route`, `routing_unavailable`, or
+  // an execution-time failure. When Gateway is healthy, these remain standby
+  // fallbacks rather than displacing the initial Gateway selection.
   if (action?.type !== "refill_token" && action?.type !== "refill_native") return [];
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   if (!selectedSource) return [];
@@ -663,8 +667,6 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
       : rawFamily === "usd" || rawFamily === "stablecoin" ? "stable"
       : rawFamily)
     : null;
-  const stableTokenRefill = action.type === "refill_token" && assetFamily === "stable";
-  if (gatewayAvailable !== false && action.chain !== "soneium" && !stableTokenRefill) return [];
   const fallbackProviders = fallbackProvidersWhenGatewayPaused({
     srcChain: selectedSource.chain,
     dstChain: action.chain,
@@ -678,6 +680,7 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
     return (order.get(left.id) ?? 99) - (order.get(right.id) ?? 99);
   });
   if (fallbackProviders.length === 0) return [];
+  const standbyFallback = gatewayAvailable !== false;
   return fallbackProviders.map((provider) => {
     const method = provider.methodIds[0];
     const isLive = provider.status === "live";
@@ -700,7 +703,7 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
         missingInputs.push("across_pair_unsupported");
       }
     }
-    const ready = isLive && coversTarget && missingInputs.length === 0;
+    const ready = !standbyFallback && isLive && coversTarget && missingInputs.length === 0;
     const availability = ready ? "ready" : "conditional";
     return candidateRecord({
       action,
@@ -708,11 +711,14 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
       source: describeSourceAsset(selectedSource.chain, selectedSource.token, sourceAmountMetadata(selectedSource)),
       availability,
       preferred: false,
+      standbyFallback,
       requiresReserveState: false,
       reserveReplenishmentKnown: true,
       missingInputs,
       notes: isLive
-        ? `Gateway fallback via ${provider.label} (live executor).`
+        ? standbyFallback
+          ? `Standby Gateway fallback via ${provider.label} (live executor retained for automatic retry).`
+          : `Gateway fallback via ${provider.label} (live executor).`
         : `Gateway fallback via ${provider.label}; catalog entry only — executor helper is a design scaffold and must be implemented before auto-selection.`,
     });
   });
@@ -761,6 +767,7 @@ function rankConditionalSupport(candidate = {}) {
 function chooseCandidate(candidates) {
   return [...candidates].sort((left, right) => {
     if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
+    if (Boolean(left.standbyFallback) !== Boolean(right.standbyFallback)) return left.standbyFallback ? 1 : -1;
     const availabilityDelta = rankAvailability(left.availability) - rankAvailability(right.availability);
     if (availabilityDelta !== 0) return availabilityDelta;
     const supportDelta = rankConditionalSupport(left) - rankConditionalSupport(right);

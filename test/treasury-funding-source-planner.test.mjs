@@ -321,6 +321,51 @@ test("Soneium Gateway route gaps keep LI.FI in the deterministic fallback ladder
   assert.ok(methods.includes("cross_chain_bridge_stargate"));
 });
 
+test("Gateway-healthy stable refill still retains live alternate bridges as standby candidates", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: {
+      ...planFixture("REFILL_REQUIRED"),
+      inventory: {
+        native: [],
+        tokens: [
+          {
+            chain: "base",
+            actual: "5000000",
+            actualDecimal: 5,
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            ticker: "USDC",
+            estimatedUsd: 5,
+          },
+        ],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "unichain",
+          ticker: "USDC",
+          token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+          refillAmount: "3000000",
+          refillAmountDecimal: 3,
+          refillEstimatedUsd: 3,
+          rationale: "Unichain stable bootstrap",
+        },
+      ],
+    },
+    policy,
+    gatewayAvailability: { available: true, reason: null, observedAt: "2026-04-24T00:00:00.000Z" },
+  });
+
+  const selection = funding.selections[0];
+  const methods = selection.candidates.map((candidate) => candidate.method);
+  assert.ok(methods.includes("cross_chain_swap_via_btc_intermediate"));
+  assert.ok(methods.includes("cross_chain_bridge_across"));
+  assert.ok(methods.includes("cross_chain_bridge_lifi"));
+  assert.equal(selection.selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(selection.candidates.find((candidate) => candidate.method === "cross_chain_bridge_across").standbyFallback, true);
+  assert.equal(selection.candidates.find((candidate) => candidate.method === "cross_chain_bridge_lifi").standbyFallback, true);
+});
+
 test("representative stable token refills use ticker fallback when token registry family is absent", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const funding = buildFundingSourcePlan({

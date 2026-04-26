@@ -147,7 +147,7 @@ test("planner suppresses Across for BSC while BSC SpokePool is unverified", () =
   assert.ok(!methods.has("cross_chain_bridge_across"));
 });
 
-test("planner leaves Gateway candidates selectable when Gateway available", () => {
+test("planner keeps alternate live bridges visible as standby fallbacks when Gateway available", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const funding = buildFundingSourcePlan({
     plan: crossChainPlanFixture(),
@@ -159,6 +159,15 @@ test("planner leaves Gateway candidates selectable when Gateway available", () =
     methods.has("cross_chain_bridge_or_swap") || methods.has("cross_chain_swap_via_btc_intermediate"),
     "Gateway candidate still emitted when available",
   );
-  assert.ok(!methods.has("cross_chain_bridge_across"), "alt bridges suppressed when Gateway live");
+  assert.ok(methods.has("cross_chain_bridge_across"), "Across retained as standby fallback");
+  assert.ok(methods.has("cross_chain_bridge_lifi"), "LiFi retained as standby fallback");
+  const selection = funding.selections[0];
+  assert.ok(
+    selection.selectedMethod === "cross_chain_bridge_or_swap" || selection.selectedMethod === "cross_chain_swap_via_btc_intermediate",
+    "Gateway-first selection stays intact while fallbacks remain visible",
+  );
+  const lifi = selection.candidates.find((candidate) => candidate.method === "cross_chain_bridge_lifi");
+  assert.equal(lifi.availability, "conditional");
+  assert.equal(lifi.standbyFallback, true);
   assert.equal(funding.gatewayAvailability.available, true);
 });
