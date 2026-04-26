@@ -29,6 +29,7 @@ function parseArgs(argv, env = process.env) {
     runtimeStatePath: options["runtime-state-path"] || env.BOB_CLAW_DASHBOARD_RUNTIME_STATE_PATH || dashboardRuntimeStatePath(base.dataDir),
     cloudflaredPath: options["cloudflared-path"] || env.BOB_CLAW_CLOUDFLARED_PATH || "cloudflared",
     syncPagesOrigin: !flags.has("--no-sync-pages-origin"),
+    pagesRepublishMs: Number(options["pages-republish-ms"] || env.BOB_CLAW_DASHBOARD_PAGES_REPUBLISH_MS || 120_000),
   };
 }
 
@@ -175,6 +176,23 @@ async function main() {
 
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+  if (args.syncPagesOrigin && args.pagesRepublishMs > 0) {
+    let republishing = false;
+    setInterval(async () => {
+      if (republishing || shuttingDown) return;
+      const origin = publicUrl;
+      if (!origin) return;
+      republishing = true;
+      try {
+        await syncPagesOrigin(origin);
+      } catch (error) {
+        console.error(`[dashboard-live] periodic pages republish failed: ${error.message}`);
+      } finally {
+        republishing = false;
+      }
+    }, args.pagesRepublishMs).unref();
+  }
 }
 
 main().catch((error) => {

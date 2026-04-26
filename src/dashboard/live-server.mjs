@@ -171,6 +171,19 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastResult: null,
       running: false,
     },
+    walletHoldingsSlice: {
+      id: "walletHoldingsSlice",
+      label: "wallet holdings slice",
+      script: "src/cli/report-wallet-holdings-slice.mjs",
+      intervalMs: options.wholeWalletRefreshMs,
+      lastStartedAt: null,
+      lastFinishedAt: null,
+      lastSucceededAt: null,
+      lastFailedAt: null,
+      lastError: null,
+      lastResult: null,
+      running: false,
+    },
     statusSnapshot: {
       id: "statusSnapshot",
       label: "dashboard snapshot",
@@ -185,7 +198,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       running: false,
     },
   };
-  const taskOrder = [tasks.wholeWallet, tasks.treasury, tasks.statusSnapshot];
+  const taskOrder = [tasks.wholeWallet, tasks.treasury, tasks.walletHoldingsSlice, tasks.statusSnapshot];
   let refreshTimer = null;
   let statusWarmTimer = null;
   let refreshPromise = null;
@@ -242,7 +255,8 @@ export function createDashboardLiveServer(rawOptions = {}) {
       };
       task.lastFailedAt = task.lastError.observedAt;
       task.lastResult = commandSummary(error.result);
-      console.error(`[dashboard-live] ${task.label} failed: ${error.message}`);
+      const stderrTail = (error.result?.stderr || "").trim().split(/\r?\n/u).slice(-6).join(" | ");
+      console.error(`[dashboard-live] ${task.label} failed: ${error.message}${stderrTail ? ` | stderr: ${stderrTail}` : ""}`);
       throw error;
     } finally {
       task.running = false;
