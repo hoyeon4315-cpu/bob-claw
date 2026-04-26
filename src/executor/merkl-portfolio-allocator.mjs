@@ -9,6 +9,8 @@ import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
+import { listStrategyCaps } from "../config/strategy-caps.mjs";
+import { buildScoredTargetBalances } from "./capital/scored-target-balances.mjs";
 import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
@@ -21,6 +23,7 @@ import {
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { sizeMerklCanaryAmount } from "./merkl-canary-autopilot.mjs";
+import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
 
 
 function finite(value) {
@@ -176,6 +179,54 @@ function activeByStrategy(positions = []) {
   return activeBy(positions, (position) => position.opportunityId || position.strategyId || position.positionId);
 }
 
+function addChainUsd(target, chain, usd) {
+  const value = finite(usd);
+  if (!chain || chain === "bitcoin" || value == null || value <= 0) return;
+  target[chain] = (target[chain] || 0) + value;
+}
+
+function inventoryExposureByChainUsd(inventory = {}) {
+  const result = {};
+  for (const item of inventory?.native || []) addChainUsd(result, item.chain, item.estimatedUsd);
+  for (const item of inventory?.tokenBalances || []) addChainUsd(result, item.chain, item.estimatedUsd);
+  for (const item of inventory?.tokens || []) addChainUsd(result, item.chain, item.estimatedUsd);
+  return result;
+}
+
+function externalExposurePositions(externalChainUsd = {}) {
+  return Object.entries(externalChainUsd || {})
+    .map(([chain, amountUsd]) => ({
+      event: "external_wallet_exposure",
+      status: "open",
+      positionId: `external:${chain}`,
+      opportunityId: null,
+      chain,
+      protocolId: null,
+      amountUsd: finite(amountUsd) ?? 0,
+      external: true,
+    }))
+    .filter((position) => position.amountUsd > 0);
+}
+
+function sumUsd(values = {}) {
+  return Object.values(values || {})
+    .map((value) => finite(value))
+    .filter((value) => value != null)
+    .reduce((sum, value) => sum + value, 0);
+}
+
+function chainTargetMaxAddUsd({ chain, exposureChainUsd = new Map(), targetChainUsd = null, toleranceUsd = 5 } = {}) {
+  if (!chain || !targetChainUsd || typeof targetChainUsd !== "object" || !(chain in targetChainUsd)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const targetUsd = finite(targetChainUsd[chain]);
+  if (targetUsd == null) return Number.POSITIVE_INFINITY;
+  const currentUsd = exposureChainUsd instanceof Map
+    ? exposureChainUsd.get(chain) || 0
+    : finite(exposureChainUsd[chain]) ?? 0;
+  return Math.max(0, targetUsd + (finite(toleranceUsd) ?? 5) - currentUsd);
+}
+
 function diversificationMaxAddUsd({ activePositions = [], queueItem = {} } = {}) {
   const activePositionUsd = activeUsd(activePositions);
   if (activePositionUsd < 10) return Number.POSITIVE_INFINITY;
@@ -279,14 +330,20 @@ export function buildMerklPortfolioAllocationPlan({
   canaryExecutions = [],
   positionRecords = [],
   auditRecords = [],
+  externalChainUsd = {},
+  targetChainUsd = null,
+  chainTargetToleranceUsd = 5,
   policy: policyInput = {},
   maxUsd = null,
   now = new Date().toISOString(),
 } = {}) {
   const policy = merklPortfolioPolicy(policyInput);
   const activePositions = activeMerklPortfolioPositions(positionRecords);
+  const externalPositions = externalExposurePositions(externalChainUsd);
+  const exposurePositions = [...activePositions, ...externalPositions];
   const activePositionUsd = activeUsd(activePositions);
   const activeChainUsd = activeBy(activePositions, (position) => position.chain);
+  const exposureChainUsd = activeBy(exposurePositions, (position) => position.chain);
   const activeProtocolUsd = activeBy(activePositions, (position) => position.protocolId);
   const runBudgetUsd = Math.max(0, Math.min(
     finite(maxUsd) ?? Number.POSITIVE_INFINITY,
@@ -303,7 +360,7 @@ export function buildMerklPortfolioAllocationPlan({
     });
     const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
     const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
-    const chainActiveUsd = activeChainUsd.get(queueItem.chain) || 0;
+    const chainActiveUsd = exposureChainUsd.get(queueItem.chain) || 0;
     const protocolActiveUsd = activeProtocolUsd.get(queueItem.protocolId) || 0;
     const sizing = sizeMerklCanaryAmount(queueItem, {
       maxUsd: Math.min(policy.perOpportunityMaxUsd, runBudgetUsd || policy.perOpportunityMaxUsd),
@@ -314,6 +371,12 @@ export function buildMerklPortfolioAllocationPlan({
       now,
     });
     const score = merklPortfolioScore(queueItem, { policy, canaryProof });
+    const targetMaxAddUsd = chainTargetMaxAddUsd({
+      chain: queueItem.chain,
+      exposureChainUsd,
+      targetChainUsd,
+      toleranceUsd: chainTargetToleranceUsd,
+    });
     const blockers = [];
     if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("hold_executor_missing");
     if (!canaryProof) blockers.push("live_canary_proof_required_before_hold");
@@ -324,14 +387,15 @@ export function buildMerklPortfolioAllocationPlan({
     if (score < policy.minScoreForEntry) blockers.push("portfolio_score_below_entry_floor");
     if (sizing.status !== "ready") blockers.push(...(sizing.blockers || ["sizing_not_ready"]));
     const diversification = diversificationGateForAllocation({
-      activePositions,
+      activePositions: exposurePositions,
       queueItem,
       addUsd: sizing.amountUsd,
     });
-    const diversificationMaxUsd = diversificationMaxAddUsd({ activePositions, queueItem });
+    const diversificationMaxUsd = diversificationMaxAddUsd({ activePositions: exposurePositions, queueItem });
     if (!diversification.accepted && diversificationMaxUsd < policy.minPositionUsd) {
       blockers.push("diversification_policy_rejected");
     }
+    if (targetMaxAddUsd < policy.minPositionUsd) blockers.push("chain_target_exceeded");
     const needsCapitalJob =
       queueItem.capabilityGaps?.includes("current_inventory_entry_route_required") ||
       (sizing.blockers || []).some((blocker) => [
@@ -356,6 +420,8 @@ export function buildMerklPortfolioAllocationPlan({
         violations: diversification.verdict?.violations || [],
       },
       diversificationMaxUsd,
+      targetChainUsd: targetChainUsd?.[queueItem.chain] ?? null,
+      targetMaxAddUsd,
       sizing,
       status: blockers.length ? "blocked" : "candidate",
       blockers,
@@ -386,6 +452,7 @@ export function buildMerklPortfolioAllocationPlan({
       remainingBudgetUsd,
       remainingTokenUsd,
       finite(candidate.diversificationMaxUsd) ?? Number.POSITIVE_INFINITY,
+      finite(candidate.targetMaxAddUsd) ?? Number.POSITIVE_INFINITY,
     );
     if (targetUsd < policy.minPositionUsd) {
       allocations.push({
@@ -413,7 +480,7 @@ export function buildMerklPortfolioAllocationPlan({
       continue;
     }
     const resizedDiversification = diversificationGateForAllocation({
-      activePositions,
+      activePositions: exposurePositions,
       queueItem: candidate.queueItem,
       addUsd: resized.amountUsd,
     });
@@ -474,6 +541,9 @@ export function buildMerklPortfolioAllocationPlan({
       activePositionCount: activePositions.length,
       activePositionUsd,
       activeChainUsd: Object.fromEntries(activeChainUsd),
+      externalChainUsd: { ...(externalChainUsd || {}) },
+      exposureChainUsd: Object.fromEntries(exposureChainUsd),
+      targetChainUsd: targetChainUsd ? { ...targetChainUsd } : null,
       activeProtocolUsd: Object.fromEntries(activeProtocolUsd),
       runBudgetUsd,
       entryReadyCount: entryQueue.length,
@@ -491,6 +561,15 @@ export function buildMerklPortfolioAllocationPlan({
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return await readJson(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 function txHashForStep(execution = {}, stepIds = []) {
@@ -614,12 +693,13 @@ export async function runMerklPortfolioAllocator({
   }
 
   const queue = await readJson(queuePath);
-  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, positionRecords, auditRecords] = await Promise.all([
+  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, positionRecords, auditRecords, wholeWalletInventoryRecords] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
     readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
     readJsonl(config.dataDir, "merkl-portfolio-positions").catch(() => []),
     readJsonl("logs", "signer-audit").catch(() => []),
+    readJsonl(config.dataDir, "whole-wallet-inventory").catch(() => []),
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const store = new JsonlStore(config.dataDir);
@@ -660,12 +740,34 @@ export async function runMerklPortfolioAllocator({
       };
     }
   }
+  const externalChainUsd = inventoryExposureByChainUsd(
+    latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, preflight.senderAddress) || inventorySnapshot,
+  );
+  const activePositions = activeMerklPortfolioPositions(positionRecords);
+  const totalCapitalUsd = activeUsd(activePositions) + sumUsd(externalChainUsd);
+  const [promotionGate, economics] = await Promise.all([
+    readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
+    readJsonIfExists(join(config.dataDir, "destination-economics-ledger.json")),
+  ]);
+  const scoredTargets = totalCapitalUsd > 0
+    ? buildScoredTargetBalances({
+        promotionGate,
+        economics,
+        strategyCaps: listStrategyCaps(),
+        totalCapitalUsd,
+      })
+    : null;
+  const targetChainUsd = scoredTargets
+    ? Object.fromEntries((scoredTargets.perChain || []).map((entry) => [entry.chain, entry.settlementTargetUsd || 0]))
+    : null;
   const plan = buildMerklPortfolioAllocationPlan({
     queue,
     inventorySnapshot,
     canaryExecutions,
     positionRecords,
     auditRecords,
+    externalChainUsd,
+    targetChainUsd,
     policy: policyInput,
     maxUsd,
   });

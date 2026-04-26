@@ -156,9 +156,10 @@ export function parseWhitelistedRefreshCommand(command, { allowedScripts = DEFAU
   });
 }
 
-export function defaultRunCommand({ command, args, cwd, env }) {
+export function defaultRunCommand({ command, args, cwd, env, timeoutMs = null }) {
   return new Promise((resolve) => {
     const startedAt = Date.now();
+    let settled = false;
     const child = spawn(command, args, {
       cwd,
       env,
@@ -166,6 +167,26 @@ export function defaultRunCommand({ command, args, cwd, env }) {
     });
     let stdout = "";
     let stderr = "";
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+      ? setTimeout(() => {
+          stderr = `${stderr}${stderr ? "\n" : ""}Command timed out after ${Number(timeoutMs)}ms`;
+          child.kill("SIGTERM");
+          finish({
+            ok: false,
+            exitCode: null,
+            signal: "SIGTERM",
+            durationMs: Date.now() - startedAt,
+            stdout,
+            stderr,
+          });
+        }, Number(timeoutMs))
+      : null;
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
     });
@@ -173,7 +194,7 @@ export function defaultRunCommand({ command, args, cwd, env }) {
       stderr += chunk.toString();
     });
     child.on("error", (error) => {
-      resolve({
+      finish({
         ok: false,
         exitCode: null,
         signal: null,
@@ -183,7 +204,7 @@ export function defaultRunCommand({ command, args, cwd, env }) {
       });
     });
     child.on("close", (exitCode, signal) => {
-      resolve({
+      finish({
         ok: exitCode === 0,
         exitCode,
         signal,

@@ -76,3 +76,25 @@ test("whole-wallet inventory adds external unclassified wallet delta when addres
   assert.equal(inventory.totalUsd, 3000);
   assert.equal(inventory.source, "live_scan_with_external_portfolio");
 });
+
+test("whole-wallet inventory deduplicates repeated chain token balances before totals", () => {
+  const inventory = buildWholeWalletInventory({
+    address: "0x000000000000000000000000000000000000dEaD",
+    prices: {
+      tokenByKey: { ethereum: 2200 },
+      nativeByChain: { base: 2200 },
+    },
+    chains: ["base"],
+    nativeBalances: {},
+    tokenBalances: [
+      { chain: "base", token: "0x4200000000000000000000000000000000000006", balance: "1000000000000000000", rpcUrl: "https://mainnet.base.org" },
+      { chain: "base", token: "0x4200000000000000000000000000000000000006", balance: "1000000000000000000", rpcUrl: "https://base.llamarpc.com" },
+    ],
+    observedAt: "2026-04-26T10:40:00.900Z",
+  });
+
+  assert.equal(inventory.tokenBalances.length, 1);
+  assert.equal(inventory.summary.tokenCount, 1);
+  assert.equal(inventory.summary.itemizedWalletUsd, 2200);
+  assert.equal(inventory.totalUsd, 2200);
+});

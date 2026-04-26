@@ -68,6 +68,41 @@ test("Gas.Zip build plan wires direct-deposit tx and destination proof target", 
   assert.equal(plan.intent.metadata.gasZipMinimumDestinationWei, "985050000000000");
 });
 
+test("Gas.Zip build plan allows refill when an upcoming operation needs more gas than the normal buffer", async () => {
+  const plan = await buildGasZipNativeRefuelPlan({
+    srcChain: "base",
+    dstChain: "bsc",
+    amountWei: "1000000000000000",
+    requiredDestinationBalanceWei: "2000000000000000",
+    destinationBalanceStatus: "ready",
+    destinationNativeDecimal: 0.001,
+    destinationMinBalanceDecimal: 0.0005,
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+    priceReader: async () => pricesFixture(),
+    quoteFetcher: async () => ({
+      calldata: "0x010e",
+      quotes: [
+        {
+          chain: 56,
+          expected: "990000000000000",
+          gas: "10000000000000",
+          usd: 0.594,
+          speed: 7,
+        },
+      ],
+    }),
+    estimateGasImpl: async () => ({
+      gasUnits: 120_000,
+      rpcUrl: "https://base.example",
+    }),
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.requiredDestinationBalanceWei, "2000000000000000");
+  assert.equal(plan.minimumDestinationWei, "985050000000000");
+});
+
 test("Gas.Zip refill preparation becomes ready once executor exists and proof is post-settlement only", async () => {
   let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({

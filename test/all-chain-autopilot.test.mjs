@@ -472,6 +472,7 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(seen.some((args) => args.includes("src/cli/run-live-canary-sweep.mjs") && args.includes("--timeout-ms=456")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123")), true);
+  assert.equal(seen.some((args) => args.includes("src/cli/run-strategy-catalog-dispatcher.mjs") && args.includes("--command-timeout-ms=789")), true);
 });
 
 test("all-chain autopilot retries refill jobs with executable alternate methods after no_route", async () => {

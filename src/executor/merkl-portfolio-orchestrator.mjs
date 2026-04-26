@@ -5,6 +5,7 @@ import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { runMerklPortfolioExit } from "./merkl-portfolio-exit.mjs";
 import { runMerklPortfolioAllocator } from "./merkl-portfolio-allocator.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 
 async function writeOrchestratorReport(report) {
   const path = `${config.dataDir}/merkl-portfolio-orchestrator-latest.json`;
@@ -12,14 +13,16 @@ async function writeOrchestratorReport(report) {
 }
 
 function compactExitReport(report = {}) {
+  const evaluations = report.evaluations || [];
+  const executions = report.executions || [];
   return {
     status: report.status || null,
     blockedReason: report.blockedReason || null,
-    positionsEvaluated: report.positions?.length ?? 0,
-    exitsReady: report.exits?.filter?.((item) => item.status === "exit_ready")?.length ?? 0,
-    exitsExecuted: report.executions?.length ?? 0,
-    txHashes: (report.executions || [])
-      .map((item) => item.execution?.signerResult?.broadcast?.txHash)
+    positionsEvaluated: report.summary?.activePositionCount ?? evaluations.length,
+    exitsReady: report.summary?.exitReadyCount ?? evaluations.filter((item) => item.status === "exit_ready").length,
+    exitsExecuted: executions.length,
+    txHashes: executions
+      .map((item) => item.record?.txHash || item.execution?.signerResult?.broadcast?.txHash)
       .filter(Boolean),
   };
 }
@@ -49,6 +52,11 @@ export async function runMerklPortfolioOrchestrator({
   maxUsd = null,
   minEthereumNotionalUsd,
   allowInefficientEthereum = false,
+  runExitImpl = runMerklPortfolioExit,
+  runAllocatorImpl = runMerklPortfolioAllocator,
+  scanInventoryImpl = scanTreasuryInventory,
+  buildTreasuryPolicyImpl = buildDefaultTreasuryPolicy,
+  validateTreasuryPolicyImpl = validateTreasuryPolicy,
 } = {}) {
   const observedAt = new Date().toISOString();
   const results = {
@@ -61,7 +69,7 @@ export async function runMerklPortfolioOrchestrator({
   };
 
   // Phase 1: Exit stale positions
-  const exitReport = await runMerklPortfolioExit({
+  const exitReport = await runExitImpl({
     execute,
     write: false,
     force: forceExit,
@@ -76,13 +84,16 @@ export async function runMerklPortfolioOrchestrator({
   let inventoryRefresh = { status: "skipped", scannedCount: 0 };
   if (execute && results.exit.exitsExecuted > 0) {
     try {
-      const scanResult = await scanTreasuryInventory({
-        dataDir: config.dataDir,
+      const treasuryPolicy = validateTreasuryPolicyImpl(buildTreasuryPolicyImpl());
+      const scanResult = await scanInventoryImpl({
+        policy: treasuryPolicy,
         address: exitReport?.preflight?.senderAddress,
       });
       inventoryRefresh = {
         status: "ok",
-        scannedCount: Array.isArray(scanResult) ? scanResult.length : 0,
+        scannedCount: Array.isArray(scanResult)
+          ? scanResult.length
+          : (scanResult?.native?.length ?? 0) + (scanResult?.tokens?.length ?? 0),
       };
     } catch (error) {
       inventoryRefresh = {
@@ -94,7 +105,7 @@ export async function runMerklPortfolioOrchestrator({
   results.inventoryRefresh = inventoryRefresh;
 
   // Phase 3: Allocate freed (and existing idle) capital into best opportunities
-  const allocatorReport = await runMerklPortfolioAllocator({
+  const allocatorReport = await runAllocatorImpl({
     execute,
     write: false,
     queuePath,

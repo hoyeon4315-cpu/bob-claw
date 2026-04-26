@@ -452,3 +452,161 @@ test("allocator diversification gate blocks the next Ethereum pick when current 
   assert.ok(ethAllocation.blockers.includes("diversification_policy_rejected"));
   assert.notEqual(plan.entryQueue[0]?.queueItem.chain, "ethereum");
 });
+
+test("allocator includes external wallet chain exposure before re-entering after rebalance exits", () => {
+  const ethItem = queueItem({
+    opportunityId: "eth-reentry",
+    chain: "ethereum",
+    protocolId: "morpho",
+    priorityScore: 125,
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0x1111111111111111111111111111111111111111",
+        assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        shareTokenAddress: "0x1111111111111111111111111111111111111111",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const optimismItem = queueItem({
+    opportunityId: "op-next",
+    chain: "optimism",
+    protocolId: "aave",
+    priorityScore: 95,
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "aave_v3_pool_supply_withdraw",
+      resolvedBinding: {
+        assetAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        aTokenAddress: "0x2222222222222222222222222222222222222222",
+        poolAddress: "0x3333333333333333333333333333333333333333",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const proof = (opportunityId) => ({
+    observedAt: "2026-04-24T06:01:00.000Z",
+    mode: "execute",
+    queueItem: { opportunityId },
+    execution: { settlementStatus: "delivered" },
+  });
+
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [ethItem, optimismItem] },
+    inventorySnapshot: {
+      native: [
+        { chain: "ethereum", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
+        { chain: "optimism", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
+      ],
+      tokens: [
+        { chain: "ethereum", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+      ],
+    },
+    externalChainUsd: {
+      ethereum: 150,
+    },
+    canaryExecutions: [proof("eth-reentry"), proof("op-next")],
+    positionRecords: [
+      { event: "position_opened", status: "open", positionId: "base-1", opportunityId: "base-1", chain: "base", protocolId: "yo", amountUsd: 100 },
+    ],
+    maxUsd: 50,
+    policy: {
+      maxActiveUsd: 500,
+      perOpportunityMaxUsd: 50,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 2,
+      minEthereumNotionalUsd: 1,
+    },
+    now: "2026-04-25T00:00:00.000Z",
+  });
+
+  const ethAllocation = plan.allocations.find((item) => item.queueItem.opportunityId === "eth-reentry");
+  assert.equal(ethAllocation.status, "blocked");
+  assert.ok(ethAllocation.blockers.includes("diversification_policy_rejected"));
+  assert.equal(plan.entryQueue[0]?.queueItem.opportunityId, "op-next");
+});
+
+test("allocator respects scored chain targets so exit and entry do not churn the same chain", () => {
+  const ethItem = queueItem({
+    opportunityId: "eth-target-over",
+    chain: "ethereum",
+    protocolId: "morpho",
+    priorityScore: 125,
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0x1111111111111111111111111111111111111111",
+        assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        shareTokenAddress: "0x1111111111111111111111111111111111111111",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const optimismItem = queueItem({
+    opportunityId: "op-target-under",
+    chain: "optimism",
+    protocolId: "aave",
+    priorityScore: 95,
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "aave_v3_pool_supply_withdraw",
+      resolvedBinding: {
+        assetAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        aTokenAddress: "0x2222222222222222222222222222222222222222",
+        poolAddress: "0x3333333333333333333333333333333333333333",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const proof = (opportunityId) => ({
+    observedAt: "2026-04-24T06:01:00.000Z",
+    mode: "execute",
+    queueItem: { opportunityId },
+    execution: { settlementStatus: "delivered" },
+  });
+
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [ethItem, optimismItem] },
+    inventorySnapshot: {
+      native: [
+        { chain: "ethereum", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
+        { chain: "optimism", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
+      ],
+      tokens: [
+        { chain: "ethereum", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+      ],
+    },
+    externalChainUsd: {
+      ethereum: 85,
+      optimism: 5,
+    },
+    targetChainUsd: {
+      ethereum: 15,
+      optimism: 120,
+    },
+    canaryExecutions: [proof("eth-target-over"), proof("op-target-under")],
+    maxUsd: 50,
+    policy: {
+      maxActiveUsd: 500,
+      perOpportunityMaxUsd: 50,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 2,
+      minEthereumNotionalUsd: 1,
+    },
+    now: "2026-04-25T00:00:00.000Z",
+  });
+
+  const ethAllocation = plan.allocations.find((item) => item.queueItem.opportunityId === "eth-target-over");
+  assert.equal(ethAllocation.status, "blocked");
+  assert.ok(ethAllocation.blockers.includes("chain_target_exceeded"));
+  assert.equal(plan.entryQueue[0]?.queueItem.opportunityId, "op-target-under");
+});

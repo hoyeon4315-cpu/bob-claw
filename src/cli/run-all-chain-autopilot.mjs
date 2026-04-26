@@ -32,7 +32,7 @@ function parseArgs(argv) {
     canaryLimit: entries["canary-limit"] ? Number(entries["canary-limit"]) : 11,
     timeoutMs: entries["timeout-ms"] ? Number(entries["timeout-ms"]) : 300_000,
     canaryTimeoutMs: entries["canary-timeout-ms"] ? Number(entries["canary-timeout-ms"]) : 600_000,
-    dispatchTimeoutMs: entries["dispatch-timeout-ms"] ? Number(entries["dispatch-timeout-ms"]) : 600_000,
+    dispatchTimeoutMs: entries["dispatch-timeout-ms"] ? Number(entries["dispatch-timeout-ms"]) : 1_200_000,
     bootstrapBtcSats: entries["bootstrap-btc-sats"] ? Number(entries["bootstrap-btc-sats"]) : null,
     bootstrapBtcPriceUsd: entries["bootstrap-btc-price-usd"] ? Number(entries["bootstrap-btc-price-usd"]) : null,
     bootstrapTotalCapitalUsd: entries["bootstrap-total-capital-usd"] ? Number(entries["bootstrap-total-capital-usd"]) : null,

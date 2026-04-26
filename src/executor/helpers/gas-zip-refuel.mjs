@@ -58,6 +58,12 @@ function amountUsdFromWei(amountWei, asset, prices) {
   return Number((amountDecimal * unitUsd).toFixed(6));
 }
 
+function decimalFromRawUnits(rawAmount, decimals) {
+  if (rawAmount == null || rawAmount === "") return null;
+  if (!Number.isInteger(decimals)) return null;
+  return Number(BigInt(rawAmount)) / 10 ** decimals;
+}
+
 function minimumOutputWithTolerance(outputWei, toleranceBps = 9950) {
   const output = BigInt(outputWei || 0);
   const bps = BigInt(Math.max(0, Math.min(10_000, Number(toleranceBps) || 0)));
@@ -93,6 +99,7 @@ export async function buildGasZipNativeRefuelPlan({
   dstChain,
   amountWei,
   minimumDestinationWei = null,
+  requiredDestinationBalanceWei = null,
   senderAddress,
   recipient,
   strategyId = GAS_ZIP_NATIVE_REFUEL_STRATEGY_ID,
@@ -120,6 +127,27 @@ export async function buildGasZipNativeRefuelPlan({
   const normalizedAmountWei = toPositiveIntegerString(amountWei, "amountWei");
   const normalizedMinimumDestinationWei =
     minimumDestinationWei == null ? null : toPositiveIntegerString(minimumDestinationWei, "minimumDestinationWei");
+  const normalizedRequiredDestinationBalanceWei =
+    requiredDestinationBalanceWei == null
+      ? null
+      : toPositiveIntegerString(requiredDestinationBalanceWei, "requiredDestinationBalanceWei");
+  const dstNativeAsset = tokenAsset(dstChain, ZERO_TOKEN);
+  const requiredDestinationBalanceDecimal = decimalFromRawUnits(
+    normalizedRequiredDestinationBalanceWei,
+    dstNativeAsset.decimals,
+  );
+  const effectiveDestinationMinBalanceDecimal = Number.isFinite(requiredDestinationBalanceDecimal)
+    ? Math.max(
+        requiredDestinationBalanceDecimal,
+        Number.isFinite(destinationMinBalanceDecimal) ? destinationMinBalanceDecimal : 0,
+      )
+    : destinationMinBalanceDecimal;
+  const effectiveDestinationBalanceStatus =
+    Number.isFinite(requiredDestinationBalanceDecimal) &&
+    Number.isFinite(destinationNativeDecimal) &&
+    destinationNativeDecimal < effectiveDestinationMinBalanceDecimal
+      ? "refill_required_for_operation"
+      : destinationBalanceStatus;
   const amountUsd = amountUsdFromWei(normalizedAmountWei, tokenAsset(srcChain, ZERO_TOKEN), await priceReader());
   const strategyCaps = assertStrategyCaps(strategyId);
   const policyVerdict = gasZipAcceptsAction({
@@ -144,13 +172,13 @@ export async function buildGasZipNativeRefuelPlan({
   // Rate-limit enforcement: per-chain daily max, open jobs, cooldown, destination-already-met
   if (!skipRateLimit) {
     const rateState = buildGasZipRateState({ auditRecords, now, gasZipPolicy });
-    const rateVerdict = evaluateGasZipRateLimit({
+      const rateVerdict = evaluateGasZipRateLimit({
       dstChain,
       amountUsd,
       rateState,
-      destinationBalanceStatus,
+      destinationBalanceStatus: effectiveDestinationBalanceStatus,
       destinationNativeDecimal,
-      destinationMinBalanceDecimal,
+      destinationMinBalanceDecimal: effectiveDestinationMinBalanceDecimal,
       now,
     });
     if (rateVerdict.decision === "BLOCK") {
@@ -282,10 +310,11 @@ export async function buildGasZipNativeRefuelPlan({
     senderAddress,
     recipient,
     amountWei: normalizedAmountWei,
+    requiredDestinationBalanceWei: normalizedRequiredDestinationBalanceWei,
     minimumDestinationWei: effectiveMinimumDestinationWei,
     amountUsd,
     srcAsset: tokenAsset(srcChain, ZERO_TOKEN),
-    dstAsset: tokenAsset(dstChain, ZERO_TOKEN),
+    dstAsset: dstNativeAsset,
     gasZip: {
       apiBase: gasZipPolicy.apiBase,
       quoteUrl,

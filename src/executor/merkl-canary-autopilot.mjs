@@ -385,7 +385,7 @@ export async function refreshMerklAutopilotSelectionForExecute({
   };
 }
 
-function merklExecutionErrorReport({
+export function merklExecutionErrorReport({
   error,
   execute,
   preflight,
@@ -401,6 +401,9 @@ function merklExecutionErrorReport({
   if (/insufficient_native_balance_for_gas/iu.test(message)) blockedReason = "insufficient_native_gas_balance";
   if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message)) blockedReason = "receipt_confirmation_timeout";
   if (/All RPC endpoints failed for chain:/iu.test(message)) blockedReason = "live_inventory_refresh_failed";
+  if (/EvmReceiptReverted|Transaction reverted after broadcast|execution reverted|\\brevert\\b/iu.test(message)) {
+    blockedReason = "execution_reverted";
+  }
   if (!blockedReason) throw error;
   return {
     schemaVersion: 1,

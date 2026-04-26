@@ -12,6 +12,114 @@ function parseRouteChains(routeKey = null) {
   };
 }
 
+function parseRouteSource(routeKey = null) {
+  const [src = ""] = String(routeKey || "").split("->");
+  const [chain = "", token = ""] = src.split(":");
+  return {
+    chain: chain || null,
+    token: token || null,
+  };
+}
+
+function isZeroAddress(value = null) {
+  return /^0x0{40}$/iu.test(String(value || ""));
+}
+
+function observedAtMs(value) {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ageMinutes(observedAt = null, now = null) {
+  const observed = observedAtMs(observedAt);
+  const current = observedAtMs(now || new Date().toISOString());
+  if (observed === null || current === null) return null;
+  return (current - observed) / 60_000;
+}
+
+function latestWholeWalletInventory(records = []) {
+  let latest = null;
+  let latestMs = null;
+  for (const record of records || []) {
+    const recordMs = observedAtMs(record?.observedAt);
+    if (recordMs === null) continue;
+    if (latestMs === null || recordMs > latestMs) {
+      latest = record;
+      latestMs = recordMs;
+    }
+  }
+  return latest;
+}
+
+function parseUnits(value = null) {
+  try {
+    if (value === null || value === undefined || value === "") return null;
+    return BigInt(String(value));
+  } catch {
+    return null;
+  }
+}
+
+function sourceBalanceFromInventory(inventory = null, route = null) {
+  if (!inventory || !route?.routeKey) return null;
+  const source = parseRouteSource(route.routeKey);
+  if (!source.chain || !source.token) return null;
+  const sourceIsNative = isZeroAddress(source.token);
+  const rows = sourceIsNative ? inventory.native || [] : inventory.tokenBalances || [];
+  const match = rows.find(
+    (item) =>
+      String(item?.chain || "").toLowerCase() === source.chain.toLowerCase() &&
+      String(item?.token || "").toLowerCase() === source.token.toLowerCase(),
+  );
+  if (!match) {
+    const matchingScanError = (inventory.scanErrors || []).find(
+      (item) =>
+        String(item?.chain || "").toLowerCase() === source.chain.toLowerCase() &&
+        (sourceIsNative || String(item?.token || "").toLowerCase() === source.token.toLowerCase()),
+    );
+    if (matchingScanError) return null;
+    return {
+      chain: source.chain,
+      token: source.token,
+      balance: 0n,
+      observedAt: inventory.observedAt || null,
+      ticker: null,
+    };
+  }
+  const balance = parseUnits(match.balance);
+  if (balance === null) return null;
+  return {
+    chain: source.chain,
+    token: source.token,
+    balance,
+    observedAt: inventory.observedAt || null,
+    ticker: match.ticker || null,
+  };
+}
+
+function sourceInventoryProblem({ route = null, wholeWalletRecords = [], now = null } = {}) {
+  const required = parseUnits(route?.amount);
+  if (required === null) return null;
+  const inventory = latestWholeWalletInventory(wholeWalletRecords);
+  const sourceBalance = sourceBalanceFromInventory(inventory, route);
+  if (!sourceBalance || sourceBalance.balance >= required) return null;
+  return {
+    field: "sourceInventory",
+    key: "source_inventory",
+    label: "source inventory",
+    state: "blocked",
+    observedAt: sourceBalance.observedAt,
+    ageMinutes: ageMinutes(sourceBalance.observedAt, now),
+    failureReason: `insufficient_source_inventory:${sourceBalance.balance.toString()}<${required.toString()}`,
+    actualBalance: sourceBalance.balance.toString(),
+    requiredAmount: required.toString(),
+    chain: sourceBalance.chain,
+    token: sourceBalance.token,
+    ticker: sourceBalance.ticker,
+  };
+}
+
 function routeContext({ dashboardStatus = null, reviewPackage = null, canaryInputs = null, nextStep = null } = {}) {
   const route = nextStep?.route || null;
   const candidate = reviewPackage?.manualReviewCandidate || null;
@@ -187,11 +295,16 @@ export function buildConnectedRefreshPackage({
   reviewPackage = null,
   nextStep = null,
   address = null,
+  wholeWalletRecords = [],
   now = null,
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
   const route = routeContext({ dashboardStatus, reviewPackage, canaryInputs, nextStep });
-  const problems = inputProblems(canaryInputs, route);
+  const inventoryProblem = sourceInventoryProblem({ route, wholeWalletRecords, now: generatedAt });
+  const canaryProblems = inputProblems(canaryInputs, route);
+  const problems = inventoryProblem
+    ? [inventoryProblem, ...canaryProblems.filter((problem) => problem.state === "blocked")]
+    : canaryProblems;
   const refreshableProblems = problems.filter((problem) => problem.state === "stale" || problem.state === "missing");
   const blockedProblems = problems.filter((problem) => problem.state === "blocked");
   const refreshSteps = refreshableProblems.map((problem, index) => buildRefreshStep(problem, { route, address, index })).filter(Boolean);

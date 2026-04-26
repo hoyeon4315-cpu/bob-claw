@@ -98,6 +98,45 @@ function externalUnclassifiedRecord({ provider, walletUsd }, missingUsd) {
   };
 }
 
+function tokenBalanceKey(entry) {
+  const chain = normalized(entry?.chain);
+  const token = normalized(entry?.token);
+  return chain && token ? `${chain}:${token}` : null;
+}
+
+function balanceBigInt(entry) {
+  if (!entry?.balance) return null;
+  try {
+    return BigInt(entry.balance);
+  } catch {
+    return null;
+  }
+}
+
+function preferredTokenBalanceEntry(left, right) {
+  const leftBalance = balanceBigInt(left);
+  const rightBalance = balanceBigInt(right);
+  if (rightBalance != null) {
+    if (leftBalance == null || rightBalance > leftBalance) return right;
+    return left;
+  }
+  return leftBalance != null ? left : left || right;
+}
+
+function dedupeTokenBalanceInputs(tokenBalances = []) {
+  const keyed = new Map();
+  const unkeyed = [];
+  for (const entry of tokenBalances || []) {
+    const key = tokenBalanceKey(entry);
+    if (!key) {
+      unkeyed.push(entry);
+      continue;
+    }
+    keyed.set(key, preferredTokenBalanceEntry(keyed.get(key), entry));
+  }
+  return [...keyed.values(), ...unkeyed];
+}
+
 export function buildWholeWalletInventory({
   address,
   bitcoinAddress = null,
@@ -129,7 +168,7 @@ export function buildWholeWalletInventory({
     native.push(bitcoinRecord(bitcoinAddress, bitcoinBalance, prices));
   }
 
-  for (const entry of tokenBalances) {
+  for (const entry of dedupeTokenBalanceInputs(tokenBalances)) {
     if (entry?.error) {
       scanErrors.push({
         kind: "token",
@@ -208,7 +247,11 @@ export async function scanWholeWalletInventory({
 
   const tokenEntries = [];
   for (const chain of chains) {
+    const seenTokensForChain = new Set();
     for (const target of targets) {
+      const tokenKey = normalized(target.token);
+      if (seenTokensForChain.has(tokenKey)) continue;
+      seenTokensForChain.add(tokenKey);
       try {
         const result = await readErc20Balance(chain, target.token, address, { fetchImpl });
         if (result.balance > 0n) {

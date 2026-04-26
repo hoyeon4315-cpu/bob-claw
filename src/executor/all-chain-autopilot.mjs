@@ -918,6 +918,7 @@ export async function runAllChainAutopilot({
       "--write",
       "--continue-on-failure",
       "--mode=auto",
+      `--command-timeout-ms=${dispatchTimeoutMs}`,
     ], "--execute", allowLiveStrategyDispatch),
     runCommandImpl,
     cwd,

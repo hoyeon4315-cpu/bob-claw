@@ -23,6 +23,8 @@ test("run-gas-zip-refuel parseArgs reads execution and settlement options", () =
     "--src-chain=base",
     "--dst-chain=sonic",
     "--amount-wei=1000000000000000",
+    "--minimum-destination-wei=990000000000000",
+    "--required-destination-balance-wei=2000000000000000",
     "--sender=0x1111111111111111111111111111111111111111",
     "--recipient=0x2222222222222222222222222222222222222222",
     "--strategy-id=gas-zip-smoke",
@@ -43,6 +45,8 @@ test("run-gas-zip-refuel parseArgs reads execution and settlement options", () =
   assert.equal(args.srcChain, "base");
   assert.equal(args.dstChain, "sonic");
   assert.equal(args.amountWei, "1000000000000000");
+  assert.equal(args.minimumDestinationWei, "990000000000000");
+  assert.equal(args.requiredDestinationBalanceWei, "2000000000000000");
   assert.equal(args.sender, "0x1111111111111111111111111111111111111111");
   assert.equal(args.recipient, "0x2222222222222222222222222222222222222222");
   assert.equal(args.strategyId, "gas-zip-smoke");

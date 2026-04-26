@@ -8,6 +8,7 @@ import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 import { buildStrategyDispatchSummary, executeStrategyDispatch } from "../session/strategy-dispatch-runner.mjs";
+import { defaultRunCommand as runRefreshCommand } from "../session/shadow-refresh-runner.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -25,6 +26,7 @@ function parseArgs(argv) {
     execute: flags.has("--execute"),
     continueOnFailure: flags.has("--continue-on-failure"),
     mode: options.mode || "auto",
+    commandTimeoutMs: options["command-timeout-ms"] ? Number(options["command-timeout-ms"]) : null,
     scope: options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [],
     bucket: options.bucket ? options.bucket.split(",").map((item) => item.trim()).filter(Boolean) : [],
   };
@@ -55,6 +57,14 @@ async function main() {
     execute: args.execute,
     requestedMode: args.mode,
     stopOnFailure: !args.continueOnFailure,
+    ...(Number.isFinite(args.commandTimeoutMs) && args.commandTimeoutMs > 0
+      ? {
+          runCommand: (details) => runRefreshCommand({
+            ...details,
+            timeoutMs: args.commandTimeoutMs,
+          }),
+        }
+      : {}),
   });
 
   if (args.execute) {

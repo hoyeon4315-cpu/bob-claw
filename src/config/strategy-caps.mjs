@@ -434,7 +434,7 @@ export const STRATEGY_CAPS = Object.freeze({
     strategyId: "gateway_native_asset_conversion_sleeve",
     label: "Gateway native-asset conversion sleeve",
     autoExecute: true,
-    resumeAfterFailureAt: "2026-04-26T05:34:30.000Z",
+    resumeAfterFailureAt: "2026-04-26T10:55:02.000Z",
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["morpho", "aave", "euler", "odos"]),

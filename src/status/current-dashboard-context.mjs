@@ -508,6 +508,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     reviewPackage,
     nextStep: state.nextStep,
     address: state.address,
+    wholeWalletRecords: wholeWalletInventoryRecords,
   });
   let executionRunbook = buildExecutionRunbook({
     dashboardStatus,
@@ -640,6 +641,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     reviewPackage,
     nextStep: state.nextStep,
     address: state.address,
+    wholeWalletRecords: wholeWalletInventoryRecords,
   });
   executionRunbook = buildExecutionRunbook({
     dashboardStatus,

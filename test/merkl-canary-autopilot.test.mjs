@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  merklExecutionErrorReport,
   refreshMerklAutopilotSelectionForExecute,
   selectMerklCanaryAutopilotCandidate,
   selectMerklCanaryAutopilotCandidates,
@@ -247,4 +248,28 @@ test("refreshes execute sizing from live balances before Merkl canary execution"
   assert.equal(refreshed.sizing.status, "ready");
   assert.equal(refreshed.sizing.amount, "100024");
   assert.equal(refreshed.sizing.amountUsd, 0.100024);
+});
+
+test("classifies reverted Merkl canary broadcasts as candidate blockers", () => {
+  const report = merklExecutionErrorReport({
+    execute: true,
+    error: Object.assign(new Error("Transaction reverted after broadcast"), {
+      name: "EvmReceiptReverted",
+    }),
+    preflight: {
+      status: "ready",
+      senderAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+      liveBaseline: { liveTrading: "ALLOWED" },
+      killSwitchPath: "/tmp/KILL_SWITCH",
+    },
+    queue: { queue: [queueItem()] },
+    queueItem: queueItem({ opportunityId: "reverted" }),
+    sizing: { amount: "1000000", amountUsd: 1 },
+    readyCount: 1,
+    representativeCoverage: { missingRepresentativeChainCount: 0 },
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.equal(report.blockedReason, "execution_reverted");
+  assert.equal(report.summary.selectedOpportunityId, "reverted");
 });
