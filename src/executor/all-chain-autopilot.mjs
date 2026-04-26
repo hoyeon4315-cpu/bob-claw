@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
+import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -22,6 +23,9 @@ export const OFFICIAL_GATEWAY_DESTINATION_CHAINS = Object.freeze([
   "sei",
   "sonic",
 ]);
+const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
+const BASE_WBTC_OFT_TOKEN = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";
+const MIN_WRAPPED_BTC_HANDOFF_USD = 5;
 
 function jsonFromStdout(stdout = "") {
   const text = String(stdout || "").trim();
@@ -304,15 +308,24 @@ function compactDestinationAllocator(report = null) {
   };
 }
 
-function compactRepresentativeExecutionCoverage({ merklQueue = null, destinationAllocator = null } = {}) {
+function compactRepresentativeExecutionCoverage({ merklQueue = null, destinationAllocator = null, destinationRepresentative = null } = {}) {
   const merklQueuedChains = new Set(Object.keys(merklQueue?.summary?.byChain || {}));
   const merklMissingChains = merklQueue?.summary?.representativeCoverage?.missingChains || [];
+  const representativeCoveredChains = new Set(
+    (destinationRepresentative?.candidates || [])
+      .filter((candidate) => candidate.status === "covered" || candidate.status === "ready" || candidate.status === "queued")
+      .map((candidate) => candidate.chain)
+      .filter(Boolean),
+  );
   const allocatorReadyChains = destinationAllocator?.summary?.tier1ActiveReadyChains || [];
   const allocatorReviewOnlyChains = destinationAllocator?.summary?.tier2ReviewOnlyChains || [];
-  const allocatorReadyButNotQueuedChains = allocatorReadyChains.filter((chain) => !merklQueuedChains.has(chain));
+  const allocatorReadyButNotQueuedChains = allocatorReadyChains.filter(
+    (chain) => !merklQueuedChains.has(chain) && !representativeCoveredChains.has(chain),
+  );
   return {
     merklQueuedChains: [...merklQueuedChains],
     merklMissingChains,
+    representativeCoveredChains: [...representativeCoveredChains],
     allocatorReadyChains,
     allocatorReviewOnlyChains,
     allocatorReadyButNotQueuedChains,
@@ -368,14 +381,36 @@ function compactCanarySweep(report = null) {
 }
 
 function compactStrategyDispatch(report = null, { capitalDispatchReadiness = null } = {}) {
+  const currentResults = report?.record?.strategyResults || [];
+  const currentSucceeded = currentResults.filter((item) => item.executionStatus === "succeeded").length;
+  const currentFailed = currentResults.filter((item) => item.executionStatus === "failed").length;
   return {
     batchStatus: report?.record?.batchStatus || null,
     selectedCount: report?.record?.selectedCount ?? 0,
-    successCount: report?.summary?.successCount ?? null,
-    failedCount: report?.summary?.failureCount ?? null,
+    successCount: currentResults.length ? currentSucceeded : report?.summary?.successCount ?? null,
+    failedCount: currentResults.length ? currentFailed : report?.summary?.failureCount ?? null,
     liveEligibleCount: report?.executionSurfaces?.summary?.liveEligibleCount ?? null,
     missingExecutorCount: report?.executionSurfaces?.summary?.missingExecutorCount ?? null,
     capitalDispatchReadiness,
+  };
+}
+
+function compactWrappedBtcHandoff(preview = null, execution = null) {
+  const active = execution?.json || preview?.json || null;
+  const executionStatus = execution?.json?.execution?.handoffStatus || execution?.json?.execution?.conversionExecution?.settlementStatus || null;
+  return {
+    previewStatus: preview?.json?.plan?.handoffStatus || null,
+    amountSats: preview?.json?.plan?.amountSats || null,
+    conversionOutputAmount: preview?.json?.plan?.conversionPlan?.quote?.outputAmount || null,
+    attempted: Boolean(execution),
+    executionStatus,
+    blockedReason:
+      active?.plan?.blockedReason ||
+      active?.execution?.blockedReason ||
+      active?.error?.message ||
+      preview?.error?.message ||
+      execution?.error?.message ||
+      null,
   };
 }
 
@@ -430,6 +465,15 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "live_canary_sweep") {
     return true;
   }
+  if (step.name === "wrapped_btc_loop_handoff_preview" || step.name === "wrapped_btc_loop_handoff_execute") {
+    return true;
+  }
+  if (step.name === "treasury_inventory_refresh_pre_dispatch") {
+    return true;
+  }
+  if (step.name === "treasury_inventory_refresh_after_wrapped_btc_handoff") {
+    return true;
+  }
   if (step.name === "auto_kill_check") {
     return step.json?.triggered === true;
   }
@@ -438,6 +482,40 @@ function stepIsRecoverable(step, steps) {
   }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
+}
+
+function wrappedBtcLoopSurface(report = null) {
+  return (report?.strategies || []).find((strategy) => strategy.id === WRAPPED_BTC_LOOP_STRATEGY_ID) || null;
+}
+
+function tokenInventoryItem(inventory = null, { chain, token } = {}) {
+  const normalizedToken = String(token || "").toLowerCase();
+  return (inventory?.tokens || []).find(
+    (item) => String(item?.chain || "").toLowerCase() === chain && String(item?.token || "").toLowerCase() === normalizedToken,
+  ) || null;
+}
+
+function wrappedBtcHandoffAmountSats(executionSurfaces = null, inventory = null) {
+  const strategy = wrappedBtcLoopSurface(executionSurfaces);
+  const blockers = new Set(strategy?.liveAdmissionBlockers || []);
+  if (!blockers.has("base_cbbtc_collateral_unavailable")) return null;
+  const source = tokenInventoryItem(inventory, { chain: "base", token: BASE_WBTC_OFT_TOKEN });
+  const availableSourceUnits = BigInt(source?.actual || "0");
+  if (availableSourceUnits <= 0n) return null;
+  const evidence = strategy?.evidence || {};
+  const requiredUnits = evidence.baseCbBtcRequiredUnits ? BigInt(evidence.baseCbBtcRequiredUnits) : null;
+  const actualUnits = BigInt(evidence.baseCbBtcCollateralUnits || "0");
+  const tinyCapUsd = Number(evidence.livePerTradeCapUsd || getStrategyCaps(WRAPPED_BTC_LOOP_STRATEGY_ID)?.caps?.tinyLivePerTxUsd || 25);
+  const priceUsd = Number(evidence.baseCbBtcPriceUsd || source?.priceUsd || 0);
+  const fallbackRequiredUnits = priceUsd > 0 ? BigInt(Math.ceil((tinyCapUsd / priceUsd) * 100_000_000)) : 34_000n;
+  const resolvedRequiredUnits = requiredUnits || fallbackRequiredUnits;
+  if (actualUnits >= resolvedRequiredUnits) return null;
+  const deficit = resolvedRequiredUnits - actualUnits;
+  const slippageBuffer = (resolvedRequiredUnits + 99n) / 100n;
+  const minHandoffUnits = priceUsd > 0 ? BigInt(Math.ceil((MIN_WRAPPED_BTC_HANDOFF_USD / priceUsd) * 100_000_000)) : 7_000n;
+  const amount = [deficit + slippageBuffer, availableSourceUnits].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))[0];
+  if (amount < minHandoffUnits) return null;
+  return amount > 0n ? amount.toString() : null;
 }
 
 function refillSourcePriority(source) {
@@ -648,9 +726,9 @@ export async function runAllChainAutopilot({
   ).length;
   const capitalDispatchReadiness =
     capitalManagerRefillPlan?.capitalPlan?.decision === "REFILL_REQUIRED" && capitalManagerExecutedCount === 0
-      ? "rebalance_required_before_live_dispatch"
+      ? "refill_pending_individual_strategy_gates_enforced"
       : "ready";
-  const allowLiveStrategyDispatch = execute && capitalDispatchReadiness === "ready";
+  const allowLiveStrategyDispatch = execute;
 
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
@@ -725,6 +803,65 @@ export async function runAllChainAutopilot({
     timeoutMs,
     steps,
   });
+
+  const preDispatchInventoryResult = await runJsonStep({
+    name: "treasury_inventory_refresh_pre_dispatch",
+    args: ["src/cli/inventory-treasury.mjs", "--json"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  const preDispatchSurfacesResult = await runJsonStep({
+    name: "strategy_execution_surfaces_pre_dispatch",
+    args: ["src/cli/report-strategy-execution-surfaces.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+  const handoffAmountSats = wrappedBtcHandoffAmountSats(preDispatchSurfacesResult.json, preDispatchInventoryResult.json);
+  let wrappedBtcHandoffPreview = null;
+  let wrappedBtcHandoffExecution = null;
+  if (handoffAmountSats) {
+    wrappedBtcHandoffPreview = await runJsonStep({
+      name: "wrapped_btc_loop_handoff_preview",
+      args: ["src/cli/run-wrapped-btc-loop-handoff.mjs", `--amount-sats=${handoffAmountSats}`, "--json", "--write"],
+      runCommandImpl,
+      cwd,
+      timeoutMs,
+      steps,
+    });
+    if (execute && wrappedBtcHandoffPreview.json?.plan?.handoffStatus === "conversion_ready") {
+      wrappedBtcHandoffExecution = await runJsonStep({
+        name: "wrapped_btc_loop_handoff_execute",
+        args: [
+          "src/cli/run-wrapped-btc-loop-handoff.mjs",
+          `--amount-sats=${handoffAmountSats}`,
+          "--json",
+          "--write",
+          "--execute",
+          `--timeout-ms=${timeoutMs}`,
+          `--confirmation-timeout-ms=${timeoutMs}`,
+        ],
+        runCommandImpl,
+        cwd,
+        timeoutMs,
+        steps,
+      });
+      if (wrappedBtcHandoffExecution.ok) {
+        await runJsonStep({
+          name: "treasury_inventory_refresh_after_wrapped_btc_handoff",
+          args: ["src/cli/inventory-treasury.mjs", "--json"],
+          runCommandImpl,
+          cwd,
+          timeoutMs,
+          steps,
+        });
+      }
+    }
+  }
 
   const strategyDispatchResult = await runJsonStep({
     name: "strategy_catalog_dispatch",
@@ -807,10 +944,12 @@ export async function runAllChainAutopilot({
     representativeExecutionCoverage: compactRepresentativeExecutionCoverage({
       merklQueue: merklQueueResult.json,
       destinationAllocator: destinationAllocatorResult.json,
+      destinationRepresentative: destinationRepresentativeResult.json,
     }),
     destinationRepresentative: compactDestinationRepresentative(destinationRepresentativeResult.json),
     merklCanary: compactMerkl(merklCanaryResult.json),
     portfolio: compactPortfolio(portfolioResult.json),
+    wrappedBtcHandoff: compactWrappedBtcHandoff(wrappedBtcHandoffPreview, wrappedBtcHandoffExecution),
     strategyDispatch: compactStrategyDispatch(strategyDispatchResult.json, { capitalDispatchReadiness }),
     payback: compactPayback(paybackResult.json),
     autoKill: compactAutoKill(autoKillResult.json),

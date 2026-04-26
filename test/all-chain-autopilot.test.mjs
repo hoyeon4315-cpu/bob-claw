@@ -269,6 +269,36 @@ function fakeCommand({ args }) {
       json: { status: "blocked", blockedReason: "no_portfolio_entry_ready" },
     };
   }
+  if (name.endsWith("inventory-treasury.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        tokens: [],
+      },
+    };
+  }
+  if (name.endsWith("report-strategy-execution-surfaces.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        summary: { liveEligibleCount: 1, missingExecutorCount: 0 },
+        strategies: [
+          {
+            id: "wrapped-btc-loop-base-moonwell",
+            currentLiveEligible: false,
+            liveAdmissionBlockers: [],
+            evidence: {},
+          },
+        ],
+      },
+    };
+  }
   if (name.endsWith("run-strategy-catalog-dispatcher.mjs")) {
     return {
       ok: true,

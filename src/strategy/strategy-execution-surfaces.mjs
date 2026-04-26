@@ -1,10 +1,62 @@
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
+import { getStrategyCaps } from "../config/strategy-caps.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
+const BASE_CBBTC_TOKEN = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
+const MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD = 5;
 
 function compact(values = []) {
   return [...new Set((values || []).filter(Boolean))];
+}
+
+function normalizeAddress(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function unitsArePositive(value = "0") {
+  try {
+    return BigInt(String(value || "0")) > 0n;
+  } catch {
+    return false;
+  }
+}
+
+function requiredCollateralUnitsForCap({ capUsd, priceUsd }) {
+  if (!Number.isFinite(capUsd) || capUsd <= 0 || !Number.isFinite(priceUsd) || priceUsd <= 0) return null;
+  return String(Math.ceil((capUsd / priceUsd) * 100_000_000));
+}
+
+function unitsMeetRequired({ actualUnits = "0", requiredUnits = null }) {
+  if (!requiredUnits) return unitsArePositive(actualUnits);
+  try {
+    return BigInt(String(actualUnits || "0")) >= BigInt(String(requiredUnits));
+  } catch {
+    return false;
+  }
+}
+
+function latestTreasuryInventoryRecord(records = []) {
+  return [...(records || [])]
+    .filter(Boolean)
+    .sort((left, right) => String(right.observedAt || "").localeCompare(String(left.observedAt || "")))[0] || null;
+}
+
+function findBaseCbBtcCollateral(treasuryInventoryRecords = []) {
+  const latest = latestTreasuryInventoryRecord(treasuryInventoryRecords);
+  const token = (latest?.tokens || []).find(
+    (entry) => String(entry?.chain || "").toLowerCase() === "base" && normalizeAddress(entry?.token) === BASE_CBBTC_TOKEN,
+  ) || null;
+  const actualUnits = token?.actual || "0";
+  return {
+    observedAt: latest?.observedAt || null,
+    actualUnits,
+    actualDecimal: token?.actualDecimal ?? null,
+    estimatedUsd: Number(token?.estimatedUsd ?? 0),
+    priceUsd: Number(token?.priceUsd ?? 0),
+    status: token?.status || null,
+    ready: unitsArePositive(actualUnits),
+  };
 }
 
 function commandScript(command) {
@@ -71,15 +123,30 @@ function phase3ValidationById(phase3Validation = null) {
   return new Map((phase3Validation?.validations || []).map((entry) => [entry.id, entry]));
 }
 
-function wrappedBtcLoopCommands(mode) {
-  if (mode === "live") return ["npm run executor:wrapped-btc-loop -- --json"];
+function wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral = null) {
+  const caps = getStrategyCaps("wrapped-btc-loop-base-moonwell")?.caps || {};
+  const configuredTinyCapUsd = caps.tinyLivePerTxUsd || caps.perTxUsd || 25;
+  const collateralUsd = Number(baseCbBtcCollateral?.estimatedUsd ?? 0);
+  if (collateralUsd >= MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD) {
+    return Math.max(MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD, Math.min(configuredTinyCapUsd, Math.floor(collateralUsd * 0.95 * 100) / 100));
+  }
+  return configuredTinyCapUsd;
+}
+
+function wrappedBtcLoopCommands(mode, { livePerTradeCapUsd = null } = {}) {
+  if (mode === "live") return [`npm run executor:wrapped-btc-loop -- --per-trade-cap-usd=${livePerTradeCapUsd || wrappedBtcLoopLiveCapUsd()} --json`];
   return [
     "npm run report:wrapped-btc-loop -- --json",
     "npm run report:wrapped-btc-loop-dry-run -- --json",
   ];
 }
 
-function buildWrappedBtcLoopExecutorSurface({ policy, phase3Validation = null, wrappedBtcLendingLoopSlice = null } = {}) {
+function buildWrappedBtcLoopExecutorSurface({
+  policy,
+  phase3Validation = null,
+  wrappedBtcLendingLoopSlice = null,
+  treasuryInventoryRecords = [],
+} = {}) {
   const validation = phase3ValidationById(phase3Validation).get("wrapped_btc_loop_validation") || null;
   const strategy = wrappedBtcLendingLoopSlice?.strategy || {};
   if (!strategy.id) return null;
@@ -87,12 +154,23 @@ function buildWrappedBtcLoopExecutorSurface({ policy, phase3Validation = null, w
   const validationPassed = validation?.overallStatus === "passed";
   const bindingReady = wrappedBtcLendingLoopSlice?.bindingSupport?.executableFromRepo === true;
   const dryRunRecorded = wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true;
-  const currentLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded;
+  const baseCbBtcCollateral = findBaseCbBtcCollateral(treasuryInventoryRecords);
+  const livePerTradeCapUsd = wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral);
+  const requiredCollateralUnits = requiredCollateralUnitsForCap({
+    capUsd: livePerTradeCapUsd,
+    priceUsd: baseCbBtcCollateral.priceUsd,
+  });
+  const collateralReady = unitsMeetRequired({
+    actualUnits: baseCbBtcCollateral.actualUnits,
+    requiredUnits: requiredCollateralUnits,
+  });
+  const currentLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady;
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
     validationPassed ? null : validation?.blockers?.[0] || "phase3_validation_not_passed",
     bindingReady ? null : "repo_auto_build_not_supported",
     dryRunRecorded ? null : "dry_run_receipt_missing",
+    collateralReady ? null : "base_cbbtc_collateral_unavailable",
   ]);
   const selectedMode = currentLiveEligible ? "live" : "dry_run";
   return {
@@ -109,6 +187,14 @@ function buildWrappedBtcLoopExecutorSurface({ policy, phase3Validation = null, w
       extendedReceiptContextReady: validation?.evidence?.extendedReceiptContextReady ?? null,
       dryRunReceiptRecorded: dryRunRecorded,
       signerBackedRunCount: wrappedBtcLendingLoopSlice?.dryRunSummary?.signerBackedRunCount ?? 0,
+      baseCbBtcCollateralUnits: baseCbBtcCollateral.actualUnits,
+      baseCbBtcCollateralDecimal: baseCbBtcCollateral.actualDecimal,
+      baseCbBtcCollateralUsd: baseCbBtcCollateral.estimatedUsd,
+      baseCbBtcPriceUsd: baseCbBtcCollateral.priceUsd || null,
+      baseCbBtcRequiredUnits: requiredCollateralUnits,
+      baseCbBtcCollateralStatus: baseCbBtcCollateral.status,
+      treasuryInventoryObservedAt: baseCbBtcCollateral.observedAt,
+      livePerTradeCapUsd,
       projectedAnnualNetCarryBtc: null,
       projectedAnnualNetCarryUsd: wrappedBtcLendingLoopSlice?.pnl?.paper?.annualNetCarryUsd ?? null,
       estimatedNetCarryBtc: null,
@@ -124,7 +210,7 @@ function buildWrappedBtcLoopExecutorSurface({ policy, phase3Validation = null, w
     fallbackReason: currentLiveEligible ? null : blockers[0] || "phase3_validation_not_passed",
     missingCapabilities: blockers.filter((blocker) => blocker !== "live_trading_blocked"),
     liveAdmissionBlockers: currentLiveEligible ? [] : blockers,
-    selectedCommands: withScripts(wrappedBtcLoopCommands(selectedMode)),
+    selectedCommands: withScripts(wrappedBtcLoopCommands(selectedMode, { livePerTradeCapUsd })),
   };
 }
 
@@ -417,6 +503,7 @@ export function buildStrategyExecutionSurfaces({
       policy: catalog.policy,
       phase3Validation: artifacts.phase3StrategyValidation || null,
       wrappedBtcLendingLoopSlice: artifacts.wrappedBtcLendingLoopSlice || null,
+      treasuryInventoryRecords: artifacts.treasuryInventoryRecords || [],
     }),
     buildMerklAutopilotSurface({
       policy: catalog.policy,

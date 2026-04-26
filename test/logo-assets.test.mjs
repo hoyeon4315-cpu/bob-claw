@@ -148,9 +148,7 @@ describe("dashboard logo runtime invariants", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
     assert.ok(runtime.includes("euler:     [prox('https://app.euler.finance/favicon.ico')]"));
     assert.ok(runtime.includes("yo:        [prox('https://www.yo.xyz/favicon.ico')]"));
-    assert.match(
-      runtime,
-      /const sources = id \? \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\] : remote;/,
-    );
+    assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler'\]\);/);
+    assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
   });
 });

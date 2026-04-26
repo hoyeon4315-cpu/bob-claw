@@ -14,6 +14,7 @@ const LLAMA_CHAIN = (slug, s) => `https://icons.llamao.fi/icons/chains/rsz_${slu
 const TOKEN_SVG   = (sym) => `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/${sym}.svg`;
 const LOCAL_CHAIN = (id) => `assets/logos/chains/${id}.svg`;
 const LOCAL_PROTOCOL = (id) => `assets/logos/protocols/${id}.svg`;
+const LOCAL_FIRST_PROTOCOL_IDS = new Set(['euler']);
 
 const CHAIN_SLUG = {
   bitcoin: 'bitcoin', ethereum: 'ethereum', base: 'base', bsc: 'bsc',
@@ -117,7 +118,9 @@ function ChainLogo({ id, size = 28, style = {} }) {
 
 function ProtocolLogo({ id, size = 22, style = {} }) {
   const remote = protoSources(id, size);
-  const sources = id ? [...remote, LOCAL_PROTOCOL(id)] : remote;
+  const sources = id
+    ? (LOCAL_FIRST_PROTOCOL_IDS.has(id) ? [LOCAL_PROTOCOL(id), ...remote] : [...remote, LOCAL_PROTOCOL(id)])
+    : remote;
   const label = (id || '?').slice(0, 1).toUpperCase();
   return (
     <div style={{ width: size, height: size, flexShrink: 0, ...style }} data-protocol-logo={id}>

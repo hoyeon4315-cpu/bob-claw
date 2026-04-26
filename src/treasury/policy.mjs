@@ -37,6 +37,14 @@ const REPRESENTATIVE_STABLE_REFILL_POLICY = {
   strategyType: "destination_representative_stable_carry",
   perTradeCapUsd: 3,
 };
+const WRAPPED_BTC_LOOP_COLLATERAL_REFILL_POLICY = {
+  id: "wrapped_btc_loop_collateral_refill",
+  category: "yield",
+  economicsMode: "holding_period_carry",
+  strategyType: "wrapped_btc_lending_loop",
+  actionType: "treasury_refill_for_leverage_collateral",
+  perTradeCapUsd: 30,
+};
 const EXPLICIT_REPRESENTATIVE_FLOAT_CHAINS = new Set(["ethereum", "base", "bsc"]);
 
 function normalizedAddress(value) {
@@ -261,10 +269,11 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         strategyPolicy: MERKL_PORTFOLIO_REFILL_POLICY,
       }),
       tokenPolicy("base", BASE_CBTC_TOKEN, {
-        minBalance: "0",
-        targetBalance: "0.001",
+        minBalance: "0.00025",
+        targetBalance: "0.00035",
         maxBalance: "0.005",
-        rationale: "Moonwell wrapped-BTC lending loop collateral on Base.",
+        rationale: "Moonwell wrapped-BTC lending loop collateral on Base; enough for the capped tiny-live validation entry before scaling.",
+        strategyPolicy: WRAPPED_BTC_LOOP_COLLATERAL_REFILL_POLICY,
       }),
       tokenPolicy("ethereum", ETHEREUM_USDC_TOKEN, {
         minBalance: "25",

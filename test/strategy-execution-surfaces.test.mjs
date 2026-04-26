@@ -47,6 +47,26 @@ function dashboardStatusFixture() {
   };
 }
 
+function treasuryInventoryFixture(actual = "33053") {
+  return [
+    {
+      observedAt: "2026-04-25T10:00:00.000Z",
+      tokens: [
+        {
+          chain: "base",
+          token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+          ticker: "cbBTC",
+          actual,
+          actualDecimal: Number(actual) / 100_000_000,
+          estimatedUsd: Number(actual) > 0 ? 25.69 : 0,
+          priceUsd: 77725,
+          status: Number(actual) > 0 ? "below_target" : "refill_required",
+        },
+      ],
+    },
+  ];
+}
+
 test("execution surfaces classify missing runners separately from runnable observation lanes", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: dashboardStatusFixture(),
@@ -130,6 +150,7 @@ test("execution surfaces include executor-backed live strategies when artifacts 
           },
         ],
       },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
       merklCanaryQueue: {
         summary: {
           queueCount: 3,
@@ -165,4 +186,59 @@ test("execution surfaces include executor-backed live strategies when artifacts 
   assert.equal(merkl.selectedMode, "live");
   assert.equal(merkl.selectedCommands[0].script, "executor:merkl-canary-autopilot");
   assert.equal(report.summary.liveEligibleCount, 2);
+});
+
+test("wrapped BTC loop stays out of live dispatch when Base cbBTC collateral is unavailable", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 1.3552 },
+          realized: { valueUsd: 1.3552 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            oosSplitStatus: "signer_backed_window_recorded",
+            shockTestStatus: "live_roundtrip_recorded",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+              realizedNetCarryUsd: 0,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("0"),
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.selectedMode, "dry_run");
+  assert.equal(wrapped.fallbackReason, "base_cbbtc_collateral_unavailable");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("base_cbbtc_collateral_unavailable"), true);
+  assert.equal(wrapped.evidence.baseCbBtcCollateralUnits, "0");
 });

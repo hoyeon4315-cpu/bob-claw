@@ -291,6 +291,41 @@
       return '—';
     }
 
+    function assetDisplayLabel(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return null;
+      return raw.length <= 12 ? raw.toUpperCase() : raw;
+    }
+
+    function isCompactAssetSymbol(value) {
+      return /^[A-Za-z0-9./_-]{1,16}$/u.test(String(value || '').trim());
+    }
+
+    function deriveActivityFinalAsset(activity, strategy) {
+      if (activity?.finalAssetId || activity?.finalAssetLabel) {
+        return {
+          id: activity.finalAssetId || activity.finalAssetLabel,
+          label: assetDisplayLabel(activity.finalAssetLabel || activity.finalAssetId),
+        };
+      }
+      if (activity?.kind === 'payback') return { id: 'btc', label: 'BTC' };
+      const detail = String(activity?.detail || '').trim();
+      if (isCompactAssetSymbol(detail)) {
+        return { id: detail, label: assetDisplayLabel(detail) };
+      }
+      const pair = Array.isArray(strategy?.pair) ? strategy.pair.filter(Boolean) : [];
+      if (activity?.kind === 'position' && pair[0]) {
+        return { id: pair[0], label: assetDisplayLabel(pair[0]) };
+      }
+      if (pair.length > 1) {
+        return { id: pair[pair.length - 1], label: assetDisplayLabel(pair[pair.length - 1]) };
+      }
+      if (pair[0]) {
+        return { id: pair[0], label: assetDisplayLabel(pair[0]) };
+      }
+      return null;
+    }
+
     function leverageHintForActivity(activity) {
       const strategy = findStrategyById(activity?.strategyId);
       const raw = window.FLOW?.strategyRiskById || {};
@@ -419,6 +454,7 @@
       const tone = activityStatusTone(activity);
       const riskLabel = leverageHintLabel(leverageHintForActivity(activity));
       const route = activityRouteSummary(activity, strategy);
+      const finalAsset = deriveActivityFinalAsset(activity, strategy);
 
       return (
         <div style={{
@@ -479,6 +515,34 @@
                 textOverflow: 'ellipsis',
               }}>
                 {riskLabel}
+              </div>
+            )}
+            {finalAsset && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                marginTop: 4,
+                padding: '2px 7px',
+                borderRadius: 999,
+                background: '#F5F5F6',
+                color: 'var(--ink-3)',
+                maxWidth: '100%',
+              }}>
+                <span style={{ fontSize: 8.4, fontWeight: 700, letterSpacing: 0.35, textTransform: 'uppercase', flexShrink: 0 }}>
+                  Arrived
+                </span>
+                <AssetLogo id={finalAsset.id} size={12}/>
+                <span style={{
+                  fontSize: 9.2,
+                  fontWeight: 600,
+                  color: 'var(--ink)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {finalAsset.label}
+                </span>
               </div>
             )}
           </div>
@@ -567,6 +631,8 @@
       const items = HOLDINGS?.all || [];
       const pending = HOLDINGS?.pending;
       const positions = HOLDINGS?.positions || [];
+      const [mindmapFocus, setMindmapFocus] = useState({ layer: 'root' });
+      const overlayActive = mindmapFocus?.layer === 'chain' || mindmapFocus?.layer === 'protocol';
       const totalUsd = HOLDINGS?.totalUsd != null
         ? HOLDINGS.totalUsd
         : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
@@ -583,57 +649,78 @@
       const totalApr = aprDen > 0 ? aprNum / aprDen : null;
       const [aprOpen, setAprOpen] = useState(false);
       return (
-        <div className="tabpane" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: 1, minHeight: 0, padding: '4px 12px 0' }}>
+        <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: '0 0 56%', minHeight: 0, flexShrink: 0 }}/>
+          <div style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            top: 4,
+            height: overlayActive ? 'calc(100% - 12px)' : 'calc(56% - 4px)',
+            zIndex: 4,
+            transition: 'height 450ms var(--ease), transform 450ms var(--ease)',
+          }}>
             <div style={{
-              height: '100%', borderRadius: 18, overflow: 'hidden',
+              height: '100%', borderRadius: overlayActive ? 22 : 18, overflow: 'hidden',
               background: 'var(--card)', border: '0.5px solid var(--line)',
+              boxShadow: overlayActive ? '0 18px 48px rgba(17,17,19,0.16)' : '0 0 0 rgba(17,17,19,0)',
+              transition: 'border-radius 450ms var(--ease), box-shadow 450ms var(--ease)',
             }}>
-              <Mindmap motionSpeed={1.4} refreshTick={refreshTick}/>
+              <Mindmap motionSpeed={1.4} refreshTick={refreshTick} onFocusChange={setMindmapFocus}/>
             </div>
           </div>
 
-          <FlowMetricGrid cards={[
-            {
-              label: 'Assets',
-              main: pending ? '—' : fmtUsdCompact(assetValueUsd || 0),
-              sub: pending ? 'pending' : 'wallet + deployed',
-            },
-            {
-              label: 'APR',
-              main: totalApr != null ? fmtPct(totalApr) : '—',
-              sub: aprOpen ? 'cap-weighted' : 'tap for note',
-              onTap: () => setAprOpen(o => !o),
-              accent: aprOpen ? 'var(--ink)' : undefined,
-            },
-            {
-              label: 'Paid back',
-              main: fmtSats(paidSats),
-              sub: paidUsd != null ? fmtUsdCompact(paidUsd) : '—',
-            },
-            {
-              label: 'Carry',
-              main: fmtSats(carrySats),
-              sub: carryUsd != null ? fmtUsdCompact(carryUsd) : 'unpaid',
-            },
-            {
-              label: 'Yield',
-              main: Number.isFinite(grossYieldUsd) ? fmtUsdCompact(grossYieldUsd) : fmtSats(grossYieldSats),
-              sub: 'all protocols',
-            },
-          ]}/>
-          <OpsStrip/>
-          {aprOpen && (
-            <div style={{
-              margin:'6px 12px 0', padding:'8px 12px',
-              background:'#111113', color:'#F4F4F4', borderRadius:12,
-              fontSize:11, lineHeight:1.45, flexShrink: 0,
-              animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
-            }}>
-              Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price.
-            </div>
-          )}
-          <div style={{ height: 6, flexShrink: 0 }}/>
+          <div style={{
+            position: 'relative',
+            zIndex: 1,
+            opacity: overlayActive ? 0.28 : 1,
+            transform: overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
+            filter: overlayActive ? 'saturate(0.72)' : 'none',
+            pointerEvents: overlayActive ? 'none' : 'auto',
+            transition: 'opacity 450ms var(--ease), transform 450ms var(--ease), filter 450ms var(--ease)',
+          }}>
+            <FlowMetricGrid cards={[
+              {
+                label: 'Assets',
+                main: pending ? '—' : fmtUsdCompact(assetValueUsd || 0),
+                sub: pending ? 'pending' : 'wallet + deployed',
+              },
+              {
+                label: 'APR',
+                main: totalApr != null ? fmtPct(totalApr) : '—',
+                sub: aprOpen ? 'cap-weighted' : 'tap for note',
+                onTap: () => setAprOpen(o => !o),
+                accent: aprOpen ? 'var(--ink)' : undefined,
+              },
+              {
+                label: 'Paid back',
+                main: fmtSats(paidSats),
+                sub: paidUsd != null ? fmtUsdCompact(paidUsd) : '—',
+              },
+              {
+                label: 'Carry',
+                main: fmtSats(carrySats),
+                sub: carryUsd != null ? fmtUsdCompact(carryUsd) : 'unpaid',
+              },
+              {
+                label: 'Yield',
+                main: Number.isFinite(grossYieldUsd) ? fmtUsdCompact(grossYieldUsd) : fmtSats(grossYieldSats),
+                sub: 'all protocols',
+              },
+            ]}/>
+            <OpsStrip/>
+            {aprOpen && (
+              <div style={{
+                margin:'6px 12px 0', padding:'8px 12px',
+                background:'#111113', color:'#F4F4F4', borderRadius:12,
+                fontSize:11, lineHeight:1.45, flexShrink: 0,
+                animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
+              }}>
+                Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price.
+              </div>
+            )}
+            <div style={{ height: 6, flexShrink: 0 }}/>
+          </div>
         </div>
       );
     }
