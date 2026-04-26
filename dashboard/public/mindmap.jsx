@@ -21,6 +21,10 @@ const PHYS = {
   PAD: 6,
 };
 
+const PROTOCOL_CARD_MAX_HEIGHT = 152;
+const PROTOCOL_CARD_SAFE_BOTTOM = 176;
+const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 3;
+
 function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
   if (!svg) return { x: 0, y: 0 };
   const pt = svg.createSVGPoint();
@@ -222,10 +226,10 @@ function fitBoundsInViewBox({ bounds, viewBox, safeArea, focus, minZoom, maxZoom
   return { zoom, tx, ty };
 }
 
-function BitcoinSource({ x, y, size, hidden }) {
+function BitcoinSource({ x, y, size, hidden, dimmed = false }) {
   return (
     <g transform={`translate(${x}, ${y})`}
-       style={{ opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto', transition: `opacity ${T_FAST}ms ${EASE}` }}>
+       style={{ opacity: hidden ? 0 : dimmed ? 0.22 : 1, pointerEvents: hidden ? 'none' : 'auto', transition: `opacity ${T_FAST}ms ${EASE}` }}>
       <circle r={size*0.62} fill="#FFFFFF" stroke="#1D1D1F" strokeWidth="0.6"/>
       <circle r={size*0.62} fill="none" stroke="#F2A33B" strokeWidth="1" opacity="0.5">
         <animate attributeName="r" values={`${size*0.62};${size*0.78};${size*0.62}`} dur="2.4s" repeatCount="indefinite"/>
@@ -259,7 +263,7 @@ function GatewayCore({ size, hidden }) {
   );
 }
 
-function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDragStart }) {
+function ChainNode({ chain, x, y, size, hidden, active, dimmed = false, onTap, labelBelow, onDragStart }) {
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
@@ -270,8 +274,8 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDra
   const capitalY = labelBelow ? size * 1.46 : -size * 1.34;
   return (
     <g data-chain-id={chain.id} transform={`translate(${x}, ${y})`}
-       style={{ cursor:'pointer', opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto',
-                  transition: `opacity ${T_FAST}ms ${EASE}` }}>
+       style={{ cursor:'pointer', opacity: hidden ? 0 : dimmed ? 0.34 : 1, pointerEvents: hidden ? 'none' : 'auto',
+                   transition: `opacity ${T_FAST}ms ${EASE}` }}>
       <g style={{ pointerEvents:'none' }}>
         <circle r={size*0.56} fill="#FFFFFF" stroke={active ? '#111113' : '#DADADA'} strokeWidth={active ? 1 : 0.6}/>
         <foreignObject x={-size*0.42} y={-size*0.42} width={size*0.84} height={size*0.84} style={{ pointerEvents:'none' }}>
@@ -279,11 +283,13 @@ function ChainNode({ chain, x, y, size, hidden, active, onTap, labelBelow, onDra
             <ChainLogo id={chain.id} size={size*0.78}/>
           </div>
         </foreignObject>
-        <text y={nameY} textAnchor="middle" fontSize="11" fontWeight="500" fill="#555"
+        <text y={nameY} textAnchor="middle" fontSize="11" fontWeight="500" fill={dimmed ? '#8A8A8D' : '#555'}
           style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
           {chain.name}
         </text>
-        <StatPill x={0} y={capitalY} label={capitalLabel} scale={0.9}/>
+        <g style={{ opacity: dimmed ? 0.72 : 1 }}>
+          <StatPill x={0} y={capitalY} label={capitalLabel} scale={0.9}/>
+        </g>
       </g>
       <foreignObject x={-hitSize / 2} y={-hitSize / 2} width={hitSize} height={hitSize}>
         <button
@@ -535,12 +541,18 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const physicsRef = useRef(new Map());
   const dragRef = useRef(null);
   const svgRef = useRef(null);
+  const focusLayer = selectedProtocolId ? 'protocol' : selectedChain ? 'chain' : 'root';
 
   useEffect(() => {
     let last = performance.now();
     const tick = (now) => {
       const dt = (now - last) * 0.001;
       last = now;
+      const focusMotionScale = selectedProtocolId ? 0.16 : selectedChain ? 0.34 : 1;
+      const repulsionK = PHYS.REPULSION_K * focusMotionScale;
+      const springK = PHYS.SPRING_K * (selectedProtocolId ? 0.2 : selectedChain ? 0.42 : 1);
+      const damping = selectedProtocolId ? 0.7 : selectedChain ? 0.82 : PHYS.DAMPING;
+      const settlePull = selectedProtocolId ? 0.18 : selectedChain ? 0.08 : 0;
 
       // Physics solver (substeps for stability)
       const bodies = physicsRef.current;
@@ -549,8 +561,8 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
         // Spring + damping
         for (const b of list) {
           if (b.isDragging) { b.vx = 0; b.vy = 0; continue; }
-          const fx = (b.anchorX - b.x) * PHYS.SPRING_K;
-          const fy = (b.anchorY - b.y) * PHYS.SPRING_K;
+          const fx = (b.anchorX - b.x) * springK;
+          const fy = (b.anchorY - b.y) * springK;
           b.vx += fx / b.mass;
           b.vy += fy / b.mass;
         }
@@ -562,14 +574,14 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             const dx = b.x - a.x;
             const dy = b.y - a.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            const minDist = a.radius + b.radius + PHYS.PAD;
-            if (dist < minDist) {
-              const overlap = minDist - dist;
-              const nx = dx / dist;
-              const ny = dy / dist;
-              const force = PHYS.REPULSION_K * overlap;
-              const aDrag = a.isDragging;
-              const bDrag = b.isDragging;
+              const minDist = a.radius + b.radius + PHYS.PAD;
+              if (dist < minDist) {
+                const overlap = minDist - dist;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const force = repulsionK * overlap;
+                const aDrag = a.isDragging;
+                const bDrag = b.isDragging;
               if (aDrag && !bDrag) {
                 a.vx -= (force * nx) / a.mass; a.vy -= (force * ny) / a.mass;
               } else if (!aDrag && bDrag) {
@@ -589,14 +601,14 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             const dx = other.x - b.x;
             const dy = other.y - b.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            const minDist = b.orbitRadius + other.radius + PHYS.PAD;
-            if (dist < minDist) {
-              const overlap = minDist - dist;
-              const nx = dx / dist;
-              const ny = dy / dist;
-              const force = PHYS.REPULSION_K * overlap * 1.5;
-              const otherDrag = other.isDragging;
-              const bDrag2 = b.isDragging;
+              const minDist = b.orbitRadius + other.radius + PHYS.PAD;
+              if (dist < minDist) {
+                const overlap = minDist - dist;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const force = repulsionK * overlap * 1.5;
+                const otherDrag = other.isDragging;
+                const bDrag2 = b.isDragging;
               if (otherDrag && !bDrag2) {
                 other.vx += (force * nx) / other.mass; other.vy += (force * ny) / other.mass;
               } else if (!otherDrag && bDrag2) {
@@ -613,8 +625,12 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           if (b.isDragging) continue;
           b.x += b.vx;
           b.y += b.vy;
-          b.vx *= PHYS.DAMPING;
-          b.vy *= PHYS.DAMPING;
+          if (settlePull > 0) {
+            b.x += (b.anchorX - b.x) * settlePull;
+            b.y += (b.anchorY - b.y) * settlePull;
+          }
+          b.vx *= damping;
+          b.vy *= damping;
         }
       }
 
@@ -623,7 +639,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [motionSpeed]);
+  }, [motionSpeed, selectedChain, selectedProtocolId]);
 
   useEffect(() => {
     onFocusChange?.({
@@ -767,6 +783,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       return { zoom: 1, tx: cx0, ty: cy0 };
     }
     const chain = ringPos[selectedChain] || { x: 0, y: 0 };
+    const focusPoint = selectedProtocolId ? (protocolBloom[selectedProtocolId] || null) : null;
     const strategies = (protocolsByChain[selectedChain] || []);
     const focusStrategies = selectedProtocolId
       ? strategies.filter((strategy) => strategy.id === selectedProtocolId)
@@ -814,19 +831,21 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       selectedProtocolId ? 18 : 14
     );
     const safeArea = selectedProtocolId
-      ? { top: 20, right: 16, bottom: 124, left: 16 }
+      ? { top: 18, right: 18, bottom: PROTOCOL_CARD_SAFE_BOTTOM, left: 18 }
       : { top: 16, right: 12, bottom: 82, left: 12 };
-    const focus = {
-      x: (paddedBounds.minX + paddedBounds.maxX) / 2,
-      y: (paddedBounds.minY + paddedBounds.maxY) / 2,
-    };
+    const focus = focusPoint
+      ? { x: focusPoint.x, y: focusPoint.y - 4 }
+      : {
+          x: (paddedBounds.minX + paddedBounds.maxX) / 2,
+          y: (paddedBounds.minY + paddedBounds.maxY) / 2,
+        };
     return fitBoundsInViewBox({
       bounds: paddedBounds,
       viewBox: { width: VB_W, height: VB_H },
       safeArea,
       focus,
       minZoom: selectedProtocolId ? 0.78 : 0.92,
-      maxZoom: selectedProtocolId ? 1.72 : 1.18,
+      maxZoom: selectedProtocolId ? 1.52 : 1.18,
     });
   }, [VB_W, VB_H, chainSize, cx0, cy0, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
 
@@ -927,13 +946,14 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             const curve = destCurves[c.id];
             const hasLive = liveChains.has(c.id);
             const hidden = selectedChain && selectedChain !== c.id;
+            const dimmed = Boolean(selectedProtocolId) && selectedChain === c.id;
             return (
               <path key={'lane-'+c.id} d={curve.d}
                 fill="none"
                 stroke={hasLive ? '#9C9CA0' : '#D8D8DA'}
-                strokeWidth={hasLive ? 1.1 : 0.8}
+                strokeWidth={dimmed ? 0.9 : hasLive ? 1.1 : 0.8}
                 strokeDasharray={hasLive ? '0' : '2 3'}
-                opacity={hidden ? 0 : 1}
+                opacity={hidden ? 0 : dimmed ? 0.2 : 1}
                 style={{ transition: `opacity ${T_FAST}ms ${EASE}` }}/>
             );
           })}
@@ -962,10 +982,11 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             const pos = getNodePos(`chain:${c.id}`, ringPos[c.id].x, ringPos[c.id].y);
             const active = selectedChain === c.id;
             const hidden = selectedChain && !active;
+            const chainDimmed = Boolean(selectedProtocolId) && active;
             return (
               <ChainNode
                 key={c.id} chain={c} x={pos.x} y={pos.y} size={chainSize}
-                hidden={hidden} active={active}
+                hidden={hidden} active={active} dimmed={chainDimmed}
                 labelBelow={ringPos[c.id].y >= 0}
                 onDragStart={(e) => handleDragStart(e, `chain:${c.id}`, () => { setSelectedProtocolId(null); setSelectedChain(prev => prev === c.id ? null : c.id); })}
               />
@@ -997,9 +1018,9 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
               <g key={'proto-'+s.id}>
                 <line x1={chain.x} y1={chain.y} x2={pp.x} y2={pp.y}
                   stroke="#B0B0B3" strokeWidth="0.8"
-                  opacity={dimmed ? 0.2 : 1}
+                  opacity={selectedProtocolId ? (isSel ? 0.32 : 0.12) : dimmed ? 0.2 : 1}
                   style={{ animation: `fadeIn 180ms ${EASE} both` }}/>
-                <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                <g style={{ opacity: selectedProtocolId ? (isSel ? 0.54 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                   <FlowToken curve={connector} progress={tFlow}
                     assetId={s.pair[0]}
                     swapAt={isSwap ? 0.5 : null}
@@ -1009,7 +1030,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
                     size={11}/>
                 </g>
                 {s.type === 'payback' && (
-                  <g style={{ animation: `fadeIn 180ms ${EASE} both`, opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  <g style={{ animation: `fadeIn 180ms ${EASE} both`, opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     {/* Return path from protocol back toward Bitcoin */}
                     {(() => {
                       const ret = curvePath(pp.x, pp.y, btc.x, btc.y, -0.18);
@@ -1026,7 +1047,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
                   </g>
                 )}
                 {s.type === 'loop' && (
-                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  <g style={{ opacity: selectedProtocolId ? (isSel ? 0.48 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     <OrbitTokens cx={pp.x} cy={pp.y}
                       radius={chipSize * 1.8}
                       assets={s.pair}
@@ -1040,17 +1061,17 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
                   onTap={() => setSelectedProtocolId(prev => prev === s.id ? null : s.id)}
                   onDragStart={(e) => handleDragStart(e, `proto:${s.id}`, () => setSelectedProtocolId(prev => prev === s.id ? null : s.id))}/>
                 {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt') && s.pair.length > 1 && (
-                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  <g style={{ opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
                   </g>
                 )}
                 {(s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
-                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  <g style={{ opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
                   </g>
                 )}
                 {(s.type === 'bridge' || s.type === 'payback' || s.type === 'refuel') && s.pair.length > 1 && (
-                  <g style={{ opacity: dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+                  <g style={{ opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
                     <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
                   </g>
                 )}
@@ -1061,7 +1082,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           {(() => {
             const btcHidden = Boolean(selectedChain) && !(protocolsByChain[selectedChain] || []).some(s => s.type === 'payback');
             const btc = getNodePos('chain:bitcoin', btcPos.x, btcPos.y);
-            return <BitcoinSource x={btc.x} y={btc.y} size={chainSize*0.95} hidden={btcHidden}/>;
+            return <BitcoinSource x={btc.x} y={btc.y} size={chainSize*0.95} hidden={btcHidden} dimmed={focusLayer === 'protocol'}/>;
           })()}
           <GatewayCore size={gatewaySize} hidden={Boolean(selectedChain)}/>
         </g>
@@ -1087,6 +1108,8 @@ function ProtocolCard({ protocolNode }) {
   const typeInk = TYPE_INK[protocolNode.type] || '#555';
   const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
   const yieldValue = formatYieldDisplay(protocolNode.earnedUsd, protocolNode.yieldBasis);
+  const visibleStrategies = protocolNode.strategies.slice(0, PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT);
+  const hiddenStrategyCount = Math.max(0, protocolNode.strategies.length - visibleStrategies.length);
   return (
     <div data-card-type="protocol" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1095,6 +1118,8 @@ function ProtocolCard({ protocolNode }) {
       boxShadow:'0 4px 16px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.08)',
       fontFamily:'-apple-system, system-ui',
       animation:`cardIn 200ms ${EASE} both`,
+      maxHeight: PROTOCOL_CARD_MAX_HEIGHT,
+      overflow:'hidden',
       pointerEvents:'none',
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -1126,26 +1151,38 @@ function ProtocolCard({ protocolNode }) {
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
         {protocolNode.loops && <Metric label="Loops" value={`×${protocolNode.loops}`}/>}
       </div>
-      <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:5, padding:'5px 8px', background:'#F5F5F6', borderRadius:8 }}>
-        <span style={{ fontSize:10, color:'#8A8A8D', textTransform:'uppercase', letterSpacing:0.5, fontWeight:600 }}>Pair</span>
-        {protocolNode.pair.map(p => <AssetLogo key={p} id={p} size={14}/>)}
-        <span style={{ fontSize:12, fontWeight:500, color:'#1D1D1F' }}>{protocolNode.pair.map(p => p.toUpperCase()).join(' → ')}</span>
-      </div>
-      <div style={{
-        marginTop:7, fontSize:12, lineHeight:1.45, color:'#3A3A3D',
-        display:'-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient:'vertical', overflow:'hidden',
-      }}>
-        {protocolNode.desc}
-      </div>
-      <div style={{ marginTop:7, display:'flex', gap:6, flexWrap:'wrap' }}>
-        {protocolNode.strategies.map((strategy) => (
-          <div key={strategy.id} style={{
-            padding:'4px 7px', borderRadius:999, background:'#F5F5F6',
-            fontSize:11, color:'#3A3A3D', lineHeight:1.2,
-          }}>
-            {strategy.label}
-          </div>
-        ))}
+      <div style={{ marginTop:6, display:'grid', gap:7 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 8px', background:'#F5F5F6', borderRadius:8 }}>
+          <span style={{ fontSize:10, color:'#8A8A8D', textTransform:'uppercase', letterSpacing:0.5, fontWeight:600 }}>Pair</span>
+          {protocolNode.pair.map(p => <AssetLogo key={p} id={p} size={14}/>)}
+          <span style={{ fontSize:12, fontWeight:500, color:'#1D1D1F', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{protocolNode.pair.map(p => p.toUpperCase()).join(' → ')}</span>
+        </div>
+        <div style={{
+          fontSize:11.5, lineHeight:1.42, color:'#3A3A3D',
+          display:'-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient:'vertical', overflow:'hidden',
+        }}>
+          {protocolNode.desc}
+        </div>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {visibleStrategies.map((strategy) => (
+            <div key={strategy.id} style={{
+              padding:'4px 7px', borderRadius:999, background:'#F5F5F6',
+              fontSize:11, color:'#3A3A3D', lineHeight:1.2, maxWidth:'100%',
+            }}>
+              <span style={{ display:'block', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                {strategy.label}
+              </span>
+            </div>
+          ))}
+          {hiddenStrategyCount > 0 && (
+            <div style={{
+              padding:'4px 7px', borderRadius:999, background:'#ECECEE',
+              fontSize:11, color:'#6B6B6E', lineHeight:1.2,
+            }}>
+              +{hiddenStrategyCount} more
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

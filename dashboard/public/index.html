@@ -697,6 +697,11 @@
           <div style={{
             position: 'relative',
             zIndex: 1,
+            flex: '1 1 auto',
+            minHeight: 0,
+            overflowY: overlayActive ? 'hidden' : 'auto',
+            overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
             opacity: overlayActive ? 0.28 : 1,
             transform: overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
             filter: overlayActive ? 'saturate(0.72)' : 'none',

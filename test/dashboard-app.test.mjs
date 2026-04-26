@@ -79,6 +79,7 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
     assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : 'calc\(56% - 4px\)'/);
     assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
+    assert.match(flowPane, /overflowY: overlayActive \? 'hidden' : 'auto'/);
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
   });
 });
