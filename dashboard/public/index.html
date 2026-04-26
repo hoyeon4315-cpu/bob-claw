@@ -180,6 +180,17 @@
         minute: '2-digit',
       });
     }
+    function formatStatusAge(value) {
+      if (!value) return null;
+      const observedAtMs = new Date(value).getTime();
+      if (!Number.isFinite(observedAtMs)) return null;
+      const ageMs = Date.now() - observedAtMs;
+      if (!Number.isFinite(ageMs) || ageMs < 0) return null;
+      if (ageMs < 15000) return 'just now';
+      if (ageMs < 60000) return `${Math.round(ageMs / 1000)}s ago`;
+      if (ageMs < 3600000) return `${Math.round(ageMs / 60000)}m ago`;
+      return `${Math.round(ageMs / 3600000)}h ago`;
+    }
     function normalizeUiStrategyId(id) {
       return String(id || '').replace(/-/g, '_');
     }
@@ -1110,16 +1121,22 @@
         window.addEventListener('dashboard:datarefresh', handler);
         return () => window.removeEventListener('dashboard:datarefresh', handler);
       }, []);
-      const gen = KPI?.generatedAt ? new Date(KPI.generatedAt).toLocaleString() : null;
-      const src = KPI?.source || 'pending';
+      const liveStatus = window.LIVE_STATUS || {};
+      const statusAt = liveStatus.generatedAt || KPI?.generatedAt || null;
+      const ageLabel = formatStatusAge(statusAt);
+      const sourceLabel = liveStatus.live
+        ? 'local live'
+        : liveStatus.source === 'static-snapshot'
+          ? 'snapshot fallback'
+          : 'status pending';
       return (
         <div style={{ position:'fixed', inset:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
           <div style={{ padding:'6px 16px 2px', flexShrink:0 }}>
             <div className="title">BOB Claw</div>
             <div className="sub">
-              {src === 'live'
-                ? `live · ${gen || 'status loaded'}`
-                : 'status pending · showing catalog'}
+              {ageLabel
+                ? `${sourceLabel} · ${ageLabel}`
+                : `${sourceLabel} · waiting for status`}
             </div>
           </div>
           <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' }}>

@@ -326,7 +326,7 @@ async function bootData(payload = null) {
     periodDue:     { sats: pendingCarrySats, usd: satsToUsd(pendingCarrySats, btcUsd), eta: payback?.scheduler?.nextEtaLabel || '—' },
     assetValue:    { usd: flowAssetValueUsd },
     realizedUsd,
-    source: status ? 'live' : 'fallback',
+    source: resolved?.source || (status ? 'snapshot' : 'pending'),
     generatedAt: status?.generatedAt || null,
   };
 

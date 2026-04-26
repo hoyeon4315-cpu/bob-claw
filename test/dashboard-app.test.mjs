@@ -94,4 +94,17 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
     assert.match(flowPane, /<OpsStrip fill=\{true\}\/>/);
   });
+
+  test("app header shows live source and freshness state", () => {
+    const utilitySection = extractSection("function fmtWhen", "function normalizeUiStrategyId");
+    assert.match(utilitySection, /function formatStatusAge/);
+    const appSection = extractSection("function App", "(async () =>");
+    assert.match(appSection, /const liveStatus = window\.LIVE_STATUS \|\| \{\}/);
+    assert.match(appSection, /const ageLabel = formatStatusAge\(statusAt\)/);
+    assert.match(appSection, /liveStatus\.live\s*\?\s*'local live'/);
+    assert.match(appSection, /liveStatus\.source === 'static-snapshot'/);
+    assert.match(appSection, /'snapshot fallback'/);
+    assert.match(appSection, /'status pending'/);
+    assert.match(appSection, /`\$\{sourceLabel\} · \$\{ageLabel\}`/);
+  });
 });
