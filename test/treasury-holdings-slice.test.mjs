@@ -104,3 +104,74 @@ test("treasury holdings add reconciled exit-proof items missing from stale inven
   assert.equal(rlusd.usd, 50.898904530668094);
   assert.equal(holdings.totalUsd, 50.898904530668094);
 });
+
+test("treasury holdings prefer fresh whole-wallet inventory when address scan data is available", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [
+      {
+        observedAt: "2026-04-26T06:40:00.000Z",
+        native: [],
+        tokens: [
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 10,
+            estimatedUsd: 10,
+            status: "ready",
+          },
+        ],
+        summary: {
+          estimatedWalletUsd: 10,
+          activeChainCount: 1,
+          supportedChainCount: 11,
+          nativeRefillRequiredCount: 0,
+          tokenRefillRequiredCount: 0,
+        },
+      },
+    ],
+    {
+      generatedAt: "2026-04-26T06:50:00.000Z",
+      merklPositionEvents: [],
+      wholeWalletRecords: [
+        {
+          observedAt: "2026-04-26T06:49:00.000Z",
+          totalUsd: 25,
+          native: [
+            {
+              chain: "base",
+              ticker: "ETH",
+              actualDecimal: 0.001,
+              estimatedUsd: 2.2,
+            },
+          ],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "USDC",
+              actualDecimal: 10,
+              estimatedUsd: 10,
+            },
+            {
+              chain: null,
+              ticker: "OTHER",
+              actualDecimal: 0,
+              estimatedUsd: 12.8,
+              family: "external_unclassified",
+            },
+          ],
+          summary: {
+            chainCount: 1,
+            externalWalletUsd: 25,
+            externalUnclassifiedUsd: 12.8,
+          },
+        },
+      ],
+    },
+  );
+
+  assert.equal(holdings.source, "whole_wallet_inventory");
+  assert.equal(holdings.totalUsd, 25);
+  assert.equal(holdings.externalWalletUsd, 25);
+  assert.equal(holdings.unclassifiedUsd, 12.8);
+  assert.ok(holdings.items.some((item) => item.sym === "other" && item.usd === 12.8));
+});

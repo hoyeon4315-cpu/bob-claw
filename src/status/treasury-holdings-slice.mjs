@@ -7,6 +7,8 @@ function latestByObservedAt(records = []) {
     .at(-1) || null;
 }
 
+const WHOLE_WALLET_PREFERENCE_WINDOW_MS = 15 * 60 * 1000;
+
 function normalizeSymbol(value = "") {
   return String(value || "").toLowerCase().replace(/\.oft$/u, "");
 }
@@ -29,6 +31,29 @@ function inventoryItem(entry = {}, family) {
 function observedAtMs(value) {
   const ts = new Date(value || 0).getTime();
   return Number.isFinite(ts) ? ts : 0;
+}
+
+function hasWholeWalletValue(record = null) {
+  if (Number.isFinite(record?.totalUsd)) return record.totalUsd > 0;
+  return [...(record?.native || []), ...(record?.tokenBalances || [])].some((item) => {
+    const usd = Number(item?.estimatedUsd);
+    const amount = Number(item?.actualDecimal);
+    return usd > 0 || amount > 0;
+  });
+}
+
+function selectWalletSource(treasuryRecord, wholeWalletRecord) {
+  if (!wholeWalletRecord) return { record: treasuryRecord, source: "treasury_inventory" };
+  if (!treasuryRecord) return { record: wholeWalletRecord, source: "whole_wallet_inventory" };
+  const treasuryObservedAtMs = observedAtMs(treasuryRecord?.observedAt);
+  const wholeObservedAtMs = observedAtMs(wholeWalletRecord?.observedAt);
+  if (
+    hasWholeWalletValue(wholeWalletRecord) &&
+    (wholeObservedAtMs >= treasuryObservedAtMs || treasuryObservedAtMs - wholeObservedAtMs <= WHOLE_WALLET_PREFERENCE_WINDOW_MS)
+  ) {
+    return { record: wholeWalletRecord, source: "whole_wallet_inventory" };
+  }
+  return { record: treasuryRecord, source: "treasury_inventory" };
 }
 
 function stablecoinUsd(amount, asset) {
@@ -98,8 +123,14 @@ function applyReconciledExitBalances(items = [], events = [], latestObservedAt =
   return [...byKey.values()];
 }
 
-export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Date().toISOString(), merklPositionEvents = [] } = {}) {
-  const latest = latestByObservedAt(records);
+export function buildTreasuryHoldingsSlice(
+  records = [],
+  { generatedAt = new Date().toISOString(), merklPositionEvents = [], wholeWalletRecords = [] } = {},
+) {
+  const latestTreasury = latestByObservedAt(records);
+  const latestWholeWallet = latestByObservedAt(wholeWalletRecords);
+  const selected = selectWalletSource(latestTreasury, latestWholeWallet);
+  const latest = selected.record;
   if (!latest) {
     return {
       schemaVersion: 1,
@@ -115,7 +146,9 @@ export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Dat
 
   const items = applyReconciledExitBalances([
     ...(latest.native || []).map((entry) => inventoryItem(entry, "native")),
-    ...(latest.tokens || []).map((entry) => inventoryItem(entry, "token")),
+    ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || []).map((entry) =>
+      inventoryItem(entry, "token"),
+    ),
   ], merklPositionEvents, latest.observedAt)
     .filter((item) => item.usd > 0 || item.amount > 0)
     .sort((a, b) => (b.usd || 0) - (a.usd || 0));
@@ -131,12 +164,20 @@ export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Dat
       ? itemTotalUsd
       : Number.isFinite(latest.summary?.estimatedWalletUsd)
       ? latest.summary.estimatedWalletUsd
+      : Number.isFinite(latest.totalUsd)
+      ? latest.totalUsd
       : itemTotalUsd,
-    activeChainCount: latest.summary?.activeChainCount ?? latest.activeChains?.length ?? 0,
-    supportedChainCount: latest.summary?.supportedChainCount ?? latest.supportedChains?.length ?? 0,
+    activeChainCount:
+      latest.summary?.activeChainCount ?? latest.summary?.chainCount ?? latest.activeChains?.length ?? 0,
+    supportedChainCount:
+      latest.summary?.supportedChainCount ?? latest.summary?.chainCount ?? latest.supportedChains?.length ?? 0,
     refillRequiredCount:
       (latest.summary?.nativeRefillRequiredCount ?? 0) + (latest.summary?.tokenRefillRequiredCount ?? 0),
     items,
     protocolApr: {},
+    source: selected.source,
+    scanErrorCount: latest.summary?.scanErrorCount ?? 0,
+    externalWalletUsd: latest.summary?.externalWalletUsd ?? null,
+    unclassifiedUsd: latest.summary?.externalUnclassifiedUsd ?? null,
   };
 }

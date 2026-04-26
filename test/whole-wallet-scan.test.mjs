@@ -45,3 +45,34 @@ test("whole-wallet inventory keeps non-zero native and token balances outside tr
   assert.equal(inventory.summary.tokenCount, 3);
   assert.equal(inventory.totalUsd > 0, true);
 });
+
+test("whole-wallet inventory adds external unclassified wallet delta when address scan api sees more assets", () => {
+  const inventory = buildWholeWalletInventory({
+    address: "0x000000000000000000000000000000000000dEaD",
+    prices: {
+      btc: 70000,
+      tokenByKey: { btc: 70000, wbtc: 70000, ethereum: 2200, usd_stable: 1 },
+      nativeByChain: { base: 2200 },
+    },
+    chains: ["base"],
+    nativeBalances: {
+      base: { balanceWei: "1000000000000000000", rpcUrl: "https://mainnet.base.org" },
+    },
+    tokenBalances: [],
+    externalPortfolio: {
+      provider: "zerion",
+      walletUsd: 3000,
+      totalPortfolioUsd: 3500,
+    },
+    observedAt: "2026-04-18T01:55:08.967Z",
+  });
+
+  const other = inventory.tokenBalances.find((item) => item.family === "external_unclassified");
+  assert.ok(other, "expected unclassified external wallet delta");
+  assert.equal(other.estimatedUsd, 800);
+  assert.equal(inventory.summary.itemizedWalletUsd, 2200);
+  assert.equal(inventory.summary.externalWalletUsd, 3000);
+  assert.equal(inventory.summary.externalUnclassifiedUsd, 800);
+  assert.equal(inventory.totalUsd, 3000);
+  assert.equal(inventory.source, "live_scan_with_external_portfolio");
+});

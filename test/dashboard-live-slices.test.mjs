@@ -200,6 +200,11 @@ test("capital summary combines wallet balances with deployed Merkl positions", (
   assert.equal(slice.walletUsd, 205.5);
   assert.equal(slice.deployedUsd, 147.69);
   assert.equal(slice.totalUsd, 353.19);
+  assert.equal(slice.walletSource, null);
+  assert.equal(slice.walletObservedAt, null);
+  assert.equal(slice.walletScanErrorCount, 0);
+  assert.equal(slice.externalWalletUsd, null);
+  assert.equal(slice.unclassifiedUsd, null);
   assert.equal(slice.activePositionCount, 2);
   assert.deepEqual(slice.positionItems.map((item) => item.protocol), ["yo", "euler"]);
 });

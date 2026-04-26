@@ -7,6 +7,7 @@ import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { scanWholeWalletInventory } from "../treasury/whole-wallet-scan.mjs";
+import { resolveAddressScanPortfolioReader } from "../treasury/address-scan-api.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 
 function parseArgs(argv) {
@@ -47,7 +48,7 @@ export function materializeWholeWalletInventory(liveInventory = null, treasurySn
   if (!shouldUseStoredWholeWalletFallback(liveInventory, treasurySnapshot)) {
     return {
       ...(liveInventory || {}),
-      source: "live_scan",
+      source: liveInventory?.source || "live_scan",
     };
   }
   return {
@@ -114,12 +115,20 @@ async function main() {
   });
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const bitcoinAddress = await resolveBitcoinAddress();
+  const externalPortfolioReader = resolveAddressScanPortfolioReader({
+    providers: config.addressScanProviders,
+    zerionApiKey: config.zerionApiKey,
+    zerionApiBase: config.zerionApiBase,
+    tatumApiKey: config.tatumApiKey,
+    tatumApiBase: config.tatumApiBase,
+  });
   const liveInventory = await scanWholeWalletInventory({
     address: resolved.address,
     bitcoinAddress,
     prices,
     chains: policy.supportedChains,
     families: args.families,
+    externalPortfolioReader,
   });
   const inventory = materializeWholeWalletInventory(liveInventory, context.inventorySnapshot);
   const store = new JsonlStore(config.dataDir);
@@ -133,6 +142,13 @@ async function main() {
   console.log(`address=${inventory.address}`);
   console.log(`inventorySource=${inventory.source || "live_scan"}`);
   console.log(`totalUsd=${inventory.totalUsd.toFixed(4)}`);
+  console.log(`externalAddressScan=${inventory.summary.externalProvider || "inactive"}`);
+  if (Number.isFinite(inventory.summary.externalWalletUsd)) {
+    console.log(`externalWalletUsd=${inventory.summary.externalWalletUsd.toFixed(4)}`);
+  }
+  if (Number.isFinite(inventory.summary.externalUnclassifiedUsd)) {
+    console.log(`externalUnclassifiedUsd=${inventory.summary.externalUnclassifiedUsd.toFixed(4)}`);
+  }
   console.log(`native=${inventory.summary.nativeCount} tokens=${inventory.summary.tokenCount} scanErrors=${inventory.summary.scanErrorCount}`);
   for (const item of [...inventory.native, ...inventory.tokenBalances].slice(0, 12)) {
     console.log(`${item.chain} ${item.ticker}=${item.actualDecimal} usd=${item.estimatedUsd ?? "n/a"}`);

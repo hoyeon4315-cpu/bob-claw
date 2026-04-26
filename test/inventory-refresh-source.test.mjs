@@ -18,5 +18,6 @@ test("inventory treasury refresh uses stored snapshot fallback on partial RPC fa
 
 test("dashboard deploy refreshes treasury inventory before rebuilding status", () => {
   assert.match(DEPLOY_DASHBOARD, /await runCommand\("node", \["src\/cli\/inventory-treasury\.mjs"\], commandEnv\);/);
+  assert.match(DEPLOY_DASHBOARD, /await runCommand\("node", \["src\/cli\/inventory-whole-wallet\.mjs"\], commandEnv\);/);
   assert.match(DEPLOY_DASHBOARD, /await runCommand\("node", \["src\/cli\/status-dashboard\.mjs"\], commandEnv\);/);
 });

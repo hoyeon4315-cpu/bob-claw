@@ -608,6 +608,8 @@
       const flow = window.FLOW || {};
       const activities = flow?.recentActivities || [];
       const txActivities = activities.filter((activity) => activity?.kind === 'transaction');
+      const positionActivities = activities.filter((activity) => activity?.kind === 'position');
+      const paybackActivities = activities.filter((activity) => activity?.kind === 'payback');
       const inFlightTxCount = txActivities.filter((activity) => activity?.status === 'signed' || activity?.status === 'broadcasted').length;
       const confirmedTxCount = txActivities.filter((activity) => activity?.status === 'confirmed').length;
       const [expanded, setExpanded] = useState(false);
@@ -616,6 +618,8 @@
         if (filter === 'in_flight') return activity?.kind === 'transaction' && (activity?.status === 'signed' || activity?.status === 'broadcasted');
         if (filter === 'confirmed') return activity?.kind === 'transaction' && activity?.status === 'confirmed';
         if (filter === 'tx') return activity?.kind === 'transaction';
+        if (filter === 'position') return activity?.kind === 'position';
+        if (filter === 'payback') return activity?.kind === 'payback';
         return true;
       });
       const visibleActivities = expanded ? filteredActivities : filteredActivities.slice(0, 3);
@@ -624,6 +628,8 @@
         { id: 'in_flight', label: `In flight ${inFlightTxCount}`, tone: { bg: '#FFF4E2', fg: '#8A520C' }, hidden: inFlightTxCount === 0 },
         { id: 'confirmed', label: `Confirmed ${confirmedTxCount}`, tone: { bg: '#EAF6EE', fg: 'var(--green)' }, hidden: confirmedTxCount === 0 },
         { id: 'tx', label: `TX ${txActivities.length}`, tone: { bg: '#ECECEE', fg: 'var(--ink-3)' }, hidden: txActivities.length === 0 },
+        { id: 'position', label: `Position ${positionActivities.length}`, tone: { bg: '#EEF2FF', fg: '#3256D7' }, hidden: positionActivities.length === 0 },
+        { id: 'payback', label: `Payback ${paybackActivities.length}`, tone: { bg: '#FFF4E2', fg: '#8A520C' }, hidden: paybackActivities.length === 0 },
       ].filter((item) => !item.hidden);
       useEffect(() => {
         const allowed = new Set(filterChips.map((item) => item.id));
@@ -1068,6 +1074,23 @@
         ? HOLDINGS.totalUsd
         : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
       const pending = HOLDINGS?.pending;
+      const walletSourceLabel = HOLDINGS?.walletSource === 'whole_wallet_inventory'
+        ? 'whole-wallet live'
+        : HOLDINGS?.walletSource === 'treasury_inventory'
+          ? 'policy inventory'
+          : 'wallet source pending';
+      const walletObservedLabel = HOLDINGS?.walletObservedAt
+        ? `wallet observed ${formatStatusAge(HOLDINGS.walletObservedAt) || fmtWhen(HOLDINGS.walletObservedAt)}`
+        : 'wallet observed pending';
+      const walletScanHealthLabel = HOLDINGS?.walletScanErrorCount > 0
+        ? `scan errors ${HOLDINGS.walletScanErrorCount}`
+        : 'scan clean';
+      const externalScanLabel = Number.isFinite(HOLDINGS?.externalWalletUsd)
+        ? `external address scan ${fmtUsd(HOLDINGS?.externalWalletUsd)}`
+        : 'external address scan inactive';
+      const unclassifiedLabel = Number.isFinite(HOLDINGS?.unclassifiedUsd) && HOLDINGS.unclassifiedUsd > 0
+        ? `unclassified ${fmtUsd(HOLDINGS.unclassifiedUsd)}`
+        : null;
       const liveStrats = STRATEGIES.filter(s => s.status === 'LIVE');
       const stratsByAsset = {};
       liveStrats.forEach(s => {
@@ -1092,6 +1115,27 @@
                 wallet {fmtUsd(HOLDINGS?.walletUsd)} · deployed {fmtUsd(HOLDINGS?.deployedUsd)} · open positions {positions.length}
               </div>
             )}
+            {!pending && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:8 }}>
+                <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'rgba(255,255,255,0.06)', color:'var(--ink-3)', border:'0.5px solid var(--line)' }}>
+                  {walletSourceLabel}
+                </span>
+                <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'rgba(255,255,255,0.06)', color:'var(--ink-3)', border:'0.5px solid var(--line)' }}>
+                  {walletObservedLabel}
+                </span>
+                <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:HOLDINGS?.walletScanErrorCount > 0 ? '#FFF6E8' : 'rgba(255,255,255,0.06)', color:HOLDINGS?.walletScanErrorCount > 0 ? 'var(--orange)' : 'var(--ink-3)', border:HOLDINGS?.walletScanErrorCount > 0 ? '0.5px solid rgba(201,140,0,0.22)' : '0.5px solid var(--line)' }}>
+                  {walletScanHealthLabel}
+                </span>
+                <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'rgba(255,255,255,0.06)', color:'var(--ink-3)', border:'0.5px solid var(--line)' }}>
+                  {externalScanLabel}
+                </span>
+                {unclassifiedLabel && (
+                  <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' }}>
+                    {unclassifiedLabel}
+                  </span>
+                )}
+              </div>
+            )}
             {pending && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>treasury snapshot pending</div>}
           </div>
           <div style={{ fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: 1.6, textTransform: 'uppercase', padding: '0 4px 8px' }}>Wallet balances</div>
@@ -1104,6 +1148,8 @@
             {items.map((a, i, arr) => {
               const sym = String(a.sym || a.name || '').toLowerCase();
               const symBase = sym.split('.')[0];
+              const isExternalDelta = symBase === 'other' || a.family === 'external_unclassified';
+              const chainLabel = a.chain || (isExternalDelta ? 'external address scan' : 'unmapped');
               const aliases = new Set([sym, symBase]);
               if (symBase === 'wbtc' || symBase === 'cbbtc' || symBase === 'lbtc' || symBase === 'btcb' || symBase === 'btc.b') {
                 aliases.add('wbtc'); aliases.add('cbbtc'); aliases.add('btc');
@@ -1123,7 +1169,7 @@
                 <AssetLogo id={a.sym} size={28}/>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13.5, fontWeight:500 }}>{a.name}</div>
-                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{a.chain}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{chainLabel}</div>
                   {tied.length > 0 && (
                     <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
                       {tied.slice(0, 4).map(s => (
@@ -1143,7 +1189,9 @@
                 </div>
                 <div style={{ textAlign:'right' }}>
                   <div style={{ fontSize:13, fontWeight:600, letterSpacing:-0.2 }}>${(a.usd||0).toLocaleString()}</div>
-                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{(a.amount||0).toLocaleString()} {a.name}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>
+                    {isExternalDelta ? 'external scan delta' : `${(a.amount||0).toLocaleString()} ${a.name}`}
+                  </div>
                 </div>
                 {i !== arr.length-1 && <div style={{ position:'absolute', left:54, right:0, bottom:0, height:0.5, background:'var(--line)' }}/>}
               </div>

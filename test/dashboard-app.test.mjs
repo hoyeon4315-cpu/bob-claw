@@ -55,6 +55,8 @@ describe("dashboard home renewal source guard", () => {
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
     assert.match(opsStrip, /const txActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'transaction'\)/);
+    assert.match(opsStrip, /const positionActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'position'\)/);
+    assert.match(opsStrip, /const paybackActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'payback'\)/);
     assert.match(opsStrip, /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/);
     assert.match(opsStrip, /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/);
     assert.match(opsStrip, /const \[filter, setFilter\] = useState\(\(\) => readPersistedHistoryFilter\(\)\)/);
@@ -63,6 +65,8 @@ describe("dashboard home renewal source guard", () => {
     assert.match(opsStrip, /id: 'in_flight', label: `In flight \$\{inFlightTxCount\}`/);
     assert.match(opsStrip, /id: 'confirmed', label: `Confirmed \$\{confirmedTxCount\}`/);
     assert.match(opsStrip, /id: 'tx', label: `TX \$\{txActivities\.length\}`/);
+    assert.match(opsStrip, /id: 'position', label: `Position \$\{positionActivities\.length\}`/);
+    assert.match(opsStrip, /id: 'payback', label: `Payback \$\{paybackActivities\.length\}`/);
     assert.match(opsStrip, /setExpanded\(false\);/);
     assert.match(opsStrip, /setFilter\(chip\.id\);/);
     assert.match(opsStrip, /const allowed = new Set\(filterChips\.map\(\(item\) => item\.id\)\)/);
@@ -102,6 +106,16 @@ describe("dashboard defi renewal source guard", () => {
     const assetsPane = extractSection("function AssetsPane", "function App");
     assert.match(assetsPane, /open positions \{positions\.length\}/);
     assert.match(assetsPane, /wallet \{fmtUsd\(HOLDINGS\?\.walletUsd\)\} · deployed \{fmtUsd\(HOLDINGS\?\.deployedUsd\)\}/);
+    assert.match(assetsPane, /whole-wallet live/);
+    assert.match(assetsPane, /policy inventory/);
+    assert.match(assetsPane, /wallet observed \$\{formatStatusAge\(HOLDINGS\.walletObservedAt\) \|\| fmtWhen\(HOLDINGS\.walletObservedAt\)\}/);
+    assert.match(assetsPane, /scan errors \$\{HOLDINGS\.walletScanErrorCount\}/);
+    assert.match(assetsPane, /scan clean/);
+    assert.match(assetsPane, /external address scan inactive/);
+    assert.match(assetsPane, /external address scan \$\{fmtUsd\(HOLDINGS\?\.externalWalletUsd\)\}/);
+    assert.match(assetsPane, /unclassified \$\{fmtUsd\(HOLDINGS\.unclassifiedUsd\)\}/);
+    assert.match(assetsPane, /const isExternalDelta = symBase === 'other' \|\| a\.family === 'external_unclassified'/);
+    assert.match(assetsPane, /external scan delta/);
   });
 
   test("flow pane expands the map above lower cards during focus mode", () => {

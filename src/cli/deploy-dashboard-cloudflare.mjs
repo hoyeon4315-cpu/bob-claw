@@ -324,6 +324,7 @@ export async function main({
 
   if (!args.skipStatus) {
     await runCommand("node", ["src/cli/inventory-treasury.mjs"], commandEnv);
+    await runCommand("node", ["src/cli/inventory-whole-wallet.mjs"], commandEnv);
     await runCommand("node", ["src/cli/status-dashboard.mjs"], commandEnv);
   }
 

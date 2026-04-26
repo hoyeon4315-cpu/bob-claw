@@ -83,6 +83,21 @@ function bitcoinRecord(bitcoinAddress, bitcoinBalance, prices) {
   };
 }
 
+function externalUnclassifiedRecord({ provider, walletUsd }, missingUsd) {
+  return {
+    chain: null,
+    ticker: "OTHER",
+    family: "external_unclassified",
+    token: null,
+    balance: "0",
+    actualDecimal: 0,
+    estimatedUsd: missingUsd,
+    rpcUrl: null,
+    source: `${provider || "external"}_wallet_portfolio`,
+    note: `External wallet scan reports ${walletUsd} USD for wallet balances.`,
+  };
+}
+
 export function buildWholeWalletInventory({
   address,
   bitcoinAddress = null,
@@ -92,6 +107,7 @@ export function buildWholeWalletInventory({
   scanErrors: extraScanErrors = [],
   prices = null,
   chains = Object.keys(EVM_CHAINS),
+  externalPortfolio = null,
   observedAt,
 } = {}) {
   const native = [];
@@ -128,7 +144,17 @@ export function buildWholeWalletInventory({
     }
   }
 
-  const holdings = [...native, ...tokenEntries];
+  const localTotalUsd = [...native, ...tokenEntries]
+    .map((item) => item.estimatedUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  const augmentedTokenBalances = [...tokenEntries];
+  let externalUnclassifiedUsd = null;
+  if (Number.isFinite(externalPortfolio?.walletUsd) && externalPortfolio.walletUsd > localTotalUsd + 0.01) {
+    externalUnclassifiedUsd = externalPortfolio.walletUsd - localTotalUsd;
+    augmentedTokenBalances.push(externalUnclassifiedRecord(externalPortfolio, externalUnclassifiedUsd));
+  }
+  const holdings = [...native, ...augmentedTokenBalances];
   const totalUsd = holdings
     .map((item) => item.estimatedUsd)
     .filter(Number.isFinite)
@@ -140,14 +166,20 @@ export function buildWholeWalletInventory({
     address,
     totalUsd,
     native: native.sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1)),
-    tokenBalances: tokenEntries.sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1)),
+    tokenBalances: augmentedTokenBalances.sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1)),
     scanErrors,
     summary: {
       chainCount: new Set(holdings.map((item) => item.chain)).size,
       nativeCount: native.length,
-      tokenCount: tokenEntries.length,
+      tokenCount: augmentedTokenBalances.length,
       scanErrorCount: scanErrors.length,
+      itemizedWalletUsd: localTotalUsd,
+      externalWalletUsd: externalPortfolio?.walletUsd ?? null,
+      externalTotalPortfolioUsd: externalPortfolio?.totalPortfolioUsd ?? null,
+      externalUnclassifiedUsd,
+      externalProvider: externalPortfolio?.provider || null,
     },
+    source: externalPortfolio ? "live_scan_with_external_portfolio" : "live_scan",
   };
 }
 
@@ -159,6 +191,7 @@ export async function scanWholeWalletInventory({
   families = null,
   fetchImpl = fetch,
   bitcoinBalanceReader = readBitcoinAddressBalance,
+  externalPortfolioReader = null,
 } = {}) {
   const targets = knownWholeWalletTokenTargets({ families });
   const scanErrors = [];
@@ -215,6 +248,19 @@ export async function scanWholeWalletInventory({
     }
   }
 
+  let externalPortfolio = null;
+  if (typeof externalPortfolioReader === "function") {
+    try {
+      externalPortfolio = await externalPortfolioReader({ address, fetchImpl });
+    } catch (error) {
+      scanErrors.push({
+        kind: "external_portfolio",
+        provider: "zerion",
+        message: error.message,
+      });
+    }
+  }
+
   return buildWholeWalletInventory({
     address,
     bitcoinAddress,
@@ -224,6 +270,7 @@ export async function scanWholeWalletInventory({
     scanErrors,
     prices,
     chains,
+    externalPortfolio,
   });
 }
 

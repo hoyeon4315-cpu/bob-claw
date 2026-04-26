@@ -194,9 +194,10 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      wrappedBtcLoopLiveProof,
      capitalAuditReport,
      v1InfraDrills,
-      promotionReport,
-      allChainAutopilotLatest,
-      treasuryInventoryRecords,
+     promotionReport,
+     allChainAutopilotLatest,
+     treasuryInventoryRecords,
+      wholeWalletInventoryRecords,
       merklPositionEvents,
       signerAuditRecords,
     ] = await Promise.all([
@@ -243,12 +244,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
      readJsonIfExists(join(dataDir, "capital-audit.json")),
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
-      readJsonIfExists(join(dataDir, "promotion-latest.json")),
-      readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
-      readJsonl(dataDir, "treasury-inventory"),
-      readJsonl(dataDir, "merkl-portfolio-positions"),
-      readSignerAuditLog(),
-    ]);
+       readJsonIfExists(join(dataDir, "promotion-latest.json")),
+       readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
+       readJsonl(dataDir, "treasury-inventory"),
+       readJsonl(dataDir, "whole-wallet-inventory"),
+       readJsonl(dataDir, "merkl-portfolio-positions"),
+       readSignerAuditLog(),
+     ]);
   const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
@@ -343,6 +345,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.walletHoldings = buildTreasuryHoldingsSlice(treasuryInventoryRecords, {
     generatedAt: dashboardStatus.generatedAt,
     merklPositionEvents,
+    wholeWalletRecords: wholeWalletInventoryRecords,
   });
   dashboardStatus.capitalSummary = buildCapitalSummarySlice({
     walletHoldings: dashboardStatus.walletHoldings,

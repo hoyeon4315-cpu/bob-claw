@@ -88,6 +88,17 @@ function fallbackAllowance(fallbackInventory, chain, token, spender) {
   return item ? { allowance: item.actual || "0", rpcUrl: item.rpcUrl || null, staleFallback: true } : null;
 }
 
+function fallbackNativePriceUsd(fallbackInventory, chain) {
+  const item = fallbackInventory?.native?.find((entry) => entry.chain === chain);
+  return Number.isFinite(item?.priceUsd) ? item.priceUsd : null;
+}
+
+function fallbackTokenPriceUsd(fallbackInventory, chain, token) {
+  const key = normalizedAddress(token);
+  const item = fallbackInventory?.tokens?.find((entry) => entry.chain === chain && normalizedAddress(entry.token) === key);
+  return Number.isFinite(item?.priceUsd) ? item.priceUsd : null;
+}
+
 async function readInventoryItem({ label, read, fallback, continueOnError, scanErrors }) {
   try {
     return await read();
@@ -111,6 +122,7 @@ export function buildTreasuryInventory({
   tokenBalances = {},
   allowances = {},
   prices = null,
+  fallbackInventory = null,
   observedAt,
   scanErrors = [],
 }) {
@@ -121,7 +133,10 @@ export function buildTreasuryInventory({
     const min = decimalToUnits(item.minBalance, item.decimals);
     const target = decimalToUnits(item.targetBalance, item.decimals);
     const max = decimalToUnits(item.maxBalance, item.decimals);
-    const priceUsd = priceForAsset(chain, item.token, prices) ?? stablecoinFallbackPriceUsd(item);
+    const priceUsd =
+      priceForAsset(chain, item.token, prices) ??
+      stablecoinFallbackPriceUsd(item) ??
+      fallbackNativePriceUsd(fallbackInventory, chain);
     const status = bandStatus({
       actual,
       min,
@@ -163,7 +178,10 @@ export function buildTreasuryInventory({
     const min = decimalToUnits(item.minBalance, item.decimals);
     const target = decimalToUnits(item.targetBalance, item.decimals);
     const max = decimalToUnits(item.maxBalance, item.decimals);
-    const priceUsd = priceForAsset(item.chain, item.token, prices) ?? stablecoinFallbackPriceUsd(item);
+    const priceUsd =
+      priceForAsset(item.chain, item.token, prices) ??
+      stablecoinFallbackPriceUsd(item) ??
+      fallbackTokenPriceUsd(fallbackInventory, item.chain, item.token);
     const status = bandStatus({
       actual,
       min,
@@ -304,6 +322,7 @@ export async function scanTreasuryInventory({ policy, address, prices = null, fe
     tokenBalances: Object.fromEntries(tokenEntries),
     allowances: Object.fromEntries(allowanceEntries),
     prices,
+    fallbackInventory,
     scanErrors,
   });
 }

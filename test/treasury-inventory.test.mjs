@@ -109,3 +109,85 @@ test("treasury inventory can continue past one chain RPC failure with stale fall
   assert.equal(base.staleFallback, false);
   assert.equal(inventory.summary.scanErrorCount > 0, true);
 });
+
+test("treasury inventory preserves last known price when balance is current but price feed is missing", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const fallbackInventory = buildTreasuryInventory({
+    policy,
+    address: "0x000000000000000000000000000000000000dEaD",
+    prices: {
+      btc: 70000,
+      tokenByKey: { btc: 70000, wbtc: 70000, ethereum: 2200, usd_stable: 1 },
+      nativeByChain: {
+        ethereum: 2200,
+        bob: 2200,
+        base: 2200,
+        bsc: 600,
+        avalanche: 10,
+        unichain: 2200,
+        bera: 1,
+        optimism: 2200,
+        soneium: 2200,
+        sei: 0.2,
+        sonic: 0.05,
+      },
+    },
+    nativeBalances: {
+      ethereum: { balanceWei: "0" },
+      bob: { balanceWei: "0" },
+      base: { balanceWei: "0" },
+      avalanche: { balanceWei: "0" },
+      unichain: { balanceWei: "0" },
+      bera: { balanceWei: "0" },
+      bsc: { balanceWei: "0" },
+      optimism: { balanceWei: "0" },
+      soneium: { balanceWei: "0" },
+      sei: { balanceWei: "100000000000000000000" },
+      sonic: { balanceWei: "200000000000000000000" },
+    },
+  });
+
+  const inventory = buildTreasuryInventory({
+    policy,
+    address: "0x000000000000000000000000000000000000dEaD",
+    prices: {
+      btc: 70000,
+      tokenByKey: { btc: 70000, wbtc: 70000, ethereum: 2200, usd_stable: 1 },
+      nativeByChain: {
+        ethereum: 2200,
+        bob: 2200,
+        base: 2200,
+        bsc: 600,
+        avalanche: 10,
+        unichain: 2200,
+        bera: 1,
+        optimism: 2200,
+        soneium: 2200,
+        sei: null,
+        sonic: null,
+      },
+    },
+    nativeBalances: {
+      ethereum: { balanceWei: "0" },
+      bob: { balanceWei: "0" },
+      base: { balanceWei: "0" },
+      avalanche: { balanceWei: "0" },
+      unichain: { balanceWei: "0" },
+      bera: { balanceWei: "0" },
+      bsc: { balanceWei: "0" },
+      optimism: { balanceWei: "0" },
+      soneium: { balanceWei: "0" },
+      sei: { balanceWei: "100000000000000000000" },
+      sonic: { balanceWei: "200000000000000000000" },
+    },
+    fallbackInventory,
+  });
+
+  const sei = inventory.native.find((item) => item.chain === "sei");
+  const sonic = inventory.native.find((item) => item.chain === "sonic");
+  assert.equal(sei.priceUsd, 0.2);
+  assert.equal(sonic.priceUsd, 0.05);
+  assert.equal(sei.estimatedUsd, 20);
+  assert.equal(sonic.estimatedUsd, 10);
+  assert.equal(inventory.summary.estimatedWalletUsd, 30);
+});

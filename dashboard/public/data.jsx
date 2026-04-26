@@ -174,6 +174,11 @@ async function bootData(payload = null) {
         totalUsd: Number.isFinite(capitalSummary.totalUsd) ? capitalSummary.totalUsd : null,
         walletUsd: Number.isFinite(capitalSummary.walletUsd) ? capitalSummary.walletUsd : null,
         deployedUsd: Number.isFinite(capitalSummary.deployedUsd) ? capitalSummary.deployedUsd : null,
+        walletSource: capitalSummary.walletSource || null,
+        walletObservedAt: capitalSummary.walletObservedAt || null,
+        walletScanErrorCount: Number.isFinite(capitalSummary.walletScanErrorCount) ? capitalSummary.walletScanErrorCount : 0,
+        externalWalletUsd: Number.isFinite(capitalSummary.externalWalletUsd) ? capitalSummary.externalWalletUsd : null,
+        unclassifiedUsd: Number.isFinite(capitalSummary.unclassifiedUsd) ? capitalSummary.unclassifiedUsd : null,
         pending: false,
         generatedAt: capitalSummary.generatedAt || status?.generatedAt || null,
       }
@@ -184,10 +189,27 @@ async function bootData(payload = null) {
         totalUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
         walletUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
         deployedUsd: 0,
+        walletSource: holdings.source || null,
+        walletObservedAt: holdings.observedAt || null,
+        walletScanErrorCount: Number.isFinite(holdings.scanErrorCount) ? holdings.scanErrorCount : 0,
+        externalWalletUsd: Number.isFinite(holdings.externalWalletUsd) ? holdings.externalWalletUsd : null,
+        unclassifiedUsd: Number.isFinite(holdings.unclassifiedUsd) ? holdings.unclassifiedUsd : null,
         pending: holdings.pending === true || holdings.items.length === 0,
         generatedAt: holdings.generatedAt || null,
       }
-    : { all: [], positions: [], pending: true, totalUsd: null, walletUsd: null, deployedUsd: null };
+    : {
+        all: [],
+        positions: [],
+        pending: true,
+        totalUsd: null,
+        walletUsd: null,
+        deployedUsd: null,
+        walletSource: null,
+        walletObservedAt: null,
+        walletScanErrorCount: 0,
+        externalWalletUsd: null,
+        unclassifiedUsd: null,
+      };
   const CAPITAL = buildCapitalMaps(HOLDINGS);
 
   // Unified read from a public-safe status payload.

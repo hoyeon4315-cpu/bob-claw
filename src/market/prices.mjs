@@ -20,6 +20,30 @@ const TOKEN_PRICE_IDS = {
 };
 
 const ETH_LIKE_CHAINS = ["ethereum", "base", "bob", "optimism", "soneium", "unichain"];
+const NATIVE_PRICE_BACKFILL_SOURCES = Object.freeze({
+  avalanche: [
+    { provider: "coinbase", symbol: "AVAX" },
+    { provider: "binance", symbol: "AVAXUSDT" },
+    { provider: "bybit", symbol: "AVAXUSDT" },
+  ],
+  bera: [
+    { provider: "binance", symbol: "BERAUSDT" },
+    { provider: "bybit", symbol: "BERAUSDT" },
+  ],
+  bsc: [
+    { provider: "coinbase", symbol: "BNB" },
+    { provider: "binance", symbol: "BNBUSDT" },
+    { provider: "bybit", symbol: "BNBUSDT" },
+  ],
+  sei: [
+    { provider: "binance", symbol: "SEIUSDT" },
+    { provider: "bybit", symbol: "SEIUSDT" },
+  ],
+  sonic: [
+    { provider: "binance", symbol: "SUSDT" },
+    { provider: "bybit", symbol: "SUSDT" },
+  ],
+});
 
 function median(values = []) {
   const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
@@ -212,20 +236,69 @@ async function fetchCoinbaseSpotUsd(symbol) {
   return Number.isFinite(amount) ? amount : null;
 }
 
-export async function backfillMissingNativePricesUsd(prices, { spotFetcher = fetchCoinbaseSpotUsd } = {}) {
+async function fetchBinanceSpotUsd(symbol) {
+  const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Binance spot request failed for ${symbol}: ${response.status}`);
+  }
+  const body = await response.json();
+  const amount = Number(body?.price);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+async function fetchBybitSpotUsd(symbol) {
+  const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${symbol}`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Bybit spot request failed for ${symbol}: ${response.status}`);
+  }
+  const body = await response.json();
+  const ticker = body?.result?.list?.[0];
+  const amount = Number(ticker?.usdIndexPrice ?? ticker?.lastPrice);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+async function resolveBackfillSpotUsd(sources, fetchers) {
+  for (const source of sources || []) {
+    const fetcher =
+      source.provider === "coinbase"
+        ? fetchers.coinbaseSpotFetcher
+        : source.provider === "binance"
+          ? fetchers.binanceSpotFetcher
+          : source.provider === "bybit"
+            ? fetchers.bybitSpotFetcher
+            : null;
+    if (typeof fetcher !== "function") continue;
+    const price = await fetcher(source.symbol).catch(() => null);
+    if (Number.isFinite(price)) return price;
+  }
+  return null;
+}
+
+export async function backfillMissingNativePricesUsd(
+  prices,
+  {
+    spotFetcher = fetchCoinbaseSpotUsd,
+    binanceSpotFetcher = fetchBinanceSpotUsd,
+    bybitSpotFetcher = fetchBybitSpotUsd,
+  } = {},
+) {
   const next = {
     ...prices,
     tokenByKey: { ...(prices?.tokenByKey || {}) },
     nativeByChain: { ...(prices?.nativeByChain || {}) },
   };
-  const coinbaseSymbolsByChain = {
-    avalanche: "AVAX",
-    bsc: "BNB",
-  };
 
-  await Promise.all(Object.entries(coinbaseSymbolsByChain).map(async ([chain, symbol]) => {
+  await Promise.all(Object.entries(NATIVE_PRICE_BACKFILL_SOURCES).map(async ([chain, sources]) => {
     if (Number.isFinite(next.nativeByChain[chain])) return;
-    const price = await spotFetcher(symbol).catch(() => null);
+    const price = await resolveBackfillSpotUsd(sources, {
+      coinbaseSpotFetcher: spotFetcher,
+      binanceSpotFetcher,
+      bybitSpotFetcher,
+    });
     if (Number.isFinite(price)) {
       next.nativeByChain[chain] = price;
       next.tokenByKey[chain] = price;
@@ -289,11 +362,11 @@ export async function getCoinbaseReferencePricesUsd({ spotFetcher = fetchCoinbas
       bsc: bnb,
       avalanche: avax,
     },
-    nativeByChain: {
-      avalanche: avax,
-      base: eth,
-      bera: null,
-      bob: eth,
+      nativeByChain: {
+        avalanche: avax,
+        base: eth,
+        bera: null,
+        bob: eth,
       bsc: bnb,
       ethereum: eth,
       optimism: eth,

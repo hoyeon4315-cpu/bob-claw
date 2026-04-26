@@ -86,6 +86,11 @@ export function getChainRpcUrls(chainName, fallback) {
 export const config = {
   gatewayApiBase: getEnv("BOB_GATEWAY_API_BASE", "https://gateway-api-mainnet.gobob.xyz"),
   merklApiBase: getEnv("BOB_CLAW_MERKL_API_BASE", "https://api.merkl.xyz"),
+  addressScanProviders: getCsvEnv("BOB_CLAW_ADDRESS_SCAN_PROVIDERS", "zerion"),
+  zerionApiBase: getEnv("BOB_CLAW_ZERION_API_BASE", "https://api.zerion.io/v1"),
+  zerionApiKey: getEnv("BOB_CLAW_ZERION_API_KEY", ""),
+  tatumApiBase: getEnv("BOB_CLAW_TATUM_API_BASE", "https://api.tatum.io"),
+  tatumApiKey: getEnv("BOB_CLAW_TATUM_API_KEY", ""),
   verifyRecipient: getEnv("BOB_CLAW_VERIFY_RECIPIENT", "0x000000000000000000000000000000000000dEaD"),
   estimateFrom: getEnv("BOB_CLAW_ESTIMATE_FROM", null),
   verifyBtcRecipient: getEnv("BOB_CLAW_VERIFY_BTC_RECIPIENT", "1BitcoinEaterAddressDontSendf59kuE"),

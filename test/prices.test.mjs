@@ -37,7 +37,7 @@ test("missing BSC native price can be backfilled from Coinbase spot data", async
   const prices = await backfillMissingNativePricesUsd({
     btc: null,
     tokenByKey: { usd_stable: 1 },
-    nativeByChain: { bsc: null },
+    nativeByChain: { avalanche: 10, bera: 1, bsc: null, sei: 0.06, sonic: 0.04 },
   }, {
     spotFetcher: async (symbol) => (symbol === "BNB" ? 650.25 : null),
   });
@@ -45,6 +45,37 @@ test("missing BSC native price can be backfilled from Coinbase spot data", async
   assert.equal(prices.nativeByChain.bsc, 650.25);
   assert.equal(prices.tokenByKey.bsc, 650.25);
   assert.equal(priceForAssetUsd({ priceKey: "bsc" }, prices), 650.25);
+});
+
+test("missing SEI and Sonic native prices can be backfilled from free exchange tickers", async () => {
+  const calls = [];
+  const prices = await backfillMissingNativePricesUsd({
+    btc: null,
+    tokenByKey: { usd_stable: 1 },
+    nativeByChain: { avalanche: 10, bera: 1, bsc: 600, sei: null, sonic: null },
+  }, {
+    spotFetcher: async () => null,
+    binanceSpotFetcher: async (symbol) => {
+      calls.push(`binance:${symbol}`);
+      if (symbol === "SEIUSDT") return 0.06057;
+      return null;
+    },
+    bybitSpotFetcher: async (symbol) => {
+      calls.push(`bybit:${symbol}`);
+      if (symbol === "SUSDT") return 0.04665;
+      return null;
+    },
+  });
+
+  assert.equal(prices.nativeByChain.sei, 0.06057);
+  assert.equal(prices.tokenByKey.sei, 0.06057);
+  assert.equal(prices.nativeByChain.sonic, 0.04665);
+  assert.equal(prices.tokenByKey.sonic, 0.04665);
+  assert.equal(priceForAssetUsd({ priceKey: "sei" }, prices), 0.06057);
+  assert.equal(priceForAssetUsd({ priceKey: "sonic" }, prices), 0.04665);
+  assert.ok(calls.includes("binance:SEIUSDT"));
+  assert.ok(calls.includes("binance:SUSDT"));
+  assert.ok(calls.includes("bybit:SUSDT"));
 });
 
 test("price snapshots round-trip into scoring price maps", () => {
