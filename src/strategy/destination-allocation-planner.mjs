@@ -11,6 +11,68 @@ function allocationStatus(item = {}) {
   return item?.allocationGate?.status || "allocation_ready";
 }
 
+function finitePositive(value) {
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function perItemCapUsd(item, kind) {
+  const estimate = kind === "active"
+    ? item?.economics?.activeBudgetEstimate
+    : item?.economics?.planningBudgetEstimate;
+  const direct = finitePositive(estimate?.maxAllocationUsd);
+  if (direct !== null) return direct;
+  const stratCap = finitePositive(item?.caps?.perChainUsd?.[item?.chain]);
+  return stratCap;
+}
+
+function scoreWeight(item) {
+  const score = Number(item?.score);
+  return Number.isFinite(score) && score > 0 ? score : 0;
+}
+
+function distributeBudget({ items, budgetUsd, kind }) {
+  if (!Number.isFinite(budgetUsd) || budgetUsd <= 0 || !items.length) {
+    return { allocations: [], remaining: Number.isFinite(budgetUsd) ? budgetUsd : null };
+  }
+  const eligible = items.filter((item) => {
+    const estimate = kind === "active"
+      ? item.economics?.activeBudgetEstimate
+      : item.economics?.planningBudgetEstimate;
+    return estimate?.passesPolicy === true;
+  });
+  if (!eligible.length) return { allocations: [], remaining: budgetUsd };
+
+  const totalWeight = eligible.reduce((sum, item) => sum + scoreWeight(item), 0);
+  let remaining = budgetUsd;
+  const allocations = [];
+  for (const item of eligible) {
+    if (remaining <= 0) break;
+    const weight = scoreWeight(item);
+    const weightShare = totalWeight > 0
+      ? (weight / totalWeight) * budgetUsd
+      : budgetUsd / eligible.length;
+    const itemCap = perItemCapUsd(item, kind);
+    const cappedShare = itemCap !== null ? Math.min(weightShare, itemCap) : weightShare;
+    const allocationUsd = Math.max(0, Math.min(remaining, cappedShare));
+    if (allocationUsd <= 0) continue;
+    const estimate = kind === "active"
+      ? item.economics?.activeBudgetEstimate
+      : item.economics?.planningBudgetEstimate;
+    allocations.push({
+      templateId: item.templateId,
+      chain: item.chain,
+      familyId: item.familyId,
+      label: item.label,
+      score: scoreWeight(item),
+      allocationUsd,
+      estimatedNetBps: estimate?.estimatedNetBps ?? null,
+      estimatedNetUsd: estimate?.estimatedNetUsd ?? null,
+    });
+    remaining -= allocationUsd;
+  }
+  return { allocations, remaining };
+}
+
 export function buildDestinationAllocationPlanner({ promotionGate = null, economics = null } = {}) {
   const generatedAt = promotionGate?.generatedAt || new Date().toISOString();
   const economicsByTemplate = byTemplateId(economics?.items);
@@ -28,45 +90,12 @@ export function buildDestinationAllocationPlanner({ promotionGate = null, econom
   const activeBudgetUsd = economics?.budgets?.activeBudgetUsd ?? null;
   const planningBudgetUsd = economics?.budgets?.planningBudgetUsd ?? null;
 
-  const activeAllocations = [];
-  let remainingActiveBudget = Number.isFinite(activeBudgetUsd) ? activeBudgetUsd : null;
-  if (Number.isFinite(activeBudgetUsd)) {
-    for (const item of allocationReady) {
-      if (!item.economics?.activeBudgetEstimate?.passesPolicy) continue;
-      const allocationUsd = Math.min(remainingActiveBudget, activeBudgetUsd);
-      if (allocationUsd <= 0) continue;
-      activeAllocations.push({
-        templateId: item.templateId,
-        chain: item.chain,
-        familyId: item.familyId,
-        label: item.label,
-        allocationUsd,
-        estimatedNetBps: item.economics?.activeBudgetEstimate?.estimatedNetBps ?? null,
-        estimatedNetUsd: item.economics?.activeBudgetEstimate?.estimatedNetUsd ?? null,
-      });
-      remainingActiveBudget -= allocationUsd;
-    }
-  }
-
-  const planningAllocations = [];
-  let remainingPlanningBudget = Number.isFinite(planningBudgetUsd) ? planningBudgetUsd : null;
-  if (Number.isFinite(planningBudgetUsd)) {
-    for (const item of allocationReady) {
-      if (!item.economics?.planningBudgetEstimate?.passesPolicy) continue;
-      const allocationUsd = Math.min(remainingPlanningBudget, planningBudgetUsd);
-      if (allocationUsd <= 0) continue;
-      planningAllocations.push({
-        templateId: item.templateId,
-        chain: item.chain,
-        familyId: item.familyId,
-        label: item.label,
-        allocationUsd,
-        estimatedNetBps: item.economics?.planningBudgetEstimate?.estimatedNetBps ?? null,
-        estimatedNetUsd: item.economics?.planningBudgetEstimate?.estimatedNetUsd ?? null,
-      });
-      remainingPlanningBudget -= allocationUsd;
-    }
-  }
+  const activeResult = Number.isFinite(activeBudgetUsd)
+    ? distributeBudget({ items: allocationReady, budgetUsd: activeBudgetUsd, kind: "active" })
+    : { allocations: [], remaining: null };
+  const planningResult = Number.isFinite(planningBudgetUsd)
+    ? distributeBudget({ items: allocationReady, budgetUsd: planningBudgetUsd, kind: "planning" })
+    : { allocations: [], remaining: null };
 
   const blockedSummary = (promotionGate?.summary?.topBlockers || []).slice(0, 12);
   const allocationBlockedSummary = (promotionGate?.summary?.topAllocationBlockers || []).slice(0, 12);
@@ -82,10 +111,10 @@ export function buildDestinationAllocationPlanner({ promotionGate = null, econom
       promotableCount: promotable.length,
       allocationReadyCount: allocationReady.length,
       reviewOnlyCount: reviewOnly.length,
-      activeAllocationCount: activeAllocations.length,
-      planningAllocationCount: planningAllocations.length,
-      activeBudgetRemainingUsd: remainingActiveBudget,
-      planningBudgetRemainingUsd: remainingPlanningBudget,
+      activeAllocationCount: activeResult.allocations.length,
+      planningAllocationCount: planningResult.allocations.length,
+      activeBudgetRemainingUsd: activeResult.remaining,
+      planningBudgetRemainingUsd: planningResult.remaining,
       blockedSummary,
       allocationBlockedSummary,
       topReviewOnly: reviewOnly.slice(0, 10).map((item) => ({
@@ -98,7 +127,7 @@ export function buildDestinationAllocationPlanner({ promotionGate = null, econom
         nextAction: item.allocationGate?.nextAction || null,
       })),
     },
-    activePlan: activeAllocations,
-    planningPlan: planningAllocations,
+    activePlan: activeResult.allocations,
+    planningPlan: planningResult.allocations,
   };
 }
