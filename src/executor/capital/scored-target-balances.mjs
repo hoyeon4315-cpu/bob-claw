@@ -1,4 +1,5 @@
 import { listStrategyCaps } from "../../config/strategy-caps.mjs";
+import { DIVERSIFICATION_POLICY } from "../../config/diversification.mjs";
 
 function finitePositive(value) {
   return Number.isFinite(value) && value > 0 ? value : null;
@@ -43,6 +44,7 @@ export function buildScoredTargetBalances({
   economics = null,
   strategyCaps = listStrategyCaps(),
   totalCapitalUsd = 0,
+  diversificationPolicy = DIVERSIFICATION_POLICY,
   now = new Date().toISOString(),
 } = {}) {
   const total = finitePositive(totalCapitalUsd);
@@ -68,6 +70,10 @@ export function buildScoredTargetBalances({
   }
 
   const totalWeight = items.reduce((sum, item) => sum + scoreWeight(item), 0);
+  const perStrategyMaxShare = Number(diversificationPolicy?.perStrategyMaxShare);
+  const perStrategyCapUsd = Number.isFinite(perStrategyMaxShare) && perStrategyMaxShare > 0
+    ? perStrategyMaxShare * total
+    : null;
   const perStrategy = [];
   for (const item of items) {
     const weight = scoreWeight(item);
@@ -75,7 +81,8 @@ export function buildScoredTargetBalances({
       ? (weight / totalWeight) * total
       : total / items.length;
     const cap = strategyChainCapUsd(item, strategyCaps);
-    const allocationUsd = cap !== null ? Math.min(weightShare, cap) : weightShare;
+    let allocationUsd = cap !== null ? Math.min(weightShare, cap) : weightShare;
+    if (perStrategyCapUsd !== null) allocationUsd = Math.min(allocationUsd, perStrategyCapUsd);
     if (!(allocationUsd > 0)) continue;
     const economicsEntry = economicsByTemplate.get(item.templateId) || null;
     perStrategy.push({
@@ -90,6 +97,24 @@ export function buildScoredTargetBalances({
       allocationUsd,
       economicsKnown: economicsEntry !== null,
     });
+  }
+
+  const perChainMaxShare = Number(diversificationPolicy?.perChainMaxShare);
+  const perChainCapUsd = Number.isFinite(perChainMaxShare) && perChainMaxShare > 0
+    ? perChainMaxShare * total
+    : null;
+  if (perChainCapUsd !== null) {
+    const sumByChain = new Map();
+    for (const entry of perStrategy) {
+      sumByChain.set(entry.chain, (sumByChain.get(entry.chain) || 0) + entry.allocationUsd);
+    }
+    for (const [chain, sum] of sumByChain.entries()) {
+      if (sum <= perChainCapUsd) continue;
+      const scale = perChainCapUsd / sum;
+      for (const entry of perStrategy) {
+        if (entry.chain === chain) entry.allocationUsd *= scale;
+      }
+    }
   }
 
   const perChainMap = new Map();

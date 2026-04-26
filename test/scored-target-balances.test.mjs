@@ -20,7 +20,7 @@ const FIXTURE_CAPS = [
   },
 ];
 
-test("scored-target distributes capital weighted by score", () => {
+test("scored-target distributes capital weighted by score (no diversification)", () => {
   const promotionGate = {
     items: [
       { templateId: "base:a", chain: "base", score: 0.6, strategyId: "strategy-base", gate: { status: "promotable" }, allocationGate: { status: "allocation_ready" } },
@@ -31,6 +31,7 @@ test("scored-target distributes capital weighted by score", () => {
     promotionGate,
     strategyCaps: FIXTURE_CAPS,
     totalCapitalUsd: 1000,
+    diversificationPolicy: null,
   });
   assert.equal(result.perStrategy.length, 2);
   const base = result.perStrategy.find((s) => s.chain === "base");
@@ -38,6 +39,27 @@ test("scored-target distributes capital weighted by score", () => {
   assert.equal(base.allocationUsd, 200);
   assert.ok(Math.abs(bsc.allocationUsd - 400) < 0.001);
   assert.ok(result.summary.totalAllocationUsd <= 1000 + 1e-6);
+});
+
+test("scored-target enforces diversification per-strategy and per-chain caps", () => {
+  const promotionGate = {
+    items: [
+      { templateId: "base:a", chain: "base", score: 0.6, strategyId: "strategy-base", gate: { status: "promotable" }, allocationGate: { status: "allocation_ready" } },
+      { templateId: "bsc:b", chain: "bsc", score: 0.4, strategyId: "strategy-bsc", gate: { status: "promotable" }, allocationGate: { status: "allocation_ready" } },
+    ],
+  };
+  const result = buildScoredTargetBalances({
+    promotionGate,
+    strategyCaps: FIXTURE_CAPS,
+    totalCapitalUsd: 1000,
+    // default DIVERSIFICATION_POLICY: perStrategyMaxShare=0.25, perChainMaxShare=0.35
+  });
+  const base = result.perStrategy.find((s) => s.chain === "base");
+  const bsc = result.perStrategy.find((s) => s.chain === "bsc");
+  // strategy-base capped by perChainUsd=200 (tighter than 0.25*1000=250)
+  assert.equal(base.allocationUsd, 200);
+  // strategy-bsc weight share=400, capped by perStrategyMaxShare=250
+  assert.ok(Math.abs(bsc.allocationUsd - 250) < 0.001);
 });
 
 test("scored-target falls back to equal split when total weight is zero", () => {
@@ -51,6 +73,7 @@ test("scored-target falls back to equal split when total weight is zero", () => 
     promotionGate,
     strategyCaps: FIXTURE_CAPS,
     totalCapitalUsd: 600,
+    diversificationPolicy: null,
   });
   assert.equal(result.perStrategy.length, 2);
   for (const entry of result.perStrategy) {
@@ -85,6 +108,7 @@ test("scored-target aggregates per-chain settlement targets across multiple stra
     promotionGate,
     strategyCaps: FIXTURE_CAPS,
     totalCapitalUsd: 800,
+    diversificationPolicy: null,
   });
   assert.equal(result.perChain.length, 1);
   assert.equal(result.perChain[0].chain, "base");

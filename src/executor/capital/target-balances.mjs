@@ -5,7 +5,11 @@ function finite(value) {
 }
 
 function effectivePerStrategySettlementTargetUsd(strategy = {}, chain, policy = null) {
-  const perChainUsd = finite(strategy.caps?.perChainUsd?.[chain]);
+  const perChainRaw = strategy.caps?.perChainUsd?.[chain];
+  const perChainUsd = finite(perChainRaw);
+  // Operator explicitly setting perChainUsd=0 means "do not target this chain".
+  // Do NOT fall through to policy defaults in that case.
+  if (perChainUsd === 0) return 0;
   const liveUnitUsd = finite(strategy.caps?.tinyLivePerTxUsd) ?? finite(strategy.caps?.perTxUsd);
   const canaryStartUsdMax = finite(policy?.capital?.canaryStartUsdMax);
   const maxIdleCapitalPerChainUsd = finite(policy?.capital?.maxIdleCapitalPerChainUsd);

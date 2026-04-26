@@ -49,6 +49,7 @@ export function buildBootstrapFromBtcReport({
   strategyCaps = listStrategyCaps(),
   balancesByChain = {},
   policy = null,
+  diversificationPolicy,
   now = new Date().toISOString(),
 } = {}) {
   if (!totalCapitalUsd || !(totalCapitalUsd > 0)) {
@@ -66,6 +67,7 @@ export function buildBootstrapFromBtcReport({
     economics,
     strategyCaps,
     totalCapitalUsd,
+    ...(diversificationPolicy !== undefined ? { diversificationPolicy } : {}),
     now,
   });
   const rebalancePlan = buildCapitalRebalancePlan({
