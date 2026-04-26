@@ -106,12 +106,18 @@ test("Merkl active positions aggregate open live-capital entries", () => {
         observedAt: "2026-04-25T02:00:00.000Z",
       },
     ],
-    { generatedAt: "2026-04-25T03:00:00.000Z" },
+    {
+      generatedAt: "2026-04-25T03:00:00.000Z",
+      aprByOpportunity: {
+        a: 12,
+      },
+    },
   );
 
   assert.equal(slice.activeCount, 1);
   assert.equal(slice.items[0].id, "merkl_a");
   assert.equal(slice.items[0].capUsd, 6.3);
+  assert.equal(slice.items[0].aprPct, 12);
   assert.deepEqual(slice.items[0].pair, ["usdc"]);
 });
 

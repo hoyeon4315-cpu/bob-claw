@@ -130,6 +130,22 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
   };
 }
 
+function buildMerklAprMap(allocatorLatest = null) {
+  const allocations = Array.isArray(allocatorLatest?.allocations)
+    ? allocatorLatest.allocations
+    : Array.isArray(allocatorLatest?.plan?.allocations)
+      ? allocatorLatest.plan.allocations
+      : [];
+  const map = {};
+  for (const item of allocations) {
+    const queueItem = item?.queueItem || null;
+    if (!queueItem?.opportunityId) continue;
+    if (!Number.isFinite(queueItem.aprPct)) continue;
+    map[queueItem.opportunityId] = queueItem.aprPct;
+  }
+  return map;
+}
+
 export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
@@ -230,10 +246,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonl(dataDir, "treasury-inventory"),
      readJsonl(dataDir, "merkl-portfolio-positions"),
    ]);
-  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue] = await Promise.all([
+  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
     readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
+    readJsonIfExists(join(dataDir, "merkl-portfolio-allocator-latest.json")),
   ]);
   const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
@@ -318,6 +335,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.strategy.merklCanaryQueueSummary = summarizeMerklCanaryQueueStatus(merklCanaryQueue);
   dashboardStatus.strategy.merklActivePositions = buildMerklActivePositions(merklPositionEvents, {
     generatedAt: dashboardStatus.generatedAt,
+    aprByOpportunity: buildMerklAprMap(merklPortfolioAllocatorLatest),
   });
   dashboardStatus.walletHoldings = buildTreasuryHoldingsSlice(treasuryInventoryRecords, {
     generatedAt: dashboardStatus.generatedAt,

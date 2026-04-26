@@ -74,6 +74,19 @@ function satsToUsd(sats, btcUsd) {
   return (sats / 1e8) * btcUsd;
 }
 
+function estimateYieldUsd({ status, capUsd, apyPct, lastObservedAt, generatedAt }) {
+  if (status !== 'LIVE') return 0;
+  if (!Number.isFinite(capUsd) || capUsd <= 0) return 0;
+  if (!Number.isFinite(apyPct) || apyPct <= 0) return 0;
+  if (!lastObservedAt || !generatedAt) return 0;
+  const openedAtMs = new Date(lastObservedAt).getTime();
+  const generatedAtMs = new Date(generatedAt).getTime();
+  if (!Number.isFinite(openedAtMs) || !Number.isFinite(generatedAtMs) || generatedAtMs <= openedAtMs) return 0;
+  const elapsedMs = generatedAtMs - openedAtMs;
+  const yearMs = 365 * 24 * 60 * 60 * 1000;
+  return capUsd * (apyPct / 100) * (elapsedMs / yearMs);
+}
+
 function capitalProtocolKey(chainId, protocolId) {
   return chainId && protocolId ? `${chainId}:${protocolId}` : null;
 }
@@ -227,13 +240,25 @@ async function bootData() {
       }
     }
 
-    const earnedUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
+    const apyPct = liveAprFor(s, liveApr) ?? apyHint(s.id);
+    const realizedYieldUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
+    const estimatedYieldUsd = estimateYieldUsd({
+      status: statusLabel,
+      capUsd: s.capUsd,
+      apyPct,
+      lastObservedAt: parity?.lastTickAt || null,
+      generatedAt: status?.generatedAt || null,
+    });
+    const earnedUsd = realizedYieldUsd > 0 ? realizedYieldUsd : estimatedYieldUsd;
     return {
       ...s,
       autoExecute: defaultAutoExec(s.id),
       status: statusLabel,
       earnedUsd,
-      apyPct: liveAprFor(s, liveApr) ?? apyHint(s.id),
+      realizedYieldUsd,
+      estimatedYieldUsd,
+      yieldBasis: realizedYieldUsd > 0 ? 'realized' : (estimatedYieldUsd > 0 ? 'estimated' : null),
+      apyPct,
       tickMode,
       tickBlockers: parity?.blockers || [],
       microCanaryStatus: micro?.microCanaryStatus || parity?.microCanaryStatus || 'not_started',
@@ -292,6 +317,16 @@ async function bootData() {
   for (const m of merklItems) {
     if (!m?.chain || !m?.protocol) continue;
     const normalizedId = normalizeStrategyId(m.id);
+    const apyPct = Number.isFinite(m.aprPct)
+      ? m.aprPct
+      : (liveAprFor({ protocol: m.protocol, chain: m.chain, type: m.type || 'lp' }, liveApr) ?? null);
+    const estimatedYieldUsd = estimateYieldUsd({
+      status: 'LIVE',
+      capUsd: Number.isFinite(m.capUsd) ? m.capUsd : null,
+      apyPct,
+      lastObservedAt: m.lastObservedAt || null,
+      generatedAt: status?.generatedAt || null,
+    });
     STRATEGIES.push({
       id: m.id,
       label: m.label || `Merkl ${m.opportunityId}`,
@@ -305,8 +340,11 @@ async function bootData() {
       desc: `Merkl-discovered position. opportunity ${m.opportunityId}.`,
       autoExecute: true,
       status: 'LIVE',
-      earnedUsd: 0,
-      apyPct: liveAprFor({ protocol: m.protocol, chain: m.chain, type: m.type || 'lp' }, liveApr) ?? null,
+      earnedUsd: estimatedYieldUsd,
+      realizedYieldUsd: 0,
+      estimatedYieldUsd,
+      yieldBasis: estimatedYieldUsd > 0 ? 'estimated' : null,
+      apyPct,
       tickMode: 'live_candidate',
       tickBlockers: [],
       microCanaryStatus: 'active',

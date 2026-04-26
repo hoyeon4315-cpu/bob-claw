@@ -131,6 +131,22 @@ function formatCompactUsdLabel(value) {
   return `<$1`;
 }
 
+function formatYieldDisplay(value, basis) {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const rounded = value >= 10
+    ? `$${value.toFixed(0)}`
+    : value >= 1
+      ? `$${value.toFixed(2)}`
+      : value >= 0.01
+        ? `$${value.toFixed(3)}`
+        : '<$0.01';
+  return basis === 'estimated' ? `~${rounded}` : `+${rounded}`;
+}
+
+function yieldMetricLabel(basis) {
+  return basis === 'estimated' ? 'Est. yield' : 'Yield';
+}
+
 function StatPill({ x, y, label, scale = 1, tone = 'light' }) {
   if (!label) return null;
   const width = Math.max(28, label.length * 5.6 * scale + 10 * scale);
@@ -401,6 +417,8 @@ function groupStrategiesByProtocol(strategies = []) {
     const apyDenominator = items.reduce((sum, item) => sum + (Number.isFinite(item.apyPct) && Number.isFinite(item.capUsd) ? item.capUsd : 0), 0);
     const apyNumerator = items.reduce((sum, item) => sum + (Number.isFinite(item.apyPct) && Number.isFinite(item.capUsd) ? item.capUsd * item.apyPct : 0), 0);
     const liveCount = items.filter((item) => item.status === 'LIVE').length;
+    const realizedYieldUsd = items.reduce((sum, item) => sum + (item.realizedYieldUsd || 0), 0);
+    const estimatedYieldUsd = items.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
     return {
       ...first,
       id: `${first.chain}:${first.protocol}`,
@@ -410,7 +428,10 @@ function groupStrategiesByProtocol(strategies = []) {
       strategies: items,
       strategyCount: items.length,
       liveCount,
-      earnedUsd: items.reduce((sum, item) => sum + (item.earnedUsd || 0), 0),
+      earnedUsd: realizedYieldUsd > 0 ? realizedYieldUsd : estimatedYieldUsd,
+      realizedYieldUsd,
+      estimatedYieldUsd,
+      yieldBasis: realizedYieldUsd > 0 ? 'realized' : (estimatedYieldUsd > 0 ? 'estimated' : null),
       capUsd: items.every((item) => item.capUsd == null) ? null : items.reduce((sum, item) => sum + (item.capUsd || 0), 0),
       capitalUsd: Math.max(...items.map((item) => Number(item.actualProtocolCapitalUsd || 0)), 0),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
@@ -479,7 +500,7 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
         )}
         {selected && strategy.earnedUsd > 0 && (
           <text y={R + 34} textAnchor="middle" fontSize="9" fontWeight="600" fill="#1C7A3E" style={{ fontFamily:'-apple-system, system-ui' }}>
-            +${strategy.earnedUsd.toFixed(0)}
+            {formatYieldDisplay(strategy.earnedUsd, strategy.yieldBasis)}
           </text>
         )}
       </g>
@@ -1065,6 +1086,7 @@ function ProtocolCard({ protocolNode }) {
   const typeLabel = TYPE_LABEL[protocolNode.type] || protocolNode.type.toUpperCase();
   const typeInk = TYPE_INK[protocolNode.type] || '#555';
   const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
+  const yieldValue = formatYieldDisplay(protocolNode.earnedUsd, protocolNode.yieldBasis);
   return (
     <div data-card-type="protocol" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1100,7 +1122,7 @@ function ProtocolCard({ protocolNode }) {
         <Metric label="Mapped" value={`${protocolNode.strategyCount}`}/>
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
         <Metric label="Capital" value={capitalLabel || '—'}/>
-        <Metric label="Earned" value={protocolNode.earnedUsd > 0 ? `$${protocolNode.earnedUsd.toFixed(2)}` : '—'} accent={protocolNode.earnedUsd > 0}/>
+        <Metric label={yieldMetricLabel(protocolNode.yieldBasis)} value={yieldValue || '—'} accent={protocolNode.earnedUsd > 0}/>
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
         {protocolNode.loops && <Metric label="Loops" value={`×${protocolNode.loops}`}/>}
       </div>
@@ -1133,8 +1155,12 @@ function ChainCard({ chainId, strategies }) {
   const chain = CHAINS.find(c => c.id === chainId);
   if (!chain) return null;
   const live = strategies.filter(s => s.status === 'LIVE').length;
-  const totalEarned = strategies.reduce((s, x) => s + (x.earnedUsd || 0), 0);
+  const realizedYield = strategies.reduce((sum, item) => sum + (item.realizedYieldUsd || 0), 0);
+  const estimatedYield = strategies.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
+  const totalEarned = realizedYield > 0 ? realizedYield : estimatedYield;
+  const totalYieldBasis = realizedYield > 0 ? 'realized' : (estimatedYield > 0 ? 'estimated' : null);
   const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0));
+  const totalYieldLabel = formatYieldDisplay(totalEarned, totalYieldBasis);
   return (
     <div data-card-type="chain" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1154,14 +1180,14 @@ function ChainCard({ chainId, strategies }) {
         </div>
         {totalEarned > 0 && (
           <div style={{ fontSize:13, fontWeight:600, color:'#1C7A3E', letterSpacing:-0.2 }}>
-            +${totalEarned.toFixed(2)}
+            {totalYieldLabel}
           </div>
         )}
       </div>
       <div style={{ marginTop:8, display:'flex', gap:14, flexWrap:'wrap' }}>
         <Metric label="Live" value={`${live}/${strategies.length}`}/>
         <Metric label="Capital" value={capitalLabel || '—'}/>
-        <Metric label="Earned" value={totalEarned > 0 ? `$${totalEarned.toFixed(2)}` : '—'} accent={totalEarned > 0}/>
+        <Metric label={yieldMetricLabel(totalYieldBasis)} value={totalYieldLabel || '—'} accent={totalEarned > 0}/>
       </div>
     </div>
   );

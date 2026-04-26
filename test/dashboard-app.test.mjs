@@ -64,9 +64,12 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(defiPane, /No live strategies/);
     assert.match(defiPane, /live position/);
     assert.match(defiPane, /Cap \$/);
+    assert.match(defiPane, /fmtYieldTag/);
+    assert.match(defiPane, /fmtYieldSubLabel/);
 
     const strategyRow = extractSection("function StrategyRow", "function AssetsPane");
     assert.match(strategyRow, /APR/);
+    assert.match(strategyRow, /fmtYieldTag\(s\.earnedUsd, s\.yieldBasis\)/);
     assert.doesNotMatch(strategyRow, /[가-힣]/);
     assert.doesNotMatch(strategyRow, /badge/i);
   });

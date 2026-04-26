@@ -28,9 +28,11 @@ describe("mindmap source guard", () => {
 
   test("chain and protocol nodes render compact USD pills", () => {
     assert.match(MINDMAP_JSX, /function StatPill\(/);
+    assert.match(MINDMAP_JSX, /function formatYieldDisplay\(/);
     assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(chain\.capitalUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(strategy\.capitalUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalY = labelBelow \? size \* 1\.46 : -size \* 1\.34;/);
     assert.match(MINDMAP_JSX, /includeRect\(bounds, point\.x, point\.y - chipRadius - 17, 58, 16\)/);
+    assert.match(MINDMAP_JSX, /yieldMetricLabel\(protocolNode\.yieldBasis\)/);
   });
 });

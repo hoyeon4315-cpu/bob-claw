@@ -49,7 +49,10 @@ function aggregateByOpportunity(events = []) {
     .sort((a, b) => (b.totalEntryUsd || 0) - (a.totalEntryUsd || 0));
 }
 
-export function buildMerklActivePositions(events = [], { generatedAt = new Date().toISOString() } = {}) {
+export function buildMerklActivePositions(
+  events = [],
+  { generatedAt = new Date().toISOString(), aprByOpportunity = {} } = {},
+) {
   const items = aggregateByOpportunity(events).map((position) => ({
     id: `merkl_${position.opportunityId}`,
     opportunityId: position.opportunityId,
@@ -59,6 +62,7 @@ export function buildMerklActivePositions(events = [], { generatedAt = new Date(
     type: inferType(position.name, position.protocolId),
     pair: inferAssets(position.name),
     capUsd: Number.isFinite(position.totalEntryUsd) ? Number(position.totalEntryUsd.toFixed(2)) : null,
+    aprPct: Number.isFinite(aprByOpportunity?.[position.opportunityId]) ? aprByOpportunity[position.opportunityId] : null,
     score: position.score ?? null,
     bindingKind: position.bindingKind ?? null,
     lastObservedAt: position.lastObservedAt || null,
