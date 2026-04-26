@@ -31,6 +31,7 @@ import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
+import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
@@ -265,6 +266,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   });
 
   const executorRuntime = await loadExecutorRuntime({ now });
+  const researchFunnel = await loadResearchFunnelSlice({
+    rootDir: join(dataDir, ".."),
+    dataDir,
+    generatedAt: now,
+  });
   const dashboardStatus = buildDashboardStatus({
     routesRecords: state.routesRecords || [],
     quotes: state.quotes || [],
@@ -302,6 +308,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     triangleArtifacts,
     executorRuntime,
     promotionReport,
+    researchFunnel,
   }, { now });
 
   // P1/P2 parity floor injection — deterministic, pure slices

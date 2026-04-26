@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "name": "bob-claw-research-sidecar",
+  "tracks": {
+    "A": {
+      "mode": "agent_runner",
+      "runnerEnv": [
+        "RESEARCH_AGENT_CMD",
+        "RESEARCH_AGENT_ARGS"
+      ],
+      "liveDeploy": false
+    },
+    "B": {
+      "mode": "deterministic_factor_search",
+      "liveDeploy": false
+    }
+  },
+  "artifacts": {
+    "resultsTsv": "research/results.tsv",
+    "promotionIntents": "data/research-promotion-intents.jsonl"
+  },
+  "constraints": {
+    "activeCandidateLimit": 3,
+    "broadcast": "forbidden",
+    "runtimeCapRaise": "forbidden",
+    "promotionAction": "committed_diff_only"
+  }
+}

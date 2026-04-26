@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "chains": {
+    "ethereum": {
+      "eth_blockNumber": "0x1d4c000",
+      "eth_chainId": "0x1"
+    },
+    "bob": {
+      "eth_blockNumber": "0x15b380",
+      "eth_chainId": "0xed88"
+    },
+    "base": {
+      "eth_blockNumber": "0x12f8f40",
+      "eth_chainId": "0x2105"
+    },
+    "bsc": {
+      "eth_blockNumber": "0x365ef20",
+      "eth_chainId": "0x38"
+    },
+    "avalanche": {
+      "eth_blockNumber": "0x4974240",
+      "eth_chainId": "0xa86a"
+    },
+    "unichain": {
+      "eth_blockNumber": "0x106d00",
+      "eth_chainId": "0x82"
+    },
+    "bera": {
+      "eth_blockNumber": "0x198d20",
+      "eth_chainId": "0x138de"
+    },
+    "optimism": {
+      "eth_blockNumber": "0x78abc0",
+      "eth_chainId": "0xa"
+    },
+    "soneium": {
+      "eth_blockNumber": "0xb71b0",
+      "eth_chainId": "0x74c"
+    },
+    "sei": {
+      "eth_blockNumber": "0x8a9f0",
+      "eth_chainId": "0x531"
+    },
+    "sonic": {
+      "eth_blockNumber": "0x9245b",
+      "eth_chainId": "0x92"
+    }
+  }
+}

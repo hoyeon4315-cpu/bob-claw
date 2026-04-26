@@ -1,0 +1,7 @@
+data/
+results.tsv
+*.log
+run-*.log
+candidates/*
+!candidates/
+!candidates/_example.mjs

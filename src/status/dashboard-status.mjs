@@ -53,6 +53,36 @@ function stripVolatileStatusFields(value) {
   );
 }
 
+function emptyResearchFunnelSlice() {
+  return {
+    available: false,
+    generatedAt: null,
+    summary: {
+      candidateCount: 0,
+      oosEligibleCount: 0,
+      promotionIntentCount: 0,
+      latestBlocker: null,
+      latestRunAt: null,
+    },
+    tracks: {
+      A: {
+        candidateCount: 0,
+        oosEligibleCount: 0,
+        promotionIntentCount: 0,
+        latestBlocker: null,
+        latestRunAt: null,
+      },
+      B: {
+        candidateCount: 0,
+        oosEligibleCount: 0,
+        promotionIntentCount: 0,
+        latestBlocker: null,
+        latestRunAt: null,
+      },
+    },
+  };
+}
+
 function latest(items) {
   return items.at(-1) || null;
 }
@@ -1860,6 +1890,7 @@ export function buildDashboardStatus(input, options = {}) {
     audit: auditStatus,
     executorRuntime,
     promotion,
+    researchFunnel: input.researchFunnel || emptyResearchFunnelSlice(),
     quoteLag,
     dexSpread,
     dataCounts: {

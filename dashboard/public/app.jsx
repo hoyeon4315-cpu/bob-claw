@@ -830,6 +830,7 @@ function DefiPane({ refreshTick }) {
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
   return (
     <div className="tabpane" style={{ padding: '4px 12px 16px' }}>
+      <ResearchFunnelCard/>
       {entries.length === 0 && (
         <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'var(--ink-3)' }}>
           No live strategies
@@ -882,6 +883,53 @@ function DefiPane({ refreshTick }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ResearchFunnelCard() {
+  const funnel = window.STATUS?.researchFunnel;
+  if (!funnel?.available) return null;
+  return (
+    <div style={{
+      marginBottom: 10,
+      padding: '12px',
+      background: 'var(--card)',
+      borderRadius: 16,
+      border: '0.5px solid var(--line)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: 1.3, textTransform: 'uppercase' }}>
+            Research funnel
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+            read-only research queue
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+          {fmtWhen(funnel.summary?.latestRunAt)}
+        </div>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <TriCard cells={[
+          {
+            label: 'Track A',
+            main: String(funnel.tracks?.A?.candidateCount ?? 0),
+            sub: `Ideas · ${funnel.tracks?.A?.promotionIntentCount ?? 0} requests`,
+          },
+          {
+            label: 'Track B',
+            main: String(funnel.tracks?.B?.candidateCount ?? 0),
+            sub: `OOS ${funnel.tracks?.B?.oosEligibleCount ?? 0}`,
+          },
+          {
+            label: 'Promotions',
+            main: String(funnel.summary?.promotionIntentCount ?? 0),
+            sub: funnel.summary?.latestBlocker || 'clear',
+          },
+        ]}/>
+      </div>
     </div>
   );
 }
@@ -1223,4 +1271,3 @@ function App() {
   root.innerHTML = '';
   ReactDOM.createRoot(root).render(<App/>);
 })();
-

@@ -23,6 +23,19 @@ function launchdSafeEnvironment() {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
 }
 
+function researchLaunchdSafeEnvironment() {
+  const values = {
+    DEV_LOCK_PATH: getEnv("DEV_LOCK_PATH", null),
+    RESEARCH_AGENT_CMD: getEnv("RESEARCH_AGENT_CMD", null),
+    RESEARCH_AGENT_ARGS: getEnv("RESEARCH_AGENT_ARGS", null),
+  };
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith("RESEARCH_ARCHIVE_RPC_")) continue;
+    if (value) values[key] = value;
+  }
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
+}
+
 export const EXECUTOR_LAUNCHD_LABELS = Object.freeze({
   daemon: "com.bobclaw.executor-daemon",
   watchdog: "com.bobclaw.executor-watchdog",
@@ -30,6 +43,10 @@ export const EXECUTOR_LAUNCHD_LABELS = Object.freeze({
 
 export const DASHBOARD_LAUNCHD_LABELS = Object.freeze({
   publicLive: "com.bobclaw.dashboard-public-live",
+});
+
+export const RESEARCH_LAUNCHD_LABELS = Object.freeze({
+  daily: "com.bobclaw.research-daily",
 });
 
 export function defaultLaunchAgentsDir(homeDir = process.env.HOME || homedir()) {
@@ -158,6 +175,49 @@ export function buildDashboardLaunchAgentSpecs({
   ];
 }
 
+export function buildResearchLaunchAgentSpecs({
+  rootDir = process.cwd(),
+  nodePath = process.execPath,
+  launchAgentsDir = defaultLaunchAgentsDir(),
+  logDir = defaultLaunchdLogDir(rootDir),
+  pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
+  homeDir = process.env.HOME || homedir(),
+} = {}) {
+  const resolvedRootDir = resolve(rootDir);
+  const resolvedNodePath = resolve(nodePath);
+  const resolvedLaunchAgentsDir = resolve(launchAgentsDir);
+  const resolvedLogDir = resolve(logDir);
+  const sharedEnvironment = {
+    PATH: pathEnv,
+    HOME: homeDir,
+    ...researchLaunchdSafeEnvironment(),
+  };
+  return [
+    {
+      id: "daily",
+      label: RESEARCH_LAUNCHD_LABELS.daily,
+      description: "BOB Claw research daily sidecar",
+      scriptPath: resolve(resolvedRootDir, "research", "run.mjs"),
+      plistPath: join(resolvedLaunchAgentsDir, `${RESEARCH_LAUNCHD_LABELS.daily}.plist`),
+      stdoutPath: join(resolvedLogDir, "research-daily.out.log"),
+      stderrPath: join(resolvedLogDir, "research-daily.err.log"),
+      workingDirectory: resolvedRootDir,
+      programArguments: [
+        resolvedNodePath,
+        resolve(resolvedRootDir, "research", "run.mjs"),
+        "--daily",
+        "--max-experiments=100",
+      ],
+      environmentVariables: sharedEnvironment,
+      runAtLoad: false,
+      keepAlive: false,
+      startInterval: 86_400,
+      throttleInterval: 10,
+      processType: "Background",
+    },
+  ];
+}
+
 export function renderLaunchAgentPlist(spec) {
   const payload = {
     Label: spec.label,
@@ -166,6 +226,7 @@ export function renderLaunchAgentPlist(spec) {
     EnvironmentVariables: spec.environmentVariables,
     RunAtLoad: spec.runAtLoad,
     KeepAlive: spec.keepAlive,
+    ...(Number.isInteger(spec.startInterval) ? { StartInterval: spec.startInterval } : {}),
     ThrottleInterval: spec.throttleInterval,
     ProcessType: spec.processType,
     StandardOutPath: spec.stdoutPath,
@@ -206,6 +267,24 @@ export async function writeExecutorLaunchAgents(options = {}) {
 
 export async function writeDashboardLaunchAgents(options = {}) {
   const specs = buildDashboardLaunchAgentSpecs(options);
+  const writes = await Promise.all(
+    specs.map(async (spec) => ({
+      id: spec.id,
+      label: spec.label,
+      plistPath: spec.plistPath,
+      stdoutPath: spec.stdoutPath,
+      stderrPath: spec.stderrPath,
+      ...(await writeTextIfChanged(spec.plistPath, renderLaunchAgentPlist(spec))),
+    })),
+  );
+  return {
+    specs,
+    writes,
+  };
+}
+
+export async function writeResearchLaunchAgents(options = {}) {
+  const specs = buildResearchLaunchAgentSpecs(options);
   const writes = await Promise.all(
     specs.map(async (spec) => ({
       id: spec.id,

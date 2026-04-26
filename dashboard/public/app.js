@@ -670,7 +670,7 @@ function DefiPane({ refreshTick }) {
     return acc;
   }, {});
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
     const protoRealized = list.reduce((sum, s) => sum + (s.realizedYieldUsd || 0), 0);
     const protoEstimated = list.reduce((sum, s) => sum + (s.estimatedYieldUsd || 0), 0);
     const protoYield = protoRealized > 0 ? protoRealized : protoEstimated;
@@ -685,6 +685,33 @@ function DefiPane({ refreshTick }) {
       boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
     } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 12px 9px" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: proto, size: 30 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 } }, displayProtocolName(proto)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, list.length, " live position", list.length > 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, protoYield > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(protoYield, protoYieldBasis)), protoYieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(protoYieldBasis)), protoCap > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "var(--ink)", letterSpacing: -0.2 } }, "Cap $", protoCap.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px" } }, list.map((s, i) => /* @__PURE__ */ React.createElement(StrategyRow, { key: s.id, s, isLast: i === list.length - 1 }))));
   }));
+}
+function ResearchFunnelCard() {
+  const funnel = window.STATUS?.researchFunnel;
+  if (!funnel?.available) return null;
+  return /* @__PURE__ */ React.createElement("div", { style: {
+    marginBottom: 10,
+    padding: "12px",
+    background: "var(--card)",
+    borderRadius: 16,
+    border: "0.5px solid var(--line)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, "Research funnel"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, "read-only research queue")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)" } }, fmtWhen(funnel.summary?.latestRunAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement(TriCard, { cells: [
+    {
+      label: "Track A",
+      main: String(funnel.tracks?.A?.candidateCount ?? 0),
+      sub: `Ideas \xB7 ${funnel.tracks?.A?.promotionIntentCount ?? 0} requests`
+    },
+    {
+      label: "Track B",
+      main: String(funnel.tracks?.B?.candidateCount ?? 0),
+      sub: `OOS ${funnel.tracks?.B?.oosEligibleCount ?? 0}`
+    },
+    {
+      label: "Promotions",
+      main: String(funnel.summary?.promotionIntentCount ?? 0),
+      sub: funnel.summary?.latestBlocker || "clear"
+    }
+  ] })));
 }
 function pairTokens(s) {
   return (s.pair || []).filter(Boolean).map((p) => p.toUpperCase());
