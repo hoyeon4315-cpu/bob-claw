@@ -43,6 +43,56 @@ function fieldObservationCounts(entries = [], fields = []) {
   );
 }
 
+function policyByTemplate(items = []) {
+  const map = new Map();
+  for (const item of items || []) {
+    if (!item?.templateId) continue;
+    map.set(item.templateId, item);
+  }
+  return map;
+}
+
+function dayKey(value) {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const directMatch = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (directMatch) return directMatch[1];
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function effectiveFieldObservationCounts({
+  item = {},
+  latest = {},
+  counts = {},
+  volatileFields = [],
+} = {}) {
+  const nextCounts = { ...counts };
+  const verificationCarryForwardFields = [];
+  const lastVerifiedDay = dayKey(item.values?.lastVerifiedAt);
+  if (!lastVerifiedDay) {
+    return {
+      effectiveCounts: nextCounts,
+      verificationCarryForwardFields,
+    };
+  }
+
+  for (const field of volatileFields || []) {
+    const latestFieldObservation = latest[field];
+    if (!latestFieldObservation) continue;
+    if (item.values?.[field] == null) continue;
+    const latestObservedDay = dayKey(latestFieldObservation.observedAt);
+    if (!latestObservedDay || lastVerifiedDay <= latestObservedDay) continue;
+    nextCounts[field] = (nextCounts[field] || 0) + 1;
+    verificationCarryForwardFields.push(field);
+  }
+
+  return {
+    effectiveCounts: nextCounts,
+    verificationCarryForwardFields,
+  };
+}
+
 function requiredEconomicFields(item = {}) {
   if (item.category === "yield" || item.category === "arbitrage") {
     return ["grossReturnBps", "depositFeeBps", "withdrawFeeBps", "unwindSlippageBps"];
@@ -72,10 +122,16 @@ function latestBlockersByTemplate(entries = []) {
   return map;
 }
 
-export function buildDestinationEconomicsLedger({ observations = null, workbench = null, blockers = null } = {}) {
+export function buildDestinationEconomicsLedger({
+  observations = null,
+  workbench = null,
+  blockers = null,
+  evidencePolicy = null,
+} = {}) {
   const generatedAt = observations?.generatedAt || workbench?.generatedAt || new Date().toISOString();
   const entriesByTemplate = byTemplateId(observations?.entries || []);
   const blockerByTemplate = latestBlockersByTemplate(blockers?.entries || []);
+  const policiesByTemplate = policyByTemplate(evidencePolicy?.items);
 
   const items = (workbench?.workItems || [])
     .filter((item) => requiredEconomicFields(item).length > 0)
@@ -89,6 +145,13 @@ export function buildDestinationEconomicsLedger({ observations = null, workbench
       const sourceTypes = unique(entries.map((entry) => entry.sourceType));
       const observedAtValues = unique(entries.map((entry) => entry.observedAt));
       const blocker = blockerByTemplate.get(item.templateId) || null;
+      const counts = fieldObservationCounts(entries, targetFields);
+      const { effectiveCounts, verificationCarryForwardFields } = effectiveFieldObservationCounts({
+        item,
+        latest,
+        counts,
+        volatileFields: policiesByTemplate.get(item.templateId)?.policy?.volatileFields || [],
+      });
       return {
         templateId: item.templateId,
         chain: item.chain,
@@ -108,7 +171,9 @@ export function buildDestinationEconomicsLedger({ observations = null, workbench
         sourceTypes,
         observedAtCount: observedAtValues.length,
         latestObservedAt: latestObservedAt(entries),
-        fieldObservationCounts: fieldObservationCounts(entries, targetFields),
+        fieldObservationCounts: counts,
+        effectiveFieldObservationCounts: effectiveCounts,
+        verificationCarryForwardFields,
         latestObservations: latest,
         blocker,
       };

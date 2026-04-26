@@ -96,3 +96,84 @@ test("destination economics ledger keeps blocker metadata alongside uncovered it
   assert.equal(report.items[0].blocker.blocker, "no_current_destination_venue");
   assert.equal(report.items[0].coveragePct, 0);
 });
+
+test("destination economics ledger carries forward fresh volatile verification dates into effective recheck counts", () => {
+  const report = buildDestinationEconomicsLedger({
+    observations: {
+      entries: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          field: "grossReturnBps",
+          value: 115,
+          sourceName: "BENQI app",
+          sourceType: "official_app",
+          observedAt: "2026-04-14T20:10:09.762Z",
+        },
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          field: "grossReturnBps",
+          value: 110,
+          sourceName: "BENQI app",
+          sourceType: "official_app",
+          observedAt: "2026-04-19T20:58:20.746Z",
+        },
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          field: "depositFeeBps",
+          value: 0,
+          sourceName: "BENQI docs",
+          sourceType: "official_docs",
+          observedAt: "2026-04-14T20:12:40.000Z",
+        },
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          field: "withdrawFeeBps",
+          value: 0,
+          sourceName: "BENQI docs",
+          sourceType: "official_docs",
+          observedAt: "2026-04-14T20:12:40.000Z",
+        },
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          field: "unwindSlippageBps",
+          value: 31.5,
+          sourceName: "Gateway unwind quote",
+          sourceType: "live_quote",
+          observedAt: "2026-04-14T20:11:44.000Z",
+        },
+      ],
+    },
+    workbench: {
+      workItems: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          chain: "avalanche",
+          familyId: "wrapped_btc_lending",
+          label: "Wrapped BTC -> lending positions",
+          category: "yield",
+          values: {
+            grossReturnBps: 110,
+            depositFeeBps: 0,
+            withdrawFeeBps: 0,
+            unwindSlippageBps: 31.5,
+            lastVerifiedAt: "2026-04-19",
+          },
+        },
+      ],
+    },
+    evidencePolicy: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          policy: {
+            volatileFields: ["grossReturnBps", "unwindSlippageBps"],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.items[0].fieldObservationCounts.unwindSlippageBps, 1);
+  assert.equal(report.items[0].effectiveFieldObservationCounts.unwindSlippageBps, 2);
+  assert.deepEqual(report.items[0].verificationCarryForwardFields, ["unwindSlippageBps"]);
+});

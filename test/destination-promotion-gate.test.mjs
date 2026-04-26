@@ -243,6 +243,94 @@ test("destination promotion gate marks repeated volatile observations as allocat
   assert.equal(report.items[0].allocationGate.status, "allocation_ready");
 });
 
+test("destination promotion gate accepts fresh carry-forward volatile rechecks from the ledger", () => {
+  const report = buildDestinationPromotionGate({
+    allowlistBoard: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          chain: "avalanche",
+          familyId: "wrapped_btc_lending",
+          label: "Wrapped BTC -> lending positions",
+          score: 0.56,
+          values: {
+            allowlistDecision: "candidate_for_review",
+          },
+          recommendation: {
+            status: "decision_recorded",
+          },
+        },
+      ],
+    },
+    evidencePolicy: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          unmetPolicyInputs: [],
+          policy: {
+            freshnessHours: 24,
+            minIndependentChecks: 3,
+            minSources: 2,
+            volatileFields: ["grossReturnBps", "unwindSlippageBps"],
+            minVolatileFieldObservations: 2,
+          },
+        },
+      ],
+    },
+    economics: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          economicsStatus: "estimated",
+          activeBudgetEstimate: { passesPolicy: true },
+          planningBudgetEstimate: { passesPolicy: true },
+        },
+      ],
+    },
+    freshnessAudit: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          freshnessStatus: "fresh",
+        },
+      ],
+    },
+    ledger: {
+      items: [
+        {
+          templateId: "avalanche:wrapped_btc_lending",
+          coveragePct: 1,
+          targetEconomicFields: ["grossReturnBps", "depositFeeBps", "withdrawFeeBps", "unwindSlippageBps"],
+          missingEconomicFields: [],
+          sourceCount: 4,
+          sourceNames: ["BENQI app", "BENQI docs", "Gateway unwind quote"],
+          sourceTypes: ["official_app", "official_docs", "live_quote"],
+          observedAtCount: 4,
+          latestObservedAt: "2026-04-19T20:58:20.746Z",
+          fieldObservationCounts: {
+            grossReturnBps: 2,
+            depositFeeBps: 1,
+            withdrawFeeBps: 1,
+            unwindSlippageBps: 1,
+          },
+          effectiveFieldObservationCounts: {
+            grossReturnBps: 2,
+            depositFeeBps: 1,
+            withdrawFeeBps: 1,
+            unwindSlippageBps: 2,
+          },
+          verificationCarryForwardFields: ["unwindSlippageBps"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.summary.allocationReadyCount, 1);
+  assert.equal(report.summary.reviewOnlyCount, 0);
+  assert.equal(report.items[0].allocationGate.status, "allocation_ready");
+  assert.deepEqual(report.items[0].allocationGate.evidence.verificationCarryForwardFields, ["unwindSlippageBps"]);
+});
+
 test("destination promotion gate surfaces venue blockers from blocked economics items", () => {
   const report = buildDestinationPromotionGate({
     allowlistBoard: {

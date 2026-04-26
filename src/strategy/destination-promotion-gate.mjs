@@ -62,6 +62,8 @@ function allocationGateStatus({ templateId, gate = null, policyItem = null, fres
     independentObservationCount: ledgerItem?.observedAtCount ?? 0,
     latestObservedAt: ledgerItem?.latestObservedAt ?? null,
     fieldObservationCounts: ledgerItem?.fieldObservationCounts || {},
+    effectiveFieldObservationCounts: ledgerItem?.effectiveFieldObservationCounts || ledgerItem?.fieldObservationCounts || {},
+    verificationCarryForwardFields: ledgerItem?.verificationCarryForwardFields || [],
     volatileFields: policy.volatileFields || [],
     minVolatileFieldObservations: policy.minVolatileFieldObservations ?? 0,
     minIndependentChecks: policy.minIndependentChecks ?? 0,
@@ -86,7 +88,7 @@ function allocationGateStatus({ templateId, gate = null, policyItem = null, fres
   }
 
   const recheckFields = evidence.volatileFields.filter(
-    (field) => (evidence.fieldObservationCounts?.[field] ?? 0) < evidence.minVolatileFieldObservations,
+    (field) => (evidence.effectiveFieldObservationCounts?.[field] ?? 0) < evidence.minVolatileFieldObservations,
   );
   for (const field of recheckFields) {
     blockers.push(`allocation_${field}_recheck_required`);

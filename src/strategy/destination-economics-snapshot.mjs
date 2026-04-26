@@ -14,7 +14,7 @@ export function buildDestinationEconomicsSnapshot({
 } = {}) {
   const workbench = buildDestinationInputWorkbench({ admissionChecklist, overrides });
   const evidencePolicy = buildDestinationEvidencePolicy({ workbench });
-  const ledger = buildDestinationEconomicsLedger({ observations, workbench, blockers });
+  const ledger = buildDestinationEconomicsLedger({ observations, workbench, blockers, evidencePolicy });
   const economics = buildDestinationEstimatedEconomics({ workbench, blockers });
   return {
     workbench,

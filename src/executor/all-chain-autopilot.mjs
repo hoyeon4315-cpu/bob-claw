@@ -192,6 +192,8 @@ function refillPreviewRetryable(result = {}) {
     "routing_unavailable",
     "dex_quote_failed",
     "across_ticker_unsupported",
+    "execution_reverted",
+    "insufficient_funds",
     "executor_output_below_refill_target",
   ].includes(reason);
 }

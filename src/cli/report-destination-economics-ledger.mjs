@@ -31,8 +31,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const observations = await readJson(join(config.dataDir, "destination-economics-observations.json"));
   const workbench = await readJson(join(config.dataDir, "destination-input-workbench.json"));
+  const evidencePolicy = await readJsonIfExists(join(config.dataDir, "destination-evidence-policy.json"));
   const blockers = await readJsonIfExists(join(config.dataDir, "destination-economics-blockers.json"));
-  const report = buildDestinationEconomicsLedger({ observations, workbench, blockers });
+  const report = buildDestinationEconomicsLedger({ observations, workbench, blockers, evidencePolicy });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "destination-economics-ledger.json");
