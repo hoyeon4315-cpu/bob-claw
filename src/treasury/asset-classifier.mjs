@@ -50,6 +50,7 @@ function classifyKnownAsset(asset = {}) {
   if (RESERVE_SYMBOLS.has(ticker)) return ASSET_CLASSES.TOKENIZED_RESERVE;
   if (GOVERNANCE_SYMBOLS.has(ticker)) return ASSET_CLASSES.GOVERNANCE;
   if (BLUECHIP_SYMBOLS.has(ticker)) return ASSET_CLASSES.OTHER_BLUECHIP;
+  if (asset.isNative && asset.family === "native_or_wrapped") return ASSET_CLASSES.OTHER_BLUECHIP;
   return ASSET_CLASSES.UNKNOWN;
 }
 
