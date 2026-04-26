@@ -102,6 +102,7 @@ export function buildResearchFunnelSlice({
   tracks.B.latestRunAt = trackBRuns.at(-1)?.observedAt || null;
   tracks.A.latestBlocker = latestBlocker(trackARuns);
   tracks.B.latestBlocker = latestBlocker(trackBRuns);
+  tracks.A.oosEligibleCount = trackARuns.at(-1)?.oosEligibleCount ?? 0;
   tracks.B.oosEligibleCount = trackBRuns.at(-1)?.oosEligibleCount ?? 0;
 
   for (const intent of promotionIntents) {

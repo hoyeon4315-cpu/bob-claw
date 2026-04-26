@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -14,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { buildResearchSplits, loadResearchPanel } from "./prepare.mjs";
 import { appendTrackBRun, runTrackBSearch } from "./factorSearch.mjs";
-import { emitPromotionIntent, shouldEmitPromotionIntent } from "./score.mjs";
+import { emitPromotionIntent, scoreCandidateResults, shouldEmitPromotionIntent } from "./score.mjs";
 import { scanResearchIsolation } from "./isolationGuard.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
@@ -26,6 +27,14 @@ function freeze(value) {
 
 function sanitizeNotes(value) {
   return String(value || "").replace(/[\t\r\n]+/gu, " ").trim();
+}
+
+function sanitizeCandidateName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "_")
+    .replace(/^_+|_+$/gu, "");
 }
 
 function movingAverage(values, window) {
@@ -88,6 +97,27 @@ function activeCandidateFiles(candidateDir) {
     .sort((left, right) => left.localeCompare(right));
 }
 
+function classifyCandidatePath(path) {
+  const name = basename(path, ".mjs");
+  if (name.startsWith("agent_")) return "A";
+  if (name.startsWith("factor_")) return "B";
+  return "other";
+}
+
+function reserveTrackASlot(candidateDir) {
+  const active = activeCandidateFiles(candidateDir);
+  const factorFiles = active.filter((path) => classifyCandidatePath(path) === "B");
+  const desiredFactorCount = 2;
+  const removed = [];
+  for (const path of factorFiles.slice(desiredFactorCount)) {
+    rmSync(path, { force: true });
+    removed.push(path);
+  }
+  return freeze({
+    removed: freeze(removed),
+  });
+}
+
 export function validateCandidateWorkspace(candidateDir) {
   const activeFiles = activeCandidateFiles(candidateDir);
   const blockers = [];
@@ -148,6 +178,46 @@ function validateCandidateModule(path, candidate) {
   if (typeof candidate.buildSignals !== "function") {
     throw new Error(`candidate missing buildSignals(): ${path}`);
   }
+}
+
+function candidateSignalsForSplit(candidate, panel, split) {
+  const signalOutput = candidate.buildSignals({
+    panel,
+    split,
+    helpers: helperSet(),
+  });
+  const fullSignals = Array.isArray(signalOutput) ? signalOutput : [];
+  const valRows = panel.rows.slice(split.val.start, split.val.end + 1);
+  const signals = fullSignals.length === panel.rows.length
+    ? fullSignals.slice(split.val.start, split.val.end + 1)
+    : fullSignals;
+  if (signals.length !== valRows.length) {
+    throw new Error(`signal length mismatch for split ${split.id}`);
+  }
+  return { valRows, signals };
+}
+
+async function evaluateCandidatePath({ candidatePath, panel, splits }) {
+  const candidate = await loadCandidateModule(candidatePath);
+  validateCandidateModule(candidatePath, candidate);
+  const foldResults = splits.map((split) => {
+    const { valRows, signals } = candidateSignalsForSplit(candidate, panel, split);
+    return computeFoldMetrics(valRows, signals);
+  });
+  const candidateName = basename(candidatePath, ".mjs");
+  const track = candidate.metadata?.track || null;
+  const score = scoreCandidateResults({
+    candidateName,
+    track,
+    foldResults,
+  });
+  return freeze({
+    candidateName,
+    path: candidatePath,
+    metadata: candidate.metadata,
+    foldResults: freeze(foldResults),
+    score,
+  });
 }
 
 export async function runCandidateRound({
@@ -226,6 +296,37 @@ function parseAgentArgs(value = "") {
   return trimmed.split(/\s+/u).filter(Boolean);
 }
 
+function parseAgentPayload(stdout = "") {
+  const trimmed = String(stdout || "").trim();
+  if (!trimmed) return { candidates: [] };
+  return JSON.parse(trimmed);
+}
+
+function materializeTrackACandidates({ candidateDir, proposals = [] }) {
+  mkdirSync(candidateDir, { recursive: true });
+  const existing = activeCandidateFiles(candidateDir);
+  const remainingSlots = Math.max(0, 3 - existing.length);
+  const written = [];
+  for (const proposal of proposals.slice(0, remainingSlots)) {
+    const candidateName = sanitizeCandidateName(proposal.name || proposal.filename || "agent_candidate");
+    if (!candidateName) continue;
+    const filePath = join(candidateDir, `${candidateName}.mjs`);
+    writeFileSync(filePath, String(proposal.body || ""), "utf8");
+    written.push(
+      freeze({
+        candidateName,
+        path: filePath,
+      }),
+    );
+  }
+  return freeze({
+    requestedCount: proposals.length,
+    materializedCount: written.length,
+    workspaceFull: proposals.length > remainingSlots,
+    written: freeze(written),
+  });
+}
+
 function appendTrackARun(dataDir, record) {
   const path = join(dataDir, "research-track-a-runs.jsonl");
   mkdirSync(dirname(path), { recursive: true });
@@ -233,7 +334,16 @@ function appendTrackARun(dataDir, record) {
   return path;
 }
 
-function maybeRunTrackA({ dataDir, noAgent, maxExperiments }) {
+async function maybeRunTrackA({
+  dataDir,
+  noAgent,
+  maxExperiments,
+  candidateDir,
+  panel,
+  splits,
+  resultsPath,
+  commit,
+}) {
   const now = new Date().toISOString();
   const agentCommand = process.env.RESEARCH_AGENT_CMD || "";
   const agentArgs = parseAgentArgs(process.env.RESEARCH_AGENT_ARGS || "");
@@ -243,6 +353,9 @@ function maybeRunTrackA({ dataDir, noAgent, maxExperiments }) {
       status: "disabled",
       blocker: "agent_disabled",
       maxExperiments,
+      generatedCount: 0,
+      oosEligibleCount: 0,
+      generated: freeze([]),
     });
     appendTrackARun(dataDir, record);
     return record;
@@ -254,6 +367,9 @@ function maybeRunTrackA({ dataDir, noAgent, maxExperiments }) {
       blocker: "agent_not_configured",
       setup: "Set RESEARCH_AGENT_CMD and optional RESEARCH_AGENT_ARGS to enable Track A.",
       maxExperiments,
+      generatedCount: 0,
+      oosEligibleCount: 0,
+      generated: freeze([]),
     });
     appendTrackARun(dataDir, record);
     return record;
@@ -262,15 +378,90 @@ function maybeRunTrackA({ dataDir, noAgent, maxExperiments }) {
     encoding: "utf8",
     timeout: 30_000,
   });
+  if (result.status !== 0) {
+    const record = freeze({
+      observedAt: now,
+      status: "error",
+      blocker: "agent_command_failed",
+      command: agentCommand,
+      args: agentArgs,
+      exitCode: result.status ?? 1,
+      stdoutPreview: (result.stdout || "").trim().slice(0, 500),
+      stderrPreview: (result.stderr || "").trim().slice(0, 500),
+      generatedCount: 0,
+      oosEligibleCount: 0,
+      generated: freeze([]),
+    });
+    appendTrackARun(dataDir, record);
+    return record;
+  }
+  let payload;
+  try {
+    payload = parseAgentPayload(result.stdout);
+  } catch (error) {
+    const record = freeze({
+      observedAt: now,
+      status: "error",
+      blocker: "agent_invalid_output",
+      command: agentCommand,
+      args: agentArgs,
+      exitCode: result.status ?? 0,
+      stdoutPreview: (result.stdout || "").trim().slice(0, 500),
+      stderrPreview: (result.stderr || "").trim().slice(0, 500),
+      error: error.message,
+      generatedCount: 0,
+      oosEligibleCount: 0,
+      generated: freeze([]),
+    });
+    appendTrackARun(dataDir, record);
+    return record;
+  }
+
+  reserveTrackASlot(candidateDir);
+  const materialized = materializeTrackACandidates({
+    candidateDir,
+    proposals: Array.isArray(payload?.candidates) ? payload.candidates : [],
+  });
+  const generated = [];
+  for (const item of materialized.written) {
+    const evaluation = await evaluateCandidatePath({
+      candidatePath: item.path,
+      panel,
+      splits,
+    });
+    appendResultRow(resultsPath, {
+      commit,
+      event: evaluation.metadata?.event || "create",
+      candidate_name: evaluation.candidateName,
+      sharpe: evaluation.score.oosGate.metrics.deflatedSharpeLowerBound,
+      maxdd: -(evaluation.score.oosGate.metrics.maxDrawdownPct / 100),
+      turnover: evaluation.score.oosGate.metrics.turnover,
+      notes: evaluation.score.oosGate.passed ? "track=A oos=eligible" : evaluation.score.blockers.join(","),
+    });
+    if (shouldEmitPromotionIntent(evaluation.score)) {
+      emitPromotionIntent({
+        score: evaluation.score,
+        candidatePath: evaluation.path,
+        outPath: join(dataDir, "research-promotion-intents.jsonl"),
+        now,
+      });
+    }
+    generated.push(evaluation);
+  }
   const record = freeze({
     observedAt: now,
-    status: result.status === 0 ? "completed" : "error",
-    blocker: result.status === 0 ? null : "agent_command_failed",
+    status: "completed",
+    blocker: generated.length > 0 ? null : (materialized.workspaceFull ? "candidate_workspace_full" : "agent_no_candidates"),
     command: agentCommand,
     args: agentArgs,
-    exitCode: result.status ?? 1,
+    exitCode: result.status ?? 0,
     stdoutPreview: (result.stdout || "").trim().slice(0, 500),
     stderrPreview: (result.stderr || "").trim().slice(0, 500),
+    requestedCount: materialized.requestedCount,
+    materializedCount: materialized.materializedCount,
+    generatedCount: generated.length,
+    oosEligibleCount: generated.filter((item) => item.score.oosGate.passed).length,
+    generated: freeze(generated),
   });
   appendTrackARun(dataDir, record);
   return record;
@@ -299,11 +490,17 @@ async function main() {
     embargoSize: 2,
   });
   if (!splits.length) throw new Error("research split builder returned no folds");
+  const commit = currentCommit();
 
-  const trackA = maybeRunTrackA({
+  const trackA = await maybeRunTrackA({
     dataDir: args.dataDir,
     noAgent: args.noAgent,
     maxExperiments: args.maxExperiments,
+    candidateDir: args.candidateDir,
+    panel,
+    splits,
+    resultsPath: args.resultsPath,
+    commit,
   });
 
   const trackB = await runTrackBSearch({
@@ -313,7 +510,6 @@ async function main() {
   });
   appendTrackBRun(args.dataDir, trackB);
 
-  const commit = currentCommit();
   for (const item of trackB.generated) {
     appendResultRow(args.resultsPath, {
       commit,
@@ -337,7 +533,13 @@ async function main() {
   const summary = {
     observedAt: trackB.observedAt,
     daily: args.daily,
-    trackA,
+    trackA: {
+      observedAt: trackA.observedAt,
+      status: trackA.status,
+      blocker: trackA.blocker,
+      generatedCount: trackA.generatedCount || 0,
+      oosEligibleCount: trackA.oosEligibleCount || 0,
+    },
     trackB: {
       generatedCount: trackB.generatedCount,
       oosEligibleCount: trackB.oosEligibleCount,
@@ -346,7 +548,7 @@ async function main() {
     splits: splits.length,
     resultsPath: args.resultsPath,
   };
-  console.log(`trackA: status=${trackA.status} blocker=${trackA.blocker || "none"}`);
+  console.log(`trackA: status=${trackA.status} generated=${trackA.generatedCount || 0} oosEligible=${trackA.oosEligibleCount || 0} blocker=${trackA.blocker || "none"}`);
   console.log(`trackB: generated=${trackB.generatedCount} oosEligible=${trackB.oosEligibleCount} blocker=${trackB.latestBlocker || "none"}`);
   console.log(JSON.stringify(summary, null, 2));
 }

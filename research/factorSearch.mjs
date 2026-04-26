@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, appendFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -89,6 +89,22 @@ export function buildSignals({ panel, helpers }) {
 `;
 }
 
+function activeTrackBCandidateFiles(candidateDir) {
+  if (!existsSync(candidateDir)) return [];
+  return readdirSync(candidateDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".mjs") && entry.name.startsWith("factor_"))
+    .map((entry) => join(candidateDir, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function syncTrackBCandidateWorkspace(candidateDir, targetNames = []) {
+  const targetPaths = new Set(targetNames.map((name) => join(candidateDir, `${name}.mjs`)));
+  for (const filePath of activeTrackBCandidateFiles(candidateDir)) {
+    if (targetPaths.has(filePath)) continue;
+    rmSync(filePath, { force: true });
+  }
+}
+
 export function appendTrackBRun(dataDir, record) {
   const path = join(dataDir, "research-track-b-runs.jsonl");
   mkdirSync(dirname(path), { recursive: true });
@@ -128,6 +144,7 @@ export async function runTrackBSearch({
     { name: "factor_momentum_02", fastWindow: 8, slowWindow: 21 },
     { name: "factor_trend_03", fastWindow: 13, slowWindow: 34 },
   ].slice(0, safeMax);
+  syncTrackBCandidateWorkspace(candidateDir, configs.map((config) => config.name));
 
   const generated = configs.map((config) => {
     const path = join(candidateDir, `${config.name}.mjs`);

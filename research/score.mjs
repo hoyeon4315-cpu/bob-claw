@@ -103,6 +103,10 @@ async function loadTrackBRunRecords(dataDir) {
   return readJsonl(dataDir, "research-track-b-runs");
 }
 
+async function loadTrackARunRecords(dataDir) {
+  return readJsonl(dataDir, "research-track-a-runs");
+}
+
 function parseArgs(argv) {
   const options = Object.fromEntries(
     argv
@@ -121,28 +125,39 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const runs = await loadTrackBRunRecords(args.dataDir);
-  const latest = runs.at(-1) || null;
-  const scores = (latest?.generated || [])
-    .map((item) => item?.score)
-    .filter(Boolean);
+  const [trackARuns, trackBRuns] = await Promise.all([
+    loadTrackARunRecords(args.dataDir),
+    loadTrackBRunRecords(args.dataDir),
+  ]);
+  const latestA = trackARuns.at(-1) || null;
+  const latestB = trackBRuns.at(-1) || null;
+  const generated = [...(latestA?.generated || []), ...(latestB?.generated || [])];
+  const scores = generated.map((item) => item?.score).filter(Boolean);
   const emitted = [];
   for (const score of scores) {
     if (!shouldEmitPromotionIntent(score)) continue;
     emitted.push(
       emitPromotionIntent({
         score,
-        candidatePath: latest.generated.find((item) => item.score?.candidateName === score.candidateName)?.path || null,
+        candidatePath: generated.find((item) => item.score?.candidateName === score.candidateName)?.path || null,
         outPath: args.outPath,
-        now: latest.observedAt || new Date().toISOString(),
+        now: latestB?.observedAt || latestA?.observedAt || new Date().toISOString(),
       }),
     );
   }
   const summary = {
-    observedAt: latest?.observedAt || null,
-    scannedRunCount: runs.length,
+    observedAt: latestB?.observedAt || latestA?.observedAt || null,
+    scannedRunCount: trackARuns.length + trackBRuns.length,
     candidateCount: scores.length,
     promotionIntentCount: emitted.length,
+    trackA: {
+      runCount: trackARuns.length,
+      candidateCount: latestA?.generatedCount ?? 0,
+    },
+    trackB: {
+      runCount: trackBRuns.length,
+      candidateCount: latestB?.generatedCount ?? 0,
+    },
     candidates: scores.map((score) => ({
       candidateName: score.candidateName,
       track: score.track,

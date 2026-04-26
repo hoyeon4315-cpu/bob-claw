@@ -16,6 +16,16 @@ Dual-track research lives here and stays outside live-fund execution.
 - `npm run research:launchd:install`
 - `npm run research:launchd:status`
 
+## Activate Track A locally
+
+```bash
+RESEARCH_AGENT_CMD="$(command -v node)" \
+RESEARCH_AGENT_ARGS='["/absolute/path/to/repo/research/trackA-agent.mjs"]' \
+npm run research -- --max-experiments=1
+```
+
+The same env pair can be supplied when running `research:launchd:install` so the daily launchd plist carries the Track A runner.
+
 ## Layout
 
 - `candidates/_example.mjs` tracked template
