@@ -497,11 +497,17 @@ function tokenInventoryItem(inventory = null, { chain, token } = {}) {
 
 function wrappedBtcHandoffAmountSats(executionSurfaces = null, inventory = null) {
   const strategy = wrappedBtcLoopSurface(executionSurfaces);
-  const blockers = new Set(strategy?.liveAdmissionBlockers || []);
-  if (!blockers.has("base_cbbtc_collateral_unavailable")) return null;
   const source = tokenInventoryItem(inventory, { chain: "base", token: BASE_WBTC_OFT_TOKEN });
   const availableSourceUnits = BigInt(source?.actual || "0");
   if (availableSourceUnits <= 0n) return null;
+  const blockers = new Set(strategy?.liveAdmissionBlockers || []);
+  const sourceUsd = Number(source?.estimatedUsd || 0);
+  const proactiveEligible =
+    sourceUsd >= MIN_WRAPPED_BTC_HANDOFF_USD &&
+    strategy &&
+    strategy.autoExecute !== false &&
+    !blockers.has("strategy_disabled");
+  if (!blockers.has("base_cbbtc_collateral_unavailable") && !proactiveEligible) return null;
   const evidence = strategy?.evidence || {};
   const requiredUnits = evidence.baseCbBtcRequiredUnits ? BigInt(evidence.baseCbBtcRequiredUnits) : null;
   const actualUnits = BigInt(evidence.baseCbBtcCollateralUnits || "0");
@@ -590,6 +596,9 @@ export async function runAllChainAutopilot({
   dispatchTimeoutMs = 600_000,
   runCommandImpl = defaultRunCommand,
   dataDir = config.dataDir,
+  bootstrapBtcSats = null,
+  bootstrapBtcPriceUsd = null,
+  bootstrapTotalCapitalUsd = null,
 } = {}) {
   const observedAt = new Date().toISOString();
   const steps = [];
@@ -603,6 +612,30 @@ export async function runAllChainAutopilot({
     timeoutMs,
     steps,
   });
+
+  const hasBootstrapInput =
+    Number.isFinite(bootstrapTotalCapitalUsd) ||
+    (Number.isFinite(bootstrapBtcSats) && Number.isFinite(bootstrapBtcPriceUsd));
+  if (hasBootstrapInput) {
+    const bootstrapArgs = ["src/cli/run-bootstrap-from-btc.mjs", "--json", "--write"];
+    if (Number.isFinite(bootstrapTotalCapitalUsd)) {
+      bootstrapArgs.push(`--total-capital-usd=${bootstrapTotalCapitalUsd}`);
+    }
+    if (Number.isFinite(bootstrapBtcSats)) {
+      bootstrapArgs.push(`--btc-balance-sats=${bootstrapBtcSats}`);
+    }
+    if (Number.isFinite(bootstrapBtcPriceUsd)) {
+      bootstrapArgs.push(`--btc-price-usd=${bootstrapBtcPriceUsd}`);
+    }
+    await runJsonStep({
+      name: "bootstrap_from_btc",
+      args: bootstrapArgs,
+      runCommandImpl,
+      cwd,
+      timeoutMs,
+      steps,
+    });
+  }
 
   let refillPlanResult = await runJsonStep({
     name: "treasury_refill_plan",
