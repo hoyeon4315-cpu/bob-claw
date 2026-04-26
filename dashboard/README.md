@@ -44,7 +44,7 @@ Do not point the browser at raw JSONL files under `data/`.
 ```bash
 npm test
 npm run check
-node --check dashboard/public/app.js
+node src/cli/check-dashboard-public.mjs
 npm run status:dashboard
 ```
 

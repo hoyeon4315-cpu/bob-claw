@@ -175,10 +175,10 @@ test("rebalance exit plan counts external wallet inventory before selecting exit
   assert.equal(plan.chainPlans.ethereum.currentUsd, 280);
 });
 
-test("exit confirmation timeout honors longer signer timeout", () => {
+test("exit confirmation timeout stays bounded inside longer orchestrator timeout", () => {
   assert.equal(confirmationTimeoutMsForExit(), 120_000);
-  assert.equal(confirmationTimeoutMsForExit(30_000), 120_000);
-  assert.equal(confirmationTimeoutMsForExit(300_000), 300_000);
+  assert.equal(confirmationTimeoutMsForExit(30_000), 30_000);
+  assert.equal(confirmationTimeoutMsForExit(300_000), 120_000);
 });
 
 test("exit evaluator marks rebalance-selected position ready after min hold", () => {

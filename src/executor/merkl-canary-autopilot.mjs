@@ -398,6 +398,8 @@ function merklExecutionErrorReport({
   const message = error?.message || String(error);
   let blockedReason = null;
   if (/Insufficient asset balance:/iu.test(message)) blockedReason = "insufficient_live_asset_balance";
+  if (/insufficient_native_balance_for_gas/iu.test(message)) blockedReason = "insufficient_native_gas_balance";
+  if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message)) blockedReason = "receipt_confirmation_timeout";
   if (/All RPC endpoints failed for chain:/iu.test(message)) blockedReason = "live_inventory_refresh_failed";
   if (!blockedReason) throw error;
   return {

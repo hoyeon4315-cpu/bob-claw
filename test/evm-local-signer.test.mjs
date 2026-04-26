@@ -8,6 +8,7 @@ const PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf
 
 function buildProvider({
   pendingNonce = 12,
+  nativeBalanceWei = 10n ** 18n,
   feeData = {
     maxFeePerGas: 1_000_000_000n,
     maxPriorityFeePerGas: 1_000_000n,
@@ -29,6 +30,11 @@ function buildProvider({
       calls?.push(`${label}:fee`);
       if (feeDataError) throw feeDataError;
       return feeData;
+    },
+    getBalance: async (_address, blockTag) => {
+      calls?.push(`${label}:balance`);
+      assert.equal(blockTag, "latest");
+      return nativeBalanceWei;
     },
     getTransactionCount: async (_address, blockTag) => {
       calls?.push(`${label}:nonce`);
@@ -185,7 +191,7 @@ test("evm signer builds transactions through the next RPC when the active RPC fa
   const signed = await signer.signIntent(intent(), { reserveNonce: true });
 
   assert.equal(signed.metadata.nonce, 31);
-  assert.deepEqual(calls, ["primary:fee", "fallback:fee", "fallback:nonce"]);
+  assert.deepEqual(calls, ["primary:fee", "fallback:fee", "fallback:balance", "fallback:nonce"]);
 });
 
 test("evm signer rejects absurd pending nonce readings and falls back to the next RPC", async () => {
@@ -202,10 +208,17 @@ test("evm signer rejects absurd pending nonce readings and falls back to the nex
   const signed = await signer.signIntent(intent(), { reserveNonce: true });
 
   assert.equal(signed.metadata.nonce, 193);
-  assert.deepEqual(calls, ["primary:fee", "primary:nonce", "fallback:fee", "fallback:nonce"]);
+  assert.deepEqual(calls, [
+    "primary:fee",
+    "primary:balance",
+    "primary:nonce",
+    "fallback:fee",
+    "fallback:balance",
+    "fallback:nonce",
+  ]);
 });
 
-test("evm signer retries broadcast and receipt waits through RPC fallback urls", async () => {
+test("evm signer retries broadcast and races receipt waits through RPC fallback urls", async () => {
   const calls = [];
   const txHash = "0x" + "b".repeat(64);
   const providers = new Map([
@@ -225,10 +238,12 @@ test("evm signer retries broadcast and receipt waits through RPC fallback urls",
   assert.equal(receipt.hash, txHash);
   assert.deepEqual(calls, [
     "primary:fee",
+    "primary:balance",
     "primary:nonce",
     "primary:broadcast",
     "fallback:broadcast",
     "fallback:wait",
+    "primary:wait",
   ]);
 });
 
@@ -248,8 +263,21 @@ test("evm signer submits accepted raw transactions to fallback RPCs too", async 
 
   assert.deepEqual(calls, [
     "primary:fee",
+    "primary:balance",
     "primary:nonce",
     "primary:broadcast",
     "fallback:broadcast",
   ]);
+});
+
+test("evm signer rejects transactions that cannot cover max native gas debit before reserving nonce", async () => {
+  const calls = [];
+  const signer = buildSigner(buildProvider({ nativeBalanceWei: 20_999_999_999_999n, calls }));
+
+  await assert.rejects(
+    () => signer.signIntent(intent(), { reserveNonce: true }),
+    /insufficient_native_balance_for_gas/u,
+  );
+
+  assert.deepEqual(calls, ["provider:fee", "provider:balance"]);
 });

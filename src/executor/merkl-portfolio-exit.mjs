@@ -38,7 +38,7 @@ function amountCents(value) {
 
 export function confirmationTimeoutMsForExit(timeoutMs = null) {
   const parsed = Number(timeoutMs);
-  return Math.max(120_000, Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 120_000) : 120_000;
 }
 
 function sumObjectValues(values = {}) {

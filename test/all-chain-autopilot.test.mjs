@@ -450,8 +450,10 @@ test("all-chain autopilot reports recoverable blockers without failing the whole
 
 test("all-chain autopilot gives long-running canary sweep its own timeout", async () => {
   const timeouts = {};
+  const seen = [];
   const timedCommand = ({ args, timeoutMs }) => {
     timeouts[args[0]] = timeoutMs;
+    seen.push(args);
     return fakeCommand({ args });
   };
 
@@ -467,6 +469,9 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(timeouts["src/cli/run-live-canary-sweep.mjs"], 456);
   assert.equal(timeouts["src/cli/run-strategy-catalog-dispatcher.mjs"], 789);
   assert.equal(timeouts["src/cli/run-merkl-canary-autopilot.mjs"], 123);
+  assert.equal(seen.some((args) => args.includes("src/cli/run-live-canary-sweep.mjs") && args.includes("--timeout-ms=456")), true);
+  assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")), true);
+  assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123")), true);
 });
 
 test("all-chain autopilot retries refill jobs with executable alternate methods after no_route", async () => {
@@ -1041,6 +1046,49 @@ test("all-chain autopilot treats Merkl canary blocked json as recoverable during
 
   assert.equal(report.status, "completed_with_blockers");
   assert.equal(report.summary.merklCanary.blockedReason, "insufficient_live_asset_balance");
+});
+
+test("all-chain autopilot keeps running when Merkl execution subprocesses fail without json", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(name);
+    if (name.endsWith("run-merkl-canary-autopilot.mjs")) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "Error: waitForTransaction failed for ethereum across 3 RPC endpoint(s): timeout",
+        json: null,
+        error: {
+          name: "CommandFailed",
+          message: "Error: waitForTransaction failed for ethereum across 3 RPC endpoint(s): timeout",
+        },
+      };
+    }
+    if (name.endsWith("run-merkl-portfolio-orchestrator.mjs")) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "Command timed out after 600000ms",
+        json: null,
+        error: { name: "Error", message: "Command timed out after 600000ms" },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.blockedReason, null);
+  assert.ok(seen.some((name) => name.endsWith("run-strategy-catalog-dispatcher.mjs")));
+  assert.ok(seen.some((name) => name.endsWith("run-payback-scheduler.mjs")));
 });
 
 test("defaultRunCommand does not retain a referenced child-process handle after the command resolves", async () => {

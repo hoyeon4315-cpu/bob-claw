@@ -532,7 +532,10 @@ function proportionalUsd(amountUsd, retryAmount, originalAmount) {
 }
 
 export function executionErrorBlockers(error) {
+  const message = error?.message || String(error);
   if (parseInsufficientAssetBalance(error)) return ["insufficient_asset_balance"];
+  if (/insufficient_native_balance_for_gas/iu.test(message)) return ["insufficient_native_gas_balance"];
+  if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message)) return ["receipt_confirmation_timeout"];
   return ["portfolio_execution_error"];
 }
 

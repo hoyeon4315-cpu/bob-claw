@@ -29,6 +29,15 @@ function undefinedIfZero(value) {
   return value === 0n ? undefined : value;
 }
 
+function transactionNativeDebit(request) {
+  const gasLimit = toBigIntOrNull(request?.gasLimit) ?? 0n;
+  const gasPrice =
+    toBigIntOrNull(request?.gasPrice) ??
+    toBigIntOrNull(request?.maxFeePerGas) ??
+    0n;
+  return (toBigIntOrNull(request?.value) ?? 0n) + gasLimit * gasPrice;
+}
+
 const MAX_REASONABLE_EVM_NONCE = 10_000_000;
 
 function assertReasonableNonce(nonce, label = "nonce") {
@@ -131,6 +140,10 @@ function isLikelyAlreadyBroadcast(error) {
   return /already known|already imported|known transaction|nonce too low/iu.test(errorMessage(error));
 }
 
+function isNonRetryableLocalError(error) {
+  return /insufficient_native_balance_for_gas/iu.test(errorMessage(error));
+}
+
 export class EvmLocalKeySigner extends SignerInterface {
   constructor({
     env = process.env,
@@ -189,6 +202,7 @@ export class EvmLocalKeySigner extends SignerInterface {
         this.activeProviderIndexes.set(chain, index);
         return result;
       } catch (error) {
+        if (isNonRetryableLocalError(error)) throw error;
         lastError = error;
       }
     }
@@ -258,12 +272,6 @@ export class EvmLocalKeySigner extends SignerInterface {
     return this.withRpcFallback(intent.chain, "buildTransactionRequest", async (provider, { index }) => {
       const wallet = await this.walletForProviderIndex(intent.chain, index);
       const feeData = await provider.getFeeData();
-      const nonce = reserveNonce
-        ? await (await this.nonceManagerForProviderIndex(intent.chain, index)).reserve(explicitNonce)
-        : explicitNonce ?? assertReasonableNonce(
-          await provider.getTransactionCount(wallet.address, "pending"),
-          "pending nonce",
-        );
       const explicitGasPrice = toBigIntOrNull(intent.tx?.gasPrice);
       const explicitMaxFeePerGas = toBigIntOrNull(intent.tx?.maxFeePerGas);
       const explicitMaxPriorityFeePerGas = toBigIntOrNull(intent.tx?.maxPriorityFeePerGas);
@@ -275,18 +283,38 @@ export class EvmLocalKeySigner extends SignerInterface {
             explicitMaxFeePerGas,
             explicitMaxPriorityFeePerGas,
           });
+      const baseRequest = {
+        value: toBigIntOrNull(intent.tx?.value) ?? 0n,
+        gasLimit: toBigIntOrNull(intent.tx?.gasLimit) ?? BigInt(chainConfig.fallbackGasUnits),
+        ...(useLegacy
+          ? { gasPrice: bufferedLegacyGasPrice({ feeData, chainConfig, explicitGasPrice }) }
+          : eip1559Fees),
+      };
+      const requiredNative = transactionNativeDebit(baseRequest);
+      if (requiredNative > 0n && typeof provider.getBalance === "function") {
+        const nativeBalance = toBigIntOrNull(await provider.getBalance(wallet.address, "latest")) ?? 0n;
+        if (nativeBalance < requiredNative) {
+          throw new Error(
+            `insufficient_native_balance_for_gas: chain=${intent.chain} requiredWei=${requiredNative.toString()} balanceWei=${nativeBalance.toString()}`,
+          );
+        }
+      }
+      const nonce = reserveNonce
+        ? await (await this.nonceManagerForProviderIndex(intent.chain, index)).reserve(explicitNonce)
+        : explicitNonce ?? assertReasonableNonce(
+          await provider.getTransactionCount(wallet.address, "pending"),
+          "pending nonce",
+        );
 
       return {
         chainId: chainConfig.chainId,
         to: intent.tx?.to,
         data: intent.tx?.data || "0x",
-        value: toBigIntOrNull(intent.tx?.value) ?? 0n,
-        gasLimit: toBigIntOrNull(intent.tx?.gasLimit) ?? BigInt(chainConfig.fallbackGasUnits),
+        value: baseRequest.value,
+        gasLimit: baseRequest.gasLimit,
         nonce,
         type: txType,
-        ...(useLegacy
-          ? { gasPrice: bufferedLegacyGasPrice({ feeData, chainConfig, explicitGasPrice }) }
-          : eip1559Fees),
+        ...(useLegacy ? { gasPrice: baseRequest.gasPrice } : eip1559Fees),
       };
     });
   }
@@ -348,13 +376,22 @@ export class EvmLocalKeySigner extends SignerInterface {
   }
 
   async waitForTransaction(chain, txHash, { confirmations = 1, timeoutMs = 120_000 } = {}) {
+    const entries = this.providerEntries(chain);
+    const waits = this.providerOrder(chain).map(async (index) => {
+      const entry = entries[index];
+      const receipt = await entry.provider.waitForTransaction(txHash, confirmations, timeoutMs);
+      if (!receipt) throw new Error("waitForTransaction returned null");
+      this.activeProviderIndexes.set(chain, index);
+      return receipt;
+    });
     try {
-      return await this.withRpcFallback(chain, "waitForTransaction", async (provider) => (
-        provider.waitForTransaction(txHash, confirmations, timeoutMs)
-      ));
+      return await Promise.any(waits);
     } catch (error) {
       this.resetNonceManagers(chain);
-      throw error;
+      const messages = error?.errors?.length
+        ? error.errors.map(errorMessage).join("; ")
+        : errorMessage(error);
+      throw new Error(`waitForTransaction failed for ${chain} across ${entries.length} RPC endpoint(s): ${messages}`);
     }
   }
 }

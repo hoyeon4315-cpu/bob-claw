@@ -465,6 +465,9 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "live_canary_sweep") {
     return true;
   }
+  if (step.name === "merkl_canary_autopilot" || step.name === "merkl_portfolio_orchestrator") {
+    return true;
+  }
   if (step.name === "wrapped_btc_loop_handoff_preview" || step.name === "wrapped_btc_loop_handoff_execute") {
     return true;
   }
@@ -771,6 +774,7 @@ export async function runAllChainAutopilot({
       "--write",
       `--chains=${chains.join(",")}`,
       `--limit=${canaryLimit}`,
+      `--timeout-ms=${canaryTimeoutMs}`,
     ], "--execute", execute),
     runCommandImpl,
     cwd,
@@ -821,7 +825,12 @@ export async function runAllChainAutopilot({
 
   const merklCanaryResult = await runJsonStep({
     name: "merkl_canary_autopilot",
-    args: appendFlag(["src/cli/run-merkl-canary-autopilot.mjs", "--json", "--write"], "--execute", execute),
+    args: appendFlag([
+      "src/cli/run-merkl-canary-autopilot.mjs",
+      "--json",
+      "--write",
+      `--timeout-ms=${timeoutMs}`,
+    ], "--execute", execute),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -830,7 +839,12 @@ export async function runAllChainAutopilot({
 
   const portfolioResult = await runJsonStep({
     name: "merkl_portfolio_orchestrator",
-    args: appendFlag(["src/cli/run-merkl-portfolio-orchestrator.mjs", "--json", "--write"], "--execute", execute),
+    args: appendFlag([
+      "src/cli/run-merkl-portfolio-orchestrator.mjs",
+      "--json",
+      "--write",
+      `--timeout-ms=${timeoutMs}`,
+    ], "--execute", execute),
     runCommandImpl,
     cwd,
     timeoutMs,
