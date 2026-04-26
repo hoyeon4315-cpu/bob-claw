@@ -510,8 +510,6 @@ function groupStrategiesByProtocol(strategies = []) {
 
 function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragStart }) {
   const R = size * 1.1;
-  const typeLabel = TYPE_LABEL[strategy.type] || strategy.type.toUpperCase();
-  const typeInk = TYPE_INK[strategy.type] || '#555';
   const capitalLabel = formatCompactUsdLabel(strategy.capitalUsd);
   const handleTap = (event) => {
     event.stopPropagation?.();
@@ -529,20 +527,6 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
           </div>
         </foreignObject>
         <StatPill x={0} y={-R - 17} label={capitalLabel} scale={0.76} tone={selected ? 'dark' : 'light'}/>
-        {selected && (
-          <>
-            <text y={R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1D1D1F"
-              stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
-              style={{ fontFamily:'-apple-system, system-ui', textTransform:'capitalize' }}>
-              {strategy.strategies?.[0]?.label || strategy.label || strategy.protocol}
-            </text>
-            <text y={R + 26} textAnchor="middle" fontSize="10" fontWeight="600" fill={typeInk}
-              stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
-              style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.8 }}>
-              {typeLabel}
-            </text>
-          </>
-        )}
         {!selected && (
           <text y={R + 10} textAnchor="middle" fontSize="9" fontWeight="600" fill="#555"
             stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
@@ -555,11 +539,6 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
             <rect x="-12" y="-8" width="24" height="16" rx="8" fill="#111113"/>
             <text textAnchor="middle" y="4" fontSize="10" fontWeight="600" fill="#fff" style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>×{strategy.loops}</text>
           </g>
-        )}
-        {selected && strategy.earnedUsd > 0 && (
-          <text y={R + 34} textAnchor="middle" fontSize="9" fontWeight="600" fill="#1C7A3E" style={{ fontFamily:'-apple-system, system-ui' }}>
-            {formatYieldDisplay(strategy.earnedUsd, strategy.yieldBasis)}
-          </text>
         )}
       </g>
       <foreignObject x={-hitSize / 2} y={-hitSize / 2} width={hitSize} height={hitSize}>
@@ -1165,12 +1144,9 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
 function ProtocolCard({ protocolNode }) {
   if (!protocolNode) return null;
   const chain = CHAINS.find(c => c.id === protocolNode.chain);
-  const typeLabel = TYPE_LABEL[protocolNode.type] || protocolNode.type.toUpperCase();
-  const typeInk = TYPE_INK[protocolNode.type] || '#555';
   const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
   const yieldValue = formatYieldDisplay(protocolNode.earnedUsd, protocolNode.yieldBasis);
-  const visibleStrategies = protocolNode.strategies.slice(0, PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT);
-  const hiddenStrategyCount = Math.max(0, protocolNode.strategies.length - visibleStrategies.length);
+  const protocolAssets = uniqueProtocolAssets(protocolNode.strategies || []);
   return (
     <div data-card-type="protocol" style={{
       position:'absolute', left:8, right:8, bottom:8,
@@ -1192,10 +1168,7 @@ function ProtocolCard({ protocolNode }) {
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:13, fontWeight:600, color:'#111113', letterSpacing:-0.1 }}>{protocolNode.label}</div>
-          <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:1 }}>
-            <span style={{ fontSize:11, color:'#6B6B6E' }}>{chain?.name}</span>
-            <span style={{ fontSize:10, fontWeight:600, padding:'1px 5px', borderRadius:3, border:`0.5px solid ${typeInk}`, color:typeInk, letterSpacing:0.4 }}>{typeLabel}</span>
-          </div>
+          <div style={{ fontSize:11, color:'#6B6B6E', marginTop:1 }}>{chain?.name}</div>
         </div>
         {capitalLabel && (
           <div style={{ textAlign:'right' }}>
@@ -1205,45 +1178,20 @@ function ProtocolCard({ protocolNode }) {
         )}
       </div>
       <div style={{ marginTop:7, display:'flex', gap:8, flexWrap:'wrap' }}>
-        <Metric label="Mapped" value={`${protocolNode.strategyCount}`}/>
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
         <Metric label="Capital" value={capitalLabel || '—'}/>
         <Metric label={yieldMetricLabel(protocolNode.yieldBasis)} value={yieldValue || '—'} accent={protocolNode.earnedUsd > 0}/>
         {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
-        {protocolNode.loops && <Metric label="Loops" value={`×${protocolNode.loops}`}/>}
       </div>
-      <div style={{ marginTop:5, display:'grid', gap:5 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 7px', background:'#F5F5F6', borderRadius:8 }}>
-          <span style={{ fontSize:10, color:'#8A8A8D', textTransform:'uppercase', letterSpacing:0.5, fontWeight:600 }}>Pair</span>
-          {protocolNode.pair.map(p => <AssetLogo key={p} id={p} size={14}/>)}
-        </div>
-        <div style={{
-          fontSize:11.2, lineHeight:1.36, color:'#3A3A3D',
-          display:'-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient:'vertical', overflow:'hidden',
-        }}>
-          {protocolNode.desc}
-        </div>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {visibleStrategies.map((strategy) => (
-            <div key={strategy.id} style={{
-              padding:'3px 7px', borderRadius:999, background:'#F5F5F6',
-              fontSize:10.5, color:'#3A3A3D', lineHeight:1.2, maxWidth:'100%',
-            }}>
-              <span style={{ display:'block', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                {strategy.label}
-              </span>
+      {protocolAssets.length > 0 && (
+        <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
+          {protocolAssets.map((assetId) => (
+            <div key={assetId} style={{ width:16, height:16, borderRadius:999, overflow:'hidden' }}>
+              <AssetLogo id={assetId} size={16}/>
             </div>
           ))}
-          {hiddenStrategyCount > 0 && (
-            <div style={{
-              padding:'3px 7px', borderRadius:999, background:'#ECECEE',
-              fontSize:10.5, color:'#6B6B6E', lineHeight:1.2,
-            }}>
-              +{hiddenStrategyCount} more
-            </div>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

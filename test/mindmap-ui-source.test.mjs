@@ -38,20 +38,24 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /function formatYieldDisplay\(/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_MAX_HEIGHT = 132;/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 152;/);
-    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;/);
     assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(chain\.capitalUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(strategy\.capitalUsd\)/);
     assert.match(MINDMAP_JSX, /const capitalY = labelBelow \? size \* 1\.46 : -size \* 1\.34;/);
     assert.match(MINDMAP_JSX, /includeRect\(bounds, point\.x, point\.y - chipRadius - 17, 58, 16\)/);
     assert.match(MINDMAP_JSX, /yieldMetricLabel\(protocolNode\.yieldBasis\)/);
     assert.match(MINDMAP_JSX, /maxHeight: PROTOCOL_CARD_MAX_HEIGHT/);
-    assert.match(MINDMAP_JSX, /const visibleStrategies = protocolNode\.strategies\.slice\(0, PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT\);/);
+    assert.match(MINDMAP_JSX, /const protocolAssets = uniqueProtocolAssets\(protocolNode\.strategies \|\| \[\]\);/);
+    assert.doesNotMatch(MINDMAP_JSX, /const visibleStrategies = protocolNode\.strategies\.slice\(0, PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT\);/);
+    assert.doesNotMatch(MINDMAP_JSX, />Pair<\/span>/);
+    assert.doesNotMatch(MINDMAP_JSX, /<Metric label="Mapped"/);
+    assert.doesNotMatch(MINDMAP_JSX, /\+\{hiddenStrategyCount\} more/);
   });
 
   test("selected protocol view keeps asset motion logo-only without duplicate pair text", () => {
     assert.match(MINDMAP_JSX, /function AssetLogoTag\(/);
     assert.doesNotMatch(MINDMAP_JSX, /function AssetTickerPill\(/);
     assert.doesNotMatch(MINDMAP_JSX, /join\(' \/ '\)/);
+    assert.doesNotMatch(MINDMAP_JSX, /strategy\.strategies\?\.\[0\]\?\.label \|\| strategy\.label \|\| strategy\.protocol/);
   });
 
   test("focus mode dampens motion on zoomed protocol views", () => {
