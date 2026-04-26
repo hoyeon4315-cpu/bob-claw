@@ -229,6 +229,8 @@
     "watch:gateway-updates": "node src/cli/watch-gateway-updates.mjs",
     "watch:gateway-updates:autopilot": "node src/cli/run-gateway-update-autopilot.mjs --execute --write",
     "status:dashboard": "node src/cli/status-dashboard.mjs",
+    "auto:gate-self-heal": "node src/cli/run-gate-self-heal.mjs",
+    "auto:gate-self-heal:loop": "node src/cli/run-gate-self-heal.mjs --loop",
     "dashboard:build": "node src/cli/build-dashboard-public.mjs",
     "dashboard:serve": "node src/cli/serve-dashboard-live.mjs",
     "dashboard:public:run": "node src/cli/run-dashboard-public-live.mjs",
