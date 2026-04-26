@@ -359,6 +359,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.capitalSummary = buildCapitalSummarySlice({
     walletHoldings: dashboardStatus.walletHoldings,
     merklActivePositions: dashboardStatus.strategy.merklActivePositions,
+    executorEstimatedAssetValueUsd: allChainAutopilotLatest?.summary?.capitalManager?.estimatedAssetValueUsd ?? null,
     generatedAt: dashboardStatus.generatedAt,
   });
   dashboardStatus.operations = {

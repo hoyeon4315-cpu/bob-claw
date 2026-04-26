@@ -199,7 +199,10 @@ test("capital summary combines wallet balances with deployed Merkl positions", (
 
   assert.equal(slice.walletUsd, 205.5);
   assert.equal(slice.deployedUsd, 147.69);
+  assert.equal(slice.accountedUsd, 353.19);
+  assert.equal(slice.executorEstimatedTotalUsd, null);
   assert.equal(slice.totalUsd, 353.19);
+  assert.equal(slice.totalUsdSource, "accounted_wallet_plus_positions");
   assert.equal(slice.walletSource, null);
   assert.equal(slice.walletObservedAt, null);
   assert.equal(slice.walletScanErrorCount, 0);
@@ -207,6 +210,34 @@ test("capital summary combines wallet balances with deployed Merkl positions", (
   assert.equal(slice.unclassifiedUsd, null);
   assert.equal(slice.activePositionCount, 2);
   assert.deepEqual(slice.positionItems.map((item) => item.protocol), ["yo", "euler"]);
+});
+
+test("capital summary falls back to executor asset estimate when wallet accounting undercounts", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 230.88,
+      items: [{ sym: "usdc", usd: 230.88 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deploy USDC",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 53.62,
+        },
+      ],
+    },
+    executorEstimatedAssetValueUsd: 469.01,
+    generatedAt: "2026-04-27T00:00:00.000Z",
+  });
+
+  assert.equal(slice.accountedUsd, 284.5);
+  assert.equal(slice.executorEstimatedTotalUsd, 469.01);
+  assert.equal(slice.totalUsd, 469.01);
+  assert.equal(slice.totalUsdSource, "executor_estimate");
 });
 
 test("flow dashboard slice compacts live activities and leverage hints for the flow tab", () => {

@@ -23,6 +23,7 @@ function deployedPositionItem(position = {}) {
 export function buildCapitalSummarySlice({
   walletHoldings = null,
   merklActivePositions = null,
+  executorEstimatedAssetValueUsd = null,
   generatedAt = new Date().toISOString(),
 } = {}) {
   const walletItems = Array.isArray(walletHoldings?.items) ? walletHoldings.items : [];
@@ -31,12 +32,22 @@ export function buildCapitalSummarySlice({
     ? walletHoldings.totalUsd
     : walletItems.reduce((sum, item) => sum + (Number(item.usd) || 0), 0);
   const deployedUsd = positionItems.reduce((sum, item) => sum + (Number(item.usd) || 0), 0);
+  const accountedUsd = walletUsd + deployedUsd;
+  const executorEstimatedTotalUsd = Number.isFinite(executorEstimatedAssetValueUsd)
+    ? executorEstimatedAssetValueUsd
+    : null;
+  const totalUsd = Number.isFinite(executorEstimatedTotalUsd) && executorEstimatedTotalUsd > accountedUsd
+    ? executorEstimatedTotalUsd
+    : accountedUsd;
   return {
     schemaVersion: 1,
     generatedAt,
     walletUsd,
     deployedUsd,
-    totalUsd: walletUsd + deployedUsd,
+    accountedUsd,
+    executorEstimatedTotalUsd,
+    totalUsd,
+    totalUsdSource: totalUsd === accountedUsd ? "accounted_wallet_plus_positions" : "executor_estimate",
     walletSource: walletHoldings?.source || null,
     walletObservedAt: walletHoldings?.observedAt || null,
     walletScanErrorCount: walletHoldings?.scanErrorCount ?? 0,
