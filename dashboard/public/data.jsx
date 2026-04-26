@@ -463,8 +463,9 @@ function startDashboardPolling(intervalMs = STATIC_POLL_MS) {
 }
 
 function setupLiveEventStream() {
-  if (window._DASHBOARD_LIVE_STREAM || window._DASHBOARD_LIVE_STREAM_DISABLED) return;
+  if (window._DASHBOARD_LIVE_STREAM) return;
   if (!window._DASHBOARD_LIVE_AVAILABLE || !window.EventSource) return;
+  if (window._DASHBOARD_LIVE_STREAM_RETRY_AT && Date.now() < window._DASHBOARD_LIVE_STREAM_RETRY_AT) return;
   const stream = new EventSource(`${LIVE_EVENTS_PATH}?t=${Date.now()}`);
   let opened = false;
   const handleSnapshot = async (event) => {
@@ -484,11 +485,9 @@ function setupLiveEventStream() {
   stream.onmessage = handleSnapshot;
   stream.onerror = () => {
     window._DASHBOARD_LIVE_STREAM_ACTIVE = false;
-    if (!opened) {
-      stream.close();
-      window._DASHBOARD_LIVE_STREAM = null;
-      window._DASHBOARD_LIVE_STREAM_DISABLED = true;
-    }
+    if (!opened) window._DASHBOARD_LIVE_STREAM_RETRY_AT = Date.now() + 30000;
+    stream.close();
+    window._DASHBOARD_LIVE_STREAM = null;
   };
   window.addEventListener('beforeunload', () => stream.close(), { once: true });
   window._DASHBOARD_LIVE_STREAM = stream;
