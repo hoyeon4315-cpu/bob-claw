@@ -120,12 +120,18 @@ export function buildTreasuryHoldingsSlice(records = [], { generatedAt = new Dat
     .filter((item) => item.usd > 0 || item.amount > 0)
     .sort((a, b) => (b.usd || 0) - (a.usd || 0));
 
+  const itemTotalUsd = items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0);
+
   return {
     schemaVersion: 1,
     generatedAt,
     observedAt: latest.observedAt || null,
     pending: false,
-    totalUsd: items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0),
+    totalUsd: itemTotalUsd > 0
+      ? itemTotalUsd
+      : Number.isFinite(latest.summary?.estimatedWalletUsd)
+      ? latest.summary.estimatedWalletUsd
+      : itemTotalUsd,
     activeChainCount: latest.summary?.activeChainCount ?? latest.activeChains?.length ?? 0,
     supportedChainCount: latest.summary?.supportedChainCount ?? latest.supportedChains?.length ?? 0,
     refillRequiredCount:

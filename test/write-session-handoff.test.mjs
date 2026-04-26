@@ -92,6 +92,7 @@ test("write-session-handoff includes payback readiness summary and preview comma
     env: {
       ...process.env,
       BOB_CLAW_DATA_DIR: dataDir,
+      PAYBACK_BTC_DEST_ADDR: "",
     },
     encoding: "utf8",
   });

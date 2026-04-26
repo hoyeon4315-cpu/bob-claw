@@ -48,6 +48,15 @@ function fundingSourceAutoExecutable(fundingSource = null) {
   );
 }
 
+function failedGasCostUsdForReceipt(record = {}) {
+  const receiptGasUsd = record.realized?.receiptGasUsd;
+  const sourceTxSucceeded = record.flags?.failed === false || Number(record.receipt?.status) === 1;
+  if (sourceTxSucceeded && isFiniteNumber(receiptGasUsd)) {
+    return receiptGasUsd;
+  }
+  return record.realized?.actualKnownCostUsd;
+}
+
 function isLeverageStrategy(job = {}, strategyPolicy = null) {
   if (strategyPolicy?.isLeverage === true) return true;
   const actionType = String(strategyPolicy?.actionType || job?.actionType || "").toLowerCase();
@@ -110,7 +119,7 @@ export function buildExecutionRiskState({ receiptRecords = [], executionEvents =
   const projectLossUsedUsd = Math.max(0, -projectRealizedPnlUsd);
   const failedGasCost24hUsd = receipt24h
     .filter((item) => item.reconciliationStatus === "failed")
-    .map((item) => item.realized?.actualKnownCostUsd)
+    .map((item) => failedGasCostUsdForReceipt(item))
     .filter(isFiniteNumber)
     .reduce((sum, value) => sum + value, 0);
 

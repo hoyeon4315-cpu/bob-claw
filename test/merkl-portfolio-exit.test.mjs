@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateMerklPositionExit } from "../src/executor/merkl-portfolio-exit.mjs";
+import {
+  buildMerklPortfolioRebalanceExitPlan,
+  confirmationTimeoutMsForExit,
+  executeReadyMerklPortfolioExits,
+  evaluateMerklPositionExit,
+} from "../src/executor/merkl-portfolio-exit.mjs";
 import { executeAavePortfolioExit } from "../src/executor/helpers/merkl-portfolio-exit-executors.mjs";
 
 function position(overrides = {}) {
@@ -97,6 +102,181 @@ test("exit evaluator triggers underperform exits after min hold", () => {
   assert.ok(result.triggers.includes("realized_apr_below_entry_ratio"));
   assert.ok(result.triggers.includes("reward_token_price_drop"));
   assert.ok(result.triggers.includes("volume_24h_drop"));
+});
+
+test("rebalance exit plan selects excess-chain positions closest to target", () => {
+  const positions = [
+    position({
+      positionId: "eth-a",
+      chain: "ethereum",
+      amountUsd: 75,
+      score: 117,
+    }),
+    position({
+      positionId: "eth-b",
+      chain: "ethereum",
+      amountUsd: 50,
+      score: 90,
+    }),
+    position({
+      positionId: "eth-c",
+      chain: "ethereum",
+      amountUsd: 25,
+      score: 80,
+    }),
+    position({
+      positionId: "base-a",
+      chain: "base",
+      amountUsd: 100,
+      score: 130,
+    }),
+  ];
+
+  const plan = buildMerklPortfolioRebalanceExitPlan({
+    positions,
+    targetChainUsd: {
+      ethereum: 75,
+      base: 120,
+    },
+    toleranceUsd: 1,
+  });
+
+  assert.equal(plan.status, "rebalance_exit_ready");
+  assert.deepEqual(
+    plan.positionsToExit.map((item) => item.positionId).sort(),
+    ["eth-b", "eth-c"],
+  );
+  assert.equal(plan.chainPlans.ethereum.currentUsd, 150);
+  assert.equal(plan.chainPlans.ethereum.targetUsd, 75);
+  assert.equal(plan.chainPlans.ethereum.selectedExitUsd, 75);
+  assert.equal(plan.chainPlans.base.selectedExitUsd, 0);
+});
+
+test("rebalance exit plan counts external wallet inventory before selecting exits", () => {
+  const plan = buildMerklPortfolioRebalanceExitPlan({
+    positions: [
+      position({ positionId: "base-active", chain: "base", amountUsd: 100, score: 120 }),
+      position({ positionId: "eth-active", chain: "ethereum", amountUsd: 150, score: 80 }),
+    ],
+    externalChainUsd: {
+      base: 80,
+      ethereum: 130,
+    },
+    targetChainUsd: {
+      base: 180,
+      ethereum: 100,
+    },
+    toleranceUsd: 1,
+  });
+
+  assert.deepEqual(plan.chainPlans.base.selectedPositionIds, []);
+  assert.deepEqual(plan.chainPlans.ethereum.selectedPositionIds, ["eth-active"]);
+  assert.equal(plan.chainPlans.base.currentUsd, 180);
+  assert.equal(plan.chainPlans.ethereum.currentUsd, 280);
+});
+
+test("exit confirmation timeout honors longer signer timeout", () => {
+  assert.equal(confirmationTimeoutMsForExit(), 120_000);
+  assert.equal(confirmationTimeoutMsForExit(30_000), 120_000);
+  assert.equal(confirmationTimeoutMsForExit(300_000), 300_000);
+});
+
+test("exit evaluator marks rebalance-selected position ready after min hold", () => {
+  const rebalanceExitPlan = {
+    positionsById: {
+      p1: {
+        trigger: "portfolio_chain_target_rebalance",
+        chain: "ethereum",
+        targetUsd: 15,
+        currentUsd: 283,
+      },
+    },
+  };
+
+  const result = evaluateMerklPositionExit({
+    position: position({ chain: "ethereum" }),
+    queue: { queue: [queueItem()] },
+    now: "2026-04-24T06:50:00.000Z",
+    rebalanceExitPlan,
+  });
+
+  assert.equal(result.status, "exit_ready");
+  assert.ok(result.triggers.includes("portfolio_chain_target_rebalance"));
+  assert.equal(result.rebalance.chain, "ethereum");
+});
+
+test("portfolio exit execution continues after one position errors", async () => {
+  const exitReady = [
+    {
+      positionId: "p1",
+      opportunityId: "opp-1",
+      triggers: ["portfolio_chain_target_rebalance"],
+    },
+    {
+      positionId: "p2",
+      opportunityId: "opp-2",
+      triggers: ["portfolio_chain_target_rebalance"],
+    },
+  ];
+  const positions = [
+    position({ positionId: "p1", opportunityId: "opp-1" }),
+    position({ positionId: "p2", opportunityId: "opp-2" }),
+  ];
+  const appended = [];
+
+  const executions = await executeReadyMerklPortfolioExits({
+    exitReady,
+    positions,
+    queue: { queue: [queueItem({ opportunityId: "opp-1" }), queueItem({ opportunityId: "opp-2" })] },
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    executePositionImpl: async ({ position: executionPosition }) => {
+      if (executionPosition.positionId === "p1") throw new Error("mock exit revert");
+      return {
+        observedAt: "2026-04-24T06:55:00.000Z",
+        settlementStatus: "position_closed",
+        signerResult: { broadcast: { txHash: "0xclosed" } },
+        redeemProof: { status: "delivered" },
+      };
+    },
+    appendRecord: async (record) => appended.push(record),
+  });
+
+  assert.equal(executions.length, 2);
+  assert.equal(executions[0].status, "error");
+  assert.equal(executions[0].error.message, "mock exit revert");
+  assert.equal(executions[1].status, "position_closed");
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].positionId, "p2");
+});
+
+test("portfolio exit reconciles zero share balances as closed", async () => {
+  const appended = [];
+  const executions = await executeReadyMerklPortfolioExits({
+    exitReady: [{
+      positionId: "p1",
+      opportunityId: "opp-1",
+      triggers: ["portfolio_chain_target_rebalance"],
+    }],
+    positions: [position()],
+    queue: { queue: [queueItem()] },
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    executePositionImpl: async () => {
+      const error = new Error("No shares available to redeem");
+      error.name = "NoPositionShares";
+      error.zeroShareProof = {
+        status: "reconciled_zero_share_balance",
+        proofSource: "erc20_balance_zero",
+        shareBalance: "0",
+      };
+      throw error;
+    },
+    appendRecord: async (record) => appended.push(record),
+  });
+
+  assert.equal(executions[0].status, "position_reconciled_zero_balance");
+  assert.equal(appended[0].status, "closed");
+  assert.equal(appended[0].event, "position_exit_reconciled_zero_balance");
+  assert.equal(appended[0].redeemProof.proofSource, "erc20_balance_zero");
 });
 
 test("Aave portfolio exit withdraws through the pool and verifies asset delta", async () => {

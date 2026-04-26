@@ -64,8 +64,8 @@ test("payback status cli reports missing destination env and supports destinatio
   const baseEnv = {
     ...process.env,
     BOB_CLAW_DATA_DIR: dataDir,
+    PAYBACK_BTC_DEST_ADDR: "",
   };
-  delete baseEnv.PAYBACK_BTC_DEST_ADDR;
 
   const blocked = spawnSync(
     process.execPath,

@@ -134,13 +134,18 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
     },
   });
 
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.deepEqual(calls[0], {
     command: "node",
-    args: ["src/cli/status-dashboard.mjs"],
+    args: ["src/cli/inventory-treasury.mjs"],
     commandEnv: calls[0].commandEnv,
   });
   assert.deepEqual(calls[1], {
+    command: "node",
+    args: ["src/cli/status-dashboard.mjs"],
+    commandEnv: calls[1].commandEnv,
+  });
+  assert.deepEqual(calls[2], {
     command: "wrangler",
     args: [
       "pages",
@@ -151,7 +156,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
       "--branch",
       "main",
     ],
-    commandEnv: calls[1].commandEnv,
+    commandEnv: calls[2].commandEnv,
   });
   assert.match(calls[0].commandEnv.HOME, /\.cloudflare\/home$/);
   assert.match(calls[0].commandEnv.XDG_CONFIG_HOME, /\.cloudflare\/xdg$/);

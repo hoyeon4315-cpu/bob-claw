@@ -262,36 +262,30 @@ describe("promotion evidence — pure gate", () => {
     assert.equal(r.evidence.regimeWindowHasChange, true);
   });
 
-  test("fast-track defaults: 2 receipts in 3 days promotes (operator opt-in)", () => {
-    // The committed fast-track policy (PROMOTION_THRESHOLDS, the active
-    // export) is intentionally permissive so a dust-canary lane with
-    // perTradeCapUsd≈$1 can promote in days, not weeks. This test pins
-    // that contract — changing it requires another committed diff.
-    assert.equal(PROMOTION_THRESHOLDS.minSignerBackedReceipts, 2);
-    assert.equal(PROMOTION_THRESHOLDS.minConsecutiveSuccess, 1);
+  test("live-automation defaults: zero-receipt promotion is explicit policy", () => {
+    // The committed live-automation policy (PROMOTION_THRESHOLDS, the active
+    // export) intentionally removes the paper promotion gate. Runtime safety
+    // still comes from caps, policy, signer approval, kill-switch, and receipts.
+    assert.equal(PROMOTION_THRESHOLDS.minSignerBackedReceipts, 0);
+    assert.equal(PROMOTION_THRESHOLDS.minConsecutiveSuccess, 0);
     assert.equal(PROMOTION_THRESHOLDS.minCumulativeProfitSats, 0);
     assert.equal(PROMOTION_THRESHOLDS.defaultLookbackDays, 3);
     assert.equal(PROMOTION_THRESHOLDS.minRoundTripEfficiency, 0.9);
     assert.ok(Object.isFrozen(PROMOTION_THRESHOLDS));
     assert.ok(Object.isFrozen(PROMOTION_THRESHOLDS_STRICT));
 
-    // 2 signer-backed receipts in last 2 days → eligible under fast-track.
-    const receipts = [
-      mkReceipt({ daysAgo: 0, profit: 1000 }),
-      mkReceipt({ daysAgo: 1, profit: 1000 }),
-    ];
     const r = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
-      receipts,
+      receipts: [],
       nowMs: NOW,
     });
     assert.equal(r.eligible, true, JSON.stringify(r.blockers));
-    assert.equal(r.evidence.signerBackedReceiptCount, 2);
+    assert.equal(r.evidence.signerBackedReceiptCount, 0);
 
     // Same evidence under STRICT policy → blocked.
     const rStrict = evaluatePromotionEvidence({
       strategyId: "wrapped-btc-loop-base-moonwell",
-      receipts,
+      receipts: [],
       nowMs: NOW,
       ...STRICT,
     });

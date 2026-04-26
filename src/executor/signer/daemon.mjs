@@ -131,6 +131,7 @@ export async function handleIntentCommand({
         lifecycle: {
           stage: "signed",
           txHash: signed.txHash,
+          signer: signed.metadata || null,
         },
       }),
       { rootDir: cwd },
@@ -146,10 +147,11 @@ export async function handleIntentCommand({
         buildSignerAuditRecord({
           intent,
           policyVerdict: "approved",
-          lifecycle: {
-            stage: "broadcasted",
-            txHash: broadcast.txHash,
-          },
+        lifecycle: {
+          stage: "broadcasted",
+          txHash: broadcast.txHash,
+          signer: signed.metadata || null,
+        },
           broadcast,
         }),
         { rootDir: cwd },

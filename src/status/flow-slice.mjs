@@ -130,6 +130,82 @@ function normalizePositionActivity(event = {}) {
   });
 }
 
+function signerAuditActivityKey(record = {}) {
+  return (
+    stringOrNull(record.intentHash) ??
+    stringOrNull(record.lifecycle?.txHash) ??
+    stringOrNull(record.broadcast?.txHash) ??
+    stringOrNull(record.intentId) ??
+    null
+  );
+}
+
+function signerAuditStatus(record = {}) {
+  if (record?.policyVerdict && record.policyVerdict !== "approved") {
+    return stringOrNull(record.policyVerdict);
+  }
+  if (record?.error) return "error";
+  return stringOrNull(record?.lifecycle?.stage);
+}
+
+function signerAuditDetail(record = {}) {
+  const protocol = stringOrNull(record?.intent?.metadata?.protocol);
+  const intentType = stringOrNull(record?.intent?.intentType);
+  if (protocol && intentType) return `${protocol} ${intentType}`;
+  return protocol || intentType || null;
+}
+
+function signerAuditFinalAsset(record = {}) {
+  return (
+    stringOrNull(record?.intent?.metadata?.asset) ??
+    stringOrNull(record?.intent?.metadata?.assetSymbol) ??
+    stringOrNull(record?.intent?.metadata?.ticker) ??
+    stringOrNull(record?.intent?.metadata?.shareTokenSymbol) ??
+    null
+  );
+}
+
+function normalizeSignerAuditActivity(record = {}) {
+  const strategyId = stringOrNull(record?.strategyId);
+  if (!strategyId) return null;
+  const status = signerAuditStatus(record);
+  if (!["signed", "broadcasted", "confirmed", "rejected", "error"].includes(status)) return null;
+  const txHash = stringOrNull(record?.lifecycle?.txHash) ?? stringOrNull(record?.broadcast?.txHash) ?? null;
+  const finalAsset = signerAuditFinalAsset(record);
+  return Object.freeze({
+    id: normalizeActivityId(["transaction", txHash || record.intentHash || record.intentId, record.timestamp]),
+    kind: "transaction",
+    kindLabel: "거래",
+    observedAt: stringOrNull(record.timestamp),
+    strategyId,
+    strategyKey: normalizeStrategyId(strategyId),
+    chain: stringOrNull(record.chain),
+    protocol: stringOrNull(record?.intent?.metadata?.protocol),
+    status,
+    amountUsd: finiteNumber(record.amountUsd) ?? finiteNumber(record?.intent?.amountUsd) ?? null,
+    amountSats: null,
+    realizedNetPnlUsd: null,
+    finalAssetId: finalAsset,
+    finalAssetLabel: finalAsset,
+    txHash,
+    detail: signerAuditDetail(record),
+  });
+}
+
+function latestSignerAuditActivities(records = []) {
+  const latest = new Map();
+  for (const record of records || []) {
+    const key = signerAuditActivityKey(record);
+    if (!key) continue;
+    const existing = latest.get(key);
+    const observedAt = stringOrNull(record.timestamp);
+    if (!existing || new Date(observedAt || 0) > new Date(stringOrNull(existing.timestamp) || 0)) {
+      latest.set(key, record);
+    }
+  }
+  return [...latest.values()].map(normalizeSignerAuditActivity).filter(Boolean);
+}
+
 function normalizePaybackActivity(payback = null, btcUsd = null) {
   if (!payback?.lastPaybackSettledAt) return null;
   const settledSats = finiteNumber(payback.lastPaybackSettledSats);
@@ -184,6 +260,7 @@ function buildStrategyRiskById({ wrappedBtcLendingLoopSlice = null, recursiveWra
 export function buildFlowDashboardSlice({
   executionEvents = [],
   merklPositionEvents = [],
+  signerAuditRecords = [],
   payback = null,
   capitalSummary = null,
   btcUsd = null,
@@ -191,9 +268,21 @@ export function buildFlowDashboardSlice({
   recursiveWrappedBtcLoop = null,
   generatedAt = new Date().toISOString(),
 } = {}) {
+  const executionActivities = (executionEvents || []).map(normalizeExecutionActivity).filter(Boolean);
+  const positionActivities = (merklPositionEvents || []).map(normalizePositionActivity).filter(Boolean);
+  const settledTxHashes = new Set(
+    [...executionActivities, ...positionActivities]
+      .map((item) => stringOrNull(item.txHash)?.toLowerCase())
+      .filter(Boolean),
+  );
+  const auditActivities = latestSignerAuditActivities(signerAuditRecords).filter(
+    (item) => !(item.status === "confirmed" && item.txHash && settledTxHashes.has(item.txHash.toLowerCase())),
+  );
+
   const recentActivities = [
-    ...(executionEvents || []).map(normalizeExecutionActivity),
-    ...(merklPositionEvents || []).map(normalizePositionActivity),
+    ...auditActivities,
+    ...executionActivities,
+    ...positionActivities,
     normalizePaybackActivity(payback, btcUsd),
   ]
     .filter(Boolean)

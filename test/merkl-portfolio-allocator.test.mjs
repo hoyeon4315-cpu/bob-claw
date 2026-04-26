@@ -293,6 +293,75 @@ test("allocator can still block duplicate opportunities when top-ups are disable
   assert.ok(plan.allocations[0].blockers.includes("opportunity_already_open"));
 });
 
+test("allocator resizes a different opportunity to fit diversification caps", () => {
+  const ethItem = queueItem({
+    opportunityId: "eth-morpho",
+    chain: "ethereum",
+    protocolId: "morpho",
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0x1111111111111111111111111111111111111111",
+        assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        shareTokenAddress: "0x1111111111111111111111111111111111111111",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  });
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [ethItem] },
+    inventorySnapshot: {
+      native: [{ chain: "ethereum", actual: "1", actualDecimal: 1, estimatedUsd: 20 }],
+      tokens: [
+        {
+          chain: "ethereum",
+          token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+      ],
+    },
+    canaryExecutions: [
+      {
+        observedAt: "2026-04-24T06:01:00.000Z",
+        mode: "execute",
+        queueItem: { opportunityId: "eth-morpho" },
+        execution: { settlementStatus: "delivered" },
+      },
+    ],
+    positionRecords: [
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "base-yo",
+        opportunityId: "base-yo",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        protocolId: "yo",
+        amountUsd: 100,
+      },
+    ],
+    maxUsd: 100,
+    policy: {
+      maxActiveUsd: 500,
+      perOpportunityMaxUsd: 100,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 1,
+      minEthereumNotionalUsd: 1,
+    },
+    now: "2026-04-25T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].queueItem.opportunityId, "eth-morpho");
+  assert.ok(plan.entryQueue[0].targetUsd > 30);
+  assert.ok(plan.entryQueue[0].targetUsd < 34);
+});
+
 test("allocator downgrades live balance races to a blocked execution", () => {
   assert.deepEqual(
     parseInsufficientAssetBalance(new Error("Insufficient asset balance: required 111570916, available 104493122")),

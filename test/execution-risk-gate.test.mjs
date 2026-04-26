@@ -61,6 +61,31 @@ test("risk state summarizes realized pnl, failed gas, and consecutive failures",
   assert.equal(riskState.walletEstimatedUsd, 280);
 });
 
+test("risk state counts only gas burn for successful source tx settlement failures", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T07:00:00.000Z",
+    inventory: inventoryFixture(),
+    receiptRecords: [
+      {
+        observedAt: "2026-04-11T06:30:00.000Z",
+        reconciliationStatus: "failed",
+        kind: "gas_zip_native_refuel",
+        receipt: { status: 1 },
+        flags: { failed: false },
+        realized: {
+          realizedNetPnlUsd: -8.1,
+          actualTxValueUsd: 4.05,
+          receiptGasUsd: 0.01,
+          actualKnownCostUsd: 4.06,
+        },
+      },
+    ],
+    executionEvents: [],
+  });
+
+  assert.equal(riskState.failedGasCost24hUsd, 0.01);
+});
+
 test("risk state treats delivered executions as terminal successes that reset failure streaks", () => {
   const riskState = buildExecutionRiskState({
     now: "2026-04-11T07:00:00.000Z",

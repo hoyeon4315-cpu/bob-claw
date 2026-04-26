@@ -57,6 +57,25 @@ function isTerminalFailure(record = {}) {
   return false;
 }
 
+function latestRecordPerIntent(records = []) {
+  const latest = new Map();
+  for (const record of records) {
+    const key =
+      record.intentId ||
+      record.intent?.intentId ||
+      record.intentHash ||
+      record.broadcast?.txHash ||
+      `${record.timestamp || record.observedAt || ""}:${record.lifecycle?.stage || ""}`;
+    const previous = latest.get(key);
+    const previousTs = previous?.timestamp || previous?.observedAt || "";
+    const recordTs = record.timestamp || record.observedAt || "";
+    if (!previous || recordTs >= previousTs) {
+      latest.set(key, record);
+    }
+  }
+  return [...latest.values()];
+}
+
 /**
  * Build a per-chain Gas.Zip execution state from audit records
  * and Gas.Zip execution records.
@@ -88,7 +107,7 @@ export function buildGasZipRateState({
   const lastRefillTimestamp = {};
   const openJobCount = {};
 
-  for (const record of todayRecords) {
+  for (const record of latestRecordPerIntent(todayRecords)) {
     const srcChain = record.chain || record.intent?.chain || "unknown";
     const targetChain = resolveDstChainName(record) || srcChain;
     const amountUsd = Number(record.amountUsd || record.intent?.amountUsd || 0);
@@ -163,6 +182,11 @@ export function evaluateGasZipRateLimit({
   now = new Date().toISOString(),
 }) {
   const blockers = [];
+  const destinationBelowMinimum =
+    Number.isFinite(destinationNativeDecimal) &&
+    Number.isFinite(destinationMinBalanceDecimal) &&
+    destinationMinBalanceDecimal > 0 &&
+    destinationNativeDecimal < destinationMinBalanceDecimal;
 
   // 1. Destination already meets or exceeds minimum — no refill needed
   if (destinationBalanceStatus && ["ready", "supported_buffered", "over_max_supported", "observe_only_balance_present"].includes(destinationBalanceStatus)) {
@@ -196,7 +220,7 @@ export function evaluateGasZipRateLimit({
 
   // 4. Min hours between refills per chain
   const lastTs = rateState.lastRefillTimestamp[dstChain];
-  if (lastTs) {
+  if (lastTs && !destinationBelowMinimum) {
     const elapsed = hoursAgo(lastTs, now);
     if (elapsed < rateState.minHoursBetweenRefills) {
       blockers.push("gas_zip_min_hours_between_refills_not_elapsed");

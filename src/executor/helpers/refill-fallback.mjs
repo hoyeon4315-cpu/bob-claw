@@ -116,12 +116,25 @@ export function refillCandidateExecutable(candidate = {}) {
 }
 
 export function jobWithCandidate(job, candidate) {
+  const executable = refillCandidateExecutable(candidate);
+  const fundingReviewReasons = new Set([
+    "funding_source_conditional",
+    "source_inventory_below_target_amount",
+    "conditional_funding_source",
+  ]);
+  const retainedReviewReasons = executable
+    ? (job.reviewReasons || []).filter((reason) => !fundingReviewReasons.has(reason))
+    : (job.reviewReasons || []);
   return {
     ...job,
+    requiresManualReview: retainedReviewReasons.length > 0,
+    reviewReasons: retainedReviewReasons,
     executionMethod: candidate.method,
     fundingSource: {
       ...(job.fundingSource || {}),
-      selectionStatus: candidate.availability || job.fundingSource?.selectionStatus || "ready",
+      selectionStatus: executable
+        ? "ready"
+        : candidate.availability || job.fundingSource?.selectionStatus || "ready",
       method: candidate.method,
       source: candidate.source,
       expectedExecutionRefillCostUsd:

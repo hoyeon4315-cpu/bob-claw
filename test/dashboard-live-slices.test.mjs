@@ -232,6 +232,31 @@ test("flow dashboard slice compacts live activities and leverage hints for the f
         entryTxHash: "0xdef",
       },
     ],
+    signerAuditRecords: [
+      {
+        timestamp: "2026-04-25T06:20:00.000Z",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "ethereum",
+        amountUsd: 25,
+        policyVerdict: "approved",
+        intentHash: "intent-1",
+        intentId: "intent-1",
+        intent: {
+          intentType: "erc4626_deposit",
+          metadata: {
+            protocol: "morpho",
+            assetSymbol: "USDT",
+          },
+        },
+        lifecycle: {
+          stage: "broadcasted",
+          txHash: "0xfeed",
+        },
+        broadcast: {
+          txHash: "0xfeed",
+        },
+      },
+    ],
     payback: {
       grossProfitSatsPeriod: 200000,
       carry: { pendingSats: 150000 },
@@ -262,12 +287,15 @@ test("flow dashboard slice compacts live activities and leverage hints for the f
   assert.equal(slice.metrics.grossProfitUsdPeriod, 200);
   assert.equal(slice.metrics.pendingCarryUsd, 150);
   assert.equal(slice.metrics.paidBackUsdLifetime, 50);
-  assert.equal(slice.recentActivities.length, 3);
-  assert.equal(slice.recentActivities[0].kind, "execution");
-  assert.equal(slice.recentActivities[0].finalAssetId, "cbBTC");
-  assert.equal(slice.recentActivities[1].kind, "position");
-  assert.equal(slice.recentActivities[2].kind, "payback");
-  assert.equal(slice.recentActivities[2].finalAssetId, "btc");
+  assert.equal(slice.recentActivities.length, 4);
+  assert.equal(slice.recentActivities[0].kind, "transaction");
+  assert.equal(slice.recentActivities[0].status, "broadcasted");
+  assert.equal(slice.recentActivities[0].finalAssetId, "USDT");
+  assert.equal(slice.recentActivities[1].kind, "execution");
+  assert.equal(slice.recentActivities[1].finalAssetId, "cbBTC");
+  assert.equal(slice.recentActivities[2].kind, "position");
+  assert.equal(slice.recentActivities[3].kind, "payback");
+  assert.equal(slice.recentActivities[3].finalAssetId, "btc");
   assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedHealthFactor, 1.92);
   assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedLiquidationBufferPct, 18.2);
 });

@@ -94,7 +94,7 @@ function activeDiversificationAllocations(positions = [], denominatorUsd = null)
     const usd = positionUsd(position);
     if (!(usd > 0)) continue;
     const share = usd / totalUsd;
-    const strategyId = position.strategyId || position.opportunityId || position.positionId;
+    const strategyId = position.opportunityId || position.strategyId || position.positionId;
     if (strategyId) allocations.perStrategy[strategyId] = (allocations.perStrategy[strategyId] || 0) + share;
     if (position.chain) allocations.perChain[position.chain] = (allocations.perChain[position.chain] || 0) + share;
     if (position.protocolId) allocations.perProtocol[position.protocolId] = (allocations.perProtocol[position.protocolId] || 0) + share;
@@ -132,14 +132,14 @@ function diversificationGateForAllocation({ activePositions = [], queueItem = {}
   const result = canAcceptNewAllocation(
     activeDiversificationAllocations(activePositions, denominatorUsd),
     {
-      strategyId: queueItem.mappedStrategyId || queueItem.opportunityId,
+      strategyId: queueItem.opportunityId || queueItem.mappedStrategyId,
       chainId: queueItem.chain,
       protocolIds: [queueItem.protocolId].filter(Boolean),
       directHolding: false,
       addShare: candidateUsd / denominatorUsd,
     },
   );
-  const candidateStrategyId = queueItem.mappedStrategyId || queueItem.opportunityId;
+  const candidateStrategyId = queueItem.opportunityId || queueItem.mappedStrategyId;
   const candidateChainId = queueItem.chain;
   const candidateProtocolIds = new Set([queueItem.protocolId].filter(Boolean));
   const candidateSpecificViolations = (result.verdict?.violations || []).filter((violation) => {
@@ -162,6 +162,44 @@ function diversificationGateForAllocation({ activePositions = [], queueItem = {}
     addShare: candidateUsd / denominatorUsd,
     bypassed: false,
   };
+}
+
+function maxAddForShareCap({ currentGroupUsd = 0, activeUsd = 0, maxShare = null } = {}) {
+  const groupUsd = finite(currentGroupUsd) ?? 0;
+  const totalUsd = finite(activeUsd) ?? 0;
+  const share = finite(maxShare);
+  if (!(share > 0) || share >= 1) return Number.POSITIVE_INFINITY;
+  return Math.max(0, ((share * totalUsd) - groupUsd) / (1 - share));
+}
+
+function activeByStrategy(positions = []) {
+  return activeBy(positions, (position) => position.opportunityId || position.strategyId || position.positionId);
+}
+
+function diversificationMaxAddUsd({ activePositions = [], queueItem = {} } = {}) {
+  const activePositionUsd = activeUsd(activePositions);
+  if (activePositionUsd < 10) return Number.POSITIVE_INFINITY;
+  const strategyId = queueItem.opportunityId || queueItem.mappedStrategyId || null;
+  const strategyUsd = strategyId ? activeByStrategy(activePositions).get(strategyId) || 0 : 0;
+  const chainUsd = queueItem.chain ? activeBy(activePositions, (position) => position.chain).get(queueItem.chain) || 0 : 0;
+  const protocolUsd = queueItem.protocolId ? activeBy(activePositions, (position) => position.protocolId).get(queueItem.protocolId) || 0 : 0;
+  return Math.min(
+    maxAddForShareCap({
+      currentGroupUsd: strategyUsd,
+      activeUsd: activePositionUsd,
+      maxShare: DIVERSIFICATION_POLICY.perStrategyMaxShare,
+    }),
+    maxAddForShareCap({
+      currentGroupUsd: chainUsd,
+      activeUsd: activePositionUsd,
+      maxShare: DIVERSIFICATION_POLICY.perChainMaxShare,
+    }),
+    maxAddForShareCap({
+      currentGroupUsd: protocolUsd,
+      activeUsd: activePositionUsd,
+      maxShare: DIVERSIFICATION_POLICY.perProtocolMaxShare,
+    }),
+  );
 }
 
 function scoreTvl(tvlUsd) {
@@ -290,7 +328,10 @@ export function buildMerklPortfolioAllocationPlan({
       queueItem,
       addUsd: sizing.amountUsd,
     });
-    if (!diversification.accepted) blockers.push("diversification_policy_rejected");
+    const diversificationMaxUsd = diversificationMaxAddUsd({ activePositions, queueItem });
+    if (!diversification.accepted && diversificationMaxUsd < policy.minPositionUsd) {
+      blockers.push("diversification_policy_rejected");
+    }
     const needsCapitalJob =
       queueItem.capabilityGaps?.includes("current_inventory_entry_route_required") ||
       (sizing.blockers || []).some((blocker) => [
@@ -314,6 +355,7 @@ export function buildMerklPortfolioAllocationPlan({
         bypassed: diversification.bypassed || false,
         violations: diversification.verdict?.violations || [],
       },
+      diversificationMaxUsd,
       sizing,
       status: blockers.length ? "blocked" : "candidate",
       blockers,
@@ -343,6 +385,7 @@ export function buildMerklPortfolioAllocationPlan({
       Math.max(0, protocolLimitUsd - (finite(candidate.protocolActiveUsd) ?? 0)),
       remainingBudgetUsd,
       remainingTokenUsd,
+      finite(candidate.diversificationMaxUsd) ?? Number.POSITIVE_INFINITY,
     );
     if (targetUsd < policy.minPositionUsd) {
       allocations.push({

@@ -9,6 +9,73 @@ function toBigIntOrNull(value) {
   return typeof value === "bigint" ? value : BigInt(value);
 }
 
+function toStringOrNull(value) {
+  if (value === null || value === undefined) return null;
+  return typeof value === "bigint" ? value.toString() : String(value);
+}
+
+function applyBps(value, bps) {
+  if (!Number.isFinite(bps) || bps <= 10_000) return value;
+  return (value * BigInt(Math.floor(bps))) / 10_000n;
+}
+
+function maxBigInt(...values) {
+  return values
+    .filter((value) => value !== null && value !== undefined)
+    .reduce((left, right) => (left > right ? left : right), 0n);
+}
+
+function undefinedIfZero(value) {
+  return value === 0n ? undefined : value;
+}
+
+const MAX_REASONABLE_EVM_NONCE = 10_000_000;
+
+function assertReasonableNonce(nonce, label = "nonce") {
+  if (!Number.isInteger(nonce) || nonce < 0 || nonce > MAX_REASONABLE_EVM_NONCE) {
+    throw new Error(`${label} outside reasonable EVM account range: ${nonce}`);
+  }
+  return nonce;
+}
+
+function bufferedEip1559Fees({ feeData, chainConfig, explicitMaxFeePerGas = null, explicitMaxPriorityFeePerGas = null }) {
+  const feePriority = toBigIntOrNull(feeData?.maxPriorityFeePerGas);
+  const feeMax = toBigIntOrNull(feeData?.maxFeePerGas);
+  const fallbackGasPrice = toBigIntOrNull(feeData?.gasPrice);
+  const minPriority = toBigIntOrNull(chainConfig.minPriorityFeePerGasWei);
+
+  const maxPriorityFeePerGas =
+    explicitMaxPriorityFeePerGas ??
+    undefinedIfZero(maxBigInt(feePriority, minPriority));
+  const baseComponent =
+    feeMax !== null && feePriority !== null && feeMax > feePriority
+      ? feeMax - feePriority
+      : 0n;
+  const impliedMax =
+    maxPriorityFeePerGas !== undefined
+      ? baseComponent + maxPriorityFeePerGas
+      : undefined;
+  const maxFeePerGas =
+    explicitMaxFeePerGas ??
+    undefinedIfZero(
+      applyBps(
+        maxBigInt(feeMax, fallbackGasPrice, impliedMax, maxPriorityFeePerGas),
+        chainConfig.maxFeePerGasBufferBps,
+      ),
+    );
+
+  return {
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+  };
+}
+
+function bufferedLegacyGasPrice({ feeData, chainConfig, explicitGasPrice = null }) {
+  const gasPrice = explicitGasPrice ?? toBigIntOrNull(feeData?.gasPrice);
+  if (gasPrice === null || gasPrice === undefined) return undefined;
+  return applyBps(gasPrice, chainConfig.gasPriceBufferBps);
+}
+
 async function readSigningKey(path) {
   if (!path) {
     throw new Error("BURNER_EVM_KEY_PATH (or BURNER_PRIVATE_KEY_PATH) is required");
@@ -29,10 +96,14 @@ class SequentialNonceManager {
 
   async reserve(explicitNonce = null) {
     if (Number.isInteger(explicitNonce)) {
-      this.nextNonce = explicitNonce + 1;
-      return explicitNonce;
+      const nonce = assertReasonableNonce(explicitNonce, "explicit nonce");
+      this.nextNonce = nonce + 1;
+      return nonce;
     }
-    const pendingNonce = await this.provider.getTransactionCount(this.address, "pending");
+    const pendingNonce = assertReasonableNonce(
+      await this.provider.getTransactionCount(this.address, "pending"),
+      "pending nonce",
+    );
     if (!Number.isInteger(this.nextNonce) || pendingNonce > this.nextNonce) {
       this.nextNonce = pendingNonce;
     }
@@ -178,7 +249,9 @@ export class EvmLocalKeySigner extends SignerInterface {
 
   async buildTransactionRequest(intent, { reserveNonce = true } = {}) {
     const chainConfig = getEvmChainConfig(intent.chain);
-    const explicitNonce = Number.isInteger(intent.tx?.nonce) ? intent.tx.nonce : null;
+    const explicitNonce = Number.isInteger(intent.tx?.nonce)
+      ? assertReasonableNonce(intent.tx.nonce, "intent tx nonce")
+      : null;
     const useLegacy = chainConfig.legacyTxType === true;
     const txType = intent.tx?.type ?? (useLegacy ? 0 : 2);
 
@@ -187,7 +260,21 @@ export class EvmLocalKeySigner extends SignerInterface {
       const feeData = await provider.getFeeData();
       const nonce = reserveNonce
         ? await (await this.nonceManagerForProviderIndex(intent.chain, index)).reserve(explicitNonce)
-        : explicitNonce ?? await provider.getTransactionCount(wallet.address, "pending");
+        : explicitNonce ?? assertReasonableNonce(
+          await provider.getTransactionCount(wallet.address, "pending"),
+          "pending nonce",
+        );
+      const explicitGasPrice = toBigIntOrNull(intent.tx?.gasPrice);
+      const explicitMaxFeePerGas = toBigIntOrNull(intent.tx?.maxFeePerGas);
+      const explicitMaxPriorityFeePerGas = toBigIntOrNull(intent.tx?.maxPriorityFeePerGas);
+      const eip1559Fees = useLegacy
+        ? null
+        : bufferedEip1559Fees({
+            feeData,
+            chainConfig,
+            explicitMaxFeePerGas,
+            explicitMaxPriorityFeePerGas,
+          });
 
       return {
         chainId: chainConfig.chainId,
@@ -198,11 +285,8 @@ export class EvmLocalKeySigner extends SignerInterface {
         nonce,
         type: txType,
         ...(useLegacy
-          ? { gasPrice: toBigIntOrNull(intent.tx?.gasPrice) ?? feeData.gasPrice ?? undefined }
-          : {
-              maxFeePerGas: toBigIntOrNull(intent.tx?.maxFeePerGas) ?? feeData.maxFeePerGas ?? undefined,
-              maxPriorityFeePerGas: toBigIntOrNull(intent.tx?.maxPriorityFeePerGas) ?? feeData.maxPriorityFeePerGas ?? undefined,
-            }),
+          ? { gasPrice: bufferedLegacyGasPrice({ feeData, chainConfig, explicitGasPrice }) }
+          : eip1559Fees),
       };
     });
   }
@@ -221,37 +305,46 @@ export class EvmLocalKeySigner extends SignerInterface {
         nonce: request.nonce,
         from: wallet.address,
         to: request.to,
+        value: toStringOrNull(request.value),
+        gasLimit: toStringOrNull(request.gasLimit),
+        gasPrice: toStringOrNull(request.gasPrice),
+        maxFeePerGas: toStringOrNull(request.maxFeePerGas),
+        maxPriorityFeePerGas: toStringOrNull(request.maxPriorityFeePerGas),
       },
     });
   }
 
   async broadcastSignedIntent(signedEnvelope) {
-    try {
-      return await this.withRpcFallback(signedEnvelope.chain, "broadcastSignedIntent", async (provider) => {
-        try {
-          const response = await provider.broadcastTransaction(signedEnvelope.signedTx);
-          return {
-            txHash: response.hash,
-            nonce: response.nonce,
-            from: response.from,
-            to: response.to,
-          };
-        } catch (error) {
-          if (isLikelyAlreadyBroadcast(error)) {
-            return {
-              txHash: signedEnvelope.txHash,
-              nonce: signedEnvelope.metadata?.nonce ?? null,
-              from: signedEnvelope.metadata?.from ?? null,
-              to: signedEnvelope.metadata?.to ?? null,
-            };
-          }
-          throw error;
+    const accepted = [];
+    let lastError = null;
+    for (const index of this.providerOrder(signedEnvelope.chain)) {
+      const entry = this.providerEntries(signedEnvelope.chain)[index];
+      try {
+        const response = await entry.provider.broadcastTransaction(signedEnvelope.signedTx);
+        this.activeProviderIndexes.set(signedEnvelope.chain, index);
+        accepted.push({
+          txHash: response.hash,
+          nonce: response.nonce,
+          from: response.from,
+          to: response.to,
+        });
+      } catch (error) {
+        if (isLikelyAlreadyBroadcast(error)) {
+          this.activeProviderIndexes.set(signedEnvelope.chain, index);
+          accepted.push({
+            txHash: signedEnvelope.txHash,
+            nonce: signedEnvelope.metadata?.nonce ?? null,
+            from: signedEnvelope.metadata?.from ?? null,
+            to: signedEnvelope.metadata?.to ?? null,
+          });
+          continue;
         }
-      });
-    } catch (error) {
-      this.resetNonceManagers(signedEnvelope.chain);
-      throw error;
+        lastError = error;
+      }
     }
+    if (accepted.length > 0) return accepted[0];
+    this.resetNonceManagers(signedEnvelope.chain);
+    throw new Error(`broadcastSignedIntent failed for ${signedEnvelope.chain}: ${errorMessage(lastError)}`);
   }
 
   async waitForTransaction(chain, txHash, { confirmations = 1, timeoutMs = 120_000 } = {}) {

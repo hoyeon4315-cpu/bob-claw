@@ -59,8 +59,14 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "ethereum",
     rpcUrl: "https://ethereum-rpc.publicnode.com",
-    rpcUrls: getChainRpcUrls("ethereum", ["https://ethereum-rpc.publicnode.com"]),
+    rpcUrls: getChainRpcUrls("ethereum", [
+      "https://ethereum-rpc.publicnode.com",
+      "https://rpc.flashbots.net",
+      "https://ethereum.publicnode.com",
+    ]),
     fallbackGasUnits: 260_000,
+    minPriorityFeePerGasWei: "500000000",
+    maxFeePerGasBufferBps: 10000,
   }),
   optimism: Object.freeze({
     family: "evm",

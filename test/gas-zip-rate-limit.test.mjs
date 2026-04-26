@@ -35,8 +35,8 @@ function makeAuditRecord(overrides = {}) {
 test("buildGasZipRateState accumulates daily volume per destination chain", () => {
   const now = "2026-04-20T12:00:00.000Z";
   const records = [
-    makeAuditRecord({ amountUsd: 3, stage: "confirmed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453 }),
-    makeAuditRecord({ amountUsd: 4, stage: "broadcasted", timestamp: "2026-04-20T11:00:00.000Z", dstChainId: 8453 }),
+    makeAuditRecord({ amountUsd: 3, stage: "confirmed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453, intentSuffix: "a" }),
+    makeAuditRecord({ amountUsd: 4, stage: "broadcasted", timestamp: "2026-04-20T11:00:00.000Z", dstChainId: 8453, intentSuffix: "b" }),
   ];
   const state = buildGasZipRateState({ auditRecords: records, now });
   assert.equal(state.dailyVolumeUsd["base"], 7);
@@ -46,8 +46,8 @@ test("buildGasZipRateState accumulates daily volume per destination chain", () =
 test("buildGasZipRateState ignores failed records in volume", () => {
   const now = "2026-04-20T12:00:00.000Z";
   const records = [
-    makeAuditRecord({ amountUsd: 3, stage: "confirmed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453 }),
-    makeAuditRecord({ amountUsd: 10, policyVerdict: "rejected", stage: "rejected", timestamp: "2026-04-20T11:00:00.000Z", dstChainId: 8453 }),
+    makeAuditRecord({ amountUsd: 3, stage: "confirmed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453, intentSuffix: "ok" }),
+    makeAuditRecord({ amountUsd: 10, policyVerdict: "rejected", stage: "rejected", timestamp: "2026-04-20T11:00:00.000Z", dstChainId: 8453, intentSuffix: "bad" }),
   ];
   const state = buildGasZipRateState({ auditRecords: records, now });
   // Rejected should not count toward daily volume
@@ -57,8 +57,8 @@ test("buildGasZipRateState ignores failed records in volume", () => {
 test("buildGasZipRateState tracks last refill timestamp per destination", () => {
   const now = "2026-04-20T12:00:00.000Z";
   const records = [
-    makeAuditRecord({ stage: "confirmed", timestamp: "2026-04-20T08:00:00.000Z", dstChainId: 8453 }),
-    makeAuditRecord({ stage: "confirmed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453 }),
+    makeAuditRecord({ stage: "confirmed", timestamp: "2026-04-20T08:00:00.000Z", dstChainId: 8453, intentSuffix: "a" }),
+    makeAuditRecord({ stage: "confirmed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453, intentSuffix: "b" }),
   ];
   const state = buildGasZipRateState({ auditRecords: records, now });
   assert.equal(state.lastRefillTimestamp["base"], "2026-04-20T10:00:00.000Z");
@@ -71,6 +71,18 @@ test("buildGasZipRateState counts open (in-flight) jobs", () => {
   ];
   const state = buildGasZipRateState({ auditRecords: records, now });
   assert.equal(state.openJobCount["base"], 1);
+});
+
+test("buildGasZipRateState collapses lifecycle records by intent", () => {
+  const now = "2026-04-20T12:00:00.000Z";
+  const records = [
+    makeAuditRecord({ amountUsd: 5, stage: "signed", timestamp: "2026-04-20T10:00:00.000Z", dstChainId: 8453 }),
+    makeAuditRecord({ amountUsd: 5, stage: "broadcasted", timestamp: "2026-04-20T10:01:00.000Z", dstChainId: 8453 }),
+    makeAuditRecord({ amountUsd: 5, stage: "confirmed", timestamp: "2026-04-20T10:02:00.000Z", dstChainId: 8453 }),
+  ];
+  const state = buildGasZipRateState({ auditRecords: records, now });
+  assert.equal(state.dailyVolumeUsd["base"], 5);
+  assert.equal(state.openJobCount["base"], undefined);
 });
 
 test("evaluateGasZipRateLimit blocks when destination already meets minimum", () => {
@@ -172,6 +184,26 @@ test("evaluateGasZipRateLimit blocks when cooldown not elapsed", () => {
   });
   assert.equal(result.decision, "BLOCK");
   assert.ok(result.blockers.includes("gas_zip_min_hours_between_refills_not_elapsed"));
+});
+
+test("evaluateGasZipRateLimit allows cooldown bypass while destination remains below minimum", () => {
+  const now = "2026-04-20T12:00:00.000Z";
+  const rateState = buildGasZipRateState({
+    auditRecords: [
+      makeAuditRecord({ stage: "confirmed", timestamp: "2026-04-20T11:00:00.000Z", dstChainId: 1 }),
+    ],
+    now,
+  });
+  const result = evaluateGasZipRateLimit({
+    dstChain: "ethereum",
+    amountUsd: 4,
+    rateState,
+    destinationNativeDecimal: 0.002,
+    destinationMinBalanceDecimal: 0.004,
+    now,
+  });
+  assert.equal(result.decision, "ALLOW");
+  assert.deepEqual(result.blockers, []);
 });
 
 test("evaluateGasZipRateLimit allows when all gates pass", () => {

@@ -123,12 +123,32 @@ function buildCapitalMaps(holdings = null) {
   };
 }
 
-async function bootData() {
-  let status = null;
-  try {
-    const resp = await fetch(`./dashboard-status.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (resp.ok) status = await resp.json();
-  } catch {}
+const LIVE_STATUS_PATH = './api/live-status';
+const LIVE_EVENTS_PATH = './api/live-events';
+const STATIC_STATUS_PATH = './dashboard-status.json';
+const LIVE_POLL_MS = 3000;
+const STATIC_POLL_MS = 10000;
+
+async function fetchStatusPayload() {
+  const now = Date.now();
+  const endpoints = [
+    { url: `${LIVE_STATUS_PATH}?t=${now}`, source: 'live-api', live: true },
+    { url: `${STATIC_STATUS_PATH}?t=${now}`, source: 'static-snapshot', live: false },
+  ];
+  for (const endpoint of endpoints) {
+    try {
+      const resp = await fetch(endpoint.url, { cache: 'no-store' });
+      if (!resp.ok) continue;
+      const status = await resp.json();
+      return { status, source: endpoint.source, live: endpoint.live };
+    } catch {}
+  }
+  return { status: null, source: 'unavailable', live: false };
+}
+
+async function bootData(payload = null) {
+  const resolved = payload || await fetchStatusPayload();
+  const status = resolved?.status || null;
 
   const holdings = status?.walletHoldings || null;
   const merklActive = status?.strategy?.merklActivePositions || null;
@@ -170,7 +190,7 @@ async function bootData() {
     : { all: [], positions: [], pending: true, totalUsd: null, walletUsd: null, deployedUsd: null };
   const CAPITAL = buildCapitalMaps(HOLDINGS);
 
-  // P3 — unified read from dashboard-status.json only
+  // Unified read from a public-safe status payload.
   const strategyParity = status?.strategy?.strategyParity || {};
   const chainParity = status?.strategy?.chainParity || {};
   const microCanary = status?.strategy?.microCanarySummary || {};
@@ -385,17 +405,35 @@ async function bootData() {
     OPERATIONS: operations,
     CAPITAL,
     RAW_STATUS: status,
+    LIVE_STATUS: {
+      source: resolved?.source || 'fallback',
+      live: Boolean(resolved?.live && status),
+      generatedAt: status?.generatedAt || null,
+    },
   });
-  return true;
+  window._DASHBOARD_LIVE_AVAILABLE = Boolean(resolved?.live && status);
+  window._DASHBOARD_PREFERRED_POLL_MS = window._DASHBOARD_LIVE_AVAILABLE ? LIVE_POLL_MS : STATIC_POLL_MS;
+  return {
+    status,
+    source: resolved?.source || 'fallback',
+    live: window._DASHBOARD_LIVE_AVAILABLE,
+  };
 }
 
-async function refreshDashboardData({ dispatch = true } = {}) {
+async function refreshDashboardData({ dispatch = true, payload = null } = {}) {
   if (!window._DASHBOARD_REFRESH_IN_FLIGHT) {
     window._DASHBOARD_REFRESH_IN_FLIGHT = (async () => {
-      await bootData();
+      const snapshot = await bootData(payload);
       if (dispatch) {
         window.dispatchEvent(new CustomEvent('dashboard:datarefresh'));
       }
+      if (window._DASHBOARD_POLL_INTERVAL_MS !== window._DASHBOARD_PREFERRED_POLL_MS) {
+        startDashboardPolling(window._DASHBOARD_PREFERRED_POLL_MS);
+      }
+      if (snapshot?.live) {
+        setupLiveEventStream();
+      }
+      return snapshot;
     })().finally(() => {
       window._DASHBOARD_REFRESH_IN_FLIGHT = null;
     });
@@ -414,13 +452,46 @@ function setupDashboardRefreshHooks() {
   window._DASHBOARD_REFRESH_HOOKS = refreshVisibleData;
 }
 
-function startDashboardPolling(intervalMs = 10000) {
+function startDashboardPolling(intervalMs = STATIC_POLL_MS) {
   if (window._DASHBOARD_POLL) clearInterval(window._DASHBOARD_POLL);
+  window._DASHBOARD_POLL_INTERVAL_MS = intervalMs;
   window._DASHBOARD_POLL = setInterval(async () => {
     try {
       await refreshDashboardData();
     } catch {}
   }, intervalMs);
+}
+
+function setupLiveEventStream() {
+  if (window._DASHBOARD_LIVE_STREAM || window._DASHBOARD_LIVE_STREAM_DISABLED) return;
+  if (!window._DASHBOARD_LIVE_AVAILABLE || !window.EventSource) return;
+  const stream = new EventSource(`${LIVE_EVENTS_PATH}?t=${Date.now()}`);
+  let opened = false;
+  const handleSnapshot = async (event) => {
+    try {
+      const status = JSON.parse(event.data);
+      await refreshDashboardData({
+        payload: { status, source: 'live-sse', live: true },
+      });
+    } catch {}
+  };
+  stream.addEventListener('open', () => {
+    opened = true;
+    window._DASHBOARD_LIVE_STREAM_ACTIVE = true;
+    startDashboardPolling(LIVE_POLL_MS);
+  });
+  stream.addEventListener('snapshot', handleSnapshot);
+  stream.onmessage = handleSnapshot;
+  stream.onerror = () => {
+    window._DASHBOARD_LIVE_STREAM_ACTIVE = false;
+    if (!opened) {
+      stream.close();
+      window._DASHBOARD_LIVE_STREAM = null;
+      window._DASHBOARD_LIVE_STREAM_DISABLED = true;
+    }
+  };
+  window.addEventListener('beforeunload', () => stream.close(), { once: true });
+  window._DASHBOARD_LIVE_STREAM = stream;
 }
 
 function liveAprFor(strategy, aprMap) {
@@ -459,9 +530,11 @@ Object.assign(window, {
   FLOW: { metrics: {}, recentActivities: [], strategyRiskById: {} },
   OPERATIONS: null,
   CAPITAL: { byChain: {}, byProtocol: {}, walletUsd: null, deployedUsd: null, totalUsd: null, pending: true, generatedAt: null },
+  LIVE_STATUS: { source: 'pending', live: false, generatedAt: null },
 });
 window.DATA_READY = bootData();
 window.DATA_READY.then(() => {
   setupDashboardRefreshHooks();
-  startDashboardPolling(10000);
+  setupLiveEventStream();
+  startDashboardPolling(window._DASHBOARD_PREFERRED_POLL_MS || STATIC_POLL_MS);
 });

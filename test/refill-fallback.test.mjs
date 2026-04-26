@@ -132,6 +132,39 @@ test("refill execution candidates can force a non-bridge gas refuel fallback", (
   assert.equal(forced.job.fundingSource.source.chain, "base");
 });
 
+test("forcing an executable conditional method promotes it to ready funding", () => {
+  const job = jobFixture({
+    type: "refill_native",
+    asset: "ETH",
+    requiresManualReview: true,
+    reviewReasons: ["funding_source_conditional"],
+    executionMethod: "same_chain_token_to_native_swap",
+    candidateMethods: [
+      {
+        method: "cross_chain_swap_via_btc_intermediate",
+        availability: "conditional",
+        source: {
+          chain: "ethereum",
+          token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+        missingInputs: [],
+        settlementRequirements: [],
+      },
+    ],
+  });
+
+  const forced = forceRefillExecutionMethod({ job, method: "cross_chain_swap_via_btc_intermediate" });
+
+  assert.equal(forced.error, null);
+  assert.equal(forced.job.executionMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(forced.job.fundingSource.selectionStatus, "ready");
+  assert.equal(forced.job.requiresManualReview, false);
+  assert.deepEqual(forced.job.reviewReasons, []);
+});
+
 test("refill bridge fallback advances after three consecutive failures", () => {
   const job = jobFixture();
   const events = [

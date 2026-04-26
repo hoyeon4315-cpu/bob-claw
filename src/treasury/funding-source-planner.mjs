@@ -404,6 +404,9 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     }));
   return [...nativeSources, ...tokenSources]
     .sort((left, right) => {
+      const leftCoversTarget = sourceInventoryCoversTargetValue(action, left);
+      const rightCoversTarget = sourceInventoryCoversTargetValue(action, right);
+      if (leftCoversTarget !== rightCoversTarget) return leftCoversTarget ? -1 : 1;
       const leftSupport = crossChainExecutorSupport(action, left);
       const rightSupport = crossChainExecutorSupport(action, right);
       const leftSupportRank = !leftSupport.supported ? 2 : (leftSupport.intermediateSwapRequired ? 1 : 0);

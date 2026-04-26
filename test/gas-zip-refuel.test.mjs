@@ -64,6 +64,8 @@ test("Gas.Zip build plan wires direct-deposit tx and destination proof target", 
   assert.equal(plan.intent.tx.to, plan.gasZip.directAddress);
   assert.equal(plan.intent.tx.data, "0x010e");
   assert.equal(plan.quote.expectedOutputWei, "990000000000000");
+  assert.equal(plan.minimumDestinationWei, "985050000000000");
+  assert.equal(plan.intent.metadata.gasZipMinimumDestinationWei, "985050000000000");
 });
 
 test("Gas.Zip refill preparation becomes ready once executor exists and proof is post-settlement only", async () => {
@@ -127,7 +129,7 @@ test("Gas.Zip refill preparation blocks when expected destination output is belo
     senderAddress: "0x1111111111111111111111111111111111111111",
     buildGasZipPlanImpl: async () => ({
       planStatus: "ready",
-      quote: { expectedOutputWei: "990000000000000" },
+      quote: { expectedOutputWei: "840000000000000" },
     }),
   });
 

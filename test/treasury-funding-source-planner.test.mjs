@@ -492,6 +492,65 @@ test("token refill prefers cross-chain wrapped BTC when same-chain native invent
   );
 });
 
+test("cross-chain token refill prefers a source that covers target over an undersized preferred route source", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "bitcoin",
+          actual: "13017",
+          actualDecimal: 0.00013017,
+          estimatedUsd: 10.12,
+        },
+      ],
+      tokens: [
+        {
+          chain: "ethereum",
+          actual: "111711812",
+          actualDecimal: 111.711812,
+          token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          ticker: "USDC",
+          estimatedUsd: 111.711812,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "400510",
+        refillAmountDecimal: 0.00040051,
+        refillEstimatedUsd: 31.02,
+        rationale: "Score-weighted settlement reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({
+    plan,
+    policy,
+    routeContext: {
+      srcChain: "bitcoin",
+      srcToken: ZERO_TOKEN,
+      dstChain: "base",
+      dstToken: WBTC_OFT_TOKEN,
+      amount: "13017",
+      inputUsd: 10.12,
+      netEdgeUsd: -0.1,
+    },
+  });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "ethereum");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "USDC");
+  assert.equal(funding.selections[0].missingInputs.includes("source_inventory_below_target_amount"), false);
+});
+
 test("native refill does not treat undersized same-chain token inventory as ready", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

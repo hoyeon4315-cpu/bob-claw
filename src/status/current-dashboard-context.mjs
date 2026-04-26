@@ -39,6 +39,7 @@ import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 
 function summarizeMerklCandidate(candidate = null) {
   if (!candidate) return null;
@@ -193,11 +194,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      wrappedBtcLoopLiveProof,
      capitalAuditReport,
      v1InfraDrills,
-     promotionReport,
-     allChainAutopilotLatest,
-     treasuryInventoryRecords,
-     merklPositionEvents,
-   ] = await Promise.all([
+      promotionReport,
+      allChainAutopilotLatest,
+      treasuryInventoryRecords,
+      merklPositionEvents,
+      signerAuditRecords,
+    ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
     readJsonl(dataDir, "gateway-update-snapshots"),
@@ -241,11 +243,12 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
      readJsonIfExists(join(dataDir, "capital-audit.json")),
      readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
-     readJsonIfExists(join(dataDir, "promotion-latest.json")),
-     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
-     readJsonl(dataDir, "treasury-inventory"),
-     readJsonl(dataDir, "merkl-portfolio-positions"),
-   ]);
+      readJsonIfExists(join(dataDir, "promotion-latest.json")),
+      readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
+      readJsonl(dataDir, "treasury-inventory"),
+      readJsonl(dataDir, "merkl-portfolio-positions"),
+      readSignerAuditLog(),
+    ]);
   const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
@@ -352,6 +355,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.flow = buildFlowDashboardSlice({
     executionEvents,
     merklPositionEvents,
+    signerAuditRecords,
     payback: dashboardStatus.payback,
     capitalSummary: dashboardStatus.capitalSummary,
     btcUsd: dashboardStatus.market?.btcUsd ?? null,

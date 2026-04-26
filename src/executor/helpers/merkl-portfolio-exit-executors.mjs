@@ -30,6 +30,20 @@ function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps = DEFAULT_GATEWAY
   return String(applyGasBuffer(baseUnits, gasBufferBps));
 }
 
+function noPositionSharesError(message, { position, shareBalanceBefore, assetBalanceBefore } = {}) {
+  const error = new Error(message);
+  error.name = "NoPositionShares";
+  error.zeroShareProof = {
+    status: "reconciled_zero_share_balance",
+    proofSource: "erc20_balance_zero",
+    shareBalance: shareBalanceBefore?.balance || "0",
+    assetBalance: assetBalanceBefore?.balance || null,
+    rpcUrl: shareBalanceBefore?.rpcUrl || null,
+    positionId: position?.positionId || null,
+  };
+  return error;
+}
+
 function buildExitIntent({ position, senderAddress, shareAmount, now }) {
   const strategyCaps = assertStrategyCaps(position.strategyId);
   const vaultAddress = position.vaultAddress || position.shareTokenAddress;
@@ -149,7 +163,9 @@ export async function executeErc4626PortfolioExit({
   const currentShares = BigInt(shareBalanceBefore.balance || 0);
   const recordedShares = BigInt(position.shareDelta || 0);
   const shareAmount = (recordedShares > 0n && recordedShares < currentShares ? recordedShares : currentShares).toString();
-  if (BigInt(shareAmount) <= 0n) throw new Error("No shares available to redeem");
+  if (BigInt(shareAmount) <= 0n) {
+    throw noPositionSharesError("No shares available to redeem", { position, shareBalanceBefore, assetBalanceBefore });
+  }
 
   const intent = buildExitIntent({ position, senderAddress, shareAmount, now });
   try {
@@ -279,7 +295,9 @@ export async function executeAavePortfolioExit({
   const currentShares = BigInt(shareBalanceBefore.balance || 0);
   const recordedShares = BigInt(position.shareDelta || position.amount || 0);
   const withdrawAmount = (recordedShares > 0n && recordedShares < currentShares ? recordedShares : currentShares).toString();
-  if (BigInt(withdrawAmount) <= 0n) throw new Error("No Aave aToken balance available to withdraw");
+  if (BigInt(withdrawAmount) <= 0n) {
+    throw noPositionSharesError("No Aave aToken balance available to withdraw", { position, shareBalanceBefore, assetBalanceBefore });
+  }
 
   const intent = buildAaveWithdrawIntent({ position, senderAddress, poolAddress, withdrawAmount, now });
   try {

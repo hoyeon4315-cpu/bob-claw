@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Transaction } from "ethers";
 
 import { EvmLocalKeySigner } from "../src/executor/signer/evm-local-signer.mjs";
 
@@ -7,6 +8,11 @@ const PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf
 
 function buildProvider({
   pendingNonce = 12,
+  feeData = {
+    maxFeePerGas: 1_000_000_000n,
+    maxPriorityFeePerGas: 1_000_000n,
+    gasPrice: null,
+  },
   feeDataError = null,
   broadcastError = null,
   waitError = null,
@@ -22,11 +28,7 @@ function buildProvider({
     getFeeData: async () => {
       calls?.push(`${label}:fee`);
       if (feeDataError) throw feeDataError;
-      return {
-        maxFeePerGas: 1_000_000_000n,
-        maxPriorityFeePerGas: 1_000_000n,
-        gasPrice: null,
-      };
+      return feeData;
     },
     getTransactionCount: async (_address, blockTag) => {
       calls?.push(`${label}:nonce`);
@@ -55,6 +57,10 @@ function buildProvider({
       };
     },
   };
+}
+
+function signedTransaction(envelope) {
+  return Transaction.from(envelope.signedTx);
 }
 
 function buildSigner(provider) {
@@ -109,6 +115,48 @@ test("evm signer catches up when chain pending nonce advances externally", async
   assert.equal(next.metadata.nonce, 24);
 });
 
+test("evm signer buffers low ethereum eip1559 fee data for mempool acceptance", async () => {
+  const provider = buildProvider({
+    feeData: {
+      maxFeePerGas: 300_000_000n,
+      maxPriorityFeePerGas: 150_000n,
+      gasPrice: null,
+    },
+  });
+  const signer = buildSigner(provider);
+
+  const signed = await signer.signIntent({ ...intent(), chain: "ethereum" }, { reserveNonce: true });
+  const tx = signedTransaction(signed);
+
+  assert.equal(tx.maxPriorityFeePerGas, 500_000_000n);
+  assert.equal(tx.maxFeePerGas, 799_850_000n);
+});
+
+test("evm signer preserves explicit eip1559 fees from the intent", async () => {
+  const provider = buildProvider({
+    feeData: {
+      maxFeePerGas: 300_000_000n,
+      maxPriorityFeePerGas: 150_000n,
+      gasPrice: null,
+    },
+  });
+  const signer = buildSigner(provider);
+
+  const signed = await signer.signIntent({
+    ...intent(),
+    chain: "ethereum",
+    tx: {
+      ...intent().tx,
+      maxFeePerGas: "2000000000",
+      maxPriorityFeePerGas: "500000000",
+    },
+  }, { reserveNonce: true });
+  const tx = signedTransaction(signed);
+
+  assert.equal(tx.maxFeePerGas, 2_000_000_000n);
+  assert.equal(tx.maxPriorityFeePerGas, 500_000_000n);
+});
+
 test("evm signer can reset nonce cache after dropped or timed-out broadcasts", async () => {
   const provider = buildProvider({ pendingNonce: 3 });
   const signer = buildSigner(provider);
@@ -140,6 +188,23 @@ test("evm signer builds transactions through the next RPC when the active RPC fa
   assert.deepEqual(calls, ["primary:fee", "fallback:fee", "fallback:nonce"]);
 });
 
+test("evm signer rejects absurd pending nonce readings and falls back to the next RPC", async () => {
+  const calls = [];
+  const providers = new Map([
+    ["https://mainnet.base.org", buildProvider({ pendingNonce: 1_000_000_001, calls, label: "primary" })],
+    ["https://mainnet-preconf.base.org", buildProvider({ pendingNonce: 193, calls, label: "fallback" })],
+  ]);
+  const signer = new EvmLocalKeySigner({
+    keyReader: async () => PRIVATE_KEY,
+    providerFactory: (url) => providers.get(url),
+  });
+
+  const signed = await signer.signIntent(intent(), { reserveNonce: true });
+
+  assert.equal(signed.metadata.nonce, 193);
+  assert.deepEqual(calls, ["primary:fee", "primary:nonce", "fallback:fee", "fallback:nonce"]);
+});
+
 test("evm signer retries broadcast and receipt waits through RPC fallback urls", async () => {
   const calls = [];
   const txHash = "0x" + "b".repeat(64);
@@ -164,5 +229,27 @@ test("evm signer retries broadcast and receipt waits through RPC fallback urls",
     "primary:broadcast",
     "fallback:broadcast",
     "fallback:wait",
+  ]);
+});
+
+test("evm signer submits accepted raw transactions to fallback RPCs too", async () => {
+  const calls = [];
+  const providers = new Map([
+    ["https://mainnet.base.org", buildProvider({ calls, label: "primary" })],
+    ["https://mainnet-preconf.base.org", buildProvider({ calls, label: "fallback" })],
+  ]);
+  const signer = new EvmLocalKeySigner({
+    keyReader: async () => PRIVATE_KEY,
+    providerFactory: (url) => providers.get(url),
+  });
+
+  const signed = await signer.signIntent(intent(), { reserveNonce: true });
+  await signer.broadcastSignedIntent(signed);
+
+  assert.deepEqual(calls, [
+    "primary:fee",
+    "primary:nonce",
+    "primary:broadcast",
+    "fallback:broadcast",
   ]);
 });

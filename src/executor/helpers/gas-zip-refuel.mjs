@@ -58,6 +58,12 @@ function amountUsdFromWei(amountWei, asset, prices) {
   return Number((amountDecimal * unitUsd).toFixed(6));
 }
 
+function minimumOutputWithTolerance(outputWei, toleranceBps = 9950) {
+  const output = BigInt(outputWei || 0);
+  const bps = BigInt(Math.max(0, Math.min(10_000, Number(toleranceBps) || 0)));
+  return ((output * bps) / 10_000n).toString();
+}
+
 function normalizeQuoteBody(body, dstChainId) {
   if (!body?.calldata || !Array.isArray(body?.quotes)) {
     throw new Error("Gas.Zip quote response is missing calldata or quotes");
@@ -178,6 +184,7 @@ export async function buildGasZipNativeRefuelPlan({
   let gasPreflight = null;
   let preflightError = null;
   let intent = null;
+  let effectiveMinimumDestinationWei = normalizedMinimumDestinationWei;
 
   try {
     const quoteBody = await quoteFetcher(quoteUrl);
@@ -190,6 +197,8 @@ export async function buildGasZipNativeRefuelPlan({
     if (!quote) {
       throw new Error("Gas.Zip refuel plan is not executable: missing_quote");
     }
+    effectiveMinimumDestinationWei =
+      normalizedMinimumDestinationWei || minimumOutputWithTolerance(quote.quote.expected);
     const gasEstimate = await estimateGasImpl(
       srcChain,
       {
@@ -253,7 +262,7 @@ export async function buildGasZipNativeRefuelPlan({
         gasZipContractAddress: srcConfig.contractAddress,
         gasZipSettlementProof: "destination_native_balance_delta",
         gasZipExpectedDestinationWei: String(quote.quote.expected),
-        ...(normalizedMinimumDestinationWei ? { gasZipMinimumDestinationWei: normalizedMinimumDestinationWei } : {}),
+        gasZipMinimumDestinationWei: effectiveMinimumDestinationWei,
       },
     };
   } catch (error) {
@@ -273,7 +282,7 @@ export async function buildGasZipNativeRefuelPlan({
     senderAddress,
     recipient,
     amountWei: normalizedAmountWei,
-    minimumDestinationWei: normalizedMinimumDestinationWei,
+    minimumDestinationWei: effectiveMinimumDestinationWei,
     amountUsd,
     srcAsset: tokenAsset(srcChain, ZERO_TOKEN),
     dstAsset: tokenAsset(dstChain, ZERO_TOKEN),

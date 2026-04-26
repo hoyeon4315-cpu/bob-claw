@@ -198,6 +198,7 @@ test("sweep continues after per-candidate plan blocker and quarantines signer-un
     executeTokenDexPlanImpl: async () => {
       throw new Error("Signer daemon response timed out after 30000ms");
     },
+    readStateImpl: async () => ({}),
     now: "2026-04-23T00:00:00.000Z",
   });
 
@@ -269,6 +270,7 @@ test("sweep limit counts only executable candidates, not plan blockers", async (
         steps: [{ id: "approve" }, { id: "swap" }],
       };
     },
+    readStateImpl: async () => ({}),
     now: "2026-04-23T00:00:00.000Z",
   });
 

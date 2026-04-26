@@ -9,7 +9,6 @@ Read the context before changing UI or public status fields:
 ## Local Preview
 
 ```bash
-npm run status:dashboard
 npm run dashboard:serve
 ```
 
@@ -19,13 +18,24 @@ Open:
 http://localhost:8787
 ```
 
+For static-only preview of the generated snapshot:
+
+```bash
+npm run status:dashboard
+npm run dashboard:serve:static
+```
+
 ## Contract
 
-The browser reads only:
+The browser reads only public-safe status payloads:
 
 ```text
 dashboard/public/dashboard-status.json
+/api/live-status
+/api/live-events
 ```
+
+`/api/live-status` and `/api/live-events` are local read-only adapters over the same dashboard status builders. Cloudflare Pages still serves only the static files under `dashboard/public`.
 
 Do not point the browser at raw JSONL files under `data/`.
 
