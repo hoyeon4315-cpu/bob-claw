@@ -568,7 +568,7 @@ function FlowActivityRow({ activity, isLast }) {
   );
 }
 
-function OpsStrip({ fill = false }) {
+function OpsStrip({ fill = false, onExpandedChange = null }) {
   const flow = window.FLOW || {};
   const activities = flow?.recentActivities || [];
   const txActivities = activities.filter((activity) => activity?.kind === 'transaction');
@@ -578,6 +578,7 @@ function OpsStrip({ fill = false }) {
   const confirmedTxCount = txActivities.filter((activity) => activity?.status === 'confirmed').length;
   const [expanded, setExpanded] = useState(() => readPersistedHistoryExpanded());
   const [filter, setFilter] = useState(() => readPersistedHistoryFilter());
+  const expandIntoFlow = fill && expanded;
   const filteredActivities = activities.filter((activity) => {
     if (filter === 'in_flight') return activity?.kind === 'transaction' && (activity?.status === 'signed' || activity?.status === 'broadcasted');
     if (filter === 'confirmed') return activity?.kind === 'transaction' && activity?.status === 'confirmed';
@@ -606,15 +607,18 @@ function OpsStrip({ fill = false }) {
   useEffect(() => {
     writePersistedHistoryExpanded(expanded);
   }, [expanded]);
+  useEffect(() => {
+    if (typeof onExpandedChange === 'function') onExpandedChange(expanded);
+  }, [expanded, onExpandedChange]);
   return (
     <div style={{
       margin: fill ? '0 12px' : '6px 12px 0', padding:'10px 12px 8px',
       background:'var(--card)', border:'0.5px solid var(--line)', borderRadius:14,
       flexShrink:0, animation:`slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
       display: 'flex', flexDirection: 'column',
-      minHeight: fill ? 0 : undefined,
-      flex: fill ? '1 1 auto' : '0 0 auto',
-      overflow: 'hidden',
+      minHeight: fill && !expandIntoFlow ? 0 : undefined,
+      flex: fill && !expandIntoFlow ? '1 1 auto' : '0 0 auto',
+      overflow: expandIntoFlow ? 'visible' : 'hidden',
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
         <div style={{
@@ -676,11 +680,11 @@ function OpsStrip({ fill = false }) {
       </div>
       <div style={{
         marginTop: 8,
-        flex: '1 1 auto',
-        minHeight: 0,
-        overflowY: 'auto',
+        flex: fill && !expandIntoFlow ? '1 1 auto' : '0 0 auto',
+        minHeight: fill && !expandIntoFlow ? 0 : undefined,
+        overflowY: fill && !expandIntoFlow ? 'auto' : 'visible',
         overflowX: 'hidden',
-        paddingRight: 4,
+        paddingRight: fill && !expandIntoFlow ? 4 : 0,
         overscrollBehavior: 'contain',
       }}>
         {filteredActivities.length === 0 && (
@@ -772,6 +776,7 @@ function FlowPane({ refreshTick }) {
   const pending = HOLDINGS?.pending;
   const positions = HOLDINGS?.positions || [];
   const [mindmapFocus, setMindmapFocus] = useState({ layer: 'root' });
+  const [historyExpanded, setHistoryExpanded] = useState(() => readPersistedHistoryExpanded());
   const overlayActive = mindmapFocus?.layer === 'chain' || mindmapFocus?.layer === 'protocol';
   const totalUsd = HOLDINGS?.totalUsd != null
     ? HOLDINGS.totalUsd
@@ -800,7 +805,7 @@ function FlowPane({ refreshTick }) {
     ? 'pending'
     : (positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? 's' : ''}` : 'wallet only · 0 open positions');
   return (
-    <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: historyExpanded ? 'auto' : 'hidden' }}>
       <div style={{
         position: 'absolute',
         left: 12,
@@ -821,11 +826,12 @@ function FlowPane({ refreshTick }) {
       </div>
 
       <div style={{
-        position: 'absolute',
+        position: historyExpanded ? 'relative' : 'absolute',
         left: 0,
         right: 0,
-        top: 'calc(56% + 4px)',
-        bottom: 0,
+        top: historyExpanded ? undefined : 'calc(56% + 4px)',
+        bottom: historyExpanded ? undefined : 0,
+        marginTop: historyExpanded ? 'calc(56% + 10px)' : undefined,
         zIndex: 1,
         opacity: overlayActive ? 0.28 : 1,
         transform: overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
@@ -881,7 +887,7 @@ function FlowPane({ refreshTick }) {
             </div>
           )}
           <PnlBreakdownStrip/>
-          <OpsStrip fill={true}/>
+          <OpsStrip fill={!historyExpanded} onExpandedChange={setHistoryExpanded}/>
         </div>
       </div>
     </div>

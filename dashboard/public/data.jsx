@@ -286,16 +286,59 @@ const LIVE_RUNTIME_PATH = './live-runtime.json';
 const LIVE_POLL_MS = 1500;
 const STATIC_POLL_MS = 5000;
 
-async function fetchStaticStatusPayload() {
-  const now = Date.now();
+function statusGeneratedAtMs(status = null) {
+  const ms = new Date(status?.generatedAt || 0).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function statusReportingBaseline(status = null) {
+  return status?.pnl?.reportingBaseline || status?.reportingPnlBaseline || null;
+}
+
+function hasActiveReportingBaseline(status = null) {
+  const baseline = statusReportingBaseline(status);
+  return baseline?.active === true && baseline?.applied !== false;
+}
+
+function statusSourceRank(source = null) {
+  if (source === 'remote-live-sse') return 5;
+  if (source === 'live-sse') return 4;
+  if (source === 'remote-live-api') return 3;
+  if (source === 'live-api') return 2;
+  if (source === 'static-snapshot') return 1;
+  return 0;
+}
+
+function selectPreferredStatusPayload(candidates = []) {
+  const available = candidates.filter((candidate) => candidate?.status);
+  if (available.length === 0) return { status: null, source: 'unavailable', live: false };
+  return [...available].sort((left, right) => {
+    const baselineDiff = Number(hasActiveReportingBaseline(right.status)) - Number(hasActiveReportingBaseline(left.status));
+    if (baselineDiff !== 0) return baselineDiff;
+    const generatedAtDiff = (statusGeneratedAtMs(right.status) || 0) - (statusGeneratedAtMs(left.status) || 0);
+    if (generatedAtDiff !== 0) return generatedAtDiff;
+    return statusSourceRank(right.source) - statusSourceRank(left.source);
+  })[0];
+}
+
+async function fetchEndpointStatus(endpoint) {
   try {
-    const resp = await fetch(`${STATIC_STATUS_PATH}?t=${now}`, { cache: 'no-store', mode: 'same-origin' });
-    if (!resp.ok) throw new Error(`static snapshot ${resp.status}`);
+    const resp = await fetch(endpoint.url, { cache: 'no-store', mode: endpoint.remote ? 'cors' : 'same-origin' });
+    if (!resp.ok) return null;
     const status = await resp.json();
-    return { status, source: 'static-snapshot', live: false };
+    return { status, source: endpoint.source, live: endpoint.live, remote: Boolean(endpoint.remote) };
   } catch {
-    return { status: null, source: 'unavailable', live: false };
+    return null;
   }
+}
+
+async function fetchStaticStatusPayload() {
+  return (await fetchEndpointStatus({
+    url: `${STATIC_STATUS_PATH}?t=${Date.now()}`,
+    source: 'static-snapshot',
+    live: false,
+    remote: false,
+  })) || { status: null, source: 'unavailable', live: false };
 }
 
 async function resolveConfiguredLiveRuntime() {
@@ -328,19 +371,36 @@ async function fetchStatusPayload() {
     { url: `${LIVE_STATUS_PATH}?t=${now}`, source: 'live-api', live: true },
     { url: `${STATIC_STATUS_PATH}?t=${now}`, source: 'static-snapshot', live: false },
   ];
-  for (const endpoint of endpoints) {
-    try {
-      const resp = await fetch(endpoint.url, { cache: 'no-store', mode: endpoint.remote ? 'cors' : 'same-origin' });
-      if (!resp.ok) continue;
-      const status = await resp.json();
-      return { status, source: endpoint.source, live: endpoint.live };
-    } catch {}
-  }
-  return { status: null, source: 'unavailable', live: false };
+  return selectPreferredStatusPayload(await Promise.all(endpoints.map(fetchEndpointStatus)));
 }
 
-async function bootData(payload = null) {
+async function bootData(payload = null, { preserveCurrentOnMismatch = false } = {}) {
+  const currentStatus = window.RAW_STATUS || null;
+  const currentLiveStatus = window.LIVE_STATUS || {};
   const resolved = payload || await fetchStatusPayload();
+  const incomingStatus = resolved?.status || null;
+  if (preserveCurrentOnMismatch && currentStatus && hasActiveReportingBaseline(currentStatus) && !hasActiveReportingBaseline(incomingStatus)) {
+    return {
+      status: currentStatus,
+      source: currentLiveStatus.source || 'fallback',
+      live: Boolean(currentLiveStatus.live),
+      remote: Boolean(currentLiveStatus.remote),
+    };
+  }
+  if (
+    currentStatus &&
+    Number.isFinite(statusGeneratedAtMs(currentStatus)) &&
+    Number.isFinite(statusGeneratedAtMs(incomingStatus)) &&
+    statusGeneratedAtMs(incomingStatus) < statusGeneratedAtMs(currentStatus) &&
+    hasActiveReportingBaseline(currentStatus) === hasActiveReportingBaseline(incomingStatus)
+  ) {
+    return {
+      status: currentStatus,
+      source: currentLiveStatus.source || 'fallback',
+      live: Boolean(currentLiveStatus.live),
+      remote: Boolean(currentLiveStatus.remote),
+    };
+  }
   const status = resolved?.status || null;
 
   const holdings = status?.walletHoldings || null;
@@ -675,7 +735,7 @@ async function bootData(payload = null) {
 async function refreshDashboardData({ dispatch = true, payload = null } = {}) {
   if (!window._DASHBOARD_REFRESH_IN_FLIGHT) {
     window._DASHBOARD_REFRESH_IN_FLIGHT = (async () => {
-      const snapshot = await bootData(payload);
+      const snapshot = await bootData(payload, { preserveCurrentOnMismatch: Boolean(payload) });
       if (dispatch) {
         window.dispatchEvent(new CustomEvent('dashboard:datarefresh'));
       }

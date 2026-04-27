@@ -78,11 +78,13 @@ describe("dashboard home renewal source guard", () => {
 
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
+    assert.match(opsStrip, /function OpsStrip\(\{ fill = false, onExpandedChange = null \}\)/);
     assert.match(opsStrip, /const txActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'transaction'\)/);
     assert.match(opsStrip, /const positionActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'position'\)/);
     assert.match(opsStrip, /const paybackActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'payback'\)/);
     assert.match(opsStrip, /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/);
     assert.match(opsStrip, /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/);
+    assert.match(opsStrip, /const expandIntoFlow = fill && expanded/);
     assert.match(opsStrip, /const \[filter, setFilter\] = useState\(\(\) => readPersistedHistoryFilter\(\)\)/);
     assert.match(opsStrip, /const filteredActivities = activities\.filter\(\(activity\) => \{/);
     assert.match(opsStrip, /id: 'all', label: `All \$\{activities\.length\}`/);
@@ -96,9 +98,11 @@ describe("dashboard home renewal source guard", () => {
     assert.match(opsStrip, /const allowed = new Set\(filterChips\.map\(\(item\) => item\.id\)\)/);
     assert.match(opsStrip, /if \(!allowed\.has\(filter\)\)/);
     assert.match(opsStrip, /writePersistedHistoryFilter\(filter\);/);
+    assert.match(opsStrip, /if \(typeof onExpandedChange === 'function'\) onExpandedChange\(expanded\);/);
     assert.match(opsStrip, /filteredActivities\.slice\(0,\s*3\)/);
     assert.match(opsStrip, /expanded \? 'Show less' : `Show more · \$\{filteredActivities\.length\}`/);
-    assert.match(opsStrip, /overflowY:\s*'auto'/);
+    assert.match(opsStrip, /overflow:\s*expandIntoFlow \? 'visible' : 'hidden'/);
+    assert.match(opsStrip, /overflowY:\s*fill && !expandIntoFlow \? 'auto' : 'visible'/);
     assert.match(opsStrip, /overscrollBehavior:\s*'contain'/);
     assert.match(opsStrip, /display: 'flex', flexDirection: 'column'/);
   });
@@ -145,13 +149,17 @@ describe("dashboard defi renewal source guard", () => {
   test("flow pane expands the map above lower cards during focus mode", () => {
     const flowPane = extractSection("function FlowPane", "function KpiCard");
     assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
+    assert.match(flowPane, /const \[historyExpanded, setHistoryExpanded\] = useState\(\(\) => readPersistedHistoryExpanded\(\)\)/);
     assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : 'calc\(56% - 4px\)'/);
     assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
     assert.match(flowPane, /position: 'absolute'/);
-    assert.match(flowPane, /top: 'calc\(56% \+ 4px\)'/);
-    assert.match(flowPane, /bottom: 0/);
+    assert.match(flowPane, /overflowY: historyExpanded \? 'auto' : 'hidden'/);
+    assert.match(flowPane, /position: historyExpanded \? 'relative' : 'absolute'/);
+    assert.match(flowPane, /top: historyExpanded \? undefined : 'calc\(56% \+ 4px\)'/);
+    assert.match(flowPane, /bottom: historyExpanded \? undefined : 0/);
+    assert.match(flowPane, /marginTop: historyExpanded \? 'calc\(56% \+ 10px\)' : undefined/);
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
-    assert.match(flowPane, /<OpsStrip fill=\{true\}\/>/);
+    assert.match(flowPane, /<OpsStrip fill=\{!historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
   });
 
   test("app header shows live source and freshness state", () => {

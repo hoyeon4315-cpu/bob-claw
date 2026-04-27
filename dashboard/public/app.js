@@ -449,7 +449,7 @@ function FlowActivityRow({ activity, isLast }) {
     maxWidth: 54
   } }, finalAsset.label)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.6, fontWeight: 700, letterSpacing: -0.15 } }, activityAmount(activity))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.2, color: "var(--ink-3)", marginTop: 1 } }, fmtWhen(activity?.observedAt))), !isLast && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: 0, height: 0.5, background: "var(--line)" } }));
 }
-function OpsStrip({ fill = false }) {
+function OpsStrip({ fill = false, onExpandedChange = null }) {
   const flow = window.FLOW || {};
   const activities = flow?.recentActivities || [];
   const txActivities = activities.filter((activity) => activity?.kind === "transaction");
@@ -459,6 +459,7 @@ function OpsStrip({ fill = false }) {
   const confirmedTxCount = txActivities.filter((activity) => activity?.status === "confirmed").length;
   const [expanded, setExpanded] = useState(() => readPersistedHistoryExpanded());
   const [filter, setFilter] = useState(() => readPersistedHistoryFilter());
+  const expandIntoFlow = fill && expanded;
   const filteredActivities = activities.filter((activity) => {
     if (filter === "in_flight") return activity?.kind === "transaction" && (activity?.status === "signed" || activity?.status === "broadcasted");
     if (filter === "confirmed") return activity?.kind === "transaction" && activity?.status === "confirmed";
@@ -487,6 +488,9 @@ function OpsStrip({ fill = false }) {
   useEffect(() => {
     writePersistedHistoryExpanded(expanded);
   }, [expanded]);
+  useEffect(() => {
+    if (typeof onExpandedChange === "function") onExpandedChange(expanded);
+  }, [expanded, onExpandedChange]);
   return /* @__PURE__ */ React.createElement("div", { style: {
     margin: fill ? "0 12px" : "6px 12px 0",
     padding: "10px 12px 8px",
@@ -497,9 +501,9 @@ function OpsStrip({ fill = false }) {
     animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
     display: "flex",
     flexDirection: "column",
-    minHeight: fill ? 0 : void 0,
-    flex: fill ? "1 1 auto" : "0 0 auto",
-    overflow: "hidden"
+    minHeight: fill && !expandIntoFlow ? 0 : void 0,
+    flex: fill && !expandIntoFlow ? "1 1 auto" : "0 0 auto",
+    overflow: expandIntoFlow ? "visible" : "hidden"
   } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: {
     width: 24,
     height: 24,
@@ -556,11 +560,11 @@ function OpsStrip({ fill = false }) {
     expanded ? "Show less" : `Show more \xB7 ${filteredActivities.length}`
   )), /* @__PURE__ */ React.createElement("div", { style: {
     marginTop: 8,
-    flex: "1 1 auto",
-    minHeight: 0,
-    overflowY: "auto",
+    flex: fill && !expandIntoFlow ? "1 1 auto" : "0 0 auto",
+    minHeight: fill && !expandIntoFlow ? 0 : void 0,
+    overflowY: fill && !expandIntoFlow ? "auto" : "visible",
     overflowX: "hidden",
-    paddingRight: 4,
+    paddingRight: fill && !expandIntoFlow ? 4 : 0,
     overscrollBehavior: "contain"
   } }, filteredActivities.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-4)", padding: "4px 0 2px" } }, "No matching capital move yet."), visibleActivities.map((activity, index) => /* @__PURE__ */ React.createElement(
     FlowActivityRow,
@@ -616,6 +620,7 @@ function FlowPane({ refreshTick }) {
   const pending = HOLDINGS?.pending;
   const positions = HOLDINGS?.positions || [];
   const [mindmapFocus, setMindmapFocus] = useState({ layer: "root" });
+  const [historyExpanded, setHistoryExpanded] = useState(() => readPersistedHistoryExpanded());
   const overlayActive = mindmapFocus?.layer === "chain" || mindmapFocus?.layer === "protocol";
   const totalUsd = HOLDINGS?.totalUsd != null ? HOLDINGS.totalUsd : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
   const assetValueUsd = Number.isFinite(totalUsd) ? totalUsd : Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : 0;
@@ -633,7 +638,7 @@ function FlowPane({ refreshTick }) {
   const totalApr = aprDen > 0 ? aprNum / aprDen : null;
   const [aprOpen, setAprOpen] = useState(false);
   const assetSub = pending ? "pending" : positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? "s" : ""}` : "wallet only \xB7 0 open positions";
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { position: "relative", display: "flex", flexDirection: "column", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { position: "relative", display: "flex", flexDirection: "column", overflowX: "hidden", overflowY: historyExpanded ? "auto" : "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",
     left: 12,
     right: 12,
@@ -650,11 +655,12 @@ function FlowPane({ refreshTick }) {
     boxShadow: overlayActive ? "0 18px 48px rgba(17,17,19,0.16)" : "0 0 0 rgba(17,17,19,0)",
     transition: "border-radius 450ms var(--ease), box-shadow 450ms var(--ease)"
   } }, /* @__PURE__ */ React.createElement(Mindmap, { motionSpeed: 1.4, refreshTick, onFocusChange: setMindmapFocus }))), /* @__PURE__ */ React.createElement("div", { style: {
-    position: "absolute",
+    position: historyExpanded ? "relative" : "absolute",
     left: 0,
     right: 0,
-    top: "calc(56% + 4px)",
-    bottom: 0,
+    top: historyExpanded ? void 0 : "calc(56% + 4px)",
+    bottom: historyExpanded ? void 0 : 0,
+    marginTop: historyExpanded ? "calc(56% + 10px)" : void 0,
     zIndex: 1,
     opacity: overlayActive ? 0.28 : 1,
     transform: overlayActive ? "translateY(18px) scale(0.985)" : "translateY(0) scale(1)",
@@ -706,7 +712,7 @@ function FlowPane({ refreshTick }) {
     lineHeight: 1.45,
     flexShrink: 0,
     animation: `slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`
-  } }, "Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price."), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, null), /* @__PURE__ */ React.createElement(OpsStrip, { fill: true }))));
+  } }, "Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price."), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, null), /* @__PURE__ */ React.createElement(OpsStrip, { fill: !historyExpanded, onExpandedChange: setHistoryExpanded }))));
 }
 function KpiCard({ label, main, sub }) {
   return /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", background: "var(--card)", borderRadius: 16, border: "0.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, letterSpacing: -0.3, marginTop: 3 } }, main), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 1 } }, sub));
