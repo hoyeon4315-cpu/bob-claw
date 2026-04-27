@@ -16,7 +16,7 @@ export function buildOpportunityDashboardSlice({
     _meta: {
       type: "opportunity-dashboard-slice",
       version: 1,
-      dormant: true,
+      dormant: false,
     },
   };
 }

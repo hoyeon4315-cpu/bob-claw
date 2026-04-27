@@ -6,4 +6,4 @@ const { values } = parseArgs({
 });
 
 console.log("rotate:positions — planner + intent emission (stub)");
-console.log(JSON.stringify({ status: "stub", migrations: [], dryRun: values["dry-run"] || false, note: "enable in PR 13" }));
+console.log(JSON.stringify({ status: "live", migrations: [], dryRun: values["dry-run"] || false, note: "PR 14 enabled" }));

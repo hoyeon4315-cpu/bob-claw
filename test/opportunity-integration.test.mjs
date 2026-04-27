@@ -40,9 +40,9 @@ describe("opportunity scheduler config", () => {
 });
 
 describe("opportunity integration enable flag", () => {
-  it("defaults to disabled", () => {
-    assert.strictEqual(OPPORTUNITY_INTEGRATION.enabled, false);
-    assert.strictEqual(isOpportunityIntegrationEnabled(), false);
+  it("is enabled after PR 14", () => {
+    assert.strictEqual(OPPORTUNITY_INTEGRATION.enabled, true);
+    assert.strictEqual(isOpportunityIntegrationEnabled(), true);
   });
 });
 
@@ -53,7 +53,7 @@ describe("opportunity dashboard slice", () => {
     assert.strictEqual(slice.topScore, null);
     assert.strictEqual(slice.roundTripSuccessRate, null);
     assert.deepStrictEqual(slice.concentrationWarnings, []);
-    assert.strictEqual(slice._meta.dormant, true);
+    assert.strictEqual(slice._meta.dormant, false);
     assert.strictEqual(slice._meta.type, "opportunity-dashboard-slice");
   });
 
