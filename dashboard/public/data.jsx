@@ -825,8 +825,9 @@ function setupLiveEventStream() {
 
 function liveAprFor(strategy, aprMap) {
   if (!aprMap || !strategy) return null;
+  const strategyEntry = aprMap[strategy.id];
   const key = `${strategy.protocol}:${strategy.chain}`;
-  const entry = aprMap[key] || aprMap[strategy.protocol];
+  const entry = strategyEntry || aprMap[key] || aprMap[strategy.protocol];
   if (!entry) return null;
   if (Number.isFinite(entry.netApyPct)) return entry.netApyPct;
   if (Number.isFinite(entry.apyPct)) return entry.apyPct;
@@ -844,7 +845,7 @@ function defaultAutoExec(id) {
 }
 
 function apyHint(id) {
-  // Display-only hints until live APY ingestion lands.
+  // Display-only fallback when no measured APR source is wired yet.
   return ({
     'wrapped-btc-loop-base-moonwell': 6.1,
     'recursive_wrapped_btc_lending_loop': 7.4,

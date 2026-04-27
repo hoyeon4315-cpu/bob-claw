@@ -6,10 +6,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildProtocolAprSlice } from '../status/protocol-apr-slice.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(__filename), '../..');
 const INVENTORY_PATH = path.join(ROOT, 'data', 'whole-wallet-inventory.jsonl');
+const WRAPPED_BTC_LOOP_SLICE_PATH = path.join(ROOT, 'data', 'wrapped-btc-lending-loop-slice.json');
+const RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH = path.join(ROOT, 'data', 'recursive_wrapped_btc_lending_loop-scaffold.json');
 const OUTPUT_PATH = path.join(ROOT, 'dashboard', 'public', 'wallet-holdings.json');
 
 async function readLastJsonlLine(file) {
@@ -20,6 +23,15 @@ async function readLastJsonlLine(file) {
       try { return JSON.parse(lines[i]); } catch { /* skip malformed */ }
     }
     return null;
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+async function readJsonIfExists(file) {
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8'));
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
@@ -76,6 +88,14 @@ function buildItems(inv) {
 
 async function main() {
   const inv = await readLastJsonlLine(INVENTORY_PATH);
+  const [wrappedBtcLoopSlice, recursiveWrappedBtcLoopScaffold] = await Promise.all([
+    readJsonIfExists(WRAPPED_BTC_LOOP_SLICE_PATH),
+    readJsonIfExists(RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH),
+  ]);
+  const protocolApr = buildProtocolAprSlice({
+    wrappedBtcLoopSlice,
+    recursiveWrappedBtcLoopScaffold,
+  });
   let payload;
   if (!inv) {
     payload = {
@@ -86,7 +106,7 @@ async function main() {
       address: null,
       totalUsd: null,
       items: [],
-      protocolApr: {},
+      protocolApr,
     };
   } else {
     const items = buildItems(inv);
@@ -98,8 +118,7 @@ async function main() {
       address: inv.address || null,
       totalUsd: Number.isFinite(inv.totalUsd) ? inv.totalUsd : null,
       items,
-      // APR data not yet ingested; UI falls back to static apyHint.
-      protocolApr: {},
+      protocolApr,
     };
   }
   await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });

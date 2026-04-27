@@ -125,7 +125,7 @@ function applyReconciledExitBalances(items = [], events = [], latestObservedAt =
 
 export function buildTreasuryHoldingsSlice(
   records = [],
-  { generatedAt = new Date().toISOString(), merklPositionEvents = [], wholeWalletRecords = [] } = {},
+  { generatedAt = new Date().toISOString(), merklPositionEvents = [], wholeWalletRecords = [], protocolApr = {} } = {},
 ) {
   const latestTreasury = latestByObservedAt(records);
   const latestWholeWallet = latestByObservedAt(wholeWalletRecords);
@@ -140,7 +140,7 @@ export function buildTreasuryHoldingsSlice(
       totalUsd: null,
       activeChainCount: 0,
       items: [],
-      protocolApr: {},
+      protocolApr,
     };
   }
 
@@ -174,7 +174,7 @@ export function buildTreasuryHoldingsSlice(
     refillRequiredCount:
       (latest.summary?.nativeRefillRequiredCount ?? 0) + (latest.summary?.tokenRefillRequiredCount ?? 0),
     items,
-    protocolApr: {},
+    protocolApr,
     source: selected.source,
     scanErrorCount: latest.summary?.scanErrorCount ?? 0,
     externalWalletUsd: latest.summary?.externalWalletUsd ?? null,

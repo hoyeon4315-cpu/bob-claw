@@ -175,3 +175,37 @@ test("treasury holdings prefer fresh whole-wallet inventory when address scan da
   assert.equal(holdings.unclassifiedUsd, 12.8);
   assert.ok(holdings.items.some((item) => item.sym === "other" && item.usd === 12.8));
 });
+
+test("treasury holdings preserve injected protocol APR entries for dashboard consumers", () => {
+  const protocolApr = {
+    "wrapped-btc-loop-base-moonwell": {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      observedAt: "2026-04-27T04:05:38.735Z",
+      supplyApyPct: 2.4,
+      borrowApyPct: 1.3,
+      netApyPct: 1.1,
+    },
+  };
+  const holdings = buildTreasuryHoldingsSlice(
+    [
+      {
+        observedAt: "2026-04-26T06:40:00.000Z",
+        native: [],
+        tokens: [],
+        summary: {
+          estimatedWalletUsd: 0,
+          activeChainCount: 0,
+          supportedChainCount: 11,
+          nativeRefillRequiredCount: 0,
+          tokenRefillRequiredCount: 0,
+        },
+      },
+    ],
+    {
+      generatedAt: "2026-04-26T06:50:00.000Z",
+      protocolApr,
+    },
+  );
+
+  assert.deepEqual(holdings.protocolApr, protocolApr);
+});

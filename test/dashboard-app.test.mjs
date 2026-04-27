@@ -9,17 +9,21 @@ const APP_SOURCE = readFileSync(
   join(HERE, "..", "dashboard", "public", "app.jsx"),
   "utf8"
 );
+const DATA_SOURCE = readFileSync(
+  join(HERE, "..", "dashboard", "public", "data.jsx"),
+  "utf8"
+);
 const INDEX_HTML = readFileSync(
   join(HERE, "..", "dashboard", "public", "index.html"),
   "utf8"
 );
 
-function extractSection(startMarker, endMarker) {
-  const start = APP_SOURCE.indexOf(startMarker);
+function extractSection(startMarker, endMarker, source = APP_SOURCE) {
+  const start = source.indexOf(startMarker);
   assert.notEqual(start, -1, `missing start marker: ${startMarker}`);
-  const end = endMarker ? APP_SOURCE.indexOf(endMarker, start) : APP_SOURCE.length;
+  const end = endMarker ? source.indexOf(endMarker, start) : source.length;
   assert.notEqual(end, -1, `missing end marker: ${endMarker}`);
-  return APP_SOURCE.slice(start, end);
+  return source.slice(start, end);
 }
 
 describe("dashboard home renewal source guard", () => {
@@ -181,5 +185,11 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(appSection, /'snapshot fallback'/);
     assert.match(appSection, /'status pending'/);
     assert.match(appSection, /`\$\{sourceLabel\} · \$\{ageLabel\}`/);
+  });
+
+  test("live APR lookup prefers exact strategy entries before protocol fallback", () => {
+    const liveAprSection = extractSection("function liveAprFor", "function defaultAutoExec", DATA_SOURCE);
+    assert.match(liveAprSection, /const strategyEntry = aprMap\[strategy\.id\]/);
+    assert.match(liveAprSection, /const entry = strategyEntry \|\| aprMap\[key\] \|\| aprMap\[strategy\.protocol\]/);
   });
 });

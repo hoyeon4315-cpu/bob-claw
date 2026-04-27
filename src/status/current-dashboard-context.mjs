@@ -34,6 +34,7 @@ import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
+import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
 import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
@@ -359,10 +360,15 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     generatedAt: dashboardStatus.generatedAt,
     aprByOpportunity: buildMerklAprMap(merklPortfolioAllocatorLatest),
   });
+  const protocolApr = buildProtocolAprSlice({
+    wrappedBtcLoopSlice: wrappedBtcLendingLoopSlice,
+    recursiveWrappedBtcLoopScaffold: recursiveWrappedBtcLoop,
+  });
   dashboardStatus.walletHoldings = buildTreasuryHoldingsSlice(treasuryInventoryRecords, {
     generatedAt: dashboardStatus.generatedAt,
     merklPositionEvents,
     wholeWalletRecords: wholeWalletInventoryRecords,
+    protocolApr,
   });
   const allChainAutopilotReport = resolveAllChainAutopilotReport(
     allChainAutopilotLatest,
