@@ -30,6 +30,12 @@ test("dashboard data source estimates yield for live positions instead of forcin
   assert.match(DATA_JSX, /actualProtocolCapitalUsd: effectiveProtocolCapitalUsd/);
   assert.match(DATA_JSX, /const apyPct = Number\.isFinite\(m\.aprPct\)/);
   assert.match(DATA_JSX, /yieldBasis: realizedYieldUsd > 0 \? 'realized' : \(estimatedYieldUsd > 0 \? 'estimated' : null\)/);
+  assert.match(DATA_JSX, /const realizedEvidenceCostUsd = pnl\?\.realized\?\.evidenceCostUsd/);
+  assert.match(DATA_JSX, /const realizedTotalUsd = pnl\?\.realized\?\.totalValueUsd/);
+  assert.match(DATA_JSX, /const FLOW_METRICS = \{/);
+  assert.match(DATA_JSX, /realizedStrategyUsd: Number\.isFinite\(realizedUsd\) \? realizedUsd : null/);
+  assert.match(DATA_JSX, /realizedEvidenceCostUsd: Number\.isFinite\(realizedEvidenceCostUsd\) \? realizedEvidenceCostUsd : null/);
+  assert.match(DATA_JSX, /realizedByKind: Array\.isArray\(realizedBreakdown\?\.byKind\) \? realizedBreakdown\.byKind : \[\]/);
   assert.doesNotMatch(DATA_JSX, /earnedUsd:\s*0,\s*\n\s*apyPct:/);
 });
 

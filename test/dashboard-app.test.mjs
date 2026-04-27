@@ -45,6 +45,18 @@ describe("dashboard home renewal source guard", () => {
     assert.match(flowPane, /fmtUsdCompact\(grossYieldUsd\)\} · all protocols/);
     assert.match(flowPane, /wallet only · 0 open positions/);
     assert.match(flowPane, /wallet \+ \$\{positions\.length\} open position/);
+    assert.match(flowPane, /<PnlBreakdownStrip\/>/);
+  });
+
+  test("flow home surfaces realized strategy vs probe cost split", () => {
+    const pnlStrip = extractSection("function PnlBreakdownStrip", "function FlowPane");
+    assert.match(pnlStrip, /Realized split/);
+    assert.match(pnlStrip, /strategy vs transport \/ probe cost/);
+    assert.match(pnlStrip, /label: 'Strategy'/);
+    assert.match(pnlStrip, /label: 'Probe cost'/);
+    assert.match(pnlStrip, /label: 'Total'/);
+    assert.match(pnlStrip, /Top drags:/);
+    assert.match(pnlStrip, /pnlKindLabel/);
   });
 
   test("history card defaults to 3 rows with expand/collapse and scroll guard", () => {

@@ -357,6 +357,9 @@ async function bootData(payload = null) {
   const pnl = status?.pnl || {};
   // Pre-payback earning: realized PnL today (USD). Only reported on primary lane for now.
   const realizedUsd = pnl?.realized?.valueUsd;
+  const realizedEvidenceCostUsd = pnl?.realized?.evidenceCostUsd;
+  const realizedTotalUsd = pnl?.realized?.totalValueUsd;
+  const realizedBreakdown = pnl?.realized?.breakdown || {};
   const btcUsd = status?.market?.btcUsd || status?.market?.btc?.usd || null;
 
   const liveApr = holdings?.protocolApr || {};
@@ -544,6 +547,15 @@ async function bootData(payload = null) {
     source: resolved?.source || (status ? 'snapshot' : 'pending'),
     generatedAt: status?.generatedAt || null,
   };
+  const FLOW_METRICS = {
+    ...(flow?.metrics || {}),
+    realizedStrategyUsd: Number.isFinite(realizedUsd) ? realizedUsd : null,
+    realizedEvidenceCostUsd: Number.isFinite(realizedEvidenceCostUsd) ? realizedEvidenceCostUsd : null,
+    realizedTotalUsd: Number.isFinite(realizedTotalUsd) ? realizedTotalUsd : null,
+    realizedStrategyTradeCount: Number.isFinite(pnl?.realized?.tradeCount) ? pnl.realized.tradeCount : 0,
+    realizedEvidenceCount: Number.isFinite(pnl?.realized?.evidenceCount) ? pnl.realized.evidenceCount : 0,
+    realizedByKind: Array.isArray(realizedBreakdown?.byKind) ? realizedBreakdown.byKind : [],
+  };
 
   // Merkl-active strategies — only positions currently open (live).
   // Each Merkl item becomes a STRATEGIES entry so DefiPane (groups by protocol)
@@ -633,7 +645,12 @@ async function bootData(payload = null) {
     STRATEGIES,
     KPI,
     HOLDINGS,
-    FLOW: flow || { metrics: {}, recentActivities: [], strategyRiskById: {} },
+    FLOW: {
+      ...(flow || {}),
+      metrics: FLOW_METRICS,
+      recentActivities: Array.isArray(flow?.recentActivities) ? flow.recentActivities : [],
+      strategyRiskById: flow?.strategyRiskById || {},
+    },
     ACTIVITY_SURFACES: activitySurfaces,
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,

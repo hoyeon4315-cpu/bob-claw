@@ -105,6 +105,17 @@ function fmtWhen(value) {
     minute: '2-digit',
   });
 }
+function pnlKindLabel(kind) {
+  return ({
+    gas_zip_native_refuel: 'Gas refuel',
+    erc4626_protocol_canary: 'ERC4626 canary',
+    lifi_bridge: 'LI.FI bridge',
+    token_dex_experiment: 'Token DEX probe',
+    native_dex_experiment: 'Native DEX probe',
+    gateway_btc_consolidation: 'Gateway consolidation',
+    across_bridge: 'Across bridge',
+  })[kind] || titleCaseLabel(kind || 'activity');
+}
 function formatStatusAge(value) {
   if (!value) return null;
   const observedAtMs = new Date(value).getTime();
@@ -689,6 +700,72 @@ function OpsStrip({ fill = false }) {
   );
 }
 
+function PnlBreakdownStrip() {
+  const flow = window.FLOW || {};
+  const metrics = flow?.metrics || {};
+  const strategyUsd = metrics.realizedStrategyUsd;
+  const evidenceUsd = metrics.realizedEvidenceCostUsd;
+  const totalUsd = metrics.realizedTotalUsd;
+  const strategyCount = metrics.realizedStrategyTradeCount || 0;
+  const evidenceCount = metrics.realizedEvidenceCount || 0;
+  const topKinds = Array.isArray(metrics.realizedByKind)
+    ? metrics.realizedByKind
+        .filter((item) => Number.isFinite(item?.realizedNetPnlUsd) && item.realizedNetPnlUsd < 0)
+        .slice(0, 3)
+    : [];
+  if (!Number.isFinite(strategyUsd) && !Number.isFinite(evidenceUsd) && !Number.isFinite(totalUsd)) return null;
+  return (
+    <div style={{
+      margin: '0 12px',
+      padding: '10px 12px 8px',
+      background: 'var(--card)',
+      border: '0.5px solid var(--line)',
+      borderRadius: 14,
+      flexShrink: 0,
+      animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
+    }}>
+      <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8 }}>
+        <div>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.2 }}>Realized split</div>
+          <div style={{ fontSize:9.6, color:'var(--ink-3)', marginTop:1 }}>
+            strategy vs transport / probe cost
+          </div>
+        </div>
+        <div style={{ fontSize:10, color:'var(--ink-3)' }}>
+          {strategyCount} strategy · {evidenceCount} probe
+        </div>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <TriCard cells={[
+          {
+            label: 'Strategy',
+            main: fmtUsd(strategyUsd),
+            sub: `${strategyCount} receipts`,
+            accent: Number.isFinite(strategyUsd) && strategyUsd < 0 ? '#B42318' : 'var(--green)',
+          },
+          {
+            label: 'Probe cost',
+            main: fmtUsd(evidenceUsd),
+            sub: `${evidenceCount} receipts`,
+            accent: Number.isFinite(evidenceUsd) && evidenceUsd < 0 ? '#8A520C' : 'var(--ink)',
+          },
+          {
+            label: 'Total',
+            main: fmtUsd(totalUsd),
+            sub: 'combined impact',
+            accent: Number.isFinite(totalUsd) && totalUsd < 0 ? '#B42318' : 'var(--green)',
+          },
+        ]}/>
+      </div>
+      {topKinds.length > 0 && (
+        <div style={{ fontSize:10, color:'var(--ink-3)', marginTop:8, lineHeight:1.45 }}>
+          Top drags: {topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(' · ')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FlowPane({ refreshTick }) {
   const flow = window.FLOW || {};
   const items = HOLDINGS?.all || [];
@@ -803,6 +880,7 @@ function FlowPane({ refreshTick }) {
               Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price.
             </div>
           )}
+          <PnlBreakdownStrip/>
           <OpsStrip fill={true}/>
         </div>
       </div>
