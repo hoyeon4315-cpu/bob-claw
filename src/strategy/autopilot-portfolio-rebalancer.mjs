@@ -11,27 +11,120 @@
 import { parseArgs } from "node:util";
 import { buildDiversifiedPortfolio, evaluateRebalance } from "./portfolio-allocator.mjs";
 import { computeExtendedNetBtcApy, rankAllChains } from "./extended-chain-router.mjs";
-import { getProtocolTier } from "../config/protocol-trust-tiers.mjs";
+import { getProtocolTier, computeRiskAdjustedScore } from "../config/protocol-trust-tiers.mjs";
 import { evaluateOpportunityPolicy } from "../executor/policy/opportunity-policy.mjs";
 import { OPPORTUNITY_INTEGRATION } from "../config/opportunity-integration.mjs";
 import { SCHEDULE, isIdleWindow } from "../config/opportunity-scheduler.mjs";
+import { fetchZerionPositions } from "../executor/zerion-cache.mjs";
+import { fetchRealtimePortfolio, toAutopilotPositions } from "../executor/realtime-portfolio.mjs";
 
 const BTC_PRICE_USD = 95000;
-const MIN_NEW_CAPITAL_USD = 500;    // Don't act on less than $500
+const MIN_NEW_CAPITAL_USD = 300;    // Minimum to act ( lowered for smaller capital operators )
 const MIN_REBALANCE_IMPROVEMENT_BPS = 100; // 1% APY
 const MAX_GAS_COST_PCT_OF_CAPITAL = 0.05;  // Don't spend >5% on gas
 
-// Current known operator positions from AGENTS.md Operator Memory
-// These are read-only; the autopilot never mutates them directly.
-const KNOWN_POSITIONS = [
-  { chain: "Base", protocol: "yo-protocol", symbol: "USDC", allocatedUsd: 75, pool: "yo-base-usdc", apy: 15.69 },
+const SIGNER_ADDRESS = "0x96262bE63AA687563789225c2fE898c27a3b0AE4";
+
+// Price map for converting balances to USD
+const PRICE_MAP = {
+  ETH: 2_300,
+  WETH: 2_300,
+  BTC: 95_000,
+  WBTC: 95_000,
+  cbBTC: 95_000,
+  "wBTC.OFT": 95_000,
+  USDC: 1,
+  USDT: 1,
+  RLUSD: 1,
+  AERO: 0.5,
+  BNB: 600,
+  WBNB: 600,
+  AVAX: 22,
+  BERA: 5,
+};
+
+async function getPositionsFromRpc() {
+  try {
+    const snapshot = await fetchRealtimePortfolio(SIGNER_ADDRESS, { useCache: true });
+    return toAutopilotPositions(snapshot, { priceMap: PRICE_MAP });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getPositionsFromZerion() {
+  const result = await fetchZerionPositions(SIGNER_ADDRESS);
+  if (result.positions.length === 0) return null;
+
+  return result.positions.map((p) => ({
+    chain: p.chain,
+    protocol: p.protocol || "unknown",
+    symbol: p.symbol,
+    allocatedUsd: p.value,
+    pool: p.id,
+    apy: p.apy || 0,
+  }));
+}
+
+// Protocol positions that RPC can't read directly (need contract calls)
+// These come from manual confirmation / Zerion / protocol APIs
+const PROTOCOL_POSITIONS = [
+  { chain: "Base", protocol: "moonwell", symbol: "USDC", allocatedUsd: 128.57, pool: "moonwell-base-usdc", apy: 8.5 },
+  { chain: "Base", protocol: "yo-protocol", symbol: "USDC", allocatedUsd: 80, pool: "yo-base-usdc", apy: 15.69 },
   { chain: "Ethereum", protocol: "aave-v3", symbol: "RLUSD", allocatedUsd: 25, pool: "aave-eth-rlusd", apy: 3.45 },
   { chain: "Ethereum", protocol: "morpho-blue", symbol: "USDC", allocatedUsd: 75, pool: "morpho-clearstar", apy: 4.09 },
   { chain: "Ethereum", protocol: "morpho-blue", symbol: "USDC", allocatedUsd: 50, pool: "morpho-steakhouse", apy: 4.09 },
 ];
 
-function totalKnownCapitalUsd() {
-  return KNOWN_POSITIONS.reduce((s, p) => s + p.allocatedUsd, 0);
+async function getMergedPositions() {
+  // Priority 1: Real-time RPC wallet balances (gas-free, no API limits)
+  const rpcPositions = await getPositionsFromRpc();
+
+  // Priority 2: Zerion cache (if available)
+  const zerionPositions = await getPositionsFromZerion();
+
+  // Priority 3: Hardcoded protocol positions (until direct protocol readers built)
+  const protocolPositions = PROTOCOL_POSITIONS;
+
+  // Merge strategy: use RPC for wallet tokens, keep protocol positions separate
+  // Remove duplicate wallet tokens that might appear in Zerion
+  const merged = [];
+  const seenPools = new Set();
+
+  // Add protocol positions first (they have higher accuracy for DeFi positions)
+  for (const pos of protocolPositions) {
+    merged.push(pos);
+    seenPools.add(pos.pool);
+  }
+
+  // Add RPC wallet balances for tokens not in protocol positions
+  if (rpcPositions) {
+    for (const pos of rpcPositions) {
+      if (!seenPools.has(pos.pool)) {
+        merged.push(pos);
+        seenPools.add(pos.pool);
+      }
+    }
+  }
+
+  // Add Zerion positions as fallback for anything missing
+  if (zerionPositions) {
+    for (const pos of zerionPositions) {
+      if (!seenPools.has(pos.pool) && pos.allocatedUsd > 0.5) {
+        merged.push(pos);
+        seenPools.add(pos.pool);
+      }
+    }
+  }
+
+  return merged;
+}
+
+async function getTotalCapitalUsd(overrideUsd = null) {
+  if (overrideUsd) return overrideUsd;
+
+  const positions = await getMergedPositions();
+  return positions.reduce((s, p) => s + p.allocatedUsd, 0);
 }
 
 function detectNewCapital(currentPositions, previousPositions) {
@@ -85,8 +178,9 @@ async function fetchCurrentOpportunities() {
 }
 
 export async function runAutopilotTick({
-  previousPositions = KNOWN_POSITIONS,
+  previousPositions = null,
   totalCapitalBtc = null,
+  totalCapitalUsdOverride = null,
   dryRun = true,
 } = {}) {
   const now = new Date().toISOString();
@@ -101,10 +195,16 @@ export async function runAutopilotTick({
     return { status: "idle_window", reason: "maintenance_quiet_hours", at: now };
   }
 
-  // 2. Capital check
-  const knownCapitalUsd = totalKnownCapitalUsd();
+  // Resolve positions: real-time RPC + protocol positions + Zerion fallback
+  let resolvedPositions = previousPositions;
+  if (!resolvedPositions || resolvedPositions.length === 0) {
+    resolvedPositions = await getMergedPositions();
+  }
+
+  // 2. Capital check (from Zerion cache first, then fallback)
+  const knownCapitalUsd = await getTotalCapitalUsd(totalCapitalUsdOverride);
   const capitalBtc = totalCapitalBtc ?? knownCapitalUsd / BTC_PRICE_USD;
-  const capitalUsd = capitalBtc * BTC_PRICE_USD;
+  const capitalUsd = totalCapitalUsdOverride ?? (capitalBtc * BTC_PRICE_USD);
 
   if (capitalUsd < MIN_NEW_CAPITAL_USD) {
     return {
@@ -122,14 +222,15 @@ export async function runAutopilotTick({
   }
 
   // 4. Build optimal portfolio
+  const targetCount = capitalUsd < 500 ? 3 : 5;
   const optimal = buildDiversifiedPortfolio({
     opportunities,
     totalCapitalBtc: capitalBtc,
-    targetOpportunityCount: 5,
+    targetOpportunityCount: targetCount,
   });
 
   // 5. Evaluate rebalance against current positions
-  const currentAsOpp = previousPositions.map((p) => ({
+  const currentAsOpp = resolvedPositions.map((p) => ({
     chain: p.chain,
     protocol: p.protocol,
     symbol: p.symbol,
@@ -150,7 +251,7 @@ export async function runAutopilotTick({
   });
 
   // 6. Detect new capital
-  const newCapitalUsd = detectNewCapital(optimal.allocations, previousPositions);
+  const newCapitalUsd = detectNewCapital(optimal.allocations, resolvedPositions);
 
   // 7. Generate intents
   const intents = [];
@@ -171,7 +272,7 @@ export async function runAutopilotTick({
 
   // 7b. Enter new high-score opportunities (only if new capital or rebalanced freed capital)
   for (const alloc of optimal.allocations) {
-    const existing = previousPositions.find((p) => p.pool === alloc.opportunity.pool);
+    const existing = resolvedPositions.find((p) => p.pool === alloc.opportunity.pool);
     if (!existing && alloc.allocatedBtc * BTC_PRICE_USD >= MIN_NEW_CAPITAL_USD) {
       intents.push({
         type: "enter",
@@ -188,7 +289,7 @@ export async function runAutopilotTick({
 
   // 7c. Reallocate existing positions (size adjustments)
   for (const alloc of optimal.allocations) {
-    const existing = previousPositions.find((p) => p.pool === alloc.opportunity.pool);
+    const existing = resolvedPositions.find((p) => p.pool === alloc.opportunity.pool);
     if (existing) {
       const diffBtc = alloc.allocatedBtc - (existing.allocatedUsd / BTC_PRICE_USD);
       if (Math.abs(diffBtc) * BTC_PRICE_USD > 50) { // >$50 change
@@ -258,6 +359,7 @@ async function main() {
     options: {
       "dry-run": { type: "boolean" },
       "capital-btc": { type: "string" },
+      "capital-usd": { type: "string" },
       loop: { type: "boolean" },
     },
     allowPositionals: true,
@@ -265,10 +367,11 @@ async function main() {
 
   const dryRun = values["dry-run"] !== false; // default dry-run
   const capitalBtc = values["capital-btc"] ? parseFloat(values["capital-btc"]) : null;
+  const capitalUsd = values["capital-usd"] ? parseFloat(values["capital-usd"]) : null;
   const loop = values.loop || false;
 
   async function tick() {
-    const result = await runAutopilotTick({ totalCapitalBtc: capitalBtc, dryRun });
+    const result = await runAutopilotTick({ totalCapitalBtc: capitalBtc, totalCapitalUsdOverride: capitalUsd, dryRun });
     console.log(JSON.stringify(result, null, 2));
     return result;
   }
