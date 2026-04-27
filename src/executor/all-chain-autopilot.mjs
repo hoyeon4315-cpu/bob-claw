@@ -5,7 +5,9 @@ import { config, getEnv } from "../config/env.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { evaluateDiscretionaryBudget } from "./policy/cap-check.mjs";
 import {
   refillCandidateExecutable,
   refillExecutionCandidates,
@@ -27,6 +29,41 @@ export const OFFICIAL_GATEWAY_DESTINATION_CHAINS = Object.freeze([
 const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 const BASE_WBTC_OFT_TOKEN = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";
 const MIN_WRAPPED_BTC_HANDOFF_USD = 5;
+const DISCRETIONARY_RECEIPT_KIND_TO_CATEGORY = Object.freeze({
+  token_dex_experiment: "probe",
+  native_dex_experiment: "probe",
+  gas_zip_native_refuel: "refuel",
+  lifi_bridge: "bridge",
+  across_bridge: "bridge",
+  gateway_btc_consolidation: "consolidation",
+});
+const DISCRETIONARY_REFILL_EXECUTOR_TO_CATEGORY = Object.freeze({
+  token_dex_experiment: "probe",
+  native_dex_experiment: "probe",
+  gas_zip_native_refuel: "refuel",
+  across_bridge: "bridge",
+  lifi_bridge: "bridge",
+  gateway_btc_consolidation: "consolidation",
+  cross_chain_btc_intermediate: "consolidation",
+});
+const DISCRETIONARY_REFILL_METHOD_TO_CATEGORY = Object.freeze({
+  same_chain_token_to_native_swap: "probe",
+  same_chain_native_to_token_swap: "probe",
+  gas_refuel_bridge_gas_zip: "refuel",
+  cross_chain_bridge_across: "bridge",
+  cross_chain_bridge_lifi: "bridge",
+  cross_chain_swap_via_btc_intermediate: "consolidation",
+});
+
+function finiteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function timestampMs(value) {
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function jsonFromStdout(stdout = "") {
   const text = String(stdout || "").trim();
@@ -435,6 +472,80 @@ function compactCanarySweep(report = null) {
   };
 }
 
+function receiptDiscretionaryCategory(entry = {}) {
+  const kind = String(entry?.kind || entry?.receiptKind || entry?.routeKind || "").trim().toLowerCase();
+  return DISCRETIONARY_RECEIPT_KIND_TO_CATEGORY[kind] || null;
+}
+
+function normalizeDiscretionarySliceEntry(entry = {}) {
+  const category = receiptDiscretionaryCategory(entry);
+  if (!category) return null;
+  return {
+    ...entry,
+    category,
+    discretionaryBudgetCategory: category,
+  };
+}
+
+function refillDiscretionaryCategory({ job = {}, preview = null } = {}) {
+  const executor = String(preview?.json?.preparation?.executor || "").trim();
+  if (executor && DISCRETIONARY_REFILL_EXECUTOR_TO_CATEGORY[executor]) {
+    return DISCRETIONARY_REFILL_EXECUTOR_TO_CATEGORY[executor];
+  }
+  const method = String(refillSelectedMethod(preview || {}, job.executionMethod) || job.executionMethod || "").trim();
+  return DISCRETIONARY_REFILL_METHOD_TO_CATEGORY[method] || null;
+}
+
+function refillDiscretionaryIntent({ job = {}, preview = null, category = null, now } = {}) {
+  const preparation = preview?.json?.preparation || {};
+  const discretionaryBudget = preparation.discretionaryBudget || {};
+  const plan = preparation.plan || {};
+  const classification =
+    job?.movementBudget?.classification ||
+    job?.classification ||
+    job?.strategyPolicy?.classification ||
+    null;
+  const discretionaryBudgetUsd = [
+    discretionaryBudget.quoteCostUsd,
+    discretionaryBudget.bridgeQuoteCostUsd,
+    job?.movementBudget?.bridgeQuoteCostUsd,
+    job?.fundingSource?.expectedExecutionRefillCostUsd,
+    category === "refuel" ? plan?.amountUsd : null,
+  ].map(finiteNumber).find(Number.isFinite) ?? null;
+  return {
+    discretionaryBudgetCategory: category,
+    discretionaryBudgetUsd,
+    classification,
+    observedAt: now,
+    now,
+    metadata: {
+      classification,
+      liveInventoryDependencyOverride: job?.movementBudget?.liveInventoryDependencyOverride === true,
+    },
+  };
+}
+
+function applyDiscretionaryBudgetBlock(preview, verdict, category) {
+  return {
+    ...preview,
+    json: {
+      ...(preview?.json || {}),
+      preparation: {
+        ...(preview?.json?.preparation || {}),
+        status: "blocked",
+        blockedReason: verdict.blockers?.[0] || "discretionary_budget_24h_category_exhausted",
+        discretionaryBudget: {
+          ...(preview?.json?.preparation?.discretionaryBudget || {}),
+          category,
+          allowed: false,
+          blockers: verdict.blockers || [],
+          runningTotalUsd: verdict.runningTotalUsd ?? 0,
+        },
+      },
+    },
+  };
+}
+
 function compactStrategyDispatch(report = null, { capitalDispatchReadiness = null } = {}) {
   const currentResults = report?.record?.strategyResults || [];
   const currentSucceeded = currentResults.filter((item) => item.executionStatus === "succeeded").length;
@@ -733,6 +844,7 @@ export async function runAllChainAutopilot({
   canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,
   runCommandImpl = defaultRunCommand,
+  readJsonlImpl = readJsonl,
   dataDir = config.dataDir,
   bootstrapBtcSats = null,
   bootstrapBtcPriceUsd = null,
@@ -742,6 +854,34 @@ export async function runAllChainAutopilot({
   const autopilotRunId = randomUUID();
   const steps = [];
   const refillExecutions = [];
+  let discretionary24hSlicePromise = null;
+
+  async function discretionary24hSlice() {
+    if (!discretionary24hSlicePromise) {
+      discretionary24hSlicePromise = readJsonlImpl(dataDir, "receipt-reconciliations").then((entries) => {
+        const cutoffMs = timestampMs(observedAt) - 24 * 60 * 60 * 1000;
+        return entries
+          .filter((entry) => {
+            const observedEntryMs = timestampMs(entry?.observedAt || entry?.timestamp);
+            return Number.isFinite(observedEntryMs) && observedEntryMs > cutoffMs;
+          })
+          .map(normalizeDiscretionarySliceEntry)
+          .filter(Boolean);
+      });
+    }
+    return discretionary24hSlicePromise;
+  }
+
+  async function evaluateAutopilotDiscretionaryBudget(category, intent = {}) {
+    if (!category) {
+      return {
+        allowed: true,
+        blockers: [],
+        runningTotalUsd: 0,
+      };
+    }
+    return evaluateDiscretionaryBudget(category, intent, await discretionary24hSlice());
+  }
 
   await runJsonStep({
     name: "gas_snapshot_refresh",
@@ -898,6 +1038,22 @@ export async function runAllChainAutopilot({
     let execution = null;
     if (allowLiveCapableExecution && refillPreparationReady(preview.json)) {
       while (refillPreparationReady(preview.json)) {
+        const discretionaryCategory = refillDiscretionaryCategory({ job, preview });
+        if (discretionaryCategory) {
+          const discretionaryVerdict = await evaluateAutopilotDiscretionaryBudget(
+            discretionaryCategory,
+            refillDiscretionaryIntent({
+              job,
+              preview,
+              category: discretionaryCategory,
+              now: observedAt,
+            }),
+          );
+          if (!discretionaryVerdict.allowed) {
+            preview = applyDiscretionaryBudgetBlock(preview, discretionaryVerdict, discretionaryCategory);
+            break;
+          }
+        }
         const method = refillSelectedMethod(preview, job.executionMethod);
         execution = await runJsonStep({
           name: `treasury_refill_execute:${job.jobId}`,
@@ -1003,6 +1159,14 @@ export async function runAllChainAutopilot({
     }));
   }
 
+  const canaryBudgetVerdict = allowLiveCapableExecution
+    ? await evaluateAutopilotDiscretionaryBudget("probe", {
+      discretionaryBudgetCategory: "probe",
+      observedAt,
+      now: observedAt,
+    })
+    : { allowed: false, blockers: [], runningTotalUsd: 0 };
+  const allowProbeExecution = allowLiveCapableExecution && canaryBudgetVerdict.allowed;
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
     args: appendFlag([
@@ -1012,7 +1176,7 @@ export async function runAllChainAutopilot({
       `--chains=${chains.join(",")}`,
       `--limit=${canaryLimit}`,
       `--timeout-ms=${canaryTimeoutMs}`,
-    ], "--execute", allowLiveCapableExecution),
+    ], "--execute", allowProbeExecution),
     runCommandImpl,
     cwd,
     timeoutMs: canaryTimeoutMs,

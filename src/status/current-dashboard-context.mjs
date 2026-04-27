@@ -39,6 +39,7 @@ import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
+import { readReportingPnlBaseline } from "./reporting-pnl-baseline.mjs";
 import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
@@ -271,6 +272,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   });
 
   const executorRuntime = await loadExecutorRuntime({ now });
+  const reportingPnlBaseline = await readReportingPnlBaseline({ dataDir });
   const researchFunnel = await loadResearchFunnelSlice({
     rootDir: join(dataDir, ".."),
     dataDir,
@@ -311,10 +313,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     dexSpreadLatest,
     thresholdSensitivity,
     triangleArtifacts,
-    executorRuntime,
-    promotionReport,
-    researchFunnel,
-  }, { now });
+     executorRuntime,
+     promotionReport,
+     researchFunnel,
+     reportingPnlBaseline,
+   }, { now });
 
   // P1/P2 parity floor injection — deterministic, pure slices
   const chainParity = buildChainParitySlice();

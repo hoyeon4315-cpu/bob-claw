@@ -110,6 +110,48 @@ function intentCapAmountUsd(intent = {}) {
   return Number(intent.amountUsd ?? 0);
 }
 
+function firstFiniteNumber(candidates = []) {
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (isFiniteNumber(parsed)) return parsed;
+  }
+  return null;
+}
+
+function recordDiscretionarySpendUsd(record = {}, category = null) {
+  const normalizedCategory = normalizeDiscretionaryCategory(category);
+  return firstFiniteNumber([
+    record.discretionaryBudgetUsd,
+    record.metadata?.discretionaryBudgetUsd,
+    record.intent?.discretionaryBudgetUsd,
+    record.intent?.metadata?.discretionaryBudgetUsd,
+    record.realized?.actualKnownCostUsd,
+    record.execution?.actualKnownCostUsd,
+    record.quote?.feeUsd,
+    record.quote?.totalFeeUsd,
+    record.quote?.fees?.totalUsd,
+    record.movementBudget?.bridgeQuoteCostUsd,
+    record.fundingSource?.expectedExecutionRefillCostUsd,
+    normalizedCategory === "refuel" ? record.amountUsd : null,
+    normalizedCategory === "refuel" ? record.intent?.amountUsd : null,
+  ]) ?? 0;
+}
+
+function intentDiscretionarySpendUsd(intent = {}, category = null) {
+  const normalizedCategory = normalizeDiscretionaryCategory(category);
+  return firstFiniteNumber([
+    intent.discretionaryBudgetUsd,
+    intent.metadata?.discretionaryBudgetUsd,
+    intent.realized?.actualKnownCostUsd,
+    intent.quote?.feeUsd,
+    intent.quote?.totalFeeUsd,
+    intent.quote?.fees?.totalUsd,
+    intent.movementBudget?.bridgeQuoteCostUsd,
+    intent.fundingSource?.expectedExecutionRefillCostUsd,
+    normalizedCategory === "refuel" ? intent.amountUsd : null,
+  ]) ?? 0;
+}
+
 function protocolTagsForStrategy(strategyId) {
   return [...new Set(getStrategyCaps(strategyId)?.exposure?.protocols || [])];
 }
@@ -301,10 +343,10 @@ export function evaluateDiscretionaryBudget(category, intent = {}, last24hSlice 
 
   const historicalTotalUsd = last24hSlice
     .filter((entry) => discretionarySliceCategory(entry) === normalizedCategory)
-    .map(recordAmountUsd)
+    .map((entry) => recordDiscretionarySpendUsd(entry, normalizedCategory))
     .filter(isFiniteNumber)
     .reduce((sum, value) => sum + value, 0);
-  const currentAmountUsd = intentCapAmountUsd(intent);
+  const currentAmountUsd = intentDiscretionarySpendUsd(intent, normalizedCategory);
   const runningTotalUsd = historicalTotalUsd + (isFiniteNumber(currentAmountUsd) ? currentAmountUsd : 0);
   const blockers = runningTotalUsd > max24hBudgetUsd ? ["discretionary_budget_24h_category_exhausted"] : [];
 

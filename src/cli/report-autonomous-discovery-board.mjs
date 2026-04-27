@@ -5,6 +5,12 @@ import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
+import {
+  filterRecordsByReportingPnlBaseline,
+  readReportingPnlBaseline,
+  summarizeReportingPnlBaseline,
+} from "../status/reporting-pnl-baseline.mjs";
 import { buildAutonomousDiscoveryBoard, filterOfficialGatewayRoutes } from "../strategy/autonomous-discovery-board.mjs";
 import { buildDexRouteUniverseSummary, buildEthRouteUniverseSummary } from "../strategy/dex-route-universe.mjs";
 
@@ -24,12 +30,22 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [deterministicStrategyCandidates, destinationResearchQueue, destinationPromotionGate, routeRecords, iterationRecords] = await Promise.all([
+  const [
+    deterministicStrategyCandidates,
+    destinationResearchQueue,
+    destinationPromotionGate,
+    routeRecords,
+    iterationRecords,
+    receiptRecords,
+    reportingPnlBaseline,
+  ] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "deterministic-strategy-candidates.json")),
     readJsonIfExists(join(config.dataDir, "destination-research-queue.json")),
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
     readJsonl(config.dataDir, "gateway-routes"),
     readJsonl(config.dataDir, "autonomous-discovery-board-runs"),
+    readJsonl(config.dataDir, "receipt-reconciliations"),
+    readReportingPnlBaseline({ dataDir: config.dataDir }),
   ]);
   const latestRoutesRecord = routeRecords.at(-1) || null;
   const gatewayRoutes = filterOfficialGatewayRoutes(latestRoutesRecord?.routes || []);
@@ -50,10 +66,33 @@ async function main() {
     gatewayRoutes,
     iterationRecords,
   });
+  const scopedReceiptSummary = buildReceiptLedgerSummary(
+    filterRecordsByReportingPnlBaseline(receiptRecords, reportingPnlBaseline),
+  );
+  const payload = {
+    ...report,
+    reportingPnl: {
+      baseline: summarizeReportingPnlBaseline(reportingPnlBaseline),
+      realized: {
+        valueUsd:
+          scopedReceiptSummary.classifications?.strategy_realized_pnl?.realizedNetPnlUsd ??
+          scopedReceiptSummary.summary.realizedNetPnlUsd ??
+          null,
+        tradeCount:
+          scopedReceiptSummary.classifications?.strategy_realized_pnl?.reconciledCount ??
+          scopedReceiptSummary.summary.reconciledCount ??
+          0,
+        failedCount:
+          scopedReceiptSummary.classifications?.strategy_realized_pnl?.failedCount ??
+          scopedReceiptSummary.summary.failedCount ??
+          0,
+      },
+    },
+  };
 
   if (args.write) {
     const outputPath = join(config.dataDir, "autonomous-discovery-board.json");
-    await writeTextIfChanged(outputPath, `${JSON.stringify(report, null, 2)}\n`, {
+    await writeTextIfChanged(outputPath, `${JSON.stringify(payload, null, 2)}\n`, {
       normalize: (contents) => {
         if (!contents) return contents;
         return JSON.stringify(stripVolatile(JSON.parse(contents)));
@@ -62,24 +101,29 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(JSON.stringify(report, null, 2));
+    console.log(JSON.stringify(payload, null, 2));
     return;
   }
 
-  console.log(`opportunities=${report.summary?.opportunityCount ?? 0}`);
-  console.log(`readyNow=${report.summary?.readyNowCount ?? 0}`);
-  console.log(`deterministic=${report.summary?.deterministicCount ?? 0}`);
-  console.log(`destination=${report.summary?.destinationCount ?? 0}`);
-  console.log(`routeGaps=${report.summary?.routeGapCount ?? 0}`);
-  console.log(`routeDevelopment=${report.summary?.routeDevelopmentCount ?? 0}`);
-  console.log(`keep=${report.summary?.keepCount ?? 0}`);
-  console.log(`discard=${report.summary?.discardCount ?? 0}`);
-  console.log(`topOpportunity=${report.summary?.topOpportunityId || "n/a"}`);
-  console.log(`nextAction=${report.summary?.nextAction?.code || "n/a"}`);
-  console.log(`paperPnlBtc=${report.summary?.pnl?.paper?.btc ?? "n/a"} paperPnlUsd=${report.summary?.pnl?.paper?.usdProjection ?? "n/a"} paperPnlStatus=${report.summary?.pnl?.paper?.status || "n/a"}`);
-  console.log(`estimatedPnlBtc=${report.summary?.pnl?.estimated?.btc ?? "n/a"} estimatedPnlUsd=${report.summary?.pnl?.estimated?.usdProjection ?? "n/a"} estimatedPnlStatus=${report.summary?.pnl?.estimated?.status || "n/a"}`);
-  console.log(`realizedPnlBtc=${report.summary?.pnl?.realized?.btc ?? "n/a"} realizedPnlUsd=${report.summary?.pnl?.realized?.usdProjection ?? "n/a"} realizedPnlStatus=${report.summary?.pnl?.realized?.status || "n/a"}`);
-  for (const item of (report.opportunities || []).slice(0, 5)) {
+  console.log(`opportunities=${payload.summary?.opportunityCount ?? 0}`);
+  console.log(`readyNow=${payload.summary?.readyNowCount ?? 0}`);
+  console.log(`deterministic=${payload.summary?.deterministicCount ?? 0}`);
+  console.log(`destination=${payload.summary?.destinationCount ?? 0}`);
+  console.log(`routeGaps=${payload.summary?.routeGapCount ?? 0}`);
+  console.log(`routeDevelopment=${payload.summary?.routeDevelopmentCount ?? 0}`);
+  console.log(`keep=${payload.summary?.keepCount ?? 0}`);
+  console.log(`discard=${payload.summary?.discardCount ?? 0}`);
+  console.log(`topOpportunity=${payload.summary?.topOpportunityId || "n/a"}`);
+  console.log(`nextAction=${payload.summary?.nextAction?.code || "n/a"}`);
+  console.log(`paperPnlBtc=${payload.summary?.pnl?.paper?.btc ?? "n/a"} paperPnlUsd=${payload.summary?.pnl?.paper?.usdProjection ?? "n/a"} paperPnlStatus=${payload.summary?.pnl?.paper?.status || "n/a"}`);
+  console.log(`estimatedPnlBtc=${payload.summary?.pnl?.estimated?.btc ?? "n/a"} estimatedPnlUsd=${payload.summary?.pnl?.estimated?.usdProjection ?? "n/a"} estimatedPnlStatus=${payload.summary?.pnl?.estimated?.status || "n/a"}`);
+  console.log(`realizedPnlBtc=${payload.summary?.pnl?.realized?.btc ?? "n/a"} realizedPnlUsd=${payload.summary?.pnl?.realized?.usdProjection ?? "n/a"} realizedPnlStatus=${payload.summary?.pnl?.realized?.status || "n/a"}`);
+  if (payload.reportingPnl?.baseline?.active) {
+    console.log(
+      `reportingBaseline=${payload.reportingPnl.baseline.anchoredAt} reportingRealizedUsd=${payload.reportingPnl.realized.valueUsd ?? "n/a"} reportingTradeCount=${payload.reportingPnl.realized.tradeCount ?? 0}`,
+    );
+  }
+  for (const item of (payload.opportunities || []).slice(0, 5)) {
     console.log(
       `${item.selectionRank || "n/a"} ${item.id} lane=${item.lane} status=${item.status} score=${item.priorityScore} selection=${item.selectionScore} keep=${item.researchLoop?.keepScore ?? "n/a"} discard=${item.researchLoop?.discardScore ?? "n/a"}`,
     );

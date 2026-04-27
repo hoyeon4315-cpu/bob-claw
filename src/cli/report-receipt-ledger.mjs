@@ -3,10 +3,16 @@
 import { config } from "../config/env.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
+import {
+  filterRecordsByReportingPnlBaseline,
+  readReportingPnlBaseline,
+  summarizeReportingPnlBaseline,
+} from "../status/reporting-pnl-baseline.mjs";
 
 function parseArgs(argv) {
   return {
     json: new Set(argv).has("--json"),
+    allTime: new Set(argv).has("--all-time"),
   };
 }
 
@@ -17,11 +23,27 @@ function formatUsd(value) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const records = await readJsonl(config.dataDir, "receipt-reconciliations");
-  const summary = buildReceiptLedgerSummary(records);
+  const reportingPnlBaseline = await readReportingPnlBaseline({ dataDir: config.dataDir });
+  const scopedRecords = args.allTime
+    ? records
+    : filterRecordsByReportingPnlBaseline(records, reportingPnlBaseline);
+  const payload = {
+    ...buildReceiptLedgerSummary(scopedRecords),
+    reportingPnlBaseline: summarizeReportingPnlBaseline(reportingPnlBaseline, {
+      applied: !args.allTime,
+    }),
+  };
 
   if (args.json) {
-    console.log(JSON.stringify(summary, null, 2));
+    console.log(JSON.stringify(payload, null, 2));
     return;
+  }
+
+  const summary = payload;
+  if (summary.reportingPnlBaseline.active) {
+    console.log(
+      `reportingPnlBaseline=${summary.reportingPnlBaseline.anchoredAt} applied=${summary.reportingPnlBaseline.applied}`,
+    );
   }
 
   console.log(`recordCount=${summary.summary.recordCount}`);

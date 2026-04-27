@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
   OFFICIAL_GATEWAY_DESTINATION_CHAINS,
   defaultRunCommand,
-  runAllChainAutopilot,
+  runAllChainAutopilot as runAllChainAutopilotImpl,
 } from "../src/executor/all-chain-autopilot.mjs";
+
+const emptyReceiptJsonl = async () => [];
+
+function runAllChainAutopilot(options = {}) {
+  return runAllChainAutopilotImpl({
+    readJsonlImpl: emptyReceiptJsonl,
+    ...options,
+  });
+}
 
 function fakeCommand({ args }) {
   const name = args[0];
@@ -423,6 +432,76 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.executionGate.blockedReason, null);
 });
 
+test("all-chain autopilot keeps same-tick refill execution ahead of strategy dispatch", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "REBALANCE_REQUIRED", actions: [{ type: "gas_float_top_up", chain: "base" }] },
+          capitalPlan: { decision: "REFILL_REQUIRED", summary: { actionCount: 1, blockerCount: 0 } },
+          jobs: {
+            summary: { jobCount: 1, estimatedAssetValueUsd: 2 },
+            jobs: [
+              {
+                jobId: "capital-gas",
+                chain: "base",
+                type: "refill_native",
+                executionMethod: "gas_refuel_bridge_gas_zip",
+                requiresManualReview: false,
+                fundingSource: { selectionStatus: "ready" },
+              },
+            ],
+          },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: { summary: { jobCount: 0 }, jobs: [] },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: args.includes("--execute")
+          ? { execution: { settlementStatus: "delivered" }, outcomeEvent: { status: "delivered" } }
+          : { preparation: { status: "ready", executionMethod: "gas_refuel_bridge_gas_zip" } },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  const refillExecuteIndex = seen.findIndex(
+    (args) => args[0] === "src/cli/run-refill-job-stub.mjs" && args.includes("--execute"),
+  );
+  const dispatchExecuteIndex = seen.findIndex(
+    (args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs" && args.includes("--execute"),
+  );
+  assert.equal(refillExecuteIndex >= 0, true);
+  assert.equal(dispatchExecuteIndex >= 0, true);
+  assert.equal(refillExecuteIndex < dispatchExecuteIndex, true);
+});
+
 test("all-chain autopilot reports recoverable blockers without failing the whole pass", async () => {
   let primaryPlanSeen = false;
   const recoverableCommand = ({ args }) => {
@@ -582,6 +661,108 @@ test("all-chain autopilot runs auto-kill before live-capable steps and suppresse
   assert.equal(report.status, "completed_with_blockers");
   assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
   assert.equal(report.summary.executionGate.blockedReason, "auto_kill_triggered");
+});
+
+test("all-chain autopilot pauses exhausted discretionary refill categories without blocking live dispatch", async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), "all-chain-autopilot-budget-"));
+  t.after(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await writeFile(
+    join(dataDir, "receipt-reconciliations.jsonl"),
+    `${JSON.stringify({
+      observedAt: new Date().toISOString(),
+      kind: "gas_zip_native_refuel",
+      realized: {
+        actualKnownCostUsd: 5.25,
+      },
+    })}\n`,
+    "utf8",
+  );
+
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "gas-budgeted",
+              chain: "optimism",
+              asset: "ETH",
+              type: "refill_native",
+              executionMethod: "gas_refuel_bridge_gas_zip",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          preparation: {
+            status: "ready",
+            executionMethod: "gas_refuel_bridge_gas_zip",
+            executor: "gas_zip_native_refuel",
+            plan: {
+              amountUsd: 1.2,
+            },
+          },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilotImpl({
+    execute: true,
+    write: false,
+    dataDir,
+    runCommandImpl: command,
+  });
+
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-refill-job-stub.mjs" && args.includes("--execute")),
+    false,
+  );
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs" && args.includes("--execute")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs" && args.includes("--execute")),
+    true,
+  );
+  assert.equal(report.refillExecutions[0].previewBlockedReason, "discretionary_budget_24h_category_exhausted");
+  assert.equal(report.refillExecutions[0].attempted, false);
+  assert.equal(report.summary.refillExecutedCount, 0);
 });
 
 test("all-chain autopilot retries refill jobs with executable alternate methods after no_route", async () => {

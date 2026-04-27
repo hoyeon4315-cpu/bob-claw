@@ -15,6 +15,10 @@ import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.
 import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
 import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-runner.mjs";
 import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
+import {
+  filterRecordsByReportingPnlBaseline,
+  summarizeReportingPnlBaseline,
+} from "./reporting-pnl-baseline.mjs";
 import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
@@ -1101,9 +1105,10 @@ function humanExecutionStatus(status) {
   }[status] || status || "대기";
 }
 
-function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [] }) {
+function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [], reportingPnlBaseline = null, now = null }) {
   const executionReview = shadowCycle?.objectivePlans?.executionReview || null;
-  const receiptLedger = buildReceiptLedgerSummary(receiptRecords || []);
+  const scopedReceiptRecords = filterRecordsByReportingPnlBaseline(receiptRecords || [], reportingPnlBaseline);
+  const receiptLedger = buildReceiptLedgerSummary(scopedReceiptRecords);
   const strategyRealized = receiptLedger.classifications?.strategy_realized_pnl || receiptLedger.summary;
   const executionEvidence = receiptLedger.classifications?.execution_evidence_cost || null;
   return {
@@ -1144,10 +1149,17 @@ function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [
           ? `전략 ${strategyRealized.reconciledCount || 0}건 · 탐사/수송 ${executionEvidence?.reconciledCount || 0}건`
           : "아직 receipt 기록 없음",
     },
+    reportingBaseline: summarizeReportingPnlBaseline(reportingPnlBaseline, { now }),
   };
 }
 
-function tradeHistorySummary({ executionEvents = [], receiptRecords = [], preliveForkReceipts = [], now }) {
+function tradeHistorySummary({
+  executionEvents = [],
+  receiptRecords = [],
+  preliveForkReceipts = [],
+  now,
+  reportingPnlBaseline = null,
+}) {
   const receiptByTxHash = new Map(
     (receiptRecords || [])
       .filter((item) => item?.txHash)
@@ -1180,6 +1192,11 @@ function tradeHistorySummary({ executionEvents = [], receiptRecords = [], preliv
   });
   const merged = [...forkItems, ...eventItems]
     .filter((item) => item.observedAt)
+    .filter((item) =>
+      filterRecordsByReportingPnlBaseline([item], reportingPnlBaseline, {
+        pickTimestamp: (entry) => entry?.observedAt || null,
+      }).length > 0
+    )
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))
     .slice(0, 6)
     .map((item, index) => ({
@@ -1867,12 +1884,15 @@ export function buildDashboardStatus(input, options = {}) {
     opportunity,
     shadowCycle,
     receiptRecords: input.receiptReconciliations || [],
+    reportingPnlBaseline: input.reportingPnlBaseline || null,
+    now,
   });
   const tradeHistory = tradeHistorySummary({
     executionEvents: input.executionEvents || [],
     receiptRecords: input.receiptReconciliations || [],
     preliveForkReceipts: input.preliveForkReceipts || [],
     now,
+    reportingPnlBaseline: input.reportingPnlBaseline || null,
   });
   const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
   const executorRuntime = input.executorRuntime || null;

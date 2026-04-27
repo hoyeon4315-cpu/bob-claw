@@ -29,9 +29,13 @@ async function main() {
     triangleArtifacts,
     laneReclassification: artifacts?.laneReclassification || null,
   });
+  const payload = {
+    ...catalog,
+    reportingPnlBaseline: dashboardStatus?.pnl?.reportingBaseline || null,
+  };
 
   if (args.json) {
-    console.log(JSON.stringify(catalog, null, 2));
+    console.log(JSON.stringify(payload, null, 2));
     return;
   }
 
@@ -44,6 +48,9 @@ async function main() {
   console.log(`scope: ${catalog.scope?.coverage || "unknown"}`);
   console.log(`revalidation top: ${catalog.summary?.topRevalidationCandidateId || "none"}`);
   console.log(`revalidation next: ${catalog.summary?.nextRevalidationAction?.code || "none"}`);
+  if (payload.reportingPnlBaseline?.active) {
+    console.log(`reporting pnl baseline: ${payload.reportingPnlBaseline.anchoredAt}`);
+  }
   if (catalog.scope?.excludes?.length) {
     console.log(`catalog excludes: ${catalog.scope.excludes.join(", ")}`);
   }

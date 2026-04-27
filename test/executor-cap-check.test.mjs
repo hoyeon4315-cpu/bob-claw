@@ -245,13 +245,15 @@ test("evaluateDiscretionaryBudget blocks when a category 24h budget is exhausted
   const result = evaluateDiscretionaryBudget(
     "probe",
     {
-      amountUsd: 0.75,
+      discretionaryBudgetUsd: 0.75,
       intentType: "discretionary_probe",
     },
     [
       {
         category: "probe",
-        amountUsd: 2.5,
+        realized: {
+          actualKnownCostUsd: 2.5,
+        },
       },
     ],
   );
@@ -265,21 +267,27 @@ test("evaluateDiscretionaryBudget isolates spend by category", () => {
   const result = evaluateDiscretionaryBudget(
     "refuel",
     {
-      amountUsd: 1,
+      discretionaryBudgetUsd: 1,
       intentType: "discretionary_refuel",
     },
     [
       {
         category: "bridge",
-        amountUsd: 9.5,
+        realized: {
+          actualKnownCostUsd: 9.5,
+        },
       },
       {
         category: "probe",
-        amountUsd: 2.8,
+        realized: {
+          actualKnownCostUsd: 2.8,
+        },
       },
       {
         category: "refuel",
-        amountUsd: 3,
+        realized: {
+          actualKnownCostUsd: 3,
+        },
       },
     ],
   );
@@ -294,12 +302,14 @@ test("evaluateDiscretionaryBudget bypasses strategy realized pnl intents", () =>
     "bridge",
     {
       classification: "strategy_realized_pnl",
-      amountUsd: 25,
+      discretionaryBudgetUsd: 25,
     },
     [
       {
         category: "bridge",
-        amountUsd: 10,
+        realized: {
+          actualKnownCostUsd: 10,
+        },
       },
     ],
   );
@@ -320,11 +330,14 @@ test("evaluateDiscretionaryBudget bypasses fresh autoExecute strategy intents", 
         observedAt: "2026-04-22T00:00:00.000Z",
       },
       now: "2026-04-22T00:00:10.000Z",
+      discretionaryBudgetUsd: 0.5,
     },
     [
       {
         category: "bridge",
-        amountUsd: 10,
+        realized: {
+          actualKnownCostUsd: 10,
+        },
       },
     ],
   );
