@@ -3,6 +3,13 @@ import { ZERO_TOKEN } from "../assets/tokens.mjs";
 
 const BTC_SATS = 100_000_000;
 const OFT_SENT_EVENT_TOPIC = "0x85496b760a4b7f8d66384b9df21b381f5d1b1e79f229a47aaf4c232edc2fe59a";
+const EVIDENCE_COST_KINDS = new Set([
+  "gas_zip_native_refuel",
+  "lifi_bridge",
+  "token_dex_experiment",
+  "native_dex_experiment",
+  "gateway_btc_consolidation",
+]);
 
 function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
@@ -171,6 +178,72 @@ function driftUsd(actualValue, expectedValue) {
   return actualValue - expectedValue;
 }
 
+function receiptClassification(record = {}) {
+  if (typeof record?.pnl?.classification === "string" && record.pnl.classification.length > 0) {
+    return record.pnl.classification;
+  }
+  return EVIDENCE_COST_KINDS.has(record?.kind) ? "execution_evidence_cost" : "strategy_realized_pnl";
+}
+
+function summarizeRecordCollection(records = []) {
+  const reconciled = records.filter((item) => item.reconciliationStatus === "reconciled");
+  const failed = records.filter((item) => item.reconciliationStatus === "failed");
+  const pendingOutput = records.filter((item) => item.reconciliationStatus === "pending_output");
+  const settled = [...reconciled, ...failed];
+  const realizedValues = reconciled.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
+  const gasValues = records.map((item) => item.realized?.receiptGasUsd).filter(Number.isFinite);
+  const driftValues = reconciled.map((item) => item.realized?.realizedFillVsEstimateBps).filter(Number.isFinite);
+  const estimatedNetValues = settled.map((item) => item.routeContext?.estimatedNetPnlUsd).filter(Number.isFinite);
+  const netDriftValues = settled
+    .map((item) => driftUsd(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
+    .filter(Number.isFinite);
+  const outputDriftValues = reconciled
+    .map((item) => driftUsd(item.output?.actualOutputUsd, item.routeContext?.estimatedOutputUsd))
+    .filter(Number.isFinite);
+  const gasDriftValues = settled.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
+
+  return {
+    recordCount: records.length,
+    reconciledCount: reconciled.length,
+    failedCount: failed.length,
+    pendingOutputCount: pendingOutput.length,
+    realizedNetPnlUsd: realizedValues.reduce((sum, value) => sum + value, 0),
+    medianRealizedNetPnlUsd: median(realizedValues),
+    failedGasCostUsd: failed.map((item) => item.realized?.actualKnownCostUsd).filter(Number.isFinite).reduce((sum, value) => sum + value, 0),
+    totalReceiptGasUsd: gasValues.reduce((sum, value) => sum + value, 0),
+    medianFillDriftBps: median(driftValues),
+    totalEstimatedNetPnlUsd: estimatedNetValues.length ? sum(estimatedNetValues) : null,
+    medianEstimatedNetPnlUsd: median(estimatedNetValues),
+    totalNetDriftUsd: netDriftValues.length ? sum(netDriftValues) : null,
+    medianNetDriftUsd: median(netDriftValues),
+    medianOutputDriftUsd: median(outputDriftValues),
+    totalExecutionGasDriftUsd: gasDriftValues.length ? sum(gasDriftValues) : null,
+    medianExecutionGasDriftUsd: median(gasDriftValues),
+    estimatedPositiveRealizedNegativeCount: settled.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
+  };
+}
+
+function summarizeDimensionGroups(records = [], pickValue, keyName) {
+  const groups = new Map();
+  for (const item of records) {
+    const key = pickValue(item);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return [...groups.entries()]
+    .map(([value, items]) => ({
+      [keyName]: value,
+      ...summarizeRecordCollection(items),
+    }))
+    .sort(
+      (left, right) =>
+        left.realizedNetPnlUsd - right.realizedNetPnlUsd ||
+        right.recordCount - left.recordCount ||
+        String(left[keyName]).localeCompare(String(right[keyName])),
+    );
+}
+
 function reconciliationStatus({ receipt, actualOutputValueUsd, expectedOutputValueUsd }) {
   if (Number(receipt?.status) === 0) return "failed";
   if (
@@ -317,77 +390,54 @@ function median(values) {
 }
 
 export function buildReceiptLedgerSummary(records = []) {
-  const reconciled = records.filter((item) => item.reconciliationStatus === "reconciled");
-  const failed = records.filter((item) => item.reconciliationStatus === "failed");
-  const pendingOutput = records.filter((item) => item.reconciliationStatus === "pending_output");
-  const settled = [...reconciled, ...failed];
-  const realizedValues = reconciled.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
-  const gasValues = records.map((item) => item.realized?.receiptGasUsd).filter(Number.isFinite);
-  const driftValues = reconciled.map((item) => item.realized?.realizedFillVsEstimateBps).filter(Number.isFinite);
-  const estimatedNetValues = settled.map((item) => item.routeContext?.estimatedNetPnlUsd).filter(Number.isFinite);
-  const netDriftValues = settled
-    .map((item) => driftUsd(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
-    .filter(Number.isFinite);
-  const outputDriftValues = reconciled
-    .map((item) => driftUsd(item.output?.actualOutputUsd, item.routeContext?.estimatedOutputUsd))
-    .filter(Number.isFinite);
-  const gasDriftValues = settled.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
   const routeGroups = new Map();
+  const classificationGroups = new Map();
+  const kindGroups = new Map();
 
   for (const item of records) {
     const key = item.routeContext?.routeKey || "__unknown__";
     if (!routeGroups.has(key)) routeGroups.set(key, []);
     routeGroups.get(key).push(item);
+    const classification = receiptClassification(item);
+    if (!classificationGroups.has(classification)) classificationGroups.set(classification, []);
+    classificationGroups.get(classification).push(item);
+    const kind = item.kind || "route_execution";
+    if (!kindGroups.has(kind)) kindGroups.set(kind, []);
+    kindGroups.get(kind).push(item);
   }
 
   return {
     schemaVersion: 1,
-    summary: {
-      recordCount: records.length,
-      reconciledCount: reconciled.length,
-      failedCount: failed.length,
-      pendingOutputCount: pendingOutput.length,
-      realizedNetPnlUsd: realizedValues.reduce((sum, value) => sum + value, 0),
-      medianRealizedNetPnlUsd: median(realizedValues),
-      failedGasCostUsd: failed.map((item) => item.realized?.actualKnownCostUsd).filter(Number.isFinite).reduce((sum, value) => sum + value, 0),
-      totalReceiptGasUsd: gasValues.reduce((sum, value) => sum + value, 0),
-      medianFillDriftBps: median(driftValues),
-      totalEstimatedNetPnlUsd: estimatedNetValues.length ? sum(estimatedNetValues) : null,
-      medianEstimatedNetPnlUsd: median(estimatedNetValues),
-      totalNetDriftUsd: netDriftValues.length ? sum(netDriftValues) : null,
-      medianNetDriftUsd: median(netDriftValues),
-      medianOutputDriftUsd: median(outputDriftValues),
-      totalExecutionGasDriftUsd: gasDriftValues.length ? sum(gasDriftValues) : null,
-      medianExecutionGasDriftUsd: median(gasDriftValues),
-      estimatedPositiveRealizedNegativeCount: settled.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
-    },
+    summary: summarizeRecordCollection(records),
+    classifications: Object.fromEntries(
+      [...classificationGroups.entries()]
+        .map(([classification, items]) => [
+          classification,
+          {
+            classification,
+            ...summarizeRecordCollection(items),
+          },
+        ])
+        .sort((left, right) => left[0].localeCompare(right[0])),
+    ),
+    kinds: [...kindGroups.entries()]
+      .map(([kind, items]) => ({
+        kind,
+        classification: receiptClassification(items[0]),
+        ...summarizeRecordCollection(items),
+        chains: summarizeDimensionGroups(items, (item) => item.chain || item.routeContext?.srcChain || item.routeContext?.dstChain || null, "chain").slice(0, 5),
+        routes: summarizeDimensionGroups(items, (item) => item.routeContext?.routeKey || null, "routeKey").slice(0, 5),
+      }))
+      .sort(
+        (left, right) =>
+          left.realizedNetPnlUsd - right.realizedNetPnlUsd ||
+          right.recordCount - left.recordCount ||
+          left.kind.localeCompare(right.kind),
+      ),
     routes: [...routeGroups.entries()].map(([routeKey, items]) => {
-      const routeRealized = items.map((item) => item.realized?.realizedNetPnlUsd).filter(Number.isFinite);
-      const routeSettled = items.filter((item) => item.reconciliationStatus === "reconciled" || item.reconciliationStatus === "failed");
-      const routeEstimatedNet = routeSettled.map((item) => item.routeContext?.estimatedNetPnlUsd).filter(Number.isFinite);
-      const routeNetDrift = routeSettled
-        .map((item) => driftUsd(item.realized?.realizedNetPnlUsd, item.routeContext?.estimatedNetPnlUsd))
-        .filter(Number.isFinite);
-      const routeOutputDrift = items
-        .filter((item) => item.reconciliationStatus === "reconciled")
-        .map((item) => driftUsd(item.output?.actualOutputUsd, item.routeContext?.estimatedOutputUsd))
-        .filter(Number.isFinite);
-      const routeGasDrift = routeSettled.map((item) => item.realized?.gasDriftUsd).filter(Number.isFinite);
       return {
         routeKey: routeKey === "__unknown__" ? null : routeKey,
-        count: items.length,
-        reconciledCount: items.filter((item) => item.reconciliationStatus === "reconciled").length,
-        failedCount: items.filter((item) => item.reconciliationStatus === "failed").length,
-        realizedNetPnlUsd: routeRealized.reduce((sum, value) => sum + value, 0),
-        medianRealizedNetPnlUsd: median(routeRealized),
-        totalEstimatedNetPnlUsd: routeEstimatedNet.length ? sum(routeEstimatedNet) : null,
-        medianEstimatedNetPnlUsd: median(routeEstimatedNet),
-        totalNetDriftUsd: routeNetDrift.length ? sum(routeNetDrift) : null,
-        medianNetDriftUsd: median(routeNetDrift),
-        medianOutputDriftUsd: median(routeOutputDrift),
-        totalExecutionGasDriftUsd: routeGasDrift.length ? sum(routeGasDrift) : null,
-        medianExecutionGasDriftUsd: median(routeGasDrift),
-        estimatedPositiveRealizedNegativeCount: routeSettled.filter((item) => item.flags?.estimatedPositiveButRealizedNegative).length,
+        ...summarizeRecordCollection(items),
       };
     }),
   };

@@ -210,10 +210,42 @@ test("receipt ledger summary aggregates realized records", () => {
   assert.equal(Number.isFinite(summary.summary.totalEstimatedNetPnlUsd), true);
   assert.equal(Number.isFinite(summary.summary.totalNetDriftUsd), true);
   assert.equal(Number.isFinite(summary.summary.totalExecutionGasDriftUsd), true);
+  assert.equal(summary.classifications.strategy_realized_pnl.reconciledCount, 1);
+  assert.equal(summary.classifications.strategy_realized_pnl.failedCount, 1);
   assert.equal(summary.routes.length, 1);
   assert.equal(Number.isFinite(summary.routes[0].totalEstimatedNetPnlUsd), true);
   assert.equal(Number.isFinite(summary.routes[0].totalNetDriftUsd), true);
   assert.equal(Number.isFinite(summary.routes[0].totalExecutionGasDriftUsd), true);
+});
+
+test("receipt ledger summary separates evidence cost kinds from strategy pnl", () => {
+  const evidence = buildReceiptReconciliation({
+    kind: "native_dex_experiment",
+    chain: "base",
+    txHash: "0xaaa",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture(),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+    output: { actualOutputUnits: "1000" },
+  });
+  const strategy = buildReceiptReconciliation({
+    kind: "across_bridge",
+    chain: "base",
+    txHash: "0xbbb",
+    routeContext: routeContextFixture(),
+    receipt: receiptFixture(),
+    transaction: transactionFixture(),
+    prices: pricesFixture(),
+    output: { actualOutputUnits: "1001" },
+  });
+
+  const summary = buildReceiptLedgerSummary([evidence, strategy]);
+
+  assert.equal(summary.classifications.execution_evidence_cost.reconciledCount, 1);
+  assert.equal(summary.classifications.strategy_realized_pnl.reconciledCount, 1);
+  assert.equal(summary.kinds.some((item) => item.kind === "native_dex_experiment" && item.classification === "execution_evidence_cost"), true);
+  assert.equal(summary.kinds.some((item) => item.kind === "across_bridge" && item.classification === "strategy_realized_pnl"), true);
 });
 
 test("receipt reconciliation tolerates transaction objects without value", () => {

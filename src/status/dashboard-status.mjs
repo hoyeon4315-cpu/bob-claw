@@ -1104,6 +1104,8 @@ function humanExecutionStatus(status) {
 function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [] }) {
   const executionReview = shadowCycle?.objectivePlans?.executionReview || null;
   const receiptLedger = buildReceiptLedgerSummary(receiptRecords || []);
+  const strategyRealized = receiptLedger.classifications?.strategy_realized_pnl || receiptLedger.summary;
+  const executionEvidence = receiptLedger.classifications?.execution_evidence_cost || null;
   return {
     paper: {
       valueUsd: opportunity?.bestNetEdgeUsd ?? shadowCycle?.topRoute?.netEdgeUsd ?? null,
@@ -1124,13 +1126,22 @@ function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [
       detail: executionReview?.nextActionLabel || executionReview?.tradeReadiness || "다음 실행 검토 대기",
     },
     realized: {
-      valueUsd: receiptLedger.summary.realizedNetPnlUsd ?? null,
-      label: "receipt 기준",
-      tradeCount: receiptLedger.summary.reconciledCount ?? 0,
-      failedCount: receiptLedger.summary.failedCount ?? 0,
+      valueUsd: strategyRealized.realizedNetPnlUsd ?? null,
+      totalValueUsd: receiptLedger.summary.realizedNetPnlUsd ?? null,
+      evidenceCostUsd: executionEvidence?.realizedNetPnlUsd ?? 0,
+      label: executionEvidence ? "전략 receipt 기준" : "receipt 기준",
+      tradeCount: strategyRealized.reconciledCount ?? 0,
+      failedCount: strategyRealized.failedCount ?? 0,
+      evidenceCount: executionEvidence?.reconciledCount ?? 0,
+      breakdown: {
+        strategyRealizedPnlUsd: strategyRealized.realizedNetPnlUsd ?? null,
+        executionEvidenceCostUsd: executionEvidence?.realizedNetPnlUsd ?? 0,
+        byClassification: Object.values(receiptLedger.classifications || {}),
+        byKind: (receiptLedger.kinds || []).slice(0, 8),
+      },
       detail:
         (receiptLedger.summary.recordCount || 0) > 0
-          ? `확정 ${receiptLedger.summary.reconciledCount || 0}건 · 실패 ${receiptLedger.summary.failedCount || 0}건`
+          ? `전략 ${strategyRealized.reconciledCount || 0}건 · 탐사/수송 ${executionEvidence?.reconciledCount || 0}건`
           : "아직 receipt 기록 없음",
     },
   };

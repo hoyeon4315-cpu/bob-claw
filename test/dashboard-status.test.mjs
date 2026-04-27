@@ -1495,6 +1495,7 @@ test("dashboard status includes pnl and trade history summaries", () => {
     receiptReconciliations: [
       {
         observedAt: "2026-04-10T11:59:20.000Z",
+        kind: "across_bridge",
         chain: "base",
         txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         reconciliationStatus: "reconciled",
@@ -1508,13 +1509,34 @@ test("dashboard status includes pnl and trade history summaries", () => {
           receiptGasUsd: 0.02,
         },
       },
+      {
+        observedAt: "2026-04-10T11:59:10.000Z",
+        kind: "native_dex_experiment",
+        chain: "base",
+        txHash: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        reconciliationStatus: "reconciled",
+        routeContext: {
+          routeKey: "base:native->base:usdc",
+          amount: "10000",
+          estimatedNetPnlUsd: -0.45,
+        },
+        realized: {
+          realizedNetPnlUsd: -0.5,
+          receiptGasUsd: 0.04,
+        },
+      },
     ],
   }, { now: "2026-04-10T12:00:00.000Z" });
 
   assert.equal(status.pnl.paper.valueUsd, 0.42);
   assert.equal(status.pnl.estimated.valueUsd, 0.35);
   assert.equal(status.pnl.realized.valueUsd, 0.18);
+  assert.equal(status.pnl.realized.totalValueUsd, -0.32);
+  assert.equal(status.pnl.realized.evidenceCostUsd, -0.5);
   assert.equal(status.pnl.realized.tradeCount, 1);
+  assert.equal(status.pnl.realized.evidenceCount, 1);
+  assert.equal(status.pnl.realized.breakdown.strategyRealizedPnlUsd, 0.18);
+  assert.equal(status.pnl.realized.breakdown.executionEvidenceCostUsd, -0.5);
   assert.equal(status.tradeHistory.count, 1);
   assert.equal(status.tradeHistory.items[0].statusLabel, "체결 확인");
   assert.equal(status.tradeHistory.items[0].chainLabel, "Base");
