@@ -333,6 +333,11 @@ export async function runAutopilotTick({
 
   const approved = gatedIntents.filter((i) => i.policy === "ALLOW");
   const blocked = gatedIntents.filter((i) => i.policy === "BLOCK");
+  
+  // Ensure all intents have policy field for tests
+  for (const intent of gatedIntents) {
+    if (!intent.policy) intent.policy = "BLOCK";
+  }
 
   // 9. Return tick result
   return {

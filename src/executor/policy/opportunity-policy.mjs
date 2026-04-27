@@ -79,6 +79,21 @@ export async function evaluateOpportunityPolicy({
     }
   }
 
+  // Micro-test gate: allow small high-risk tests (<$30, <6% of capital)
+  const isMicroTest = intent.strategyId?.includes("micro-test") || intent.metadata?.microTest === true;
+  if (isMicroTest && positionUsd > 0) {
+    const totalCapital = Number(capitalState.totalDeployableCapital ?? 0);
+    if (totalCapital > 0) {
+      const microPct = positionUsd / totalCapital;
+      if (microPct > 0.06) {
+        blockers.push("micro_test_cap_exceeded_6pct");
+      }
+      if (positionUsd > 30) {
+        blockers.push("micro_test_max_30usd");
+      }
+    }
+  }
+
   // Cross-chain bridge cost gate: reject if bridge cost would eat >50% of gross profit
   const srcChain = intent.srcChain || intent.chain;
   const dstChain = intent.dstChain || intent.chain;
