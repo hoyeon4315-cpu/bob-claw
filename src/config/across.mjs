@@ -8,7 +8,7 @@
 // treasury planner only when BOB Gateway is disabled AND the action's
 // asset/chain pair is supported here.
 
-export const ACROSS_API_BASE = "https://app.across.to/api";
+export const ACROSS_API_BASE = "https://app.across.to/api/";
 
 // SpokePool per-chain addresses. These are the contracts that accept
 // `deposit()` (source side) and pay out on destination. Public

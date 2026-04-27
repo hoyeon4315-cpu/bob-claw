@@ -75,7 +75,7 @@ test("pickCheapestRoute returns null when no quotes", () => {
 
 test("fetchRouteQuotes returns quotes from multiple providers", async () => {
   const result = await fetchRouteQuotes(
-    { srcChain: "base", dstChain: "optimism", srcAsset: "usdc", dstAsset: "usdc", amount: 1000, amountUsd: 1000, srcChainId: 8453, dstChainId: 10 },
+    { srcChain: "base", dstChain: "optimism", srcAsset: "usdc", dstAsset: "usdc", amount: 1000, amountUsd: 1000, srcChainId: 8453, dstChainId: 10, fromAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4" },
     {
       providers: ["lifi"],
       fetchFn: mockFetch({ estimate: { toAmount: "990000", toAmountMin: "985000", executionDuration: 240, feeCosts: [{ amountUsd: "2.5" }] } }),
@@ -88,7 +88,7 @@ test("fetchRouteQuotes returns quotes from multiple providers", async () => {
 
 test("fetchRouteQuotes handles provider errors", async () => {
   const result = await fetchRouteQuotes(
-    { srcChain: "base", dstChain: "optimism", srcAsset: "usdc", dstAsset: "usdc", amount: 1000, amountUsd: 1000, srcChainId: 8453, dstChainId: 10 },
+    { srcChain: "base", dstChain: "optimism", srcAsset: "usdc", dstAsset: "usdc", amount: 1000, amountUsd: 1000, srcChainId: 8453, dstChainId: 10, fromAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4" },
     {
       providers: ["across", "lifi"],
       fetchFn: mockFetch({}, 500),
@@ -101,7 +101,7 @@ test("fetchRouteQuotes handles provider errors", async () => {
 test("fetchRouteQuotes uses cache on second call", async () => {
   const root = await mkdtemp(join(tmpdir(), "bob-claw-route-cache-"));
   const cachePath = join(root, "route-cost-cache.jsonl");
-  const request = { srcChain: "base", dstChain: "optimism", srcAsset: "usdc", dstAsset: "usdc", amount: 1000, amountUsd: 1000, srcChainId: 8453, dstChainId: 10 };
+  const request = { srcChain: "base", dstChain: "optimism", srcAsset: "usdc", dstAsset: "usdc", amount: 1000, amountUsd: 1000, srcChainId: 8453, dstChainId: 10, fromAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4" };
 
   const first = await fetchRouteQuotes(request, {
     providers: ["lifi"],

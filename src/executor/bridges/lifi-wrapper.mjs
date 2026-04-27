@@ -1,4 +1,4 @@
-const LIFI_API_BASE = "https://li.quest/v1";
+const LIFI_API_BASE = "https://li.quest/v1/";
 const LIFI_QUOTE_TIMEOUT_MS = 15_000;
 
 export async function fetchLiFiQuote(params = {}, {
@@ -18,8 +18,11 @@ export async function fetchLiFiQuote(params = {}, {
   if (!srcChain || !dstChain || !srcToken || !dstToken || !amount) {
     return { ok: false, error: "lifi_missing_required_params", provider: "lifi" };
   }
+  if (!fromAddress) {
+    return { ok: false, error: "lifi_missing_from_address", provider: "lifi" };
+  }
 
-  const url = new URL("/quote", LIFI_API_BASE);
+  const url = new URL("quote", LIFI_API_BASE);
   url.searchParams.set("fromChain", String(params.srcChainId ?? srcChain));
   url.searchParams.set("toChain", String(params.dstChainId ?? dstChain));
   url.searchParams.set("fromToken", srcToken);

@@ -131,6 +131,7 @@ export async function fetchRouteQuotes(request = {}, {
             srcChainId: request.srcChainId,
             dstChainId: request.dstChainId,
             fromAddress: request.fromAddress,
+            tokenTicker: request.tokenTicker,
           },
           { fetchFn, timeoutMs },
         );

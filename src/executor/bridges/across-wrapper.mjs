@@ -20,12 +20,12 @@ export async function fetchAcrossQuote(params = {}, {
     return { ok: false, error: "across_unsupported_pair", provider: "across" };
   }
 
-  const url = new URL("/suggested-fees", ACROSS_API_BASE);
+  const url = new URL("suggested-fees", ACROSS_API_BASE);
   url.searchParams.set("token", token);
-  url.searchParams.set("inputAmount", String(amount));
+  url.searchParams.set("amount", String(amount));
   url.searchParams.set("originChainId", String(params.srcChainId ?? params.originChainId ?? ""));
   url.searchParams.set("destinationChainId", String(params.dstChainId ?? params.destinationChainId ?? ""));
-  url.searchParams.set("recipient", recipient || "");
+  if (recipient) url.searchParams.set("recipient", recipient);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

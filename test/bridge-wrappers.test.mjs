@@ -109,6 +109,7 @@ test("lifi fetch success returns quote", async () => {
     srcToken: "0xUSDC",
     dstToken: "0xUSDC",
     amount: "1000000",
+    fromAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
   }, { fetchFn: mockFetch({ estimate: { toAmount: "990000", toAmountMin: "985000", executionDuration: 240, feeCosts: [{ amountUsd: "2.5" }] } }) });
   assert.equal(result.ok, true);
   assert.equal(result.provider, "lifi");
@@ -123,6 +124,7 @@ test("lifi timeout returns timeout error", async () => {
     srcToken: "0xUSDC",
     dstToken: "0xUSDC",
     amount: "1000000",
+    fromAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
   }, { fetchFn: mockFetch({}, 200, 100), timeoutMs: 10 });
   assert.equal(result.ok, false);
   assert.equal(result.error, "lifi_timeout");
