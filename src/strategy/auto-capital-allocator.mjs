@@ -128,6 +128,13 @@ function buildOptimalAllocation(opportunities, totalCapital) {
   for (const opp of viable.slice(0, 6)) {
     if (remaining <= 0) break;
     
+    // Single position concentration limit (hard cap 30% of total capital)
+    const singlePositionMax = totalCapital * 0.30; // Max 30% per position
+    const positionAlreadyAllocated = allocations
+      .filter(a => a.symbol === opp.symbol && a.chain === opp.chain)
+      .reduce((s, a) => s + a.allocatedUsd, 0);
+    const positionAvailable = Math.max(0, singlePositionMax - positionAlreadyAllocated);
+    
     // Protocol concentration limit
     const protocolCurrent = protocolAllocated[opp.protocol] || 0;
     const protocolMax = totalCapital * 0.40; // Max 40% per protocol
@@ -136,7 +143,13 @@ function buildOptimalAllocation(opportunities, totalCapital) {
     // Allocate based on score weight
     const totalScore = viable.slice(0, 6).reduce((s, o) => s + o.score, 0);
     const weight = opp.score / totalScore;
-    const targetAlloc = Math.min(deployable * weight, opp.maxAllocation, protocolAvailable, remaining);
+    const targetAlloc = Math.min(
+      deployable * weight,
+      opp.maxAllocation,
+      protocolAvailable,
+      positionAvailable,
+      remaining
+    );
     
     if (targetAlloc < 10) continue; // Min $10
     
