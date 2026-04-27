@@ -88,7 +88,13 @@ export async function evaluateOpportunityPolicy({
   const totalCapital = Number(capitalState.totalDeployableCapital ?? 0);
   if (totalCapital > 0) {
     // Movement intents can use up to 70% of capital (consolidation efficiency)
-    const maxPositionPct = isMovement ? 0.70 : SIZING_POLICY.maxSinglePositionPct;
+    // Small-capital relief: if totalCapital < $200, allow enough % to meet minPositionUsd
+    // so that $32 capital can still enter a $25 position (76.7%) instead of being blocked by 25%
+    const maxPositionPct = isMovement
+      ? 0.70
+      : totalCapital < 200
+        ? Math.max(SIZING_POLICY.maxSinglePositionPct, SIZING_POLICY.minPositionUsd / totalCapital)
+        : SIZING_POLICY.maxSinglePositionPct;
     const maxPosition = totalCapital * maxPositionPct;
     if (positionUsd > maxPosition) {
       blockers.push("position_above_max_single_position_pct");

@@ -147,3 +147,75 @@ test("movement intent exempt from opportunity/protocol concentration", async () 
   assert.ok(!result.blockers.includes("opportunity_concentration_exceeded"), "no opportunity blocker for movement");
   assert.ok(!result.blockers.includes("protocol_concentration_exceeded"), "no protocol blocker for movement");
 });
+
+test("small capital relief: $32 capital allows $25 position (76.7%)", async () => {
+  const intent = {
+    strategyId: "aerodrome-cl-weth-cbbtc",
+    intentType: "concentrated_liquidity",
+    amountUsd: 25,
+    chain: "base",
+    protocol: "aerodrome-slipstream",
+    quote: { observedAt: new Date().toISOString() },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent,
+    currentAllocations: { chainSharePct: {}, protocolSharePct: {}, opportunitySharePct: {} },
+    capitalState: { totalDeployableCapital: 32 },
+  });
+  assert.strictEqual(result.decision, "ALLOW", "$25 position on $32 capital should be allowed via small-cap relief");
+  assert.ok(!result.blockers.includes("position_above_max_single_position_pct"), "no position blocker with relief");
+});
+
+test("small capital relief: $32 capital blocks $30 position (93.7%)", async () => {
+  const intent = {
+    strategyId: "aerodrome-cl-weth-cbbtc",
+    intentType: "concentrated_liquidity",
+    amountUsd: 30,
+    chain: "base",
+    protocol: "aerodrome-slipstream",
+    quote: { observedAt: new Date().toISOString() },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent,
+    currentAllocations: { chainSharePct: {}, protocolSharePct: {}, opportunitySharePct: {} },
+    capitalState: { totalDeployableCapital: 32 },
+  });
+  assert.strictEqual(result.decision, "BLOCK", "$30 on $32 exceeds minPositionUsd/totalCapital ratio");
+  assert.ok(result.blockers.includes("position_above_max_single_position_pct"), "position blocker above relief cap");
+});
+
+test("large capital uses 25% cap: $520 blocks $350 position (67%)", async () => {
+  const intent = {
+    strategyId: "aerodrome-cl-weth-cbbtc",
+    intentType: "concentrated_liquidity",
+    amountUsd: 350,
+    chain: "base",
+    protocol: "aerodrome-slipstream",
+    quote: { observedAt: new Date().toISOString() },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent,
+    currentAllocations: { chainSharePct: {}, protocolSharePct: {}, opportunitySharePct: {} },
+    capitalState: { totalDeployableCapital: 520 },
+  });
+  assert.strictEqual(result.decision, "BLOCK", "$350 on $520 exceeds 25% cap for large capital");
+  assert.ok(result.blockers.includes("position_above_max_single_position_pct"), "25% cap enforced for large capital");
+});
+
+test("large capital 25% cap allows $130 on $520", async () => {
+  const intent = {
+    strategyId: "aerodrome-cl-weth-cbbtc",
+    intentType: "concentrated_liquidity",
+    amountUsd: 130,
+    chain: "base",
+    protocol: "aerodrome-slipstream",
+    quote: { observedAt: new Date().toISOString() },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent,
+    currentAllocations: { chainSharePct: {}, protocolSharePct: {}, opportunitySharePct: {} },
+    capitalState: { totalDeployableCapital: 520 },
+  });
+  assert.strictEqual(result.decision, "ALLOW", "$130 on $520 is within 25% cap");
+  assert.ok(!result.blockers.includes("position_above_max_single_position_pct"), "25% cap allows $130");
+});
