@@ -266,7 +266,9 @@
     "run:current-route-prelive-pass": "node src/cli/run-current-route-prelive-pass.mjs",
     "report:exact-route-fork-package": "node src/cli/report-exact-route-fork-package.mjs",
     "report:operational-judgment-review": "node src/cli/report-operational-judgment-review.mjs",
-    "build:prelive-decision-pack": "npm run report:strategy-snapshot -- --write && npm run report:connected-refresh-package -- --write && npm run report:current-route-prelive-pass -- --write && npm run report:execution-runbook -- --write && npm run report:exact-route-fork-package -- --write && npm run validate:prelive-readiness -- --write && npm run report:operational-judgment-review -- --write && npm run build:prelive-review-package -- --write && npm run write:session-handoff"
+    "build:prelive-decision-pack": "npm run report:strategy-snapshot -- --write && npm run report:connected-refresh-package -- --write && npm run report:current-route-prelive-pass -- --write && npm run report:execution-runbook -- --write && npm run report:exact-route-fork-package -- --write && npm run validate:prelive-readiness -- --write && npm run report:operational-judgment-review -- --write && npm run build:prelive-review-package -- --write && npm run write:session-handoff",
+    "dryrun:opportunity-candidate": "node src/cli/dryrun-opportunity-candidate.mjs",
+    "audit:evidence": "node src/cli/audit-evidence.mjs"
   },
   "engines": {
     "node": ">=20"
