@@ -575,7 +575,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
     }
   ))));
 }
-function PnlBreakdownStrip() {
+function PnlBreakdownStrip({ inline = false }) {
   const flow = window.FLOW || {};
   const metrics = flow?.metrics || {};
   const strategyUsd = metrics.realizedStrategyUsd;
@@ -586,7 +586,7 @@ function PnlBreakdownStrip() {
   const topKinds = Array.isArray(metrics.realizedByKind) ? metrics.realizedByKind.filter((item) => Number.isFinite(item?.realizedNetPnlUsd) && item.realizedNetPnlUsd < 0).slice(0, 3) : [];
   if (!Number.isFinite(strategyUsd) && !Number.isFinite(evidenceUsd) && !Number.isFinite(totalUsd)) return null;
   return /* @__PURE__ */ React.createElement("div", { style: {
-    margin: "0 12px",
+    margin: inline ? "0 0 10px" : "0 12px",
     padding: "8px 10px 7px",
     background: "var(--card)",
     border: "0.5px solid var(--line)",
@@ -637,7 +637,7 @@ function FlowPane({ refreshTick }) {
   const flowMapBaseHeight = "calc(52% - 4px)";
   const lowerPaneTop = "calc(52% + 4px)";
   const lowerPaneExpandedOffset = "calc(52% + 10px)";
-  const aprStrats = STRATEGIES.filter((s) => s.apyPct != null && s.capUsd);
+  const aprStrats = STRATEGIES.filter((s) => s.status === "LIVE" && s.apyPct != null && s.capUsd);
   const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
   const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
   const totalApr = aprDen > 0 ? aprNum / aprDen : null;
@@ -717,7 +717,7 @@ function FlowPane({ refreshTick }) {
     lineHeight: 1.45,
     flexShrink: 0,
     animation: `slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`
-  } }, "Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price."), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, null), /* @__PURE__ */ React.createElement(OpsStrip, { fill: !historyExpanded, onExpandedChange: setHistoryExpanded }))));
+  } }, "Cap-weighted average APY across live strategies with APR data. Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands."), /* @__PURE__ */ React.createElement(OpsStrip, { fill: !historyExpanded, onExpandedChange: setHistoryExpanded }))));
 }
 function KpiCard({ label, main, sub }) {
   return /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", background: "var(--card)", borderRadius: 16, border: "0.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, letterSpacing: -0.3, marginTop: 3 } }, main), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 1 } }, sub));
@@ -731,7 +731,7 @@ function DefiPane({ refreshTick }) {
     return acc;
   }, {});
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
     const protoRealized = list.reduce((sum, s) => sum + (s.realizedYieldUsd || 0), 0);
     const protoEstimated = list.reduce((sum, s) => sum + (s.estimatedYieldUsd || 0), 0);
     const protoYield = protoRealized > 0 ? protoRealized : protoEstimated;

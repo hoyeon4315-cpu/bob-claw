@@ -46,7 +46,7 @@ describe("dashboard home renewal source guard", () => {
     assert.match(flowPane, /'live est\. · all protocols'/);
     assert.match(flowPane, /wallet only · 0 open positions/);
     assert.match(flowPane, /wallet \+ \$\{positions\.length\} open position/);
-    assert.match(flowPane, /<PnlBreakdownStrip\/>/);
+    assert.doesNotMatch(flowPane, /<PnlBreakdownStrip\/>/);
   });
 
   test("flow home surfaces realized strategy vs probe cost split", () => {
@@ -119,6 +119,7 @@ describe("dashboard defi renewal source guard", () => {
     assert.doesNotMatch(strategyKind, /[가-힣]/);
 
     const defiPane = extractSection("function DefiPane", "function pairTokens");
+    assert.match(defiPane, /<PnlBreakdownStrip inline\/>/);
     assert.match(defiPane, /No live strategies/);
     assert.match(defiPane, /live position/);
     assert.match(defiPane, /Cap \$/);
@@ -165,6 +166,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /marginTop: historyExpanded \? lowerPaneExpandedOffset : undefined/);
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
     assert.match(flowPane, /<OpsStrip fill=\{!historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
+    assert.match(flowPane, /const aprStrats = STRATEGIES\.filter\(s => s\.status === 'LIVE' && s\.apyPct != null && s\.capUsd\)/);
+    assert.match(flowPane, /Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands\./);
   });
 
   test("app header shows live source and freshness state", () => {

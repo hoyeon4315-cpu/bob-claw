@@ -704,7 +704,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
   );
 }
 
-function PnlBreakdownStrip() {
+function PnlBreakdownStrip({ inline = false }) {
   const flow = window.FLOW || {};
   const metrics = flow?.metrics || {};
   const strategyUsd = metrics.realizedStrategyUsd;
@@ -720,7 +720,7 @@ function PnlBreakdownStrip() {
   if (!Number.isFinite(strategyUsd) && !Number.isFinite(evidenceUsd) && !Number.isFinite(totalUsd)) return null;
   return (
     <div style={{
-      margin: '0 12px',
+      margin: inline ? '0 0 10px' : '0 12px',
       padding: '8px 10px 7px',
       background: 'var(--card)',
       border: '0.5px solid var(--line)',
@@ -805,7 +805,7 @@ function FlowPane({ refreshTick }) {
   const flowMapBaseHeight = 'calc(52% - 4px)';
   const lowerPaneTop = 'calc(52% + 4px)';
   const lowerPaneExpandedOffset = 'calc(52% + 10px)';
-  const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
+  const aprStrats = STRATEGIES.filter(s => s.status === 'LIVE' && s.apyPct != null && s.capUsd);
   const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
   const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
   const totalApr = aprDen > 0 ? aprNum / aprDen : null;
@@ -892,10 +892,9 @@ function FlowPane({ refreshTick }) {
               fontSize:11, lineHeight:1.45, flexShrink: 0,
               animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
             }}>
-              Cap-weighted average APY across strategies with published yield. BTC-denominated first; USD is a projection at the last observed BTC price.
+              Cap-weighted average APY across live strategies with APR data. Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands.
             </div>
           )}
-          <PnlBreakdownStrip/>
           <OpsStrip fill={!historyExpanded} onExpandedChange={setHistoryExpanded}/>
         </div>
       </div>
@@ -924,6 +923,7 @@ function DefiPane({ refreshTick }) {
   return (
     <div className="tabpane" style={{ padding: '4px 12px 16px' }}>
       <ResearchFunnelCard/>
+      <PnlBreakdownStrip inline/>
       {entries.length === 0 && (
         <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'var(--ink-3)' }}>
           No live strategies
