@@ -1,7 +1,7 @@
 {
-  "enabled": false,
-  "origin": null,
-  "statusUrl": null,
-  "eventsUrl": null,
-  "updatedAt": "2026-04-27T10:46:41.273Z"
+  "enabled": true,
+  "origin": "https://grey-reviews-issn-maria.trycloudflare.com",
+  "statusUrl": "https://grey-reviews-issn-maria.trycloudflare.com/api/live-status",
+  "eventsUrl": "https://grey-reviews-issn-maria.trycloudflare.com/api/live-events",
+  "updatedAt": "2026-04-27T10:50:50.381Z"
 }
