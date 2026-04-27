@@ -1,7 +1,11 @@
 import { MERKL_OPPORTUNITY_POLICY, chainEligibleForEntry, minTvlForFamily } from "../config/merkl-opportunity-policy.mjs";
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function bandFromApr(aprPct, thresholds = {}) {
+  if (!Number.isFinite(aprPct)) return "low";
+  if (aprPct >= (thresholds.ultra ?? Number.POSITIVE_INFINITY)) return "ultra";
+  if (aprPct >= (thresholds.high ?? Number.POSITIVE_INFINITY)) return "high";
+  if (aprPct >= (thresholds.mid ?? Number.POSITIVE_INFINITY)) return "mid";
+  return "low";
 }
 
 function executionSurfaceSupported(surface, policy) {
@@ -77,6 +81,8 @@ function scoreOpportunity(opportunity, { hardBlockers = [], watchReasons = [], o
   if (Number.isFinite(opportunity.tvlUsd) && opportunity.tvlUsd >= minTvlForFamily(opportunity.family, policy)) {
     score += weights.sufficientTvl;
   }
+  const aprBand = bandFromApr(opportunity.aprPct, weights.aprBandThresholds);
+  score += weights.aprBandPoints?.[aprBand] ?? 0;
   if (Number.isFinite(opportunity.nativeAprPct)) score += weights.nativeYieldKnown;
   if (!opportunity.hasPointRewards) score += weights.rewardTokenIsTransferable;
 
@@ -91,7 +97,7 @@ function scoreOpportunity(opportunity, { hardBlockers = [], watchReasons = [], o
   if (opportunity.operatorHold) score -= weights.operatorHoldPenalty;
   score -= hardBlockers.length * 20;
   score -= watchReasons.length * 6;
-  return clamp(Math.round(score), 0, 100);
+  return Math.max(0, Math.round(score));
 }
 
 function overfitRiskLevel(flags = []) {

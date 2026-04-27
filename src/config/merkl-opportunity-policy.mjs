@@ -81,6 +81,17 @@ export const MERKL_OPPORTUNITY_POLICY = Object.freeze({
     managedVaultPenalty: 10,
     unsupportedExecutionSurfacePenalty: 20,
     operatorHoldPenalty: 100,
+    aprBandPoints: Object.freeze({
+      low: 0,
+      mid: 6,
+      high: 12,
+      ultra: 16,
+    }),
+    aprBandThresholds: Object.freeze({
+      mid: 3,
+      high: 8,
+      ultra: 20,
+    }),
   }),
 });
 
