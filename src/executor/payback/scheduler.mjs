@@ -449,23 +449,6 @@ export async function buildPaybackDecision({
   }
 
   const reserve = normalizeReserveState(reserveState, policy, receiptStore);
-  if (!reserve.ok) {
-    return {
-      schemaVersion: 1,
-      observedAt: now,
-      policy,
-      snapshot,
-      status: "defer",
-      reason: reserve.reason,
-      decisionLog: {
-        observedAt: now,
-        reason: reserve.reason,
-        inputs: {
-          profitReserveChain: policy.destinationPath.profitReserveChain,
-        },
-      },
-    };
-  }
 
   const emergencyPause = buildEmergencyPauseEvaluation(policy, {
     ...marketState,
@@ -545,6 +528,24 @@ export async function buildPaybackDecision({
           grossTargetBeforeCostsSats,
           minPaybackSats: policy.minPaybackSats,
           pendingDeferredSats: snapshot.pendingDeferredSats,
+        },
+      },
+    };
+  }
+
+  if (!reserve.ok) {
+    return {
+      schemaVersion: 1,
+      observedAt: now,
+      policy,
+      snapshot,
+      status: "defer",
+      reason: reserve.reason,
+      decisionLog: {
+        observedAt: now,
+        reason: reserve.reason,
+        inputs: {
+          profitReserveChain: policy.destinationPath.profitReserveChain,
         },
       },
     };

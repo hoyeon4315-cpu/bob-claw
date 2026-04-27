@@ -670,6 +670,35 @@ function mergeAutopilotRefillJobs(jobGroups = []) {
   );
 }
 
+function buildAutopilotProgressReport({
+  execute = false,
+  observedAt = new Date().toISOString(),
+  autopilotRunId = null,
+  chains = [],
+  phase = "running",
+  summary = {},
+  refillExecutions = [],
+  steps = [],
+} = {}) {
+  return {
+    schemaVersion: 1,
+    observedAt,
+    autopilotRunId,
+    mode: execute ? "execute" : "preview",
+    status: "running",
+    phase,
+    blockedReason: null,
+    chains,
+    summary,
+    refillExecutions,
+    steps,
+  };
+}
+
+async function writeAutopilotLatest(dataDir, report) {
+  await writeTextIfChanged(join(dataDir, "all-chain-autopilot-latest.json"), `${safeJsonStringify(report, 2)}\n`);
+}
+
 async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }) {
   const result = await runCommandImpl({ args, cwd, timeoutMs });
   steps.push(commandStep(name, args, result));
@@ -919,6 +948,44 @@ export async function runAllChainAutopilot({
       : "ready";
   const allowLiveStrategyDispatch = allowLiveCapableExecution;
 
+  if (write) {
+    await writeAutopilotLatest(dataDir, buildAutopilotProgressReport({
+      execute,
+      observedAt: new Date().toISOString(),
+      autopilotRunId,
+      chains,
+      phase: "refill_complete",
+      summary: {
+        officialChainCount: chains.length,
+        refillJobCount: mergedRefillJobs.length,
+        treasuryRefillJobCount: refillPlan?.summary?.jobCount ?? 0,
+        capitalManagerRefillJobCount: capitalManagerRefillPlan?.jobs?.summary?.jobCount ?? 0,
+        inboundRouteJobCount: inboundWatcherResult.json?.routingPlan?.jobs?.length ?? 0,
+        autoRefillJobCount: autoRefillJobs.length,
+        refillAttemptedCount: refillExecutions.filter((item) => item.attempted).length,
+        refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
+        autoRefillSourceCounts: autoRefillJobs.reduce((counts, job) => {
+          const key = job.autopilotRefillSource || "unknown";
+          counts[key] = (counts[key] || 0) + 1;
+          return counts;
+        }, {}),
+        inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
+        capitalManager: compactCapitalManager(capitalManagerRefillPlan),
+        executionGate: {
+          ...liveExecutionGate,
+          autopilotRunId,
+          autoKillTriggered: autoKillResult.json?.triggered === true,
+          killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
+        },
+        strategyDispatch: {
+          capitalDispatchReadiness,
+        },
+      },
+      refillExecutions,
+      steps,
+    }));
+  }
+
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
     args: appendFlag([
@@ -1147,7 +1214,7 @@ export async function runAllChainAutopilot({
   const blockedSteps = steps.filter((step) => !step.ok || ["blocked", "carry", "hold", "skipped"].includes(stepStatus(step)));
   const report = {
     schemaVersion: 1,
-    observedAt,
+    observedAt: new Date().toISOString(),
     autopilotRunId,
     mode: execute ? "execute" : "preview",
     status: hardFailures.length > 0
@@ -1155,6 +1222,7 @@ export async function runAllChainAutopilot({
       : blockedSteps.length > 0 || liveExecutionGate.blockedReason
         ? "completed_with_blockers"
         : "completed",
+    phase: "completed",
     blockedReason: hardFailures[0]?.error?.message || null,
     chains,
     summary,
@@ -1163,7 +1231,7 @@ export async function runAllChainAutopilot({
   };
 
   if (write) {
-    await writeTextIfChanged(join(dataDir, "all-chain-autopilot-latest.json"), `${safeJsonStringify(report, 2)}\n`);
+    await writeAutopilotLatest(dataDir, report);
     await new JsonlStore(dataDir).append("all-chain-autopilot-runs", report);
   }
 

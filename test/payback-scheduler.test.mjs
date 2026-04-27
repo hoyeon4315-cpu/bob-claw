@@ -159,6 +159,26 @@ test("payback scheduler carries when planned payback is below minimum", async ()
   assert.equal(result.reason, "planned_payback_below_minimum");
 });
 
+test("payback scheduler carries below minimum even when reserve inventory is missing", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const result = await buildPaybackDecision({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    reserveState: null,
+    receiptStore: {
+      treasuryInventory: [],
+      inventorySnapshots: [],
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 200_000,
+    }),
+  });
+
+  assert.equal(result.status, "carry");
+  assert.equal(result.reason, "planned_payback_below_minimum");
+});
+
 test("payback decision reports missing destination config before carry", async () => {
   delete process.env.PAYBACK_BTC_DEST_ADDR;
 

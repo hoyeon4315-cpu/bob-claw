@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   OFFICIAL_GATEWAY_DESTINATION_CHAINS,
@@ -475,6 +478,39 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-strategy-catalog-dispatcher.mjs") && args.includes("--command-timeout-ms=789")), true);
+});
+
+test("all-chain autopilot publishes refill progress before long canary steps finish", async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), "all-chain-autopilot-"));
+  t.after(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  const command = async ({ args }) => {
+    if (args[0].endsWith("run-live-canary-sweep.mjs")) {
+      throw new Error("canary_hung");
+    }
+    return fakeCommand({ args });
+  };
+
+  await assert.rejects(
+    runAllChainAutopilot({
+      execute: true,
+      write: true,
+      dataDir,
+      runCommandImpl: command,
+    }),
+    /canary_hung/u,
+  );
+
+  const latest = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest.json"), "utf8"));
+  assert.equal(latest.status, "running");
+  assert.equal(latest.phase, "refill_complete");
+  assert.equal(latest.summary.refillExecutedCount, 2);
+  assert.equal(latest.summary.refillAttemptedCount, 2);
+  assert.equal(latest.summary.capitalManager.capitalPlanDecision, "REFILL_REQUIRED");
+  assert.equal(latest.summary.strategyDispatch.capitalDispatchReadiness, "ready");
+  assert.equal(latest.refillExecutions.length, 2);
 });
 
 test("all-chain autopilot runs auto-kill before live-capable steps and suppresses execute when armed", async () => {

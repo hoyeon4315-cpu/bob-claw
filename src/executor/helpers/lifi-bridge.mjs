@@ -348,9 +348,20 @@ export async function executeLifiBridgePlan({
         observedAt: new Date().toISOString(),
         settlementStatus: result?.status === "rejected" ? "signer_rejected" : "failed",
         plan,
+        signerResult: result,
         stepResults: [...stepResults, { id: step.id, signerResult: result }],
         sourceBalanceBefore,
         destinationBalanceBefore,
+        error: result?.status === "rejected"
+          ? {
+              name: "SignerRejected",
+              message: (result?.policy?.blockers || []).join(",") || "Signer rejected funding intent",
+              policy: result?.policy || null,
+              notification: result?.notification || null,
+              requiresUnwind: result?.requiresUnwind || false,
+              emergencyUnwindPath: result?.emergencyUnwindPath || null,
+            }
+          : result?.error || null,
       };
     }
     stepResults.push({ id: step.id, signerResult: result });
