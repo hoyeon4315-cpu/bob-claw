@@ -100,6 +100,99 @@ test("refill jobs preserve strategy policy metadata for holding-period carry fun
   assert.equal(jobs.jobs[0].strategyPolicy.economicsMode, "holding_period_carry");
 });
 
+test("refill jobs defer bridge methods above discretionary quote-cost ceiling", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "74000000",
+        refillAmountDecimal: 74,
+        refillEstimatedUsd: 74,
+        rationale: "Bridge-dependent destination inventory.",
+      },
+    ],
+  };
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan: {
+      selections: [
+        {
+          resourceKey: "base:0x833589fcD6eDb6E08f4c7C32D4f71b54bdA02913".toLowerCase(),
+          actionType: "refill_token",
+          chain: "base",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          selectionStatus: "ready",
+          selectedMethod: "cross_chain_bridge_lifi",
+          selectedSource: { source: { chain: "ethereum", token: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" } },
+          expectedExecutionRefillCostUsd: 1.6,
+          expectedReserveReplenishmentCostUsd: 0,
+          requiresManualFunding: false,
+          requiresReserveState: false,
+          missingInputs: [],
+          settlementRequirements: [],
+          candidates: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(jobs.jobs[0].requiresManualReview, true);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("bridge_quote_cost_above_discretionary_ceiling"), true);
+});
+
+test("refill jobs keep explicit live destination-inventory override bridgeable", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "74000000",
+        refillAmountDecimal: 74,
+        refillEstimatedUsd: 74,
+        rationale: "Live destination inventory dependency.",
+        liveInventoryDependencyOverride: true,
+      },
+    ],
+  };
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan: {
+      selections: [
+        {
+          resourceKey: "base:0x833589fcD6eDb6E08f4c7C32D4f71b54bdA02913".toLowerCase(),
+          actionType: "refill_token",
+          chain: "base",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          selectionStatus: "ready",
+          selectedMethod: "cross_chain_bridge_lifi",
+          selectedSource: { source: { chain: "ethereum", token: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" } },
+          expectedExecutionRefillCostUsd: 1.25,
+          expectedReserveReplenishmentCostUsd: 0,
+          requiresManualFunding: false,
+          requiresReserveState: false,
+          missingInputs: [],
+          settlementRequirements: [],
+          candidates: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(jobs.jobs[0].requiresManualReview, false);
+  assert.equal(jobs.jobs[0].liveInventoryDependencyOverride, true);
+});
+
 test("dual wallet mode prefers reserve transfers", () => {
   const policy = validateTreasuryPolicy({ ...buildDefaultTreasuryPolicy(), walletMode: "dual_wallet" });
   const fundingSourcePlan = buildFundingSourcePlan({ plan: planFixture("REFILL_REQUIRED"), policy });

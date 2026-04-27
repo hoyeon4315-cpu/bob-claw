@@ -10,6 +10,7 @@ import {
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
+import { evaluateGasZipQuoteLossGuard } from "../../treasury/discretionary-budget-guard.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
@@ -113,6 +114,8 @@ export async function buildGasZipNativeRefuelPlan({
   destinationNativeDecimal = null,
   destinationMinBalanceDecimal = null,
   skipRateLimit = false,
+  discretionaryBudgetBypass = false,
+  aggregateRefuelAmountUsd = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
@@ -213,10 +216,46 @@ export async function buildGasZipNativeRefuelPlan({
   let preflightError = null;
   let intent = null;
   let effectiveMinimumDestinationWei = normalizedMinimumDestinationWei;
+  let quoteLossGuard = null;
 
   try {
     const quoteBody = await quoteFetcher(quoteUrl);
     quote = normalizeQuoteBody(quoteBody, dstConfig.chainId);
+    quoteLossGuard = evaluateGasZipQuoteLossGuard({
+      amountWei: normalizedAmountWei,
+      expectedOutputWei: quote.quote.expected,
+      amountUsd,
+      aggregateAmountUsd: aggregateRefuelAmountUsd,
+      discretionaryBudgetBypass,
+    });
+    if (!quoteLossGuard.accepted) {
+      return {
+        schemaVersion: 1,
+        observedAt: now,
+        planStatus: "blocked",
+        blockedReason: quoteLossGuard.reason,
+        strategyId,
+        srcChain,
+        dstChain,
+        senderAddress,
+        recipient,
+        amountWei: normalizedAmountWei,
+        requiredDestinationBalanceWei: normalizedRequiredDestinationBalanceWei,
+        minimumDestinationWei: effectiveMinimumDestinationWei,
+        amountUsd,
+        srcAsset: tokenAsset(srcChain, ZERO_TOKEN),
+        dstAsset: dstNativeAsset,
+        quoteLossGuard,
+        quote: {
+          observedAt: now,
+          calldata: quote.calldata,
+          expectedOutputWei: String(quote.quote.expected),
+          outputValueUsd: finiteNumber(quote.quote.usd),
+          speed: finiteNumber(quote.quote.speed),
+          gasWei: quote.quote.gas != null ? String(quote.quote.gas) : null,
+        },
+      };
+    }
   } catch (error) {
     gasZipError = serializeError(error);
   }
@@ -336,6 +375,7 @@ export async function buildGasZipNativeRefuelPlan({
       : null,
     gasPreflight,
     intent,
+    quoteLossGuard,
   };
 }
 

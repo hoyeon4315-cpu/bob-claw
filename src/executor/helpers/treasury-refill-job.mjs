@@ -15,6 +15,7 @@ import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./to
 import { buildAcrossBridgePlan, executeAcrossBridgePlan } from "./across-bridge.mjs";
 import { acrossTickerForToken } from "../../config/across.mjs";
 import { buildLifiBridgePlan, executeLifiBridgePlan } from "./lifi-bridge.mjs";
+import { evaluateBridgeMovementCostGuard, isStrategyRealizedPnlMovement } from "../../treasury/discretionary-budget-guard.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
 const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
@@ -203,7 +204,7 @@ function isNoRoutePlan(plan = null) {
   return plan?.planStatus === "blocked" && plan?.blockedReason === "no_route";
 }
 
-function blockedPreparation({ job, executor = null, blockedReason, plan = null, coverage = null }) {
+function blockedPreparation({ job, executor = null, blockedReason, plan = null, coverage = null, discretionaryBudget = null }) {
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -214,10 +215,11 @@ function blockedPreparation({ job, executor = null, blockedReason, plan = null, 
     blockedReason,
     plan,
     coverage,
+    discretionaryBudget,
   };
 }
 
-function readyPreparation({ job, executor, plan, coverage }) {
+function readyPreparation({ job, executor, plan, coverage, discretionaryBudget = null }) {
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -227,7 +229,24 @@ function readyPreparation({ job, executor, plan, coverage }) {
     executor,
     plan,
     coverage,
+    discretionaryBudget,
   };
+}
+
+function bridgeQuoteCostUsd(job = {}, plan = null) {
+  const jobCost = Number.isFinite(job?.fundingSource?.expectedExecutionRefillCostUsd)
+    ? job.fundingSource.expectedExecutionRefillCostUsd
+    : null;
+  if (jobCost != null) return jobCost;
+  const planCost = [
+    plan?.quote?.feeUsd,
+    plan?.quote?.totalFeeUsd,
+    plan?.quote?.fees?.totalUsd,
+    plan?.quote?.fees?.usd,
+    plan?.quote?.executionFees?.totalUsd,
+    plan?.quote?.feeBreakdown?.totalUsd,
+  ].find(Number.isFinite);
+  return Number.isFinite(planCost) ? planCost : null;
 }
 
 export function refillExecutorForJob(job = {}) {
@@ -436,6 +455,7 @@ export async function buildTreasuryRefillExecutionPlan({
       destinationBalanceStatus,
       destinationNativeDecimal,
       destinationMinBalanceDecimal,
+      discretionaryBudgetBypass: isStrategyRealizedPnlMovement(job),
     });
   } else if (executor === "across_bridge") {
     const amount = job.type === "refill_native"
@@ -549,8 +569,29 @@ export async function buildTreasuryRefillExecutionPlan({
         });
         if (lifiPlan.planStatus === "ready") {
           const lifiCoverage = coverageForPlan({ plan: lifiPlan, job, executor: "lifi_bridge" });
+          const lifiBridgeBudget = evaluateBridgeMovementCostGuard({
+            method: "cross_chain_bridge_lifi",
+            costUsd: bridgeQuoteCostUsd(job, lifiPlan),
+            record: job,
+          });
+          if (!lifiBridgeBudget.accepted) {
+            return blockedPreparation({
+              job,
+              executor: "lifi_bridge",
+              blockedReason: lifiBridgeBudget.reason,
+              plan: lifiPlan,
+              coverage: lifiCoverage,
+              discretionaryBudget: lifiBridgeBudget,
+            });
+          }
           if (refillCoverageAcceptable(lifiCoverage)) {
-            return readyPreparation({ job, executor: "lifi_bridge", plan: lifiPlan, coverage: lifiCoverage });
+            return readyPreparation({
+              job,
+              executor: "lifi_bridge",
+              plan: lifiPlan,
+              coverage: lifiCoverage,
+              discretionaryBudget: lifiBridgeBudget,
+            });
           }
           return blockedPreparation({
             job,
@@ -558,6 +599,7 @@ export async function buildTreasuryRefillExecutionPlan({
             blockedReason: "executor_output_below_refill_target",
             plan: lifiPlan,
             coverage: lifiCoverage,
+            discretionaryBudget: lifiBridgeBudget,
           });
         }
       }
@@ -585,6 +627,21 @@ export async function buildTreasuryRefillExecutionPlan({
     });
   }
 
+  const bridgeMovementBudget = evaluateBridgeMovementCostGuard({
+    method: job.executionMethod,
+    costUsd: bridgeQuoteCostUsd(job, plan),
+    record: job,
+  });
+  if (!bridgeMovementBudget.accepted) {
+    return blockedPreparation({
+      job,
+      executor,
+      blockedReason: bridgeMovementBudget.reason,
+      plan,
+      discretionaryBudget: bridgeMovementBudget,
+    });
+  }
+
   const coverage = executor === "cross_chain_btc_intermediate"
     ? coverageForPlan({
         plan: plan.step3?.plan || plan.step2.plan,
@@ -605,10 +662,11 @@ export async function buildTreasuryRefillExecutionPlan({
       blockedReason: "executor_output_below_refill_target",
       plan,
       coverage,
+      discretionaryBudget: bridgeMovementBudget,
     });
   }
 
-  return readyPreparation({ job, executor, plan, coverage });
+  return readyPreparation({ job, executor, plan, coverage, discretionaryBudget: bridgeMovementBudget });
 }
 
 export async function executeTreasuryRefillExecutionPlan({

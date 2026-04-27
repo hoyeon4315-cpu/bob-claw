@@ -7,14 +7,16 @@ export function evaluateGasFloatKeeper({
   balancesByChain = {},
   now = new Date().toISOString(),
   minimumTopUpUsd = 1,
+  activeChainSet = null,
 } = {}) {
   const actions = [];
   const observations = [];
 
   for (const item of targetBalances.items || []) {
+    const active = !activeChainSet || activeChainSet.has(item.chain);
     const currentNativeUsd = finite(balancesByChain[item.chain]?.nativeUsd) ?? 0;
     const shortfallUsd = Math.max(0, (item.gasFloatTargetUsd || 0) - currentNativeUsd);
-    if (currentNativeUsd < (item.gasFloatMinUsd || 0) && shortfallUsd >= minimumTopUpUsd) {
+    if (active && currentNativeUsd < (item.gasFloatMinUsd || 0) && shortfallUsd >= minimumTopUpUsd) {
       actions.push({
         type: "gas_float_top_up",
         chain: item.chain,
@@ -28,7 +30,7 @@ export function evaluateGasFloatKeeper({
         currentUsd: currentNativeUsd,
         minUsd: item.gasFloatMinUsd,
         targetUsd: item.gasFloatTargetUsd,
-        status: currentNativeUsd < (item.gasFloatTargetUsd || 0) ? "below_target" : "healthy",
+        status: !active ? "inactive" : currentNativeUsd < (item.gasFloatTargetUsd || 0) ? "below_target" : "healthy",
       });
     }
   }

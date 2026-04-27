@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import { bridgeMovementDiscretionaryBudget } from "../config/discretionary-budget.mjs";
+import {
+  evaluateBridgeMovementCostGuard,
+  liveInventoryDependencyOverride,
+  movementClassification,
+} from "./discretionary-budget-guard.mjs";
 import { buildFundingSourcePlan, resourceKeyForRefillAction } from "./funding-source-planner.mjs";
 
 function isFiniteNumber(value) {
@@ -198,6 +204,7 @@ function buildJobSystemEconomics({ action, selection, routeContext, policy }) {
 
 export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null, routeCandidates = [] }) {
   const refillPolicy = policy.refillPolicy || {};
+  const bridgeQuoteCostCeilingUsd = bridgeMovementDiscretionaryBudget().quoteCostCeilingUsd;
   const resolvedFundingSourcePlan = fundingSourcePlan || buildFundingSourcePlan({ plan, policy });
   const selectionByKey = new Map((resolvedFundingSourcePlan.selections || []).map((item) => [item.resourceKey, item]));
   const draftJobs = (plan.actions || []).map((action) => {
@@ -231,6 +238,13 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       notes: item.notes,
     }));
     const selectedMethod = selection?.selectedMethod || candidateMethods.find((item) => item.preferred)?.method || candidateMethods[0]?.method || null;
+    const classification = movementClassification(action);
+    const bridgeCostGuard = evaluateBridgeMovementCostGuard({
+      method: selectedMethod,
+      costUsd: selection?.expectedExecutionRefillCostUsd,
+      record: action,
+      ceilingUsd: bridgeQuoteCostCeilingUsd,
+    });
     return {
       schemaVersion: 1,
       jobId: deterministicJobId(basis),
@@ -240,8 +254,10 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       requiresManualReview: false,
       reviewReasons: [],
       priority: priorityForAction(action),
+      classification,
       type: action.type,
       strategyPolicy: action.strategyPolicy || null,
+      liveInventoryDependencyOverride: liveInventoryDependencyOverride(action),
       candidateMethods,
       executionMethod: selectedMethod,
       chain: action.chain,
@@ -276,6 +292,13 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
             settlementRequirements: selection.settlementRequirements || [],
           }
         : null,
+      movementBudget: {
+        bridgeQuoteCostUsd: finiteOrNull(selection?.expectedExecutionRefillCostUsd),
+        bridgeQuoteCostCeilingUsd,
+        bridgeQuoteCostAccepted: bridgeCostGuard.accepted,
+        liveInventoryDependencyOverride: bridgeCostGuard.liveInventoryDependencyOverride,
+        classification,
+      },
       systemEconomics: buildJobSystemEconomics({ action, selection, routeContext: actionRouteContext, policy }),
       rationale: action.rationale,
       sourceHint: {
@@ -324,12 +347,18 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
     }
   }
   const jobs = draftJobs.map((job) => {
-    const reviewReasons = [
-      ...explicitGlobalReviewReasons.filter((reason) => reason !== "refill_cost_above_daily_cap"),
-      ...(dailyBudgetDeferredJobIds.has(job.jobId) ? ["refill_cost_above_daily_cap"] : []),
-      ...(deferredJobIds.has(job.jobId) ? ["too_many_pending_refills"] : []),
-      ...fundingSourceReviewReasons(job.fundingSource),
-    ];
+      const reviewReasons = [
+        ...explicitGlobalReviewReasons.filter((reason) => reason !== "refill_cost_above_daily_cap"),
+        ...(dailyBudgetDeferredJobIds.has(job.jobId) ? ["refill_cost_above_daily_cap"] : []),
+        ...(deferredJobIds.has(job.jobId) ? ["too_many_pending_refills"] : []),
+        ...(!evaluateBridgeMovementCostGuard({
+          method: job.executionMethod,
+          costUsd: job.fundingSource?.expectedExecutionRefillCostUsd,
+          record: job,
+          ceilingUsd: bridgeQuoteCostCeilingUsd,
+        }).accepted ? ["bridge_quote_cost_above_discretionary_ceiling"] : []),
+        ...fundingSourceReviewReasons(job.fundingSource),
+      ];
     const requiresManualReview =
       reviewReasons.length > 0 || (plan.decision === "REVIEW_REFILL_PLAN" && planReasons.length === 0);
     return {

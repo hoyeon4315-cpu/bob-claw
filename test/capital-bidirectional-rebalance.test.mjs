@@ -4,6 +4,7 @@ import {
   buildCapitalRebalancePlan,
   buildCapitalRebalanceMatchedTransfers,
 } from "../src/executor/capital/rebalancer.mjs";
+import { activeChains } from "../src/executor/capital/active-chain-set.mjs";
 
 const STRATEGY_CAPS = [
   {
@@ -19,6 +20,48 @@ const STRATEGY_CAPS = [
     gasFloat: { bera: { minUsd: 0, targetUsd: 0 } },
   },
 ];
+
+test("activeChains only includes auto-execute chains with positive caps", () => {
+  assert.deepEqual(activeChains([
+    ...STRATEGY_CAPS,
+    {
+      strategyId: "inactive-gas",
+      autoExecute: true,
+      caps: { perChainUsd: { soneium: 0 } },
+      gasFloat: { soneium: { minUsd: 3, targetUsd: 6 } },
+    },
+    {
+      strategyId: "manual-base",
+      autoExecute: false,
+      caps: { perChainUsd: { optimism: 100 } },
+      gasFloat: { optimism: { minUsd: 0, targetUsd: 0 } },
+    },
+  ]), ["base", "bera"]);
+});
+
+test("buildCapitalRebalancePlan drains inactive surplus without creating inactive destination shortfall", () => {
+  const plan = buildCapitalRebalancePlan({
+    strategyCaps: [
+      {
+        strategyId: "strategy-base",
+        autoExecute: true,
+        caps: { perChainUsd: { base: 100, soneium: 0 } },
+        gasFloat: {
+          base: { minUsd: 0, targetUsd: 0 },
+          soneium: { minUsd: 3, targetUsd: 6 },
+        },
+      },
+    ],
+    policy: { capital: { canaryStartUsdMax: 100, rebalanceToleranceUsd: 1 } },
+    balancesByChain: {
+      soneium: { nativeUsd: 0, settlementUsd: 90 },
+      base: { nativeUsd: 0, settlementUsd: 0 },
+    },
+  });
+  assert.equal(plan.actions.some((item) => item.type === "gas_float_top_up" && item.chain === "soneium"), false);
+  assert.equal(plan.actions.some((item) => item.type === "capital_rebalance" && item.chain === "soneium"), false);
+  assert.deepEqual(plan.matchedTransfers, [{ from: "soneium", to: "base", amountUsd: 90 }]);
+});
 
 test("matched transfers pair surplus chains with shortfall chains", () => {
   const transfers = buildCapitalRebalanceMatchedTransfers({

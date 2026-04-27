@@ -346,6 +346,89 @@ test("treasury refill executor maps BTC-family cross-chain token refill to Gatew
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor blocks bridge execution when quote cost exceeds discretionary ceiling", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: nativeRefillJob({
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        expectedExecutionRefillCostUsd: 1.6,
+        source: {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          actual: "25000",
+          actualDecimal: 0.00025,
+          estimatedUsd: 18.5,
+        },
+      },
+    }),
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async () => ({
+      planStatus: "ready",
+      minimumOutputAmount: "1000000000000000",
+      expectedOutputAmount: "1000000000000000",
+    }),
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.blockedReason, "bridge_quote_cost_above_discretionary_ceiling");
+});
+
+test("treasury refill executor allows explicit live override for bridge quote ceiling", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: nativeRefillJob({
+      executionMethod: "cross_chain_bridge_lifi",
+      liveInventoryDependencyOverride: true,
+      fundingSource: {
+        expectedExecutionRefillCostUsd: 1.25,
+        source: {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          actual: "25000",
+          actualDecimal: 0.00025,
+          estimatedUsd: 18.5,
+        },
+      },
+    }),
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async () => ({
+      planStatus: "ready",
+      minimumOutputAmount: "1000000000000000",
+      expectedOutputAmount: "1000000000000000",
+    }),
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.discretionaryBudget.bypassed, true);
+});
+
+test("treasury refill executor bypasses new movement ceilings for strategy_realized_pnl jobs", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: nativeRefillJob({
+      executionMethod: "cross_chain_bridge_lifi",
+      classification: "strategy_realized_pnl",
+      fundingSource: {
+        expectedExecutionRefillCostUsd: 1.25,
+        source: {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          actual: "25000",
+          actualDecimal: 0.00025,
+          estimatedUsd: 18.5,
+        },
+      },
+    }),
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async () => ({
+      planStatus: "ready",
+      minimumOutputAmount: "1000000000000000",
+      expectedOutputAmount: "1000000000000000",
+    }),
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.discretionaryBudget.bypassed, true);
+});
+
 test("treasury refill executor dispatches ready preparation to the selected executor", async () => {
   const execution = await executeTreasuryRefillExecutionPlan({
     preparation: {

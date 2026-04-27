@@ -103,6 +103,64 @@ test("Gas.Zip build plan allows refill when an upcoming operation needs more gas
   assert.equal(plan.minimumDestinationWei, "985050000000000");
 });
 
+test("Gas.Zip blocks small refuels when quote loss exceeds discretionary budget", async () => {
+  const plan = await buildGasZipNativeRefuelPlan({
+    srcChain: "base",
+    dstChain: "bsc",
+    amountWei: "500000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+    priceReader: async () => pricesFixture(),
+    quoteFetcher: async () => ({
+      calldata: "0x010e",
+      quotes: [
+        {
+          chain: 56,
+          expected: "460000000000000",
+          gas: "10000000000000",
+          usd: 0.276,
+          speed: 7,
+        },
+      ],
+    }),
+  });
+
+  assert.equal(plan.planStatus, "blocked");
+  assert.equal(plan.blockedReason, "gas_zip_quote_loss_above_discretionary_budget");
+  assert.equal(plan.quoteLossGuard.quoteLossBps > 500, true);
+});
+
+test("Gas.Zip discretionary-budget loss guard bypasses strategy_realized_pnl movements", async () => {
+  const plan = await buildGasZipNativeRefuelPlan({
+    srcChain: "base",
+    dstChain: "bsc",
+    amountWei: "500000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+    priceReader: async () => pricesFixture(),
+    discretionaryBudgetBypass: true,
+    quoteFetcher: async () => ({
+      calldata: "0x010e",
+      quotes: [
+        {
+          chain: 56,
+          expected: "460000000000000",
+          gas: "10000000000000",
+          usd: 0.276,
+          speed: 7,
+        },
+      ],
+    }),
+    estimateGasImpl: async () => ({
+      gasUnits: 120_000,
+      rpcUrl: "https://base.example",
+    }),
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.quoteLossGuard.bypassed, true);
+});
+
 test("Gas.Zip refill preparation becomes ready once executor exists and proof is post-settlement only", async () => {
   let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({

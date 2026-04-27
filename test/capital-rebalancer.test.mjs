@@ -111,7 +111,7 @@ test("capital inventory merge prefers whole-wallet observations and aggregates s
   assert.equal(balancesByChain.ethereum.nativeUsd, 5);
 });
 
-test("capital manager wrapper emits auto-executable Gas.Zip gas-float refill jobs", () => {
+test("capital manager wrapper skips gas-float refuel intents for inactive zero-cap chains", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const result = buildCapitalManagerRefillJobs({
     strategyCaps: [
@@ -146,18 +146,49 @@ test("capital manager wrapper emits auto-executable Gas.Zip gas-float refill job
     now: "2026-04-20T12:00:00.000Z",
   });
 
-  assert.equal(result.rebalancePlan.actions.length, 1);
-  assert.equal(result.rebalancePlan.actions[0].type, "gas_float_top_up");
-  assert.equal(result.capitalPlan.actions.length, 1);
-  assert.equal(result.capitalPlan.actions[0].type, "refill_native");
-  assert.equal(result.capitalPlan.actions[0].chain, "soneium");
-  assert.equal(result.jobs.requiresManualReview, false);
-  assert.equal(result.jobs.jobs.length, 1);
-  assert.equal(result.jobs.jobs[0].executionMethod, "gas_refuel_bridge_gas_zip");
-  assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "base");
-  assert.deepEqual(result.jobs.jobs[0].fundingSource.settlementRequirements, [
-    "gas_zip_destination_native_delta_proof_required",
-  ]);
+  assert.equal(result.rebalancePlan.actions.length, 0);
+  assert.equal(result.capitalPlan.actions.length, 0);
+  assert.equal(result.jobs.jobs.length, 0);
+});
+
+test("capital manager wrapper still emits same-tick active-chain gas-float refill jobs", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const result = buildCapitalManagerRefillJobs({
+    strategyCaps: [
+      {
+        strategyId: "gas-float-soneium",
+        autoExecute: true,
+        caps: {
+          perChainUsd: {
+            soneium: 25,
+          },
+        },
+        gasFloat: {
+          soneium: { minUsd: 3, targetUsd: 6 },
+        },
+      },
+    ],
+    policy,
+    wholeWalletInventory: {
+      native: [
+        {
+          chain: "base",
+          token: ZERO_TOKEN,
+          balance: "5000000000000000",
+          actualDecimal: 0.005,
+          estimatedUsd: 10,
+        },
+      ],
+      tokenBalances: [],
+    },
+    prices: priceFixture(),
+    address: "0x1111111111111111111111111111111111111111",
+    now: "2026-04-20T12:00:00.000Z",
+  });
+
+  assert.equal(result.rebalancePlan.actions.some((item) => item.type === "gas_float_top_up" && item.chain === "soneium"), true);
+  assert.equal(result.capitalPlan.actions.some((item) => item.type === "refill_native" && item.chain === "soneium"), true);
+  assert.equal(result.jobs.jobs.some((item) => item.executionMethod === "gas_refuel_bridge_gas_zip"), true);
 });
 
 test("capital manager wrapper emits wrapped-BTC settlement rebalance jobs from observed source inventory", () => {

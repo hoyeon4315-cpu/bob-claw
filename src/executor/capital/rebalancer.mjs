@@ -3,6 +3,7 @@ import { priceForAssetUsd } from "../../market/prices.mjs";
 import { buildFundingSourcePlan } from "../../treasury/funding-source-planner.mjs";
 import { decimalToUnits } from "../../treasury/policy.mjs";
 import { buildTreasuryRefillJobs } from "../../treasury/refill-job.mjs";
+import { activeChainSet } from "./active-chain-set.mjs";
 import { evaluateGasFloatKeeper } from "./gas-float-keeper.mjs";
 import { buildTargetBalances } from "./target-balances.mjs";
 
@@ -186,10 +187,12 @@ export function buildCapitalRebalancePlan({
         scored: true,
       }
     : buildTargetBalances({ strategyCaps, policy, now });
+  const activeDestinationChains = activeChainSet(strategyCaps);
   const gasFloat = evaluateGasFloatKeeper({
     targetBalances: targets,
     balancesByChain,
     now,
+    activeChainSet: activeDestinationChains,
   });
   const actions = [...gasFloat.actions];
   const tolerance = Number.isFinite(policy?.capital?.rebalanceToleranceUsd)
@@ -201,6 +204,7 @@ export function buildCapitalRebalancePlan({
   const surpluses = [];
 
   for (const item of targets.items || []) {
+    if (!activeDestinationChains.has(item.chain)) continue;
     targetByChain.set(item.chain, item.settlementTargetUsd || 0);
     const currentSettlementUsd = finite(balancesByChain[item.chain]?.settlementUsd) ?? 0;
     const shortfallUsd = Math.max(0, (item.settlementTargetUsd || 0) - currentSettlementUsd);
@@ -264,6 +268,7 @@ export function buildCapitalRebalancePlan({
     observedAt: now,
     decision: actions.length > 0 ? "REBALANCE_REQUIRED" : "BALANCED",
     targets,
+    activeChains: [...activeDestinationChains],
     gasFloat,
     actions,
     matchedTransfers,
