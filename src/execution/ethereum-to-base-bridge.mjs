@@ -62,7 +62,7 @@ const EXECUTION_STEPS = [
     step: 4,
     name: "Approve USDC for Base Bridge",
     chain: "ethereum",
-    contract: "0xA0b86a33E6441e8ae927B5D7A378370f47A2e4cC", // USDC
+    contract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
     method: "approve",
     params: {
       spender: "0x3154Cf16ccdb4C6d922629664174b904d80F2C35", // Base Bridge
@@ -92,7 +92,7 @@ const EXECUTION_STEPS = [
     method: "exactInputSingle",
     params: {
       tokenIn: "0x8292Bb45bf1E4a0860d4bC8E964E223C0B05d576", // RLUSD
-      tokenOut: "0xA0b86a33E6441e8ae927B5D7A378370f47A2e4cC", // USDC
+      tokenOut: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
       fee: 500, // 0.05%
       recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
       amountIn: "25000000000000000000",
@@ -108,7 +108,7 @@ const EXECUTION_STEPS = [
     contract: "0x3154Cf16ccdb4C6d922629664174b904d80F2C35", // Base L1 Bridge
     method: "depositERC20To",
     params: {
-      l1Token: "0xA0b86a33E6441e8ae927B5D7A378370f47A2e4cC", // USDC
+      l1Token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
       l2Token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base USDC
       to: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
       amount: "125000000", // $125 USDC (after swap)

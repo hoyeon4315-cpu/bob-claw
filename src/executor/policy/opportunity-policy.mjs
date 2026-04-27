@@ -6,6 +6,14 @@ import { evaluateExitRules } from "../../config/merkl-exit-rules.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
 
+function isCapitalMovementIntent(intent = {}) {
+  const movementTypes = new Set([
+    "bridge", "withdraw", "deposit", "rebalance", "exit", "harvest_yield",
+    "scale_up", "capital_rebalance", "capital_drain", "refill", "consolidation",
+  ]);
+  return movementTypes.has(intent.intentType) || movementTypes.has(intent.action);
+}
+
 export async function evaluateOpportunityPolicy({
   intent = {},
   auditRecords = [],
@@ -58,14 +66,20 @@ export async function evaluateOpportunityPolicy({
     projected.opportunitySharePct[intent.opportunityId] = (projected.opportunitySharePct[intent.opportunityId] || 0) + addShare;
   }
 
+  const isMovement = isCapitalMovementIntent(intent);
   const concResult = evaluateConcentrationLimits({ allocations: projected });
+  // Capital movement intents are exempt from opportunity/protocol concentration
+  // but still bound by chain concentration (don't over-concentrate on one chain).
+  const concBlockers = isMovement
+    ? concResult.violations.filter((v) => v.kind === "chain_concentration_exceeded").map((v) => v.kind)
+    : concResult.violations.map((v) => v.kind);
   results.push({
     policy: "concentration_limits",
     observedAt: now,
-    decision: concResult.ok ? "ALLOW" : "BLOCK",
-    blockers: concResult.violations.map((v) => v.kind),
+    decision: concBlockers.length === 0 ? "ALLOW" : "BLOCK",
+    blockers: concBlockers,
   });
-  if (!concResult.ok) blockers.push(...concResult.violations.map((v) => v.kind));
+  if (concBlockers.length > 0) blockers.push(...concBlockers);
 
   const positionUsd = Number(intent.amountUsd ?? intent.positionUsd ?? 0);
   if (positionUsd > 0 && positionUsd < SIZING_POLICY.minPositionUsd) {
@@ -73,7 +87,9 @@ export async function evaluateOpportunityPolicy({
   }
   const totalCapital = Number(capitalState.totalDeployableCapital ?? 0);
   if (totalCapital > 0) {
-    const maxPosition = totalCapital * SIZING_POLICY.maxSinglePositionPct;
+    // Movement intents can use up to 70% of capital (consolidation efficiency)
+    const maxPositionPct = isMovement ? 0.70 : SIZING_POLICY.maxSinglePositionPct;
+    const maxPosition = totalCapital * maxPositionPct;
     if (positionUsd > maxPosition) {
       blockers.push("position_above_max_single_position_pct");
     }
@@ -95,9 +111,10 @@ export async function evaluateOpportunityPolicy({
   }
 
   // Cross-chain bridge cost gate: reject if bridge cost would eat >50% of gross profit
+  // Exempt capital movement intents — they are cost-center operations, not yield positions.
   const srcChain = intent.srcChain || intent.chain;
   const dstChain = intent.dstChain || intent.chain;
-  if (srcChain && dstChain && srcChain !== dstChain) {
+  if (!isMovement && srcChain && dstChain && srcChain !== dstChain) {
     const bridgeCostUsd = Number(intent.estimatedBridgeCostUsd ?? 0);
     const holdDays = Number(intent.expectedHoldDays ?? 14);
     const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
@@ -113,7 +130,8 @@ export async function evaluateOpportunityPolicy({
   }
 
   // Same-chain minimum profitability floor based on gas only
-  if (srcChain && dstChain && srcChain === dstChain) {
+  // Exempt capital movement intents.
+  if (!isMovement && srcChain && dstChain && srcChain === dstChain) {
     const gasOnlyCost = Number(intent.estimatedGasCostUsd ?? 0.12);
     const holdDays = Number(intent.expectedHoldDays ?? 14);
     const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
