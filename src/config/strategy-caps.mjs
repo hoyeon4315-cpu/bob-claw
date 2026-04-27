@@ -899,7 +899,7 @@ export const STRATEGY_CAPS = Object.freeze({
         base: 100,
       }),
       maxDailyLossUsd: 100,
-      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      maxFailedGasCost24HUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 10, targetUsd: 20 }),

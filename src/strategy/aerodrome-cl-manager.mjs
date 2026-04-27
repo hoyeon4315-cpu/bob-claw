@@ -95,14 +95,18 @@ export function calculateCLPositionStatus({
 export async function runAerodromeManagerTick({
   position = null, // { entryEthBtcRatio, capitalUsd, accumulatedFeesUsd, daysHeld, entryDate }
   walletAddress = "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+  deployableCapitalUsd = null,
 } = {}) {
   const prices = await fetchEthBtcPrice();
   if (!prices) {
     return { status: "error", reason: "price_fetch_failed", action: null };
   }
   
-  // If no position exists, recommend entry
+  // If no position exists, recommend entry (capped at 25% of deployable capital)
   if (!position) {
+    const entryCapital = deployableCapitalUsd != null
+      ? Math.min(deployableCapitalUsd * 0.25, 130)
+      : 100;
     return {
       status: "recommend_entry",
       currentEthBtcRatio: prices.ethBtcRatio,
@@ -112,6 +116,7 @@ export async function runAerodromeManagerTick({
         token0: AERODROME_CONFIG.token0,
         token1: AERODROME_CONFIG.token1,
         rangeWidthPct: AERODROME_CONFIG.targetRangeWidthPct,
+        capitalUsd: entryCapital,
         reason: "no_active_position",
       },
     };
@@ -235,6 +240,7 @@ export async function evaluateAerodromeForAutopilot({
       daysHeld: existingCL.daysHeld || Math.floor((Date.now() - new Date(existingCL.entryDate).getTime()) / 86400000),
     } : null,
     walletAddress,
+    deployableCapitalUsd: totalCapitalUsd,
   });
   
   if (tick.action) {

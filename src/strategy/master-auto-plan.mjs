@@ -23,8 +23,8 @@ const CAPITAL_PLAN = Object.freeze({
   total: 520,
   primary: {
     strategy: "aerodrome-cl-weth-cbbtc",
-    targetUsd: 350,
-    targetPct: 0.673,
+    targetUsd: 130, // 25% cap (live policy maxSinglePositionPct)
+    targetPct: 0.250,
     expectedApy: 30.0,
     chain: "base",
     autoRebalance: true,
@@ -38,16 +38,23 @@ const CAPITAL_PLAN = Object.freeze({
     chain: "base",
   },
   gasReserve: {
-    targetUsd: 15.67,
-    targetPct: 0.030,
+    targetUsd: 16,
+    targetPct: 0.031,
     chain: "base",
   },
   microTest: {
     strategy: "high-risk-test",
-    targetUsd: 29.33, // Remainder for testing
-    targetPct: 0.056,
+    targetUsd: 30,
+    targetPct: 0.058,
     maxPerTest: 20,
-    autoRotate: true, // Rotate to best performer monthly
+    autoRotate: true,
+  },
+  hold: {
+    strategy: "usdc-reserve",
+    targetUsd: 219,
+    targetPct: 0.421,
+    chain: "base",
+    note: "Unallocated capital awaiting high-conviction opportunity within policy limits",
   },
 });
 
@@ -59,7 +66,7 @@ const CONSOLIDATION_INTENTS = Object.freeze([
   { step: 1, chain: "ethereum", action: "withdraw", protocol: "morpho-blue", market: "clearstar", amount: 75, gas: 0.73 },
   { step: 2, chain: "ethereum", action: "withdraw", protocol: "morpho-blue", market: "steakhouse", amount: 50, gas: 0.73 },
   { step: 3, chain: "ethereum", action: "withdraw", protocol: "aave-v3", market: "rlusd", amount: 25, gas: 0.97 },
-  { step: 4, chain: "ethereum", action: "bridge", asset: "USDC", dstChain: "base", amount: 147, gas: 0.58 },
+  { step: 4, chain: "ethereum", action: "bridge", asset: "USDC", dstChain: "base", amount: 130, gas: 0.58 },
   { step: 5, chain: "bera", action: "bridge", asset: "BERA", dstChain: "base", amount: 78, gas: 4.00 },
   { step: 6, chain: "avalanche", action: "bridge", asset: "USDC", dstChain: "base", amount: 12, gas: 2.00 },
 ]);
