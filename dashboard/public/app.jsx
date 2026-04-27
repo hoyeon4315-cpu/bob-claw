@@ -225,22 +225,22 @@ function StatCard({ label, main, sub, accent, onTap, tappable }) {
   );
 }
 
-function TriCard({ cells }) {
+function TriCard({ cells, compact = false }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'stretch',
-      padding: '10px 4px', background: 'var(--card)', borderRadius: 14,
+      padding: compact ? '6px 2px' : '10px 4px', background: 'var(--card)', borderRadius: compact ? 12 : 14,
       border: '0.5px solid var(--line)',
     }}>
       {cells.map((c, i) => (
         <React.Fragment key={c.label}>
           <div onClick={c.onTap} style={{
-            flex: 1, padding: '0 10px', textAlign: 'center',
+            flex: 1, padding: compact ? '0 8px' : '0 10px', textAlign: 'center',
             cursor: c.onTap ? 'pointer' : 'default', minWidth: 0,
           }}>
-            <div style={{ fontSize: 8.5, color: 'var(--ink-4)', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</div>
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: -0.3, marginTop: 2, color: c.accent || 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.main}</div>
-            {c.sub && <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.sub}</div>}
+            <div style={{ fontSize: compact ? 7.4 : 8.5, color: 'var(--ink-4)', letterSpacing: compact ? 0.7 : 1, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</div>
+            <div style={{ fontSize: compact ? 12.2 : 14, fontWeight: 600, letterSpacing: -0.3, marginTop: compact ? 1 : 2, color: c.accent || 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.main}</div>
+            {c.sub && <div style={{ fontSize: compact ? 8.8 : 10, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.sub}</div>}
           </div>
           {i < cells.length - 1 && <div style={{ width: 0.5, background: 'var(--line)' }}/>}
         </React.Fragment>
@@ -612,8 +612,8 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
   }, [expanded, onExpandedChange]);
   return (
     <div style={{
-      margin: fill ? '0 12px' : '6px 12px 0', padding:'10px 12px 8px',
-      background:'var(--card)', border:'0.5px solid var(--line)', borderRadius:14,
+      margin: fill ? '0 12px' : '4px 12px 0', padding:'8px 10px 6px',
+      background:'var(--card)', border:'0.5px solid var(--line)', borderRadius:12,
       flexShrink:0, animation:`slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
       display: 'flex', flexDirection: 'column',
       minHeight: fill && !expandIntoFlow ? 0 : undefined,
@@ -622,19 +622,19 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
         <div style={{
-          width: 24, height: 24, borderRadius: 12,
+          width: 22, height: 22, borderRadius: 11,
           background: '#FFF4E2',
           color: '#8A520C',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, fontWeight: 700, flexShrink: 0,
+          fontSize: 10.5, fontWeight: 700, flexShrink: 0,
         }}>H</div>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.2 }}>History</div>
-          <div style={{ fontSize:9.6, color:'var(--ink-3)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+          <div style={{ fontSize:10.4, fontWeight:700, letterSpacing:0.15 }}>History</div>
+          <div style={{ fontSize:9, color:'var(--ink-3)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
             Latest capital moves across chains and protocols
           </div>
           {filterChips.length > 0 && (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:3 }}>
               {filterChips.map((chip) => {
                 const active = filter === chip.id;
                 return (
@@ -649,7 +649,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
                       borderRadius:999, border:'none',
                       background: active ? chip.tone.bg : '#F5F5F6',
                       color: active ? chip.tone.fg : 'var(--ink-3)',
-                      fontSize:8.4, fontWeight:700, letterSpacing:0.15,
+                      fontSize:8.1, fontWeight:700, letterSpacing:0.1,
                       cursor:'pointer',
                     }}
                   >
@@ -667,7 +667,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
               border: 'none',
               background: 'transparent',
               color: 'var(--ink-3)',
-              fontSize: 10.5,
+              fontSize: 10,
               fontWeight: 600,
               padding: 0,
               cursor: 'pointer',
@@ -679,7 +679,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
         )}
       </div>
       <div style={{
-        marginTop: 8,
+        marginTop: 6,
         flex: fill && !expandIntoFlow ? '1 1 auto' : '0 0 auto',
         minHeight: fill && !expandIntoFlow ? 0 : undefined,
         overflowY: fill && !expandIntoFlow ? 'auto' : 'visible',
@@ -721,26 +721,26 @@ function PnlBreakdownStrip() {
   return (
     <div style={{
       margin: '0 12px',
-      padding: '10px 12px 8px',
+      padding: '8px 10px 7px',
       background: 'var(--card)',
       border: '0.5px solid var(--line)',
-      borderRadius: 14,
+      borderRadius: 12,
       flexShrink: 0,
       animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
     }}>
       <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8 }}>
         <div>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.2 }}>Realized split</div>
-          <div style={{ fontSize:9.6, color:'var(--ink-3)', marginTop:1 }}>
+          <div style={{ fontSize:10.2, fontWeight:700, letterSpacing:0.15 }}>Realized split</div>
+          <div style={{ fontSize:9, color:'var(--ink-3)', marginTop:1 }}>
             strategy vs transport / probe cost
           </div>
         </div>
-        <div style={{ fontSize:10, color:'var(--ink-3)' }}>
+        <div style={{ fontSize:9.2, color:'var(--ink-3)' }}>
           {strategyCount} strategy · {evidenceCount} probe
         </div>
       </div>
-      <div style={{ marginTop: 8 }}>
-        <TriCard cells={[
+      <div style={{ marginTop: 6 }}>
+        <TriCard compact cells={[
           {
             label: 'Strategy',
             main: fmtUsd(strategyUsd),
@@ -762,7 +762,7 @@ function PnlBreakdownStrip() {
         ]}/>
       </div>
       {topKinds.length > 0 && (
-        <div style={{ fontSize:10, color:'var(--ink-3)', marginTop:8, lineHeight:1.45 }}>
+        <div style={{ fontSize:8.9, color:'var(--ink-3)', marginTop:6, lineHeight:1.35 }}>
           Top drags: {topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(' · ')}
         </div>
       )}
@@ -790,12 +790,21 @@ function FlowPane({ refreshTick }) {
   const carryUsd = flow?.metrics?.pendingCarryUsd ?? KPI?.pendingCarry?.usd;
   const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod ?? KPI?.totalEarning?.usd;
   const grossYieldSats = flow?.metrics?.grossProfitSatsPeriod ?? KPI?.totalEarning?.sats ?? 0;
-  const yieldMain = grossYieldSats > 0
-    ? fmtSats(grossYieldSats)
-    : (Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : '—');
-  const yieldSub = Number.isFinite(grossYieldUsd) && grossYieldUsd > 0
-    ? `${fmtUsdCompact(grossYieldUsd)} · all protocols`
+  const strategyYieldUsd = STRATEGIES.reduce((sum, strategy) => sum + (Number.isFinite(strategy?.earnedUsd) ? strategy.earnedUsd : 0), 0);
+  const showPortfolioYield = strategyYieldUsd > 0 && (grossYieldSats <= 0 || grossYieldSats === carrySats);
+  const yieldMain = showPortfolioYield
+    ? fmtUsdCompact(strategyYieldUsd)
+    : grossYieldSats > 0
+      ? fmtSats(grossYieldSats)
+      : (Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : '—');
+  const yieldSub = showPortfolioYield
+    ? 'live est. · all protocols'
+    : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0
+      ? `${fmtUsdCompact(grossYieldUsd)} · all protocols`
     : 'all protocols';
+  const flowMapBaseHeight = 'calc(52% - 4px)';
+  const lowerPaneTop = 'calc(52% + 4px)';
+  const lowerPaneExpandedOffset = 'calc(52% + 10px)';
   const aprStrats = STRATEGIES.filter(s => s.apyPct != null && s.capUsd);
   const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
   const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
@@ -811,7 +820,7 @@ function FlowPane({ refreshTick }) {
         left: 12,
         right: 12,
         top: 4,
-        height: overlayActive ? 'calc(100% - 12px)' : 'calc(56% - 4px)',
+        height: overlayActive ? 'calc(100% - 12px)' : flowMapBaseHeight,
         zIndex: 4,
         transition: 'height 450ms var(--ease), transform 450ms var(--ease)',
       }}>
@@ -829,9 +838,9 @@ function FlowPane({ refreshTick }) {
         position: historyExpanded ? 'relative' : 'absolute',
         left: 0,
         right: 0,
-        top: historyExpanded ? undefined : 'calc(56% + 4px)',
+        top: historyExpanded ? undefined : lowerPaneTop,
         bottom: historyExpanded ? undefined : 0,
-        marginTop: historyExpanded ? 'calc(56% + 10px)' : undefined,
+        marginTop: historyExpanded ? lowerPaneExpandedOffset : undefined,
         zIndex: 1,
         opacity: overlayActive ? 0.28 : 1,
         transform: overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
@@ -843,8 +852,8 @@ function FlowPane({ refreshTick }) {
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          gap: 6,
-          paddingBottom: 8,
+          gap: 4,
+          paddingBottom: 6,
           overflow: 'hidden',
         }}>
           <FlowMetricGrid cards={[

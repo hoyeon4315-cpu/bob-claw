@@ -41,8 +41,9 @@ describe("dashboard home renewal source guard", () => {
     for (const label of labels) {
       assert.match(flowPane, new RegExp(`label:\\s*'${label.replace(" ", "\\s+")}'`));
     }
-    assert.match(flowPane, /const yieldMain = grossYieldSats > 0/);
-    assert.match(flowPane, /fmtUsdCompact\(grossYieldUsd\)\} · all protocols/);
+    assert.match(flowPane, /const strategyYieldUsd = STRATEGIES\.reduce/);
+    assert.match(flowPane, /const showPortfolioYield = strategyYieldUsd > 0 && \(grossYieldSats <= 0 \|\| grossYieldSats === carrySats\)/);
+    assert.match(flowPane, /'live est\. · all protocols'/);
     assert.match(flowPane, /wallet only · 0 open positions/);
     assert.match(flowPane, /wallet \+ \$\{positions\.length\} open position/);
     assert.match(flowPane, /<PnlBreakdownStrip\/>/);
@@ -52,6 +53,7 @@ describe("dashboard home renewal source guard", () => {
     const pnlStrip = extractSection("function PnlBreakdownStrip", "function FlowPane");
     assert.match(pnlStrip, /Realized split/);
     assert.match(pnlStrip, /strategy vs transport \/ probe cost/);
+    assert.match(pnlStrip, /<TriCard compact cells=\{\[/);
     assert.match(pnlStrip, /label: 'Strategy'/);
     assert.match(pnlStrip, /label: 'Probe cost'/);
     assert.match(pnlStrip, /label: 'Total'/);
@@ -150,14 +152,17 @@ describe("dashboard defi renewal source guard", () => {
     const flowPane = extractSection("function FlowPane", "function KpiCard");
     assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
     assert.match(flowPane, /const \[historyExpanded, setHistoryExpanded\] = useState\(\(\) => readPersistedHistoryExpanded\(\)\)/);
-    assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : 'calc\(56% - 4px\)'/);
+    assert.match(flowPane, /const flowMapBaseHeight = 'calc\(52% - 4px\)'/);
+    assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : flowMapBaseHeight/);
     assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
     assert.match(flowPane, /position: 'absolute'/);
     assert.match(flowPane, /overflowY: historyExpanded \? 'auto' : 'hidden'/);
     assert.match(flowPane, /position: historyExpanded \? 'relative' : 'absolute'/);
-    assert.match(flowPane, /top: historyExpanded \? undefined : 'calc\(56% \+ 4px\)'/);
+    assert.match(flowPane, /const lowerPaneTop = 'calc\(52% \+ 4px\)'/);
+    assert.match(flowPane, /top: historyExpanded \? undefined : lowerPaneTop/);
     assert.match(flowPane, /bottom: historyExpanded \? undefined : 0/);
-    assert.match(flowPane, /marginTop: historyExpanded \? 'calc\(56% \+ 10px\)' : undefined/);
+    assert.match(flowPane, /const lowerPaneExpandedOffset = 'calc\(52% \+ 10px\)'/);
+    assert.match(flowPane, /marginTop: historyExpanded \? lowerPaneExpandedOffset : undefined/);
     assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
     assert.match(flowPane, /<OpsStrip fill=\{!historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
   });

@@ -202,21 +202,21 @@ function StatCard({ label, main, sub, accent, onTap, tappable }) {
     transition: `transform 180ms ${"cubic-bezier(0.22, 1, 0.36, 1)"}`
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.5, color: "var(--ink-4)", letterSpacing: 1, textTransform: "uppercase" } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 600, letterSpacing: -0.3, marginTop: 2, color: accent || "var(--ink)" } }, main), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 0 } }, sub));
 }
-function TriCard({ cells }) {
+function TriCard({ cells, compact = false }) {
   return /* @__PURE__ */ React.createElement("div", { style: {
     display: "flex",
     alignItems: "stretch",
-    padding: "10px 4px",
+    padding: compact ? "6px 2px" : "10px 4px",
     background: "var(--card)",
-    borderRadius: 14,
+    borderRadius: compact ? 12 : 14,
     border: "0.5px solid var(--line)"
   } }, cells.map((c, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: c.label }, /* @__PURE__ */ React.createElement("div", { onClick: c.onTap, style: {
     flex: 1,
-    padding: "0 10px",
+    padding: compact ? "0 8px" : "0 10px",
     textAlign: "center",
     cursor: c.onTap ? "pointer" : "default",
     minWidth: 0
-  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.5, color: "var(--ink-4)", letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, letterSpacing: -0.3, marginTop: 2, color: c.accent || "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.main), c.sub && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.sub)), i < cells.length - 1 && /* @__PURE__ */ React.createElement("div", { style: { width: 0.5, background: "var(--line)" } }))));
+  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: compact ? 7.4 : 8.5, color: "var(--ink-4)", letterSpacing: compact ? 0.7 : 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: compact ? 12.2 : 14, fontWeight: 600, letterSpacing: -0.3, marginTop: compact ? 1 : 2, color: c.accent || "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.main), c.sub && /* @__PURE__ */ React.createElement("div", { style: { fontSize: compact ? 8.8 : 10, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.sub)), i < cells.length - 1 && /* @__PURE__ */ React.createElement("div", { style: { width: 0.5, background: "var(--line)" } }))));
 }
 function statusLabel(status) {
   if (status === "completed") return "\uC644\uB8CC";
@@ -492,11 +492,11 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
     if (typeof onExpandedChange === "function") onExpandedChange(expanded);
   }, [expanded, onExpandedChange]);
   return /* @__PURE__ */ React.createElement("div", { style: {
-    margin: fill ? "0 12px" : "6px 12px 0",
-    padding: "10px 12px 8px",
+    margin: fill ? "0 12px" : "4px 12px 0",
+    padding: "8px 10px 6px",
     background: "var(--card)",
     border: "0.5px solid var(--line)",
-    borderRadius: 14,
+    borderRadius: 12,
     flexShrink: 0,
     animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
     display: "flex",
@@ -505,18 +505,18 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
     flex: fill && !expandIntoFlow ? "1 1 auto" : "0 0 auto",
     overflow: expandIntoFlow ? "visible" : "hidden"
   } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     background: "#FFF4E2",
     color: "#8A520C",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: 700,
     flexShrink: 0
-  } }, "H"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, letterSpacing: 0.2 } }, "History"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.6, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "Latest capital moves across chains and protocols"), filterChips.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 } }, filterChips.map((chip) => {
+  } }, "H"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.4, fontWeight: 700, letterSpacing: 0.15 } }, "History"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "Latest capital moves across chains and protocols"), filterChips.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 } }, filterChips.map((chip) => {
     const active = filter === chip.id;
     return /* @__PURE__ */ React.createElement(
       "button",
@@ -534,9 +534,9 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
           border: "none",
           background: active ? chip.tone.bg : "#F5F5F6",
           color: active ? chip.tone.fg : "var(--ink-3)",
-          fontSize: 8.4,
+          fontSize: 8.1,
           fontWeight: 700,
-          letterSpacing: 0.15,
+          letterSpacing: 0.1,
           cursor: "pointer"
         }
       },
@@ -550,7 +550,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
         border: "none",
         background: "transparent",
         color: "var(--ink-3)",
-        fontSize: 10.5,
+        fontSize: 10,
         fontWeight: 600,
         padding: 0,
         cursor: "pointer",
@@ -559,7 +559,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
     },
     expanded ? "Show less" : `Show more \xB7 ${filteredActivities.length}`
   )), /* @__PURE__ */ React.createElement("div", { style: {
-    marginTop: 8,
+    marginTop: 6,
     flex: fill && !expandIntoFlow ? "1 1 auto" : "0 0 auto",
     minHeight: fill && !expandIntoFlow ? 0 : void 0,
     overflowY: fill && !expandIntoFlow ? "auto" : "visible",
@@ -587,13 +587,13 @@ function PnlBreakdownStrip() {
   if (!Number.isFinite(strategyUsd) && !Number.isFinite(evidenceUsd) && !Number.isFinite(totalUsd)) return null;
   return /* @__PURE__ */ React.createElement("div", { style: {
     margin: "0 12px",
-    padding: "10px 12px 8px",
+    padding: "8px 10px 7px",
     background: "var(--card)",
     border: "0.5px solid var(--line)",
-    borderRadius: 14,
+    borderRadius: 12,
     flexShrink: 0,
     animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, letterSpacing: 0.2 } }, "Realized split"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.6, color: "var(--ink-3)", marginTop: 1 } }, "strategy vs transport / probe cost")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)" } }, strategyCount, " strategy \xB7 ", evidenceCount, " probe")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement(TriCard, { cells: [
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.2, fontWeight: 700, letterSpacing: 0.15 } }, "Realized split"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-3)", marginTop: 1 } }, "strategy vs transport / probe cost")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.2, color: "var(--ink-3)" } }, strategyCount, " strategy \xB7 ", evidenceCount, " probe")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
     {
       label: "Strategy",
       main: fmtUsd(strategyUsd),
@@ -612,7 +612,7 @@ function PnlBreakdownStrip() {
       sub: "combined impact",
       accent: Number.isFinite(totalUsd) && totalUsd < 0 ? "#B42318" : "var(--green)"
     }
-  ] })), topKinds.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.45 } }, "Top drags: ", topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(" \xB7 ")));
+  ] })), topKinds.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.9, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.35 } }, "Top drags: ", topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(" \xB7 ")));
 }
 function FlowPane({ refreshTick }) {
   const flow = window.FLOW || {};
@@ -630,8 +630,13 @@ function FlowPane({ refreshTick }) {
   const carryUsd = flow?.metrics?.pendingCarryUsd ?? KPI?.pendingCarry?.usd;
   const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod ?? KPI?.totalEarning?.usd;
   const grossYieldSats = flow?.metrics?.grossProfitSatsPeriod ?? KPI?.totalEarning?.sats ?? 0;
-  const yieldMain = grossYieldSats > 0 ? fmtSats(grossYieldSats) : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : "\u2014";
-  const yieldSub = Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? `${fmtUsdCompact(grossYieldUsd)} \xB7 all protocols` : "all protocols";
+  const strategyYieldUsd = STRATEGIES.reduce((sum, strategy) => sum + (Number.isFinite(strategy?.earnedUsd) ? strategy.earnedUsd : 0), 0);
+  const showPortfolioYield = strategyYieldUsd > 0 && (grossYieldSats <= 0 || grossYieldSats === carrySats);
+  const yieldMain = showPortfolioYield ? fmtUsdCompact(strategyYieldUsd) : grossYieldSats > 0 ? fmtSats(grossYieldSats) : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : "\u2014";
+  const yieldSub = showPortfolioYield ? "live est. \xB7 all protocols" : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? `${fmtUsdCompact(grossYieldUsd)} \xB7 all protocols` : "all protocols";
+  const flowMapBaseHeight = "calc(52% - 4px)";
+  const lowerPaneTop = "calc(52% + 4px)";
+  const lowerPaneExpandedOffset = "calc(52% + 10px)";
   const aprStrats = STRATEGIES.filter((s) => s.apyPct != null && s.capUsd);
   const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
   const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
@@ -643,7 +648,7 @@ function FlowPane({ refreshTick }) {
     left: 12,
     right: 12,
     top: 4,
-    height: overlayActive ? "calc(100% - 12px)" : "calc(56% - 4px)",
+    height: overlayActive ? "calc(100% - 12px)" : flowMapBaseHeight,
     zIndex: 4,
     transition: "height 450ms var(--ease), transform 450ms var(--ease)"
   } }, /* @__PURE__ */ React.createElement("div", { style: {
@@ -658,9 +663,9 @@ function FlowPane({ refreshTick }) {
     position: historyExpanded ? "relative" : "absolute",
     left: 0,
     right: 0,
-    top: historyExpanded ? void 0 : "calc(56% + 4px)",
+    top: historyExpanded ? void 0 : lowerPaneTop,
     bottom: historyExpanded ? void 0 : 0,
-    marginTop: historyExpanded ? "calc(56% + 10px)" : void 0,
+    marginTop: historyExpanded ? lowerPaneExpandedOffset : void 0,
     zIndex: 1,
     opacity: overlayActive ? 0.28 : 1,
     transform: overlayActive ? "translateY(18px) scale(0.985)" : "translateY(0) scale(1)",
@@ -671,8 +676,8 @@ function FlowPane({ refreshTick }) {
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    paddingBottom: 8,
+    gap: 4,
+    paddingBottom: 6,
     overflow: "hidden"
   } }, /* @__PURE__ */ React.createElement(FlowMetricGrid, { cards: [
     {
