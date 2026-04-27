@@ -1,7 +1,7 @@
 import { Interface } from "ethers";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
-import { dexProvidersForChain, tryProvidersWithFallback } from "../../dex/providers.mjs";
+import { dexProvidersForChain, quoteForLive } from "../../dex/providers.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
 
@@ -120,7 +120,7 @@ export async function buildSwapIntent({
   const resolvedProviders = providers || dexProvidersForChain(chain);
   let quoteResult = null;
   try {
-    quoteResult = await tryProvidersWithFallback(resolvedProviders, {
+    quoteResult = await quoteForLive(resolvedProviders, {
       chain,
       inputToken: input,
       outputToken: output,

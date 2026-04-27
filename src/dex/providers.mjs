@@ -2,6 +2,7 @@ import { EVM_CHAINS } from "../chains/registry.mjs";
 import { normalizeToken } from "../assets/tokens.mjs";
 import { dexProviderPriority } from "../config/dex-providers.mjs";
 import { oneInchApiKey } from "../config/dex-providers.mjs";
+import { defaultDexQuoteCache } from "../executor/discovery/dex-quote-cache.mjs";
 import { OdosProvider } from "./odos.mjs";
 export { OdosProvider } from "./odos.mjs";
 import {
@@ -63,7 +64,7 @@ export function dexProvidersForChain(chain) {
   return providers;
 }
 
-export async function tryProvidersWithFallback(providers, params) {
+async function executeQuoteWithFallback(providers, params) {
   if (!providers || providers.length === 0) {
     const error = new Error("No DEX providers available");
     error.provider = null;
@@ -94,6 +95,79 @@ export async function tryProvidersWithFallback(providers, params) {
     allFailed.name = firstError.name || "Error";
   }
   throw allFailed;
+}
+
+function defaultProbeRouteKey(params = {}, routeKey = null) {
+  if (typeof routeKey === "string" && routeKey.trim()) return routeKey.trim();
+  if (typeof params.routeKey === "string" && params.routeKey.trim()) return params.routeKey.trim();
+  return [
+    String(params.chain || params.srcChain || "unknown").trim().toLowerCase(),
+    String(params.inputToken || "unknown").trim().toLowerCase(),
+    String(params.outputToken || "unknown").trim().toLowerCase(),
+  ].join("->");
+}
+
+export async function quoteForLive(providers, params) {
+  return executeQuoteWithFallback(providers, params);
+}
+
+export async function quoteForProbe(
+  providers,
+  params,
+  {
+    cache = defaultDexQuoteCache(),
+    routeKey = null,
+    srcChain = params?.srcChain ?? params?.chain,
+    now = new Date().toISOString(),
+  } = {},
+) {
+  const resolvedRouteKey = defaultProbeRouteKey(params, routeKey);
+  const resolvedSrcChain = String(srcChain || "").trim().toLowerCase();
+  if (!cache || !resolvedSrcChain) {
+    return quoteForLive(providers, params);
+  }
+  const cached = await cache.get({
+    routeKey: resolvedRouteKey,
+    amount: params?.amount,
+    srcChain: resolvedSrcChain,
+    now,
+  });
+  if (cached) {
+    return {
+      ...cached.value,
+      cache: {
+        hit: true,
+        key: cached.cacheKey,
+        amountBucket: cached.amountBucket,
+        observedAt: cached.observedAt,
+        ageMs: cached.ageMs,
+        ttlMs: cached.ttlMs,
+      },
+    };
+  }
+  const result = await quoteForLive(providers, params);
+  const stored = await cache.set({
+    routeKey: resolvedRouteKey,
+    amount: params?.amount,
+    srcChain: resolvedSrcChain,
+    observedAt: now,
+    value: result,
+  });
+  return {
+    ...result,
+    cache: {
+      hit: false,
+      key: stored.cacheKey,
+      amountBucket: stored.amountBucket,
+      observedAt: stored.observedAt,
+      ageMs: 0,
+      ttlMs: stored.ttlMs,
+    },
+  };
+}
+
+export async function tryProvidersWithFallback(providers, params) {
+  return quoteForLive(providers, params);
 }
 
 export function defaultDexQuoteProvider(chain) {

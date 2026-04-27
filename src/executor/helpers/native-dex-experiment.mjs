@@ -4,7 +4,7 @@ import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
-import { classifyDexError, dexProvidersForChain, tryProvidersWithFallback, OdosProvider } from "../../dex/providers.mjs";
+import { classifyDexError, dexProvidersForChain, quoteForLive, OdosProvider } from "../../dex/providers.mjs";
 import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -193,7 +193,7 @@ export async function buildNativeDexExperimentPlan({
   let steps = [];
 
   try {
-    const result = await tryProvidersWithFallback(resolvedProviders, {
+    const result = await quoteForLive(resolvedProviders, {
       chain,
       inputToken: wrappedNative,
       outputToken: normalizedOutputToken,
