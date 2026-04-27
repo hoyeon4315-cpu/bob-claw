@@ -147,6 +147,18 @@ function refillPreviewStatus(result = {}) {
   return result?.json?.preparation?.status || result?.json?.event?.status || result?.json?.status || null;
 }
 
+function refillExecutionStatus(result = {}) {
+  return result?.json?.execution?.settlementStatus || result?.json?.outcomeEvent?.status || result?.json?.status || null;
+}
+
+function refillDeliveredStatus(status = null) {
+  return ["confirmed", "delivered", "succeeded"].includes(status);
+}
+
+function refillSelectedMethod(result = {}, fallback = null) {
+  return result?.json?.forcedMethod || result?.json?.preparation?.executionMethod || fallback;
+}
+
 function forcedRefillMethodArgs(job = {}, activeMethod = null) {
   const order = new Map([
     ["cross_chain_bridge_or_swap", 0],
@@ -198,10 +210,44 @@ function refillPreviewRetryable(result = {}) {
   ].includes(reason);
 }
 
+function refillExecutionBlockedReason(result = {}) {
+  const status = refillExecutionStatus(result);
+  return (
+    result?.json?.outcomeEvent?.blockers?.[0] ||
+    result?.json?.event?.blockers?.[0] ||
+    result?.json?.blockers?.[0] ||
+    result?.json?.execution?.error?.message ||
+    result?.json?.error?.message ||
+    classifyRefillRouteError(result) ||
+    (!refillDeliveredStatus(status) ? status : null) ||
+    result?.error?.message ||
+    null
+  );
+}
+
+function refillExecutionRetryable(result = {}) {
+  const reason = refillExecutionBlockedReason(result);
+  const status = refillExecutionStatus(result);
+  if (!reason && !status) return false;
+  if (["source_confirmed_only", "confirmed", "delivered", "succeeded"].includes(status)) return false;
+  return [
+    "no_route",
+    "bridge_pair_unsupported",
+    "lifi_quote_rejected",
+    "route_unsupported",
+    "quote_unavailable",
+    "routing_unavailable",
+    "dex_quote_failed",
+    "across_ticker_unsupported",
+    "execution_reverted",
+    "insufficient_funds",
+    "executor_output_below_refill_target",
+  ].includes(reason);
+}
+
 function compactRefillExecution(job, preview, execution = null) {
-  const active = execution || preview;
-  const executionStatus = active?.json?.execution?.settlementStatus || active?.json?.outcomeEvent?.status || active?.json?.status || null;
-  const delivered = ["confirmed", "delivered", "succeeded"].includes(executionStatus);
+  const executionStatus = execution ? refillExecutionStatus(execution) : null;
+  const delivered = refillDeliveredStatus(executionStatus);
   return {
     jobId: job.jobId,
     refillSource: job.autopilotRefillSource || job.jobSourceStore || null,
@@ -209,20 +255,13 @@ function compactRefillExecution(job, preview, execution = null) {
     asset: job.asset,
     targetAmountDecimal: job.targetAmountDecimal ?? null,
     executionMethod: job.executionMethod,
-    selectedExecutionMethod: preview?.json?.preparation?.executionMethod || job.executionMethod,
-    previewStatus: refillPreviewStatus(preview),
-    previewBlockedReason: refillPreviewBlockedReason(preview),
+    selectedExecutionMethod: refillSelectedMethod(execution || preview, job.executionMethod),
+    previewStatus: execution ? null : refillPreviewStatus(preview),
+    previewBlockedReason: refillPreparationReady(preview?.json) ? null : refillPreviewBlockedReason(preview),
     attempted: Boolean(execution),
     executed: delivered,
     executionStatus,
-    executionBlockedReason:
-      active?.json?.event?.blockers?.[0] ||
-      active?.json?.blockers?.[0] ||
-      active?.json?.preparation?.blockedReason ||
-      classifyRefillRouteError(active) ||
-      active?.json?.error?.message ||
-      active?.error?.message ||
-      null,
+    executionBlockedReason: execution ? refillExecutionBlockedReason(execution) : null,
   };
 }
 
@@ -433,6 +472,7 @@ function compactPayback(report = null) {
     reason: report?.reason || null,
     plannedPaybackSats: report?.compositePlan?.plannedPaybackSats ?? null,
     pendingCarrySats: report?.decision?.snapshot?.pendingDeferredSats ?? report?.decision?.snapshot?.pendingCarrySats ?? null,
+    nextAction: report?.nextAction || null,
   };
 }
 
@@ -811,24 +851,61 @@ export async function runAllChainAutopilot({
     }
     let execution = null;
     if (allowLiveCapableExecution && refillPreparationReady(preview.json)) {
-      const method = preview.json?.forcedMethod || null;
-      execution = await runJsonStep({
-        name: `treasury_refill_execute:${job.jobId}`,
-        args: [
-          "src/cli/run-refill-job-stub.mjs",
-          `--job-id=${job.jobId}`,
-          ...(method ? [`--method=${method}`] : []),
-          "--json",
-          "--execute",
-          "--mode=live",
-          `--timeout-ms=${timeoutMs}`,
-          `--confirmation-timeout-ms=${timeoutMs}`,
-        ],
-        runCommandImpl,
-        cwd,
-        timeoutMs,
-        steps,
-      });
+      while (refillPreparationReady(preview.json)) {
+        const method = refillSelectedMethod(preview, job.executionMethod);
+        execution = await runJsonStep({
+          name: `treasury_refill_execute:${job.jobId}`,
+          args: [
+            "src/cli/run-refill-job-stub.mjs",
+            `--job-id=${job.jobId}`,
+            ...(method ? [`--method=${method}`] : []),
+            "--json",
+            "--execute",
+            "--mode=live",
+            `--timeout-ms=${timeoutMs}`,
+            `--confirmation-timeout-ms=${timeoutMs}`,
+          ],
+          runCommandImpl,
+          cwd,
+          timeoutMs,
+          steps,
+        });
+        if (!refillExecutionRetryable(execution)) break;
+        const retryMethods = forcedRefillMethodArgs(job, method);
+        let nextPreview = null;
+        for (const retryMethod of retryMethods) {
+          nextPreview = await runJsonStep({
+            name: `treasury_refill_preview:${job.jobId}:${retryMethod}`,
+            args: ["src/cli/run-refill-job-stub.mjs", `--job-id=${job.jobId}`, `--method=${retryMethod}`, "--json"],
+            runCommandImpl,
+            cwd,
+            timeoutMs,
+            steps,
+          });
+          if (refillPreparationReady(nextPreview.json) || !refillPreviewRetryable(nextPreview)) break;
+        }
+        if (!nextPreview) break;
+        preview = nextPreview;
+        if (refillPreviewRetryable(preview)) {
+          preview = {
+            ...preview,
+            json: {
+              ...(preview.json || {}),
+              preparation: {
+                ...(preview.json?.preparation || {}),
+                status: "blocked",
+                blockedReason: "routing_exhausted",
+              },
+            },
+          };
+          steps[steps.length - 1] = commandStep(
+            steps[steps.length - 1]?.name || `treasury_refill_preview:${job.jobId}`,
+            steps[steps.length - 1]?.args || [],
+            preview,
+          );
+        }
+        if (!refillPreparationReady(preview.json)) break;
+      }
     }
     refillExecutions.push(compactRefillExecution(job, preview, execution));
   }

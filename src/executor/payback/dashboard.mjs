@@ -13,6 +13,10 @@ function isMissingDestinationDecision(decision = null) {
   );
 }
 
+function isMissingReserveDecision(decision = null) {
+  return decision?.reason === "reserve_asset_missing";
+}
+
 function normalizeTimestamp(value) {
   if (!value) return null;
   const ms = new Date(value).getTime();
@@ -266,6 +270,8 @@ export async function buildPaybackDashboardSlice({
       nextAction:
         isMissingDestinationDecision(decision)
           ? "set_payback_btc_destination_env"
+          : isMissingReserveDecision(decision)
+            ? "restore_profit_reserve_wbtc_oft"
           : null,
       minimumPaybackProgress:
         effectiveMinimumProgress,

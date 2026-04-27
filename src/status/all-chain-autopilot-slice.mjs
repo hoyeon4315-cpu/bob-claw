@@ -52,7 +52,7 @@ function buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payba
   if (strategyDispatch?.liveEligibleCount === 0) {
     blockers.push({ source: "strategy_dispatch", reason: "no_live_eligible_strategy" });
   }
-  if (payback?.status === "carry" && payback?.reason) {
+  if (payback?.reason && ["carry", "defer", "blocked"].includes(payback?.status)) {
     blockers.push({ source: "payback", reason: payback.reason });
   }
   return blockers.slice(0, 6);
@@ -61,6 +61,7 @@ function buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payba
 function nextActionFor(slice) {
   if (!slice.present) return "run_all_chain_autopilot";
   if (slice.refill.blockedCount > 0) return "resolve_refill_routes";
+  if (slice.payback.reason === "reserve_asset_missing") return "restore_payback_reserve";
   if (slice.portfolio.status === "positions_opened") return "monitor_live_positions";
   if (slice.payback.status === "carry") return "accrue_payback_until_minimum";
   if (slice.strategyDispatch.liveEligibleCount === 0) return "continue_shadow_dispatch";
@@ -110,6 +111,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
         reason: null,
         plannedPaybackSats: null,
         pendingCarrySats: null,
+        nextAction: null,
       },
       topBlockers: [],
       nextAction: "run_all_chain_autopilot",
@@ -164,6 +166,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       reason: payback.reason || null,
       plannedPaybackSats: payback.plannedPaybackSats ?? null,
       pendingCarrySats: payback.pendingCarrySats ?? null,
+      nextAction: payback.nextAction || null,
     },
     topBlockers: buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payback }),
     nextAction: null,

@@ -55,6 +55,7 @@ test("strategy evidence refresh plan wires deterministic artifact refresh comman
     "strategy_dispatch",
     "prelive_evidence_campaign",
     "promotion_preview",
+    "strategy_tick",
     "strategy_tick_slice",
     "status_dashboard",
   ]);
@@ -82,9 +83,11 @@ test("strategy evidence refresh plan wires deterministic artifact refresh comman
     "--write=/repo/data/promotion-latest.json",
     "--quiet",
   ]);
-  assert.deepEqual(plan[8].args, ["--quiet"]);
-  assert.equal(plan[8].devAutomation, false);
-  assert.deepEqual(plan[9].args, ["--skip-shadow-cycle"]);
+  assert.deepEqual(plan[8].args, ["--all-strategies", "--quiet", "--allow-shadow"]);
+  assert.equal(plan[8].devAutomation, true);
+  assert.deepEqual(plan[9].args, ["--quiet"]);
+  assert.equal(plan[9].devAutomation, false);
+  assert.deepEqual(plan[10].args, ["--skip-shadow-cycle"]);
 });
 
 test("strategy evidence refresh plan omits optional steps when skip flags are set", () => {

@@ -294,6 +294,36 @@ test("payback dashboard exposes current minimum payback gap when destination is 
   assert.equal(payback.carry.remainingSatsToMinimum, 49_942);
 });
 
+test("payback dashboard exposes reserve restoration next action when reserve asset is missing", async () => {
+  const payback = await buildPaybackDashboardSlice({
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [],
+      treasuryInventory: [],
+      marketPriceSnapshots: [],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "defer",
+      reason: "reserve_asset_missing",
+      policy: {
+        destinationPath: {
+          profitReserveChain: "base",
+        },
+      },
+      decisionLog: {
+        inputs: {},
+      },
+    }),
+  });
+
+  assert.equal(payback.scheduler.status, "defer");
+  assert.equal(payback.scheduler.reason, "reserve_asset_missing");
+  assert.equal(payback.scheduler.nextAction, "restore_profit_reserve_wbtc_oft");
+});
+
 test("payback dashboard prefers destination settlement time for last settled timestamp", async () => {
   const payback = await buildPaybackDashboardSlice({
     auditLogLines: [],

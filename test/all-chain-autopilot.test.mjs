@@ -989,6 +989,121 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
   assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
 });
 
+test("all-chain autopilot retries alternate refill execution methods after retryable live failures", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "live-retry",
+              chain: "soneium",
+              asset: "wBTC.OFT",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_lifi",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: { chain: "avalanche", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+                {
+                  method: "cross_chain_bridge_across",
+                  availability: "ready",
+                  source: { chain: "avalanche", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--execute") && args.includes("--method=cross_chain_bridge_lifi")) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: "Execution reverted",
+          json: {
+            forcedMethod: "cross_chain_bridge_lifi",
+            execution: {
+              settlementStatus: "failed",
+              error: { message: "execution_reverted" },
+            },
+            outcomeEvent: {
+              status: "failed",
+              blockers: ["execution_reverted"],
+            },
+            error: { message: "execution_reverted" },
+          },
+          error: { name: "Error", message: "Execution reverted" },
+        };
+      }
+      if (args.includes("--method=cross_chain_bridge_across")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: {
+            forcedMethod: "cross_chain_bridge_across",
+            preparation: { status: "ready", executionMethod: "cross_chain_bridge_across" },
+            execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+          },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "cross_chain_bridge_lifi",
+          preparation: { status: "ready", executionMethod: "cross_chain_bridge_lifi" },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_across");
+  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")), true);
+  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_across") && args.includes("--execute")), true);
+});
+
 test("all-chain autopilot separates refill attempts from delivered executions", async () => {
   const command = ({ args }) => {
     const name = args[0];
@@ -1063,6 +1178,83 @@ test("all-chain autopilot separates refill attempts from delivered executions", 
   assert.equal(report.refillExecutions[0].executed, false);
   assert.equal(report.refillExecutions[0].executionStatus, "blocked");
   assert.equal(report.refillExecutions[0].executionBlockedReason, "strategy_per_trade_cap_exceeded");
+});
+
+test("all-chain autopilot surfaces unresolved live execution status instead of preview ready", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "source-confirmed-only",
+              chain: "ethereum",
+              asset: "ETH",
+              type: "refill_native",
+              executionMethod: "cross_chain_bridge_lifi",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: args.includes("--execute")
+          ? {
+              execution: {
+                settlementStatus: "source_confirmed_only",
+              },
+              outcomeEvent: {
+                status: "source_confirmed_only",
+              },
+            }
+          : {
+              preparation: {
+                status: "ready",
+                executionMethod: "cross_chain_bridge_lifi",
+              },
+            },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillAttemptedCount, 1);
+  assert.equal(report.summary.refillExecutedCount, 0);
+  assert.equal(report.refillExecutions[0].executionStatus, "source_confirmed_only");
+  assert.equal(report.refillExecutions[0].executionBlockedReason, "source_confirmed_only");
+  assert.equal(report.refillExecutions[0].previewStatus, null);
 });
 
 test("all-chain autopilot keeps parsed refill execution failures as blockers", async () => {

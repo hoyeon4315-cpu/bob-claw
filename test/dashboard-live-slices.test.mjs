@@ -73,6 +73,55 @@ test("all-chain autopilot dashboard slice keeps only public execution status", (
   assert.equal(slice.nextAction, "resolve_refill_routes");
 });
 
+test("all-chain autopilot dashboard slice surfaces payback reserve restoration when refill blockers are cleared", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-04-25T03:13:42.514Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 0,
+      autoRefillJobCount: 0,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: {
+        status: "completed",
+        executedCount: 0,
+        deliveredCount: 0,
+        blockedCount: 0,
+        chainsTouched: [],
+      },
+      merklCanary: { status: null, blockedReason: null },
+      portfolio: {
+        status: "no_position_opened",
+        allocator: {
+          deployments: [],
+        },
+      },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 1,
+        successCount: 1,
+        failedCount: 0,
+        liveEligibleCount: 1,
+        missingExecutorCount: 0,
+      },
+      payback: {
+        status: "defer",
+        reason: "reserve_asset_missing",
+        pendingCarrySats: 601,
+        nextAction: "restore_profit_reserve_wbtc_oft",
+      },
+    },
+    refillExecutions: [],
+  });
+
+  assert.equal(slice.payback.nextAction, "restore_profit_reserve_wbtc_oft");
+  assert.equal(slice.topBlockers.some((item) => item.reason === "reserve_asset_missing"), true);
+  assert.equal(slice.nextAction, "restore_payback_reserve");
+});
+
 test("Merkl active positions aggregate open live-capital entries", () => {
   const slice = buildMerklActivePositions(
     [

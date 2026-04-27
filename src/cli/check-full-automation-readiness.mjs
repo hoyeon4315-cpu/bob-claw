@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { config } from "../config/env.mjs";
+import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { collectExecutorRuntimeReadiness } from "../runtime/executor-runtime-readiness.mjs";
+import { buildAllChainAutopilotDashboardSlice } from "../status/all-chain-autopilot-slice.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
@@ -51,6 +54,7 @@ export function buildFullAutomationReadiness({
   capitalManager,
   strategyDispatch,
   payback,
+  autopilot,
 } = {}) {
   const runtimeReady = runtime?.summary?.ready === true;
   const operatingCapitalIngressCount = inbound?.summary?.operatingCapitalIngressCount ?? 0;
@@ -73,6 +77,9 @@ export function buildFullAutomationReadiness({
   const paybackStatus = payback?.payback?.scheduler?.status || null;
   const paybackReason = payback?.payback?.scheduler?.reason || null;
   const paybackIsolationReady = ingressIsolationReady;
+  const liveAutomationObserved = autopilot?.present === true;
+  const unresolvedRefillRoutes = liveAutomationObserved && (autopilot?.refill?.blockedCount ?? 0) > 0;
+  const paybackReserveReady = paybackReason !== "reserve_asset_missing";
 
   const blockers = [
     ...(runtimeReady ? [] : ["runtime_not_ready"]),
@@ -80,6 +87,8 @@ export function buildFullAutomationReadiness({
     ...(capitalAutomationReady ? [] : ["capital_rebalancer_not_ready"]),
     ...(dispatchReady ? [] : ["strategy_dispatch_not_ready"]),
     ...(paybackIsolationReady ? [] : ["payback_isolation_not_ready"]),
+    ...(unresolvedRefillRoutes ? ["refill_routes_unresolved"] : []),
+    ...(paybackReserveReady ? [] : ["payback_reserve_missing"]),
   ];
 
   return {
@@ -111,10 +120,21 @@ export function buildFullAutomationReadiness({
       selectedCount: strategyDispatch?.record?.selectedCount ?? 0,
       ready: dispatchReady,
     },
+    liveAutomation: {
+      observed: liveAutomationObserved,
+      status: autopilot?.status || null,
+      nextAction: autopilot?.nextAction || null,
+      refillBlockedCount: autopilot?.refill?.blockedCount ?? null,
+      refillAttemptedCount: autopilot?.refill?.attemptedCount ?? null,
+      refillExecutedCount: autopilot?.refill?.executedCount ?? null,
+      ready: !unresolvedRefillRoutes,
+    },
     payback: {
       status: paybackStatus,
       reason: paybackReason,
       isolationReady: paybackIsolationReady,
+      ready: paybackIsolationReady && paybackReserveReady,
+      nextAction: payback?.payback?.scheduler?.nextAction || null,
     },
     policyNote: "Operating capital ingress must stay isolated from payback; live dispatch still depends on policy/caps/kill-switch.",
   };
@@ -134,6 +154,9 @@ async function main() {
     args.refresh ? ["--json", "--write", "--mode=auto"] : ["--json", "--mode=auto"],
   );
   const payback = runJsonCli("src/cli/report-payback-status.mjs", ["--json"]);
+  const autopilot = buildAllChainAutopilotDashboardSlice(
+    await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest.json")),
+  );
 
   const report = buildFullAutomationReadiness({
     runtime,
@@ -141,6 +164,7 @@ async function main() {
     capitalManager: capitalManager.json,
     strategyDispatch: strategyDispatch.json,
     payback: payback.json,
+    autopilot,
   });
   report.commandHealth = {
     inbound: { ok: inbound.ok, error: inbound.error },

@@ -224,6 +224,62 @@ test("full automation readiness blocks when no auto refill or live strategy is a
   assert.deepEqual(report.blockers, ["capital_rebalancer_not_ready", "strategy_dispatch_not_ready"]);
 });
 
+test("full automation readiness reflects unresolved autopilot refill blockers and payback reserve gaps", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 2 },
+        jobs: [{ requiresManualReview: false }, { requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 4 },
+      executionSurfaces: { summary: { liveEligibleCount: 1 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "defer",
+          reason: "reserve_asset_missing",
+          nextAction: "restore_profit_reserve_wbtc_oft",
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      status: "completed_with_blockers",
+      nextAction: "resolve_refill_routes",
+      refill: {
+        blockedCount: 3,
+        attemptedCount: 1,
+        executedCount: 0,
+      },
+    },
+  });
+
+  assert.equal(report.ready, false);
+  assert.equal(report.liveAutomation.ready, false);
+  assert.equal(report.liveAutomation.nextAction, "resolve_refill_routes");
+  assert.equal(report.payback.ready, false);
+  assert.equal(report.payback.nextAction, "restore_profit_reserve_wbtc_oft");
+  assert.deepEqual(report.blockers, ["refill_routes_unresolved", "payback_reserve_missing"]);
+});
+
 test("manage-executor-launchd parseArgs reads install and path overrides", () => {
   const args = parseLaunchdArgs([
     "--json",

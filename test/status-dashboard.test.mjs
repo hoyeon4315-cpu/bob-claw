@@ -301,7 +301,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(
     result.stdout,
-    /paybackScheduler=defer reason=reserve_asset_missing next=none pendingSats=\d+ lastSettledSats=n\/a/,
+    /paybackScheduler=defer reason=reserve_asset_missing next=restore_profit_reserve_wbtc_oft pendingSats=\d+ lastSettledSats=n\/a/,
   );
   assert.match(result.stdout, /paybackGrossProfitSatsPeriod=\d+ paidBackSatsLifetime=0/);
   assert.match(result.stdout, /opportunityPositiveInsufficient=count:\d+ top:[^ ]+ net:[^ ]+ gap:[^ \n]+/);
