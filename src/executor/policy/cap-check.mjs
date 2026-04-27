@@ -1,4 +1,13 @@
+import { DISCRETIONARY_BUDGET } from "../../config/discretionary-budget.mjs";
 import { assertStrategyCaps, getStrategyCaps } from "../../config/strategy-caps.mjs";
+import { resolveQuoteMaxAgeMs } from "./stale-quote.mjs";
+
+const FALLBACK_DISCRETIONARY_24H_BUDGET_USD_BY_CATEGORY = Object.freeze({
+  probe: 3.0,
+  refuel: 5.0,
+  bridge: 10.0,
+  consolidation: 5.0,
+});
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
@@ -118,6 +127,56 @@ function finiteBudget(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function normalizeDiscretionaryCategory(category) {
+  const normalized = String(category || "").trim().toLowerCase();
+  return normalized || null;
+}
+
+function resolveDiscretionaryBudgetCaps() {
+  const configuredCaps = DISCRETIONARY_BUDGET?.last24hBudgetUsdByCategory;
+  if (!configuredCaps || typeof configuredCaps !== "object") {
+    return FALLBACK_DISCRETIONARY_24H_BUDGET_USD_BY_CATEGORY;
+  }
+  const normalizedCaps = Object.entries(configuredCaps).reduce((accumulator, [category, budgetUsd]) => {
+    const normalizedCategory = normalizeDiscretionaryCategory(category);
+    const normalizedBudgetUsd = finiteBudget(budgetUsd);
+    if (!normalizedCategory || !Number.isFinite(normalizedBudgetUsd)) return accumulator;
+    accumulator[normalizedCategory] = normalizedBudgetUsd;
+    return accumulator;
+  }, {});
+  return Object.keys(normalizedCaps).length > 0 ? normalizedCaps : FALLBACK_DISCRETIONARY_24H_BUDGET_USD_BY_CATEGORY;
+}
+
+function discretionarySliceCategory(entry = {}) {
+  return normalizeDiscretionaryCategory(
+    entry.discretionaryBudgetCategory ??
+      entry.category ??
+      entry.metadata?.discretionaryBudgetCategory ??
+      entry.intent?.discretionaryBudgetCategory ??
+      entry.intent?.category ??
+      entry.intent?.metadata?.discretionaryBudgetCategory,
+  );
+}
+
+function isStrategyRealizedPnlIntent(intent = {}) {
+  return (
+    intent.classification === "strategy_realized_pnl" ||
+    intent.metadata?.classification === "strategy_realized_pnl" ||
+    intent.kind === "strategy_realized_pnl"
+  );
+}
+
+function isFreshAutoExecuteIntent(intent = {}) {
+  const strategyCaps = intent.strategyId ? getStrategyCaps(intent.strategyId) : null;
+  if (strategyCaps?.autoExecute !== true) return false;
+  const quoteObservedAt = intent.quote?.observedAt || intent.observedAt || null;
+  if (!quoteObservedAt) return true;
+  const now = intent.now || intent.evaluatedAt || intent.createdAt || new Date().toISOString();
+  const quoteAgeMs = new Date(now).getTime() - new Date(quoteObservedAt).getTime();
+  const maxAgeMs = resolveQuoteMaxAgeMs({ intent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined });
+  return isFiniteNumber(quoteAgeMs) && quoteAgeMs >= 0 && quoteAgeMs <= maxAgeMs;
+}
+
 function resolvePortfolioExposurePolicy({
   activeBudgetUsd = null,
   policy = {},
@@ -218,6 +277,41 @@ export function buildStrategyCapState({
     dailyRealizedPnlUsd,
     failedGasCost24hUsd,
     attemptedCount24h: relevant.filter((item) => hoursAgo(item.timestamp || item.observedAt || now, now) <= 24).length,
+  };
+}
+
+export function evaluateDiscretionaryBudget(category, intent = {}, last24hSlice = []) {
+  if (isStrategyRealizedPnlIntent(intent) || isFreshAutoExecuteIntent(intent)) {
+    return {
+      allowed: true,
+      blockers: [],
+      runningTotalUsd: 0,
+    };
+  }
+
+  const normalizedCategory = normalizeDiscretionaryCategory(category);
+  const max24hBudgetUsd = resolveDiscretionaryBudgetCaps()[normalizedCategory];
+  if (!normalizedCategory || !Number.isFinite(max24hBudgetUsd)) {
+    return {
+      allowed: false,
+      blockers: ["discretionary_budget_category_unknown"],
+      runningTotalUsd: 0,
+    };
+  }
+
+  const historicalTotalUsd = last24hSlice
+    .filter((entry) => discretionarySliceCategory(entry) === normalizedCategory)
+    .map(recordAmountUsd)
+    .filter(isFiniteNumber)
+    .reduce((sum, value) => sum + value, 0);
+  const currentAmountUsd = intentCapAmountUsd(intent);
+  const runningTotalUsd = historicalTotalUsd + (isFiniteNumber(currentAmountUsd) ? currentAmountUsd : 0);
+  const blockers = runningTotalUsd > max24hBudgetUsd ? ["discretionary_budget_24h_category_exhausted"] : [];
+
+  return {
+    allowed: blockers.length === 0,
+    blockers,
+    runningTotalUsd,
   };
 }
 

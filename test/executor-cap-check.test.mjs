@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { assertStrategyCaps } from "../src/config/strategy-caps.mjs";
-import { buildPortfolioExposureState, buildStrategyCapState, evaluateCapCheck } from "../src/executor/policy/cap-check.mjs";
+import {
+  buildPortfolioExposureState,
+  buildStrategyCapState,
+  evaluateCapCheck,
+  evaluateDiscretionaryBudget,
+} from "../src/executor/policy/cap-check.mjs";
 
 function strategyCapsFixture(overrides = {}) {
   return {
@@ -234,6 +239,99 @@ test("evaluateCapCheck uses capCheckAmountUsd override for internal batched step
   assert.equal(result.decision, "ALLOW");
   assert.equal(result.metrics.amountUsd, 300);
   assert.equal(result.metrics.capAmountUsd, 0);
+});
+
+test("evaluateDiscretionaryBudget blocks when a category 24h budget is exhausted", () => {
+  const result = evaluateDiscretionaryBudget(
+    "probe",
+    {
+      amountUsd: 0.75,
+      intentType: "discretionary_probe",
+    },
+    [
+      {
+        category: "probe",
+        amountUsd: 2.5,
+      },
+    ],
+  );
+
+  assert.equal(result.allowed, false);
+  assert.equal(result.blockers.includes("discretionary_budget_24h_category_exhausted"), true);
+  assert.equal(result.runningTotalUsd, 3.25);
+});
+
+test("evaluateDiscretionaryBudget isolates spend by category", () => {
+  const result = evaluateDiscretionaryBudget(
+    "refuel",
+    {
+      amountUsd: 1,
+      intentType: "discretionary_refuel",
+    },
+    [
+      {
+        category: "bridge",
+        amountUsd: 9.5,
+      },
+      {
+        category: "probe",
+        amountUsd: 2.8,
+      },
+      {
+        category: "refuel",
+        amountUsd: 3,
+      },
+    ],
+  );
+
+  assert.equal(result.allowed, true);
+  assert.deepEqual(result.blockers, []);
+  assert.equal(result.runningTotalUsd, 4);
+});
+
+test("evaluateDiscretionaryBudget bypasses strategy realized pnl intents", () => {
+  const result = evaluateDiscretionaryBudget(
+    "bridge",
+    {
+      classification: "strategy_realized_pnl",
+      amountUsd: 25,
+    },
+    [
+      {
+        category: "bridge",
+        amountUsd: 10,
+      },
+    ],
+  );
+
+  assert.equal(result.allowed, true);
+  assert.deepEqual(result.blockers, []);
+  assert.equal(result.runningTotalUsd, 0);
+});
+
+test("evaluateDiscretionaryBudget bypasses fresh autoExecute strategy intents", () => {
+  const result = evaluateDiscretionaryBudget(
+    "bridge",
+    {
+      strategyId: "recursive_wrapped_btc_lending_loop",
+      chain: "base",
+      amountUsd: 25,
+      quote: {
+        observedAt: "2026-04-22T00:00:00.000Z",
+      },
+      now: "2026-04-22T00:00:10.000Z",
+    },
+    [
+      {
+        category: "bridge",
+        amountUsd: 10,
+      },
+    ],
+  );
+
+  assert.equal(result.allowed, true);
+  assert.deepEqual(result.blockers, []);
+  assert.equal(result.runningTotalUsd, 0);
 });
 
 test("buildStrategyCapState reinterprets legacy wrapped loop audit steps with internal cap accounting", () => {
