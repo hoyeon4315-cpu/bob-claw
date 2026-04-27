@@ -25,7 +25,10 @@ import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../
 import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
-import { buildAllChainAutopilotDashboardSlice } from "./all-chain-autopilot-slice.mjs";
+import {
+  buildAllChainAutopilotDashboardSlice,
+  resolveAllChainAutopilotReport,
+} from "./all-chain-autopilot-slice.mjs";
 import { buildCapitalSummarySlice } from "./capital-summary-slice.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
@@ -198,6 +201,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     v1InfraDrills,
     promotionReport,
     allChainAutopilotLatest,
+    allChainAutopilotLatestCompleted,
     treasuryInventoryRecords,
     wholeWalletInventoryRecords,
     merklPositionEvents,
@@ -249,6 +253,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonIfExists(join(dataDir, "v1-infra-drills.json")),
     readJsonIfExists(join(dataDir, "promotion-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
+    readJsonIfExists(join(dataDir, "all-chain-autopilot-latest-completed.json")),
     readJsonl(dataDir, "treasury-inventory"),
     readJsonl(dataDir, "whole-wallet-inventory"),
     readJsonl(dataDir, "merkl-portfolio-positions"),
@@ -356,14 +361,18 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     merklPositionEvents,
     wholeWalletRecords: wholeWalletInventoryRecords,
   });
+  const allChainAutopilotReport = resolveAllChainAutopilotReport(
+    allChainAutopilotLatest,
+    allChainAutopilotLatestCompleted,
+  );
   dashboardStatus.capitalSummary = buildCapitalSummarySlice({
     walletHoldings: dashboardStatus.walletHoldings,
     merklActivePositions: dashboardStatus.strategy.merklActivePositions,
-    executorEstimatedAssetValueUsd: allChainAutopilotLatest?.summary?.capitalManager?.estimatedAssetValueUsd ?? null,
+    executorEstimatedAssetValueUsd: allChainAutopilotReport?.summary?.capitalManager?.estimatedAssetValueUsd ?? null,
     generatedAt: dashboardStatus.generatedAt,
   });
   dashboardStatus.operations = {
-    allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotLatest),
+    allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
   };
   dashboardStatus.flow = buildFlowDashboardSlice({
     executionEvents,
@@ -383,7 +392,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
   dashboardStatus.dataCounts.treasuryInventoryRecords = treasuryInventoryRecords.length;
   dashboardStatus.dataCounts.capitalSummaryPresent = 1;
-  dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotLatest ? 1 : 0;
+  dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotReport ? 1 : 0;
   dashboardStatus.dataCounts.flowPresent = dashboardStatus.flow ? 1 : 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,

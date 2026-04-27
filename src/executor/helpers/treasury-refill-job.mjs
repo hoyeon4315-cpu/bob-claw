@@ -328,15 +328,21 @@ export async function buildTreasuryRefillExecutionPlan({
   } else if (executor === "gateway_btc_consolidation") {
     const targetAmount = positiveBigInt(job.targetAmount);
     const sourceAmount = positiveBigInt(source.actual);
-    const amount = job.type === "refill_native" ? estimateInputAmountFromSource({ job, source }) : targetAmount?.toString() || null;
+    const targetAsset = job.type === "refill_token" ? tokenAsset(job.chain, job.token) : null;
+    const stableTokenRefill = job.type === "refill_token" && !isBtcLikeAsset(targetAsset);
+    const amount = job.type === "refill_native"
+      ? estimateInputAmountFromSource({ job, source })
+      : stableTokenRefill
+        ? estimateInputAmountFromSource({ job, source })
+        : targetAmount?.toString() || null;
     if (job.type === "refill_native" && !amount) {
       return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     }
     if (job.type !== "refill_native" && !targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
-    if (job.type !== "refill_native" && sourceAmount != null && sourceAmount < targetAmount) {
+    if (job.type !== "refill_native" && !stableTokenRefill && sourceAmount != null && sourceAmount < targetAmount) {
       return blockedPreparation({ job, executor, blockedReason: "source_inventory_below_target_amount" });
     }
-    plan = await buildGatewayBtcPlanImpl({
+    let gatewayPlan = await buildGatewayBtcPlanImpl({
       srcChain: source.chain,
       dstChain: job.chain,
       srcToken: source.token,
@@ -346,6 +352,51 @@ export async function buildTreasuryRefillExecutionPlan({
       recipient: senderAddress,
       gasRefill: job.type === "refill_native" ? job.targetAmount : null,
     });
+    let destinationDexPlan = null;
+    if (gatewayPlan.planStatus !== "ready" && isNoRoutePlan(gatewayPlan) && stableTokenRefill) {
+      gatewayPlan = await buildGatewayBtcPlanImpl({
+        srcChain: source.chain,
+        dstChain: job.chain,
+        srcToken: source.token,
+        dstToken: WBTC_OFT_TOKEN,
+        amount,
+        senderAddress,
+        recipient: senderAddress,
+        gasRefill: null,
+      });
+      if (gatewayPlan.planStatus === "ready") {
+        const destinationWrappedBtcAmount = gatewayPlan.quote?.outputAmount?.amount;
+        if (!destinationWrappedBtcAmount) {
+          return blockedPreparation({ job, executor, blockedReason: "gateway_output_amount_unavailable", plan: gatewayPlan });
+        }
+        destinationDexPlan = await buildTokenDexPlanImpl({
+          chain: job.chain,
+          amount: destinationWrappedBtcAmount,
+          senderAddress,
+          inputToken: WBTC_OFT_TOKEN,
+          outputToken: job.token,
+        });
+        if (destinationDexPlan.planStatus !== "ready") {
+          return blockedPreparation({
+            job,
+            executor,
+            blockedReason: destinationDexPlan.blockedReason || "destination_dex_step_blocked",
+            plan: destinationDexPlan,
+          });
+        }
+      }
+    }
+    if (gatewayPlan.planStatus !== "ready") {
+      return blockedPreparation({ job, executor, blockedReason: gatewayPlan.blockedReason || "gateway_step_blocked", plan: gatewayPlan });
+    }
+    plan = destinationDexPlan
+      ? {
+          planStatus: "ready",
+          executor: "gateway_btc_consolidation",
+          step1: { type: "gateway_consolidation", plan: gatewayPlan },
+          step2: { type: "destination_dex_swap", plan: destinationDexPlan },
+        }
+      : gatewayPlan;
   } else if (executor === "gateway_btc_onramp") {
     const onrampAmount = gatewayOnrampAmountSats({ job, source });
     const amountSats = onrampAmount.amount;
@@ -540,6 +591,12 @@ export async function buildTreasuryRefillExecutionPlan({
         job,
         executor: plan.step3 ? "token_dex_experiment" : "gateway_btc_consolidation",
       })
+    : executor === "gateway_btc_consolidation" && plan.step2?.plan
+      ? coverageForPlan({
+          plan: plan.step2.plan,
+          job,
+          executor: "token_dex_experiment",
+        })
     : coverageForPlan({ plan, job, executor });
   if (!refillCoverageAcceptable(coverage)) {
     return blockedPreparation({
@@ -575,6 +632,18 @@ export async function executeTreasuryRefillExecutionPlan({
     return executeNativeDexPlanImpl({ plan: preparation.plan, ...executionOptions });
   }
   if (preparation.executor === "gateway_btc_consolidation") {
+    if (preparation.plan.step1?.plan && preparation.plan.step2?.plan) {
+      const step1Result = await executeGatewayBtcPlanImpl({ plan: preparation.plan.step1.plan, ...executionOptions });
+      const step2Result = await executeTokenDexPlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+      return {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        settlementStatus: step2Result?.settlementStatus || step1Result.settlementStatus || "source_confirmed_only",
+        executor: "gateway_btc_consolidation",
+        step1Result,
+        step2Result,
+      };
+    }
     return executeGatewayBtcPlanImpl({ plan: preparation.plan, ...executionOptions });
   }
   if (preparation.executor === "gateway_btc_onramp") {

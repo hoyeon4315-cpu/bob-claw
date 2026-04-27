@@ -712,6 +712,10 @@ async function writeAutopilotLatest(dataDir, report) {
   await writeTextIfChanged(join(dataDir, "all-chain-autopilot-latest.json"), `${safeJsonStringify(report, 2)}\n`);
 }
 
+async function writeAutopilotLatestCompleted(dataDir, report) {
+  await writeTextIfChanged(join(dataDir, "all-chain-autopilot-latest-completed.json"), `${safeJsonStringify(report, 2)}\n`);
+}
+
 async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }) {
   const result = await runCommandImpl({ args, cwd, timeoutMs });
   steps.push(commandStep(name, args, result));
@@ -1245,6 +1249,7 @@ export async function runAllChainAutopilot({
 
   if (write) {
     await writeAutopilotLatest(dataDir, report);
+    await writeAutopilotLatestCompleted(dataDir, report);
     await new JsonlStore(dataDir).append("all-chain-autopilot-runs", report);
   }
 

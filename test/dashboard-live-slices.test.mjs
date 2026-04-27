@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildAllChainAutopilotDashboardSlice } from "../src/status/all-chain-autopilot-slice.mjs";
+import {
+  buildAllChainAutopilotDashboardSlice,
+  resolveAllChainAutopilotReport,
+} from "../src/status/all-chain-autopilot-slice.mjs";
 import { buildCapitalSummarySlice } from "../src/status/capital-summary-slice.mjs";
 import { buildFlowDashboardSlice } from "../src/status/flow-slice.mjs";
 import { buildMerklActivePositions } from "../src/status/merkl-active-slice.mjs";
@@ -69,6 +72,7 @@ test("all-chain autopilot dashboard slice keeps only public execution status", (
   assert.equal(slice.portfolio.openedCount, 1);
   assert.equal(slice.payback.pendingCarrySats, 601);
   assert.equal(slice.refill.blockedCount, 1);
+  assert.equal(slice.refill.unresolvedCount, 1);
   assert.equal(slice.topBlockers.some((item) => item.reason === "lifi_quote_rejected"), true);
   assert.equal(slice.nextAction, "resolve_refill_routes");
 });
@@ -120,6 +124,65 @@ test("all-chain autopilot dashboard slice surfaces payback reserve restoration w
   assert.equal(slice.payback.nextAction, "restore_profit_reserve_wbtc_oft");
   assert.equal(slice.topBlockers.some((item) => item.reason === "reserve_asset_missing"), true);
   assert.equal(slice.nextAction, "restore_payback_reserve");
+});
+
+test("all-chain autopilot dashboard slice treats routing exhausted as manual backlog", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-04-27T02:50:15.364Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 18,
+      autoRefillJobCount: 1,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "completed", executedCount: 11, deliveredCount: 11, blockedCount: 0, chainsTouched: ["base"] },
+      strategyDispatch: { batchStatus: "succeeded", selectedCount: 10, successCount: 10, failedCount: 0, liveEligibleCount: 2, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        chain: "ethereum",
+        asset: "wBTC.OFT",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        previewBlockedReason: "routing_exhausted",
+        attempted: false,
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.blockedCount, 1);
+  assert.equal(slice.refill.unresolvedCount, 0);
+  assert.equal(slice.refill.manualBacklogCount, 1);
+  assert.equal(slice.nextAction, "accrue_payback_until_minimum");
+});
+
+test("all-chain autopilot truth prefers latest completed report over running progress", () => {
+  const resolved = resolveAllChainAutopilotReport(
+    { observedAt: "2026-04-27T01:35:00.000Z", status: "running", phase: "refill_complete" },
+    { observedAt: "2026-04-27T01:30:00.000Z", status: "completed", phase: "completed" },
+  );
+  assert.equal(resolved?.status, "completed");
+  assert.equal(resolved?.phase, "completed");
+});
+
+test("all-chain autopilot truth prefers latest completed report over timed out latest error", () => {
+  const resolved = resolveAllChainAutopilotReport(
+    {
+      observedAt: "2026-04-27T02:58:56.353Z",
+      status: "error",
+      phase: "completed",
+      blockedReason: "Command timed out after 1200000ms",
+    },
+    { observedAt: "2026-04-27T02:50:15.364Z", status: "completed_with_blockers", phase: "completed" },
+  );
+  assert.equal(resolved?.status, "completed_with_blockers");
+  assert.equal(resolved?.phase, "completed");
+  assert.equal(resolved?.observedAt, "2026-04-27T02:50:15.364Z");
 });
 
 test("Merkl active positions aggregate open live-capital entries", () => {

@@ -511,6 +511,26 @@ test("all-chain autopilot publishes refill progress before long canary steps fin
   assert.equal(latest.summary.capitalManager.capitalPlanDecision, "REFILL_REQUIRED");
   assert.equal(latest.summary.strategyDispatch.capitalDispatchReadiness, "ready");
   assert.equal(latest.refillExecutions.length, 2);
+  await assert.rejects(readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"), /ENOENT/u);
+});
+
+test("all-chain autopilot writes latest completed snapshot after a finished run", async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), "all-chain-autopilot-"));
+  t.after(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: true,
+    dataDir,
+    runCommandImpl: fakeCommand,
+  });
+
+  const latestCompleted = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"));
+  assert.equal(latestCompleted.status, report.status);
+  assert.equal(latestCompleted.phase, report.phase);
+  assert.equal(latestCompleted.summary.refillExecutedCount, report.summary.refillExecutedCount);
 });
 
 test("all-chain autopilot runs auto-kill before live-capable steps and suppresses execute when armed", async () => {

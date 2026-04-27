@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { collectExecutorRuntimeReadiness } from "../runtime/executor-runtime-readiness.mjs";
-import { buildAllChainAutopilotDashboardSlice } from "../status/all-chain-autopilot-slice.mjs";
+import {
+  buildAllChainAutopilotDashboardSlice,
+  resolveAllChainAutopilotReport,
+} from "../status/all-chain-autopilot-slice.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
@@ -63,11 +66,6 @@ export function buildFullAutomationReadiness({
   const capitalPlanDecision = capitalManager?.capitalPlan?.decision || null;
   const capitalJobs = capitalManager?.jobs?.summary?.jobCount ?? 0;
   const autoRefillJobCount = capitalManager?.jobs?.jobs?.filter((job) => !job.requiresManualReview).length ?? 0;
-  const capitalAutomationReady =
-    capitalPlanDecision === "BALANCED" ||
-    capitalPlanDecision === "READY" ||
-    capitalPlanDecision === "WATCH_ONLY" ||
-    (capitalPlanDecision === "REFILL_REQUIRED" && autoRefillJobCount > 0);
   const dispatchBatchStatus = strategyDispatch?.record?.batchStatus || null;
   const liveEligibleCount = strategyDispatch?.executionSurfaces?.summary?.liveEligibleCount ?? 0;
   const dispatchReady =
@@ -78,7 +76,17 @@ export function buildFullAutomationReadiness({
   const paybackReason = payback?.payback?.scheduler?.reason || null;
   const paybackIsolationReady = ingressIsolationReady;
   const liveAutomationObserved = autopilot?.present === true;
-  const unresolvedRefillRoutes = liveAutomationObserved && (autopilot?.refill?.blockedCount ?? 0) > 0;
+  const refillBlockers = autopilot?.refill?.blockers || [];
+  const unresolvedRefillRoutes = liveAutomationObserved &&
+    (refillBlockers.length > 0
+      ? refillBlockers.some((item) => item?.reason !== "routing_exhausted")
+      : (autopilot?.refill?.blockedCount ?? 0) > 0);
+  const capitalAutomationReady =
+    capitalPlanDecision === "BALANCED" ||
+    capitalPlanDecision === "READY" ||
+    capitalPlanDecision === "WATCH_ONLY" ||
+    (capitalPlanDecision === "REFILL_REQUIRED" &&
+      (autoRefillJobCount > 0 || (liveAutomationObserved && !unresolvedRefillRoutes)));
   const paybackReserveReady = paybackReason !== "reserve_asset_missing";
 
   const blockers = [
@@ -125,6 +133,8 @@ export function buildFullAutomationReadiness({
       status: autopilot?.status || null,
       nextAction: autopilot?.nextAction || null,
       refillBlockedCount: autopilot?.refill?.blockedCount ?? null,
+      refillUnresolvedCount: autopilot?.refill?.unresolvedCount ?? null,
+      refillManualBacklogCount: autopilot?.refill?.manualBacklogCount ?? null,
       refillAttemptedCount: autopilot?.refill?.attemptedCount ?? null,
       refillExecutedCount: autopilot?.refill?.executedCount ?? null,
       ready: !unresolvedRefillRoutes,
@@ -154,8 +164,10 @@ async function main() {
     args.refresh ? ["--json", "--write", "--mode=auto"] : ["--json", "--mode=auto"],
   );
   const payback = runJsonCli("src/cli/report-payback-status.mjs", ["--json"]);
+  const autopilotLatest = await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest.json"));
+  const autopilotLatestCompleted = await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest-completed.json"));
   const autopilot = buildAllChainAutopilotDashboardSlice(
-    await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest.json")),
+    resolveAllChainAutopilotReport(autopilotLatest, autopilotLatestCompleted),
   );
 
   const report = buildFullAutomationReadiness({

@@ -2,8 +2,28 @@ function compactReason(reason) {
   return typeof reason === "string" && reason.length > 0 ? reason : null;
 }
 
+function isTransientLatestError(report = null) {
+  if (report?.status !== "error") return false;
+  const blockedReason = compactReason(report?.blockedReason)?.toLowerCase() || "";
+  return blockedReason.includes("timed out");
+}
+
+export function resolveAllChainAutopilotReport(latestReport = null, latestCompletedReport = null) {
+  if (
+    latestCompletedReport &&
+    (latestReport?.status === "running" || isTransientLatestError(latestReport))
+  ) {
+    return latestCompletedReport;
+  }
+  return latestReport || latestCompletedReport || null;
+}
+
 function unique(items) {
   return [...new Set(items.filter(Boolean))];
+}
+
+function refillNeedsLiveRemediation(item = {}) {
+  return item.reason !== "routing_exhausted";
 }
 
 function refillBlockers(refillExecutions = []) {
@@ -60,7 +80,7 @@ function buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payba
 
 function nextActionFor(slice) {
   if (!slice.present) return "run_all_chain_autopilot";
-  if (slice.refill.blockedCount > 0) return "resolve_refill_routes";
+  if (slice.refill.unresolvedCount > 0) return "resolve_refill_routes";
   if (slice.payback.reason === "reserve_asset_missing") return "restore_payback_reserve";
   if (slice.portfolio.status === "positions_opened") return "monitor_live_positions";
   if (slice.payback.status === "carry") return "accrue_payback_until_minimum";
@@ -146,6 +166,8 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       attemptedCount: summary.refillAttemptedCount ?? 0,
       executedCount: summary.refillExecutedCount ?? 0,
       blockedCount: refill.length,
+      unresolvedCount: refill.filter(refillNeedsLiveRemediation).length,
+      manualBacklogCount: refill.filter((item) => !refillNeedsLiveRemediation(item)).length,
       blockers: refill,
     },
     portfolio: {

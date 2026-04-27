@@ -788,6 +788,97 @@ test("treasury refill executor falls back to LI.FI when Gateway has no BTC-famil
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor falls back to destination stable swap for wrapped BTC gateway refill", async () => {
+  const bobUsdc = "0xe75D0fB2C24A55cA1e3F96781a2bCC7bdba058F0";
+  const gatewayCalls = [];
+  const dexCalls = [];
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-base-wbtc-oft-bob-usdc",
+      type: "refill_token",
+      chain: "bob",
+      asset: "USDC",
+      token: bobUsdc,
+      targetAmount: "3000000",
+      targetAmountDecimal: 3,
+      estimatedAssetValueUsd: 3,
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          actual: "26184",
+          actualDecimal: 0.00026184,
+          estimatedUsd: 20.74,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildGatewayBtcPlanImpl: async (input) => {
+      gatewayCalls.push(input);
+      if (input.dstToken === bobUsdc) {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-04-27T00:00:00.000Z",
+          planStatus: "blocked",
+          blockedReason: "no_route",
+          route: {
+            srcChain: input.srcChain,
+            dstChain: input.dstChain,
+            srcToken: input.srcToken,
+            dstToken: input.dstToken,
+          },
+        };
+      }
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-27T00:00:00.000Z",
+        planStatus: "ready",
+        route: {
+          srcChain: input.srcChain,
+          dstChain: input.dstChain,
+          srcToken: input.srcToken,
+          dstToken: input.dstToken,
+        },
+        amount: input.amount,
+        quote: { outputAmount: { amount: "3200000" } },
+        gasPreflight: { gasUnits: 100000 },
+        intent: { strategyId: "gateway-btc-funding-transfer" },
+      };
+    },
+    buildTokenDexPlanImpl: async (input) => {
+      dexCalls.push(input);
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-27T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "token-dex-experiment",
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "3000000",
+        quote: { outputAmount: "3020000" },
+        steps: [{ id: "swap_input_to_output" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "gateway_btc_consolidation");
+  assert.equal(gatewayCalls.length, 2);
+  assert.equal(gatewayCalls[0].dstToken, bobUsdc);
+  assert.equal(gatewayCalls[1].dstToken, WBTC_OFT_TOKEN);
+  assert.equal(dexCalls.length, 1);
+  assert.equal(dexCalls[0].chain, "bob");
+  assert.equal(dexCalls[0].inputToken, WBTC_OFT_TOKEN);
+  assert.equal(dexCalls[0].outputToken, bobUsdc);
+  assert.equal(preparation.plan.step2.type, "destination_dex_swap");
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor dispatches LI.FI fallback preparations", async () => {
   const execution = await executeTreasuryRefillExecutionPlan({
     preparation: {

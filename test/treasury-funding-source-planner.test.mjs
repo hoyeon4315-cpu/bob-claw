@@ -398,9 +398,9 @@ test("representative stable token refills use ticker fallback when token registr
     policy,
   });
 
-  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
   assert.equal(funding.selections[0].selectedSource.source.chain, "optimism");
-  assert.equal(funding.selections[0].missingInputs.includes("cross_chain_token_refill_executor_missing"), false);
+  assert.equal(funding.selections[0].missingInputs.includes("destination_dex_executor_missing"), true);
 });
 
 test("cross-chain BTC-family token refill stays conditional when observed source amount is below target", () => {
@@ -486,6 +486,146 @@ test("cross-chain token refill prefers executable wrapped BTC over larger unsupp
   assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
   assert.equal(funding.selections[0].selectedSource.source.chain, "base");
   assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+});
+
+test("cross-chain BTC-family refill prefers direct wBTC.OFT source over larger BTC wrapper that needs source swap", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const baseCbBtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "base",
+          actual: "26184",
+          actualDecimal: 0.00026184,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 20.72,
+        },
+        {
+          chain: "base",
+          actual: "30777",
+          actualDecimal: 0.00030777,
+          token: baseCbBtc,
+          ticker: "cbBTC",
+          estimatedUsd: 24.34,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "ethereum",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "24825",
+        refillAmountDecimal: 0.00024825,
+        refillEstimatedUsd: 19.64,
+        rationale: "Ethereum settlement reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+});
+
+test("cross-chain stable refill prefers wrapped BTC source over larger native inventory when destination DEX is supported", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const optimismUsdc = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "ethereum",
+          actual: "11000000000000000",
+          actualDecimal: 0.011,
+          estimatedUsd: 21,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "26184",
+          actualDecimal: 0.00026184,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 20.74,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "optimism",
+        ticker: "USDC",
+        token: optimismUsdc,
+        refillAmount: "3000000",
+        refillAmountDecimal: 3,
+        refillEstimatedUsd: 3,
+        rationale: "Representative stablecoin reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "wBTC.OFT");
+});
+
+test("cross-chain stable refill stays conditional when destination DEX executor is missing", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const bobUsdc = "0xe75D0fB2C24A55cA1e3F96781a2bCC7bdba058F0";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "ethereum",
+          actual: "11000000000000000",
+          actualDecimal: 0.011,
+          estimatedUsd: 21,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "26184",
+          actualDecimal: 0.00026184,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 20.74,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "bob",
+        ticker: "USDC",
+        token: bobUsdc,
+        refillAmount: "3000000",
+        refillAmountDecimal: 3,
+        refillEstimatedUsd: 3,
+        rationale: "Representative stablecoin reserve shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].missingInputs.includes("destination_dex_executor_missing"), true);
 });
 
 test("token refill prefers cross-chain wrapped BTC when same-chain native inventory is too small", () => {

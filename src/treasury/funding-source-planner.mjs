@@ -1,4 +1,4 @@
-import { ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
 import { acrossSupportsPair } from "../config/across.mjs";
 import {
   BRIDGE_PROVIDERS,
@@ -467,11 +467,34 @@ function crossChainExecutorSupport(action, selectedSource) {
     const sourceAsset = tokenAsset(selectedSource.chain, selectedSource.token);
     const targetAsset = tokenAsset(action.chain, action.token);
     const targetIsStablecoin = targetAsset?.family === "stablecoin" || isStablecoinTicker(action.ticker || targetAsset?.ticker);
+    const destinationDexSupported = targetIsStablecoin && dexProvidersForChain(action.chain).length > 0;
     if (isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset)) {
+      if (normalized(selectedSource.token) !== normalized(WBTC_OFT_TOKEN) && dexProvidersForChain(selectedSource.chain).length > 0) {
+        return {
+          supported: true,
+          intermediateSwapRequired: true,
+          missingInputs: [],
+          notes: "Source token is BTC-family but not wBTC.OFT; swap it into wBTC.OFT on the source chain, then bridge through Gateway into the destination BTC-family inventory.",
+        };
+      }
       return {
         supported: true,
         missingInputs: [],
         notes: "Gateway BTC-family consolidation can bridge the observed source token into the target-chain token inventory.",
+      };
+    }
+    if (isBtcLikeAsset(sourceAsset) && targetIsStablecoin) {
+      if (!destinationDexSupported) {
+        return {
+          supported: false,
+          missingInputs: ["destination_dex_executor_missing"],
+          notes: "The wrapped-BTC source is sufficient, but the destination chain has no supported DEX executor to finish the stablecoin conversion when Gateway cannot quote the stable token directly.",
+        };
+      }
+      return {
+        supported: true,
+        missingInputs: [],
+        notes: "Gateway BTC-family transport can bridge observed wrapped-BTC inventory directly, and a destination-chain DEX swap can finish the stablecoin refill when the direct stable route is unavailable.",
       };
     }
     if (!isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset) && dexProvidersForChain(selectedSource.chain).length > 0) {
@@ -483,6 +506,13 @@ function crossChainExecutorSupport(action, selectedSource) {
       };
     }
     if (!isBtcLikeAsset(sourceAsset) && targetIsStablecoin && dexProvidersForChain(selectedSource.chain).length > 0) {
+      if (!destinationDexSupported) {
+        return {
+          supported: false,
+          missingInputs: ["destination_dex_executor_missing"],
+          notes: "The source chain can swap into wrapped BTC, but the destination chain has no supported DEX executor to finish the stablecoin conversion when Gateway cannot quote the stable token directly.",
+        };
+      }
       return {
         supported: true,
         intermediateSwapRequired: true,
