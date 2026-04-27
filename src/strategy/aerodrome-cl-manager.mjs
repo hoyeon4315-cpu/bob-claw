@@ -176,7 +176,7 @@ export function buildAerodromeIntent(action, walletAddress) {
   const base = {
     schemaVersion: 1,
     intentType: "concentrated_liquidity",
-    strategyId: "aerodrome-cl-weth-cbbtc",
+    strategyId: "aerodrome-cl-base",
     chain: "base",
     protocol: "aerodrome-slipstream",
     pool: action.pool,

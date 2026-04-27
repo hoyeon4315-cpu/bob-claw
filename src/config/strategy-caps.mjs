@@ -893,10 +893,10 @@ export const STRATEGY_CAPS = Object.freeze({
       btcDenominated: true,
     }),
     caps: Object.freeze({
-      perTxUsd: 25,
-      perDayUsd: 100,
+      perTxUsd: 150,
+      perDayUsd: 500,
       perChainUsd: Object.freeze({
-        base: 100,
+        base: 500,
       }),
       maxDailyLossUsd: 100,
       maxFailedGasCost24HUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
