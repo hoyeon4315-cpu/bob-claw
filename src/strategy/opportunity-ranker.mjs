@@ -3,6 +3,7 @@ export const DEFAULT_RANKER_WEIGHTS = Object.freeze({
   tvlLog: 10,
   age: 5,
   audit: 15,
+  sameChainBonus: 0.15,
 });
 
 export const DEFAULT_RANKER_PENALTIES = Object.freeze({
@@ -36,9 +37,16 @@ export function computeOpportunityScore(opportunity = {}, {
     ? opportunity.campaignRemainingHours
     : Number.POSITIVE_INFINITY;
   const incentiveDominant = opportunity.incentiveDominant === true;
+  const srcChain = opportunity.srcChain || opportunity.chain;
+  const dstChain = opportunity.dstChain || opportunity.chain;
+  const isSameChain = srcChain && dstChain && srcChain === dstChain;
+  const bridgeCostBps = isFiniteNumber(opportunity.bridgeCostBps) ? opportunity.bridgeCostBps / 10000 : 0;
+
+  // Adjust APR for bridge cost on cross-chain opportunities
+  const effectiveApr = isSameChain ? apr : Math.max(0, apr - bridgeCostBps);
 
   let score = 0;
-  score += apr * weights.apr;
+  score += effectiveApr * weights.apr;
   score += Math.log10(Math.max(1, tvl)) * weights.tvlLog;
   score += Math.min(age / 365, 1) * weights.age;
   score += hasAudit ? weights.audit : 0;
@@ -51,6 +59,7 @@ export function computeOpportunityScore(opportunity = {}, {
   if (hasPointRewards) multiplier -= penalties.pointRewardPenalty;
   if (incentiveDominant) multiplier -= penalties.incentiveDominantPenalty;
   if (campaignRemainingHours < penalties.campaignEndsSoonHours) multiplier -= penalties.campaignEndsSoonPenalty;
+  if (isSameChain) multiplier += weights.sameChainBonus;
 
   multiplier = Math.max(0, multiplier);
   score *= multiplier;

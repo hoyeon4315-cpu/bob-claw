@@ -1,6 +1,6 @@
 import { evaluateRoundtripEnforcer } from "../../risk/roundtrip-enforcer.mjs";
 import { evaluateConcentrationLimits } from "../../config/concentration-limits.mjs";
-import { SIZING_POLICY } from "../../config/sizing.mjs";
+import { SIZING_POLICY, computeMinProfitablePositionUsd } from "../../config/sizing.mjs";
 import { evaluateGasBudgetController } from "../../risk/gas-budget-controller.mjs";
 import { evaluateExitRules } from "../../config/merkl-exit-rules.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
@@ -76,6 +76,40 @@ export async function evaluateOpportunityPolicy({
     const maxPosition = totalCapital * SIZING_POLICY.maxSinglePositionPct;
     if (positionUsd > maxPosition) {
       blockers.push("position_above_max_single_position_pct");
+    }
+  }
+
+  // Cross-chain bridge cost gate: reject if bridge cost would eat >50% of gross profit
+  const srcChain = intent.srcChain || intent.chain;
+  const dstChain = intent.dstChain || intent.chain;
+  if (srcChain && dstChain && srcChain !== dstChain) {
+    const bridgeCostUsd = Number(intent.estimatedBridgeCostUsd ?? 0);
+    const holdDays = Number(intent.expectedHoldDays ?? 14);
+    const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
+    const minProfitable = computeMinProfitablePositionUsd({
+      roundTripCostUsd: bridgeCostUsd + 0.12,
+      postedAprDecimal: aprDecimal,
+      expectedHoldYearFraction: holdDays / 365,
+      safetyFactor: 0.5,
+    });
+    if (minProfitable !== null && positionUsd < minProfitable) {
+      blockers.push(`cross_chain_unprofitable:need_$${Math.ceil(minProfitable)}_for_${srcChain}_to_${dstChain}`);
+    }
+  }
+
+  // Same-chain minimum profitability floor based on gas only
+  if (srcChain && dstChain && srcChain === dstChain) {
+    const gasOnlyCost = Number(intent.estimatedGasCostUsd ?? 0.12);
+    const holdDays = Number(intent.expectedHoldDays ?? 14);
+    const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
+    const minProfitable = computeMinProfitablePositionUsd({
+      roundTripCostUsd: gasOnlyCost,
+      postedAprDecimal: aprDecimal,
+      expectedHoldYearFraction: holdDays / 365,
+      safetyFactor: 0.5,
+    });
+    if (minProfitable !== null && positionUsd < minProfitable) {
+      blockers.push(`same_chain_unprofitable:need_$${Math.ceil(minProfitable)}_on_${srcChain}`);
     }
   }
 
