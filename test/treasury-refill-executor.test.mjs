@@ -64,6 +64,47 @@ test("treasury refill executor builds same-chain token-to-native refill preview"
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor blocks same-chain token-to-native refill when native gas bootstrap is insufficient", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: nativeRefillJob({
+      chain: "ethereum",
+      destinationNativeDecimal: 0.0001,
+    }),
+    senderAddress: ADDRESS,
+    destinationNativeDecimal: 0.0001,
+    buildTokenDexPlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-04-27T00:00:00.000Z",
+      planStatus: "ready",
+      strategyId: "token-dex-experiment",
+      chain: input.chain,
+      senderAddress: input.senderAddress,
+      inputToken: input.inputToken,
+      outputToken: ZERO_TOKEN,
+      outputAsset: { ticker: "ETH" },
+      amount: input.amount,
+      amountUsd: 21.29,
+      gasSnapshot: {
+        gasPriceWei: "648013032",
+        baseFeeWei: "647913032",
+        priorityFeeWei: "100000",
+      },
+      minimumOutputAmount: "8863907018569562",
+      quote: { outputAmount: "8908449264894033" },
+      steps: [
+        { id: "reset_input_allowance", intent: { tx: { gasLimit: "120000" } } },
+        { id: "approve_input_token", intent: { tx: { gasLimit: "120000" } } },
+        { id: "swap_input_to_output", intent: { tx: { gasLimit: "511104" } } },
+        { id: "unwrap_wrapped_native", intent: { tx: { gasLimit: "60000" } } },
+      ],
+    }),
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.executor, "token_dex_experiment");
+  assert.equal(preparation.blockedReason, "insufficient_native_gas_balance");
+});
+
 test("treasury refill executor maps cross-chain BTC-family native refill to Gateway consolidation with gas refill", async () => {
   let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({

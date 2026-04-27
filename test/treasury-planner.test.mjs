@@ -155,6 +155,11 @@ test("planner emits wrapped BTC loop collateral refill as strategy-scoped capita
       strategyType: "wrapped_btc_lending_loop",
       actionType: "treasury_refill_for_leverage_collateral",
       perTradeCapUsd: 30,
+      healthFactorMin: 1.35,
+      liquidationBufferPct: 12,
+      unwindTriggerHealthFactor: 1.3,
+      maxLoopIterations: 4,
+      maxLtvPct: 62,
     },
   });
 
@@ -167,6 +172,11 @@ test("planner emits wrapped BTC loop collateral refill as strategy-scoped capita
   const action = plan.actions.find((item) => item.chain === "base" && item.ticker === "cbBTC");
   assert.ok(action);
   assert.equal(action.strategyPolicy.id, "wrapped_btc_loop_collateral_refill");
+  assert.equal(action.strategyPolicy.healthFactorMin, 1.35);
+  assert.equal(action.strategyPolicy.liquidationBufferPct, 12);
+  assert.equal(action.strategyPolicy.unwindTriggerHealthFactor, 1.3);
+  assert.equal(action.strategyPolicy.maxLoopIterations, 4);
+  assert.equal(action.strategyPolicy.maxLtvPct, 62);
   assert.equal(action.refillEstimatedUsd, 24.5);
 });
 

@@ -44,6 +44,11 @@ const WRAPPED_BTC_LOOP_COLLATERAL_REFILL_POLICY = {
   strategyType: "wrapped_btc_lending_loop",
   actionType: "treasury_refill_for_leverage_collateral",
   perTradeCapUsd: 30,
+  healthFactorMin: 1.35,
+  liquidationBufferPct: 12,
+  unwindTriggerHealthFactor: 1.3,
+  maxLoopIterations: 4,
+  maxLtvPct: 62,
 };
 const EXPLICIT_REPRESENTATIVE_FLOAT_CHAINS = new Set(["ethereum", "base", "bsc"]);
 

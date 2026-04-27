@@ -5,6 +5,7 @@ import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { STABLE_QUOTE_TOKENS } from "../../dex/odos.mjs";
 import { classifyDexError, dexProvidersForChain, tryProvidersWithFallback, OdosProvider } from "../../dex/providers.mjs";
+import { readErc20Allowance } from "../../evm/account-state.mjs";
 import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../../gas/rpc-gas.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -22,6 +23,7 @@ const ERC20_INTERFACE = new Interface([
 const WRAPPED_NATIVE_INTERFACE = new Interface([
   "function withdraw(uint256 wad)",
 ]);
+const DEFAULT_APPROVE_GAS_UNITS = 100_000;
 const DEFAULT_UNWRAP_NATIVE_GAS_UNITS = 50_000;
 const DEFAULT_DIRECT_SWAP_GAS_UNITS = 450_000;
 
@@ -165,6 +167,7 @@ export async function buildTokenDexExperimentPlan({
   providers = null,
   client = null,
   estimateGasImpl = estimateGas,
+  readErc20AllowanceImpl = readErc20Allowance,
   gasSnapshotImpl = getGasSnapshot,
   strategyId = TOKEN_DEX_EXPERIMENT_STRATEGY_ID,
   chain,
@@ -224,17 +227,41 @@ export async function buildTokenDexExperimentPlan({
       gasSnapshotError = serializePreflightError(error);
     }
 
-    const approveGas = await estimateGasImpl(
-      chain,
-      {
-        from: senderAddress,
-        to: normalizedInputToken,
-        data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, normalizedAmount]),
-        valueWei: "0",
-      },
-      getEvmChainConfig(chain),
-    );
     const gasBuffer = Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps"));
+    let allowanceBefore = null;
+    try {
+      allowanceBefore = await readErc20AllowanceImpl(
+        chain,
+        normalizedInputToken,
+        senderAddress,
+        executableQuote.txTo,
+        { chainConfig: getEvmChainConfig(chain) },
+      );
+    } catch {
+      allowanceBefore = null;
+    }
+    const allowanceAmount = BigInt(allowanceBefore?.allowance ?? 0n);
+    const allowanceCoversAmount = allowanceAmount >= BigInt(normalizedAmount);
+    const allowanceNeedsZeroReset = !allowanceCoversAmount && allowanceAmount > 0n;
+    let approveGasLimit = null;
+    if (allowanceNeedsZeroReset || !allowanceCoversAmount) {
+      try {
+        const approveGas = await estimateGasImpl(
+          chain,
+          {
+            from: senderAddress,
+            to: normalizedInputToken,
+            data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, normalizedAmount]),
+            valueWei: "0",
+          },
+          getEvmChainConfig(chain),
+        );
+        approveGasLimit = String(applyGasBuffer(approveGas.gasUnits, gasBuffer));
+      } catch (error) {
+        if (!(executableQuote?.txTo && classifyGasEstimateError(error) === "execution_reverted")) throw error;
+        approveGasLimit = String(applyGasBuffer(DEFAULT_APPROVE_GAS_UNITS, gasBuffer));
+      }
+    }
     let swapGasLimit = resolveQuotedGasLimit(executableQuote, gasBuffer);
     if (!swapGasLimit) {
       try {
@@ -304,7 +331,33 @@ export async function buildTokenDexExperimentPlan({
     });
 
     steps = [
-      {
+      ...(allowanceNeedsZeroReset ? [{
+        id: "reset_input_allowance",
+        intent: buildIntent({
+          intentType: "approve_exact",
+          approval: {
+            token: normalizedInputToken,
+            spender: executableQuote.txTo,
+            amount: "0",
+            mode: "per_tx",
+          },
+          tx: {
+            to: normalizedInputToken,
+            data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, "0"]),
+            value: "0",
+            gasLimit: approveGasLimit,
+          },
+          metadata: {
+            provider: providerName || "odos",
+            inputToken: normalizedInputToken,
+            outputToken: normalizedOutputToken,
+            sourceWhitelist: executableQuote.sourceWhitelist,
+            capCheckAmountUsd: 0,
+            approvalResetReason: "existing_allowance_below_required_amount",
+          },
+        }),
+      }] : []),
+      ...(!allowanceCoversAmount ? [{
         id: "approve_input_token",
         intent: buildIntent({
           intentType: "approve_exact",
@@ -318,7 +371,7 @@ export async function buildTokenDexExperimentPlan({
             to: normalizedInputToken,
             data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, normalizedAmount]),
             value: "0",
-            gasLimit: String(applyGasBuffer(approveGas.gasUnits, gasBuffer)),
+            gasLimit: approveGasLimit,
           },
           metadata: {
             provider: providerName || "odos",
@@ -328,7 +381,7 @@ export async function buildTokenDexExperimentPlan({
             capCheckAmountUsd: 0,
           },
         }),
-      },
+      }] : []),
       {
         id: "swap_input_to_output",
         intent: buildIntent({

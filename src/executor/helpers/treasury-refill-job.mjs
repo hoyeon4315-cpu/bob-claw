@@ -1,4 +1,6 @@
 import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../../assets/tokens.mjs";
+import { getEvmChainConfig } from "../../config/chains.mjs";
+import { readNativeBalance } from "../../evm/account-state.mjs";
 import {
   buildGatewayBtcConsolidationPlan,
   executeGatewayBtcConsolidationPlan,
@@ -42,6 +44,14 @@ function ceilUnitsFromDecimalAmount(amountDecimal, decimals) {
   }
   const scaled = Math.ceil(amountDecimal * 10 ** decimals);
   return scaled > 0 ? String(scaled) : null;
+}
+
+function floorUnitsFromDecimalAmount(amountDecimal, decimals) {
+  if (!isFiniteNumber(amountDecimal) || !(amountDecimal >= 0) || !Number.isInteger(decimals) || decimals < 0) {
+    return null;
+  }
+  const scaled = Math.floor(amountDecimal * 10 ** decimals);
+  return scaled >= 0 ? String(scaled) : null;
 }
 
 function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = INPUT_BUFFER_MULTIPLIER }) {
@@ -118,6 +128,77 @@ function refillCoverageAcceptable(coverage = {}) {
   return coverage.coversTarget !== false || coverage.partialRefill === true;
 }
 
+function applyBps(value, bps) {
+  if (!Number.isFinite(bps) || bps <= 10_000) return value;
+  return (value * BigInt(Math.floor(bps))) / 10_000n;
+}
+
+function maxBigInt(...values) {
+  return values
+    .filter((value) => value !== null && value !== undefined)
+    .reduce((left, right) => (left > right ? left : right), 0n);
+}
+
+function toBigIntOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    return typeof value === "bigint" ? value : BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function nativeGasBudgetForPlan(plan = {}) {
+  const chainConfig = getEvmChainConfig(plan.chain || "");
+  if (!chainConfig) return null;
+  const totalGasUnits = Array.isArray(plan.steps)
+    ? plan.steps.reduce((sum, step) => sum + (toBigIntOrNull(step?.intent?.tx?.gasLimit) ?? BigInt(chainConfig.fallbackGasUnits)), 0n)
+    : 0n;
+  if (totalGasUnits <= 0n) return null;
+  if (chainConfig.legacyTxType === true) {
+    const gasPriceWei = toBigIntOrNull(plan?.gasSnapshot?.gasPriceWei);
+    if (gasPriceWei === null) return null;
+    return totalGasUnits * applyBps(gasPriceWei, chainConfig.gasPriceBufferBps);
+  }
+  const gasPriceWei = toBigIntOrNull(plan?.gasSnapshot?.gasPriceWei);
+  const baseFeeWei = toBigIntOrNull(plan?.gasSnapshot?.baseFeeWei);
+  const priorityFeeWei = toBigIntOrNull(plan?.gasSnapshot?.priorityFeeWei);
+  const minPriorityFeeWei = toBigIntOrNull(chainConfig.minPriorityFeePerGasWei) ?? 0n;
+  const effectivePriorityFeeWei = maxBigInt(priorityFeeWei, minPriorityFeeWei);
+  const eip1559BudgetWei = baseFeeWei !== null
+    ? (baseFeeWei * 2n) + effectivePriorityFeeWei
+    : effectivePriorityFeeWei;
+  const maxFeePerGasWei = applyBps(
+    maxBigInt(gasPriceWei, eip1559BudgetWei, effectivePriorityFeeWei),
+    chainConfig.maxFeePerGasBufferBps,
+  );
+  if (maxFeePerGasWei <= 0n) return null;
+  return totalGasUnits * maxFeePerGasWei;
+}
+
+function nativeBalanceWei({ chain, nativeDecimal }) {
+  const nativeAsset = tokenAsset(chain, ZERO_TOKEN);
+  const units = floorUnitsFromDecimalAmount(nativeDecimal, nativeAsset.decimals);
+  return toBigIntOrNull(units);
+}
+
+async function resolveNativeBalanceWei({
+  chain,
+  owner,
+  nativeDecimal = null,
+  readNativeBalanceImpl = readNativeBalance,
+}) {
+  const fromDecimal = nativeBalanceWei({ chain, nativeDecimal });
+  if (fromDecimal !== null) return fromDecimal;
+  if (!owner || typeof readNativeBalanceImpl !== "function") return null;
+  try {
+    const balance = await readNativeBalanceImpl(chain, owner, { chainConfig: getEvmChainConfig(chain) });
+    return toBigIntOrNull(balance?.balanceWei);
+  } catch {
+    return null;
+  }
+}
+
 function isNoRoutePlan(plan = null) {
   return plan?.planStatus === "blocked" && plan?.blockedReason === "no_route";
 }
@@ -184,6 +265,7 @@ export async function buildTreasuryRefillExecutionPlan({
   destinationBalanceStatus = null,
   destinationNativeDecimal = null,
   destinationMinBalanceDecimal = null,
+  readNativeBalanceImpl = readNativeBalance,
   buildTokenDexPlanImpl = buildTokenDexExperimentPlan,
   buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
   buildGatewayBtcPlanImpl = buildGatewayBtcConsolidationPlan,
@@ -219,6 +301,21 @@ export async function buildTreasuryRefillExecutionPlan({
       inputToken: source.token,
       outputToken: "native",
     });
+    const requiredGasBudgetWei = nativeGasBudgetForPlan(plan);
+    const currentNativeBalanceWei = await resolveNativeBalanceWei({
+      chain: job.chain,
+      owner: senderAddress,
+      nativeDecimal: destinationNativeDecimal,
+      readNativeBalanceImpl,
+    });
+    if (requiredGasBudgetWei !== null && currentNativeBalanceWei !== null && currentNativeBalanceWei < requiredGasBudgetWei) {
+      return blockedPreparation({
+        job,
+        executor,
+        blockedReason: "insufficient_native_gas_balance",
+        plan,
+      });
+    }
   } else if (executor === "native_dex_experiment") {
     const amount = estimateInputAmountFromSource({ job, source });
     if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });

@@ -213,6 +213,49 @@ test("new failures after a committed resume timestamp are still counted", () => 
   assert.equal(state.latestFailureAt, "2026-04-22T15:17:00.000Z");
 });
 
+test("LI.FI bridge committed resume timestamp clears older rejection streaks", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: intentFixture({
+      strategyId: "lifi-bridge",
+      chain: "avalanche",
+      intentType: "lifi_bridge_transfer",
+      amountUsd: 20,
+      metadata: {
+        capCheckAmountUsd: 20,
+      },
+    }),
+    auditRecords: [
+      {
+        strategyId: "lifi-bridge",
+        intentId: "fail-1",
+        timestamp: "2026-04-27T00:55:35.069Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+      {
+        strategyId: "lifi-bridge",
+        intentId: "fail-2",
+        timestamp: "2026-04-27T01:01:06.602Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+      {
+        strategyId: "lifi-bridge",
+        intentId: "fail-3",
+        timestamp: "2026-04-27T01:17:46.856Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected" },
+      },
+    ],
+    now: "2026-04-27T01:19:00.000Z",
+  });
+
+  assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), false);
+  const consecutiveResult = policy.results.find((item) => item.policy === "consecutive_failures");
+  assert.equal(consecutiveResult.metrics.resumeAfter, "2026-04-27T01:18:00.000Z");
+  assert.equal(consecutiveResult.metrics.consecutiveFailures, 0);
+});
+
 test("prelive fork sign-only rejections do not count as terminal failures", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "prelive_fork_execution",

@@ -144,6 +144,90 @@ test("token dex experiment plan uses Pancake direct gas fallback after pre-appro
   assert.equal(plan.steps[1].intent.metadata.provider, "pancake_swap");
 });
 
+test("token dex experiment plan uses approve gas fallback when RPC estimation reverts", async () => {
+  let estimateCount = 0;
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => {
+      estimateCount += 1;
+      if (estimateCount === 1) throw new Error("execution reverted: approve");
+      return {
+        observedAt: "2026-04-16T06:00:01.000Z",
+        chain: "ethereum",
+        rpcUrl: "https://ethereum-rpc.example",
+        latencyMs: 12,
+        gasUnits: 100_000,
+        gasUnitsHex: "0x186a0",
+        rpcFallbacksTried: 0,
+      };
+    },
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "ethereum",
+      rpcUrl: "https://ethereum-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "ethereum",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "usdt",
+    outputToken: "native",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(estimateCount, 2);
+  assert.equal(plan.steps[0].id, "approve_input_token");
+  assert.equal(plan.steps[0].intent.tx.gasLimit, "120000");
+});
+
+test("token dex experiment resets partial allowance before exact approval", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "ethereum",
+      rpcUrl: "https://ethereum-rpc.example",
+      latencyMs: 12,
+      gasUnits: 100_000,
+      gasUnitsHex: "0x186a0",
+      rpcFallbacksTried: 0,
+    }),
+    readErc20AllowanceImpl: async () => ({
+      allowance: 5_000n,
+      rpcUrl: "https://ethereum-rpc.example",
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "ethereum",
+      rpcUrl: "https://ethereum-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "ethereum",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "usdt",
+    outputToken: "wrapped_native",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.steps.length, 3);
+  assert.equal(plan.steps[0].id, "reset_input_allowance");
+  assert.equal(plan.steps[0].intent.approval.amount, "0");
+  assert.equal(plan.steps[1].id, "approve_input_token");
+  assert.equal(plan.steps[1].intent.approval.amount, "10000");
+  assert.equal(plan.steps[2].id, "swap_input_to_output");
+});
+
 test("token dex experiment plan supports native output unwrap", async () => {
   const plan = await buildTokenDexExperimentPlan({
     client: odosClientFixture(),

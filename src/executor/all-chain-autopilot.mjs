@@ -136,11 +136,13 @@ function refillPreparationReady(json = null) {
 }
 
 function refillPreviewBlockedReason(result = {}) {
-  return result?.json?.preparation?.blockedReason ||
+  return normalizeRefillBlockedReason(
+    result?.json?.preparation?.blockedReason ||
     result?.json?.event?.blockers?.[0] ||
     result?.json?.blockers?.[0] ||
     classifyRefillRouteError(result) ||
-    null;
+    null,
+  );
 }
 
 function refillPreviewStatus(result = {}) {
@@ -186,10 +188,19 @@ function commandErrorText(result = {}) {
 function classifyRefillRouteError(result = {}) {
   const text = commandErrorText(result).toLowerCase();
   if (!text) return null;
+  if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance/u.test(text)) return "insufficient_native_gas_balance";
   if (/pair unsupported/u.test(text)) return "bridge_pair_unsupported";
   if (/lifi.*quote.*reject|quote.*reject/u.test(text)) return "lifi_quote_rejected";
   if (/no[_ ]route|route.*unsupported|unsupported.*route/u.test(text)) return "no_route";
   return null;
+}
+
+function normalizeRefillBlockedReason(reason = null) {
+  if (!reason) return null;
+  if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance/iu.test(String(reason))) {
+    return "insufficient_native_gas_balance";
+  }
+  return reason;
 }
 
 function refillPreviewRetryable(result = {}) {
@@ -206,13 +217,14 @@ function refillPreviewRetryable(result = {}) {
     "across_ticker_unsupported",
     "execution_reverted",
     "insufficient_funds",
+    "insufficient_native_gas_balance",
     "executor_output_below_refill_target",
   ].includes(reason);
 }
 
 function refillExecutionBlockedReason(result = {}) {
   const status = refillExecutionStatus(result);
-  return (
+  return normalizeRefillBlockedReason(
     result?.json?.outcomeEvent?.blockers?.[0] ||
     result?.json?.event?.blockers?.[0] ||
     result?.json?.blockers?.[0] ||
@@ -221,7 +233,7 @@ function refillExecutionBlockedReason(result = {}) {
     classifyRefillRouteError(result) ||
     (!refillDeliveredStatus(status) ? status : null) ||
     result?.error?.message ||
-    null
+    null,
   );
 }
 
@@ -241,6 +253,7 @@ function refillExecutionRetryable(result = {}) {
     "across_ticker_unsupported",
     "execution_reverted",
     "insufficient_funds",
+    "insufficient_native_gas_balance",
     "executor_output_below_refill_target",
   ].includes(reason);
 }

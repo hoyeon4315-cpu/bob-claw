@@ -506,3 +506,22 @@ test("Across bridge caps exclude BSC until a chain-local SpokePool is verified",
   assert.equal(result.decision, "BLOCK");
   assert.equal(result.blockers.includes("strategy_per_chain_cap_missing"), true);
 });
+
+test("LI.FI bridge caps admit Avalanche as a live source chain", () => {
+  const caps = assertStrategyCaps("lifi-bridge");
+
+  const result = evaluateCapCheck({
+    intent: {
+      strategyId: "lifi-bridge",
+      chain: "avalanche",
+      mode: "live",
+      amountUsd: 20,
+      intentType: "lifi_bridge_transfer",
+    },
+    strategyCaps: caps,
+    auditRecords: [],
+  });
+
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.blockers.includes("strategy_per_chain_cap_missing"), false);
+});
