@@ -17,8 +17,22 @@ async function executeApprovedIntents() {
   
   for (const item of approved) {
     const intent = item.intent;
-    console.log("Executing:", intent.strategyId, intent.intentType, "$" + intent.amountUsd);
-    
+    console.log("Evaluating:", intent.strategyId, intent.intentType, "$" + intent.amountUsd);
+
+    // Signer daemon handles on-chain settlement intents (swaps, CL entry, etc.)
+    // Movement intents (bridge/withdraw/deposit) require dedicated executors
+    const signerSupportedTypes = new Set([
+      "concentrated_liquidity",
+      "harvest_yield",
+      "swap",
+      "dex_order",
+    ]);
+
+    if (!signerSupportedTypes.has(intent.intentType)) {
+      console.log("Skipping:", intent.intentType, "requires dedicated executor (not signer daemon)");
+      continue;
+    }
+
     try {
       const result = await sendSignerCommand({
         message: {
@@ -31,7 +45,7 @@ async function executeApprovedIntents() {
         socketPath: signerSocketPath(),
         timeoutMs: signerClientTimeoutMs(),
       });
-      
+
       console.log("Result:", result.status);
       if (result.policy) {
         console.log("Policy decision:", result.policy.decision);

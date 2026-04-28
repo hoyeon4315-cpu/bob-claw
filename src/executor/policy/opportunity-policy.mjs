@@ -5,13 +5,31 @@ import { evaluateGasBudgetController } from "../../risk/gas-budget-controller.mj
 import { evaluateExitRules } from "../../config/merkl-exit-rules.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE, applyRewardHaircut } from "../../config/small-capital-campaign-mode.mjs";
+import { getProtocolTier } from "../../config/protocol-trust-tiers.mjs";
 
 function isCapitalMovementIntent(intent = {}) {
   const movementTypes = new Set([
     "bridge", "withdraw", "deposit", "rebalance", "exit", "harvest_yield",
     "scale_up", "capital_rebalance", "capital_drain", "refill", "consolidation",
+    "erc4626_redeem", "aave_withdraw", "euler_evault_withdraw",
   ]);
   return movementTypes.has(intent.intentType) || movementTypes.has(intent.action);
+}
+
+export function computeExpectedRealizedNet({ displayedAprPct, rewardTokenType, estimatedCostsUsd, positionUsd, holdDays }) {
+  const yearFraction = Number(holdDays) / 365;
+  const grossRewardUsd = Number(positionUsd) * (Number(displayedAprPct) / 100) * yearFraction;
+  const expectedRewardUsd = applyRewardHaircut(rewardTokenType, grossRewardUsd);
+  const estimatedCosts = Number(estimatedCostsUsd ?? 0);
+  const haircut = SMALL_CAPITAL_CAMPAIGN_MODE.rewardHaircuts[rewardTokenType] ?? SMALL_CAPITAL_CAMPAIGN_MODE.rewardHaircuts.defaultRewardToken;
+  const effectiveAprPct = Number(displayedAprPct) * (1 - haircut);
+  return {
+    expectedRewardUsd,
+    estimatedCostsUsd: estimatedCosts,
+    netUsd: expectedRewardUsd - estimatedCosts,
+    effectiveAprPct,
+  };
 }
 
 export async function evaluateOpportunityPolicy({
@@ -81,7 +99,45 @@ export async function evaluateOpportunityPolicy({
   });
   if (concBlockers.length > 0) blockers.push(...concBlockers);
 
+  // Expected realized net check for reward-token opportunities
   const positionUsd = Number(intent.amountUsd ?? intent.positionUsd ?? 0);
+  if (intent.rewardTokenType != null && intent.displayedApr != null) {
+    const netResult = computeExpectedRealizedNet({
+      displayedAprPct: Number(intent.displayedApr),
+      rewardTokenType: intent.rewardTokenType,
+      estimatedCostsUsd: Number(intent.estimatedCostsUsd ?? 0),
+      positionUsd,
+      holdDays: Number(intent.expectedHoldDays ?? 14),
+    });
+    if (netResult.netUsd < 0 || netResult.effectiveAprPct < 0) {
+      blockers.push("negative_expected_realized_net");
+    }
+    // Non-base chain entry gate
+    if (!isMovement && intent.chain && !SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes(intent.chain)) {
+      const nonBase = SMALL_CAPITAL_CAMPAIGN_MODE.nonBaseEntry;
+      const meetsMinUsd = netResult.netUsd >= nonBase.minNetProfitUsd;
+      const meetsMinPct = netResult.netUsd >= positionUsd * nonBase.minNetProfitPctOfPosition;
+      if (!meetsMinUsd && !meetsMinPct) {
+        blockers.push("non_base_entry_insufficient_expected_net");
+      }
+    }
+  }
+
+  // Protocol concentration check for small-capital campaign mode
+  // Capital movement intents are exempt (same rule as concentration_limits above).
+  if (intent.protocol && !isMovement) {
+    const tier = getProtocolTier(intent.protocol);
+    const isBluechip = tier.tierKey === "TIER_A";
+    const protocolProjectedShare = projected.protocolSharePct[intent.protocol] || 0;
+    if (!isBluechip && protocolProjectedShare > SMALL_CAPITAL_CAMPAIGN_MODE.protocolConcentration.defaultMaxPct) {
+      blockers.push("protocol_concentration_exceeded");
+    }
+    const isClVenue = intent.venue === "cl" || intent.executionSurface === "clLp";
+    if (isClVenue && protocolProjectedShare > SMALL_CAPITAL_CAMPAIGN_MODE.protocolConcentration.venueMaxPctWithLiveMonitor) {
+      blockers.push("protocol_concentration_exceeded");
+    }
+  }
+
   if (positionUsd > 0 && positionUsd < SIZING_POLICY.minPositionUsd) {
     blockers.push("position_below_min_position_usd");
   }

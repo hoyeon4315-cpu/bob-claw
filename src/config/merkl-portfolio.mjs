@@ -45,6 +45,76 @@ export const MERKL_PORTFOLIO_POLICY = Object.freeze({
   }),
 });
 
+export function smallCapitalMerklPortfolioPolicy(overrides = {}) {
+  const base = Object.freeze({
+    profileId: "small_capital_merkl_portfolio_v1",
+    maxActiveUsd: 300,
+    maxNewPositionsPerRun: 6,
+    maxOpenPositions: 6,
+    perOpportunityMaxUsd: 50,
+    allowTopUps: true,
+    chainMaxUsd: Object.freeze({
+      base: 200,
+      ethereum: 50,
+      optimism: 75,
+      arbitrum: 75,
+      bsc: 25,
+      avalanche: 25,
+      bera: 25,
+      sei: 25,
+      soneium: 25,
+      sonic: 25,
+      unichain: 25,
+    }),
+    protocolMaxUsd: Object.freeze({
+      yo: 100,
+      morpho: 100,
+      euler: 100,
+      aave: 100,
+      aerodrome: 100,
+      moonwell: 100,
+      pendle: 100,
+      beefy: 100,
+    }),
+    minPositionUsd: 5,
+    minEthereumNotionalUsd: 25,
+    allowSmallEthereumProofBackedEntries: true,
+    reserveSourceInventoryPct: 0.05,
+    minCanaryProofsBeforeScale: 1,
+    minHoldMinutes: 60,
+    exitLookaheadHours: 18,
+    minRemainingHoursForEntry: 24,
+    minScoreForEntry: 65,
+    scoreWeights: Object.freeze({
+      queuePriority: 0.58,
+      apr: 1.8,
+      tvl: 4,
+      duration: 8,
+      canaryProof: 10,
+      inventoryReady: 18,
+      gasReady: 8,
+      overfitPenalty: 10,
+      chainRouteGapPenalty: 3,
+    }),
+  });
+  return {
+    ...base,
+    ...overrides,
+    chainMaxUsd: {
+      ...base.chainMaxUsd,
+      ...(overrides.chainMaxUsd || {}),
+    },
+    protocolMaxUsd: {
+      ...base.protocolMaxUsd,
+      ...(overrides.protocolMaxUsd || {}),
+    },
+    scoreWeights: {
+      ...base.scoreWeights,
+      ...(overrides.scoreWeights || {}),
+    },
+  };
+}
+
 export function merklPortfolioPolicy(overrides = {}) {
   return {
     ...MERKL_PORTFOLIO_POLICY,
