@@ -926,7 +926,34 @@ export async function runAllChainAutopilot({
     timeoutMs,
     steps,
   });
-  const autoKillArgs = ["src/cli/run-auto-kill-check.mjs", "--json", `--oracles-path=${oraclesPathArg}`];
+
+  await runJsonStep({
+    name: "campaign_aware_opportunities",
+    args: ["src/cli/report-campaign-aware-opportunities.mjs", "--json"],
+    runCommandImpl,
+    cwd,
+    timeoutMs: Math.min(30_000, timeoutMs),
+    steps,
+  });
+
+  await runJsonStep({
+    name: "anchor_position_health",
+    args: ["src/cli/report-anchor-position-health.mjs", "--json"],
+    runCommandImpl,
+    cwd,
+    timeoutMs: Math.min(30_000, timeoutMs),
+    steps,
+  });
+
+  const autoKillArgs = [
+    "src/cli/run-auto-kill-check.mjs",
+    "--json",
+    `--oracles-path=${oraclesPathArg}`,
+    `--price-samples-path=data/price-samples.json`,
+    `--cl-status-path=data/anchor-position-health.json`,
+    `--active-protocols-path=data/active-protocols.json`,
+    `--campaign-status-path=data/campaign-status.json`,
+  ];
   if (heartbeatPathArg) autoKillArgs.push(`--heartbeat-path=${heartbeatPathArg}`);
   const autoKillResult = await runJsonStep({
     name: "auto_kill_check",
