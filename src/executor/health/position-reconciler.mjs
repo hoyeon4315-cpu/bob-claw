@@ -20,6 +20,52 @@ import { readErc20Balance } from "../../evm/account-state.mjs";
 
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const RECONCILE_VERSION = 1;
+const AERODROME_POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72";
+
+async function readAerodromePositions({ chain, signerAddress, tokenIds = [] }) {
+  if (chain !== "base") return null;
+  if (!tokenIds || tokenIds.length === 0) {
+    return { positions: [], note: "No tokenIds provided; Aerodrome positions are not enumerable. Pass known tokenIds." };
+  }
+
+  try {
+    const { ethers } = await import("ethers");
+    const cfg = EVM_CHAIN_CONFIGS[chain];
+    const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
+
+    const positionManagerAbi = [
+      "function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
+    ];
+
+    const positionManager = new ethers.Contract(AERODROME_POSITION_MANAGER, positionManagerAbi, provider);
+    const positions = [];
+
+    for (const tokenId of tokenIds) {
+      try {
+        const pos = await positionManager.positions(tokenId);
+        positions.push({
+          protocol: "aerodrome",
+          chain,
+          tokenId: String(tokenId),
+          token0: pos.token0,
+          token1: pos.token1,
+          fee: pos.fee,
+          tickLower: pos.tickLower,
+          tickUpper: pos.tickUpper,
+          liquidity: pos.liquidity.toString(),
+          tokensOwed0: pos.tokensOwed0.toString(),
+          tokensOwed1: pos.tokensOwed1.toString(),
+        });
+      } catch {
+        // Skip unreadable positions
+      }
+    }
+
+    return positions;
+  } catch {
+    return null;
+  }
+}
 
 // Protocol readers: extend this registry as new protocols are integrated
 const PROTOCOL_READERS = {
@@ -105,6 +151,9 @@ const PROTOCOL_READERS = {
       return null;
     }
   },
+
+  // Aerodrome Slipstream CL (Base)
+  aerodrome: readAerodromePositions,
 };
 
 export async function reconcilePositions({

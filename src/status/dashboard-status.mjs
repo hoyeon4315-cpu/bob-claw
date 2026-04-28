@@ -35,6 +35,7 @@ import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/
 import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "../strategy/proxy-spread-coverage-plan.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
+import { buildCampaignAwareSlice } from "./campaign-aware-dashboard-slice.mjs";
 
 const STATUS_SCHEMA_VERSION = 2;
 // No project-wide risk budget anymore; per-strategy caps live in each
@@ -1897,6 +1898,14 @@ export function buildDashboardStatus(input, options = {}) {
   const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
   const executorRuntime = input.executorRuntime || null;
 
+  const campaignAware = buildCampaignAwareSlice({
+    smallCapitalPolicy: input.smallCapitalPolicy || null,
+    totalCapitalUsd: pnl?.realized?.totalValueUsd || 0,
+    campaignOpportunities: input.campaignOpportunities || null,
+    anchorPositions: input.anchorPositions || null,
+    paybackAccumulator: input.paybackAccumulator || null,
+  }, { now });
+
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
     generatedAt: now,
@@ -1913,6 +1922,7 @@ export function buildDashboardStatus(input, options = {}) {
     bitcoinFee,
     opportunity,
     pnl,
+    campaignAware,
     tradeHistory,
     decisionInputs,
     researchSignals,

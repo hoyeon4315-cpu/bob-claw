@@ -1542,3 +1542,20 @@ test("dashboard status includes pnl and trade history summaries", () => {
   assert.equal(status.tradeHistory.items[0].chainLabel, "Base");
   assert.equal(status.tradeHistory.items[0].realizedNetPnlUsd, 0.18);
 });
+
+test("dashboard status includes campaign-aware slice with safe defaults", () => {
+  const status = buildDashboardStatus({
+    routesRecords: [],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+  }, { now: "2026-04-10T12:00:00.000Z" });
+
+  assert.equal(typeof status.campaignAware, "object");
+  assert.equal(typeof status.campaignAware.anchorLane.status, "string");
+  assert.equal(Number.isFinite(status.campaignAware.opportunisticLane.budgetMaxUsd), true);
+  assert.equal(typeof status.campaignAware.topBlocker, "object");
+});

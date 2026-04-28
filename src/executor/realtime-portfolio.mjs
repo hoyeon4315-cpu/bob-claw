@@ -91,7 +91,7 @@ async function fetchChainBalances(chain, address) {
   return results;
 }
 
-async function fetchProtocolPositions(address) {
+async function fetchProtocolPositions(address, { aerodromeTokenIds = [] } = {}) {
   const positions = [];
 
   try {
@@ -122,10 +122,26 @@ async function fetchProtocolPositions(address) {
     // Skip unreadable protocol positions
   }
 
+  try {
+    // Aerodrome CL Base
+    const aerodromeResult = await PROTOCOL_READERS.aerodrome({
+      chain: "base",
+      signerAddress: address,
+      tokenIds: aerodromeTokenIds,
+    });
+    if (Array.isArray(aerodromeResult)) {
+      positions.push(...aerodromeResult);
+    } else if (aerodromeResult && Array.isArray(aerodromeResult.positions)) {
+      positions.push(...aerodromeResult.positions);
+    }
+  } catch {
+    // Skip unreadable protocol positions
+  }
+
   return positions;
 }
 
-export async function fetchRealtimePortfolio(address, { chains = null, useCache = true, includeProtocols = true } = {}) {
+export async function fetchRealtimePortfolio(address, { chains = null, useCache = true, includeProtocols = true, aerodromeTokenIds = [] } = {}) {
   if (useCache && _cache && Date.now() - _cacheAt < CACHE_TTL_MS) {
     return _cache;
   }
@@ -139,7 +155,7 @@ export async function fetchRealtimePortfolio(address, { chains = null, useCache 
     allBalances.push(result);
   }
 
-  const protocolPositions = includeProtocols ? await fetchProtocolPositions(address) : [];
+  const protocolPositions = includeProtocols ? await fetchProtocolPositions(address, { aerodromeTokenIds }) : [];
 
   const snapshot = {
     address,
