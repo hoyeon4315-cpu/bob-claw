@@ -253,6 +253,7 @@ const STATIC_STATUS_PATH = "./dashboard-status.json";
 const LIVE_RUNTIME_PATH = "./live-runtime.json";
 const LIVE_POLL_MS = 1500;
 const STATIC_POLL_MS = 5e3;
+const FETCH_TIMEOUT_MS = 1200;
 function statusGeneratedAtMs(status = null) {
   const ms = new Date(status?.generatedAt || 0).getTime();
   return Number.isFinite(ms) ? ms : null;
@@ -276,21 +277,31 @@ function selectPreferredStatusPayload(candidates = []) {
   const available = candidates.filter((candidate) => candidate?.status);
   if (available.length === 0) return { status: null, source: "unavailable", live: false };
   return [...available].sort((left, right) => {
+    const sourceDiff = statusSourceRank(right.source) - statusSourceRank(left.source);
+    if (sourceDiff !== 0) return sourceDiff;
     const baselineDiff = Number(hasActiveReportingBaseline(right.status)) - Number(hasActiveReportingBaseline(left.status));
     if (baselineDiff !== 0) return baselineDiff;
     const generatedAtDiff = (statusGeneratedAtMs(right.status) || 0) - (statusGeneratedAtMs(left.status) || 0);
     if (generatedAtDiff !== 0) return generatedAtDiff;
-    return statusSourceRank(right.source) - statusSourceRank(left.source);
+    return 0;
   })[0];
 }
 async function fetchEndpointStatus(endpoint) {
+  const controller = window.AbortController ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), endpoint.timeoutMs || FETCH_TIMEOUT_MS) : null;
   try {
-    const resp = await fetch(endpoint.url, { cache: "no-store", mode: endpoint.remote ? "cors" : "same-origin" });
+    const resp = await fetch(endpoint.url, {
+      cache: "no-store",
+      mode: endpoint.remote ? "cors" : "same-origin",
+      signal: controller?.signal
+    });
     if (!resp.ok) return null;
     const status = await resp.json();
     return { status, source: endpoint.source, live: endpoint.live, remote: Boolean(endpoint.remote) };
   } catch {
     return null;
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 async function fetchStaticStatusPayload() {
@@ -656,7 +667,7 @@ async function refreshDashboardData({ dispatch = true, payload = null } = {}) {
   return window._DASHBOARD_REFRESH_IN_FLIGHT;
 }
 async function bootstrapDashboardData() {
-  const initialSnapshot = await fetchStaticStatusPayload();
+  const initialSnapshot = await fetchStatusPayload();
   await bootData(initialSnapshot);
   window.dispatchEvent(new CustomEvent("dashboard:datarefresh"));
   if (!initialSnapshot?.live) {
@@ -691,7 +702,8 @@ function setupLiveEventStream() {
   if (!window._DASHBOARD_LIVE_AVAILABLE || !window.EventSource) return;
   if (window._DASHBOARD_LIVE_STREAM_RETRY_AT && Date.now() < window._DASHBOARD_LIVE_STREAM_RETRY_AT) return;
   const runtime = window._DASHBOARD_LIVE_RUNTIME;
-  const eventsPath = runtime?.enabled && runtime.eventsUrl ? `${runtime.eventsUrl}?t=${Date.now()}` : `${LIVE_EVENTS_PATH}?t=${Date.now()}`;
+  const preferRemoteStream = window.LIVE_STATUS?.remote === true;
+  const eventsPath = preferRemoteStream && runtime?.enabled && runtime.eventsUrl ? `${runtime.eventsUrl}?t=${Date.now()}` : `${LIVE_EVENTS_PATH}?t=${Date.now()}`;
   const stream = new EventSource(eventsPath);
   let opened = false;
   const handleSnapshot = async (event) => {
@@ -700,7 +712,7 @@ function setupLiveEventStream() {
       await refreshDashboardData({
         payload: {
           status,
-          source: runtime?.enabled ? "remote-live-sse" : "live-sse",
+          source: preferRemoteStream ? "remote-live-sse" : "live-sse",
           live: true
         }
       });

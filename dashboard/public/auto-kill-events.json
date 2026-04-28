@@ -1,9 +1,27 @@
 {
   "schemaVersion": 1,
-  "observedAt": "2026-04-27T23:06:52.487Z",
+  "observedAt": "2026-04-28T23:11:05.287Z",
   "windowMs": 86400000,
-  "totalEvaluations24h": 0,
-  "triggerCounts": {},
-  "lastEvent": null,
-  "armedAt": null
+  "totalEvaluations24h": 2,
+  "triggerCounts": {
+    "relative_price_stale": 2
+  },
+  "lastEvent": {
+    "schemaVersion": 1,
+    "evaluatedAt": "2026-04-28T22:57:13.380Z",
+    "triggers": [
+      {
+        "trigger": "relative_price_stale",
+        "pair": "ETH/BTC",
+        "ageMs": 2802933,
+        "threshold": 1800000,
+        "windowMs": 604800000,
+        "sampleCount": 5,
+        "latestSampleAt": "2026-04-28T22:10:30.447Z"
+      }
+    ],
+    "killSwitchPath": "/Users/love/.bob-claw/KILL_SWITCH",
+    "alreadyArmed": true
+  },
+  "armedAt": "2026-04-28T22:44:03.118Z"
 }

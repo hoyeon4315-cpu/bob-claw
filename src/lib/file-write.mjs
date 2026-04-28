@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export async function writeTextIfChanged(path, contents, options = {}) {
@@ -18,7 +19,14 @@ export async function writeTextIfChanged(path, contents, options = {}) {
   }
 
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, contents, "utf8");
+  const tmpPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmpPath, contents, "utf8");
+    await rename(tmpPath, path);
+  } catch (error) {
+    await rm(tmpPath, { force: true }).catch(() => {});
+    throw error;
+  }
   return {
     path,
     changed: true,

@@ -187,6 +187,24 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(appSection, /`\$\{sourceLabel\} · \$\{ageLabel\}`/);
   });
 
+  test("data adapter prefers live transport before static snapshots", () => {
+    const dataSelection = extractSection("function selectPreferredStatusPayload", "async function fetchEndpointStatus", DATA_SOURCE);
+    assert.match(dataSelection, /const sourceDiff = statusSourceRank\(right\.source\) - statusSourceRank\(left\.source\)/);
+    assert.match(dataSelection, /if \(sourceDiff !== 0\) return sourceDiff/);
+    assert.ok(
+      dataSelection.indexOf("sourceDiff") < dataSelection.indexOf("generatedAtDiff"),
+      "live source rank must be evaluated before generatedAt so static snapshots cannot beat a live endpoint",
+    );
+
+    const bootstrap = extractSection("async function bootstrapDashboardData", "function setupDashboardRefreshHooks", DATA_SOURCE);
+    assert.match(bootstrap, /const initialSnapshot = await fetchStatusPayload\(\)/);
+    assert.doesNotMatch(bootstrap, /fetchStaticStatusPayload\(\)/);
+
+    const stream = extractSection("function setupLiveEventStream", "function liveAprFor", DATA_SOURCE);
+    assert.match(stream, /const preferRemoteStream = window\.LIVE_STATUS\?\.remote === true/);
+    assert.match(stream, /preferRemoteStream && runtime\?\.enabled && runtime\.eventsUrl/);
+  });
+
   test("live APR lookup prefers exact strategy entries before protocol fallback", () => {
     const liveAprSection = extractSection("function liveAprFor", "function defaultAutoExec", DATA_SOURCE);
     assert.match(liveAprSection, /const strategyEntry = aprMap\[strategy\.id\]/);

@@ -58,6 +58,15 @@ function stripVolatileStatusFields(value) {
   );
 }
 
+function normalizeDashboardStatusContents(contents) {
+  if (!contents) return contents;
+  try {
+    return JSON.stringify(stripVolatileStatusFields(JSON.parse(contents)));
+  } catch {
+    return null;
+  }
+}
+
 function emptyResearchFunnelSlice() {
   return {
     available: false,
@@ -1978,9 +1987,6 @@ export function buildDashboardStatus(input, options = {}) {
 export async function writeDashboardStatus(dataDir, status, fileName = "dashboard-status.json") {
   const path = join(dataDir, fileName);
   return writeTextIfChanged(path, `${JSON.stringify(status, null, 2)}\n`, {
-    normalize: (contents) => {
-      if (!contents) return contents;
-      return JSON.stringify(stripVolatileStatusFields(JSON.parse(contents)));
-    },
+    normalize: normalizeDashboardStatusContents,
   });
 }

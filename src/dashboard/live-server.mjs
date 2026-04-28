@@ -5,7 +5,6 @@ import { extname, join, resolve } from "node:path";
 import process from "node:process";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
-import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_STREAM_MS = 1500;
@@ -14,6 +13,9 @@ export const DEFAULT_REFRESH_TICK_MS = 2000;
 export const DEFAULT_WHOLE_WALLET_REFRESH_MS = 8000;
 export const DEFAULT_TREASURY_REFRESH_MS = 20000;
 export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 6000;
+export const DEFAULT_STRATEGY_TICK_REFRESH_MS = 4000;
+export const DEFAULT_AUTO_KILL_REFRESH_MS = 5000;
+export const DEFAULT_STATUS_BUILD_TIMEOUT_MS = 3500;
 
 function finiteInteger(value, fallback) {
   const parsed = Number(value);
@@ -85,9 +87,21 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
       options["treasury-refresh-ms"] || env.BOB_CLAW_DASHBOARD_TREASURY_REFRESH_MS,
       DEFAULT_TREASURY_REFRESH_MS,
     ),
+    strategyTickRefreshMs: finiteInteger(
+      options["strategy-tick-refresh-ms"] || env.BOB_CLAW_DASHBOARD_STRATEGY_TICK_REFRESH_MS,
+      DEFAULT_STRATEGY_TICK_REFRESH_MS,
+    ),
+    autoKillRefreshMs: finiteInteger(
+      options["auto-kill-refresh-ms"] || env.BOB_CLAW_DASHBOARD_AUTO_KILL_REFRESH_MS,
+      DEFAULT_AUTO_KILL_REFRESH_MS,
+    ),
     statusSnapshotRefreshMs: finiteInteger(
       options["status-refresh-ms"] || env.BOB_CLAW_DASHBOARD_STATUS_REFRESH_MS,
       DEFAULT_STATUS_SNAPSHOT_REFRESH_MS,
+    ),
+    statusBuildTimeoutMs: finiteInteger(
+      options["status-build-timeout-ms"] || env.BOB_CLAW_DASHBOARD_STATUS_BUILD_TIMEOUT_MS,
+      DEFAULT_STATUS_BUILD_TIMEOUT_MS,
     ),
   };
 }
@@ -115,9 +129,27 @@ function resolveStaticPath(rootDir, requestPath = "/") {
   return resolved;
 }
 
-async function loadStaticFallback(rootDir) {
-  const text = await readFile(join(rootDir, "dashboard-status.json"), "utf8");
-  return JSON.parse(text);
+async function loadDashboardStatusSnapshot({ rootDir, dataDir }) {
+  const candidates = [
+    join(rootDir, "dashboard-status.json"),
+    join(dataDir, "dashboard-status.json"),
+  ];
+  let lastError = null;
+  for (const path of candidates) {
+    try {
+      const text = await readFile(path, "utf8");
+      return JSON.parse(text);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("dashboard-status.json not found");
+}
+
+function timeoutAfter(ms, message) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms).unref?.();
+  });
 }
 
 function apiHeaders(corsOrigin, extraHeaders = {}) {
@@ -184,6 +216,34 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastResult: null,
       running: false,
     },
+    strategyTickStatus: {
+      id: "strategyTickStatus",
+      label: "strategy tick status",
+      script: "src/cli/report-strategy-tick-slice.mjs",
+      args: ["--quiet"],
+      intervalMs: options.strategyTickRefreshMs,
+      lastStartedAt: null,
+      lastFinishedAt: null,
+      lastSucceededAt: null,
+      lastFailedAt: null,
+      lastError: null,
+      lastResult: null,
+      running: false,
+    },
+    autoKillEvents: {
+      id: "autoKillEvents",
+      label: "auto-kill event summary",
+      script: "src/cli/report-auto-kill-events.mjs",
+      args: ["--write"],
+      intervalMs: options.autoKillRefreshMs,
+      lastStartedAt: null,
+      lastFinishedAt: null,
+      lastSucceededAt: null,
+      lastFailedAt: null,
+      lastError: null,
+      lastResult: null,
+      running: false,
+    },
     statusSnapshot: {
       id: "statusSnapshot",
       label: "dashboard snapshot",
@@ -198,19 +258,27 @@ export function createDashboardLiveServer(rawOptions = {}) {
       running: false,
     },
   };
-  const taskOrder = [tasks.wholeWallet, tasks.treasury, tasks.walletHoldingsSlice, tasks.statusSnapshot];
+  const taskOrder = [
+    tasks.wholeWallet,
+    tasks.treasury,
+    tasks.walletHoldingsSlice,
+    tasks.strategyTickStatus,
+    tasks.autoKillEvents,
+    tasks.statusSnapshot,
+  ];
   let refreshTimer = null;
   let statusWarmTimer = null;
   let refreshPromise = null;
   let statusPromise = null;
+  let statusBuildPromise = null;
   let lastStatusPayload = null;
   let lastStatusBuiltAtMs = 0;
   let shuttingDown = false;
   const startedAt = new Date().toISOString();
 
-  async function runNodeScript(script) {
+  async function runNodeScript(script, args = []) {
     return new Promise((resolvePromise, rejectPromise) => {
-      const child = spawn(process.execPath, [resolve(process.cwd(), script)], {
+      const child = spawn(process.execPath, [resolve(process.cwd(), script), ...args], {
         cwd: process.cwd(),
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
@@ -241,7 +309,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     task.running = true;
     task.lastStartedAt = new Date().toISOString();
     try {
-      const result = await runNodeScript(task.script);
+      const result = await runNodeScript(task.script, task.args || []);
       task.lastResult = commandSummary(result);
       task.lastSucceededAt = task.lastResult.observedAt;
       task.lastError = null;
@@ -275,13 +343,13 @@ export function createDashboardLiveServer(rawOptions = {}) {
     const dueTasks = taskOrder.filter(taskDue);
     if (dueTasks.length === 0) return null;
     refreshPromise = (async () => {
-      for (const task of dueTasks) {
+      await Promise.all(dueTasks.map(async (task) => {
         try {
           await runTask(task);
         } catch {
           // Task failure is already recorded in the task state and surfaced via health/runtime endpoints.
         }
-      }
+      }));
     })().finally(() => {
       refreshPromise = null;
     });
@@ -319,39 +387,78 @@ export function createDashboardLiveServer(rawOptions = {}) {
   }
 
   async function computeLiveStatusPayload() {
-    try {
-      const context = await buildCurrentDashboardContext({
-        dataDir: options.dataDir,
-        address: options.address,
-      });
+    void maybeRunRefreshCycle();
+    const dashboardStatus = await loadDashboardStatusSnapshot({
+      rootDir: options.rootDir,
+      dataDir: options.dataDir,
+    });
+    return {
+      ...dashboardStatus,
+      liveTransport: {
+        mode: "live_api",
+        source: "live-api",
+        snapshotPath: "/api/live-status",
+        eventsPath: "/api/live-events",
+        refreshIntervalMs: options.streamMs,
+        servedAt: new Date().toISOString(),
+      },
+      liveRuntime: runtimeState(),
+    };
+  }
+
+  async function buildStaticFallbackPayload(errorMessage = null) {
+    const fallback = await loadDashboardStatusSnapshot({
+      rootDir: options.rootDir,
+      dataDir: options.dataDir,
+    });
+    return {
+      ...fallback,
+      liveTransport: {
+        mode: "static_fallback",
+        source: "dashboard-status.json",
+        snapshotPath: "/api/live-status",
+        eventsPath: "/api/live-events",
+        refreshIntervalMs: options.streamMs,
+        servedAt: new Date().toISOString(),
+        error: errorMessage,
+      },
+      liveRuntime: runtimeState(),
+    };
+  }
+
+  function startStatusBuild() {
+    if (statusBuildPromise) return statusBuildPromise;
+    statusBuildPromise = (async () => {
+      try {
+        const payload = await computeLiveStatusPayload();
+        lastStatusPayload = payload;
+        lastStatusBuiltAtMs = Date.now();
+        return payload;
+      } catch (error) {
+        const fallback = await buildStaticFallbackPayload(error.message);
+        lastStatusPayload = fallback;
+        lastStatusBuiltAtMs = Date.now();
+        return fallback;
+      } finally {
+        statusBuildPromise = null;
+      }
+    })();
+    return statusBuildPromise;
+  }
+
+  async function buildTimedFallback(error) {
+    if (lastStatusPayload) {
       return {
-        ...context.dashboardStatus,
+        ...lastStatusPayload,
         liveTransport: {
-          mode: "live_api",
-          source: "live-api",
-          snapshotPath: "/api/live-status",
-          eventsPath: "/api/live-events",
-          refreshIntervalMs: options.streamMs,
+          ...(lastStatusPayload.liveTransport || {}),
           servedAt: new Date().toISOString(),
-        },
-        liveRuntime: runtimeState(),
-      };
-    } catch (error) {
-      const fallback = await loadStaticFallback(options.rootDir);
-      return {
-        ...fallback,
-        liveTransport: {
-          mode: "static_fallback",
-          source: "dashboard-status.json",
-          snapshotPath: "/api/live-status",
-          eventsPath: "/api/live-events",
-          refreshIntervalMs: options.streamMs,
-          servedAt: new Date().toISOString(),
-          error: error.message,
+          warning: error.message,
         },
         liveRuntime: runtimeState(),
       };
     }
+    return buildStaticFallbackPayload(error.message);
   }
 
   async function buildLiveStatus({ force = false } = {}) {
@@ -360,12 +467,15 @@ export function createDashboardLiveServer(rawOptions = {}) {
     }
     if (statusPromise) return statusPromise;
     statusPromise = (async () => {
+      const build = startStatusBuild();
       try {
-        lastStatusPayload = await computeLiveStatusPayload();
-      } finally {
-        lastStatusBuiltAtMs = Date.now();
+        return await Promise.race([
+          build,
+          timeoutAfter(options.statusBuildTimeoutMs, `live status build timed out after ${options.statusBuildTimeoutMs}ms`),
+        ]);
+      } catch (error) {
+        return buildTimedFallback(error);
       }
-      return lastStatusPayload;
     })().finally(() => {
       statusPromise = null;
     });

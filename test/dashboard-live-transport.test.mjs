@@ -19,9 +19,10 @@ test("dashboard live transport prefers baseline-aware freshest payloads and fall
   assert.match(DATA_JSX, /generatedAtDiff = \(statusGeneratedAtMs\(right\.status\) \|\| 0\) - \(statusGeneratedAtMs\(left\.status\) \|\| 0\)/);
   assert.match(DATA_JSX, /source: 'remote-live-api'/);
   assert.match(DATA_JSX, /source: 'live-api'/);
-  assert.match(DATA_JSX, /const eventsPath = runtime\?\.enabled && runtime\.eventsUrl/);
+  assert.match(DATA_JSX, /const preferRemoteStream = window\.LIVE_STATUS\?\.remote === true/);
+  assert.match(DATA_JSX, /preferRemoteStream && runtime\?\.enabled && runtime\.eventsUrl/);
   assert.match(DATA_JSX, /new EventSource\(eventsPath\)/);
-  assert.match(DATA_JSX, /source: runtime\?\.enabled \? 'remote-live-sse' : 'live-sse'/);
+  assert.match(DATA_JSX, /source: preferRemoteStream \? 'remote-live-sse' : 'live-sse'/);
   assert.match(DATA_JSX, /source: 'static-snapshot'/);
   assert.match(DATA_JSX, /preserveCurrentOnMismatch: Boolean\(payload\)/);
 });

@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "origin": "https://halloween-betty-contain-howto.trycloudflare.com",
-  "statusUrl": "https://halloween-betty-contain-howto.trycloudflare.com/api/live-status",
-  "eventsUrl": "https://halloween-betty-contain-howto.trycloudflare.com/api/live-events",
-  "updatedAt": "2026-04-27T23:10:25.037Z"
+  "origin": "https://pig-controller-town-hughes.trycloudflare.com",
+  "statusUrl": "https://pig-controller-town-hughes.trycloudflare.com/api/live-status",
+  "eventsUrl": "https://pig-controller-town-hughes.trycloudflare.com/api/live-events",
+  "updatedAt": "2026-04-28T23:11:09.549Z"
 }
