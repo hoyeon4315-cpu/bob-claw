@@ -69,6 +69,7 @@
     "ingest:recursive-lending-loop-receipt": "node src/cli/ingest-recursive-lending-loop-receipt.mjs",
     "report:stable-loop-executor": "node src/cli/report-stable-loop-executor.mjs",
     "report:anchor-position-health": "node src/cli/report-anchor-position-health.mjs",
+    "aggregate:auto-kill-inputs": "node src/cli/aggregate-auto-kill-inputs.mjs",
     "report:wrapped-btc-loop": "node src/cli/report-wrapped-btc-lending-loop.mjs",
     "report:wrapped-btc-loop-dry-run": "node src/cli/report-wrapped-btc-loop-dry-run.mjs",
     "report:wrapped-btc-loop-oos-evidence": "node src/cli/report-wrapped-btc-loop-oos-evidence.mjs",

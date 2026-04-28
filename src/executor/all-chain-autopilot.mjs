@@ -945,6 +945,15 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  await runJsonStep({
+    name: "aggregate_auto_kill_inputs",
+    args: ["src/cli/aggregate-auto-kill-inputs.mjs"],
+    runCommandImpl,
+    cwd,
+    timeoutMs: Math.min(15_000, timeoutMs),
+    steps,
+  });
+
   const autoKillArgs = [
     "src/cli/run-auto-kill-check.mjs",
     "--json",
