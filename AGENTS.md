@@ -11,6 +11,9 @@
 - Lane selection is evidence-driven. If the Gateway route/arb lane has no positive measured edge, it moves to infrastructure/reevaluation mode and the highest evidence-backed strategy lane becomes primary.
 - Ethereum L1 trading is allowed when fee analysis shows positive expected value after gas and slippage.
 - **All 11 BOB Gateway official destinations are in scope** (Ethereum, BOB L2, Base, BNB, Avalanche, Unichain, Berachain, Optimism, Soneium, Sei, Sonic). Arbitrum and Polygon are NOT Gateway destinations as of 2026-04 — treat them as post-Gateway manual bridge only. See `docs/research/bob-ecosystem.md`.
+- **Small-capital operating mode is active while operating capital is below $1,000.** In this mode, the primary alpha source is campaign-aware destination-chain yield, not route/transport spread. The system should run a Base-first two-lane model: Anchor yield/CL surfaces plus an Opportunistic campaign/micro-test sleeve.
+- **Displayed APR is not strategy evidence.** Campaign, Merkl, Aerodrome, DefiLlama, or protocol UI APR must be converted into expected realized BTC-first PnL after reward-token haircut, IL, gas, bridge cost, claim/swap cost, and exit cost before it can drive sizing.
+- **Outlier campaign wins are evidence of a lane, not a baseline.** A single BOB Rise-style payout can justify building detection and execution support, but it must not be annualized into monthly targets or cap increases.
 
 ## Objective Review
 
@@ -22,6 +25,9 @@
 - **Operator override (2026-04-25):** `wrapped-btc-loop-base-moonwell` and the broader wrapped-BTC lending-loop lane are reopened for live-capital validation. They may run only through committed caps, health-factor/liquidation-buffer policy, automatic unwind, receipt proof, and the same kill-switch path as every other live strategy.
 - If route alpha is exhausted, stop route brute-force and switch the primary review lane to receipt-backed strategy evidence.
 - Overfitting guards: no strategy goes live solely on a single-period or single-pair backtest. At minimum, Walk-Forward purged/embargoed CV + at least one regime change in the sample window. Detail in `docs/research/ops-costs.md`.
+- Do not create new live strategy lanes when an existing orchestrator can express the behavior as a policy hook. Campaign hunting, micro-tests, yield rotation, and local-chain opportunities should first be implemented as Merkl/Capital Manager scoring and exit policies.
+- Campaign opportunities may be run live within cap only after the candidate has: current campaign data, supported executor binding, deterministic entry/exit path, reward-token valuation haircut, gas/claim/swap estimate, max loss, and receipt proof path.
+- Do not call a campaign "successful" until reward accrual, claimability, token conversion, and realized net PnL are measured. Track paper, pending, estimated, and realized separately.
 
 ## Execution Safety
 
@@ -45,11 +51,24 @@
 - Max consecutive failures per strategy: 3 → auto-pause that strategy until the operator resumes it via a committed config flip.
 - Failed-gas budget guard (`maxFailedGasCost24hUsd`) is enforced by the daemon — a route burning gas without fills auto-pauses.
 - Drawdown kill-switch: if a strategy's realized 24h PnL drops below its `maxDailyLossUsd`, the daemon halts that strategy for the remainder of the day.
+- **Small-capital sleeve caps (<$1,000 operating capital):**
+  - Anchor lane: 65-80% target allocation, but any CL position requires live range/IL monitoring and an emergency exit path.
+  - Opportunistic lane: 10-20% hard cap; default $80 max while capital is around $500.
+  - Micro-test budget: 6% hard cap; default $30 max while capital is around $500.
+  - Per new/unproven protocol: $10 initial cap, $25 max after receipt-backed reward accrual and exit proof.
+  - Per campaign: $25 initial cap, $50 max unless a committed diff raises it after realized-positive evidence.
+  - Non-Base new entries require expected realized net profit greater than bridge+gas+claim+swap costs by at least $10 or 5% of position size, whichever is higher.
+- **Protocol and venue concentration:** no single non-bluechip protocol may exceed 25% of operating capital without an explicit committed diff. CL venue exposure above 50% requires live position accounting, time-in-range monitoring, and a tested unwind.
+- **Reward-token haircut:** non-stable reward tokens default to a 50% valuation haircut; pre-TGE/points default to 80-90% haircut; whitelisted liquid tokens may use a lower haircut only via config.
 - **Auto kill-switch triggers (system-wide).** `src/risk/auto-kill-triggers.mjs` evaluates four conditions every all-chain autopilot tick (`auto_kill_check` step). Any trip writes the kill-switch file at `$KILL_SWITCH_PATH`, halting every signer broadcast and the payback offramp. Resume is manual — `rm` the file after operator review. Defaults live in `src/config/auto-kill.mjs`; overrides require a committed diff.
   - `cumulative_loss` — realized 24h net USD loss across the audit log breaches `thresholdUsd` (or `operatingCapitalFractionFloor` of operating capital, whichever is lower).
   - `failure_burst_per_strategy` and `failure_burst` — per-strategy or global rejected/reverted/error count inside `windowMs`.
   - `oracle_divergence` — multi-source price spread exceeds `maxDivergencePct`. Requires `$AUTO_KILL_ORACLES_PATH` to point at a JSON file with a `samples` array.
   - `heartbeat_stale` — signer heartbeat older than `maxAgeMs`. Requires `$EXECUTOR_HEARTBEAT_PATH`.
+  - `relative_price_move` — trips when a configured pair used by a CL strategy moves beyond its window, e.g. ETH/BTC 7d move > 15% for WETH-cbBTC CL positions.
+  - `cl_range_health` — trips or pauses the strategy when time-in-range falls below policy threshold or IL exceeds fees over the configured window.
+  - `protocol_incident` — pauses affected strategies when a pinned exploit/incident feed or manually committed incident file names a touched protocol.
+  - `campaign_decay` — exits or pauses an opportunistic position when realized APR falls below 50% of entry APR, campaign TVL drains by 30%, reward token drops by 25%, or campaign end is within the harvest window.
 - Stale quotes rejected.
 - **Payback-specific caps (declared in `src/config/payback.mjs`):**
   - `baseRatio` — default payback fraction of realized harvest profit, BTC units. Default 0.20. Config-only change.
@@ -218,20 +237,11 @@ The operator (or a coding-session LLM acting on operator request) holds the dev-
 
 - When the user asks about the current strategies, answer in simple Korean first and keep the first explanation short.
 - When freshness matters, prefer `npm run report:strategy-catalog -- --json` before giving the strategy snapshot.
-- Latest known strategy snapshot:
-  - BTC Gateway loops: `measured_below_policy` / transport infrastructure lane. Current route alpha has no confirmed positive edge.
-  - BTC proxy spreads: `measured_below_policy` with thin/noisy coverage; keep as reevaluation lane, not primary alpha.
-  - BTC stable entry/exit loops: `measured_below_policy`
-  - BTC triangular/flash: `measured_below_policy`
-  - Direct ETH-family Gateway: `thin_coverage`
-  - ETH/stable mixed loops: `thin_coverage`
-  - ETH mixed triangle: `analysis_only`
-  - ETH mixed flash: `analysis_only`
-  - Lending-protocol looping: live-capital validation reopened for wrapped-BTC lending-loop variants; health-factor, liquidation-buffer, cap, unwind, and receipt gates remain mandatory.
-  - Wrapped BTC lending loop: reopened as a capped live-validation lane. Do not bypass policy, but do include it in automatic deployment when caps and inventory permit.
-  - ETH destination deployment: `design_scaffold` / allowed research and implementation target when fee domain, unwind cost, and BTC return path are measured.
-  - Gateway native asset conversion sleeve: `design_scaffold` / intended for ETH, stable, gold, reserve, and other approved asset-family deployment with BTC payback compatibility.
-  - **Payback engine: `scaffolded_active_carry`** — scheduler/accumulator/config exist and are reporting BTC-denominated pending carry. Current blocker is `planned_payback_below_minimum`, not missing payback code.
+- Current small-capital strategy posture: Base-first two-lane model.
+  - Anchor lane: validated Base yield/CL candidates such as YO and Aerodrome cbBTC/WETH are allowed research/execution targets only with live position accounting, IL/range monitor, caps, and exit path.
+  - Opportunistic lane: Merkl/campaign/micro-test opportunities are handled by Merkl Portfolio Orchestrator + Capital Manager policy hooks, not by five independent strategy daemons.
+  - Route/transport lanes remain infrastructure unless measured positive edge returns.
+  - Payback engine remains active carry; blocker is insufficient realized profit, not missing payback code.
 - If the user asks why ETH was "not validated", clarify that ETH was investigated and measured; the current outcome is "no confirmed edge," not "skipped work."
 - Use this ETH explanation:
   - no measured multichain ETH-family Gateway surface yet
