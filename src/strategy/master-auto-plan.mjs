@@ -11,9 +11,10 @@
 
 import { runAutopilotTick } from "./autopilot-portfolio-rebalancer.mjs";
 import { evaluateAerodromeForAutopilot } from "./aerodrome-cl-manager.mjs";
-import { fetchRealtimePortfolio, toAutopilotPositions } from "../executor/realtime-portfolio.mjs";
+import { fetchRealtimePortfolio, toAutopilotPositions, clearPortfolioCache } from "../executor/realtime-portfolio.mjs";
 import { evaluateOpportunityPolicy } from "../executor/policy/opportunity-policy.mjs";
 import { checkKillSwitch } from "../executor/policy/kill-switch.mjs";
+import { PROTOCOL_POSITIONS } from "./autopilot-portfolio-rebalancer.mjs";
 
 // ═══════════════════════════════════════════════════════════
 // CAPITAL ALLOCATION (FULL $520)
@@ -152,12 +153,22 @@ export async function runMasterAutopilot({
     return { status: "halted", reason: "kill_switch", timestamp: new Date().toISOString() };
   }
   
-  // 2. Real-time portfolio (RPC)
-  const portfolio = await fetchRealtimePortfolio(walletAddress, { useCache: true });
-  const positions = toAutopilotPositions(portfolio, {
-    priceMap: { ETH: 2300, WETH: 2300, BTC: 95000, WBTC: 95000, cbBTC: 95000, USDC: 1, USDT: 1, BERA: 5, AVAX: 22 },
+  // 2. Real-time portfolio (RPC) + protocol positions
+  clearPortfolioCache();
+  const portfolio = await fetchRealtimePortfolio(walletAddress, { useCache: false });
+  let positions = toAutopilotPositions(portfolio, {
+    priceMap: { ETH: 2300, WETH: 2300, BTC: 95000, WBTC: 95000, "wBTC.OFT": 95000, cbBTC: 95000, USDC: 1, USDT: 1, BERA: 5, AVAX: 22, BNB: 600, WBNB: 600 },
   });
-  
+
+  // Merge hardcoded protocol positions (RPC cannot read DeFi positions directly)
+  const seenPools = new Set(positions.map((p) => p.pool));
+  for (const pos of PROTOCOL_POSITIONS) {
+    if (!seenPools.has(pos.pool)) {
+      positions.push({ ...pos, chain: pos.chain.toLowerCase() });
+      seenPools.add(pos.pool);
+    }
+  }
+
   // 3. Calculate current allocation
   const totalCapital = positions.reduce((s, p) => s + p.allocatedUsd, 0);
   const clPosition = positions.find(p => p.protocol === "aerodrome-slipstream");

@@ -15,24 +15,24 @@ import { getProtocolTier, computeRiskAdjustedScore } from "../config/protocol-tr
 import { evaluateOpportunityPolicy } from "../executor/policy/opportunity-policy.mjs";
 import { OPPORTUNITY_INTEGRATION } from "../config/opportunity-integration.mjs";
 import { SCHEDULE, isIdleWindow } from "../config/opportunity-scheduler.mjs";
-import { fetchZerionPositions } from "../executor/zerion-cache.mjs";
-import { fetchRealtimePortfolio, toAutopilotPositions } from "../executor/realtime-portfolio.mjs";
+import { reconcilePositions } from "../executor/health/position-reconciler.mjs";
 
-const BTC_PRICE_USD = 95000;
-const MIN_NEW_CAPITAL_USD = 300;    // Minimum to act ( lowered for smaller capital operators )
+const BTC_PRICE_USD = 76730;  // Validated against Odos spot quote (2026-04-28)
+const MIN_NEW_CAPITAL_USD = 30;    // Micro-test policy allows $30 / 6%
 const MIN_REBALANCE_IMPROVEMENT_BPS = 100; // 1% APY
 const MAX_GAS_COST_PCT_OF_CAPITAL = 0.05;  // Don't spend >5% on gas
 
 const SIGNER_ADDRESS = "0x96262bE63AA687563789225c2fE898c27a3b0AE4";
 
 // Price map for converting balances to USD
+// Updated 2026-04-28: cbBTC validated at $76,730 via Odos (was $95,000 illusion)
 const PRICE_MAP = {
   ETH: 2_300,
   WETH: 2_300,
-  BTC: 95_000,
-  WBTC: 95_000,
-  cbBTC: 95_000,
-  "wBTC.OFT": 95_000,
+  BTC: 76_730,
+  WBTC: 76_730,
+  cbBTC: 76_730,
+  "wBTC.OFT": 76_730,
   USDC: 1,
   USDT: 1,
   RLUSD: 1,
@@ -43,88 +43,48 @@ const PRICE_MAP = {
   BERA: 5,
 };
 
-async function getPositionsFromRpc() {
-  try {
-    const snapshot = await fetchRealtimePortfolio(SIGNER_ADDRESS, { useCache: true });
-    return toAutopilotPositions(snapshot, { priceMap: PRICE_MAP });
-  } catch (e) {
-    return null;
-  }
-}
-
-async function getPositionsFromZerion() {
-  const result = await fetchZerionPositions(SIGNER_ADDRESS);
-  if (result.positions.length === 0) return null;
-
-  return result.positions.map((p) => ({
-    chain: p.chain,
-    protocol: p.protocol || "unknown",
-    symbol: p.symbol,
-    allocatedUsd: p.value,
-    pool: p.id,
-    apy: p.apy || 0,
-  }));
-}
-
-// Protocol positions that RPC can't read directly (need contract calls)
-// These come from manual confirmation / Zerion / protocol APIs
-const PROTOCOL_POSITIONS = [
-  { chain: "Base", protocol: "moonwell", symbol: "USDC", allocatedUsd: 128.57, pool: "moonwell-base-usdc", apy: 8.5 },
-  { chain: "Base", protocol: "yo-protocol", symbol: "USDC", allocatedUsd: 80, pool: "yo-base-usdc", apy: 15.69 },
-  { chain: "Ethereum", protocol: "aave-v3", symbol: "RLUSD", allocatedUsd: 25, pool: "aave-eth-rlusd", apy: 3.45 },
-  { chain: "Ethereum", protocol: "morpho-blue", symbol: "USDC", allocatedUsd: 75, pool: "morpho-clearstar", apy: 4.09 },
-  { chain: "Ethereum", protocol: "morpho-blue", symbol: "USDC", allocatedUsd: 50, pool: "morpho-steakhouse", apy: 4.09 },
+const PROTOCOL_CONFIGS = [
+  {
+    reader: "yoProtocol",
+    chain: "base",
+    params: {
+      vaultAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    },
+  },
 ];
 
-async function getMergedPositions() {
-  // Priority 1: Real-time RPC wallet balances (gas-free, no API limits)
-  const rpcPositions = await getPositionsFromRpc();
-
-  // Priority 2: Zerion cache (if available)
-  const zerionPositions = await getPositionsFromZerion();
-
-  // Priority 3: Hardcoded protocol positions (until direct protocol readers built)
-  const protocolPositions = PROTOCOL_POSITIONS;
-
-  // Merge strategy: use RPC for wallet tokens, keep protocol positions separate
-  // Remove duplicate wallet tokens that might appear in Zerion
-  const merged = [];
-  const seenPools = new Set();
-
-  // Add protocol positions first (they have higher accuracy for DeFi positions)
-  for (const pos of protocolPositions) {
-    merged.push(pos);
-    seenPools.add(pos.pool);
+async function getReconciledPositions() {
+  try {
+    const result = await reconcilePositions({
+      signerAddress: SIGNER_ADDRESS,
+      priceMap: PRICE_MAP,
+      protocolConfigs: PROTOCOL_CONFIGS,
+      useRpc: true,
+      useFallback: false, // Never use Zerion/API fallback — RPC only
+    });
+    return result.positions;
+  } catch (e) {
+    // RPC failure (rate limit, etc) — return empty positions rather than block the autopilot
+    return [];
   }
-
-  // Add RPC wallet balances for tokens not in protocol positions
-  if (rpcPositions) {
-    for (const pos of rpcPositions) {
-      if (!seenPools.has(pos.pool)) {
-        merged.push(pos);
-        seenPools.add(pos.pool);
-      }
-    }
-  }
-
-  // Add Zerion positions as fallback for anything missing
-  if (zerionPositions) {
-    for (const pos of zerionPositions) {
-      if (!seenPools.has(pos.pool) && pos.allocatedUsd > 0.5) {
-        merged.push(pos);
-        seenPools.add(pos.pool);
-      }
-    }
-  }
-
-  return merged;
 }
 
 async function getTotalCapitalUsd(overrideUsd = null) {
   if (overrideUsd) return overrideUsd;
 
-  const positions = await getMergedPositions();
-  return positions.reduce((s, p) => s + p.allocatedUsd, 0);
+  try {
+    const result = await reconcilePositions({
+      signerAddress: SIGNER_ADDRESS,
+      priceMap: PRICE_MAP,
+      protocolConfigs: PROTOCOL_CONFIGS,
+      useRpc: true,
+      useFallback: false,
+    });
+    return result.totalCapital;
+  } catch (e) {
+    return 0;
+  }
 }
 
 function detectNewCapital(currentPositions, previousPositions) {
@@ -195,16 +155,26 @@ export async function runAutopilotTick({
     return { status: "idle_window", reason: "maintenance_quiet_hours", at: now };
   }
 
-  // Resolve positions: real-time RPC + protocol positions + Zerion fallback
+  // Resolve positions: on-chain RPC + protocol contract reads (no API fallback)
   let resolvedPositions = previousPositions;
   if (!resolvedPositions || resolvedPositions.length === 0) {
-    resolvedPositions = await getMergedPositions();
+    resolvedPositions = await getReconciledPositions();
   }
 
-  // 2. Capital check (from Zerion cache first, then fallback)
-  const knownCapitalUsd = await getTotalCapitalUsd(totalCapitalUsdOverride);
-  const capitalBtc = totalCapitalBtc ?? knownCapitalUsd / BTC_PRICE_USD;
-  const capitalUsd = totalCapitalUsdOverride ?? (capitalBtc * BTC_PRICE_USD);
+  // 2. Capital check (on-chain only, no Zerion)
+  // Only query on-chain capital when no override is provided
+  let capitalBtc, capitalUsd;
+  if (totalCapitalUsdOverride != null) {
+    capitalUsd = totalCapitalUsdOverride;
+    capitalBtc = capitalUsd / BTC_PRICE_USD;
+  } else if (totalCapitalBtc != null) {
+    capitalBtc = totalCapitalBtc;
+    capitalUsd = capitalBtc * BTC_PRICE_USD;
+  } else {
+    const knownCapitalUsd = await getTotalCapitalUsd();
+    capitalUsd = knownCapitalUsd;
+    capitalBtc = capitalUsd / BTC_PRICE_USD;
+  }
 
   if (capitalUsd < MIN_NEW_CAPITAL_USD) {
     return {
@@ -394,7 +364,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (import.meta.url?.endsWith(process.argv[1]) || import.meta.url?.replace("file://", "") === process.argv[1]) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

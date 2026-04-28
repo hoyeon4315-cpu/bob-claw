@@ -13,11 +13,11 @@ describe("autopilot portfolio rebalancer", () => {
   it("returns insufficient_capital for small capital", async () => {
     const mod = await import("../src/strategy/autopilot-portfolio-rebalancer.mjs");
     const result = await mod.runAutopilotTick({
-      totalCapitalBtc: 0.001, // ~$95
+      totalCapitalBtc: 0.0002, // ~$15 (below MIN_NEW_CAPITAL_USD=30)
       dryRun: true,
     });
     assert.strictEqual(result.status, "insufficient_capital");
-    assert.ok(result.capitalUsd < 500);
+    assert.ok(result.capitalUsd < 30);
   });
 
   it("returns no_opportunities when fetch fails", async () => {

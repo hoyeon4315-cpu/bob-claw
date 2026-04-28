@@ -408,6 +408,7 @@ export const STRATEGY_CAPS = Object.freeze({
     strategyId: "token-dex-experiment",
     label: "ERC20 token DEX experiment",
     autoExecute: true,
+    resumeAfterFailureAt: "2026-04-28T09:10:00.000Z",
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["odos"]),
@@ -447,7 +448,7 @@ export const STRATEGY_CAPS = Object.freeze({
     strategyId: "gateway_native_asset_conversion_sleeve",
     label: "Gateway native-asset conversion sleeve",
     autoExecute: true,
-    resumeAfterFailureAt: "2026-04-26T10:55:02.000Z",
+    resumeAfterFailureAt: "2026-04-28T10:00:00.000Z",
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["morpho", "aave", "euler", "odos"]),

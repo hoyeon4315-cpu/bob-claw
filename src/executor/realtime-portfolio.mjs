@@ -4,6 +4,7 @@
 
 import { readNativeBalance, readErc20Balance } from "../evm/account-state.mjs";
 import { EVM_CHAIN_CONFIGS } from "../config/chains.mjs";
+import { PROTOCOL_READERS } from "./health/position-reconciler.mjs";
 
 // Known token contracts per chain (add as needed)
 const KNOWN_TOKENS = Object.freeze({
@@ -90,7 +91,41 @@ async function fetchChainBalances(chain, address) {
   return results;
 }
 
-export async function fetchRealtimePortfolio(address, { chains = null, useCache = true } = {}) {
+async function fetchProtocolPositions(address) {
+  const positions = [];
+
+  try {
+    // Moonwell Base
+    const moonwellPositions = await PROTOCOL_READERS.moonwell({
+      chain: "base",
+      signerAddress: address,
+      marketAddresses: {
+        mcbBTC: "0xF877ACaFA28c19b96727966690b2f44d35aD5976",
+        mUSDC: "0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22",
+      },
+    });
+    if (moonwellPositions) positions.push(...moonwellPositions);
+  } catch {
+    // Skip unreadable protocol positions
+  }
+
+  try {
+    // YO Protocol Base
+    const yoPositions = await PROTOCOL_READERS.yoProtocol({
+      chain: "base",
+      signerAddress: address,
+      vaultAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    });
+    if (yoPositions) positions.push(...yoPositions);
+  } catch {
+    // Skip unreadable protocol positions
+  }
+
+  return positions;
+}
+
+export async function fetchRealtimePortfolio(address, { chains = null, useCache = true, includeProtocols = true } = {}) {
   if (useCache && _cache && Date.now() - _cacheAt < CACHE_TTL_MS) {
     return _cache;
   }
@@ -104,10 +139,13 @@ export async function fetchRealtimePortfolio(address, { chains = null, useCache 
     allBalances.push(result);
   }
 
+  const protocolPositions = includeProtocols ? await fetchProtocolPositions(address) : [];
+
   const snapshot = {
     address,
     fetchedAt: new Date().toISOString(),
     chains: allBalances,
+    protocolPositions,
     summary: {
       chainCount: allBalances.length,
       chainsWithBalance: allBalances.filter((c) => {
@@ -116,6 +154,7 @@ export async function fetchRealtimePortfolio(address, { chains = null, useCache 
         return hasNative || hasTokens;
       }).length,
       totalTokenTypes: allBalances.reduce((s, c) => s + c.tokens.length, 0),
+      protocolPositionCount: protocolPositions.length,
     },
   };
 
