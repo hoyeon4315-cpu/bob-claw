@@ -168,6 +168,31 @@ function refillJobIsAutoExecutable(job = {}) {
   return !job.requiresManualReview && fundingSourceAutoExecutable(job.fundingSource);
 }
 
+function inventoryFreshnessBlocker(plan = null, source = "inventory") {
+  if (!plan) return null;
+  if (plan.inventorySource && plan.inventorySource !== "live_scan") {
+    return `${source}_inventory_not_live`;
+  }
+  const scanErrorCount = Number(plan.inventoryScanErrorCount ?? 0);
+  if (Number.isFinite(scanErrorCount) && scanErrorCount > 0) {
+    return `${source}_inventory_refresh_error`;
+  }
+  if (plan.inventoryRefreshError) {
+    return `${source}_inventory_refresh_error`;
+  }
+  return null;
+}
+
+function suppressAutoRefillJobsForInventoryBlocker(jobs = [], blocker = null) {
+  if (!blocker) return jobs || [];
+  return (jobs || []).map((job) => ({
+    ...job,
+    requiresManualReview: true,
+    autopilotBlockedReason: blocker,
+    blockers: [...new Set([...(Array.isArray(job.blockers) ? job.blockers : []), blocker])],
+  }));
+}
+
 function refillPreparationReady(json = null) {
   return json?.preparation?.status === "ready";
 }
@@ -604,6 +629,7 @@ function compactAutoKill(report = null) {
   if (!report) return null;
   return {
     triggered: report.triggered === true,
+    killSwitchActive: report.killSwitchActive === true || report.alreadyArmed === true,
     alreadyArmed: report.alreadyArmed === true,
     killSwitchWritten: report.killSwitchWritten === true,
     killSwitchPath: report.killSwitchPath ?? null,
@@ -633,7 +659,7 @@ function buildLiveExecutionGate({ execute = false, autoKillStep = null } = {}) {
       blockedReason: "auto_kill_triggered",
     };
   }
-  if (autoKillStep.json.alreadyArmed === true) {
+  if (autoKillStep.json.killSwitchActive === true || autoKillStep.json.alreadyArmed === true) {
     return {
       requestedExecute: true,
       liveCapableStepExecution: false,
@@ -928,6 +954,15 @@ export async function runAllChainAutopilot({
   });
 
   await runJsonStep({
+    name: "price_snapshot_refresh",
+    args: ["src/cli/price-snapshot.mjs"],
+    runCommandImpl,
+    cwd,
+    timeoutMs: Math.min(30_000, timeoutMs),
+    steps,
+  });
+
+  await runJsonStep({
     name: "campaign_aware_opportunities",
     args: ["src/cli/report-campaign-aware-opportunities.mjs", "--json"],
     runCommandImpl,
@@ -1027,9 +1062,17 @@ export async function runAllChainAutopilot({
     steps,
   });
 
+  const treasuryInventoryBlocker = inventoryFreshnessBlocker(refillPlan, "treasury");
+  const capitalManagerInventoryBlocker = inventoryFreshnessBlocker(capitalManagerRefillPlan, "capital_manager");
+  const treasuryRefillJobs = suppressAutoRefillJobsForInventoryBlocker(refillPlan?.jobs || [], treasuryInventoryBlocker);
+  const capitalManagerRefillJobs = suppressAutoRefillJobsForInventoryBlocker(
+    capitalManagerRefillPlan?.jobs?.jobs || [],
+    capitalManagerInventoryBlocker,
+  );
+
   const mergedRefillJobs = mergeAutopilotRefillJobs([
-    { source: "treasury", jobs: refillPlan?.jobs || [] },
-    { source: "capital_manager", jobs: capitalManagerRefillPlan?.jobs?.jobs || [] },
+    { source: "treasury", jobs: treasuryRefillJobs },
+    { source: "capital_manager", jobs: capitalManagerRefillJobs },
     { source: "inbound_routing", jobs: inboundWatcherResult.json?.routingPlan?.jobs || [] },
   ]);
   const autoRefillJobs = mergedRefillJobs.filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
@@ -1179,11 +1222,16 @@ export async function runAllChainAutopilot({
           return counts;
         }, {}),
         inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
+        inventoryFreshness: {
+          treasuryBlocker: treasuryInventoryBlocker,
+          capitalManagerBlocker: capitalManagerInventoryBlocker,
+        },
         capitalManager: compactCapitalManager(capitalManagerRefillPlan),
         executionGate: {
           ...liveExecutionGate,
           autopilotRunId,
           autoKillTriggered: autoKillResult.json?.triggered === true,
+          killSwitchActive: autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
           killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
         },
         strategyDispatch: {
@@ -1399,6 +1447,10 @@ export async function runAllChainAutopilot({
       return counts;
     }, {}),
     inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
+    inventoryFreshness: {
+      treasuryBlocker: treasuryInventoryBlocker,
+      capitalManagerBlocker: capitalManagerInventoryBlocker,
+    },
     capitalManager: compactCapitalManager(capitalManagerRefillPlan),
     canarySweep: compactCanarySweep(canarySweepResult.json),
     merklQueue: compactMerklQueue(merklQueueResult.json),
@@ -1423,6 +1475,7 @@ export async function runAllChainAutopilot({
       ...liveExecutionGate,
       autopilotRunId,
       autoKillTriggered: autoKillResult.json?.triggered === true,
+      killSwitchActive: autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
       killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
     },
   };

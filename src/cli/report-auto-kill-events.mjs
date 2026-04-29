@@ -6,7 +6,8 @@
 // directly; this CLI is the only writer.
 
 import process from "node:process";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { readFile, mkdir, writeFile, access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { AUTO_KILL_EVENTS_PATH } from "../risk/auto-kill-events.mjs";
 
@@ -53,6 +54,17 @@ async function readEvents(path) {
     .filter(Boolean);
 }
 
+async function fileExists(path) {
+  if (!path) return false;
+  try {
+    await access(path, constants.F_OK);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 function summarize(events, now = Date.now()) {
   const cutoff = now - WINDOW_MS;
   const recent = events.filter((event) => {
@@ -69,6 +81,7 @@ function summarize(events, now = Date.now()) {
   return {
     schemaVersion: 1,
     observedAt: new Date(now).toISOString(),
+    summaryKind: "event_window_with_current_kill_switch_state",
     windowMs: WINDOW_MS,
     totalEvaluations24h: recent.length,
     triggerCounts,
@@ -81,6 +94,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const events = await readEvents(args.eventsPath);
   const summary = summarize(events);
+  summary.killSwitchActive = await fileExists(summary.lastEvent?.killSwitchPath);
+  summary.currentState = summary.killSwitchActive ? "halted" : "running";
+  if (!summary.killSwitchActive) summary.armedAt = null;
   if (args.write) {
     await mkdir(dirname(args.out), { recursive: true });
     await writeFile(args.out, `${JSON.stringify(summary, null, 2)}\n`, "utf8");

@@ -82,23 +82,37 @@ export async function runAutoKillCheck({
   oracleSamples = [],
   heartbeatAtMs = null,
   operatingCapitalUsd = null,
+  priceSamples = [],
+  clStatus = {},
+  activeProtocols = [],
+  campaignStatus = {},
   config = buildAutoKillConfig(),
   killSwitchPath = resolveKillSwitchPath(),
   rootDir = process.cwd(),
   now = new Date(),
 } = {}) {
+  const alreadyArmed = killSwitchPath ? await fileExists(killSwitchPath) : false;
   const verdict = evaluateAutoKillTriggers({
     auditRecords,
     oracleSamples,
     heartbeatAtMs,
     operatingCapitalUsd,
+    priceSamples,
+    clStatus,
+    activeProtocols,
+    campaignStatus,
     config,
     now,
   });
   if (!verdict.triggered) {
-    return { ...verdict, killSwitchPath, killSwitchWritten: false, alreadyArmed: false };
+    return {
+      ...verdict,
+      killSwitchPath,
+      killSwitchWritten: false,
+      alreadyArmed,
+      killSwitchActive: alreadyArmed,
+    };
   }
-  const alreadyArmed = killSwitchPath ? await fileExists(killSwitchPath) : false;
   const eventRecord = {
     schemaVersion: 1,
     evaluatedAt: verdict.evaluatedAt,
@@ -133,5 +147,6 @@ export async function runAutoKillCheck({
     killSwitchPath,
     killSwitchWritten,
     alreadyArmed,
+    killSwitchActive: true,
   };
 }

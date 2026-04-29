@@ -355,6 +355,15 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("price-snapshot.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "skipped=recently_unchanged\nobservedAt=2026-04-28T22:00:00.000Z\nbtcUsd=76000\n",
+      stderr: "",
+      json: null,
+    };
+  }
   if (name.endsWith("report-auto-kill-events.mjs")) {
     return {
       ok: true,
@@ -369,6 +378,8 @@ function fakeCommand({ args }) {
         triggerCounts: {},
         lastEvent: null,
         armedAt: null,
+        killSwitchActive: false,
+        currentState: "running",
       },
     };
   }
@@ -381,10 +392,49 @@ function fakeCommand({ args }) {
       json: {
         triggered: false,
         alreadyArmed: false,
+        killSwitchActive: false,
         killSwitchWritten: false,
         killSwitchPath: "./state/kill.switch",
         triggers: [],
       },
+    };
+  }
+  if (name.endsWith("report-campaign-aware-opportunities.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        generatedAt: new Date().toISOString(),
+        candidateCount: 0,
+        summary: { blocked: 0, manual_confirm: 0, auto_allowed: 0, observe: 0 },
+        candidates: [],
+      },
+    };
+  }
+  if (name.endsWith("report-anchor-position-health.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        observedAt: new Date().toISOString(),
+        walletAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+        status: "no_positions",
+        message: "No active Aerodrome CL positions detected.",
+        positions: [],
+      },
+    };
+  }
+  if (name.endsWith("aggregate-auto-kill-inputs.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "Wrote auto-kill trigger inputs:\n",
+      stderr: "",
+      json: null,
     };
   }
   throw new Error(`unexpected command ${name}`);
@@ -430,6 +480,32 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.payback.pendingCarrySats, 601);
   assert.equal(report.summary.executionGate.liveCapableStepExecution, true);
   assert.equal(report.summary.executionGate.blockedReason, null);
+});
+
+test("all-chain autopilot refreshes market prices before auto-kill inputs", async () => {
+  const seen = [];
+  const command = ({ args, timeoutMs }) => {
+    seen.push({ args, timeoutMs });
+    return fakeCommand({ args });
+  };
+
+  await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    timeoutMs: 120_000,
+    runCommandImpl: command,
+  });
+
+  const commandNames = seen.map((entry) => entry.args[0]);
+  assert.equal(
+    commandNames.indexOf("src/cli/price-snapshot.mjs") < commandNames.indexOf("src/cli/aggregate-auto-kill-inputs.mjs"),
+    true,
+  );
+  assert.equal(
+    commandNames.indexOf("src/cli/price-snapshot.mjs") < commandNames.indexOf("src/cli/run-auto-kill-check.mjs"),
+    true,
+  );
+  assert.equal(seen.find((entry) => entry.args[0] === "src/cli/price-snapshot.mjs")?.timeoutMs, 30_000);
 });
 
 test("all-chain autopilot keeps same-tick refill execution ahead of strategy dispatch", async () => {
@@ -530,6 +606,73 @@ test("all-chain autopilot reports recoverable blockers without failing the whole
   assert.equal(report.status, "completed_with_blockers");
   assert.equal(report.blockedReason, null);
   assert.equal(report.summary.refillJobCount, 4);
+});
+
+test("all-chain autopilot does not execute refill jobs from stale inventory fallbacks", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    const name = args[0];
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          inventorySource: "stored_snapshot_fallback",
+          inventoryScanErrorCount: 1,
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "stale-ready",
+              chain: "base",
+              asset: "wBTC.OFT",
+              resourceKey: "base:wbtc.oft",
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          inventorySource: "live_scan",
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("run-inbound-inventory-watcher.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: { summary: {}, routingPlan: { jobs: [] }, appended: {} },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillJobCount, 1);
+  assert.equal(report.summary.autoRefillJobCount, 0);
+  assert.equal(report.summary.inventoryFreshness.treasuryBlocker, "treasury_inventory_not_live");
+  assert.equal(seen.some((args) => args[0] === "src/cli/run-refill-job-stub.mjs" && args.includes("--execute")), false);
 });
 
 test("all-chain autopilot gives long-running canary sweep its own timeout", async () => {
@@ -661,6 +804,46 @@ test("all-chain autopilot runs auto-kill before live-capable steps and suppresse
   assert.equal(report.status, "completed_with_blockers");
   assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
   assert.equal(report.summary.executionGate.blockedReason, "auto_kill_triggered");
+});
+
+test("all-chain autopilot suppresses execute when the kill-switch is already active without a new trigger", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    const name = args[0];
+    if (name.endsWith("run-auto-kill-check.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          triggered: false,
+          alreadyArmed: true,
+          killSwitchActive: true,
+          killSwitchWritten: false,
+          killSwitchPath: "./state/kill.switch",
+          triggers: [],
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs" && args.includes("--execute")),
+    false,
+  );
+  assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
+  assert.equal(report.summary.executionGate.blockedReason, "kill_switch_armed");
+  assert.equal(report.summary.executionGate.killSwitchActive, true);
+  assert.equal(report.summary.autoKill.killSwitchActive, true);
 });
 
 test("all-chain autopilot pauses exhausted discretionary refill categories without blocking live dispatch", async (t) => {

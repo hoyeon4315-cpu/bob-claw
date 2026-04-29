@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, readFile, rm, access } from "node:fs/promises";
+import { mkdtemp, readFile, rm, access, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,6 +35,24 @@ test("runAutoKillCheck no-ops when no triggers fire", async () => {
       exists = false;
     }
     assert.equal(exists, false, "kill-switch file must not be written");
+  });
+});
+
+test("runAutoKillCheck reports an existing kill-switch even when no new triggers fire", async () => {
+  await withTempRoot(async (rootDir) => {
+    const killSwitchPath = join(rootDir, "kill.switch");
+    await writeFile(killSwitchPath, "halted\n", "utf8");
+    const result = await runAutoKillCheck({
+      auditRecords: [],
+      oracleSamples: [],
+      heartbeatAtMs: Date.now(),
+      killSwitchPath,
+      rootDir,
+    });
+    assert.equal(result.triggered, false);
+    assert.equal(result.killSwitchWritten, false);
+    assert.equal(result.alreadyArmed, true);
+    assert.equal(result.killSwitchActive, true);
   });
 });
 
@@ -107,5 +125,50 @@ test("runAutoKillCheck does not overwrite an already-armed kill-switch", async (
       .trim()
       .split("\n");
     assert.equal(killSwitchAuditLines.length, 1, "kill-switch audit only appends on state change");
+  });
+});
+
+test("runAutoKillCheck evaluates extended trigger inputs from the autopilot aggregator", async () => {
+  await withTempRoot(async (rootDir) => {
+    const killSwitchPath = join(rootDir, "kill.switch");
+    const now = new Date("2026-04-25T12:00:00.000Z");
+    const config = buildAutoKillConfig({
+      relativePriceMove: { maxMovePct: 0.10, windowMs: 60_000, pair: "ETH/BTC" },
+    });
+    const result = await runAutoKillCheck({
+      priceSamples: [
+        { timestamp: "2026-04-25T11:59:20.000Z", pair: "ETH/BTC", priceUsd: 0.030 },
+        { timestamp: "2026-04-25T11:59:40.000Z", pair: "ETH/BTC", priceUsd: 0.036 },
+      ],
+      config,
+      killSwitchPath,
+      rootDir,
+      now,
+    });
+    assert.equal(result.triggered, true);
+    assert.equal(result.triggers[0].trigger, "relative_price_move");
+    assert.equal(result.killSwitchWritten, true);
+  });
+});
+
+test("runAutoKillCheck forwards campaign and protocol incident inputs", async () => {
+  await withTempRoot(async (rootDir) => {
+    const killSwitchPath = join(rootDir, "kill.switch");
+    const config = buildAutoKillConfig({
+      protocolIncident: { incidentList: ["yo"] },
+      campaignDecay: { aprDecayExitPct: 0.50 },
+    });
+    const result = await runAutoKillCheck({
+      activeProtocols: ["yo"],
+      campaignStatus: { entryAprPct: 20, currentAprPct: 5 },
+      config,
+      killSwitchPath,
+      rootDir,
+    });
+    assert.equal(result.triggered, true);
+    assert.deepEqual(result.triggers.map((t) => t.trigger).sort(), [
+      "campaign_decay",
+      "protocol_incident",
+    ]);
   });
 });
