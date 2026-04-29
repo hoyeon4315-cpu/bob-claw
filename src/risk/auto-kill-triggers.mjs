@@ -28,6 +28,19 @@ function realizedLossUsd(record = {}) {
   return value < 0 ? -value : 0;
 }
 
+function sampleTimestampMs(sample = {}) {
+  const value = sample.timestamp ?? sample.observedAt ?? null;
+  if (Number.isFinite(value)) return value;
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function samplePairMatches(sample = {}, pair = null) {
+  if (!pair) return true;
+  if (!sample.pair) return true;
+  return sample.pair === pair;
+}
+
 export function evaluateCumulativeLoss({
   auditRecords = [],
   config,
@@ -92,22 +105,36 @@ export function evaluateFailureBurst({ auditRecords = [], config, nowMs }) {
 export function evaluateOracleDivergence({ samples = [], config }) {
   if (!config.enabled) return null;
   if (!Array.isArray(samples) || samples.length < config.minSourceCount) return null;
-  const prices = samples
-    .map((sample) => Number(sample.priceUsd))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (prices.length < config.minSourceCount) return null;
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const divergence = (max - min) / min;
-  if (divergence < config.maxDivergencePct) return null;
-  return {
-    trigger: "oracle_divergence",
-    divergence,
-    threshold: config.maxDivergencePct,
-    minPriceUsd: min,
-    maxPriceUsd: max,
-    sources: samples.map((sample) => sample.source || "unknown"),
-  };
+
+  // Group samples by pair so BTC/USD, ETH/USD, ETH/BTC are evaluated separately
+  const byPair = new Map();
+  for (const sample of samples) {
+    const pair = sample.pair || "unknown";
+    if (!byPair.has(pair)) byPair.set(pair, []);
+    byPair.get(pair).push(sample);
+  }
+
+  for (const [pair, pairSamples] of byPair) {
+    const prices = pairSamples
+      .map((sample) => Number(sample.priceUsd))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (prices.length < config.minSourceCount) continue;
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const divergence = (max - min) / min;
+    if (divergence >= config.maxDivergencePct) {
+      return {
+        trigger: "oracle_divergence",
+        pair,
+        divergence,
+        threshold: config.maxDivergencePct,
+        minPriceUsd: min,
+        maxPriceUsd: max,
+        sources: pairSamples.map((sample) => sample.source || "unknown"),
+      };
+    }
+  }
+  return null;
 }
 
 export function evaluateHeartbeat({ heartbeatAtMs = null, config, nowMs }) {
@@ -127,9 +154,31 @@ export function evaluateRelativePriceMove({ priceSamples = [], config, nowMs = D
   if (!Array.isArray(priceSamples) || priceSamples.length < 2) return null;
   const cutoff = nowMs - config.windowMs;
   const valid = priceSamples
-    .filter((s) => Number.isFinite(s.timestamp) && Number.isFinite(s.priceUsd))
-    .filter((s) => s.timestamp >= cutoff)
-    .sort((a, b) => a.timestamp - b.timestamp);
+    .filter((s) => samplePairMatches(s, config.pair))
+    .map((s) => ({
+      ...s,
+      timestampMs: sampleTimestampMs(s),
+      priceUsd: Number(s.priceUsd),
+    }))
+    .filter((s) => Number.isFinite(s.timestampMs) && Number.isFinite(s.priceUsd))
+    .filter((s) => s.timestampMs >= cutoff)
+    .sort((a, b) => a.timestampMs - b.timestampMs);
+  const latestSample = valid[valid.length - 1] || null;
+  const maxCurrentAgeMs = Number(config.maxCurrentAgeMs);
+  if (latestSample && Number.isFinite(maxCurrentAgeMs) && maxCurrentAgeMs >= 0) {
+    const ageMs = nowMs - latestSample.timestampMs;
+    if (ageMs > maxCurrentAgeMs) {
+      return {
+        trigger: "relative_price_stale",
+        pair: config.pair,
+        ageMs,
+        threshold: maxCurrentAgeMs,
+        windowMs: config.windowMs,
+        sampleCount: valid.length,
+        latestSampleAt: new Date(latestSample.timestampMs).toISOString(),
+      };
+    }
+  }
   if (valid.length < 2) return null;
   const prices = valid.map((s) => s.priceUsd);
   const min = Math.min(...prices);

@@ -121,7 +121,7 @@ export const SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY = Object.freeze({
       "sonic",
       "unichain",
     ]),
-    baseFirstChains: Object.freeze(["base", "optimism", "arbitrum"]),
+    baseFirstChains: Object.freeze(["base", "optimism"]),
     minEthereumNotionalUsd: 25,
     minLiveCampaignCount: 1,
     minTvlUsdByFamily: Object.freeze({

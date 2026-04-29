@@ -261,11 +261,13 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonl(dataDir, "merkl-portfolio-positions"),
     readSignerAuditLog(),
   ]);
-  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest] = await Promise.all([
+  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
     readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
     readJsonIfExists(join(dataDir, "merkl-portfolio-allocator-latest.json")),
+    readJsonIfExists(join(dataDir, "campaign-aware-opportunities.json")),
+    readJsonIfExists(join(dataDir, "anchor-position-health.json")),
   ]);
   const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
@@ -318,6 +320,8 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      promotionReport,
      researchFunnel,
      reportingPnlBaseline,
+     campaignOpportunities: campaignAwareOpportunities || null,
+     anchorPositions: anchorPositionHealth || null,
    }, { now });
 
   // P1/P2 parity floor injection — deterministic, pure slices

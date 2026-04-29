@@ -29,6 +29,11 @@ describe("small-capital-campaign-mode config", () => {
     assert.ok(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes("base"));
   });
 
+  it("baseFirstChains excludes non-Gateway manual-bridge chains", () => {
+    assert.equal(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes("arbitrum"), false);
+    assert.equal(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes("polygon"), false);
+  });
+
   it("nonBaseEntry thresholds are positive", () => {
     assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonBaseEntry.minNetProfitUsd, 10);
     assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonBaseEntry.minNetProfitPctOfPosition, 0.05);

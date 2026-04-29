@@ -49,6 +49,53 @@ test("relativePriceMove returns null with insufficient samples", () => {
   assert.equal(result, null);
 });
 
+test("relativePriceMove trips stale when the latest tracked pair sample is too old", () => {
+  const config = buildAutoKillConfig({
+    relativePriceMove: { maxMovePct: 0.15, windowMs: 7 * 24 * 60 * 60_000, maxCurrentAgeMs: 30_000, pair: "ETH/BTC" },
+  });
+  const priceSamples = [
+    { timestamp: NOW_MS - 90_000, pair: "ETH/BTC", priceUsd: 0.030 },
+    { timestamp: NOW_MS - 80_000, pair: "ETH/BTC", priceUsd: 0.031 },
+  ];
+  const result = evaluateRelativePriceMove({ priceSamples, config: config.relativePriceMove, nowMs: NOW_MS });
+  assert.ok(result);
+  assert.equal(result.trigger, "relative_price_stale");
+  assert.equal(result.pair, "ETH/BTC");
+  assert.equal(result.sampleCount, 2);
+});
+
+test("relativePriceMove parses ISO timestamps and evaluates the configured pair only", () => {
+  const config = buildAutoKillConfig({
+    relativePriceMove: { maxMovePct: 0.10, windowMs: 60_000, pair: "ETH/BTC" },
+  });
+  const priceSamples = [
+    { timestamp: new Date(NOW_MS - 50_000).toISOString(), pair: "BTC/USD", priceUsd: 100_000 },
+    { timestamp: new Date(NOW_MS - 40_000).toISOString(), pair: "BTC/USD", priceUsd: 130_000 },
+    { timestamp: new Date(NOW_MS - 30_000).toISOString(), pair: "ETH/BTC", priceUsd: 0.030 },
+    { timestamp: new Date(NOW_MS - 20_000).toISOString(), pair: "ETH/BTC", priceUsd: 0.036 },
+  ];
+  const result = evaluateRelativePriceMove({ priceSamples, config: config.relativePriceMove, nowMs: NOW_MS });
+  assert.ok(result);
+  assert.equal(result.trigger, "relative_price_move");
+  assert.equal(result.pair, "ETH/BTC");
+  assert.equal(result.sampleCount, 2);
+  assert.ok(Math.abs(result.move - 0.20) < 1e-12);
+});
+
+test("relativePriceMove ignores large moves from unrelated pairs", () => {
+  const config = buildAutoKillConfig({
+    relativePriceMove: { maxMovePct: 0.10, windowMs: 60_000, pair: "ETH/BTC" },
+  });
+  const priceSamples = [
+    { timestamp: NOW_MS - 50_000, pair: "BTC/USD", priceUsd: 100_000 },
+    { timestamp: NOW_MS - 40_000, pair: "BTC/USD", priceUsd: 200_000 },
+    { timestamp: NOW_MS - 30_000, pair: "ETH/BTC", priceUsd: 0.030 },
+    { timestamp: NOW_MS - 20_000, pair: "ETH/BTC", priceUsd: 0.031 },
+  ];
+  const result = evaluateRelativePriceMove({ priceSamples, config: config.relativePriceMove, nowMs: NOW_MS });
+  assert.equal(result, null);
+});
+
 // --- evaluateClRangeHealth ---
 
 test("clRangeHealth trips when timeInRange is below threshold", () => {

@@ -278,9 +278,13 @@ function overfitPenalty(item = {}) {
 export function merklPortfolioScore(queueItem = {}, {
   policy = merklPortfolioPolicy(),
   canaryProof = null,
+  campaignAprMap = null,
 } = {}) {
   const weights = policy.scoreWeights;
-  const apr = finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? 0;
+  let apr = finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? 0;
+  if (campaignAprMap && campaignAprMap.has(queueItem.opportunityId)) {
+    apr = campaignAprMap.get(queueItem.opportunityId);
+  }
   const readiness = queueItem.executionReadiness || {};
   const raw =
     (finite(queueItem.priorityScore) ?? finite(queueItem.score) ?? 0) * weights.queuePriority +
@@ -336,6 +340,7 @@ export function buildMerklPortfolioAllocationPlan({
   policy: policyInput = {},
   maxUsd = null,
   now = new Date().toISOString(),
+  campaignAprMap = null,
 } = {}) {
   const policy = merklPortfolioPolicy(policyInput);
   const activePositions = activeMerklPortfolioPositions(positionRecords);
@@ -370,7 +375,7 @@ export function buildMerklPortfolioAllocationPlan({
       auditRecords,
       now,
     });
-    const score = merklPortfolioScore(queueItem, { policy, canaryProof });
+    const score = merklPortfolioScore(queueItem, { policy, canaryProof, campaignAprMap });
     const targetMaxAddUsd = chainTargetMaxAddUsd({
       chain: queueItem.chain,
       exposureChainUsd,
@@ -572,6 +577,18 @@ async function readJsonIfExists(path) {
   }
 }
 
+async function readCampaignAwareAprMap(dataDir) {
+  const raw = await readJsonIfExists(join(dataDir, "campaign-aware-opportunities.json"));
+  const candidates = raw?.candidates || [];
+  const map = new Map();
+  for (const c of candidates) {
+    if (c.opportunityId && Number.isFinite(c.expectedRealizedAprAfterHaircut)) {
+      map.set(c.opportunityId, c.expectedRealizedAprAfterHaircut);
+    }
+  }
+  return map;
+}
+
 function txHashForStep(execution = {}, stepIds = []) {
   return (execution.stepResults || [])
     .find((step) => stepIds.includes(step.id))
@@ -760,6 +777,7 @@ export async function runMerklPortfolioAllocator({
   const targetChainUsd = scoredTargets
     ? Object.fromEntries((scoredTargets.perChain || []).map((entry) => [entry.chain, entry.settlementTargetUsd || 0]))
     : null;
+  const campaignAprMap = await readCampaignAwareAprMap(config.dataDir);
   const plan = buildMerklPortfolioAllocationPlan({
     queue,
     inventorySnapshot,
@@ -770,6 +788,7 @@ export async function runMerklPortfolioAllocator({
     targetChainUsd,
     policy: policyInput,
     maxUsd,
+    campaignAprMap,
   });
 
   const executions = [];

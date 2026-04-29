@@ -39,6 +39,7 @@ export const AUTO_KILL_DEFAULTS = Object.freeze({
   relativePriceMove: Object.freeze({
     enabled: true,
     windowMs: 7 * 24 * 60 * 60 * 1000,
+    maxCurrentAgeMs: 30 * 60 * 1000,
     maxMovePct: 0.15,
     pair: "ETH/BTC",
   }),
