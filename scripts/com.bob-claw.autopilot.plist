@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bob-claw.autopilot</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/love/BOB Claw</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>src/executor/all-chain-autopilot.mjs</string>
+    <string>--loop</string>
+    <string>--execute</string>
+    <string>--write</string>
+    <string>--interval-ms=300000</string>
+    <string>--timeout-ms=300000</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/love/BOB Claw/logs/autopilot.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/love/BOB Claw/logs/autopilot.stderr.log</string>
+</dict>
+</plist>

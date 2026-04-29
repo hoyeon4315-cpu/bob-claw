@@ -1,0 +1,16 @@
+[Unit]
+Description=BOB Claw All-Chain Autopilot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/Users/love/BOB Claw
+ExecStart=/usr/bin/node src/executor/all-chain-autopilot.mjs --loop --execute --write --interval-ms=300000 --timeout-ms=300000
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=10
+StandardOutput=append:/Users/love/BOB Claw/logs/autopilot.stdout.log
+StandardError=append:/Users/love/BOB Claw/logs/autopilot.stderr.log
+
+[Install]
+WantedBy=multi-user.target

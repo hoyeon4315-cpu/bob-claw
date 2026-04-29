@@ -162,7 +162,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.ok(c.blockers.includes("protocol_not_bound"));
   });
 
-  test("manual_confirm when campaign age < 48h", () => {
+  test("auto_allowed micro_test when campaign age < 48h but Base + known protocol", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -179,8 +179,8 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "manual_confirm");
-    assert.ok(c.blockers.includes("campaign_age_under_48h"));
+    assert.strictEqual(c.entryStatus, "auto_allowed");
+    assert.strictEqual(c.isMicroTest, true);
   });
 
   test("manual_confirm when reward token is pre-TGE/points", () => {
@@ -204,7 +204,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.ok(c.blockers.includes("pre_tge_or_points_reward"));
   });
 
-  test("manual_confirm when expectedRealizedAprAfterHaircut < 10%", () => {
+  test("auto_allowed micro_test when expectedRealizedAprAfterHaircut < 10% on Base", () => {
     // With 0.50 default haircut, APR must be < 20 to get realized < 10
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
@@ -223,8 +223,8 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "manual_confirm");
-    assert.ok(c.blockers.includes("realized_apr_under_10pct"));
+    assert.strictEqual(c.entryStatus, "auto_allowed");
+    assert.strictEqual(c.isMicroTest, true);
   });
 
   test("observe when no hard blockers but does not meet auto_allowed criteria", () => {
@@ -245,6 +245,24 @@ describe("buildCampaignAwareCandidates status logic", () => {
     // Optimism is in baseFirstChains, so no hard blocker. But chain != base, so auto_allowed fails.
     assert.strictEqual(c.entryStatus, "observe");
     assert.strictEqual(c.blockers.length, 0);
+  });
+
+  test("blocks Arbitrum campaign candidates unless they clear the non-Gateway cost floor", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        baseOpp({
+          chain: { name: "Arbitrum" },
+          protocol: { id: "aerodrome" },
+          apr: 5.1,
+          tvl: 50_001,
+        }),
+      ],
+      defiLlamaPools: [],
+      nowMs,
+    });
+    const c = candidates[0];
+    assert.strictEqual(c.entryStatus, "blocked");
+    assert.ok(c.blockers.includes("non_base_chain_and_low_net_profit"));
   });
 
   test("cross-references DefiLlama for Base pools when Merkl data is sparse", () => {

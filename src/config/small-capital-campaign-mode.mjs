@@ -5,6 +5,7 @@
 export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
   profileId: "small_capital_campaign_mode_v1",
   enabled: true,
+  autoMicroTest: true,
   capitalThresholdUsd: 1_000,
   anchorTargetPct: Object.freeze({ min: 0.65, max: 0.80 }),
   opportunisticMaxPct: 0.20,
@@ -17,7 +18,7 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
     initialMicroUsd: 10,
     maxMicroUsd: 25,
   }),
-  baseFirstChains: Object.freeze(["base", "optimism", "arbitrum"]),
+  baseFirstChains: Object.freeze(["base", "optimism"]),
   nonBaseEntry: Object.freeze({
     minNetProfitUsd: 10,
     minNetProfitPctOfPosition: 0.05,

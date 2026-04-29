@@ -2,6 +2,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
 
 const MERKL_URL = "https://api.merkl.xyz/v4/opportunities?chainId=8453&campaigns=true";
@@ -18,7 +19,7 @@ const KNOWN_PROTOCOLS = new Set([
   "beefy",
 ]);
 
-const BASE_FIRST_CHAINS = new Set(["base", "optimism", "arbitrum"]);
+const BASE_FIRST_CHAINS = new Set(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains);
 
 const STABLE_SYMBOLS = new Set([
   "usdc", "usdt", "dai", "fdusd", "lusd", "frax", "pyusd", "usde", "susde",
@@ -127,6 +128,17 @@ function determineEntryStatus(candidate) {
     return { entryStatus: "blocked", blockers };
   }
 
+  // Small-capital micro-test auto-approval: lower bar for $10-25 positions on Base
+  const isMicroTestEligible =
+    candidate.chain === "base" &&
+    KNOWN_PROTOCOLS.has(candidate.protocol) &&
+    candidate.rewardTokenHaircut !== 0.85 &&
+    blockers.length === 0;
+
+  if (isMicroTestEligible) {
+    return { entryStatus: "auto_allowed", blockers, isMicroTest: true };
+  }
+
   // manual_confirm triggers
   if (candidate.campaignAgeHours !== null && candidate.campaignAgeHours < 48) {
     blockers.push("campaign_age_under_48h");
@@ -148,7 +160,7 @@ function determineEntryStatus(candidate) {
     return { entryStatus: "manual_confirm", blockers };
   }
 
-  // auto_allowed
+  // Standard auto_allowed (higher bar)
   if (
     candidate.chain === "base" &&
     KNOWN_PROTOCOLS.has(candidate.protocol) &&
@@ -263,6 +275,7 @@ export function buildCampaignAwareCandidates({ merklOpportunities, defiLlamaPool
       ...candidate,
       entryStatus: statusResult.entryStatus,
       blockers: statusResult.blockers,
+      isMicroTest: statusResult.isMicroTest || false,
     });
   }
 
@@ -311,7 +324,10 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
