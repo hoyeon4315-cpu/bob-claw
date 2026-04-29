@@ -1,7 +1,12 @@
 import { buildDefaultRiskPolicy } from "../../risk/policy.mjs";
 
+const DEFAULT_RECENT_FAILURE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
 function recordKey(record = {}) {
-  return record.intentId || record.intentHash || `${record.strategyId || "unknown"}:${record.chain || "unknown"}`;
+  // Use intentHash first (unique per broadcast attempt) so retries of the same
+  // sub-step are tracked separately. intentId would collapse retries and hide
+  // repeated failures of the same sub-step.
+  return record.intentHash || record.intentId || `${record.strategyId || "unknown"}:${record.chain || "unknown"}`;
 }
 
 function recordTimestamp(record = {}) {
@@ -57,25 +62,92 @@ function latestTerminalRecords(auditRecords = [], strategyId = null, resumeAfter
     }));
 }
 
+function countConsecutiveFailures(sortedTerminalRecords) {
+  let count = 0;
+  for (const item of sortedTerminalRecords) {
+    if (item.outcome !== "failure") break;
+    count += 1;
+  }
+  return count;
+}
+
+function countRecentFailures(auditRecords, strategyId, windowMs, resumeAfterMs) {
+  const now = Date.now();
+  const cutoff = now - windowMs;
+  let count = 0;
+  for (const record of auditRecords.filter((item) => item?.strategyId === strategyId)) {
+    const timestamp = recordTimestamp(record);
+    if (timestamp < cutoff) continue;
+    if (resumeAfterMs !== null && timestamp <= resumeAfterMs) continue;
+    const outcome = terminalOutcome(record);
+    if (outcome === "failure") count += 1;
+  }
+  return count;
+}
+
 export function buildConsecutiveFailureState({
   strategyId,
   auditRecords = [],
   resumeAfter = null,
+  intentId = null,
+  recentFailureWindowMs = DEFAULT_RECENT_FAILURE_WINDOW_MS,
 } = {}) {
-  const terminalRecords = latestTerminalRecords(auditRecords, strategyId, resumeAfter);
-  let consecutiveFailures = 0;
-  for (const item of terminalRecords) {
-    if (item.outcome !== "failure") break;
-    consecutiveFailures += 1;
+  const resumeAfterMs = resumeAfterTimestamp(resumeAfter);
+
+  // Strategy-level: all terminal records for this strategy
+  const strategyTerminalRecords = latestTerminalRecords(auditRecords, strategyId, resumeAfter);
+  const strategyConsecutiveFailures = countConsecutiveFailures(strategyTerminalRecords);
+
+  // Intent-level: terminal records for this specific intentId only
+  // This catches repeated failures of the same sub-step (e.g., mint-initial-collateral
+  // reverting 5 times in a row) even when other sub-steps succeed.
+  let intentConsecutiveFailures = 0;
+  if (intentId) {
+    const intentRecords = [];
+    for (const record of auditRecords.filter((item) => item?.strategyId === strategyId)) {
+      const timestamp = recordTimestamp(record);
+      if (resumeAfterMs !== null && timestamp <= resumeAfterMs) continue;
+      const outcome = terminalOutcome(record);
+      if (!outcome) continue;
+      if (record.intentId === intentId || record.intentId?.startsWith(intentId)) {
+        intentRecords.push({ outcome, record });
+      }
+    }
+    const sortedIntentRecords = intentRecords
+      .sort((left, right) => recordTimestamp(right.record) - recordTimestamp(left.record));
+    intentConsecutiveFailures = countConsecutiveFailures(sortedIntentRecords);
   }
+
+  // Recent-failure guard: total failures in the last hour, regardless of
+  // intervening successes. Belt-and-suspenders against strategies that fail
+  // sporadically across many different sub-steps.
+  const recentFailureCount = countRecentFailures(
+    auditRecords,
+    strategyId,
+    recentFailureWindowMs,
+    resumeAfterMs,
+  );
+
+  const consecutiveFailures = Math.max(
+    strategyConsecutiveFailures,
+    intentConsecutiveFailures,
+    // Cap recent-failure contribution at the same threshold so it doesn't
+    // dominate with large counts from long-running history.
+    Math.min(recentFailureCount, 5),
+  );
+
   return {
     strategyId,
+    intentId,
     consecutiveFailures,
-    terminalRecordCount: terminalRecords.length,
-    lastTerminalStatus: terminalRecords[0]?.outcome || null,
+    strategyConsecutiveFailures,
+    intentConsecutiveFailures,
+    recentFailureCount,
+    terminalRecordCount: strategyTerminalRecords.length,
+    lastTerminalStatus: strategyTerminalRecords[0]?.outcome || null,
     latestFailureAt:
-      terminalRecords.find((item) => item.outcome === "failure")?.record?.timestamp ||
-      terminalRecords.find((item) => item.outcome === "failure")?.record?.observedAt ||
+      strategyTerminalRecords.find((item) => item.outcome === "failure")?.record?.timestamp ||
+      strategyTerminalRecords.find((item) => item.outcome === "failure")?.record?.observedAt ||
       null,
     resumeAfter,
   };
@@ -109,6 +181,7 @@ export function evaluateConsecutiveFailures({
     strategyId: intent.strategyId,
     auditRecords,
     resumeAfter,
+    intentId: intent.intentId || null,
   });
   const blockers =
     Number.isFinite(maxConsecutiveFailures) && state.consecutiveFailures >= maxConsecutiveFailures

@@ -282,3 +282,32 @@ test("prelive fork sign-only rejections do not count as terminal failures", () =
   assert.equal(state.consecutiveFailures, 0);
   assert.equal(state.terminalRecordCount, 0);
 });
+
+test("per-intentId consecutive failures catch repeated sub-step reverts masked by sibling successes", () => {
+  // Bug fix: wrapped-btc-loop mint step kept reverting, but approve/enter-market
+  // succeeded, so the old strategy-level count never reached the threshold.
+  const auditRecords = [
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:10:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:enter", timestamp: "2026-04-16T20:10:05Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:mint", timestamp: "2026-04-16T20:10:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:11:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:enter", timestamp: "2026-04-16T20:11:05Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:mint", timestamp: "2026-04-16T20:11:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:12:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:enter", timestamp: "2026-04-16T20:12:05Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:mint", timestamp: "2026-04-16T20:12:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
+  ];
+
+  const mintState = buildConsecutiveFailureState({
+    strategyId: "wrapped-btc-loop",
+    auditRecords,
+    intentId: "wrapped-btc-loop:mint",
+  });
+
+  // Strategy-level count is broken by successful approve/enter steps
+  assert.equal(mintState.strategyConsecutiveFailures, 1);
+  // Intent-level count correctly sees 3 consecutive mint reverts
+  assert.equal(mintState.intentConsecutiveFailures, 3);
+  // Total uses the max
+  assert.equal(mintState.consecutiveFailures, 3);
+});
