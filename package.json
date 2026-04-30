@@ -55,6 +55,8 @@
     "report:strategy-execution-surfaces": "node src/cli/report-strategy-execution-surfaces.mjs",
     "report:strategy-research-board": "node src/cli/report-strategy-research-board.mjs",
     "report:campaign-aware-opportunities": "node src/cli/report-campaign-aware-opportunities.mjs",
+    "radar:ingest": "node src/cli/radar-ingest.mjs",
+    "report:radar-board": "node src/cli/report-radar-board.mjs",
     "report:autonomous-discovery-board": "node src/cli/report-autonomous-discovery-board.mjs",
     "report:git-ops-automation": "node src/cli/report-git-ops-automation.mjs",
     "report:gateway-update-autopilot": "node src/cli/report-gateway-update-autopilot.mjs",

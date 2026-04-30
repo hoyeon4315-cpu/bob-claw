@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
+import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
+
+function parseArgs(argv = process.argv.slice(2)) {
+  const args = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const item = argv[index];
+    if (!item.startsWith("--")) continue;
+    const [rawKey, inlineValue] = item.slice(2).split("=", 2);
+    const value = inlineValue ?? argv[index + 1];
+    if (inlineValue === undefined) index += 1;
+    args[rawKey] = value;
+  }
+  return args;
+}
+
+async function main() {
+  const args = parseArgs();
+  const dataDir = resolve(args["data-dir"] || "data");
+  const observations = await readRadarJsonl(dataDir, "opportunity-observations");
+  const episodes = await readRadarJsonl(dataDir, "strategy-episodes");
+  const packets = await readRadarJsonl(dataDir, "portable-packets");
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  const realizationRecords = await readRadarJsonl(dataDir, "realization-records");
+  const board = buildRadarBoard({ observations, episodes, packets, candidates, realizationRecords });
+  if (args.write) {
+    const outputPath = resolve(args.write);
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(board, null, 2)}\n`);
+    console.log(`wrote=${outputPath}`);
+  } else {
+    console.log(JSON.stringify(board, null, 2));
+  }
+  console.log(`observed=${board.summary.observedCount}`);
+  console.log(`executable=${board.summary.executableCount}`);
+}
+
+main().catch((error) => {
+  console.error(error?.stack || error?.message || String(error));
+  process.exitCode = 1;
+});

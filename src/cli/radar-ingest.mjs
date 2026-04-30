@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { ingestOpportunityObservation } from "../strategy/radar/observation-ingest.mjs";
+
+function parseArgs(argv = process.argv.slice(2)) {
+  const args = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const item = argv[index];
+    if (!item.startsWith("--")) continue;
+    const [rawKey, inlineValue] = item.slice(2).split("=", 2);
+    const value = inlineValue ?? argv[index + 1];
+    if (inlineValue === undefined) index += 1;
+    args[rawKey] = value;
+  }
+  return args;
+}
+
+async function main() {
+  const args = parseArgs();
+  const dataDir = resolve(args["data-dir"] || "data");
+  const inputPath = args.input ? resolve(args.input) : null;
+  if (!inputPath) {
+    throw new Error("--input is required");
+  }
+  const observation = JSON.parse(await readFile(inputPath, "utf8"));
+  const result = await ingestOpportunityObservation({ dataDir, observation });
+  console.log(`wrote=${result.wrote}`);
+  if (result.blockers.length > 0) console.log(`blockers=${result.blockers.join(",")}`);
+  if (!result.wrote) process.exitCode = 1;
+}
+
+main().catch((error) => {
+  console.error(error?.stack || error?.message || String(error));
+  process.exitCode = 1;
+});
