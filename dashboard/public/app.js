@@ -709,14 +709,14 @@ function PnlBreakdownStrip({ inline = false }) {
   const topKinds = Array.isArray(metrics.realizedByKind) ? metrics.realizedByKind.filter((item) => Number.isFinite(item?.realizedNetPnlUsd) && item.realizedNetPnlUsd < 0).slice(0, 3) : [];
   if (!Number.isFinite(strategyUsd) && !Number.isFinite(evidenceUsd) && !Number.isFinite(totalUsd)) return null;
   return /* @__PURE__ */ React.createElement("div", { style: {
-    margin: inline ? "0 0 10px" : "0 12px",
-    padding: "8px 10px 7px",
+    margin: inline ? "0 0 8px" : "0 12px",
+    padding: inline ? "7px 10px 6px" : "8px 10px 7px",
     background: "var(--card)",
     border: "0.5px solid var(--line)",
     borderRadius: 12,
     flexShrink: 0,
     animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.2, fontWeight: 700, letterSpacing: 0.15 } }, "Realized split"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-3)", marginTop: 1 } }, "strategy vs transport / probe cost")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.2, color: "var(--ink-3)" } }, strategyCount, " strategy \xB7 ", evidenceCount, " probe")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: inline ? 10 : 10.2, fontWeight: 700, letterSpacing: 0.15 } }, "Realized split"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: inline ? 8.5 : 9, color: "var(--ink-3)", marginTop: inline ? 0 : 1 } }, "strategy vs transport / probe cost")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: inline ? 8.5 : 9.2, color: "var(--ink-3)", whiteSpace: "nowrap" } }, strategyCount, " strategy \xB7 ", evidenceCount, " probe")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: inline ? 5 : 6 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
     {
       label: "Strategy",
       main: fmtUsd(strategyUsd),
@@ -735,7 +735,15 @@ function PnlBreakdownStrip({ inline = false }) {
       sub: "combined impact",
       accent: Number.isFinite(totalUsd) && totalUsd < 0 ? "#B42318" : "var(--green)"
     }
-  ] })), topKinds.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.9, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.35 } }, "Top drags: ", topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(" \xB7 ")));
+  ] })), topKinds.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: inline ? 8.2 : 8.9,
+    color: "var(--ink-3)",
+    marginTop: inline ? 4 : 6,
+    lineHeight: inline ? 1.2 : 1.35,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
+  } }, "Top drags: ", topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(" \xB7 ")));
 }
 function FlowPane({ refreshTick }) {
   const flow = window.FLOW || {};
@@ -888,12 +896,12 @@ function OnchainRadarCard() {
   const capReview = radar.capReview || {};
   const blocker = capReview.lossLockOn ? "Loss lock" : capReview.eligibleCount > 0 ? `${capReview.eligibleCount} cap raise` : radar.topBlocker?.code || "No signing path";
   return /* @__PURE__ */ React.createElement("div", { style: {
-    marginBottom: 10,
-    padding: "12px",
+    marginBottom: 8,
+    padding: "9px 10px",
     background: "var(--card)",
-    borderRadius: 16,
+    borderRadius: 12,
     border: "0.5px solid var(--line)"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, "Onchain radar"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, "read-only scan \xB7 ", radar.headline || "Waiting for observations")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", textAlign: "right" } }, fmtWhen(radar.generatedAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement(TriCard, { cells: [
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.7, color: "var(--ink-4)", letterSpacing: 1.2, textTransform: "uppercase" } }, "Onchain radar"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "read-only scan \xB7 ", radar.headline || "Waiting for observations")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", textAlign: "right", whiteSpace: "nowrap" } }, fmtWhen(radar.generatedAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 7 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
     {
       label: "Observed",
       main: String(counts.observed ?? 0),
@@ -915,12 +923,12 @@ function ResearchFunnelCard() {
   const funnel = window.STATUS?.researchFunnel;
   if (!funnel?.available) return null;
   return /* @__PURE__ */ React.createElement("div", { style: {
-    marginBottom: 10,
-    padding: "12px",
+    marginBottom: 8,
+    padding: "9px 10px",
     background: "var(--card)",
-    borderRadius: 16,
+    borderRadius: 12,
     border: "0.5px solid var(--line)"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, "Research funnel"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, "read-only research queue")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)" } }, fmtWhen(funnel.summary?.latestRunAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement(TriCard, { cells: [
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.7, color: "var(--ink-4)", letterSpacing: 1.2, textTransform: "uppercase" } }, "Research funnel"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, "read-only research queue")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", whiteSpace: "nowrap" } }, fmtWhen(funnel.summary?.latestRunAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 7 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
     {
       label: "Track A",
       main: String(funnel.tracks?.A?.candidateCount ?? 0),

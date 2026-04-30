@@ -893,8 +893,8 @@ function PnlBreakdownStrip({ inline = false }) {
   if (!Number.isFinite(strategyUsd) && !Number.isFinite(evidenceUsd) && !Number.isFinite(totalUsd)) return null;
   return (
     <div style={{
-      margin: inline ? '0 0 10px' : '0 12px',
-      padding: '8px 10px 7px',
+      margin: inline ? '0 0 8px' : '0 12px',
+      padding: inline ? '7px 10px 6px' : '8px 10px 7px',
       background: 'var(--card)',
       border: '0.5px solid var(--line)',
       borderRadius: 12,
@@ -903,16 +903,16 @@ function PnlBreakdownStrip({ inline = false }) {
     }}>
       <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8 }}>
         <div>
-          <div style={{ fontSize:10.2, fontWeight:700, letterSpacing:0.15 }}>Realized split</div>
-          <div style={{ fontSize:9, color:'var(--ink-3)', marginTop:1 }}>
+          <div style={{ fontSize:inline ? 10 : 10.2, fontWeight:700, letterSpacing:0.15 }}>Realized split</div>
+          <div style={{ fontSize:inline ? 8.5 : 9, color:'var(--ink-3)', marginTop:inline ? 0 : 1 }}>
             strategy vs transport / probe cost
           </div>
         </div>
-        <div style={{ fontSize:9.2, color:'var(--ink-3)' }}>
+        <div style={{ fontSize:inline ? 8.5 : 9.2, color:'var(--ink-3)', whiteSpace:'nowrap' }}>
           {strategyCount} strategy · {evidenceCount} probe
         </div>
       </div>
-      <div style={{ marginTop: 6 }}>
+      <div style={{ marginTop: inline ? 5 : 6 }}>
         <TriCard compact cells={[
           {
             label: 'Strategy',
@@ -935,7 +935,15 @@ function PnlBreakdownStrip({ inline = false }) {
         ]}/>
       </div>
       {topKinds.length > 0 && (
-        <div style={{ fontSize:8.9, color:'var(--ink-3)', marginTop:6, lineHeight:1.35 }}>
+        <div style={{
+          fontSize:inline ? 8.2 : 8.9,
+          color:'var(--ink-3)',
+          marginTop:inline ? 4 : 6,
+          lineHeight:inline ? 1.2 : 1.35,
+          whiteSpace:'nowrap',
+          overflow:'hidden',
+          textOverflow:'ellipsis',
+        }}>
           Top drags: {topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(' · ')}
         </div>
       )}
@@ -1182,27 +1190,27 @@ function OnchainRadarCard() {
       : radar.topBlocker?.code || 'No signing path';
   return (
     <div style={{
-      marginBottom: 10,
-      padding: '12px',
+      marginBottom: 8,
+      padding: '9px 10px',
       background: 'var(--card)',
-      borderRadius: 16,
+      borderRadius: 12,
       border: '0.5px solid var(--line)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: 1.3, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 8.7, color: 'var(--ink-4)', letterSpacing: 1.2, textTransform: 'uppercase' }}>
             Onchain radar
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+          <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             read-only scan · {radar.headline || 'Waiting for observations'}
           </div>
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--ink-3)', textAlign: 'right' }}>
+        <div style={{ fontSize: 9.5, color: 'var(--ink-3)', textAlign: 'right', whiteSpace: 'nowrap' }}>
           {fmtWhen(radar.generatedAt)}
         </div>
       </div>
-      <div style={{ marginTop: 10 }}>
-        <TriCard cells={[
+      <div style={{ marginTop: 7 }}>
+        <TriCard compact cells={[
           {
             label: 'Observed',
             main: String(counts.observed ?? 0),
@@ -1229,27 +1237,27 @@ function ResearchFunnelCard() {
   if (!funnel?.available) return null;
   return (
     <div style={{
-      marginBottom: 10,
-      padding: '12px',
+      marginBottom: 8,
+      padding: '9px 10px',
       background: 'var(--card)',
-      borderRadius: 16,
+      borderRadius: 12,
       border: '0.5px solid var(--line)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: 1.3, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 8.7, color: 'var(--ink-4)', letterSpacing: 1.2, textTransform: 'uppercase' }}>
             Research funnel
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+          <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
             read-only research queue
           </div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+        <div style={{ fontSize: 9.5, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           {fmtWhen(funnel.summary?.latestRunAt)}
         </div>
       </div>
-      <div style={{ marginTop: 10 }}>
-        <TriCard cells={[
+      <div style={{ marginTop: 7 }}>
+        <TriCard compact cells={[
           {
             label: 'Track A',
             main: String(funnel.tracks?.A?.candidateCount ?? 0),

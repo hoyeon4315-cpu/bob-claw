@@ -275,6 +275,11 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(radarCard, /label: 'Review'/);
     assert.match(radarCard, /capReview/);
     assert.match(radarCard, /No signing path/);
+    assert.match(radarCard, /<TriCard compact cells=\{\[/);
+
+    const researchCard = extractSection("function ResearchFunnelCard", "function pairTokens");
+    assert.match(researchCard, /Research funnel/);
+    assert.match(researchCard, /<TriCard compact cells=\{\[/);
 
     const defiPane = extractSection("function DefiPane", "function pairTokens");
     assert.match(defiPane, /<OnchainRadarCard\/>/);
