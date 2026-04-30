@@ -219,7 +219,7 @@ async function runCapExceededDrill(rootDir) {
 
 async function runConsecutiveFailureDrill(rootDir) {
   const now = "2026-04-17T00:00:00.000Z";
-  const intent = baseIntent();
+  const intent = baseIntent({ strategyId: "recursive_wrapped_btc_lending_loop" });
   for (let index = 0; index < 3; index += 1) {
     await appendSignerAuditRecord(
       buildSignerAuditRecord({

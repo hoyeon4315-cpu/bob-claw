@@ -492,7 +492,7 @@ export const STRATEGY_CAPS = Object.freeze({
     strategyId: "gateway_native_asset_conversion_sleeve",
     label: "Gateway native-asset conversion sleeve",
     autoExecute: true,
-    resumeAfterFailureAt: "2026-04-28T10:00:00.000Z",
+    resumeAfterFailureAt: "2026-04-30T22:50:28.000Z",
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["morpho", "aave", "euler", "odos"]),
@@ -689,6 +689,7 @@ export const STRATEGY_CAPS = Object.freeze({
     strategyId: "wrapped-btc-loop-base-moonwell",
     label: "Wrapped BTC lending loop (Base / Moonwell)",
     autoExecute: true,
+    resumeAfterFailureAt: "2026-04-30T22:50:28.000Z",
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["moonwell", "odos"]),

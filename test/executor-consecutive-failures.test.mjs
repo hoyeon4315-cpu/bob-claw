@@ -67,25 +67,26 @@ test("consecutive failure state counts only terminal failures until the latest s
 });
 
 test("evaluateIntentPolicies blocks when the strategy already has three consecutive terminal failures", async () => {
+  const strategyId = "recursive_wrapped_btc_lending_loop";
   const policy = await evaluateIntentPolicies({
-    intent: intentFixture(),
+    intent: intentFixture({ strategyId }),
     auditRecords: [
       {
-        strategyId: "wrapped-btc-loop-base-moonwell",
+        strategyId,
         intentId: "fail-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
         lifecycle: { stage: "error" },
       },
       {
-        strategyId: "wrapped-btc-loop-base-moonwell",
+        strategyId,
         intentId: "fail-2",
         timestamp: "2026-04-17T00:11:00.000Z",
         policyVerdict: "rejected",
         lifecycle: { stage: "rejected" },
       },
       {
-        strategyId: "wrapped-btc-loop-base-moonwell",
+        strategyId,
         intentId: "fail-3",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "errored",
@@ -97,6 +98,97 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
 
   assert.equal(policy.decision, "BLOCK");
   assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), true);
+});
+
+test("consecutive failure state ignores pure circuit-breaker self rejections", () => {
+  const state = buildConsecutiveFailureState({
+    strategyId: "gateway_native_asset_conversion_sleeve",
+    auditRecords: [
+      {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        intentId: "real-fail-1",
+        timestamp: "2026-04-17T00:10:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "error" },
+      },
+      {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        intentId: "self-reject-1",
+        timestamp: "2026-04-17T00:11:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["max_consecutive_failures_reached"] },
+        broadcast: null,
+      },
+      {
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        intentId: "self-reject-2",
+        timestamp: "2026-04-17T00:12:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["max_consecutive_failures_reached"] },
+        broadcast: null,
+      },
+    ],
+  });
+
+  assert.equal(state.consecutiveFailures, 1);
+  assert.equal(state.terminalRecordCount, 1);
+  assert.equal(state.latestFailureAt, "2026-04-17T00:10:00.000Z");
+});
+
+test("consecutive failure state ignores pure kill-switch policy rejections", () => {
+  const state = buildConsecutiveFailureState({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intentId: "real-fail-1",
+        timestamp: "2026-04-17T00:10:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
+      },
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intentId: "kill-switch-reject-1",
+        timestamp: "2026-04-17T00:11:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["kill_switch_present"] },
+        broadcast: null,
+      },
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intentId: "kill-switch-reject-2",
+        timestamp: "2026-04-17T00:12:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["kill_switch_present"] },
+        broadcast: null,
+      },
+    ],
+  });
+
+  assert.equal(state.consecutiveFailures, 1);
+  assert.equal(state.terminalRecordCount, 1);
+});
+
+test("consecutive failure state still counts rejections with substantive blockers", () => {
+  const state = buildConsecutiveFailureState({
+    strategyId: "gateway-btc-funding-transfer",
+    auditRecords: [
+      {
+        strategyId: "gateway-btc-funding-transfer",
+        intentId: "cap-and-breaker-reject",
+        timestamp: "2026-04-17T00:10:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: {
+          stage: "rejected",
+          blockers: ["max_consecutive_failures_reached", "strategy_per_chain_cap_exceeded"],
+        },
+        broadcast: null,
+      },
+    ],
+  });
+
+  assert.equal(state.consecutiveFailures, 1);
+  assert.equal(state.terminalRecordCount, 1);
 });
 
 test("approval revocations bypass consecutive failure blocking", async () => {

@@ -1,6 +1,10 @@
 import { buildDefaultRiskPolicy } from "../../risk/policy.mjs";
 
 const DEFAULT_RECENT_FAILURE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const NON_STRATEGY_FAILURE_POLICY_BLOCKERS = new Set([
+  "kill_switch_present",
+  "max_consecutive_failures_reached",
+]);
 
 function recordKey(record = {}) {
   // Use intentHash first (unique per broadcast attempt) so retries of the same
@@ -29,11 +33,41 @@ function isApprovalRevocationIntent(intent = {}) {
   }
 }
 
+function recordBlockers(record = {}) {
+  const candidates = [
+    record.blockers,
+    record.policyBlockers,
+    record.lifecycle?.blockers,
+    record.policy?.blockers,
+  ];
+  return [
+    ...new Set(
+      candidates
+        .filter(Array.isArray)
+        .flat()
+        .filter((item) => typeof item === "string" && item.length > 0),
+    ),
+  ];
+}
+
+function isPureNonStrategyFailurePolicyRejection(record = {}) {
+  const stage = record.lifecycle?.stage || null;
+  const blockers = recordBlockers(record);
+  return (
+    record.policyVerdict === "rejected" &&
+    stage === "rejected" &&
+    !record.broadcast &&
+    blockers.length === 1 &&
+    NON_STRATEGY_FAILURE_POLICY_BLOCKERS.has(blockers[0])
+  );
+}
+
 function terminalOutcome(record = {}) {
   const stage = record.lifecycle?.stage || null;
   if (record.strategyId === "prelive_fork_execution" && stage === "rejected" && !record.broadcast) {
     return null;
   }
+  if (isPureNonStrategyFailurePolicyRejection(record)) return null;
   if (["rejected", "reverted", "error"].includes(stage)) return "failure";
   if (["confirmed"].includes(stage)) return "success";
   if (record.policyVerdict === "rejected" || record.policyVerdict === "errored") return "failure";

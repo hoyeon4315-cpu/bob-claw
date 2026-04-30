@@ -12,10 +12,10 @@
 // 3. If count < max AND last failure is older than cooldown, auto-resets resumeAfterFailureAt
 // 4. Requires operator confirmation for strategies with >= max failures
 
-import { readFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { getStrategyCaps } from "../../config/strategy-caps.mjs";
+import { buildConsecutiveFailureState } from "../policy/consecutive-failures.mjs";
 
 const DEFAULT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const AUDIT_LOG_PATH = "./logs/signer-audit.jsonl";
@@ -48,39 +48,22 @@ export async function scanConsecutiveFailures({
     return { strategyId, count: 0, lastFailureAt: null, canAutoHeal: false };
   }
 
-  // Sort by timestamp descending
-  records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-  // Count consecutive terminal records from the end
-  let count = 0;
-  let lastFailureAt = null;
-
-  for (const record of records) {
-    const isTerminal = [
-      "reverted",
-      "error",
-      "rejected",
-    ].includes(record.lifecycle?.stage) ||
-      record.policyVerdict === "errored" ||
-      record.error != null;
-
-    if (isTerminal) {
-      count++;
-      if (!lastFailureAt) lastFailureAt = record.timestamp;
-    } else {
-      break;
-    }
-  }
-
-  const canAutoHeal = count < maxFailures;
+  const caps = getStrategyCaps(strategyId);
+  const state = buildConsecutiveFailureState({
+    strategyId,
+    auditRecords: records,
+    resumeAfter: caps?.resumeAfterFailureAt || null,
+  });
+  const canAutoHeal = state.consecutiveFailures < maxFailures;
 
   return {
     strategyId,
-    count,
+    count: state.consecutiveFailures,
     maxFailures,
-    lastFailureAt,
+    lastFailureAt: state.latestFailureAt,
     canAutoHeal,
     cooldownMs: DEFAULT_COOLDOWN_MS,
+    resumeAfter: state.resumeAfter,
   };
 }
 
