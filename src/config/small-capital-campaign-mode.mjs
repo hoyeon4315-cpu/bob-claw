@@ -52,6 +52,17 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
     defaultMaxPct: 0.25,
     venueMaxPctWithLiveMonitor: 0.50,
   }),
+  radarLane: Object.freeze({
+    enabled: true,
+    perCanaryUsd: 30,
+    perDayUsd: 90,
+    cumulativeOpenUsd: 200,
+    maxConcurrentOpen: 6,
+    minRealizedPnlBufferUsd: 0,
+    realizedDailyLossLockUsd: 25,
+    newProtocolFirstEntryUsd: 10,
+    capGraduationUsd: Object.freeze([10, 25, 50, 80, 100]),
+  }),
 });
 
 export function isSmallCapitalMode(activeCapitalUsd, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {

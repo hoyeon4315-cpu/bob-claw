@@ -742,7 +742,7 @@ function DefiPane({ refreshTick }) {
     return acc;
   }, {});
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(OnchainRadarCard, null), /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
     const protoRealized = list.reduce((sum, s) => sum + (s.realizedYieldUsd || 0), 0);
     const protoEstimated = list.reduce((sum, s) => sum + (s.estimatedYieldUsd || 0), 0);
     const protoYield = protoRealized > 0 ? protoRealized : protoEstimated;
@@ -757,6 +757,36 @@ function DefiPane({ refreshTick }) {
       boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
     } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 12px 9px" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: proto, size: 30 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 } }, displayProtocolName(proto)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, list.length, " live position", list.length > 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, protoYield > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(protoYield, protoYieldBasis)), protoYieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(protoYieldBasis)), protoCap > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "var(--ink)", letterSpacing: -0.2 } }, "Cap $", protoCap.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px" } }, list.map((s, i) => /* @__PURE__ */ React.createElement(StrategyRow, { key: s.id, s, isLast: i === list.length - 1 }))));
   }));
+}
+function OnchainRadarCard() {
+  const radar = window.RADAR || window.STATUS?.radar;
+  if (!radar) return null;
+  const counts = radar.stageCounts || {};
+  const capReview = radar.capReview || {};
+  const blocker = capReview.lossLockOn ? "Loss lock" : capReview.eligibleCount > 0 ? `${capReview.eligibleCount} cap raise` : radar.topBlocker?.code || "No signing path";
+  return /* @__PURE__ */ React.createElement("div", { style: {
+    marginBottom: 10,
+    padding: "12px",
+    background: "var(--card)",
+    borderRadius: 16,
+    border: "0.5px solid var(--line)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, "Onchain radar"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, "read-only scan \xB7 ", radar.headline || "Waiting for observations")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", textAlign: "right" } }, fmtWhen(radar.generatedAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement(TriCard, { cells: [
+    {
+      label: "Observed",
+      main: String(counts.observed ?? 0),
+      sub: `${counts.hypothesis ?? 0} grouped`
+    },
+    {
+      label: "Portable",
+      main: String(counts.portable ?? 0),
+      sub: `${counts.selfRealized ?? 0} self-realized`
+    },
+    {
+      label: "Review",
+      main: String(counts.executableReview ?? 0),
+      sub: blocker
+    }
+  ] })));
 }
 function ResearchFunnelCard() {
   const funnel = window.STATUS?.researchFunnel;

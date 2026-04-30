@@ -21,6 +21,7 @@ import {
   resolvePlanBuilder,
   resolvePlanExecutor,
 } from "./protocol-binding-registry.mjs";
+import { evaluateOpportunityPolicy } from "./policy/opportunity-policy.mjs";
 
 
 const DEFAULT_MIN_ETHEREUM_NOTIONAL_USD = 25;
@@ -96,14 +97,16 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       decimals: decimalsForQueueItem(queueItem),
     };
   }
+  const tinyCapUsd = finite(strategyCaps.caps.tinyLivePerTxUsd);
   const hardCapUsd = Math.min(
-    useTinyLiveCap ? (finite(strategyCaps.caps.tinyLivePerTxUsd) ?? strategyCaps.caps.perTxUsd) : strategyCaps.caps.perTxUsd,
+    useTinyLiveCap ? (tinyCapUsd ?? Number.NaN) : strategyCaps.caps.perTxUsd,
     perChainCapUsd(strategyCaps, queueItem.chain),
     finite(maxUsd) ?? Number.POSITIVE_INFINITY,
     finite(matchedToken?.estimatedUsd) ?? Number.POSITIVE_INFINITY,
   );
 
   const blockers = [];
+  if (useTinyLiveCap && tinyCapUsd === null) blockers.push("strategy_tiny_live_cap_missing");
   if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("unsupported_binding_kind");
   if (readiness.status !== "inventory_ready") blockers.push(readiness.status || "inventory_not_ready");
   if (!matchedToken?.actual) blockers.push("matched_token_missing");
@@ -304,6 +307,75 @@ function scaledUsdEstimate({ priorUnits, priorUsd, liveUnits }) {
   return Number((liveAmount * decimalUsdToMicros(priorEstimate)) / priorAmount) / 1_000_000;
 }
 
+export function buildMerklCanaryOpportunityIntent({ queueItem = {}, sizing = {}, now = new Date().toISOString() } = {}) {
+  const intentType = resolveIntentType(bindingKind(queueItem)) || "erc4626_deposit";
+  const displayedApr = queueItem.effectiveAprPct
+    ?? queueItem.displayedAprPct
+    ?? queueItem.aprPct
+    ?? queueItem.apr
+    ?? queueItem.apy
+    ?? null;
+  return {
+    strategyId: queueItem.mappedStrategyId || null,
+    chain: queueItem.chain || null,
+    srcChain: queueItem.srcChain || queueItem.chain || null,
+    dstChain: queueItem.dstChain || queueItem.chain || null,
+    protocol: queueItem.protocolId || queueItem.protocol || null,
+    opportunityId: queueItem.opportunityId || null,
+    intentType,
+    amountUsd: sizing.amountUsd ?? null,
+    positionUsd: sizing.amountUsd ?? null,
+    mode: "live",
+    executionReason: "merkl_canary_autopilot",
+    observedAt: now,
+    quote: {
+      observedAt: now,
+    },
+    displayedApr,
+    apr: queueItem.apr ?? queueItem.aprPct ?? displayedApr ?? null,
+    apy: queueItem.apy ?? null,
+    rewardTokenType: queueItem.rewardTokenType ?? null,
+    rewardToken: queueItem.rewardToken ?? queueItem.rewardTokenSymbol ?? null,
+    estimatedCostsUsd: queueItem.estimatedCostsUsd ?? 0,
+    estimatedGasCostUsd: queueItem.estimatedGasCostUsd ?? null,
+    estimatedBridgeCostUsd: queueItem.estimatedBridgeCostUsd ?? null,
+    expectedHoldDays: queueItem.expectedHoldDays ?? null,
+    campaignEndsAt: queueItem.campaignEndsAt ?? null,
+    sharePct: queueItem.sharePct ?? 0,
+    venue: queueItem.venue ?? null,
+    executionSurface: queueItem.executionSurface ?? null,
+    metadata: {
+      opportunityId: queueItem.opportunityId || null,
+      bindingKind: bindingKind(queueItem),
+      radarCandidateId: queueItem.metadata?.radarCandidateId ?? null,
+      radarPacketId: queueItem.metadata?.radarPacketId ?? null,
+      unwindPlan: queueItem.unwindPlan ?? queueItem.metadata?.unwindPlan ?? null,
+    },
+  };
+}
+
+export async function evaluateMerklCanaryOpportunityPolicy({
+  queueItem = {},
+  sizing = {},
+  auditRecords = [],
+  now = new Date().toISOString(),
+  evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
+} = {}) {
+  const intent = buildMerklCanaryOpportunityIntent({ queueItem, sizing, now });
+  const verdict = await evaluateOpportunityPolicyImpl({
+    intent,
+    auditRecords,
+    now,
+  });
+  const blockers = verdict?.blockers || [];
+  return {
+    ok: verdict?.decision !== "BLOCK" && blockers.length === 0,
+    blockers,
+    intent,
+    verdict,
+  };
+}
+
 export async function buildLiveMerklInventorySnapshot({
   queueItem,
   senderAddress,
@@ -449,6 +521,7 @@ export async function runMerklCanaryAutopilot({
   maxPerProtocol = 4,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
+  evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
 } = {}) {
   const preflight = await preflightLiveCanarySweep({
     socketPath,
@@ -572,6 +645,23 @@ export async function runMerklCanaryAutopilot({
         });
         continue;
       }
+    }
+    const opportunityPolicy = await evaluateMerklCanaryOpportunityPolicy({
+      queueItem,
+      sizing,
+      auditRecords,
+      now: new Date().toISOString(),
+      evaluateOpportunityPolicyImpl,
+    });
+    if (!opportunityPolicy.ok) {
+      results.push({
+        status: "blocked",
+        blockedReason: opportunityPolicy.blockers[0] || "opportunity_policy_blocked",
+        queueItem,
+        sizing,
+        opportunityPolicy,
+      });
+      continue;
     }
     const buildPlan = resolvePlanBuilder(bindingKind(queueItem));
     const executePlan = resolvePlanExecutor(bindingKind(queueItem));

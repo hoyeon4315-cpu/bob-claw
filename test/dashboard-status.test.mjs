@@ -1559,3 +1559,46 @@ test("dashboard status includes campaign-aware slice with safe defaults", () => 
   assert.equal(Number.isFinite(status.campaignAware.opportunisticLane.budgetMaxUsd), true);
   assert.equal(typeof status.campaignAware.topBlocker, "object");
 });
+
+test("dashboard status exposes onchain radar as a sanitized read-only slice", () => {
+  const status = buildDashboardStatus({
+    routesRecords: [],
+    quotes: [],
+    failures: [],
+    gasSnapshots: [],
+    gasFailures: [],
+    updateSnapshots: [],
+    updateAlerts: [],
+    radarBoard: {
+      generatedAt: "2026-04-30T15:00:00.000Z",
+      summary: {
+        observedCount: 4,
+        strategyEpisodeCount: 1,
+        portablePacketCount: 0,
+        executableCount: 0,
+        strategyRealizedCount: 0,
+        paybackDeliveredCount: 0,
+        totalNetRealizedPnlSats: "0",
+      },
+      blockerCounts: {
+        radar_policy_thresholds_unresolved: 1,
+      },
+      observations: [{ obsId: "obs_public", rawEventPayloadHash: "sha256:hidden" }],
+    },
+    radarCapReview: {
+      lossLock: { tripped: false },
+      candidates: [{ eligible: true, suggestedNextTinyLivePerTxUsd: 50 }],
+    },
+  }, { now: "2026-04-30T16:00:00.000Z" });
+
+  assert.equal(status.radar.available, true);
+  assert.equal(status.radar.status, "strategy_hypothesis");
+  assert.equal(status.radar.stageCounts.observed, 4);
+  assert.equal(status.radar.capReview.eligibleCount, 1);
+  assert.equal(status.radar.capReview.topSuggestedNextTinyLivePerTxUsd, 50);
+  assert.equal(status.radar.guardrails.readOnly, true);
+  assert.equal(status.radar.guardrails.noExecution, true);
+  assert.equal(status.dataCounts.radarObservations, 4);
+  assert.equal(status.dataCounts.radarCapRaiseCandidates, 1);
+  assert.equal(JSON.stringify(status.radar).includes("rawEventPayloadHash"), false);
+});

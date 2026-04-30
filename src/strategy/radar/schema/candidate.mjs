@@ -2,6 +2,9 @@ import { arrayBlocker, compactBlockers, enumBlocker, missingFieldBlockers, valid
 
 const EXECUTION_PATHS = Object.freeze([
   "gateway_destination",
+  "base_native_evm",
+  "gateway_to_evm_bridged",
+  "evm_native_only",
   "post_gateway_manual_bridge",
   "out_of_scope",
 ]);

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  evaluateMerklCanaryOpportunityPolicy,
   merklExecutionErrorReport,
   refreshMerklAutopilotSelectionForExecute,
   selectMerklCanaryAutopilotCandidate,
@@ -50,6 +51,24 @@ test("sizes Merkl canary amount to the committed tiny cap and inventory", () => 
   assert.equal(sizing.amountUsd, 0.414771);
 });
 
+test("Merkl canary opportunity policy blocks selected candidates before plan build", async () => {
+  const result = await evaluateMerklCanaryOpportunityPolicy({
+    queueItem: queueItem(),
+    sizing: {
+      status: "ready",
+      amount: "25000000",
+      amountUsd: 25,
+    },
+    evaluateOpportunityPolicyImpl: async ({ intent }) => ({
+      decision: "BLOCK",
+      blockers: [`blocked:${intent.intentType}`],
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.blockers, ["blocked:erc4626_deposit"]);
+});
+
 test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
   const sizing = sizeMerklCanaryAmount(queueItem(), {
     now: "2026-04-24T01:40:00.000Z",
@@ -72,6 +91,15 @@ test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
 
   assert.equal(sizing.status, "blocked");
   assert.ok(sizing.blockers.includes("strategy_per_chain_cap_exceeded"));
+});
+
+test("blocks Merkl canary sizing when tiny live cap is missing", () => {
+  const sizing = sizeMerklCanaryAmount(queueItem({
+    mappedStrategyId: "gateway-btc-offramp",
+  }));
+
+  assert.equal(sizing.status, "blocked");
+  assert.ok(sizing.blockers.includes("strategy_tiny_live_cap_missing"));
 });
 
 test("selection skips candidates whose committed chain cap is exhausted", () => {

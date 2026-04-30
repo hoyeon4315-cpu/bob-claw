@@ -675,6 +675,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,
     CAPITAL,
+    RADAR: status?.radar || null,
     STATUS: status,
     RAW_STATUS: status,
     LIVE_STATUS: {

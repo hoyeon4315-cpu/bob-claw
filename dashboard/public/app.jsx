@@ -937,6 +937,7 @@ function DefiPane({ refreshTick }) {
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
   return (
     <div className="tabpane" style={{ padding: '4px 12px 16px' }}>
+      <OnchainRadarCard/>
       <ResearchFunnelCard/>
       <PnlBreakdownStrip inline/>
       {entries.length === 0 && (
@@ -991,6 +992,60 @@ function DefiPane({ refreshTick }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function OnchainRadarCard() {
+  const radar = window.RADAR || window.STATUS?.radar;
+  if (!radar) return null;
+  const counts = radar.stageCounts || {};
+  const capReview = radar.capReview || {};
+  const blocker = capReview.lossLockOn
+    ? 'Loss lock'
+    : capReview.eligibleCount > 0
+      ? `${capReview.eligibleCount} cap raise`
+      : radar.topBlocker?.code || 'No signing path';
+  return (
+    <div style={{
+      marginBottom: 10,
+      padding: '12px',
+      background: 'var(--card)',
+      borderRadius: 16,
+      border: '0.5px solid var(--line)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: 1.3, textTransform: 'uppercase' }}>
+            Onchain radar
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+            read-only scan · {radar.headline || 'Waiting for observations'}
+          </div>
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--ink-3)', textAlign: 'right' }}>
+          {fmtWhen(radar.generatedAt)}
+        </div>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <TriCard cells={[
+          {
+            label: 'Observed',
+            main: String(counts.observed ?? 0),
+            sub: `${counts.hypothesis ?? 0} grouped`,
+          },
+          {
+            label: 'Portable',
+            main: String(counts.portable ?? 0),
+            sub: `${counts.selfRealized ?? 0} self-realized`,
+          },
+          {
+            label: 'Review',
+            main: String(counts.executableReview ?? 0),
+            sub: blocker,
+          },
+        ]}/>
+      </div>
     </div>
   );
 }

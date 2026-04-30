@@ -112,3 +112,45 @@ test("evaluateOpportunityPolicy passes for non-capital-deploy without unwindPlan
   });
   assert.equal(result.decision, "ALLOW");
 });
+
+test("evaluateOpportunityPolicy does not treat generic deposit as capital movement", async () => {
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      chain: "bsc",
+      intentType: "deposit",
+      amountUsd: 25,
+      displayedApr: 100,
+      apr: 100,
+      rewardTokenType: "stable",
+      expectedHoldDays: 1,
+      estimatedCostsUsd: 0,
+      estimatedBridgeCostUsd: 0,
+    }),
+    capitalState: { totalDeployableCapital: 1000 },
+    killSwitchExistsImpl: async () => false,
+  });
+
+  assert.equal(result.decision, "BLOCK");
+  assert.ok(result.blockers.includes("non_base_entry_insufficient_expected_net"));
+});
+
+test("evaluateOpportunityPolicy derives hold days from campaign end time before using fallback", async () => {
+  const now = "2026-05-01T00:00:00.000Z";
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      chain: "base",
+      amountUsd: 100,
+      displayedApr: 365,
+      apr: 365,
+      rewardTokenType: "stable",
+      campaignEndsAt: "2026-05-02T00:00:00.000Z",
+      estimatedCostsUsd: 2,
+    }),
+    now,
+    capitalState: { totalDeployableCapital: 1000 },
+    killSwitchExistsImpl: async () => false,
+  });
+
+  assert.equal(result.decision, "BLOCK");
+  assert.ok(result.blockers.includes("negative_expected_realized_net"));
+});

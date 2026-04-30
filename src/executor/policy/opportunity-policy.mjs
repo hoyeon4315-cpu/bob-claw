@@ -10,11 +10,23 @@ import { getProtocolTier } from "../../config/protocol-trust-tiers.mjs";
 
 function isCapitalMovementIntent(intent = {}) {
   const movementTypes = new Set([
-    "bridge", "withdraw", "deposit", "rebalance", "exit", "harvest_yield",
+    "bridge", "withdraw", "rebalance", "exit", "harvest_yield",
     "scale_up", "capital_rebalance", "capital_drain", "refill", "consolidation",
     "erc4626_redeem", "aave_withdraw", "euler_evault_withdraw",
   ]);
   return movementTypes.has(intent.intentType) || movementTypes.has(intent.action);
+}
+
+function expectedHoldDaysForIntent(intent = {}, now = new Date().toISOString(), fallbackDays = 7) {
+  const explicit = Number(intent.expectedHoldDays);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  if (intent.campaignEndsAt) {
+    const remainingMs = new Date(intent.campaignEndsAt).getTime() - new Date(now).getTime();
+    if (Number.isFinite(remainingMs) && remainingMs > 0) {
+      return remainingMs / 86_400_000;
+    }
+  }
+  return fallbackDays;
 }
 
 export function computeExpectedRealizedNet({ displayedAprPct, rewardTokenType, estimatedCostsUsd, positionUsd, holdDays }) {
@@ -102,12 +114,13 @@ export async function evaluateOpportunityPolicy({
   // Expected realized net check for reward-token opportunities
   const positionUsd = Number(intent.amountUsd ?? intent.positionUsd ?? 0);
   if (intent.rewardTokenType != null && intent.displayedApr != null) {
+    const expectedHoldDays = expectedHoldDaysForIntent(intent, now);
     const netResult = computeExpectedRealizedNet({
       displayedAprPct: Number(intent.displayedApr),
       rewardTokenType: intent.rewardTokenType,
       estimatedCostsUsd: Number(intent.estimatedCostsUsd ?? 0),
       positionUsd,
-      holdDays: Number(intent.expectedHoldDays ?? 14),
+      holdDays: expectedHoldDays,
     });
     if (netResult.netUsd < 0 || netResult.effectiveAprPct < 0) {
       blockers.push("negative_expected_realized_net");
@@ -178,7 +191,7 @@ export async function evaluateOpportunityPolicy({
   const dstChain = intent.dstChain || intent.chain;
   if (!isMovement && srcChain && dstChain && srcChain !== dstChain) {
     const bridgeCostUsd = Number(intent.estimatedBridgeCostUsd ?? 0);
-    const holdDays = Number(intent.expectedHoldDays ?? 14);
+    const holdDays = expectedHoldDaysForIntent(intent, now);
     const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
     const minProfitable = computeMinProfitablePositionUsd({
       roundTripCostUsd: bridgeCostUsd + 0.12,
@@ -195,7 +208,7 @@ export async function evaluateOpportunityPolicy({
   // Exempt capital movement intents.
   if (!isMovement && srcChain && dstChain && srcChain === dstChain) {
     const gasOnlyCost = Number(intent.estimatedGasCostUsd ?? 0.12);
-    const holdDays = Number(intent.expectedHoldDays ?? 14);
+    const holdDays = expectedHoldDaysForIntent(intent, now);
     const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
     const minProfitable = computeMinProfitablePositionUsd({
       roundTripCostUsd: gasOnlyCost,

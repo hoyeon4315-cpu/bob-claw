@@ -10,6 +10,20 @@ function satsSum(records = []) {
   }, 0n).toString();
 }
 
+function usdSum(records = []) {
+  return records.reduce((total, record) => {
+    const value = Number(record.netRealizedPnlUsd);
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+}
+
+function realizedPnlValue(record = {}) {
+  const usd = Number(record.netRealizedPnlUsd);
+  if (Number.isFinite(usd)) return usd;
+  const sats = Number(record.netRealizedPnlSats);
+  return Number.isFinite(sats) ? sats : null;
+}
+
 export function buildOpportunityRealizationRecord(input = {}) {
   const result = validateOpportunityRealizationRecord(input);
   return {
@@ -20,13 +34,22 @@ export function buildOpportunityRealizationRecord(input = {}) {
 }
 
 export function summarizeRealizationRecords(records = []) {
-  const strategyRealizedCount = records.filter((record) => record.lifecycle?.strategyRealized === true).length;
+  const strategyRealizedRecords = records.filter((record) => record.lifecycle?.strategyRealized === true);
+  const strategyRealizedCount = strategyRealizedRecords.length;
   const paybackDeliveredCount = records.filter((record) => record.lifecycle?.paybackDelivered === true).length;
+  const positiveRealizedPnlCount = strategyRealizedRecords
+    .filter((record) => {
+      const value = realizedPnlValue(record);
+      return value !== null && value > 0;
+    })
+    .length;
   return {
     recordCount: records.length,
     strategyRealizedCount,
+    positiveRealizedPnlCount,
     paybackDeliveredCount,
     pendingPaybackDeliveryCount: Math.max(0, strategyRealizedCount - paybackDeliveredCount),
-    totalNetRealizedPnlSats: satsSum(records.filter((record) => record.lifecycle?.strategyRealized === true)),
+    totalNetRealizedPnlUsd: usdSum(strategyRealizedRecords),
+    totalNetRealizedPnlSats: satsSum(strategyRealizedRecords),
   };
 }

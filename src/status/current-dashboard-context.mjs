@@ -45,7 +45,11 @@ import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
+import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
+import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
+import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
+import { listStrategyCaps } from "../config/strategy-caps.mjs";
 
 function summarizeMerklCandidate(candidate = null) {
   if (!candidate) return null;
@@ -208,6 +212,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     wholeWalletInventoryRecords,
     merklPositionEvents,
     signerAuditRecords,
+    radarObservations,
+    radarEpisodes,
+    radarPackets,
+    radarCandidates,
+    radarRealizationRecords,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -260,6 +269,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonl(dataDir, "whole-wallet-inventory"),
     readJsonl(dataDir, "merkl-portfolio-positions"),
     readSignerAuditLog(),
+    readRadarJsonl(dataDir, "opportunity-observations"),
+    readRadarJsonl(dataDir, "strategy-episodes"),
+    readRadarJsonl(dataDir, "portable-packets"),
+    readRadarJsonl(dataDir, "executable-candidates"),
+    readRadarJsonl(dataDir, "realization-records"),
   ]);
   const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
@@ -280,6 +294,19 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     rootDir: join(dataDir, ".."),
     dataDir,
     generatedAt: now,
+  });
+  const radarBoard = buildRadarBoard({
+    observations: radarObservations,
+    episodes: radarEpisodes,
+    packets: radarPackets,
+    candidates: radarCandidates,
+    realizationRecords: radarRealizationRecords,
+    generatedAt: now,
+  });
+  const radarCapReview = buildRadarCapGraduationReview({
+    realizationRecords: radarRealizationRecords,
+    now,
+    strategyCapsById: Object.fromEntries(listStrategyCaps().map((config) => [config.strategyId, config])),
   });
   const dashboardStatus = buildDashboardStatus({
     routesRecords: state.routesRecords || [],
@@ -322,6 +349,8 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
      reportingPnlBaseline,
      campaignOpportunities: campaignAwareOpportunities || null,
      anchorPositions: anchorPositionHealth || null,
+     radarBoard,
+     radarCapReview,
    }, { now });
 
   // P1/P2 parity floor injection — deterministic, pure slices
@@ -903,6 +932,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
        merklPositionEvents,
        treasuryInventoryRecords,
        allChainAutopilotLatest,
+       radarBoard,
        wrappedBtcLoopLiveProof: enrichedWrappedBtcLoopLiveProof,
      },
    };

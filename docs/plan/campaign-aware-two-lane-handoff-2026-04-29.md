@@ -107,7 +107,7 @@ Recommended new bullets:
 
 ```markdown
 - **Small-capital operating mode is active while operating capital is below $1,000.** In this mode, the primary alpha source is campaign-aware destination-chain yield, not route/transport spread. The system should run a Base-first two-lane model: Anchor yield/CL surfaces plus an Opportunistic campaign/micro-test sleeve.
-- **Displayed APR is not strategy evidence.** Campaign, Merkl, Aerodrome, DefiLlama, or protocol UI APR must be converted into expected realized BTC-first PnL after reward-token haircut, IL, gas, bridge cost, claim/swap cost, and exit cost before it can drive sizing.
+- **Displayed APR is not strategy evidence.** Campaign, Merkl, Aerodrome, DefiLlama, or protocol UI APR must be converted into expected realized net PnL after reward-token haircut, IL, gas, bridge cost, claim/swap cost, and exit cost before it can drive sizing. BTC-first accounting remains required for reporting and payback conversion.
 - **Outlier campaign wins are evidence of a lane, not a baseline.** A single BOB Rise-style payout can justify building detection and execution support, but it must not be annualized into monthly targets or cap increases.
 ```
 
@@ -458,4 +458,3 @@ Do not use monthly $100 as a pass/fail target while capital is near $500. Treat 
 3. Should reward tokens be auto-sold to USDC by default, or only reported for manual harvest/sell during the first month?
 
 Recommended default answers for implementation: reconcile first; keep 50% hard venue cap until 4 weeks of receipts; auto-sell only for allowlisted liquid tokens and otherwise alert.
-

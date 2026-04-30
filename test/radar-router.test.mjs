@@ -1,0 +1,140 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { resolveFamilyBinding } from "../src/strategy/radar/family-binding-registry.mjs";
+import { buildRadarCanaryIntent } from "../src/strategy/radar/radar-candidate-router.mjs";
+
+const calibratedPolicy = Object.freeze({
+  calibrationStatus: "calibrated_aggressive_v1",
+  thresholds: Object.freeze({
+    clusterConfidenceMin: 0.6,
+    portableWalletSetMin: 3,
+    protocolAgeDaysMin: 30,
+    protocolTvlUsdMin: 5_000_000,
+    slippageBpsMax: 80,
+    mevExposureScoreMax: 35,
+  }),
+});
+
+const packet = Object.freeze({ packetId: "packet_1" });
+
+function candidate(overrides = {}) {
+  return {
+    candidateId: "candidate_1",
+    packetId: "packet_1",
+    familyKey: "wrapped_btc_direct_lending",
+    executionPath: "base_native_evm",
+    chain: "base",
+    protocol: "moonwell",
+    opportunityId: "opp_1",
+    displayedAprPct: 365,
+    rewardTokenType: "stable",
+    rewardToken: "USDC",
+    proposedSizeBtc: "0.0001",
+    committedCapBtc: "0.0002",
+    protocolAuditStatus: "audited_by_known",
+    sanctionsFlag: "clean",
+    bridgeRouteSanctionsCheck: "clean",
+    killSwitchState: "running",
+    slippageSimAtSize: 20,
+    mevExposureScore: 10,
+    ...overrides,
+  };
+}
+
+test("resolveFamilyBinding maps known families and blocks managed-only surfaces", () => {
+  assert.deepEqual(resolveFamilyBinding({ familyKey: "wrapped_btc_direct_lending" }), {
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    executionSubType: "erc4626_deposit",
+    defaultHoldDays: 21,
+    requiredFields: [],
+  });
+  assert.equal(resolveFamilyBinding({ familyKey: "cl_managed_required" }), null);
+  assert.equal(resolveFamilyBinding({ familyKey: "point_or_pre_tge" }), null);
+});
+
+test("buildRadarCanaryIntent emits tiny live canary intent clamped to tiny cap", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate(),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0.12,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.1,
+      p90RewardSwapCostUsdForToken: () => 0.1,
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.intent.intentType, "tiny_live_canary");
+  assert.equal(result.intent.executionSubType, "erc4626_deposit");
+  assert.equal(result.intent.strategyId, "wrapped-btc-loop-base-moonwell");
+  assert.equal(result.intent.amountUsd, 25);
+  assert.equal(result.intent.metadata.radarCandidateId, "candidate_1");
+  assert.equal(result.intent.metadata.btcPaybackConversionRequired, true);
+});
+
+test("buildRadarCanaryIntent blocks when tiny live cap is missing", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate(),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { perTxUsd: 500 },
+      },
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("tiny_live_cap_missing"));
+});
+
+test("buildRadarCanaryIntent blocks when radar lane lock is active", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate(),
+    policy: calibratedPolicy,
+    radarLockOn: true,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(result.blockers, ["radar_lock_active"]);
+});
+
+test("buildRadarCanaryIntent blocks non-stable reward tokens without exit liquidity proof", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      displayedAprPct: 20_000,
+      rewardTokenType: "defaultRewardToken",
+      rewardToken: "AERO",
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0.12,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.1,
+      p90RewardSwapCostUsdForToken: () => 0.1,
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("reward_exit_liquidity_unproven"));
+});

@@ -142,17 +142,19 @@ export async function runAutopilotTick({
   totalCapitalBtc = null,
   totalCapitalUsdOverride = null,
   dryRun = true,
+  now = new Date().toISOString(),
 } = {}) {
-  const now = new Date().toISOString();
+  const nowDate = new Date(now);
+  const observedAt = Number.isFinite(nowDate.getTime()) ? nowDate.toISOString() : new Date().toISOString();
 
   // 0. Integration gate
   if (!OPPORTUNITY_INTEGRATION.enabled) {
-    return { status: "dormant", reason: "opportunity_integration_disabled", at: now };
+    return { status: "dormant", reason: "opportunity_integration_disabled", at: observedAt };
   }
 
   // 1. Idle window check
-  if (isIdleWindow()) {
-    return { status: "idle_window", reason: "maintenance_quiet_hours", at: now };
+  if (isIdleWindow(new Date(observedAt))) {
+    return { status: "idle_window", reason: "maintenance_quiet_hours", at: observedAt };
   }
 
   // Resolve positions: on-chain RPC + protocol contract reads (no API fallback)
@@ -288,10 +290,11 @@ export async function runAutopilotTick({
         expectedHoldDays: 14,
         estimatedGasCostUsd: intent.estimatedGasUsd || 0.12,
         roundTripSuccessRate: 0.95,
-        observedAt: now,
+        observedAt,
       },
       currentAllocations: {},
       capitalState: { totalDeployableCapital: capitalUsd },
+      now: observedAt,
     });
 
     if (policyResult.decision === "ALLOW") {
@@ -312,7 +315,7 @@ export async function runAutopilotTick({
   // 9. Return tick result
   return {
     status: "completed",
-    at: now,
+    at: observedAt,
     capitalUsd,
     capitalBtc,
     opportunityCount: opportunities.length,

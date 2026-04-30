@@ -10,8 +10,18 @@ const REQUIRED_THRESHOLD_KEYS = Object.freeze([
   "mevExposureScoreMax",
 ]);
 
+const EXECUTABLE_EXECUTION_PATHS = Object.freeze([
+  "gateway_destination",
+  "base_native_evm",
+  "gateway_to_evm_bridged",
+]);
+
 function thresholdsResolved(policy = RADAR_POLICY) {
   return REQUIRED_THRESHOLD_KEYS.every((key) => Number.isFinite(policy?.thresholds?.[key]));
+}
+
+function aggressiveCalibrationReady(policy = RADAR_POLICY) {
+  return policy?.calibrationStatus === "calibrated_aggressive_v1";
 }
 
 function compareBtc(proposed, cap) {
@@ -70,7 +80,10 @@ export function evaluateExecutableCandidateGate({
 } = {}) {
   const blockers = [];
   if (!thresholdsResolved(policy)) blockers.push("radar_policy_thresholds_unresolved");
-  if (candidate.executionPath !== "gateway_destination") blockers.push("manual_bridge_execution_not_supported");
+  if (!aggressiveCalibrationReady(policy)) blockers.push("radar_policy_not_calibrated_aggressive");
+  if (!EXECUTABLE_EXECUTION_PATHS.includes(candidate.executionPath)) {
+    blockers.push("manual_bridge_execution_not_supported");
+  }
   if (candidate.sanctionsFlag !== "clean") blockers.push("sanctions_check_not_clean");
   if (candidate.bridgeRouteSanctionsCheck !== "clean") blockers.push("bridge_route_sanctions_check_not_clean");
   if (candidate.killSwitchState !== "running") blockers.push("kill_switch_not_running");

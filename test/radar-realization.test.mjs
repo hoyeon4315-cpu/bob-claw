@@ -55,3 +55,21 @@ test("summarizeRealizationRecords counts realized and payback-delivered states s
   assert.equal(summary.paybackDeliveredCount, 1);
   assert.equal(summary.totalNetRealizedPnlSats, "56");
 });
+
+test("summarizeRealizationRecords tracks realized PnL separately from BTC-relative accounting", () => {
+  const realized = buildOpportunityRealizationRecord({
+    ...baseRecord,
+    runId: "run_positive_pnl_negative_btc_relative",
+    grossPnlUsd: 3,
+    netRealizedPnlUsd: 2.5,
+    grossPnlSats: "-300",
+    netRealizedPnlSats: "-500",
+  }).record;
+
+  const summary = summarizeRealizationRecords([realized]);
+
+  assert.equal(summary.strategyRealizedCount, 1);
+  assert.equal(summary.positiveRealizedPnlCount, 1);
+  assert.equal(summary.totalNetRealizedPnlUsd, 2.5);
+  assert.equal(summary.totalNetRealizedPnlSats, "-500");
+});

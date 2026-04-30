@@ -11,6 +11,11 @@ function positiveSats(value) {
   }
 }
 
+function positiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0;
+}
+
 function minPortableWalletSet(policy = RADAR_POLICY) {
   return Number.isInteger(policy?.thresholds?.portableWalletSetMin)
     ? policy.thresholds.portableWalletSetMin
@@ -19,9 +24,11 @@ function minPortableWalletSet(policy = RADAR_POLICY) {
 
 function episodeBlockers(episode = {}) {
   const blockers = [...episodeBlocksPortability(episode)];
-  if (episode.selfReplayPnlSats === null || episode.selfReplayPnlSats === undefined) {
+  const hasUsdPnl = episode.selfReplayNetPnlUsd !== null && episode.selfReplayNetPnlUsd !== undefined;
+  const hasSatsPnl = episode.selfReplayPnlSats !== null && episode.selfReplayPnlSats !== undefined;
+  if (!hasUsdPnl && !hasSatsPnl) {
     blockers.push("radar_self_replay_missing");
-  } else if (!positiveSats(episode.selfReplayPnlSats)) {
+  } else if (!positiveNumber(episode.selfReplayNetPnlUsd) && !positiveSats(episode.selfReplayPnlSats)) {
     blockers.push("radar_self_replay_non_positive");
   }
   if (episode.pnlClosureStatus !== "closed") {

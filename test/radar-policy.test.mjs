@@ -5,13 +5,18 @@ import { RADAR_POLICY } from "../src/config/radar-policy.mjs";
 import { RADAR_SOURCE_ALLOWLIST } from "../src/config/radar-source-allowlist.mjs";
 
 test("radar policy exposes explicit deterministic thresholds", () => {
-  assert.equal(RADAR_POLICY.profileId, "onchain_opportunity_radar_phase0_v1");
+  assert.equal(RADAR_POLICY.profileId, "onchain_opportunity_radar_aggressive_v1");
   assert.equal(RADAR_POLICY.discoveryCanObserveOutOfScopeChains, true);
   assert.equal(RADAR_POLICY.executionRequiresExistingPolicyPath, true);
   assert.equal(RADAR_POLICY.btcFirstAccounting, true);
-  assert.equal(RADAR_POLICY.thresholds.clusterConfidenceMin, null);
-  assert.equal(RADAR_POLICY.thresholds.portableWalletSetMin, null);
-  assert.equal(RADAR_POLICY.calibrationStatus, "unresolved_operator_policy");
+  assert.equal(RADAR_POLICY.admissionEvUnit, "realized_net_pnl_usd");
+  assert.equal(RADAR_POLICY.thresholds.clusterConfidenceMin, 0.6);
+  assert.equal(RADAR_POLICY.thresholds.portableWalletSetMin, 3);
+  assert.equal(RADAR_POLICY.thresholds.protocolAgeDaysMin, 30);
+  assert.equal(RADAR_POLICY.thresholds.protocolTvlUsdMin, 5_000_000);
+  assert.equal(RADAR_POLICY.thresholds.slippageBpsMax, 80);
+  assert.equal(RADAR_POLICY.thresholds.mevExposureScoreMax, 35);
+  assert.equal(RADAR_POLICY.calibrationStatus, "calibrated_aggressive_v1");
   assert.equal(Object.isFrozen(RADAR_POLICY.thresholds), true);
 });
 

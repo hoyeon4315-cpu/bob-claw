@@ -15,6 +15,7 @@ describe("autopilot portfolio rebalancer", () => {
     const result = await mod.runAutopilotTick({
       totalCapitalBtc: 0.0002, // ~$15 (below MIN_NEW_CAPITAL_USD=30)
       dryRun: true,
+      now: "2026-04-27T12:00:00.000Z",
     });
     assert.strictEqual(result.status, "insufficient_capital");
     assert.ok(result.capitalUsd < 30);
@@ -28,6 +29,7 @@ describe("autopilot portfolio rebalancer", () => {
     const result = await mod.runAutopilotTick({
       totalCapitalBtc: 1.0,
       dryRun: true,
+      now: "2026-04-27T12:00:00.000Z",
     });
     globalThis.fetch = origFetch;
     assert.strictEqual(result.status, "no_opportunities");
@@ -38,6 +40,7 @@ describe("autopilot portfolio rebalancer", () => {
     const result = await mod.runAutopilotTick({
       totalCapitalBtc: 1.0,
       dryRun: true,
+      now: "2026-04-27T12:00:00.000Z",
     });
     assert.strictEqual(result.status, "completed");
     assert.ok(result.opportunityCount > 0);
@@ -50,6 +53,7 @@ describe("autopilot portfolio rebalancer", () => {
     const result = await mod.runAutopilotTick({
       totalCapitalBtc: 1.0,
       dryRun: true,
+      now: "2026-04-27T12:00:00.000Z",
     });
     assert.strictEqual(result.dryRun, true);
     for (const intent of result.intents) {

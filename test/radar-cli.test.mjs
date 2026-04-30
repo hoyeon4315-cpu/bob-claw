@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -62,4 +62,111 @@ test("radar CLI ingests observations and reports sanitized board", async () => {
   const board = JSON.parse(await readFile(reportPath, "utf8"));
   assert.equal(board.summary.observedCount, 1);
   assert.equal(JSON.stringify(board).includes("rawEventPayloadHash"), false);
+});
+
+test("radar cap review CLI reports committed-diff cap raise candidates", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-cap-review-cli-"));
+  const radarDir = join(dataDir, "radar");
+  await mkdir(radarDir, { recursive: true });
+  await writeFile(join(radarDir, "realization-records.jsonl"), [
+    JSON.stringify({
+      runId: "run_a",
+      candidateId: "candidate_a",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      familyKey: "wrapped_btc_direct_lending",
+      campaignWindowId: "window_a",
+      exitReceipts: [{ txHash: "0xexitA" }],
+      lifecycle: { strategyRealized: true, paybackDelivered: false },
+      netRealizedPnlUsd: 2.5,
+      netRealizedPnlSats: "-500",
+      settledAt: "2026-05-01T00:00:00.000Z",
+    }),
+    JSON.stringify({
+      runId: "run_b",
+      candidateId: "candidate_b",
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      familyKey: "wrapped_btc_direct_lending",
+      campaignWindowId: "window_b",
+      exitReceipts: [{ txHash: "0xexitB" }],
+      lifecycle: { strategyRealized: true, paybackDelivered: false },
+      netRealizedPnlUsd: 1.25,
+      netRealizedPnlSats: "-250",
+      settledAt: "2026-05-01T01:00:00.000Z",
+    }),
+  ].join("\n") + "\n");
+
+  const reportPath = join(dataDir, "radar-cap-review.json");
+  const report = spawnSync(process.execPath, [
+    "src/cli/report-radar-cap-review.mjs",
+    "--data-dir",
+    dataDir,
+    "--write",
+    reportPath,
+    "--now",
+    "2026-05-01T12:00:00.000Z",
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+
+  assert.equal(report.status, 0, report.stderr);
+  assert.match(report.stdout, /capRaiseCandidates=1/);
+
+  const review = JSON.parse(await readFile(reportPath, "utf8"));
+  assert.equal(review.candidates[0].eligible, true);
+  assert.equal(review.candidates[0].suggestedNextTinyLivePerTxUsd, 50);
+  assert.equal(review.candidates[0].requiresCommittedDiff, true);
+});
+
+test("radar promote CLI writes ready tiny live canary intents without signing", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-promote-cli-"));
+  const radarDir = join(dataDir, "radar");
+  await mkdir(radarDir, { recursive: true });
+  await writeFile(join(radarDir, "portable-packets.jsonl"), `${JSON.stringify({ packetId: "packet_cli" })}\n`);
+  await writeFile(join(radarDir, "executable-candidates.jsonl"), `${JSON.stringify({
+    candidateId: "candidate_cli",
+    packetId: "packet_cli",
+    familyKey: "wrapped_btc_direct_lending",
+    executionPath: "base_native_evm",
+    chain: "base",
+    protocol: "moonwell",
+    opportunityId: "opp_cli",
+    displayedAprPct: 2000,
+    rewardTokenType: "stable",
+    rewardToken: "USDC",
+    proposedSizeBtc: "0.0001",
+    committedCapBtc: "0.0002",
+    protocolAuditStatus: "audited_by_known",
+    sanctionsFlag: "clean",
+    bridgeRouteSanctionsCheck: "clean",
+    killSwitchState: "running",
+    slippageSimAtSize: 20,
+    mevExposureScore: 10,
+    campaignEndsAt: "2026-05-04T00:00:00.000Z",
+  })}\n`);
+
+  const queuePath = join(dataDir, "radar-canary-queue.json");
+  const promote = spawnSync(process.execPath, [
+    "src/cli/radar-promote.mjs",
+    "--data-dir",
+    dataDir,
+    "--execute",
+    "--write",
+    queuePath,
+    "--now",
+    "2026-05-01T00:00:00.000Z",
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+
+  assert.equal(promote.status, 0, promote.stderr);
+  assert.match(promote.stdout, /ready=1/);
+  assert.match(promote.stdout, /signed=false/);
+
+  const queue = JSON.parse(await readFile(queuePath, "utf8"));
+  assert.equal(queue.intents.length, 1);
+  assert.equal(queue.intents[0].intentType, "tiny_live_canary");
+  assert.equal(queue.intents[0].amountUsd, 25);
+  assert.equal(queue.intents[0].metadata.radarCandidateId, "candidate_cli");
 });

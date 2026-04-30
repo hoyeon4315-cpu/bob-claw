@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { PORTFOLIO_EXPOSURE_POLICY } from "../src/config/portfolio-exposure-policy.mjs";
 import { assertStrategyCaps } from "../src/config/strategy-caps.mjs";
 import {
   buildPortfolioExposureState,
@@ -482,7 +483,7 @@ test("evaluateCapCheck blocks aggregate protocol exposure above configured share
   assert.equal(result.blockers.includes("portfolio_protocol_cap_exceeded"), true);
 });
 
-test("evaluateCapCheck blocks aggregate chain exposure and BTC denomination drift", () => {
+test("evaluateCapCheck blocks aggregate chain exposure while allowing aggressive non-BTC drift", () => {
   const result = evaluateCapCheck({
     intent: intentFixture({
       strategyId: "token-dex-experiment",
@@ -527,6 +528,58 @@ test("evaluateCapCheck blocks aggregate chain exposure and BTC denomination drif
   });
 
   assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), true);
+  assert.equal(result.blockers.includes("portfolio_btc_denomination_floor_breached"), false);
+});
+
+test("evaluateCapCheck blocks non-BTC exposure above aggressive profile limit", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      amountUsd: 15,
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "token-dex-experiment",
+        caps: {
+          perTxUsd: 100,
+          perDayUsd: 300,
+          perChainUsd: { base: 200 },
+          maxDailyLossUsd: 25,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["odos"],
+        assetFamily: "mixed_assets",
+        btcDenominated: false,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 20,
+        policyVerdict: "approved",
+      },
+      {
+        strategyId: "token-dex-experiment",
+        chain: "optimism",
+        timestamp: "2026-04-16T02:00:00.000Z",
+        amountUsd: 70,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 100,
+    portfolioExposurePolicy: {
+      ...PORTFOLIO_EXPOSURE_POLICY,
+      maxDefaultChainSharePct: 1,
+      maxProtocolSharePct: 1,
+    },
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
   assert.equal(result.blockers.includes("portfolio_btc_denomination_floor_breached"), true);
 });
 

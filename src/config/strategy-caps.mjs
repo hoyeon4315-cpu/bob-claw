@@ -356,6 +356,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 1_000_000,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
@@ -921,6 +922,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 100,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
@@ -943,7 +945,8 @@ export const STRATEGY_CAPS = Object.freeze({
         base: 500,
       }),
       maxDailyLossUsd: 100,
-      maxFailedGasCost24HUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 10,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
@@ -1061,7 +1064,7 @@ export function validateStrategyCapsConfig(config = {}) {
   if (!config.caps || typeof config.caps !== "object") {
     errors.push("caps are required");
   } else {
-    for (const field of ["perTxUsd", "perDayUsd", "maxDailyLossUsd"]) {
+    for (const field of ["perTxUsd", "perDayUsd", "maxDailyLossUsd", "maxFailedGasCost24hUsd"]) {
       if (!isFiniteNumber(config.caps[field])) {
         errors.push(`caps.${field} must be a finite number`);
       }

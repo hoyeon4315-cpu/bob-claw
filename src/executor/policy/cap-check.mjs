@@ -1,4 +1,5 @@
 import { DISCRETIONARY_BUDGET } from "../../config/discretionary-budget.mjs";
+import { PORTFOLIO_EXPOSURE_POLICY } from "../../config/portfolio-exposure-policy.mjs";
 import { assertStrategyCaps, getStrategyCaps } from "../../config/strategy-caps.mjs";
 import { resolveQuoteMaxAgeMs } from "./stale-quote.mjs";
 
@@ -223,19 +224,22 @@ function resolvePortfolioExposurePolicy({
   activeBudgetUsd = null,
   policy = {},
 } = {}) {
-  const normalizedPolicy = policy || {};
+  const normalizedPolicy = policy || PORTFOLIO_EXPOSURE_POLICY;
   const budgetUsd = finiteBudget(activeBudgetUsd);
   if (!Number.isFinite(budgetUsd)) return null;
   return {
     activeBudgetUsd: budgetUsd,
-    maxProtocolSharePct: Number.isFinite(normalizedPolicy.maxProtocolSharePct) ? Number(normalizedPolicy.maxProtocolSharePct) : 0.25,
-    maxDefaultChainSharePct: Number.isFinite(normalizedPolicy.maxDefaultChainSharePct) ? Number(normalizedPolicy.maxDefaultChainSharePct) : 0.2,
+    profileId: normalizedPolicy.profileId || null,
+    maxProtocolSharePct: Number.isFinite(normalizedPolicy.maxProtocolSharePct) ? Number(normalizedPolicy.maxProtocolSharePct) : PORTFOLIO_EXPOSURE_POLICY.maxProtocolSharePct,
+    maxDefaultChainSharePct: Number.isFinite(normalizedPolicy.maxDefaultChainSharePct) ? Number(normalizedPolicy.maxDefaultChainSharePct) : PORTFOLIO_EXPOSURE_POLICY.maxDefaultChainSharePct,
     chainSharePct:
       normalizedPolicy.chainSharePct && typeof normalizedPolicy.chainSharePct === "object"
         ? normalizedPolicy.chainSharePct
-        : { ethereum: 0.5, bob: 0.1 },
+        : PORTFOLIO_EXPOSURE_POLICY.chainSharePct,
     minBtcDenominatedSharePct:
-      Number.isFinite(normalizedPolicy.minBtcDenominatedSharePct) ? Number(normalizedPolicy.minBtcDenominatedSharePct) : 0.4,
+      Number.isFinite(normalizedPolicy.minBtcDenominatedSharePct)
+        ? Number(normalizedPolicy.minBtcDenominatedSharePct)
+        : PORTFOLIO_EXPOSURE_POLICY.minBtcDenominatedSharePct,
   };
 }
 

@@ -77,6 +77,16 @@ describe("small-capital-campaign-mode config", () => {
     assert.strictEqual(pc.defaultMaxPct, 0.25);
     assert.strictEqual(pc.venueMaxPctWithLiveMonitor, 0.50);
   });
+
+  it("radarLane defines aggressive canary and cap review limits", () => {
+    const lane = SMALL_CAPITAL_CAMPAIGN_MODE.radarLane;
+    assert.strictEqual(lane.enabled, true);
+    assert.strictEqual(lane.perCanaryUsd, 30);
+    assert.strictEqual(lane.perDayUsd, 90);
+    assert.strictEqual(lane.cumulativeOpenUsd, 200);
+    assert.strictEqual(lane.realizedDailyLossLockUsd, 25);
+    assert.deepStrictEqual(lane.capGraduationUsd, [10, 25, 50, 80, 100]);
+  });
 });
 
 describe("small-capital helpers", () => {

@@ -238,6 +238,7 @@ describe("dashboard defi renewal source guard", () => {
     const assignSection = extractSection("Object.assign(window, {", "});\n  window._DASHBOARD_LIVE_AVAILABLE", DATA_SOURCE);
     assert.match(assignSection, /STATUS: status/);
     assert.match(assignSection, /RAW_STATUS: status/);
+    assert.match(assignSection, /RADAR: status\?\.radar \|\| null/);
     assert.match(assignSection, /generatedAt: status\?\.liveTransport\?\.servedAt \|\| status\?\.capitalSummary\?\.generatedAt \|\| status\?\.generatedAt \|\| null/);
   });
 
@@ -245,5 +246,24 @@ describe("dashboard defi renewal source guard", () => {
     const liveAprSection = extractSection("function liveAprFor", "function defaultAutoExec", DATA_SOURCE);
     assert.match(liveAprSection, /const strategyEntry = aprMap\[strategy\.id\]/);
     assert.match(liveAprSection, /const entry = strategyEntry \|\| aprMap\[key\] \|\| aprMap\[strategy\.protocol\]/);
+  });
+
+  test("defi pane includes the read-only onchain radar card", () => {
+    const radarCard = extractSection("function OnchainRadarCard", "function ResearchFunnelCard");
+    assert.match(radarCard, /window\.RADAR \|\| window\.STATUS\?\.radar/);
+    assert.match(radarCard, /Onchain radar/);
+    assert.match(radarCard, /read-only scan/);
+    assert.match(radarCard, /label: 'Observed'/);
+    assert.match(radarCard, /label: 'Portable'/);
+    assert.match(radarCard, /label: 'Review'/);
+    assert.match(radarCard, /capReview/);
+    assert.match(radarCard, /No signing path/);
+
+    const defiPane = extractSection("function DefiPane", "function pairTokens");
+    assert.match(defiPane, /<OnchainRadarCard\/>/);
+    assert.ok(
+      defiPane.indexOf("<OnchainRadarCard/>") < defiPane.indexOf("<ResearchFunnelCard/>"),
+      "radar card should sit above the broader research funnel",
+    );
   });
 });

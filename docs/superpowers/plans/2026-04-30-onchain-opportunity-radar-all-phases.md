@@ -40,7 +40,7 @@
 - Test: `test/radar-portable-packet.test.mjs`
 
 - [x] Require closed self-replay evidence before portability.
-- [x] Require positive self-replay sats before portability.
+- [x] Require positive self-replay realized net PnL before portability; keep sats as BTC-relative reporting.
 - [x] Require cluster independence proof before portability.
 
 ### Task 4: Executable Candidate Gate

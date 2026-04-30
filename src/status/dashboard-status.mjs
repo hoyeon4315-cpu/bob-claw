@@ -36,6 +36,7 @@ import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildCampaignAwareSlice } from "./campaign-aware-dashboard-slice.mjs";
+import { buildRadarDashboardSlice } from "./radar-slice.mjs";
 
 const STATUS_SCHEMA_VERSION = 2;
 // No project-wide risk budget anymore; per-strategy caps live in each
@@ -1914,6 +1915,11 @@ export function buildDashboardStatus(input, options = {}) {
     anchorPositions: input.anchorPositions || null,
     paybackAccumulator: input.paybackAccumulator || null,
   }, { now });
+  const radar = buildRadarDashboardSlice({
+    board: input.radarBoard || null,
+    capReview: input.radarCapReview || null,
+    generatedAt: now,
+  });
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1932,6 +1938,7 @@ export function buildDashboardStatus(input, options = {}) {
     opportunity,
     pnl,
     campaignAware,
+    radar,
     tradeHistory,
     decisionInputs,
     researchSignals,
@@ -1974,6 +1981,12 @@ export function buildDashboardStatus(input, options = {}) {
       executorHeartbeatPresent: executorRuntime?.heartbeatPresent ? 1 : 0,
       shadowCyclePresent: shadowCycle ? 1 : 0,
       advanceCanaryPresent: canaryAdvance ? 1 : 0,
+      radarObservations: radar.stageCounts.observed,
+      radarStrategyEpisodes: radar.stageCounts.hypothesis,
+      radarPortablePackets: radar.stageCounts.portable,
+      radarExecutableCandidates: radar.stageCounts.executableReview,
+      radarStrategyRealizations: radar.stageCounts.selfRealized,
+      radarCapRaiseCandidates: radar.capReview.eligibleCount,
     },
     exposurePolicy: {
       cloudflare: "dashboard_only",
