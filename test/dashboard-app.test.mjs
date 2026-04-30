@@ -67,6 +67,23 @@ describe("dashboard home renewal source guard", () => {
     assert.match(pnlStrip, /pnlKindLabel/);
   });
 
+  test("flow home surfaces the live lane without exposing signing controls", () => {
+    const liveLane = extractSection("function LiveLaneCard", "function RouteNode");
+    assert.match(liveLane, /Live lane/);
+    assert.match(liveLane, /Operation gate/);
+    assert.match(liveLane, /Autopilot/);
+    assert.match(liveLane, /Radar/);
+    assert.match(liveLane, /Payback/);
+    assert.match(liveLane, /Allowed/);
+    assert.match(liveLane, /window\.STATUS/);
+    assert.match(liveLane, /window\.OPERATIONS/);
+    assert.doesNotMatch(liveLane, /private key/i);
+    assert.doesNotMatch(liveLane, /sign transaction/i);
+
+    const flowPane = extractSection("function FlowPane", "function KpiCard");
+    assert.match(flowPane, /\{!historyExpanded && <LiveLaneCard\/>\}/);
+  });
+
   test("history card defaults to 3 rows with expand/collapse and scroll guard", () => {
     const historySection = extractSection("function RouteNode", "function FlowPane");
     assert.match(historySection, /ChainLogo id=\{id\} size=\{16\}/);

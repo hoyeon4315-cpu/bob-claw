@@ -360,6 +360,129 @@ function FlowMetricGrid({ cards }) {
     } }, card.sub)
   ), index < cards.length - 1 && /* @__PURE__ */ React.createElement("div", { style: { width: 0.5, background: "var(--line)" } }))));
 }
+function friendlyBlockerLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "clear";
+  const mapped = {
+    source_inventory_reserved: "source reserved",
+    routing_exhausted: "route missing",
+    signer_rejected: "policy rejected",
+    planned_payback_below_minimum: "minimum not reached",
+    payback_below_minimum: "minimum not reached",
+    max_consecutive_failures_reached: "cooldown",
+    kill_switch_present: "paused",
+    collect_observations: "collect observations",
+    review_existing_policy_path: "review path",
+    calibrate_operator_policy: "calibrate policy"
+  }[raw];
+  if (mapped) return mapped;
+  return raw.split(/[\s._-]+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+function laneTone(status) {
+  if (status === "good") return { color: "var(--green)", bg: "#EAF6EE" };
+  if (status === "warn") return { color: "#8A520C", bg: "#FFF4E2" };
+  if (status === "bad") return { color: "#B42318", bg: "#FDECEC" };
+  return { color: "var(--ink-3)", bg: "#F5F5F6" };
+}
+function LiveLaneCard() {
+  const status = window.STATUS || {};
+  const overall = status.overall || {};
+  const runtime = status.executorRuntime || {};
+  const operations = window.OPERATIONS || status.operations?.allChainAutopilot || {};
+  const radar = window.RADAR || status.radar || {};
+  const payback = status.payback || {};
+  const liveAllowed = overall.liveTrading === "ALLOWED";
+  const runtimeReady = runtime.available === true && runtime.runtimeStatus === "healthy";
+  const opRunning = operations.status === "running";
+  const opObservedAt = operations.observedAt || runtime.observedAt || status.generatedAt || null;
+  const opBlocker = operations.topBlockers?.[0]?.reason || operations.blockedReason || overall.blockers?.[0] || null;
+  const radarCounts = radar.stageCounts || {};
+  const radarCap = radar.capReview || {};
+  const radarLocked = radarCap.lossLockOn === true;
+  const radarReady = Number(radarCounts.executableReview || 0) > 0 || Number(radarCap.eligibleCount || 0) > 0;
+  const radarMain = radarLocked ? "Locked" : radarReady ? "Review" : radar.guardrails?.thresholdsResolved === false ? "Calibrate" : "Watching";
+  const radarSub = radarLocked ? "loss lock" : Number(radarCap.eligibleCount || 0) > 0 ? `${radarCap.eligibleCount} cap review` : `${Number(radarCounts.observed || 0)} seen \xB7 ${Number(radarCounts.executableReview || 0)} executable`;
+  const pendingSats = Number(payback.carry?.pendingSats ?? payback.accumulatorPendingSats ?? 0);
+  const remainingSats = Number(payback.carry?.remainingSatsToMinimum ?? payback.scheduler?.minimumPaybackProgress?.satsToMinimumPayback ?? NaN);
+  const paybackReady = payback.scheduler?.status === "ready" || payback.carry?.active === false && pendingSats > 0;
+  const gateTone = laneTone(liveAllowed && runtimeReady ? "good" : "bad");
+  const gateLine = `Operation gate: ${liveAllowed ? "Allowed" : "Blocked"} \xB7 ${runtimeReady ? "Runtime healthy" : friendlyBlockerLabel(overall.blockers?.[0] || runtime.runtimeStatus || "checking")}`;
+  const cells = [
+    {
+      label: "Autopilot",
+      main: opRunning ? "Running" : friendlyBlockerLabel(operations.status || "idle"),
+      sub: opBlocker ? friendlyBlockerLabel(opBlocker) : `${operations.officialChainCount || 11} chains`,
+      tone: opRunning && !opBlocker ? "good" : opRunning ? "warn" : "neutral"
+    },
+    {
+      label: "Radar",
+      main: radarMain,
+      sub: radarSub,
+      tone: radarLocked ? "bad" : radarReady ? "warn" : "neutral"
+    },
+    {
+      label: "Payback",
+      main: pendingSats > 0 ? fmtSats(pendingSats) : paybackReady ? "ready" : "carry",
+      sub: Number.isFinite(remainingSats) && remainingSats > 0 ? `${fmtSats(remainingSats)} to min` : friendlyBlockerLabel(payback.scheduler?.reason || "accruing"),
+      tone: paybackReady ? "good" : pendingSats > 0 ? "warn" : "neutral"
+    }
+  ];
+  return /* @__PURE__ */ React.createElement("div", { style: {
+    margin: "3px 12px 0",
+    padding: "7px 9px 7px",
+    background: "var(--card)",
+    border: "0.5px solid var(--line)",
+    borderRadius: 12,
+    flexShrink: 0,
+    animation: `slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 700, letterSpacing: 0.1, whiteSpace: "nowrap" } }, "Live lane"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-3)", whiteSpace: "nowrap" } }, formatStatusAge(opObservedAt) || fmtWhen(opObservedAt))), /* @__PURE__ */ React.createElement("div", { style: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 4,
+    minWidth: 0,
+    color: gateTone.color
+  } }, /* @__PURE__ */ React.createElement("span", { style: { width: 6, height: 6, borderRadius: 6, background: gateTone.color, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", { style: {
+    fontSize: 10.5,
+    fontWeight: 700,
+    letterSpacing: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    minWidth: 0
+  } }, gateLine)), /* @__PURE__ */ React.createElement("div", { style: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "4px 9px",
+    marginTop: 6
+  } }, cells.map((cell) => {
+    const tone = laneTone(cell.tone);
+    return /* @__PURE__ */ React.createElement("div", { key: cell.label, style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 7.4,
+      color: "var(--ink-4)",
+      letterSpacing: 0.9,
+      textTransform: "uppercase",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis"
+    } }, cell.label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4, marginTop: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 6, height: 6, borderRadius: 6, background: tone.color, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 10.8,
+      fontWeight: 700,
+      letterSpacing: 0,
+      color: tone.color,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      minWidth: 0
+    } }, cell.main)), /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 8.2,
+      color: "var(--ink-3)",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis"
+    } }, cell.sub));
+  })));
+}
 function RouteNode({ kind = "text", id, label }) {
   return /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, flexShrink: 1 } }, kind === "chain" && id ? /* @__PURE__ */ React.createElement(ChainLogo, { id, size: 16 }) : null, kind === "protocol" && id ? /* @__PURE__ */ React.createElement(ProtocolLogo, { id, size: 16 }) : null, /* @__PURE__ */ React.createElement("span", { style: {
     minWidth: 0,
@@ -718,7 +841,7 @@ function FlowPane({ refreshTick }) {
       main: yieldMain,
       sub: yieldSub
     }
-  ] }), !historyExpanded && aprOpen && /* @__PURE__ */ React.createElement("div", { style: {
+  ] }), !historyExpanded && /* @__PURE__ */ React.createElement(LiveLaneCard, null), !historyExpanded && aprOpen && /* @__PURE__ */ React.createElement("div", { style: {
     margin: "0 12px",
     padding: "8px 12px",
     background: "#111113",
