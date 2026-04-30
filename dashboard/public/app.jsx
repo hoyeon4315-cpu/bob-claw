@@ -269,6 +269,7 @@ function activityStatusLabel(activity) {
   if (status === 'confirmed') return 'Confirmed';
   if (status === 'broadcasted') return 'Broadcasted';
   if (status === 'signed') return 'Signed';
+  if (status === 'rejected' && !activityHasSentTx(activity)) return 'No tx sent';
   if (status === 'rejected') return 'Rejected';
   if (status === 'error') return 'Error';
   if (status === 'open') return 'Open';
@@ -276,8 +277,17 @@ function activityStatusLabel(activity) {
   return status ? titleCaseLabel(status) : 'Logged';
 }
 
+function activityHasSentTx(activity) {
+  if (!activity) return false;
+  if (activity.txHash) return true;
+  if (Number.isFinite(activity.amountUsd) && activity.amountUsd > 0) return true;
+  if (Number.isFinite(activity.amountSats) && activity.amountSats > 0) return true;
+  return false;
+}
+
 function activityStatusTone(activity) {
   if (activity?.kind === 'payback') return { bg: '#FFF4E2', fg: '#8A520C' };
+  if (activity?.status === 'rejected' && !activityHasSentTx(activity)) return { bg: '#ECECEE', fg: 'var(--ink-3)' };
   if (activity?.status === 'rejected' || activity?.status === 'error') return { bg: '#FDECEC', fg: '#B42318' };
   if (activity?.status === 'signed' || activity?.status === 'broadcasted') return { bg: '#FFF6E8', fg: '#8A520C' };
   if (activity?.status === 'delivered' || activity?.status === 'confirmed' || activity?.status === 'open') {

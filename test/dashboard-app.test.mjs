@@ -99,6 +99,11 @@ describe("dashboard home renewal source guard", () => {
     assert.match(historySection, /AssetLogo id=\{finalAsset\.id\} size=\{11\}/);
     assert.doesNotMatch(historySection, /Arrived/);
 
+    const activityStatusSection = extractSection("function activityStatusLabel", "function activityAmount");
+    assert.match(activityStatusSection, /function activityHasSentTx\(activity\)/);
+    assert.match(activityStatusSection, /status === 'rejected' && !activityHasSentTx\(activity\)/);
+    assert.match(activityStatusSection, /return 'No tx sent'/);
+
     const utilitySection = extractSection("function formatStatusAge", "function normalizeUiStrategyId");
     assert.match(utilitySection, /const HISTORY_FILTER_STORAGE_KEY = 'bob-claw:history-filter'/);
     assert.match(utilitySection, /function readPersistedHistoryFilter\(\)/);
