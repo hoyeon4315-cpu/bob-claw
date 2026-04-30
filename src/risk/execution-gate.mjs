@@ -92,12 +92,23 @@ function missingLeverageFields(strategyPolicy = null) {
 function latestTerminalStatuses(events = []) {
   return [...events]
     .filter((item) => ["confirmed", "delivered", "failed"].includes(item.status))
+    .filter((item) => !isSignerAvailabilityFailure(item))
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt));
+}
+
+function errorMessage(record = {}) {
+  return String(record.error?.message || record.error || "");
+}
+
+function isSignerAvailabilityFailure(record = {}) {
+  if (record.status !== "failed") return false;
+  return /ECONNREFUSED.+executor-signer\.sock|executor-signer\.sock.+ECONNREFUSED/u.test(errorMessage(record));
 }
 
 export function buildExecutionRiskState({ receiptRecords = [], executionEvents = [], inventory = null, now = new Date().toISOString() }) {
   const receipt24h = receiptRecords.filter((item) => hoursAgo(item.observedAt, now) <= 24);
   const terminal = latestTerminalStatuses(executionEvents);
+  const infrastructureFailureCount = executionEvents.filter(isSignerAvailabilityFailure).length;
 
   let consecutiveFailures = 0;
   for (const item of terminal) {
@@ -131,6 +142,7 @@ export function buildExecutionRiskState({ receiptRecords = [], executionEvents =
     projectLossUsedUsd,
     failedGasCost24hUsd,
     consecutiveFailures,
+    infrastructureFailureCount,
     walletEstimatedUsd: inventory?.summary?.estimatedWalletUsd ?? null,
     lastReceiptAt: receiptRecords.length ? [...receiptRecords].sort((a, b) => new Date(b.observedAt) - new Date(a.observedAt))[0].observedAt : null,
   };

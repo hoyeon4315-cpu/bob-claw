@@ -21,6 +21,7 @@ const INPUT_BUFFER_MULTIPLIER = 1.1;
 const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
 const GATEWAY_BTC_ONRAMP_MIN_SATS = 5000n;
 const PARTIAL_REFILL_MIN_COVERAGE_BPS = 8500n;
+const NATIVE_GAS_REFILL_STRATEGY_ID = "native-gas-refill";
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
@@ -319,6 +320,7 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       inputToken: source.token,
       outputToken: "native",
+      strategyId: NATIVE_GAS_REFILL_STRATEGY_ID,
     });
     const requiredGasBudgetWei = nativeGasBudgetForPlan(plan);
     const currentNativeBalanceWei = await resolveNativeBalanceWei({

@@ -120,6 +120,42 @@ test("risk gate allows a healthy refill job", () => {
   assert.equal(decision.reviews.length, 0);
 });
 
+test("risk gate does not pin refill execution after signer socket outage failures", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T06:10:00.000Z",
+    inventory: inventoryFixture(280),
+    receiptRecords: [],
+    executionEvents: [
+      {
+        observedAt: "2026-04-11T06:01:00.000Z",
+        status: "failed",
+        error: { message: "connect ECONNREFUSED ./state/executor-signer.sock" },
+      },
+      {
+        observedAt: "2026-04-11T06:02:00.000Z",
+        status: "failed",
+        error: { message: "connect ECONNREFUSED ./state/executor-signer.sock" },
+      },
+      {
+        observedAt: "2026-04-11T06:03:00.000Z",
+        status: "failed",
+        error: { message: "connect ECONNREFUSED ./state/executor-signer.sock" },
+      },
+    ],
+  });
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({ type: "refill_token" }),
+    riskState,
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(riskState.consecutiveFailures, 0);
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("max_consecutive_failures_reached"), false);
+});
+
 test("risk gate blocks jobs when economics or limits fail", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({

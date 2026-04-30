@@ -8,7 +8,19 @@ function isTransientLatestError(report = null) {
   return blockedReason.includes("timed out");
 }
 
+function observedMs(report = null) {
+  const ms = new Date(report?.observedAt || 0).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 export function resolveAllChainAutopilotReport(latestReport = null, latestCompletedReport = null) {
+  if (
+    latestReport?.status === "running" &&
+    latestCompletedReport?.status === "error" &&
+    observedMs(latestReport) > observedMs(latestCompletedReport)
+  ) {
+    return latestReport;
+  }
   if (
     latestCompletedReport &&
     (latestReport?.status === "running" || isTransientLatestError(latestReport))

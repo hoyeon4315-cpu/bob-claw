@@ -48,6 +48,14 @@ const STRATEGY_CATALOG = [
 function normalizeStrategyId(id) {
   return String(id || "").replace(/-/g, "_");
 }
+function activeStrategyStatus({ hasLivePosition, isLiveCandidate, hasRecentActivity, tickMode, fallbackStatus }) {
+  if (hasLivePosition) return "LIVE";
+  if (isLiveCandidate) return "LIVE CANDIDATE";
+  if (hasRecentActivity) return "ACTIVITY";
+  if (tickMode === "shadow_ready") return "SHADOW";
+  if (tickMode === "blocked") return "BLOCKED";
+  return fallbackStatus || "CANDIDATE";
+}
 function deriveStatus(live) {
   if (live?.autoExecute === true && live?.blockers?.length === 0) return "LIVE";
   if (live?.autoExecute === true) return "ARMED";
@@ -109,6 +117,12 @@ function buildCapitalMaps(holdings = null) {
 function timestampMs(value) {
   const parsed = new Date(value || 0).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+}
+function firstFinite(...values) {
+  for (const value of values) {
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
 }
 function capitalizeWord(value) {
   return String(value || "").split(/[\s._-]+/).filter(Boolean).map((part) => {
@@ -366,6 +380,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   const operations = status?.operations?.allChainAutopilot || null;
   const capitalSummary = status?.capitalSummary || null;
   const flow = status?.flow || null;
+  const liveYield = flow?.liveYield || null;
+  const statusAsOf = status?.liveTransport?.servedAt || status?.capitalSummary?.generatedAt || status?.generatedAt || null;
   const lanePolicy = status?.overall?.lanePolicy || {};
   const primaryId = lanePolicy?.candidateId || "wrapped-btc-loop-base-moonwell";
   const primaryPolicy = lanePolicy?.strategyPolicy || {};
@@ -455,6 +471,11 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     ...Object.keys(tickByNormalized),
     ...Object.keys(microByNormalized)
   ]);
+  const fallbackActivityCatalog = Array.from(allIds).filter((id) => !STRATEGY_CATALOG.some((s) => s.id === id)).map(deriveFallbackMeta);
+  const activitySurfaces = buildActivitySurfaces(flow?.recentActivities || [], [
+    ...STRATEGY_CATALOG,
+    ...fallbackActivityCatalog
+  ]);
   const STRATEGIES = Array.from(allIds).map((id) => {
     const catalogEntry = STRATEGY_CATALOG.find((s2) => s2.id === id);
     const s = catalogEntry || deriveFallbackMeta(id);
@@ -466,23 +487,34 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     const tickMode = parity?.promotionVerdict || parity?.tickMode || null;
     const protocolCapitalUsd = CAPITAL.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || 0;
     const chainCapitalUsd = CAPITAL.byChain[s.chain] || 0;
+    const activitySurface = activitySurfaces.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || null;
     const allocatedSats = Number(parity?.scoredAllocation?.allocatedSats ?? 0);
     const allocatedCapitalUsd = Number.isFinite(allocatedSats) && allocatedSats > 0 ? satsToUsd(allocatedSats, btcUsd) : null;
     const effectiveCapUsd = Number.isFinite(s.capUsd) && s.capUsd > 0 ? s.capUsd : allocatedCapitalUsd && allocatedCapitalUsd > 0 ? allocatedCapitalUsd : null;
-    const effectiveProtocolCapitalUsd = protocolCapitalUsd > 0 ? protocolCapitalUsd : allocatedCapitalUsd && allocatedCapitalUsd > 0 ? allocatedCapitalUsd : 0;
-    let statusLabel;
-    if (tickMode === "live_candidate") statusLabel = "LIVE CANDIDATE";
-    else if (tickMode === "fast_track_eligible") statusLabel = "FAST TRACK";
-    else if (tickMode === "shadow_ready") statusLabel = "SHADOW";
-    else if (tickMode === "blocked") statusLabel = "BLOCKED";
+    const effectiveProtocolCapitalUsd = protocolCapitalUsd;
+    const hasLivePosition = protocolCapitalUsd > 0;
+    const hasRecentActivity = Number(activitySurface?.count || 0) > 0;
+    let fallbackStatus;
+    if (tickMode === "live_candidate") fallbackStatus = "LIVE CANDIDATE";
+    else if (tickMode === "fast_track_eligible") fallbackStatus = "FAST TRACK";
+    else if (tickMode === "shadow_ready") fallbackStatus = "SHADOW";
+    else if (tickMode === "blocked") fallbackStatus = "BLOCKED";
     else {
       const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
       if (isPrimary) {
-        statusLabel = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? "LIVE" : autoExec ? "ARMED" : "DRY RUN";
+        fallbackStatus = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? "LIVE CANDIDATE" : autoExec ? "ARMED" : "DRY RUN";
       } else {
-        statusLabel = defaultAutoExec(s.id) ? "ARMED" : "CANDIDATE";
+        fallbackStatus = defaultAutoExec(s.id) ? "ARMED" : "CANDIDATE";
       }
     }
+    const isLiveCandidate = tickMode === "live_candidate" || fallbackStatus === "LIVE CANDIDATE";
+    const statusLabel = activeStrategyStatus({
+      hasLivePosition,
+      isLiveCandidate,
+      hasRecentActivity,
+      tickMode,
+      fallbackStatus
+    });
     const apyPct = liveAprFor(s, liveApr) ?? apyHint(s.id);
     const realizedYieldUsd = isPrimary && Number.isFinite(realizedUsd) && realizedUsd > 0 ? realizedUsd : 0;
     const estimatedYieldUsd = estimateYieldUsd({
@@ -490,7 +522,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       capUsd: effectiveCapUsd,
       apyPct,
       lastObservedAt: parity?.lastTickAt || null,
-      generatedAt: status?.generatedAt || null
+      generatedAt: statusAsOf
     });
     const earnedUsd = realizedYieldUsd > 0 ? realizedYieldUsd : estimatedYieldUsd;
     return {
@@ -503,6 +535,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       yieldBasis: realizedYieldUsd > 0 ? "realized" : estimatedYieldUsd > 0 ? "estimated" : null,
       apyPct,
       tickMode,
+      activeStrategyState: hasLivePosition ? "live_position" : isLiveCandidate ? "live_candidate" : hasRecentActivity ? "activity_only" : "inactive",
+      activitySurfaceCount: activitySurface?.count || 0,
       tickBlockers: parity?.blockers || [],
       microCanaryStatus: micro?.microCanaryStatus || parity?.microCanaryStatus || "not_started",
       blockerCount: parity?.blockers?.length ?? 0,
@@ -520,6 +554,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   const paidSatsLifetime = Number(flow?.metrics?.paidBackSatsLifetime ?? payback?.paidBackSatsLifetime ?? 0);
   const flowAssetValueUsd = Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : null;
   const grossProfitUsd = Number.isFinite(flow?.metrics?.grossProfitUsdPeriod) ? flow.metrics.grossProfitUsdPeriod : satsToUsd(grossProfitSats, btcUsd);
+  const liveYieldSats = firstFinite(flow?.metrics?.liveEstimatedYieldSats, liveYield?.estimatedYieldSats);
+  const liveYieldUsd = firstFinite(flow?.metrics?.liveEstimatedYieldUsd, liveYield?.estimatedYieldUsd);
   const totalEarnedUsd = STRATEGIES.reduce((acc, s) => acc + (s.earnedUsd || 0), 0);
   const KPI = {
     totalEarning: { sats: grossProfitSats, usd: grossProfitUsd ?? (totalEarnedUsd > 0 ? totalEarnedUsd : satsToUsd(grossProfitSats, btcUsd)) },
@@ -534,6 +570,14 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   };
   const FLOW_METRICS = {
     ...flow?.metrics || {},
+    liveEstimatedYieldSats: liveYieldSats,
+    liveEstimatedYieldUsd: liveYieldUsd,
+    liveAnnualizedYieldSats: firstFinite(flow?.metrics?.liveAnnualizedYieldSats, liveYield?.annualizedYieldSats),
+    liveAnnualizedYieldUsd: firstFinite(flow?.metrics?.liveAnnualizedYieldUsd, liveYield?.annualizedYieldUsd),
+    liveYieldAprPct: firstFinite(flow?.metrics?.liveYieldAprPct, liveYield?.weightedAprPct),
+    liveYieldPositionCount: firstFinite(flow?.metrics?.liveYieldPositionCount, liveYield?.positionCount) ?? 0,
+    liveYieldObservedAt: flow?.metrics?.liveYieldObservedAt || liveYield?.observedAt || null,
+    liveYieldBasis: flow?.metrics?.liveYieldBasis || liveYield?.basis || null,
     realizedStrategyUsd: Number.isFinite(realizedUsd) ? realizedUsd : null,
     realizedEvidenceCostUsd: Number.isFinite(realizedEvidenceCostUsd) ? realizedEvidenceCostUsd : null,
     realizedTotalUsd: Number.isFinite(realizedTotalUsd) ? realizedTotalUsd : null,
@@ -551,7 +595,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       capUsd: Number.isFinite(m.capUsd) ? m.capUsd : null,
       apyPct,
       lastObservedAt: m.lastObservedAt || null,
-      generatedAt: status?.generatedAt || null
+      generatedAt: statusAsOf
     });
     STRATEGIES.push({
       id: m.id,
@@ -580,12 +624,13 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       lastTickAt: m.lastObservedAt || null,
       source: "merkl",
       opportunityId: m.opportunityId,
+      activeStrategyState: "live_position",
+      activitySurfaceCount: 0,
       riskHint: riskByNormalized[normalizedId] || null,
       actualProtocolCapitalUsd: CAPITAL.byProtocol[capitalProtocolKey(m.chain, m.protocol)] || 0,
       actualChainCapitalUsd: CAPITAL.byChain[m.chain] || 0
     });
   }
-  const activitySurfaces = buildActivitySurfaces(flow?.recentActivities || [], STRATEGIES);
   for (const strategy of STRATEGIES) {
     const activitySurface = activitySurfaces.byProtocol[capitalProtocolKey(strategy.chain, strategy.protocol)] || null;
     if (!activitySurface) continue;
@@ -630,11 +675,12 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,
     CAPITAL,
+    STATUS: status,
     RAW_STATUS: status,
     LIVE_STATUS: {
       source: resolved?.source || "fallback",
       live: Boolean(resolved?.live && status),
-      generatedAt: status?.generatedAt || null,
+      generatedAt: status?.liveTransport?.servedAt || status?.capitalSummary?.generatedAt || status?.generatedAt || null,
       remote: Boolean(resolved?.source === "remote-live-api" || resolved?.source === "remote-live-sse")
     }
   });
@@ -768,6 +814,8 @@ Object.assign(window, {
   FLOW: { metrics: {}, recentActivities: [], strategyRiskById: {} },
   OPERATIONS: null,
   CAPITAL: { byChain: {}, byProtocol: {}, walletUsd: null, deployedUsd: null, totalUsd: null, pending: true, generatedAt: null },
+  STATUS: null,
+  RAW_STATUS: null,
   LIVE_STATUS: { source: "pending", live: false, generatedAt: null }
 });
 window.DATA_READY = bootstrapDashboardData();

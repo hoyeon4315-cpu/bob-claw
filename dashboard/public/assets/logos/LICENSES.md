@@ -21,7 +21,7 @@ plus a neutral letter mark; **no third-party trademarked artwork is bundled**.
 | `protocols/morpho.svg`    | Morpho          | `#2D4A7C` | placeholder | morpho.org/brand |
 | `protocols/aave.svg`      | Aave            | `#B6509E` | placeholder | aave.com brand assets |
 | `protocols/euler.svg`     | Euler           | `#39D0C9` | placeholder | euler.finance brand assets |
-| `protocols/yo.svg`        | YO              | `#111113` | placeholder | yo.xyz brand assets |
+| `protocols/yo.svg`        | YO              | `#CCFF00` | official web asset, retrieved 2026-04-29 | https://www.yo.xyz/images/logo-green.svg |
 | `protocols/pendle.svg`    | Pendle          | `#00ADAB` | placeholder | pendle.finance brand kit |
 | `protocols/aerodrome.svg` | Aerodrome       | `#1656F7` | placeholder | aerodrome.finance brand kit |
 | `protocols/beefy.svg`     | Beefy           | `#4DB258` | placeholder | beefy.finance/branding |

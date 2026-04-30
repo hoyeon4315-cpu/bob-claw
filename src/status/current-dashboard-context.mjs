@@ -390,6 +390,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.flow = buildFlowDashboardSlice({
     executionEvents,
     merklPositionEvents,
+    merklActivePositions: dashboardStatus.strategy.merklActivePositions,
     signerAuditRecords,
     payback: dashboardStatus.payback,
     capitalSummary: dashboardStatus.capitalSummary,

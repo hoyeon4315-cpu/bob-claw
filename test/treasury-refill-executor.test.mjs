@@ -35,14 +35,17 @@ function nativeRefillJob(overrides = {}) {
 }
 
 test("treasury refill executor builds same-chain token-to-native refill preview", async () => {
+  let capturedInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob(),
     senderAddress: ADDRESS,
-    buildTokenDexPlanImpl: async (input) => ({
+    buildTokenDexPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
       schemaVersion: 1,
       observedAt: "2026-04-19T00:00:00.000Z",
       planStatus: "ready",
-      strategyId: "token-dex-experiment",
+      strategyId: input.strategyId,
       chain: input.chain,
       senderAddress: input.senderAddress,
       inputToken: input.inputToken,
@@ -53,11 +56,14 @@ test("treasury refill executor builds same-chain token-to-native refill preview"
       minimumOutputAmount: "1100000000000000",
       quote: { outputAmount: "1110000000000000" },
       steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }, { id: "unwrap_wrapped_native" }],
-    }),
+    };
+    },
   });
 
   assert.equal(preparation.status, "ready");
   assert.equal(preparation.executor, "token_dex_experiment");
+  assert.equal(capturedInput.strategyId, "native-gas-refill");
+  assert.equal(preparation.plan.strategyId, "native-gas-refill");
   assert.equal(preparation.plan.inputToken, WBTC_OFT_TOKEN);
   assert.equal(preparation.plan.outputToken, ZERO_TOKEN);
   assert.equal(preparation.plan.amount, "3271");

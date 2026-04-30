@@ -21,9 +21,11 @@ describe("mindmap source guard", () => {
 
   test("mindmap focuses protocols with capital and dims siblings on protocol zoom", () => {
     assert.match(MINDMAP_JSX, /if \(!strategy\.protocol\) return false;/);
+    assert.match(MINDMAP_JSX, /return strategy\.status === 'LIVE'/);
+    assert.match(MINDMAP_JSX, /strategy\.activeStrategyState === 'live_position'/);
     assert.match(MINDMAP_JSX, /return Number\(strategy\.actualProtocolCapitalUsd \|\| 0\) > 0/);
-    assert.match(MINDMAP_JSX, /Number\(strategy\.recentActivityCount \|\| 0\) > 0/);
-    assert.match(MINDMAP_JSX, /strategy\.surfaceOnly === 'mindmap'/);
+    assert.doesNotMatch(MINDMAP_JSX, /\|\|\s*Number\(strategy\.recentActivityCount \|\| 0\) > 0/);
+    assert.doesNotMatch(MINDMAP_JSX, /\|\|\s*strategy\.surfaceOnly === 'mindmap'/);
     assert.match(MINDMAP_JSX, /const focusPoint = selectedProtocolId \? \(protocolBloom\[selectedProtocolId\] \|\| null\) : null;/);
     assert.match(MINDMAP_JSX, /const focus = focusPoint/);
     assert.match(MINDMAP_JSX, /function ProtocolAssetMotion\(/);
@@ -35,15 +37,26 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /opacity: dimmed \? 0\.22 : 1/);
   });
 
+  test("mindmap lane highlighting uses live positions, not historical activity", () => {
+    assert.match(MINDMAP_JSX, /function isMindmapActiveStrategy\(strategy\)/);
+    assert.match(MINDMAP_JSX, /\.filter\(\(strategy\) => isMindmapActiveStrategy\(strategy\)\)/);
+    assert.doesNotMatch(MINDMAP_JSX, /\.filter\(\(strategy\) => strategy\.status === 'LIVE' \|\| Number\(strategy\.recentActivityCount \|\| 0\) > 0\)/);
+  });
+
   test("chain and protocol nodes render compact USD pills and bounded protocol cards", () => {
     assert.match(MINDMAP_JSX, /function StatPill\(/);
     assert.match(MINDMAP_JSX, /function formatYieldDisplay\(/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_MAX_HEIGHT = 132;/);
-    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 152;/);
-    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(chain\.capitalUsd \|\| 0\) > 0 \? chain\.capitalUsd : chain\.recentActivityUsd\)/);
-    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(strategy\.capitalUsd \|\| 0\) > 0 \? strategy\.capitalUsd : strategy\.recentActivityUsd\)/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 188;/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_CHIP_SIZE = 30;/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_BLOOM_MIN_RADIUS = 112;/);
+    assert.match(MINDMAP_JSX, /const PROTOCOL_BLOOM_PADDING = 22;/);
+    assert.match(MINDMAP_JSX, /\.\.\.items\.map\(\(item\) => Number\(item\.actualProtocolCapitalUsd \|\| 0\)\)/);
+    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(strategy\.capitalUsd \|\| 0\)\)/);
+    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(window\.CAPITAL\?\.byChain\?\.\[chainId\] \|\| 0\)\)/);
     assert.match(MINDMAP_JSX, /const capitalY = labelBelow \? size \* 1\.46 : -size \* 1\.34;/);
-    assert.match(MINDMAP_JSX, /includeRect\(bounds, point\.x, point\.y - chipRadius - 17, 58, 16\)/);
+    assert.match(MINDMAP_JSX, /includeRect\(bounds, point\.x, point\.y - chipRadius - 19, 62, 16\)/);
+    assert.match(MINDMAP_JSX, /includeRect\(bounds, point\.x, point\.y - chipSize \* 2\.48, 48, 18\)/);
     assert.match(MINDMAP_JSX, /yieldMetricLabel\(protocolNode\.yieldBasis\)/);
     assert.match(MINDMAP_JSX, /maxHeight: PROTOCOL_CARD_MAX_HEIGHT/);
     assert.match(MINDMAP_JSX, /const protocolAssets = Array\.from\(new Set\(\[/);

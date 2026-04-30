@@ -7,7 +7,11 @@ export const MOBILE_VIEWPORT = Object.freeze({ width: 375, height: 812 });
 
 export const MINDMAP_FONT_FLOOR_PX = 10;
 export const READABLE_FONT_FLOOR_PX = 12;
-export const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.8;
+export const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.92;
+export const PROTOCOL_CHIP_SIZE = 30;
+export const PROTOCOL_CHIP_RADIUS = PROTOCOL_CHIP_SIZE * 1.12;
+export const PROTOCOL_BLOOM_MIN_RADIUS = 112;
+export const PROTOCOL_BLOOM_PADDING = 22;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));

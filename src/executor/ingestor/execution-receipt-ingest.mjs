@@ -328,7 +328,7 @@ function ingestionDescriptorForExecution(execution) {
       output: outputForDexExecution(execution),
     };
   }
-  if (strategyId === "token-dex-experiment") {
+  if (strategyId === "token-dex-experiment" || strategyId === "native-gas-refill") {
     return {
       kind: "token_dex_experiment",
       routeContext: routeContextForDexExecution(execution),

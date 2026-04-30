@@ -578,7 +578,7 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
   const confirmedTxCount = txActivities.filter((activity) => activity?.status === 'confirmed').length;
   const [expanded, setExpanded] = useState(() => readPersistedHistoryExpanded());
   const [filter, setFilter] = useState(() => readPersistedHistoryFilter());
-  const expandIntoFlow = fill && expanded;
+  const scrollInsideCard = fill && expanded;
   const filteredActivities = activities.filter((activity) => {
     if (filter === 'in_flight') return activity?.kind === 'transaction' && (activity?.status === 'signed' || activity?.status === 'broadcasted');
     if (filter === 'confirmed') return activity?.kind === 'transaction' && activity?.status === 'confirmed';
@@ -616,9 +616,9 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
       background:'var(--card)', border:'0.5px solid var(--line)', borderRadius:12,
       flexShrink:0, animation:`slideUp 220ms cubic-bezier(0.22,1,0.36,1) both`,
       display: 'flex', flexDirection: 'column',
-      minHeight: fill && !expandIntoFlow ? 0 : undefined,
-      flex: fill && !expandIntoFlow ? '1 1 auto' : '0 0 auto',
-      overflow: expandIntoFlow ? 'visible' : 'hidden',
+      minHeight: fill ? 0 : undefined,
+      flex: scrollInsideCard ? '1 1 auto' : fill ? '1 1 auto' : '0 0 auto',
+      overflow: 'hidden',
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
         <div style={{
@@ -680,11 +680,11 @@ function OpsStrip({ fill = false, onExpandedChange = null }) {
       </div>
       <div style={{
         marginTop: 6,
-        flex: fill && !expandIntoFlow ? '1 1 auto' : '0 0 auto',
-        minHeight: fill && !expandIntoFlow ? 0 : undefined,
-        overflowY: fill && !expandIntoFlow ? 'auto' : 'visible',
+        flex: scrollInsideCard ? '1 1 auto' : '0 0 auto',
+        minHeight: scrollInsideCard ? 0 : undefined,
+        overflowY: scrollInsideCard ? 'auto' : 'visible',
         overflowX: 'hidden',
-        paddingRight: fill && !expandIntoFlow ? 4 : 0,
+        paddingRight: scrollInsideCard ? 4 : 0,
         overscrollBehavior: 'contain',
       }}>
         {filteredActivities.length === 0 && (
@@ -778,6 +778,7 @@ function FlowPane({ refreshTick }) {
   const [mindmapFocus, setMindmapFocus] = useState({ layer: 'root' });
   const [historyExpanded, setHistoryExpanded] = useState(() => readPersistedHistoryExpanded());
   const overlayActive = mindmapFocus?.layer === 'chain' || mindmapFocus?.layer === 'protocol';
+  const lowerPanePointerEvents = historyExpanded ? 'auto' : (overlayActive ? 'none' : 'auto');
   const totalUsd = HOLDINGS?.totalUsd != null
     ? HOLDINGS.totalUsd
     : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
@@ -791,16 +792,29 @@ function FlowPane({ refreshTick }) {
   const grossYieldUsd = flow?.metrics?.grossProfitUsdPeriod ?? KPI?.totalEarning?.usd;
   const grossYieldSats = flow?.metrics?.grossProfitSatsPeriod ?? KPI?.totalEarning?.sats ?? 0;
   const strategyYieldUsd = STRATEGIES.reduce((sum, strategy) => sum + (Number.isFinite(strategy?.earnedUsd) ? strategy.earnedUsd : 0), 0);
-  const showPortfolioYield = strategyYieldUsd > 0 && (grossYieldSats <= 0 || grossYieldSats === carrySats);
-  const yieldMain = showPortfolioYield
-    ? fmtUsdCompact(strategyYieldUsd)
+  const liveYieldSats = flow?.metrics?.liveEstimatedYieldSats ?? flow?.liveYield?.estimatedYieldSats ?? null;
+  const liveYieldUsd = flow?.metrics?.liveEstimatedYieldUsd ?? flow?.liveYield?.estimatedYieldUsd ?? null;
+  const liveYieldAprPct = flow?.metrics?.liveYieldAprPct ?? flow?.liveYield?.weightedAprPct ?? null;
+  const liveYieldPositionCount = flow?.metrics?.liveYieldPositionCount ?? flow?.liveYield?.positionCount ?? 0;
+  const showLiveYield = (Number.isFinite(liveYieldSats) && liveYieldSats > 0) || (Number.isFinite(liveYieldUsd) && liveYieldUsd > 0);
+  const liveYieldSub = [
+    Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? fmtUsdCompact(liveYieldUsd) : null,
+    Number.isFinite(liveYieldAprPct) ? `live APR ${fmtPct(liveYieldAprPct)}` : null,
+    liveYieldPositionCount > 0 ? `${liveYieldPositionCount} position${liveYieldPositionCount > 1 ? 's' : ''}` : null,
+  ].filter(Boolean).join(' · ');
+  const yieldMain = showLiveYield
+    ? (Number.isFinite(liveYieldSats) && liveYieldSats > 0 ? fmtSats(liveYieldSats) : fmtUsdCompact(liveYieldUsd))
     : grossYieldSats > 0
       ? fmtSats(grossYieldSats)
+      : strategyYieldUsd > 0
+        ? fmtUsdCompact(strategyYieldUsd)
       : (Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : '—');
-  const yieldSub = showPortfolioYield
-    ? 'live est. · all protocols'
+  const yieldSub = showLiveYield
+    ? liveYieldSub
     : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0
       ? `${fmtUsdCompact(grossYieldUsd)} · all protocols`
+      : strategyYieldUsd > 0
+        ? 'live est. · all protocols'
     : 'all protocols';
   const flowMapBaseHeight = 'calc(52% - 4px)';
   const lowerPaneTop = 'calc(52% + 4px)';
@@ -808,20 +822,21 @@ function FlowPane({ refreshTick }) {
   const aprStrats = STRATEGIES.filter(s => s.status === 'LIVE' && s.apyPct != null && s.capUsd);
   const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
   const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
-  const totalApr = aprDen > 0 ? aprNum / aprDen : null;
+  const totalApr = Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : (aprDen > 0 ? aprNum / aprDen : null);
   const [aprOpen, setAprOpen] = useState(false);
   const assetSub = pending
     ? 'pending'
     : (positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? 's' : ''}` : 'wallet only · 0 open positions');
   return (
-    <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: historyExpanded ? 'auto' : 'hidden' }}>
+    <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: 'hidden' }}>
       <div style={{
         position: 'absolute',
         left: 12,
         right: 12,
         top: 4,
-        height: overlayActive ? 'calc(100% - 12px)' : flowMapBaseHeight,
-        zIndex: 4,
+        height: historyExpanded ? flowMapBaseHeight : overlayActive ? 'calc(100% - 12px)' : flowMapBaseHeight,
+        zIndex: historyExpanded ? 1 : 4,
+        pointerEvents: historyExpanded ? 'none' : 'auto',
         transition: 'height 450ms var(--ease), transform 450ms var(--ease)',
       }}>
         <div style={{
@@ -835,17 +850,17 @@ function FlowPane({ refreshTick }) {
       </div>
 
       <div style={{
-        position: historyExpanded ? 'relative' : 'absolute',
+        position: 'absolute',
         left: 0,
         right: 0,
-        top: historyExpanded ? undefined : lowerPaneTop,
-        bottom: historyExpanded ? undefined : 0,
-        marginTop: historyExpanded ? lowerPaneExpandedOffset : undefined,
-        zIndex: 1,
-        opacity: overlayActive ? 0.28 : 1,
-        transform: overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
-        filter: overlayActive ? 'saturate(0.72)' : 'none',
-        pointerEvents: overlayActive ? 'none' : 'auto',
+        top: lowerPaneTop,
+        bottom: 0,
+        paddingTop: historyExpanded ? 0 : undefined,
+        zIndex: historyExpanded ? 6 : 1,
+        opacity: historyExpanded ? 1 : (overlayActive ? 0.28 : 1),
+        transform: historyExpanded ? 'translateY(0) scale(1)' : overlayActive ? 'translateY(18px) scale(0.985)' : 'translateY(0) scale(1)',
+        filter: historyExpanded ? 'none' : overlayActive ? 'saturate(0.72)' : 'none',
+        pointerEvents: lowerPanePointerEvents,
         transition: 'opacity 450ms var(--ease), transform 450ms var(--ease), filter 450ms var(--ease)',
       }}>
         <div style={{
@@ -856,7 +871,7 @@ function FlowPane({ refreshTick }) {
           paddingBottom: 6,
           overflow: 'hidden',
         }}>
-          <FlowMetricGrid cards={[
+          {!historyExpanded && <FlowMetricGrid cards={[
             {
               label: 'Assets',
               main: pending ? '—' : fmtUsdCompact(assetValueUsd || 0),
@@ -865,7 +880,7 @@ function FlowPane({ refreshTick }) {
             {
               label: 'APR',
               main: totalApr != null ? fmtPct(totalApr) : '—',
-              sub: aprOpen ? 'cap-weighted' : 'tap for note',
+              sub: aprOpen ? (Number.isFinite(liveYieldAprPct) ? 'live weighted' : 'cap-weighted') : 'tap for note',
               onTap: () => setAprOpen(o => !o),
               accent: aprOpen ? 'var(--ink)' : undefined,
             },
@@ -884,8 +899,8 @@ function FlowPane({ refreshTick }) {
               main: yieldMain,
               sub: yieldSub,
             },
-          ]}/>
-          {aprOpen && (
+          ]}/>}
+          {!historyExpanded && aprOpen && (
             <div style={{
               margin:'0 12px', padding:'8px 12px',
               background:'#111113', color:'#F4F4F4', borderRadius:12,
@@ -895,7 +910,7 @@ function FlowPane({ refreshTick }) {
               Cap-weighted average APY across live strategies with APR data. Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands.
             </div>
           )}
-          <OpsStrip fill={!historyExpanded} onExpandedChange={setHistoryExpanded}/>
+          <OpsStrip fill={historyExpanded} onExpandedChange={setHistoryExpanded}/>
         </div>
       </div>
     </div>

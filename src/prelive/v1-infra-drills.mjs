@@ -273,7 +273,7 @@ async function runConsecutiveFailureDrill(rootDir) {
   return buildDrillResult({
     id: "consecutive_failures",
     input: "three prior terminal failures on the same strategy followed by one more submission",
-    expected: "policy blocks with max_consecutive_failures_reached and emits a rejection alert",
+    expected: "policy blocks with max_consecutive_failures_reached and suppresses the non-transaction Telegram alert",
     observed: {
       decision: policy.decision,
       blockers: policy.blockers,
@@ -281,7 +281,10 @@ async function runConsecutiveFailureDrill(rootDir) {
     auditTail: await auditTail(rootDir),
     alert,
     status:
-      policy.blockers.includes("max_consecutive_failures_reached") && alert.sent === true ? "passed" : "failed",
+      policy.blockers.includes("max_consecutive_failures_reached") &&
+      (alert.sent === true || alert.reason === "transaction_alerts_only")
+        ? "passed"
+        : "failed",
     blockers: policy.blockers,
   });
 }

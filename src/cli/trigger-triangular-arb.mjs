@@ -462,8 +462,22 @@ async function runCycle(args, profile, datasetNames, store, session) {
             const chatId = envText.match(/TELEGRAM_CHAT_ID=(.+)/)?.[1]?.trim();
             if (botToken && chatId) {
               const text = success
-                ? `🔥 *LIVE TRADE SUCCESS*\nRoute: \`${best.label}\`\nProfit: $${best.netProfit.toFixed(2)}\nTX: ${txHash}`
-                : `⚠️ *Trade Reverted*\nRoute: \`${best.label}\`\nGas lost: ~$0.004\nTX: ${txHash}`;
+                ? [
+                    "BOB Claw 실제 트랜잭션",
+                    "상태: 성공",
+                    `경로: ${best.label}`,
+                    "BTC PnL: 기록 없음",
+                    `USD 표시 PnL: $${best.netProfit.toFixed(2)}`,
+                    `tx: ${txHash}`,
+                  ].join("\n")
+                : [
+                    "BOB Claw 실제 트랜잭션",
+                    "상태: 리버트",
+                    `경로: ${best.label}`,
+                    "BTC PnL: 기록 없음",
+                    "USD 표시 비용: 약 $0.004",
+                    `tx: ${txHash}`,
+                  ].join("\n");
                await sendTelegramMessage({ botToken, chatId, text, category: "live_execution_result" });
             }
           }

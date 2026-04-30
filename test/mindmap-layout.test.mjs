@@ -4,6 +4,9 @@ import {
   MOBILE_VIEWPORT,
   MINDMAP_FONT_FLOOR_PX,
   READABLE_FONT_FLOOR_PX,
+  PROTOCOL_CHIP_RADIUS,
+  PROTOCOL_BLOOM_MIN_RADIUS,
+  PROTOCOL_BLOOM_PADDING,
   placeChainRing,
   bloomRadiusForCount,
   computeProtocolBloom,
@@ -78,24 +81,36 @@ describe("bloomRadiusForCount + computeProtocolBloom: overlap-free", () => {
     assert.ok(r >= 62);
   });
 
-  test("chips never overlap for counts 1..8 with chipR=31, padding=6", () => {
+  test("chips never overlap for counts 1..8 with zoom spacing constants", () => {
     for (let count = 1; count <= 8; count += 1) {
       const anchor = { x: 80, y: 60 };
       const { radius, points } = computeProtocolBloom({
-        anchor, count, chipR: 31, minR: 62, padding: 6,
+        anchor, count, chipR: PROTOCOL_CHIP_RADIUS, minR: PROTOCOL_BLOOM_MIN_RADIUS, padding: PROTOCOL_BLOOM_PADDING,
       });
-      assert.ok(radius >= 62, `count=${count} radius below minR`);
+      assert.ok(radius >= PROTOCOL_BLOOM_MIN_RADIUS, `count=${count} radius below minR`);
       assert.equal(points.length, count);
       for (let i = 0; i < points.length; i += 1) {
         for (let j = i + 1; j < points.length; j += 1) {
           const d = distance(points[i], points[j]);
           assert.ok(
-            d >= 2 * 31 + 6 - 1e-6,
-            `count=${count} chips ${i},${j} overlap: d=${d.toFixed(2)} < ${2 * 31 + 6}`
+            d >= 2 * PROTOCOL_CHIP_RADIUS + PROTOCOL_BLOOM_PADDING - 1e-6,
+            `count=${count} chips ${i},${j} overlap: d=${d.toFixed(2)}`
           );
         }
       }
     }
+  });
+
+  test("single selected protocol keeps a visible chain gap", () => {
+    const anchor = { x: 112, y: 80 };
+    const { points } = computeProtocolBloom({
+      anchor,
+      count: 1,
+      chipR: PROTOCOL_CHIP_RADIUS,
+      minR: PROTOCOL_BLOOM_MIN_RADIUS,
+      padding: PROTOCOL_BLOOM_PADDING,
+    });
+    assert.ok(distance(anchor, points[0]) >= 108, "protocol chip too close to selected chain");
   });
 
   test("anchor on positive y maps spread tangent to chain ring", () => {

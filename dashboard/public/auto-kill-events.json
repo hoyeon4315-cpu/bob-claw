@@ -1,55 +1,11 @@
 {
   "schemaVersion": 1,
-  "observedAt": "2026-04-29T10:24:54.855Z",
+  "observedAt": "2026-04-30T13:08:12.194Z",
   "summaryKind": "event_window_with_current_kill_switch_state",
   "windowMs": 86400000,
-  "totalEvaluations24h": 56,
-  "triggerCounts": {
-    "relative_price_stale": 56,
-    "oracle_divergence": 1
-  },
-  "lastEvent": {
-    "schemaVersion": 1,
-    "evaluatedAt": "2026-04-29T05:55:29.478Z",
-    "triggers": [
-      {
-        "trigger": "oracle_divergence",
-        "divergence": 2548901.4077544366,
-        "threshold": 0.05,
-        "minPriceUsd": 0.02997957072327497,
-        "maxPriceUsd": 76415,
-        "sources": [
-          "dashboard",
-          "market_price_snapshot",
-          "market_price_snapshot",
-          "computed_from_market_price_snapshot",
-          "market_price_snapshot",
-          "market_price_snapshot",
-          "computed_from_market_price_snapshot",
-          "market_price_snapshot",
-          "market_price_snapshot",
-          "computed_from_market_price_snapshot",
-          "market_price_snapshot",
-          "market_price_snapshot",
-          "computed_from_market_price_snapshot",
-          "market_price_snapshot",
-          "market_price_snapshot",
-          "computed_from_market_price_snapshot"
-        ]
-      },
-      {
-        "trigger": "relative_price_stale",
-        "pair": "ETH/BTC",
-        "ageMs": 27899031,
-        "threshold": 1800000,
-        "windowMs": 604800000,
-        "sampleCount": 5,
-        "latestSampleAt": "2026-04-28T22:10:30.447Z"
-      }
-    ],
-    "killSwitchPath": "/Users/love/.bob-claw/KILL_SWITCH",
-    "alreadyArmed": true
-  },
+  "totalEvaluations24h": 0,
+  "triggerCounts": {},
+  "lastEvent": null,
   "armedAt": null,
   "killSwitchActive": false,
   "currentState": "running"

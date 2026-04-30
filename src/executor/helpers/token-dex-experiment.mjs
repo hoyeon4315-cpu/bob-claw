@@ -193,6 +193,88 @@ export async function buildTokenDexExperimentPlan({
   const normalizedOutputToken = unwrapToNative
     ? WRAPPED_NATIVE_TOKENS[chain]
     : normalizeErc20Token(chain, outputToken, "outputToken");
+  const gasBuffer = Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps"));
+  if (unwrapToNative && normalizedInputToken.toLowerCase() === normalizedOutputToken.toLowerCase()) {
+    const inputAsset = tokenAsset(chain, normalizedInputToken);
+    const outputAsset = tokenAsset(chain, ZERO_TOKEN);
+    let gasSnapshot = null;
+    let gasSnapshotError = null;
+    try {
+      gasSnapshot = await gasSnapshotImpl(chain, getEvmChainConfig(chain));
+    } catch (error) {
+      gasSnapshotError = serializePreflightError(error);
+    }
+    let unwrapGasLimit = null;
+    try {
+      const unwrapGas = await estimateGasImpl(
+        chain,
+        {
+          from: senderAddress,
+          to: normalizedInputToken,
+          data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [normalizedAmount]),
+          valueWei: "0",
+        },
+        getEvmChainConfig(chain),
+      );
+      unwrapGasLimit = String(applyGasBuffer(unwrapGas.gasUnits, gasBuffer));
+    } catch {
+      unwrapGasLimit = String(applyGasBuffer(DEFAULT_UNWRAP_NATIVE_GAS_UNITS, gasBuffer));
+    }
+    return {
+      schemaVersion: 1,
+      observedAt: now,
+      planStatus: "ready",
+      blockedReason: null,
+      preflightError: null,
+      strategyId,
+      chain,
+      senderAddress,
+      inputToken: normalizedInputToken,
+      inputAsset,
+      outputToken: ZERO_TOKEN,
+      wrappedOutputToken: normalizedInputToken,
+      outputAsset,
+      amount: normalizedAmount,
+      amountUsd: null,
+      quoteTtlMs: strategyCaps.intentTtlMs,
+      slippageBps: Number(slippageBps),
+      gasBufferBps: gasBuffer,
+      quote: null,
+      gasSnapshot,
+      gasSnapshotError,
+      minimumOutputAmount: normalizedAmount,
+      steps: [{
+        id: "unwrap_wrapped_native",
+        intent: {
+          strategyId,
+          chain,
+          family: "evm",
+          intentType: "unwrap_native",
+          amountUsd: null,
+          mode: "live",
+          observedAt: now,
+          executionReason: "strategy_execution",
+          approval: null,
+          tx: {
+            to: normalizedInputToken,
+            data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [normalizedAmount]),
+            value: "0",
+            gasLimit: unwrapGasLimit,
+          },
+          strategyConfig: {
+            intentTtlMs: strategyCaps.intentTtlMs,
+          },
+          metadata: {
+            skipAutoIngest: true,
+            provider: "wrapped_native",
+            outputToken: ZERO_TOKEN,
+            wrappedOutputToken: normalizedInputToken,
+            minimumOutputAmount: normalizedAmount,
+          },
+        },
+      }],
+    };
+  }
   if (normalizedInputToken.toLowerCase() === normalizedOutputToken.toLowerCase()) {
     throw new Error("Input and output tokens must differ");
   }
@@ -227,7 +309,6 @@ export async function buildTokenDexExperimentPlan({
       gasSnapshotError = serializePreflightError(error);
     }
 
-    const gasBuffer = Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps"));
     let allowanceBefore = null;
     try {
       allowanceBefore = await readErc20AllowanceImpl(

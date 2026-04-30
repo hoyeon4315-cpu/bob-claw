@@ -185,6 +185,26 @@ test("all-chain autopilot truth prefers latest completed report over timed out l
   assert.equal(resolved?.observedAt, "2026-04-27T02:50:15.364Z");
 });
 
+test("all-chain autopilot truth prefers newer running progress over stale completed error", () => {
+  const resolved = resolveAllChainAutopilotReport(
+    {
+      observedAt: "2026-04-27T03:10:00.000Z",
+      status: "running",
+      phase: "refill_complete",
+      summary: { refillExecutedCount: 1 },
+    },
+    {
+      observedAt: "2026-04-27T02:50:15.364Z",
+      status: "error",
+      phase: "completed",
+      blockedReason: "Command timed out after 1200000ms",
+    },
+  );
+  assert.equal(resolved?.status, "running");
+  assert.equal(resolved?.phase, "refill_complete");
+  assert.equal(resolved?.summary?.refillExecutedCount, 1);
+});
+
 test("Merkl active positions aggregate open live-capital entries", () => {
   const slice = buildMerklActivePositions(
     [
@@ -446,4 +466,40 @@ test("flow dashboard slice compacts live activities and leverage hints for the f
   assert.equal(slice.recentActivities[3].finalAssetId, "btc");
   assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedHealthFactor, 1.92);
   assert.equal(slice.strategyRiskById["wrapped-btc-loop-base-moonwell"].projectedLiquidationBufferPct, 18.2);
+});
+
+test("flow dashboard slice exposes live estimated yield in sats from active APR positions", () => {
+  const slice = buildFlowDashboardSlice({
+    payback: {
+      grossProfitSatsPeriod: 0,
+      carry: { pendingSats: 0 },
+      paidBackSatsLifetime: 0,
+    },
+    capitalSummary: { totalUsd: 500 },
+    btcUsd: 100000,
+    merklActivePositions: {
+      items: [
+        {
+          id: "merkl_yield",
+          label: "YO USDC",
+          chain: "base",
+          protocol: "yo",
+          capUsd: 365,
+          aprPct: 10,
+          lastObservedAt: "2026-04-24T06:30:00.000Z",
+        },
+      ],
+    },
+    generatedAt: "2026-04-25T06:30:00.000Z",
+  });
+
+  assert.equal(slice.liveYield.status, "active");
+  assert.equal(slice.liveYield.positionCount, 1);
+  assert.equal(slice.liveYield.weightedAprPct, 10);
+  assert.equal(slice.liveYield.estimatedYieldUsd, 0.1);
+  assert.equal(slice.liveYield.estimatedYieldSats, 100);
+  assert.equal(slice.metrics.liveEstimatedYieldSats, 100);
+  assert.equal(slice.metrics.liveEstimatedYieldUsd, 0.1);
+  assert.equal(slice.metrics.liveYieldAprPct, 10);
+  assert.equal(slice.metrics.liveYieldPositionCount, 1);
 });

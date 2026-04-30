@@ -266,6 +266,60 @@ test("token dex experiment plan supports native output unwrap", async () => {
   assert.equal(plan.steps[2].id, "unwrap_wrapped_native");
 });
 
+test("token dex experiment plan directly unwraps wrapped-native input to native output", async () => {
+  let quoteCalled = false;
+  let estimateCalls = 0;
+  const plan = await buildTokenDexExperimentPlan({
+    providers: [{
+      name: "should_not_quote",
+      quote: async () => {
+        quoteCalled = true;
+        throw new Error("quote should not be requested for direct unwrap");
+      },
+    }],
+    estimateGasImpl: async () => {
+      estimateCalls += 1;
+      return {
+        observedAt: "2026-04-16T06:00:01.000Z",
+        chain: "bsc",
+        rpcUrl: "https://bsc-rpc.example",
+        latencyMs: 12,
+        gasUnits: 45_000,
+        gasUnitsHex: "0xafc8",
+        rpcFallbacksTried: 0,
+      };
+    },
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "bsc",
+      rpcUrl: "https://bsc-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "bsc",
+    amount: "5000000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wrapped_native",
+    outputToken: "native",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(quoteCalled, false);
+  assert.equal(estimateCalls, 1);
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.inputAsset.ticker, "WBNB");
+  assert.equal(plan.outputAsset.ticker, "BNB");
+  assert.equal(plan.outputToken, "0x0000000000000000000000000000000000000000");
+  assert.equal(plan.wrappedOutputToken, "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c");
+  assert.equal(plan.minimumOutputAmount, "5000000000000000");
+  assert.equal(plan.steps.length, 1);
+  assert.equal(plan.steps[0].id, "unwrap_wrapped_native");
+  assert.equal(plan.steps[0].intent.tx.gasLimit, "54000");
+});
+
 test("token dex experiment plan surfaces routing failures cleanly", async () => {
   const plan = await buildTokenDexExperimentPlan({
     client: {

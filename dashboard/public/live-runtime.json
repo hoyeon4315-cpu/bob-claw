@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "origin": "https://pig-controller-town-hughes.trycloudflare.com",
-  "statusUrl": "https://pig-controller-town-hughes.trycloudflare.com/api/live-status",
-  "eventsUrl": "https://pig-controller-town-hughes.trycloudflare.com/api/live-events",
-  "updatedAt": "2026-04-29T10:27:09.645Z"
+  "origin": "https://tennessee-notification-people-builder.trycloudflare.com",
+  "statusUrl": "https://tennessee-notification-people-builder.trycloudflare.com/api/live-status",
+  "eventsUrl": "https://tennessee-notification-people-builder.trycloudflare.com/api/live-events",
+  "updatedAt": "2026-04-30T13:08:03.061Z"
 }

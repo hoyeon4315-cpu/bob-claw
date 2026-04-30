@@ -1,3 +1,5 @@
+import { buildLiveYieldSlice, liveYieldMetricFields } from "./live-yield-slice.mjs";
+
 function finiteNumber(value) {
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -260,6 +262,7 @@ function buildStrategyRiskById({ wrappedBtcLendingLoopSlice = null, recursiveWra
 export function buildFlowDashboardSlice({
   executionEvents = [],
   merklPositionEvents = [],
+  merklActivePositions = null,
   signerAuditRecords = [],
   payback = null,
   capitalSummary = null,
@@ -297,10 +300,16 @@ export function buildFlowDashboardSlice({
   const grossProfitSatsPeriod = finiteNumber(payback?.grossProfitSatsPeriod);
   const paidBackSatsLifetime = finiteNumber(payback?.paidBackSatsLifetime);
   const lastPaybackSettledSats = finiteNumber(payback?.lastPaybackSettledSats);
+  const liveYield = buildLiveYieldSlice({
+    merklActivePositions,
+    btcUsd,
+    generatedAt,
+  });
 
   return Object.freeze({
     schemaVersion: 1,
     generatedAt,
+    liveYield,
     metrics: Object.freeze({
       assetValueUsd: finiteNumber(capitalSummary?.totalUsd),
       grossProfitSatsPeriod,
@@ -311,6 +320,7 @@ export function buildFlowDashboardSlice({
       paidBackUsdLifetime: satsToUsd(paidBackSatsLifetime, btcUsd),
       lastPaybackSettledSats,
       lastPaybackSettledUsd: satsToUsd(lastPaybackSettledSats, btcUsd),
+      ...liveYieldMetricFields(liveYield),
     }),
     strategyRiskById: buildStrategyRiskById({
       wrappedBtcLendingLoopSlice,

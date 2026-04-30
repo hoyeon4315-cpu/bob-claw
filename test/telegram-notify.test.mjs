@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { handleIntentCommand } from "../src/executor/signer/daemon.mjs";
 import { notifyPolicyRejection } from "../src/executor/signer/policy-alerts.mjs";
+import { formatLiveTransactionAlert } from "../src/executor/signer/transaction-alerts.mjs";
 import { createWatchdogAlerter } from "../src/executor/watchdog/runner.mjs";
 import { buildTelegramDeliveryDecision, formatGatewayUpdateAlert, formatPreliveForkExecutionAlert, sendTelegramMessage } from "../src/notify/telegram.mjs";
 import { notifyCanaryDecision } from "../src/watch/canary-readiness-watch.mjs";
 
 test("telegram sender skips cleanly when not configured", async () => {
-  const result = await sendTelegramMessage({ botToken: "", chatId: "", text: "hello", category: "watchdog_halt" });
+  const result = await sendTelegramMessage({ botToken: "", chatId: "", text: "hello", category: "live_execution_result" });
 
   assert.equal(result.sent, false);
   assert.equal(result.skipped, true);
   assert.equal(result.reason, "telegram_not_configured");
 });
 
-test("telegram sender suppresses non-ops categories in ops-only mode", async () => {
+test("telegram sender suppresses non-transaction categories in transaction-only mode", async () => {
   let fetchCalled = false;
   const result = await sendTelegramMessage({
     botToken: "token",
@@ -33,13 +38,13 @@ test("telegram sender suppresses non-ops categories in ops-only mode", async () 
   assert.equal(result.category, "gateway_update");
 });
 
-test("telegram sender delivers immediate ops categories", async () => {
+test("telegram sender delivers actual transaction categories", async () => {
   let request = null;
   const result = await sendTelegramMessage({
     botToken: "token",
     chatId: "chat",
     text: "hello",
-    category: "watchdog_halt",
+    category: "live_execution_result",
     fetchImpl: async (url, options) => {
       request = { url, options };
       return {
@@ -51,15 +56,35 @@ test("telegram sender delivers immediate ops categories", async () => {
   });
 
   assert.equal(result.sent, true);
-  assert.equal(result.category, "watchdog_halt");
+  assert.equal(result.category, "live_execution_result");
   assert.match(request.url, /sendMessage$/);
 });
 
-test("telegram delivery decision defaults to ops-only suppression for unspecified categories", () => {
+test("telegram delivery decision defaults to transaction-only suppression for unspecified categories", () => {
   const decision = buildTelegramDeliveryDecision({});
-  assert.equal(decision.mode, "ops_only");
+  assert.equal(decision.mode, "transaction_only");
   assert.equal(decision.category, "unspecified");
   assert.equal(decision.allowed, false);
+});
+
+test("telegram suppresses non-transaction ops categories", async () => {
+  let fetchCalled = false;
+  const result = await sendTelegramMessage({
+    botToken: "token",
+    chatId: "chat",
+    text: "watchdog",
+    category: "watchdog_halt",
+    fetchImpl: async () => {
+      fetchCalled = true;
+      throw new Error("suppressed watchdog alerts should not call fetch");
+    },
+  });
+
+  assert.equal(fetchCalled, false);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "telegram_category_suppressed");
+  assert.equal(result.category, "watchdog_halt");
 });
 
 test("gateway update telegram alert includes reason and live block reminder", () => {
@@ -87,7 +112,7 @@ test("gateway update telegram alert includes reason and live block reminder", ()
   assert.match(text, /liveTrading: still blocked/);
 });
 
-test("policy rejection alert is tagged as a strategy halt", async () => {
+test("policy rejection alert is suppressed in transaction-only mode", async () => {
   let payload = null;
   const result = await notifyPolicyRejection({
     intent: { strategyId: "wrapped-btc-loop-base-moonwell", chain: "base", intentType: "strategy_execution" },
@@ -98,12 +123,13 @@ test("policy rejection alert is tagged as a strategy halt", async () => {
     },
   });
 
-  assert.equal(result.sent, true);
-  assert.equal(payload.category, "strategy_halt");
-  assert.match(payload.text, /max_consecutive_failures_reached/);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "transaction_alerts_only");
+  assert.equal(payload, null);
 });
 
-test("watchdog alerter is tagged as an ops halt", async () => {
+test("watchdog alerter is suppressed in transaction-only mode", async () => {
   let payload = null;
   const alerter = createWatchdogAlerter({
     botToken: "token",
@@ -120,12 +146,94 @@ test("watchdog alerter is tagged as an ops halt", async () => {
     killSwitchPath: "./state/kill-switch",
   });
 
-  assert.equal(result.sent, true);
-  assert.equal(payload.category, "watchdog_halt");
-  assert.match(payload.text, /BOB Claw watchdog halt/);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "transaction_alerts_only");
+  assert.equal(payload, null);
 });
 
-test("canary readiness alert is suppressed in ops-only mode", async () => {
+test("live transaction alert is Korean and includes the broadcast hash", () => {
+  const text = formatLiveTransactionAlert({
+    intent: {
+      strategyId: "gateway-btc-funding-transfer",
+      chain: "base",
+      intentType: "gateway_btc_transfer",
+      amountUsd: 12.34,
+      metadata: { amountSats: "12345" },
+    },
+    broadcast: { txHash: `0x${"a".repeat(64)}` },
+  });
+
+  assert.match(text, /실제 트랜잭션/);
+  assert.match(text, /상태: 브로드캐스트/);
+  assert.match(text, /전략: gateway-btc-funding-transfer/);
+  assert.match(text, /체인: base/);
+  assert.match(text, /BTC 기준: 12345 sats/);
+  assert.match(text, /USD 표시: \$12\.34/);
+  assert.match(text, /tx: 0xaaaaaaaa\.\.\.aaaaaa/);
+});
+
+test("signer notifies once in Korean when a transaction is broadcast", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-tx-alert-"));
+  const txHash = `0x${"b".repeat(64)}`;
+  const notifications = [];
+  const now = new Date().toISOString();
+  const signers = {
+    evm: {
+      signIntent: async (intent) => ({
+        schemaVersion: 1,
+        intentId: intent.intentId,
+        strategyId: intent.strategyId,
+        chain: intent.chain,
+        signerFamily: "evm",
+        txHash,
+        signedTx: "0xsigned",
+        metadata: { nonce: 1 },
+      }),
+      broadcastSignedIntent: async () => ({ txHash, nonce: 1 }),
+    },
+  };
+
+  try {
+    const result = await handleIntentCommand({
+      message: {
+        command: "sign_and_broadcast",
+        intent: {
+          strategyId: "gateway-btc-funding-transfer",
+          chain: "base",
+          intentType: "gateway_btc_transfer",
+          amountUsd: 1,
+          quote: { observedAt: now },
+          observedAt: now,
+          metadata: { amountSats: "1000" },
+        },
+      },
+      signers,
+      args: {
+        activeBudgetUsd: null,
+        killSwitchPath: null,
+        autoIngest: false,
+      },
+      cwd: dir,
+      transactionNotifyImpl: async (payload) => {
+        notifications.push(payload);
+        return { sent: true, skipped: false };
+      },
+    });
+
+    assert.equal(result.status, "ok");
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].category, "live_execution_result");
+    assert.match(notifications[0].text, /실제 트랜잭션/);
+    assert.match(notifications[0].text, /상태: 브로드캐스트/);
+    assert.match(notifications[0].text, /tx: 0xbbbbbbbb\.\.\.bbbbbb/);
+    assert.equal(result.transactionNotification.sent, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("canary readiness alert is suppressed in transaction-only mode", async () => {
   let fetchCalled = false;
   const result = await notifyCanaryDecision({
     botToken: "token",

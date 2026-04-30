@@ -18,7 +18,7 @@
 //
 //   $ node dashboard/public/assets/logos/generate.mjs
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -44,7 +44,7 @@ export const PROTOCOL_MARKS = Object.freeze([
   { id: "morpho",     color: "#2D4A7C", mark: "Mo", ink: "#FFFFFF" },
   { id: "aave",       color: "#B6509E", mark: "AA", ink: "#FFFFFF" },
   { id: "euler",      color: "#2AE5B9", mark: "EU", ink: "#0B1F18" },
-  { id: "yo",         color: "#111113", mark: "YO", ink: "#FFFFFF" },
+  { id: "yo",         color: "#CCFF00", mark: "YO", ink: "#111113" },
   { id: "pendle",     color: "#00ADAB", mark: "PT", ink: "#FFFFFF" },
   { id: "aerodrome",  color: "#1656F7", mark: "AE", ink: "#FFFFFF" },
   { id: "beefy",      color: "#4DB258", mark: "BF", ink: "#FFFFFF" },
@@ -58,6 +58,10 @@ export const PROTOCOL_MARKS = Object.freeze([
   { id: "odos",       color: "#1F2937", mark: "OD", ink: "#FFFFFF" },
   { id: "gaszip",     color: "#10B981", mark: "GZ", ink: "#0B1F18" },
 ]);
+
+export const OFFICIAL_LOCAL_PROTOCOL_IDS = Object.freeze(new Set([
+  "yo",
+]));
 
 export function renderLetterMark({ id, color, mark, ink }) {
   const chars = String(mark || "?");
@@ -92,7 +96,9 @@ function main() {
     writeFileSync(join(HERE, "chains", `${c.id}.svg`), renderLetterMark(c));
   }
   for (const p of PROTOCOL_MARKS) {
-    writeFileSync(join(HERE, "protocols", `${p.id}.svg`), renderLetterMark(p));
+    const outputPath = join(HERE, "protocols", `${p.id}.svg`);
+    if (OFFICIAL_LOCAL_PROTOCOL_IDS.has(p.id) && existsSync(outputPath)) continue;
+    writeFileSync(outputPath, renderLetterMark(p));
   }
   writeFileSync(
     join(HERE, "manifest.json"),

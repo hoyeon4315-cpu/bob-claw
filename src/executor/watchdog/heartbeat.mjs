@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -13,7 +14,7 @@ export async function writeHeartbeat({
     ...metadata,
   };
   await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}-${randomUUID()}`;
   await writeFile(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   await rename(tmpPath, path);
   return payload;

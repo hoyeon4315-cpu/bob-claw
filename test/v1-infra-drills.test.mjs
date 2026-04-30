@@ -24,5 +24,6 @@ test("V1 infra drill suite passes all five repo-safe local drills", async () => 
   const consecutive = report.drills.find((item) => item.id === "consecutive_failures");
   assert.equal(consecutive.status, "passed");
   assert.equal(consecutive.blockers.includes("max_consecutive_failures_reached"), true);
-  assert.equal(consecutive.alert.sent, true);
+  assert.equal(consecutive.alert.sent, false);
+  assert.equal(consecutive.alert.reason, "transaction_alerts_only");
 });

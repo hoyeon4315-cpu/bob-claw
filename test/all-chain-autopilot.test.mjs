@@ -1690,6 +1690,104 @@ test("all-chain autopilot separates refill attempts from delivered executions", 
   assert.equal(report.refillExecutions[0].executionBlockedReason, "strategy_per_trade_cap_exceeded");
 });
 
+test("all-chain autopilot reserves shared source inventory across refill jobs", async () => {
+  const seen = [];
+  const source = {
+    chain: "avalanche",
+    token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+    actual: "10000",
+    actualDecimal: 0.0001,
+    estimatedUsd: 7.5,
+  };
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 0 },
+          jobs: [],
+        },
+      };
+    }
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "REBALANCE_REQUIRED", actions: [] },
+          capitalPlan: { decision: "REFILL_REQUIRED", summary: { actionCount: 2, blockerCount: 0 } },
+          jobs: {
+            summary: { jobCount: 2, estimatedAssetValueUsd: 12 },
+            jobs: [
+              {
+                jobId: "shared-source-1",
+                chain: "base",
+                asset: "wBTC.OFT",
+                type: "refill_token",
+                token: source.token,
+                targetAmount: "8000",
+                targetAmountDecimal: 0.00008,
+                executionMethod: "cross_chain_bridge_lifi",
+                requiresManualReview: false,
+                fundingSource: { selectionStatus: "ready", source },
+              },
+              {
+                jobId: "shared-source-2",
+                chain: "bsc",
+                asset: "wBTC.OFT",
+                type: "refill_token",
+                token: source.token,
+                targetAmount: "8000",
+                targetAmountDecimal: 0.00008,
+                executionMethod: "cross_chain_bridge_lifi",
+                requiresManualReview: false,
+                fundingSource: { selectionStatus: "ready", source },
+              },
+            ],
+          },
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "cross_chain_bridge_lifi",
+          preparation: { status: "ready", executionMethod: "cross_chain_bridge_lifi" },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillAttemptedCount, 1);
+  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(report.refillExecutions.length, 2);
+  assert.equal(report.refillExecutions[0].jobId, "shared-source-1");
+  assert.equal(report.refillExecutions[0].executed, true);
+  assert.equal(report.refillExecutions[1].jobId, "shared-source-2");
+  assert.equal(report.refillExecutions[1].attempted, false);
+  assert.equal(report.refillExecutions[1].previewBlockedReason, "source_inventory_reserved");
+  assert.equal(seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length, 1);
+});
+
 test("all-chain autopilot surfaces unresolved live execution status instead of preview ready", async () => {
   const command = ({ args }) => {
     const name = args[0];

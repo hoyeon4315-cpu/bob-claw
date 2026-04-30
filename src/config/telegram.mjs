@@ -1,13 +1,8 @@
-export const TELEGRAM_ALERT_MODE = "ops_only";
+export const TELEGRAM_ALERT_MODE = "transaction_only";
 
 export const TELEGRAM_IMMEDIATE_ALERT_CATEGORIES = Object.freeze([
-  "watchdog_halt",
-  "strategy_halt",
   "live_execution_result",
   "payback_settlement",
-  "payback_deferred",
-  "capital_blocked",
-  "kill_switch",
 ]);
 
 const TELEGRAM_IMMEDIATE_ALERT_CATEGORY_SET = new Set(TELEGRAM_IMMEDIATE_ALERT_CATEGORIES);

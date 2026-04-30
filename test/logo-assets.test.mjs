@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   CHAIN_MARKS,
   PROTOCOL_MARKS,
+  OFFICIAL_LOCAL_PROTOCOL_IDS,
   renderLetterMark,
   buildManifest,
 } from "../dashboard/public/assets/logos/generate.mjs";
@@ -115,6 +116,10 @@ describe("T25 manifest + license", () => {
     for (const p of m.protocols) assert.match(p.file, /^protocols\/[a-z0-9]+\.svg$/);
   });
 
+  test("generator preserves audited official local protocol marks", () => {
+    assert.ok(OFFICIAL_LOCAL_PROTOCOL_IDS.has("yo"));
+  });
+
   test("LICENSES.md present and references every id", () => {
     const path = join(LOGOS_DIR, "LICENSES.md");
     assert.ok(existsSync(path), "LICENSES.md missing");
@@ -147,9 +152,14 @@ describe("dashboard logo runtime invariants", () => {
   test("protocol sources include official entries for live protocols missing from DeFiLlama", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
     assert.ok(runtime.includes("euler:     [prox('https://www.euler.finance/branding/euler-symbol-color.svg'), prox('https://app.euler.finance/favicon.ico')]"));
-    assert.ok(runtime.includes("yo:        [prox('https://yo.xyz/images/logo-green.svg'), prox('https://www.yo.xyz/images/logo.svg'), prox('https://www.yo.xyz/icon.svg'), prox('https://www.yo.xyz/favicon.ico')]"));
-    assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler'\]\);/);
+    assert.ok(runtime.includes("yo:        [prox('https://www.yo.xyz/images/logo-green.svg'), prox('https://www.yo.xyz/images/logo.svg'), prox('https://www.yo.xyz/icon.svg'), prox('https://www.yo.xyz/favicon.ico')]"));
+    assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler', 'yo'\]\);/);
     assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
+  });
+
+  test("runtime logo images decode asynchronously without delaying first paint", () => {
+    const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
+    assert.match(runtime, /loading="eager" decoding="async" fetchPriority="low"/);
   });
 
   test("local Euler fallback is branded artwork, not the old lettermark placeholder", () => {
@@ -158,5 +168,15 @@ describe("dashboard logo runtime invariants", () => {
     assert.match(svg, /fill="#FCBF22"/);
     assert.match(svg, /fill="#FF7829"/);
     assert.doesNotMatch(svg, />EU</);
+  });
+
+  test("local YO mark is the official web SVG and loads before the remote fallback", () => {
+    const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
+    assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
+    const svg = readFileSync(join(LOGOS_DIR, "protocols", "yo.svg"), "utf8");
+    assert.match(svg, /aria-label="yo"/);
+    assert.match(svg, /viewBox="0 0 64 64"/);
+    assert.match(svg, /fill="#CCFF00"/);
+    assert.doesNotMatch(svg, />YO</);
   });
 });

@@ -43,6 +43,21 @@ test("executor runtime refreshes a stale heartbeat when signer health responds",
   assert.equal(runtime.watchdog.status, "healthy");
 });
 
+test("heartbeat writer survives same-millisecond concurrent writes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-heartbeat-race-"));
+  const heartbeatPath = join(dir, "executor-heartbeat.json");
+  const originalNow = Date.now;
+  Date.now = () => 1777292627147;
+  try {
+    await Promise.all([
+      writeHeartbeat({ path: heartbeatPath, metadata: { lastCommand: "health" } }),
+      writeHeartbeat({ path: heartbeatPath, metadata: { lastCommand: "sign_and_broadcast" } }),
+    ]);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test("executor runtime stays stale when socket health cannot be refreshed", async () => {
   const runtime = await loadExecutorRuntime({
     now: "2026-04-19T04:05:00.000Z",

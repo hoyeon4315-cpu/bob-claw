@@ -4,14 +4,18 @@
 // Layout invariants (mirrored from src/dashboard/mindmap-layout.mjs, unit-tested
 // in test/mindmap-layout.test.mjs): viewport 375x812, label fontSize >=10,
 // readable copy fontSize >=12, protocol bloom radius adapted to chip count to
-// guarantee chord >= 2*chipR + 6 between adjacent chips (no overlap up to 8).
+// keep a visible chain gap and guarantee adjacent protocol chips do not overlap.
 
 const { useState, useEffect, useRef, useMemo } = React;
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const T_FAST = 450;
 const T_MED = 320;
-const PROTOCOL_BLOOM_SPREAD = 2 * Math.PI;
+const PROTOCOL_BLOOM_SPREAD = Math.PI * 0.92;
+const PROTOCOL_CHIP_SIZE = 30;
+const PROTOCOL_CHIP_RADIUS = PROTOCOL_CHIP_SIZE * 1.12;
+const PROTOCOL_BLOOM_MIN_RADIUS = 112;
+const PROTOCOL_BLOOM_PADDING = 22;
 
 const PHYS = {
   REPULSION_K: 0.3,
@@ -22,7 +26,7 @@ const PHYS = {
 };
 
 const PROTOCOL_CARD_MAX_HEIGHT = 132;
-const PROTOCOL_CARD_SAFE_BOTTOM = 152;
+const PROTOCOL_CARD_SAFE_BOTTOM = 188;
 const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;
 
 function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
@@ -41,6 +45,13 @@ function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
 // payback, and BOB Gateway as the BTC <-> EVM entrypoint.
 const MINDMAP_HIDDEN_PROTOCOLS = new Set(['odos', 'gaszip']);
 const MINDMAP_HIDDEN_TYPES = new Set(['refuel']);
+
+function isMindmapActiveStrategy(strategy) {
+  if (strategy.status === 'LIVE') return strategy.status === 'LIVE';
+  if (strategy.activeStrategyState === 'live_position') return true;
+  return Number(strategy.actualProtocolCapitalUsd || 0) > 0;
+}
+
 function isMindmapVisible(strategy) {
   if (!strategy) return false;
   if (!strategy.protocol) return false;
@@ -50,15 +61,12 @@ function isMindmapVisible(strategy) {
     const paybackUsd = Number(window?.FLOW?.metrics?.pendingCarryUsd || 0) + Number(window?.FLOW?.metrics?.paidBackUsdLifetime || 0);
     return paybackUsd > 0;
   }
-  return Number(strategy.actualProtocolCapitalUsd || 0) > 0
-    || Number(strategy.recentActivityCount || 0) > 0
-    || Number(strategy.recentActivityUsd || 0) > 0
-    || strategy.surfaceOnly === 'mindmap';
+  return isMindmapActiveStrategy(strategy);
 }
 
 function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   if (!Number.isFinite(count) || count <= 1) return minR;
-  const gap = PROTOCOL_BLOOM_SPREAD / count;
+  const gap = PROTOCOL_BLOOM_SPREAD / (count - 1);
   const requiredChord = 2 * chipR + padding;
   const required = requiredChord / (2 * Math.sin(gap / 2));
   return Math.max(minR, required);
@@ -509,7 +517,7 @@ function groupStrategiesByProtocol(strategies = []) {
       yieldBasis: realizedYieldUsd > 0 ? 'realized' : (estimatedYieldUsd > 0 ? 'estimated' : null),
       capUsd: items.every((item) => item.capUsd == null) ? null : items.reduce((sum, item) => sum + (item.capUsd || 0), 0),
       capitalUsd: Math.max(
-        ...items.map((item) => Math.max(Number(item.actualProtocolCapitalUsd || 0), Number(item.recentActivityUsd || 0))),
+        ...items.map((item) => Number(item.actualProtocolCapitalUsd || 0)),
         0,
       ),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
@@ -526,8 +534,8 @@ function groupStrategiesByProtocol(strategies = []) {
 }
 
 function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragStart }) {
-  const R = size * 1.1;
-  const capitalLabel = formatCompactUsdLabel(Number(strategy.capitalUsd || 0) > 0 ? strategy.capitalUsd : strategy.recentActivityUsd);
+  const R = size * 1.12;
+  const capitalLabel = formatCompactUsdLabel(Number(strategy.capitalUsd || 0));
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
@@ -543,9 +551,9 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
             <ProtocolLogo id={strategy.protocol} size={R*1.18}/>
           </div>
         </foreignObject>
-        <StatPill x={0} y={-R - 17} label={capitalLabel} scale={0.76} tone={selected ? 'dark' : 'light'}/>
+        <StatPill x={0} y={-R - 19} label={capitalLabel} scale={0.76} tone={selected ? 'dark' : 'light'}/>
         {!selected && (
-          <text y={R + 10} textAnchor="middle" fontSize="9" fontWeight="600" fill="#555"
+          <text y={R + 13} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#555"
             stroke="#FFFFFF" strokeWidth="2.5" paintOrder="stroke"
             style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2, textTransform:'capitalize' }}>
             {strategy.label || strategy.protocol}
@@ -732,14 +740,15 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     const p = ringPos[selectedChain];
     if (!p) return {};
     const strats = protocolsByChain[selectedChain] || [];
-    const chipR = 28 * 1.1;
-    const rawR = bloomRadiusForCount(strats.length, chipR, 78, 14);
+    const chipR = PROTOCOL_CHIP_RADIUS;
+    const rawR = bloomRadiusForCount(strats.length, chipR, PROTOCOL_BLOOM_MIN_RADIUS, PROTOCOL_BLOOM_PADDING);
     const R = rawR;
     const out = {};
-    const step = PROTOCOL_BLOOM_SPREAD / strats.length;
-    const startA = Math.PI / 2 - PROTOCOL_BLOOM_SPREAD / 2;
+    const baseA = p.angle ?? Math.atan2(p.y, p.x);
+    const step = strats.length <= 1 ? 0 : PROTOCOL_BLOOM_SPREAD / (strats.length - 1);
+    const startA = baseA - PROTOCOL_BLOOM_SPREAD / 2;
     strats.forEach((s, i) => {
-      const a = startA + i * step;
+      const a = strats.length <= 1 ? baseA : startA + i * step;
       out[s.id] = { x: p.x + Math.cos(a)*R, y: p.y + Math.sin(a)*R };
     });
     return out;
@@ -771,7 +780,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       strats.forEach(s => {
         const pp = protocolBloom[s.id];
         if (!pp) return;
-        const chipR = 28 * 1.1;
+        const chipR = PROTOCOL_CHIP_RADIUS;
         ensure(`proto:${s.id}`, pp.x, pp.y, chipR + 4, 1, { orbitRadius: s.type === 'loop' ? chipR * 1.8 + 6 : 0 });
       });
     }
@@ -801,7 +810,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
 
   const liveChains = new Set(
     STRATEGIES
-      .filter((strategy) => strategy.status === 'LIVE' || Number(strategy.recentActivityCount || 0) > 0)
+      .filter((strategy) => isMindmapActiveStrategy(strategy))
       .map((strategy) => strategy.chain)
       .filter(Boolean),
   );
@@ -857,19 +866,19 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     focusStrategies.forEach((strategy) => {
       const point = protocolBloom[strategy.id];
       if (!point) return;
-      const chipSize = 28;
-      const chipRadius = chipSize * 1.1;
+      const chipSize = PROTOCOL_CHIP_SIZE;
+      const chipRadius = PROTOCOL_CHIP_RADIUS;
       includeCircle(bounds, point.x, point.y, chipRadius + 4);
-      includeRect(bounds, point.x, point.y - chipRadius - 17, 58, 16);
-      includeRect(bounds, point.x, point.y + chipRadius + 10, 80, 14);
-      includeRect(bounds, point.x, point.y + chipRadius + 18, 112, 38);
+      includeRect(bounds, point.x, point.y - chipRadius - 19, 62, 16);
+      includeRect(bounds, point.x, point.y + chipRadius + 13, 88, 16);
+      includeRect(bounds, point.x, point.y + chipRadius + 24, 120, 42);
 
       if (strategy.loops) {
-        includeCircle(bounds, point.x, point.y, chipSize * 1.8 + 12);
+        includeCircle(bounds, point.x, point.y, chipSize * 1.8 + 14);
         includeCircle(bounds, point.x + chipRadius * 0.78, point.y - chipRadius * 0.78, 14);
       }
       if (strategy.pair?.length > 1) {
-        includeRect(bounds, point.x, point.y - chipSize * 1.8, 42, 18);
+        includeRect(bounds, point.x, point.y - chipSize * 2.48, 48, 18);
       }
     });
 
@@ -898,7 +907,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       safeArea,
       focus,
       minZoom: selectedProtocolId ? 0.78 : 0.92,
-      maxZoom: selectedProtocolId ? 1.52 : 1.18,
+      maxZoom: selectedProtocolId ? 1.46 : 1.12,
     });
   }, [VB_W, VB_H, chainSize, cx0, cy0, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
 
@@ -1057,7 +1066,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             if (!protocolBloom[s.id]) return null;
             const isSel = selectedProtocolId === s.id;
             const dimmed = Boolean(selectedProtocolId) && !isSel;
-            const chipSize = 28;
+            const chipSize = PROTOCOL_CHIP_SIZE;
             const connector = {
               x1: chain.x, y1: chain.y,
               x2: pp.x, y2: pp.y,
@@ -1124,17 +1133,17 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
                   onDragStart={(e) => handleDragStart(e, `proto:${s.id}`, () => setSelectedProtocolId(prev => prev === s.id ? null : s.id))}/>
                 {(s.type === 'lp' || s.type === 'cl_lp' || s.type === 'lp_bgt') && s.pair.length > 1 && (
                   <g style={{ opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
-                    <PairBadge x={pp.x} y={pp.y - chipSize * 1.15} pair={s.pair} size={12}/>
+                    <PairBadge x={pp.x} y={pp.y - chipSize * 2.48} pair={s.pair} size={12}/>
                   </g>
                 )}
                 {(s.type === 'swap' || s.type === 'arb') && s.pair.length > 1 && (
                   <g style={{ opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
-                    <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
+                    <PairBadge x={pp.x} y={pp.y - chipSize * 2.48} pair={s.pair} size={12}/>
                   </g>
                 )}
                 {(s.type === 'bridge' || s.type === 'payback' || s.type === 'refuel') && s.pair.length > 1 && (
                   <g style={{ opacity: selectedProtocolId ? (isSel ? 0.44 : 0.1) : dimmed ? 0.18 : 1, transition: `opacity ${T_FAST}ms ${EASE}` }}>
-                    <PairBadge x={pp.x} y={pp.y - chipSize * 1.8} pair={s.pair} size={12}/>
+                    <PairBadge x={pp.x} y={pp.y - chipSize * 2.48} pair={s.pair} size={12}/>
                   </g>
                 )}
               </g>
@@ -1230,7 +1239,7 @@ function ChainCard({ chainId, strategies }) {
   const estimatedYield = strategies.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
   const totalEarned = realizedYield > 0 ? realizedYield : estimatedYield;
   const totalYieldBasis = realizedYield > 0 ? 'realized' : (estimatedYield > 0 ? 'estimated' : null);
-  const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0) || Number(chain?.recentActivityUsd || 0));
+  const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0));
   const totalYieldLabel = formatYieldDisplay(totalEarned, totalYieldBasis);
   return (
     <div data-card-type="chain" style={{

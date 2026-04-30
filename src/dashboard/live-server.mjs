@@ -5,6 +5,8 @@ import { extname, join, resolve } from "node:path";
 import process from "node:process";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { buildCapitalSummarySlice } from "../status/capital-summary-slice.mjs";
+import { buildLiveYieldSlice, liveYieldMetricFields } from "../status/live-yield-slice.mjs";
 
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_STREAM_MS = 1500;
@@ -12,10 +14,11 @@ export const DEFAULT_SNAPSHOT_CACHE_MS = 750;
 export const DEFAULT_REFRESH_TICK_MS = 2000;
 export const DEFAULT_WHOLE_WALLET_REFRESH_MS = 8000;
 export const DEFAULT_TREASURY_REFRESH_MS = 20000;
-export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 6000;
+export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 300_000;
 export const DEFAULT_STRATEGY_TICK_REFRESH_MS = 4000;
 export const DEFAULT_AUTO_KILL_REFRESH_MS = 5000;
 export const DEFAULT_STATUS_BUILD_TIMEOUT_MS = 3500;
+export const DEFAULT_REFRESH_TASK_TIMEOUT_MS = 120_000;
 
 function finiteInteger(value, fallback) {
   const parsed = Number(value);
@@ -103,6 +106,10 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
       options["status-build-timeout-ms"] || env.BOB_CLAW_DASHBOARD_STATUS_BUILD_TIMEOUT_MS,
       DEFAULT_STATUS_BUILD_TIMEOUT_MS,
     ),
+    refreshTaskTimeoutMs: finiteInteger(
+      options["refresh-task-timeout-ms"] || env.BOB_CLAW_DASHBOARD_REFRESH_TASK_TIMEOUT_MS,
+      DEFAULT_REFRESH_TASK_TIMEOUT_MS,
+    ),
   };
 }
 
@@ -144,6 +151,75 @@ async function loadDashboardStatusSnapshot({ rootDir, dataDir }) {
     }
   }
   throw lastError || new Error("dashboard-status.json not found");
+}
+
+async function loadJsonFromCandidates(paths = []) {
+  for (const path of paths) {
+    try {
+      const text = await readFile(path, "utf8");
+      return JSON.parse(text);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  return null;
+}
+
+function timestampMs(value) {
+  const ms = new Date(value || 0).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
+  let nextStatus = status;
+  const walletHoldings = await loadJsonFromCandidates([
+    join(rootDir, "wallet-holdings.json"),
+    join(dataDir, "wallet-holdings.json"),
+  ]);
+  if (walletHoldings && walletHoldings.pending !== true && Array.isArray(walletHoldings.items)) {
+    const currentWalletAt = status?.walletHoldings?.generatedAt || status?.walletHoldings?.observedAt || null;
+    const incomingWalletAt = walletHoldings.generatedAt || walletHoldings.observedAt || null;
+    if (timestampMs(incomingWalletAt) >= timestampMs(currentWalletAt)) {
+      const capitalSummary = buildCapitalSummarySlice({
+        walletHoldings,
+        merklActivePositions: status?.strategy?.merklActivePositions || null,
+        executorEstimatedAssetValueUsd: status?.capitalSummary?.executorEstimatedTotalUsd ?? null,
+        generatedAt: incomingWalletAt || servedAt,
+      });
+
+      nextStatus = {
+        ...status,
+        walletHoldings,
+        capitalSummary,
+        liveOverlay: {
+          ...(status.liveOverlay || {}),
+          walletHoldings: {
+            source: "wallet-holdings.json",
+            generatedAt: walletHoldings.generatedAt || null,
+            observedAt: walletHoldings.observedAt || null,
+            appliedAt: servedAt,
+          },
+        },
+      };
+    }
+  }
+
+  const liveYield = buildLiveYieldSlice({
+    merklActivePositions: nextStatus?.strategy?.merklActivePositions || null,
+    btcUsd: nextStatus?.market?.btcUsd ?? null,
+    generatedAt: servedAt,
+  });
+  return {
+    ...nextStatus,
+    flow: {
+      ...(nextStatus?.flow || {}),
+      liveYield,
+      metrics: {
+        ...(nextStatus?.flow?.metrics || {}),
+        ...liveYieldMetricFields(liveYield),
+      },
+    },
+  };
 }
 
 function timeoutAfter(ms, message) {
@@ -222,6 +298,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       script: "src/cli/report-strategy-tick-slice.mjs",
       args: ["--quiet"],
       intervalMs: options.strategyTickRefreshMs,
+      timeoutMs: options.refreshTaskTimeoutMs,
       lastStartedAt: null,
       lastFinishedAt: null,
       lastSucceededAt: null,
@@ -236,6 +313,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       script: "src/cli/report-auto-kill-events.mjs",
       args: ["--write"],
       intervalMs: options.autoKillRefreshMs,
+      timeoutMs: options.refreshTaskTimeoutMs,
       lastStartedAt: null,
       lastFinishedAt: null,
       lastSucceededAt: null,
@@ -249,6 +327,8 @@ export function createDashboardLiveServer(rawOptions = {}) {
       label: "dashboard snapshot",
       script: "src/cli/status-dashboard.mjs",
       intervalMs: options.statusSnapshotRefreshMs,
+      timeoutMs: options.refreshTaskTimeoutMs,
+      deferInitialRun: true,
       lastStartedAt: null,
       lastFinishedAt: null,
       lastSucceededAt: null,
@@ -274,9 +354,14 @@ export function createDashboardLiveServer(rawOptions = {}) {
   let lastStatusPayload = null;
   let lastStatusBuiltAtMs = 0;
   let shuttingDown = false;
-  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
 
-  async function runNodeScript(script, args = []) {
+  for (const task of [tasks.wholeWallet, tasks.treasury, tasks.walletHoldingsSlice]) {
+    task.timeoutMs = options.refreshTaskTimeoutMs;
+  }
+
+  async function runNodeScript(script, args = [], { timeoutMs = options.refreshTaskTimeoutMs } = {}) {
     return new Promise((resolvePromise, rejectPromise) => {
       const child = spawn(process.execPath, [resolve(process.cwd(), script), ...args], {
         cwd: process.cwd(),
@@ -285,31 +370,64 @@ export function createDashboardLiveServer(rawOptions = {}) {
       });
       let stdout = "";
       let stderr = "";
+      let settled = false;
+      let killTimer = null;
+      const settle = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (killTimer) clearTimeout(killTimer);
+        fn(value);
+      };
+      const timer = Number.isInteger(timeoutMs) && timeoutMs > 0
+        ? setTimeout(() => {
+            const result = { status: null, stdout, stderr };
+            const error = new Error(`node ${script} timed out after ${timeoutMs}ms`);
+            error.result = result;
+            child.kill("SIGTERM");
+            killTimer = setTimeout(() => child.kill("SIGKILL"), 1000);
+            killTimer.unref?.();
+            settle(rejectPromise, error);
+          }, timeoutMs)
+        : null;
+      timer?.unref?.();
       child.stdout.on("data", (chunk) => {
         stdout += chunk;
       });
       child.stderr.on("data", (chunk) => {
         stderr += chunk;
       });
-      child.on("error", rejectPromise);
+      child.on("error", (error) => settle(rejectPromise, error));
       child.on("exit", (status) => {
         const result = { status: status ?? 1, stdout, stderr };
         if (status === 0) {
-          resolvePromise(result);
+          settle(resolvePromise, result);
           return;
         }
         const error = new Error(`node ${script} failed with code ${status ?? 1}`);
         error.result = result;
-        rejectPromise(error);
+        settle(rejectPromise, error);
       });
     });
+  }
+
+  const injectedRunNodeScript = typeof rawOptions.runNodeScript === "function" ? rawOptions.runNodeScript : null;
+
+  async function runNodeScriptForTask(task) {
+    if (!injectedRunNodeScript) {
+      return runNodeScript(task.script, task.args || [], { timeoutMs: task.timeoutMs });
+    }
+    return Promise.race([
+      injectedRunNodeScript(task.script, task.args || []),
+      timeoutAfter(task.timeoutMs, `node ${task.script} timed out after ${task.timeoutMs}ms`),
+    ]);
   }
 
   async function runTask(task) {
     task.running = true;
     task.lastStartedAt = new Date().toISOString();
     try {
-      const result = await runNodeScript(task.script, task.args || []);
+      const result = await runNodeScriptForTask(task);
       task.lastResult = commandSummary(result);
       task.lastSucceededAt = task.lastResult.observedAt;
       task.lastError = null;
@@ -335,6 +453,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
   function taskDue(task) {
     if (!task.intervalMs || task.running) return false;
     const lastFinishedAtMs = task.lastFinishedAt ? new Date(task.lastFinishedAt).getTime() : 0;
+    if (!lastFinishedAtMs && task.deferInitialRun) return Date.now() - startedAtMs >= task.intervalMs;
     return Date.now() - lastFinishedAtMs >= task.intervalMs;
   }
 
@@ -361,6 +480,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       id: task.id,
       label: task.label,
       intervalMs: task.intervalMs,
+      deferInitialRun: task.deferInitialRun === true,
       running: task.running,
       lastStartedAt: task.lastStartedAt,
       lastFinishedAt: task.lastFinishedAt,
@@ -388,9 +508,14 @@ export function createDashboardLiveServer(rawOptions = {}) {
 
   async function computeLiveStatusPayload() {
     void maybeRunRefreshCycle();
-    const dashboardStatus = await loadDashboardStatusSnapshot({
+    const servedAt = new Date().toISOString();
+    const dashboardStatus = await applyLiveSliceOverlay(await loadDashboardStatusSnapshot({
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+    }), {
+      rootDir: options.rootDir,
+      dataDir: options.dataDir,
+      servedAt,
     });
     return {
       ...dashboardStatus,
@@ -400,16 +525,21 @@ export function createDashboardLiveServer(rawOptions = {}) {
         snapshotPath: "/api/live-status",
         eventsPath: "/api/live-events",
         refreshIntervalMs: options.streamMs,
-        servedAt: new Date().toISOString(),
+        servedAt,
       },
       liveRuntime: runtimeState(),
     };
   }
 
   async function buildStaticFallbackPayload(errorMessage = null) {
-    const fallback = await loadDashboardStatusSnapshot({
+    const servedAt = new Date().toISOString();
+    const fallback = await applyLiveSliceOverlay(await loadDashboardStatusSnapshot({
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+    }), {
+      rootDir: options.rootDir,
+      dataDir: options.dataDir,
+      servedAt,
     });
     return {
       ...fallback,
@@ -419,7 +549,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
         snapshotPath: "/api/live-status",
         eventsPath: "/api/live-events",
         refreshIntervalMs: options.streamMs,
-        servedAt: new Date().toISOString(),
+        servedAt,
         error: errorMessage,
       },
       liveRuntime: runtimeState(),

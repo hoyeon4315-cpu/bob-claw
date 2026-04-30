@@ -9,6 +9,7 @@ import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { evaluateIntentPolicies } from "../policy/index.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord, readSignerAuditLog } from "./audit-log.mjs";
 import { notifyPolicyRejection } from "./policy-alerts.mjs";
+import { notifyLiveTransaction } from "./transaction-alerts.mjs";
 import { createBtcLocalKeySigner } from "./btc-local-signer.mjs";
 import { createEvmLocalKeySigner } from "./evm-local-signer.mjs";
 import { normalizeExecutionIntent } from "./signer-interface.mjs";
@@ -88,6 +89,7 @@ export async function handleIntentCommand({
   signers,
   args,
   cwd,
+  transactionNotifyImpl = null,
 }) {
   const intent = normalizeExecutionIntent(message.intent);
   const auditRecords = await readSignerAuditLog({ rootDir: cwd });
@@ -140,6 +142,7 @@ export async function handleIntentCommand({
     let broadcast = null;
     let receipt = null;
     let autoIngest = null;
+    let transactionNotification = null;
 
     if (message.command === "sign_and_broadcast") {
       broadcast = await signer.broadcastSignedIntent(signed);
@@ -156,6 +159,20 @@ export async function handleIntentCommand({
         }),
         { rootDir: cwd },
       );
+      transactionNotification = await notifyLiveTransaction({
+        intent,
+        broadcast,
+        stage: "broadcasted",
+        ...(transactionNotifyImpl ? { sendImpl: transactionNotifyImpl } : {}),
+      }).catch((error) => ({
+        sent: false,
+        skipped: false,
+        reason: "telegram_send_failed",
+        error: {
+          name: error.name,
+          message: error.message,
+        },
+      }));
 
       if (message.awaitConfirmation === true && intent.family === "evm") {
         receipt = await signer.waitForTransaction(intent.chain, broadcast.txHash, {
@@ -259,6 +276,7 @@ export async function handleIntentCommand({
       broadcast,
       receipt: serializeReceipt(receipt),
       autoIngest,
+      transactionNotification,
     };
   } catch (error) {
     await appendSignerAuditRecord(

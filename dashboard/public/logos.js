@@ -5,7 +5,7 @@ const LLAMA_CHAIN = (slug, s) => `https://icons.llamao.fi/icons/chains/rsz_${slu
 const TOKEN_SVG = (sym) => `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/${sym}.svg`;
 const LOCAL_CHAIN = (id) => `assets/logos/chains/${id}.svg`;
 const LOCAL_PROTOCOL = (id) => `assets/logos/protocols/${id}.svg`;
-const LOCAL_FIRST_PROTOCOL_IDS = /* @__PURE__ */ new Set(["euler"]);
+const LOCAL_FIRST_PROTOCOL_IDS = /* @__PURE__ */ new Set(["euler", "yo"]);
 const CHAIN_SLUG = {
   bitcoin: "bitcoin",
   ethereum: "ethereum",
@@ -43,7 +43,7 @@ function protoSources(id, size) {
     gaszip: [prox("https://www.gas.zip/favicon.ico")],
     morpho: [llama("morpho-blue"), llama("morpho")],
     euler: [prox("https://www.euler.finance/branding/euler-symbol-color.svg"), prox("https://app.euler.finance/favicon.ico")],
-    yo: [prox("https://yo.xyz/images/logo-green.svg"), prox("https://www.yo.xyz/images/logo.svg"), prox("https://www.yo.xyz/icon.svg"), prox("https://www.yo.xyz/favicon.ico")],
+    yo: [prox("https://www.yo.xyz/images/logo-green.svg"), prox("https://www.yo.xyz/images/logo.svg"), prox("https://www.yo.xyz/icon.svg"), prox("https://www.yo.xyz/favicon.ico")],
     pendle: [llama("pendle")],
     aerodrome: [llama("aerodrome-v1"), llama("aerodrome")],
     beefy: [llama("beefy")],
@@ -68,6 +68,9 @@ function MultiImgMark({ sources, size, rounded = true, bg = "transparent", fallb
       height: size,
       alt: "",
       draggable: false,
+      loading: "eager",
+      decoding: "async",
+      fetchPriority: "low",
       onError: () => {
         if (idx + 1 < sources.length) setIdx(idx + 1);
         else setDead(true);

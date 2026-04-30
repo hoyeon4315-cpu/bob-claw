@@ -513,6 +513,9 @@ function normalizeDiscretionarySliceEntry(entry = {}) {
 }
 
 function refillDiscretionaryCategory({ job = {}, preview = null } = {}) {
+  if (job.type === "refill_native" && job.executionMethod === "same_chain_token_to_native_swap") {
+    return "refuel";
+  }
   const executor = String(preview?.json?.preparation?.executor || "").trim();
   if (executor && DISCRETIONARY_REFILL_EXECUTOR_TO_CATEGORY[executor]) {
     return DISCRETIONARY_REFILL_EXECUTOR_TO_CATEGORY[executor];
@@ -787,6 +790,125 @@ function refillMergeKey(job = {}) {
     return `asset:${job.type}:${job.chain}:${job.token || job.asset}`;
   }
   return `job:${job.jobId}`;
+}
+
+function positiveBigIntOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    const parsed = typeof value === "bigint" ? value : BigInt(value);
+    return parsed > 0n ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizedToken(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function refillSourceReservationKey(job = {}) {
+  const source = job?.fundingSource?.source || null;
+  if (!source?.chain || !source?.token) return null;
+  return `${String(source.chain).toLowerCase()}:${normalizedToken(source.token)}`;
+}
+
+function estimatedSourceReservationAmount(job = {}) {
+  const source = job?.fundingSource?.source || null;
+  const sourceActual = positiveBigIntOrNull(source?.actual);
+  const sourceActualDecimal = Number(source?.actualDecimal);
+  const sourceEstimatedUsd = Number(source?.estimatedUsd);
+  const targetEstimatedUsd = Number(job?.estimatedAssetValueUsd);
+  if (
+    !sourceActual ||
+    !Number.isFinite(sourceActualDecimal) ||
+    !(sourceActualDecimal > 0) ||
+    !Number.isFinite(sourceEstimatedUsd) ||
+    !(sourceEstimatedUsd > 0) ||
+    !Number.isFinite(targetEstimatedUsd) ||
+    !(targetEstimatedUsd > 0)
+  ) {
+    return null;
+  }
+  const unitsPerWhole = Number(sourceActual) / sourceActualDecimal;
+  if (!Number.isFinite(unitsPerWhole) || !(unitsPerWhole > 0)) return null;
+  const sourceUnitUsd = sourceEstimatedUsd / sourceActualDecimal;
+  const estimatedSourceDecimal = Math.min(sourceActualDecimal, (targetEstimatedUsd * 1.1) / sourceUnitUsd);
+  const estimated = BigInt(Math.max(1, Math.ceil(estimatedSourceDecimal * unitsPerWhole)));
+  return estimated > sourceActual ? sourceActual : estimated;
+}
+
+function refillSourceReservationAmount(job = {}) {
+  const source = job?.fundingSource?.source || null;
+  const targetAmount = positiveBigIntOrNull(job?.targetAmount);
+  const sourceActual = positiveBigIntOrNull(source?.actual);
+  if (!sourceActual) return null;
+  if (
+    job.type === "refill_token" &&
+    targetAmount &&
+    normalizedToken(source?.token) === normalizedToken(job?.token)
+  ) {
+    return targetAmount;
+  }
+  if (
+    job.type === "refill_native" &&
+    targetAmount &&
+    String(source?.chain || "").toLowerCase() === String(job?.chain || "").toLowerCase()
+  ) {
+    return targetAmount;
+  }
+  return estimatedSourceReservationAmount(job) || targetAmount || null;
+}
+
+function refillSourceReservation(job = {}, reservations = new Map()) {
+  const key = refillSourceReservationKey(job);
+  const sourceActual = positiveBigIntOrNull(job?.fundingSource?.source?.actual);
+  const amount = refillSourceReservationAmount(job);
+  if (!key || !sourceActual || !amount) {
+    return {
+      accepted: true,
+      key,
+      amount,
+      sourceActual,
+      reservedBefore: reservations.get(key) || 0n,
+      remaining: null,
+    };
+  }
+  const reservedBefore = reservations.get(key) || 0n;
+  const remaining = sourceActual > reservedBefore ? sourceActual - reservedBefore : 0n;
+  return {
+    accepted: amount <= remaining,
+    key,
+    amount,
+    sourceActual,
+    reservedBefore,
+    remaining,
+  };
+}
+
+function reserveRefillSource(reservations, reservation) {
+  if (!reservation?.key || !reservation?.amount) return;
+  reservations.set(reservation.key, (reservations.get(reservation.key) || 0n) + reservation.amount);
+}
+
+function refillSourceDebitLikely(execution = null) {
+  const status = refillExecutionStatus(execution);
+  return refillDeliveredStatus(status) || status === "source_confirmed_only";
+}
+
+function blockedRefillPreview(job = {}, blockedReason) {
+  return {
+    ok: true,
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+    json: {
+      preparation: {
+        status: "blocked",
+        executionMethod: job.executionMethod || null,
+        blockedReason,
+      },
+    },
+  };
 }
 
 function annotateRefillJobs(jobs = [], source = null) {
@@ -1076,8 +1198,18 @@ export async function runAllChainAutopilot({
     { source: "inbound_routing", jobs: inboundWatcherResult.json?.routingPlan?.jobs || [] },
   ]);
   const autoRefillJobs = mergedRefillJobs.filter(refillJobIsAutoExecutable).slice(0, maxRefillJobs);
+  const sourceReservations = new Map();
 
   for (const job of autoRefillJobs) {
+    const sourceReservation = allowLiveCapableExecution
+      ? refillSourceReservation(job, sourceReservations)
+      : { accepted: true };
+    if (!sourceReservation.accepted) {
+      const preview = blockedRefillPreview(job, "source_inventory_reserved");
+      steps.push(commandStep(`treasury_refill_preview:${job.jobId}:source_inventory_reserved`, [], preview));
+      refillExecutions.push(compactRefillExecution(job, preview, null));
+      continue;
+    }
     let preview = await runJsonStep({
       name: `treasury_refill_preview:${job.jobId}`,
       args: ["src/cli/run-refill-job-stub.mjs", `--job-id=${job.jobId}`, "--json"],
@@ -1187,6 +1319,9 @@ export async function runAllChainAutopilot({
         }
         if (!refillPreparationReady(preview.json)) break;
       }
+    }
+    if (refillSourceDebitLikely(execution)) {
+      reserveRefillSource(sourceReservations, sourceReservation);
     }
     refillExecutions.push(compactRefillExecution(job, preview, execution));
   }

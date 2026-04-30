@@ -3,6 +3,7 @@ import { config } from "../../config/env.mjs";
 import { enforceWatchdog } from "./watchdog-loop.mjs";
 import { readHeartbeat } from "./heartbeat.mjs";
 import { sendTelegramMessage } from "../../notify/telegram.mjs";
+import { buildTelegramDeliveryDecision } from "../../notify/telegram.mjs";
 
 export function formatWatchdogAlert({ evaluation, heartbeatPath, killSwitchPath } = {}) {
   const lines = [
@@ -22,13 +23,24 @@ export function createWatchdogAlerter({
   chatId = config.telegramChatId,
   sendImpl = sendTelegramMessage,
 } = {}) {
-  return async (payload) =>
-    sendImpl({
+  return async (payload) => {
+    const delivery = buildTelegramDeliveryDecision({ category: "watchdog_halt" });
+    if (!delivery.allowed) {
+      return {
+        sent: false,
+        skipped: true,
+        reason: "transaction_alerts_only",
+        category: delivery.category,
+        mode: delivery.mode,
+      };
+    }
+    return sendImpl({
       botToken,
       chatId,
       text: formatWatchdogAlert(payload),
       category: "watchdog_halt",
     });
+  };
 }
 
 export async function runWatchdogCycle({

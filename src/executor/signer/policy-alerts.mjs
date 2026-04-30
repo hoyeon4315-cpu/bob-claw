@@ -1,10 +1,9 @@
 import { config } from "../../config/env.mjs";
 import { sendTelegramMessage } from "../../notify/telegram.mjs";
 
-const NOTIFY_BLOCKERS = new Set(["max_consecutive_failures_reached"]);
-
 export function shouldNotifyPolicyRejection(policy = null) {
-  return (policy?.blockers || []).some((blocker) => NOTIFY_BLOCKERS.has(blocker));
+  void policy;
+  return false;
 }
 
 export function formatPolicyRejectionAlert({ intent = {}, policy = null } = {}) {
@@ -31,7 +30,7 @@ export async function notifyPolicyRejection({
   sendImpl = sendTelegramMessage,
 } = {}) {
   if (!shouldNotifyPolicyRejection(policy)) {
-    return { sent: false, skipped: true, reason: "not_notify_worthy" };
+    return { sent: false, skipped: true, reason: "transaction_alerts_only" };
   }
   try {
     return await sendImpl({

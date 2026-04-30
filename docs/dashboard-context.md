@@ -218,6 +218,15 @@ Current dashboard fields used by `dashboard/public/app.js`:
 - `dexSpread.summary.spread.min`
 - `dexSpread.summary.spread.max`
 - `capitalSummary.walletItems`
+- `flow.liveYield.status`
+- `flow.liveYield.estimatedYieldSats`
+- `flow.liveYield.estimatedYieldUsd`
+- `flow.liveYield.weightedAprPct`
+- `flow.liveYield.positionCount`
+- `flow.metrics.liveEstimatedYieldSats`
+- `flow.metrics.liveEstimatedYieldUsd`
+- `flow.metrics.liveYieldAprPct`
+- `flow.metrics.liveYieldPositionCount`
 - `capitalSummary.positionItems`
 - `capitalSummary.totalUsd`
 - `flow.metrics.assetValueUsd`
@@ -326,6 +335,12 @@ This was chosen because not every chain exposes a stable, easy-to-hotlink brand 
 3. Update `chainMeta`.
 4. Verify desktop and mobile screenshots.
 
+Protocol logos may use audited local official marks before remote fallbacks when
+speed or CDN reliability matters. YO is local-first from
+`dashboard/public/assets/logos/protocols/yo.svg`, sourced from
+`https://www.yo.xyz/images/logo-green.svg` on 2026-04-29, with the remote
+official URL retained as fallback.
+
 Asset icons use the same official-domain favicon pattern for common assets. Domains are defined in `assetIconFor` inside `dashboard/public/app.js`. If replacing with local official token assets later:
 
 1. Put assets under `dashboard/public/assets/tokens/`.
@@ -388,6 +403,22 @@ Important mobile behavior:
 - Outer chain nodes remain aligned with their spoke endpoints.
 - Text must not overflow its parent.
 - The first screen should show the live map before supporting panels.
+- Chain/protocol zoom is a focus mode. When zoom is active and History is not
+  expanded, the map/card layer intentionally covers or visually suppresses the
+  first-screen KPI/history panels so the selected chain or protocol gets the
+  widest possible viewport. Do not "fix" that as an overlap bug. The exception
+  is expanded History, which deliberately reclaims the lower viewport and stays
+  scrollable/collapsible below the anchored map.
+- Flow history expanded state has a strict layout contract: the map remains
+  anchored in the top band; KPI/APR/payback/carry/yield metric cards are hidden;
+  the History card starts immediately below the map and owns the remaining
+  viewport height; only the History row list scrolls internally. Do not make the
+  whole Flow tab scroll or place the metric strip between the map and expanded
+  History.
+- Chain/protocol zoom cards must distinguish live-position counts, current
+  capital, estimated/realized yield, APY, and recent activity. Historical
+  activity may be shown as context, but it must not turn an inactive strategy
+  into a live strategy.
 
 Before finishing UI edits, test:
 

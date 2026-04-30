@@ -46,8 +46,10 @@ describe("dashboard home renewal source guard", () => {
       assert.match(flowPane, new RegExp(`label:\\s*'${label.replace(" ", "\\s+")}'`));
     }
     assert.match(flowPane, /const strategyYieldUsd = STRATEGIES\.reduce/);
-    assert.match(flowPane, /const showPortfolioYield = strategyYieldUsd > 0 && \(grossYieldSats <= 0 \|\| grossYieldSats === carrySats\)/);
-    assert.match(flowPane, /'live est\. · all protocols'/);
+    assert.match(flowPane, /const liveYieldSats = flow\?\.metrics\?\.liveEstimatedYieldSats/);
+    assert.match(flowPane, /const liveYieldUsd = flow\?\.metrics\?\.liveEstimatedYieldUsd/);
+    assert.match(flowPane, /const liveYieldAprPct = flow\?\.metrics\?\.liveYieldAprPct/);
+    assert.match(flowPane, /live APR/);
     assert.match(flowPane, /wallet only · 0 open positions/);
     assert.match(flowPane, /wallet \+ \$\{positions\.length\} open position/);
     assert.doesNotMatch(flowPane, /<PnlBreakdownStrip\/>/);
@@ -90,7 +92,7 @@ describe("dashboard home renewal source guard", () => {
     assert.match(opsStrip, /const paybackActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'payback'\)/);
     assert.match(opsStrip, /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/);
     assert.match(opsStrip, /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/);
-    assert.match(opsStrip, /const expandIntoFlow = fill && expanded/);
+    assert.match(opsStrip, /const scrollInsideCard = fill && expanded/);
     assert.match(opsStrip, /const \[filter, setFilter\] = useState\(\(\) => readPersistedHistoryFilter\(\)\)/);
     assert.match(opsStrip, /const filteredActivities = activities\.filter\(\(activity\) => \{/);
     assert.match(opsStrip, /id: 'all', label: `All \$\{activities\.length\}`/);
@@ -107,10 +109,23 @@ describe("dashboard home renewal source guard", () => {
     assert.match(opsStrip, /if \(typeof onExpandedChange === 'function'\) onExpandedChange\(expanded\);/);
     assert.match(opsStrip, /filteredActivities\.slice\(0,\s*3\)/);
     assert.match(opsStrip, /expanded \? 'Show less' : `Show more · \$\{filteredActivities\.length\}`/);
-    assert.match(opsStrip, /overflow:\s*expandIntoFlow \? 'visible' : 'hidden'/);
-    assert.match(opsStrip, /overflowY:\s*fill && !expandIntoFlow \? 'auto' : 'visible'/);
+    assert.match(opsStrip, /overflow:\s*'hidden'/);
+    assert.match(opsStrip, /flex:\s*scrollInsideCard \? '1 1 auto' : fill \? '1 1 auto' : '0 0 auto'/);
+    assert.match(opsStrip, /overflowY:\s*scrollInsideCard \? 'auto' : 'visible'/);
     assert.match(opsStrip, /overscrollBehavior:\s*'contain'/);
     assert.match(opsStrip, /display: 'flex', flexDirection: 'column'/);
+  });
+
+  test("zoom focus intentionally lets the map cover first-screen cards while expanded history owns collapse", () => {
+    const flowPane = extractSection("function FlowPane", "function KpiCard");
+    assert.match(flowPane, /zIndex: historyExpanded \? 1 : 4/);
+    assert.match(flowPane, /zIndex: historyExpanded \? 6 : 1/);
+    assert.match(flowPane, /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(overlayActive \? 'none' : 'auto'\)/);
+    assert.match(flowPane, /opacity: historyExpanded \? 1 : \(overlayActive \? 0\.28 : 1\)/);
+    assert.match(flowPane, /pointerEvents: historyExpanded \? 'none' : 'auto'/);
+    assert.match(flowPane, /\{!historyExpanded && <FlowMetricGrid cards=\{\[/);
+    assert.match(flowPane, /\{!historyExpanded && aprOpen && \(/);
+    assert.match(flowPane, /<OpsStrip fill=\{historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
   });
 });
 
@@ -158,18 +173,19 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
     assert.match(flowPane, /const \[historyExpanded, setHistoryExpanded\] = useState\(\(\) => readPersistedHistoryExpanded\(\)\)/);
     assert.match(flowPane, /const flowMapBaseHeight = 'calc\(52% - 4px\)'/);
-    assert.match(flowPane, /overlayActive \? 'calc\(100% - 12px\)' : flowMapBaseHeight/);
+    assert.match(flowPane, /historyExpanded \? flowMapBaseHeight : overlayActive \? 'calc\(100% - 12px\)' : flowMapBaseHeight/);
     assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
     assert.match(flowPane, /position: 'absolute'/);
-    assert.match(flowPane, /overflowY: historyExpanded \? 'auto' : 'hidden'/);
-    assert.match(flowPane, /position: historyExpanded \? 'relative' : 'absolute'/);
+    assert.match(flowPane, /overflowY: 'hidden'/);
+    assert.match(flowPane, /position: 'absolute'/);
     assert.match(flowPane, /const lowerPaneTop = 'calc\(52% \+ 4px\)'/);
-    assert.match(flowPane, /top: historyExpanded \? undefined : lowerPaneTop/);
-    assert.match(flowPane, /bottom: historyExpanded \? undefined : 0/);
+    assert.match(flowPane, /top: lowerPaneTop/);
+    assert.match(flowPane, /bottom: 0/);
     assert.match(flowPane, /const lowerPaneExpandedOffset = 'calc\(52% \+ 10px\)'/);
-    assert.match(flowPane, /marginTop: historyExpanded \? lowerPaneExpandedOffset : undefined/);
-    assert.match(flowPane, /pointerEvents: overlayActive \? 'none' : 'auto'/);
-    assert.match(flowPane, /<OpsStrip fill=\{!historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
+    assert.match(flowPane, /paddingTop: historyExpanded \? 0 : undefined/);
+    assert.match(flowPane, /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(overlayActive \? 'none' : 'auto'\)/);
+    assert.match(flowPane, /transform: historyExpanded \? 'translateY\(0\) scale\(1\)' : overlayActive \? 'translateY\(18px\) scale\(0\.985\)' : 'translateY\(0\) scale\(1\)'/);
+    assert.match(flowPane, /<OpsStrip fill=\{historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
     assert.match(flowPane, /const aprStrats = STRATEGIES\.filter\(s => s\.status === 'LIVE' && s\.apyPct != null && s\.capUsd\)/);
     assert.match(flowPane, /Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands\./);
   });
@@ -203,6 +219,26 @@ describe("dashboard defi renewal source guard", () => {
     const stream = extractSection("function setupLiveEventStream", "function liveAprFor", DATA_SOURCE);
     assert.match(stream, /const preferRemoteStream = window\.LIVE_STATUS\?\.remote === true/);
     assert.match(stream, /preferRemoteStream && runtime\?\.enabled && runtime\.eventsUrl/);
+  });
+
+  test("data adapter separates active live positions from live candidates and activity-only surfaces", () => {
+    const statusSection = extractSection("function activeStrategyStatus", "function deriveStatus", DATA_SOURCE);
+    assert.match(statusSection, /if \(hasLivePosition\) return 'LIVE'/);
+    assert.match(statusSection, /if \(isLiveCandidate\) return 'LIVE CANDIDATE'/);
+    assert.match(statusSection, /if \(hasRecentActivity\) return 'ACTIVITY'/);
+
+    const strategyMapping = extractSection("const STRATEGIES = Array.from", "const grossProfitSats", DATA_SOURCE);
+    assert.match(strategyMapping, /const hasLivePosition = protocolCapitalUsd > 0/);
+    assert.match(strategyMapping, /const hasRecentActivity = Number\(activitySurface\?\.count \|\| 0\) > 0/);
+    assert.match(strategyMapping, /activeStrategyStatus\(\{/);
+    assert.match(strategyMapping, /activitySurfaceCount: activitySurface\?\.count \|\| 0/);
+  });
+
+  test("data refresh exposes RAW_STATUS through window.STATUS for live UI cards", () => {
+    const assignSection = extractSection("Object.assign(window, {", "});\n  window._DASHBOARD_LIVE_AVAILABLE", DATA_SOURCE);
+    assert.match(assignSection, /STATUS: status/);
+    assert.match(assignSection, /RAW_STATUS: status/);
+    assert.match(assignSection, /generatedAt: status\?\.liveTransport\?\.servedAt \|\| status\?\.capitalSummary\?\.generatedAt \|\| status\?\.generatedAt \|\| null/);
   });
 
   test("live APR lookup prefers exact strategy entries before protocol fallback", () => {
