@@ -908,7 +908,7 @@ function defaultAutoExec(id) {
 }
 
 function apyHint(id) {
-  // Display-only fallback when no measured APR source is wired yet.
+  // Display-only fallback when no measured APY source is wired yet.
   return ({
     'wrapped-btc-loop-base-moonwell': 6.1,
     'recursive_wrapped_btc_lending_loop': 7.4,

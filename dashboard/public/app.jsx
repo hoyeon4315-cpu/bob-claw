@@ -415,6 +415,26 @@ function FlowMetricGrid({ cards }) {
   );
 }
 
+function strategyApyWeightUsd(strategy) {
+  if (Number.isFinite(strategy?.capUsd) && strategy.capUsd > 0) return strategy.capUsd;
+  if (Number.isFinite(strategy?.actualProtocolCapitalUsd) && strategy.actualProtocolCapitalUsd > 0) {
+    return strategy.actualProtocolCapitalUsd;
+  }
+  return 0;
+}
+
+function weightedApyForStrategies(strategies = []) {
+  const rows = (strategies || []).filter((strategy) => (
+    strategy?.status === 'LIVE' &&
+    Number.isFinite(strategy?.apyPct) &&
+    strategyApyWeightUsd(strategy) > 0
+  ));
+  const weight = rows.reduce((sum, strategy) => sum + strategyApyWeightUsd(strategy), 0);
+  if (weight <= 0) return null;
+  const weighted = rows.reduce((sum, strategy) => sum + strategyApyWeightUsd(strategy) * strategy.apyPct, 0);
+  return weighted / weight;
+}
+
 function friendlyBlockerLabel(value) {
   const raw = String(value || '').trim();
   if (!raw) return 'clear';
@@ -500,7 +520,7 @@ function LiveLaneCard() {
   ];
   return (
     <div style={{
-      margin: '3px 12px 0',
+      margin: '0 0 8px',
       padding: '7px 9px 7px',
       background: 'var(--card)',
       border: '0.5px solid var(--line)',
@@ -980,7 +1000,7 @@ function FlowPane({ refreshTick }) {
   const showLiveYield = (Number.isFinite(liveYieldSats) && liveYieldSats > 0) || (Number.isFinite(liveYieldUsd) && liveYieldUsd > 0);
   const liveYieldSub = [
     Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? fmtUsdCompact(liveYieldUsd) : null,
-    Number.isFinite(liveYieldAprPct) ? `live APR ${fmtPct(liveYieldAprPct)}` : null,
+    Number.isFinite(liveYieldAprPct) ? `live APY ${fmtPct(liveYieldAprPct)}` : null,
     liveYieldPositionCount > 0 ? `${liveYieldPositionCount} position${liveYieldPositionCount > 1 ? 's' : ''}` : null,
   ].filter(Boolean).join(' · ');
   const yieldMain = showLiveYield
@@ -1000,10 +1020,7 @@ function FlowPane({ refreshTick }) {
   const flowMapBaseHeight = 'calc(52% - 4px)';
   const lowerPaneTop = 'calc(52% + 4px)';
   const lowerPaneExpandedOffset = 'calc(52% + 10px)';
-  const aprStrats = STRATEGIES.filter(s => s.status === 'LIVE' && s.apyPct != null && s.capUsd);
-  const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
-  const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
-  const totalApr = Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : (aprDen > 0 ? aprNum / aprDen : null);
+  const totalApy = weightedApyForStrategies(STRATEGIES) ?? (Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : null);
   const [aprOpen, setAprOpen] = useState(false);
   const assetSub = pending
     ? 'pending'
@@ -1059,9 +1076,9 @@ function FlowPane({ refreshTick }) {
               sub: assetSub,
             },
             {
-              label: 'APR',
-              main: totalApr != null ? fmtPct(totalApr) : '—',
-              sub: aprOpen ? (Number.isFinite(liveYieldAprPct) ? 'live weighted' : 'cap-weighted') : 'tap for note',
+              label: 'APY',
+              main: totalApy != null ? fmtPct(totalApy) : '—',
+              sub: aprOpen ? 'live cap-weighted' : 'tap for note',
               onTap: () => setAprOpen(o => !o),
               accent: aprOpen ? 'var(--ink)' : undefined,
             },
@@ -1071,9 +1088,9 @@ function FlowPane({ refreshTick }) {
               sub: paidUsd != null ? fmtUsdCompact(paidUsd) : '—',
             },
             {
-              label: 'Carry',
+              label: 'Payback',
               main: fmtSats(carrySats),
-              sub: carryUsd != null ? fmtUsdCompact(carryUsd) : 'unpaid',
+              sub: carryUsd != null ? `${fmtUsdCompact(carryUsd)} pending` : 'pending',
             },
             {
               label: 'Yield',
@@ -1081,7 +1098,6 @@ function FlowPane({ refreshTick }) {
               sub: yieldSub,
             },
           ]}/>}
-          {!historyExpanded && <LiveLaneCard/>}
           {!historyExpanded && aprOpen && (
             <div style={{
               margin:'0 12px', padding:'8px 12px',
@@ -1089,7 +1105,7 @@ function FlowPane({ refreshTick }) {
               fontSize:11, lineHeight:1.45, flexShrink: 0,
               animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
             }}>
-              Cap-weighted average APY across live strategies with APR data. Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands.
+              Cap-weighted APY across all live strategies with APY data. Merkl live positions use current opportunity APY; other lanes use measured protocol APY when available, then display-only hints.
             </div>
           )}
           <OpsStrip fill={historyExpanded} onExpandedChange={setHistoryExpanded}/>
@@ -1119,6 +1135,7 @@ function DefiPane({ refreshTick }) {
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
   return (
     <div className="tabpane" style={{ padding: '4px 12px 16px' }}>
+      <LiveLaneCard/>
       <OnchainRadarCard/>
       <ResearchFunnelCard/>
       <PnlBreakdownStrip inline/>
@@ -1133,6 +1150,7 @@ function DefiPane({ refreshTick }) {
         const protoYield = protoRealized > 0 ? protoRealized : protoEstimated;
         const protoYieldBasis = protoRealized > 0 ? 'realized' : (protoEstimated > 0 ? 'estimated' : null);
         const protoCap = list.reduce((sum, s) => sum + (s.capUsd || 0), 0);
+        const protoApy = weightedApyForStrategies(list);
         return (
           <div key={proto} style={{
             marginBottom: 10,
@@ -1159,6 +1177,11 @@ function DefiPane({ refreshTick }) {
                 {protoYieldBasis && (
                   <div style={{ fontSize: 9.5, color: 'var(--ink-3)', marginTop: 1 }}>
                     {fmtYieldSubLabel(protoYieldBasis)}
+                  </div>
+                )}
+                {Number.isFinite(protoApy) && (
+                  <div style={{ fontSize: 9.5, color: 'var(--ink-3)', marginTop: 1 }}>
+                    APY {fmtPct(protoApy)}
                   </div>
                 )}
                 {protoCap > 0 && (
@@ -1303,23 +1326,23 @@ function strategyMechanics(s) {
   const toks = pairTokens(s);
   const t = s.type;
   const cap = s.capUsd || 0;
-  const apr = s.apyPct != null ? s.apyPct.toFixed(2) + '%' : '—';
+  const apy = s.apyPct != null ? s.apyPct.toFixed(2) + '%' : '—';
   if (t === 'loop' || t === 'fold') {
     const cycles = s.loops || 1;
     const collat = toks[0] || '—';
     const borrow = toks[1] || '—';
-    return `${collat} supply → ${borrow} borrow → redeposit · ${cycles}x · APR ${apr}`;
+    return `${collat} supply → ${borrow} borrow → redeposit · ${cycles}x · APY ${apy}`;
   }
   if (t === 'cl_lp' || t === 'lp' || t === 'lp_bgt') {
     if (toks.length >= 2) {
       const half = cap > 0 ? '$' + (cap/2).toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
-      return `${toks[0]} ${half} ↔ ${toks[1]} ${half} · APR ${apr}`;
+      return `${toks[0]} ${half} ↔ ${toks[1]} ${half} · APY ${apy}`;
     }
     const tot = cap > 0 ? '$' + cap.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
-    return `${toks[0]||'asset'} single-sided ${tot} · APR ${apr}`;
+    return `${toks[0]||'asset'} single-sided ${tot} · APY ${apy}`;
   }
-  if (t === 'pt') return `${toks[0]||'PT'} hold to maturity · fixed APR ${apr}`;
-  if (t === 'basis') return `${toks[0]||'?'} spot long + perp short · funding ${apr}`;
+  if (t === 'pt') return `${toks[0]||'PT'} hold to maturity · fixed APY ${apy}`;
+  if (t === 'basis') return `${toks[0]||'?'} spot long + perp short · funding ${apy}`;
   if (t === 'bridge') return `${toks[0]||'?'} → ${toks[1]||'?'} transfer`;
   if (t === 'payback') return `${toks[0]||'?'} → ${toks[1]||'?'} BTC payout`;
   if (t === 'arb') return `${toks.join(' ↔ ')} spread capture`;
@@ -1380,7 +1403,7 @@ function StrategyRow({ s, isLast }) {
         </div>
         <div style={{ fontSize: 9.8, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {chain?.name || displayChainName(s.chain)} · {strategyKind(s)}
-          {s.apyPct != null ? ` · APR ${s.apyPct.toFixed(2)}%` : ''}
+          {s.apyPct != null ? ` · APY ${s.apyPct.toFixed(2)}%` : ''}
         </div>
         <div style={{ fontSize: 9.6, color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {strategyMechanics(s)}

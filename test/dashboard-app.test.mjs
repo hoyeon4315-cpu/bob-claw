@@ -41,15 +41,17 @@ describe("dashboard home renewal source guard", () => {
     assert.match(metricStrip, /cards\.map/);
 
     const flowPane = extractSection("function FlowPane", "function KpiCard");
-    const labels = ["Assets", "APR", "Paid back", "Carry", "Yield"];
+    const labels = ["Assets", "APY", "Paid back", "Payback", "Yield"];
     for (const label of labels) {
       assert.match(flowPane, new RegExp(`label:\\s*'${label.replace(" ", "\\s+")}'`));
     }
+    assert.match(flowPane, /const totalApy = weightedApyForStrategies\(STRATEGIES\)/);
     assert.match(flowPane, /const strategyYieldUsd = STRATEGIES\.reduce/);
     assert.match(flowPane, /const liveYieldSats = flow\?\.metrics\?\.liveEstimatedYieldSats/);
     assert.match(flowPane, /const liveYieldUsd = flow\?\.metrics\?\.liveEstimatedYieldUsd/);
     assert.match(flowPane, /const liveYieldAprPct = flow\?\.metrics\?\.liveYieldAprPct/);
-    assert.match(flowPane, /live APR/);
+    assert.match(flowPane, /live APY/);
+    assert.match(flowPane, /\$\{fmtUsdCompact\(carryUsd\)\} pending/);
     assert.match(flowPane, /wallet only · 0 open positions/);
     assert.match(flowPane, /wallet \+ \$\{positions\.length\} open position/);
     assert.doesNotMatch(flowPane, /<PnlBreakdownStrip\/>/);
@@ -67,7 +69,7 @@ describe("dashboard home renewal source guard", () => {
     assert.match(pnlStrip, /pnlKindLabel/);
   });
 
-  test("flow home surfaces the live lane without exposing signing controls", () => {
+  test("defi home surfaces the live lane without exposing signing controls", () => {
     const liveLane = extractSection("function LiveLaneCard", "function RouteNode");
     assert.match(liveLane, /Live lane/);
     assert.match(liveLane, /Operation gate/);
@@ -81,7 +83,10 @@ describe("dashboard home renewal source guard", () => {
     assert.doesNotMatch(liveLane, /sign transaction/i);
 
     const flowPane = extractSection("function FlowPane", "function KpiCard");
-    assert.match(flowPane, /\{!historyExpanded && <LiveLaneCard\/>\}/);
+    assert.doesNotMatch(flowPane, /<LiveLaneCard\/>/);
+
+    const defiPane = extractSection("function DefiPane", "function OnchainRadarCard");
+    assert.match(defiPane, /<LiveLaneCard\/>/);
   });
 
   test("history card defaults to 3 rows with expand/collapse and scroll guard", () => {
@@ -155,15 +160,18 @@ describe("dashboard defi renewal source guard", () => {
     assert.doesNotMatch(strategyKind, /[가-힣]/);
 
     const defiPane = extractSection("function DefiPane", "function pairTokens");
+    assert.match(defiPane, /<LiveLaneCard\/>/);
     assert.match(defiPane, /<PnlBreakdownStrip inline\/>/);
     assert.match(defiPane, /No live strategies/);
     assert.match(defiPane, /live position/);
     assert.match(defiPane, /Cap \$/);
+    assert.match(defiPane, /const protoApy = weightedApyForStrategies\(list\)/);
+    assert.match(defiPane, /APY \{fmtPct\(protoApy\)\}/);
     assert.match(defiPane, /fmtYieldTag/);
     assert.match(defiPane, /fmtYieldSubLabel/);
 
     const strategyRow = extractSection("function StrategyRow", "function AssetsPane");
-    assert.match(strategyRow, /APR/);
+    assert.match(strategyRow, /APY/);
     assert.match(strategyRow, /fmtYieldTag\(s\.earnedUsd, s\.yieldBasis\)/);
     assert.doesNotMatch(strategyRow, /[가-힣]/);
     assert.doesNotMatch(strategyRow, /badge/i);
@@ -203,8 +211,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(overlayActive \? 'none' : 'auto'\)/);
     assert.match(flowPane, /transform: historyExpanded \? 'translateY\(0\) scale\(1\)' : overlayActive \? 'translateY\(18px\) scale\(0\.985\)' : 'translateY\(0\) scale\(1\)'/);
     assert.match(flowPane, /<OpsStrip fill=\{historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
-    assert.match(flowPane, /const aprStrats = STRATEGIES\.filter\(s => s\.status === 'LIVE' && s\.apyPct != null && s\.capUsd\)/);
-    assert.match(flowPane, /Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands\./);
+    assert.match(flowPane, /const totalApy = weightedApyForStrategies\(STRATEGIES\)/);
+    assert.match(flowPane, /Cap-weighted APY across all live strategies with APY data/);
   });
 
   test("app header shows live source and freshness state", () => {

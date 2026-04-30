@@ -360,6 +360,20 @@ function FlowMetricGrid({ cards }) {
     } }, card.sub)
   ), index < cards.length - 1 && /* @__PURE__ */ React.createElement("div", { style: { width: 0.5, background: "var(--line)" } }))));
 }
+function strategyApyWeightUsd(strategy) {
+  if (Number.isFinite(strategy?.capUsd) && strategy.capUsd > 0) return strategy.capUsd;
+  if (Number.isFinite(strategy?.actualProtocolCapitalUsd) && strategy.actualProtocolCapitalUsd > 0) {
+    return strategy.actualProtocolCapitalUsd;
+  }
+  return 0;
+}
+function weightedApyForStrategies(strategies = []) {
+  const rows = (strategies || []).filter((strategy) => strategy?.status === "LIVE" && Number.isFinite(strategy?.apyPct) && strategyApyWeightUsd(strategy) > 0);
+  const weight = rows.reduce((sum, strategy) => sum + strategyApyWeightUsd(strategy), 0);
+  if (weight <= 0) return null;
+  const weighted = rows.reduce((sum, strategy) => sum + strategyApyWeightUsd(strategy) * strategy.apyPct, 0);
+  return weighted / weight;
+}
 function friendlyBlockerLabel(value) {
   const raw = String(value || "").trim();
   if (!raw) return "clear";
@@ -428,7 +442,7 @@ function LiveLaneCard() {
     }
   ];
   return /* @__PURE__ */ React.createElement("div", { style: {
-    margin: "3px 12px 0",
+    margin: "0 0 8px",
     padding: "7px 9px 7px",
     background: "var(--card)",
     border: "0.5px solid var(--line)",
@@ -770,7 +784,7 @@ function FlowPane({ refreshTick }) {
   const showLiveYield = Number.isFinite(liveYieldSats) && liveYieldSats > 0 || Number.isFinite(liveYieldUsd) && liveYieldUsd > 0;
   const liveYieldSub = [
     Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? fmtUsdCompact(liveYieldUsd) : null,
-    Number.isFinite(liveYieldAprPct) ? `live APR ${fmtPct(liveYieldAprPct)}` : null,
+    Number.isFinite(liveYieldAprPct) ? `live APY ${fmtPct(liveYieldAprPct)}` : null,
     liveYieldPositionCount > 0 ? `${liveYieldPositionCount} position${liveYieldPositionCount > 1 ? "s" : ""}` : null
   ].filter(Boolean).join(" \xB7 ");
   const yieldMain = showLiveYield ? Number.isFinite(liveYieldSats) && liveYieldSats > 0 ? fmtSats(liveYieldSats) : fmtUsdCompact(liveYieldUsd) : grossYieldSats > 0 ? fmtSats(grossYieldSats) : strategyYieldUsd > 0 ? fmtUsdCompact(strategyYieldUsd) : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : "\u2014";
@@ -778,10 +792,7 @@ function FlowPane({ refreshTick }) {
   const flowMapBaseHeight = "calc(52% - 4px)";
   const lowerPaneTop = "calc(52% + 4px)";
   const lowerPaneExpandedOffset = "calc(52% + 10px)";
-  const aprStrats = STRATEGIES.filter((s) => s.status === "LIVE" && s.apyPct != null && s.capUsd);
-  const aprDen = aprStrats.reduce((s, x) => s + x.capUsd, 0);
-  const aprNum = aprStrats.reduce((s, x) => s + x.capUsd * x.apyPct, 0);
-  const totalApr = Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : aprDen > 0 ? aprNum / aprDen : null;
+  const totalApy = weightedApyForStrategies(STRATEGIES) ?? (Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : null);
   const [aprOpen, setAprOpen] = useState(false);
   const assetSub = pending ? "pending" : positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? "s" : ""}` : "wallet only \xB7 0 open positions";
   return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { position: "relative", display: "flex", flexDirection: "column", overflowX: "hidden", overflowY: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
@@ -828,9 +839,9 @@ function FlowPane({ refreshTick }) {
       sub: assetSub
     },
     {
-      label: "APR",
-      main: totalApr != null ? fmtPct(totalApr) : "\u2014",
-      sub: aprOpen ? Number.isFinite(liveYieldAprPct) ? "live weighted" : "cap-weighted" : "tap for note",
+      label: "APY",
+      main: totalApy != null ? fmtPct(totalApy) : "\u2014",
+      sub: aprOpen ? "live cap-weighted" : "tap for note",
       onTap: () => setAprOpen((o) => !o),
       accent: aprOpen ? "var(--ink)" : void 0
     },
@@ -840,16 +851,16 @@ function FlowPane({ refreshTick }) {
       sub: paidUsd != null ? fmtUsdCompact(paidUsd) : "\u2014"
     },
     {
-      label: "Carry",
+      label: "Payback",
       main: fmtSats(carrySats),
-      sub: carryUsd != null ? fmtUsdCompact(carryUsd) : "unpaid"
+      sub: carryUsd != null ? `${fmtUsdCompact(carryUsd)} pending` : "pending"
     },
     {
       label: "Yield",
       main: yieldMain,
       sub: yieldSub
     }
-  ] }), !historyExpanded && /* @__PURE__ */ React.createElement(LiveLaneCard, null), !historyExpanded && aprOpen && /* @__PURE__ */ React.createElement("div", { style: {
+  ] }), !historyExpanded && aprOpen && /* @__PURE__ */ React.createElement("div", { style: {
     margin: "0 12px",
     padding: "8px 12px",
     background: "#111113",
@@ -859,7 +870,7 @@ function FlowPane({ refreshTick }) {
     lineHeight: 1.45,
     flexShrink: 0,
     animation: `slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`
-  } }, "Cap-weighted average APY across live strategies with APR data. Merkl live positions use current opportunity APR; other lanes can still fall back to display hints until live APR ingestion lands."), /* @__PURE__ */ React.createElement(OpsStrip, { fill: historyExpanded, onExpandedChange: setHistoryExpanded }))));
+  } }, "Cap-weighted APY across all live strategies with APY data. Merkl live positions use current opportunity APY; other lanes use measured protocol APY when available, then display-only hints."), /* @__PURE__ */ React.createElement(OpsStrip, { fill: historyExpanded, onExpandedChange: setHistoryExpanded }))));
 }
 function KpiCard({ label, main, sub }) {
   return /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", background: "var(--card)", borderRadius: 16, border: "0.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, letterSpacing: -0.3, marginTop: 3 } }, main), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 1 } }, sub));
@@ -873,12 +884,13 @@ function DefiPane({ refreshTick }) {
     return acc;
   }, {});
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(OnchainRadarCard, null), /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(LiveLaneCard, null), /* @__PURE__ */ React.createElement(OnchainRadarCard, null), /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
     const protoRealized = list.reduce((sum, s) => sum + (s.realizedYieldUsd || 0), 0);
     const protoEstimated = list.reduce((sum, s) => sum + (s.estimatedYieldUsd || 0), 0);
     const protoYield = protoRealized > 0 ? protoRealized : protoEstimated;
     const protoYieldBasis = protoRealized > 0 ? "realized" : protoEstimated > 0 ? "estimated" : null;
     const protoCap = list.reduce((sum, s) => sum + (s.capUsd || 0), 0);
+    const protoApy = weightedApyForStrategies(list);
     return /* @__PURE__ */ React.createElement("div", { key: proto, style: {
       marginBottom: 10,
       background: "var(--card)",
@@ -886,7 +898,7 @@ function DefiPane({ refreshTick }) {
       border: "0.5px solid var(--line)",
       overflow: "hidden",
       boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 12px 9px" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: proto, size: 30 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 } }, displayProtocolName(proto)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, list.length, " live position", list.length > 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, protoYield > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(protoYield, protoYieldBasis)), protoYieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(protoYieldBasis)), protoCap > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "var(--ink)", letterSpacing: -0.2 } }, "Cap $", protoCap.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px" } }, list.map((s, i) => /* @__PURE__ */ React.createElement(StrategyRow, { key: s.id, s, isLast: i === list.length - 1 }))));
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 12px 9px" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: proto, size: 30 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 } }, displayProtocolName(proto)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, list.length, " live position", list.length > 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, protoYield > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(protoYield, protoYieldBasis)), protoYieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(protoYieldBasis)), Number.isFinite(protoApy) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "APY ", fmtPct(protoApy)), protoCap > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "var(--ink)", letterSpacing: -0.2 } }, "Cap $", protoCap.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px" } }, list.map((s, i) => /* @__PURE__ */ React.createElement(StrategyRow, { key: s.id, s, isLast: i === list.length - 1 }))));
   }));
 }
 function OnchainRadarCard() {
@@ -970,23 +982,23 @@ function strategyMechanics(s) {
   const toks = pairTokens(s);
   const t = s.type;
   const cap = s.capUsd || 0;
-  const apr = s.apyPct != null ? s.apyPct.toFixed(2) + "%" : "\u2014";
+  const apy = s.apyPct != null ? s.apyPct.toFixed(2) + "%" : "\u2014";
   if (t === "loop" || t === "fold") {
     const cycles = s.loops || 1;
     const collat = toks[0] || "\u2014";
     const borrow = toks[1] || "\u2014";
-    return `${collat} supply \u2192 ${borrow} borrow \u2192 redeposit \xB7 ${cycles}x \xB7 APR ${apr}`;
+    return `${collat} supply \u2192 ${borrow} borrow \u2192 redeposit \xB7 ${cycles}x \xB7 APY ${apy}`;
   }
   if (t === "cl_lp" || t === "lp" || t === "lp_bgt") {
     if (toks.length >= 2) {
       const half = cap > 0 ? "$" + (cap / 2).toLocaleString(void 0, { maximumFractionDigits: 0 }) : "\u2014";
-      return `${toks[0]} ${half} \u2194 ${toks[1]} ${half} \xB7 APR ${apr}`;
+      return `${toks[0]} ${half} \u2194 ${toks[1]} ${half} \xB7 APY ${apy}`;
     }
     const tot = cap > 0 ? "$" + cap.toLocaleString(void 0, { maximumFractionDigits: 0 }) : "\u2014";
-    return `${toks[0] || "asset"} single-sided ${tot} \xB7 APR ${apr}`;
+    return `${toks[0] || "asset"} single-sided ${tot} \xB7 APY ${apy}`;
   }
-  if (t === "pt") return `${toks[0] || "PT"} hold to maturity \xB7 fixed APR ${apr}`;
-  if (t === "basis") return `${toks[0] || "?"} spot long + perp short \xB7 funding ${apr}`;
+  if (t === "pt") return `${toks[0] || "PT"} hold to maturity \xB7 fixed APY ${apy}`;
+  if (t === "basis") return `${toks[0] || "?"} spot long + perp short \xB7 funding ${apy}`;
   if (t === "bridge") return `${toks[0] || "?"} \u2192 ${toks[1] || "?"} transfer`;
   if (t === "payback") return `${toks[0] || "?"} \u2192 ${toks[1] || "?"} BTC payout`;
   if (t === "arb") return `${toks.join(" \u2194 ")} spread capture`;
@@ -1035,7 +1047,7 @@ function StrategyRow({ s, isLast }) {
     borderRadius: 8,
     background: "var(--green)",
     boxShadow: "0 0 0 1.5px #fff"
-  } })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.1, fontWeight: 600, letterSpacing: -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, s.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.8, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, chain?.name || displayChainName(s.chain), " \xB7 ", strategyKind(s), s.apyPct != null ? ` \xB7 APR ${s.apyPct.toFixed(2)}%` : ""), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.6, color: "var(--ink-4)", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, strategyMechanics(s)), riskLabel && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "#8A520C", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, riskLabel)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, s.earnedUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.4, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(s.earnedUsd, s.yieldBasis)), s.yieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(s.yieldBasis)), s.capUsd != null && s.capUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "Cap $", s.capUsd.toLocaleString())), !isLast && /* @__PURE__ */ React.createElement("div", { style: {
+  } })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.1, fontWeight: 600, letterSpacing: -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, s.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.8, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, chain?.name || displayChainName(s.chain), " \xB7 ", strategyKind(s), s.apyPct != null ? ` \xB7 APY ${s.apyPct.toFixed(2)}%` : ""), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.6, color: "var(--ink-4)", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, strategyMechanics(s)), riskLabel && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "#8A520C", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, riskLabel)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, s.earnedUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.4, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(s.earnedUsd, s.yieldBasis)), s.yieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(s.yieldBasis)), s.capUsd != null && s.capUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "Cap $", s.capUsd.toLocaleString())), !isLast && /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",
     left: 0,
     right: 0,
