@@ -46,6 +46,11 @@ describe("mindmap source guard", () => {
   test("chain and protocol nodes render compact USD pills and bounded protocol cards", () => {
     assert.match(MINDMAP_JSX, /function StatPill\(/);
     assert.match(MINDMAP_JSX, /function formatYieldDisplay\(/);
+    assert.match(MINDMAP_JSX, /function weightedProtocolApy\(strategies = \[\]\)/);
+    assert.match(MINDMAP_JSX, /function apyWeightUsd\(strategy\)/);
+    assert.match(MINDMAP_JSX, /const weightedRows = rows\.filter\(\(strategy\) => apyWeightUsd\(strategy\) > 0\)/);
+    assert.match(MINDMAP_JSX, /return rows\.reduce\(\(sum, strategy\) => sum \+ strategy\.apyPct, 0\) \/ rows\.length/);
+    assert.match(MINDMAP_JSX, /apyPct: weightedProtocolApy\(items\)/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_MAX_HEIGHT = 132;/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CARD_SAFE_BOTTOM = 188;/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_CHIP_SIZE = 30;/);

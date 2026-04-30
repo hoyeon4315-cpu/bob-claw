@@ -483,6 +483,28 @@ function summarizedStatus(strategies = []) {
   return strategies[0]?.status || 'CANDIDATE';
 }
 
+function apyWeightUsd(strategy) {
+  if (Number.isFinite(strategy?.capUsd) && strategy.capUsd > 0) return strategy.capUsd;
+  if (Number.isFinite(strategy?.actualProtocolCapitalUsd) && strategy.actualProtocolCapitalUsd > 0) {
+    return strategy.actualProtocolCapitalUsd;
+  }
+  return 0;
+}
+
+function weightedProtocolApy(strategies = []) {
+  const rows = strategies.filter((strategy) => Number.isFinite(strategy?.apyPct));
+  const weightedRows = rows.filter((strategy) => apyWeightUsd(strategy) > 0);
+  const weightedDenominator = weightedRows.reduce((sum, strategy) => sum + apyWeightUsd(strategy), 0);
+  if (weightedDenominator > 0) {
+    const weightedNumerator = weightedRows.reduce((sum, strategy) => sum + apyWeightUsd(strategy) * strategy.apyPct, 0);
+    return weightedNumerator / weightedDenominator;
+  }
+  if (rows.length > 0) {
+    return rows.reduce((sum, strategy) => sum + strategy.apyPct, 0) / rows.length;
+  }
+  return null;
+}
+
 function groupStrategiesByProtocol(strategies = []) {
   const grouped = {};
   for (const strategy of strategies) {
@@ -490,8 +512,6 @@ function groupStrategiesByProtocol(strategies = []) {
   }
   return Object.values(grouped).map((items) => {
     const first = items[0];
-    const apyDenominator = items.reduce((sum, item) => sum + (Number.isFinite(item.apyPct) && Number.isFinite(item.capUsd) ? item.capUsd : 0), 0);
-    const apyNumerator = items.reduce((sum, item) => sum + (Number.isFinite(item.apyPct) && Number.isFinite(item.capUsd) ? item.capUsd * item.apyPct : 0), 0);
     const liveCount = items.filter((item) => item.status === 'LIVE').length;
     const realizedYieldUsd = items.reduce((sum, item) => sum + (item.realizedYieldUsd || 0), 0);
     const estimatedYieldUsd = items.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
@@ -521,7 +541,7 @@ function groupStrategiesByProtocol(strategies = []) {
         0,
       ),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
-      apyPct: apyDenominator > 0 ? apyNumerator / apyDenominator : null,
+      apyPct: weightedProtocolApy(items),
       recentActivityCount,
       recentActivityUsd,
       recentActivityAssets,
