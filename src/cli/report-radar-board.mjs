@@ -50,7 +50,10 @@ async function main() {
   }
   if (!args.json) {
     console.log(`observed=${board.summary.observedCount}`);
+    console.log(`candidates=${board.summary.candidateCount}`);
     console.log(`executable=${board.summary.executableCount}`);
+    console.log(`blocked=${board.summary.blockedCandidateCount}`);
+    console.log(`topBlocker=${board.summary.topCandidateBlocker || "n/a"}`);
   }
 }
 

@@ -66,7 +66,10 @@ async function main() {
   console.log(`protocolBindingRequiredCount=${queue.summary.protocolBindingRequiredCount}`);
   console.log(`unsupportedProtocolBindingCount=${queue.summary.unsupportedProtocolBindingCount}`);
   console.log(`chainRouteGapCount=${queue.summary.chainRouteGapCount}`);
+  console.log(`inventoryReadyCount=${queue.summary.inventoryReadyCount ?? queue.summary.executableNowCount ?? 0}`);
+  console.log(`autoEntryReadyCount=${queue.summary.autoEntryReadyCount ?? queue.summary.autoExecutableNowCount ?? 0}`);
   console.log(`executableNowCount=${queue.summary.executableNowCount ?? 0}`);
+  console.log(`executableNowStage=${queue.summary.executableNowStage || "inventory_ready_before_sizing_policy_and_signer"}`);
   console.log(`cooldownActiveCount=${queue.summary.cooldownActiveCount ?? 0}`);
   console.log(`nativeGasGapCount=${queue.summary.nativeGasGapCount ?? 0}`);
   console.log(`executorMissingCount=${queue.summary.executorMissingCount ?? 0}`);

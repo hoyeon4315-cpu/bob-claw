@@ -7,6 +7,13 @@ import { buildRepresentativeChainCoverage } from "./representative-chain-coverag
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
 const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle", "yei"]);
+const EXECUTABLE_NOW_STAGE = "inventory_ready_before_sizing_policy_and_signer";
+const FINAL_EXECUTION_REQUIRES = Object.freeze([
+  "tiny_live_cap_sizing",
+  "opportunity_policy_positive_ev",
+  "plan_builder_available",
+  "deterministic_signer_policy_approval",
+]);
 
 const EXECUTION_TEMPLATES = Object.freeze({
   lending: Object.freeze({
@@ -273,8 +280,12 @@ export function buildMerklCanaryQueue({
       protocolBindingRequiredCount: queue.filter((item) => item.capabilityGaps.includes("protocol_position_binding_required")).length,
       unsupportedProtocolBindingCount: queue.filter((item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding").length,
       chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
+      inventoryReadyCount: executableQueue.length,
+      autoEntryReadyCount: autoExecutableQueue.length,
       executableNowCount: executableQueue.length,
       autoExecutableNowCount: autoExecutableQueue.length,
+      executableNowStage: EXECUTABLE_NOW_STAGE,
+      finalExecutionRequires: [...FINAL_EXECUTION_REQUIRES],
       cooldownActiveCount: queue.filter((item) => item.executionReadiness?.status === "cooldown_active").length,
       nativeGasGapCount: queue.filter((item) => item.executionReadiness?.status === "native_gas_missing").length,
       executorMissingCount: queue.filter((item) => item.executionReadiness?.status === "executor_missing").length,

@@ -58,6 +58,8 @@ test("radar CLI ingests observations and reports sanitized board", async () => {
 
   assert.equal(report.status, 0, report.stderr);
   assert.match(report.stdout, /observed=1/);
+  assert.match(report.stdout, /candidates=0/);
+  assert.match(report.stdout, /blocked=0/);
 
   const board = JSON.parse(await readFile(reportPath, "utf8"));
   assert.equal(board.summary.observedCount, 1);

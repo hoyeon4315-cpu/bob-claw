@@ -20,7 +20,11 @@ test("buildRadarBoard summarizes all radar phases without exposing raw payloads"
   assert.equal(board.summary.observedCount, 1);
   assert.equal(board.summary.strategyEpisodeCount, 1);
   assert.equal(board.summary.portablePacketCount, 1);
+  assert.equal(board.summary.candidateCount, 1);
   assert.equal(board.summary.executableCount, 0);
+  assert.equal(board.summary.blockedCandidateCount, 1);
+  assert.equal(board.summary.topCandidateBlocker, "radar_policy_thresholds_unresolved");
+  assert.deepEqual(board.summary.candidateStatusCounts, { blocked: 1 });
   assert.equal(board.summary.strategyRealizedCount, 1);
   assert.equal(board.summary.positiveRealizedPnlCount, 1);
   assert.equal(board.summary.totalNetRealizedPnlUsd, 1.25);
@@ -48,6 +52,8 @@ test("buildRadarBoard summarizes the latest version for each executable candidat
   });
 
   assert.equal(board.summary.executableCount, 1);
+  assert.equal(board.summary.candidateCount, 1);
+  assert.equal(board.summary.blockedCandidateCount, 0);
   assert.deepEqual(board.blockerCounts, {});
   assert.deepEqual(board.candidates, [{
     candidateId: "candidate_1",

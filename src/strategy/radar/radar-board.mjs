@@ -10,6 +10,23 @@ function countBlockers(candidates = []) {
   return counts;
 }
 
+function countGateStatuses(candidates = []) {
+  const counts = {};
+  for (const candidate of candidates) {
+    const status = candidate.gateStatus || "unknown";
+    counts[status] = (counts[status] || 0) + 1;
+  }
+  return counts;
+}
+
+function topCountKey(counts = {}) {
+  const [top] = Object.entries(counts).sort((left, right) => {
+    if (right[1] !== left[1]) return right[1] - left[1];
+    return left[0].localeCompare(right[0]);
+  });
+  return top?.[0] || null;
+}
+
 function candidateObservedAtMs(candidate = {}) {
   const parsed = Date.parse(candidate.observedAt || candidate.metadata?.syncedAt || 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -44,7 +61,9 @@ export function buildRadarBoard({
 } = {}) {
   const realizationSummary = summarizeRealizationRecords(realizationRecords);
   const latestCandidates = latestCandidatesById(candidates);
+  const blockerCounts = countBlockers(latestCandidates);
   const executableCount = latestCandidates.filter((candidate) => candidate.gateStatus === "executable").length;
+  const blockedCandidateCount = latestCandidates.length - executableCount;
   return {
     schemaVersion: 1,
     generatedAt,
@@ -52,14 +71,19 @@ export function buildRadarBoard({
       observedCount: observations.length,
       strategyEpisodeCount: episodes.length,
       portablePacketCount: packets.length,
+      rawCandidateVersionCount: candidates.length,
+      candidateCount: latestCandidates.length,
       executableCount,
+      blockedCandidateCount,
+      candidateStatusCounts: countGateStatuses(latestCandidates),
+      topCandidateBlocker: topCountKey(blockerCounts),
       strategyRealizedCount: realizationSummary.strategyRealizedCount,
       positiveRealizedPnlCount: realizationSummary.positiveRealizedPnlCount,
       paybackDeliveredCount: realizationSummary.paybackDeliveredCount,
       totalNetRealizedPnlUsd: realizationSummary.totalNetRealizedPnlUsd,
       totalNetRealizedPnlSats: realizationSummary.totalNetRealizedPnlSats,
     },
-    blockerCounts: countBlockers(latestCandidates),
+    blockerCounts,
     observations: observations.map(safeObservation),
     episodes: episodes.map((episode) => ({
       episodeId: episode.episodeId || null,

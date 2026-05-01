@@ -7,6 +7,7 @@ import {
   selectMerklCanaryAutopilotCandidate,
   selectMerklCanaryAutopilotCandidates,
   sizeMerklCanaryAmount,
+  summarizeMerklAutopilotResults,
 } from "../src/executor/merkl-canary-autopilot.mjs";
 
 function queueItem(overrides = {}) {
@@ -148,6 +149,28 @@ test("Merkl canary opportunity policy blocks selected candidates before plan bui
 
   assert.equal(result.ok, false);
   assert.deepEqual(result.blockers, ["blocked:erc4626_deposit"]);
+});
+
+test("Merkl autopilot result summary separates selected candidates from policy-ready execution", () => {
+  const summary = summarizeMerklAutopilotResults([
+    {
+      status: "blocked",
+      blockedReason: "same_chain_unprofitable:need_$64_on_base",
+      opportunityPolicy: {
+        blockers: ["same_chain_unprofitable:need_$64_on_base"],
+      },
+    },
+    {
+      status: "preview_ready",
+    },
+  ]);
+
+  assert.equal(summary.executionReadyCount, 1);
+  assert.equal(summary.blockedCount, 1);
+  assert.equal(summary.topBlocker, "same_chain_unprofitable:need_$64_on_base");
+  assert.deepEqual(summary.blockerCounts, {
+    "same_chain_unprofitable:need_$64_on_base": 1,
+  });
 });
 
 test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {

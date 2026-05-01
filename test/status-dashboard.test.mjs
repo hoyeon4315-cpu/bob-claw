@@ -215,6 +215,34 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
     })}\n`,
     "utf8",
   );
+  await writeFile(
+    join(dataDir, "merkl-canary-queue.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-04-11T02:04:45.000Z",
+      summary: {
+        queueCount: 2,
+        topQueueId: "merkl:opp-ready",
+        topOpportunityId: "opp-ready",
+        topNextAction: "build_stable_carry_deposit_withdraw_canary",
+        topExecutableOpportunityId: "opp-ready",
+        chainCount: 1,
+        protocolBindingReadyCount: 1,
+        inventoryReadyCount: 1,
+        autoEntryReadyCount: 1,
+        executableNowCount: 1,
+        autoExecutableNowCount: 1,
+        executableNowStage: "inventory_ready_before_sizing_policy_and_signer",
+        finalExecutionRequires: ["opportunity_policy_positive_ev"],
+        topBlockingReason: "executable_candidate_available",
+        executorMissingCount: 0,
+        cooldownActiveCount: 0,
+        chainRouteGapCount: 0,
+      },
+      queue: [],
+    })}\n`,
+    "utf8",
+  );
   await writeJsonl(dataDir, "connected-refresh-runs", [
     {
       observedAt: "2026-04-11T02:00:00.000Z",
@@ -306,6 +334,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.match(result.stdout, /paybackGrossProfitSatsPeriod=\d+ paidBackSatsLifetime=0/);
   assert.match(result.stdout, /opportunityPositiveInsufficient=count:\d+ top:[^ ]+ net:[^ ]+ gap:[^ \n]+/);
   assert.match(result.stdout, /formulaAudit=implemented:\d+ partial:\d+ missing:\d+ topGap:.+/);
+  assert.match(result.stdout, /merklCanaryQueue=.*inventoryReady:1.*autoEntryReady:1.*stage:inventory_ready_before_sizing_policy_and_signer/);
   assert.match(result.stdout, /gasFreshness=missing:\d+ stale:\d+ staleChains=.*/);
   assert.equal(result.stdout.includes("paybackPreviewAfterDestination="), false);
   assert.match(result.stdout, /liveBaseline=blocked stage=shadow_replay refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+/);
@@ -321,6 +350,8 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(publicStatus.dataCounts.preliveForkPlans, 0);
   assert.equal(publicStatus.dataCounts.shadowRefreshExecutions, 0);
   assert.equal(publicStatus.dataCounts.shadowRefreshBatches, 1);
+  assert.equal(publicStatus.strategy.merklCanaryQueueSummary.inventoryReadyCount, 1);
+  assert.equal(publicStatus.strategy.merklCanaryQueueSummary.executableNowStage, "inventory_ready_before_sizing_policy_and_signer");
   assert.equal(publicStatus.shadowCycle.mode, shadowCycle.mode);
   assert.equal(typeof publicStatus.shadowCycle?.refreshExecution?.runCount, "number");
   assert.equal(Array.isArray(publicStatus.shadowCycle?.refreshExecution?.recentExecutions), true);
