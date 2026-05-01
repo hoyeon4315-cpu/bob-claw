@@ -356,8 +356,14 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   // P1/P2 parity floor injection — deterministic, pure slices
   const chainParity = buildChainParitySlice();
   const strategyTickStatus =
-    (await readJsonIfExists(join(dataDir, "..", "dashboard", "public", "strategy-tick-status.json"))) ||
-    (await readJsonIfExists(join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"))) ||
+    (await readJsonIfExists(join(dataDir, "..", "dashboard", "public", "strategy-tick-status.json"), {
+      tolerateMalformed: true,
+      retryCount: 2,
+    })) ||
+    (await readJsonIfExists(join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"), {
+      tolerateMalformed: true,
+      retryCount: 2,
+    })) ||
     null;
   const strategyParity = buildStrategyParitySlice({
     deterministicCandidates: deterministicStrategyCandidates,

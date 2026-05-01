@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { determineCanaryNextStep } from "./canary-next-step.mjs";
@@ -8,13 +9,18 @@ import { buildEstimatorFundingPlan } from "./funding-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 
-export async function readJsonIfExists(path) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
+export async function readJsonIfExists(path, { tolerateMalformed = false, retryCount = 0, retryDelayMs = 25 } = {}) {
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    try {
+      return JSON.parse(await readFile(path, "utf8"));
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      if (!tolerateMalformed || error instanceof SyntaxError === false) throw error;
+      if (attempt >= retryCount) return null;
+      await delay(retryDelayMs);
+    }
   }
+  return null;
 }
 
 export async function loadCanaryState({ address = null, dataDir = config.dataDir, getLivePrices = getCoinGeckoPricesUsd, now = null } = {}) {

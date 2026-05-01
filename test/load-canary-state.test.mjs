@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadCanaryState } from "../src/estimator/load-canary-state.mjs";
+import { loadCanaryState, readJsonIfExists } from "../src/estimator/load-canary-state.mjs";
 import { buildPriceSnapshot, emptyPricesUsd } from "../src/market/prices.mjs";
 
 async function writeJsonl(baseDir, name, records) {
@@ -109,4 +109,14 @@ test("load canary state includes latest gateway route records for downstream sum
   assert.equal(Array.isArray(state.routesRecords), true);
   assert.equal(state.routesRecords.length, 1);
   assert.equal(state.routesRecords[0].routes[0].srcChain, "ethereum");
+});
+
+test("optional JSON reads can tolerate a concurrently written partial file", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-read-json-partial-"));
+  const path = join(cwd, "strategy-tick-status.json");
+  await writeFile(path, '{"schemaVersion":2,', "utf8");
+
+  const value = await readJsonIfExists(path, { tolerateMalformed: true });
+
+  assert.equal(value, null);
 });
