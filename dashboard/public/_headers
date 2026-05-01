@@ -4,5 +4,7 @@
   Cache-Control: no-cache, no-store, must-revalidate
 /*.json
   Cache-Control: no-cache, no-store, must-revalidate
+/*.js
+  Cache-Control: no-cache, no-store, must-revalidate
 /*.jsx
   Cache-Control: no-cache, no-store, must-revalidate

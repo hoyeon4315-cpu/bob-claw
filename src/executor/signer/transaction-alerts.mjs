@@ -5,6 +5,7 @@ const GENERIC_PROBE_STRATEGY_IDS = new Set([
   "token-dex-experiment",
   "native-dex-experiment",
 ]);
+const IMMEDIATE_ALERT_MIN_USD = 25;
 
 function shortHash(value) {
   if (!value) return null;
@@ -36,7 +37,12 @@ export function formatLiveTransactionAlert({
   stage = "broadcasted",
 } = {}) {
   const txHash = broadcast?.txHash || intent.txHash || null;
-  const statusLabel = stage === "confirmed" ? "확정" : "브로드캐스트";
+  const statusLabel = ({
+    confirmed: "확정",
+    reverted: "리버트",
+    failed: "실패",
+    error: "오류",
+  })[stage] || "브로드캐스트";
   const lines = [
     "BOB Claw 실제 트랜잭션",
     `상태: ${statusLabel}`,
@@ -55,6 +61,36 @@ function isGenericProbeIntent(intent = {}) {
   return GENERIC_PROBE_STRATEGY_IDS.has(String(intent.strategyId || ""));
 }
 
+function isPaybackIntent(intent = {}) {
+  return String(intent.strategyId || "").startsWith("payback:") || String(intent.intentType || "") === "payback";
+}
+
+function isEmergencyIntent(intent = {}) {
+  return ["emergency_unwind", "risk_unwind"].includes(String(intent.intentType || ""));
+}
+
+function isFailureStage(stage = "") {
+  return ["reverted", "failed", "error"].includes(String(stage || ""));
+}
+
+function liveAlertAmountUsd(intent = {}) {
+  const value = Number(intent.amountUsd ?? intent.metadata?.capCheckAmountUsd ?? NaN);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function shouldSendLiveTransactionAlert({ intent = {}, stage = "broadcasted" } = {}) {
+  if (isFailureStage(stage)) return { send: true, reason: "failure_stage" };
+  if (isPaybackIntent(intent)) return { send: true, reason: "payback" };
+  if (isEmergencyIntent(intent)) return { send: true, reason: "emergency" };
+  if (stage === "confirmed" || stage === "broadcasted") {
+    const amountUsd = liveAlertAmountUsd(intent);
+    if (amountUsd !== null && amountUsd >= IMMEDIATE_ALERT_MIN_USD) {
+      return { send: true, reason: "notional_threshold" };
+    }
+  }
+  return { send: false, reason: "routine_transaction_suppressed" };
+}
+
 export async function notifyLiveTransaction({
   intent = {},
   broadcast = {},
@@ -66,11 +102,14 @@ export async function notifyLiveTransaction({
   if (!broadcast?.txHash) {
     return { sent: false, skipped: true, reason: "tx_hash_missing" };
   }
-  if (stage === "broadcasted" && isGenericProbeIntent(intent)) {
+  const decision = shouldSendLiveTransactionAlert({ intent, stage });
+  if (!decision.send) {
     return {
       sent: false,
       skipped: true,
-      reason: "generic_probe_broadcast_suppressed",
+      reason: isGenericProbeIntent(intent) && stage === "broadcasted"
+        ? "generic_probe_broadcast_suppressed"
+        : decision.reason,
       category: "live_execution_result",
     };
   }

@@ -196,7 +196,7 @@ test("generic probe broadcast alerts are suppressed before Telegram delivery", a
   assert.equal(result.reason, "generic_probe_broadcast_suppressed");
 });
 
-test("generic probe confirmed alerts still deliver", async () => {
+test("routine tiny confirmed alerts are suppressed before Telegram delivery", async () => {
   let payload = null;
   const result = await notifyLiveTransaction({
     intent: {
@@ -207,15 +207,18 @@ test("generic probe confirmed alerts still deliver", async () => {
     },
     broadcast: { txHash: `0x${"d".repeat(64)}` },
     stage: "confirmed",
+    botToken: "token",
+    chatId: "chat",
     sendImpl: async (args) => {
       payload = args;
       return { sent: true, category: args.category };
     },
   });
 
-  assert.equal(result.sent, true);
-  assert.equal(payload.category, "live_execution_result");
-  assert.match(payload.text, /상태: 확정/);
+  assert.equal(payload, null);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "routine_transaction_suppressed");
 });
 
 test("payback broadcast alerts are not suppressed", async () => {
@@ -240,7 +243,56 @@ test("payback broadcast alerts are not suppressed", async () => {
   assert.match(payload.text, /전략: payback:2026-W18/);
 });
 
-test("signer notifies once in Korean when a transaction is broadcast", async () => {
+test("wrapped BTC tiny loop alerts are suppressed before Telegram delivery", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      intentType: "wrapped_btc_loop_entry",
+      amountUsd: 7.389991,
+    },
+    broadcast: { txHash: `0x${"f".repeat(64)}` },
+    stage: "broadcasted",
+    botToken: "token",
+    chatId: "chat",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(payload, null);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "routine_transaction_suppressed");
+});
+
+test("large live transaction alerts still deliver", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      intentType: "wrapped_btc_loop_entry",
+      amountUsd: 30,
+    },
+    broadcast: { txHash: `0x${"9".repeat(64)}` },
+    stage: "confirmed",
+    botToken: "token",
+    chatId: "chat",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(result.sent, true);
+  assert.equal(payload.category, "live_execution_result");
+  assert.match(payload.text, /상태: 확정/);
+});
+
+test("signer notifies once in Korean when a large transaction is broadcast without confirmation wait", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bob-claw-tx-alert-"));
   const txHash = `0x${"b".repeat(64)}`;
   const notifications = [];
@@ -269,7 +321,7 @@ test("signer notifies once in Korean when a transaction is broadcast", async () 
           strategyId: "gateway-btc-funding-transfer",
           chain: "base",
           intentType: "gateway_btc_transfer",
-          amountUsd: 1,
+          amountUsd: 30,
           quote: { observedAt: now },
           observedAt: now,
           metadata: { amountSats: "1000" },
@@ -295,6 +347,70 @@ test("signer notifies once in Korean when a transaction is broadcast", async () 
     assert.match(notifications[0].text, /상태: 브로드캐스트/);
     assert.match(notifications[0].text, /tx: 0xbbbbbbbb\.\.\.bbbbbb/);
     assert.equal(result.transactionNotification.sent, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("signer waits for confirmation before notifying when confirmation is requested", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-tx-alert-confirm-"));
+  const txHash = `0x${"7".repeat(64)}`;
+  const notifications = [];
+  const now = new Date().toISOString();
+  const signers = {
+    evm: {
+      signIntent: async (intent) => ({
+        schemaVersion: 1,
+        intentId: intent.intentId,
+        strategyId: intent.strategyId,
+        chain: intent.chain,
+        signerFamily: "evm",
+        txHash,
+        signedTx: "0xsigned",
+        metadata: { nonce: 1 },
+      }),
+      broadcastSignedIntent: async () => ({ txHash, nonce: 1 }),
+      waitForTransaction: async () => ({
+        status: 1,
+        hash: txHash,
+        gasUsed: "1",
+        gasPrice: "1",
+      }),
+    },
+  };
+
+  try {
+    const result = await handleIntentCommand({
+      message: {
+        command: "sign_and_broadcast",
+        awaitConfirmation: true,
+        intent: {
+          strategyId: "gateway-btc-funding-transfer",
+          chain: "base",
+          family: "evm",
+          intentType: "gateway_btc_transfer",
+          amountUsd: 30,
+          quote: { observedAt: now },
+          observedAt: now,
+          metadata: { amountSats: "1000" },
+        },
+      },
+      signers,
+      args: {
+        activeBudgetUsd: null,
+        killSwitchPath: null,
+        autoIngest: false,
+      },
+      cwd: dir,
+      transactionNotifyImpl: async (payload) => {
+        notifications.push(payload);
+        return { sent: true, skipped: false };
+      },
+    });
+
+    assert.equal(result.status, "ok");
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0].text, /상태: 확정/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

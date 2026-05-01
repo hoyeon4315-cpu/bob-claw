@@ -159,20 +159,22 @@ export async function handleIntentCommand({
         }),
         { rootDir: cwd },
       );
-      transactionNotification = await notifyLiveTransaction({
-        intent,
-        broadcast,
-        stage: "broadcasted",
-        ...(transactionNotifyImpl ? { sendImpl: transactionNotifyImpl } : {}),
-      }).catch((error) => ({
-        sent: false,
-        skipped: false,
-        reason: "telegram_send_failed",
-        error: {
-          name: error.name,
-          message: error.message,
-        },
-      }));
+      if (message.awaitConfirmation !== true) {
+        transactionNotification = await notifyLiveTransaction({
+          intent,
+          broadcast,
+          stage: "broadcasted",
+          ...(transactionNotifyImpl ? { sendImpl: transactionNotifyImpl } : {}),
+        }).catch((error) => ({
+          sent: false,
+          skipped: false,
+          reason: "telegram_send_failed",
+          error: {
+            name: error.name,
+            message: error.message,
+          },
+        }));
+      }
 
       if (message.awaitConfirmation === true && intent.family === "evm") {
         receipt = await signer.waitForTransaction(intent.chain, broadcast.txHash, {
@@ -213,6 +215,20 @@ export async function handleIntentCommand({
           }),
           { rootDir: cwd },
         );
+        transactionNotification = await notifyLiveTransaction({
+          intent,
+          broadcast,
+          stage: receipt?.status === 0 ? "reverted" : "confirmed",
+          ...(transactionNotifyImpl ? { sendImpl: transactionNotifyImpl } : {}),
+        }).catch((error) => ({
+          sent: false,
+          skipped: false,
+          reason: "telegram_send_failed",
+          error: {
+            name: error.name,
+            message: error.message,
+          },
+        }));
         if (receipt?.status === 0) {
           return {
             status: "error",
@@ -221,6 +237,7 @@ export async function handleIntentCommand({
             broadcast,
             receipt: serializedReceipt,
             autoIngest: null,
+            transactionNotification,
             error: {
               name: "EvmReceiptReverted",
               message: "Transaction reverted after broadcast",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-01T11:40:06.630Z",
+  "generatedAt": "2026-05-01T12:39:07.209Z",
   "fastTrackThresholds": {
     "minSignerBackedReceipts": 0,
     "minConsecutiveSuccess": 0,
@@ -33,8 +33,8 @@
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 5899,
-      "receiptCountSignerBacked": 3824,
+      "receiptCountTotal": 5953,
+      "receiptCountSignerBacked": 3860,
       "autoExecute": true,
       "operatorHold": false,
       "liveEligibility": {
@@ -44,7 +44,7 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 138
+        "signerBackedReceiptCount": 174
       },
       "scoredAllocation": {
         "strategyId": "wrapped-btc-loop-base-moonwell",
@@ -58,8 +58,8 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 1480,
-          "consecutiveSuccess": 48
+          "signerBackedReceiptCount": 1340,
+          "consecutiveSuccess": 84
         },
         "strict": {
           "eligible": false,
@@ -222,7 +222,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 215,
+      "receiptCountTotal": 220,
       "receiptCountSignerBacked": 79,
       "autoExecute": true,
       "operatorHold": false,
@@ -926,7 +926,7 @@
       "gasFloatConfiguredChainCount": 10,
       "gasFloatObservedChainCount": 10,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 3083,
+      "receiptCountTotal": 3087,
       "receiptCountSignerBacked": 1770,
       "autoExecute": true,
       "operatorHold": false,
@@ -945,7 +945,7 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 876,
+          "signerBackedReceiptCount": 852,
           "consecutiveSuccess": 4
         },
         "strict": {
@@ -1305,7 +1305,7 @@
     "strategiesLiveEligible": 27,
     "strategiesOperatorHold": 0,
     "strategiesEligibleStrict": 0,
-    "totalSignerBackedReceipts": 10801,
+    "totalSignerBackedReceipts": 10837,
     "strategiesWithGeneratedIntents": 3,
     "totalGeneratedIntents": 3
   },
@@ -1461,7 +1461,7 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-01T11:40:06.791Z"
+    "generatedAt": "2026-05-01T12:39:07.413Z"
   },
   "strategyStage": {
     "total": 18,
@@ -1669,6 +1669,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-01T11:40:06.792Z"
+    "generatedAt": "2026-05-01T12:39:07.414Z"
   }
 }

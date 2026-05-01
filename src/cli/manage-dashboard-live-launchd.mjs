@@ -89,6 +89,24 @@ async function collectStatus(specs, uid) {
   );
 }
 
+async function bootstrapSpecWithRetry(spec, uid, { maxAttempts = 5 } = {}) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return {
+        id: spec.id,
+        step: attempt === 1 ? "bootstrap" : `bootstrap_retry_${attempt}`,
+        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts || !retryableBootstrapFailure(error.message)) throw error;
+      await delay(1000 * attempt);
+    }
+  }
+  throw lastError;
+}
+
 async function installSpecs(specs, uid) {
   if (!Number.isInteger(uid)) {
     throw new Error("launchd install requires a numeric macOS user id");
@@ -101,21 +119,7 @@ async function installSpecs(specs, uid) {
       ...runLaunchctlOrThrow(["bootout", `gui/${uid}/${spec.label}`], { tolerateNotLoaded: true }),
     });
     await delay(1000);
-    try {
-      operations.push({
-        id: spec.id,
-        step: "bootstrap",
-        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
-      });
-    } catch (error) {
-      if (!retryableBootstrapFailure(error.message)) throw error;
-      await delay(1500);
-      operations.push({
-        id: spec.id,
-        step: "bootstrap_retry",
-        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
-      });
-    }
+    operations.push(await bootstrapSpecWithRetry(spec, uid));
     operations.push({
       id: spec.id,
       step: "kickstart",
