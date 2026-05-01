@@ -69,6 +69,10 @@ test("all-chain autopilot dashboard slice keeps only public execution status", (
   assert.equal(slice.officialChainCount, 11);
   assert.equal(slice.canary.deliveredCount, 9);
   assert.deepEqual(slice.canary.chainsTouched, ["base", "ethereum"]);
+  assert.equal(slice.canaryLadder.enabled, true);
+  assert.deepEqual(slice.canaryLadder.rungsUsd, [5, 10, 25, 50, 80]);
+  assert.equal(slice.canaryLadder.maxAutoGraduatedUsd, 80);
+  assert.equal(slice.canaryLadder.noTxSentNeutral, true);
   assert.equal(slice.portfolio.openedCount, 1);
   assert.equal(slice.payback.pendingCarrySats, 601);
   assert.equal(slice.refill.blockedCount, 1);

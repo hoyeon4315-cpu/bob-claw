@@ -1,3 +1,5 @@
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
+
 function compactReason(reason) {
   return typeof reason === "string" && reason.length > 0 ? reason : null;
 }
@@ -32,6 +34,20 @@ export function resolveAllChainAutopilotReport(latestReport = null, latestComple
 
 function unique(items) {
   return [...new Set(items.filter(Boolean))];
+}
+
+function canaryLadderSummary(policy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation) {
+  const rungsUsd = Array.isArray(policy?.rungsUsd)
+    ? policy.rungsUsd.map(Number).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  return {
+    enabled: policy?.enabled === true,
+    rungsUsd,
+    maxAutoGraduatedUsd: Number.isFinite(policy?.maxAutoGraduatedUsd) ? Number(policy.maxAutoGraduatedUsd) : null,
+    lossLockUsd: Number.isFinite(policy?.realizedDailyLossLockUsd) ? Number(policy.realizedDailyLossLockUsd) : null,
+    failurePauseAt: Number.isFinite(policy?.maxSubstantiveFailures) ? Number(policy.maxSubstantiveFailures) : null,
+    noTxSentNeutral: policy?.noTxSentIsNeutral === true,
+  };
 }
 
 function refillNeedsLiveRemediation(item = {}) {
@@ -117,6 +133,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
         blockedCount: 0,
         chainsTouched: [],
       },
+      canaryLadder: canaryLadderSummary(),
       refill: {
         jobCount: 0,
         autoJobCount: 0,
@@ -172,6 +189,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       blockedCount: summary.canarySweep?.blockedCount ?? 0,
       chainsTouched: unique(summary.canarySweep?.chainsTouched || []),
     },
+    canaryLadder: canaryLadderSummary(),
     refill: {
       jobCount: summary.refillJobCount ?? 0,
       autoJobCount: summary.autoRefillJobCount ?? 0,

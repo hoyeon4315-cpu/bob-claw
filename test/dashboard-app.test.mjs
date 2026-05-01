@@ -75,6 +75,9 @@ describe("dashboard home renewal source guard", () => {
     assert.match(liveLane, /Operation gate/);
     assert.match(liveLane, /Autopilot/);
     assert.match(liveLane, /Radar/);
+    assert.match(liveLane, /Ladder/);
+    assert.match(liveLane, /canaryLadder/);
+    assert.match(liveLane, /auto sizing/);
     assert.match(liveLane, /Payback/);
     assert.match(liveLane, /Allowed/);
     assert.match(liveLane, /window\.STATUS/);

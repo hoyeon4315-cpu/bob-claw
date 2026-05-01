@@ -414,6 +414,7 @@ function LiveLaneCard() {
   const operations = window.OPERATIONS || status.operations?.allChainAutopilot || {};
   const radar = window.RADAR || status.radar || {};
   const payback = status.payback || {};
+  const canaryLadder = operations.canaryLadder || {};
   const liveAllowed = overall.liveTrading === "ALLOWED";
   const runtimeReady = runtime.available === true && runtime.runtimeStatus === "healthy";
   const opRunning = operations.status === "running";
@@ -428,6 +429,9 @@ function LiveLaneCard() {
   const pendingSats = Number(payback.carry?.pendingSats ?? payback.accumulatorPendingSats ?? 0);
   const remainingSats = Number(payback.carry?.remainingSatsToMinimum ?? payback.scheduler?.minimumPaybackProgress?.satsToMinimumPayback ?? NaN);
   const paybackReady = payback.scheduler?.status === "ready" || payback.carry?.active === false && pendingSats > 0;
+  const ladderRungs = Array.isArray(canaryLadder.rungsUsd) ? canaryLadder.rungsUsd.filter(Number.isFinite) : [];
+  const ladderMain = canaryLadder.enabled && ladderRungs.length ? `$${ladderRungs[0]}\u2192$${ladderRungs[ladderRungs.length - 1]}` : "off";
+  const ladderSub = canaryLadder.noTxSentNeutral ? "auto sizing" : "review";
   const gateTone = laneTone(liveAllowed && runtimeReady ? "good" : "bad");
   const gateLine = `Operation gate: ${liveAllowed ? "Allowed" : "Blocked"} \xB7 ${runtimeReady ? "Runtime healthy" : friendlyBlockerLabel(overall.blockers?.[0] || runtime.runtimeStatus || "checking")}`;
   const cells = [
@@ -442,6 +446,12 @@ function LiveLaneCard() {
       main: radarMain,
       sub: radarSub,
       tone: radarLocked ? "bad" : radarReady ? "warn" : "neutral"
+    },
+    {
+      label: "Ladder",
+      main: ladderMain,
+      sub: ladderSub,
+      tone: canaryLadder.enabled ? "good" : "neutral"
     },
     {
       label: "Payback",
@@ -475,7 +485,7 @@ function LiveLaneCard() {
     minWidth: 0
   } }, gateLine)), /* @__PURE__ */ React.createElement("div", { style: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: "4px 9px",
     marginTop: 6
   } }, cells.map((cell) => {
