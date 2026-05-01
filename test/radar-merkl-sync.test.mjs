@@ -70,6 +70,62 @@ test("syncMerklQueueToRadar creates radar observations and candidates from ready
   assert.equal(candidates[0].killSwitchState, "running");
 });
 
+test("syncMerklQueueToRadar appends a new candidate version when gate state changes", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
+
+  const blocked = await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      queueStatus: "queued_for_tiny_live_canary_preflight",
+      executionReadiness: {
+        matchedToken: { ticker: "USDC", estimatedUsd: 1 },
+      },
+    }),
+  });
+  const executable = await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      generatedAt: "2026-05-01T09:00:00.000Z",
+      queueStatus: "ready_for_tiny_live_canary",
+      executionReadiness: {
+        matchedToken: { ticker: "USDC", estimatedUsd: 100 },
+      },
+    }),
+  });
+
+  assert.equal(blocked.candidatesWritten, 1);
+  assert.equal(executable.candidatesWritten, 1);
+
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates[0].candidateId, "merkl:opp_sync_1");
+  assert.equal(candidates[0].gateStatus, "blocked");
+  assert.equal(candidates[1].candidateId, "merkl:opp_sync_1");
+  assert.equal(candidates[1].gateStatus, "executable");
+  assert.deepEqual(candidates[1].blockers, []);
+});
+
+test("syncMerklQueueToRadar lets tiny canary EV decide below the generic position floor", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
+
+  const result = await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      aprPct: 10_000,
+      campaignRemainingHours: 24 * 30,
+      executionReadiness: {
+        matchedToken: { ticker: "USDC", estimatedUsd: 5 },
+      },
+    }),
+  });
+
+  assert.equal(result.candidatesWritten, 1);
+
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  assert.equal(candidates[0].gateStatus, "executable");
+  assert.equal(candidates[0].blockers.includes("position_below_min_position_usd"), false);
+});
+
 test("syncMerklQueueToRadar observes but does not candidate unsupported Merkl families", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
 

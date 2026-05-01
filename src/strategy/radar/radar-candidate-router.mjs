@@ -56,6 +56,19 @@ export function buildRadarCanaryIntent({
 } = {}) {
   if (radarLockOn) return { status: "blocked", blockers: ["radar_lock_active"] };
 
+  if (candidate.gateStatus && candidate.gateStatus !== "executable") {
+    return {
+      status: "blocked",
+      blockers: candidate.blockers?.length ? candidate.blockers : ["radar_candidate_gate_blocked"],
+    };
+  }
+  if (Array.isArray(candidate.blockers) && candidate.blockers.length > 0) {
+    return {
+      status: "blocked",
+      blockers: candidate.blockers,
+    };
+  }
+
   const gate = evaluateExecutableCandidateGate({ packet, candidate, policy });
   if (!gate.ok) {
     return { status: "blocked", blockers: gate.blockers, gate };

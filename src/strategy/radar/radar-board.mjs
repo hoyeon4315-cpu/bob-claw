@@ -10,6 +10,24 @@ function countBlockers(candidates = []) {
   return counts;
 }
 
+function candidateObservedAtMs(candidate = {}) {
+  const parsed = Date.parse(candidate.observedAt || candidate.metadata?.syncedAt || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function latestCandidatesById(candidates = []) {
+  const latest = new Map();
+  for (const candidate of candidates) {
+    const id = candidate?.candidateId;
+    if (!id) continue;
+    const existing = latest.get(id);
+    if (!existing || candidateObservedAtMs(candidate) >= candidateObservedAtMs(existing)) {
+      latest.set(id, candidate);
+    }
+  }
+  return [...latest.values()];
+}
+
 function safeObservation(item = {}) {
   return {
     obsId: item.obsId || null,
@@ -25,7 +43,8 @@ export function buildRadarBoard({
   generatedAt = new Date().toISOString(),
 } = {}) {
   const realizationSummary = summarizeRealizationRecords(realizationRecords);
-  const executableCount = candidates.filter((candidate) => candidate.gateStatus === "executable").length;
+  const latestCandidates = latestCandidatesById(candidates);
+  const executableCount = latestCandidates.filter((candidate) => candidate.gateStatus === "executable").length;
   return {
     schemaVersion: 1,
     generatedAt,
@@ -40,14 +59,14 @@ export function buildRadarBoard({
       totalNetRealizedPnlUsd: realizationSummary.totalNetRealizedPnlUsd,
       totalNetRealizedPnlSats: realizationSummary.totalNetRealizedPnlSats,
     },
-    blockerCounts: countBlockers(candidates),
+    blockerCounts: countBlockers(latestCandidates),
     observations: observations.map(safeObservation),
     episodes: episodes.map((episode) => ({
       episodeId: episode.episodeId || null,
       pnlClosureStatus: episode.pnlClosureStatus || null,
     })),
     packets: packets.map((packet) => ({ packetId: packet.packetId || null })),
-    candidates: candidates.map((candidate) => ({
+    candidates: latestCandidates.map((candidate) => ({
       candidateId: candidate.candidateId || null,
       gateStatus: candidate.gateStatus || null,
       blockers: candidate.blockers || [],

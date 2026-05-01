@@ -28,3 +28,30 @@ test("buildRadarBoard summarizes all radar phases without exposing raw payloads"
   assert.deepEqual(board.blockerCounts, { radar_policy_thresholds_unresolved: 1 });
   assert.equal(JSON.stringify(board).includes("rawEventPayloadHash"), false);
 });
+
+test("buildRadarBoard summarizes the latest version for each executable candidate", () => {
+  const board = buildRadarBoard({
+    candidates: [
+      {
+        candidateId: "candidate_1",
+        observedAt: "2026-05-01T00:00:00.000Z",
+        gateStatus: "blocked",
+        blockers: ["position_below_min_position_usd"],
+      },
+      {
+        candidateId: "candidate_1",
+        observedAt: "2026-05-01T00:05:00.000Z",
+        gateStatus: "executable",
+        blockers: [],
+      },
+    ],
+  });
+
+  assert.equal(board.summary.executableCount, 1);
+  assert.deepEqual(board.blockerCounts, {});
+  assert.deepEqual(board.candidates, [{
+    candidateId: "candidate_1",
+    gateStatus: "executable",
+    blockers: [],
+  }]);
+});

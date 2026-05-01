@@ -32,6 +32,24 @@ function buildStrategyCapsById() {
   return Object.fromEntries(listStrategyCaps().map((config) => [config.strategyId, config]));
 }
 
+function candidateObservedAtMs(candidate = {}) {
+  const parsed = Date.parse(candidate.observedAt || candidate.metadata?.syncedAt || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function latestCandidatesById(candidates = []) {
+  const latest = new Map();
+  for (const candidate of candidates) {
+    const id = candidate?.candidateId;
+    if (!id) continue;
+    const existing = latest.get(id);
+    if (!existing || candidateObservedAtMs(candidate) >= candidateObservedAtMs(existing)) {
+      latest.set(id, candidate);
+    }
+  }
+  return [...latest.values()];
+}
+
 async function fileExists(path) {
   if (!path || path === true) return false;
   try {
@@ -46,7 +64,7 @@ async function main() {
   const args = parseArgs();
   const dataDir = resolve(args["data-dir"] || "data");
   const packets = await readRadarJsonl(dataDir, "portable-packets");
-  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  const candidates = latestCandidatesById(await readRadarJsonl(dataDir, "executable-candidates"));
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const packetsById = packetById(packets);
   const strategyCapsById = buildStrategyCapsById();

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { SIZING_POLICY, computeMinProfitablePositionUsd } from "../../config/sizing.mjs";
+import { computeMinProfitablePositionUsd } from "../../config/sizing.mjs";
 import { appendRadarJsonl, readRadarJsonl } from "./jsonl.mjs";
 
 const OBSERVATION_EXECUTION_PATH = "gateway_destination";
@@ -61,7 +61,6 @@ function candidateExecutionPath(item = {}) {
 function minProfitBlocker(item = {}) {
   const amountUsd = itemAmountUsd(item);
   if (amountUsd === null) return "candidate_amount_missing";
-  if (amountUsd < SIZING_POLICY.minPositionUsd) return "position_below_min_position_usd";
   const aprPct = finiteNumber(item.aprPct) ?? 0;
   const holdDays = expectedHoldDays(item);
   const minUsd = computeMinProfitablePositionUsd({
@@ -74,6 +73,21 @@ function minProfitBlocker(item = {}) {
     return `same_chain_unprofitable:need_$${Math.ceil(minUsd)}_on_${item.chain || "unknown"}`;
   }
   return null;
+}
+
+function candidateStateHash(candidate = {}) {
+  return stableHash({
+    candidateId: candidate.candidateId || null,
+    gateStatus: candidate.gateStatus || null,
+    blockers: candidate.blockers || [],
+    amountUsd: finiteNumber(candidate.amountUsd),
+    executionPath: candidate.executionPath || null,
+    familyKey: candidate.familyKey || null,
+    chain: candidate.chain || null,
+    protocolId: candidate.protocolId || null,
+    opportunityId: candidate.opportunityId || null,
+    autoExecute: candidate.metadata?.autoExecute === true,
+  });
 }
 
 function rewardTokenType(item = {}) {
@@ -138,6 +152,7 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
   const candidate = {
     candidateId: `merkl:${id}`,
     packetId: `merkl:${id}`,
+    observedAt: itemObservedAt(queue, item),
     familyKey,
     chain: item.chain || null,
     protocol: item.protocolId || item.protocolName || null,
@@ -191,6 +206,7 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
       syncedAt: queue.generatedAt || null,
     },
   };
+  candidate.metadata.stateHash = candidateStateHash(candidate);
   return { candidate, skipped: null };
 }
 
@@ -203,6 +219,29 @@ async function appendMissing({ dataDir, name, records, idField }) {
     if (!id || seen.has(id)) continue;
     await appendRadarJsonl(dataDir, name, record);
     seen.add(id);
+    written += 1;
+  }
+  return written;
+}
+
+async function appendChanged({ dataDir, name, records, idField, hashFn }) {
+  const existing = await readRadarJsonl(dataDir, name);
+  const latestById = new Map();
+  for (const record of existing) {
+    const id = record?.[idField];
+    if (!id) continue;
+    latestById.set(id, record);
+  }
+  let written = 0;
+  for (const record of records) {
+    const id = record?.[idField];
+    if (!id) continue;
+    const existingRecord = latestById.get(id);
+    const recordHash = record?.metadata?.stateHash || hashFn(record);
+    const existingHash = existingRecord?.metadata?.stateHash || (existingRecord ? hashFn(existingRecord) : null);
+    if (existingRecord && recordHash === existingHash) continue;
+    await appendRadarJsonl(dataDir, name, record);
+    latestById.set(id, record);
     written += 1;
   }
   return written;
@@ -222,11 +261,12 @@ export async function syncMerklQueueToRadar({ dataDir, merklQueue } = {}) {
     records: observations,
     idField: "obsId",
   });
-  const candidatesWritten = await appendMissing({
+  const candidatesWritten = await appendChanged({
     dataDir,
     name: "executable-candidates",
     records: candidates,
     idField: "candidateId",
+    hashFn: candidateStateHash,
   });
   return {
     status: "completed",

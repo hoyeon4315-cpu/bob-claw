@@ -95,8 +95,43 @@ test("radar board CLI supports json flag before inline write path", async () => 
 
   assert.equal(report.status, 0, report.stderr);
   const board = JSON.parse(await readFile(reportPath, "utf8"));
+  const stdoutBoard = JSON.parse(report.stdout);
   assert.equal(board.summary.observedCount, 1);
-  assert.match(report.stdout, /"observedCount": 1/);
+  assert.equal(stdoutBoard.summary.observedCount, 1);
+});
+
+test("radar board CLI defaults bare write flag to the data-dir board path", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-cli-"));
+  const inputPath = join(dataDir, "observation.json");
+  await writeFile(inputPath, JSON.stringify({ ...observation, obsId: "obs_cli_bare_write" }));
+
+  const ingest = spawnSync(process.execPath, [
+    "src/cli/radar-ingest.mjs",
+    "--data-dir",
+    dataDir,
+    "--input",
+    inputPath,
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.equal(ingest.status, 0, ingest.stderr);
+
+  const report = spawnSync(process.execPath, [
+    "src/cli/report-radar-board.mjs",
+    "--data-dir",
+    dataDir,
+    "--write",
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+
+  assert.equal(report.status, 0, report.stderr);
+  assert.match(report.stdout, /wrote=/);
+
+  const board = JSON.parse(await readFile(join(dataDir, "radar-board.json"), "utf8"));
+  assert.equal(board.summary.observedCount, 1);
 });
 
 test("radar cap review CLI reports committed-diff cap raise candidates", async () => {
@@ -204,4 +239,69 @@ test("radar promote CLI writes ready tiny live canary intents without signing", 
   assert.equal(queue.intents[0].intentType, "tiny_live_canary");
   assert.equal(queue.intents[0].amountUsd, 25);
   assert.equal(queue.intents[0].metadata.radarCandidateId, "candidate_cli");
+});
+
+test("radar promote CLI evaluates only the latest candidate version", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-promote-cli-"));
+  const radarDir = join(dataDir, "radar");
+  await mkdir(radarDir, { recursive: true });
+  await writeFile(join(radarDir, "portable-packets.jsonl"), `${JSON.stringify({ packetId: "packet_cli" })}\n`);
+  const baseCandidate = {
+    candidateId: "candidate_cli",
+    packetId: "packet_cli",
+    familyKey: "wrapped_btc_direct_lending",
+    executionPath: "base_native_evm",
+    chain: "base",
+    protocol: "moonwell",
+    opportunityId: "opp_cli",
+    displayedAprPct: 2000,
+    rewardTokenType: "stable",
+    rewardToken: "USDC",
+    proposedSizeBtc: "0.0001",
+    committedCapBtc: "0.0002",
+    protocolAuditStatus: "audited_by_known",
+    sanctionsFlag: "clean",
+    bridgeRouteSanctionsCheck: "clean",
+    killSwitchState: "running",
+    slippageSimAtSize: 20,
+    mevExposureScore: 10,
+    campaignEndsAt: "2026-05-04T00:00:00.000Z",
+  };
+  await writeFile(join(radarDir, "executable-candidates.jsonl"), [
+    JSON.stringify({
+      ...baseCandidate,
+      observedAt: "2026-05-01T00:00:00.000Z",
+      gateStatus: "executable",
+      blockers: [],
+    }),
+    JSON.stringify({
+      ...baseCandidate,
+      observedAt: "2026-05-01T00:05:00.000Z",
+      gateStatus: "blocked",
+      blockers: ["same_chain_unprofitable:need_$64_on_base"],
+    }),
+  ].join("\n") + "\n");
+
+  const queuePath = join(dataDir, "radar-canary-queue.json");
+  const promote = spawnSync(process.execPath, [
+    "src/cli/radar-promote.mjs",
+    "--data-dir",
+    dataDir,
+    "--execute",
+    "--write",
+    queuePath,
+    "--now",
+    "2026-05-01T00:00:00.000Z",
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+
+  assert.equal(promote.status, 0, promote.stderr);
+  assert.match(promote.stdout, /ready=0/);
+
+  const queue = JSON.parse(await readFile(queuePath, "utf8"));
+  assert.equal(queue.intents.length, 0);
+  assert.equal(queue.blocked.length, 1);
+  assert.ok(queue.blocked[0].blockers.includes("same_chain_unprofitable:need_$64_on_base"));
 });

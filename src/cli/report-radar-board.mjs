@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
 
@@ -35,7 +35,9 @@ async function main() {
   const realizationRecords = await readRadarJsonl(dataDir, "realization-records");
   const board = buildRadarBoard({ observations, episodes, packets, candidates, realizationRecords });
   if (args.write) {
-    const outputPath = resolve(args.write);
+    const outputPath = args.write === true
+      ? resolve(join(dataDir, "radar-board.json"))
+      : resolve(args.write);
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, `${JSON.stringify(board, null, 2)}\n`);
     if (args.json) {
@@ -46,8 +48,10 @@ async function main() {
   } else {
     console.log(JSON.stringify(board, null, 2));
   }
-  console.log(`observed=${board.summary.observedCount}`);
-  console.log(`executable=${board.summary.executableCount}`);
+  if (!args.json) {
+    console.log(`observed=${board.summary.observedCount}`);
+    console.log(`executable=${board.summary.executableCount}`);
+  }
 }
 
 main().catch((error) => {

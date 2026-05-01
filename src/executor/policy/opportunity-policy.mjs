@@ -17,6 +17,13 @@ function isCapitalMovementIntent(intent = {}) {
   return movementTypes.has(intent.intentType) || movementTypes.has(intent.action);
 }
 
+function isCommittedTinyCanaryIntent(intent = {}) {
+  return intent.intentType === "tiny_live_canary" ||
+    intent.executionReason === "merkl_canary_autopilot" ||
+    intent.executionReason === "radar_tiny_live_canary" ||
+    intent.metadata?.tinyLiveCanary === true;
+}
+
 function expectedHoldDaysForIntent(intent = {}, now = new Date().toISOString(), fallbackDays = 7) {
   const explicit = Number(intent.expectedHoldDays);
   if (Number.isFinite(explicit) && explicit > 0) return explicit;
@@ -151,7 +158,7 @@ export async function evaluateOpportunityPolicy({
     }
   }
 
-  if (positionUsd > 0 && positionUsd < SIZING_POLICY.minPositionUsd) {
+  if (!isCommittedTinyCanaryIntent(intent) && positionUsd > 0 && positionUsd < SIZING_POLICY.minPositionUsd) {
     blockers.push("position_below_min_position_usd");
   }
   const totalCapital = Number(capitalState.totalDeployableCapital ?? 0);

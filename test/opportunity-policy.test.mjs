@@ -81,6 +81,34 @@ test("evaluateOpportunityPolicy BLOCK on position below minPositionUsd", async (
   assert.ok(result.blockers.includes("position_below_min_position_usd"));
 });
 
+test("evaluateOpportunityPolicy does not apply generic minPositionUsd to committed Merkl tiny canaries", async () => {
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      intentType: "erc4626_deposit",
+      executionReason: "merkl_canary_autopilot",
+      amountUsd: 5,
+    }),
+    capitalState: { totalDeployableCapital: 1000 },
+    killSwitchExistsImpl: async () => false,
+  });
+
+  assert.equal(result.blockers.includes("position_below_min_position_usd"), false);
+});
+
+test("evaluateOpportunityPolicy does not apply generic minPositionUsd to radar tiny canaries", async () => {
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      intentType: "tiny_live_canary",
+      executionReason: "radar_tiny_live_canary",
+      amountUsd: 5,
+    }),
+    capitalState: { totalDeployableCapital: 1000 },
+    killSwitchExistsImpl: async () => false,
+  });
+
+  assert.equal(result.blockers.includes("position_below_min_position_usd"), false);
+});
+
 test("evaluateOpportunityPolicy BLOCK on position above maxSinglePositionPct", async () => {
   const result = await evaluateOpportunityPolicy({
     intent: makeIntent({ amountUsd: 300 }),

@@ -113,6 +113,25 @@ test("buildRadarCanaryIntent blocks when radar lane lock is active", () => {
   assert.deepEqual(result.blockers, ["radar_lock_active"]);
 });
 
+test("buildRadarCanaryIntent respects candidate gateStatus blockers", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      gateStatus: "blocked",
+      blockers: ["same_chain_unprofitable:need_$64_on_base"],
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("same_chain_unprofitable:need_$64_on_base"));
+});
+
 test("buildRadarCanaryIntent blocks non-stable reward tokens without exit liquidity proof", () => {
   const result = buildRadarCanaryIntent({
     packet,
