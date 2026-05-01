@@ -59,6 +59,45 @@ function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps) {
   return String(applyGasBuffer(baseUnits, gasBufferBps));
 }
 
+function signerFailureError(result, fallbackMessage) {
+  if (result?.status === "rejected") {
+    return {
+      name: "SignerRejected",
+      message: (result?.policy?.blockers || []).join(",") || fallbackMessage,
+      policy: result?.policy || null,
+      notification: result?.notification || null,
+      requiresUnwind: result?.requiresUnwind || false,
+      emergencyUnwindPath: result?.emergencyUnwindPath || null,
+    };
+  }
+  return result?.error || {
+    name: "SignerExecutionFailed",
+    message: fallbackMessage,
+  };
+}
+
+function signerFailureExecution({
+  plan,
+  step,
+  result,
+  stepResults,
+  assetBalanceBefore,
+  shareBalanceBefore,
+  fallbackMessage,
+}) {
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    settlementStatus: result?.status === "rejected" ? "signer_rejected" : "failed",
+    plan,
+    signerResult: result,
+    stepResults: [...stepResults, { id: step.id, signerResult: result }],
+    assetBalanceBefore,
+    shareBalanceBefore,
+    error: signerFailureError(result, fallbackMessage),
+  };
+}
+
 function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {} }) {
   return {
     strategyId,
@@ -378,9 +417,15 @@ export async function executeErc4626ProtocolCanaryPlan({
       },
     });
     if (result?.status !== "ok" || !result?.broadcast?.txHash) {
-      const error = new Error(result?.error?.message || `Signer did not complete ${step.id}`);
-      error.name = result?.error?.name || "SignerExecutionFailed";
-      throw error;
+      return signerFailureExecution({
+        plan,
+        step,
+        result,
+        stepResults,
+        assetBalanceBefore,
+        shareBalanceBefore,
+        fallbackMessage: `Signer did not complete ${step.id}`,
+      });
     }
     stepResults.push({ id: step.id, signerResult: result });
   }
@@ -502,9 +547,15 @@ export async function executeErc4626ProtocolCanaryPlan({
     },
   });
   if (redeemResult?.status !== "ok" || !redeemResult?.broadcast?.txHash) {
-    const error = new Error(redeemResult?.error?.message || "Signer did not complete erc4626_redeem");
-    error.name = redeemResult?.error?.name || "SignerExecutionFailed";
-    throw error;
+    return signerFailureExecution({
+      plan,
+      step: { id: "redeem_shares_from_vault" },
+      result: redeemResult,
+      stepResults,
+      assetBalanceBefore,
+      shareBalanceBefore,
+      fallbackMessage: "Signer did not complete erc4626_redeem",
+    });
   }
   stepResults.push({ id: "redeem_shares_from_vault", signerResult: redeemResult });
 

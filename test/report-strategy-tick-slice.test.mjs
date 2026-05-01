@@ -227,3 +227,77 @@ test("report-strategy-tick-slice includes reopened wrapped BTC loop in live elig
   assert.equal(slice.summary.strategiesOperatorHold, 0);
   assert.equal(slice.strategyStage.liveReadyCount, 1);
 });
+
+test("report-strategy-tick-slice derives micro-canary status from canary execution ledgers", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-canary-"));
+  const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
+  const auditLog = join(cwd, "logs", "signer-audit.jsonl");
+  const canaryLog = join(cwd, "data", "merkl-canary-autopilot-runs.jsonl");
+  const outPath = join(cwd, "dashboard", "public", "strategy-tick-status.json");
+  const strategyId = "gateway_native_asset_conversion_sleeve";
+  const now = Date.now();
+
+  await writeJsonl(tickLog, [
+    {
+      schemaVersion: 1,
+      tickAt: new Date(now).toISOString(),
+      strategies: [strategyId],
+      reportSummaries: [
+        {
+          strategyId,
+          mode: "live",
+          microCanaryStatus: "not_started",
+          evidence: { signerBackedCount: 0, passedCount: 0 },
+        },
+      ],
+      snapshotSummary: [{ strategyId, capsConfigured: true }],
+      blockers: [{ strategyId, mode: "live", blockers: [] }],
+      dispatchSummary: { allowCount: 0, denyCount: 0 },
+      candidateCount: 0,
+    },
+  ]);
+  await writeJsonl(auditLog, []);
+  await writeJsonl(canaryLog, [
+    {
+      observedAt: new Date(now - 60_000).toISOString(),
+      mode: "execute",
+      status: "delivered",
+      plan: { strategyId },
+      queueItem: { mappedStrategyId: strategyId },
+      execution: {
+        settlementStatus: "delivered",
+        receiptIngest: {
+          receiptRecord: {
+            realized: { realizedNetPnlUsd: 0.12 },
+          },
+        },
+      },
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "src/cli/report-strategy-tick-slice.mjs"),
+      `--tick-log=${tickLog}`,
+      `--audit=${auditLog}`,
+      `--canary-log=${canaryLog}`,
+      `--out=${outPath}`,
+      `--strategy=${strategyId}`,
+    ],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const slice = JSON.parse(await readFile(outPath, "utf8"));
+  const micro = slice.microCanary.byStrategy[strategyId];
+  assert.equal(micro.microCanaryStatus, "minimal_live_proof_exists");
+  assert.equal(micro.signerBackedCount, 1);
+  assert.equal(micro.passedCount, 1);
+  assert.equal(micro.realizedNetUsd, 0.12);
+  assert.equal(slice.microCanary.notStartedCount, 0);
+  assert.equal(slice.microCanary.minimalLiveProofExistsCount, 1);
+});

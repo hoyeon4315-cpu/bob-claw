@@ -465,3 +465,27 @@ test("classifies reverted Merkl canary broadcasts as candidate blockers", () => 
   assert.equal(report.blockedReason, "execution_reverted");
   assert.equal(report.summary.selectedOpportunityId, "reverted");
 });
+
+test("classifies signer execution failures as candidate blockers", () => {
+  const report = merklExecutionErrorReport({
+    execute: true,
+    error: Object.assign(new Error("Signer did not complete approve_asset_to_vault"), {
+      name: "SignerExecutionFailed",
+    }),
+    preflight: {
+      status: "ready",
+      senderAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+      liveBaseline: { liveTrading: "ALLOWED" },
+      killSwitchPath: "/tmp/KILL_SWITCH",
+    },
+    queue: { queue: [queueItem()] },
+    queueItem: queueItem({ opportunityId: "signer-failed" }),
+    sizing: { amount: "1000000", amountUsd: 1 },
+    readyCount: 1,
+    representativeCoverage: { missingRepresentativeChainCount: 0 },
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.equal(report.blockedReason, "signer_execution_failed");
+  assert.equal(report.summary.selectedOpportunityId, "signer-failed");
+});

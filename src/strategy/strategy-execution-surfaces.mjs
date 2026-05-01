@@ -345,7 +345,7 @@ function buildWrappedBtcLoopExecutorSurface({
 }
 
 function merklAutopilotCommands(mode) {
-  if (mode === "live") return ["npm run executor:merkl-canary-autopilot -- --json"];
+  if (mode === "live") return ["npm run executor:merkl-canary-autopilot -- --json --write --execute"];
   return ["npm run report:merkl-canary-queue -- --json"];
 }
 

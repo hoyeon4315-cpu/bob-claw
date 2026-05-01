@@ -340,6 +340,7 @@ function topCountKey(counts = {}) {
 function resultBlockers(result = {}) {
   if (result.status !== "blocked") return [];
   if (result.opportunityPolicy?.blockers?.length) return result.opportunityPolicy.blockers;
+  if (result.execution?.error?.policy?.blockers?.length) return result.execution.error.policy.blockers;
   if (result.sizing?.blockers?.length) return result.sizing.blockers;
   if (result.blockedReason) return [result.blockedReason];
   return ["blocked"];
@@ -546,6 +547,7 @@ export function merklExecutionErrorReport({
   if (/insufficient_native_balance_for_gas/iu.test(message)) blockedReason = "insufficient_native_gas_balance";
   if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message)) blockedReason = "receipt_confirmation_timeout";
   if (/All RPC endpoints failed for chain:/iu.test(message)) blockedReason = "live_inventory_refresh_failed";
+  if (/Signer did not complete/iu.test(message)) blockedReason = "signer_execution_failed";
   if (/EvmReceiptReverted|Transaction reverted after broadcast|execution reverted|\\brevert\\b/iu.test(message)) {
     blockedReason = "execution_reverted";
   }
@@ -580,6 +582,17 @@ export function merklExecutionErrorReport({
     queueItem,
     sizing,
   };
+}
+
+function executionBlockedReason(execution = null) {
+  const status = execution?.settlementStatus || null;
+  if (status === "signer_rejected") {
+    return execution?.error?.policy?.blockers?.[0] || "signer_rejected";
+  }
+  if (status === "failed") return execution?.error?.message || "signer_execution_failed";
+  if (status === "share_delta_timeout") return "share_delta_timeout";
+  if (status === "redeem_delta_timeout") return "redeem_delta_timeout";
+  return null;
 }
 
 export async function runMerklCanaryAutopilot({
@@ -761,6 +774,18 @@ export async function runMerklCanaryAutopilot({
             timeoutMs,
           })
         : null;
+      const blockedReason = executionBlockedReason(execution);
+      if (blockedReason) {
+        results.push({
+          status: "blocked",
+          blockedReason,
+          queueItem,
+          sizing,
+          plan,
+          execution,
+        });
+        continue;
+      }
       results.push({
         status: execution?.settlementStatus || "preview_ready",
         queueItem,

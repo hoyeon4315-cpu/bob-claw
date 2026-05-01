@@ -193,6 +193,8 @@ test("execution surfaces include executor-backed live strategies when artifacts 
   assert.equal(merkl.currentLiveEligible, true);
   assert.equal(merkl.selectedMode, "live");
   assert.equal(merkl.selectedCommands[0].script, "executor:merkl-canary-autopilot");
+  assert.equal(merkl.selectedCommands[0].command.includes("--execute"), true);
+  assert.equal(merkl.selectedCommands[0].command.includes("--write"), true);
   assert.equal(report.summary.liveEligibleCount, 2);
 });
 

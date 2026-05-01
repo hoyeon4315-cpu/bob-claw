@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildErc4626ProtocolCanaryPlan,
+  executeErc4626ProtocolCanaryPlan,
   selectErc4626QueueItem,
 } from "../src/executor/helpers/erc4626-protocol-canary.mjs";
 
@@ -219,4 +220,54 @@ test("erc4626 protocol canary resets partial allowance before exact approval", a
   assert.equal(plan.steps[1].intent.approval.amount, "15000000");
   assert.equal(plan.steps[2].id, "deposit_asset_to_vault");
   assert.equal(plan.allowanceBefore.resetBeforeApproval, true);
+});
+
+test("erc4626 protocol canary records signer policy rejection instead of throwing", async () => {
+  const queueItem = {
+    queueId: "merkl:base-yo",
+    opportunityId: "base-yo",
+    chain: "base",
+    protocolId: "yo",
+    name: "Deposit USDC to YO",
+    mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        shareTokenAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+      },
+    },
+  };
+  const plan = await buildErc4626ProtocolCanaryPlan({
+    queueItem,
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "1792834",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 0n, rpcUrl: "memory" }),
+    now: "2026-05-01T22:51:40.000Z",
+  });
+
+  const execution = await executeErc4626ProtocolCanaryPlan({
+    plan,
+    readErc20BalanceImpl: async (chain, token) => ({
+      balance: token.toLowerCase() === plan.assetAddress.toLowerCase() ? 2_000_000n : 0n,
+      rpcUrl: "memory",
+    }),
+    sendCommand: async () => ({
+      status: "rejected",
+      policy: {
+        blockers: ["max_consecutive_failures_reached"],
+      },
+    }),
+  });
+
+  assert.equal(execution.settlementStatus, "signer_rejected");
+  assert.equal(execution.signerResult.status, "rejected");
+  assert.equal(execution.stepResults[0].id, "approve_asset_to_vault");
+  assert.equal(execution.error.name, "SignerRejected");
+  assert.equal(execution.error.policy.blockers[0], "max_consecutive_failures_reached");
 });

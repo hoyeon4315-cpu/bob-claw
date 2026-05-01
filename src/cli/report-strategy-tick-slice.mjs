@@ -83,6 +83,11 @@ function readJsonlSafe(path) {
     .filter(Boolean);
 }
 
+function finiteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function latestTickPerStrategy(ticks) {
   // Each tick record carries `strategies: [...]`. Index by strategy.
   const byStrategy = new Map();
@@ -95,17 +100,141 @@ function latestTickPerStrategy(ticks) {
   return byStrategy;
 }
 
+function canaryStrategyId(record = {}) {
+  return record?.plan?.strategyId ||
+    record?.execution?.plan?.strategyId ||
+    record?.queueItem?.mappedStrategyId ||
+    record?.summary?.selectedStrategyId ||
+    record?.strategyId ||
+    null;
+}
+
+function canaryWasDelivered(record = {}) {
+  return record?.status === "delivered" ||
+    record?.execution?.settlementStatus === "delivered" ||
+    record?.summary?.proofStatus === "delivered" ||
+    Number(record?.summary?.deliveredCount ?? 0) > 0;
+}
+
+function canaryWasPreviewReady(record = {}) {
+  return record?.status === "preview_ready" ||
+    Number(record?.summary?.previewReadyCount ?? 0) > 0;
+}
+
+function canaryRealizedNetUsd(record = {}) {
+  return [
+    record?.realized?.realizedNetPnlUsd,
+    record?.receiptIngest?.receiptRecord?.realized?.realizedNetPnlUsd,
+    record?.execution?.receiptIngest?.receiptRecord?.realized?.realizedNetPnlUsd,
+  ]
+    .map(finiteNumber)
+    .find((value) => value !== null);
+}
+
+function buildCanaryLedgerEvidence(records = []) {
+  const byStrategy = new Map();
+  const ensure = (strategyId) => {
+    if (!byStrategy.has(strategyId)) {
+      byStrategy.set(strategyId, {
+        deliveredCount: 0,
+        previewReadyCount: 0,
+        realizedNetUsd: 0,
+        hasRealizedNetUsd: false,
+      });
+    }
+    return byStrategy.get(strategyId);
+  };
+  for (const record of records || []) {
+    const strategyId = canaryStrategyId(record);
+    if (!strategyId) continue;
+    const evidence = ensure(strategyId);
+    if (canaryWasDelivered(record)) evidence.deliveredCount += 1;
+    if (canaryWasPreviewReady(record)) evidence.previewReadyCount += 1;
+    const realizedNetUsd = canaryRealizedNetUsd(record);
+    if (realizedNetUsd !== null) {
+      evidence.realizedNetUsd += realizedNetUsd;
+      evidence.hasRealizedNetUsd = true;
+    }
+  }
+  return byStrategy;
+}
+
+function microStatusFromCounts({ signerBackedCount = 0, previewReadyCount = 0 } = {}) {
+  if (signerBackedCount >= 3) return "micro_canary_repeatable";
+  if (signerBackedCount >= 1) return "minimal_live_proof_exists";
+  if (previewReadyCount >= 1) return "micro_canary_ready";
+  return "not_started";
+}
+
+const MICRO_STATUS_RANK = Object.freeze({
+  not_started: 0,
+  micro_canary_ready: 1,
+  minimal_live_proof_exists: 2,
+  micro_canary_repeatable: 3,
+});
+
+function strongerMicroStatus(left = "not_started", right = "not_started") {
+  return (MICRO_STATUS_RANK[right] ?? 0) > (MICRO_STATUS_RANK[left] ?? 0) ? right : left;
+}
+
+function enrichReportsWithMicroCanaryEvidence(reports = [], strategyRows = [], canaryLedgerEvidence = new Map()) {
+  const rowsByStrategy = new Map(strategyRows.map((row) => [row.strategyId, row]));
+  return reports.map((report) => {
+    const strategyId = report?.strategyId;
+    if (!strategyId) return report;
+    const row = rowsByStrategy.get(strategyId) || {};
+    const ledger = canaryLedgerEvidence.get(strategyId) || {};
+    const signerBackedCount = Math.max(
+      Number(report?.evidence?.signerBackedCount ?? 0),
+      Number(row.receiptCountSignerBacked ?? 0),
+      Number(ledger.deliveredCount ?? 0),
+    );
+    const passedCount = Math.max(
+      Number(report?.evidence?.passedCount ?? 0),
+      Number(row.promotion?.fastTrack?.consecutiveSuccess ?? 0),
+      Number(ledger.deliveredCount ?? 0),
+    );
+    const previewReadyCount = Number(ledger.previewReadyCount ?? 0) + Number(report?.evidence?.previewReadyCount ?? 0);
+    const derivedStatus = microStatusFromCounts({ signerBackedCount, previewReadyCount });
+    const microCanaryStatus = strongerMicroStatus(report.microCanaryStatus || "not_started", derivedStatus);
+    const realizedNetUsd = ledger.hasRealizedNetUsd
+      ? ledger.realizedNetUsd
+      : report?.evidence?.realizedNetUsd ?? null;
+    return {
+      ...report,
+      microCanaryStatus,
+      evidence: {
+        ...(report.evidence || {}),
+        signerBackedCount,
+        passedCount,
+        previewReadyCount,
+        realizedNetUsd,
+      },
+    };
+  });
+}
+
+function microHasMinimalProof(report = null) {
+  return (MICRO_STATUS_RANK[report?.microCanaryStatus] ?? 0) >= MICRO_STATUS_RANK.minimal_live_proof_exists;
+}
+
 function main() {
   const args = parseArgs(process.argv);
   const strategies = args.strategies.length > 0 ? args.strategies : DEFAULT_STRATEGIES;
   const tickPath = resolve(args["tick-log"] || "logs/strategy-tick.jsonl");
   const auditPath = resolve(args.audit || "logs/signer-audit.jsonl");
   const reconciliationsPath = resolve(args.reconciliations || "data/receipt-reconciliations.jsonl");
+  const canaryPaths = [
+    args["canary-log"] ? resolve(args["canary-log"]) : resolve("data/merkl-canary-autopilot-runs.jsonl"),
+    resolve("data/erc4626-protocol-canaries.jsonl"),
+    resolve("data/aave-protocol-canaries.jsonl"),
+  ];
   const outPath = resolve(args.out || "dashboard/public/strategy-tick-status.json");
 
   const ticks = readJsonlSafe(tickPath);
   const audit = readJsonlSafe(auditPath);
   const reconciliations = readJsonlSafe(reconciliationsPath);
+  const canaryLedgerEvidence = buildCanaryLedgerEvidence(canaryPaths.flatMap(readJsonlSafe));
   const reconciliationByTxHash = new Map();
   for (const rec of reconciliations) {
     if (rec.txHash) reconciliationByTxHash.set(String(rec.txHash).toLowerCase(), rec);
@@ -217,10 +346,23 @@ function main() {
   for (const r of reportSummaries) {
     latestReportSummariesByStrategy.set(r.strategyId, r);
   }
-  const dedupedLatestReports = [...latestReportSummariesByStrategy.values()];
+  const dedupedLatestReports = enrichReportsWithMicroCanaryEvidence(
+    [...latestReportSummariesByStrategy.values()],
+    strategyRows,
+    canaryLedgerEvidence,
+  );
+  const enrichedReportsByStrategy = new Map(dedupedLatestReports.map((report) => [report.strategyId, report]));
 
   const promotionEvidence = Object.fromEntries(
-    strategyRows.map((s) => [s.strategyId, { eligible: s.liveEligibility.liveEligible }]),
+    strategyRows.map((s) => {
+      const report = enrichedReportsByStrategy.get(s.strategyId) || null;
+      return [
+        s.strategyId,
+        {
+          eligible: s.liveEligibility.liveEligible && microHasMinimalProof(report),
+        },
+      ];
+    }),
   );
   const demotionEvidence = Object.fromEntries(
     strategyRows.map((s) => [s.strategyId, { demoted: s.demotion.demoted, triggers: s.demotion.triggers }]),
