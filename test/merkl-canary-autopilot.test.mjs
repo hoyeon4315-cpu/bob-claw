@@ -51,6 +51,87 @@ test("sizes Merkl canary amount to the committed tiny cap and inventory", () => 
   assert.equal(sizing.amountUsd, 0.414771);
 });
 
+test("uses committed graduation ladder as the live canary sizing cap", () => {
+  const sizing = sizeMerklCanaryAmount(queueItem({
+    opportunityId: "opp-next",
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: {
+        ticker: "USDC",
+        actual: "100000000",
+        estimatedUsd: 100,
+      },
+      matchedNative: {
+        asset: "ETH",
+        actual: "1000000000000000",
+        estimatedUsd: 2,
+      },
+    },
+  }), {
+    canaryExecutions: [
+      {
+        observedAt: "2026-05-01T00:00:00.000Z",
+        mode: "execute",
+        status: "delivered",
+        queueItem: {
+          opportunityId: "opp-a",
+          chain: "base",
+          protocolId: "morpho",
+          mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        },
+        sizing: { amountUsd: 5 },
+        execution: { settlementStatus: "delivered", txHash: "0xaaa" },
+        realized: { netUsd: 0.05 },
+      },
+      {
+        observedAt: "2026-05-01T01:00:00.000Z",
+        mode: "execute",
+        status: "delivered",
+        queueItem: {
+          opportunityId: "opp-b",
+          chain: "base",
+          protocolId: "morpho",
+          mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        },
+        sizing: { amountUsd: 10 },
+        execution: { settlementStatus: "delivered", txHash: "0xbbb" },
+      },
+    ],
+  });
+
+  assert.equal(sizing.status, "ready");
+  assert.equal(sizing.graduation.targetUsd, 25);
+  assert.equal(sizing.capUsd, 25);
+  assert.equal(sizing.amountUsd, 25);
+});
+
+test("does not apply canary graduation ladder when tiny live cap is disabled", () => {
+  const sizing = sizeMerklCanaryAmount(queueItem({
+    opportunityId: "portfolio-hold",
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: {
+        ticker: "USDC",
+        actual: "100000000",
+        estimatedUsd: 100,
+      },
+      matchedNative: {
+        asset: "ETH",
+        actual: "1000000000000000",
+        estimatedUsd: 2,
+      },
+    },
+  }), {
+    maxUsd: 100,
+    useTinyLiveCap: false,
+  });
+
+  assert.equal(sizing.status, "ready");
+  assert.equal(sizing.graduation, null);
+  assert.equal(sizing.capUsd, 100);
+  assert.equal(sizing.amountUsd, 100);
+});
+
 test("Merkl canary opportunity policy blocks selected candidates before plan build", async () => {
   const result = await evaluateMerklCanaryOpportunityPolicy({
     queueItem: queueItem(),

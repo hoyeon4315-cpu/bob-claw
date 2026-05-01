@@ -86,6 +86,18 @@ When `RADAR_POLICY.calibrationStatus === "calibrated_aggressive_v1"`, the router
 
 BTC accounting is still required: the realized positive PnL share selected by payback policy is converted into native BTC and logged as the payback leg. The router is read-only against caps and policy: it never raises a cap, never bypasses a blocker, and never decides runtime signing.
 
+## Committed Canary Ladder
+
+Radar is not observation-only. Once a candidate becomes executable, the Merkl/radar canary autopilot uses `SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation` as a committed sizing ladder:
+
+- Start at the first rung for Base-style entries, with an Ethereum gas-efficiency floor.
+- Move to higher rungs only from receipt evidence: delivered txs, positive realized net PnL, and distinct campaign/opportunity windows.
+- Treat no-tx policy rejections as neutral so cooldown or kill-switch guards do not poison the ladder.
+- Pause the ladder after substantive on-chain failures or realized loss lock breach.
+- Clamp every rung by `tinyLivePerTxUsd`, per-chain caps, inventory, and the policy engine.
+
+This is automatic execution sizing inside predeclared caps, not a runtime cap mutation. Raising strategy caps above the committed ladder remains a committed diff.
+
 ## Cap Graduation Memory
 
 The operator does not need to remember when to raise caps. `npm run radar:cap-review` reads radar realization records and surfaces cap raise candidates only when:
@@ -112,11 +124,12 @@ Provider-backed labels such as Nansen, Arkham, and Cielo are Phase 0 placeholder
 
 ## Explicit Non-Goals
 
-- No live execution.
+- No direct signer calls or policy bypass from radar.
+- No uncapped live execution.
 - No source adapters.
 - No external API calls.
 - No dashboard raw JSONL exposure.
-- No automatic strategy cap changes.
+- No automatic strategy cap changes above the committed canary ladder.
 - No payback policy changes.
 - No auto-whitelisting unknown tokens.
 - No Solana, Hyperliquid, or other non-EVM executor code.

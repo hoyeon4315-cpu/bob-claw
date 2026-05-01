@@ -5,10 +5,12 @@ import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { config } from "../config/env.mjs";
 import { getStrategyCaps, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
 import { evaluateCapCheck } from "./policy/cap-check.mjs";
+import { evaluateCanaryGraduation } from "./canary/canary-graduation.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
@@ -78,6 +80,9 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
   useTinyLiveCap = true,
+  useGraduationCap = useTinyLiveCap,
+  canaryExecutions = [],
+  canaryGraduationPolicy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation,
   auditRecords = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -95,11 +100,28 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       amount: null,
       amountUsd: null,
       decimals: decimalsForQueueItem(queueItem),
+      graduation: null,
     };
   }
   const tinyCapUsd = finite(strategyCaps.caps.tinyLivePerTxUsd);
+  const graduation = useGraduationCap
+    ? evaluateCanaryGraduation({
+        queueItem,
+        canaryExecutions,
+        auditRecords,
+        policy: canaryGraduationPolicy,
+        now,
+      })
+    : null;
+  const graduationCapUsd = graduation?.status === "ready" ? finite(graduation.targetUsd) : null;
+  const canaryCapUsd = useGraduationCap
+    ? graduationCapUsd
+    : useTinyLiveCap
+      ? tinyCapUsd
+      : finite(strategyCaps.caps.perTxUsd);
   const hardCapUsd = Math.min(
-    useTinyLiveCap ? (tinyCapUsd ?? Number.NaN) : strategyCaps.caps.perTxUsd,
+    canaryCapUsd ?? Number.NaN,
+    useTinyLiveCap ? (tinyCapUsd ?? Number.NaN) : Number.POSITIVE_INFINITY,
     perChainCapUsd(strategyCaps, queueItem.chain),
     finite(maxUsd) ?? Number.POSITIVE_INFINITY,
     finite(matchedToken?.estimatedUsd) ?? Number.POSITIVE_INFINITY,
@@ -107,6 +129,9 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
 
   const blockers = [];
   if (useTinyLiveCap && tinyCapUsd === null) blockers.push("strategy_tiny_live_cap_missing");
+  if (useGraduationCap && graduation?.status === "blocked") blockers.push(...graduation.blockers);
+  if (useGraduationCap && graduation?.status === "disabled") blockers.push(...graduation.blockers);
+  if (useGraduationCap && graduationCapUsd === null) blockers.push("canary_graduation_cap_unavailable");
   if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("unsupported_binding_kind");
   if (readiness.status !== "inventory_ready") blockers.push(readiness.status || "inventory_not_ready");
   if (!matchedToken?.actual) blockers.push("matched_token_missing");
@@ -147,6 +172,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       amount: null,
       amountUsd: null,
       decimals: decimalsForQueueItem(queueItem),
+      graduation,
     };
   }
 
@@ -164,6 +190,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       amount: null,
       amountUsd: null,
       decimals: decimalsForQueueItem(queueItem),
+      graduation,
     };
   }
 
@@ -179,6 +206,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       balanceUsd: matchedToken.estimatedUsd,
     }),
     decimals: decimalsForQueueItem(queueItem),
+    graduation,
   };
 }
 
@@ -292,6 +320,7 @@ function compactCandidate(item) {
     amount: item.sizing?.amount || null,
     amountUsd: item.sizing?.amountUsd ?? null,
     blockers: item.sizing?.blockers || [],
+    graduation: item.sizing?.graduation || null,
   };
 }
 
@@ -611,6 +640,7 @@ export async function runMerklCanaryAutopilot({
             maxUsd,
             minEthereumNotionalUsd,
             allowInefficientEthereum,
+            canaryExecutions,
             auditRecords,
           },
         });

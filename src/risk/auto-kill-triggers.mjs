@@ -8,13 +8,47 @@
 import { readFileSync } from "node:fs";
 import { buildAutoKillConfig } from "../config/auto-kill.mjs";
 
+const NON_STRATEGY_FAILURE_POLICY_BLOCKERS = new Set([
+  "kill_switch_present",
+  "max_consecutive_failures_reached",
+]);
+
 function recordTimestampMs(record = {}) {
   const value = record.timestamp || record.observedAt || 0;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function recordBlockers(record = {}) {
+  const candidates = [
+    record.blockers,
+    record.policyBlockers,
+    record.lifecycle?.blockers,
+    record.policy?.blockers,
+  ];
+  return [
+    ...new Set(
+      candidates
+        .filter(Array.isArray)
+        .flat()
+        .filter((item) => typeof item === "string" && item.length > 0),
+    ),
+  ];
+}
+
+function isPureNonStrategyFailurePolicyRejection(record = {}) {
+  const blockers = recordBlockers(record);
+  return (
+    record.policyVerdict === "rejected" &&
+    record.lifecycle?.stage === "rejected" &&
+    !record.broadcast &&
+    blockers.length === 1 &&
+    NON_STRATEGY_FAILURE_POLICY_BLOCKERS.has(blockers[0])
+  );
+}
+
 function isFailure(record = {}) {
+  if (isPureNonStrategyFailurePolicyRejection(record)) return false;
   const stage = record.lifecycle?.stage || null;
   if (["rejected", "reverted", "error"].includes(stage)) return true;
   if (record.policyVerdict === "rejected" || record.policyVerdict === "errored") return true;

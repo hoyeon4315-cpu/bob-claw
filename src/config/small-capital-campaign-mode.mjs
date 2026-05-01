@@ -63,6 +63,23 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
     newProtocolFirstEntryUsd: 10,
     capGraduationUsd: Object.freeze([10, 25, 50, 80, 100]),
   }),
+  canaryGraduation: Object.freeze({
+    enabled: true,
+    rungsUsd: Object.freeze([5, 10, 25, 50, 80]),
+    maxAutoGraduatedUsd: 80,
+    ethereumMinRungUsd: 25,
+    minDeliveredForSecondRung: 1,
+    minDeliveredForThirdRung: 2,
+    minPositiveRealizedForThirdRung: 1,
+    minPositiveRealizedForFourthRung: 2,
+    minDistinctWindowsForFourthRung: 2,
+    minPositiveRealizedForFifthRung: 3,
+    minDistinctWindowsForFifthRung: 2,
+    realizedLossWindowMs: 24 * 60 * 60 * 1000,
+    realizedDailyLossLockUsd: 25,
+    maxSubstantiveFailures: 2,
+    noTxSentIsNeutral: true,
+  }),
 });
 
 export function isSmallCapitalMode(activeCapitalUsd, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {

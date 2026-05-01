@@ -80,6 +80,55 @@ test("failure burst fires on per-strategy threshold", () => {
   assert.equal(result.strategyId, "alpha");
 });
 
+test("failure burst ignores no-tx policy guard rejections", () => {
+  const config = buildAutoKillConfig({
+    failureBurst: { perStrategyFailureCount: 2, failureCount: 99 },
+  });
+  const records = [
+    {
+      timestamp: new Date(NOW_MS - 60_000).toISOString(),
+      strategyId: "alpha",
+      policyVerdict: "rejected",
+      lifecycle: { stage: "rejected", blockers: ["max_consecutive_failures_reached"] },
+      broadcast: null,
+    },
+    {
+      timestamp: new Date(NOW_MS - 120_000).toISOString(),
+      strategyId: "alpha",
+      policyVerdict: "rejected",
+      lifecycle: { stage: "rejected", blockers: ["kill_switch_present"] },
+      broadcast: null,
+    },
+  ];
+  const result = evaluateFailureBurst({
+    auditRecords: records,
+    config: config.failureBurst,
+    nowMs: NOW_MS,
+  });
+  assert.equal(result, null);
+});
+
+test("failure burst still counts rejected records with substantive blockers", () => {
+  const config = buildAutoKillConfig({
+    failureBurst: { perStrategyFailureCount: 1, failureCount: 99 },
+  });
+  const records = [
+    {
+      timestamp: new Date(NOW_MS - 60_000).toISOString(),
+      strategyId: "alpha",
+      policyVerdict: "rejected",
+      lifecycle: { stage: "rejected", blockers: ["strategy_per_chain_cap_exceeded"] },
+      broadcast: null,
+    },
+  ];
+  const result = evaluateFailureBurst({
+    auditRecords: records,
+    config: config.failureBurst,
+    nowMs: NOW_MS,
+  });
+  assert.equal(result?.trigger, "failure_burst_per_strategy");
+});
+
 test("oracle divergence fires when sources disagree beyond threshold", () => {
   const config = buildAutoKillConfig({ oracleDivergence: { maxDivergencePct: 0.05 } });
   const samples = [

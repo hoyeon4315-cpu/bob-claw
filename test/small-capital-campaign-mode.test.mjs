@@ -87,6 +87,18 @@ describe("small-capital-campaign-mode config", () => {
     assert.strictEqual(lane.realizedDailyLossLockUsd, 25);
     assert.deepStrictEqual(lane.capGraduationUsd, [10, 25, 50, 80, 100]);
   });
+
+  it("canaryGraduation defines an automatic ladder within committed hard caps", () => {
+    const ladder = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation;
+    assert.strictEqual(ladder.enabled, true);
+    assert.deepStrictEqual(ladder.rungsUsd, [5, 10, 25, 50, 80]);
+    assert.strictEqual(ladder.maxAutoGraduatedUsd, 80);
+    assert.strictEqual(ladder.ethereumMinRungUsd, 25);
+    assert.strictEqual(ladder.minDistinctWindowsForFourthRung, 2);
+    assert.strictEqual(ladder.realizedLossWindowMs, 24 * 60 * 60 * 1000);
+    assert.strictEqual(ladder.realizedDailyLossLockUsd, 25);
+    assert.strictEqual(ladder.noTxSentIsNeutral, true);
+  });
 });
 
 describe("small-capital helpers", () => {
