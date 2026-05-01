@@ -66,7 +66,17 @@ function isPaybackIntent(intent = {}) {
 }
 
 function isEmergencyIntent(intent = {}) {
-  return ["emergency_unwind", "risk_unwind"].includes(String(intent.intentType || ""));
+  if (String(intent.intentType || "") === "emergency_unwind") return true;
+  if (String(intent.mode || "") === "emergency") return true;
+  if (intent.metadata?.emergency === true) return true;
+  return Array.isArray(intent.metadata?.triggers) && intent.metadata.triggers.length > 0;
+}
+
+function isRoutineWrappedLoopRoundtrip(intent = {}) {
+  if (String(intent.strategyId || "") !== "wrapped-btc-loop-base-moonwell") return false;
+  const phase = String(intent.metadata?.phase || "");
+  if (!["entry", "unwind"].includes(phase)) return false;
+  return intent.metadata?.skipAutoIngest === true || Boolean(intent.metadata?.scenarioId);
 }
 
 function isFailureStage(stage = "") {
@@ -82,6 +92,7 @@ export function shouldSendLiveTransactionAlert({ intent = {}, stage = "broadcast
   if (isFailureStage(stage)) return { send: true, reason: "failure_stage" };
   if (isPaybackIntent(intent)) return { send: true, reason: "payback" };
   if (isEmergencyIntent(intent)) return { send: true, reason: "emergency" };
+  if (isRoutineWrappedLoopRoundtrip(intent)) return { send: false, reason: "routine_transaction_suppressed" };
   if (stage === "confirmed" || stage === "broadcasted") {
     const amountUsd = liveAlertAmountUsd(intent);
     if (amountUsd !== null && amountUsd >= IMMEDIATE_ALERT_MIN_USD) {

@@ -19,13 +19,14 @@ describe("mindmap source guard", () => {
     assert.doesNotMatch(MINDMAP_JSX, /const resetAll = \(\) => \{ setSelectedChain\(null\); setSelectedProtocolId\(null\); \};/);
   });
 
-  test("mindmap focuses protocols with capital and dims siblings on protocol zoom", () => {
+  test("mindmap focuses protocols with capital or recent activity and dims siblings on protocol zoom", () => {
     assert.match(MINDMAP_JSX, /if \(!strategy\.protocol\) return false;/);
     assert.match(MINDMAP_JSX, /return strategy\.status === 'LIVE'/);
     assert.match(MINDMAP_JSX, /strategy\.activeStrategyState === 'live_position'/);
     assert.match(MINDMAP_JSX, /return Number\(strategy\.actualProtocolCapitalUsd \|\| 0\) > 0/);
-    assert.doesNotMatch(MINDMAP_JSX, /\|\|\s*Number\(strategy\.recentActivityCount \|\| 0\) > 0/);
-    assert.doesNotMatch(MINDMAP_JSX, /\|\|\s*strategy\.surfaceOnly === 'mindmap'/);
+    assert.match(MINDMAP_JSX, /function hasRecentMindmapActivity\(strategy\)/);
+    assert.match(MINDMAP_JSX, /return hasRecentMindmapActivity\(strategy\)/);
+    assert.match(MINDMAP_JSX, /strategy\.surfaceOnly === 'mindmap'/);
     assert.match(MINDMAP_JSX, /const focusPoint = selectedProtocolId \? \(protocolBloom\[selectedProtocolId\] \|\| null\) : null;/);
     assert.match(MINDMAP_JSX, /const focus = focusPoint/);
     assert.match(MINDMAP_JSX, /function ProtocolAssetMotion\(/);

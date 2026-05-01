@@ -298,3 +298,125 @@ test("wrapped BTC loop stays out of live dispatch when Base cbBTC collateral is 
   assert.equal(wrapped.liveAdmissionBlockers.includes("base_cbbtc_collateral_unavailable"), true);
   assert.equal(wrapped.evidence.baseCbBtcCollateralUnits, "0");
 });
+
+test("wrapped BTC loop live dispatch cools down after a fresh signer-backed proof", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-01T13:05:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 1.3552 },
+          realized: { valueUsd: 0 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            oosSplitStatus: "signer_backed_window_recorded",
+            shockTestStatus: "live_roundtrip_recorded",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+              realizedNetCarryUsd: 0,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+      wrappedBtcLoopLiveProof: {
+        observedAt: "2026-05-01T12:58:59.137Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        success: true,
+        proofStatus: "signer_backed_roundtrip_recorded",
+        proofKind: "signer_backed_roundtrip",
+      },
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.selectedMode, "dry_run");
+  assert.equal(wrapped.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(wrapped.fallbackReason, "fresh_roundtrip_proof_recorded");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("fresh_roundtrip_proof_recorded"), true);
+  assert.equal(wrapped.evidence.liveRunControl.blocked, true);
+  assert.equal(wrapped.evidence.liveRunControl.reason, "fresh_roundtrip_proof_recorded");
+});
+
+test("wrapped BTC loop live dispatch cools down after recent signer activity even before proof finalizes", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-01T13:05:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+      signerAuditRecords: [
+        {
+          timestamp: "2026-05-01T13:02:00.000Z",
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          chain: "base",
+          lifecycle: { stage: "confirmed", txHash: "0xabc" },
+          broadcast: { txHash: "0xabc" },
+          policyVerdict: "approved",
+        },
+      ],
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.fallbackReason, "recent_live_transaction_cooldown");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("recent_live_transaction_cooldown"), true);
+  assert.equal(wrapped.evidence.liveRunControl.recentTxCount, 1);
+});

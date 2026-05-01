@@ -268,6 +268,95 @@ test("wrapped BTC tiny loop alerts are suppressed before Telegram delivery", asy
   assert.equal(result.reason, "routine_transaction_suppressed");
 });
 
+test("planned tiny wrapped BTC validation unwinds are suppressed before Telegram delivery", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      intentType: "risk_unwind",
+      executionReason: "risk_unwind",
+      amountUsd: 7.389991,
+      metadata: {
+        phase: "unwind",
+        tinyValidationOnly: true,
+      },
+    },
+    broadcast: { txHash: `0x${"8".repeat(64)}` },
+    stage: "confirmed",
+    botToken: "token",
+    chatId: "chat",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(payload, null);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "routine_transaction_suppressed");
+});
+
+test("planned wrapped BTC validation roundtrip alerts stay suppressed at the normal canary notional", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      intentType: "risk_unwind",
+      executionReason: "risk_unwind",
+      amountUsd: 25,
+      metadata: {
+        phase: "unwind",
+        scenarioId: "healthy_baseline",
+        skipAutoIngest: true,
+      },
+    },
+    broadcast: { txHash: `0x${"5".repeat(64)}` },
+    stage: "confirmed",
+    botToken: "token",
+    chatId: "chat",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(payload, null);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "routine_transaction_suppressed");
+});
+
+test("emergency unwind alerts are not suppressed", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      intentType: "emergency_unwind",
+      executionReason: "risk_unwind",
+      amountUsd: 7.389991,
+      metadata: {
+        triggers: ["health_factor_breach"],
+      },
+    },
+    broadcast: { txHash: `0x${"6".repeat(64)}` },
+    stage: "confirmed",
+    botToken: "token",
+    chatId: "chat",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(result.sent, true);
+  assert.equal(payload.category, "live_execution_result");
+  assert.match(payload.text, /전략: wrapped-btc-loop-base-moonwell/);
+});
+
 test("large live transaction alerts still deliver", async () => {
   let payload = null;
   const result = await notifyLiveTransaction({

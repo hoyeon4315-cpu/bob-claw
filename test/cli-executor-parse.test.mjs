@@ -9,6 +9,7 @@ import { parseArgs as parseCapitalManagerArgs } from "../src/cli/plan-capital-ma
 import { buildFullAutomationReadiness, parseArgs as parseFullAutomationArgs } from "../src/cli/check-full-automation-readiness.mjs";
 import { parseArgs as parseRuntimeReadinessArgs } from "../src/cli/check-executor-runtime.mjs";
 import { parseArgs as parseLaunchdArgs, retryableBootstrapFailure } from "../src/cli/manage-executor-launchd.mjs";
+import { retryableBootstrapFailure as retryableLiveAutomationBootstrapFailure } from "../src/cli/manage-live-automation-launchd.mjs";
 import {
   parseArgs as parsePaybackSchedulerArgs,
   paybackDisbursementRecordFromTickResult,
@@ -359,6 +360,11 @@ test("manage-executor-launchd parseArgs reads install and path overrides", () =>
 test("manage-executor-launchd retries transient bootstrap I/O failures", () => {
   assert.equal(retryableBootstrapFailure("Bootstrap failed: 5: Input/output error"), true);
   assert.equal(retryableBootstrapFailure("service already loaded"), false);
+});
+
+test("manage-live-automation-launchd retries transient bootstrap I/O failures", () => {
+  assert.equal(retryableLiveAutomationBootstrapFailure("Bootstrap failed: 5: Input/output error"), true);
+  assert.equal(retryableLiveAutomationBootstrapFailure("service already loaded"), false);
 });
 
 test("run-payback-scheduler persists executed payback disbursements to signer audit log", async () => {

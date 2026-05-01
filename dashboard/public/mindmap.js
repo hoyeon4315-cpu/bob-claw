@@ -20,6 +20,7 @@ const PHYS = {
 const PROTOCOL_CARD_MAX_HEIGHT = 132;
 const PROTOCOL_CARD_SAFE_BOTTOM = 188;
 const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;
+const MINDMAP_RECENT_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1e3;
 function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
   if (!svg) return { x: 0, y: 0 };
   const pt = svg.createSVGPoint();
@@ -37,6 +38,18 @@ function isMindmapActiveStrategy(strategy) {
   if (strategy.activeStrategyState === "live_position") return true;
   return Number(strategy.actualProtocolCapitalUsd || 0) > 0;
 }
+function hasRecentMindmapActivity(strategy) {
+  if (!strategy) return false;
+  const count = Number(strategy.recentActivityCount || strategy.activitySurfaceCount || 0);
+  const surfaceOnly = strategy.surfaceOnly === "mindmap";
+  if (count <= 0 && !surfaceOnly) return false;
+  const latestAt = strategy.latestActivityAt || strategy.lastTickAt || null;
+  if (!latestAt) return false;
+  const observedMs = new Date(latestAt).getTime();
+  if (!Number.isFinite(observedMs)) return false;
+  const ageMs = Date.now() - observedMs;
+  return ageMs >= 0 && ageMs <= MINDMAP_RECENT_ACTIVITY_TTL_MS;
+}
 function isMindmapVisible(strategy) {
   if (!strategy) return false;
   if (!strategy.protocol) return false;
@@ -46,7 +59,8 @@ function isMindmapVisible(strategy) {
     const paybackUsd = Number(window?.FLOW?.metrics?.pendingCarryUsd || 0) + Number(window?.FLOW?.metrics?.paidBackUsdLifetime || 0);
     return paybackUsd > 0;
   }
-  return isMindmapActiveStrategy(strategy);
+  if (isMindmapActiveStrategy(strategy)) return true;
+  return hasRecentMindmapActivity(strategy);
 }
 function bloomRadiusForCount(count, chipR, minR = 78, padding = 8) {
   if (!Number.isFinite(count) || count <= 1) return minR;

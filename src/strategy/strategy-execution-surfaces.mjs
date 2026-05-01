@@ -5,10 +5,13 @@ import { SIZING_POLICY, computeMinProfitablePositionUsd } from "../config/sizing
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
 const BASE_CBBTC_TOKEN = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
+const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 const MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD = 5;
 const WRAPPED_BTC_LOOP_AUTOMATED_MAX_LOOP_ITERATIONS = 1;
 const WRAPPED_BTC_LOOP_AUTOMATED_MAX_INTENTS = 14;
 const WRAPPED_BTC_LOOP_AUTOMATED_MIN_INCREMENT_USD = 5;
+const WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS = 30 * 60 * 1000;
 
 function compact(values = []) {
   return [...new Set((values || []).filter(Boolean))];
@@ -44,6 +47,18 @@ function latestTreasuryInventoryRecord(records = []) {
   return [...(records || [])]
     .filter(Boolean)
     .sort((left, right) => String(right.observedAt || "").localeCompare(String(left.observedAt || "")))[0] || null;
+}
+
+function timestampMs(value = null) {
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ageMs(value = null, now = new Date().toISOString()) {
+  const observed = timestampMs(value);
+  const current = timestampMs(now);
+  if (observed === null || current === null) return null;
+  return current - observed;
 }
 
 function findBaseCbBtcCollateral(treasuryInventoryRecords = []) {
@@ -137,6 +152,93 @@ function wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral = null) {
   return configuredTinyCapUsd;
 }
 
+function wrappedBtcLoopProofIsSuccess(proof = null) {
+  if (!proof) return false;
+  if (proof.strategyId && proof.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
+  return proof.success === true || proof.proofStatus === "signer_backed_roundtrip_recorded";
+}
+
+function signerAuditRecordTxHash(record = null) {
+  return record?.broadcast?.txHash || record?.lifecycle?.txHash || null;
+}
+
+function signerAuditRecordStage(record = null) {
+  return record?.lifecycle?.stage || record?.policyVerdict || null;
+}
+
+function wrappedBtcLoopRecentSignerActivity(records = [], { now = new Date().toISOString() } = {}) {
+  const recent = [];
+  const txHashes = new Set();
+  for (const record of records || []) {
+    if (record?.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) continue;
+    const stage = signerAuditRecordStage(record);
+    if (!["signed", "broadcasted", "confirmed"].includes(stage)) continue;
+    const txHash = signerAuditRecordTxHash(record);
+    if (!txHash) continue;
+    const age = ageMs(record.timestamp, now);
+    if (age === null || age < 0 || age > WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS) continue;
+    recent.push(record);
+    txHashes.add(txHash);
+  }
+  const latest = recent
+    .sort((left, right) => timestampMs(right.timestamp) - timestampMs(left.timestamp))[0] || null;
+  return {
+    recentTxCount: txHashes.size,
+    latestAt: latest?.timestamp || null,
+    latestAgeMs: latest ? ageMs(latest.timestamp, now) : null,
+  };
+}
+
+function evaluateWrappedBtcLoopLiveRunControl({
+  liveProof = null,
+  signerAuditRecords = [],
+  now = new Date().toISOString(),
+} = {}) {
+  const proofAgeMs = ageMs(liveProof?.observedAt, now);
+  const freshProof =
+    wrappedBtcLoopProofIsSuccess(liveProof) &&
+    proofAgeMs !== null &&
+    proofAgeMs >= 0 &&
+    proofAgeMs <= WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS;
+  const recent = wrappedBtcLoopRecentSignerActivity(signerAuditRecords, { now });
+  if (freshProof) {
+    return {
+      blocked: true,
+      reason: "fresh_roundtrip_proof_recorded",
+      proofObservedAt: liveProof.observedAt || null,
+      proofAgeMs,
+      proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+      recentTxCount: recent.recentTxCount,
+      latestTxAt: recent.latestAt,
+      latestTxAgeMs: recent.latestAgeMs,
+    };
+  }
+  if (recent.recentTxCount > 0) {
+    return {
+      blocked: true,
+      reason: "recent_live_transaction_cooldown",
+      proofObservedAt: liveProof?.observedAt || null,
+      proofAgeMs,
+      proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+      recentTxCount: recent.recentTxCount,
+      latestTxAt: recent.latestAt,
+      latestTxAgeMs: recent.latestAgeMs,
+      recentTxCooldownMs: WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS,
+    };
+  }
+  return {
+    blocked: false,
+    reason: null,
+    proofObservedAt: liveProof?.observedAt || null,
+    proofAgeMs,
+    proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+    recentTxCount: 0,
+    latestTxAt: null,
+    latestTxAgeMs: null,
+    recentTxCooldownMs: WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS,
+  };
+}
+
 function wrappedBtcLoopCommands(mode, { livePerTradeCapUsd = null } = {}) {
   if (mode === "live") {
     return [
@@ -161,6 +263,9 @@ function buildWrappedBtcLoopExecutorSurface({
   phase3Validation = null,
   wrappedBtcLendingLoopSlice = null,
   treasuryInventoryRecords = [],
+  wrappedBtcLoopLiveProof = null,
+  signerAuditRecords = [],
+  now = new Date().toISOString(),
 } = {}) {
   const validation = phase3ValidationById(phase3Validation).get("wrapped_btc_loop_validation") || null;
   const strategy = wrappedBtcLendingLoopSlice?.strategy || {};
@@ -179,13 +284,19 @@ function buildWrappedBtcLoopExecutorSurface({
     actualUnits: baseCbBtcCollateral.actualUnits,
     requiredUnits: requiredCollateralUnits,
   });
-  const currentLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady;
+  const liveRunControl = evaluateWrappedBtcLoopLiveRunControl({
+    liveProof: wrappedBtcLoopLiveProof,
+    signerAuditRecords,
+    now,
+  });
+  const currentLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked;
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
     validationPassed ? null : validation?.blockers?.[0] || "phase3_validation_not_passed",
     bindingReady ? null : "repo_auto_build_not_supported",
     dryRunRecorded ? null : "dry_run_receipt_missing",
     collateralReady ? null : "base_cbbtc_collateral_unavailable",
+    liveRunControl.blocked ? liveRunControl.reason : null,
   ]);
   const selectedMode = currentLiveEligible ? "live" : "dry_run";
   return {
@@ -216,6 +327,7 @@ function buildWrappedBtcLoopExecutorSurface({
       estimatedNetCarryUsd: wrappedBtcLendingLoopSlice?.pnl?.estimated?.valueUsd ?? null,
       realizedNetCarryBtc: null,
       realizedNetCarryUsd: validation?.evidence?.realizedNetCarryUsd ?? wrappedBtcLendingLoopSlice?.pnl?.realized?.valueUsd ?? null,
+      liveRunControl,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",
@@ -570,6 +682,9 @@ export function buildStrategyExecutionSurfaces({
       phase3Validation: artifacts.phase3StrategyValidation || null,
       wrappedBtcLendingLoopSlice: artifacts.wrappedBtcLendingLoopSlice || null,
       treasuryInventoryRecords: artifacts.treasuryInventoryRecords || [],
+      wrappedBtcLoopLiveProof: artifacts.wrappedBtcLoopLiveProof || null,
+      signerAuditRecords: artifacts.signerAuditRecords || [],
+      now: now || catalog.generatedAt || new Date().toISOString(),
     }),
     buildMerklAutopilotSurface({
       policy: catalog.policy,

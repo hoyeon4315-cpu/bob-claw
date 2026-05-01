@@ -930,6 +930,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
        merklOpportunityAlerts,
        merklCanaryQueue,
        merklPositionEvents,
+       signerAuditRecords,
        treasuryInventoryRecords,
        allChainAutopilotLatest,
        radarBoard,

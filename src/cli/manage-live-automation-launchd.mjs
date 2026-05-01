@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import process from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
   buildLiveAutomationLaunchAgentSpecs,
@@ -60,6 +61,10 @@ function toleratedBootoutFailure(output = "") {
   return /Could not find service|service could not be found|No such process/i.test(output);
 }
 
+export function retryableBootstrapFailure(output = "") {
+  return /Bootstrap failed:\s*5|Input\/output error/i.test(output);
+}
+
 function runLaunchctlOrThrow(args, { tolerateNotLoaded = false } = {}) {
   const result = launchctl(args);
   if (result.error) throw result.error;
@@ -84,6 +89,24 @@ async function collectStatus(specs, uid) {
   );
 }
 
+async function bootstrapSpecWithRetry(spec, uid, { maxAttempts = 5 } = {}) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return {
+        id: spec.id,
+        step: attempt === 1 ? "bootstrap" : `bootstrap_retry_${attempt}`,
+        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts || !retryableBootstrapFailure(error.message)) throw error;
+      await delay(1000 * attempt);
+    }
+  }
+  throw lastError;
+}
+
 async function installSpecs(specs, uid) {
   if (!Number.isInteger(uid)) {
     throw new Error("launchd install requires a numeric macOS user id");
@@ -95,11 +118,8 @@ async function installSpecs(specs, uid) {
       step: "bootout",
       ...runLaunchctlOrThrow(["bootout", `gui/${uid}/${spec.label}`], { tolerateNotLoaded: true }),
     });
-    operations.push({
-      id: spec.id,
-      step: "bootstrap",
-      ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
-    });
+    await delay(1000);
+    operations.push(await bootstrapSpecWithRetry(spec, uid));
     operations.push({
       id: spec.id,
       step: "kickstart",

@@ -1,7 +1,7 @@
 {
-  "enabled": false,
-  "origin": null,
-  "statusUrl": null,
-  "eventsUrl": null,
-  "updatedAt": "2026-05-01T12:39:38.472Z"
+  "enabled": true,
+  "origin": "https://brothers-poor-addressing-intend.trycloudflare.com",
+  "statusUrl": "https://brothers-poor-addressing-intend.trycloudflare.com/api/live-status",
+  "eventsUrl": "https://brothers-poor-addressing-intend.trycloudflare.com/api/live-events",
+  "updatedAt": "2026-05-01T13:19:55.480Z"
 }
