@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildMerklCanaryOpportunityIntent,
   evaluateMerklCanaryOpportunityPolicy,
   merklExecutionErrorReport,
   refreshMerklAutopilotSelectionForExecute,
@@ -149,6 +150,65 @@ test("Merkl canary opportunity policy blocks selected candidates before plan bui
 
   assert.equal(result.ok, false);
   assert.deepEqual(result.blockers, ["blocked:erc4626_deposit"]);
+});
+
+test("Merkl canary opportunity policy uses campaign window and tiny canary cost basis", async () => {
+  const result = await evaluateMerklCanaryOpportunityPolicy({
+    now: "2026-05-01T20:19:17.949Z",
+    queueItem: queueItem({
+      protocolId: "yo",
+      aprPct: 19.8,
+      campaignRemainingHours: 24 * 33,
+      estimatedGasCostUsd: null,
+    }),
+    sizing: {
+      status: "ready",
+      amount: "1400000",
+      amountUsd: 1.4,
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    result.blockers.some((blocker) => blocker.startsWith("same_chain_unprofitable")),
+    false
+  );
+  assert.equal(result.intent.expectedHoldDays, 33);
+});
+
+test("Merkl canary opportunity policy still blocks genuinely negative tiny EV", async () => {
+  const result = await evaluateMerklCanaryOpportunityPolicy({
+    now: "2026-05-01T20:19:17.949Z",
+    queueItem: queueItem({
+      protocolId: "yo",
+      aprPct: 0.6,
+      campaignRemainingHours: 24 * 33,
+      estimatedGasCostUsd: null,
+    }),
+    sizing: {
+      status: "ready",
+      amount: "10000000",
+      amountUsd: 10,
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.blockers.some((blocker) => blocker.startsWith("same_chain_unprofitable")));
+});
+
+test("buildMerklCanaryOpportunityIntent preserves explicit hold days over campaign hours", () => {
+  const intent = buildMerklCanaryOpportunityIntent({
+    now: "2026-05-01T20:19:17.949Z",
+    queueItem: queueItem({
+      expectedHoldDays: 5,
+      campaignRemainingHours: 24 * 33,
+    }),
+    sizing: {
+      amountUsd: 1.4,
+    },
+  });
+
+  assert.equal(intent.expectedHoldDays, 5);
 });
 
 test("Merkl autopilot result summary separates selected candidates from policy-ready execution", () => {

@@ -8,6 +8,25 @@ export const SIZING_POLICY = Object.freeze({
   maxSinglePositionPct: 0.25,
 });
 
+export const TINY_CANARY_COST_POLICY = Object.freeze({
+  defaultSameChainRoundTripCostUsd: 0.12,
+  sameChainRoundTripCostUsdByChain: Object.freeze({
+    base: 0.012,
+    bob: 0.003,
+    optimism: 0.003,
+    unichain: 0.003,
+    sei: 0.003,
+    soneium: 0.003,
+    sonic: 0.003,
+    avalanche: 0.003,
+    bera: 0.003,
+    bsc: 0.03,
+    ethereum: 0.36,
+  }),
+  safetyFactor: 0.5,
+  fallbackHoldDays: 7,
+});
+
 export function sizingPolicy(overrides = {}) {
   return Object.freeze({
     ...SIZING_POLICY,
@@ -24,6 +43,43 @@ export function sizingPolicy(overrides = {}) {
     maxSinglePositionPct:
       overrides.maxSinglePositionPct ?? SIZING_POLICY.maxSinglePositionPct,
   });
+}
+
+function finitePositive(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function resolveTinyCanaryExpectedHoldDays({
+  expectedHoldDays = null,
+  campaignRemainingHours = null,
+  campaignEndsAt = null,
+  now = new Date().toISOString(),
+  fallbackDays = TINY_CANARY_COST_POLICY.fallbackHoldDays,
+} = {}) {
+  const explicit = finitePositive(expectedHoldDays);
+  if (explicit !== null) return explicit;
+  const remainingHours = finitePositive(campaignRemainingHours);
+  if (remainingHours !== null) return remainingHours / 24;
+  if (campaignEndsAt) {
+    const remainingMs = new Date(campaignEndsAt).getTime() - new Date(now).getTime();
+    if (Number.isFinite(remainingMs) && remainingMs > 0) {
+      return remainingMs / 86_400_000;
+    }
+  }
+  return fallbackDays;
+}
+
+export function tinyCanarySameChainRoundTripCostUsd({
+  chain = null,
+  estimatedGasCostUsd = null,
+  policy = TINY_CANARY_COST_POLICY,
+} = {}) {
+  const explicitCost = finitePositive(estimatedGasCostUsd);
+  if (explicitCost !== null) return explicitCost;
+  const chainKey = String(chain || "").trim().toLowerCase();
+  const chainCost = policy.sameChainRoundTripCostUsdByChain?.[chainKey];
+  return finitePositive(chainCost) ?? policy.defaultSameChainRoundTripCostUsd;
 }
 
 export function computeMinProfitablePositionUsd({
@@ -48,6 +104,30 @@ export function computeMinProfitablePositionUsd({
     postedAprDecimal * expectedHoldYearFraction * safetyFactor;
   if (denominator <= 0) return null;
   return roundTripCostUsd / denominator;
+}
+
+export function computeTinyCanaryMinProfitablePositionUsd({
+  chain = null,
+  aprPct = null,
+  aprDecimal = null,
+  expectedHoldDays = null,
+  estimatedGasCostUsd = null,
+  policy = TINY_CANARY_COST_POLICY,
+} = {}) {
+  const aprPctValue = finitePositive(aprPct);
+  const postedAprDecimal =
+    finitePositive(aprDecimal) ?? (aprPctValue !== null ? aprPctValue / 100 : null);
+  const holdDays = finitePositive(expectedHoldDays);
+  return computeMinProfitablePositionUsd({
+    roundTripCostUsd: tinyCanarySameChainRoundTripCostUsd({
+      chain,
+      estimatedGasCostUsd,
+      policy,
+    }),
+    postedAprDecimal,
+    expectedHoldYearFraction: holdDays === null ? null : holdDays / 365,
+    safetyFactor: policy.safetyFactor,
+  });
 }
 
 export function computePositionUsd({

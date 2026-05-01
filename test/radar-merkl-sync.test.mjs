@@ -66,7 +66,8 @@ test("syncMerklQueueToRadar creates radar observations and candidates from ready
   assert.equal(candidates[0].candidateId, "merkl:opp_sync_1");
   assert.equal(candidates[0].familyKey, "same_chain_stable_carry");
   assert.equal(candidates[0].executionPath, "base_native_evm");
-  assert.equal(candidates[0].rewardTokenType, "stable");
+  assert.equal(candidates[0].rewardTokenType, null);
+  assert.equal(candidates[0].rewardToken, null);
   assert.equal(candidates[0].killSwitchState, "running");
 });
 
@@ -124,6 +125,68 @@ test("syncMerklQueueToRadar lets tiny canary EV decide below the generic positio
   const candidates = await readRadarJsonl(dataDir, "executable-candidates");
   assert.equal(candidates[0].gateStatus, "executable");
   assert.equal(candidates[0].blockers.includes("position_below_min_position_usd"), false);
+});
+
+test("syncMerklQueueToRadar aligns tiny EV with campaign duration and chain cost", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
+
+  const result = await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      aprPct: 19.8,
+      campaignRemainingHours: 24 * 33,
+      executionReadiness: {
+        matchedToken: { ticker: "USDC", estimatedUsd: 1.4 },
+      },
+    }),
+  });
+
+  assert.equal(result.candidatesWritten, 1);
+
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  assert.equal(candidates[0].gateStatus, "executable");
+  assert.deepEqual(candidates[0].blockers, []);
+  assert.equal(candidates[0].expectedHoldDays, 33);
+});
+
+test("syncMerklQueueToRadar keeps expensive-chain tiny EV conservative", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
+
+  const result = await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      chain: "ethereum",
+      aprPct: 19.8,
+      campaignRemainingHours: 24 * 33,
+      executionReadiness: {
+        matchedToken: { ticker: "USDC", estimatedUsd: 1.4 },
+      },
+    }),
+  });
+
+  assert.equal(result.candidatesWritten, 1);
+
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  assert.equal(candidates[0].gateStatus, "blocked");
+  assert.ok(candidates[0].blockers.includes("same_chain_unprofitable:need_$41_on_ethereum"));
+});
+
+test("syncMerklQueueToRadar does not treat entry inventory as reward-token proof", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
+
+  await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      rewardToken: "AERO",
+      executionReadiness: {
+        matchedToken: { ticker: "USDC", estimatedUsd: 30 },
+      },
+    }),
+  });
+
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  assert.equal(candidates[0].rewardToken, "AERO");
+  assert.equal(candidates[0].rewardTokenType, "defaultRewardToken");
 });
 
 test("syncMerklQueueToRadar observes but does not candidate unsupported Merkl families", async () => {

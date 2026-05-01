@@ -11,6 +11,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
+import { resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
@@ -405,7 +406,13 @@ export function buildMerklCanaryOpportunityIntent({ queueItem = {}, sizing = {},
     estimatedCostsUsd: queueItem.estimatedCostsUsd ?? 0,
     estimatedGasCostUsd: queueItem.estimatedGasCostUsd ?? null,
     estimatedBridgeCostUsd: queueItem.estimatedBridgeCostUsd ?? null,
-    expectedHoldDays: queueItem.expectedHoldDays ?? null,
+    expectedHoldDays: resolveTinyCanaryExpectedHoldDays({
+      expectedHoldDays: queueItem.expectedHoldDays,
+      campaignRemainingHours: queueItem.campaignRemainingHours,
+      campaignEndsAt: queueItem.campaignEndsAt,
+      now,
+    }),
+    campaignRemainingHours: queueItem.campaignRemainingHours ?? null,
     campaignEndsAt: queueItem.campaignEndsAt ?? null,
     sharePct: queueItem.sharePct ?? 0,
     venue: queueItem.venue ?? null,

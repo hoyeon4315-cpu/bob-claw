@@ -1,6 +1,9 @@
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
-import { SIZING_POLICY, computeMinProfitablePositionUsd } from "../config/sizing.mjs";
+import {
+  computeTinyCanaryMinProfitablePositionUsd,
+  resolveTinyCanaryExpectedHoldDays,
+} from "../config/sizing.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
@@ -356,9 +359,12 @@ function merklCandidateAmountUsd(candidate = null) {
 }
 
 function merklExpectedHoldDays(candidate = null) {
-  const hours = Number(candidate?.campaignRemainingHours);
-  if (Number.isFinite(hours) && hours > 0) return hours / 24;
-  return 7;
+  return resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: candidate?.expectedHoldDays,
+    campaignRemainingHours: candidate?.campaignRemainingHours,
+    campaignEndsAt: candidate?.campaignEndsAt,
+    now: candidate?.observedAt,
+  });
 }
 
 function merklExitPathReady(candidate = null) {
@@ -373,20 +379,17 @@ function merklPolicyPreviewBlockers(candidate = null) {
   const blockers = [];
   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
     blockers.push("merkl_candidate_amount_missing");
-  } else if (amountUsd < SIZING_POLICY.minPositionUsd) {
-    blockers.push("position_below_min_position_usd");
   }
   if (!merklExitPathReady(candidate)) {
     blockers.push("exit_path_unproven");
   }
 
   const chain = candidate.chain || null;
-  const aprDecimal = Number(candidate.aprPct ?? candidate.nativeAprPct ?? 0) / 100;
-  const minProfitable = computeMinProfitablePositionUsd({
-    roundTripCostUsd: 0.12,
-    postedAprDecimal: aprDecimal,
-    expectedHoldYearFraction: merklExpectedHoldDays(candidate) / 365,
-    safetyFactor: 0.5,
+  const minProfitable = computeTinyCanaryMinProfitablePositionUsd({
+    chain,
+    aprPct: Number(candidate.aprPct ?? candidate.nativeAprPct ?? 0),
+    expectedHoldDays: merklExpectedHoldDays(candidate),
+    estimatedGasCostUsd: candidate.estimatedGasCostUsd,
   });
   if (Number.isFinite(amountUsd) && minProfitable !== null && amountUsd < minProfitable) {
     blockers.push(`same_chain_unprofitable:need_$${Math.ceil(minProfitable)}_on_${chain || "unknown"}`);

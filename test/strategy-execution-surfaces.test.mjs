@@ -240,7 +240,7 @@ test("Merkl surface does not mark policy-blocked tiny entries as executable now"
   assert.equal(merkl.currentLiveEligible, false);
   assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
   assert.equal(merkl.selectedMode, "analysis");
-  assert.equal(merkl.liveAdmissionBlockers.includes("position_below_min_position_usd"), true);
+  assert.equal(merkl.liveAdmissionBlockers.includes("position_below_min_position_usd"), false);
   assert.equal(merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")), true);
 });
 

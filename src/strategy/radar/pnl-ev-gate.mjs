@@ -1,6 +1,8 @@
 import { applyRewardHaircut } from "../../config/small-capital-campaign-mode.mjs";
+import { tinyCanarySameChainRoundTripCostUsd } from "../../config/sizing.mjs";
 
 function finiteNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return fallback;
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
@@ -9,6 +11,10 @@ function callCost(costLedger, methodName, argument, fallback) {
   const method = costLedger?.[methodName];
   if (typeof method !== "function") return fallback;
   return finiteNumber(method(argument), fallback);
+}
+
+function hasRewardToken(candidate = {}) {
+  return Boolean(candidate.rewardToken || candidate.rewardTokenSymbol);
 }
 
 export function computeRealizedPnlEv({
@@ -32,19 +38,31 @@ export function computeRealizedPnlEv({
     candidate.entryRoute ?? candidate.executionPath,
     0
   );
-  const p90GasUsd = callCost(costLedger, "p90GasCostUsdForChain", candidate.chain, 0.5);
-  const p90ClaimUsd = callCost(
-    costLedger,
-    "p90ClaimCostUsdForProtocol",
-    candidate.protocol ?? candidate.protocolId,
-    0.2
+  const p90GasFallbackUsd = tinyCanarySameChainRoundTripCostUsd({
+    chain: candidate.chain,
+    estimatedGasCostUsd: candidate.estimatedGasCostUsd,
+  });
+  const p90GasUsd = Math.max(
+    callCost(costLedger, "p90GasCostUsdForChain", candidate.chain, p90GasFallbackUsd),
+    p90GasFallbackUsd
   );
-  const p90SwapUsd = callCost(
-    costLedger,
-    "p90RewardSwapCostUsdForToken",
-    candidate.rewardToken ?? candidate.rewardTokenSymbol,
-    0.3
-  );
+  const rewardTokenPresent = hasRewardToken(candidate);
+  const p90ClaimUsd = rewardTokenPresent
+    ? callCost(
+        costLedger,
+        "p90ClaimCostUsdForProtocol",
+        candidate.protocol ?? candidate.protocolId,
+        0.2
+      )
+    : 0;
+  const p90SwapUsd = rewardTokenPresent && candidate.rewardTokenType !== "stable"
+    ? callCost(
+        costLedger,
+        "p90RewardSwapCostUsdForToken",
+        candidate.rewardToken ?? candidate.rewardTokenSymbol,
+        0.3
+      )
+    : 0;
   const expectedCostUsd = p90BridgeUsd + p90GasUsd + p90ClaimUsd + p90SwapUsd;
   const expectedNetPnlUsd = haircutRewardUsd - expectedCostUsd;
   const requiredBufferUsd = finiteNumber(costVarianceBufferUsd);

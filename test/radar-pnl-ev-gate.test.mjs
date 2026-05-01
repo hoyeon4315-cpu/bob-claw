@@ -27,6 +27,30 @@ test("computeRealizedPnlEv accepts positive realized-PnL EV with BTC accounting 
   assert.equal(ev.paybackConversionRequired, true);
 });
 
+test("computeRealizedPnlEv uses tiny canary gas fallback without claim or swap for native share yield", () => {
+  const ev = computeRealizedPnlEv({
+    candidate: {
+      displayedAprPct: 19.8,
+      rewardTokenType: "stable",
+      chain: "base",
+      protocol: "yo",
+    },
+    positionUsd: 1.39271,
+    holdDays: 33.075833333333335,
+    costLedger: {
+      p90GasCostUsdForChain: () => 0,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.2,
+      p90RewardSwapCostUsdForToken: () => 0.3,
+    },
+  });
+
+  assert.equal(ev.ok, true);
+  assert.equal(ev.p90GasUsd, 0.012);
+  assert.equal(ev.p90ClaimUsd, 0);
+  assert.equal(ev.p90SwapUsd, 0);
+});
+
 test("computeRealizedPnlEv rejects non-positive EV after measured costs", () => {
   const ev = computeRealizedPnlEv({
     candidate: {

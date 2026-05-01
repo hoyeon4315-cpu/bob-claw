@@ -307,3 +307,64 @@ test("radar promote CLI evaluates only the latest candidate version", async () =
   assert.equal(queue.blocked.length, 1);
   assert.ok(queue.blocked[0].blockers.includes("same_chain_unprofitable:need_$64_on_base"));
 });
+
+test("radar promote CLI preserves blocked candidate ids after ready candidates", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-promote-cli-"));
+  const radarDir = join(dataDir, "radar");
+  await mkdir(radarDir, { recursive: true });
+  await writeFile(join(radarDir, "portable-packets.jsonl"), `${JSON.stringify({ packetId: "packet_cli" })}\n`);
+  const baseCandidate = {
+    packetId: "packet_cli",
+    familyKey: "wrapped_btc_direct_lending",
+    executionPath: "base_native_evm",
+    chain: "base",
+    protocol: "moonwell",
+    displayedAprPct: 2000,
+    rewardTokenType: "stable",
+    rewardToken: "USDC",
+    proposedSizeBtc: "0.0001",
+    committedCapBtc: "0.0002",
+    protocolAuditStatus: "audited_by_known",
+    sanctionsFlag: "clean",
+    bridgeRouteSanctionsCheck: "clean",
+    killSwitchState: "running",
+    slippageSimAtSize: 20,
+    mevExposureScore: 10,
+    campaignEndsAt: "2026-05-04T00:00:00.000Z",
+  };
+  await writeFile(join(radarDir, "executable-candidates.jsonl"), [
+    JSON.stringify({
+      ...baseCandidate,
+      candidateId: "candidate_ready",
+      opportunityId: "opp_ready",
+      gateStatus: "executable",
+      blockers: [],
+    }),
+    JSON.stringify({
+      ...baseCandidate,
+      candidateId: "candidate_blocked",
+      opportunityId: "opp_blocked",
+      gateStatus: "blocked",
+      blockers: ["same_chain_unprofitable:need_$64_on_base"],
+    }),
+  ].join("\n") + "\n");
+
+  const queuePath = join(dataDir, "radar-canary-queue.json");
+  const promote = spawnSync(process.execPath, [
+    "src/cli/radar-promote.mjs",
+    "--data-dir",
+    dataDir,
+    "--write",
+    queuePath,
+    "--now",
+    "2026-05-01T00:00:00.000Z",
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+
+  assert.equal(promote.status, 0, promote.stderr);
+  const queue = JSON.parse(await readFile(queuePath, "utf8"));
+  assert.equal(queue.intents.length, 1);
+  assert.equal(queue.blocked[0].candidateId, "candidate_blocked");
+});

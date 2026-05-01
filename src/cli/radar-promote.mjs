@@ -85,9 +85,10 @@ async function main() {
     .filter((result) => result.status === "ready")
     .map((result) => result.intent);
   const blocked = results
-    .filter((result) => result.status !== "ready")
-    .map((result, index) => ({
-      candidateId: candidates[index]?.candidateId ?? null,
+    .map((result, index) => ({ result, candidate: candidates[index] }))
+    .filter(({ result }) => result.status !== "ready")
+    .map(({ result, candidate }) => ({
+      candidateId: candidate?.candidateId ?? null,
       blockers: result.blockers ?? [],
       ev: result.ev ?? null,
     }));

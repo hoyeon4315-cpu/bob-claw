@@ -4,7 +4,9 @@ import {
   SIZING_POLICY,
   sizingPolicy,
   computeMinProfitablePositionUsd,
+  computeTinyCanaryMinProfitablePositionUsd,
   computePositionUsd,
+  resolveTinyCanaryExpectedHoldDays,
 } from "../src/config/sizing.mjs";
 
 test("default sizing policy values", () => {
@@ -61,6 +63,37 @@ test("computeMinProfitablePositionUsd returns null on invalid input", () => {
     computeMinProfitablePositionUsd({}),
     null
   );
+});
+
+test("resolveTinyCanaryExpectedHoldDays uses campaign remaining hours before fallback", () => {
+  assert.equal(
+    resolveTinyCanaryExpectedHoldDays({ campaignRemainingHours: 24 * 33 }),
+    33
+  );
+  assert.equal(
+    resolveTinyCanaryExpectedHoldDays({
+      campaignEndsAt: "2026-05-04T00:00:00.000Z",
+      now: "2026-05-01T00:00:00.000Z",
+    }),
+    3
+  );
+  assert.equal(resolveTinyCanaryExpectedHoldDays({}), 7);
+});
+
+test("computeTinyCanaryMinProfitablePositionUsd uses chain-aware tiny canary cost", () => {
+  const base = computeTinyCanaryMinProfitablePositionUsd({
+    chain: "base",
+    aprPct: 19.8,
+    expectedHoldDays: 33,
+  });
+  const ethereum = computeTinyCanaryMinProfitablePositionUsd({
+    chain: "ethereum",
+    aprPct: 19.8,
+    expectedHoldDays: 33,
+  });
+
+  assert.ok(base < 1.4);
+  assert.ok(ethereum > 40);
 });
 
 test("computePositionUsd basic allocation", () => {

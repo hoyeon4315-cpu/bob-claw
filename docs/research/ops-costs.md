@@ -2,7 +2,7 @@
 
 > **이 문서의 성격**: 리서치 사실 참조. **규칙이 아님.** 운영 규칙은 리포 루트 `AGENTS.md`.
 > **갱신 주기**: 가스비 실측은 월 1회 (l2fees.info, Etherscan gas tracker), 수학 공식은 변하지 않음.
-> **마지막 실사 기준일**: 2026-04-17.
+> **마지막 실사 기준일**: 2026-05-02.
 
 ---
 
@@ -32,6 +32,42 @@
 | Soneium | $0.01 이하 | ~$0.02 |
 
 **주의**: 이 표의 값은 평균치. 실제 트랜잭션 시 **chain RPC의 `estimateGas` + 버퍼**로 계산 (실측에서 fallback gas가 부족해 리버트된 사례 있음 — AGENTS.md Operator Memory의 "Sonic/Avalanche wBTC.OFT → Base wBTC.OFT" 항목 참조).
+
+### 1.2.1 tiny-canary 비용 기준 (2026-05-02 재검토)
+
+목적: Merkl/radar tiny live canary는 일반 포지션 최소 notional이 아니라 "검증 샘플"이므로, EV 게이트는 고정 `$0.12`/7일 가정이 아니라 캠페인 잔여기간과 체인별 p90 실행비용을 써야 한다.
+
+로컬 receipt 기준:
+
+| 경로 | 표본 | 관측 수수료 |
+|---|---:|---|
+| Base ERC-4626 deposit/redeem canary | 2 delivered samples | `0.000004622022`-`0.00000464031` ETH, 3-step bundle |
+| Ethereum ERC-4626 canary | 3 samples | 약 `$0.14`-`$0.36` equivalent, 3-step bundle |
+| Base gas snapshot 260k fallback tx | latest `data/gas-snapshots.jsonl` | 약 `$0.0036` per tx |
+
+정책 반영: `src/config/sizing.mjs`의 `TINY_CANARY_COST_POLICY`.
+
+| 체인군 | tiny canary same-chain round-trip fallback | 판단 |
+|---|---:|---|
+| Base | `$0.012` | Base receipt p90에 버퍼를 둔 aggressive v1. 19.8% APR, 33일 캠페인, `$1.40` inventory는 EV 양수로 통과 가능. |
+| Ethereum | `$0.36` | 같은 tiny notional은 대부분 차단. L1은 명시적 cost estimate 또는 더 큰 committed cap이 필요. |
+| BSC | `$0.03` | BNB Chain은 저렴하지만 Base/OP보다 보수적으로 둠. |
+| OP-stack/저비용 destination chains | `$0.003` | gas snapshot/체인 fee 구조상 tiny canary 검증에 맞는 기본값. |
+| Unknown chain | `$0.12` | 보수 fallback 유지. |
+
+Radar/Merkl reward 처리:
+
+- Merkl entry asset inventory(예: USDC 예치 자산)는 reward token으로 간주하지 않는다.
+- explicit reward token이 없고 share-price/native-yield로 수익이 반영되는 ERC-4626 canary는 deposit/withdraw gas만 tiny EV 비용에 넣는다.
+- explicit reward token이 있으면 reward-token haircut, claim cost, swap cost, exit-liquidity proof를 다시 요구한다.
+
+외부 구조 확인:
+
+- Base docs: transaction fee is L2 execution fee + L1 security fee, and Base exposes `GasPriceOracle` for L1 fee estimation. https://docs.base.org/base-chain/network-information/network-fees
+- Optimism docs: OP Stack total fee is L2 fee + L1 fee + operator fee. https://docs.optimism.io/chain-operators/guides/management/transaction-fees-101
+- Ethereum.org: gas fee is gas used multiplied by fee per gas. https://ethereum.org/developers/docs/gas/
+
+재검토 결론: Base-first tiny canary의 낙관적 실행을 열되, 동일한 공식이 Ethereum/L1 비용을 크게 반영하게 하므로 과적합 완화와 gas-burn 방어를 동시에 만족한다. 이 기준은 수익 확정이 아니라 canary admission 기준이며, 실제 성공은 reward accrual, claim/swap, unwind receipt로만 판단한다.
 
 ### 1.3 가스 리저브 계산 공식
 

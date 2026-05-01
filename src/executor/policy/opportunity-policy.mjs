@@ -1,6 +1,12 @@
 import { evaluateRoundtripEnforcer } from "../../risk/roundtrip-enforcer.mjs";
 import { evaluateConcentrationLimits } from "../../config/concentration-limits.mjs";
-import { SIZING_POLICY, computeMinProfitablePositionUsd } from "../../config/sizing.mjs";
+import {
+  SIZING_POLICY,
+  computeMinProfitablePositionUsd,
+  computeTinyCanaryMinProfitablePositionUsd,
+  resolveTinyCanaryExpectedHoldDays,
+  tinyCanarySameChainRoundTripCostUsd,
+} from "../../config/sizing.mjs";
 import { evaluateGasBudgetController } from "../../risk/gas-budget-controller.mjs";
 import { evaluateExitRules } from "../../config/merkl-exit-rules.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
@@ -25,15 +31,13 @@ function isCommittedTinyCanaryIntent(intent = {}) {
 }
 
 function expectedHoldDaysForIntent(intent = {}, now = new Date().toISOString(), fallbackDays = 7) {
-  const explicit = Number(intent.expectedHoldDays);
-  if (Number.isFinite(explicit) && explicit > 0) return explicit;
-  if (intent.campaignEndsAt) {
-    const remainingMs = new Date(intent.campaignEndsAt).getTime() - new Date(now).getTime();
-    if (Number.isFinite(remainingMs) && remainingMs > 0) {
-      return remainingMs / 86_400_000;
-    }
-  }
-  return fallbackDays;
+  return resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: intent.expectedHoldDays,
+    campaignRemainingHours: intent.campaignRemainingHours,
+    campaignEndsAt: intent.campaignEndsAt,
+    now,
+    fallbackDays,
+  });
 }
 
 export function computeExpectedRealizedNet({ displayedAprPct, rewardTokenType, estimatedCostsUsd, positionUsd, holdDays }) {
@@ -198,10 +202,16 @@ export async function evaluateOpportunityPolicy({
   const dstChain = intent.dstChain || intent.chain;
   if (!isMovement && srcChain && dstChain && srcChain !== dstChain) {
     const bridgeCostUsd = Number(intent.estimatedBridgeCostUsd ?? 0);
+    const chainCostUsd = isCommittedTinyCanaryIntent(intent)
+      ? tinyCanarySameChainRoundTripCostUsd({
+          chain: dstChain,
+          estimatedGasCostUsd: intent.estimatedGasCostUsd,
+        })
+      : 0.12;
     const holdDays = expectedHoldDaysForIntent(intent, now);
     const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
     const minProfitable = computeMinProfitablePositionUsd({
-      roundTripCostUsd: bridgeCostUsd + 0.12,
+      roundTripCostUsd: bridgeCostUsd + chainCostUsd,
       postedAprDecimal: aprDecimal,
       expectedHoldYearFraction: holdDays / 365,
       safetyFactor: 0.5,
@@ -214,15 +224,21 @@ export async function evaluateOpportunityPolicy({
   // Same-chain minimum profitability floor based on gas only
   // Exempt capital movement intents.
   if (!isMovement && srcChain && dstChain && srcChain === dstChain) {
-    const gasOnlyCost = Number(intent.estimatedGasCostUsd ?? 0.12);
     const holdDays = expectedHoldDaysForIntent(intent, now);
     const aprDecimal = Number(intent.apr ?? intent.apy ?? 0) / 100;
-    const minProfitable = computeMinProfitablePositionUsd({
-      roundTripCostUsd: gasOnlyCost,
-      postedAprDecimal: aprDecimal,
-      expectedHoldYearFraction: holdDays / 365,
-      safetyFactor: 0.5,
-    });
+    const minProfitable = isCommittedTinyCanaryIntent(intent)
+      ? computeTinyCanaryMinProfitablePositionUsd({
+          chain: srcChain,
+          aprDecimal,
+          expectedHoldDays: holdDays,
+          estimatedGasCostUsd: intent.estimatedGasCostUsd,
+        })
+      : computeMinProfitablePositionUsd({
+          roundTripCostUsd: Number(intent.estimatedGasCostUsd ?? 0.12),
+          postedAprDecimal: aprDecimal,
+          expectedHoldYearFraction: holdDays / 365,
+          safetyFactor: 0.5,
+        });
     if (minProfitable !== null && positionUsd < minProfitable) {
       blockers.push(`same_chain_unprofitable:need_$${Math.ceil(minProfitable)}_on_${srcChain}`);
     }
@@ -233,6 +249,7 @@ export async function evaluateOpportunityPolicy({
     auditRecords,
     positionState,
     gasBaselines,
+    now,
   });
   results.push({
     policy: "gas_budget",

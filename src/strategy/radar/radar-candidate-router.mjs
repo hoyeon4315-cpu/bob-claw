@@ -39,6 +39,7 @@ function rewardExitLiquidityDepthUsd(candidate = {}) {
 }
 
 function rewardExitLiquidityProven(candidate = {}, amountUsd) {
+  if (!candidate.rewardToken && !candidate.rewardTokenSymbol) return true;
   if ((candidate.rewardTokenType ?? "defaultRewardToken") === "stable") return true;
   const depthUsd = rewardExitLiquidityDepthUsd(candidate);
   return depthUsd !== null && depthUsd >= amountUsd * 3;
@@ -94,7 +95,12 @@ export function buildRadarCanaryIntent({
   }
 
   const radarPerCanaryUsd = finiteNumber(radarLanePolicy?.perCanaryUsd) ?? tinyLiveCapUsd;
-  const amountUsd = Math.min(tinyLiveCapUsd, radarPerCanaryUsd);
+  const candidateAmountUsd = finiteNumber(candidate.amountUsd ?? candidate.positionUsd ?? candidate.estimatedUsd);
+  const amountUsd = Math.min(
+    tinyLiveCapUsd,
+    radarPerCanaryUsd,
+    candidateAmountUsd ?? Number.POSITIVE_INFINITY,
+  );
   if (!rewardExitLiquidityProven(candidate, amountUsd)) {
     return {
       status: "blocked",

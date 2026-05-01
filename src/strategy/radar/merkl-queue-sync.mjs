@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { computeMinProfitablePositionUsd } from "../../config/sizing.mjs";
+import {
+  computeTinyCanaryMinProfitablePositionUsd,
+  resolveTinyCanaryExpectedHoldDays,
+} from "../../config/sizing.mjs";
 import { appendRadarJsonl, readRadarJsonl } from "./jsonl.mjs";
 
 const OBSERVATION_EXECUTION_PATH = "gateway_destination";
@@ -32,8 +35,12 @@ function itemAmountUsd(item = {}) {
 }
 
 function expectedHoldDays(item = {}) {
-  const hours = finiteNumber(item.campaignRemainingHours);
-  return hours !== null && hours > 0 ? hours / 24 : 7;
+  return resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: item.expectedHoldDays,
+    campaignRemainingHours: item.campaignRemainingHours,
+    campaignEndsAt: item.campaignEndsAt,
+    now: item.observedAt,
+  });
 }
 
 function exitPathReady(item = {}) {
@@ -63,11 +70,11 @@ function minProfitBlocker(item = {}) {
   if (amountUsd === null) return "candidate_amount_missing";
   const aprPct = finiteNumber(item.aprPct) ?? 0;
   const holdDays = expectedHoldDays(item);
-  const minUsd = computeMinProfitablePositionUsd({
-    roundTripCostUsd: 0.12,
-    postedAprDecimal: aprPct / 100,
-    expectedHoldYearFraction: holdDays / 365,
-    safetyFactor: 0.5,
+  const minUsd = computeTinyCanaryMinProfitablePositionUsd({
+    chain: item.chain,
+    aprPct,
+    expectedHoldDays: holdDays,
+    estimatedGasCostUsd: item.estimatedGasCostUsd,
   });
   if (minUsd !== null && amountUsd < minUsd) {
     return `same_chain_unprofitable:need_$${Math.ceil(minUsd)}_on_${item.chain || "unknown"}`;
@@ -90,13 +97,21 @@ function candidateStateHash(candidate = {}) {
   });
 }
 
-function rewardTokenType(item = {}) {
+function rewardTokenSymbol(item = {}) {
   const symbol = String(
-    item.executionReadiness?.matchedToken?.ticker ||
-    item.entryAssets?.[0] ||
     item.rewardToken ||
+    item.rewardTokenSymbol ||
+    item.rewardTokens?.[0]?.symbol ||
+    item.rewards?.[0]?.token?.symbol ||
+    item.rewards?.[0]?.symbol ||
     "",
   ).toUpperCase();
+  return symbol || null;
+}
+
+function rewardTokenType(item = {}) {
+  const symbol = rewardTokenSymbol(item);
+  if (!symbol) return null;
   return ["USDC", "USDT", "DAI", "RLUSD", "USDS"].includes(symbol) ? "stable" : "defaultRewardToken";
 }
 
@@ -161,7 +176,7 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
     displayedAprPct: finiteNumber(item.aprPct),
     effectiveAprPct: finiteNumber(item.aprPct),
     rewardTokenType: rewardTokenType(item),
-    rewardToken: item.executionReadiness?.matchedToken?.ticker || item.entryAssets?.[0] || null,
+    rewardToken: rewardTokenSymbol(item),
     expectedHoldDays: expectedHoldDays(item),
     amountUsd,
     proposedSizeBtc: "0.0003",

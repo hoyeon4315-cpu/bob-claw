@@ -80,6 +80,38 @@ test("buildRadarCanaryIntent emits tiny live canary intent clamped to tiny cap",
   assert.equal(result.intent.metadata.btcPaybackConversionRequired, true);
 });
 
+test("buildRadarCanaryIntent clamps Merkl-derived canaries to candidate inventory amount", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      familyKey: "same_chain_stable_carry",
+      protocol: "yo",
+      displayedAprPct: 19.8,
+      rewardToken: null,
+      amountUsd: 1.39271,
+      expectedHoldDays: 33.075833333333335,
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      stablecoin_spread_loop: {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.2,
+      p90RewardSwapCostUsdForToken: () => 0.3,
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.intent.amountUsd, 1.39271);
+  assert.equal(result.ev.p90GasUsd, 0.012);
+  assert.equal(result.ev.p90ClaimUsd, 0);
+  assert.equal(result.ev.p90SwapUsd, 0);
+});
+
 test("buildRadarCanaryIntent blocks when tiny live cap is missing", () => {
   const result = buildRadarCanaryIntent({
     packet,
