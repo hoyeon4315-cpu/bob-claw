@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleIntentCommand } from "../src/executor/signer/daemon.mjs";
 import { notifyPolicyRejection } from "../src/executor/signer/policy-alerts.mjs";
-import { formatLiveTransactionAlert } from "../src/executor/signer/transaction-alerts.mjs";
+import { formatLiveTransactionAlert, notifyLiveTransaction } from "../src/executor/signer/transaction-alerts.mjs";
 import { createWatchdogAlerter } from "../src/executor/watchdog/runner.mjs";
 import { buildTelegramDeliveryDecision, formatGatewayUpdateAlert, formatPreliveForkExecutionAlert, sendTelegramMessage } from "../src/notify/telegram.mjs";
 import { notifyCanaryDecision } from "../src/watch/canary-readiness-watch.mjs";
@@ -171,6 +171,73 @@ test("live transaction alert is Korean and includes the broadcast hash", () => {
   assert.match(text, /BTC 기준: 12345 sats/);
   assert.match(text, /USD 표시: \$12\.34/);
   assert.match(text, /tx: 0xaaaaaaaa\.\.\.aaaaaa/);
+});
+
+test("generic probe broadcast alerts are suppressed before Telegram delivery", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      intentType: "strategy_execution",
+      amountUsd: 0.1,
+    },
+    broadcast: { txHash: `0x${"c".repeat(64)}` },
+    stage: "broadcasted",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true };
+    },
+  });
+
+  assert.equal(payload, null);
+  assert.equal(result.sent, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "generic_probe_broadcast_suppressed");
+});
+
+test("generic probe confirmed alerts still deliver", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "native-dex-experiment",
+      chain: "sonic",
+      intentType: "strategy_execution",
+      amountUsd: 0.1,
+    },
+    broadcast: { txHash: `0x${"d".repeat(64)}` },
+    stage: "confirmed",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(result.sent, true);
+  assert.equal(payload.category, "live_execution_result");
+  assert.match(payload.text, /상태: 확정/);
+});
+
+test("payback broadcast alerts are not suppressed", async () => {
+  let payload = null;
+  const result = await notifyLiveTransaction({
+    intent: {
+      strategyId: "payback:2026-W18",
+      chain: "base",
+      intentType: "payback",
+      metadata: { plannedPaybackSats: "50000" },
+    },
+    broadcast: { txHash: `0x${"e".repeat(64)}` },
+    stage: "broadcasted",
+    sendImpl: async (args) => {
+      payload = args;
+      return { sent: true, category: args.category };
+    },
+  });
+
+  assert.equal(result.sent, true);
+  assert.equal(payload.category, "live_execution_result");
+  assert.match(payload.text, /전략: payback:2026-W18/);
 });
 
 test("signer notifies once in Korean when a transaction is broadcast", async () => {

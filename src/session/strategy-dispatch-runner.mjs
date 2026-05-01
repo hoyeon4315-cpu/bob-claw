@@ -33,11 +33,12 @@ export const DEFAULT_ALLOWED_STRATEGY_DISPATCH_SCRIPTS = new Set([
   "report:strategy-snapshot",
   "score:gateway",
   "status:dashboard",
+  "status:dashboard:light",
   "trigger:arb",
 ]);
 
 export const DEFAULT_STRATEGY_DISPATCH_FOLLOW_UP_COMMANDS = [
-  "npm run status:dashboard",
+  "npm run status:dashboard:light",
   "npm run report:strategy-snapshot -- --write",
   "npm run report:strategy-execution-surfaces -- --write",
 ];
@@ -114,6 +115,25 @@ function normalizeOrchestration(orchestration = null) {
   };
 }
 
+function shouldUseLightDashboardStatus({ execute = false, orchestration = null } = {}) {
+  return execute && normalizeOrchestration(orchestration)?.source === "all_chain_autopilot";
+}
+
+function normalizeDashboardStatusSteps(steps = [], { mode = "preserve" } = {}) {
+  if (mode === "omit") return (steps || []).filter((step) => step.script !== "status:dashboard");
+  if (mode !== "light") return steps;
+  return (steps || []).map((step) => {
+    if (step.script !== "status:dashboard") return step;
+    return {
+      ...step,
+      segment: "npm run status:dashboard:light",
+      script: "status:dashboard:light",
+      args: ["run", "status:dashboard:light"],
+      tokens: ["npm", "run", "status:dashboard:light"],
+    };
+  });
+}
+
 function buildDispatchCommandEnv({
   env = process.env,
   dispatchId,
@@ -186,6 +206,9 @@ async function executeStrategyItem(
   let steps;
   try {
     steps = selection.commands.flatMap((command) => parseWhitelistedRefreshCommand(command.command, { allowedScripts }));
+    steps = normalizeDashboardStatusSteps(steps, {
+      mode: shouldUseLightDashboardStatus({ execute, orchestration: normalizedOrchestration }) ? "omit" : "preserve",
+    });
   } catch (error) {
     return {
       ...base,
@@ -273,6 +296,9 @@ async function executeFollowUpCommands(
     let steps;
     try {
       steps = parseWhitelistedRefreshCommand(command, { allowedScripts });
+      steps = normalizeDashboardStatusSteps(steps, {
+        mode: shouldUseLightDashboardStatus({ execute, orchestration }) ? "light" : "preserve",
+      });
     } catch (error) {
       results.push({
         command,

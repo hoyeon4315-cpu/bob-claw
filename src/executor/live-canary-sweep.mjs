@@ -12,6 +12,7 @@ import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "./signer/client.mjs";
+import { readSignerAuditLog } from "./signer/audit-log.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./helpers/native-dex-experiment.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./helpers/token-dex-experiment.mjs";
 
@@ -313,6 +314,7 @@ function summarizeExecution(execution = null, error = null) {
     stepResults: stepResults.map((step) => ({
       id: step.id,
       status: step.signerResult?.status || null,
+      blockers: step.signerResult?.lifecycle?.blockers || step.signerResult?.policy?.blockers || [],
       txHash: step.signerResult?.broadcast?.txHash || null,
     })),
     destinationProof: execution?.destinationProof
@@ -338,7 +340,26 @@ function summarizeExecution(execution = null, error = null) {
   };
 }
 
+function signerBlockersFromExecution(execution = null) {
+  return (execution?.stepResults || [])
+    .flatMap((step) => [
+      ...(step?.signerResult?.lifecycle?.blockers || []),
+      ...(step?.signerResult?.policy?.blockers || []),
+    ])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
 function classifyExecutionError(error = null) {
+  const signerBlockers = signerBlockersFromExecution(error?.partialExecution);
+  if (signerBlockers.includes("max_consecutive_failures_reached")) {
+    return {
+      blockedReason: "max_consecutive_failures_reached",
+      quarantineChain: false,
+      shouldStopGlobally: false,
+    };
+  }
+
   const text = `${error?.name || ""} ${error?.message || ""}`.toLowerCase();
   if (/timeout|timed out|nonce|receipt|replacement|underpriced/u.test(text)) {
     return {
@@ -365,6 +386,106 @@ function countsTowardExecutionLimit(result = {}) {
   if (!result || result.status === "blocked") return false;
   if (result.status === "preview_ready" || result.status === "execution_failed") return true;
   return Boolean(result.execution?.lastTxHash || result.plan?.planStatus === "ready");
+}
+
+function normalizeOptionalCount(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.floor(parsed);
+}
+
+function countBudgetReached(count, limit) {
+  return Number.isFinite(limit) && count >= limit;
+}
+
+function txHashesFromExecution(execution = null) {
+  return [...new Set([
+    execution?.lastTxHash,
+    ...(execution?.stepResults || []).map((step) => step.txHash),
+  ].filter(Boolean).map(String))];
+}
+
+function auditRecordTimestampMs(record = {}) {
+  const parsed = new Date(record.timestamp || record.observedAt || record.createdAt || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function txHashesFromAuditRecord(record = {}) {
+  return [...new Set([
+    record.broadcast?.txHash,
+    record.lifecycle?.txHash,
+    record.lifecycle?.broadcast?.txHash,
+    record.realized?.transactionHash,
+    record.txHash,
+  ].filter(Boolean).map(String))];
+}
+
+function countRecentSignerBroadcasts(records = [], {
+  now = new Date().toISOString(),
+  windowMs = 10 * 60_000,
+} = {}) {
+  const cutoffMs = nowMs(now) - Math.max(0, Number(windowMs) || 0);
+  const txHashes = new Set();
+  for (const record of records || []) {
+    const timestamp = auditRecordTimestampMs(record);
+    if (!Number.isFinite(timestamp) || timestamp < cutoffMs) continue;
+    const isBroadcast =
+      Boolean(record?.broadcast?.txHash) ||
+      record?.lifecycle?.stage === "broadcasted" ||
+      record?.lifecycle?.stage === "confirmed";
+    if (!isBroadcast) continue;
+    for (const txHash of txHashesFromAuditRecord(record)) txHashes.add(txHash);
+  }
+  return txHashes.size;
+}
+
+async function buildExecutionBudget({
+  execute = false,
+  readSignerAuditLogImpl = readSignerAuditLog,
+  maxExecutedCandidates = null,
+  maxBroadcastSteps = null,
+  maxRecentBroadcasts = null,
+  recentBroadcastWindowMs = 10 * 60_000,
+  now = new Date().toISOString(),
+} = {}) {
+  const budget = {
+    allowed: true,
+    blockedReason: null,
+    blockers: [],
+    executedCandidateCount: 0,
+    broadcastStepCount: 0,
+    recentBroadcastCount: 0,
+    maxExecutedCandidates: normalizeOptionalCount(maxExecutedCandidates),
+    maxBroadcastSteps: normalizeOptionalCount(maxBroadcastSteps),
+    maxRecentBroadcasts: normalizeOptionalCount(maxRecentBroadcasts),
+    recentBroadcastWindowMs: Math.max(0, Number(recentBroadcastWindowMs) || 0),
+  };
+  if (!execute) return budget;
+
+  if (Number.isFinite(budget.maxRecentBroadcasts)) {
+    const records = await readSignerAuditLogImpl();
+    budget.recentBroadcastCount = countRecentSignerBroadcasts(records, {
+      now,
+      windowMs: budget.recentBroadcastWindowMs,
+    });
+    if (countBudgetReached(budget.recentBroadcastCount, budget.maxRecentBroadcasts)) {
+      budget.allowed = false;
+      budget.blockedReason = "recent_tx_budget_exhausted";
+      budget.blockers.push("recent_tx_budget_exhausted");
+    }
+  }
+  return budget;
+}
+
+function localExecutionBudgetBlocker(budget = {}) {
+  if (countBudgetReached(budget.executedCandidateCount, budget.maxExecutedCandidates)) {
+    return "max_executed_candidates_reached";
+  }
+  if (countBudgetReached(budget.broadcastStepCount, budget.maxBroadcastSteps)) {
+    return "max_broadcast_steps_reached";
+  }
+  return null;
 }
 
 async function evaluateCandidate({
@@ -557,12 +678,17 @@ export async function runLiveCanarySweep({
   state = null,
   readStateImpl = readLiveCanarySweepState,
   writeStateImpl = writeLiveCanarySweepState,
+  readSignerAuditLogImpl = readSignerAuditLog,
   preflightImpl = preflightLiveCanarySweep,
   scanInventoryImpl = scanWholeWalletInventory,
   buildTokenDexPlanImpl = buildTokenDexExperimentPlan,
   buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
   executeTokenDexPlanImpl = executeTokenDexExperimentPlan,
   executeNativeDexPlanImpl = executeNativeDexExperimentPlan,
+  maxExecutedCandidates = null,
+  maxBroadcastSteps = null,
+  maxRecentBroadcasts = null,
+  recentBroadcastWindowMs = 10 * 60_000,
   now = new Date().toISOString(),
 } = {}) {
   const preflight = await preflightImpl({ socketPath, timeoutMs });
@@ -604,6 +730,15 @@ export async function runLiveCanarySweep({
     nativeTinyUsd,
     minHoldingUsd,
   }), persistedState, { now });
+  const executionBudget = await buildExecutionBudget({
+    execute,
+    readSignerAuditLogImpl,
+    maxExecutedCandidates,
+    maxBroadcastSteps,
+    maxRecentBroadcasts,
+    recentBroadcastWindowMs,
+    now,
+  });
 
   const results = [];
   let executableSeen = 0;
@@ -614,6 +749,34 @@ export async function runLiveCanarySweep({
         candidate,
         status: "not_run_global_stop",
         blockedReason: globalStopReason,
+        plan: null,
+        execution: null,
+        shouldStopGlobally: false,
+      });
+      continue;
+    }
+    if (execute && candidate.status === "candidate" && !executionBudget.allowed) {
+      results.push({
+        candidate,
+        status: "not_run_recent_tx_budget_exhausted",
+        blockedReason: executionBudget.blockedReason || "recent_tx_budget_exhausted",
+        plan: null,
+        execution: null,
+        shouldStopGlobally: false,
+      });
+      continue;
+    }
+    const budgetBlocker = execute && candidate.status === "candidate"
+      ? localExecutionBudgetBlocker(executionBudget)
+      : null;
+    if (budgetBlocker) {
+      executionBudget.blockedReason ||= budgetBlocker;
+      if (!executionBudget.blockers.includes(budgetBlocker)) executionBudget.blockers.push(budgetBlocker);
+      results.push({
+        candidate,
+        status: "not_run_execution_budget_reached",
+        blockedReason: "execution_budget_reached",
+        executionBudgetBlocker: budgetBlocker,
         plan: null,
         execution: null,
         shouldStopGlobally: false,
@@ -643,6 +806,11 @@ export async function runLiveCanarySweep({
       executeNativeDexPlanImpl,
     });
     results.push(result);
+    const txHashes = txHashesFromExecution(result.execution);
+    if (execute && txHashes.length > 0) {
+      executionBudget.executedCandidateCount += 1;
+      executionBudget.broadcastStepCount += txHashes.length;
+    }
     if (candidate.status === "candidate" && countsTowardExecutionLimit(result)) {
       executableSeen += 1;
     }
@@ -690,6 +858,9 @@ export async function runLiveCanarySweep({
       deliveredCount: results.filter((item) => item.status === "delivered").length,
       blockedCount: results.filter((item) => item.status === "blocked").length,
       quarantinedCount: results.filter((item) => item.quarantineChain).length,
+      executedCandidateCount: executionBudget.executedCandidateCount,
+      broadcastStepCount: executionBudget.broadcastStepCount,
+      executionBudget,
       globalStopReason,
     },
   };

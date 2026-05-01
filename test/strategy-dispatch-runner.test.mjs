@@ -63,7 +63,7 @@ test("strategy dispatch executes selected commands and runs follow-ups", async (
   assert.deepEqual(calls, [
     "score:gateway",
     "status:dashboard",
-    "status:dashboard",
+    "status:dashboard:light",
     "report:strategy-snapshot",
     "report:strategy-execution-surfaces",
   ]);
@@ -108,6 +108,38 @@ test("strategy dispatch propagates orchestration correlation into command env an
   assert.equal(envSnapshots[0].runId, "autopilot-123");
   assert.equal(envSnapshots[0].strategyId, "gateway_wrapped_btc_loops");
   assert.equal(envSnapshots.at(-1).phase, "follow_up");
+});
+
+test("strategy dispatch uses light dashboard status inside all-chain autopilot execution", async () => {
+  const calls = [];
+  const record = await executeStrategyDispatch({
+    strategies: [strategyFixture()],
+    execute: true,
+    orchestration: {
+      source: "all_chain_autopilot",
+      runId: "autopilot-light-status",
+    },
+    readGuards: async () => ({ blocked: false, reasons: [] }),
+    runCommand: async ({ step }) => {
+      calls.push(step.script);
+      return {
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        durationMs: 4,
+        stdout: "ok",
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(record.batchStatus, "succeeded");
+  assert.deepEqual(calls, [
+    "score:gateway",
+    "status:dashboard:light",
+    "report:strategy-snapshot",
+    "report:strategy-execution-surfaces",
+  ]);
 });
 
 test("strategy dispatch blocks unsupported requested modes", async () => {

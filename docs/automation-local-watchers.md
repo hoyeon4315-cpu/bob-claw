@@ -131,6 +131,14 @@ Public live runtime:
 npm run dashboard:public:run
 ```
 
+The public live dashboard serves a static Cloudflare Pages shell, then streams
+read-only data from the local live origin through `/api/live-status` and
+`/api/live-events`. Pages is synced once when a new public tunnel origin is
+discovered; live data freshness should come from the API/SSE channel, not from
+periodic Pages redeploys. Set `BOB_CLAW_DASHBOARD_PAGES_REPUBLISH_MS` or pass
+`--pages-republish-ms=...` only when intentionally testing Pages-origin
+republish behavior.
+
 Persistent launchd install:
 
 ```bash

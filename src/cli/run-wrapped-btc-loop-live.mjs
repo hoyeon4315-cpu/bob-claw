@@ -22,6 +22,8 @@ function parseArgs(argv) {
     scenario: options.scenario || "healthy_baseline",
     perTradeCapUsd: options["per-trade-cap-usd"] ? Number(options["per-trade-cap-usd"]) : null,
     marketMinIncrementUsd: options["market-min-increment-usd"] ? Number(options["market-min-increment-usd"]) : null,
+    maxLoopIterations: options["max-loop-iterations"] ? Number(options["max-loop-iterations"]) : null,
+    maxIntentsPerRun: options["max-intents"] ? Number(options["max-intents"]) : null,
     useCurrentPosition: flags.has("--use-current-position"),
     unwindOnly: flags.has("--unwind-only"),
     bindingsPath: options["bindings-path"] || executorStrategyBindingsPath(),
@@ -43,6 +45,7 @@ async function main() {
     marketAssumptionsOverride: Number.isFinite(args.marketMinIncrementUsd)
       ? { minIncrementUsd: args.marketMinIncrementUsd }
       : null,
+    maxLoopIterationsOverride: args.maxLoopIterations,
     useCurrentPosition: args.useCurrentPosition,
     unwindOnly: args.unwindOnly,
     socketPath: args.socketPath,
@@ -51,6 +54,7 @@ async function main() {
     confirmations: args.confirmations,
     confirmationTimeoutMs: args.confirmationTimeoutMs,
     timeoutMs: args.timeoutMs,
+    maxIntentsPerRun: args.maxIntentsPerRun,
   });
 
   if (args.json) {
@@ -59,9 +63,16 @@ async function main() {
   }
 
   console.log(`ok=${result.ok}`);
+  console.log(`status=${result.status || (result.ok ? "ok" : "error")}`);
+  if (result.blockedReason) console.log(`blockedReason=${result.blockedReason}`);
   console.log(`scenario=${result.scenarioId}`);
   console.log(`useCurrentPosition=${result.useCurrentPosition ? "true" : "false"}`);
   console.log(`unwindOnly=${result.unwindOnly ? "true" : "false"}`);
+  if (result.maxLoopIterationsOverride) console.log(`maxLoopIterations=${result.maxLoopIterationsOverride}`);
+  if (result.runBudget) {
+    console.log(`plannedIntents=${result.runBudget.plannedIntentCount}`);
+    console.log(`maxIntents=${result.runBudget.maxIntentsPerRun || "none"}`);
+  }
   console.log(`entryCount=${result.entryResults.length}`);
   console.log(`unwindCount=${result.unwindResults.length}`);
   console.log(`receiptAutoIngest=${result.receiptAutoIngest.ran ? "ran" : result.receiptAutoIngest.reason || "skipped"}`);

@@ -25,6 +25,7 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     write: flags.has("--write"),
     execute: flags.has("--execute"),
+    compact: flags.has("--compact"),
     continueOnFailure: flags.has("--continue-on-failure"),
     mode: options.mode || "auto",
     commandTimeoutMs: options["command-timeout-ms"] ? Number(options["command-timeout-ms"]) : null,
@@ -32,6 +33,49 @@ function parseArgs(argv) {
     orchestratorSource: options["orchestrator-source"] || null,
     scope: options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [],
     bucket: options.bucket ? options.bucket.split(",").map((item) => item.trim()).filter(Boolean) : [],
+  };
+}
+
+function compactDispatchOutput(output = {}) {
+  const record = output.record || {};
+  return {
+    executionSurfaces: {
+      summary: output.executionSurfaces?.summary || null,
+    },
+    planningBridge: output.planningBridge
+      ? {
+          authority: output.planningBridge.authority || null,
+          candidateCount: output.planningBridge.candidateCount ?? 0,
+          topCandidateId: output.planningBridge.topCandidateId || null,
+        }
+      : null,
+    record: {
+      schemaVersion: record.schemaVersion ?? null,
+      observedAt: record.observedAt || null,
+      dispatchId: record.dispatchId || null,
+      orchestration: record.orchestration || null,
+      mode: record.mode || null,
+      requestedMode: record.requestedMode || null,
+      selectedCount: record.selectedCount ?? 0,
+      batchStatus: record.batchStatus || null,
+      stopReason: record.stopReason || null,
+      strategyResults: (record.strategyResults || []).map((result) => ({
+        strategyId: result.strategyId || null,
+        capabilityBucket: result.capabilityBucket || null,
+        selectedMode: result.selectedMode || null,
+        executionStatus: result.executionStatus || null,
+        blockedReason: result.blockedReason || null,
+        stepCount: result.stepCount ?? 0,
+        scripts: result.scripts || [],
+      })),
+      followUps: (record.followUps || []).map((result) => ({
+        command: result.command || null,
+        executionStatus: result.executionStatus || null,
+        scripts: result.scripts || [],
+      })),
+    },
+    summary: output.summary || null,
+    persistedSummary: output.persistedSummary || null,
   };
 }
 
@@ -108,7 +152,13 @@ async function main() {
   };
 
   if (args.json) {
-    console.log(JSON.stringify(output, null, 2));
+    const payload = args.compact ? compactDispatchOutput(output) : output;
+    await new Promise((resolve, reject) => {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
     return;
   }
 
@@ -136,7 +186,11 @@ async function main() {
   console.log(`dispatchSummary runs=${summary.runCount} success=${summary.successCount} failed=${summary.failureCount} preview=${summary.previewCount}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error.stack || error.message);
+    process.exit(1);
+  });

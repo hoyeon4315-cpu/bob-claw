@@ -10,9 +10,17 @@ function parseArgs(argv = process.argv.slice(2)) {
     const item = argv[index];
     if (!item.startsWith("--")) continue;
     const [rawKey, inlineValue] = item.slice(2).split("=", 2);
-    const value = inlineValue ?? argv[index + 1];
-    if (inlineValue === undefined) index += 1;
-    args[rawKey] = value;
+    if (inlineValue !== undefined) {
+      args[rawKey] = inlineValue;
+      continue;
+    }
+    const next = argv[index + 1];
+    if (!next || next.startsWith("--")) {
+      args[rawKey] = true;
+      continue;
+    }
+    args[rawKey] = next;
+    index += 1;
   }
   return args;
 }
@@ -30,7 +38,11 @@ async function main() {
     const outputPath = resolve(args.write);
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, `${JSON.stringify(board, null, 2)}\n`);
-    console.log(`wrote=${outputPath}`);
+    if (args.json) {
+      console.log(JSON.stringify(board, null, 2));
+    } else {
+      console.log(`wrote=${outputPath}`);
+    }
   } else {
     console.log(JSON.stringify(board, null, 2));
   }

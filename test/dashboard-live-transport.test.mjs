@@ -26,3 +26,13 @@ test("dashboard live transport prefers baseline-aware freshest payloads and fall
   assert.match(DATA_JSX, /source: 'static-snapshot'/);
   assert.match(DATA_JSX, /preserveCurrentOnMismatch: Boolean\(payload\)/);
 });
+
+test("dashboard live transport refreshes cached runtime and retries a changed public origin", () => {
+  assert.match(DATA_JSX, /const LIVE_RUNTIME_REFRESH_MS = 30000/);
+  assert.match(DATA_JSX, /async function resolveConfiguredLiveRuntime\(\{ forceRefresh = false \} = \{\}\)/);
+  assert.match(DATA_JSX, /window\._DASHBOARD_LIVE_RUNTIME_RESOLVED_AT/);
+  assert.match(DATA_JSX, /Date\.now\(\) - window\._DASHBOARD_LIVE_RUNTIME_RESOLVED_AT < LIVE_RUNTIME_REFRESH_MS/);
+  assert.match(DATA_JSX, /const refreshedRuntime = await resolveConfiguredLiveRuntime\(\{ forceRefresh: true \}\)/);
+  assert.match(DATA_JSX, /refreshedRuntime\.statusUrl !== runtime\.statusUrl/);
+  assert.match(DATA_JSX, /window\._DASHBOARD_LIVE_STREAM_URL === eventsBasePath/);
+});

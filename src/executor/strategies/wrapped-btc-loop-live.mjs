@@ -60,6 +60,38 @@ export function resolveWrappedBtcLoopSignerClientTimeout({
   return Math.max(safeBaseTimeoutMs, safeConfirmationWaitMs + 5_000);
 }
 
+function normalizeOptionalPositiveInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
+}
+
+export function evaluateWrappedBtcLoopRunBudget(plan = {}, { maxIntentsPerRun = null } = {}) {
+  const max = normalizeOptionalPositiveInteger(maxIntentsPerRun);
+  const entryIntentCount = plan.entryIntents?.length || 0;
+  const unwindIntentCount = plan.unwindIntents?.length || 0;
+  const plannedIntentCount = entryIntentCount + unwindIntentCount;
+  const base = {
+    ok: true,
+    blocked: false,
+    blockedReason: null,
+    entryIntentCount,
+    unwindIntentCount,
+    plannedIntentCount,
+    maxIntentsPerRun: max,
+  };
+  if (max && plannedIntentCount > max) {
+    return {
+      ...base,
+      ok: false,
+      blocked: true,
+      blockedReason: "planned_intent_count_exceeds_budget",
+    };
+  }
+  return base;
+}
+
 export function executorStrategyBindingsPath() {
   return getEnv("EXECUTOR_STRATEGY_BINDINGS_PATH", DEFAULT_EXECUTOR_STRATEGY_BINDINGS_PATH);
 }
@@ -161,6 +193,7 @@ export async function buildWrappedBtcLoopScenarioPlan({
   estimateGasImpl = null,
   marketAssumptionsOverride = null,
   perTradeCapUsdOverride = null,
+  maxLoopIterationsOverride = null,
   useCurrentPosition = false,
   unwindOnly = false,
 } = {}) {
@@ -171,11 +204,13 @@ export async function buildWrappedBtcLoopScenarioPlan({
   const resolvedPerTradeCapUsd = Number.isFinite(Number(perTradeCapUsdOverride)) && Number(perTradeCapUsdOverride) > 0
     ? Number(perTradeCapUsdOverride)
     : strategyCaps.caps.perTxUsd;
+  const resolvedMaxLoopIterations = normalizeOptionalPositiveInteger(maxLoopIterationsOverride);
   const strategyConfig = {
     ...buildDefaultWrappedBtcLendingLoopConfig(),
     ...strategyCaps.leverage,
     id: strategyId,
     perTradeCapUsd: resolvedPerTradeCapUsd,
+    ...(resolvedMaxLoopIterations ? { maxLoopIterations: resolvedMaxLoopIterations } : {}),
   };
   const strategyBindings = bindingsDocument?.strategies?.[strategyId];
   const scenarioBinding = resolveWrappedBtcLoopScenarioBinding({ bindingsDocument, strategyId, scenarioId });
@@ -680,6 +715,7 @@ export async function runWrappedBtcLoopLiveScenario({
   strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
   perTradeCapUsdOverride = null,
   marketAssumptionsOverride = null,
+  maxLoopIterationsOverride = null,
   useCurrentPosition = false,
   unwindOnly = false,
   socketPath,
@@ -688,6 +724,7 @@ export async function runWrappedBtcLoopLiveScenario({
   confirmations = 1,
   confirmationTimeoutMs = 120_000,
   timeoutMs = 30_000,
+  maxIntentsPerRun = null,
   estimateGasImpl = estimateGas,
   readErc20BalanceImpl = undefined,
   simulateTransactionCallImpl = undefined,
@@ -709,12 +746,38 @@ export async function runWrappedBtcLoopLiveScenario({
     prices,
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
+    maxLoopIterationsOverride,
     useCurrentPosition,
     unwindOnly,
     ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),
     ...(simulateTransactionCallImpl ? { simulateTransactionCallImpl } : {}),
     ...(estimateGasImpl ? { estimateGasImpl } : {}),
   });
+  const runBudget = evaluateWrappedBtcLoopRunBudget(plan, { maxIntentsPerRun });
+  if (command !== "sign_only" && !unwindOnly && runBudget.blocked) {
+    return {
+      strategyId,
+      scenarioId,
+      perTradeCapUsdOverride,
+      marketAssumptionsOverride,
+      maxLoopIterationsOverride,
+      useCurrentPosition,
+      unwindOnly,
+      bindingsPath,
+      command,
+      status: "blocked",
+      blockedReason: runBudget.blockedReason,
+      runBudget,
+      entryResults: [],
+      unwindResults: [],
+      receiptContext: null,
+      receiptAutoIngest: {
+        ran: false,
+        reason: runBudget.blockedReason,
+      },
+      ok: false,
+    };
+  }
   if (command !== "sign_only") {
     const unwindInventory = await evaluateWrappedBtcLoopUnwindInventory({
       plan,
@@ -784,10 +847,12 @@ export async function runWrappedBtcLoopLiveScenario({
     scenarioId,
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
+    maxLoopIterationsOverride,
     useCurrentPosition,
     unwindOnly,
     bindingsPath,
     command,
+    runBudget,
     entryResults,
     unwindResults,
     receiptContext,

@@ -33,6 +33,10 @@ function parseArgs(argv) {
     intervalMs: options["interval-ms"] ? Number(options["interval-ms"]) : 60_000,
     chainQuarantineMs: options["chain-quarantine-ms"] ? Number(options["chain-quarantine-ms"]) : undefined,
     outputAssetCooldownMs: options["output-asset-cooldown-ms"] ? Number(options["output-asset-cooldown-ms"]) : undefined,
+    maxExecutedCandidates: options["max-executed-candidates"] ? Number(options["max-executed-candidates"]) : undefined,
+    maxBroadcastSteps: options["max-broadcast-steps"] ? Number(options["max-broadcast-steps"]) : undefined,
+    maxRecentBroadcasts: options["max-recent-broadcasts"] ? Number(options["max-recent-broadcasts"]) : undefined,
+    recentBroadcastWindowMs: options["recent-broadcast-window-ms"] ? Number(options["recent-broadcast-window-ms"]) : undefined,
     tinyUsd: options["tiny-usd"] ? Number(options["tiny-usd"]) : undefined,
     nativeTinyUsd: options["native-tiny-usd"] ? Number(options["native-tiny-usd"]) : undefined,
     minHoldingUsd: options["min-holding-usd"] ? Number(options["min-holding-usd"]) : undefined,
@@ -71,6 +75,8 @@ async function main() {
       console.log(`candidateCount=${report.summary.candidateCount}`);
       console.log(`previewReady=${report.summary.previewReadyCount}`);
       console.log(`executed=${report.summary.executedCount}`);
+      console.log(`executedCandidates=${report.summary.executedCandidateCount ?? 0}`);
+      console.log(`broadcastSteps=${report.summary.broadcastStepCount ?? 0}`);
       console.log(`delivered=${report.summary.deliveredCount}`);
       console.log(`blocked=${report.summary.blockedCount}`);
       console.log(`quarantined=${report.summary.quarantinedCount || 0}`);

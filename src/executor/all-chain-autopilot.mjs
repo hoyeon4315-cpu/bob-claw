@@ -488,12 +488,36 @@ function compactCanarySweep(report = null) {
     candidateCount: report?.summary?.candidateCount ?? 0,
     previewReadyCount: report?.summary?.previewReadyCount ?? 0,
     executedCount: report?.summary?.executedCount ?? 0,
+    executedCandidateCount: report?.summary?.executedCandidateCount ?? 0,
+    broadcastStepCount: report?.summary?.broadcastStepCount ?? 0,
+    executionBudget: report?.summary?.executionBudget || null,
     deliveredCount: report?.summary?.deliveredCount ?? 0,
     blockedCount: report?.summary?.blockedCount ?? 0,
     chainsTouched: [...new Set((report?.results || [])
       .filter((item) => item.execution?.lastTxHash || item.status === "preview_ready" || item.status === "delivered")
       .map((item) => item.candidate?.chain)
       .filter(Boolean))],
+  };
+}
+
+function compactRadarSync(report = null) {
+  return {
+    status: report?.status || null,
+    observedCount: report?.observedCount ?? 0,
+    candidateCount: report?.candidateCount ?? 0,
+    observationsWritten: report?.observationsWritten ?? 0,
+    candidatesWritten: report?.candidatesWritten ?? 0,
+    skippedCandidateCount: report?.skippedCandidates?.length ?? 0,
+  };
+}
+
+function compactRadarBoard(report = null) {
+  return {
+    observedCount: report?.summary?.observedCount ?? 0,
+    strategyEpisodeCount: report?.summary?.strategyEpisodeCount ?? 0,
+    portablePacketCount: report?.summary?.portablePacketCount ?? 0,
+    executableCount: report?.summary?.executableCount ?? 0,
+    blockerCounts: report?.blockerCounts || {},
   };
 }
 
@@ -989,6 +1013,10 @@ export async function runAllChainAutopilot({
   chains = OFFICIAL_GATEWAY_DESTINATION_CHAINS,
   maxRefillJobs = 24,
   canaryLimit = 11,
+  canaryMaxExecutedCandidates = 1,
+  canaryMaxBroadcastSteps = 4,
+  canaryMaxRecentBroadcasts = 1,
+  canaryRecentBroadcastWindowMs = 10 * 60_000,
   canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,
   runCommandImpl = defaultRunCommand,
@@ -1394,6 +1422,10 @@ export async function runAllChainAutopilot({
       "--write",
       `--chains=${chains.join(",")}`,
       `--limit=${canaryLimit}`,
+      `--max-executed-candidates=${canaryMaxExecutedCandidates}`,
+      `--max-broadcast-steps=${canaryMaxBroadcastSteps}`,
+      `--max-recent-broadcasts=${canaryMaxRecentBroadcasts}`,
+      `--recent-broadcast-window-ms=${canaryRecentBroadcastWindowMs}`,
       `--timeout-ms=${canaryTimeoutMs}`,
     ], "--execute", allowProbeExecution),
     runCommandImpl,
@@ -1405,6 +1437,24 @@ export async function runAllChainAutopilot({
   const merklQueueResult = await runJsonStep({
     name: "merkl_canary_queue_refresh",
     args: ["src/cli/report-merkl-canary-queue.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  const radarMerklSyncResult = await runJsonStep({
+    name: "radar_merkl_queue_sync",
+    args: ["src/cli/sync-radar-from-merkl-queue.mjs", "--json"],
+    runCommandImpl,
+    cwd,
+    timeoutMs,
+    steps,
+  });
+
+  const radarBoardResult = await runJsonStep({
+    name: "radar_board_refresh",
+    args: ["src/cli/report-radar-board.mjs", "--json", "--write=data/radar-board.json"],
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -1535,9 +1585,11 @@ export async function runAllChainAutopilot({
     args: appendFlag([
         "src/cli/run-strategy-catalog-dispatcher.mjs",
         "--json",
+        "--compact",
         "--write",
         "--continue-on-failure",
         "--mode=auto",
+        ...(allowLiveStrategyDispatch ? ["--bucket=executable_now"] : []),
         "--orchestrator-source=all_chain_autopilot",
         `--orchestrator-run-id=${autopilotRunId}`,
         `--command-timeout-ms=${dispatchTimeoutMs}`,
@@ -1589,6 +1641,8 @@ export async function runAllChainAutopilot({
     capitalManager: compactCapitalManager(capitalManagerRefillPlan),
     canarySweep: compactCanarySweep(canarySweepResult.json),
     merklQueue: compactMerklQueue(merklQueueResult.json),
+    radarSync: compactRadarSync(radarMerklSyncResult.json),
+    radarBoard: compactRadarBoard(radarBoardResult.json),
     destinationPromotionGate: {
       allocationReadyCount: destinationPromotionGateResult.json?.summary?.allocationReadyCount ?? null,
       promotableCount: destinationPromotionGateResult.json?.summary?.promotableCount ?? null,

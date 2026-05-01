@@ -182,6 +182,39 @@ function fakeCommand({ args }) {
       },
     };
   }
+  if (name.endsWith("sync-radar-from-merkl-queue.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        status: "completed",
+        observedCount: 2,
+        candidateCount: 1,
+        observationsWritten: 1,
+        candidatesWritten: 1,
+        skippedCandidates: [],
+      },
+    };
+  }
+  if (name.endsWith("report-radar-board.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: {
+        summary: {
+          observedCount: 2,
+          strategyEpisodeCount: 0,
+          portablePacketCount: 0,
+          executableCount: 0,
+        },
+        blockerCounts: { position_below_min_position_usd: 1 },
+      },
+    };
+  }
   if (name.endsWith("report-destination-promotion-gate.mjs")) {
     return {
       ok: true,
@@ -482,6 +515,32 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.executionGate.blockedReason, null);
 });
 
+test("all-chain autopilot passes conservative live canary execution budgets", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    return fakeCommand({ args });
+  };
+
+  await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+    canaryMaxExecutedCandidates: 1,
+    canaryMaxBroadcastSteps: 4,
+    canaryMaxRecentBroadcasts: 1,
+    canaryRecentBroadcastWindowMs: 600_000,
+  });
+
+  const sweepArgs = seen.find((args) => args[0] === "src/cli/run-live-canary-sweep.mjs");
+  assert.ok(sweepArgs);
+  assert.equal(sweepArgs.includes("--execute"), true);
+  assert.equal(sweepArgs.includes("--max-executed-candidates=1"), true);
+  assert.equal(sweepArgs.includes("--max-broadcast-steps=4"), true);
+  assert.equal(sweepArgs.includes("--max-recent-broadcasts=1"), true);
+  assert.equal(sweepArgs.includes("--recent-broadcast-window-ms=600000"), true);
+});
+
 test("all-chain autopilot refreshes market prices before auto-kill inputs", async () => {
   const seen = [];
   const command = ({ args, timeoutMs }) => {
@@ -573,8 +632,11 @@ test("all-chain autopilot keeps same-tick refill execution ahead of strategy dis
   const dispatchExecuteIndex = seen.findIndex(
     (args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs" && args.includes("--execute"),
   );
+  const dispatchArgs = seen.find((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs");
   assert.equal(refillExecuteIndex >= 0, true);
   assert.equal(dispatchExecuteIndex >= 0, true);
+  assert.equal(dispatchArgs.includes("--compact"), true);
+  assert.equal(dispatchArgs.includes("--bucket=executable_now"), true);
   assert.equal(refillExecuteIndex < dispatchExecuteIndex, true);
 });
 

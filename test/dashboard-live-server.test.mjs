@@ -138,6 +138,82 @@ test("dashboard live status overlays the freshest wallet holdings slice", async 
   assert.equal(status.liveOverlay.walletHoldings.source, "wallet-holdings.json");
 });
 
+test("dashboard live status overlays strategy tick slice without waiting for full status rebuild", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "bob-claw-dashboard-live-tick-"));
+  await writeFile(
+    join(rootDir, "dashboard-status.json"),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      generatedAt: "2026-04-29T00:00:00.000Z",
+      strategy: {
+        strategyParity: {
+          generatedAt: "2026-04-29T00:00:00.000Z",
+          rows: [
+            {
+              strategyId: "wrapped-btc-loop-base-moonwell",
+              lastTickAt: "2026-04-29T00:00:00.000Z",
+              promotionVerdict: "blocked",
+              blockers: ["stale_blocker"],
+            },
+          ],
+          byStrategy: {
+            "wrapped-btc-loop-base-moonwell": {
+              strategyId: "wrapped-btc-loop-base-moonwell",
+              lastTickAt: "2026-04-29T00:00:00.000Z",
+              promotionVerdict: "blocked",
+              blockers: ["stale_blocker"],
+            },
+          },
+        },
+        microCanarySummary: { total: 0, byStrategy: {} },
+      },
+      flow: { metrics: {}, recentActivities: [], strategyRiskById: {} },
+    })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(rootDir, "strategy-tick-status.json"),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      generatedAt: "2026-05-01T11:30:00.000Z",
+      strategies: [
+        {
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          lastTickAt: "2026-05-01T11:29:55.000Z",
+          lastTickMode: "live_candidate",
+          lastTickBlockers: [],
+          scoredAllocation: { strategyId: "wrapped-btc-loop-base-moonwell", allocatedSats: 12345 },
+          demotion: { demoted: false, triggers: [] },
+        },
+      ],
+      microCanary: {
+        total: 1,
+        byStrategy: {
+          "wrapped-btc-loop-base-moonwell": { microCanaryStatus: "active" },
+        },
+      },
+    })}\n`,
+    "utf8",
+  );
+
+  const server = createDashboardLiveServer({
+    port: 9994,
+    rootDir,
+    refreshEnabled: false,
+  });
+  const status = await server.buildLiveStatus({ force: true });
+  const row = status.strategy.strategyParity.byStrategy["wrapped-btc-loop-base-moonwell"];
+
+  assert.equal(row.lastTickAt, "2026-05-01T11:29:55.000Z");
+  assert.equal(row.promotionVerdict, "live_candidate");
+  assert.deepEqual(row.blockers, []);
+  assert.equal(row.scoredAllocation.allocatedSats, 12345);
+  assert.equal(row.microCanaryStatus, "active");
+  assert.equal(status.strategy.strategyParity.generatedAt, "2026-05-01T11:30:00.000Z");
+  assert.equal(status.strategy.microCanarySummary.total, 1);
+  assert.equal(status.liveOverlay.strategyTickStatus.source, "strategy-tick-status.json");
+});
+
 test("dashboard live status refreshes active yield estimate at serve time", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "bob-claw-dashboard-live-yield-"));
   await writeFile(
@@ -214,7 +290,7 @@ test("dashboard live refresh task times out and clears running state when a scri
     port: 0,
     rootDir,
     refreshEnabled: true,
-    refreshTickMs: 1000,
+    refreshTickMs: 50,
     wholeWalletRefreshMs: 60_000,
     treasuryRefreshMs: 60_000,
     strategyTickRefreshMs: 60_000,
@@ -228,7 +304,7 @@ test("dashboard live refresh task times out and clears running state when a scri
   });
 
   await server.start();
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  await new Promise((resolve) => setTimeout(resolve, 90));
   const task = server.runtimeState().tasks.statusSnapshot;
   await server.close();
 

@@ -267,7 +267,9 @@ const STATIC_STATUS_PATH = "./dashboard-status.json";
 const LIVE_RUNTIME_PATH = "./live-runtime.json";
 const LIVE_POLL_MS = 1500;
 const STATIC_POLL_MS = 5e3;
+const LIVE_RUNTIME_REFRESH_MS = 3e4;
 const FETCH_TIMEOUT_MS = 1200;
+const LIVE_FETCH_TIMEOUT_MS = 4500;
 function statusGeneratedAtMs(status = null) {
   const ms = new Date(status?.generatedAt || 0).getTime();
   return Number.isFinite(ms) ? ms : null;
@@ -326,8 +328,11 @@ async function fetchStaticStatusPayload() {
     remote: false
   }) || { status: null, source: "unavailable", live: false };
 }
-async function resolveConfiguredLiveRuntime() {
-  if (window._DASHBOARD_LIVE_RUNTIME) return window._DASHBOARD_LIVE_RUNTIME;
+async function resolveConfiguredLiveRuntime({ forceRefresh = false } = {}) {
+  const cached = window._DASHBOARD_LIVE_RUNTIME || null;
+  if (!forceRefresh && cached && Date.now() - window._DASHBOARD_LIVE_RUNTIME_RESOLVED_AT < LIVE_RUNTIME_REFRESH_MS) {
+    return cached;
+  }
   try {
     const resp = await fetch(`${LIVE_RUNTIME_PATH}?t=${Date.now()}`, { cache: "no-store" });
     if (!resp.ok) throw new Error(`live runtime ${resp.status}`);
@@ -338,8 +343,10 @@ async function resolveConfiguredLiveRuntime() {
       statusUrl: payload.statusUrl || `${String(payload.origin).replace(/\/$/, "")}/api/live-status`,
       eventsUrl: payload.eventsUrl || `${String(payload.origin).replace(/\/$/, "")}/api/live-events`
     } : { enabled: false, origin: null, statusUrl: null, eventsUrl: null };
+    window._DASHBOARD_LIVE_RUNTIME_RESOLVED_AT = Date.now();
   } catch {
-    window._DASHBOARD_LIVE_RUNTIME = { enabled: false, origin: null, statusUrl: null, eventsUrl: null };
+    window._DASHBOARD_LIVE_RUNTIME = cached || { enabled: false, origin: null, statusUrl: null, eventsUrl: null };
+    window._DASHBOARD_LIVE_RUNTIME_RESOLVED_AT = Date.now();
   }
   return window._DASHBOARD_LIVE_RUNTIME;
 }
@@ -347,11 +354,27 @@ async function fetchStatusPayload() {
   const now = Date.now();
   const runtime = await resolveConfiguredLiveRuntime();
   const endpoints = [
-    ...runtime?.enabled ? [{ url: `${runtime.statusUrl}?t=${now}`, source: "remote-live-api", live: true, origin: runtime.origin, remote: true }] : [],
+    ...runtime?.enabled ? [{ url: `${runtime.statusUrl}?t=${now}`, source: "remote-live-api", live: true, origin: runtime.origin, remote: true, timeoutMs: LIVE_FETCH_TIMEOUT_MS }] : [],
     { url: `${LIVE_STATUS_PATH}?t=${now}`, source: "live-api", live: true },
     { url: `${STATIC_STATUS_PATH}?t=${now}`, source: "static-snapshot", live: false }
   ];
-  return selectPreferredStatusPayload(await Promise.all(endpoints.map(fetchEndpointStatus)));
+  const candidates = await Promise.all(endpoints.map(fetchEndpointStatus));
+  const remoteLive = candidates.find((candidate) => candidate?.source === "remote-live-api" && candidate?.status);
+  if (runtime?.enabled && !remoteLive) {
+    const refreshedRuntime = await resolveConfiguredLiveRuntime({ forceRefresh: true });
+    if (refreshedRuntime?.enabled && refreshedRuntime.statusUrl !== runtime.statusUrl) {
+      const retry = await fetchEndpointStatus({
+        url: `${refreshedRuntime.statusUrl}?t=${Date.now()}`,
+        source: "remote-live-api",
+        live: true,
+        origin: refreshedRuntime.origin,
+        remote: true,
+        timeoutMs: LIVE_FETCH_TIMEOUT_MS
+      });
+      candidates.push(retry);
+    }
+  }
+  return selectPreferredStatusPayload(candidates);
 }
 async function bootData(payload = null, { preserveCurrentOnMismatch = false } = {}) {
   const currentStatus = window.RAW_STATUS || null;
@@ -745,12 +768,17 @@ function startDashboardPolling(intervalMs = STATIC_POLL_MS) {
   }, intervalMs);
 }
 function setupLiveEventStream() {
-  if (window._DASHBOARD_LIVE_STREAM) return;
   if (!window._DASHBOARD_LIVE_AVAILABLE || !window.EventSource) return;
   if (window._DASHBOARD_LIVE_STREAM_RETRY_AT && Date.now() < window._DASHBOARD_LIVE_STREAM_RETRY_AT) return;
   const runtime = window._DASHBOARD_LIVE_RUNTIME;
   const preferRemoteStream = window.LIVE_STATUS?.remote === true;
-  const eventsPath = preferRemoteStream && runtime?.enabled && runtime.eventsUrl ? `${runtime.eventsUrl}?t=${Date.now()}` : `${LIVE_EVENTS_PATH}?t=${Date.now()}`;
+  const eventsBasePath = preferRemoteStream && runtime?.enabled && runtime.eventsUrl ? runtime.eventsUrl : LIVE_EVENTS_PATH;
+  if (window._DASHBOARD_LIVE_STREAM && window._DASHBOARD_LIVE_STREAM_URL === eventsBasePath) return;
+  if (window._DASHBOARD_LIVE_STREAM) {
+    window._DASHBOARD_LIVE_STREAM.close();
+    window._DASHBOARD_LIVE_STREAM = null;
+  }
+  const eventsPath = preferRemoteStream && runtime?.enabled && runtime.eventsUrl ? `${eventsBasePath}?t=${Date.now()}` : `${LIVE_EVENTS_PATH}?t=${Date.now()}`;
   const stream = new EventSource(eventsPath);
   let opened = false;
   const handleSnapshot = async (event) => {
@@ -778,9 +806,11 @@ function setupLiveEventStream() {
     if (!opened) window._DASHBOARD_LIVE_STREAM_RETRY_AT = Date.now() + 3e4;
     stream.close();
     window._DASHBOARD_LIVE_STREAM = null;
+    window._DASHBOARD_LIVE_STREAM_URL = null;
   };
   window.addEventListener("beforeunload", () => stream.close(), { once: true });
   window._DASHBOARD_LIVE_STREAM = stream;
+  window._DASHBOARD_LIVE_STREAM_URL = eventsBasePath;
 }
 function liveAprFor(strategy, aprMap) {
   if (!aprMap || !strategy) return null;

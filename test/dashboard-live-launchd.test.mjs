@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { retryableBootstrapFailure } from "../src/cli/manage-dashboard-live-launchd.mjs";
 import { buildDashboardLaunchAgentSpecs, DASHBOARD_LAUNCHD_LABELS } from "../src/runtime/launchd.mjs";
 
 test("dashboard live launchd spec points at the public live controller", () => {
@@ -18,4 +19,9 @@ test("dashboard live launchd spec points at the public live controller", () => {
   ]);
   assert.equal(spec.stdoutPath, "/repo/logs/launchd/dashboard-public-live.out.log");
   assert.equal(spec.stderrPath, "/repo/logs/launchd/dashboard-public-live.err.log");
+});
+
+test("dashboard live launchd install retries transient bootstrap I/O failures", () => {
+  assert.equal(retryableBootstrapFailure("Bootstrap failed: 5: Input/output error"), true);
+  assert.equal(retryableBootstrapFailure("service already loaded"), false);
 });

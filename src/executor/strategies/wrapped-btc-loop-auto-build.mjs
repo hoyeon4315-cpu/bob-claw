@@ -16,6 +16,7 @@ import { resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gateway-btc-consolidation.mjs";
 
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+const MIN_MATERIAL_CURRENT_POSITION_USD = 0.01;
 
 const ERC20_INTERFACE = new Interface([
   "function approve(address spender,uint256 amount)",
@@ -937,6 +938,12 @@ export async function buildCurrentWrappedBtcLoopUnwindBinding({
 
   if (position.borrowBalanceUnits <= 0n && position.collateralUnderlyingUnits <= 0n) {
     throw new Error("No current Moonwell wrapped BTC loop position is open on Base");
+  }
+  if (
+    (position.borrowUsd ?? 0) < MIN_MATERIAL_CURRENT_POSITION_USD &&
+    (position.collateralUsd ?? 0) < MIN_MATERIAL_CURRENT_POSITION_USD
+  ) {
+    throw new Error("No material current Moonwell wrapped BTC loop position is open on Base");
   }
 
   const unwind = [];

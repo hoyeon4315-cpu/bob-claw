@@ -1,6 +1,11 @@
 import { config } from "../../config/env.mjs";
 import { sendTelegramMessage } from "../../notify/telegram.mjs";
 
+const GENERIC_PROBE_STRATEGY_IDS = new Set([
+  "token-dex-experiment",
+  "native-dex-experiment",
+]);
+
 function shortHash(value) {
   if (!value) return null;
   const text = String(value);
@@ -46,6 +51,10 @@ export function formatLiveTransactionAlert({
   return lines.join("\n");
 }
 
+function isGenericProbeIntent(intent = {}) {
+  return GENERIC_PROBE_STRATEGY_IDS.has(String(intent.strategyId || ""));
+}
+
 export async function notifyLiveTransaction({
   intent = {},
   broadcast = {},
@@ -56,6 +65,14 @@ export async function notifyLiveTransaction({
 } = {}) {
   if (!broadcast?.txHash) {
     return { sent: false, skipped: true, reason: "tx_hash_missing" };
+  }
+  if (stage === "broadcasted" && isGenericProbeIntent(intent)) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: "generic_probe_broadcast_suppressed",
+      category: "live_execution_result",
+    };
   }
   return sendImpl({
     botToken,

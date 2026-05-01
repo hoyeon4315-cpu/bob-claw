@@ -1,10 +1,14 @@
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { SIZING_POLICY, computeMinProfitablePositionUsd } from "../config/sizing.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
 const BASE_CBBTC_TOKEN = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
 const MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD = 5;
+const WRAPPED_BTC_LOOP_AUTOMATED_MAX_LOOP_ITERATIONS = 1;
+const WRAPPED_BTC_LOOP_AUTOMATED_MAX_INTENTS = 14;
+const WRAPPED_BTC_LOOP_AUTOMATED_MIN_INCREMENT_USD = 5;
 
 function compact(values = []) {
   return [...new Set((values || []).filter(Boolean))];
@@ -134,7 +138,18 @@ function wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral = null) {
 }
 
 function wrappedBtcLoopCommands(mode, { livePerTradeCapUsd = null } = {}) {
-  if (mode === "live") return [`npm run executor:wrapped-btc-loop -- --per-trade-cap-usd=${livePerTradeCapUsd || wrappedBtcLoopLiveCapUsd()} --json`];
+  if (mode === "live") {
+    return [
+      [
+        "npm run executor:wrapped-btc-loop --",
+        `--per-trade-cap-usd=${livePerTradeCapUsd || wrappedBtcLoopLiveCapUsd()}`,
+        `--market-min-increment-usd=${WRAPPED_BTC_LOOP_AUTOMATED_MIN_INCREMENT_USD}`,
+        `--max-loop-iterations=${WRAPPED_BTC_LOOP_AUTOMATED_MAX_LOOP_ITERATIONS}`,
+        `--max-intents=${WRAPPED_BTC_LOOP_AUTOMATED_MAX_INTENTS}`,
+        "--json",
+      ].join(" "),
+    ];
+  }
   return [
     "npm run report:wrapped-btc-loop -- --json",
     "npm run report:wrapped-btc-loop-dry-run -- --json",
@@ -219,6 +234,54 @@ function merklAutopilotCommands(mode) {
   return ["npm run report:merkl-canary-queue -- --json"];
 }
 
+function merklCandidateAmountUsd(candidate = null) {
+  const values = [
+    candidate?.executionReadiness?.matchedToken?.estimatedUsd,
+    candidate?.sizing?.amountUsd,
+    candidate?.amountUsd,
+  ];
+  return values.find((value) => Number.isFinite(Number(value)) && Number(value) > 0) ?? null;
+}
+
+function merklExpectedHoldDays(candidate = null) {
+  const hours = Number(candidate?.campaignRemainingHours);
+  if (Number.isFinite(hours) && hours > 0) return hours / 24;
+  return 7;
+}
+
+function merklExitPathReady(candidate = null) {
+  const bindingKind = String(candidate?.protocolBindingPlan?.bindingKind || "");
+  const actions = candidate?.protocolBindingPlan?.canaryActions || [];
+  return /withdraw|redeem/u.test(bindingKind) || actions.some((action) => /withdraw|redeem|unwind/u.test(String(action || "")));
+}
+
+function merklPolicyPreviewBlockers(candidate = null) {
+  if (!candidate) return ["merkl_auto_executable_candidate_missing"];
+  const amountUsd = Number(merklCandidateAmountUsd(candidate));
+  const blockers = [];
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+    blockers.push("merkl_candidate_amount_missing");
+  } else if (amountUsd < SIZING_POLICY.minPositionUsd) {
+    blockers.push("position_below_min_position_usd");
+  }
+  if (!merklExitPathReady(candidate)) {
+    blockers.push("exit_path_unproven");
+  }
+
+  const chain = candidate.chain || null;
+  const aprDecimal = Number(candidate.aprPct ?? candidate.nativeAprPct ?? 0) / 100;
+  const minProfitable = computeMinProfitablePositionUsd({
+    roundTripCostUsd: 0.12,
+    postedAprDecimal: aprDecimal,
+    expectedHoldYearFraction: merklExpectedHoldDays(candidate) / 365,
+    safetyFactor: 0.5,
+  });
+  if (Number.isFinite(amountUsd) && minProfitable !== null && amountUsd < minProfitable) {
+    blockers.push(`same_chain_unprofitable:need_$${Math.ceil(minProfitable)}_on_${chain || "unknown"}`);
+  }
+  return compact(blockers);
+}
+
 function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
   const summary = merklCanaryQueue?.summary || {};
   const queue = merklCanaryQueue?.queue || [];
@@ -229,11 +292,13 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
   ) || queue.find((item) => item?.queueStatus === "ready_for_tiny_live_canary") || null;
   if (!merklCanaryQueue && !topReady) return null;
   const liveAllowed = liveTradingAllowed(policy);
-  const currentLiveEligible = liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady);
+  const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady);
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
     (summary.autoExecutableNowCount ?? 0) > 0 ? null : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
+    ...policyPreviewBlockers,
   ]);
+  const currentLiveEligible = liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
   const selectedMode = currentLiveEligible ? "live" : "analysis";
   return {
     id: topReady?.mappedStrategyId || "gateway_native_asset_conversion_sleeve",
@@ -253,6 +318,7 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
       estimatedPnlUsd: topReady?.executionReadiness?.matchedToken?.estimatedUsd ?? null,
       realizedPnlBtc: null,
       realizedPnlUsd: null,
+      exitPathReady: merklExitPathReady(topReady),
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",

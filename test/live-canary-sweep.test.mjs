@@ -213,6 +213,241 @@ test("sweep continues after per-candidate plan blocker and quarantines signer-un
   assert.equal(report.state.quarantinedChains.sonic.reason, "chain_quarantine_after_receipt_uncertainty");
 });
 
+test("sweep treats signer max-consecutive-failure rejection as per-candidate pause", async () => {
+  const inventory = {
+    observedAt: "2026-05-01T00:00:00.000Z",
+    totalUsd: 2,
+    tokenBalances: [
+      {
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+      {
+        chain: "sonic",
+        token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+    ],
+    native: [],
+    summary: { nativeCount: 0, tokenCount: 2, scanErrorCount: 0 },
+    scanErrors: [],
+  };
+
+  const report = await runLiveCanarySweep({
+    execute: true,
+    inventory,
+    preflightImpl: async () => readyPreflight(),
+    buildTokenDexPlanImpl: async ({ chain }) => ({
+      strategyId: "token-dex-experiment",
+      planStatus: "ready",
+      chain,
+      inputToken: "in",
+      outputToken: "out",
+      amount: "100000",
+      amountUsd: 0.1,
+      minimumOutputAmount: "1",
+      steps: [{ id: "swap" }],
+    }),
+    executeTokenDexPlanImpl: async ({ plan }) => {
+      if (plan.chain === "base") {
+        const error = new Error("Signer did not complete swap");
+        error.name = "SignerExecutionFailed";
+        error.partialExecution = {
+          settlementStatus: "failed",
+          stepResults: [
+            {
+              id: "swap",
+              signerResult: {
+                status: "rejected",
+                lifecycle: {
+                  blockers: ["max_consecutive_failures_reached"],
+                },
+              },
+            },
+          ],
+        };
+        throw error;
+      }
+      return {
+        settlementStatus: "delivered",
+        stepResults: [
+          {
+            id: "swap",
+            signerResult: {
+              status: "ok",
+              broadcast: { txHash: "0x2" },
+            },
+          },
+        ],
+      };
+    },
+    readStateImpl: async () => ({}),
+    now: "2026-05-01T00:00:00.000Z",
+  });
+
+  assert.equal(report.status, "completed");
+  assert.equal(report.results[0].status, "execution_failed");
+  assert.equal(report.results[0].blockedReason, "max_consecutive_failures_reached");
+  assert.equal(report.results[1].status, "delivered");
+  assert.equal(report.summary.globalStopReason, null);
+  assert.equal(report.summary.deliveredCount, 1);
+});
+
+test("sweep execute mode stops after the per-tick executed candidate budget", async () => {
+  const inventory = {
+    observedAt: "2026-05-01T00:00:00.000Z",
+    totalUsd: 3,
+    tokenBalances: [
+      {
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+      {
+        chain: "bsc",
+        token: "0x55d398326f99059fF775485246999027B3197955",
+        ticker: "USDT",
+        family: "stablecoin",
+        balance: "1000000000000000000",
+        estimatedUsd: 1,
+      },
+      {
+        chain: "sonic",
+        token: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+    ],
+    native: [],
+    summary: { nativeCount: 0, tokenCount: 3, scanErrorCount: 0 },
+    scanErrors: [],
+  };
+
+  const executedChains = [];
+  const plannedChains = [];
+  const report = await runLiveCanarySweep({
+    execute: true,
+    inventory,
+    limit: 8,
+    maxExecutedCandidates: 1,
+    preflightImpl: async () => readyPreflight(),
+    buildTokenDexPlanImpl: async ({ chain }) => {
+      plannedChains.push(chain);
+      return {
+        strategyId: "token-dex-experiment",
+        planStatus: "ready",
+        chain,
+        inputToken: "in",
+        outputToken: "out",
+        amount: "100000",
+        amountUsd: 0.1,
+        minimumOutputAmount: "1",
+        steps: [{ id: "swap" }],
+      };
+    },
+    executeTokenDexPlanImpl: async ({ plan }) => {
+      executedChains.push(plan.chain);
+      return {
+        settlementStatus: "delivered",
+        stepResults: [
+          {
+            id: "swap",
+            signerResult: {
+              status: "ok",
+              broadcast: { txHash: `0x${plan.chain}` },
+            },
+          },
+        ],
+      };
+    },
+    readStateImpl: async () => ({}),
+    now: "2026-05-01T00:00:00.000Z",
+  });
+
+  assert.deepEqual(plannedChains, ["base"]);
+  assert.deepEqual(executedChains, ["base"]);
+  assert.equal(report.results[0].status, "delivered");
+  assert.equal(report.results[1].status, "not_run_execution_budget_reached");
+  assert.equal(report.results[1].blockedReason, "execution_budget_reached");
+  assert.equal(report.results[2].status, "not_run_execution_budget_reached");
+  assert.equal(report.summary.executedCandidateCount, 1);
+  assert.equal(report.summary.broadcastStepCount, 1);
+  assert.equal(report.summary.executionBudget.blockedReason, "max_executed_candidates_reached");
+});
+
+test("sweep execute mode refuses new probes when recent signer broadcast budget is exhausted", async () => {
+  const inventory = {
+    observedAt: "2026-05-01T00:00:00.000Z",
+    totalUsd: 1,
+    tokenBalances: [
+      {
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+    ],
+    native: [],
+    summary: { nativeCount: 0, tokenCount: 1, scanErrorCount: 0 },
+    scanErrors: [],
+  };
+
+  let planned = false;
+  const report = await runLiveCanarySweep({
+    execute: true,
+    inventory,
+    maxRecentBroadcasts: 2,
+    recentBroadcastWindowMs: 10 * 60_000,
+    preflightImpl: async () => readyPreflight(),
+    readSignerAuditLogImpl: async () => [
+      {
+        timestamp: "2026-05-01T00:09:30.000Z",
+        broadcast: { txHash: "0xrecent1" },
+      },
+      {
+        timestamp: "2026-05-01T00:09:59.000Z",
+        lifecycle: { txHash: "0xrecent2" },
+      },
+      {
+        timestamp: "2026-05-01T00:09:59.000Z",
+        broadcast: { txHash: "0xrecent2" },
+      },
+      {
+        timestamp: "2026-04-30T23:00:00.000Z",
+        broadcast: { txHash: "0xold" },
+      },
+    ],
+    buildTokenDexPlanImpl: async () => {
+      planned = true;
+      throw new Error("recent budget exhaustion should stop before planning");
+    },
+    readStateImpl: async () => ({}),
+    now: "2026-05-01T00:10:00.000Z",
+  });
+
+  assert.equal(planned, false);
+  assert.equal(report.status, "completed");
+  assert.equal(report.results[0].status, "not_run_recent_tx_budget_exhausted");
+  assert.equal(report.results[0].blockedReason, "recent_tx_budget_exhausted");
+  assert.equal(report.summary.executionBudget.allowed, false);
+  assert.equal(report.summary.executionBudget.recentBroadcastCount, 2);
+  assert.equal(report.summary.executedCandidateCount, 0);
+});
+
 test("sweep limit counts only executable candidates, not plan blockers", async () => {
   const inventory = {
     observedAt: "2026-04-23T00:00:00.000Z",

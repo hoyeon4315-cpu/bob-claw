@@ -79,7 +79,7 @@ async function selfHealOnce({ skipDashboard = false } = {}) {
     runStep("gateway_update_autopilot_ack", "src/cli/run-gateway-update-autopilot.mjs", ["--execute", "--write"]),
   );
   if (!skipDashboard) {
-    steps.push(runStep("status_dashboard", "src/cli/status-dashboard.mjs", ["--skip-shadow-cycle"]));
+    steps.push(runStep("status_dashboard", "src/cli/status-dashboard.mjs", ["--skip-shadow-cycle", "--skip-canary-input-refresh"]));
   }
 
   const after = readDashboardBlockers();

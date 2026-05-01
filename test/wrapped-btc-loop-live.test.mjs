@@ -5,6 +5,7 @@ import {
   buildWrappedBtcLoopReceiptContext,
   classifyIntentResult,
   buildWrappedBtcLoopScenarioPlan,
+  evaluateWrappedBtcLoopRunBudget,
   evaluateWrappedBtcLoopUnwindInventory,
   finalizeWrappedBtcLoopLiveReceipt,
   prepareLiveLoopIntent,
@@ -232,6 +233,117 @@ test("wrapped loop live plan supports tiny per-trade override with collateral-on
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).amountUsd, 6.99975);
   assert.equal(plan.unwindIntents[0].intentId.endsWith(":unwind:redeem-initial-collateral"), true);
   assert.equal(plan.unwindIntents[0].metadata.tinyValidationOnly, true);
+});
+
+test("wrapped loop run budget blocks oversized roundtrip before execution", async () => {
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 75000,
+      tokenByKey: {
+        btc: 75000,
+        usd_stable: 1,
+      },
+    },
+    odosClient: {
+      quote: async ({ outputToken }) => ({
+        latencyMs: 10,
+        body: {
+          outAmounts: [
+            outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+              ? "5000000"
+              : "4200",
+          ],
+          pathId: "path-budget-1",
+        },
+      }),
+      assemble: async () => ({
+        latencyMs: 12,
+        body: {
+          transaction: {
+            to: "0x0000000000000000000000000000000000000d05",
+            data: "0x12345678",
+            value: "0",
+            gas: 210000,
+          },
+        },
+      }),
+    },
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
+    perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: {
+      minIncrementUsd: 1,
+    },
+  });
+
+  const blocked = evaluateWrappedBtcLoopRunBudget(plan, { maxIntentsPerRun: 4 });
+  const allowed = evaluateWrappedBtcLoopRunBudget(plan, { maxIntentsPerRun: blocked.plannedIntentCount });
+
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.blocked, true);
+  assert.equal(blocked.blockedReason, "planned_intent_count_exceeds_budget");
+  assert.equal(blocked.plannedIntentCount > 4, true);
+  assert.equal(allowed.ok, true);
+  assert.equal(allowed.blocked, false);
+});
+
+test("wrapped loop max-iteration override keeps automated live validation to one borrow cycle", async () => {
+  const odosClient = {
+    quote: async ({ outputToken }) => ({
+      latencyMs: 10,
+      body: {
+        outAmounts: [
+          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+            ? "20000000"
+            : "13000",
+        ],
+        pathId: "path-one-cycle",
+      },
+    }),
+    assemble: async () => ({
+      latencyMs: 12,
+      body: {
+        transaction: {
+          to: "0x0000000000000000000000000000000000000d05",
+          data: "0x12345678",
+          value: "0",
+          gas: 210000,
+        },
+      },
+    }),
+  };
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 75000,
+      tokenByKey: {
+        btc: 75000,
+        usd_stable: 1,
+      },
+    },
+    odosClient,
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
+    perTradeCapUsdOverride: 30,
+    maxLoopIterationsOverride: 1,
+    marketAssumptionsOverride: {
+      minIncrementUsd: 5,
+    },
+  });
+
+  assert.equal(plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-1")), true);
+  assert.equal(plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-2")), false);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")), true);
+  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-2")), false);
 });
 
 test("wrapped loop live plan supports tiny borrow cycle override and full unwind path", async () => {
@@ -533,6 +645,54 @@ test("wrapped loop live plan supports current-position unwind-only rescue mode",
   const repayCurrent = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-current"));
   assert.equal(repayWallet.metadata.inventorySource, "wallet_balance");
   assert.equal(repayCurrent.metadata.inventorySource, "redeemed_collateral_swap");
+});
+
+test("wrapped loop current-position rescue ignores immaterial dust-only borrow", async () => {
+  const oracleAddress = "0x0000000000000000000000000000000000000a11";
+  const collateralMarketAddress = "0xF877ACaFA28c19b96727966690b2f44d35aD5976";
+  const borrowMarketAddress = "0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22";
+  const collateralPriceMantissa = 75000n * 10n ** 28n;
+  const borrowPriceMantissa = 10n ** 30n;
+  const collateralFactorMantissa = 85n * 10n ** 16n;
+  const simulateTransactionCallImpl = async (chain, { to, data }) => {
+    const selector = data.slice(0, 10).toLowerCase();
+    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("oracle").selector.toLowerCase()) {
+      return { returnData: comptrollerViewInterface.encodeFunctionResult("oracle", [oracleAddress]) };
+    }
+    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("markets").selector.toLowerCase()) {
+      return { returnData: comptrollerViewInterface.encodeFunctionResult("markets", [true, collateralFactorMantissa, true]) };
+    }
+    if (to.toLowerCase() === collateralMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+      return { returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, 0n, 0n, 10n ** 18n]) };
+    }
+    if (to.toLowerCase() === borrowMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+      return { returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, 0n, 7n, 0n]) };
+    }
+    if (to.toLowerCase() === oracleAddress.toLowerCase()) {
+      const [market] = priceOracleInterface.decodeFunctionData("getUnderlyingPrice", data);
+      return {
+        returnData: priceOracleInterface.encodeFunctionResult(
+          "getUnderlyingPrice",
+          [market.toLowerCase() === collateralMarketAddress.toLowerCase() ? collateralPriceMantissa : borrowPriceMantissa],
+        ),
+      };
+    }
+    throw new Error(`Unexpected simulateTransactionCall for ${to}`);
+  };
+
+  await assert.rejects(
+    buildWrappedBtcLoopScenarioPlan({
+      bindingsDocument: blockedBindingsFixture(),
+      scenarioId: "healthy_baseline",
+      signerAddress: "0x0000000000000000000000000000000000000001",
+      useCurrentPosition: true,
+      unwindOnly: true,
+      readErc20BalanceImpl: async () => ({ balance: 10_000_000n }),
+      simulateTransactionCallImpl,
+      estimateGasImpl: estimateGasFixture,
+    }),
+    /No material current Moonwell wrapped BTC loop position is open on Base/,
+  );
 });
 
 test("wrapped loop unwind inventory check fails when wallet lacks repay asset balance", async () => {

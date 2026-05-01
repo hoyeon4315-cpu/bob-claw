@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import process from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
   buildDashboardLaunchAgentSpecs,
@@ -60,6 +61,10 @@ function toleratedBootoutFailure(output = "") {
   return /Could not find service|service could not be found|No such process/i.test(output);
 }
 
+export function retryableBootstrapFailure(output = "") {
+  return /Bootstrap failed:\s*5|Input\/output error/i.test(output);
+}
+
 function runLaunchctlOrThrow(args, { tolerateNotLoaded = false } = {}) {
   const result = launchctl(args);
   if (result.error) throw result.error;
@@ -95,11 +100,22 @@ async function installSpecs(specs, uid) {
       step: "bootout",
       ...runLaunchctlOrThrow(["bootout", `gui/${uid}/${spec.label}`], { tolerateNotLoaded: true }),
     });
-    operations.push({
-      id: spec.id,
-      step: "bootstrap",
-      ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
-    });
+    await delay(1000);
+    try {
+      operations.push({
+        id: spec.id,
+        step: "bootstrap",
+        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
+      });
+    } catch (error) {
+      if (!retryableBootstrapFailure(error.message)) throw error;
+      await delay(1500);
+      operations.push({
+        id: spec.id,
+        step: "bootstrap_retry",
+        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
+      });
+    }
     operations.push({
       id: spec.id,
       step: "kickstart",

@@ -64,6 +64,41 @@ test("radar CLI ingests observations and reports sanitized board", async () => {
   assert.equal(JSON.stringify(board).includes("rawEventPayloadHash"), false);
 });
 
+test("radar board CLI supports json flag before inline write path", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-cli-"));
+  const inputPath = join(dataDir, "observation.json");
+  await writeFile(inputPath, JSON.stringify({ ...observation, obsId: "obs_cli_json_write" }));
+
+  const ingest = spawnSync(process.execPath, [
+    "src/cli/radar-ingest.mjs",
+    "--data-dir",
+    dataDir,
+    "--input",
+    inputPath,
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.equal(ingest.status, 0, ingest.stderr);
+
+  const reportPath = join(dataDir, "onchain-opportunity-radar-json.json");
+  const report = spawnSync(process.execPath, [
+    "src/cli/report-radar-board.mjs",
+    "--data-dir",
+    dataDir,
+    "--json",
+    `--write=${reportPath}`,
+  ], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+
+  assert.equal(report.status, 0, report.stderr);
+  const board = JSON.parse(await readFile(reportPath, "utf8"));
+  assert.equal(board.summary.observedCount, 1);
+  assert.match(report.stdout, /"observedCount": 1/);
+});
+
 test("radar cap review CLI reports committed-diff cap raise candidates", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-cap-review-cli-"));
   const radarDir = join(dataDir, "radar");

@@ -160,6 +160,7 @@ test("execution surfaces include executor-backed live strategies when artifacts 
         queue: [
           {
             opportunityId: "opp-1",
+            chain: "base",
             protocolId: "yo",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
@@ -167,9 +168,13 @@ test("execution surfaces include executor-backed live strategies when artifacts 
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 5.37 },
+              matchedToken: { estimatedUsd: 150 },
             },
-            aprPct: 12,
+            aprPct: 100,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
           },
         ],
       },
@@ -182,10 +187,61 @@ test("execution surfaces include executor-backed live strategies when artifacts 
   assert.equal(wrapped.currentLiveEligible, true);
   assert.equal(wrapped.selectedMode, "live");
   assert.equal(wrapped.selectedCommands[0].script, "executor:wrapped-btc-loop");
+  assert.equal(wrapped.selectedCommands[0].command.includes("--max-loop-iterations=1"), true);
+  assert.equal(wrapped.selectedCommands[0].command.includes("--max-intents=14"), true);
+  assert.equal(wrapped.selectedCommands[0].command.includes("--market-min-increment-usd=5"), true);
   assert.equal(merkl.currentLiveEligible, true);
   assert.equal(merkl.selectedMode, "live");
   assert.equal(merkl.selectedCommands[0].script, "executor:merkl-canary-autopilot");
   assert.equal(report.summary.liveEligibleCount, 2);
+});
+
+test("Merkl surface does not mark policy-blocked tiny entries as executable now", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-too-small",
+            chain: "base",
+            protocolId: "yo",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 0.25 },
+            },
+            aprPct: 19.8,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(merkl.selectedMode, "analysis");
+  assert.equal(merkl.liveAdmissionBlockers.includes("position_below_min_position_usd"), true);
+  assert.equal(merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")), true);
 });
 
 test("wrapped BTC loop stays out of live dispatch when Base cbBTC collateral is unavailable", () => {

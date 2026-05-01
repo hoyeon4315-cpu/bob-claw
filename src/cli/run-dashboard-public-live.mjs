@@ -3,6 +3,8 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
 import process from "node:process";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildDashboardPublic } from "./build-dashboard-public.mjs";
 import {
   createDashboardLiveServer,
@@ -12,7 +14,9 @@ import {
   writeDashboardRuntimeState,
 } from "../dashboard/live-server.mjs";
 
-function parseArgs(argv, env = process.env) {
+const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+
+export function parseArgs(argv, env = process.env) {
   const base = parseDashboardLiveArgs(argv, env);
   const flags = new Set(argv.filter((item) => item.startsWith("--") && !item.includes("=")));
   const options = Object.fromEntries(
@@ -29,7 +33,7 @@ function parseArgs(argv, env = process.env) {
     runtimeStatePath: options["runtime-state-path"] || env.BOB_CLAW_DASHBOARD_RUNTIME_STATE_PATH || dashboardRuntimeStatePath(base.dataDir),
     cloudflaredPath: options["cloudflared-path"] || env.BOB_CLAW_CLOUDFLARED_PATH || "cloudflared",
     syncPagesOrigin: !flags.has("--no-sync-pages-origin"),
-    pagesRepublishMs: Number(options["pages-republish-ms"] || env.BOB_CLAW_DASHBOARD_PAGES_REPUBLISH_MS || 120_000),
+    pagesRepublishMs: Number(options["pages-republish-ms"] || env.BOB_CLAW_DASHBOARD_PAGES_REPUBLISH_MS || 0),
   };
 }
 
@@ -195,7 +199,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (IS_MAIN) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

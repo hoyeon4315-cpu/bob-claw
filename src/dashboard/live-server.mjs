@@ -170,6 +170,73 @@ function timestampMs(value) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
+  if (!strategyTickStatus || !Array.isArray(strategyTickStatus.strategies)) return status;
+  const currentStrategy = status.strategy || {};
+  const currentParity = currentStrategy.strategyParity || {};
+  const currentRows = Array.isArray(currentParity.rows) ? currentParity.rows : [];
+  const byStrategy = {
+    ...(currentParity.byStrategy || {}),
+  };
+  const rowIds = new Set(currentRows.map((row) => row?.strategyId).filter(Boolean));
+  const rowsById = new Map(currentRows.map((row) => [row?.strategyId, row]).filter(([id]) => Boolean(id)));
+
+  for (const tick of strategyTickStatus.strategies) {
+    const strategyId = tick?.strategyId;
+    if (!strategyId) continue;
+    const stage = strategyTickStatus.strategyStage?.byStrategy?.[strategyId] || null;
+    const micro = strategyTickStatus.microCanary?.byStrategy?.[strategyId] || null;
+    const blockers = Array.isArray(tick.lastTickBlockers) ? tick.lastTickBlockers : [];
+    const current = byStrategy[strategyId] || rowsById.get(strategyId) || { strategyId };
+    const next = {
+      ...current,
+      strategyId,
+      microCanaryStatus: micro?.microCanaryStatus || tick.microCanaryStatus || current.microCanaryStatus || "not_started",
+      promotionVerdict: stage?.promotionVerdict || tick.lastTickMode || current.promotionVerdict || null,
+      demotionSummary: {
+        demoted: tick.demotion?.demoted || false,
+        triggers: Array.isArray(tick.demotion?.triggers) ? tick.demotion.triggers : [],
+      },
+      tickMode: tick.lastTickMode || current.tickMode || null,
+      lastTickAt: tick.lastTickAt || current.lastTickAt || null,
+      scoredAllocation: tick.scoredAllocation || current.scoredAllocation || null,
+      topBlocker: blockers[0] || stage?.topBlocker || null,
+      blockers,
+    };
+    byStrategy[strategyId] = next;
+    rowsById.set(strategyId, next);
+  }
+
+  const rows = currentRows.length > 0
+    ? [
+        ...currentRows.map((row) => byStrategy[row.strategyId] || row),
+        ...Object.values(byStrategy).filter((row) => !rowIds.has(row.strategyId)),
+      ]
+    : Object.values(byStrategy);
+
+  return {
+    ...status,
+    strategy: {
+      ...currentStrategy,
+      strategyParity: {
+        ...currentParity,
+        rows,
+        byStrategy,
+        generatedAt: strategyTickStatus.generatedAt || servedAt,
+      },
+      microCanarySummary: strategyTickStatus.microCanary || currentStrategy.microCanarySummary || { total: 0, byStrategy: {} },
+    },
+    liveOverlay: {
+      ...(status.liveOverlay || {}),
+      strategyTickStatus: {
+        source: "strategy-tick-status.json",
+        generatedAt: strategyTickStatus.generatedAt || null,
+        appliedAt: servedAt,
+      },
+    },
+  };
+}
+
 async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
   let nextStatus = status;
   const walletHoldings = await loadJsonFromCandidates([
@@ -203,6 +270,12 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
       };
     }
   }
+
+  const strategyTickStatus = await loadJsonFromCandidates([
+    join(rootDir, "strategy-tick-status.json"),
+    join(dataDir, "strategy-tick-status.json"),
+  ]);
+  nextStatus = overlayStrategyTickStatus(nextStatus, strategyTickStatus, servedAt);
 
   const liveYield = buildLiveYieldSlice({
     merklActivePositions: nextStatus?.strategy?.merklActivePositions || null,
