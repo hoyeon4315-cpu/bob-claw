@@ -1,7 +1,8 @@
 ---
 status: canonical
 updated_at: 2026-05-02
-source_of_truth:
+policy_authority: AGENTS.md
+derived_from:
   - AGENTS.md
   - docs/system-map.md
 ---

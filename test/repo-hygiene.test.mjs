@@ -15,6 +15,13 @@ function gitCheckIgnore(path) {
   });
 }
 
+function gitLsFiles(path) {
+  return spawnSync("git", ["ls-files", "--error-unmatch", path], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+}
+
 test("required imported src/lib helpers exist and are not ignored", () => {
   for (const helperPath of REQUIRED_SOURCE_HELPERS) {
     assert.equal(existsSync(helperPath), true, `${helperPath} must exist in the worktree`);
@@ -23,6 +30,12 @@ test("required imported src/lib helpers exist and are not ignored", () => {
       ignored.status,
       0,
       `${helperPath} must not be ignored; fresh clones need this imported source file`,
+    );
+    const tracked = gitLsFiles(helperPath);
+    assert.equal(
+      tracked.status,
+      0,
+      `${helperPath} must be tracked; fresh clones cannot rely on local-only helper files`,
     );
   }
 });

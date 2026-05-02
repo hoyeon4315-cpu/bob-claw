@@ -170,6 +170,16 @@ test("auto-kill CLI heartbeat parser accepts signer updatedAt heartbeats", () =>
   assert.equal(parsed, new Date("2026-04-15T00:00:00.000Z").getTime());
 });
 
+test("auto-kill CLI heartbeat parser falls back when observedAtMs is null", () => {
+  const parsed = heartbeatTimestampMs({
+    schemaVersion: 1,
+    observedAtMs: null,
+    updatedAt: "2026-04-15T00:00:10.000Z",
+    pid: 123,
+  });
+  assert.equal(parsed, new Date("2026-04-15T00:00:10.000Z").getTime());
+});
+
 test("evaluateAutoKillTriggers returns triggered=false on clean state", () => {
   const result = evaluateAutoKillTriggers({
     auditRecords: [],

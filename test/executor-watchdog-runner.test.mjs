@@ -55,17 +55,20 @@ test("enforceWatchdog does not rewrite an existing kill switch file", async () =
   try {
     const heartbeatPath = join(workspace, "executor-heartbeat.json");
     const killSwitchPath = join(workspace, "kill-switch.flag");
+    const auditPath = join(workspace, "kill-switch-audit.jsonl");
     await writeFile(
       heartbeatPath,
       `${JSON.stringify({ schemaVersion: 1, updatedAt: "2026-04-15T00:00:00.000Z", pid: 123 }, null, 2)}\n`,
       "utf8",
     );
     await writeFile(killSwitchPath, "already-halted\n", "utf8");
+    await writeFile(auditPath, `${JSON.stringify({ ts: "existing", action: "halt" })}\n`, "utf8");
 
     let alerted = false;
     const result = await enforceWatchdog({
       heartbeatPath,
       killSwitchPath,
+      auditPath,
       ttlMs: 1_000,
       now: "2026-04-15T00:00:05.000Z",
       alertImpl: async () => {
@@ -78,6 +81,7 @@ test("enforceWatchdog does not rewrite an existing kill switch file", async () =
     assert.equal(result.killSwitchPresent, true);
     assert.equal(alerted, false);
     assert.equal(await readFile(killSwitchPath, "utf8"), "already-halted\n");
+    assert.equal(await readFile(auditPath, "utf8"), `${JSON.stringify({ ts: "existing", action: "halt" })}\n`);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
@@ -125,11 +129,13 @@ test("enforceWatchdog appends kill-switch audit when it raises the halt file", a
     const heartbeatPath = join(workspace, "executor-heartbeat.json");
     const killSwitchPath = join(workspace, "kill-switch.flag");
     const auditPath = join(workspace, "kill-switch-audit.jsonl");
+    const existingAuditRecord = { ts: "2026-04-14T00:00:00.000Z", action: "resume" };
     await writeFile(
       heartbeatPath,
       `${JSON.stringify({ schemaVersion: 1, updatedAt: "2026-04-15T00:00:00.000Z", pid: 789 }, null, 2)}\n`,
       "utf8",
     );
+    await writeFile(auditPath, `${JSON.stringify(existingAuditRecord)}\n`, "utf8");
 
     const result = await enforceWatchdog({
       heartbeatPath,
@@ -140,7 +146,9 @@ test("enforceWatchdog appends kill-switch audit when it raises the halt file", a
     });
 
     assert.equal(result.killSwitchWritten, true);
-    const auditRecord = JSON.parse((await readFile(auditPath, "utf8")).trim());
+    const auditRecords = (await readFile(auditPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(auditRecords[0], existingAuditRecord);
+    const auditRecord = auditRecords[1];
     assert.equal(auditRecord.action, "halt");
     assert.equal(auditRecord.actor, "executor:watchdog");
     assert.equal(auditRecord.reason, "watchdog_heartbeat_stale");

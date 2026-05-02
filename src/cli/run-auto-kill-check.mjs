@@ -78,8 +78,12 @@ function deriveActiveProtocols(anchorHealth) {
 
 export function heartbeatTimestampMs(payload = null) {
   if (!payload || typeof payload !== "object") return null;
-  const direct = Number(payload.observedAtMs);
-  if (Number.isFinite(direct)) return direct;
+  const directRaw = payload.observedAtMs;
+  if (typeof directRaw === "number" && Number.isFinite(directRaw)) return directRaw;
+  if (typeof directRaw === "string" && directRaw.trim() !== "") {
+    const direct = Number(directRaw);
+    if (Number.isFinite(direct)) return direct;
+  }
   const timestamp = payload.observedAt || payload.updatedAt || null;
   if (!timestamp) return null;
   const parsed = new Date(timestamp).getTime();
