@@ -28,6 +28,6 @@ src/graphify-out/
 *.bak-*
 
 # Foundry
-lib/
+/lib/
 out/
 cache/

@@ -11,6 +11,8 @@ test("git ops plan excludes generated dashboard artifacts by default", () => {
     branch: "main",
     statusEntries: parseGitStatus([
       " M dashboard/public/dashboard-status.json",
+      " M dashboard/public/auto-kill-events.json",
+      " M dashboard/public/strategy-tick-status.json",
       " M src/strategy/autonomous-discovery-board.mjs",
       "?? src/cli/run-gateway-update-autopilot.mjs",
     ].join("\n")),
@@ -21,8 +23,16 @@ test("git ops plan excludes generated dashboard artifacts by default", () => {
     "src/strategy/autonomous-discovery-board.mjs",
     "src/cli/run-gateway-update-autopilot.mjs",
   ]);
-  assert.deepEqual(plan.excludedPaths, ["dashboard/public/dashboard-status.json"]);
-  assert.deepEqual(plan.generatedArtifactPaths, ["dashboard/public/dashboard-status.json"]);
+  assert.deepEqual(plan.excludedPaths, [
+    "dashboard/public/dashboard-status.json",
+    "dashboard/public/auto-kill-events.json",
+    "dashboard/public/strategy-tick-status.json",
+  ]);
+  assert.deepEqual(plan.generatedArtifactPaths, [
+    "dashboard/public/dashboard-status.json",
+    "dashboard/public/auto-kill-events.json",
+    "dashboard/public/strategy-tick-status.json",
+  ]);
 });
 
 test("git ops plan can be scoped to explicit include paths", () => {

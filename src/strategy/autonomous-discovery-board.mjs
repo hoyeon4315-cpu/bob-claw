@@ -1,3 +1,11 @@
+export {
+  OFFICIAL_GATEWAY_DESTINATION_CHAINS,
+  OFFICIAL_GATEWAY_ROUTE_CHAINS,
+} from "../config/gateway-destinations.mjs";
+import {
+  OFFICIAL_GATEWAY_DESTINATION_CHAINS,
+  OFFICIAL_GATEWAY_ROUTE_CHAINS,
+} from "../config/gateway-destinations.mjs";
 import { analyzeDexRouteSupport, routeMatchesDexFamily } from "./dex-route-universe.mjs";
 
 function unique(values = []) {
@@ -21,25 +29,6 @@ function countBy(items = [], selector) {
 function byTemplateId(items = []) {
   return new Map((items || []).filter((item) => item?.templateId).map((item) => [item.templateId, item]));
 }
-
-export const OFFICIAL_GATEWAY_DESTINATION_CHAINS = Object.freeze([
-  "ethereum",
-  "bob",
-  "base",
-  "bsc",
-  "avalanche",
-  "unichain",
-  "bera",
-  "optimism",
-  "soneium",
-  "sei",
-  "sonic",
-]);
-
-export const OFFICIAL_GATEWAY_ROUTE_CHAINS = Object.freeze([
-  "bitcoin",
-  ...OFFICIAL_GATEWAY_DESTINATION_CHAINS,
-]);
 
 const SUPPORTED_GATEWAY_DESTINATION_CHAINS = new Set(OFFICIAL_GATEWAY_DESTINATION_CHAINS);
 const OFFICIAL_GATEWAY_ROUTE_CHAIN_SET = new Set(OFFICIAL_GATEWAY_ROUTE_CHAINS);

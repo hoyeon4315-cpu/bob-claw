@@ -2,6 +2,8 @@
 
 import process from "node:process";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getEnv } from "../config/env.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { runAutoKillCheck } from "../risk/auto-kill-events.mjs";
@@ -74,12 +76,21 @@ function deriveActiveProtocols(anchorHealth) {
   return ["aerodrome"];
 }
 
+export function heartbeatTimestampMs(payload = null) {
+  if (!payload || typeof payload !== "object") return null;
+  const direct = Number(payload.observedAtMs);
+  if (Number.isFinite(direct)) return direct;
+  const timestamp = payload.observedAt || payload.updatedAt || null;
+  if (!timestamp) return null;
+  const parsed = new Date(timestamp).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const auditRecords = await readSignerAuditLog();
   const heartbeatPayload = await readJsonIfExists(args.heartbeatPath);
-  const heartbeatAtMs = heartbeatPayload?.observedAtMs
-    || (heartbeatPayload?.observedAt ? new Date(heartbeatPayload.observedAt).getTime() : null);
+  const heartbeatAtMs = heartbeatTimestampMs(heartbeatPayload);
   const oraclePayload = await readJsonIfExists(args.oraclesPath);
   const oracleSamples = Array.isArray(oraclePayload?.samples) ? oraclePayload.samples : [];
 
@@ -130,7 +141,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+
+if (IS_MAIN) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

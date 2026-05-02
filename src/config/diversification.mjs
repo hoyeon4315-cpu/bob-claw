@@ -9,6 +9,9 @@
 // Moonwell oracle $1.78M) show single-protocol blast radius is the dominant
 // residual risk once transport is proven.
 
+export { OFFICIAL_GATEWAY_DESTINATION_CHAINS as GATEWAY_OFFICIAL_CHAINS } from "./gateway-destinations.mjs";
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS as GATEWAY_OFFICIAL_CHAINS } from "./gateway-destinations.mjs";
+
 export const DIVERSIFICATION_POLICY = Object.freeze({
   perStrategyMaxShare: 0.25,
   perChainMaxShare: 0.35,
@@ -17,20 +20,6 @@ export const DIVERSIFICATION_POLICY = Object.freeze({
   bobL2DirectMaxShare: 0.10,
   minSharesForHhi: 2,
 });
-
-export const GATEWAY_OFFICIAL_CHAINS = Object.freeze([
-  "ethereum",
-  "bob",
-  "base",
-  "bsc",
-  "avalanche",
-  "unichain",
-  "bera",
-  "optimism",
-  "soneium",
-  "sei",
-  "sonic",
-]);
 
 function sumShares(sharesByKey) {
   let total = 0;

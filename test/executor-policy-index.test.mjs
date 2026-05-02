@@ -84,6 +84,33 @@ test("policy index allows intent when risk context is absent", async () => {
   assert.ok(!policy.results.some((r) => r.policy === "concentration_guard"));
 });
 
+test("policy index blocks Gateway intents when Gateway availability is paused", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: baseIntent({
+      strategyId: "gateway-btc-onramp",
+      chain: "bitcoin",
+      family: "btc",
+      intentType: "gateway_btc_onramp",
+      amountUsd: 25,
+    }),
+    auditRecords: [],
+    riskContext: {
+      gatewayAvailability: {
+        available: false,
+        reason: "gateway_runtime_disabled_state_file_present",
+        observedAt: "2026-04-22T00:00:00.000Z",
+      },
+    },
+    now: "2026-04-22T00:00:00.000Z",
+  });
+
+  assert.equal(policy.decision, "BLOCK");
+  assert.ok(policy.blockers.includes("gateway_runtime_disabled_state_file_present"));
+  const gatewayResult = policy.results.find((r) => r.policy === "gateway_availability");
+  assert.ok(gatewayResult);
+  assert.equal(gatewayResult.decision, "BLOCK");
+});
+
 test("policy index allows intent when concentration is within caps", async () => {
   const policy = await evaluateIntentPolicies({
     intent: baseIntent({ amountUsd: 100 }),

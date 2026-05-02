@@ -1,5 +1,12 @@
 # BOB Claw Rules
 
+## Engineering Map
+
+- Before feature, policy, dashboard, cleanup, commit, or push work, read
+  `docs/system-map.md` and `docs/harness-engineering.md` after this file.
+  They are implementation maps only; this `AGENTS.md` remains the operating
+  law if any document conflicts.
+
 ## Core Context
 
 - **Product model: payback**. The system takes native BTC from the operator's Bitcoin L1 wallet, routes it through BOB Gateway into destination-chain DeFi positions, and returns a configured share of the realized profit back to a native BTC wallet on a fixed schedule. All PnL, caps, and KPIs are **BTC-denominated first**; USD values are display-only.

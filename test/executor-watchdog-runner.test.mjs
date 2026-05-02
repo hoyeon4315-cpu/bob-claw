@@ -118,3 +118,34 @@ test("run-executor-watchdog CLI raises the kill switch for a stale heartbeat", a
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+test("enforceWatchdog appends kill-switch audit when it raises the halt file", async () => {
+  const workspace = await createWorkspace("watchdog-audit");
+  try {
+    const heartbeatPath = join(workspace, "executor-heartbeat.json");
+    const killSwitchPath = join(workspace, "kill-switch.flag");
+    const auditPath = join(workspace, "kill-switch-audit.jsonl");
+    await writeFile(
+      heartbeatPath,
+      `${JSON.stringify({ schemaVersion: 1, updatedAt: "2026-04-15T00:00:00.000Z", pid: 789 }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const result = await enforceWatchdog({
+      heartbeatPath,
+      killSwitchPath,
+      auditPath,
+      ttlMs: 1_000,
+      now: "2026-04-15T00:00:05.000Z",
+    });
+
+    assert.equal(result.killSwitchWritten, true);
+    const auditRecord = JSON.parse((await readFile(auditPath, "utf8")).trim());
+    assert.equal(auditRecord.action, "halt");
+    assert.equal(auditRecord.actor, "executor:watchdog");
+    assert.equal(auditRecord.reason, "watchdog_heartbeat_stale");
+    assert.equal(auditRecord.metadata.source, "watchdog");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
