@@ -43,6 +43,17 @@ const DISCRETIONARY_REFILL_METHOD_TO_CATEGORY = Object.freeze({
   cross_chain_bridge_lifi: "bridge",
   cross_chain_swap_via_btc_intermediate: "consolidation",
 });
+const SOURCE_NATIVE_GAS_BLOCKERS = new Set([
+  "insufficient_funds",
+  "insufficient_native_gas_balance",
+]);
+const SOURCE_NATIVE_GAS_CONSUMING_METHODS = new Set([
+  "cross_chain_bridge_or_swap",
+  "cross_chain_swap_via_btc_intermediate",
+  "cross_chain_bridge_across",
+  "cross_chain_bridge_lifi",
+  "cross_chain_bridge_stargate",
+]);
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -254,9 +265,14 @@ function normalizeRefillBlockedReason(reason = null) {
   return reason;
 }
 
-function refillPreviewRetryable(result = {}) {
+function blocksRefillFallbackForSourceNativeGas({ reason, activeMethod } = {}) {
+  return SOURCE_NATIVE_GAS_BLOCKERS.has(reason) && SOURCE_NATIVE_GAS_CONSUMING_METHODS.has(activeMethod);
+}
+
+function refillPreviewRetryable(result = {}, { activeMethod = null } = {}) {
   if (refillPreparationReady(result.json)) return false;
   const reason = refillPreviewBlockedReason(result);
+  if (blocksRefillFallbackForSourceNativeGas({ reason, activeMethod })) return false;
   return [
     "no_route",
     "bridge_pair_unsupported",
@@ -288,11 +304,12 @@ function refillExecutionBlockedReason(result = {}) {
   );
 }
 
-function refillExecutionRetryable(result = {}) {
+function refillExecutionRetryable(result = {}, { activeMethod = null } = {}) {
   const reason = refillExecutionBlockedReason(result);
   const status = refillExecutionStatus(result);
   if (!reason && !status) return false;
   if (["source_confirmed_only", "confirmed", "delivered", "succeeded"].includes(status)) return false;
+  if (blocksRefillFallbackForSourceNativeGas({ reason, activeMethod })) return false;
   return [
     "no_route",
     "bridge_pair_unsupported",
@@ -1236,7 +1253,7 @@ export async function runAllChainAutopilot({
       timeoutMs,
       steps,
     });
-    if (refillPreviewRetryable(preview)) {
+    if (refillPreviewRetryable(preview, { activeMethod: job.executionMethod })) {
       for (const method of forcedRefillMethodArgs(job, job.executionMethod)) {
         const alternatePreview = await runJsonStep({
           name: `treasury_refill_preview:${job.jobId}:${method}`,
@@ -1247,9 +1264,9 @@ export async function runAllChainAutopilot({
           steps,
         });
         preview = alternatePreview;
-        if (refillPreparationReady(preview.json) || !refillPreviewRetryable(preview)) break;
+        if (refillPreparationReady(preview.json) || !refillPreviewRetryable(preview, { activeMethod: method })) break;
       }
-      if (refillPreviewRetryable(preview)) {
+      if (refillPreviewRetryable(preview, { activeMethod: refillSelectedMethod(preview, job.executionMethod) })) {
         preview = {
           ...preview,
           json: {
@@ -1301,7 +1318,7 @@ export async function runAllChainAutopilot({
           timeoutMs,
           steps,
         });
-        if (!refillExecutionRetryable(execution)) break;
+        if (!refillExecutionRetryable(execution, { activeMethod: method })) break;
         const retryMethods = forcedRefillMethodArgs(job, method);
         let nextPreview = null;
         for (const retryMethod of retryMethods) {
@@ -1313,11 +1330,11 @@ export async function runAllChainAutopilot({
             timeoutMs,
             steps,
           });
-          if (refillPreparationReady(nextPreview.json) || !refillPreviewRetryable(nextPreview)) break;
+          if (refillPreparationReady(nextPreview.json) || !refillPreviewRetryable(nextPreview, { activeMethod: retryMethod })) break;
         }
         if (!nextPreview) break;
         preview = nextPreview;
-        if (refillPreviewRetryable(preview)) {
+        if (refillPreviewRetryable(preview, { activeMethod: refillSelectedMethod(preview, job.executionMethod) })) {
           preview = {
             ...preview,
             json: {
