@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   buildDashboardLiveRuntimeConfig,
   formatPreflightSummary,
@@ -7,6 +9,9 @@ import {
   parseArgs,
   resolveDeployPreflight,
 } from "../src/cli/deploy-dashboard-cloudflare.mjs";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const DASHBOARD_PUBLIC_DIR = join(ROOT, "dashboard/public");
 
 function jsonResponse(body, status = 200) {
   return {
@@ -148,7 +153,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
     },
   });
 
-  assert.deepEqual(buildCalls, [{ publicDir: "/Users/love/BOB Claw/dashboard/public" }]);
+  assert.deepEqual(buildCalls, [{ publicDir: DASHBOARD_PUBLIC_DIR }]);
   assert.equal(calls.length, 4);
   assert.deepEqual(calls[0], {
     command: "node",
@@ -170,7 +175,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
     args: [
       "pages",
       "deploy",
-      "/Users/love/BOB Claw/dashboard/public",
+      DASHBOARD_PUBLIC_DIR,
       "--project-name",
       "bob-claw-dashboard",
       "--branch",
@@ -217,7 +222,7 @@ test("deploy main creates an explicit project when a single discovered account h
     logger: { log() {} },
   });
 
-  assert.deepEqual(buildCalls, [{ publicDir: "/Users/love/BOB Claw/dashboard/public" }]);
+  assert.deepEqual(buildCalls, [{ publicDir: DASHBOARD_PUBLIC_DIR }]);
   assert.deepEqual(calls, [
     {
       command: "wrangler",
@@ -228,7 +233,7 @@ test("deploy main creates an explicit project when a single discovered account h
       args: [
         "pages",
         "deploy",
-        "/Users/love/BOB Claw/dashboard/public",
+        DASHBOARD_PUBLIC_DIR,
         "--project-name",
         "custom-dashboard",
         "--branch",
