@@ -274,6 +274,7 @@ export async function buildNativeDexExperimentPlan({
       },
       metadata: {
         skipAutoIngest: true,
+        expectedTxTo: tx?.to || null,
         ...metadata,
       },
     });

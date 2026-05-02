@@ -1,0 +1,1 @@
+export const DEFAULT_FAILED_GAS_COST_24H_USD = 3;

@@ -21,7 +21,7 @@
 
 import { listStrategyCaps } from "../../config/strategy-caps.mjs";
 import { DIVERSIFICATION_POLICY } from "../../config/diversification.mjs";
-import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../all-chain-autopilot.mjs";
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../../config/gateway-destinations.mjs";
 
 const DEFAULT_REDUCED_WEIGHT_FACTOR = 0.3;
 const DEFAULT_MIN_WEIGHT = 0.1;

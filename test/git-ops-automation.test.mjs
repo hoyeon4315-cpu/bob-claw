@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  DEFAULT_GIT_OPS_EXCLUDE_PATHS,
   buildGitCommitMessage,
   buildGitOpsPlan,
   parseGitStatus,
@@ -10,7 +11,7 @@ test("git ops plan excludes generated dashboard artifacts by default", () => {
   const plan = buildGitOpsPlan({
     branch: "main",
     statusEntries: parseGitStatus([
-      " M dashboard/public/dashboard-status.json",
+      ...DEFAULT_GIT_OPS_EXCLUDE_PATHS.map((path) => ` M ${path}`),
       " M src/strategy/autonomous-discovery-board.mjs",
       "?? src/cli/run-gateway-update-autopilot.mjs",
     ].join("\n")),
@@ -21,8 +22,8 @@ test("git ops plan excludes generated dashboard artifacts by default", () => {
     "src/strategy/autonomous-discovery-board.mjs",
     "src/cli/run-gateway-update-autopilot.mjs",
   ]);
-  assert.deepEqual(plan.excludedPaths, ["dashboard/public/dashboard-status.json"]);
-  assert.deepEqual(plan.generatedArtifactPaths, ["dashboard/public/dashboard-status.json"]);
+  assert.deepEqual(plan.excludedPaths, [...DEFAULT_GIT_OPS_EXCLUDE_PATHS]);
+  assert.deepEqual(plan.generatedArtifactPaths, [...DEFAULT_GIT_OPS_EXCLUDE_PATHS]);
 });
 
 test("git ops plan can be scoped to explicit include paths", () => {

@@ -6,7 +6,8 @@ import {
   executeReadyMerklPortfolioExits,
   evaluateMerklPositionExit,
 } from "../src/executor/merkl-portfolio-exit.mjs";
-import { executeAavePortfolioExit } from "../src/executor/helpers/merkl-portfolio-exit-executors.mjs";
+import { executeAavePortfolioExit, executeErc4626PortfolioExit } from "../src/executor/helpers/merkl-portfolio-exit-executors.mjs";
+import { validateEvmTransactionSemantics } from "../src/executor/signer/evm-local-signer.mjs";
 
 function position(overrides = {}) {
   return {
@@ -279,6 +280,56 @@ test("portfolio exit reconciles zero share balances as closed", async () => {
   assert.equal(appended[0].redeemProof.proofSource, "erc20_balance_zero");
 });
 
+test("ERC4626 portfolio exit stamps expected target for signer semantic validation", async () => {
+  const calls = [];
+  let capturedIntent = null;
+  const sender = "0x2222222222222222222222222222222222222222";
+  const assetAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const shareTokenAddress = "0x0000000f2eB9f69274678c76222B35eEc7588a65";
+  const vaultAddress = "0x9999999999999999999999999999999999999999";
+  const result = await executeErc4626PortfolioExit({
+    position: position({
+      assetAddress,
+      shareTokenAddress,
+      vaultAddress,
+      amount: "250000",
+      shareDelta: "250000",
+    }),
+    senderAddress: sender,
+    sendCommand: async ({ message }) => {
+      capturedIntent = message.intent;
+      return { status: "ok", broadcast: { txHash: "0xerc4626redeem" } };
+    },
+    estimateGasImpl: async () => ({ gasUnits: 180_000 }),
+    readErc20BalanceImpl: async (chain, token, owner) => {
+      calls.push({ chain, token, owner });
+      if (token.toLowerCase() === assetAddress.toLowerCase()) {
+        return {
+          rpcUrl: "mock",
+          balance: calls.filter((call) => call.token.toLowerCase() === assetAddress.toLowerCase()).length === 1
+            ? "1000000"
+            : "1240000",
+        };
+      }
+      return {
+        rpcUrl: "mock",
+        balance: calls.filter((call) => call.token.toLowerCase() === shareTokenAddress.toLowerCase()).length === 1
+          ? "250000"
+          : "0",
+      };
+    },
+    settlementTimeoutMs: 0,
+    pollIntervalMs: 0,
+    sleepImpl: async () => {},
+  });
+
+  assert.equal(result.settlementStatus, "position_closed");
+  assert.equal(capturedIntent.intentType, "erc4626_redeem");
+  assert.equal(capturedIntent.tx.to, vaultAddress);
+  assert.equal(capturedIntent.metadata.expectedTxTo, vaultAddress);
+  assert.equal(validateEvmTransactionSemantics(capturedIntent), true);
+});
+
 test("Aave portfolio exit withdraws through the pool and verifies asset delta", async () => {
   const calls = [];
   let capturedIntent = null;
@@ -330,6 +381,8 @@ test("Aave portfolio exit withdraws through the pool and verifies asset delta", 
   assert.equal(result.settlementStatus, "position_closed");
   assert.equal(capturedIntent.intentType, "aave_withdraw");
   assert.equal(capturedIntent.tx.to, poolAddress);
+  assert.equal(capturedIntent.metadata.expectedTxTo, poolAddress);
+  assert.equal(validateEvmTransactionSemantics(capturedIntent), true);
   assert.equal(capturedIntent.metadata.poolAddress, poolAddress);
   assert.equal(result.redeemProof.requiredDelta, "237500");
   assert.equal(result.redeemProof.observedDelta, "240000");

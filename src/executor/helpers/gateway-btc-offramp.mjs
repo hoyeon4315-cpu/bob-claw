@@ -237,6 +237,7 @@ export async function buildGatewayBtcOfframpPlan({
       },
       metadata: {
         skipAutoIngest: true,
+        expectedTxTo: order.tx.to,
         gatewayOrderId: order.orderId,
         gatewayRecipientBitcoin: recipient,
         gatewayExpectedBitcoinSats: quote.outputAmount.amount,

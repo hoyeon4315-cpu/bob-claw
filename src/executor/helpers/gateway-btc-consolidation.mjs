@@ -357,6 +357,7 @@ export async function buildGatewayBtcConsolidationPlan({
         },
         metadata: {
           skipAutoIngest: true,
+          expectedTxTo: normalizedQuote.txTo,
           gatewayRouteKey: routeKey(route),
           gatewayGasRefill: normalizedGasRefill,
           gatewayQuoteLatencyMs,

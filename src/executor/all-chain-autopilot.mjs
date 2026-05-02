@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
+export { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
@@ -13,19 +15,6 @@ import {
   refillExecutionCandidates,
 } from "./helpers/refill-fallback.mjs";
 
-export const OFFICIAL_GATEWAY_DESTINATION_CHAINS = Object.freeze([
-  "ethereum",
-  "bob",
-  "base",
-  "bsc",
-  "avalanche",
-  "unichain",
-  "bera",
-  "optimism",
-  "soneium",
-  "sei",
-  "sonic",
-]);
 const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 const BASE_WBTC_OFT_TOKEN = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";
 const MIN_WRAPPED_BTC_HANDOFF_USD = 5;

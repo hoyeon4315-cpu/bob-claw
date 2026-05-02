@@ -3,8 +3,12 @@ import { spawnSync } from "node:child_process";
 export const GIT_COMMIT_TRAILER = "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>";
 
 export const DEFAULT_GIT_OPS_EXCLUDE_PATHS = Object.freeze([
+  "dashboard/public/auto-kill-events.json",
   "dashboard/public/dashboard-status.json",
   "dashboard/public/live-runtime.json",
+  "dashboard/public/merkl-active.json",
+  "dashboard/public/strategy-tick-status.json",
+  "dashboard/public/wallet-holdings.json",
 ]);
 
 function normalizePath(path = "") {

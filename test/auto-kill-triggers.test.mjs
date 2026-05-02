@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAutoKillConfig } from "../src/config/auto-kill.mjs";
+import { heartbeatTimestampMs } from "../src/cli/run-auto-kill-check.mjs";
 import {
   evaluateAutoKillTriggers,
   evaluateCumulativeLoss,
@@ -158,6 +159,25 @@ test("heartbeat trigger fires when stale", () => {
     nowMs: NOW_MS,
   });
   assert.equal(result?.trigger, "heartbeat_stale");
+});
+
+test("auto-kill CLI heartbeat parser accepts signer updatedAt heartbeats", () => {
+  const parsed = heartbeatTimestampMs({
+    schemaVersion: 1,
+    updatedAt: "2026-04-15T00:00:00.000Z",
+    pid: 123,
+  });
+  assert.equal(parsed, new Date("2026-04-15T00:00:00.000Z").getTime());
+});
+
+test("auto-kill CLI heartbeat parser falls back when observedAtMs is null", () => {
+  const parsed = heartbeatTimestampMs({
+    schemaVersion: 1,
+    observedAtMs: null,
+    updatedAt: "2026-04-15T00:00:10.000Z",
+    pid: 123,
+  });
+  assert.equal(parsed, new Date("2026-04-15T00:00:10.000Z").getTime());
 });
 
 test("evaluateAutoKillTriggers returns triggered=false on clean state", () => {

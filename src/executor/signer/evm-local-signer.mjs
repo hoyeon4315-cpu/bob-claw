@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { JsonRpcProvider, Wallet, keccak256 } from "ethers";
+import { getAddress, Interface, JsonRpcProvider, Wallet, keccak256 } from "ethers";
 import { getChainRpcUrls } from "../../config/env.mjs";
 import { getEvmChainConfig, listEvmChains } from "../../config/chains.mjs";
 import { createSignedTransactionEnvelope, SignerInterface } from "./signer-interface.mjs";
@@ -39,6 +39,9 @@ function transactionNativeDebit(request) {
 }
 
 const MAX_REASONABLE_EVM_NONCE = 10_000_000;
+const ERC20_INTERFACE = new Interface([
+  "function approve(address spender,uint256 amount)",
+]);
 
 function assertReasonableNonce(nonce, label = "nonce") {
   if (!Number.isInteger(nonce) || nonce < 0 || nonce > MAX_REASONABLE_EVM_NONCE) {
@@ -134,6 +137,89 @@ function resolveRpcUrls(chain) {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeAddressOrNull(value) {
+  if (!value) return null;
+  try {
+    return getAddress(String(value));
+  } catch {
+    return null;
+  }
+}
+
+function assertEvmAddress(value, label) {
+  const normalized = normalizeAddressOrNull(value);
+  if (!normalized) throw new Error(`${label}_invalid`);
+  return normalized;
+}
+
+function isHexData(value) {
+  return typeof value === "string" && /^0x(?:[a-fA-F0-9]{2})*$/u.test(value);
+}
+
+function hasCallData(value) {
+  return isHexData(value) && value.length > 2;
+}
+
+function expectedTargetCandidates(intent = {}) {
+  return [
+    intent.metadata?.expectedTxTo,
+    intent.quote?.txTo,
+    intent.quote?.tx?.to,
+  ].filter(Boolean);
+}
+
+function assertMatchingTargets(intent, txTo) {
+  const candidates = expectedTargetCandidates(intent).map((value) => assertEvmAddress(value, "evm_expected_tx_to"));
+  if (candidates.length === 0) {
+    if (hasCallData(intent.tx?.data)) {
+      throw new Error("evm_tx_expected_target_missing");
+    }
+    return;
+  }
+  const [first] = candidates;
+  if (!candidates.every((candidate) => candidate === first)) {
+    throw new Error("evm_tx_expected_target_conflict");
+  }
+  if (txTo !== first) {
+    throw new Error("evm_tx_target_mismatch");
+  }
+}
+
+function assertApprovalCalldata(intent, txTo) {
+  const approval = intent.approval || {};
+  const token = assertEvmAddress(approval.token, "approval_token");
+  const spender = assertEvmAddress(approval.spender, "approval_spender");
+  if (txTo !== token) throw new Error("approval_target_mismatch");
+  let decoded = null;
+  try {
+    decoded = ERC20_INTERFACE.decodeFunctionData("approve", intent.tx.data);
+  } catch {
+    throw new Error("approval_calldata_mismatch");
+  }
+  const decodedSpender = assertEvmAddress(decoded[0], "approval_decoded_spender");
+  const decodedAmount = toBigIntOrNull(decoded[1]);
+  const expectedAmount = toBigIntOrNull(approval.amount);
+  if (decodedSpender !== spender || decodedAmount === null || expectedAmount === null || decodedAmount !== expectedAmount) {
+    throw new Error("approval_calldata_mismatch");
+  }
+  const quoteTarget = normalizeAddressOrNull(intent.quote?.txTo);
+  if (quoteTarget && quoteTarget !== spender) {
+    throw new Error("approval_quote_spender_mismatch");
+  }
+}
+
+export function validateEvmTransactionSemantics(intent = {}) {
+  if (!intent.tx || typeof intent.tx !== "object") throw new Error("evm_tx_missing");
+  const txTo = assertEvmAddress(intent.tx.to, "evm_tx_to");
+  if (!isHexData(intent.tx.data)) throw new Error("evm_tx_data_invalid");
+  if (intent.approval || intent.intentType === "approve_exact") {
+    assertApprovalCalldata(intent, txTo);
+    return true;
+  }
+  assertMatchingTargets(intent, txTo);
+  return true;
 }
 
 function isLikelyAlreadyBroadcast(error) {
@@ -262,6 +348,7 @@ export class EvmLocalKeySigner extends SignerInterface {
   }
 
   async buildTransactionRequest(intent, { reserveNonce = true } = {}) {
+    validateEvmTransactionSemantics(intent);
     const chainConfig = getEvmChainConfig(intent.chain);
     const explicitNonce = Number.isInteger(intent.tx?.nonce)
       ? assertReasonableNonce(intent.tx.nonce, "intent tx nonce")

@@ -3,6 +3,7 @@ import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
 import { evaluateConcentrationGuard } from "../risk/concentration-guard.mjs";
 import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
+import { checkGatewayAvailability } from "./gateway-availability.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
 import { evaluateTinyLiveCanaryPolicy } from "./tiny-live-canary-policy.mjs";
@@ -72,6 +73,11 @@ export async function evaluateIntentPolicies({
 
   const results = [
     await checkKillSwitch({ killSwitchPath, now }),
+    await checkGatewayAvailability({
+      intent,
+      availability: riskContext?.gatewayAvailability || intent.metadata?.gatewayAvailability || null,
+      now,
+    }),
     evaluateConsecutiveFailures({
       intent,
       auditRecords,

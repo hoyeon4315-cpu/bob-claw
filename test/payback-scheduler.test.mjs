@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import {
@@ -295,6 +298,81 @@ test("payback scheduler tick keeps audit-log-safe planning mode by default", asy
   assert.equal(result.status, "ready");
   assert.equal(result.execution, null);
   assert.equal(result.compositePlan.steps[0].kind, "gateway_btc_consolidation");
+});
+
+test("payback scheduler tick halts before planning when kill-switch is active", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+  let planBuilderCalled = false;
+
+  const result = await runPaybackSchedulerTick({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    execute: true,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "80000",
+    },
+    accumulatorSnapshot: accumulatorFixture,
+    consolidationPlanBuilder: async () => {
+      planBuilderCalled = true;
+      return consolidationPlanFixture();
+    },
+    killSwitchPath: "/tmp/bob-claw-test-kill-switch",
+    killSwitchChecker: async ({ killSwitchPath, now }) => ({
+      policy: "kill_switch",
+      observedAt: now,
+      decision: "BLOCK",
+      blockers: ["kill_switch_present"],
+      killSwitchPath,
+    }),
+  });
+
+  assert.equal(result.status, "halted");
+  assert.equal(result.reason, "kill_switch_present");
+  assert.equal(result.compositePlan, null);
+  assert.equal(result.execution, null);
+  assert.equal(planBuilderCalled, false);
+});
+
+test("payback scheduler tick uses the default file-backed kill-switch before planning", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+  const workspace = await mkdtemp(join(tmpdir(), "bob-claw-payback-kill-"));
+  try {
+    const killSwitchPath = join(workspace, "KILL_SWITCH");
+    await writeFile(killSwitchPath, "halted\n", "utf8");
+
+    for (const execute of [false, true]) {
+      let accumulatorCalled = false;
+      let planBuilderCalled = false;
+      const result = await runPaybackSchedulerTick({
+        paybackConfig: PAYBACK_POLICY_FIXTURE,
+        execute,
+        reserveState: {
+          chain: "base",
+          inputToken: WBTC_OFT_TOKEN,
+          amount: "80000",
+        },
+        accumulatorSnapshot: () => {
+          accumulatorCalled = true;
+          return accumulatorFixture();
+        },
+        consolidationPlanBuilder: async () => {
+          planBuilderCalled = true;
+          return consolidationPlanFixture();
+        },
+        killSwitchPath,
+      });
+
+      assert.equal(result.status, "halted");
+      assert.equal(result.reason, "kill_switch_present");
+      assert.equal(result.compositePlan, null);
+      assert.equal(result.execution, null);
+      assert.equal(accumulatorCalled, false);
+      assert.equal(planBuilderCalled, false);
+    }
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
 
 test("composite payback plan defers when offramp cost breaches the net-payback ratio guard", async () => {

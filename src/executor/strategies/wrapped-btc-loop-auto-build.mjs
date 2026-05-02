@@ -169,7 +169,10 @@ function contractCallStep({ id, chain, to, data, amountUsd, now, metadata = {}, 
       ...(gasLimit ? { gasLimit } : {}),
       ...tx,
     },
-    metadata,
+    metadata: {
+      ...metadata,
+      expectedTxTo: tx?.to || to,
+    },
   };
 }
 

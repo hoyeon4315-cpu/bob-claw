@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Transaction } from "ethers";
+import { Interface, Transaction } from "ethers";
 
-import { EvmLocalKeySigner } from "../src/executor/signer/evm-local-signer.mjs";
+import { EvmLocalKeySigner, validateEvmTransactionSemantics } from "../src/executor/signer/evm-local-signer.mjs";
 
 const PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const ERC20 = new Interface(["function approve(address spender,uint256 amount)"]);
 
 function buildProvider({
   pendingNonce = 12,
@@ -280,4 +281,73 @@ test("evm signer rejects transactions that cannot cover max native gas debit bef
   );
 
   assert.deepEqual(calls, ["provider:fee", "provider:balance"]);
+});
+
+test("evm signer rejects data-bearing tx when expected target mismatches before reserving nonce", async () => {
+  const calls = [];
+  const signer = buildSigner(buildProvider({ calls }));
+
+  await assert.rejects(
+    () => signer.signIntent({
+      ...intent(),
+      tx: {
+        ...intent().tx,
+        data: "0x12345678",
+      },
+      metadata: {
+        expectedTxTo: "0x0000000000000000000000000000000000000002",
+      },
+    }, { reserveNonce: true }),
+    /evm_tx_target_mismatch/u,
+  );
+
+  assert.deepEqual(calls, []);
+});
+
+test("evm signer rejects approval calldata that does not match approval metadata before reserving nonce", async () => {
+  const calls = [];
+  const signer = buildSigner(buildProvider({ calls }));
+
+  await assert.rejects(
+    () => signer.signIntent({
+      ...intent(),
+      intentType: "approve_exact",
+      approval: {
+        token: "0x0000000000000000000000000000000000000001",
+        spender: "0x0000000000000000000000000000000000000003",
+        amount: "123",
+        mode: "per_tx",
+      },
+      tx: {
+        ...intent().tx,
+        to: "0x0000000000000000000000000000000000000001",
+        data: ERC20.encodeFunctionData("approve", [
+          "0x0000000000000000000000000000000000000003",
+          "124",
+        ]),
+      },
+    }, { reserveNonce: true }),
+    /approval_calldata_mismatch/u,
+  );
+
+  assert.deepEqual(calls, []);
+});
+
+test("evm semantic validation rejects conflicting quoted and metadata targets", () => {
+  assert.throws(
+    () => validateEvmTransactionSemantics({
+      ...intent(),
+      tx: {
+        ...intent().tx,
+        data: "0x12345678",
+      },
+      quote: {
+        txTo: "0x0000000000000000000000000000000000000002",
+      },
+      metadata: {
+        expectedTxTo: "0x0000000000000000000000000000000000000001",
+      },
+    }),
+    /evm_tx_expected_target_conflict/u,
+  );
 });

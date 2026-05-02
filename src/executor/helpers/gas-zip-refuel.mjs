@@ -322,6 +322,7 @@ export async function buildGasZipNativeRefuelPlan({
       },
       metadata: {
         skipAutoIngest: true,
+        expectedTxTo: srcConfig.directAddress,
         gasZipSourceChainId: srcConfig.chainId,
         gasZipDestinationChainId: dstConfig.chainId,
         gasZipDestinationShortId: dstConfig.shortId,

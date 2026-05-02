@@ -15,7 +15,7 @@ export async function checkGatewayAvailability({
 } = {}) {
   const resolved = availability || (await resolveGatewayAvailability({ policy, now }));
   const intentMethod = intent?.method || intent?.fundingMethod || intent?.executor || null;
-  const intentType = String(intent?.type || "").toLowerCase();
+  const intentType = String(intent?.type || intent?.intentType || "").toLowerCase();
   const gatewayIntent =
     isGatewayMethod(intentMethod) ||
     intentType.includes("gateway") ||

@@ -1,5 +1,6 @@
 import { ETHEREUM_WBTC_TOKEN, tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
 import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-representative-bindings.mjs";
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
 import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
@@ -10,19 +11,7 @@ const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
 const ETHEREUM_USDC_TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const ETHEREUM_USDT_TOKEN = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const ETHEREUM_RLUSD_TOKEN = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
-const GATEWAY_DESTINATION_CHAINS = Object.freeze([
-  "ethereum",
-  "bob",
-  "base",
-  "bsc",
-  "avalanche",
-  "unichain",
-  "bera",
-  "optimism",
-  "soneium",
-  "sei",
-  "sonic",
-]);
+const GATEWAY_DESTINATION_CHAINS = OFFICIAL_GATEWAY_DESTINATION_CHAINS;
 const MERKL_PORTFOLIO_REFILL_POLICY = {
   id: "merkl_portfolio_stable_carry_refill",
   category: "yield",

@@ -322,6 +322,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
     env: {
       ...process.env,
       BOB_CLAW_DATA_DIR: dataDir,
+      PAYBACK_BTC_DEST_ADDR: "bc1qpayback0000000000000000000000000000000",
     },
     encoding: "utf8",
   });

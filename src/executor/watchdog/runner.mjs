@@ -4,6 +4,7 @@ import { enforceWatchdog } from "./watchdog-loop.mjs";
 import { readHeartbeat } from "./heartbeat.mjs";
 import { sendTelegramMessage } from "../../notify/telegram.mjs";
 import { buildTelegramDeliveryDecision } from "../../notify/telegram.mjs";
+import { resolveKillSwitchPath } from "../policy/kill-switch.mjs";
 
 export function formatWatchdogAlert({ evaluation, heartbeatPath, killSwitchPath } = {}) {
   const lines = [
@@ -45,7 +46,7 @@ export function createWatchdogAlerter({
 
 export async function runWatchdogCycle({
   heartbeatPath = "./state/executor-heartbeat.json",
-  killSwitchPath = process.env.KILL_SWITCH_PATH || null,
+  killSwitchPath = resolveKillSwitchPath(),
   ttlMs = 60_000,
   startupGraceMs = ttlMs,
   startedAt = new Date().toISOString(),
@@ -97,7 +98,7 @@ export async function runWatchdogLoop({
   once = false,
   intervalMs = 15_000,
   heartbeatPath = "./state/executor-heartbeat.json",
-  killSwitchPath = process.env.KILL_SWITCH_PATH || null,
+  killSwitchPath = resolveKillSwitchPath(),
   ttlMs = 60_000,
   startupGraceMs = ttlMs,
   alertImpl = createWatchdogAlerter(),

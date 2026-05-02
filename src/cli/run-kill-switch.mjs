@@ -23,6 +23,7 @@ import { existsSync, statSync } from "node:fs";
 import { mkdir, appendFile, writeFile, rm, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { getEnv } from "../config/env.mjs";
+import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -41,7 +42,7 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     reason: options.reason || null,
     actor: options.actor || "operator-via-llm",
-    killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", null),
+    killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", resolveKillSwitchPath()),
     auditPath: options["audit-path"] || getEnv("KILL_SWITCH_AUDIT_PATH", "logs/kill-switch-audit.jsonl"),
   };
 }

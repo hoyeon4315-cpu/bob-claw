@@ -1,13 +1,21 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { fileExists } from "../policy/kill-switch.mjs";
+import {
+  appendKillSwitchAuditRecord,
+  buildKillSwitchAuditRecord,
+  fileExists,
+  resolveKillSwitchAuditPath,
+  resolveKillSwitchPath,
+} from "../policy/kill-switch.mjs";
 import { evaluateWatchdogHeartbeat, readHeartbeat } from "./heartbeat.mjs";
 
 export async function enforceWatchdog({
   heartbeatPath = "./state/executor-heartbeat.json",
-  killSwitchPath = process.env.KILL_SWITCH_PATH || null,
+  killSwitchPath = resolveKillSwitchPath(),
   ttlMs = 60_000,
   existsImpl = fileExists,
+  auditPath = resolveKillSwitchAuditPath(),
+  auditAppendImpl = appendKillSwitchAuditRecord,
   alertImpl = async () => {},
   now = new Date().toISOString(),
 } = {}) {
@@ -20,6 +28,24 @@ export async function enforceWatchdog({
     await mkdir(dirname(killSwitchPath), { recursive: true });
     await writeFile(killSwitchPath, `${now}\n`, "utf8");
     killSwitchWritten = true;
+    await auditAppendImpl(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "watchdog_heartbeat_stale",
+        actor: "executor:watchdog",
+        killSwitchPath,
+        previousState: "running",
+        now,
+        metadata: {
+          source: "watchdog",
+          heartbeatPath,
+          status: evaluation.status,
+          ageMs: evaluation.ageMs,
+          ttlMs: evaluation.ttlMs,
+        },
+      }),
+      { auditPath },
+    );
     await alertImpl({
       kind: "watchdog_halt",
       heartbeatPath,

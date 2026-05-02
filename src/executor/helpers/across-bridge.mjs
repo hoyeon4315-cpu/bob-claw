@@ -297,6 +297,7 @@ export async function buildAcrossBridgePlan({
         tx,
         strategyConfig: { intentTtlMs: strategyCaps.intentTtlMs },
         metadata: {
+          expectedTxTo: tx?.to || null,
           acrossInputToken: quote.inputToken,
           acrossOutputToken: quote.outputToken,
           acrossOutputAmount: quote.outputAmount,

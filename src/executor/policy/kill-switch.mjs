@@ -1,9 +1,11 @@
 import { access, appendFile, mkdir } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 export function resolveKillSwitchPath(env = process.env) {
-  return env.KILL_SWITCH_PATH || null;
+  const home = env.HOME || homedir();
+  return env.KILL_SWITCH_PATH || join(home, ".bob-claw", "KILL_SWITCH");
 }
 
 export function resolveKillSwitchAuditPath(env = process.env) {

@@ -14,6 +14,7 @@ import { createBtcLocalKeySigner } from "./btc-local-signer.mjs";
 import { createEvmLocalKeySigner } from "./evm-local-signer.mjs";
 import { normalizeExecutionIntent } from "./signer-interface.mjs";
 import { writeHeartbeat } from "../watchdog/heartbeat.mjs";
+import { checkKillSwitch, resolveKillSwitchPath } from "../policy/kill-switch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -29,7 +30,7 @@ function parseArgs(argv) {
     socketPath: options["socket-path"] || getEnv("EXECUTOR_SIGNER_SOCKET_PATH", "./state/executor-signer.sock"),
     heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
     heartbeatIntervalMs: getNumberEnv("EXECUTOR_HEARTBEAT_INTERVAL_MS", 15_000),
-    killSwitchPath: getEnv("KILL_SWITCH_PATH", null),
+    killSwitchPath: resolveKillSwitchPath(),
     activeBudgetUsd: getNumberEnv("BOB_CLAW_ACTIVE_BUDGET_USD", null),
     autoIngest: !flags.has("--no-auto-ingest") && getBooleanEnv("EXECUTOR_AUTO_INGEST", true),
   };
@@ -39,6 +40,15 @@ function selectSigner(signers, intent) {
   if (intent.family === "evm") return signers.evm;
   if (intent.family === "btc") return signers.btc;
   throw new Error(`Unsupported signer family: ${intent.family}`);
+}
+
+function redactSignedEnvelope(signed = {}) {
+  if (!signed || typeof signed !== "object") return null;
+  const { signedTx: _signedTx, ...redacted } = signed;
+  return {
+    ...redacted,
+    redacted: true,
+  };
 }
 
 function toStringOrNull(value) {
@@ -145,6 +155,31 @@ export async function handleIntentCommand({
     let transactionNotification = null;
 
     if (message.command === "sign_and_broadcast") {
+      const broadcastKillSwitch = await checkKillSwitch({
+        killSwitchPath: args.killSwitchPath ?? resolveKillSwitchPath(),
+      });
+      if (broadcastKillSwitch.decision !== "ALLOW") {
+        const rejected = buildSignerAuditRecord({
+          intent,
+          policyVerdict: "rejected",
+          lifecycle: {
+            stage: "rejected",
+            txHash: signed.txHash,
+            blockers: broadcastKillSwitch.blockers,
+            signedTxVoided: true,
+          },
+        });
+        await appendSignerAuditRecord(rejected, { rootDir: cwd });
+        const notification = await notifyPolicyRejection({ intent, policy: broadcastKillSwitch });
+        return {
+          status: "rejected",
+          policy: broadcastKillSwitch,
+          notification,
+          requiresUnwind: false,
+          emergencyUnwindPath: null,
+          signed: redactSignedEnvelope(signed),
+        };
+      }
       broadcast = await signer.broadcastSignedIntent(signed);
       await appendSignerAuditRecord(
         buildSignerAuditRecord({

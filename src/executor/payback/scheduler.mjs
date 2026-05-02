@@ -14,6 +14,7 @@ import {
   GATEWAY_BTC_OFFRAMP_STRATEGY_ID,
 } from "../helpers/gateway-btc-offramp.mjs";
 import snapshotPaybackAccumulator from "./accumulator.mjs";
+import { checkKillSwitch, resolveKillSwitchPath } from "../policy/kill-switch.mjs";
 import { readSignerHealth } from "../signer/client.mjs";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
@@ -1080,7 +1081,32 @@ export async function runPaybackSchedulerTick({
   consolidationExecutor = executeGatewayBtcConsolidationPlan,
   offrampExecutor = executeGatewayBtcOfframpPlan,
   executionOptions = {},
+  killSwitchPath = resolveKillSwitchPath(),
+  killSwitchChecker = checkKillSwitch,
 } = {}) {
+  const killSwitch = await killSwitchChecker({ killSwitchPath, now });
+  if (killSwitch.decision === "BLOCK") {
+    return {
+      schemaVersion: 1,
+      observedAt: now,
+      status: "halted",
+      reason: "kill_switch_present",
+      decision: {
+        schemaVersion: 1,
+        observedAt: now,
+        status: "halted",
+        reason: "kill_switch_present",
+        decisionLog: {
+          observedAt: now,
+          reason: "kill_switch_present",
+          killSwitch,
+        },
+      },
+      compositePlan: null,
+      execution: null,
+    };
+  }
+
   const decision = await buildPaybackDecision({
     auditLogLines,
     receiptStore,

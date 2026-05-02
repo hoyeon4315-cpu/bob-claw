@@ -2,6 +2,11 @@
 
 Date: 2026-04-15
 
+> Historical snapshot: this file predates the 2026-05-02 system map and
+> current operator overrides. Use `AGENTS.md` for operating law and
+> `docs/system-map.md` for the current engineering map. Do not treat this
+> document's live/blocker status as current policy.
+
 ## One-line conclusion
 
 BOB Claw is not yet a live trading bot. It is currently a `native BTC -> destination asset/chain/platform` strategy measurement and admission system, and the official state remains `liveTrading=BLOCKED` with the active canary held at `hold_dex_quote`.
