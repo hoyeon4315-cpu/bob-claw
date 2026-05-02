@@ -86,6 +86,7 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
     strategyConfig: { intentTtlMs: ttlMs },
     metadata: {
       skipAutoIngest: true,
+      expectedTxTo: tx?.to || null,
       ...metadata,
     },
   };

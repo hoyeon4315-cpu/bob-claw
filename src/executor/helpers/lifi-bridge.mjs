@@ -213,6 +213,7 @@ export async function buildLifiBridgePlan({
       strategyConfig: { intentTtlMs: strategyCaps.intentTtlMs },
       metadata: {
         skipAutoIngest: true,
+        expectedTxTo: intentTx?.to || null,
         provider: "lifi",
         lifiTool: quote.tool || null,
         lifiQuoteId: quote.id || null,

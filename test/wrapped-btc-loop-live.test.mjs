@@ -11,6 +11,7 @@ import {
   prepareLiveLoopIntent,
   resolveWrappedBtcLoopSignerClientTimeout,
 } from "../src/executor/strategies/wrapped-btc-loop-live.mjs";
+import { validateEvmTransactionSemantics } from "../src/executor/signer/evm-local-signer.mjs";
 import { WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE } from "../src/strategy/wrapped-btc-loop-live-proof.mjs";
 
 function bindingsFixture() {
@@ -206,6 +207,9 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
   assert.equal(initialMint.metadata.capCheckAmountUsd > 0, true);
   assert.equal(initialMint.metadata.capCheckAmountUsd <= 750, true);
   assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:borrow-usdc-1")).metadata.capCheckAmountUsd, 0);
+  for (const intent of [...plan.entryIntents, ...plan.unwindIntents]) {
+    assert.equal(validateEvmTransactionSemantics(intent), true, intent.intentId);
+  }
 });
 
 test("wrapped loop live plan supports tiny per-trade override with collateral-only unwind", async () => {

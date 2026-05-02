@@ -407,6 +407,7 @@ export async function buildTokenDexExperimentPlan({
       },
       metadata: {
         skipAutoIngest: true,
+        expectedTxTo: tx?.to || null,
         ...metadata,
       },
     });

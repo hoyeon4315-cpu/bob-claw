@@ -13,7 +13,7 @@ import {
 
 test("resolveKillSwitchPath reads env configuration", () => {
   assert.equal(resolveKillSwitchPath({ KILL_SWITCH_PATH: "/tmp/bob.kill" }), "/tmp/bob.kill");
-  assert.equal(resolveKillSwitchPath({}), null);
+  assert.equal(resolveKillSwitchPath({ HOME: "/tmp/bob-home" }), "/tmp/bob-home/.bob-claw/KILL_SWITCH");
 });
 
 test("checkKillSwitch blocks when kill switch file exists", async () => {

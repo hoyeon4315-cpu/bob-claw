@@ -5,12 +5,13 @@ import {
   buildKillSwitchAuditRecord,
   fileExists,
   resolveKillSwitchAuditPath,
+  resolveKillSwitchPath,
 } from "../policy/kill-switch.mjs";
 import { evaluateWatchdogHeartbeat, readHeartbeat } from "./heartbeat.mjs";
 
 export async function enforceWatchdog({
   heartbeatPath = "./state/executor-heartbeat.json",
-  killSwitchPath = process.env.KILL_SWITCH_PATH || null,
+  killSwitchPath = resolveKillSwitchPath(),
   ttlMs = 60_000,
   existsImpl = fileExists,
   auditPath = resolveKillSwitchAuditPath(),

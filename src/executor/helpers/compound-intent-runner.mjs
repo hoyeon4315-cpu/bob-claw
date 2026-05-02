@@ -14,10 +14,13 @@
 // 3. Auto-refreshes quotes if they expire during execution
 // 4. Returns full trace of what succeeded/failed
 
+import { Interface } from "ethers";
 import { sendSignerCommand, signerClientTimeoutMs, signerSocketPath } from "../signer/client.mjs";
 
 const DEFAULT_STEP_TIMEOUT_MS = 180_000;
 const QUOTE_MAX_AGE_MS = 30_000;
+const ERC20_INTERFACE = new Interface(["function approve(address,uint256)"]);
+const ERC4626_INTERFACE = new Interface(["function deposit(uint256,address)"]);
 
 export async function runCompoundIntent({
   steps = [],
@@ -152,9 +155,7 @@ export const COMPOUND_RECIPES = {
     const steps = [];
 
     // 1. Approve
-    const { ethers } = await import("ethers");
-    const approveData = new ethers.Interface(["function approve(address,uint256)"])
-      .encodeFunctionData("approve", [ODOS_ROUTER, String(amount)]);
+    const approveData = ERC20_INTERFACE.encodeFunctionData("approve", [ODOS_ROUTER, String(amount)]);
 
     steps.push({
       name: `approve_${fromToken.symbol}`,
@@ -166,6 +167,12 @@ export const COMPOUND_RECIPES = {
         amountUsd: 0,
         mode: "live",
         observedAt: new Date().toISOString(),
+        approval: {
+          token: fromToken.address,
+          spender: ODOS_ROUTER,
+          amount: String(amount),
+          mode: "per_tx",
+        },
         tx: {
           to: fromToken.address,
           data: approveData,
@@ -192,6 +199,7 @@ export const COMPOUND_RECIPES = {
           observedAt: new Date().toISOString(),
           pathId: quote.pathId,
           outputAmount: quote.outAmounts?.[0],
+          txTo: ODOS_ROUTER,
         },
         tx: {
           to: ODOS_ROUTER,
@@ -200,7 +208,7 @@ export const COMPOUND_RECIPES = {
           gasLimit: "400000",
           chainId,
         },
-        metadata: { provider: "odos", skipAutoIngest: true },
+        metadata: { provider: "odos", skipAutoIngest: true, expectedTxTo: ODOS_ROUTER },
       },
       refreshQuote: async (oldIntent) => {
         const freshQuoteR = await fetch(`${ODOS_API}/sor/quote/v3`, {
@@ -225,6 +233,7 @@ export const COMPOUND_RECIPES = {
             observedAt: new Date().toISOString(),
             pathId: freshQuote.pathId,
             outputAmount: freshQuote.outAmounts?.[0],
+            txTo: asm.transaction.to,
           },
           tx: {
             ...oldIntent.tx,
@@ -232,6 +241,10 @@ export const COMPOUND_RECIPES = {
             data: asm.transaction.data,
             value: asm.transaction.value || "0",
             gasLimit: String(Math.ceil(Number(asm.transaction.gas) * 1.2)),
+          },
+          metadata: {
+            ...(oldIntent.metadata || {}),
+            expectedTxTo: asm.transaction.to,
           },
         };
       },
@@ -250,11 +263,8 @@ export const COMPOUND_RECIPES = {
     strategyId = "token-dex-experiment",
     signerAddress,
   }) {
-    const { ethers } = require("ethers");
-    const approveData = new ethers.Interface(["function approve(address,uint256)"])
-      .encodeFunctionData("approve", [vaultAddress, String(amount)]);
-    const depositData = new ethers.Interface(["function deposit(uint256,address)"])
-      .encodeFunctionData("deposit", [String(amount), signerAddress]);
+    const approveData = ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, String(amount)]);
+    const depositData = ERC4626_INTERFACE.encodeFunctionData("deposit", [String(amount), signerAddress]);
 
     return {
       steps: [
@@ -268,6 +278,12 @@ export const COMPOUND_RECIPES = {
             amountUsd: 0,
             mode: "live",
             observedAt: new Date().toISOString(),
+            approval: {
+              token: assetAddress,
+              spender: vaultAddress,
+              amount: String(amount),
+              mode: "per_tx",
+            },
             tx: {
               to: assetAddress,
               data: approveData,
@@ -295,7 +311,7 @@ export const COMPOUND_RECIPES = {
               gasLimit: "200000",
               chainId,
             },
-            metadata: { skipAutoIngest: true },
+            metadata: { skipAutoIngest: true, expectedTxTo: vaultAddress },
           },
         },
       ],

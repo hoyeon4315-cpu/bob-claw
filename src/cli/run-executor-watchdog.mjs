@@ -3,6 +3,7 @@
 import process from "node:process";
 import { getNumberEnv, getEnv } from "../config/env.mjs";
 import { runWatchdogLoop } from "../executor/watchdog/runner.mjs";
+import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -18,7 +19,7 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     once: flags.has("--once"),
     heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
-    killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", null),
+    killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", resolveKillSwitchPath()),
     intervalMs: options["interval-ms"] ? Number(options["interval-ms"]) : getNumberEnv("EXECUTOR_WATCHDOG_INTERVAL_MS", 15_000),
     ttlMs: options["ttl-ms"] ? Number(options["ttl-ms"]) : getNumberEnv("EXECUTOR_WATCHDOG_TTL_MS", 60_000),
     startupGraceMs: options["startup-grace-ms"] ? Number(options["startup-grace-ms"]) : getNumberEnv("EXECUTOR_WATCHDOG_STARTUP_GRACE_MS", getNumberEnv("EXECUTOR_WATCHDOG_TTL_MS", 60_000)),

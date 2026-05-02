@@ -173,6 +173,7 @@ function normalizeLoopStep(step = {}, { phase, index, now, strategyId, defaultAm
     executionReason: step.executionReason || (phase === "unwind" ? "risk_unwind" : "strategy_execution"),
     metadata: {
       ...(step.metadata || {}),
+      expectedTxTo: step.metadata?.expectedTxTo || step.quote?.txTo || step.tx.to,
       scenarioId: step.scenarioId || null,
       phase,
       skipAutoIngest: true,

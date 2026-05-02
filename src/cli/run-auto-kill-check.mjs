@@ -8,6 +8,7 @@ import { getEnv } from "../config/env.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { runAutoKillCheck } from "../risk/auto-kill-events.mjs";
 import { buildAutoKillConfig } from "../config/auto-kill.mjs";
+import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -21,7 +22,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
-    killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", null),
+    killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", resolveKillSwitchPath()),
     heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", null),
     oraclesPath: options["oracles-path"] || null,
     operatingCapitalUsd: options["operating-capital-usd"]
