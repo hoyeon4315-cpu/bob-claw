@@ -1017,6 +1017,7 @@ export async function runAllChainAutopilot({
   canaryMaxBroadcastSteps = 4,
   canaryMaxRecentBroadcasts = 1,
   canaryRecentBroadcastWindowMs = 10 * 60_000,
+  enableDexProbeExecution = false,
   canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,
   runCommandImpl = defaultRunCommand,
@@ -1413,7 +1414,7 @@ export async function runAllChainAutopilot({
       now: observedAt,
     })
     : { allowed: false, blockers: [], runningTotalUsd: 0 };
-  const allowProbeExecution = allowLiveCapableExecution && canaryBudgetVerdict.allowed;
+  const allowProbeExecution = allowLiveCapableExecution && canaryBudgetVerdict.allowed && enableDexProbeExecution;
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
     args: appendFlag([

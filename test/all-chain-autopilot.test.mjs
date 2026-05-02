@@ -502,7 +502,7 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   });
   assert.equal(report.summary.capitalManager.capitalPlanDecision, "REFILL_REQUIRED");
   assert.equal(report.summary.capitalManager.refillJobCount, 1);
-  assert.equal(report.summary.canarySweep.executedCount, 1);
+  assert.equal(report.summary.canarySweep.executedCount, 0);
   assert.equal(report.summary.destinationPromotionGate.allocationReadyCount, 2);
   assert.deepEqual(report.summary.destinationAllocator.tier1ActiveReadyChains, ["base", "bsc"]);
   assert.deepEqual(report.summary.representativeExecutionCoverage.allocatorReadyButNotQueuedChains, ["bsc"]);
@@ -515,7 +515,7 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.equal(report.summary.executionGate.blockedReason, null);
 });
 
-test("all-chain autopilot passes conservative live canary execution budgets", async () => {
+test("all-chain autopilot keeps generic DEX canary sweep preview-only by default", async () => {
   const seen = [];
   const command = ({ args }) => {
     seen.push(args);
@@ -534,11 +534,30 @@ test("all-chain autopilot passes conservative live canary execution budgets", as
 
   const sweepArgs = seen.find((args) => args[0] === "src/cli/run-live-canary-sweep.mjs");
   assert.ok(sweepArgs);
-  assert.equal(sweepArgs.includes("--execute"), true);
+  assert.equal(sweepArgs.includes("--execute"), false);
   assert.equal(sweepArgs.includes("--max-executed-candidates=1"), true);
   assert.equal(sweepArgs.includes("--max-broadcast-steps=4"), true);
   assert.equal(sweepArgs.includes("--max-recent-broadcasts=1"), true);
   assert.equal(sweepArgs.includes("--recent-broadcast-window-ms=600000"), true);
+});
+
+test("all-chain autopilot can explicitly opt into generic DEX canary sweep execution", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    return fakeCommand({ args });
+  };
+
+  await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+    enableDexProbeExecution: true,
+  });
+
+  const sweepArgs = seen.find((args) => args[0] === "src/cli/run-live-canary-sweep.mjs");
+  assert.ok(sweepArgs);
+  assert.equal(sweepArgs.includes("--execute"), true);
 });
 
 test("all-chain autopilot refreshes market prices before auto-kill inputs", async () => {
@@ -999,7 +1018,7 @@ test("all-chain autopilot pauses exhausted discretionary refill categories witho
   );
   assert.equal(
     seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs" && args.includes("--execute")),
-    true,
+    false,
   );
   assert.equal(
     seen.some((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs" && args.includes("--execute")),

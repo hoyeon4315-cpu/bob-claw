@@ -23,6 +23,7 @@ function parseArgs(argv) {
   );
   return {
     execute: flags.has("--execute"),
+    enableDexProbeExecution: flags.has("--enable-dex-probe-execution"),
     json: flags.has("--json"),
     write: flags.has("--write"),
     loop: flags.has("--loop"),
