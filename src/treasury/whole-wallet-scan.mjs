@@ -13,6 +13,12 @@ import {
   tokenAsset,
   unitsToDecimal,
 } from "../assets/tokens.mjs";
+import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
+import { dispatchPosition } from "../protocol-readers/dispatch.mjs";
+
+// Side-effect: ensure protocol readers are registered before any inventory
+// scan runs. bootstrapReaders is idempotent (guarded by _bootstrapped).
+bootstrapReaders();
 
 function normalized(value) {
   return String(value || "").toLowerCase();
@@ -167,6 +173,166 @@ function dedupeTokenBalanceInputs(tokenBalances = []) {
   return [...keyed.values(), ...unkeyed];
 }
 
+function readerParamsFromLedgerPosition(position = {}) {
+  // The ledger's position_opened events carry per-protocol fields. Map them
+  // to the params shape expected by each reader. bindingKind is the routing
+  // key; readers ignore irrelevant fields.
+  const vaultLike = position.vaultAddress || position.shareTokenAddress || null;
+  return {
+    vaultAddress: vaultLike,
+    poolAddress: position.poolAddress || null,
+    aTokenAddress: position.shareTokenAddress || null,
+    underlyingTokenAddress: position.assetAddress || null,
+    variableDebtTokenAddress: position.variableDebtTokenAddress || null,
+    marketAddress: position.marketAddress || vaultLike,
+    marketLabel: position.marketName || vaultLike,
+    opportunityId: position.opportunityId || null,
+    strategyId: position.strategyId || null,
+    protocolId: position.protocolId || null,
+    bindingKind: position.bindingKind || null,
+  };
+}
+
+function priceForUnderlyingUsd(position, prices) {
+  if (!position?.assetAddress || !position?.chain) return null;
+  // Best-effort underlying-asset price via tokenAsset() lookup. Unknown tokens
+  // return null and the position USD is left null (not zero).
+  const asset = tokenAsset(position.chain, position.assetAddress);
+  const price = priceForAssetUsd(asset, prices);
+  return Number.isFinite(price) ? price : null;
+}
+
+function protocolPositionRecordFromReader({ position, ledgerEntry, prices }) {
+  const decimals = Number.isFinite(position.assetDecimals) ? position.assetDecimals : null;
+  let actualDecimal = null;
+  let usdValue = null;
+  try {
+    if (decimals !== null && position.assetBalance !== undefined && position.assetBalance !== null) {
+      actualDecimal = unitsToDecimal(BigInt(position.assetBalance), decimals);
+      const price = priceForUnderlyingUsd({ ...ledgerEntry, ...position }, prices);
+      if (Number.isFinite(actualDecimal) && Number.isFinite(price)) {
+        usdValue = actualDecimal * price;
+      }
+    }
+  } catch {
+    actualDecimal = null;
+    usdValue = null;
+  }
+  return {
+    family: "protocol",
+    positionId: position.positionId,
+    bindingKind: position.bindingKind,
+    protocolId: position.protocolId,
+    adapterId: position.adapterId,
+    chain: position.chain,
+    walletAddress: position.walletAddress,
+    positionFamily: position.family,
+    symbol: position.symbol || null,
+    shareTokenAddress: position.shareTokenAddress || null,
+    underlyingTokenAddress: position.underlyingTokenAddress || null,
+    assetDecimals: decimals,
+    shareBalance: position.shareBalance ?? null,
+    assetBalance: position.assetBalance ?? null,
+    actualDecimal,
+    estimatedUsd: Number.isFinite(usdValue) ? usdValue : null,
+    usdValue: Number.isFinite(usdValue) ? usdValue : null,
+    healthFactor: Number.isFinite(position.healthFactor) ? position.healthFactor : null,
+    fetchedAt: position.fetchedAt,
+    observedAt: position.observedAt,
+    freshness: position.freshness || "fresh",
+    confidence: position.confidence || "verified_current",
+    source: "protocol_reader",
+  };
+}
+
+export async function dispatchLedgerPositions({
+  positions = [],
+  walletAddress,
+  prices = null,
+  signer = null,
+  dispatchImpl = dispatchPosition,
+} = {}) {
+  const protocolPositions = [];
+  const readerErrors = [];
+  for (const ledgerEntry of positions) {
+    if (!ledgerEntry || !ledgerEntry.bindingKind || !ledgerEntry.chain) {
+      readerErrors.push({
+        positionId: ledgerEntry?.positionId || null,
+        bindingKind: ledgerEntry?.bindingKind || null,
+        code: "missing_routing_fields",
+        error: "ledger entry missing chain or bindingKind",
+      });
+      continue;
+    }
+    const readerInputPosition = {
+      ...ledgerEntry,
+      params: readerParamsFromLedgerPosition(ledgerEntry),
+    };
+    const dispatch = await dispatchImpl({
+      position: readerInputPosition,
+      chain: ledgerEntry.chain,
+      walletAddress: walletAddress || ledgerEntry.walletAddress || null,
+      signer,
+    });
+    if (dispatch.kind === "reader") {
+      const result = dispatch.result;
+      if (!result?.ok) {
+        readerErrors.push({
+          positionId: ledgerEntry.positionId || null,
+          bindingKind: ledgerEntry.bindingKind || null,
+          code: result?.code || "reader_failed",
+          error: result?.error || "reader returned error",
+          readerId: dispatch.id,
+        });
+        continue;
+      }
+      for (const observed of result.positions || []) {
+        protocolPositions.push(
+          protocolPositionRecordFromReader({ position: observed, ledgerEntry, prices }),
+        );
+      }
+    } else if (dispatch.kind === "legacy") {
+      // Legacy mark-based adapter exists but cannot supply a fresh
+      // NormalizedPosition without going through markActiveProtocolPositions.
+      // Emit an explicit row noting legacy coverage so the position is not
+      // silently dropped from the inventory snapshot.
+      protocolPositions.push({
+        family: "protocol",
+        positionId: ledgerEntry.positionId,
+        bindingKind: ledgerEntry.bindingKind,
+        protocolId: ledgerEntry.protocolId || null,
+        adapterId: dispatch.adapter?.id || null,
+        chain: ledgerEntry.chain,
+        walletAddress: walletAddress || ledgerEntry.walletAddress || null,
+        positionFamily: null,
+        symbol: null,
+        shareTokenAddress: ledgerEntry.shareTokenAddress || null,
+        underlyingTokenAddress: ledgerEntry.assetAddress || null,
+        assetDecimals: null,
+        shareBalance: null,
+        assetBalance: null,
+        actualDecimal: null,
+        estimatedUsd: Number.isFinite(ledgerEntry.amountUsd) ? Number(ledgerEntry.amountUsd) : null,
+        usdValue: Number.isFinite(ledgerEntry.amountUsd) ? Number(ledgerEntry.amountUsd) : null,
+        healthFactor: null,
+        fetchedAt: ledgerEntry.observedAt || null,
+        observedAt: ledgerEntry.observedAt || null,
+        freshness: "stale",
+        confidence: "adapter_missing",
+        source: "legacy_adapter_marker_required",
+      });
+    } else {
+      readerErrors.push({
+        positionId: ledgerEntry.positionId || null,
+        bindingKind: ledgerEntry.bindingKind || null,
+        code: dispatch.reason || "no_reader_no_adapter",
+        error: `no reader or legacy adapter for bindingKind ${ledgerEntry.bindingKind}`,
+      });
+    }
+  }
+  return { protocolPositions, readerErrors };
+}
+
 export function buildWholeWalletInventory({
   address,
   bitcoinAddress = null,
@@ -178,6 +344,8 @@ export function buildWholeWalletInventory({
   chains = Object.keys(EVM_CHAINS),
   externalPortfolio = null,
   observedAt,
+  protocolPositions = [],
+  readerErrors = [],
 } = {}) {
   const native = [];
   const tokenEntries = [];
@@ -222,23 +390,39 @@ export function buildWholeWalletInventory({
     externalUnclassifiedUsd = externalPortfolio.walletUsd - localTotalUsd;
   }
   const holdings = [...native, ...tokenEntries];
-  const totalUsd = holdings
+  const tokenUsd = holdings
     .map((item) => item.estimatedUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
+  const protocolUsd = (protocolPositions || [])
+    .map((item) => item.usdValue ?? item.estimatedUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  const totalUsd = tokenUsd + protocolUsd;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     observedAt: observedAt || new Date().toISOString(),
     address,
     totalUsd,
     native: native.sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1)),
     tokenBalances: tokenEntries.sort((left, right) => (right.estimatedUsd ?? -1) - (left.estimatedUsd ?? -1)),
+    protocolPositions: [...(protocolPositions || [])].sort(
+      (left, right) => (right.usdValue ?? right.estimatedUsd ?? -1) - (left.usdValue ?? left.estimatedUsd ?? -1),
+    ),
+    reader_errors: [...(readerErrors || [])],
     scanErrors,
+    totals: {
+      tokenUsd,
+      protocolUsd,
+      totalUsd,
+    },
     summary: {
       chainCount: new Set(holdings.map((item) => item.chain)).size,
       nativeCount: native.length,
       tokenCount: tokenEntries.length,
+      protocolPositionCount: (protocolPositions || []).length,
+      readerErrorCount: (readerErrors || []).length,
       scanErrorCount: scanErrors.length,
       itemizedWalletUsd: localTotalUsd,
       externalWalletUsd: externalPortfolio?.walletUsd ?? null,
@@ -259,6 +443,9 @@ export async function scanWholeWalletInventory({
   fetchImpl = fetch,
   bitcoinBalanceReader = readBitcoinAddressBalance,
   externalPortfolioReader = null,
+  ledgerPositions = [],
+  signer = null,
+  protocolPositionDispatcher = dispatchLedgerPositions,
 } = {}) {
   const scanErrors = [];
 
@@ -332,6 +519,28 @@ export async function scanWholeWalletInventory({
     }
   }
 
+  let protocolPositions = [];
+  let readerErrors = [];
+  if (Array.isArray(ledgerPositions) && ledgerPositions.length > 0) {
+    try {
+      const dispatched = await protocolPositionDispatcher({
+        positions: ledgerPositions,
+        walletAddress: address,
+        prices,
+        signer,
+      });
+      protocolPositions = dispatched.protocolPositions || [];
+      readerErrors = dispatched.readerErrors || [];
+    } catch (error) {
+      readerErrors.push({
+        positionId: null,
+        bindingKind: null,
+        code: "dispatch_threw",
+        error: error?.message || String(error),
+      });
+    }
+  }
+
   return buildWholeWalletInventory({
     address,
     bitcoinAddress,
@@ -342,6 +551,8 @@ export async function scanWholeWalletInventory({
     prices,
     chains,
     externalPortfolio,
+    protocolPositions,
+    readerErrors,
   });
 }
 

@@ -11,6 +11,11 @@ import {
   buildProtocolPositionMarkSummary,
   markActiveProtocolPositions,
 } from "../treasury/protocol-position-marker.mjs";
+import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
+import { dispatchPosition } from "../protocol-readers/dispatch.mjs";
+
+// Ensure new protocol-readers registry is bootstrapped before any dispatch.
+bootstrapReaders();
 
 const READ_ABI = [
   "function balanceOf(address) view returns (uint256)",
@@ -121,14 +126,90 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
     : await resolveOperatorWalletAddress();
   assertWritableWalletState({ args, positions, walletAddress: resolvedWalletAddress });
 
-  const events = await markActiveProtocolPositions({
-    positions,
-    walletAddress: resolvedWalletAddress,
-    contractReader,
-    priceReader,
-    btcPriceUsd,
-    observedAt,
-  });
+  // Route every position through dispatchPosition first. Reader hits become
+  // synthetic mark-success events; legacy hits fall back to the existing
+  // mark-based adapter pipeline so the marker keeps owning legacy mark math.
+  const readerEvents = [];
+  const legacyPositions = [];
+  for (const position of positions) {
+    const dispatch = await dispatchPosition({
+      position,
+      chain: position.chain,
+      walletAddress: resolvedWalletAddress,
+    });
+    if (dispatch.kind === "reader") {
+      const result = dispatch.result;
+      if (result?.ok) {
+        for (const observed of result.positions || []) {
+          readerEvents.push({
+            event: "position_marked",
+            status: position.status || "open",
+            observedAt,
+            positionId: observed.positionId || position.positionId,
+            opportunityId: position.opportunityId || null,
+            strategyId: position.strategyId || null,
+            chain: observed.chain,
+            protocolId: observed.protocolId,
+            bindingKind: observed.bindingKind,
+            adapterId: observed.adapterId,
+            valueUsd: null,
+            valueBtc: null,
+            shareBalance: observed.shareBalance,
+            assetBalance: observed.assetBalance,
+            assetDecimals: observed.assetDecimals,
+            healthFactor: Number.isFinite(observed.healthFactor) ? observed.healthFactor : null,
+            source: "protocol_reader",
+            freshness: observed.freshness || "fresh",
+            confidence: observed.confidence || "verified_current",
+            fetchedAt: observed.fetchedAt,
+          });
+        }
+      } else {
+        readerEvents.push({
+          event: "position_mark_failed",
+          status: position.status || "open",
+          observedAt,
+          positionId: position.positionId,
+          chain: position.chain,
+          protocolId: position.protocolId,
+          bindingKind: position.bindingKind,
+          adapterId: dispatch.id,
+          failureKind: result?.code || "reader_failed",
+          message: result?.error || "reader returned error",
+        });
+      }
+    } else if (dispatch.kind === "legacy") {
+      legacyPositions.push(position);
+    } else {
+      readerEvents.push({
+        event: "position_mark_failed",
+        status: position.status || "open",
+        observedAt,
+        positionId: position.positionId,
+        chain: position.chain,
+        protocolId: position.protocolId,
+        bindingKind: position.bindingKind,
+        adapterId: null,
+        failureKind: "no_reader_no_adapter",
+        message: `No reader or legacy adapter for bindingKind ${position.bindingKind || "unknown"}`,
+      });
+    }
+  }
+
+  const legacyEvents = legacyPositions.length > 0
+    ? await markActiveProtocolPositions({
+        positions: legacyPositions,
+        walletAddress: resolvedWalletAddress,
+        contractReader,
+        priceReader,
+        btcPriceUsd,
+        observedAt,
+      })
+    : [];
+
+  const events = [...readerEvents, ...legacyEvents].sort(
+    (left, right) => String(left.positionId || "").localeCompare(String(right.positionId || "")),
+  );
 
   const summary = buildProtocolPositionMarkSummary({ observedAt, events });
   if (args.write) {

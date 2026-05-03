@@ -3,12 +3,17 @@
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { scanWholeWalletInventory } from "../treasury/whole-wallet-scan.mjs";
+import { activeProtocolPositions } from "../treasury/protocol-position-ledger.mjs";
 import { resolveAddressScanPortfolioReader } from "../treasury/address-scan-api.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
+import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
+
+bootstrapReaders();
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -125,6 +130,8 @@ async function main() {
         tatumApiBase: config.tatumApiBase,
       })
     : null;
+  const ledgerEvents = await readJsonl(config.dataDir, "merkl-portfolio-positions").catch(() => []);
+  const ledgerPositions = activeProtocolPositions(ledgerEvents);
   const liveInventory = await scanWholeWalletInventory({
     address: resolved.address,
     bitcoinAddress,
@@ -132,6 +139,7 @@ async function main() {
     chains: policy.supportedChains,
     families: args.families,
     externalPortfolioReader,
+    ledgerPositions,
   });
   const inventory = materializeWholeWalletInventory(liveInventory, context.inventorySnapshot);
   const store = new JsonlStore(config.dataDir);

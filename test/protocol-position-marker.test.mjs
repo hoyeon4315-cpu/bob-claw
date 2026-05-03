@@ -232,6 +232,5 @@ test("runMarkProtocolPositionMarksCli preview allows missing walletAddress diagn
 
   assert.equal(summary.markedCount, 0);
   assert.equal(summary.failedCount, 1);
-  assert.equal(summary.events[0].failureKind, "adapter_error");
-  assert.equal(summary.events[0].message, "walletAddress is required");
+  assert.equal(summary.events[0].failureKind, "missing_params");
 });

@@ -11,19 +11,30 @@ function tmp() { return mkdtempSync(join(tmpdir(), "phase16p-")); }
 
 test("buildScorer flags llm_unavailable when all scaffold results are dryRun", async () => {
   const scorer = buildScorer({});
-  const r = await scorer({ scaffold: { results: [{ ok: false, reason: "llm_unavailable" }] } });
+  const r = await scorer({
+    triage: { items: [{ candidateId: "x" }] },
+    scaffold: { results: [{ ok: false, reason: "llm_unavailable" }] },
+  });
   assert.equal(r.passed, false);
   assert.ok(r.blockers.includes("llm_unavailable"));
 });
 
 test("buildScorer fails when no ok scaffold results", async () => {
   const scorer = buildScorer({});
-  const r = await scorer({ scaffold: { results: [] } });
+  const r = await scorer({ triage: { items: [{ candidateId: "x" }] }, scaffold: { results: [] } });
   assert.equal(r.passed, false);
   assert.ok(r.blockers.includes("scaffold_zero_ok"));
+  assert.ok(!r.blockers.includes("llm_unavailable"));
 });
 
-test("runAutoResearch in dryRun (no Codex key) aborts on same_failure_cap quickly", async () => {
+test("buildScorer passes no-op when triage has no candidates", async () => {
+  const scorer = buildScorer({});
+  const r = await scorer({ triage: { items: [] }, scaffold: { results: [] } });
+  assert.equal(r.passed, true);
+  assert.equal(r.reason, "no_candidates");
+});
+
+test("runAutoResearch with empty board exits no-op cleanly", async () => {
   const dir = tmp();
   try {
     const r = await runAutoResearch({
@@ -34,8 +45,8 @@ test("runAutoResearch in dryRun (no Codex key) aborts on same_failure_cap quickl
         scaffoldPaths: { queuePath: join(dir, "no-queue.json"), outDir: dir },
       },
     });
-    assert.equal(r.ok, false);
-    assert.ok(["same_failure_cap", "iteration_cap"].includes(r.reason));
+    assert.equal(r.ok, true);
+    assert.equal(r.score.reason, "no_candidates");
     assert.equal(r.cumulativeCostUsd, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

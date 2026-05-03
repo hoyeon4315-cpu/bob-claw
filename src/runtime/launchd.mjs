@@ -28,6 +28,16 @@ function researchLaunchdSafeEnvironment() {
     DEV_LOCK_PATH: getEnv("DEV_LOCK_PATH", null),
     RESEARCH_AGENT_CMD: getEnv("RESEARCH_AGENT_CMD", null),
     RESEARCH_AGENT_ARGS: getEnv("RESEARCH_AGENT_ARGS", null),
+    CODEX_AUTH_MODE: getEnv("CODEX_AUTH_MODE", null),
+    CODEX_CLI_PATH: getEnv("CODEX_CLI_PATH", null),
+    CODEX_CLI_TIMEOUT_MS: getEnv("CODEX_CLI_TIMEOUT_MS", null),
+    OPENAI_API_KEY_PATH: getEnv("OPENAI_API_KEY_PATH", null),
+    OPENAI_CODEX_MODEL_TRIAGE: getEnv("OPENAI_CODEX_MODEL_TRIAGE", null),
+    OPENAI_CODEX_MODEL_CODER: getEnv("OPENAI_CODEX_MODEL_CODER", null),
+    OPENAI_CODEX_MODEL_REPORT: getEnv("OPENAI_CODEX_MODEL_REPORT", null),
+    CODEX_AUDIT_LOG: getEnv("CODEX_AUDIT_LOG", null),
+    CODEX_BUDGET_LOCK_PATH: getEnv("CODEX_BUDGET_LOCK_PATH", null),
+    CODEX_BUDGET_LOCK_AUDIT: getEnv("CODEX_BUDGET_LOCK_AUDIT", null),
   };
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith("RESEARCH_ARCHIVE_RPC_")) continue;
@@ -60,6 +70,7 @@ export const DASHBOARD_LAUNCHD_LABELS = Object.freeze({
 
 export const RESEARCH_LAUNCHD_LABELS = Object.freeze({
   daily: "com.bobclaw.research-daily",
+  autoCoder: "com.bobclaw.research-autocoder",
 });
 
 export const STRATEGY_AUTOMATION_LAUNCHD_LABELS = Object.freeze({
@@ -289,6 +300,27 @@ export function buildResearchLaunchAgentSpecs({
         "--continue-on-failure",
         "--stale-hours=20",
         "--max-experiments=100",
+      ],
+      environmentVariables: sharedEnvironment,
+      runAtLoad: false,
+      keepAlive: false,
+      startInterval: 86_400,
+      throttleInterval: 10,
+      processType: "Background",
+    },
+    {
+      id: "auto-coder",
+      label: RESEARCH_LAUNCHD_LABELS.autoCoder,
+      description: "BOB Claw Codex auto-research scaffold sidecar",
+      scriptPath: resolve(resolvedRootDir, "src", "cli", "auto-research-pipeline.mjs"),
+      plistPath: join(resolvedLaunchAgentsDir, `${RESEARCH_LAUNCHD_LABELS.autoCoder}.plist`),
+      stdoutPath: join(resolvedLogDir, "research-autocoder.out.log"),
+      stderrPath: join(resolvedLogDir, "research-autocoder.err.log"),
+      workingDirectory: resolvedRootDir,
+      programArguments: [
+        resolvedNodePath,
+        resolve(resolvedRootDir, "src", "cli", "auto-research-pipeline.mjs"),
+        "--json",
       ],
       environmentVariables: sharedEnvironment,
       runAtLoad: false,

@@ -11,9 +11,12 @@
 //   - When key/model unset and dryRun !== false, returns a stub WITHOUT
 //     pretending success. The stub explicitly flags { dryRun: true, reason }.
 
-import { readFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { readFileSync, appendFileSync, mkdirSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { maskJson } from "./context-pack.mjs";
 
 const AUDIT_PATH = process.env.CODEX_AUDIT_LOG || "logs/codex-audit.jsonl";
 
@@ -42,6 +45,109 @@ function loadKey() {
   }
 }
 
+function authMode() {
+  return (process.env.CODEX_AUTH_MODE || "api_key").trim().toLowerCase();
+}
+
+function buildCliPrompt({ purpose, prompt, context }) {
+  const maskedContext = maskJson(context || null);
+  const payload = {
+    purpose,
+    instructions: prompt,
+    context: maskedContext,
+    outputContract: purpose === PURPOSE.CODER
+      ? "Return only JSON: {\"files\":[{\"path\":\"...\",\"content\":\"...\"}]}. Do not edit files."
+      : "Return concise plain text. Do not edit files.",
+  };
+  return { text: JSON.stringify(payload, null, 2), maskedContext };
+}
+
+function callCodexCli({ purpose, model, prompt, context, inputHash, ts }) {
+  const cli = process.env.CODEX_CLI_PATH || "codex";
+  let dir = null;
+  let outPath = null;
+  const started = Date.now();
+  let raw = "";
+  let result = null;
+  let maskedContext = null;
+  try {
+    dir = mkdtempSync(join(tmpdir(), "bob-claw-codex-cli-"));
+    outPath = join(dir, "last-message.txt");
+    const args = [
+      "exec",
+      "--ephemeral",
+      "-s",
+      "read-only",
+      "-C",
+      process.cwd(),
+      "-o",
+      outPath,
+    ];
+    if (model) args.push("-m", model);
+    args.push("-");
+    const cliPrompt = buildCliPrompt({ purpose, prompt, context });
+    maskedContext = cliPrompt.maskedContext;
+    result = spawnSync(cli, args, {
+      input: cliPrompt.text,
+      encoding: "utf8",
+      timeout: Number(process.env.CODEX_CLI_TIMEOUT_MS || 300_000),
+      maxBuffer: 1024 * 1024,
+    });
+    if (existsSync(outPath)) raw = readFileSync(outPath, "utf8").trim();
+  } catch (err) {
+    const rec = {
+      ts,
+      purpose,
+      model: model || "codex-cli-default",
+      result: "error",
+      authMode: "cli",
+      inputHash,
+      context: maskedContext,
+      outputHash: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      costUsd: 0,
+      durationMs: Date.now() - started,
+      error: err.message,
+    };
+    appendAudit(rec);
+    return { ok: false, dryRun: false, error: rec.error, audit: rec };
+  } finally {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+  const durationMs = Date.now() - started;
+  const ok = result.status === 0 && raw.length > 0;
+  let output = raw;
+  let files = null;
+  if (purpose === PURPOSE.CODER && raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.files)) files = parsed.files;
+      output = parsed;
+    } catch {
+      // Leave raw output for audit hash and caller diagnostics.
+    }
+  }
+  const rec = {
+    ts,
+    purpose,
+    model: model || "codex-cli-default",
+    result: ok ? "ok" : "error",
+    authMode: "cli",
+    inputHash,
+    context: maskedContext,
+    outputHash: raw ? hashContent(raw) : null,
+    tokensIn: 0,
+    tokensOut: 0,
+    costUsd: 0,
+    durationMs,
+    error: ok ? null : (result.error?.message || result.stderr?.trim().split("\n").slice(-1)[0] || `exit_${result.status}`),
+  };
+  appendAudit(rec);
+  if (!ok) return { ok: false, dryRun: false, error: rec.error, audit: rec };
+  return { ok: true, dryRun: false, output, files: files || undefined, audit: rec };
+}
+
 export function hashContent(content) {
   const text = typeof content === "string" ? content : JSON.stringify(content);
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
@@ -63,6 +169,7 @@ export async function callCodex({
   purpose,
   model,
   prompt,
+  context,
   inputForHash,
   schema, // optional zod schema for output
   budgetGate,
@@ -85,6 +192,10 @@ export async function callCodex({
   }
 
   const resolvedModel = pickModel(purpose, model);
+  if (authMode() === "cli") {
+    return callCodexCli({ purpose, model: resolvedModel, prompt, context, inputHash, ts });
+  }
+
   const { key, reason: keyReason } = loadKey();
 
   const isDry = dryRun === true || (dryRun !== false && (!key || !resolvedModel));

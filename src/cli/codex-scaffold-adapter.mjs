@@ -39,7 +39,13 @@ export async function scaffoldOne({
 
   const llm = await callLlm({
     purpose: PURPOSE.CODER,
-    prompt: `Scaffold a ${family} adapter for ${queueItem.candidateId}. Required exports: ${tmpl.requiredExports.join(", ")}. Stay inside whitelist paths only.`,
+    prompt: [
+      `Scaffold a ${family} adapter for ${queueItem.candidateId}.`,
+      `Required exports: ${tmpl.requiredExports.join(", ")}.`,
+      "Stay inside whitelist paths only.",
+      "Return only JSON shaped as {\"files\":[{\"path\":\"src/treasury/adapters/<name>.mjs\",\"content\":\"...\"}]} with no markdown.",
+      "Do not edit files directly.",
+    ].join(" "),
     context: ctx,
   });
 
