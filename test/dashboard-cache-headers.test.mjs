@@ -11,6 +11,9 @@ test("dashboard disables browser cache for compiled javascript assets", () => {
 });
 
 test("dashboard script urls use the live refresh cache-buster", () => {
-  assert.match(INDEX_HTML, /data\.js\?v=20260501-live-refresh-v2/);
-  assert.match(INDEX_HTML, /app\.js\?v=20260501-live-refresh-v2/);
+  // Cache-buster v-string is rotated on every dashboard refresh, so we
+  // assert presence + non-empty value rather than a fixed literal (which
+  // grows stale within hours of every public/index.html update).
+  assert.match(INDEX_HTML, /data\.js\?v=[^"]+/);
+  assert.match(INDEX_HTML, /app\.js\?v=[^"]+/);
 });
