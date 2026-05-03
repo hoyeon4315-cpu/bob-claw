@@ -266,6 +266,43 @@ test("token dex experiment plan supports native output unwrap", async () => {
   assert.equal(plan.steps[2].id, "unwrap_wrapped_native");
 });
 
+test("token dex experiment applies approval gas floor after low successful estimate", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    strategyId: "native-gas-refill",
+    client: odosClientFixture(),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 43_000,
+      gasUnitsHex: "0xa7f8",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "10000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "cbbtc",
+    outputToken: "native",
+    now: "2026-04-16T06:00:00.000Z",
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.equal(plan.steps[0].id, "approve_input_token");
+  assert.equal(plan.steps[0].intent.metadata.capCheckAmountUsd, 0);
+  assert.equal(plan.steps[0].intent.tx.gasLimit, "120000");
+});
+
 test("token dex experiment plan directly unwraps wrapped-native input to native output", async () => {
   let quoteCalled = false;
   let estimateCalls = 0;
@@ -414,6 +451,73 @@ test("token dex experiment execution waits for output token delivery proof", asy
   assert.equal(execution.sourceBalanceBefore.balance.toString(), "10000");
   assert.equal(execution.sourceBalanceAfter.balance.toString(), "0");
   assert.equal(execution.destinationBalanceAfter.balance.toString(), "9900");
+});
+
+test("token dex experiment native output proof subtracts same-wallet gas fees", async () => {
+  const plan = await buildTokenDexExperimentPlan({
+    providers: [{
+      name: "should_not_quote",
+      quote: async () => {
+        throw new Error("quote should not be requested for direct unwrap");
+      },
+    }],
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 12,
+      gasUnits: 45_000,
+      gasUnitsHex: "0xafc8",
+      rpcFallbacksTried: 0,
+    }),
+    gasSnapshotImpl: async () => ({
+      observedAt: "2026-04-16T06:00:02.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 9,
+      blockNumber: 1,
+      gasPriceWei: "100",
+      baseFeeWei: "80",
+      priorityFeeWei: "20",
+    }),
+    chain: "base",
+    amount: "5000000000000000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    inputToken: "wrapped_native",
+    outputToken: "native",
+  });
+
+  let nativeReads = 0;
+  const execution = await executeTokenDexExperimentPlan({
+    plan,
+    receiptIngest: async () => ({ appended: false, reason: "test_stub" }),
+    destinationSettlementTimeoutMs: 1,
+    destinationPollIntervalMs: 0,
+    readErc20BalanceImpl: async () => ({
+      rpcUrl: "https://base-rpc.example",
+      balance: 5_000_000_000_000_000n,
+    }),
+    readNativeBalanceImpl: async () => {
+      nativeReads += 1;
+      return {
+        rpcUrl: "https://base-rpc.example",
+        balanceWei: nativeReads > 1 ? 5_000_000_000_999_900n : 1_000_000n,
+      };
+    },
+    sendCommand: async () => ({
+      status: "ok",
+      broadcast: { txHash: "0xunwrap" },
+      receipt: {
+        hash: "0xunwrap",
+        status: 1,
+        fee: "100",
+      },
+    }),
+  });
+
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.destinationProof.requiredDelta, "4999999999999900");
+  assert.equal(execution.destinationProof.observedDelta, "4999999999999900");
 });
 
 test("token dex experiment blocks before signing when source token balance is too low", async () => {

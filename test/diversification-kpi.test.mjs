@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDiversificationKpiSlice } from "../src/executor/payback/diversification-kpi.mjs";
+import { DIVERSIFICATION_POLICY } from "../src/config/diversification.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  evidencePrimaryChainShareOverrides,
+} from "../src/config/small-capital-campaign-mode.mjs";
+
+function withOptimismPrimary() {
+  return {
+    ...SMALL_CAPITAL_CAMPAIGN_MODE,
+    chainSelection: {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+      chainProfiles: {
+        base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+        optimism: {
+          role: "primary",
+          maxSharePct: 0.70,
+          evidenceStatus: "live_evidence_primary",
+          evidenceSource: "test committed evidence",
+          reviewBy: "2026-05-16",
+        },
+      },
+    },
+  };
+}
 
 test("empty allocations => status healthy, hhi=0, activeN=0", () => {
   const slice = buildDiversificationKpiSlice({ allocations: {}, observedAt: "2026-04-21T00:00:00Z" });
@@ -67,5 +91,22 @@ test("Gateway official chains exposed", () => {
 test("policy thresholds embedded for dashboard legend", () => {
   const slice = buildDiversificationKpiSlice({ allocations: {} });
   assert.equal(slice.policy.perStrategyMaxShare, 0.25);
+  assert.equal(slice.policy.perChainMaxShare, 0.35);
+  assert.equal(slice.policy.chainSelectionMode, "evidence_led_primary_chains");
+  assert.equal(slice.policy.perChainMaxShareByChain.base, 0.70);
+  assert.deepEqual(slice.policy.evidencePrimaryChains, ["base"]);
   assert.equal(slice.policy.hhiMax, 0.30);
+});
+
+test("dashboard legend follows committed alternate evidence-primary chain profiles", () => {
+  const slice = buildDiversificationKpiSlice({
+    allocations: {},
+    policy: {
+      ...DIVERSIFICATION_POLICY,
+      perChainMaxShareByChain: evidencePrimaryChainShareOverrides(withOptimismPrimary()),
+    },
+  });
+  assert.deepEqual(slice.policy.evidencePrimaryChains, ["optimism"]);
+  assert.equal(slice.policy.perChainMaxShareByChain.optimism, 0.70);
+  assert.equal(slice.policy.perChainMaxShareByChain.base, undefined);
 });

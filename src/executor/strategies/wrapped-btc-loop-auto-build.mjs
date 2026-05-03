@@ -17,6 +17,12 @@ import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gatew
 
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const MIN_MATERIAL_CURRENT_POSITION_USD = 0.01;
+const BPS_DENOMINATOR = 10_000n;
+const ODOS_SWAP_SLIPPAGE_BPS = 50n;
+const ODOS_SWAP_SLIPPAGE_LIMIT_PERCENT = Number(ODOS_SWAP_SLIPPAGE_BPS) / 100;
+const REPAY_FUNDING_REQUOTE_BUFFER_BPS = ODOS_SWAP_SLIPPAGE_BPS;
+const REPAY_FUNDING_MAX_REQUOTE_EXTRA_BPS = 100n;
+const REPAY_FUNDING_MAX_REQUOTES = 2;
 
 const ERC20_INTERFACE = new Interface([
   "function approve(address spender,uint256 amount)",
@@ -89,6 +95,15 @@ function ceilDiv(numerator, denominator) {
   const n = BigInt(numerator || 0n);
   const d = BigInt(denominator || 1n);
   return n <= 0n ? 0n : ((n - 1n) / d) + 1n;
+}
+
+function slippageSafeOutputUnits(outputAmount, slippageBps = ODOS_SWAP_SLIPPAGE_BPS) {
+  const output = BigInt(outputAmount || 0n);
+  const bps = BigInt(slippageBps || 0n);
+  if (output <= 0n) return 0n;
+  if (bps <= 0n) return output;
+  if (bps >= BPS_DENOMINATOR) return 0n;
+  return (output * (BPS_DENOMINATOR - bps)) / BPS_DENOMINATOR;
 }
 
 function marketStateFromReturnData(returnData = "0x") {
@@ -197,7 +212,7 @@ async function buildOdosSwapStep({
     outputToken,
     amount,
     userAddr: signerAddress,
-    slippageLimitPercent: 0.5,
+    slippageLimitPercent: ODOS_SWAP_SLIPPAGE_LIMIT_PERCENT,
     sourceWhitelist: routing.sourceWhitelist,
     sourceBlacklist: routing.sourceBlacklist,
   });
@@ -250,6 +265,8 @@ async function buildOdosSwapStep({
         quoteType: executableQuote.quoteType,
         inputAmount: executableQuote.inputAmount,
         outputAmount: executableQuote.outputAmount,
+        minimumOutputAmount: slippageSafeOutputUnits(executableQuote.outputAmount).toString(),
+        slippageLimitBps: Number(ODOS_SWAP_SLIPPAGE_BPS),
         inputValueUsd: executableQuote.inputValueUsd,
         outputValueUsd: executableQuote.outputValueUsd,
         executionTrust: executableQuote.executionTrust,
@@ -442,6 +459,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       gasLimit: mintInitialGasLimit,
     }),
   ];
+  const recycledCollateralUnitsByIteration = new Map();
 
   for (const iteration of scaffold.entryPlan?.iterations || []) {
     const borrowUnits = decimalToUnits(iteration.borrowUsd, borrowAsset.decimals);
@@ -484,6 +502,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
     );
     const recycledCollateralDownsized =
       appliedRecycledCollateralUnits < BigInt(plannedRecycledCollateralUnits);
+    recycledCollateralUnitsByIteration.set(iteration.iteration, appliedRecycledCollateralUnits);
     const borrowGasLimit = await estimateBufferedGasLimit({
       chain: "base",
       from: signerAddress,
@@ -570,7 +589,7 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
   }
 
   const unwind = [];
-  const finalCollateralRedeemUnits = initialCollateralUnits;
+  let finalCollateralRedeemUnits = BigInt(initialCollateralUnits);
   const iterations = [...(scaffold.entryPlan?.iterations || [])];
   if (iterations.length === 0) {
     const redeemInitialGasLimit = await estimateBufferedGasLimit({
@@ -609,6 +628,9 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       throw new Error(`Failed to derive unwind units for iteration ${iteration.iteration}`);
     }
     const repayUnitsBigInt = BigInt(repayUnits);
+    const plannedRedeemUnits = BigInt(redeemUnits);
+    const baseRedeemUnits = recycledCollateralUnitsByIteration.get(iteration.iteration) || plannedRedeemUnits;
+    const baseRedeemAmountUsd = unitsToUsd(baseRedeemUnits, collateralPriceUsd, collateralAsset.decimals);
     let collateralConsumedForRepay = false;
     const repayApprovalGasLimit = await estimateBufferedGasLimit({
       chain: "base",
@@ -632,47 +654,98 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
       chain: "base",
       from: signerAddress,
       to: collateralMarketAddress,
-      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [baseRedeemUnits.toString()]),
       estimateGasImpl,
       gasBufferBps,
       allowFailure: true,
     });
 
     if (availableBorrowInventoryUnits < repayUnitsBigInt) {
+      const requiredBorrowTopUpUnits = repayUnitsBigInt - availableBorrowInventoryUnits;
+      const buildRepayFundingSwap = async (fundingRedeemUnits) =>
+        buildOdosSwapStep({
+          id: `swap-collateral-to-repay-${iteration.iteration}`,
+          chain: "base",
+          inputToken: collateralToken,
+          outputToken: borrowToken,
+          amount: fundingRedeemUnits.toString(),
+          amountUsd: unitsToUsd(fundingRedeemUnits, collateralPriceUsd, collateralAsset.decimals),
+          signerAddress,
+          now,
+          client,
+          quoteType: "token_to_stable",
+          gasBufferBps,
+        });
+      let fundingRedeemUnits = baseRedeemUnits;
+      let fundingSwap = await buildRepayFundingSwap(fundingRedeemUnits);
+      let plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
+      let slippageSafeBorrowTopUpUnits = slippageSafeOutputUnits(plannedBorrowTopUpUnits);
+      let repayFundingRoundedUp = false;
+      let repayFundingRequoteCount = 0;
+      const maxFundingRedeemUnits = minBigInt(
+        baseRedeemUnits + finalCollateralRedeemUnits,
+        ceilDiv(baseRedeemUnits * (BPS_DENOMINATOR + REPAY_FUNDING_MAX_REQUOTE_EXTRA_BPS), BPS_DENOMINATOR),
+      );
+      while (
+        slippageSafeBorrowTopUpUnits < requiredBorrowTopUpUnits &&
+        plannedBorrowTopUpUnits > 0n &&
+        maxFundingRedeemUnits > fundingRedeemUnits &&
+        repayFundingRequoteCount < REPAY_FUNDING_MAX_REQUOTES
+      ) {
+        const bufferedRequiredTopUpUnits = ceilDiv(
+          requiredBorrowTopUpUnits * (BPS_DENOMINATOR + REPAY_FUNDING_REQUOTE_BUFFER_BPS),
+          BPS_DENOMINATOR,
+        );
+        const roundedFundingRedeemUnits = minBigInt(
+          maxFundingRedeemUnits,
+          ceilDiv(fundingRedeemUnits * bufferedRequiredTopUpUnits, plannedBorrowTopUpUnits),
+        );
+        if (roundedFundingRedeemUnits <= fundingRedeemUnits) {
+          break;
+        }
+        fundingRedeemUnits = roundedFundingRedeemUnits;
+        fundingSwap = await buildRepayFundingSwap(fundingRedeemUnits);
+        plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
+        slippageSafeBorrowTopUpUnits = slippageSafeOutputUnits(plannedBorrowTopUpUnits);
+        repayFundingRoundedUp = true;
+        repayFundingRequoteCount += 1;
+      }
+      if (slippageSafeBorrowTopUpUnits < requiredBorrowTopUpUnits) {
+        throw new Error(
+          `Iteration ${iteration.iteration} still lacks slippage-safe repay inventory after collateral swap: need ${repayUnits}, safe ${slippageSafeBorrowTopUpUnits.toString()}, quoted ${plannedBorrowTopUpUnits.toString()}`,
+        );
+      }
+      const extraInitialCollateralForRepayUnits =
+        fundingRedeemUnits > baseRedeemUnits ? fundingRedeemUnits - baseRedeemUnits : 0n;
       const fundingRedeemGasLimit = await estimateBufferedGasLimit({
         chain: "base",
         from: signerAddress,
         to: collateralMarketAddress,
-        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [fundingRedeemUnits.toString()]),
         estimateGasImpl,
         gasBufferBps,
         allowFailure: true,
       });
-      const fundingSwap = await buildOdosSwapStep({
-        id: `swap-collateral-to-repay-${iteration.iteration}`,
-        chain: "base",
-        inputToken: collateralToken,
-        outputToken: borrowToken,
-        amount: redeemUnits,
-        amountUsd: iteration.recycledCollateralUsd,
-        signerAddress,
-        now,
-        client,
-        quoteType: "token_to_stable",
-      });
-      const plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
       unwind.push(
         contractCallStep({
           id: `redeem-collateral-for-repay-${iteration.iteration}`,
           chain: "base",
           to: collateralMarketAddress,
-          data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
-          amountUsd: iteration.recycledCollateralUsd,
+          data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [fundingRedeemUnits.toString()]),
+          amountUsd: unitsToUsd(fundingRedeemUnits, collateralPriceUsd, collateralAsset.decimals),
           now,
           metadata: {
             kind: "withdraw_collateral_for_repay",
             iteration: iteration.iteration,
             fundsBorrowRepay: true,
+            repayFundingRequestedUnits: requiredBorrowTopUpUnits.toString(),
+            baseRedeemUnits: baseRedeemUnits.toString(),
+            repayFundingRedeemUnits: fundingRedeemUnits.toString(),
+            extraInitialCollateralForRepayUnits: extraInitialCollateralForRepayUnits.toString(),
+            repayFundingRoundedUp,
+            repayFundingRequoteCount,
+            slippageSafeBorrowTopUpUnits: slippageSafeBorrowTopUpUnits.toString(),
+            repayFundingSlippageBps: Number(ODOS_SWAP_SLIPPAGE_BPS),
           },
           gasLimit: fundingRedeemGasLimit,
         }),
@@ -683,6 +756,14 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
             kind: "approve_collateral_for_repay_swap",
             iteration: iteration.iteration,
             fundsBorrowRepay: true,
+            repayFundingRequestedUnits: requiredBorrowTopUpUnits.toString(),
+            baseRedeemUnits: baseRedeemUnits.toString(),
+            repayFundingRedeemUnits: fundingRedeemUnits.toString(),
+            extraInitialCollateralForRepayUnits: extraInitialCollateralForRepayUnits.toString(),
+            repayFundingRoundedUp,
+            repayFundingRequoteCount,
+            slippageSafeBorrowTopUpUnits: slippageSafeBorrowTopUpUnits.toString(),
+            repayFundingSlippageBps: Number(ODOS_SWAP_SLIPPAGE_BPS),
           },
         },
         {
@@ -693,16 +774,25 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
             iteration: iteration.iteration,
             fundsBorrowRepay: true,
             plannedBorrowTopUpUnits: plannedBorrowTopUpUnits.toString(),
+            slippageSafeBorrowTopUpUnits: slippageSafeBorrowTopUpUnits.toString(),
+            repayFundingSlippageBps: Number(ODOS_SWAP_SLIPPAGE_BPS),
+            repayFundingRequestedUnits: requiredBorrowTopUpUnits.toString(),
+            baseRedeemUnits: baseRedeemUnits.toString(),
+            repayFundingRedeemUnits: fundingRedeemUnits.toString(),
+            extraInitialCollateralForRepayUnits: extraInitialCollateralForRepayUnits.toString(),
+            repayFundingRoundedUp,
+            repayFundingRequoteCount,
           },
         },
       );
-      availableBorrowInventoryUnits += plannedBorrowTopUpUnits;
+      availableBorrowInventoryUnits += slippageSafeBorrowTopUpUnits;
       collateralConsumedForRepay = true;
       if (availableBorrowInventoryUnits < repayUnitsBigInt) {
         throw new Error(
           `Iteration ${iteration.iteration} still lacks repay inventory after collateral swap: need ${repayUnits}, planned ${availableBorrowInventoryUnits.toString()}`,
         );
       }
+      finalCollateralRedeemUnits -= extraInitialCollateralForRepayUnits;
     }
 
     unwind.push(
@@ -748,24 +838,25 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
           id: `redeem-collateral-${iteration.iteration}`,
           chain: "base",
           to: collateralMarketAddress,
-          data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [redeemUnits]),
-          amountUsd: iteration.recycledCollateralUsd,
+          data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [baseRedeemUnits.toString()]),
+          amountUsd: baseRedeemAmountUsd,
           now,
           metadata: {
             kind: "withdraw_recycled_collateral",
             iteration: iteration.iteration,
+            baseRedeemUnits: baseRedeemUnits.toString(),
           },
           gasLimit: redeemGasLimit,
         }),
       );
     }
   }
-  if (iterations.length > 0) {
+  if (iterations.length > 0 && finalCollateralRedeemUnits > 0n) {
     const redeemInitialGasLimit = await estimateBufferedGasLimit({
       chain: "base",
       from: signerAddress,
       to: collateralMarketAddress,
-      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [finalCollateralRedeemUnits]),
+      data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [finalCollateralRedeemUnits.toString()]),
       estimateGasImpl,
       gasBufferBps,
       allowFailure: true,
@@ -775,11 +866,12 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
         id: "redeem-initial-collateral",
         chain: "base",
         to: collateralMarketAddress,
-        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [finalCollateralRedeemUnits]),
-        amountUsd: strategyConfig.perTradeCapUsd,
+        data: MTOKEN_INTERFACE.encodeFunctionData("redeemUnderlying", [finalCollateralRedeemUnits.toString()]),
+        amountUsd: unitsToUsd(finalCollateralRedeemUnits, collateralPriceUsd, collateralAsset.decimals),
         now,
         metadata: {
           kind: "withdraw_initial_collateral",
+          appliedCollateralUnits: finalCollateralRedeemUnits.toString(),
         },
         gasLimit: redeemInitialGasLimit,
       }),
@@ -1037,7 +1129,9 @@ export async function buildCurrentWrappedBtcLoopUnwindBinding({
       quoteType: "token_to_stable",
       gasBufferBps,
     });
-    if (BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n) < remainingBorrowUnits && maxSafeRedeemUnits > redeemForRepayUnits) {
+    let plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
+    let slippageSafeBorrowTopUpUnits = slippageSafeOutputUnits(plannedBorrowTopUpUnits);
+    if (slippageSafeBorrowTopUpUnits < remainingBorrowUnits && maxSafeRedeemUnits > redeemForRepayUnits) {
       redeemForRepayUnits = maxSafeRedeemUnits;
       fundingSwap = await buildOdosSwapStep({
         id: "swap-collateral-to-repay-current",
@@ -1048,15 +1142,16 @@ export async function buildCurrentWrappedBtcLoopUnwindBinding({
         amountUsd: usd36ToNumber(redeemForRepayUnits * position.collateralPriceMantissa),
         signerAddress,
         now,
-      client,
-      quoteType: "token_to_stable",
-      gasBufferBps,
-    });
+        client,
+        quoteType: "token_to_stable",
+        gasBufferBps,
+      });
+      plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
+      slippageSafeBorrowTopUpUnits = slippageSafeOutputUnits(plannedBorrowTopUpUnits);
     }
-    const plannedBorrowTopUpUnits = BigInt(fundingSwap.swapStep.quote?.outputAmount || 0n);
-    if (plannedBorrowTopUpUnits < remainingBorrowUnits) {
+    if (slippageSafeBorrowTopUpUnits < remainingBorrowUnits) {
       throw new Error(
-        `Current Moonwell position still lacks repay inventory after collateral swap plan: need ${remainingBorrowUnits.toString()}, planned ${plannedBorrowTopUpUnits.toString()}`,
+        `Current Moonwell position still lacks slippage-safe repay inventory after collateral swap plan: need ${remainingBorrowUnits.toString()}, safe ${slippageSafeBorrowTopUpUnits.toString()}, quoted ${plannedBorrowTopUpUnits.toString()}`,
       );
     }
 
@@ -1117,6 +1212,8 @@ export async function buildCurrentWrappedBtcLoopUnwindBinding({
           kind: "swap_collateral_to_repay_asset",
           fundsBorrowRepay: true,
           plannedBorrowTopUpUnits: plannedBorrowTopUpUnits.toString(),
+          slippageSafeBorrowTopUpUnits: slippageSafeBorrowTopUpUnits.toString(),
+          repayFundingSlippageBps: Number(ODOS_SWAP_SLIPPAGE_BPS),
         },
       },
       exactApprovalStep({

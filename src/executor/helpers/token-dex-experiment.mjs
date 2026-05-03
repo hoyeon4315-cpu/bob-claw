@@ -108,6 +108,26 @@ function minimumOutputAmount(outputAmount, slippageBps) {
   return (quoted * (10_000n - bps)) / 10_000n;
 }
 
+function receiptFeeWei(receipt = null) {
+  if (!receipt?.fee) return 0n;
+  try {
+    const parsed = BigInt(receipt.fee);
+    return parsed > 0n ? parsed : 0n;
+  } catch {
+    return 0n;
+  }
+}
+
+function destinationRequiredDelta(plan, stepResults = []) {
+  const minimum = BigInt(plan.minimumOutputAmount || 0);
+  if (plan.outputToken !== ZERO_TOKEN) return minimum.toString();
+  const sameWalletGasFee = stepResults
+    .map((step) => receiptFeeWei(step.signerResult?.receipt))
+    .reduce((sum, value) => sum + value, 0n);
+  const netMinimum = minimum > sameWalletGasFee ? minimum - sameWalletGasFee : 0n;
+  return netMinimum.toString();
+}
+
 function resolveQuotedGasLimit(quote, gasBufferBps) {
   const quotedGasLimit = Number(quote?.txGasLimit);
   if (!Number.isFinite(quotedGasLimit) || quotedGasLimit <= 0) {
@@ -120,6 +140,13 @@ function canUseDirectSwapGasFallback({ error, providerName, executableQuote } = 
   return providerName === "pancake_swap"
     && executableQuote?.executionTrust === "on_chain_verified"
     && classifyGasEstimateError(error) === "execution_reverted";
+}
+
+function approveGasLimitWithFloor(gasUnits, gasBufferBps) {
+  return String(Math.max(
+    applyGasBuffer(gasUnits, gasBufferBps),
+    applyGasBuffer(DEFAULT_APPROVE_GAS_UNITS, gasBufferBps),
+  ));
 }
 
 function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
@@ -337,7 +364,7 @@ export async function buildTokenDexExperimentPlan({
           },
           getEvmChainConfig(chain),
         );
-        approveGasLimit = String(applyGasBuffer(approveGas.gasUnits, gasBuffer));
+        approveGasLimit = approveGasLimitWithFloor(approveGas.gasUnits, gasBuffer);
       } catch (error) {
         if (!(executableQuote?.txTo && classifyGasEstimateError(error) === "execution_reverted")) throw error;
         approveGasLimit = String(applyGasBuffer(DEFAULT_APPROVE_GAS_UNITS, gasBuffer));
@@ -635,7 +662,7 @@ export async function executeTokenDexExperimentPlan({
         asset: plan.outputAsset,
         owner: plan.senderAddress,
         initialBalance: destinationBalanceBefore,
-        requiredDelta: plan.minimumOutputAmount,
+        requiredDelta: destinationRequiredDelta(plan, stepResults),
         readErc20BalanceImpl,
         readNativeBalanceImpl,
         timeoutMs: destinationSettlementTimeoutMs,

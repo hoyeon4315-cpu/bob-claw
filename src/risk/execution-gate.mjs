@@ -18,6 +18,12 @@ function minutesAgo(timestamp, now) {
   return (new Date(now).getTime() - new Date(timestamp).getTime()) / 60_000;
 }
 
+function resumeAfterTimestamp(resumeAfterFailureAt = null) {
+  if (!resumeAfterFailureAt) return null;
+  const timestamp = new Date(resumeAfterFailureAt).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function strategyPolicyFromJob(job = {}) {
   return job.strategyPolicy || job.strategyConfig || null;
 }
@@ -89,10 +95,12 @@ function missingLeverageFields(strategyPolicy = null) {
   ].filter((field) => !isFiniteNumber(strategyPolicy?.[field]));
 }
 
-function latestTerminalStatuses(events = []) {
+function latestTerminalStatuses(events = [], resumeAfterFailureAt = null) {
+  const resumeAfterMs = resumeAfterTimestamp(resumeAfterFailureAt);
   return [...events]
     .filter((item) => ["confirmed", "delivered", "failed"].includes(item.status))
     .filter((item) => !isSignerAvailabilityFailure(item))
+    .filter((item) => resumeAfterMs === null || new Date(item.observedAt || 0).getTime() > resumeAfterMs)
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt));
 }
 
@@ -105,9 +113,15 @@ function isSignerAvailabilityFailure(record = {}) {
   return /ECONNREFUSED.+executor-signer\.sock|executor-signer\.sock.+ECONNREFUSED/u.test(errorMessage(record));
 }
 
-export function buildExecutionRiskState({ receiptRecords = [], executionEvents = [], inventory = null, now = new Date().toISOString() }) {
+export function buildExecutionRiskState({
+  receiptRecords = [],
+  executionEvents = [],
+  inventory = null,
+  resumeAfterFailureAt = null,
+  now = new Date().toISOString(),
+} = {}) {
   const receipt24h = receiptRecords.filter((item) => hoursAgo(item.observedAt, now) <= 24);
-  const terminal = latestTerminalStatuses(executionEvents);
+  const terminal = latestTerminalStatuses(executionEvents, resumeAfterFailureAt);
   const infrastructureFailureCount = executionEvents.filter(isSignerAvailabilityFailure).length;
 
   let consecutiveFailures = 0;
@@ -145,6 +159,7 @@ export function buildExecutionRiskState({ receiptRecords = [], executionEvents =
     infrastructureFailureCount,
     walletEstimatedUsd: inventory?.summary?.estimatedWalletUsd ?? null,
     lastReceiptAt: receiptRecords.length ? [...receiptRecords].sort((a, b) => new Date(b.observedAt) - new Date(a.observedAt))[0].observedAt : null,
+    resumeAfterFailureAt,
   };
 }
 

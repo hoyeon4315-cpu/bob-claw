@@ -207,7 +207,17 @@ test("full automation readiness blocks when no auto refill or live strategy is a
     },
     strategyDispatch: {
       record: { batchStatus: "preview", selectedCount: 8 },
-      executionSurfaces: { summary: { liveEligibleCount: 0 } },
+      executionSurfaces: {
+        summary: { liveEligibleCount: 0 },
+        strategies: [
+          {
+            id: "wrapped-btc-loop-base-moonwell",
+            selectedMode: "dry_run",
+            currentLiveEligible: false,
+            liveAdmissionBlockers: ["fresh_roundtrip_proof_recorded"],
+          },
+        ],
+      },
     },
     payback: {
       payback: {
@@ -222,6 +232,15 @@ test("full automation readiness blocks when no auto refill or live strategy is a
   assert.equal(report.ready, false);
   assert.equal(report.capitalManager.ready, false);
   assert.equal(report.strategyDispatch.ready, false);
+  assert.deepEqual(report.strategyDispatch.liveAdmissionBlockers, [
+    {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      selectedMode: "dry_run",
+      status: null,
+      reason: null,
+      blockers: ["fresh_roundtrip_proof_recorded"],
+    },
+  ]);
   assert.deepEqual(report.blockers, ["capital_rebalancer_not_ready", "strategy_dispatch_not_ready"]);
 });
 
@@ -267,6 +286,20 @@ test("full automation readiness reflects unresolved autopilot refill blockers an
       nextAction: "resolve_refill_routes",
       refill: {
         blockedCount: 3,
+        blockers: [
+          {
+            chain: "avalanche",
+            asset: "wBTC.OFT",
+            reason: "Insufficient source balance: required 43948, available 26523",
+            selectedMethod: "cross_chain_bridge_lifi",
+          },
+          {
+            chain: "ethereum",
+            asset: "RLUSD",
+            reason: "routing_exhausted",
+            selectedMethod: "cross_chain_bridge_or_swap",
+          },
+        ],
         attemptedCount: 1,
         executedCount: 0,
       },
@@ -276,6 +309,26 @@ test("full automation readiness reflects unresolved autopilot refill blockers an
   assert.equal(report.ready, false);
   assert.equal(report.liveAutomation.ready, false);
   assert.equal(report.liveAutomation.nextAction, "resolve_refill_routes");
+  assert.deepEqual(report.liveAutomation.refillIssueCounts, {
+    inventory_insufficient: 1,
+    routing_exhausted: 1,
+  });
+  assert.deepEqual(report.liveAutomation.refillBlockers, [
+    {
+      chain: "avalanche",
+      asset: "wBTC.OFT",
+      reason: "Insufficient source balance: required 43948, available 26523",
+      category: "inventory_insufficient",
+      selectedMethod: "cross_chain_bridge_lifi",
+    },
+    {
+      chain: "ethereum",
+      asset: "RLUSD",
+      reason: "routing_exhausted",
+      category: "routing_exhausted",
+      selectedMethod: "cross_chain_bridge_or_swap",
+    },
+  ]);
   assert.equal(report.payback.ready, false);
   assert.equal(report.payback.nextAction, "restore_profit_reserve_wbtc_oft");
   assert.deepEqual(report.blockers, ["refill_routes_unresolved", "payback_reserve_missing"]);
@@ -336,6 +389,7 @@ test("full automation readiness ignores routing exhausted refill backlog as non-
   assert.equal(report.liveAutomation.ready, true);
   assert.equal(report.liveAutomation.refillBlockedCount, 1);
   assert.equal(report.liveAutomation.refillUnresolvedCount, null);
+  assert.deepEqual(report.liveAutomation.refillIssueCounts, { routing_exhausted: 1 });
   assert.deepEqual(report.blockers, []);
 });
 

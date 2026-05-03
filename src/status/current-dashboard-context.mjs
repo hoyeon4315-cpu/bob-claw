@@ -34,6 +34,7 @@ import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
+import { buildProtocolPositionMarksSlice } from "./protocol-position-marks-slice.mjs";
 import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
 import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
@@ -43,6 +44,7 @@ import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { readReportingPnlBaseline } from "./reporting-pnl-baseline.mjs";
 import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
+import { summarizeDevAgentAutomationBridge } from "../strategy/dev-agent-automation-bridge.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
 import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
 import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
@@ -50,6 +52,11 @@ import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
 import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
+import {
+  activeProtocolPositions,
+  latestProtocolMarksByPosition,
+  mergeProtocolMarksIntoPositions,
+} from "../treasury/protocol-position-ledger.mjs";
 
 function summarizeMerklCandidate(candidate = null) {
   if (!candidate) return null;
@@ -146,17 +153,28 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
   };
 }
 
-function buildMerklAprMap(allocatorLatest = null) {
+function buildMerklAprMap(allocatorLatest = null, merklCanaryQueue = null) {
   const allocations = Array.isArray(allocatorLatest?.allocations)
     ? allocatorLatest.allocations
     : Array.isArray(allocatorLatest?.plan?.allocations)
       ? allocatorLatest.plan.allocations
       : [];
   const map = {};
+  const queueItems = Array.isArray(merklCanaryQueue?.queue)
+    ? merklCanaryQueue.queue
+    : Array.isArray(merklCanaryQueue?.items)
+      ? merklCanaryQueue.items
+      : [];
+  for (const item of queueItems) {
+    if (!item?.opportunityId) continue;
+    if (!Number.isFinite(item.aprPct)) continue;
+    map[item.opportunityId] = item.aprPct;
+  }
   for (const item of allocations) {
     const queueItem = item?.queueItem || null;
     if (!queueItem?.opportunityId) continue;
     if (!Number.isFinite(queueItem.aprPct)) continue;
+    if (Number.isFinite(map[queueItem.opportunityId])) continue;
     map[queueItem.opportunityId] = queueItem.aprPct;
   }
   return map;
@@ -213,9 +231,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     promotionReport,
     allChainAutopilotLatest,
     allChainAutopilotLatestCompleted,
+    devAgentAutomationBridgeReport,
     treasuryInventoryRecords,
     wholeWalletInventoryRecords,
     merklPositionEvents,
+    protocolPositionMarks,
     signerAuditRecords,
     radarObservations,
     radarEpisodes,
@@ -270,9 +290,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonIfExists(join(dataDir, "promotion-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest-completed.json")),
+    readJsonIfExists(join(dataDir, "dev-agent-automation-bridge.json")),
     readJsonl(dataDir, "treasury-inventory"),
     readJsonl(dataDir, "whole-wallet-inventory"),
     readJsonl(dataDir, "merkl-portfolio-positions"),
+    readJsonl(dataDir, "protocol-position-marks"),
     readSignerAuditLog(),
     readRadarJsonl(dataDir, "opportunity-observations"),
     readRadarJsonl(dataDir, "strategy-episodes"),
@@ -400,9 +422,35 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     merklOpportunityAlerts,
   );
   dashboardStatus.strategy.merklCanaryQueueSummary = summarizeMerklCanaryQueueStatus(merklCanaryQueue);
-  dashboardStatus.strategy.merklActivePositions = buildMerklActivePositions(merklPositionEvents, {
+  dashboardStatus.strategy.devAgentAutomationBridge = devAgentAutomationBridgeReport
+    ? {
+        ...summarizeDevAgentAutomationBridge(devAgentAutomationBridgeReport),
+        topTasks: (devAgentAutomationBridgeReport.tasks || []).slice(0, 3).map((task) => ({
+          id: task.id || null,
+          kind: task.kind || null,
+          title: task.title || null,
+          queueStatus: task.queueStatus || null,
+          chain: task.chain || null,
+          score: task.priority?.score ?? null,
+          source: task.source || null,
+          allowedToExecuteLive: task.safety?.allowedToExecuteLive === true,
+        })),
+      }
+    : null;
+  const activeMerklProtocolPositions = activeProtocolPositions(merklPositionEvents);
+  const merklPositionDisplayEvents =
+    activeMerklProtocolPositions.length > 0 ? activeMerklProtocolPositions : merklPositionEvents;
+  dashboardStatus.strategy.protocolPositionMarks = buildProtocolPositionMarksSlice(protocolPositionMarks, {
     generatedAt: dashboardStatus.generatedAt,
-    aprByOpportunity: buildMerklAprMap(merklPortfolioAllocatorLatest),
+    activePositionIds: activeMerklProtocolPositions.map((position) => position.positionId),
+  });
+  const mergedMerklPositionEvents = mergeProtocolMarksIntoPositions(
+    merklPositionDisplayEvents,
+    latestProtocolMarksByPosition(protocolPositionMarks),
+  );
+  dashboardStatus.strategy.merklActivePositions = buildMerklActivePositions(mergedMerklPositionEvents, {
+    generatedAt: dashboardStatus.generatedAt,
+    aprByOpportunity: buildMerklAprMap(merklPortfolioAllocatorLatest, merklCanaryQueue),
   });
   const protocolApr = buildProtocolAprSlice({
     wrappedBtcLoopSlice: wrappedBtcLendingLoopSlice,
@@ -421,6 +469,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.capitalSummary = buildCapitalSummarySlice({
     walletHoldings: dashboardStatus.walletHoldings,
     merklActivePositions: dashboardStatus.strategy.merklActivePositions,
+    protocolPositionMarks: dashboardStatus.strategy.protocolPositionMarks,
     executorEstimatedAssetValueUsd: allChainAutopilotReport?.summary?.capitalManager?.estimatedAssetValueUsd ?? null,
     generatedAt: dashboardStatus.generatedAt,
   });
@@ -444,6 +493,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.dataCounts.merklCanaryQueuePresent = merklCanaryQueue ? 1 : 0;
   dashboardStatus.dataCounts.merklActivePositionCount =
     dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
+  dashboardStatus.dataCounts.protocolPositionMarkCount = protocolPositionMarks.length;
+  dashboardStatus.dataCounts.devAgentAutomationTaskCount =
+    dashboardStatus.strategy.devAgentAutomationBridge?.taskCount ?? 0;
   dashboardStatus.dataCounts.treasuryInventoryRecords = treasuryInventoryRecords.length;
   dashboardStatus.dataCounts.capitalSummaryPresent = 1;
   dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotReport ? 1 : 0;

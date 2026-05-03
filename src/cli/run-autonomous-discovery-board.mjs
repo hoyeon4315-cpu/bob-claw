@@ -7,6 +7,7 @@ import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { exitIfDevLocked } from "../runtime/dev-lock.mjs";
 import {
   buildAutonomousDiscoveryBoard,
   buildAutonomousDiscoveryExecutionSummary,
@@ -227,6 +228,9 @@ async function executeOpportunity(
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if ((args.execute || args.write) && exitIfDevLocked({ cliName: "run-autonomous-discovery-board" })) {
+    return;
+  }
   const board = await loadBoard();
   const selected = selectAutonomousDiscoveryOpportunities(board, {
     rank: args.rank,

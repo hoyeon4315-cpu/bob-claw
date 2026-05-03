@@ -1,5 +1,8 @@
 import { evaluateRoundtripEnforcer } from "../../risk/roundtrip-enforcer.mjs";
-import { evaluateConcentrationLimits } from "../../config/concentration-limits.mjs";
+import {
+  CONCENTRATION_LIMITS,
+  evaluateConcentrationLimits,
+} from "../../config/concentration-limits.mjs";
 import {
   SIZING_POLICY,
   computeMinProfitablePositionUsd,
@@ -11,7 +14,12 @@ import { evaluateGasBudgetController } from "../../risk/gas-budget-controller.mj
 import { evaluateExitRules } from "../../config/merkl-exit-rules.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
-import { SMALL_CAPITAL_CAMPAIGN_MODE, applyRewardHaircut } from "../../config/small-capital-campaign-mode.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  applyRewardHaircut,
+  evidencePrimaryChainShareOverrides,
+  isEvidencePrimaryChain,
+} from "../../config/small-capital-campaign-mode.mjs";
 import { getProtocolTier } from "../../config/protocol-trust-tiers.mjs";
 
 function isCapitalMovementIntent(intent = {}) {
@@ -40,12 +48,19 @@ function expectedHoldDaysForIntent(intent = {}, now = new Date().toISOString(), 
   });
 }
 
-export function computeExpectedRealizedNet({ displayedAprPct, rewardTokenType, estimatedCostsUsd, positionUsd, holdDays }) {
+export function computeExpectedRealizedNet({
+  displayedAprPct,
+  rewardTokenType,
+  estimatedCostsUsd,
+  positionUsd,
+  holdDays,
+  policy = SMALL_CAPITAL_CAMPAIGN_MODE,
+}) {
   const yearFraction = Number(holdDays) / 365;
   const grossRewardUsd = Number(positionUsd) * (Number(displayedAprPct) / 100) * yearFraction;
-  const expectedRewardUsd = applyRewardHaircut(rewardTokenType, grossRewardUsd);
+  const expectedRewardUsd = applyRewardHaircut(rewardTokenType, grossRewardUsd, policy);
   const estimatedCosts = Number(estimatedCostsUsd ?? 0);
-  const haircut = SMALL_CAPITAL_CAMPAIGN_MODE.rewardHaircuts[rewardTokenType] ?? SMALL_CAPITAL_CAMPAIGN_MODE.rewardHaircuts.defaultRewardToken;
+  const haircut = policy.rewardHaircuts[rewardTokenType] ?? policy.rewardHaircuts.defaultRewardToken;
   const effectiveAprPct = Number(displayedAprPct) * (1 - haircut);
   return {
     expectedRewardUsd,
@@ -66,6 +81,7 @@ export async function evaluateOpportunityPolicy({
   now = new Date().toISOString(),
   killSwitchPath = null,
   killSwitchExistsImpl = null,
+  smallCapitalPolicy = SMALL_CAPITAL_CAMPAIGN_MODE,
 } = {}) {
   const blockers = [];
   const results = [];
@@ -108,7 +124,13 @@ export async function evaluateOpportunityPolicy({
   }
 
   const isMovement = isCapitalMovementIntent(intent);
-  const concResult = evaluateConcentrationLimits({ allocations: projected });
+  const concResult = evaluateConcentrationLimits({
+    allocations: projected,
+    limits: {
+      ...CONCENTRATION_LIMITS,
+      chainSharePct: evidencePrimaryChainShareOverrides(smallCapitalPolicy),
+    },
+  });
   // Capital movement intents are exempt from opportunity/protocol concentration
   // but still bound by chain concentration (don't over-concentrate on one chain).
   const concBlockers = isMovement
@@ -132,17 +154,19 @@ export async function evaluateOpportunityPolicy({
       estimatedCostsUsd: Number(intent.estimatedCostsUsd ?? 0),
       positionUsd,
       holdDays: expectedHoldDays,
+      policy: smallCapitalPolicy,
     });
     if (netResult.netUsd < 0 || netResult.effectiveAprPct < 0) {
       blockers.push("negative_expected_realized_net");
     }
-    // Non-base chain entry gate
-    if (!isMovement && intent.chain && !SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes(intent.chain)) {
-      const nonBase = SMALL_CAPITAL_CAMPAIGN_MODE.nonBaseEntry;
-      const meetsMinUsd = netResult.netUsd >= nonBase.minNetProfitUsd;
-      const meetsMinPct = netResult.netUsd >= positionUsd * nonBase.minNetProfitPctOfPosition;
+    // Non-primary chain entry gate. Primary status is committed evidence, not
+    // a hard-coded chain name.
+    if (!isMovement && intent.chain && !isEvidencePrimaryChain(intent.chain, smallCapitalPolicy)) {
+      const nonPrimary = smallCapitalPolicy.nonPrimaryEntry;
+      const meetsMinUsd = netResult.netUsd >= nonPrimary.minNetProfitUsd;
+      const meetsMinPct = netResult.netUsd >= positionUsd * nonPrimary.minNetProfitPctOfPosition;
       if (!meetsMinUsd && !meetsMinPct) {
-        blockers.push("non_base_entry_insufficient_expected_net");
+        blockers.push("non_primary_entry_insufficient_expected_net");
       }
     }
   }
@@ -153,11 +177,11 @@ export async function evaluateOpportunityPolicy({
     const tier = getProtocolTier(intent.protocol);
     const isBluechip = tier.tierKey === "TIER_A";
     const protocolProjectedShare = projected.protocolSharePct[intent.protocol] || 0;
-    if (!isBluechip && protocolProjectedShare > SMALL_CAPITAL_CAMPAIGN_MODE.protocolConcentration.defaultMaxPct) {
+    if (!isBluechip && protocolProjectedShare > smallCapitalPolicy.protocolConcentration.defaultMaxPct) {
       blockers.push("protocol_concentration_exceeded");
     }
     const isClVenue = intent.venue === "cl" || intent.executionSurface === "clLp";
-    if (isClVenue && protocolProjectedShare > SMALL_CAPITAL_CAMPAIGN_MODE.protocolConcentration.venueMaxPctWithLiveMonitor) {
+    if (isClVenue && protocolProjectedShare > smallCapitalPolicy.protocolConcentration.venueMaxPctWithLiveMonitor) {
       blockers.push("protocol_concentration_exceeded");
     }
   }
@@ -181,17 +205,19 @@ export async function evaluateOpportunityPolicy({
     }
   }
 
-  // Micro-test gate: allow small high-risk tests (<$30, <6% of capital)
+  // Micro-test gate: allow small high-risk tests within committed small-cap limits.
   const isMicroTest = intent.strategyId?.includes("micro-test") || intent.metadata?.microTest === true;
   if (isMicroTest && positionUsd > 0) {
     const totalCapital = Number(capitalState.totalDeployableCapital ?? 0);
     if (totalCapital > 0) {
       const microPct = positionUsd / totalCapital;
-      if (microPct > 0.06) {
-        blockers.push("micro_test_cap_exceeded_6pct");
+      const microMaxPct = smallCapitalPolicy.microMaxPct;
+      const microMaxUsd = smallCapitalPolicy.defaultBudgetsUsd.microMaxUsd;
+      if (microPct > microMaxPct) {
+        blockers.push(`micro_test_cap_exceeded_${Math.round(microMaxPct * 100)}pct`);
       }
-      if (positionUsd > 30) {
-        blockers.push("micro_test_max_30usd");
+      if (positionUsd > microMaxUsd) {
+        blockers.push(`micro_test_max_${microMaxUsd}usd`);
       }
     }
   }

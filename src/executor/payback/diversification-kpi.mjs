@@ -68,6 +68,9 @@ export function buildDiversificationKpiSlice({
     policy: Object.freeze({
       perStrategyMaxShare: policy.perStrategyMaxShare,
       perChainMaxShare: policy.perChainMaxShare,
+      chainSelectionMode: policy.chainSelectionMode ?? null,
+      perChainMaxShareByChain: Object.freeze({ ...(policy.perChainMaxShareByChain ?? {}) }),
+      evidencePrimaryChains: Object.freeze(Object.keys(policy.perChainMaxShareByChain ?? {})),
       perProtocolMaxShare: policy.perProtocolMaxShare,
       hhiMax: policy.hhiMax,
       bobL2DirectMaxShare: policy.bobL2DirectMaxShare,

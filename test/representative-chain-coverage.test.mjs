@@ -115,6 +115,51 @@ test("representative coverage tracks queued, active, and missing chain venues wi
   assert.equal(ethereum.nextAction, "monitor_active_representative_receipts");
 });
 
+test("representative coverage counts delivered representative proofs separately from Merkl queue items", () => {
+  const targets = buildRepresentativeTargets({
+    wrappedBtcVenues: {},
+    stableVenues: {
+      optimism: {
+        venues: [
+          { protocol: "aave_v3", family: "lending", depositAsset: "USDC" },
+        ],
+      },
+      sei: {
+        venues: [
+          { protocol: "yei", family: "lending", depositAsset: "USDC" },
+        ],
+      },
+    },
+  });
+
+  const coverage = buildRepresentativeChainCoverage({
+    targets,
+    now: "2026-05-02T00:00:00.000Z",
+    queue: [],
+    positionRecords: [],
+    representativeRuns: [
+      {
+        observedAt: "2026-05-01T12:00:00.000Z",
+        status: "delivered",
+        summary: {
+          selected: { templateId: "optimism:stablecoin_lending_carry" },
+          proofStatus: "delivered",
+        },
+      },
+    ],
+  });
+
+  assert.equal(coverage.summary.coveredByRepresentativeProofChainCount, 1);
+  assert.equal(coverage.summary.missingRepresentativeChainCount, 1);
+  assert.deepEqual(coverage.summary.missingChains, ["sei"]);
+
+  const optimism = coverage.chains.find((item) => item.chain === "optimism");
+  assert.equal(optimism.status, "covered_by_representative_proof");
+  assert.equal(optimism.nextAction, "monitor_representative_proof_and_source_queue");
+  assert.equal(optimism.representativeProofCount, 1);
+  assert.deepEqual(optimism.protocols.proven, ["aave-v3"]);
+});
+
 test("destination representative selector prefers larger ready inventory before dust candidates", () => {
   const selected = selectDestinationRepresentativeCandidate([
     {

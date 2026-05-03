@@ -217,6 +217,9 @@ export function buildAutoExecDiffHint(strategyId) {
     file: "src/config/strategy-caps.mjs",
     strategyId,
     change: "autoExecute: false → autoExecute: true",
+    requiresCommittedDiff: true,
+    autoRaise: false,
+    runtimeMutation: false,
     operatorAction:
       "Edit src/config/strategy-caps.mjs, flip autoExecute on the named strategy, "
       + "run `npm test`, commit on its own PR with the supporting evidence JSON in the body.",

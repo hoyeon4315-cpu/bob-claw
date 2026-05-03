@@ -1,6 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { evaluateOpportunityPolicy } from "../src/executor/policy/opportunity-policy.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../src/config/small-capital-campaign-mode.mjs";
+
+function withOptimismPrimary() {
+  return {
+    ...SMALL_CAPITAL_CAMPAIGN_MODE,
+    chainSelection: {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+      chainProfiles: {
+        base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+        optimism: {
+          role: "primary",
+          maxSharePct: 0.70,
+          evidenceStatus: "live_evidence_primary",
+          evidenceSource: "test committed evidence",
+          reviewBy: "2026-05-16",
+        },
+      },
+    },
+  };
+}
 
 test("capital movement intent exempt from cross_chain_unprofitable gate", async () => {
   const intent = {
@@ -117,11 +137,53 @@ test("capital movement intent still respects chain concentration", async () => {
   };
   const result = await evaluateOpportunityPolicy({
     intent,
-    currentAllocations: { chainSharePct: { base: 0.55 }, protocolSharePct: {}, opportunitySharePct: {} },
+    currentAllocations: { chainSharePct: { base: 0.71 }, protocolSharePct: {}, opportunitySharePct: {} },
     capitalState: { totalDeployableCapital: 520 },
   });
   assert.strictEqual(result.decision, "BLOCK", "movement should still respect chain concentration");
   assert.ok(result.blockers.includes("chain_concentration_exceeded"), "chain concentration blocker");
+});
+
+test("capital movement intent follows committed evidence-primary chain concentration", async () => {
+  const intent = {
+    strategyId: "lifi-bridge",
+    intentType: "bridge",
+    amountUsd: 100,
+    sharePct: 0.05,
+    chain: "optimism",
+    srcChain: "ethereum",
+    dstChain: "optimism",
+    quote: { observedAt: new Date().toISOString() },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent,
+    smallCapitalPolicy: withOptimismPrimary(),
+    currentAllocations: { chainSharePct: { optimism: 0.60 }, protocolSharePct: {}, opportunitySharePct: {} },
+    capitalState: { totalDeployableCapital: 520 },
+  });
+  assert.strictEqual(result.decision, "ALLOW", "movement into promoted Optimism should be allowed at 65%");
+  assert.ok(!result.blockers.includes("chain_concentration_exceeded"), "primary-chain concentration cap follows evidence profile");
+});
+
+test("capital movement intent blocks demoted Base above default chain concentration", async () => {
+  const intent = {
+    strategyId: "lifi-bridge",
+    intentType: "bridge",
+    amountUsd: 100,
+    sharePct: 0.05,
+    chain: "base",
+    srcChain: "ethereum",
+    dstChain: "base",
+    quote: { observedAt: new Date().toISOString() },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent,
+    smallCapitalPolicy: withOptimismPrimary(),
+    currentAllocations: { chainSharePct: { base: 0.60 }, protocolSharePct: {}, opportunitySharePct: {} },
+    capitalState: { totalDeployableCapital: 520 },
+  });
+  assert.strictEqual(result.decision, "BLOCK", "movement into non-primary Base should stay bound by default cap");
+  assert.ok(result.blockers.includes("chain_concentration_exceeded"), "movement exemption is not a chain-cap bypass");
 });
 
 test("movement intent exempt from opportunity/protocol concentration", async () => {

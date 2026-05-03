@@ -25,6 +25,13 @@ function finiteInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function finiteNumberOrNull(...values) {
+  for (const value of values) {
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
 function booleanFlag(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -247,8 +254,30 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
     const currentWalletAt = status?.walletHoldings?.generatedAt || status?.walletHoldings?.observedAt || null;
     const incomingWalletAt = walletHoldings.generatedAt || walletHoldings.observedAt || null;
     if (timestampMs(incomingWalletAt) >= timestampMs(currentWalletAt)) {
+      const previousWalletHoldings = status?.walletHoldings || {};
+      const previousCapitalSummary = status?.capitalSummary || {};
+      const itemTotalUsd = walletHoldings.items.reduce((sum, item) => sum + (Number(item?.usd) || 0), 0);
+      const walletHoldingsWithMetadata = {
+        ...walletHoldings,
+        source: walletHoldings.source || previousWalletHoldings.source || previousCapitalSummary.walletSource || "whole_wallet_inventory",
+        scanErrorCount: Number.isFinite(walletHoldings.scanErrorCount)
+          ? walletHoldings.scanErrorCount
+          : Array.isArray(walletHoldings.scanErrors)
+            ? walletHoldings.scanErrors.length
+            : 0,
+        scanErrors: Array.isArray(walletHoldings.scanErrors) ? walletHoldings.scanErrors : [],
+        itemizedSupportedWalletUsd: finiteNumberOrNull(walletHoldings.itemizedSupportedWalletUsd, itemTotalUsd),
+        walletCoverage: walletHoldings.walletCoverage || "partial_supported",
+        fullWalletUsd: finiteNumberOrNull(walletHoldings.fullWalletUsd),
+        fullWalletObservedAt: walletHoldings.fullWalletObservedAt || null,
+        fullWalletProvider: walletHoldings.fullWalletProvider || null,
+        fullWalletStale: walletHoldings.fullWalletStale === true,
+        externalWalletUsd: finiteNumberOrNull(walletHoldings.externalWalletUsd),
+        externalTotalPortfolioUsd: finiteNumberOrNull(walletHoldings.externalTotalPortfolioUsd),
+        unclassifiedUsd: finiteNumberOrNull(walletHoldings.unclassifiedUsd),
+      };
       const capitalSummary = buildCapitalSummarySlice({
-        walletHoldings,
+        walletHoldings: walletHoldingsWithMetadata,
         merklActivePositions: status?.strategy?.merklActivePositions || null,
         executorEstimatedAssetValueUsd: status?.capitalSummary?.executorEstimatedTotalUsd ?? null,
         generatedAt: incomingWalletAt || servedAt,
@@ -256,7 +285,7 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
 
       nextStatus = {
         ...status,
-        walletHoldings,
+        walletHoldings: walletHoldingsWithMetadata,
         capitalSummary,
         liveOverlay: {
           ...(status.liveOverlay || {}),
@@ -289,6 +318,12 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
       liveYield,
       metrics: {
         ...(nextStatus?.flow?.metrics || {}),
+        assetValueUsd: finiteNumberOrNull(
+          nextStatus?.capitalSummary?.currentTotalUsd,
+          nextStatus?.capitalSummary?.displayTotalUsd,
+          nextStatus?.capitalSummary?.totalUsd,
+          nextStatus?.flow?.metrics?.assetValueUsd,
+        ),
         ...liveYieldMetricFields(liveYield),
       },
     },
@@ -427,6 +462,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
   let lastStatusPayload = null;
   let lastStatusBuiltAtMs = 0;
   let shuttingDown = false;
+  let boundPort = options.port;
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
 
@@ -564,18 +600,54 @@ export function createDashboardLiveServer(rawOptions = {}) {
     });
   }
 
+  function snapshotTasks() {
+    return Object.freeze(Object.fromEntries(Object.values(tasks).map((task) => [task.id, snapshotTaskState(task)])));
+  }
+
+  function localUrl() {
+    return `http://127.0.0.1:${boundPort}`;
+  }
+
+  function readinessState(status, taskSnapshots = snapshotTasks()) {
+    const blockers = [];
+    const degradedTasks = [];
+    if (shuttingDown) blockers.push("server_shutting_down");
+    if (!status) {
+      blockers.push("status_unavailable");
+    } else if (!status.liveTransport?.mode) {
+      blockers.push("live_transport_unavailable");
+    }
+    for (const task of Object.values(taskSnapshots)) {
+      if (task.lastError) degradedTasks.push(task.id);
+    }
+    const transportDegraded = [];
+    if (status?.liveTransport?.warning) transportDegraded.push("status_build_warning");
+    if (status?.liveTransport?.error) transportDegraded.push("status_build_error");
+    const ready = blockers.length === 0;
+    return Object.freeze({
+      ready,
+      status: ready ? (degradedTasks.length || transportDegraded.length ? "degraded" : "ready") : "not_ready",
+      liveMode: status?.liveTransport?.mode || null,
+      blockers,
+      degradedTasks,
+      transportDegraded,
+    });
+  }
+
   function runtimeState() {
+    const taskSnapshots = snapshotTasks();
     return Object.freeze({
       startedAt,
-      localUrl: `http://127.0.0.1:${options.port}`,
+      localUrl: localUrl(),
       rootDir: options.rootDir,
       dataDir: options.dataDir,
       refreshEnabled: options.refreshEnabled,
       streamMs: options.streamMs,
       snapshotCacheMs: options.snapshotCacheMs,
-      tasks: Object.freeze(Object.fromEntries(Object.values(tasks).map((task) => [task.id, snapshotTaskState(task)]))),
+      tasks: taskSnapshots,
       lastStatusBuiltAt: lastStatusPayload?.liveTransport?.servedAt || null,
       liveMode: lastStatusPayload?.liveTransport?.mode || null,
+      readiness: readinessState(lastStatusPayload, taskSnapshots),
     });
   }
 
@@ -693,14 +765,17 @@ export function createDashboardLiveServer(rawOptions = {}) {
     res.end(JSON.stringify(status));
   }
 
-  async function serveHealth(res, { ready = false } = {}) {
-    const status = await buildLiveStatus({ force: ready });
+  async function serveHealth(res) {
+    const status = lastStatusPayload || await buildLiveStatus({ force: true });
+    const taskSnapshots = snapshotTasks();
+    const readiness = readinessState(status, taskSnapshots);
     const payload = {
-      ok: true,
-      ready,
+      ok: !shuttingDown,
+      ready: readiness.ready,
+      readiness,
       observedAt: new Date().toISOString(),
-      liveMode: status.liveTransport?.mode || null,
-      tasks: runtimeState().tasks,
+      liveMode: status?.liveTransport?.mode || null,
+      tasks: taskSnapshots,
     };
     res.writeHead(200, apiHeaders(options.corsOrigin, {
       "Content-Type": "application/json; charset=utf-8",
@@ -795,11 +870,11 @@ export function createDashboardLiveServer(rawOptions = {}) {
         return;
       }
       if (url.startsWith("/healthz")) {
-        await serveHealth(res, { ready: false });
+        await serveHealth(res);
         return;
       }
       if (url.startsWith("/readyz")) {
-        await serveHealth(res, { ready: true });
+        await serveHealth(res);
         return;
       }
       const path = resolveStaticPath(options.rootDir, url);
@@ -822,27 +897,80 @@ export function createDashboardLiveServer(rawOptions = {}) {
     runtimeState,
     buildLiveStatus,
     async start() {
-      await new Promise((resolvePromise) => server.listen(options.port, resolvePromise));
-      if (options.refreshEnabled) {
-        void maybeRunRefreshCycle();
-        refreshTimer = setInterval(() => {
+      await new Promise((resolvePromise, rejectPromise) => {
+        const onError = (error) => {
+          server.off("listening", onListening);
+          if (error.code === "EADDRINUSE") {
+            const friendly = new Error(
+              `Dashboard live server port ${options.port} is already in use. Stop the existing dashboard process or choose another port with --port=<port>.`,
+            );
+            friendly.code = error.code;
+            friendly.cause = error;
+            rejectPromise(friendly);
+            return;
+          }
+          rejectPromise(error);
+        };
+        const onListening = () => {
+          server.off("error", onError);
+          const address = server.address();
+          if (address && typeof address === "object" && Number.isInteger(address.port)) {
+            boundPort = address.port;
+          }
+          resolvePromise();
+        };
+        server.once("error", onError);
+        server.once("listening", onListening);
+        if (options.address) {
+          server.listen(options.port, options.address);
+          return;
+        }
+          server.listen(options.port);
+      });
+      try {
+        if (options.refreshEnabled) {
           void maybeRunRefreshCycle();
-        }, options.refreshTickMs);
+          refreshTimer = setInterval(() => {
+            void maybeRunRefreshCycle();
+          }, options.refreshTickMs);
+        }
+        await buildLiveStatus({ force: true });
+        statusWarmTimer = setInterval(() => {
+          void buildLiveStatus({ force: true }).catch(() => {});
+        }, Math.max(options.streamMs, options.snapshotCacheMs));
+        return {
+          localUrl: localUrl(),
+          snapshotUrl: `${localUrl()}/api/live-status`,
+          eventsUrl: `${localUrl()}/api/live-events`,
+        };
+      } catch (error) {
+        shuttingDown = true;
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+        if (statusWarmTimer) {
+          clearInterval(statusWarmTimer);
+          statusWarmTimer = null;
+        }
+        if (server.listening) {
+          await new Promise((resolvePromise, rejectPromise) =>
+            server.close((closeError) => (closeError ? rejectPromise(closeError) : resolvePromise())),
+          );
+        }
+        throw error;
       }
-      await buildLiveStatus({ force: true });
-      statusWarmTimer = setInterval(() => {
-        void buildLiveStatus({ force: true }).catch(() => {});
-      }, Math.max(options.streamMs, options.snapshotCacheMs));
-      return {
-        localUrl: `http://127.0.0.1:${options.port}`,
-        snapshotUrl: `http://127.0.0.1:${options.port}/api/live-status`,
-        eventsUrl: `http://127.0.0.1:${options.port}/api/live-events`,
-      };
     },
     async close() {
       shuttingDown = true;
-      if (refreshTimer) clearInterval(refreshTimer);
-      if (statusWarmTimer) clearInterval(statusWarmTimer);
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+      if (statusWarmTimer) {
+        clearInterval(statusWarmTimer);
+        statusWarmTimer = null;
+      }
       if (server.listening) {
         await new Promise((resolvePromise, rejectPromise) =>
           server.close((error) => (error ? rejectPromise(error) : resolvePromise())),

@@ -48,15 +48,17 @@ async function main() {
     prices,
   });
 
+  const riskPolicy = buildDefaultRiskPolicy();
   const riskState = buildExecutionRiskState({
     receiptRecords,
     executionEvents,
     inventory,
+    resumeAfterFailureAt: riskPolicy.resumeAfterFailureAt || null,
   });
   const decision = buildExecutionRiskDecision({
     job,
     riskState,
-    riskPolicy: buildDefaultRiskPolicy(),
+    riskPolicy,
     mode: args.mode,
   });
 

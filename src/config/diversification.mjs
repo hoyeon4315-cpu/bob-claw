@@ -7,19 +7,30 @@
 // Reference: plan §3 (capital diversification rules), §4 concentration-guard.
 // Rationale: 2026-04 exploits (Kelp $292M, Drift $285M, Aperture $3.7M,
 // Moonwell oracle $1.78M) show single-protocol blast radius is the dominant
-// residual risk once transport is proven.
+// residual risk once transport is proven. Small-capital evidence-primary mode
+// can intentionally concentrate by chain, but not by strategy or protocol.
 
 export { OFFICIAL_GATEWAY_DESTINATION_CHAINS as GATEWAY_OFFICIAL_CHAINS } from "./gateway-destinations.mjs";
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS as GATEWAY_OFFICIAL_CHAINS } from "./gateway-destinations.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  evidencePrimaryChainShareOverrides,
+} from "./small-capital-campaign-mode.mjs";
 
 export const DIVERSIFICATION_POLICY = Object.freeze({
   perStrategyMaxShare: 0.25,
   perChainMaxShare: 0.35,
+  chainSelectionMode: SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.mode,
+  perChainMaxShareByChain: evidencePrimaryChainShareOverrides(),
   perProtocolMaxShare: 0.30,
   hhiMax: 0.30,
   bobL2DirectMaxShare: 0.10,
   minSharesForHhi: 2,
 });
+
+function perChainMaxShareFor(id, policy) {
+  return policy.perChainMaxShareByChain?.[id] ?? policy.perChainMaxShare;
+}
 
 function sumShares(sharesByKey) {
   let total = 0;
@@ -72,15 +83,16 @@ export function evaluateDiversification(allocations, policy = DIVERSIFICATION_PO
     }
   }
   for (const [id, share] of Object.entries(perChain)) {
+    const maxShare = perChainMaxShareFor(id, policy);
     if (!GATEWAY_OFFICIAL_CHAINS.includes(id)) {
       violations.push({ kind: "chain_not_gateway_official", id });
     }
-    if (share > policy.perChainMaxShare) {
+    if (share > maxShare) {
       violations.push({
         kind: "per_chain_share_exceeded",
         id,
         share,
-        max: policy.perChainMaxShare,
+        max: maxShare,
       });
     }
   }

@@ -7,6 +7,29 @@ import {
   evaluateDiversification,
   canAcceptNewAllocation,
 } from "../src/config/diversification.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  evidencePrimaryChainShareOverrides,
+} from "../src/config/small-capital-campaign-mode.mjs";
+
+function withOptimismPrimary() {
+  return {
+    ...SMALL_CAPITAL_CAMPAIGN_MODE,
+    chainSelection: {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+      chainProfiles: {
+        base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+        optimism: {
+          role: "primary",
+          maxSharePct: 0.70,
+          evidenceStatus: "live_evidence_primary",
+          evidenceSource: "test committed evidence",
+          reviewBy: "2026-05-16",
+        },
+      },
+    },
+  };
+}
 
 test("DIVERSIFICATION_POLICY is frozen", () => {
   assert.throws(() => {
@@ -47,6 +70,50 @@ test("evaluateDiversification: ok when within all caps and HHI", () => {
   assert.equal(v.violations.length, 0);
 });
 
+test("evaluateDiversification: accepts evidence-primary chain concentration when split across strategies and protocols", () => {
+  const v = evaluateDiversification({
+    perStrategy: { anchor: 0.22, moonwell: 0.22, merkl: 0.21 },
+    perChain: { base: 0.65 },
+    perProtocol: { aerodrome: 0.25, moonwell: 0.25, yo: 0.15 },
+  });
+  assert.equal(v.ok, true);
+  assert.equal(v.violations.length, 0);
+});
+
+test("evaluateDiversification: lets a committed alternate primary-chain profile use the primary cap", () => {
+  const v = evaluateDiversification(
+    {
+      perStrategy: { anchor: 0.22, lending: 0.22, merkl: 0.21 },
+      perChain: { optimism: 0.65 },
+      perProtocol: { velodrome: 0.25, aave: 0.25, merkl: 0.15 },
+    },
+    {
+      ...DIVERSIFICATION_POLICY,
+      perChainMaxShareByChain: evidencePrimaryChainShareOverrides(withOptimismPrimary()),
+    },
+  );
+  assert.equal(v.ok, true);
+  assert.equal(v.violations.length, 0);
+});
+
+test("evaluateDiversification: demoted Base returns to default cap when another chain is evidence-primary", () => {
+  const v = evaluateDiversification(
+    {
+      perStrategy: { anchor: 0.22, lending: 0.22, merkl: 0.21 },
+      perChain: { base: 0.65 },
+      perProtocol: { aerodrome: 0.25, moonwell: 0.25, yo: 0.15 },
+    },
+    {
+      ...DIVERSIFICATION_POLICY,
+      perChainMaxShareByChain: evidencePrimaryChainShareOverrides(withOptimismPrimary()),
+    },
+  );
+  const violation = v.violations.find((x) => x.kind === "per_chain_share_exceeded");
+  assert.ok(violation);
+  assert.equal(violation.id, "base");
+  assert.equal(violation.max, 0.35);
+});
+
 test("evaluateDiversification: flags per-strategy share > 25%", () => {
   const v = evaluateDiversification({
     perStrategy: { s1: 0.3, s2: 0.2 },
@@ -54,12 +121,22 @@ test("evaluateDiversification: flags per-strategy share > 25%", () => {
   assert.ok(v.violations.some((x) => x.kind === "per_strategy_share_exceeded"));
 });
 
-test("evaluateDiversification: flags per-chain share > 35%", () => {
+test("evaluateDiversification: flags per-chain share above primary-chain cap", () => {
   const v = evaluateDiversification({
-    perStrategy: { s1: 0.2 },
-    perChain: { base: 0.4 },
+    perStrategy: { s1: 0.2, s2: 0.2, s3: 0.2, s4: 0.11 },
+    perChain: { base: 0.71 },
   });
   assert.ok(v.violations.some((x) => x.kind === "per_chain_share_exceeded"));
+});
+
+test("evaluateDiversification: keeps non-primary chains on the default 35% cap", () => {
+  const v = evaluateDiversification({
+    perStrategy: { s1: 0.2, s2: 0.16 },
+    perChain: { optimism: 0.36 },
+  });
+  const violation = v.violations.find((x) => x.kind === "per_chain_share_exceeded");
+  assert.ok(violation);
+  assert.equal(violation.max, 0.35);
 });
 
 test("evaluateDiversification: flags non-Gateway chain", () => {

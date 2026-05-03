@@ -25,6 +25,7 @@
 
 import { readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
@@ -57,6 +58,7 @@ import { buildVaultDepositIntent } from "../executor/helpers/vault-intent-builde
 import { buildSwapIntent } from "../executor/helpers/swap-intent-builder.mjs";
 
 const ERC20_BALANCE_ABI = ["function balanceOf(address owner) view returns (uint256)"];
+const BASE_CHAIN = "base";
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BASE_WETH_TOKEN = "0x4200000000000000000000000000000000000006";
@@ -73,7 +75,7 @@ const MISSING_EXECUTOR_STRATEGIES = new Set([
 
 const STRATEGY_SWAP_ROUTES = Object.freeze({
   destination_wrapped_btc_rotation: Object.freeze({
-    chain: "base",
+    chain: BASE_CHAIN,
     inputToken: BASE_USDC_TOKEN,
     outputToken: BASE_CBBTC_TOKEN,
     inputDecimals: 6,
@@ -81,7 +83,7 @@ const STRATEGY_SWAP_ROUTES = Object.freeze({
     source: "destination_wrapped_btc_rotation_builder",
   }),
   stablecoin_treasury_rotation: Object.freeze({
-    chain: "base",
+    chain: BASE_CHAIN,
     inputToken: BASE_USDC_TOKEN,
     outputToken: BASE_CBBTC_TOKEN,
     inputDecimals: 6,
@@ -89,7 +91,7 @@ const STRATEGY_SWAP_ROUTES = Object.freeze({
     source: "stablecoin_treasury_rotation_builder",
   }),
   macro_asset_rotation: Object.freeze({
-    chain: "base",
+    chain: BASE_CHAIN,
     inputToken: BASE_USDC_TOKEN,
     outputToken: BASE_WETH_TOKEN,
     inputDecimals: 6,
@@ -97,6 +99,47 @@ const STRATEGY_SWAP_ROUTES = Object.freeze({
     source: "macro_asset_rotation_builder",
   }),
 });
+
+export function buildStrategyBuilderChainUnsupportedMarker({
+  alloc,
+  amountUsd,
+  observedAt,
+  source,
+  supportedChain,
+}) {
+  return {
+    strategyId: alloc.strategyId,
+    chain: alloc.chain,
+    amountUsd,
+    mode: "blocked",
+    observedAt,
+    normalizationError: "strategy_builder_chain_unsupported",
+    metadata: {
+      protocol: alloc.protocol,
+      source,
+      blocker: "strategy_builder_chain_unsupported",
+      supportedChain,
+      requestedChain: alloc.chain,
+    },
+  };
+}
+
+function isSupportedBuilderChain(alloc, supportedChain) {
+  return String(alloc.chain || "").trim().toLowerCase() === String(supportedChain || "").trim().toLowerCase();
+}
+
+function pushUnsupportedBuilderChainMarker({ generatedIntents, alloc, amountUsd, observedAt, source, supportedChain, quiet }) {
+  generatedIntents.push(buildStrategyBuilderChainUnsupportedMarker({
+    alloc,
+    amountUsd,
+    observedAt,
+    source,
+    supportedChain,
+  }));
+  if (!quiet) {
+    console.error(`  skip ${alloc.strategyId}: ${source} supports ${supportedChain}, not ${alloc.chain}`);
+  }
+}
 
 async function queryErc20Balance(chain, tokenAddress, ownerAddress) {
   if (!ownerAddress) return 0n;
@@ -584,50 +627,78 @@ async function main() {
       "wrapped-btc-loop-base-moonwell",
       "beefy-folding-vault",
     ].includes(alloc.strategyId)) {
-      const operatorAddress = strategyOperatorMap[alloc.strategyId];
-      const usdcBalance = await queryErc20Balance(alloc.chain, BASE_USDC_TOKEN, operatorAddress);
-      const cbBTC = getProtocolAddress("moonwell", "base", "markets.cbBTC.asset") || BASE_CBBTC_TOKEN;
-      const cbBTCBalance = await queryErc20Balance(alloc.chain, cbBTC, operatorAddress);
-      const requiredUnits = String(Math.floor((amountUsd / btcPriceUsd) * (10 ** CBBTC_DECIMALS)));
-      const bufferedAmountUsd = amountUsd * (1 + CBBTC_REBALANCE_BUFFER_BPS / 10_000);
-      const swapAmountUsd = Math.min(bufferedAmountUsd, perTxUsd, Number(usdcBalance) / 1e6);
-      if (cbBTCBalance < BigInt(requiredUnits)) suppressGenericFallback = true;
-      if (cbBTCBalance < BigInt(requiredUnits) && swapAmountUsd >= 1) {
-        try {
-          const inputAmount = String(Math.floor(swapAmountUsd * 1e6));
-          const plan = await buildSwapIntent({
-            strategyId: alloc.strategyId,
-            chain: alloc.chain,
-            amountUsd: swapAmountUsd,
-            inputToken: BASE_USDC_TOKEN,
-            outputToken: cbBTC,
-            inputAmount,
-            inputDecimals: 6,
-            inputPriceUsd: 1,
-            senderAddress: operatorAddress,
-            now: result.observedAt,
-            estimateGasImpl: () => { throw new Error("skip"); },
-          });
-          for (const step of plan.steps || []) {
-            step.intent.metadata = {
-              ...step.intent.metadata,
-              source: "auto_capital_rebalance",
-              rebalanceFor: alloc.strategyId,
-              rebalanceReason: "cbbtc_balance_below_required",
-              requiredOutputUnits: requiredUnits,
-              observedOutputUnits: cbBTCBalance.toString(),
-            };
-            generatedIntents.push(normalizeExecutionIntent(step.intent));
+      if (!isSupportedBuilderChain(alloc, BASE_CHAIN)) {
+        suppressGenericFallback = true;
+        strategyIntentsBuilt = true;
+        pushUnsupportedBuilderChainMarker({
+          generatedIntents,
+          alloc,
+          amountUsd,
+          observedAt: result.observedAt,
+          source: "auto_capital_rebalance",
+          supportedChain: BASE_CHAIN,
+          quiet: args.quiet,
+        });
+      } else {
+        const operatorAddress = strategyOperatorMap[alloc.strategyId];
+        const usdcBalance = await queryErc20Balance(alloc.chain, BASE_USDC_TOKEN, operatorAddress);
+        const cbBTC = getProtocolAddress("moonwell", "base", "markets.cbBTC.asset") || BASE_CBBTC_TOKEN;
+        const cbBTCBalance = await queryErc20Balance(alloc.chain, cbBTC, operatorAddress);
+        const requiredUnits = String(Math.floor((amountUsd / btcPriceUsd) * (10 ** CBBTC_DECIMALS)));
+        const bufferedAmountUsd = amountUsd * (1 + CBBTC_REBALANCE_BUFFER_BPS / 10_000);
+        const swapAmountUsd = Math.min(bufferedAmountUsd, perTxUsd, Number(usdcBalance) / 1e6);
+        if (cbBTCBalance < BigInt(requiredUnits)) suppressGenericFallback = true;
+        if (cbBTCBalance < BigInt(requiredUnits) && swapAmountUsd >= 1) {
+          try {
+            const inputAmount = String(Math.floor(swapAmountUsd * 1e6));
+            const plan = await buildSwapIntent({
+              strategyId: alloc.strategyId,
+              chain: alloc.chain,
+              amountUsd: swapAmountUsd,
+              inputToken: BASE_USDC_TOKEN,
+              outputToken: cbBTC,
+              inputAmount,
+              inputDecimals: 6,
+              inputPriceUsd: 1,
+              senderAddress: operatorAddress,
+              now: result.observedAt,
+              estimateGasImpl: () => { throw new Error("skip"); },
+            });
+            for (const step of plan.steps || []) {
+              step.intent.metadata = {
+                ...step.intent.metadata,
+                source: "auto_capital_rebalance",
+                rebalanceFor: alloc.strategyId,
+                rebalanceReason: "cbbtc_balance_below_required",
+                requiredOutputUnits: requiredUnits,
+                observedOutputUnits: cbBTCBalance.toString(),
+              };
+              generatedIntents.push(normalizeExecutionIntent(step.intent));
+            }
+            if (!args.quiet) console.error(`  auto-rebalance: USDC -> cbBTC ${swapAmountUsd} USD for ${alloc.strategyId}`);
+          } catch (err) {
+            if (!args.quiet) console.error(`  auto-rebalance failed for ${alloc.strategyId}: ${err.message}`);
           }
-          if (!args.quiet) console.error(`  auto-rebalance: USDC -> cbBTC ${swapAmountUsd} USD for ${alloc.strategyId}`);
-        } catch (err) {
-          if (!args.quiet) console.error(`  auto-rebalance failed for ${alloc.strategyId}: ${err.message}`);
         }
       }
     }
 
     // ── Moonwell wrapped-BTC loop (Base) ──
-    if (alloc.strategyId === "wrapped-btc-loop-base-moonwell" && btcPriceUsd > 0) {
+    if (!strategyIntentsBuilt && alloc.strategyId === "wrapped-btc-loop-base-moonwell" && btcPriceUsd > 0) {
+      if (!isSupportedBuilderChain(alloc, BASE_CHAIN)) {
+        suppressGenericFallback = true;
+        strategyIntentsBuilt = true;
+        pushUnsupportedBuilderChainMarker({
+          generatedIntents,
+          alloc,
+          amountUsd,
+          observedAt: result.observedAt,
+          source: "moonwell_builder",
+          supportedChain: BASE_CHAIN,
+          quiet: args.quiet,
+        });
+        continue;
+      }
       const support = resolveWrappedBtcLoopBindingSupport({
         strategyId: alloc.strategyId,
         strategyConfig: { chain: alloc.chain, protocol: alloc.protocol, collateralAsset: "cbBTC", borrowAsset: "USDC" },
@@ -686,6 +757,20 @@ async function main() {
 
     // ── Beefy folding vault (Base) ──
     if (!strategyIntentsBuilt && alloc.strategyId === "beefy-folding-vault") {
+      if (!isSupportedBuilderChain(alloc, BASE_CHAIN)) {
+        suppressGenericFallback = true;
+        strategyIntentsBuilt = true;
+        pushUnsupportedBuilderChainMarker({
+          generatedIntents,
+          alloc,
+          amountUsd,
+          observedAt: result.observedAt,
+          source: "vault_builder",
+          supportedChain: BASE_CHAIN,
+          quiet: args.quiet,
+        });
+        continue;
+      }
       const beefyVault = getProtocolAddress("beefy", "base", "vault");
       if (beefyVault?.verified) {
         const operatorAddress = strategyOperatorMap[alloc.strategyId];
@@ -743,6 +828,20 @@ async function main() {
 
     // ── Pendle PT LBTC (Base) ──
     if (!strategyIntentsBuilt && alloc.strategyId === "pendle-pt-lbtc-base") {
+      if (!isSupportedBuilderChain(alloc, BASE_CHAIN)) {
+        suppressGenericFallback = true;
+        strategyIntentsBuilt = true;
+        pushUnsupportedBuilderChainMarker({
+          generatedIntents,
+          alloc,
+          amountUsd,
+          observedAt: result.observedAt,
+          source: "pendle_pt_lbtc_builder",
+          supportedChain: BASE_CHAIN,
+          quiet: args.quiet,
+        });
+        continue;
+      }
       const pendleRouter = getProtocolAddress("pendle", "base", "router");
       if (pendleRouter?.verified) {
         // TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })
@@ -753,6 +852,20 @@ async function main() {
 
     // ── Aerodrome CL (Base) ──
     if (!strategyIntentsBuilt && alloc.strategyId === "aerodrome-cl-base") {
+      if (!isSupportedBuilderChain(alloc, BASE_CHAIN)) {
+        suppressGenericFallback = true;
+        strategyIntentsBuilt = true;
+        pushUnsupportedBuilderChainMarker({
+          generatedIntents,
+          alloc,
+          amountUsd,
+          observedAt: result.observedAt,
+          source: "aerodrome_cl_builder",
+          supportedChain: BASE_CHAIN,
+          quiet: args.quiet,
+        });
+        continue;
+      }
       const aerodromePool = getProtocolAddress("aerodrome", "base", "pool");
       if (aerodromePool?.verified) {
         // TODO: buildAerodromeClIntent({ poolAddress: aerodromePool.address, ... })
@@ -785,6 +898,20 @@ async function main() {
     if (!strategyIntentsBuilt && STRATEGY_SWAP_ROUTES[alloc.strategyId]) {
       const operatorAddress = strategyOperatorMap[alloc.strategyId];
       const route = STRATEGY_SWAP_ROUTES[alloc.strategyId];
+      if (!isSupportedBuilderChain(alloc, route.chain)) {
+        suppressGenericFallback = true;
+        strategyIntentsBuilt = true;
+        pushUnsupportedBuilderChainMarker({
+          generatedIntents,
+          alloc,
+          amountUsd,
+          observedAt: result.observedAt,
+          source: route.source,
+          supportedChain: route.chain,
+          quiet: args.quiet,
+        });
+        continue;
+      }
       const inputAmount = String(Math.floor((amountUsd / route.inputPriceUsd) * (10 ** route.inputDecimals)));
       const inputBalance = await queryErc20Balance(route.chain, route.inputToken, operatorAddress);
       if (inputBalance < BigInt(inputAmount)) {
@@ -934,7 +1061,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err.stack || err.message);
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err.stack || err.message);
+    process.exit(1);
+  });
+}

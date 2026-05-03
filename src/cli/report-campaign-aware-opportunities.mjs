@@ -3,9 +3,17 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
+import { EVM_CHAIN_CONFIGS } from "../config/chains.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  isEvidencePrimaryChain,
+} from "../config/small-capital-campaign-mode.mjs";
+import {
+  resolveTinyCanaryExpectedHoldDays,
+  tinyCanarySameChainRoundTripCostUsd,
+} from "../config/sizing.mjs";
 
-const MERKL_URL = "https://api.merkl.xyz/v4/opportunities?chainId=8453&campaigns=true";
+const MERKL_OPPORTUNITIES_URL = "https://api.merkl.xyz/v4/opportunities";
 const DEFILLAMA_URL = "https://yields.llama.fi/pools";
 
 const KNOWN_PROTOCOLS = new Set([
@@ -18,8 +26,6 @@ const KNOWN_PROTOCOLS = new Set([
   "pendle",
   "beefy",
 ]);
-
-const BASE_FIRST_CHAINS = new Set(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains);
 
 const STABLE_SYMBOLS = new Set([
   "usdc", "usdt", "dai", "fdusd", "lusd", "frax", "pyusd", "usde", "susde",
@@ -43,7 +49,18 @@ const GAS_ESTIMATE_USD = {
 
 function normalizeChain(name) {
   if (!name) return "unknown";
-  return name.toLowerCase().replace(/\s+/g, "").replace(/mainnet/g, "ethereum");
+  const normalized = name.toLowerCase().replace(/\s+/g, "").replace(/mainnet/g, "ethereum");
+  const aliases = {
+    berachain: "bera",
+    bnb: "bsc",
+    bnbchain: "bsc",
+    bnbsmartchain: "bsc",
+    binance: "bsc",
+    binancesmartchain: "bsc",
+    bobl2: "bob",
+    bobnetwork: "bob",
+  };
+  return aliases[normalized] ?? normalized;
 }
 
 export function classifyRewardToken(tokenSymbol, tokenName = "") {
@@ -103,15 +120,32 @@ function getGasEstimateUsd(chain) {
   return GAS_ESTIMATE_USD.default;
 }
 
-function determineEntryStatus(candidate) {
+export function campaignReportChainIds(policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
+  return Object.keys(policy.chainSelection?.chainProfiles ?? {})
+    .map((chain) => EVM_CHAIN_CONFIGS[chain]?.chainId)
+    .filter((chainId) => Number.isInteger(chainId));
+}
+
+function buildMerklUrl(chainId) {
+  const params = new URLSearchParams();
+  if (Number.isInteger(Number(chainId))) params.set("chainId", String(chainId));
+  params.set("campaigns", "true");
+  return `${MERKL_OPPORTUNITIES_URL}?${params.toString()}`;
+}
+
+function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   const blockers = [];
+  const primaryChain = isEvidencePrimaryChain(candidate.chain, policy);
+  const expectedNetProfitUsd = typeof candidate.operatorExpectedNetProfitUsd === "number"
+    ? candidate.operatorExpectedNetProfitUsd
+    : candidate.expectedNetProfitUsd;
 
   if (candidate.displayedApr < 5) blockers.push("apr_below_5pct");
   if (candidate.tvlUsd < 50_000) blockers.push("tvl_below_50k");
   if (candidate.hoursRemaining !== null && candidate.hoursRemaining < 24) blockers.push("hours_remaining_below_24");
   if (candidate.expectedRealizedAprAfterHaircut <= 0) blockers.push("realized_apr_not_positive");
-  if (!BASE_FIRST_CHAINS.has(candidate.chain) && candidate.expectedNetProfitUsd < 10) {
-    blockers.push("non_base_chain_and_low_net_profit");
+  if (!primaryChain && expectedNetProfitUsd < 10) {
+    blockers.push("non_primary_chain_and_low_net_profit");
   }
   if (!KNOWN_PROTOCOLS.has(candidate.protocol)) blockers.push("protocol_not_bound");
 
@@ -121,16 +155,17 @@ function determineEntryStatus(candidate) {
     candidate.tvlUsd < 50_000 ||
     (candidate.hoursRemaining !== null && candidate.hoursRemaining < 24) ||
     candidate.expectedRealizedAprAfterHaircut <= 0 ||
-    (!BASE_FIRST_CHAINS.has(candidate.chain) && candidate.expectedNetProfitUsd < 10) ||
+    (!primaryChain && expectedNetProfitUsd < 10) ||
     !KNOWN_PROTOCOLS.has(candidate.protocol);
 
   if (hasHardBlocker) {
     return { entryStatus: "blocked", blockers };
   }
 
-  // Small-capital micro-test auto-approval: lower bar for $10-25 positions on Base
+  // Small-capital micro-test auto-approval: lower bar for tiny positions on
+  // whichever chain currently has committed evidence-primary status.
   const isMicroTestEligible =
-    candidate.chain === "base" &&
+    primaryChain &&
     KNOWN_PROTOCOLS.has(candidate.protocol) &&
     candidate.rewardTokenHaircut !== 0.85 &&
     blockers.length === 0;
@@ -162,7 +197,7 @@ function determineEntryStatus(candidate) {
 
   // Standard auto_allowed (higher bar)
   if (
-    candidate.chain === "base" &&
+    primaryChain &&
     KNOWN_PROTOCOLS.has(candidate.protocol) &&
     candidate.expectedRealizedAprAfterHaircut >= 15 &&
     candidate.tvlUsd >= 100_000 &&
@@ -175,10 +210,40 @@ function determineEntryStatus(candidate) {
   return { entryStatus: "observe", blockers };
 }
 
-export async function fetchMerklOpportunities({ fetchFn = global.fetch } = {}) {
-  const res = await fetchFn(MERKL_URL, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`Merkl fetch failed: ${res.status}`);
-  return res.json();
+function operatorPositionUsdForCampaign(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
+  const primaryChain = isEvidencePrimaryChain(candidate.chain, policy);
+  const knownProtocol = KNOWN_PROTOCOLS.has(candidate.protocol);
+  return primaryChain && knownProtocol
+    ? policy.defaultBudgetsUsd.initialMicroUsd
+    : policy.defaultBudgetsUsd.initialCampaignUsd;
+}
+
+function campaignRoundTripCostUsd(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
+  if (isEvidencePrimaryChain(candidate.chain, policy)) {
+    return tinyCanarySameChainRoundTripCostUsd({ chain: candidate.chain });
+  }
+  return getGasEstimateUsd(candidate.chain);
+}
+
+function expectedGrossProfitUsd({ positionUsd, aprPct, holdDays }) {
+  if (!Number.isFinite(positionUsd) || !Number.isFinite(aprPct) || !Number.isFinite(holdDays)) return null;
+  return positionUsd * (aprPct / 100) * (holdDays / 365);
+}
+
+export async function fetchMerklOpportunities({
+  fetchFn = global.fetch,
+  chainIds = [EVM_CHAIN_CONFIGS.base.chainId],
+} = {}) {
+  const ids = [...new Set(chainIds.map(Number).filter((chainId) => Number.isInteger(chainId)))];
+  const effectiveIds = ids.length > 0 ? ids : [EVM_CHAIN_CONFIGS.base.chainId];
+  const responses = await Promise.all(effectiveIds.map(async (chainId) => {
+    const res = await fetchFn(buildMerklUrl(chainId), { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`Merkl fetch failed for chainId=${chainId}: ${res.status}`);
+    const body = await res.json();
+    const items = Array.isArray(body) ? body : body.data || [];
+    return items.map((item) => ({ ...item, sourceChainId: chainId }));
+  }));
+  return responses.flat();
 }
 
 export async function fetchDefiLlamaPools({ fetchFn = global.fetch } = {}) {
@@ -188,10 +253,14 @@ export async function fetchDefiLlamaPools({ fetchFn = global.fetch } = {}) {
   return Array.isArray(data) ? data : data.data || [];
 }
 
-export function buildCampaignAwareCandidates({ merklOpportunities, defiLlamaPools, nowMs = Date.now() }) {
+export function buildCampaignAwareCandidates({
+  merklOpportunities,
+  defiLlamaPools,
+  nowMs = Date.now(),
+  policy = SMALL_CAPITAL_CAMPAIGN_MODE,
+}) {
   const opportunities = Array.isArray(merklOpportunities) ? merklOpportunities : [];
   const pools = Array.isArray(defiLlamaPools) ? defiLlamaPools : [];
-  const basePools = pools.filter((p) => normalizeChain(p.chain) === "base");
 
   const candidates = [];
 
@@ -211,8 +280,9 @@ export function buildCampaignAwareCandidates({ merklOpportunities, defiLlamaPool
     if (typeof opp.tvl === "number") tvlUsd = opp.tvl;
     else if (typeof opp.tvlUsd === "number") tvlUsd = opp.tvlUsd;
 
-    // Cross-reference with DefiLlama for Base
-    const matchedPool = chain === "base" ? getDefiLlamaPool(opp, basePools) : null;
+    // Cross-reference with DefiLlama for the candidate chain.
+    const chainPools = pools.filter((p) => normalizeChain(p.chain) === chain);
+    const matchedPool = getDefiLlamaPool(opp, chainPools);
     if (matchedPool) {
       if (typeof matchedPool.apy === "number" && displayedApr === 0) displayedApr = matchedPool.apy;
       if (typeof matchedPool.tvlUsd === "number" && tvlUsd === 0) tvlUsd = matchedPool.tvlUsd;
@@ -252,10 +322,7 @@ export function buildCampaignAwareCandidates({ merklOpportunities, defiLlamaPool
     }
 
     const expectedRealizedAprAfterHaircut = computeExpectedRealizedApr(displayedApr, rewardTokenHaircut);
-    const estimatedGasClaimSwapBridgeCostUsd = getGasEstimateUsd(chain);
-    const expectedNetProfitUsd = (expectedRealizedAprAfterHaircut / 100) * tvlUsd * (1 / 365) - estimatedGasClaimSwapBridgeCostUsd;
-
-    const candidate = {
+    const preliminaryCandidate = {
       chain,
       protocol,
       opportunityId,
@@ -264,13 +331,42 @@ export function buildCampaignAwareCandidates({ merklOpportunities, defiLlamaPool
       tvlUsd,
       campaignAgeHours,
       hoursRemaining,
-      estimatedGasClaimSwapBridgeCostUsd,
       rewardToken,
       rewardTokenHaircut,
-      expectedNetProfitUsd,
+    };
+    const expectedHoldDays = resolveTinyCanaryExpectedHoldDays({
+      campaignRemainingHours: hoursRemaining,
+    });
+    const operatorPositionUsd = operatorPositionUsdForCampaign(preliminaryCandidate, policy);
+    const estimatedGasClaimSwapBridgeCostUsd = campaignRoundTripCostUsd(preliminaryCandidate, policy);
+    const operatorExpectedGrossProfitUsd = expectedGrossProfitUsd({
+      positionUsd: operatorPositionUsd,
+      aprPct: expectedRealizedAprAfterHaircut,
+      holdDays: expectedHoldDays,
+    });
+    const marketExpectedGrossProfitUsd = expectedGrossProfitUsd({
+      positionUsd: tvlUsd,
+      aprPct: expectedRealizedAprAfterHaircut,
+      holdDays: expectedHoldDays,
+    });
+    const operatorExpectedNetProfitUsd =
+      operatorExpectedGrossProfitUsd === null ? null : operatorExpectedGrossProfitUsd - estimatedGasClaimSwapBridgeCostUsd;
+    const marketExpectedNetProfitUsd =
+      marketExpectedGrossProfitUsd === null ? null : marketExpectedGrossProfitUsd - estimatedGasClaimSwapBridgeCostUsd;
+
+    const candidate = {
+      ...preliminaryCandidate,
+      expectedHoldDays,
+      operatorPositionUsd,
+      estimatedGasClaimSwapBridgeCostUsd,
+      operatorExpectedGrossProfitUsd,
+      operatorExpectedNetProfitUsd,
+      marketExpectedGrossProfitUsd,
+      marketExpectedNetProfitUsd,
+      expectedNetProfitUsd: operatorExpectedNetProfitUsd,
     };
 
-    const statusResult = determineEntryStatus(candidate);
+    const statusResult = determineEntryStatus(candidate, policy);
     candidates.push({
       ...candidate,
       entryStatus: statusResult.entryStatus,
@@ -282,18 +378,45 @@ export function buildCampaignAwareCandidates({ merklOpportunities, defiLlamaPool
   return candidates;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = new Set(argv);
   return {
     json: flags.has("--json"),
+    write: flags.has("--write"),
   };
+}
+
+export async function handleCampaignAwareReportOutput({
+  output,
+  args,
+  cwd = process.cwd(),
+  writeFileFn = writeFile,
+  logFn = console.log,
+} = {}) {
+  const outPath = join(cwd, "data", "campaign-aware-opportunities.json");
+  if (args.write) {
+    await writeFileFn(outPath, `${JSON.stringify(output, null, 2)}\n`);
+  }
+
+  if (args.json) {
+    logFn(JSON.stringify(output, null, 2));
+    return { wrote: args.write === true, printed: "json", outPath };
+  }
+
+  if (args.write) {
+    logFn(`Wrote ${output.candidateCount ?? output.candidates?.length ?? 0} candidates to ${outPath}`);
+    return { wrote: true, printed: "summary", outPath };
+  }
+
+  logFn(JSON.stringify(output, null, 2));
+  return { wrote: false, printed: "json", outPath };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   const [merklData, defiLlamaPools] = await Promise.all([
-    fetchMerklOpportunities(),
+    fetchMerklOpportunities({ chainIds: campaignReportChainIds(SMALL_CAPITAL_CAMPAIGN_MODE) }),
     fetchDefiLlamaPools(),
   ]);
 
@@ -314,14 +437,7 @@ async function main() {
     candidates,
   };
 
-  if (args.json) {
-    const outPath = join(process.cwd(), "data", "campaign-aware-opportunities.json");
-    await writeFile(outPath, `${JSON.stringify(output, null, 2)}\n`);
-    console.log(`Wrote ${candidates.length} candidates to ${outPath}`);
-    return;
-  }
-
-  console.log(JSON.stringify(output, null, 2));
+  await handleCampaignAwareReportOutput({ output, args });
 }
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];

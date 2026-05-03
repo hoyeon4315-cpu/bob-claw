@@ -1,3 +1,5 @@
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "./small-capital-campaign-mode.mjs";
+
 export const MERKL_OPPORTUNITY_POLICY = Object.freeze({
   profileId: "aggressive_multi_asset_payback_v2",
   api: Object.freeze({
@@ -121,7 +123,7 @@ export const SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY = Object.freeze({
       "sonic",
       "unichain",
     ]),
-    baseFirstChains: Object.freeze(["base", "optimism"]),
+    chainSelection: SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
     minEthereumNotionalUsd: 25,
     minLiveCampaignCount: 1,
     minTvlUsdByFamily: Object.freeze({

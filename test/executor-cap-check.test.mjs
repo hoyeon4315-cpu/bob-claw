@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PORTFOLIO_EXPOSURE_POLICY } from "../src/config/portfolio-exposure-policy.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  evidencePrimaryChainShareOverrides,
+} from "../src/config/small-capital-campaign-mode.mjs";
 import { assertStrategyCaps } from "../src/config/strategy-caps.mjs";
 import {
   buildPortfolioExposureState,
@@ -35,6 +39,36 @@ function intentFixture(overrides = {}) {
     amountUsd: 40,
     intentType: "swap",
     ...overrides,
+  };
+}
+
+function withOptimismPrimary() {
+  return {
+    ...SMALL_CAPITAL_CAMPAIGN_MODE,
+    chainSelection: {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+      chainProfiles: {
+        base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+        optimism: {
+          role: "primary",
+          maxSharePct: 0.70,
+          evidenceStatus: "live_evidence_primary",
+          evidenceSource: "test committed evidence",
+          reviewBy: "2026-05-16",
+        },
+      },
+    },
+  };
+}
+
+function portfolioPolicyForSmallCapitalPolicy(policy) {
+  return {
+    ...PORTFOLIO_EXPOSURE_POLICY,
+    chainSharePct: {
+      ...evidencePrimaryChainShareOverrides(policy),
+      ethereum: PORTFOLIO_EXPOSURE_POLICY.chainSharePct.ethereum,
+      bob: PORTFOLIO_EXPOSURE_POLICY.chainSharePct.bob,
+    },
   };
 }
 
@@ -488,7 +522,52 @@ test("evaluateCapCheck blocks aggregate chain exposure while allowing aggressive
     intent: intentFixture({
       strategyId: "token-dex-experiment",
       chain: "base",
-      amountUsd: 40,
+      amountUsd: 10,
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "token-dex-experiment",
+        caps: {
+          perTxUsd: 100,
+          perDayUsd: 300,
+          perChainUsd: { base: 200 },
+          maxDailyLossUsd: 25,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["odos"],
+        assetFamily: "mixed_assets",
+        btcDenominated: false,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "token-dex-experiment",
+        chain: "base",
+        timestamp: "2026-04-16T02:00:00.000Z",
+        amountUsd: 65,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 100,
+    portfolioExposurePolicy: {
+      ...PORTFOLIO_EXPOSURE_POLICY,
+      maxProtocolSharePct: 1,
+    },
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), true);
+  assert.equal(result.blockers.includes("portfolio_btc_denomination_floor_breached"), false);
+});
+
+test("evaluateCapCheck allows evidence-primary exposure up to committed 70% portfolio cap", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      amountUsd: 10,
     }),
     strategyCaps: {
       ...strategyCapsFixture({
@@ -512,23 +591,151 @@ test("evaluateCapCheck blocks aggregate chain exposure while allowing aggressive
         strategyId: "wrapped-btc-loop-base-moonwell",
         chain: "base",
         timestamp: "2026-04-16T01:00:00.000Z",
-        amountUsd: 60,
-        policyVerdict: "approved",
-      },
-      {
-        strategyId: "token-dex-experiment",
-        chain: "base",
-        timestamp: "2026-04-16T02:00:00.000Z",
-        amountUsd: 30,
+        amountUsd: 55,
         policyVerdict: "approved",
       },
     ],
     activeBudgetUsd: 100,
+    portfolioExposurePolicy: {
+      ...PORTFOLIO_EXPOSURE_POLICY,
+      maxProtocolSharePct: 1,
+    },
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), false);
+});
+
+test("evaluateCapCheck keeps non-primary chains on default portfolio exposure cap", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "token-dex-experiment",
+      chain: "optimism",
+      amountUsd: 10,
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "token-dex-experiment",
+        caps: {
+          perTxUsd: 100,
+          perDayUsd: 300,
+          perChainUsd: { optimism: 200 },
+          maxDailyLossUsd: 25,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["odos"],
+        assetFamily: "mixed_assets",
+        btcDenominated: false,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "token-dex-experiment",
+        chain: "optimism",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 15,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 100,
+    portfolioExposurePolicy: {
+      ...PORTFOLIO_EXPOSURE_POLICY,
+      maxProtocolSharePct: 1,
+    },
     now: "2026-04-16T12:00:00.000Z",
   });
 
   assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), true);
-  assert.equal(result.blockers.includes("portfolio_btc_denomination_floor_breached"), false);
+});
+
+test("evaluateCapCheck follows a committed alternate evidence-primary portfolio cap", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "token-dex-experiment",
+      chain: "optimism",
+      amountUsd: 10,
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "token-dex-experiment",
+        caps: {
+          perTxUsd: 100,
+          perDayUsd: 300,
+          perChainUsd: { optimism: 200 },
+          maxDailyLossUsd: 25,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["odos"],
+        assetFamily: "mixed_assets",
+        btcDenominated: false,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "token-dex-experiment",
+        chain: "optimism",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 55,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 100,
+    portfolioExposurePolicy: {
+      ...portfolioPolicyForSmallCapitalPolicy(withOptimismPrimary()),
+      maxProtocolSharePct: 1,
+    },
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), false);
+});
+
+test("evaluateCapCheck demotes Base to default portfolio exposure cap when another chain is primary", () => {
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      strategyId: "token-dex-experiment",
+      chain: "base",
+      amountUsd: 10,
+    }),
+    strategyCaps: {
+      ...strategyCapsFixture({
+        strategyId: "token-dex-experiment",
+        caps: {
+          perTxUsd: 100,
+          perDayUsd: 300,
+          perChainUsd: { base: 200 },
+          maxDailyLossUsd: 25,
+          maxFailedGasCost24hUsd: 3,
+        },
+      }),
+      exposure: {
+        protocols: ["odos"],
+        assetFamily: "mixed_assets",
+        btcDenominated: false,
+      },
+    },
+    auditRecords: [
+      {
+        strategyId: "token-dex-experiment",
+        chain: "base",
+        timestamp: "2026-04-16T01:00:00.000Z",
+        amountUsd: 55,
+        policyVerdict: "approved",
+      },
+    ],
+    activeBudgetUsd: 100,
+    portfolioExposurePolicy: {
+      ...portfolioPolicyForSmallCapitalPolicy(withOptimismPrimary()),
+      maxProtocolSharePct: 1,
+    },
+    now: "2026-04-16T12:00:00.000Z",
+  });
+
+  assert.equal(result.blockers.includes("portfolio_chain_cap_exceeded"), true);
 });
 
 test("evaluateCapCheck blocks non-BTC exposure above aggressive profile limit", () => {
@@ -609,8 +816,10 @@ test("recursive wrapped BTC loop caps are declared and reopened for live validat
   const caps = assertStrategyCaps("recursive_wrapped_btc_lending_loop");
 
   assert.equal(caps.autoExecute, true);
-  assert.equal(caps.caps.perTxUsd, 1_000_000);
-  assert.equal(caps.caps.perChainUsd.base, 1_000_000);
+  assert.equal(caps.caps.perTxUsd, 150);
+  assert.equal(caps.caps.perDayUsd, 200);
+  assert.equal(caps.caps.perChainUsd.base, 200);
+  assert.equal(caps.caps.maxDailyLossUsd, 25);
   assert.deepEqual(caps.exposure.protocols, ["moonwell", "odos"]);
   assert.equal(caps.exposure.btcDenominated, true);
   assert.equal(caps.leverage.healthFactorMin, 1.35);
@@ -621,7 +830,7 @@ test("recursive wrapped BTC loop caps are declared and reopened for live validat
       strategyId: "recursive_wrapped_btc_lending_loop",
       chain: "base",
       mode: "live",
-      amountUsd: 300,
+      amountUsd: 128.571,
       intentType: "lending_loop_entry",
     },
     strategyCaps: caps,
@@ -634,11 +843,11 @@ test("recursive wrapped BTC loop caps are declared and reopened for live validat
   assert.equal(liveResult.blockers.includes("strategy_per_day_cap_missing"), false);
   assert.equal(liveResult.blockers.includes("strategy_per_chain_cap_missing"), false);
 
-  const dryRunResult = evaluateCapCheck({
+  const overCapResult = evaluateCapCheck({
     intent: {
       strategyId: "recursive_wrapped_btc_lending_loop",
       chain: "base",
-      mode: "dry_run",
+      mode: "live",
       amountUsd: 300,
       intentType: "lending_loop_entry",
     },
@@ -646,7 +855,96 @@ test("recursive wrapped BTC loop caps are declared and reopened for live validat
     auditRecords: [],
   });
 
+  assert.equal(overCapResult.decision, "BLOCK");
+  assert.equal(overCapResult.blockers.includes("strategy_per_tx_cap_exceeded"), true);
+
+  const dryRunResult = evaluateCapCheck({
+    intent: {
+      strategyId: "recursive_wrapped_btc_lending_loop",
+      chain: "base",
+      mode: "dry_run",
+      amountUsd: 128.571,
+      intentType: "lending_loop_entry",
+    },
+    strategyCaps: caps,
+    auditRecords: [],
+  });
+
   assert.equal(dryRunResult.decision, "ALLOW");
+});
+
+test("native gas refill cap allows a second infrastructure top-up but keeps chain ceiling bounded", () => {
+  const caps = assertStrategyCaps("native-gas-refill");
+  assert.equal(caps.caps.perTxUsd, 20);
+  assert.equal(caps.caps.perDayUsd, 150);
+  assert.equal(caps.caps.perChainUsd.base, 45);
+  assert.equal(caps.caps.perChainUsd.ethereum, 45);
+
+  const intent = {
+    strategyId: "native-gas-refill",
+    chain: "base",
+    mode: "live",
+    amountUsd: 18.09,
+    intentType: "dex_swap",
+  };
+  const now = "2026-05-02T10:43:00.000Z";
+  const previousBaseTopUp = {
+    strategyId: "native-gas-refill",
+    chain: "base",
+    timestamp: "2026-05-02T10:21:00.000Z",
+    amountUsd: 18.08,
+    policyVerdict: "approved",
+    lifecycle: { stage: "confirmed" },
+  };
+  const allowResult = evaluateCapCheck({
+    intent,
+    strategyCaps: caps,
+    auditRecords: [previousBaseTopUp],
+    now,
+  });
+
+  assert.equal(allowResult.decision, "ALLOW");
+  assert.equal(allowResult.blockers.includes("strategy_per_chain_cap_exceeded"), false);
+
+  const blockResult = evaluateCapCheck({
+    intent,
+    strategyCaps: caps,
+    auditRecords: [{ ...previousBaseTopUp, amountUsd: 27.5 }],
+    now,
+  });
+
+  assert.equal(blockResult.decision, "BLOCK");
+  assert.equal(blockResult.blockers.includes("strategy_per_chain_cap_exceeded"), true);
+});
+
+test("token DEX experiment stale failure lock is reset after canonical WBTC routing fix", () => {
+  const caps = assertStrategyCaps("token-dex-experiment");
+  assert.equal(caps.resumeAfterFailureAt, "2026-05-02T10:54:00.000Z");
+
+  const result = evaluateCapCheck({
+    intent: {
+      strategyId: "token-dex-experiment",
+      chain: "ethereum",
+      mode: "live",
+      amountUsd: 27.75,
+      intentType: "approve_exact",
+    },
+    strategyCaps: caps,
+    auditRecords: [
+      {
+        strategyId: "token-dex-experiment",
+        chain: "ethereum",
+        timestamp: "2026-05-02T10:50:30.000Z",
+        amountUsd: 27.75,
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["max_consecutive_failures_reached"] },
+      },
+    ],
+    now: "2026-05-02T10:55:00.000Z",
+  });
+
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.blockers.includes("max_consecutive_failures_reached"), false);
 });
 
 test("Across bridge caps exclude BSC until a chain-local SpokePool is verified", () => {

@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
 import { buildWholeWalletInventory, knownWholeWalletTokenTargets } from "../src/treasury/whole-wallet-scan.mjs";
 
 test("whole-wallet scan exposes known wrapped-btc token targets", () => {
   const targets = knownWholeWalletTokenTargets({ families: ["wrapped_btc"] });
   assert.equal(targets.some((item) => item.token.toLowerCase() === WBTC_OFT_TOKEN.toLowerCase()), true);
   assert.equal(targets.every((item) => item.family === "wrapped_btc"), true);
+});
+
+test("whole-wallet scan filters token targets by chain before RPC calls", () => {
+  const ethereumTargets = knownWholeWalletTokenTargets({ chain: "ethereum", families: ["wrapped_btc"] });
+  assert.equal(ethereumTargets.some((item) => item.token.toLowerCase() === ETHEREUM_WBTC_TOKEN.toLowerCase()), true);
+  assert.equal(ethereumTargets.some((item) => item.token.toLowerCase() === WBTC_OFT_TOKEN.toLowerCase()), false);
+
+  const avalancheTargets = knownWholeWalletTokenTargets({ chain: "avalanche", families: ["wrapped_btc"] });
+  assert.equal(avalancheTargets.some((item) => item.token.toLowerCase() === WBTC_OFT_TOKEN.toLowerCase()), true);
+  assert.equal(avalancheTargets.some((item) => item.token.toLowerCase() === ETHEREUM_WBTC_TOKEN.toLowerCase()), false);
 });
 
 test("whole-wallet inventory keeps non-zero native and token balances outside treasury policy scope", () => {
@@ -46,7 +56,7 @@ test("whole-wallet inventory keeps non-zero native and token balances outside tr
   assert.equal(inventory.totalUsd > 0, true);
 });
 
-test("whole-wallet inventory adds external unclassified wallet delta when address scan api sees more assets", () => {
+test("whole-wallet inventory keeps external portfolio as reference metadata only", () => {
   const inventory = buildWholeWalletInventory({
     address: "0x000000000000000000000000000000000000dEaD",
     prices: {
@@ -68,13 +78,12 @@ test("whole-wallet inventory adds external unclassified wallet delta when addres
   });
 
   const other = inventory.tokenBalances.find((item) => item.family === "external_unclassified");
-  assert.ok(other, "expected unclassified external wallet delta");
-  assert.equal(other.estimatedUsd, 800);
+  assert.equal(other, undefined);
   assert.equal(inventory.summary.itemizedWalletUsd, 2200);
   assert.equal(inventory.summary.externalWalletUsd, 3000);
   assert.equal(inventory.summary.externalUnclassifiedUsd, 800);
-  assert.equal(inventory.totalUsd, 3000);
-  assert.equal(inventory.source, "live_scan_with_external_portfolio");
+  assert.equal(inventory.totalUsd, 2200);
+  assert.equal(inventory.source, "live_scan_with_external_reference");
 });
 
 test("whole-wallet inventory deduplicates repeated chain token balances before totals", () => {

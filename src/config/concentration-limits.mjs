@@ -1,5 +1,12 @@
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  evidencePrimaryChainShareOverrides,
+} from "./small-capital-campaign-mode.mjs";
+
 export const CONCENTRATION_LIMITS = Object.freeze({
   maxChainSharePct: 0.50,
+  chainSelectionMode: SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.mode,
+  chainSharePct: evidencePrimaryChainShareOverrides(),
   maxProtocolSharePct: 0.35,
   maxOpportunitySharePct: 0.25,
   maxRewardTokenSharePct: 0.40,
@@ -10,6 +17,10 @@ export function concentrationLimits(overrides = {}) {
   return Object.freeze({
     ...CONCENTRATION_LIMITS,
     ...overrides,
+    chainSharePct: Object.freeze({
+      ...CONCENTRATION_LIMITS.chainSharePct,
+      ...(overrides.chainSharePct ?? {}),
+    }),
   });
 }
 
@@ -26,12 +37,13 @@ export function evaluateConcentrationLimits({
   const assetFamilySharePct = allocations.assetFamilySharePct ?? {};
 
   for (const [id, share] of Object.entries(chainSharePct)) {
-    if (share > limits.maxChainSharePct) {
+    const maxChainSharePct = limits.chainSharePct?.[id] ?? limits.maxChainSharePct;
+    if (share > maxChainSharePct) {
       violations.push({
         kind: "chain_concentration_exceeded",
         id,
         share,
-        max: limits.maxChainSharePct,
+        max: maxChainSharePct,
       });
     }
   }

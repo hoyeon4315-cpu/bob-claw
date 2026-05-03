@@ -5,7 +5,11 @@ import {
   fetchDefiLlamaPools,
   buildCampaignAwareCandidates,
   classifyRewardToken,
+  campaignReportChainIds,
+  handleCampaignAwareReportOutput,
+  parseArgs,
 } from "../src/cli/report-campaign-aware-opportunities.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../src/config/small-capital-campaign-mode.mjs";
 
 function mockFetch(responseBody, status = 200) {
   return async () => ({
@@ -45,7 +49,7 @@ describe("fetchMerklOpportunities", () => {
   test("returns parsed JSON on success", async () => {
     const data = [{ id: "1", chain: { name: "Base" } }];
     const result = await fetchMerklOpportunities({ fetchFn: mockFetch(data) });
-    assert.deepStrictEqual(result, data);
+    assert.deepStrictEqual(result, [{ ...data[0], sourceChainId: 8453 }]);
   });
 
   test("throws on non-ok response", async () => {
@@ -55,6 +59,77 @@ describe("fetchMerklOpportunities", () => {
     } catch (err) {
       assert.ok(err.message.includes("Merkl fetch failed"));
     }
+  });
+
+  test("can fetch committed evidence-scope chain ids instead of only Base", async () => {
+    const calls = [];
+    const result = await fetchMerklOpportunities({
+      chainIds: [8453, 10],
+      fetchFn: async (url) => {
+        calls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: url.includes("chainId=10") ? "optimism" : "base" }],
+        };
+      },
+    });
+
+    assert.equal(calls.length, 2);
+    assert.ok(calls.some((url) => url.includes("chainId=8453")));
+    assert.ok(calls.some((url) => url.includes("chainId=10")));
+    assert.deepEqual(result.map((item) => item.sourceChainId).sort((a, b) => a - b), [10, 8453]);
+  });
+});
+
+describe("campaignReportChainIds", () => {
+  test("covers official Gateway EVM destinations from chain profiles", () => {
+    const ids = campaignReportChainIds();
+    assert.ok(ids.includes(8453));
+    assert.ok(ids.includes(10));
+    assert.ok(ids.includes(60808));
+    assert.equal(ids.includes(42161), false);
+    assert.equal(ids.includes(137), false);
+  });
+});
+
+describe("campaign report CLI output", () => {
+  test("parseArgs keeps --json as stdout JSON and --write as file output", () => {
+    assert.deepEqual(parseArgs(["--json"]), { json: true, write: false });
+    assert.deepEqual(parseArgs(["--write"]), { json: false, write: true });
+    assert.deepEqual(parseArgs(["--json", "--write"]), { json: true, write: true });
+  });
+
+  test("handleCampaignAwareReportOutput writes only when --write is set", async () => {
+    const writes = [];
+    const logs = [];
+    const output = { candidateCount: 2, candidates: [{ id: "a" }, { id: "b" }] };
+
+    const jsonResult = await handleCampaignAwareReportOutput({
+      output,
+      args: parseArgs(["--json"]),
+      cwd: "/tmp/bob-claw-campaign-test",
+      writeFileFn: async (...args) => writes.push(args),
+      logFn: (line) => logs.push(line),
+    });
+
+    assert.equal(jsonResult.wrote, false);
+    assert.equal(writes.length, 0);
+    assert.deepEqual(JSON.parse(logs.at(-1)).candidates.map((item) => item.id), ["a", "b"]);
+
+    const writeResult = await handleCampaignAwareReportOutput({
+      output,
+      args: parseArgs(["--write"]),
+      cwd: "/tmp/bob-claw-campaign-test",
+      writeFileFn: async (...args) => writes.push(args),
+      logFn: (line) => logs.push(line),
+    });
+
+    assert.equal(writeResult.wrote, true);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0][0], "/tmp/bob-claw-campaign-test/data/campaign-aware-opportunities.json");
+    assert.equal(JSON.parse(writes[0][1]).candidateCount, 2);
+    assert.match(logs.at(-1), /Wrote 2 candidates/);
   });
 });
 
@@ -227,8 +302,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.strictEqual(c.isMicroTest, true);
   });
 
-  test("observe when no hard blockers but does not meet auto_allowed criteria", () => {
-    // Base, known protocol, good APR, good TVL, good remaining, but not on Base? Let's make chain optimism
+  test("blocks non-primary campaigns when operator-notional net does not clear the committed cost floor", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -242,12 +316,89 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    // Optimism is in baseFirstChains, so no hard blocker. But chain != base, so auto_allowed fails.
-    assert.strictEqual(c.entryStatus, "observe");
-    assert.strictEqual(c.blockers.length, 0);
+    assert.strictEqual(c.entryStatus, "blocked");
+    assert.ok(c.blockers.includes("non_primary_chain_and_low_net_profit"));
+    assert.ok(c.marketExpectedNetProfitUsd > 0);
+    assert.ok(c.operatorExpectedNetProfitUsd < 10);
   });
 
-  test("blocks Arbitrum campaign candidates unless they clear the non-Gateway cost floor", () => {
+  test("observe when a non-primary campaign clears the operator-notional cost floor", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        baseOpp({
+          chain: { name: "Optimism" },
+          protocol: { id: "aerodrome" },
+          apr: 15_000,
+          tvl: 150_000,
+          campaigns: [
+            {
+              start: Math.floor((nowMs - 100 * 3600 * 1000) / 1000),
+              end: Math.floor((nowMs + 720 * 3600 * 1000) / 1000),
+              rewardToken: { displaySymbol: "USDC", symbol: "USDC" },
+            },
+          ],
+        }),
+      ],
+      defiLlamaPools: [],
+      nowMs,
+    });
+    const c = candidates[0];
+    assert.strictEqual(c.entryStatus, "observe");
+    assert.strictEqual(c.blockers.length, 0);
+    assert.ok(c.operatorExpectedNetProfitUsd > 10);
+  });
+
+  test("auto_allowed when a non-primary chain is committed as evidence-primary", () => {
+    const optimismPrimaryPolicy = {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE,
+      chainSelection: {
+        ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+        chainProfiles: {
+          base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+          optimism: {
+            role: "primary",
+            maxSharePct: 0.70,
+            evidenceStatus: "live_evidence_primary",
+            evidenceSource: "test committed evidence",
+            reviewBy: "2026-05-16",
+          },
+        },
+      },
+    };
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        baseOpp({
+          chain: { name: "Optimism" },
+          protocol: { id: "aerodrome" },
+          apr: 20,
+          tvl: 150_000,
+        }),
+      ],
+      defiLlamaPools: [],
+      nowMs,
+      policy: optimismPrimaryPolicy,
+    });
+    const c = candidates[0];
+    assert.strictEqual(c.entryStatus, "auto_allowed");
+    assert.strictEqual(c.blockers.length, 0);
+    assert.strictEqual(c.chain, "optimism");
+  });
+
+  test("separates display-scale market projection from operator-notional expected PnL", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [baseOpp({ apr: 20, tvl: 150_000 })],
+      defiLlamaPools: [],
+      nowMs,
+    });
+    const c = candidates[0];
+
+    assert.equal(c.operatorPositionUsd, SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.initialMicroUsd);
+    assert.equal(c.expectedNetProfitUsd, c.operatorExpectedNetProfitUsd);
+    assert.ok(c.marketExpectedNetProfitUsd > c.operatorExpectedNetProfitUsd);
+    assert.ok(c.estimatedGasClaimSwapBridgeCostUsd < 0.05);
+  });
+
+  test("blocks Arbitrum campaign candidates unless they clear the non-primary cost floor", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -262,7 +413,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     });
     const c = candidates[0];
     assert.strictEqual(c.entryStatus, "blocked");
-    assert.ok(c.blockers.includes("non_base_chain_and_low_net_profit"));
+    assert.ok(c.blockers.includes("non_primary_chain_and_low_net_profit"));
   });
 
   test("cross-references DefiLlama for Base pools when Merkl data is sparse", () => {
@@ -291,5 +442,58 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.strictEqual(c.displayedApr, 25);
     assert.strictEqual(c.tvlUsd, 300_000);
     assert.strictEqual(c.entryStatus, "auto_allowed");
+  });
+
+  test("cross-references DefiLlama by candidate chain instead of only Base", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        {
+          id: "test-dl-optimism",
+          chain: { name: "Optimism" },
+          protocol: { id: "aerodrome" },
+          tokens: [{ displaySymbol: "USDC" }, { displaySymbol: "WETH" }],
+          campaigns: [
+            {
+              start: Math.floor((nowMs - 100 * 3600 * 1000) / 1000),
+              end: Math.floor((nowMs + 100 * 3600 * 1000) / 1000),
+              rewardToken: { displaySymbol: "USDC", symbol: "USDC" },
+            },
+          ],
+        },
+      ],
+      defiLlamaPools: [
+        { chain: "Base", project: "aerodrome", symbol: "USDC-WETH", apy: 4, tvlUsd: 10_000 },
+        { chain: "Optimism", project: "aerodrome", symbol: "USDC-WETH", apy: 25, tvlUsd: 300_000 },
+      ],
+      nowMs,
+    });
+    const c = candidates[0];
+    assert.strictEqual(c.displayedApr, 25);
+    assert.strictEqual(c.tvlUsd, 300_000);
+    assert.strictEqual(c.chain, "optimism");
+  });
+
+  test("normalizes external chain aliases to official internal chain ids", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        baseOpp({
+          chain: { name: "BNB Chain" },
+          protocol: { id: "aave" },
+          apr: 20,
+          tvl: 150_000,
+        }),
+        baseOpp({
+          id: "test-bera",
+          chain: { name: "Berachain" },
+          protocol: { id: "euler" },
+          apr: 20,
+          tvl: 150_000,
+        }),
+      ],
+      defiLlamaPools: [],
+      nowMs,
+    });
+
+    assert.deepEqual(candidates.map((candidate) => candidate.chain), ["bsc", "bera"]);
   });
 });

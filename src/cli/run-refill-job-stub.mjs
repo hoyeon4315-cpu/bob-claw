@@ -172,15 +172,17 @@ async function main() {
     fallbackInventory: context.inventorySnapshot,
   });
   if ((inventory.summary?.scanErrorCount ?? 0) > 0) inventorySource = "partial_live_scan";
+  const riskPolicy = buildDefaultRiskPolicy();
   const riskState = buildExecutionRiskState({
     receiptRecords,
     executionEvents: events,
     inventory,
+    resumeAfterFailureAt: riskPolicy.resumeAfterFailureAt || null,
   });
   const riskDecision = buildExecutionRiskDecision({
     job,
     riskState,
-    riskPolicy: buildDefaultRiskPolicy(),
+    riskPolicy,
     mode: args.mode,
   });
   if (riskDecision.decision !== "ALLOW") {

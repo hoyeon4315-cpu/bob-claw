@@ -1,4 +1,5 @@
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../../config/small-capital-campaign-mode.mjs";
+import { resolveTinyCanaryExpectedHoldDays } from "../../config/sizing.mjs";
 import { evaluateExecutableCandidateGate } from "./executable-candidate-gate.mjs";
 import { resolveFamilyBinding } from "./family-binding-registry.mjs";
 import { computeRealizedPnlEv } from "./pnl-ev-gate.mjs";
@@ -8,21 +9,13 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function hoursUntil(isoTimestamp, now) {
-  if (!isoTimestamp) return null;
-  const targetMs = Date.parse(isoTimestamp);
-  const nowMs = Date.parse(now);
-  if (!Number.isFinite(targetMs) || !Number.isFinite(nowMs)) return null;
-  return (targetMs - nowMs) / 3_600_000;
-}
-
-function expectedHoldDays(candidate, binding, now) {
-  if (Number.isFinite(Number(candidate.expectedHoldDays))) {
-    return Math.max(0, Number(candidate.expectedHoldDays));
-  }
-  const remainingHours = hoursUntil(candidate.campaignEndsAt, now);
-  if (remainingHours !== null) return Math.max(0, remainingHours / 24);
-  return binding.defaultHoldDays;
+function expectedHoldDays(candidate, now) {
+  return resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: candidate.expectedHoldDays,
+    campaignRemainingHours: candidate.campaignRemainingHours,
+    campaignEndsAt: candidate.campaignEndsAt,
+    now,
+  });
 }
 
 function missingRequiredFields(candidate, requiredFields = []) {
@@ -109,7 +102,7 @@ export function buildRadarCanaryIntent({
       binding,
     };
   }
-  const holdDays = expectedHoldDays(candidate, binding, now);
+  const holdDays = expectedHoldDays(candidate, now);
   const ev = computeRealizedPnlEv({
     candidate,
     positionUsd: amountUsd,
@@ -136,6 +129,8 @@ export function buildRadarCanaryIntent({
       rewardTokenType: candidate.rewardTokenType ?? null,
       estimatedCostsUsd: ev.expectedCostUsd,
       estimatedBridgeCostUsd: ev.p90BridgeUsd,
+      observedAt: now,
+      quote: { observedAt: now },
       mode: "live",
       executionReason: "radar_tiny_live_canary",
       metadata: {

@@ -55,7 +55,7 @@ async function main() {
   await buildDashboardPublic({ publicDir: args.rootDir });
   const server = createDashboardLiveServer(args);
   const startedAt = new Date().toISOString();
-  const local = await server.start();
+  let local = null;
   let publicUrl = null;
   let tunnelStatus = "disabled";
   let pagesSync = {
@@ -79,6 +79,32 @@ async function main() {
       runtime: server.runtimeState(),
     }, args.runtimeStatePath);
   };
+
+  try {
+    local = await server.start();
+  } catch (error) {
+    tunnelStatus = "failed";
+    pagesSync = {
+      attempted: false,
+      succeeded: false,
+      lastAttemptAt: new Date().toISOString(),
+      lastError: error.message,
+    };
+    await writeDashboardRuntimeState({
+      startedAt,
+      localUrl: null,
+      snapshotUrl: null,
+      eventsUrl: null,
+      publicUrl: null,
+      tunnelStatus,
+      pagesOriginSync: pagesSync,
+      lastError: error.message,
+      runtime: server.runtimeState(),
+    }, args.runtimeStatePath).catch((writeError) => {
+      console.error(`[dashboard-live] failed to write runtime failure state: ${writeError.message}`);
+    });
+    throw error;
+  }
 
   const syncPagesOrigin = async (origin) => {
     pagesSync = {

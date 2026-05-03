@@ -51,6 +51,68 @@ function runJsonCli(scriptPath, args = []) {
   };
 }
 
+function classifyRefillIssue(reason = null) {
+  const text = String(reason || "").trim();
+  if (!text) return "unknown";
+  if (text === "routing_exhausted") return "routing_exhausted";
+  if (
+    /insufficient source balance|source_inventory_below_target_amount|source_inventory_reserved|source inventory|insufficient_funds|insufficient balance/iu.test(text)
+  ) {
+    return "inventory_insufficient";
+  }
+  if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance|native gas|gas bootstrap/iu.test(text)) {
+    return "native_gas";
+  }
+  if (/signer_execution_failed|Signer did not complete/iu.test(text)) {
+    return "signer_execution_failed";
+  }
+  if (/no_route|bridge_pair_unsupported|route|router|routing/iu.test(text)) {
+    return "route_unresolved";
+  }
+  return "execution_unresolved";
+}
+
+function refillBlockerDetails(blockers = []) {
+  if (!Array.isArray(blockers)) return [];
+  return blockers
+    .map((item = {}) => {
+      const reason = item.reason || null;
+      return {
+        chain: item.chain || null,
+        asset: item.asset || null,
+        reason,
+        category: classifyRefillIssue(reason),
+        selectedMethod: item.selectedMethod || null,
+      };
+    })
+    .filter((item) => item.reason)
+    .slice(0, 8);
+}
+
+function countByCategory(items = []) {
+  return items.reduce((counts, item) => {
+    counts[item.category] = (counts[item.category] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function strategyLiveAdmissionBlockers(strategyDispatch = {}) {
+  const strategies = strategyDispatch?.executionSurfaces?.strategies || [];
+  if (!Array.isArray(strategies)) return [];
+  return strategies
+    .map((strategy = {}) => ({
+      strategyId: strategy.id || null,
+      selectedMode: strategy.selectedMode || null,
+      status: strategy.status || null,
+      reason: strategy.reason || null,
+      blockers: Array.isArray(strategy.liveAdmissionBlockers)
+        ? strategy.liveAdmissionBlockers.filter(Boolean)
+        : [],
+    }))
+    .filter((strategy) => strategy.strategyId && strategy.blockers.length > 0)
+    .slice(0, 8);
+}
+
 export function buildFullAutomationReadiness({
   runtime,
   inbound,
@@ -76,7 +138,9 @@ export function buildFullAutomationReadiness({
   const paybackReason = payback?.payback?.scheduler?.reason || null;
   const paybackIsolationReady = ingressIsolationReady;
   const liveAutomationObserved = autopilot?.present === true;
-  const refillBlockers = autopilot?.refill?.blockers || [];
+  const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || []);
+  const refillIssueCounts = countByCategory(refillBlockers);
+  const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
   const unresolvedRefillRoutes = liveAutomationObserved &&
     (refillBlockers.length > 0
       ? refillBlockers.some((item) => item?.reason !== "routing_exhausted")
@@ -126,6 +190,7 @@ export function buildFullAutomationReadiness({
       batchStatus: dispatchBatchStatus,
       liveEligibleCount,
       selectedCount: strategyDispatch?.record?.selectedCount ?? 0,
+      liveAdmissionBlockers,
       ready: dispatchReady,
     },
     liveAutomation: {
@@ -137,6 +202,8 @@ export function buildFullAutomationReadiness({
       refillManualBacklogCount: autopilot?.refill?.manualBacklogCount ?? null,
       refillAttemptedCount: autopilot?.refill?.attemptedCount ?? null,
       refillExecutedCount: autopilot?.refill?.executedCount ?? null,
+      refillIssueCounts,
+      refillBlockers,
       ready: !unresolvedRefillRoutes,
     },
     payback: {

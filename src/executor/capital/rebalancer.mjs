@@ -1,4 +1,4 @@
-import { ZERO_TOKEN, WBTC_OFT_TOKEN, normalizeToken, tokenAsset, unitsToDecimal } from "../../assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, ZERO_TOKEN, WBTC_OFT_TOKEN, normalizeToken, tokenAsset, unitsToDecimal } from "../../assets/tokens.mjs";
 import { priceForAssetUsd } from "../../market/prices.mjs";
 import { buildFundingSourcePlan } from "../../treasury/funding-source-planner.mjs";
 import { decimalToUnits } from "../../treasury/policy.mjs";
@@ -14,7 +14,7 @@ export const DEFAULT_SETTLEMENT_TOKEN_BY_CHAIN = Object.freeze({
   bera: WBTC_OFT_TOKEN,
   bob: WBTC_OFT_TOKEN,
   bsc: WBTC_OFT_TOKEN,
-  ethereum: WBTC_OFT_TOKEN,
+  ethereum: ETHEREUM_WBTC_TOKEN,
   optimism: WBTC_OFT_TOKEN,
   sei: WBTC_OFT_TOKEN,
   soneium: WBTC_OFT_TOKEN,

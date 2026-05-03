@@ -4,6 +4,20 @@ const DEFAULT_RECENT_FAILURE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const NON_STRATEGY_FAILURE_POLICY_BLOCKERS = new Set([
   "kill_switch_present",
   "max_consecutive_failures_reached",
+  "strategy_per_chain_cap_exceeded",
+  "strategy_per_day_cap_exceeded",
+  "strategy_per_tx_cap_exceeded",
+  "strategy_per_trade_cap_exceeded",
+  "portfolio_chain_cap_exceeded",
+  "portfolio_protocol_cap_exceeded",
+  "protocol_cap_exceeded",
+  "asset_family_cap_exceeded",
+  "chain_cap_exceeded",
+  "micro_test_cap_exceeded",
+  "per_tx_cap_exceeded",
+  "cap_exceeded",
+  "across_per_tx_cap_exceeded",
+  "gas_zip_per_job_cap_exceeded",
 ]);
 
 function recordKey(record = {}) {
@@ -57,8 +71,8 @@ function isPureNonStrategyFailurePolicyRejection(record = {}) {
     record.policyVerdict === "rejected" &&
     stage === "rejected" &&
     !record.broadcast &&
-    blockers.length === 1 &&
-    NON_STRATEGY_FAILURE_POLICY_BLOCKERS.has(blockers[0])
+    blockers.length > 0 &&
+    blockers.every((blocker) => NON_STRATEGY_FAILURE_POLICY_BLOCKERS.has(blocker))
   );
 }
 

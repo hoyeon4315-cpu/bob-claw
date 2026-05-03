@@ -232,6 +232,7 @@ test("Merkl active positions aggregate open live-capital entries", () => {
         protocolId: "yo",
         name: "USDC Vault on Base",
         amountUsd: 1.2,
+        entryAprPct: 19.8,
         observedAt: "2026-04-25T02:00:00.000Z",
       },
       {
@@ -257,9 +258,6 @@ test("Merkl active positions aggregate open live-capital entries", () => {
     ],
     {
       generatedAt: "2026-04-25T03:00:00.000Z",
-      aprByOpportunity: {
-        a: 12,
-      },
     },
   );
 
@@ -267,9 +265,46 @@ test("Merkl active positions aggregate open live-capital entries", () => {
   assert.equal(slice.positionRecordCount, 1);
   assert.equal(slice.items[0].id, "merkl_a");
   assert.equal(slice.items[0].capUsd, 1.2);
-  assert.equal(slice.items[0].aprPct, 12);
+  assert.equal(slice.items[0].aprPct, 19.8);
   assert.equal(slice.items[0].activePositionCount, 1);
   assert.deepEqual(slice.items[0].pair, ["usdc"]);
+});
+
+test("Merkl active positions prefer protocol mark value while preserving entry cap", () => {
+  const slice = buildMerklActivePositions(
+    [
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "p1",
+        opportunityId: "a",
+        chain: "base",
+        protocolId: "yo",
+        name: "USDC Vault on Base",
+        amountUsd: 5.56,
+        valueUsd: 5.015801,
+        markUsd: 5.015801,
+        markSource: "protocol_position_mark",
+        markObservedAt: "2026-05-03T12:00:00.000Z",
+        markFreshness: "fresh",
+        markConfidence: "verified_current",
+        observedAt: "2026-05-03T11:58:00.000Z",
+      },
+    ],
+    {
+      generatedAt: "2026-05-03T12:01:00.000Z",
+    },
+  );
+
+  assert.equal(slice.activeCount, 1);
+  assert.equal(slice.items[0].capUsd, 5.56);
+  assert.equal(slice.items[0].valueUsd, 5.015801);
+  assert.equal(slice.items[0].markUsd, 5.015801);
+  assert.equal(slice.items[0].markedPositionCount, 1);
+  assert.equal(slice.items[0].markSource, "protocol_position_mark");
+  assert.equal(slice.items[0].markObservedAt, "2026-05-03T12:00:00.000Z");
+  assert.equal(slice.items[0].markFreshness, "fresh");
+  assert.equal(slice.items[0].markConfidence, "verified_current");
 });
 
 test("treasury holdings slice normalizes latest inventory into dashboard balances", () => {
@@ -304,10 +339,15 @@ test("treasury holdings slice normalizes latest inventory into dashboard balance
   assert.deepEqual(slice.items.map((item) => item.sym), ["eth", "wbtc"]);
 });
 
-test("capital summary combines wallet balances with deployed Merkl positions", () => {
+test("capital summary treats unmarked deployed Merkl positions as verified minimum", () => {
   const slice = buildCapitalSummarySlice({
     walletHoldings: {
       totalUsd: 205.5,
+      itemizedSupportedWalletUsd: 205.5,
+      fullWalletUsd: 244.75,
+      fullWalletObservedAt: "2026-04-25T05:55:00.000Z",
+      fullWalletProvider: "zerion",
+      walletCoverage: "full_external",
       items: [{ sym: "usdc", usd: 100 }],
     },
     merklActivePositions: {
@@ -344,14 +384,186 @@ test("capital summary combines wallet balances with deployed Merkl positions", (
   assert.equal(slice.walletScanErrorCount, 0);
   assert.equal(slice.externalWalletUsd, null);
   assert.equal(slice.unclassifiedUsd, null);
+  assert.equal(slice.itemizedSupportedWalletUsd, 205.5);
+  assert.equal(slice.fullWalletUsd, 244.75);
+  assert.equal(slice.fullWalletObservedAt, "2026-04-25T05:55:00.000Z");
+  assert.equal(slice.fullWalletProvider, "zerion");
+  assert.equal(slice.fullWalletStale, false);
+  assert.equal(slice.walletCoverage, "full_external");
+  assert.equal(slice.displayWalletUsd, 205.5);
+  assert.equal(slice.displayTotalUsd, 353.19);
+  assert.equal(slice.displayTotalUsdSource, "supported_wallet_plus_positions_external_reference");
+  assert.equal(slice.currentWalletUsd, 205.5);
+  assert.equal(slice.protocolDeployedUsd, 147.69);
+  assert.equal(slice.currentTotalUsd, 353.19);
+  assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
+  assert.equal(slice.assetConfidence, "verified_minimum");
+  assert.equal(slice.assetHeadline, "Verified minimum assets");
+  assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
   assert.equal(slice.activePositionCount, 2);
   assert.deepEqual(slice.positionItems.map((item) => item.protocol), ["yo", "euler"]);
 });
 
-test("capital summary falls back to executor asset estimate when wallet accounting undercounts", () => {
+test("capital summary uses wallet plus marked protocol positions as current total", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 267.79,
+      walletCoverage: "partial_supported",
+      items: [{ sym: "usdc", usd: 267.79 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 5.56,
+          valueUsd: 5.015801,
+          markSource: "protocol_position_mark",
+          markFreshness: "fresh",
+          markConfidence: "verified_current",
+          markObservedAt: "2026-05-03T12:00:00.000Z",
+        },
+      ],
+    },
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.currentWalletUsd, 267.79);
+  assert.equal(slice.protocolDeployedUsd, 5.02);
+  assert.equal(slice.currentTotalUsd, 272.81);
+  assert.equal(slice.verifiedMinimumUsd, 272.81);
+  assert.equal(slice.assetConfidence, "verified_current");
+  assert.equal(slice.assetHeadline, "Current total assets");
+  assert.equal(slice.assetFormula, "current_wallet_plus_marked_protocol_positions");
+  assert.equal(slice.reconciliationState, "reconciled");
+  assert.equal(slice.positionItems[0].usd, 5.015801);
+  assert.equal(slice.positionItems[0].entryUsd, 5.56);
+  assert.equal(slice.positionItems[0].markSource, "protocol_position_mark");
+});
+
+test("capital summary stays verified minimum when latest protocol mark diagnostics failed", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 267.79,
+      walletCoverage: "partial_supported",
+      items: [{ sym: "usdc", usd: 267.79 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 5.56,
+          valueUsd: 5.015801,
+          markSource: "protocol_position_mark",
+          markFreshness: "fresh",
+          markConfidence: "verified_current",
+          markObservedAt: "2026-05-03T12:00:00.000Z",
+        },
+      ],
+    },
+    protocolPositionMarks: {
+      confidence: "verified_minimum",
+      failedPositionCount: 1,
+      stalePositionCount: 0,
+      expiredPositionCount: 0,
+    },
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.currentTotalUsd, 272.81);
+  assert.equal(slice.assetConfidence, "verified_minimum");
+  assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
+  assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
+  assert.equal(slice.protocolMarkFailedCount, 1);
+});
+
+test("capital summary treats expired protocol marks as verified minimum", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 267.79,
+      walletCoverage: "partial_supported",
+      items: [{ sym: "usdc", usd: 267.79 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 5.56,
+          valueUsd: 5.015801,
+          markSource: "protocol_position_mark",
+          markFreshness: "expired",
+          markConfidence: "verified_minimum",
+          markObservedAt: "2026-05-03T10:00:00.000Z",
+        },
+      ],
+    },
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.currentTotalUsd, 272.81);
+  assert.equal(slice.verifiedMinimumUsd, 272.81);
+  assert.equal(slice.protocolDeployedUsd, 5.02);
+  assert.equal(slice.assetConfidence, "verified_minimum");
+  assert.equal(slice.assetHeadline, "Verified minimum assets");
+  assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
+  assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
+  assert.equal(slice.unmarkedProtocolPositionCount, 1);
+});
+
+test("capital summary treats unmarked protocol entries as a verified minimum", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 205.5,
+      walletCoverage: "partial_supported",
+      items: [{ sym: "usdc", usd: 205.5 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 5.56,
+          valueUsd: 5.56,
+        },
+      ],
+    },
+    generatedAt: "2026-05-03T00:46:00.000Z",
+  });
+
+  assert.equal(slice.currentTotalUsd, 211.06);
+  assert.equal(slice.assetConfidence, "verified_minimum");
+  assert.equal(slice.assetHeadline, "Verified minimum assets");
+  assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
+  assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
+  assert.equal(slice.unmarkedProtocolPositionCount, 1);
+});
+
+test("capital summary ignores stale external wallet references for live wallet accounting", () => {
   const slice = buildCapitalSummarySlice({
     walletHoldings: {
       totalUsd: 230.88,
+      fullWalletUsd: 255.12,
+      fullWalletStale: true,
+      walletCoverage: "full_external_stale",
+      scanErrorCount: 2,
+      scanErrors: [
+        { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
+        { kind: "token", chain: "ethereum", token: "0x0555", message: "All RPC endpoints failed for chain: ethereum" },
+      ],
       items: [{ sym: "usdc", usd: 230.88 }],
     },
     merklActivePositions: {
@@ -371,9 +583,376 @@ test("capital summary falls back to executor asset estimate when wallet accounti
   });
 
   assert.equal(slice.accountedUsd, 284.5);
-  assert.equal(slice.executorEstimatedTotalUsd, 469.01);
-  assert.equal(slice.totalUsd, 469.01);
-  assert.equal(slice.totalUsdSource, "executor_estimate");
+  assert.equal(slice.executorEstimatedTotalUsd, null);
+  assert.equal(slice.capitalPlanRefillRequiredUsd, 469.01);
+  assert.equal(slice.totalUsd, 284.5);
+  assert.equal(slice.totalUsdSource, "accounted_wallet_plus_positions");
+  assert.equal(slice.displayWalletUsd, 230.88);
+  assert.equal(slice.displayTotalUsd, 284.5);
+  assert.equal(slice.displayTotalUsdSource, "partial_supported_wallet_plus_positions");
+  assert.equal(slice.currentWalletUsd, 230.88);
+  assert.equal(slice.protocolDeployedUsd, 53.62);
+  assert.equal(slice.currentTotalUsd, 284.5);
+  assert.equal(slice.verifiedMinimumUsd, 284.5);
+  assert.equal(slice.estimatedUntrackedProtocolUsd, null);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 53.62);
+  assert.equal(slice.estimatedCurrentTotalUsd, 284.5);
+  assert.equal(slice.estimatedAssetHeadline, "Verified minimum assets");
+  assert.equal(slice.estimatedTotalUsdSource, "verified_wallet_plus_tracked_protocols");
+  assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
+  assert.equal(slice.walletCoverage, "partial_supported");
+  assert.equal(slice.fullWalletUsd, null);
+  assert.equal(slice.externalWalletUsd, null);
+  assert.equal(slice.referenceFullWalletGapUsd, null);
+  assert.equal(slice.executorEstimateDeltaUsd, null);
+  assert.equal(slice.protocolTrackingGapUsd, null);
+  assert.equal(slice.trackingGapUsd, null);
+  assert.equal(slice.trackingGapSource, null);
+  assert.equal(slice.accountingWarning, null);
+  assert.equal(slice.walletScanErrorCount, 1);
+  assert.deepEqual(slice.walletScanErrors.map((error) => error.provider || error.chain), ["ethereum"]);
+});
+
+test("capital summary marks current total as a verified minimum when reconciliation inputs disagree", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      source: "whole_wallet_inventory",
+      observedAt: "2026-05-02T20:23:11.085Z",
+      walletCoverage: "partial_supported",
+      fullWalletUsd: null,
+      fullWalletObservedAt: null,
+      fullWalletStale: false,
+      totalUsd: 213.23,
+      scanErrorCount: 2,
+      items: [
+        { sym: "wbtc", name: "wBTC.OFT", chain: "avalanche", usd: 45.91 },
+        { sym: "eth", name: "ETH", chain: "ethereum", usd: 19.55 },
+      ],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "137",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 5.56,
+        },
+      ],
+    },
+    executorEstimatedAssetValueUsd: 454.56,
+    generatedAt: "2026-05-02T20:30:00.000Z",
+  });
+
+  assert.equal(slice.currentTotalUsd, 218.79);
+  assert.equal(slice.verifiedMinimumUsd, 218.79);
+  assert.equal(slice.capitalPlanRefillRequiredUsd, 454.56);
+  assert.equal(slice.estimatedUntrackedProtocolUsd, null);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 5.56);
+  assert.equal(slice.estimatedCurrentTotalUsd, 218.79);
+  assert.equal(slice.estimatedAssetHeadline, "Verified minimum assets");
+  assert.equal(slice.estimatedTotalUsdSource, "verified_wallet_plus_tracked_protocols");
+  assert.equal(slice.assetConfidence, "verified_minimum");
+  assert.equal(slice.assetHeadline, "Verified minimum assets");
+  assert.equal(slice.referenceFullWalletGapUsd, null);
+  assert.equal(slice.planGapUsd, null);
+  assert.equal(slice.protocolTrackingGapUsd, null);
+  assert.equal(slice.trackingGapUsd, null);
+  assert.equal(slice.trackingGapSource, null);
+  assert.equal(slice.reconciliationState, "needs_reconciliation");
+});
+
+test("flow dashboard slice exposes movement edges and policy rejection blockers", () => {
+  const slice = buildFlowDashboardSlice({
+    executionEvents: [
+      {
+        eventType: "execution_funding_outcome",
+        settlementStatus: "delivered",
+        strategyId: "gateway-btc-funding-transfer",
+        observedAt: "2026-04-25T06:21:00.000Z",
+        chain: "avalanche",
+        asset: "wBTC.OFT",
+        receiptIngest: {
+          receiptRecord: {
+            routeContext: {
+              routeKey: "soneium:0x0555->avalanche:0x0555",
+              srcChain: "soneium",
+              dstChain: "avalanche",
+              dstTicker: "wBTC.OFT",
+              estimatedInputUsd: 46,
+            },
+          },
+        },
+      },
+      {
+        eventType: "execution_funding_outcome",
+        settlementStatus: "delivered",
+        strategyId: "lifi-bridge",
+        observedAt: "2026-04-25T06:23:00.000Z",
+        chain: "optimism",
+        asset: "USDC",
+        executionMethod: "cross_chain_bridge_lifi",
+        receiptIngest: {
+          receiptRecord: {
+            routeContext: {
+              routeKey: "base:usdc->optimism:usdc",
+              srcChain: "base",
+              dstChain: "optimism",
+              dstTicker: "USDC",
+              estimatedInputUsd: 12,
+            },
+            output: {
+              asset: {
+                ticker: "USDC",
+                icon: "usdc",
+              },
+            },
+          },
+        },
+      },
+      {
+        eventType: "execution_funding_outcome",
+        settlementStatus: "delivered",
+        strategyId: "gateway-btc-funding-transfer",
+        observedAt: "2026-04-24T23:59:00.000Z",
+        chain: "bsc",
+        asset: "wBTC.OFT",
+        receiptIngest: {
+          receiptRecord: {
+            routeContext: {
+              routeKey: "bsc:0x0555->base:0x0555",
+              srcChain: "bsc",
+              dstChain: "base",
+              dstTicker: "wBTC.OFT",
+              estimatedInputUsd: 33,
+            },
+          },
+        },
+      },
+    ],
+    signerAuditRecords: [
+      {
+        timestamp: "2026-04-25T06:22:00.000Z",
+        strategyId: "native-gas-refill",
+        chain: "base",
+        amountUsd: 21.92,
+        policyVerdict: "rejected",
+        intentHash: "intent-1",
+        intentId: "intent-1",
+        intent: {
+          intentType: "dex_swap",
+          metadata: {
+            provider: "odos",
+            assetSymbol: "ETH",
+          },
+        },
+        lifecycle: {
+          stage: "rejected",
+          blockers: ["strategy_per_tx_cap_exceeded"],
+        },
+      },
+      {
+        timestamp: "2026-04-25T06:20:00.000Z",
+        strategyId: "gateway-btc-funding-transfer",
+        chain: "soneium",
+        amountUsd: 46,
+        policyVerdict: "approved",
+        intentHash: "intent-2",
+        intentId: "intent-2",
+        intent: {
+          intentType: "gateway_btc_transfer",
+          metadata: {
+            gatewayRouteKey: "soneium:0x0555->avalanche:0x0555",
+          },
+        },
+        lifecycle: {
+          stage: "confirmed",
+          txHash: "0xabc",
+        },
+      },
+    ],
+    capitalSummary: { totalUsd: 999, currentTotalUsd: 354.5 },
+    btcUsd: 100000,
+    generatedAt: "2026-04-25T06:30:00.000Z",
+  });
+
+  const rejected = slice.recentActivities.find((activity) => activity.strategyId === "native-gas-refill");
+  assert.equal(rejected.status, "rejected");
+  assert.equal(rejected.protocol, "odos");
+  assert.equal(rejected.detail, "odos dex_swap");
+  assert.deepEqual(rejected.blockers, ["strategy_per_tx_cap_exceeded"]);
+
+  assert.ok(slice.recentMovements.length >= 1);
+  const movement = slice.recentMovements.find((item) => item.fromChainId === "soneium" && item.toChainId === "avalanche");
+  assert.ok(movement, "expected Soneium -> Avalanche movement");
+  assert.equal(movement.kind, "gateway_bridge");
+  assert.equal(movement.routeProvider, "gateway");
+  assert.equal(movement.viaGateway, true);
+  assert.equal(movement.assetId, "wbtc");
+  assert.equal(movement.toAssetId, "wbtc");
+  assert.equal(movement.amountUsd, 46);
+  const directMovement = slice.recentMovements.find((item) => item.fromChainId === "base" && item.toChainId === "optimism");
+  assert.ok(directMovement, "expected Base -> Optimism direct movement");
+  assert.equal(directMovement.kind, "direct_bridge");
+  assert.equal(directMovement.routeProvider, "lifi");
+  assert.equal(directMovement.viaGateway, false);
+  assert.equal(directMovement.assetId, "usdc");
+  assert.equal(
+    slice.recentMovements.some((item) => item.fromChainId === "bsc" && item.toChainId === "base"),
+    false,
+    "expected movement older than 6h to be excluded from recent movement animation",
+  );
+});
+
+test("flow dashboard slice keeps recent cross-chain route plans visible when blocked before broadcast", () => {
+  const slice = buildFlowDashboardSlice({
+    executionEvents: [
+      {
+        observedAt: "2026-04-25T06:24:00.000Z",
+        eventType: "execution_attempt_blocked",
+        status: "blocked",
+        jobId: "job-route-plan",
+        chain: "soneium",
+        asset: "wBTC.OFT",
+        executionMethod: "cross_chain_bridge_or_swap",
+        fundingSource: {
+          method: "cross_chain_bridge_or_swap",
+          source: {
+            chain: "base",
+            ticker: "wBTC.OFT",
+            estimatedUsd: 61.5,
+          },
+        },
+        riskDecision: {
+          metrics: {
+            exposureUsd: 45.25,
+            strategyId: "merkl_portfolio_stable_carry_refill",
+          },
+        },
+      },
+    ],
+    generatedAt: "2026-04-25T06:30:00.000Z",
+  });
+
+  assert.equal(slice.recentMovements.length, 1);
+  assert.equal(slice.recentMovements[0].fromChainId, "base");
+  assert.equal(slice.recentMovements[0].toChainId, "soneium");
+  assert.equal(slice.recentMovements[0].assetId, "wbtc");
+  assert.equal(slice.recentMovements[0].status, "blocked");
+  assert.equal(slice.recentMovements[0].projected, true);
+  assert.equal(slice.recentMovements[0].routeProvider, "gateway");
+  assert.equal(slice.recentMovements[0].amountUsd, 45.25);
+});
+
+test("flow dashboard slice collapses repeated movement states by route", () => {
+  const routeContext = {
+    routeKey: "bsc:0x0555->avalanche:0x0555",
+    srcChain: "bsc",
+    dstChain: "avalanche",
+    dstTicker: "wBTC.OFT",
+    estimatedInputUsd: 34.5,
+  };
+  const slice = buildFlowDashboardSlice({
+    executionEvents: [
+      {
+        eventType: "execution_funding_outcome",
+        settlementStatus: "delivered",
+        strategyId: "gateway-btc-funding-transfer",
+        observedAt: "2026-05-02T20:14:45.351Z",
+        chain: "avalanche",
+        asset: "wBTC.OFT",
+        jobId: "same-route-delivered",
+        receiptIngest: { receiptRecord: { routeContext } },
+      },
+    ],
+    signerAuditRecords: [
+      {
+        timestamp: "2026-05-02T20:14:17.536Z",
+        strategyId: "gateway-btc-funding-transfer",
+        chain: "bsc",
+        amountUsd: 34.5,
+        policyVerdict: "approved",
+        intentHash: "same-route-confirmed",
+        intentId: "same-route-confirmed",
+        intent: {
+          intentType: "gateway_btc_transfer",
+          metadata: { gatewayRouteKey: routeContext.routeKey },
+        },
+        lifecycle: {
+          stage: "confirmed",
+          txHash: "0xabc",
+        },
+      },
+      {
+        timestamp: "2026-05-02T20:13:30.000Z",
+        strategyId: "gateway-btc-funding-transfer",
+        chain: "bsc",
+        amountUsd: 34.5,
+        policyVerdict: "approved",
+        intentHash: "same-route-broadcasted",
+        intentId: "same-route-broadcasted",
+        intent: {
+          intentType: "gateway_btc_transfer",
+          metadata: { gatewayRouteKey: routeContext.routeKey },
+        },
+        lifecycle: {
+          stage: "broadcasted",
+          txHash: "0xdef",
+        },
+      },
+    ],
+    generatedAt: "2026-05-02T20:30:00.000Z",
+  });
+
+  assert.equal(slice.recentMovements.length, 1);
+  assert.equal(slice.recentMovements[0].fromChainId, "bsc");
+  assert.equal(slice.recentMovements[0].toChainId, "avalanche");
+  assert.equal(slice.recentMovements[0].status, "delivered");
+  assert.equal(slice.recentMovements[0].routeProvider, "gateway");
+  assert.equal(slice.recentMovements[0].viaGateway, true);
+});
+
+test("flow dashboard movement asset prefers delivered route output over refill target label", () => {
+  const slice = buildFlowDashboardSlice({
+    executionEvents: [
+      {
+        eventType: "execution_funding_outcome",
+        settlementStatus: "delivered",
+        strategyId: "gateway-btc-funding-transfer",
+        observedAt: "2026-05-02T21:14:07.275Z",
+        chain: "base",
+        asset: "ETH",
+        executionMethod: "cross_chain_bridge_or_swap",
+        jobId: "1640d4140f9febab6a24",
+        amountUsd: 20.8,
+        receiptIngest: {
+          receiptRecord: {
+            routeContext: {
+              routeKey: "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              srcChain: "bsc",
+              dstChain: "base",
+              estimatedInputUsd: 20.8,
+            },
+            output: {
+              asset: {
+                ticker: "wBTC.OFT",
+                icon: "wbtc",
+              },
+            },
+          },
+        },
+      },
+    ],
+    generatedAt: "2026-05-02T21:20:00.000Z",
+  });
+
+  assert.equal(slice.recentMovements.length, 1);
+  assert.equal(slice.recentMovements[0].fromChainId, "bsc");
+  assert.equal(slice.recentMovements[0].toChainId, "base");
+  assert.equal(slice.recentMovements[0].assetId, "wbtc");
+  assert.equal(slice.recentMovements[0].toAssetId, "wbtc");
+  assert.equal(slice.recentMovements[0].routeProvider, "gateway");
 });
 
 test("flow dashboard slice compacts live activities and leverage hints for the flow tab", () => {
@@ -506,4 +1085,18 @@ test("flow dashboard slice exposes live estimated yield in sats from active APR 
   assert.equal(slice.metrics.liveEstimatedYieldUsd, 0.1);
   assert.equal(slice.metrics.liveYieldAprPct, 10);
   assert.equal(slice.metrics.liveYieldPositionCount, 1);
+});
+
+test("flow dashboard asset metric does not treat refill shortfall as wallet assets", () => {
+  const slice = buildFlowDashboardSlice({
+    capitalSummary: {
+      totalUsd: 219.49,
+      currentTotalUsd: 219.49,
+      estimatedCurrentTotalUsd: 219.49,
+      capitalPlanRefillRequiredUsd: 497.31,
+    },
+    generatedAt: "2026-05-03T00:00:00.000Z",
+  });
+
+  assert.equal(slice.metrics.assetValueUsd, 219.49);
 });
