@@ -29,6 +29,25 @@ const PROTOCOL_CARD_MAX_HEIGHT = 132;
 const PROTOCOL_CARD_SAFE_BOTTOM = 188;
 const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;
 const MINDMAP_RECENT_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
+const MINDMAP_RECENT_MOVEMENT_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_ROOT_MOVEMENT_TRACKS = 2;
+const MAX_FOCUSED_MOVEMENT_TRACKS = 12;
+const MOVEMENT_NODE_GAP = 28;
+const MOVEMENT_GATEWAY_GAP = 22;
+const MOVEMENT_ROUTE_COLORS = Object.freeze([
+  '#0057FF',
+  '#00A86B',
+  '#FFB000',
+  '#7A3CFF',
+  '#00B8D9',
+  '#111827',
+  '#FF4D00',
+  '#A100FF',
+  '#009E73',
+  '#D81B60',
+  '#7C4D00',
+  '#0EA5E9',
+]);
 
 function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
   if (!svg) return { x: 0, y: 0 };
@@ -66,6 +85,112 @@ function hasRecentMindmapActivity(strategy) {
   if (!Number.isFinite(observedMs)) return false;
   const ageMs = Date.now() - observedMs;
   return ageMs >= 0 && ageMs <= MINDMAP_RECENT_ACTIVITY_TTL_MS;
+}
+
+function isRecentMovement(movement, nowMs = Date.now()) {
+  const observedMs = new Date(movement?.observedAt || 0).getTime();
+  if (!Number.isFinite(observedMs)) return false;
+  const ageMs = nowMs - observedMs;
+  return ageMs >= 0 && ageMs <= MINDMAP_RECENT_MOVEMENT_TTL_MS;
+}
+
+function movementFreshness(movement, nowMs = Date.now()) {
+  const observedMs = new Date(movement?.observedAt || 0).getTime();
+  if (!Number.isFinite(observedMs)) return 0;
+  const ageMs = Math.max(0, nowMs - observedMs);
+  return clamp(1 - ageMs / MINDMAP_RECENT_MOVEMENT_TTL_MS, 0, 1);
+}
+
+function dedupeRecentMovements(movements = []) {
+  const byKey = new Map();
+  for (const movement of movements || []) {
+    const key = movementDedupeKey(movement);
+    const existing = byKey.get(key);
+    if (!existing || new Date(movement.observedAt || 0) > new Date(existing.observedAt || 0)) {
+      byKey.set(key, movement);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function movementDedupeKey(movement = {}) {
+  const provider = movement.routeProvider || movement.kind || 'movement';
+  return movement.routeKey
+    ? `${provider}:${movement.routeKey}`
+    : `${provider}:${movement.fromChainId}->${movement.toChainId}:${movement.assetId || 'asset'}`;
+}
+
+function chainName(chainId) {
+  return CHAINS.find((chain) => chain.id === chainId)?.name || String(chainId || '').toUpperCase();
+}
+
+function shortChainName(chainId) {
+  const names = {
+    bitcoin: 'BTC L1',
+    bob_gateway: 'Gateway',
+    ethereum: 'ETH',
+    avalanche: 'Avax',
+    optimism: 'OP',
+    berachain: 'Bera',
+    unichain: 'Uni',
+    soneium: 'Soneium',
+    sonic: 'Sonic',
+    bsc: 'BNB',
+    base: 'Base',
+    bob: 'BOB',
+    sei: 'Sei',
+  };
+  return names[chainId] || chainName(chainId);
+}
+
+function normalizeAssetDisplayId(assetId) {
+  const raw = String(assetId || '').trim().toLowerCase();
+  if (!raw) return 'asset';
+  if (raw === 'wbtc.oft' || raw === 'btcb' || raw === 'btc.b') return 'wbtc';
+  if (raw.startsWith('0x0555e30')) return 'wbtc';
+  if (raw.startsWith('0xcbb7c000')) return 'cbbtc';
+  return raw.replace(/\.oft$/u, '');
+}
+
+function assetLabel(assetId) {
+  const id = normalizeAssetDisplayId(assetId);
+  const labels = {
+    btc: 'BTC',
+    wbtc: 'wBTC',
+    cbbtc: 'cbBTC',
+    lbtc: 'LBTC',
+    eth: 'ETH',
+    weth: 'WETH',
+    usdc: 'USDC',
+    usdt: 'USDT',
+    honey: 'HONEY',
+    avax: 'AVAX',
+  };
+  return labels[id] || id.toUpperCase();
+}
+
+function movementUsesGateway(movement = {}) {
+  if (movement.viaGateway === false) return false;
+  if (movement.viaGateway === true) return true;
+  const provider = String(movement.routeProvider || '').toLowerCase();
+  if (provider) return provider === 'gateway' || provider === 'bob_gateway';
+  return movement.kind === 'gateway_bridge' || String(movement.strategyId || '').includes('gateway');
+}
+
+function isGatewayProtocolGroup(strategy = {}) {
+  return strategy.protocol === 'gateway';
+}
+
+function movementColor(movement = {}, index = 0) {
+  return MOVEMENT_ROUTE_COLORS[index % MOVEMENT_ROUTE_COLORS.length] || MOVEMENT_ROUTE_COLORS[0];
+}
+
+function movementLaneOffset(laneIndex = 0, totalTracks = 1, segmentIndex = 0) {
+  const total = Math.max(1, Number(totalTracks || 1));
+  const centered = laneIndex - (total - 1) / 2;
+  const laneGap = total > 9 ? 5.1 : total > 6 ? 6.1 : 7.8;
+  const segmentNudge = segmentIndex === 1 ? 2.4 : -2.4;
+  return centered * laneGap + segmentNudge;
 }
 
 function isMindmapVisible(strategy) {
@@ -143,6 +268,41 @@ function curvePath(x1, y1, x2, y2, bow = 0.12) {
   const nx = -dy, ny = dx;
   const cx = mx + nx*bow, cy = my + ny*bow;
   return { d: `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`, cx, cy };
+}
+
+function trimSegmentEndpoints(from, to, startGap = 0, endGap = 0) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const ux = dx / length;
+  const uy = dy / length;
+  const cappedStart = Math.min(Math.max(0, startGap), length * 0.42);
+  const cappedEnd = Math.min(Math.max(0, endGap), Math.max(0, length - cappedStart - 8));
+  return {
+    from: { x: from.x + ux * cappedStart, y: from.y + uy * cappedStart },
+    to: { x: to.x - ux * cappedEnd, y: to.y - uy * cappedEnd },
+  };
+}
+
+function movementLinePath(from, to, startGap = MOVEMENT_NODE_GAP, endGap = MOVEMENT_NODE_GAP, laneIndex = 0, segmentIndex = 0, totalTracks = 1) {
+  const trimmed = trimSegmentEndpoints(from, to, startGap, endGap);
+  const dx = trimmed.to.x - trimmed.from.x;
+  const dy = trimmed.to.y - trimmed.from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const nx = -dy / length;
+  const ny = dx / length;
+  const offset = movementLaneOffset(laneIndex, totalTracks, segmentIndex);
+  const cx = (trimmed.from.x + trimmed.to.x) / 2 + nx * offset;
+  const cy = (trimmed.from.y + trimmed.to.y) / 2 + ny * offset;
+  return {
+    d: `M ${trimmed.from.x} ${trimmed.from.y} Q ${cx} ${cy} ${trimmed.to.x} ${trimmed.to.y}`,
+    x1: trimmed.from.x,
+    y1: trimmed.from.y,
+    cx,
+    cy,
+    x2: trimmed.to.x,
+    y2: trimmed.to.y,
+  };
 }
 
 function bezierAt(x1, y1, cx, cy, x2, y2, t) {
@@ -273,51 +433,60 @@ function BitcoinSource({ x, y, size, hidden, dimmed = false }) {
   );
 }
 
-function GatewayCore({ size, hidden }) {
-  const w = size * 1.8;
-  const h = size * 1.1;
+function GatewayCore({ size, hidden, compact = false }) {
+  const visualSize = compact ? size * 0.58 : size;
+  const w = visualSize * 1.8;
+  const h = visualSize * 1.1;
   return (
-    <g style={{ opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto', transition: `opacity ${T_FAST}ms ${EASE}` }}>
-      <circle r={size*1.6} fill="url(#haloGrad)" opacity="0.35"/>
-      <rect x={-w/2} y={-h/2} width={w} height={h} rx={size*0.26}
+    <g style={{ opacity: hidden ? 0 : compact ? 0.78 : 1, pointerEvents: hidden ? 'none' : 'auto', transition: `opacity ${T_FAST}ms ${EASE}` }}>
+      <circle r={visualSize*1.25} fill="url(#haloGrad)" opacity={compact ? 0.18 : 0.35}/>
+      <rect x={-w/2} y={-h/2} width={w} height={h} rx={visualSize*0.26}
         fill="#FFFFFF" stroke="#DADADA" strokeWidth="0.6"/>
       <foreignObject x={-w/2 + 2} y={-h/2 + 2} width={w - 4} height={h - 4} style={{ pointerEvents:'none' }}>
         <div xmlns="http://www.w3.org/1999/xhtml" style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', pointerEvents:'none' }}>
           <ProtocolLogo id="gateway" size={h*0.8}/>
         </div>
       </foreignObject>
-      <text y={h/2 + 10} textAnchor="middle" fontSize="10" fontWeight="600" fill="#8A8A8D" style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 1 }}>BOB GATEWAY</text>
+      {!compact && (
+        <text y={h/2 + 10} textAnchor="middle" fontSize="10" fontWeight="600" fill="#8A8A8D" style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 1 }}>BOB GATEWAY</text>
+      )}
     </g>
   );
 }
 
-function ChainNode({ chain, x, y, size, hidden, active, dimmed = false, onTap, labelBelow, onDragStart }) {
+function ChainNode({ chain, x, y, size, hidden, active, dimmed = false, compact = false, onTap, labelBelow, onDragStart }) {
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
   };
-  const hitSize = size * 1.95;
-  const capitalLabel = formatCompactUsdLabel(Number(chain.capitalUsd || 0) > 0 ? chain.capitalUsd : chain.recentActivityUsd);
-  const nameY = labelBelow ? size * 0.98 : -size * 0.82;
-  const capitalY = labelBelow ? size * 1.46 : -size * 1.34;
+  const visualSize = compact ? size * 0.5 : size;
+  const hitSize = visualSize * 1.95;
+  const capitalLabel = formatCompactUsdLabel(Number(chain.capitalUsd || 0));
+  const nameY = labelBelow ? visualSize * 0.98 : -visualSize * 0.82;
+  const capitalY = labelBelow ? visualSize * 1.46 : -visualSize * 1.34;
+  const opacity = hidden ? 0 : compact ? 0.24 : dimmed ? 0.34 : 1;
   return (
     <g data-chain-id={chain.id} transform={`translate(${x}, ${y})`}
-       style={{ cursor:'pointer', opacity: hidden ? 0 : dimmed ? 0.34 : 1, pointerEvents: hidden ? 'none' : 'auto',
+       style={{ cursor:'pointer', opacity, pointerEvents: hidden ? 'none' : 'auto',
                    transition: `opacity ${T_FAST}ms ${EASE}` }}>
       <g style={{ pointerEvents:'none' }}>
-        <circle r={size*0.56} fill="#FFFFFF" stroke={active ? '#111113' : '#DADADA'} strokeWidth={active ? 1 : 0.6}/>
-        <foreignObject x={-size*0.42} y={-size*0.42} width={size*0.84} height={size*0.84} style={{ pointerEvents:'none' }}>
+        <circle r={visualSize*0.56} fill="#FFFFFF" stroke={active ? '#111113' : '#DADADA'} strokeWidth={active ? 1 : 0.6}/>
+        <foreignObject x={-visualSize*0.42} y={-visualSize*0.42} width={visualSize*0.84} height={visualSize*0.84} style={{ pointerEvents:'none' }}>
           <div xmlns="http://www.w3.org/1999/xhtml" style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', pointerEvents:'none' }}>
-            <ChainLogo id={chain.id} size={size*0.78}/>
+            <ChainLogo id={chain.id} size={visualSize*0.78}/>
           </div>
         </foreignObject>
-        <text y={nameY} textAnchor="middle" fontSize="11" fontWeight="500" fill={dimmed ? '#8A8A8D' : '#555'}
-          style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
-          {chain.name}
-        </text>
-        <g style={{ opacity: dimmed ? 0.72 : 1 }}>
-          <StatPill x={0} y={capitalY} label={capitalLabel} scale={0.9}/>
-        </g>
+        {!compact && (
+          <>
+            <text y={nameY} textAnchor="middle" fontSize="11" fontWeight="500" fill={dimmed ? '#8A8A8D' : '#555'}
+              style={{ fontFamily:'-apple-system, system-ui', letterSpacing: 0.2 }}>
+              {chain.name}
+            </text>
+            <g style={{ opacity: dimmed ? 0.72 : 1 }}>
+              <StatPill x={0} y={capitalY} label={capitalLabel} scale={0.9}/>
+            </g>
+          </>
+        )}
       </g>
       <foreignObject x={-hitSize / 2} y={-hitSize / 2} width={hitSize} height={hitSize}>
         <button
@@ -342,11 +511,17 @@ function ChainNode({ chain, x, y, size, hidden, active, dimmed = false, onTap, l
   );
 }
 
-function TokenBubble({ x, y, assetId, size = 14, sourceChainId }) {
+function TokenBubble({ x, y, assetId, size = 14, sourceChainId, accentColor = null, accentOpacity = 1 }) {
   const badge = size * 0.62;
   return (
     <g transform={`translate(${x}, ${y})`} style={{ pointerEvents:'none' }}>
-      <circle r={size/2 + 1.8} fill="#FFFFFF" stroke="#E4E4E6" strokeWidth="0.5"/>
+      <circle
+        r={size/2 + (accentColor ? 1.25 : 1.8)}
+        fill="#FFFFFF"
+        stroke={accentColor || '#E4E4E6'}
+        strokeWidth={accentColor ? 1.45 : 0.5}
+        strokeOpacity={accentColor ? accentOpacity : 1}
+      />
       <foreignObject x={-size/2} y={-size/2} width={size} height={size} style={{ pointerEvents:'none' }}>
         <div xmlns="http://www.w3.org/1999/xhtml" style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', pointerEvents:'none' }}>
           <AssetLogo id={assetId} size={size}/>
@@ -366,12 +541,47 @@ function TokenBubble({ x, y, assetId, size = 14, sourceChainId }) {
   );
 }
 
-function FlowToken({ curve, progress, assetId, swapAt, swapTo, size = 14, sourceChainId, sourceChainAfterSwap }) {
+function FlowToken({ curve, progress, assetId, swapAt, swapTo, size = 14, sourceChainId, sourceChainAfterSwap, accentColor = null }) {
   const p = bezierAt(curve.x1, curve.y1, curve.cx, curve.cy, curve.x2, curve.y2, progress);
   const swapped = (swapAt != null && progress >= swapAt && swapTo);
   const id = swapped ? swapTo : assetId;
   const src = swapped ? (sourceChainAfterSwap || sourceChainId) : sourceChainId;
-  return <TokenBubble x={p.x} y={p.y} assetId={id} size={size} sourceChainId={src}/>;
+  return <TokenBubble x={p.x} y={p.y} assetId={id} size={size} sourceChainId={src} accentColor={accentColor}/>;
+}
+
+function MovementTrail({ track, selectedChain }) {
+  const freshness = Number.isFinite(track.freshness) ? track.freshness : 0;
+  const selected = Boolean(selectedChain);
+  const projectedOpacityScale = track.projected ? (selected ? 0.22 : 0.42) : 1;
+  const projectedStrokeScale = track.projected ? 0.62 : 1;
+  const opacity = (selected ? 0.24 + freshness * 0.42 : 0.12 + freshness * 0.42) * projectedOpacityScale;
+  const crowdedStrokeScale = selected ? Math.max(0.58, 1 - Math.max(0, (track.total || 1) - 4) * 0.045) : 1;
+  const strokeWidth = (selected ? 0.92 + freshness * 0.28 : 0.72 + freshness * 0.3) * crowdedStrokeScale * projectedStrokeScale;
+  const arrowId = `movement-arrow-${track.index}`;
+  return (
+    <g data-movement-route={track.key} style={{ pointerEvents: 'none', opacity, transition: `opacity ${T_FAST}ms ${EASE}` }}>
+      <defs>
+        <marker id={arrowId} markerWidth="5.6" markerHeight="5.6" refX="5.1" refY="2.8" orient="auto" markerUnits="strokeWidth">
+          <path d="M 0 0 L 5.6 2.8 L 0 5.6 z" fill={track.color} stroke="#FFFFFF" strokeWidth="0.35"/>
+        </marker>
+      </defs>
+      {track.segments.map((segment, segmentIndex) => (
+        <path
+          key={`${track.key}-seg-${segmentIndex}`}
+          id={`movement-path-${track.index}-${segmentIndex}`}
+          d={segment.d}
+          fill="none"
+          stroke={track.color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={track.viaGateway ? '3 5' : '3 6'}
+          markerEnd={segmentIndex === track.segments.length - 1 ? `url(#${arrowId})` : undefined}
+        />
+      ))}
+      <path id={`movement-motion-${track.index}`} d={track.motionD} fill="none" stroke="none"/>
+    </g>
+  );
 }
 
 function OrbitTokens({ cx, cy, radius, assets, loops, time, speed = 0.55 }) {
@@ -397,6 +607,12 @@ function OrbitTokens({ cx, cy, radius, assets, loops, time, speed = 0.55 }) {
 
 function uniqueProtocolAssets(strategy) {
   return Array.from(new Set((strategy?.pair || []).filter(Boolean))).slice(0, 4);
+}
+
+function uniqueProtocolAssetsForStrategies(strategies = []) {
+  return Array.from(new Set(
+    (strategies || []).flatMap((strategy) => Array.isArray(strategy?.pair) ? strategy.pair : []).filter(Boolean),
+  )).slice(0, 4);
 }
 
 function AssetLogoTag({ x, y, assetId, size = 17 }) {
@@ -500,7 +716,7 @@ function summarizedStatus(strategies = []) {
   return strategies[0]?.status || 'CANDIDATE';
 }
 
-function apyWeightUsd(strategy) {
+function aprWeightUsd(strategy) {
   if (Number.isFinite(strategy?.capUsd) && strategy.capUsd > 0) return strategy.capUsd;
   if (Number.isFinite(strategy?.actualProtocolCapitalUsd) && strategy.actualProtocolCapitalUsd > 0) {
     return strategy.actualProtocolCapitalUsd;
@@ -508,12 +724,12 @@ function apyWeightUsd(strategy) {
   return 0;
 }
 
-function weightedProtocolApy(strategies = []) {
+function weightedProtocolApr(strategies = []) {
   const rows = strategies.filter((strategy) => Number.isFinite(strategy?.apyPct));
-  const weightedRows = rows.filter((strategy) => apyWeightUsd(strategy) > 0);
-  const weightedDenominator = weightedRows.reduce((sum, strategy) => sum + apyWeightUsd(strategy), 0);
+  const weightedRows = rows.filter((strategy) => aprWeightUsd(strategy) > 0);
+  const weightedDenominator = weightedRows.reduce((sum, strategy) => sum + aprWeightUsd(strategy), 0);
   if (weightedDenominator > 0) {
-    const weightedNumerator = weightedRows.reduce((sum, strategy) => sum + apyWeightUsd(strategy) * strategy.apyPct, 0);
+    const weightedNumerator = weightedRows.reduce((sum, strategy) => sum + aprWeightUsd(strategy) * strategy.apyPct, 0);
     return weightedNumerator / weightedDenominator;
   }
   if (rows.length > 0) {
@@ -558,7 +774,7 @@ function groupStrategiesByProtocol(strategies = []) {
         0,
       ),
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
-      apyPct: weightedProtocolApy(items),
+      apyPct: weightedProtocolApr(items),
       recentActivityCount,
       recentActivityUsd,
       recentActivityAssets,
@@ -765,7 +981,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const protocolsByChain = useMemo(() => {
     const mapped = {};
     Object.entries(strategiesByChain).forEach(([chainId, strategies]) => {
-      mapped[chainId] = groupStrategiesByProtocol(strategies);
+      mapped[chainId] = groupStrategiesByProtocol(strategies).filter((group) => !isGatewayProtocolGroup(group));
     });
     return mapped;
   }, [strategiesByChain]);
@@ -851,6 +1067,29 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       .map((strategy) => strategy.chain)
       .filter(Boolean),
   );
+  const movementNowMs = Date.now();
+  const recentMovements = dedupeRecentMovements(
+    Array.isArray(window.FLOW?.recentMovements)
+      ? window.FLOW.recentMovements.filter((movement) => movement?.fromChainId && movement?.toChainId && isRecentMovement(movement, movementNowMs))
+      : [],
+  ).sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0));
+  const movementChains = new Set(
+    recentMovements.flatMap((movement) => [movement.fromChainId, movement.toChainId]).filter(Boolean),
+  );
+  const focusedMovements = selectedChain
+    ? recentMovements
+      .filter((movement) => movement.fromChainId === selectedChain || movement.toChainId === selectedChain)
+      .slice(0, MAX_FOCUSED_MOVEMENT_TRACKS)
+    : [];
+  const focusedMovementChainIds = new Set(
+    focusedMovements
+      .flatMap((movement) => [movement.fromChainId, movement.toChainId])
+      .filter((chainId) => chainId && chainId !== selectedChain && chainId !== 'bob_gateway'),
+  );
+  const focusedMovementUsesGateway = focusedMovements.some((movement) => movementUsesGateway(movement));
+  const selectedChainUsesGatewayProtocol = Boolean(selectedChain)
+    && (strategiesByChain[selectedChain] || []).some((strategy) => isGatewayProtocolGroup(strategy));
+  const focusedGatewayVisible = focusedMovementUsesGateway || selectedChainUsesGatewayProtocol;
 
   const srcCurve = useMemo(() => {
     const b = physicsRef.current.get('chain:bitcoin');
@@ -899,6 +1138,14 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       includeCircle(bounds, btcPos.x, btcPos.y, chainSize * 0.9);
       includeRect(bounds, btcPos.x, btcPos.y - chainSize * 0.94, 72, 18);
     }
+    if (focusedGatewayVisible) {
+      includeCircle(bounds, 0, 0, gatewaySize * 0.95);
+    }
+    focusedMovementChainIds.forEach((chainId) => {
+      const point = chainId === 'bitcoin' ? btcPos : ringPos[chainId];
+      if (!point) return;
+      includeCircle(bounds, point.x, point.y, chainSize * 0.46);
+    });
 
     focusStrategies.forEach((strategy) => {
       const point = protocolBloom[strategy.id];
@@ -946,7 +1193,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       minZoom: selectedProtocolId ? 0.78 : 0.92,
       maxZoom: selectedProtocolId ? 1.46 : 1.12,
     });
-  }, [VB_W, VB_H, chainSize, cx0, cy0, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
+  }, [VB_W, VB_H, chainSize, cx0, cy0, focusedGatewayVisible, focusedMovementChainIds, gatewaySize, protocolBloom, protocolsByChain, ringPos, selectedChain, selectedProtocolId]);
 
   const { zoom, tx, ty } = selectionTransform;
 
@@ -955,6 +1202,57 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     if (body) return { x: body.x, y: body.y };
     return { x: fallbackX, y: fallbackY };
   }
+
+  function getChainPos(chainId) {
+    if (chainId === 'bitcoin') return getNodePos('chain:bitcoin', btcPos.x, btcPos.y);
+    if (chainId === 'bob_gateway') return getNodePos('gateway:center', 0, 0);
+    const ring = ringPos[chainId];
+    if (!ring) return null;
+    return getNodePos(`chain:${chainId}`, ring.x, ring.y);
+  }
+
+  function buildMovementTrack(movement, index, totalTracks = 1) {
+    const from = getChainPos(movement.fromChainId);
+    const to = getChainPos(movement.toChainId);
+    if (!from || !to) return null;
+    const viaGateway = movementUsesGateway(movement);
+    const color = movementColor(movement, index);
+    const key = movementDedupeKey(movement);
+    const segments = [];
+    let motionD = '';
+    if (viaGateway) {
+      const gateway = getChainPos('bob_gateway');
+      if (!gateway) return null;
+      const inbound = movementLinePath(from, gateway, MOVEMENT_NODE_GAP, MOVEMENT_GATEWAY_GAP, index, 0, totalTracks);
+      const outbound = movementLinePath(gateway, to, MOVEMENT_GATEWAY_GAP, MOVEMENT_NODE_GAP, index, 1, totalTracks);
+      segments.push(inbound, outbound);
+      motionD = `${inbound.d} L ${outbound.x1} ${outbound.y1} Q ${outbound.cx} ${outbound.cy} ${outbound.x2} ${outbound.y2}`;
+    } else {
+      const direct = movementLinePath(from, to, MOVEMENT_NODE_GAP, MOVEMENT_NODE_GAP, index, 0, totalTracks);
+      segments.push(direct);
+      motionD = direct.d;
+    }
+    return {
+      key,
+      index,
+      movement,
+      viaGateway,
+      color,
+      freshness: movementFreshness(movement, movementNowMs),
+      projected: movement.projected === true,
+      segments,
+      motionD,
+      total: totalTracks,
+    };
+  }
+
+  const visibleMovementSeeds = (selectedChain
+    ? recentMovements.filter((movement) => movement.fromChainId === selectedChain || movement.toChainId === selectedChain)
+    : recentMovements
+  ).slice(0, selectedChain ? MAX_FOCUSED_MOVEMENT_TRACKS : MAX_ROOT_MOVEMENT_TRACKS);
+  const visibleMovementTracks = visibleMovementSeeds
+    .map((movement, index) => buildMovementTrack(movement, index, visibleMovementSeeds.length))
+    .filter(Boolean);
 
   function handleDragStart(e, bodyId, onTap) {
     const body = physicsRef.current.get(bodyId);
@@ -1036,7 +1334,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             return (
               <line x1={btc.x} y1={btc.y} x2={g.x} y2={g.y}
                 stroke="#CFCFD2" strokeWidth="1.1"
-                opacity={selectedChain ? 0 : 0.9}
+                opacity={selectedChain ? (focusedGatewayVisible && focusedMovementChainIds.has('bitcoin') ? 0.42 : 0) : 0.9}
                 style={{ transition: `opacity ${T_FAST}ms ${EASE}` }}/>
             );
           })()}
@@ -1044,15 +1342,17 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           {destChains.map((c) => {
             const curve = destCurves[c.id];
             const hasLive = liveChains.has(c.id);
-            const hidden = selectedChain && selectedChain !== c.id;
+            const hasMovement = movementChains.has(c.id);
+            const focusedMovementPeer = selectedChain && focusedMovementChainIds.has(c.id);
+            const hidden = selectedChain && selectedChain !== c.id && !focusedMovementPeer;
             const dimmed = Boolean(selectedProtocolId) && selectedChain === c.id;
             return (
               <path key={'lane-'+c.id} d={curve.d}
                 fill="none"
-                stroke={hasLive ? '#9C9CA0' : '#D8D8DA'}
-                strokeWidth={dimmed ? 0.9 : hasLive ? 1.1 : 0.8}
+                stroke={hasLive ? '#9C9CA0' : hasMovement ? '#C9C9CE' : '#D8D8DA'}
+                strokeWidth={dimmed ? 0.9 : hasLive || hasMovement ? 1 : 0.8}
                 strokeDasharray={hasLive ? '0' : '2 3'}
-                opacity={hidden ? 0 : dimmed ? 0.2 : 1}
+                opacity={hidden ? 0 : dimmed ? 0.2 : focusedMovementPeer ? 0.44 : 1}
                 style={{ transition: `opacity ${T_FAST}ms ${EASE}` }}/>
             );
           })}
@@ -1063,9 +1363,7 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             return <FlowToken key={'src-'+i} curve={srcCurve} progress={t} assetId="btc" size={14}/>;
           })}
 
-          {destChains.filter(c => liveChains.has(c.id)).map((c, idx) => {
-            const hidden = selectedChain && selectedChain !== c.id;
-            if (hidden) return null;
+          {!selectedChain && destChains.filter(c => liveChains.has(c.id)).map((c, idx) => {
             const curve = destCurves[c.id];
             const dur = 4.0 / motionSpeed;
             const t = ((time + idx * 0.42) % dur) / dur;
@@ -1077,15 +1375,25 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
             );
           })}
 
+          {visibleMovementTracks.map((track) => (
+            <MovementTrail
+              key={`movement-trail-${track.key}`}
+              track={track}
+              selectedChain={selectedChain}
+            />
+          ))}
+
           {destChains.map((c) => {
             const pos = getNodePos(`chain:${c.id}`, ringPos[c.id].x, ringPos[c.id].y);
             const active = selectedChain === c.id;
-            const hidden = selectedChain && !active;
-            const chainDimmed = Boolean(selectedProtocolId) && active;
+            const focusedMovementPeer = selectedChain && focusedMovementChainIds.has(c.id);
+            const hidden = selectedChain && !active && !focusedMovementPeer;
+            const chainDimmed = (Boolean(selectedProtocolId) && active) || Boolean(focusedMovementPeer);
             return (
               <ChainNode
                 key={c.id} chain={c} x={pos.x} y={pos.y} size={chainSize}
                 hidden={hidden} active={active} dimmed={chainDimmed}
+                compact={Boolean(focusedMovementPeer && !active)}
                 labelBelow={ringPos[c.id].y >= 0}
                 onDragStart={(e) => handleDragStart(e, `chain:${c.id}`, () => { setSelectedProtocolId(null); setSelectedChain(prev => prev === c.id ? null : c.id); })}
               />
@@ -1188,11 +1496,12 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           })}
 
           {(() => {
-            const btcHidden = Boolean(selectedChain) && !(protocolsByChain[selectedChain] || []).some(s => s.type === 'payback');
+            const btcNeededForPayback = Boolean(selectedChain) && (protocolsByChain[selectedChain] || []).some(s => s.type === 'payback');
+            const btcHidden = Boolean(selectedChain) && !btcNeededForPayback && !focusedMovementChainIds.has('bitcoin');
             const btc = getNodePos('chain:bitcoin', btcPos.x, btcPos.y);
             return <BitcoinSource x={btc.x} y={btc.y} size={chainSize*0.95} hidden={btcHidden} dimmed={focusLayer === 'protocol'}/>;
           })()}
-          <GatewayCore size={gatewaySize} hidden={Boolean(selectedChain)}/>
+          <GatewayCore size={gatewaySize} hidden={Boolean(selectedChain) && !focusedGatewayVisible} compact={Boolean(selectedChain)}/>
         </g>
       </svg>
 
@@ -1215,7 +1524,7 @@ function ProtocolCard({ protocolNode }) {
   const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
   const yieldValue = formatYieldDisplay(protocolNode.earnedUsd, protocolNode.yieldBasis);
   const protocolAssets = Array.from(new Set([
-    ...uniqueProtocolAssets(protocolNode.strategies || []),
+    ...uniqueProtocolAssetsForStrategies(protocolNode.strategies || []),
     ...(protocolNode.recentActivityAssets || []),
   ])).slice(0, 4);
   return (
@@ -1252,7 +1561,7 @@ function ProtocolCard({ protocolNode }) {
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
         <Metric label="Capital" value={capitalLabel || '—'}/>
         <Metric label={yieldMetricLabel(protocolNode.yieldBasis)} value={yieldValue || '—'} accent={protocolNode.earnedUsd > 0}/>
-        {protocolNode.apyPct != null && <Metric label="APY" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
+        {protocolNode.apyPct != null && <Metric label="APR" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
         {protocolNode.recentActivityCount > 0 && <Metric label="Activity" value={`${protocolNode.recentActivityCount} tx`}/>}
       </div>
       {protocolAssets.length > 0 && (
@@ -1276,7 +1585,10 @@ function ChainCard({ chainId, strategies }) {
   const estimatedYield = strategies.reduce((sum, item) => sum + (item.estimatedYieldUsd || 0), 0);
   const totalEarned = realizedYield > 0 ? realizedYield : estimatedYield;
   const totalYieldBasis = realizedYield > 0 ? 'realized' : (estimatedYield > 0 ? 'estimated' : null);
-  const capitalLabel = formatCompactUsdLabel(Number(window.CAPITAL?.byChain?.[chainId] || 0));
+  const chainAvailableUsd = Number(window.CAPITAL?.walletByChain?.[chainId] || 0);
+  const chainDeployedUsd = Number(window.CAPITAL?.deployedByChain?.[chainId] || 0);
+  const chainTotalUsd = chainAvailableUsd + chainDeployedUsd;
+  const capitalLabel = formatCompactUsdLabel(chainTotalUsd);
   const totalYieldLabel = formatYieldDisplay(totalEarned, totalYieldBasis);
   return (
     <div data-card-type="chain" style={{
@@ -1303,8 +1615,11 @@ function ChainCard({ chainId, strategies }) {
       </div>
       <div style={{ marginTop:8, display:'flex', gap:14, flexWrap:'wrap' }}>
         <Metric label="Live" value={`${live}/${strategies.length}`}/>
-        <Metric label="Capital" value={capitalLabel || '—'}/>
+        <Metric label="Free" value={formatCompactUsdLabel(chainAvailableUsd) || '—'}/>
+        <Metric label="Deployed" value={formatCompactUsdLabel(chainDeployedUsd) || '—'}/>
+        <Metric label="Total" value={capitalLabel || '—'}/>
         <Metric label={yieldMetricLabel(totalYieldBasis)} value={totalYieldLabel || '—'} accent={totalEarned > 0}/>
+        {chain?.recentMovementCount > 0 && <Metric label="Moved 6h" value={formatCompactUsdLabel(chain.recentMovementUsd) || `${chain.recentMovementCount} tx`}/>}
         {chain?.recentActivityCount > 0 && <Metric label="Activity" value={`${chain.recentActivityCount} tx`}/>}
       </div>
     </div>
