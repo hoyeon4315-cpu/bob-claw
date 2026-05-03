@@ -16,6 +16,7 @@
 
 import { readFileSync } from "node:fs";
 import { argv, exit, stdout, stderr } from "node:process";
+import { pathToFileURL } from "node:url";
 import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
 
 bootstrapReaders();
@@ -68,7 +69,10 @@ export function evaluateCoverage({
   const protocolUsd = Number.isFinite(totals?.protocolUsd) ? Number(totals.protocolUsd) : null;
   const protocolPositionCount = snapshotPositions.length;
   const protocolUsdViolation =
-    totals !== null && protocolPositionCount > 0 && (!Number.isFinite(protocolUsd) || protocolUsd <= 0);
+    totals !== null
+    && totals !== undefined
+    && protocolPositionCount > 0
+    && (!Number.isFinite(protocolUsd) || protocolUsd <= 0);
 
   const track1Pass =
     missing.length === 0
@@ -172,7 +176,7 @@ async function main() {
   exit(t1.pass ? 0 : 2);
 }
 
-const isMain = import.meta.url === `file://${argv[1]}`;
+const isMain = argv[1] && import.meta.url === pathToFileURL(argv[1]).href;
 if (isMain) {
   main().catch((e) => {
     stderr.write(`[coverage] error: ${e.message}\n`);

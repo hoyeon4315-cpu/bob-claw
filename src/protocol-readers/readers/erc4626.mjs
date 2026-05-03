@@ -61,7 +61,7 @@ async function loadContract({ chain, vaultAddress, abi, _providerFactory }) {
     return _providerFactory({ chain, address: vaultAddress, abi });
   }
   const { ethers } = await import("ethers");
-  const { EVM_CHAIN_CONFIGS } = await import("../../../config/chains.mjs");
+  const { EVM_CHAIN_CONFIGS } = await import("../../config/chains.mjs");
   const cfg = EVM_CHAIN_CONFIGS[chain];
   if (!cfg) throw new Error(`unknown chain ${chain}`);
   const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);

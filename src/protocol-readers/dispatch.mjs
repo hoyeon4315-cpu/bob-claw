@@ -15,7 +15,8 @@ export async function dispatchPosition({ position, chain, walletAddress, signer 
   }
   const reader = resolveReaderForBinding(position.bindingKind);
   if (reader) {
-    const result = await runReader(reader.id, { chain, walletAddress, position, signer });
+    const params = position.params && typeof position.params === "object" ? position.params : {};
+    const result = await runReader(reader.id, { chain, walletAddress, position, params, signer });
     return { kind: "reader", id: reader.id, result };
   }
   const legacy = legacyAdapterFor(position);
