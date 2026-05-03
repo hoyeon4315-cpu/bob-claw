@@ -321,6 +321,16 @@ export async function dispatchLedgerPositions({
         confidence: "adapter_missing",
         source: "legacy_adapter_marker_required",
       });
+      // Surface legacy-only coverage as a track1 reader_error so coverage
+      // reporting flags positions that lack a fresh reader path.
+      readerErrors.push({
+        positionId: ledgerEntry.positionId || null,
+        bindingKind: ledgerEntry.bindingKind || null,
+        code: "legacy_adapter_only",
+        error: `no fresh reader for bindingKind ${ledgerEntry.bindingKind}; legacy mark-adapter available but value is stale ledger USD`,
+        readerId: null,
+        adapterId: dispatch.adapter?.id || null,
+      });
     } else {
       readerErrors.push({
         positionId: ledgerEntry.positionId || null,
@@ -394,7 +404,20 @@ export function buildWholeWalletInventory({
     .map((item) => item.estimatedUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
+  // Only fresh reader-sourced positions count into protocolUsd. Legacy
+  // mark-based fallback rows (source: "legacy_adapter_marker_required") carry
+  // stale audit-log USD and freshness="stale"; including them would double-
+  // count when the same underlying token still appears as an ERC20 balance
+  // and would surface stale ledger USD as live RPC value.
+  const isFreshReaderRow = (item) =>
+    item && item.source === "protocol_reader" && item.freshness !== "stale" && item.freshness !== "expired" && item.freshness !== "failed";
   const protocolUsd = (protocolPositions || [])
+    .filter(isFreshReaderRow)
+    .map((item) => item.usdValue ?? item.estimatedUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  const protocolStaleUsd = (protocolPositions || [])
+    .filter((item) => !isFreshReaderRow(item))
     .map((item) => item.usdValue ?? item.estimatedUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
@@ -415,6 +438,7 @@ export function buildWholeWalletInventory({
     totals: {
       tokenUsd,
       protocolUsd,
+      protocolStaleUsd,
       totalUsd,
     },
     summary: {

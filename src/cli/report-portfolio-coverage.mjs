@@ -38,6 +38,7 @@ export function evaluateCoverage({
   totals = null,
   tolUsd = 1,
   tolPct = 0.005,
+  requireTotals = false,
 }) {
   const snapById = new Map();
   for (const p of snapshotPositions) {
@@ -68,11 +69,20 @@ export function evaluateCoverage({
   }
   const protocolUsd = Number.isFinite(totals?.protocolUsd) ? Number(totals.protocolUsd) : null;
   const protocolPositionCount = snapshotPositions.length;
+  // Two violation paths:
+  //  - totals supplied but protocolUsd missing/<=0 while positions exist
+  //  - totals omitted entirely while positions exist (covers older snapshots,
+  //    partial writers, corrupt JSON — never silent-skip a USD gate).
+  // evaluateCoverage callers that intentionally pass `totals=null` for unit
+  // testing must also pass `requireTotals: false` to opt out of the missing
+  // gate; production main() always supplies totals.
+  const totalsMissing = totals === null || totals === undefined;
   const protocolUsdViolation =
-    totals !== null
-    && totals !== undefined
-    && protocolPositionCount > 0
-    && (!Number.isFinite(protocolUsd) || protocolUsd <= 0);
+    protocolPositionCount > 0
+    && (
+      (totalsMissing && requireTotals)
+      || (!totalsMissing && (!Number.isFinite(protocolUsd) || protocolUsd <= 0))
+    );
 
   const track1Pass =
     missing.length === 0
@@ -156,6 +166,7 @@ async function main() {
     totals,
     tolUsd,
     tolPct,
+    requireTotals: true,
   });
   stdout.write(JSON.stringify(result, null, 2) + "\n");
 

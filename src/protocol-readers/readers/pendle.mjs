@@ -28,6 +28,12 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
     ]);
     const ptAddress = tokens?.pt ?? tokens?.[1];
     const ytAddress = tokens?.yt ?? tokens?.[2];
+    if (!ptAddress || !ytAddress) {
+      return makeReaderError({
+        error: `pendle market ${marketAddress} returned unexpected readTokens shape (missing PT/YT)`,
+        code: "missing_params",
+      });
+    }
 
     const [pt, yt] = await Promise.all([
       loadContract({ chain, address: ptAddress, abi: ERC20_ABI, _providerFactory }),

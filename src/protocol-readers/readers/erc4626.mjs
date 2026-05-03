@@ -22,12 +22,23 @@ export async function readErc4626({ chain, walletAddress, params = {}, now = new
     if (shares === 0n) {
       return makeReaderResult({ positions: [], notes: ["zero_shares"] });
     }
-    const [assets, asset, decimals, symbolMaybe] = await Promise.all([
+    const [assets, asset, shareDecimals, symbolMaybe] = await Promise.all([
       vault.convertToAssets(shares),
       vault.asset(),
       vault.decimals(),
       vault.symbol().catch(() => null),
     ]);
+    // Resolve underlying asset decimals separately. Share-decimals usually
+    // matches asset-decimals, but scaled ERC4626 vaults differ; using
+    // share-decimals for the asset balance would mis-price downstream.
+    let assetDecimalsResolved = Number(shareDecimals);
+    try {
+      const assetToken = await loadContract({ chain, vaultAddress: asset, abi: ABI, _providerFactory });
+      const ad = await assetToken.decimals();
+      assetDecimalsResolved = Number(ad);
+    } catch {
+      // fall back to share decimals if asset.decimals() unreadable
+    }
     const fetchedAt = new Date(now).toISOString();
     const position = {
       positionId: defaultPositionId({ chain, protocolId, walletAddress, marketKey: vaultAddress.toLowerCase() }),
@@ -45,7 +56,8 @@ export async function readErc4626({ chain, walletAddress, params = {}, now = new
       underlyingTokenAddress: asset,
       shareBalance: shares.toString(),
       assetBalance: assets.toString(),
-      assetDecimals: Number(decimals),
+      assetDecimals: assetDecimalsResolved,
+      shareDecimals: Number(shareDecimals),
       fetchedAt,
       observedAt: fetchedAt,
       ttlSec: 120,
