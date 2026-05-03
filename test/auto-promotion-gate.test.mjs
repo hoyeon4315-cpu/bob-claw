@@ -15,6 +15,15 @@ function makePassingEvidence(overrides = {}) {
       regimeChanges: 2,
       samplePeriods: 24,
     },
+    oosHoldout: {
+      holdoutDays: 30,
+      netPositive: true,
+    },
+    regimeBreakdown: {
+      bear: { sampleCount: 5, netPnlUsd: 10 },
+      neutral: { sampleCount: 8, netPnlUsd: 25 },
+      bull_peak: { sampleCount: 3, netPnlUsd: 7 },
+    },
     shadow: {
       consecutivePositivePeriods: 10,
       netOfMeasuredCost: true,
@@ -101,4 +110,42 @@ test("evaluateAutoPromotion with stricter override fails previously-passing evid
   const result = evaluateAutoPromotion(makePassingEvidence(), cfg);
   assert.equal(result.passed, false);
   assert.ok(result.blockers.some((b) => b.startsWith("walk_forward_sharpe_below_min")));
+});
+
+test("evaluateAutoPromotion blocks when OOS holdout missing", () => {
+  const ev = makePassingEvidence();
+  delete ev.oosHoldout;
+  const r = evaluateAutoPromotion(ev);
+  assert.equal(r.passed, false);
+  assert.ok(r.blockers.includes("oos_holdout_missing"));
+});
+
+test("evaluateAutoPromotion blocks when OOS not net positive", () => {
+  const ev = makePassingEvidence({ oosHoldout: { holdoutDays: 30, netPositive: false } });
+  const r = evaluateAutoPromotion(ev);
+  assert.equal(r.passed, false);
+  assert.ok(r.blockers.includes("oos_holdout_not_net_positive"));
+});
+
+test("evaluateAutoPromotion blocks when OOS holdout window too small", () => {
+  const ev = makePassingEvidence({ oosHoldout: { holdoutDays: 7, netPositive: true } });
+  const r = evaluateAutoPromotion(ev);
+  assert.equal(r.passed, false);
+  assert.ok(r.blockers.some((b) => b.startsWith("oos_holdout_window_too_small")));
+});
+
+test("evaluateAutoPromotion blocks when regime breakdown missing a regime", () => {
+  const ev = makePassingEvidence();
+  delete ev.regimeBreakdown.bear;
+  const r = evaluateAutoPromotion(ev);
+  assert.equal(r.passed, false);
+  assert.ok(r.blockers.includes("regime_breakdown_missing_bear"));
+});
+
+test("evaluateAutoPromotion blocks when regime sample count zero", () => {
+  const ev = makePassingEvidence();
+  ev.regimeBreakdown.neutral.sampleCount = 0;
+  const r = evaluateAutoPromotion(ev);
+  assert.equal(r.passed, false);
+  assert.ok(r.blockers.some((b) => b.startsWith("regime_breakdown_neutral_samples_insufficient")));
 });

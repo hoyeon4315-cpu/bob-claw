@@ -90,6 +90,47 @@ function checkExecution(evidence, gate) {
   return blockers;
 }
 
+function checkOosHoldout(evidence, gate) {
+  const blockers = [];
+  if (!gate || !gate.enabled) return blockers;
+  const oos = evidence.oosHoldout || null;
+  if (!oos || typeof oos !== "object") {
+    blockers.push("oos_holdout_missing");
+    return blockers;
+  }
+  if (!(typeof oos.holdoutDays === "number") || oos.holdoutDays < gate.minHoldoutDays) {
+    blockers.push(`oos_holdout_window_too_small(${oos.holdoutDays ?? "missing"} < ${gate.minHoldoutDays})`);
+  }
+  if (gate.requireNetPositive && oos.netPositive !== true) {
+    blockers.push("oos_holdout_not_net_positive");
+  }
+  return blockers;
+}
+
+function checkRegimeBreakdown(evidence, gate) {
+  const blockers = [];
+  if (!gate || !gate.enabled) return blockers;
+  const rb = evidence.regimeBreakdown || null;
+  if (!rb || typeof rb !== "object") {
+    blockers.push("regime_breakdown_missing");
+    return blockers;
+  }
+  for (const regime of gate.requiredRegimes) {
+    const entry = rb[regime];
+    if (!entry || typeof entry !== "object") {
+      blockers.push(`regime_breakdown_missing_${regime}`);
+      continue;
+    }
+    if (!(typeof entry.sampleCount === "number") || entry.sampleCount < gate.minSamplesPerRegime) {
+      blockers.push(`regime_breakdown_${regime}_samples_insufficient(${entry.sampleCount ?? "missing"} < ${gate.minSamplesPerRegime})`);
+    }
+    if (!(typeof entry.netPnlUsd === "number")) {
+      blockers.push(`regime_breakdown_${regime}_net_pnl_missing`);
+    }
+  }
+  return blockers;
+}
+
 export function evaluateAutoPromotion(evidence, config = buildAutoPromotionConfig()) {
   if (!evidence || typeof evidence !== "object") {
     return {
@@ -109,6 +150,8 @@ export function evaluateAutoPromotion(evidence, config = buildAutoPromotionConfi
   }
   const blockers = [
     ...checkWalkForward(evidence, config.walkForward),
+    ...checkOosHoldout(evidence, config.oosHoldout),
+    ...checkRegimeBreakdown(evidence, config.regimeBreakdown),
     ...checkShadow(evidence, config.shadow),
     ...checkExecution(evidence, config.execution),
   ];
@@ -118,6 +161,8 @@ export function evaluateAutoPromotion(evidence, config = buildAutoPromotionConfi
     evaluated: {
       strategyId: evidence.strategyId,
       walkForward: evidence.walkForward || null,
+      oosHoldout: evidence.oosHoldout || null,
+      regimeBreakdown: evidence.regimeBreakdown || null,
       shadow: evidence.shadow || null,
       execution: evidence.execution || null,
     },
