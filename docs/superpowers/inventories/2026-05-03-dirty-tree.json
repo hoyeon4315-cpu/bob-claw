@@ -1,0 +1,18 @@
+{
+  "branch": "codex/system-harness-deep-refactor",
+  "baseSha": "bc3542e",
+  "ts": "2026-05-03T16:50:00+09:00",
+  "modified": 89,
+  "untracked": 24,
+  "groups": {
+    "operating-law": ["AGENTS.md"],
+    "docs": ["docs/harness-engineering.md", "docs/system-map.md", "docs/superpowers/plans/2026-05-03-protocol-asset-tracking.md"],
+    "dashboard-public-artifacts": ["dashboard/public/app.js","dashboard/public/app.jsx","dashboard/public/auto-kill-events.json","dashboard/public/dashboard-status.json","dashboard/public/data.js","dashboard/public/data.jsx","dashboard/public/live-runtime.json","dashboard/public/strategy-tick-status.json","dashboard/public/wallet-holdings.json"],
+    "package": ["package.json"],
+    "feature-protocol-position-marking": ["src/treasury/protocol-position-adapters/aave-v3.mjs","src/treasury/protocol-position-adapters/compound-v2.mjs","src/treasury/protocol-position-adapters/erc4626.mjs","src/treasury/protocol-position-adapter-registry.mjs","src/treasury/protocol-position-ledger.mjs","src/treasury/protocol-position-mark-schema.mjs","src/treasury/protocol-position-marker.mjs","src/cli/mark-protocol-positions.mjs","src/status/protocol-position-marks-slice.mjs","test/protocol-position-aave-v3-adapter.test.mjs","test/protocol-position-compound-v2-adapter.test.mjs","test/protocol-position-erc4626-adapter.test.mjs","test/protocol-position-ledger.test.mjs","test/protocol-position-mark-schema.test.mjs","test/protocol-position-marker.test.mjs","test/protocol-position-marks-slice.test.mjs"],
+    "feature-dev-agent-automation": ["src/strategy/dev-agent-automation-bridge.mjs","src/cli/report-dev-agent-automation-bridge.mjs","src/cli/report-automation-health.mjs","test/dev-agent-automation-bridge.test.mjs","test/dev-agent-automation-bridge-cli.test.mjs","test/dev-lock-cli-enforcement.test.mjs"],
+    "feature-route-remediation": ["src/strategy/route-remediation-autopilot.mjs","src/cli/report-route-remediation-autopilot.mjs","test/route-remediation-autopilot.test.mjs"],
+    "source-modifications": "all other M src/* and test/* paired"
+  },
+  "baselineTests": {"total": 2462, "pass": 2460, "fail": 1, "skip": 1, "knownPreExistingFailure": "test/dashboard-cache-headers.test.mjs (version string mismatch, unrelated)"}
+}
