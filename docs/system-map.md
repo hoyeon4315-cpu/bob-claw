@@ -71,7 +71,7 @@ flowchart TD
 | Lane | Representative Modules | Current Purpose | Admission Evidence |
 | --- | --- | --- | --- |
 | Gateway wrapped-BTC loops | `strategy-catalog`, `btc-proxy-spreads`, Gateway helpers | Transport and wrapped-BTC route measurement | Quote, fee, latency, execution, receipt |
-| Destination BTC yield/lending | `destination-*`, `wrapped-btc-*`, `recursive-*`, Moonwell helpers | Base-first and official-destination yield surfaces | Unwind path, HF/liquidation policy, receipt-backed cost |
+| Destination BTC yield/lending | `destination-*`, `wrapped-btc-*`, `recursive-*`, Moonwell helpers | Evidence-primary and official-destination yield surfaces | Unwind path, HF/liquidation policy, receipt-backed cost |
 | Campaign/Merkl/radar canaries | `merkl-*`, `strategy/radar/*`, `config/sizing.mjs` | Tiny live canary discovery and queueing | EV helper, reward haircut, exit liquidity proof, tiny cap |
 | Stable loops and reserve sleeves | `stable-*`, `tokenized-reserve-*`, treasury rotation | Stable entry/exit and deterministic yield sleeves | Realized net after gas, claim/swap, bridge/exit cost |
 | ETH-family deployment | `ethereum-route-*`, mixed triangle/flash modules | Allowed when measured positive EV clears fees | Ethereum gas/slippage and unwind proof |
@@ -82,14 +82,22 @@ describe a lane, but they do not authorize signing. Runtime approval still
 requires committed caps, policy approval, signer isolation, kill-switch checks,
 and receipt/audit behavior.
 
+Route remediation autopilot (`src/strategy/route-remediation-autopilot.mjs`,
+`npm run report:route-remediation-autopilot`) is dev-lane only. It consumes
+blocked strategy/campaign candidates and emits code work orders after
+overfit, official-Gateway-scope, cost-variance, and no-runtime-authority
+checks. Its output is a committed-diff planning surface, not a live execution
+approval.
+
 ## Config And Policy Owners
 
 | Concern | Canonical Owner | Notes |
 | --- | --- | --- |
 | Official Gateway chains | `src/config/gateway-destinations.mjs` | Import this instead of copying arrays |
+| Route remediation planning | `src/strategy/route-remediation-autopilot.mjs` | Work orders only; no signer, cap, daemon, or runtime mutation authority |
 | Strategy caps | `src/config/strategy-caps.mjs` API, `src/config/strategy-caps/registry.mjs` data | Public imports stay on `strategy-caps.mjs` |
 | Tiny-canary EV sizing | `src/config/sizing.mjs` | Shared by radar preview, Merkl sync, executor policy |
-| Small-capital campaign rules | `src/config/small-capital-campaign-mode.mjs` | Base-first two-lane policy |
+| Small-capital campaign rules | `src/config/small-capital-campaign-mode.mjs` | Evidence-led primary-chain two-lane policy |
 | Gateway pause | `src/config/gateway.mjs`, `src/executor/policy/gateway-availability.mjs` | Signer policy is a backstop |
 | Auto-kill | `src/config/auto-kill.mjs`, `src/risk/auto-kill-triggers.mjs` | Writes kill-switch and audit record |
 | Payback policy | `src/config/payback.mjs` | Ratio, min, caps, schedule, emergency pauses |
