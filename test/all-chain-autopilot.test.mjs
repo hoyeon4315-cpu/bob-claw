@@ -1321,6 +1321,115 @@ test("all-chain autopilot promotes Soneium Gateway no_route previews to LI.FI wh
   assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
 });
 
+test("all-chain autopilot does not promote Gateway source-gas blockers to LI.FI", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "base-gateway-source-gas",
+              chain: "avalanche",
+              asset: "wBTC.OFT",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_or_swap",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--method=cross_chain_bridge_lifi")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: {
+            forcedMethod: "cross_chain_bridge_lifi",
+            preparation: { status: "ready", executionMethod: "cross_chain_bridge_lifi" },
+            execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+          },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          preparation: {
+            status: "blocked",
+            executionMethod: "cross_chain_bridge_or_swap",
+            blockedReason: "insufficient_funds",
+            plan: {
+              blockedReason: "insufficient_funds",
+              preflightError: {
+                message: "All RPC endpoints failed gas estimate for chain: base",
+                attempts: [
+                  {
+                    message:
+                      "insufficient funds for gas * price + value: have 7563079830170 want 21575038434712",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillExecutedCount, 0);
+  assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_or_swap");
+  assert.equal(report.refillExecutions[0].previewBlockedReason, "insufficient_funds");
+  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), false);
+});
+
 test("all-chain autopilot retries alternate refill routes after execution_reverted previews", async () => {
   const seen = [];
   const command = ({ args }) => {

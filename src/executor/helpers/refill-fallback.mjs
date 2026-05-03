@@ -22,6 +22,10 @@ const FAILURE_STATUSES = new Set([
   "source_failed",
   "settlement_failed",
 ]);
+const SOURCE_NATIVE_GAS_BLOCKERS = new Set([
+  "insufficient_funds",
+  "insufficient_native_gas_balance",
+]);
 
 function sameAction(event = {}, job = {}) {
   if (!event || !job) return false;
@@ -29,7 +33,28 @@ function sameAction(event = {}, job = {}) {
   return Boolean(event.resourceKey && job.resourceKey && event.resourceKey === job.resourceKey);
 }
 
+function eventText(event = {}) {
+  return [
+    event.error?.message,
+    event.error,
+    event.blockedReason,
+    ...(Array.isArray(event.blockers) ? event.blockers : []),
+  ].filter(Boolean).join("\n").toLowerCase();
+}
+
+function isSourceNativeGasFailure(event = {}) {
+  const blockers = new Set([
+    event.blockedReason,
+    ...(Array.isArray(event.blockers) ? event.blockers : []),
+  ].filter(Boolean));
+  if ([...blockers].some((blocker) => SOURCE_NATIVE_GAS_BLOCKERS.has(blocker))) return true;
+  return /insufficient_native_balance_for_gas|insufficient_native_gas_balance|insufficient funds for gas \* price \+ value/u.test(
+    eventText(event),
+  );
+}
+
 function isFailureOutcome(event = {}, method) {
+  if (isSourceNativeGasFailure(event)) return false;
   return (
     event.eventType === "execution_funding_outcome" &&
     event.executionMethod === method &&

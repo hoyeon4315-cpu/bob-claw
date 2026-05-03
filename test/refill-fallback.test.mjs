@@ -88,6 +88,16 @@ function failureEvent(observedAt, method = "cross_chain_bridge_or_swap") {
   };
 }
 
+function sourceGasFailureEvent(observedAt, method = "cross_chain_bridge_or_swap") {
+  return {
+    ...failureEvent(observedAt, method),
+    error: {
+      message:
+        "insufficient_native_balance_for_gas: chain=base requiredWei=64197647637376 balanceWei=7282796333254",
+    },
+  };
+}
+
 test("refill bridge fallback candidates keep executable methods in rank order", () => {
   const candidates = refillBridgeCandidates(jobFixture());
 
@@ -187,6 +197,25 @@ test("refill bridge fallback advances after three consecutive failures", () => {
   assert.equal(resolved.fallbackEvent.fromExecutionMethod, "cross_chain_bridge_or_swap");
   assert.equal(resolved.fallbackEvent.toExecutionMethod, "cross_chain_bridge_across");
   assert.equal(resolved.fallbackEvent.failureCount, 3);
+});
+
+test("refill bridge fallback ignores source native gas failures", () => {
+  const job = jobFixture();
+  const events = [
+    sourceGasFailureEvent("2026-04-22T00:00:00.000Z"),
+    sourceGasFailureEvent("2026-04-22T00:01:00.000Z"),
+    sourceGasFailureEvent("2026-04-22T00:02:00.000Z"),
+  ];
+
+  const resolved = resolveRefillBridgeFallback({
+    job,
+    events,
+    observedAt: "2026-04-22T00:03:00.000Z",
+  });
+
+  assert.equal(consecutiveBridgeFailureCount({ events, job, method: "cross_chain_bridge_or_swap" }), 0);
+  assert.equal(resolved.job.executionMethod, "cross_chain_bridge_or_swap");
+  assert.equal(resolved.fallbackEvent, null);
 });
 
 test("refill bridge fallback does not advance when next provider is not executable", () => {
