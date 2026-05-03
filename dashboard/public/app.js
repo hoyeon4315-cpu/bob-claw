@@ -246,8 +246,6 @@ function activityStatusLabel(activity) {
 function activityHasSentTx(activity) {
   if (!activity) return false;
   if (activity.txHash) return true;
-  if (Number.isFinite(activity.amountUsd) && activity.amountUsd > 0) return true;
-  if (Number.isFinite(activity.amountSats) && activity.amountSats > 0) return true;
   return false;
 }
 function activityStatusTone(activity) {
@@ -394,6 +392,10 @@ function friendlyBlockerLabel(value) {
     payback_below_minimum: "minimum not reached",
     max_consecutive_failures_reached: "cooldown",
     kill_switch_present: "paused",
+    strategy_per_tx_cap_exceeded: "per-tx cap exceeded",
+    strategy_per_day_cap_exceeded: "daily cap exceeded",
+    strategy_per_chain_cap_exceeded: "chain cap exceeded",
+    strategy_max_daily_loss_breached: "daily loss cap breached",
     collect_observations: "collect observations",
     review_existing_policy_path: "review path",
     calibrate_operator_policy: "calibrate policy"
@@ -424,8 +426,8 @@ function LiveLaneCard() {
   const radarCap = radar.capReview || {};
   const radarLocked = radarCap.lossLockOn === true;
   const radarReady = Number(radarCounts.executableReview || 0) > 0 || Number(radarCap.eligibleCount || 0) > 0;
-  const radarMain = radarLocked ? "Locked" : radarReady ? "Review" : radar.guardrails?.thresholdsResolved === false ? "Calibrate" : "Watching";
-  const radarSub = radarLocked ? "loss lock" : Number(radarCap.eligibleCount || 0) > 0 ? `${radarCap.eligibleCount} cap review` : `${Number(radarCounts.observed || 0)} seen \xB7 ${Number(radarCounts.executableReview || 0)} executable`;
+  const radarMain = radarLocked ? "Locked" : radarReady ? "Policy candidate" : radar.guardrails?.thresholdsResolved === false ? "Calibrate" : "Watching";
+  const radarSub = radarLocked ? "loss lock" : Number(radarCap.eligibleCount || 0) > 0 ? `${radarCap.eligibleCount} cap review` : Number(radarCounts.executableReview || 0) > 0 ? `${Number(radarCounts.executableReview || 0)} candidate \xB7 read-only \xB7 no signing` : `${Number(radarCounts.observed || 0)} seen \xB7 no signing`;
   const pendingSats = Number(payback.carry?.pendingSats ?? payback.accumulatorPendingSats ?? 0);
   const remainingSats = Number(payback.carry?.remainingSatsToMinimum ?? payback.scheduler?.minimumPaybackProgress?.satsToMinimumPayback ?? NaN);
   const paybackReady = payback.scheduler?.status === "ready" || payback.carry?.active === false && pendingSats > 0;
@@ -526,9 +528,9 @@ function RouteNode({ kind = "text", id, label }) {
 }
 function activityRouteSummary(activity, strategy) {
   const hint = parseRouteHint(strategy?.sub || activity?.detail || "");
-  const sourceChainId = activity?.kind === "payback" ? normalizeChainId(strategy?.chain) || normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) : normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) || normalizeChainId(strategy?.chain);
+  const sourceChainId = activity?.kind === "payback" ? normalizeChainId(strategy?.chain) || normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) : normalizeChainId(activity?.fromChainId) || normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) || normalizeChainId(strategy?.chain);
   const source = sourceChainId ? { kind: "chain", id: sourceChainId, label: displayChainName(sourceChainId) } : { kind: "text", id: null, label: "Capital" };
-  const hintedTargetChainId = activity?.kind === "payback" ? "bitcoin" : normalizeChainId(hint?.target);
+  const hintedTargetChainId = activity?.kind === "payback" ? "bitcoin" : normalizeChainId(activity?.toChainId) || normalizeChainId(hint?.target);
   const protocolId = activity?.protocol || strategy?.protocol || null;
   const target = hintedTargetChainId && hintedTargetChainId !== sourceChainId ? { kind: "chain", id: hintedTargetChainId, label: displayChainName(hintedTargetChainId) } : protocolId ? { kind: "protocol", id: protocolId, label: displayProtocolName(protocolId) } : hintedTargetChainId ? { kind: "chain", id: hintedTargetChainId, label: displayChainName(hintedTargetChainId) } : { kind: "text", id: null, label: strategy?.label || activity?.detail || "Recent move" };
   return {
@@ -543,6 +545,7 @@ function FlowActivityRow({ activity, isLast }) {
   const riskLabel = leverageHintLabel(leverageHintForActivity(activity));
   const route = activityRouteSummary(activity, strategy);
   const finalAsset = deriveActivityFinalAsset(activity, strategy);
+  const policyReason = activity?.status === "rejected" && Array.isArray(activity?.blockers) && activity.blockers.length > 0 ? friendlyBlockerLabel(activity.blockers[0]) : null;
   return /* @__PURE__ */ React.createElement("div", { style: {
     padding: "9px 0",
     position: "relative",
@@ -583,7 +586,15 @@ function FlowActivityRow({ activity, isLast }) {
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis"
-  } }, riskLabel)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: {
+  } }, riskLabel), policyReason && /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 8.9,
+    color: "var(--ink-3)",
+    marginTop: 2,
+    lineHeight: 1.3,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
+  } }, "Policy: ", policyReason)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "flex-end",
@@ -779,6 +790,8 @@ function PnlBreakdownStrip({ inline = false }) {
   } }, "Top drags: ", topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(" \xB7 ")));
 }
 function FlowPane({ refreshTick }) {
+  const HOLDINGS = window.HOLDINGS || globalThis.HOLDINGS;
+  const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   const flow = window.FLOW || {};
   const items = HOLDINGS?.all || [];
   const pending = HOLDINGS?.pending;
@@ -788,7 +801,16 @@ function FlowPane({ refreshTick }) {
   const overlayActive = mindmapFocus?.layer === "chain" || mindmapFocus?.layer === "protocol";
   const lowerPanePointerEvents = historyExpanded ? "auto" : overlayActive ? "none" : "auto";
   const totalUsd = HOLDINGS?.totalUsd != null ? HOLDINGS.totalUsd : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
-  const assetValueUsd = Number.isFinite(totalUsd) ? totalUsd : Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : 0;
+  const currentWalletUsd = Number.isFinite(HOLDINGS?.currentWalletUsd) ? HOLDINGS.currentWalletUsd : Number.isFinite(HOLDINGS?.displayWalletUsd) ? HOLDINGS.displayWalletUsd : Number(HOLDINGS?.walletUsd || 0);
+  const protocolDeployedUsd = Number.isFinite(HOLDINGS?.protocolDeployedUsd) ? HOLDINGS.protocolDeployedUsd : Number(HOLDINGS?.deployedUsd || 0);
+  const currentTotalUsd = Number.isFinite(HOLDINGS?.currentTotalUsd) ? HOLDINGS.currentTotalUsd : Number.isFinite(currentWalletUsd) && Number.isFinite(protocolDeployedUsd) ? currentWalletUsd + protocolDeployedUsd : totalUsd;
+  const estimatedProtocolDeployedUsd = Number.isFinite(HOLDINGS?.estimatedProtocolDeployedUsd) ? HOLDINGS.estimatedProtocolDeployedUsd : protocolDeployedUsd;
+  const estimatedCurrentTotalUsd = Number.isFinite(HOLDINGS?.estimatedCurrentTotalUsd) ? HOLDINGS.estimatedCurrentTotalUsd : currentTotalUsd;
+  const verifiedMinimumUsd = Number.isFinite(HOLDINGS?.verifiedMinimumUsd) ? HOLDINGS.verifiedMinimumUsd : currentTotalUsd;
+  const protocolTrackingGapUsd = Number.isFinite(HOLDINGS?.protocolTrackingGapUsd) ? HOLDINGS.protocolTrackingGapUsd : Number.isFinite(HOLDINGS?.trackingGapUsd) ? HOLDINGS.trackingGapUsd : Number(HOLDINGS?.planGapUsd || 0);
+  const assetEstimateAvailable = Number.isFinite(estimatedCurrentTotalUsd) && Number.isFinite(currentTotalUsd) && estimatedCurrentTotalUsd > currentTotalUsd + 1;
+  const displayAssetUsd = assetEstimateAvailable ? estimatedCurrentTotalUsd : currentTotalUsd;
+  const assetValueUsd = Number.isFinite(displayAssetUsd) ? displayAssetUsd : Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : 0;
   const paidSats = flow?.metrics?.paidBackSatsLifetime ?? KPI?.paidBack?.sats ?? 0;
   const paidUsd = flow?.metrics?.paidBackUsdLifetime ?? KPI?.paidBack?.usd;
   const carrySats = flow?.metrics?.pendingCarrySats ?? KPI?.pendingCarry?.sats ?? 0;
@@ -800,20 +822,30 @@ function FlowPane({ refreshTick }) {
   const liveYieldUsd = flow?.metrics?.liveEstimatedYieldUsd ?? flow?.liveYield?.estimatedYieldUsd ?? null;
   const liveYieldAprPct = flow?.metrics?.liveYieldAprPct ?? flow?.liveYield?.weightedAprPct ?? null;
   const liveYieldPositionCount = flow?.metrics?.liveYieldPositionCount ?? flow?.liveYield?.positionCount ?? 0;
+  const liveYieldAprPositionCount = flow?.liveYield?.aprPositionCount ?? liveYieldPositionCount;
+  const liveAnnualizedYieldUsd = flow?.metrics?.liveAnnualizedYieldUsd ?? flow?.liveYield?.annualizedYieldUsd ?? null;
   const showLiveYield = Number.isFinite(liveYieldSats) && liveYieldSats > 0 || Number.isFinite(liveYieldUsd) && liveYieldUsd > 0;
   const liveYieldSub = [
-    Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? fmtUsdCompact(liveYieldUsd) : null,
-    Number.isFinite(liveYieldAprPct) ? `live APY ${fmtPct(liveYieldAprPct)}` : null,
-    liveYieldPositionCount > 0 ? `${liveYieldPositionCount} position${liveYieldPositionCount > 1 ? "s" : ""}` : null
+    Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? `${fmtUsdCompact(liveYieldUsd)} est. accrued` : null,
+    Number.isFinite(liveAnnualizedYieldUsd) && liveAnnualizedYieldUsd > 0 ? `${fmtUsdCompact(liveAnnualizedYieldUsd)}/yr` : null,
+    liveYieldAprPositionCount > 0 ? `${liveYieldAprPositionCount} APR position${liveYieldAprPositionCount > 1 ? "s" : ""}` : null
   ].filter(Boolean).join(" \xB7 ");
   const yieldMain = showLiveYield ? Number.isFinite(liveYieldSats) && liveYieldSats > 0 ? fmtSats(liveYieldSats) : fmtUsdCompact(liveYieldUsd) : grossYieldSats > 0 ? fmtSats(grossYieldSats) : strategyYieldUsd > 0 ? fmtUsdCompact(strategyYieldUsd) : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? fmtUsdCompact(grossYieldUsd) : "\u2014";
   const yieldSub = showLiveYield ? liveYieldSub : Number.isFinite(grossYieldUsd) && grossYieldUsd > 0 ? `${fmtUsdCompact(grossYieldUsd)} \xB7 all protocols` : strategyYieldUsd > 0 ? "live est. \xB7 all protocols" : "all protocols";
   const flowMapBaseHeight = "calc(52% - 4px)";
   const lowerPaneTop = "calc(52% + 4px)";
   const lowerPaneExpandedOffset = "calc(52% + 10px)";
-  const totalApy = weightedApyForStrategies(STRATEGIES) ?? (Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : null);
+  const totalApr = Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : weightedApyForStrategies(STRATEGIES);
   const [aprOpen, setAprOpen] = useState(false);
-  const assetSub = pending ? "pending" : positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? "s" : ""}` : "wallet only \xB7 0 open positions";
+  const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === "verified_minimum";
+  const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
+  const assetEquationTotalLabel = assetEstimateAvailable ? "estimated total" : assetIsVerifiedFloor || assetHasReconciliationGap ? "verified minimum" : "current total";
+  const protocolTrackingGapSub = protocolTrackingGapUsd > 1 ? ` \xB7 ${fmtUsdCompact(protocolTrackingGapUsd)} unreconciled protocol estimate` : "";
+  const trackedProtocolUsd = assetEstimateAvailable ? estimatedProtocolDeployedUsd : protocolDeployedUsd;
+  const assetSub = pending ? "pending" : assetEstimateAvailable ? `${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(estimatedProtocolDeployedUsd)} est. protocols = ${fmtUsdCompact(estimatedCurrentTotalUsd)} est. \xB7 verified floor ${fmtUsdCompact(verifiedMinimumUsd)}` : assetIsVerifiedFloor ? `verified floor \xB7 ${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(trackedProtocolUsd)} tracked protocols${protocolTrackingGapSub}` : `${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(trackedProtocolUsd)} tracked protocols${protocolTrackingGapSub}`;
+  const assetMetricLabel = assetEstimateAvailable ? "Assets" : assetHasReconciliationGap ? "Observed" : "Total";
+  const assetMain = pending ? "\u2014" : fmtUsd(displayAssetUsd || 0);
+  const apySub = aprOpen ? `${liveYieldAprPositionCount || 0} APR-backed open position${liveYieldAprPositionCount === 1 ? "" : "s"} \xB7 estimated, not realized` : "tap for note";
   return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { position: "relative", display: "flex", flexDirection: "column", overflowX: "hidden", overflowY: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",
     left: 12,
@@ -853,14 +885,14 @@ function FlowPane({ refreshTick }) {
     overflow: "hidden"
   } }, !historyExpanded && /* @__PURE__ */ React.createElement(FlowMetricGrid, { cards: [
     {
-      label: "Assets",
-      main: pending ? "\u2014" : fmtUsdCompact(assetValueUsd || 0),
+      label: assetMetricLabel,
+      main: assetMain,
       sub: assetSub
     },
     {
-      label: "APY",
-      main: totalApy != null ? fmtPct(totalApy) : "\u2014",
-      sub: aprOpen ? "live cap-weighted" : "tap for note",
+      label: "Open APR",
+      main: totalApr != null ? fmtPct(totalApr) : "\u2014",
+      sub: apySub,
       onTap: () => setAprOpen((o) => !o),
       accent: aprOpen ? "var(--ink)" : void 0
     },
@@ -875,7 +907,7 @@ function FlowPane({ refreshTick }) {
       sub: carryUsd != null ? `${fmtUsdCompact(carryUsd)} pending` : "pending"
     },
     {
-      label: "Yield",
+      label: "Est. yield",
       main: yieldMain,
       sub: yieldSub
     }
@@ -889,13 +921,17 @@ function FlowPane({ refreshTick }) {
     lineHeight: 1.45,
     flexShrink: 0,
     animation: `slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`
-  } }, "Cap-weighted APY across all live strategies with APY data. Merkl live positions use current opportunity APY; other lanes use measured protocol APY when available, then display-only hints."), /* @__PURE__ */ React.createElement(OpsStrip, { fill: historyExpanded, onExpandedChange: setHistoryExpanded }))));
+  } }, "open APR estimate only. It is value-weighted over APR-backed open positions and is estimated, not realized PnL or payback."), /* @__PURE__ */ React.createElement(OpsStrip, { fill: historyExpanded, onExpandedChange: setHistoryExpanded }))));
 }
 function KpiCard({ label, main, sub }) {
   return /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", background: "var(--card)", borderRadius: 16, border: "0.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-4)", letterSpacing: 1.3, textTransform: "uppercase" } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, letterSpacing: -0.3, marginTop: 3 } }, main), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 1 } }, sub));
 }
 function DefiPane({ refreshTick }) {
+  const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   void refreshTick;
+  const openPositionCount = STRATEGIES.filter((s) => s.status === "LIVE").length;
+  const watchedCount = STRATEGIES.length;
+  const candidateCount = STRATEGIES.filter((s) => s.status !== "LIVE").length;
   const byProtocol = STRATEGIES.reduce((acc, s) => {
     var _a;
     if (s.status !== "LIVE") return acc;
@@ -903,7 +939,18 @@ function DefiPane({ refreshTick }) {
     return acc;
   }, {});
   const entries = Object.entries(byProtocol).filter(([, list]) => list.length > 0);
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(LiveLaneCard, null), /* @__PURE__ */ React.createElement(OnchainRadarCard, null), /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 12px 16px" } }, /* @__PURE__ */ React.createElement(LiveLaneCard, null), /* @__PURE__ */ React.createElement(OnchainRadarCard, null), /* @__PURE__ */ React.createElement(ResearchFunnelCard, null), /* @__PURE__ */ React.createElement(DevAgentQueueCard, null), /* @__PURE__ */ React.createElement(PnlBreakdownStrip, { inline: true }), /* @__PURE__ */ React.createElement("div", { style: {
+    margin: "0 0 8px",
+    padding: "7px 10px",
+    background: "var(--card)",
+    border: "0.5px solid var(--line)",
+    borderRadius: 12,
+    fontSize: 10,
+    color: "var(--ink-3)",
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8
+  } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: "var(--ink)" } }, "Strategy coverage"), /* @__PURE__ */ React.createElement("span", null, watchedCount, " watched \xB7 ", candidateCount, " candidate/review \xB7 ", openPositionCount, " open")), entries.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" } }, "No live strategies"), entries.map(([proto, list]) => {
     const protoRealized = list.reduce((sum, s) => sum + (s.realizedYieldUsd || 0), 0);
     const protoEstimated = list.reduce((sum, s) => sum + (s.estimatedYieldUsd || 0), 0);
     const protoYield = protoRealized > 0 ? protoRealized : protoEstimated;
@@ -917,7 +964,7 @@ function DefiPane({ refreshTick }) {
       border: "0.5px solid var(--line)",
       overflow: "hidden",
       boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 12px 9px" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: proto, size: 30 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 } }, displayProtocolName(proto)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, list.length, " live position", list.length > 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, protoYield > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(protoYield, protoYieldBasis)), protoYieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(protoYieldBasis)), Number.isFinite(protoApy) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "APY ", fmtPct(protoApy)), protoCap > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "var(--ink)", letterSpacing: -0.2 } }, "Cap $", protoCap.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px" } }, list.map((s, i) => /* @__PURE__ */ React.createElement(StrategyRow, { key: s.id, s, isLast: i === list.length - 1 }))));
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 12px 9px" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: proto, size: 30 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, letterSpacing: -0.2 } }, displayProtocolName(proto)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1 } }, list.length, " live position", list.length > 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, protoYield > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(protoYield, protoYieldBasis)), protoYieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(protoYieldBasis)), Number.isFinite(protoApy) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "APR ", fmtPct(protoApy)), protoCap > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "var(--ink)", letterSpacing: -0.2 } }, "Cap $", protoCap.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px" } }, list.map((s, i) => /* @__PURE__ */ React.createElement(StrategyRow, { key: s.id, s, isLast: i === list.length - 1 }))));
   }));
 }
 function OnchainRadarCard() {
@@ -932,7 +979,7 @@ function OnchainRadarCard() {
     background: "var(--card)",
     borderRadius: 12,
     border: "0.5px solid var(--line)"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.7, color: "var(--ink-4)", letterSpacing: 1.2, textTransform: "uppercase" } }, "Onchain radar"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "read-only scan \xB7 ", radar.headline || "Waiting for observations")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", textAlign: "right", whiteSpace: "nowrap" } }, fmtWhen(radar.generatedAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 7 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.7, color: "var(--ink-4)", letterSpacing: 1.2, textTransform: "uppercase" } }, "Onchain radar"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "read-only \xB7 no signing \xB7 ", radar.headline || "Waiting for observations")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", textAlign: "right", whiteSpace: "nowrap" } }, fmtWhen(radar.generatedAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 7 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
     {
       label: "Observed",
       main: String(counts.observed ?? 0),
@@ -944,9 +991,40 @@ function OnchainRadarCard() {
       sub: `${counts.selfRealized ?? 0} self-realized`
     },
     {
-      label: "Review",
+      label: "Policy review",
       main: String(counts.executableReview ?? 0),
       sub: blocker
+    }
+  ] })));
+}
+function DevAgentQueueCard() {
+  const bridge = window.STATUS?.strategy?.devAgentAutomationBridge;
+  if (!bridge) return null;
+  const policy = bridge.modelPolicy || {};
+  const topTask = bridge.topTasks?.[0] || bridge.topTask || null;
+  const topLabel = topTask?.title || topTask?.source?.opportunityId || topTask?.id || "No task";
+  const runtimeAuthority = policy.runtimeAuthority || "none";
+  return /* @__PURE__ */ React.createElement("div", { style: {
+    marginBottom: 8,
+    padding: "9px 10px",
+    background: "var(--card)",
+    borderRadius: 12,
+    border: "0.5px solid var(--line)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.7, color: "var(--ink-4)", letterSpacing: 1.2, textTransform: "uppercase" } }, "LLM dev queue"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "code tasks \xB7 runtime ", runtimeAuthority, " \xB7 no signing")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", whiteSpace: "nowrap" } }, fmtWhen(bridge.generatedAt))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 7 } }, /* @__PURE__ */ React.createElement(TriCard, { compact: true, cells: [
+    {
+      label: "Ready",
+      main: String(bridge.readyTaskCount ?? 0),
+      sub: `${bridge.taskCount ?? 0} queued`
+    },
+    {
+      label: "Live exec",
+      main: String(bridge.liveExecutableTaskCount ?? 0),
+      sub: policy.llmMaySign === false ? "signing blocked" : "review policy"
+    },
+    {
+      label: "Top task",
+      main: topTask?.kind ? titleCaseLabel(topTask.kind) : "\u2014",
+      sub: topLabel
     }
   ] })));
 }
@@ -1006,17 +1084,17 @@ function strategyMechanics(s) {
     const cycles = s.loops || 1;
     const collat = toks[0] || "\u2014";
     const borrow = toks[1] || "\u2014";
-    return `${collat} supply \u2192 ${borrow} borrow \u2192 redeposit \xB7 ${cycles}x \xB7 APY ${apy}`;
+    return `${collat} supply \u2192 ${borrow} borrow \u2192 redeposit \xB7 ${cycles}x \xB7 APR ${apy}`;
   }
   if (t === "cl_lp" || t === "lp" || t === "lp_bgt") {
     if (toks.length >= 2) {
       const half = cap > 0 ? "$" + (cap / 2).toLocaleString(void 0, { maximumFractionDigits: 0 }) : "\u2014";
-      return `${toks[0]} ${half} \u2194 ${toks[1]} ${half} \xB7 APY ${apy}`;
+      return `${toks[0]} ${half} \u2194 ${toks[1]} ${half} \xB7 APR ${apy}`;
     }
     const tot = cap > 0 ? "$" + cap.toLocaleString(void 0, { maximumFractionDigits: 0 }) : "\u2014";
-    return `${toks[0] || "asset"} single-sided ${tot} \xB7 APY ${apy}`;
+    return `${toks[0] || "asset"} single-sided ${tot} \xB7 APR ${apy}`;
   }
-  if (t === "pt") return `${toks[0] || "PT"} hold to maturity \xB7 fixed APY ${apy}`;
+  if (t === "pt") return `${toks[0] || "PT"} hold to maturity \xB7 fixed APR ${apy}`;
   if (t === "basis") return `${toks[0] || "?"} spot long + perp short \xB7 funding ${apy}`;
   if (t === "bridge") return `${toks[0] || "?"} \u2192 ${toks[1] || "?"} transfer`;
   if (t === "payback") return `${toks[0] || "?"} \u2192 ${toks[1] || "?"} BTC payout`;
@@ -1066,7 +1144,7 @@ function StrategyRow({ s, isLast }) {
     borderRadius: 8,
     background: "var(--green)",
     boxShadow: "0 0 0 1.5px #fff"
-  } })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.1, fontWeight: 600, letterSpacing: -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, s.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.8, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, chain?.name || displayChainName(s.chain), " \xB7 ", strategyKind(s), s.apyPct != null ? ` \xB7 APY ${s.apyPct.toFixed(2)}%` : ""), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.6, color: "var(--ink-4)", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, strategyMechanics(s)), riskLabel && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "#8A520C", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, riskLabel)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, s.earnedUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.4, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(s.earnedUsd, s.yieldBasis)), s.yieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(s.yieldBasis)), s.capUsd != null && s.capUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "Cap $", s.capUsd.toLocaleString())), !isLast && /* @__PURE__ */ React.createElement("div", { style: {
+  } })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.1, fontWeight: 600, letterSpacing: -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, s.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.8, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, chain?.name || displayChainName(s.chain), " \xB7 ", strategyKind(s), s.apyPct != null ? ` \xB7 APR ${s.apyPct.toFixed(2)}%` : ""), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.6, color: "var(--ink-4)", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, strategyMechanics(s)), riskLabel && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "#8A520C", marginTop: 2, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, riskLabel)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, s.earnedUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.4, fontWeight: 700, color: "var(--green)", letterSpacing: -0.2 } }, fmtYieldTag(s.earnedUsd, s.yieldBasis)), s.yieldBasis && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8.8, color: "var(--ink-3)", marginTop: 1 } }, fmtYieldSubLabel(s.yieldBasis)), s.capUsd != null && s.capUsd > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, color: "var(--ink-3)", marginTop: 1 } }, "Cap $", s.capUsd.toLocaleString())), !isLast && /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",
     left: 0,
     right: 0,
@@ -1075,16 +1153,49 @@ function StrategyRow({ s, isLast }) {
     background: "var(--line)"
   } }));
 }
+function walletScanErrorBrief(error = {}) {
+  const message = String(error.message || "").toLowerCase();
+  if (error.provider && message.includes("429")) return `${error.provider} 429`;
+  if (error.chain && message.includes("rpc")) return `${error.chain} RPC`;
+  if (error.chain) return `${error.chain} scan`;
+  if (error.provider) return String(error.provider);
+  return error.kind || null;
+}
+function WalletBalanceChainLabel({ chainId, label }) {
+  const normalized = normalizeChainId(chainId);
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 } }, normalized && /* @__PURE__ */ React.createElement(ChainLogo, { id: normalized, size: 11 }), /* @__PURE__ */ React.createElement("span", { style: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, label));
+}
 function AssetsPane({ refreshTick }) {
+  const HOLDINGS = window.HOLDINGS || globalThis.HOLDINGS;
+  const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   const items = HOLDINGS?.all || [];
   const positions = HOLDINGS?.positions || [];
   const total = Number.isFinite(HOLDINGS?.totalUsd) ? HOLDINGS.totalUsd : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
+  const currentWalletUsd = Number.isFinite(HOLDINGS?.currentWalletUsd) ? HOLDINGS.currentWalletUsd : Number.isFinite(HOLDINGS?.displayWalletUsd) ? HOLDINGS.displayWalletUsd : Number(HOLDINGS?.walletUsd || 0);
+  const protocolDeployedUsd = Number.isFinite(HOLDINGS?.protocolDeployedUsd) ? HOLDINGS.protocolDeployedUsd : Number(HOLDINGS?.deployedUsd || 0);
+  const currentTotalUsd = Number.isFinite(HOLDINGS?.currentTotalUsd) ? HOLDINGS.currentTotalUsd : Number.isFinite(currentWalletUsd) && Number.isFinite(protocolDeployedUsd) ? currentWalletUsd + protocolDeployedUsd : total;
+  const estimatedProtocolDeployedUsd = Number.isFinite(HOLDINGS?.estimatedProtocolDeployedUsd) ? HOLDINGS.estimatedProtocolDeployedUsd : protocolDeployedUsd;
+  const estimatedCurrentTotalUsd = Number.isFinite(HOLDINGS?.estimatedCurrentTotalUsd) ? HOLDINGS.estimatedCurrentTotalUsd : currentTotalUsd;
+  const verifiedMinimumUsd = Number.isFinite(HOLDINGS?.verifiedMinimumUsd) ? HOLDINGS.verifiedMinimumUsd : currentTotalUsd;
+  const protocolTrackingGapUsd = Number.isFinite(HOLDINGS?.protocolTrackingGapUsd) ? HOLDINGS.protocolTrackingGapUsd : Number.isFinite(HOLDINGS?.trackingGapUsd) ? HOLDINGS.trackingGapUsd : Number(HOLDINGS?.planGapUsd || 0);
+  const assetEstimateAvailable = Number.isFinite(estimatedCurrentTotalUsd) && Number.isFinite(currentTotalUsd) && estimatedCurrentTotalUsd > currentTotalUsd + 1;
+  const displayAssetUsd = assetEstimateAvailable ? estimatedCurrentTotalUsd : currentTotalUsd;
   const pending = HOLDINGS?.pending;
-  const walletSourceLabel = HOLDINGS?.walletSource === "whole_wallet_inventory" ? "whole-wallet live" : HOLDINGS?.walletSource === "treasury_inventory" ? "policy inventory" : "wallet source pending";
+  const walletSourceLabel = HOLDINGS?.walletSource === "whole_wallet_inventory" || HOLDINGS?.walletCoverage === "full_external" ? "supported-assets live" : HOLDINGS?.walletSource === "treasury_inventory" ? "policy inventory" : "wallet source pending";
   const walletObservedLabel = HOLDINGS?.walletObservedAt ? `wallet observed ${formatStatusAge(HOLDINGS.walletObservedAt) || fmtWhen(HOLDINGS.walletObservedAt)}` : "wallet observed pending";
-  const walletScanHealthLabel = HOLDINGS?.walletScanErrorCount > 0 ? `scan errors ${HOLDINGS.walletScanErrorCount}` : "scan clean";
-  const externalScanLabel = Number.isFinite(HOLDINGS?.externalWalletUsd) ? `external address scan ${fmtUsd(HOLDINGS?.externalWalletUsd)}` : "external address scan inactive";
+  const walletScanErrorDetails = (HOLDINGS?.walletScanErrors || []).map(walletScanErrorBrief).filter(Boolean).slice(0, 2);
+  const walletScanHealthLabel = HOLDINGS?.walletScanErrorCount > 0 ? `scan errors ${HOLDINGS.walletScanErrorCount}${walletScanErrorDetails.length ? ` \xB7 ${walletScanErrorDetails.join(" \xB7 ")}` : ""}` : "scan clean";
+  const externalScanLabel = Number.isFinite(HOLDINGS?.externalWalletUsd) ? `external reference ${fmtUsd(HOLDINGS?.externalWalletUsd)}` : null;
+  const fullWalletAgeLabel = HOLDINGS?.fullWalletObservedAt ? `external reference ${HOLDINGS.fullWalletStale ? "cached" : "observed"} ${formatStatusAge(HOLDINGS.fullWalletObservedAt) || fmtWhen(HOLDINGS.fullWalletObservedAt)}` : null;
   const unclassifiedLabel = Number.isFinite(HOLDINGS?.unclassifiedUsd) && HOLDINGS.unclassifiedUsd > 0 ? `unclassified ${fmtUsd(HOLDINGS.unclassifiedUsd)}` : null;
+  const planEstimateLabel = Number.isFinite(HOLDINGS?.capitalPlanRefillRequiredUsd) ? `capital refill target ${fmtUsd(HOLDINGS.capitalPlanRefillRequiredUsd)} \xB7 not wallet assets` : null;
+  const estimateGapLabel = Number.isFinite(HOLDINGS?.executorEstimateDeltaUsd) && Math.abs(HOLDINGS.executorEstimateDeltaUsd) >= 1 ? `plan need above verified ${HOLDINGS.executorEstimateDeltaUsd > 0 ? "+" : ""}${fmtUsd(HOLDINGS.executorEstimateDeltaUsd)}` : null;
+  const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === "verified_minimum";
+  const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
+  const assetHeadline = assetEstimateAvailable ? "Estimated total assets" : assetIsVerifiedFloor ? "Verified minimum assets" : assetHasReconciliationGap ? "Observed assets" : "Current total assets";
+  const assetEquationTotalLabel = assetEstimateAvailable ? "estimated total" : assetIsVerifiedFloor || assetHasReconciliationGap ? "verified minimum" : "current total";
+  const assetMain = pending ? "\u2014" : fmtUsd(displayAssetUsd);
+  const planGapLabel = Number.isFinite(HOLDINGS?.planGapUsd) && HOLDINGS.planGapUsd > 0 && Number.isFinite(HOLDINGS?.executorEstimatedTotalUsd) ? `protocol estimate source \xB7 ${fmtUsd(HOLDINGS.executorEstimatedTotalUsd)} target` : null;
   const liveStrats = STRATEGIES.filter((s) => s.status === "LIVE");
   const stratsByAsset = {};
   liveStrats.forEach((s) => {
@@ -1094,7 +1205,7 @@ function AssetsPane({ refreshTick }) {
     });
   });
   void refreshTick;
-  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 16px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 16px", background: "var(--card)", borderRadius: 18, border: "0.5px solid var(--line)", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-4)", letterSpacing: 1.4, textTransform: "uppercase" } }, "Total holdings"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 28, fontWeight: 600, letterSpacing: -0.8 } }, pending ? "\u2014" : "$" + total.toLocaleString()), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: "var(--ink-3)" } }, "USD")), !pending && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, "wallet ", fmtUsd(HOLDINGS?.walletUsd), " \xB7 deployed ", fmtUsd(HOLDINGS?.deployedUsd), " \xB7 open positions ", positions.length), !pending && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--ink-3)", border: "0.5px solid var(--line)" } }, walletSourceLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--ink-3)", border: "0.5px solid var(--line)" } }, walletObservedLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: HOLDINGS?.walletScanErrorCount > 0 ? "#FFF6E8" : "rgba(255,255,255,0.06)", color: HOLDINGS?.walletScanErrorCount > 0 ? "var(--orange)" : "var(--ink-3)", border: HOLDINGS?.walletScanErrorCount > 0 ? "0.5px solid rgba(201,140,0,0.22)" : "0.5px solid var(--line)" } }, walletScanHealthLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--ink-3)", border: "0.5px solid var(--line)" } }, externalScanLabel), unclassifiedLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "#FFF6E8", color: "var(--orange)", border: "0.5px solid rgba(201,140,0,0.22)" } }, unclassifiedLabel)), pending && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-4)", marginTop: 2 } }, "treasury snapshot pending")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-4)", letterSpacing: 1.6, textTransform: "uppercase", padding: "0 4px 8px" } }, "Wallet balances"), /* @__PURE__ */ React.createElement("div", { style: { background: "var(--card)", borderRadius: 18, border: "0.5px solid var(--line)", overflow: "hidden" } }, items.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "18px 14px", fontSize: 12, color: "var(--ink-4)", textAlign: "center" } }, "no balance feed wired yet"), items.map((a, i, arr) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { padding: "4px 16px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 16px", background: "var(--card)", borderRadius: 18, border: "0.5px solid var(--line)", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-4)", letterSpacing: 1.4, textTransform: "uppercase" } }, assetHeadline), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 28, fontWeight: 600, letterSpacing: -0.8 } }, pending ? "\u2014" : assetMain), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: "var(--ink-3)" } }, "USD")), !pending && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, assetEstimateAvailable ? "estimated live " : assetHasReconciliationGap ? "observed live " : "", "remaining ", fmtUsd(currentWalletUsd), " + ", assetEstimateAvailable ? "estimated" : "tracked", " protocols ", fmtUsd(assetEstimateAvailable ? estimatedProtocolDeployedUsd : protocolDeployedUsd), " = ", assetEquationTotalLabel, " ", fmtUsd(displayAssetUsd), assetEstimateAvailable && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 ", "verified minimum ", fmtUsd(verifiedMinimumUsd)), protocolTrackingGapUsd > 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 ", "unreconciled protocol estimate ", fmtUsd(protocolTrackingGapUsd)), " \xB7 ", "live supported ", fmtUsd(HOLDINGS?.walletUsd), " \xB7 ", "open positions ", positions.length), !pending && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--ink-3)", border: "0.5px solid var(--line)" } }, walletSourceLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--ink-3)", border: "0.5px solid var(--line)" } }, walletObservedLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: HOLDINGS?.walletScanErrorCount > 0 ? "#FFF6E8" : "rgba(255,255,255,0.06)", color: HOLDINGS?.walletScanErrorCount > 0 ? "var(--orange)" : "var(--ink-3)", border: HOLDINGS?.walletScanErrorCount > 0 ? "0.5px solid rgba(201,140,0,0.22)" : "0.5px solid var(--line)" } }, walletScanHealthLabel), externalScanLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--ink-3)", border: "0.5px solid var(--line)" } }, externalScanLabel), fullWalletAgeLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: HOLDINGS?.fullWalletStale ? "#FFF6E8" : "rgba(255,255,255,0.06)", color: HOLDINGS?.fullWalletStale ? "var(--orange)" : "var(--ink-3)", border: HOLDINGS?.fullWalletStale ? "0.5px solid rgba(201,140,0,0.22)" : "0.5px solid var(--line)" } }, fullWalletAgeLabel), unclassifiedLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "#FFF6E8", color: "var(--orange)", border: "0.5px solid rgba(201,140,0,0.22)" } }, unclassifiedLabel), assetIsVerifiedFloor && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "#FFF6E8", color: "var(--orange)", border: "0.5px solid rgba(201,140,0,0.22)" } }, "verified minimum ", fmtUsd(verifiedMinimumUsd)), protocolTrackingGapUsd > 1 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "#FFF6E8", color: "var(--orange)", border: "0.5px solid rgba(201,140,0,0.22)" } }, "protocol tracking gap ", fmtUsd(protocolTrackingGapUsd)), planEstimateLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: HOLDINGS?.accountingWarning ? "#FFF6E8" : "rgba(255,255,255,0.06)", color: HOLDINGS?.accountingWarning ? "var(--orange)" : "var(--ink-3)", border: HOLDINGS?.accountingWarning ? "0.5px solid rgba(201,140,0,0.22)" : "0.5px solid var(--line)" } }, planEstimateLabel), planGapLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: "#FFF6E8", color: "var(--orange)", border: "0.5px solid rgba(201,140,0,0.22)" } }, planGapLabel), estimateGapLabel && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, padding: "3px 7px", borderRadius: 999, background: HOLDINGS?.accountingWarning ? "#FFF6E8" : "rgba(255,255,255,0.06)", color: HOLDINGS?.accountingWarning ? "var(--orange)" : "var(--ink-3)", border: HOLDINGS?.accountingWarning ? "0.5px solid rgba(201,140,0,0.22)" : "0.5px solid var(--line)" } }, estimateGapLabel)), pending && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-4)", marginTop: 2 } }, "treasury snapshot pending")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-4)", letterSpacing: 1.6, textTransform: "uppercase", padding: "0 4px 8px" } }, "Wallet balances"), /* @__PURE__ */ React.createElement("div", { style: { background: "var(--card)", borderRadius: 18, border: "0.5px solid var(--line)", overflow: "hidden" } }, items.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "18px 14px", fontSize: 12, color: "var(--ink-4)", textAlign: "center" } }, "no balance feed wired yet"), items.map((a, i, arr) => {
     const sym = String(a.sym || a.name || "").toLowerCase();
     const symBase = sym.split(".")[0];
     const isExternalDelta = symBase === "other" || a.family === "external_unclassified";
@@ -1118,7 +1229,7 @@ function AssetsPane({ refreshTick }) {
       gap: 12,
       padding: "12px 14px",
       position: "relative"
-    } }, /* @__PURE__ */ React.createElement(AssetLogo, { id: a.sym, size: 28 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 500 } }, a.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 1 } }, chainLabel), tied.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 } }, tied.slice(0, 4).map((s) => /* @__PURE__ */ React.createElement("span", { key: s.id, style: {
+    } }, /* @__PURE__ */ React.createElement(AssetLogo, { id: a.sym, size: 28 }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 500 } }, a.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 1 } }, /* @__PURE__ */ React.createElement(WalletBalanceChainLabel, { chainId: a.chain, label: chainLabel })), tied.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 } }, tied.slice(0, 4).map((s) => /* @__PURE__ */ React.createElement("span", { key: s.id, style: {
       fontSize: 9.5,
       padding: "2px 6px",
       borderRadius: 5,
@@ -1144,11 +1255,7 @@ function App() {
     window.addEventListener("dashboard:datarefresh", handler);
     return () => window.removeEventListener("dashboard:datarefresh", handler);
   }, []);
-  const liveStatus = window.LIVE_STATUS || {};
-  const statusAt = liveStatus.generatedAt || KPI?.generatedAt || null;
-  const ageLabel = formatStatusAge(statusAt);
-  const sourceLabel = liveStatus.live ? liveStatus.remote ? "public live" : "local live" : liveStatus.source === "static-snapshot" ? "snapshot fallback" : "status pending";
-  return /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "6px 16px 2px", flexShrink: 0 } }, /* @__PURE__ */ React.createElement("div", { className: "title" }, "BOB Claw"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, ageLabel ? `${sourceLabel} \xB7 ${ageLabel}` : `${sourceLabel} \xB7 waiting for status`)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React.createElement(TabView, { tabs: TABS, active: tab, onChange: setTab }, /* @__PURE__ */ React.createElement(FlowPane, { refreshTick }), /* @__PURE__ */ React.createElement(DefiPane, { refreshTick }), /* @__PURE__ */ React.createElement(AssetsPane, { refreshTick }))));
+  return /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, display: "flex", flexDirection: "column", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "6px 16px 2px", flexShrink: 0 } }, /* @__PURE__ */ React.createElement("div", { className: "title" }, "BOB CLAW\u{1F99E}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React.createElement(TabView, { tabs: TABS, active: tab, onChange: setTab }, /* @__PURE__ */ React.createElement(FlowPane, { refreshTick }), /* @__PURE__ */ React.createElement(DefiPane, { refreshTick }), /* @__PURE__ */ React.createElement(AssetsPane, { refreshTick }))));
 }
 (() => {
   const root = document.getElementById("root");

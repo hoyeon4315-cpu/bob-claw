@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { WBTC_OFT_TOKEN, ZERO_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN } from "../src/assets/tokens.mjs";
 import { buildFundingSourcePlan } from "../src/treasury/funding-source-planner.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../src/treasury/policy.mjs";
 
@@ -364,6 +364,129 @@ test("Gateway-healthy stable refill still retains live alternate bridges as stan
   assert.equal(selection.selectedMethod, "cross_chain_swap_via_btc_intermediate");
   assert.equal(selection.candidates.find((candidate) => candidate.method === "cross_chain_bridge_across").standbyFallback, true);
   assert.equal(selection.candidates.find((candidate) => candidate.method === "cross_chain_bridge_lifi").standbyFallback, true);
+});
+
+test("alternate bridge candidates use USD coverage for cross-asset token refills", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const ethereumRlusd = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
+  const funding = buildFundingSourcePlan({
+    plan: {
+      ...planFixture("REFILL_REQUIRED"),
+      inventory: {
+        native: [],
+        tokens: [
+          {
+            chain: "base",
+            token: baseCbbtc,
+            ticker: "cbBTC",
+            actual: "40214",
+            actualDecimal: 0.00040214,
+            estimatedUsd: 31.49,
+          },
+        ],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "ethereum",
+          ticker: "RLUSD",
+          token: ethereumRlusd,
+          refillAmount: "25288497754491860000",
+          refillAmountDecimal: 25.28849775449186,
+          refillEstimatedUsd: 25.29,
+          rationale: "Ethereum RLUSD strategy refill",
+        },
+      ],
+    },
+    policy,
+    gatewayAvailability: { available: true, reason: null, observedAt: "2026-05-02T00:00:00.000Z" },
+  });
+
+  const lifi = funding.selections[0].candidates.find((candidate) => candidate.method === "cross_chain_bridge_lifi");
+  assert.ok(lifi);
+  assert.equal(lifi.source.chain, "base");
+  assert.equal(lifi.source.token, baseCbbtc);
+  assert.equal(lifi.missingInputs.includes("source_inventory_below_target_amount"), false);
+});
+
+test("alternate bridge candidates still use raw amount coverage for same-token wrapped BTC refills", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: {
+      ...planFixture("REFILL_REQUIRED"),
+      inventory: {
+        native: [],
+        tokens: [
+          {
+            chain: "base",
+            token: WBTC_OFT_TOKEN,
+            ticker: "wBTC.OFT",
+            actual: "9000",
+            actualDecimal: 0.00009,
+            estimatedUsd: 7.2,
+          },
+        ],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "unichain",
+          ticker: "wBTC.OFT",
+          token: WBTC_OFT_TOKEN,
+          refillAmount: "10000",
+          refillAmountDecimal: 0.0001,
+          refillEstimatedUsd: 8,
+          rationale: "Unichain wrapped BTC refill",
+        },
+      ],
+    },
+    policy,
+    gatewayAvailability: { available: true, reason: null, observedAt: "2026-05-02T00:00:00.000Z" },
+  });
+
+  const lifi = funding.selections[0].candidates.find((candidate) => candidate.method === "cross_chain_bridge_lifi");
+  assert.ok(lifi);
+  assert.equal(lifi.missingInputs.includes("source_inventory_below_target_amount"), true);
+});
+
+test("Ethereum WBTC target can use value coverage from cross-chain wBTC.OFT inventory", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({
+    plan: {
+      ...planFixture("REFILL_REQUIRED"),
+      inventory: {
+        native: [],
+        tokens: [
+          {
+            chain: "base",
+            token: WBTC_OFT_TOKEN,
+            ticker: "wBTC.OFT",
+            actual: "50000",
+            actualDecimal: 0.0005,
+            estimatedUsd: 40,
+          },
+        ],
+      },
+      actions: [
+        {
+          type: "refill_token",
+          chain: "ethereum",
+          ticker: "WBTC",
+          token: ETHEREUM_WBTC_TOKEN,
+          refillAmount: "38367",
+          refillAmountDecimal: 0.00038367,
+          refillEstimatedUsd: 30.7,
+          rationale: "Ethereum canonical WBTC refill",
+        },
+      ],
+    },
+    policy,
+    gatewayAvailability: { available: true, reason: null, observedAt: "2026-05-02T00:00:00.000Z" },
+  });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
 });
 
 test("representative stable token refills use ticker fallback when token registry family is absent", () => {
@@ -781,6 +904,60 @@ test("native refill does not treat undersized same-chain token inventory as read
     funding.selections[0].candidates.find((item) => item.method === "same_chain_token_to_native_swap").missingInputs.includes("source_inventory_below_target_amount"),
     true,
   );
+});
+
+test("native refill prefers same-chain wrapped-native inventory for direct unwrap", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "base",
+          actual: "1000000000000000",
+          actualDecimal: 0.001,
+          estimatedUsd: 2.3,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "8500000000000000",
+          actualDecimal: 0.0085,
+          token: WRAPPED_NATIVE_TOKENS.base,
+          ticker: "WETH",
+          estimatedUsd: 19.55,
+        },
+        {
+          chain: "base",
+          actual: "40214",
+          actualDecimal: 0.00040214,
+          token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+          ticker: "cbBTC",
+          estimatedUsd: 31.5,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "base",
+        asset: "ETH",
+        token: ZERO_TOKEN,
+        refillAmount: "7500000000000000",
+        refillAmountDecimal: 0.0075,
+        refillEstimatedUsd: 17.25,
+        rationale: "Base gas float keeper target shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.token, WRAPPED_NATIVE_TOKENS.base);
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "WETH");
 });
 
 test("funding source planner supplements same-chain token candidates from whole-wallet inventory", () => {

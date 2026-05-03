@@ -25,6 +25,32 @@ function observedAtMs(value) {
   return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
 }
 
+function finiteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function positionMarkUsd(event = {}) {
+  return finiteNumber(event.valueUsd) ??
+    finiteNumber(event.markUsd) ??
+    finiteNumber(event.currentValueUsd) ??
+    finiteNumber(event.positionValueUsd) ??
+    finiteNumber(event.principalUsd);
+}
+
+function markSource(event = {}) {
+  if (finiteNumber(event.valueUsd) != null) return event.valueSource || event.markSource || "position_value";
+  if (finiteNumber(event.markUsd) != null) return event.markSource || "position_mark";
+  if (finiteNumber(event.currentValueUsd) != null) return event.markSource || "current_value";
+  if (finiteNumber(event.positionValueUsd) != null) return event.markSource || "position_value";
+  if (finiteNumber(event.principalUsd) != null) return event.markSource || "principal";
+  return null;
+}
+
+function isProtocolPositionMark(event = {}) {
+  return markSource(event) === "protocol_position_mark";
+}
+
 function positionEventKey(event = {}, index = 0) {
   return String(
     event.positionId ||
@@ -57,6 +83,16 @@ function aggregateByOpportunity(events = []) {
       totalEntryUsd: 0,
       lastObservedAt: null,
       activePositionCount: 0,
+      entryAprNumerator: 0,
+      entryAprWeightUsd: 0,
+      latestEntryAprPct: null,
+      latestEntryAprAt: null,
+      totalValueUsd: 0,
+      markedPositionCount: 0,
+      latestMarkAt: null,
+      latestMarkSource: null,
+      latestMarkFreshness: null,
+      latestMarkConfidence: null,
     };
     current.eventCount += 1;
     current.activePositionCount += 1;
@@ -75,31 +111,86 @@ function aggregateByOpportunity(events = []) {
     if (Number.isFinite(event.amountUsd)) {
       current.totalEntryUsd += event.amountUsd;
     }
+    const markUsd = positionMarkUsd(event);
+    if (Number.isFinite(markUsd)) {
+      current.totalValueUsd += markUsd;
+      if (isProtocolPositionMark(event)) {
+        current.markedPositionCount += 1;
+        if (!current.latestMarkAt || observedAtMs(event.markObservedAt || event.observedAt) >= observedAtMs(current.latestMarkAt)) {
+          current.latestMarkAt = event.markObservedAt || event.observedAt || current.latestMarkAt;
+          current.latestMarkSource = markSource(event) || current.latestMarkSource;
+          current.latestMarkFreshness = event.markFreshness || current.latestMarkFreshness;
+          current.latestMarkConfidence = event.markConfidence || current.latestMarkConfidence;
+        }
+      }
+    } else if (Number.isFinite(event.amountUsd)) {
+      current.totalValueUsd += event.amountUsd;
+    }
+    const entryAprPct = finiteNumber(event.entryAprPct);
+    if (Number.isFinite(entryAprPct)) {
+      const amountUsd = finiteNumber(event.amountUsd);
+      if (Number.isFinite(amountUsd) && amountUsd > 0) {
+        current.entryAprNumerator += amountUsd * entryAprPct;
+        current.entryAprWeightUsd += amountUsd;
+      }
+      if (!current.latestEntryAprAt || observedAtMs(event.observedAt) >= observedAtMs(current.latestEntryAprAt)) {
+        current.latestEntryAprPct = entryAprPct;
+        current.latestEntryAprAt = event.observedAt || current.latestEntryAprAt;
+      }
+    }
     byId.set(key, current);
   }
   return [...byId.values()].sort((a, b) => (b.totalEntryUsd || 0) - (a.totalEntryUsd || 0));
+}
+
+function entryAprPct(position = {}) {
+  if (position.entryAprWeightUsd > 0) {
+    return position.entryAprNumerator / position.entryAprWeightUsd;
+  }
+  return finiteNumber(position.latestEntryAprPct);
+}
+
+function aprForPosition(position = {}, aprByOpportunity = {}) {
+  const opportunityApr = finiteNumber(aprByOpportunity?.[position.opportunityId]);
+  if (Number.isFinite(opportunityApr)) return { value: opportunityApr, source: "opportunity_current" };
+  const entryApr = entryAprPct(position);
+  if (Number.isFinite(entryApr)) return { value: entryApr, source: "position_entry" };
+  return { value: null, source: null };
 }
 
 export function buildMerklActivePositions(
   events = [],
   { generatedAt = new Date().toISOString(), aprByOpportunity = {} } = {},
 ) {
-  const items = aggregateByOpportunity(events).map((position) => ({
-    id: `merkl_${position.opportunityId}`,
-    opportunityId: position.opportunityId,
-    label: position.name?.trim() || `Merkl ${position.opportunityId}`,
-    chain: position.chain || null,
-    protocol: position.protocolId || null,
-    type: inferType(position.name, position.protocolId),
-    pair: inferAssets(position.name),
-    capUsd: Number.isFinite(position.totalEntryUsd) ? Number(position.totalEntryUsd.toFixed(2)) : null,
-    aprPct: Number.isFinite(aprByOpportunity?.[position.opportunityId]) ? aprByOpportunity[position.opportunityId] : null,
-    score: position.score ?? null,
-    bindingKind: position.bindingKind ?? null,
-    lastObservedAt: position.lastObservedAt || null,
-    activePositionCount: position.activePositionCount ?? 1,
-    source: "merkl",
-  }));
+  const items = aggregateByOpportunity(events).map((position) => {
+    const apr = aprForPosition(position, aprByOpportunity);
+    return {
+      id: `merkl_${position.opportunityId}`,
+      opportunityId: position.opportunityId,
+      label: position.name?.trim() || `Merkl ${position.opportunityId}`,
+      chain: position.chain || null,
+      protocol: position.protocolId || null,
+      type: inferType(position.name, position.protocolId),
+      pair: inferAssets(position.name),
+      capUsd: Number.isFinite(position.totalEntryUsd) ? Number(position.totalEntryUsd.toFixed(6)) : null,
+      valueUsd: Number.isFinite(position.totalValueUsd) ? Number(position.totalValueUsd.toFixed(6)) : null,
+      markUsd: position.markedPositionCount > 0 && Number.isFinite(position.totalValueUsd)
+        ? Number(position.totalValueUsd.toFixed(6))
+        : null,
+      markSource: position.latestMarkSource,
+      markObservedAt: position.latestMarkAt,
+      markFreshness: position.latestMarkFreshness,
+      markConfidence: position.latestMarkConfidence,
+      markedPositionCount: position.markedPositionCount ?? 0,
+      aprPct: apr.value,
+      aprSource: apr.source,
+      score: position.score ?? null,
+      bindingKind: position.bindingKind ?? null,
+      lastObservedAt: position.lastObservedAt || null,
+      activePositionCount: position.activePositionCount ?? 1,
+      source: "merkl",
+    };
+  });
   return {
     schemaVersion: 1,
     generatedAt,

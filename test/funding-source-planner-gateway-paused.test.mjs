@@ -12,7 +12,7 @@ function crossChainPlanFixture() {
     decision: "REVIEW_REFILL_PLAN",
     inventory: {
       native: [
-        { chain: "base", actual: "5000000000000000", actualDecimal: 0.005, estimatedUsd: 16 },
+        { chain: "base", actual: "6000000000000000", actualDecimal: 0.006, estimatedUsd: 20 },
       ],
       tokens: [
         {

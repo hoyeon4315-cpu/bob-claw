@@ -280,8 +280,6 @@ function activityStatusLabel(activity) {
 function activityHasSentTx(activity) {
   if (!activity) return false;
   if (activity.txHash) return true;
-  if (Number.isFinite(activity.amountUsd) && activity.amountUsd > 0) return true;
-  if (Number.isFinite(activity.amountSats) && activity.amountSats > 0) return true;
   return false;
 }
 
@@ -456,6 +454,10 @@ function friendlyBlockerLabel(value) {
     payback_below_minimum: 'minimum not reached',
     max_consecutive_failures_reached: 'cooldown',
     kill_switch_present: 'paused',
+    strategy_per_tx_cap_exceeded: 'per-tx cap exceeded',
+    strategy_per_day_cap_exceeded: 'daily cap exceeded',
+    strategy_per_chain_cap_exceeded: 'chain cap exceeded',
+    strategy_max_daily_loss_breached: 'daily loss cap breached',
     collect_observations: 'collect observations',
     review_existing_policy_path: 'review path',
     calibrate_operator_policy: 'calibrate policy',
@@ -495,7 +497,7 @@ function LiveLaneCard() {
   const radarMain = radarLocked
     ? 'Locked'
     : radarReady
-      ? 'Review'
+      ? 'Policy candidate'
       : radar.guardrails?.thresholdsResolved === false
         ? 'Calibrate'
         : 'Watching';
@@ -503,7 +505,9 @@ function LiveLaneCard() {
     ? 'loss lock'
     : Number(radarCap.eligibleCount || 0) > 0
       ? `${radarCap.eligibleCount} cap review`
-      : `${Number(radarCounts.observed || 0)} seen · ${Number(radarCounts.executableReview || 0)} executable`;
+      : Number(radarCounts.executableReview || 0) > 0
+        ? `${Number(radarCounts.executableReview || 0)} candidate · read-only · no signing`
+        : `${Number(radarCounts.observed || 0)} seen · no signing`;
   const pendingSats = Number(payback.carry?.pendingSats ?? payback.accumulatorPendingSats ?? 0);
   const remainingSats = Number(payback.carry?.remainingSatsToMinimum ?? payback.scheduler?.minimumPaybackProgress?.satsToMinimumPayback ?? NaN);
   const paybackReady = payback.scheduler?.status === 'ready' || payback.carry?.active === false && pendingSats > 0;
@@ -651,11 +655,11 @@ function activityRouteSummary(activity, strategy) {
   const hint = parseRouteHint(strategy?.sub || activity?.detail || '');
   const sourceChainId = activity?.kind === 'payback'
     ? normalizeChainId(strategy?.chain) || normalizeChainId(hint?.source) || normalizeChainId(activity?.chain)
-    : normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) || normalizeChainId(strategy?.chain);
+    : normalizeChainId(activity?.fromChainId) || normalizeChainId(hint?.source) || normalizeChainId(activity?.chain) || normalizeChainId(strategy?.chain);
   const source = sourceChainId
     ? { kind: 'chain', id: sourceChainId, label: displayChainName(sourceChainId) }
     : { kind: 'text', id: null, label: 'Capital' };
-  const hintedTargetChainId = activity?.kind === 'payback' ? 'bitcoin' : normalizeChainId(hint?.target);
+  const hintedTargetChainId = activity?.kind === 'payback' ? 'bitcoin' : (normalizeChainId(activity?.toChainId) || normalizeChainId(hint?.target));
   const protocolId = activity?.protocol || strategy?.protocol || null;
   const target = hintedTargetChainId && hintedTargetChainId !== sourceChainId
     ? { kind: 'chain', id: hintedTargetChainId, label: displayChainName(hintedTargetChainId) }
@@ -677,6 +681,9 @@ function FlowActivityRow({ activity, isLast }) {
   const riskLabel = leverageHintLabel(leverageHintForActivity(activity));
   const route = activityRouteSummary(activity, strategy);
   const finalAsset = deriveActivityFinalAsset(activity, strategy);
+  const policyReason = activity?.status === 'rejected' && Array.isArray(activity?.blockers) && activity.blockers.length > 0
+    ? friendlyBlockerLabel(activity.blockers[0])
+    : null;
 
   return (
     <div style={{
@@ -737,6 +744,19 @@ function FlowActivityRow({ activity, isLast }) {
             textOverflow: 'ellipsis',
           }}>
             {riskLabel}
+          </div>
+        )}
+        {policyReason && (
+          <div style={{
+            fontSize: 8.9,
+            color: 'var(--ink-3)',
+            marginTop: 2,
+            lineHeight: 1.3,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            Policy: {policyReason}
           </div>
         )}
       </div>
@@ -994,6 +1014,8 @@ function PnlBreakdownStrip({ inline = false }) {
 }
 
 function FlowPane({ refreshTick }) {
+  const HOLDINGS = window.HOLDINGS || globalThis.HOLDINGS;
+  const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   const flow = window.FLOW || {};
   const items = HOLDINGS?.all || [];
   const pending = HOLDINGS?.pending;
@@ -1005,8 +1027,33 @@ function FlowPane({ refreshTick }) {
   const totalUsd = HOLDINGS?.totalUsd != null
     ? HOLDINGS.totalUsd
     : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
-  const assetValueUsd = Number.isFinite(totalUsd)
-    ? totalUsd
+  const currentWalletUsd = Number.isFinite(HOLDINGS?.currentWalletUsd)
+    ? HOLDINGS.currentWalletUsd
+    : (Number.isFinite(HOLDINGS?.displayWalletUsd) ? HOLDINGS.displayWalletUsd : Number(HOLDINGS?.walletUsd || 0));
+  const protocolDeployedUsd = Number.isFinite(HOLDINGS?.protocolDeployedUsd)
+    ? HOLDINGS.protocolDeployedUsd
+    : Number(HOLDINGS?.deployedUsd || 0);
+  const currentTotalUsd = Number.isFinite(HOLDINGS?.currentTotalUsd)
+    ? HOLDINGS.currentTotalUsd
+    : (Number.isFinite(currentWalletUsd) && Number.isFinite(protocolDeployedUsd) ? currentWalletUsd + protocolDeployedUsd : totalUsd);
+  const estimatedProtocolDeployedUsd = Number.isFinite(HOLDINGS?.estimatedProtocolDeployedUsd)
+    ? HOLDINGS.estimatedProtocolDeployedUsd
+    : protocolDeployedUsd;
+  const estimatedCurrentTotalUsd = Number.isFinite(HOLDINGS?.estimatedCurrentTotalUsd)
+    ? HOLDINGS.estimatedCurrentTotalUsd
+    : currentTotalUsd;
+  const verifiedMinimumUsd = Number.isFinite(HOLDINGS?.verifiedMinimumUsd)
+    ? HOLDINGS.verifiedMinimumUsd
+    : currentTotalUsd;
+  const protocolTrackingGapUsd = Number.isFinite(HOLDINGS?.protocolTrackingGapUsd)
+    ? HOLDINGS.protocolTrackingGapUsd
+    : (Number.isFinite(HOLDINGS?.trackingGapUsd)
+      ? HOLDINGS.trackingGapUsd
+      : Number(HOLDINGS?.planGapUsd || 0));
+  const assetEstimateAvailable = Number.isFinite(estimatedCurrentTotalUsd) && Number.isFinite(currentTotalUsd) && estimatedCurrentTotalUsd > currentTotalUsd + 1;
+  const displayAssetUsd = assetEstimateAvailable ? estimatedCurrentTotalUsd : currentTotalUsd;
+  const assetValueUsd = Number.isFinite(displayAssetUsd)
+    ? displayAssetUsd
     : (Number.isFinite(flow?.metrics?.assetValueUsd) ? flow.metrics.assetValueUsd : 0);
   const paidSats = flow?.metrics?.paidBackSatsLifetime ?? KPI?.paidBack?.sats ?? 0;
   const paidUsd  = flow?.metrics?.paidBackUsdLifetime ?? KPI?.paidBack?.usd;
@@ -1019,11 +1066,13 @@ function FlowPane({ refreshTick }) {
   const liveYieldUsd = flow?.metrics?.liveEstimatedYieldUsd ?? flow?.liveYield?.estimatedYieldUsd ?? null;
   const liveYieldAprPct = flow?.metrics?.liveYieldAprPct ?? flow?.liveYield?.weightedAprPct ?? null;
   const liveYieldPositionCount = flow?.metrics?.liveYieldPositionCount ?? flow?.liveYield?.positionCount ?? 0;
+  const liveYieldAprPositionCount = flow?.liveYield?.aprPositionCount ?? liveYieldPositionCount;
+  const liveAnnualizedYieldUsd = flow?.metrics?.liveAnnualizedYieldUsd ?? flow?.liveYield?.annualizedYieldUsd ?? null;
   const showLiveYield = (Number.isFinite(liveYieldSats) && liveYieldSats > 0) || (Number.isFinite(liveYieldUsd) && liveYieldUsd > 0);
   const liveYieldSub = [
-    Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? fmtUsdCompact(liveYieldUsd) : null,
-    Number.isFinite(liveYieldAprPct) ? `live APY ${fmtPct(liveYieldAprPct)}` : null,
-    liveYieldPositionCount > 0 ? `${liveYieldPositionCount} position${liveYieldPositionCount > 1 ? 's' : ''}` : null,
+    Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? `${fmtUsdCompact(liveYieldUsd)} est. accrued` : null,
+    Number.isFinite(liveAnnualizedYieldUsd) && liveAnnualizedYieldUsd > 0 ? `${fmtUsdCompact(liveAnnualizedYieldUsd)}/yr` : null,
+    liveYieldAprPositionCount > 0 ? `${liveYieldAprPositionCount} APR position${liveYieldAprPositionCount > 1 ? 's' : ''}` : null,
   ].filter(Boolean).join(' · ');
   const yieldMain = showLiveYield
     ? (Number.isFinite(liveYieldSats) && liveYieldSats > 0 ? fmtSats(liveYieldSats) : fmtUsdCompact(liveYieldUsd))
@@ -1042,11 +1091,31 @@ function FlowPane({ refreshTick }) {
   const flowMapBaseHeight = 'calc(52% - 4px)';
   const lowerPaneTop = 'calc(52% + 4px)';
   const lowerPaneExpandedOffset = 'calc(52% + 10px)';
-  const totalApy = weightedApyForStrategies(STRATEGIES) ?? (Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : null);
+  const totalApr = Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : weightedApyForStrategies(STRATEGIES);
   const [aprOpen, setAprOpen] = useState(false);
+  const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === 'verified_minimum';
+  const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
+  const assetEquationTotalLabel = assetEstimateAvailable
+    ? 'estimated total'
+    : assetIsVerifiedFloor || assetHasReconciliationGap
+      ? 'verified minimum'
+      : 'current total';
+  const protocolTrackingGapSub = protocolTrackingGapUsd > 1
+    ? ` · ${fmtUsdCompact(protocolTrackingGapUsd)} unreconciled protocol estimate`
+    : '';
+  const trackedProtocolUsd = assetEstimateAvailable ? estimatedProtocolDeployedUsd : protocolDeployedUsd;
   const assetSub = pending
     ? 'pending'
-    : (positions.length > 0 ? `wallet + ${positions.length} open position${positions.length > 1 ? 's' : ''}` : 'wallet only · 0 open positions');
+    : assetEstimateAvailable
+      ? `${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(estimatedProtocolDeployedUsd)} est. protocols = ${fmtUsdCompact(estimatedCurrentTotalUsd)} est. · verified floor ${fmtUsdCompact(verifiedMinimumUsd)}`
+      : assetIsVerifiedFloor
+      ? `verified floor · ${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(trackedProtocolUsd)} tracked protocols${protocolTrackingGapSub}`
+      : `${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(trackedProtocolUsd)} tracked protocols${protocolTrackingGapSub}`;
+  const assetMetricLabel = assetEstimateAvailable ? 'Assets' : assetHasReconciliationGap ? 'Observed' : 'Total';
+  const assetMain = pending ? '—' : fmtUsd(displayAssetUsd || 0);
+  const apySub = aprOpen
+    ? `${liveYieldAprPositionCount || 0} APR-backed open position${liveYieldAprPositionCount === 1 ? '' : 's'} · estimated, not realized`
+    : 'tap for note';
   return (
     <div className="tabpane" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: 'hidden' }}>
       <div style={{
@@ -1093,14 +1162,14 @@ function FlowPane({ refreshTick }) {
         }}>
           {!historyExpanded && <FlowMetricGrid cards={[
             {
-              label: 'Assets',
-              main: pending ? '—' : fmtUsdCompact(assetValueUsd || 0),
+              label: assetMetricLabel,
+              main: assetMain,
               sub: assetSub,
             },
             {
-              label: 'APY',
-              main: totalApy != null ? fmtPct(totalApy) : '—',
-              sub: aprOpen ? 'live cap-weighted' : 'tap for note',
+              label: 'Open APR',
+              main: totalApr != null ? fmtPct(totalApr) : '—',
+              sub: apySub,
               onTap: () => setAprOpen(o => !o),
               accent: aprOpen ? 'var(--ink)' : undefined,
             },
@@ -1115,7 +1184,7 @@ function FlowPane({ refreshTick }) {
               sub: carryUsd != null ? `${fmtUsdCompact(carryUsd)} pending` : 'pending',
             },
             {
-              label: 'Yield',
+              label: 'Est. yield',
               main: yieldMain,
               sub: yieldSub,
             },
@@ -1127,7 +1196,7 @@ function FlowPane({ refreshTick }) {
               fontSize:11, lineHeight:1.45, flexShrink: 0,
               animation:`slideUp 200ms cubic-bezier(0.22,1,0.36,1) both`,
             }}>
-              Cap-weighted APY across all live strategies with APY data. Merkl live positions use current opportunity APY; other lanes use measured protocol APY when available, then display-only hints.
+              open APR estimate only. It is value-weighted over APR-backed open positions and is estimated, not realized PnL or payback.
             </div>
           )}
           <OpsStrip fill={historyExpanded} onExpandedChange={setHistoryExpanded}/>
@@ -1148,7 +1217,11 @@ function KpiCard({ label, main, sub }) {
 }
 
 function DefiPane({ refreshTick }) {
+  const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   void refreshTick;
+  const openPositionCount = STRATEGIES.filter((s) => s.status === 'LIVE').length;
+  const watchedCount = STRATEGIES.length;
+  const candidateCount = STRATEGIES.filter((s) => s.status !== 'LIVE').length;
   const byProtocol = STRATEGIES.reduce((acc, s) => {
     if (s.status !== 'LIVE') return acc;
     (acc[s.protocol] ||= []).push(s);
@@ -1160,7 +1233,23 @@ function DefiPane({ refreshTick }) {
       <LiveLaneCard/>
       <OnchainRadarCard/>
       <ResearchFunnelCard/>
+      <DevAgentQueueCard/>
       <PnlBreakdownStrip inline/>
+      <div style={{
+        margin: '0 0 8px',
+        padding: '7px 10px',
+        background: 'var(--card)',
+        border: '0.5px solid var(--line)',
+        borderRadius: 12,
+        fontSize: 10,
+        color: 'var(--ink-3)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 8,
+      }}>
+        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>Strategy coverage</span>
+        <span>{watchedCount} watched · {candidateCount} candidate/review · {openPositionCount} open</span>
+      </div>
       {entries.length === 0 && (
         <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'var(--ink-3)' }}>
           No live strategies
@@ -1203,7 +1292,7 @@ function DefiPane({ refreshTick }) {
                 )}
                 {Number.isFinite(protoApy) && (
                   <div style={{ fontSize: 9.5, color: 'var(--ink-3)', marginTop: 1 }}>
-                    APY {fmtPct(protoApy)}
+                    APR {fmtPct(protoApy)}
                   </div>
                 )}
                 {protoCap > 0 && (
@@ -1247,7 +1336,7 @@ function OnchainRadarCard() {
             Onchain radar
           </div>
           <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            read-only scan · {radar.headline || 'Waiting for observations'}
+            read-only · no signing · {radar.headline || 'Waiting for observations'}
           </div>
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--ink-3)', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -1267,9 +1356,60 @@ function OnchainRadarCard() {
             sub: `${counts.selfRealized ?? 0} self-realized`,
           },
           {
-            label: 'Review',
+            label: 'Policy review',
             main: String(counts.executableReview ?? 0),
             sub: blocker,
+          },
+        ]}/>
+      </div>
+    </div>
+  );
+}
+
+function DevAgentQueueCard() {
+  const bridge = window.STATUS?.strategy?.devAgentAutomationBridge;
+  if (!bridge) return null;
+  const policy = bridge.modelPolicy || {};
+  const topTask = bridge.topTasks?.[0] || bridge.topTask || null;
+  const topLabel = topTask?.title || topTask?.source?.opportunityId || topTask?.id || 'No task';
+  const runtimeAuthority = policy.runtimeAuthority || 'none';
+  return (
+    <div style={{
+      marginBottom: 8,
+      padding: '9px 10px',
+      background: 'var(--card)',
+      borderRadius: 12,
+      border: '0.5px solid var(--line)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 8.7, color: 'var(--ink-4)', letterSpacing: 1.2, textTransform: 'uppercase' }}>
+            LLM dev queue
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            code tasks · runtime {runtimeAuthority} · no signing
+          </div>
+        </div>
+        <div style={{ fontSize: 9.5, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+          {fmtWhen(bridge.generatedAt)}
+        </div>
+      </div>
+      <div style={{ marginTop: 7 }}>
+        <TriCard compact cells={[
+          {
+            label: 'Ready',
+            main: String(bridge.readyTaskCount ?? 0),
+            sub: `${bridge.taskCount ?? 0} queued`,
+          },
+          {
+            label: 'Live exec',
+            main: String(bridge.liveExecutableTaskCount ?? 0),
+            sub: policy.llmMaySign === false ? 'signing blocked' : 'review policy',
+          },
+          {
+            label: 'Top task',
+            main: topTask?.kind ? titleCaseLabel(topTask.kind) : '—',
+            sub: topLabel,
           },
         ]}/>
       </div>
@@ -1353,17 +1493,17 @@ function strategyMechanics(s) {
     const cycles = s.loops || 1;
     const collat = toks[0] || '—';
     const borrow = toks[1] || '—';
-    return `${collat} supply → ${borrow} borrow → redeposit · ${cycles}x · APY ${apy}`;
+    return `${collat} supply → ${borrow} borrow → redeposit · ${cycles}x · APR ${apy}`;
   }
   if (t === 'cl_lp' || t === 'lp' || t === 'lp_bgt') {
     if (toks.length >= 2) {
       const half = cap > 0 ? '$' + (cap/2).toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
-      return `${toks[0]} ${half} ↔ ${toks[1]} ${half} · APY ${apy}`;
+      return `${toks[0]} ${half} ↔ ${toks[1]} ${half} · APR ${apy}`;
     }
     const tot = cap > 0 ? '$' + cap.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
-    return `${toks[0]||'asset'} single-sided ${tot} · APY ${apy}`;
+    return `${toks[0]||'asset'} single-sided ${tot} · APR ${apy}`;
   }
-  if (t === 'pt') return `${toks[0]||'PT'} hold to maturity · fixed APY ${apy}`;
+  if (t === 'pt') return `${toks[0]||'PT'} hold to maturity · fixed APR ${apy}`;
   if (t === 'basis') return `${toks[0]||'?'} spot long + perp short · funding ${apy}`;
   if (t === 'bridge') return `${toks[0]||'?'} → ${toks[1]||'?'} transfer`;
   if (t === 'payback') return `${toks[0]||'?'} → ${toks[1]||'?'} BTC payout`;
@@ -1425,7 +1565,7 @@ function StrategyRow({ s, isLast }) {
         </div>
         <div style={{ fontSize: 9.8, color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {chain?.name || displayChainName(s.chain)} · {strategyKind(s)}
-          {s.apyPct != null ? ` · APY ${s.apyPct.toFixed(2)}%` : ''}
+          {s.apyPct != null ? ` · APR ${s.apyPct.toFixed(2)}%` : ''}
         </div>
         <div style={{ fontSize: 9.6, color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {strategyMechanics(s)}
@@ -1461,29 +1601,108 @@ function StrategyRow({ s, isLast }) {
   );
 }
 
+function walletScanErrorBrief(error = {}) {
+  const message = String(error.message || "").toLowerCase();
+  if (error.provider && message.includes("429")) return `${error.provider} 429`;
+  if (error.chain && message.includes("rpc")) return `${error.chain} RPC`;
+  if (error.chain) return `${error.chain} scan`;
+  if (error.provider) return String(error.provider);
+  return error.kind || null;
+}
+
+function WalletBalanceChainLabel({ chainId, label }) {
+  const normalized = normalizeChainId(chainId);
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      {normalized && <ChainLogo id={normalized} size={11}/>}
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function AssetsPane({ refreshTick }) {
+  const HOLDINGS = window.HOLDINGS || globalThis.HOLDINGS;
+  const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   const items = HOLDINGS?.all || [];
   const positions = HOLDINGS?.positions || [];
   const total = Number.isFinite(HOLDINGS?.totalUsd)
     ? HOLDINGS.totalUsd
     : items.reduce((s, a) => s + (a.usd || 0), 0) + positions.reduce((s, a) => s + (a.usd || 0), 0);
+  const currentWalletUsd = Number.isFinite(HOLDINGS?.currentWalletUsd)
+    ? HOLDINGS.currentWalletUsd
+    : (Number.isFinite(HOLDINGS?.displayWalletUsd) ? HOLDINGS.displayWalletUsd : Number(HOLDINGS?.walletUsd || 0));
+  const protocolDeployedUsd = Number.isFinite(HOLDINGS?.protocolDeployedUsd)
+    ? HOLDINGS.protocolDeployedUsd
+    : Number(HOLDINGS?.deployedUsd || 0);
+  const currentTotalUsd = Number.isFinite(HOLDINGS?.currentTotalUsd)
+    ? HOLDINGS.currentTotalUsd
+    : (Number.isFinite(currentWalletUsd) && Number.isFinite(protocolDeployedUsd) ? currentWalletUsd + protocolDeployedUsd : total);
+  const estimatedProtocolDeployedUsd = Number.isFinite(HOLDINGS?.estimatedProtocolDeployedUsd)
+    ? HOLDINGS.estimatedProtocolDeployedUsd
+    : protocolDeployedUsd;
+  const estimatedCurrentTotalUsd = Number.isFinite(HOLDINGS?.estimatedCurrentTotalUsd)
+    ? HOLDINGS.estimatedCurrentTotalUsd
+    : currentTotalUsd;
+  const verifiedMinimumUsd = Number.isFinite(HOLDINGS?.verifiedMinimumUsd)
+    ? HOLDINGS.verifiedMinimumUsd
+    : currentTotalUsd;
+  const protocolTrackingGapUsd = Number.isFinite(HOLDINGS?.protocolTrackingGapUsd)
+    ? HOLDINGS.protocolTrackingGapUsd
+    : (Number.isFinite(HOLDINGS?.trackingGapUsd)
+      ? HOLDINGS.trackingGapUsd
+      : Number(HOLDINGS?.planGapUsd || 0));
+  const assetEstimateAvailable = Number.isFinite(estimatedCurrentTotalUsd) && Number.isFinite(currentTotalUsd) && estimatedCurrentTotalUsd > currentTotalUsd + 1;
+  const displayAssetUsd = assetEstimateAvailable ? estimatedCurrentTotalUsd : currentTotalUsd;
   const pending = HOLDINGS?.pending;
-  const walletSourceLabel = HOLDINGS?.walletSource === 'whole_wallet_inventory'
-    ? 'whole-wallet live'
+  const walletSourceLabel = HOLDINGS?.walletSource === 'whole_wallet_inventory' || HOLDINGS?.walletCoverage === 'full_external'
+        ? 'supported-assets live'
     : HOLDINGS?.walletSource === 'treasury_inventory'
       ? 'policy inventory'
       : 'wallet source pending';
   const walletObservedLabel = HOLDINGS?.walletObservedAt
     ? `wallet observed ${formatStatusAge(HOLDINGS.walletObservedAt) || fmtWhen(HOLDINGS.walletObservedAt)}`
     : 'wallet observed pending';
+  const walletScanErrorDetails = (HOLDINGS?.walletScanErrors || [])
+    .map(walletScanErrorBrief)
+    .filter(Boolean)
+    .slice(0, 2);
   const walletScanHealthLabel = HOLDINGS?.walletScanErrorCount > 0
-    ? `scan errors ${HOLDINGS.walletScanErrorCount}`
+    ? `scan errors ${HOLDINGS.walletScanErrorCount}${walletScanErrorDetails.length ? ` · ${walletScanErrorDetails.join(' · ')}` : ''}`
     : 'scan clean';
   const externalScanLabel = Number.isFinite(HOLDINGS?.externalWalletUsd)
-    ? `external address scan ${fmtUsd(HOLDINGS?.externalWalletUsd)}`
-    : 'external address scan inactive';
+    ? `external reference ${fmtUsd(HOLDINGS?.externalWalletUsd)}`
+    : null;
+  const fullWalletAgeLabel = HOLDINGS?.fullWalletObservedAt
+    ? `external reference ${HOLDINGS.fullWalletStale ? 'cached' : 'observed'} ${formatStatusAge(HOLDINGS.fullWalletObservedAt) || fmtWhen(HOLDINGS.fullWalletObservedAt)}`
+    : null;
   const unclassifiedLabel = Number.isFinite(HOLDINGS?.unclassifiedUsd) && HOLDINGS.unclassifiedUsd > 0
     ? `unclassified ${fmtUsd(HOLDINGS.unclassifiedUsd)}`
+    : null;
+  const planEstimateLabel = Number.isFinite(HOLDINGS?.capitalPlanRefillRequiredUsd)
+    ? `capital refill target ${fmtUsd(HOLDINGS.capitalPlanRefillRequiredUsd)} · not wallet assets`
+    : null;
+  const estimateGapLabel = Number.isFinite(HOLDINGS?.executorEstimateDeltaUsd) && Math.abs(HOLDINGS.executorEstimateDeltaUsd) >= 1
+    ? `plan need above verified ${HOLDINGS.executorEstimateDeltaUsd > 0 ? '+' : ''}${fmtUsd(HOLDINGS.executorEstimateDeltaUsd)}`
+    : null;
+  const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === 'verified_minimum';
+  const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
+  const assetHeadline = assetEstimateAvailable
+    ? 'Estimated total assets'
+    : assetIsVerifiedFloor
+    ? 'Verified minimum assets'
+    : assetHasReconciliationGap
+      ? 'Observed assets'
+      : 'Current total assets';
+  const assetEquationTotalLabel = assetEstimateAvailable
+    ? 'estimated total'
+    : assetIsVerifiedFloor || assetHasReconciliationGap
+      ? 'verified minimum'
+      : 'current total';
+  const assetMain = pending ? '—' : fmtUsd(displayAssetUsd);
+  const planGapLabel = Number.isFinite(HOLDINGS?.planGapUsd) && HOLDINGS.planGapUsd > 0 && Number.isFinite(HOLDINGS?.executorEstimatedTotalUsd)
+    ? `protocol estimate source · ${fmtUsd(HOLDINGS.executorEstimatedTotalUsd)} target`
     : null;
   const liveStrats = STRATEGIES.filter(s => s.status === 'LIVE');
   const stratsByAsset = {};
@@ -1497,16 +1716,26 @@ function AssetsPane({ refreshTick }) {
   return (
     <div className="tabpane" style={{ padding: '4px 16px 16px' }}>
       <div style={{ padding: '14px 16px', background: 'var(--card)', borderRadius: 18, border: '0.5px solid var(--line)', marginBottom: 14 }}>
-        <div style={{ fontSize: 10, color: 'var(--ink-4)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Total holdings</div>
+        <div style={{ fontSize: 10, color: 'var(--ink-4)', letterSpacing: 1.4, textTransform: 'uppercase' }}>
+          {assetHeadline}
+        </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
           <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.8 }}>
-            {pending ? '—' : '$' + total.toLocaleString()}
+            {pending ? '—' : assetMain}
           </span>
           <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>USD</span>
         </div>
         {!pending && (
           <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
-            wallet {fmtUsd(HOLDINGS?.walletUsd)} · deployed {fmtUsd(HOLDINGS?.deployedUsd)} · open positions {positions.length}
+            {assetEstimateAvailable ? 'estimated live ' : assetHasReconciliationGap ? 'observed live ' : ''}remaining {fmtUsd(currentWalletUsd)} + {assetEstimateAvailable ? 'estimated' : 'tracked'} protocols {fmtUsd(assetEstimateAvailable ? estimatedProtocolDeployedUsd : protocolDeployedUsd)} = {assetEquationTotalLabel} {fmtUsd(displayAssetUsd)}
+            {assetEstimateAvailable && (
+              <>{' · '}verified minimum {fmtUsd(verifiedMinimumUsd)}</>
+            )}
+            {protocolTrackingGapUsd > 1 && (
+              <>{' · '}unreconciled protocol estimate {fmtUsd(protocolTrackingGapUsd)}</>
+            )}
+            {' · '}live supported {fmtUsd(HOLDINGS?.walletUsd)}
+            {' · '}open positions {positions.length}
           </div>
         )}
         {!pending && (
@@ -1520,12 +1749,44 @@ function AssetsPane({ refreshTick }) {
             <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:HOLDINGS?.walletScanErrorCount > 0 ? '#FFF6E8' : 'rgba(255,255,255,0.06)', color:HOLDINGS?.walletScanErrorCount > 0 ? 'var(--orange)' : 'var(--ink-3)', border:HOLDINGS?.walletScanErrorCount > 0 ? '0.5px solid rgba(201,140,0,0.22)' : '0.5px solid var(--line)' }}>
               {walletScanHealthLabel}
             </span>
-            <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'rgba(255,255,255,0.06)', color:'var(--ink-3)', border:'0.5px solid var(--line)' }}>
-              {externalScanLabel}
-            </span>
+            {externalScanLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'rgba(255,255,255,0.06)', color:'var(--ink-3)', border:'0.5px solid var(--line)' }}>
+                {externalScanLabel}
+              </span>
+            )}
+            {fullWalletAgeLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:HOLDINGS?.fullWalletStale ? '#FFF6E8' : 'rgba(255,255,255,0.06)', color:HOLDINGS?.fullWalletStale ? 'var(--orange)' : 'var(--ink-3)', border:HOLDINGS?.fullWalletStale ? '0.5px solid rgba(201,140,0,0.22)' : '0.5px solid var(--line)' }}>
+                {fullWalletAgeLabel}
+              </span>
+            )}
             {unclassifiedLabel && (
               <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' }}>
                 {unclassifiedLabel}
+              </span>
+            )}
+            {assetIsVerifiedFloor && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' }}>
+                verified minimum {fmtUsd(verifiedMinimumUsd)}
+              </span>
+            )}
+            {protocolTrackingGapUsd > 1 && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' }}>
+                protocol tracking gap {fmtUsd(protocolTrackingGapUsd)}
+              </span>
+            )}
+            {planEstimateLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:HOLDINGS?.accountingWarning ? '#FFF6E8' : 'rgba(255,255,255,0.06)', color:HOLDINGS?.accountingWarning ? 'var(--orange)' : 'var(--ink-3)', border:HOLDINGS?.accountingWarning ? '0.5px solid rgba(201,140,0,0.22)' : '0.5px solid var(--line)' }}>
+                {planEstimateLabel}
+              </span>
+            )}
+            {planGapLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' }}>
+                {planGapLabel}
+              </span>
+            )}
+            {estimateGapLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:HOLDINGS?.accountingWarning ? '#FFF6E8' : 'rgba(255,255,255,0.06)', color:HOLDINGS?.accountingWarning ? 'var(--orange)' : 'var(--ink-3)', border:HOLDINGS?.accountingWarning ? '0.5px solid rgba(201,140,0,0.22)' : '0.5px solid var(--line)' }}>
+                {estimateGapLabel}
               </span>
             )}
           </div>
@@ -1563,7 +1824,9 @@ function AssetsPane({ refreshTick }) {
             <AssetLogo id={a.sym} size={28}/>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontSize:13.5, fontWeight:500 }}>{a.name}</div>
-              <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>{chainLabel}</div>
+              <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>
+                <WalletBalanceChainLabel chainId={a.chain} label={chainLabel}/>
+              </div>
               {tied.length > 0 && (
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
                   {tied.slice(0, 4).map(s => (
@@ -1627,23 +1890,10 @@ function App() {
     window.addEventListener('dashboard:datarefresh', handler);
     return () => window.removeEventListener('dashboard:datarefresh', handler);
   }, []);
-  const liveStatus = window.LIVE_STATUS || {};
-  const statusAt = liveStatus.generatedAt || KPI?.generatedAt || null;
-  const ageLabel = formatStatusAge(statusAt);
-  const sourceLabel = liveStatus.live
-    ? (liveStatus.remote ? 'public live' : 'local live')
-    : liveStatus.source === 'static-snapshot'
-      ? 'snapshot fallback'
-      : 'status pending';
   return (
     <div style={{ position:'fixed', inset:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <div style={{ padding:'6px 16px 2px', flexShrink:0 }}>
-        <div className="title">BOB Claw</div>
-        <div className="sub">
-          {ageLabel
-            ? `${sourceLabel} · ${ageLabel}`
-            : `${sourceLabel} · waiting for status`}
-        </div>
+        <div className="title">BOB CLAW🦞</div>
       </div>
       <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' }}>
         <TabView tabs={TABS} active={tab} onChange={setTab}>

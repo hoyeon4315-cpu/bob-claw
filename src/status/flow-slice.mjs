@@ -1,5 +1,7 @@
 import { buildLiveYieldSlice, liveYieldMetricFields } from "./live-yield-slice.mjs";
 
+const RECENT_MOVEMENT_WINDOW_MS = 6 * 60 * 60 * 1000;
+
 function finiteNumber(value) {
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -23,8 +25,45 @@ function normalizeActivityId(parts = []) {
   return parts.filter(Boolean).join(":");
 }
 
+function timestampMs(value) {
+  const ms = new Date(value || 0).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function normalizeStrategyId(strategyId) {
   return stringOrNull(strategyId)?.replace(/-/g, "_") || null;
+}
+
+function normalizeAssetId(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  const mapped = {
+    "wbtc.oft": "wbtc",
+    "btc.b": "wbtc",
+    btcb: "wbtc",
+    cbbtc: "cbbtc",
+  }[raw];
+  if (mapped) return mapped;
+  if (raw.endsWith(".oft")) return raw.replace(/\.oft$/u, "");
+  if (raw.startsWith("0x0555e30")) return "wbtc";
+  if (raw.startsWith("0xcbb7c000")) return "cbbtc";
+  return raw;
+}
+
+function parseGatewayRouteKey(routeKey = null) {
+  const raw = stringOrNull(routeKey);
+  if (!raw || !raw.includes("->")) return null;
+  const [fromRaw, toRaw] = raw.split("->");
+  const [fromChainId, fromAsset] = String(fromRaw || "").split(":");
+  const [toChainId, toAsset] = String(toRaw || "").split(":");
+  if (!fromChainId || !toChainId) return null;
+  return {
+    routeKey: raw,
+    fromChainId: fromChainId.toLowerCase(),
+    toChainId: toChainId.toLowerCase(),
+    fromAssetId: normalizeAssetId(fromAsset),
+    toAssetId: normalizeAssetId(toAsset),
+  };
 }
 
 function lastTxHash(event = {}) {
@@ -73,6 +112,33 @@ function eventFinalAssetLabel(event = {}) {
   );
 }
 
+function eventOutputAssetLabel(event = {}) {
+  const outputAsset = event?.receiptIngest?.receiptRecord?.output?.asset || {};
+  return (
+    stringOrNull(outputAsset.icon) ??
+    stringOrNull(outputAsset.ticker) ??
+    stringOrNull(outputAsset.symbol) ??
+    stringOrNull(event.receiptIngest?.receiptRecord?.output?.ticker) ??
+    stringOrNull(event.receiptIngest?.receiptRecord?.output?.symbol) ??
+    null
+  );
+}
+
+function routeProviderFromExecution(event = {}) {
+  const method = stringOrNull(event.executionMethod)?.toLowerCase() || "";
+  const strategyId = stringOrNull(event.strategyId)?.toLowerCase() || "";
+  const provider = stringOrNull(event.provider)?.toLowerCase() || "";
+  if (method.includes("lifi") || strategyId.includes("lifi") || provider.includes("lifi")) return "lifi";
+  if (method.includes("across") || strategyId.includes("across") || provider.includes("across")) return "across";
+  if (method.includes("gas_zip") || strategyId.includes("gas-zip") || provider.includes("gas_zip")) return "gas_zip";
+  if (strategyId.includes("gateway") || method === "cross_chain_bridge_or_swap" || method.includes("gateway")) return "gateway";
+  return "direct";
+}
+
+function routeKindForProvider(provider) {
+  return provider === "gateway" ? "gateway_bridge" : "direct_bridge";
+}
+
 function isDeliveredExecution(event = {}) {
   if (!event?.strategyId) return false;
   if (event.eventType === "execution_funding_outcome" && event.settlementStatus === "delivered") return true;
@@ -84,6 +150,7 @@ function normalizeExecutionActivity(event = {}) {
   if (!isDeliveredExecution(event)) return null;
   const strategyId = stringOrNull(event.strategyId);
   const txHash = lastTxHash(event);
+  const route = executionRoute(event);
   return Object.freeze({
     id: normalizeActivityId(["execution", txHash || event.jobId, event.observedAt]),
     kind: "execution",
@@ -91,7 +158,9 @@ function normalizeExecutionActivity(event = {}) {
     observedAt: stringOrNull(event.observedAt),
     strategyId,
     strategyKey: normalizeStrategyId(strategyId),
-    chain: stringOrNull(event.chain),
+    chain: route?.toChainId || stringOrNull(event.chain),
+    fromChainId: route?.fromChainId || null,
+    toChainId: route?.toChainId || null,
     protocol: null,
     status: stringOrNull(event.status) || "delivered",
     amountUsd: executionAmountUsd(event),
@@ -151,7 +220,7 @@ function signerAuditStatus(record = {}) {
 }
 
 function signerAuditDetail(record = {}) {
-  const protocol = stringOrNull(record?.intent?.metadata?.protocol);
+  const protocol = stringOrNull(record?.intent?.metadata?.protocol) ?? stringOrNull(record?.intent?.metadata?.provider);
   const intentType = stringOrNull(record?.intent?.intentType);
   if (protocol && intentType) return `${protocol} ${intentType}`;
   return protocol || intentType || null;
@@ -174,6 +243,8 @@ function normalizeSignerAuditActivity(record = {}) {
   if (!["signed", "broadcasted", "confirmed", "rejected", "error"].includes(status)) return null;
   const txHash = stringOrNull(record?.lifecycle?.txHash) ?? stringOrNull(record?.broadcast?.txHash) ?? null;
   const finalAsset = signerAuditFinalAsset(record);
+  const route = signerAuditRoute(record);
+  const blockers = Array.isArray(record?.lifecycle?.blockers) ? record.lifecycle.blockers.filter(Boolean).map(String) : [];
   return Object.freeze({
     id: normalizeActivityId(["transaction", txHash || record.intentHash || record.intentId, record.timestamp]),
     kind: "transaction",
@@ -181,8 +252,10 @@ function normalizeSignerAuditActivity(record = {}) {
     observedAt: stringOrNull(record.timestamp),
     strategyId,
     strategyKey: normalizeStrategyId(strategyId),
-    chain: stringOrNull(record.chain),
-    protocol: stringOrNull(record?.intent?.metadata?.protocol),
+    chain: route?.toChainId || stringOrNull(record.chain),
+    fromChainId: route?.fromChainId || null,
+    toChainId: route?.toChainId || null,
+    protocol: stringOrNull(record?.intent?.metadata?.protocol) ?? stringOrNull(record?.intent?.metadata?.provider),
     status,
     amountUsd: finiteNumber(record.amountUsd) ?? finiteNumber(record?.intent?.amountUsd) ?? null,
     amountSats: null,
@@ -191,6 +264,7 @@ function normalizeSignerAuditActivity(record = {}) {
     finalAssetLabel: finalAsset,
     txHash,
     detail: signerAuditDetail(record),
+    blockers: Object.freeze(blockers),
   });
 }
 
@@ -229,6 +303,157 @@ function normalizePaybackActivity(payback = null, btcUsd = null) {
     txHash: null,
     detail: "Bitcoin L1 settled",
   });
+}
+
+function executionRoute(event = {}) {
+  const routeContext = event?.receiptIngest?.receiptRecord?.routeContext || {};
+  const parsed = parseGatewayRouteKey(routeContext.routeKey);
+  const fromChainId = stringOrNull(routeContext.srcChain)?.toLowerCase() || parsed?.fromChainId || null;
+  const toChainId = stringOrNull(routeContext.dstChain)?.toLowerCase() || parsed?.toChainId || null;
+  if (!fromChainId || !toChainId || fromChainId === toChainId) return null;
+  const outputAssetId = normalizeAssetId(eventOutputAssetLabel(event));
+  const fromAssetId = normalizeAssetId(routeContext.srcTicker || routeContext.srcAsset || parsed?.fromAssetId || event.sourceAsset);
+  const toAssetId = normalizeAssetId(routeContext.dstTicker || routeContext.dstAsset || outputAssetId || parsed?.toAssetId);
+  return {
+    routeKey: stringOrNull(routeContext.routeKey) || parsed?.routeKey || null,
+    fromChainId,
+    toChainId,
+    fromAssetId: fromAssetId || parsed?.fromAssetId || null,
+    toAssetId: toAssetId || outputAssetId || parsed?.toAssetId || null,
+    assetId: toAssetId || outputAssetId || parsed?.toAssetId || fromAssetId || parsed?.fromAssetId || normalizeAssetId(eventFinalAssetLabel(event)) || "wbtc",
+  };
+}
+
+function signerAuditRoute(record = {}) {
+  const parsed = parseGatewayRouteKey(record?.intent?.metadata?.gatewayRouteKey);
+  if (!parsed || parsed.fromChainId === parsed.toChainId) return null;
+  return {
+    routeKey: parsed.routeKey,
+    fromChainId: parsed.fromChainId,
+    toChainId: parsed.toChainId,
+    fromAssetId: parsed.fromAssetId || null,
+    toAssetId: normalizeAssetId(signerAuditFinalAsset(record) || parsed.toAssetId) || null,
+    assetId: normalizeAssetId(signerAuditFinalAsset(record) || parsed.toAssetId || parsed.fromAssetId || "wbtc"),
+  };
+}
+
+function normalizeExecutionMovement(event = {}) {
+  if (!isDeliveredExecution(event)) return null;
+  const route = executionRoute(event);
+  if (!route) return null;
+  const txHash = lastTxHash(event);
+  const routeProvider = routeProviderFromExecution(event);
+  const kind = routeKindForProvider(routeProvider);
+  return Object.freeze({
+    id: normalizeActivityId(["movement", txHash || event.jobId || route.routeKey, event.observedAt]),
+    kind,
+    observedAt: stringOrNull(event.observedAt),
+    status: stringOrNull(event.status) || "delivered",
+    strategyId: stringOrNull(event.strategyId),
+    strategyKey: normalizeStrategyId(event.strategyId),
+    fromChainId: route.fromChainId,
+    toChainId: route.toChainId,
+    fromAssetId: route.fromAssetId,
+    toAssetId: route.toAssetId,
+    assetId: route.assetId || "wbtc",
+    amountUsd: executionAmountUsd(event),
+    txHash,
+    routeKey: route.routeKey,
+    routeProvider,
+    viaGateway: routeProvider === "gateway",
+  });
+}
+
+function normalizeExecutionRoutePlan(event = {}) {
+  const source = event?.fundingSource?.source || null;
+  const fromChainId = stringOrNull(source?.chain)?.toLowerCase() || null;
+  const toChainId = stringOrNull(event.chain)?.toLowerCase() || null;
+  if (!fromChainId || !toChainId || fromChainId === toChainId) return null;
+  const method = stringOrNull(event.executionMethod)?.toLowerCase() || "";
+  const fundingMethod = stringOrNull(event?.fundingSource?.method)?.toLowerCase() || "";
+  if (!method.includes("cross_chain") && !fundingMethod.includes("cross_chain")) return null;
+  const routeProvider = routeProviderFromExecution(event);
+  const fromAssetId = normalizeAssetId(source.ticker || source.asset || source.token);
+  const toAssetId = normalizeAssetId(event.asset || event.token || fromAssetId);
+  const routeKey = `${fromChainId}:${fromAssetId || "asset"}->${toChainId}:${toAssetId || "asset"}`;
+  return Object.freeze({
+    id: normalizeActivityId(["movement-plan", event.jobId || routeKey, event.observedAt]),
+    kind: routeKindForProvider(routeProvider),
+    observedAt: stringOrNull(event.observedAt),
+    status: stringOrNull(event.status) || "planned",
+    projected: true,
+    strategyId: stringOrNull(event?.riskDecision?.metrics?.strategyId) || stringOrNull(event.strategyId),
+    strategyKey: normalizeStrategyId(event?.riskDecision?.metrics?.strategyId || event.strategyId),
+    fromChainId,
+    toChainId,
+    fromAssetId,
+    toAssetId,
+    assetId: toAssetId || fromAssetId || "asset",
+    amountUsd:
+      finiteNumber(event?.riskDecision?.metrics?.exposureUsd) ??
+      finiteNumber(source.estimatedUsd) ??
+      finiteNumber(event.amountUsd) ??
+      null,
+    txHash: null,
+    routeKey,
+    routeProvider,
+    viaGateway: routeProvider === "gateway",
+  });
+}
+
+function normalizeSignerAuditMovement(record = {}) {
+  const route = signerAuditRoute(record);
+  if (!route) return null;
+  const status = signerAuditStatus(record);
+  if (!["signed", "broadcasted", "confirmed", "rejected", "error"].includes(status)) return null;
+  const txHash = stringOrNull(record?.lifecycle?.txHash) ?? stringOrNull(record?.broadcast?.txHash) ?? null;
+  return Object.freeze({
+    id: normalizeActivityId(["movement", txHash || record.intentHash || record.intentId, record.timestamp]),
+    kind: "gateway_bridge",
+    observedAt: stringOrNull(record.timestamp),
+    status,
+    strategyId: stringOrNull(record.strategyId),
+    strategyKey: normalizeStrategyId(record.strategyId),
+    fromChainId: route.fromChainId,
+    toChainId: route.toChainId,
+    fromAssetId: route.fromAssetId,
+    toAssetId: route.toAssetId,
+    assetId: route.assetId || "wbtc",
+    amountUsd: finiteNumber(record.amountUsd) ?? finiteNumber(record?.intent?.amountUsd) ?? null,
+    txHash,
+    routeKey: route.routeKey,
+    routeProvider: "gateway",
+    viaGateway: true,
+  });
+}
+
+function isRecentMovement(movement = {}, asOfMs = Date.now()) {
+  const observedMs = timestampMs(movement.observedAt);
+  if (!Number.isFinite(observedMs) || !Number.isFinite(asOfMs)) return false;
+  const ageMs = asOfMs - observedMs;
+  return ageMs >= 0 && ageMs <= RECENT_MOVEMENT_WINDOW_MS;
+}
+
+function latestMovements({ executionEvents = [], signerAuditRecords = [], generatedAt = new Date().toISOString() } = {}) {
+  const byKey = new Map();
+  const asOfMs = timestampMs(generatedAt) ?? Date.now();
+  const candidates = [
+    ...(signerAuditRecords || []).map(normalizeSignerAuditMovement),
+    ...(executionEvents || []).map(normalizeExecutionMovement),
+    ...(executionEvents || []).map(normalizeExecutionRoutePlan),
+  ].filter(Boolean).filter((movement) => isRecentMovement(movement, asOfMs));
+  for (const movement of candidates) {
+    const provider = movement.routeProvider || movement.kind || "movement";
+    const key = movement.routeKey ? `${provider}:${movement.routeKey}` : movement.txHash || `${provider}:${movement.fromChainId}->${movement.toChainId}:${movement.assetId}`;
+    const existing = byKey.get(key);
+    if (!existing || new Date(movement.observedAt || 0) > new Date(existing.observedAt || 0)) {
+      byKey.set(key, movement);
+    }
+  }
+  return [...byKey.values()]
+    .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))
+    .slice(0, 16)
+    .map((item) => Object.freeze(item));
 }
 
 function leverageHint(slice = null) {
@@ -311,7 +536,11 @@ export function buildFlowDashboardSlice({
     generatedAt,
     liveYield,
     metrics: Object.freeze({
-      assetValueUsd: finiteNumber(capitalSummary?.totalUsd),
+      assetValueUsd:
+        finiteNumber(capitalSummary?.estimatedCurrentTotalUsd) ??
+        finiteNumber(capitalSummary?.currentTotalUsd) ??
+        finiteNumber(capitalSummary?.displayTotalUsd) ??
+        finiteNumber(capitalSummary?.totalUsd),
       grossProfitSatsPeriod,
       grossProfitUsdPeriod: satsToUsd(grossProfitSatsPeriod, btcUsd),
       pendingCarrySats,
@@ -327,5 +556,6 @@ export function buildFlowDashboardSlice({
       recursiveWrappedBtcLoop,
     }),
     recentActivities: Object.freeze(recentActivities),
+    recentMovements: Object.freeze(latestMovements({ executionEvents, signerAuditRecords, generatedAt })),
   });
 }

@@ -1,43 +1,30 @@
 // Real-time portfolio snapshot via direct RPC (no API limits, zero gas)
 // Reads: native balances, ERC20 tokens, and protocol positions across all chains
-// Caches results for 5 minutes to avoid redundant RPC calls
+// Caches results with per-layer TTLs (Phase 1.6):
+//   balances 60s, NFT positions 1800s, protocol positions 120s.
 
 import { readNativeBalance, readErc20Balance } from "../evm/account-state.mjs";
 import { EVM_CHAIN_CONFIGS } from "../config/chains.mjs";
 import { PROTOCOL_READERS } from "./health/position-reconciler.mjs";
+import { TOKEN_REGISTRY } from "../config/token-registry.mjs";
 
-// Known token contracts per chain (add as needed)
-const KNOWN_TOKENS = Object.freeze({
-  base: [
-    { symbol: "USDC",  address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
-    { symbol: "cbBTC", address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", decimals: 8 },
-    { symbol: "wBTC",  address: "0x1ceA84203673764244E05693e42E6Ace62bD9ad4", decimals: 8 }, // wBTC.OFT on Base
-    { symbol: "AERO",  address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631", decimals: 18 },
-    { symbol: "WETH",  address: "0x4200000000000000000000000000000000000006", decimals: 18 },
-  ],
-  ethereum: [
-    { symbol: "USDC",  address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
-    { symbol: "USDT",  address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
-    { symbol: "RLUSD", address: "0x8292Bb45bf1E4a0860d4bC8E964E223C0B05d576", decimals: 18 },
-    { symbol: "WBTC",  address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", decimals: 8 },
-    { symbol: "WETH",  address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", decimals: 18 },
-  ],
-  bsc: [
-    { symbol: "USDT", address: "0x55d398326f99059fF775485246999027B3197955", decimals: 18 },
-    { symbol: "WBNB", address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", decimals: 18 },
-  ],
-  avalanche: [
-    { symbol: "USDC", address: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", decimals: 6 },
-    { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
-  ],
-  sonic: [
-    { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
-  ],
-});
+// Token metadata is sourced from src/config/token-registry.mjs.
+// Aliased here to preserve back-compat for downstream code that may have
+// imported KNOWN_TOKENS in the past; new code should import the registry directly.
+const KNOWN_TOKENS = TOKEN_REGISTRY;
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const BALANCES_TTL_MS = 60 * 1000;
+const PROTOCOLS_TTL_MS = 120 * 1000;
+const NFT_TTL_MS = 1800 * 1000;
+// Legacy snapshot cache (full snapshot) keeps prior behaviour.
+const CACHE_TTL_MS = 5 * 60 * 1000;
 let _cache = null;
 let _cacheAt = 0;
+const _layerCache = {
+  balances: new Map(), // key: address -> { at, value }
+  protocols: new Map(),
+  nft: new Map(),
+};
 
 function normalizeBalance(rawBalance, decimals) {
   const divisor = 10n ** BigInt(decimals);
@@ -162,6 +149,7 @@ export async function fetchRealtimePortfolio(address, { chains = null, useCache 
     fetchedAt: new Date().toISOString(),
     chains: allBalances,
     protocolPositions,
+    staleness: buildStalenessMap({ allBalances, protocolPositions }),
     summary: {
       chainCount: allBalances.length,
       chainsWithBalance: allBalances.filter((c) => {
@@ -179,9 +167,31 @@ export async function fetchRealtimePortfolio(address, { chains = null, useCache 
   return snapshot;
 }
 
+function buildStalenessMap({ allBalances, protocolPositions }) {
+  const map = { chains: {}, protocols: {} };
+  for (const c of allBalances) {
+    map.chains[c.chain] = c.fetchedAt || null;
+  }
+  const seen = new Set();
+  for (const p of protocolPositions) {
+    const key = `${p.chain || "unknown"}:${p.protocol || "unknown"}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    map.protocols[key] = new Date().toISOString();
+  }
+  return map;
+}
+
 export function clearPortfolioCache() {
   _cache = null;
   _cacheAt = 0;
+  _layerCache.balances.clear();
+  _layerCache.protocols.clear();
+  _layerCache.nft.clear();
+}
+
+export function _getCacheConfigForTesting() {
+  return { BALANCES_TTL_MS, PROTOCOLS_TTL_MS, NFT_TTL_MS, CACHE_TTL_MS };
 }
 
 // Convenience: format for autopilot consumption

@@ -6,6 +6,7 @@ import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { exitIfDevLocked } from "../runtime/dev-lock.mjs";
 import {
   buildGatewayUpdateAlertRecord,
   buildGatewayUpdateAutopilotRecord,
@@ -53,6 +54,9 @@ async function readPlanningArtifacts(dataDir) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if ((args.execute || args.write) && exitIfDevLocked({ cliName: "run-gateway-update-autopilot" })) {
+    return;
+  }
   const store = new JsonlStore(config.dataDir);
   const previousSnapshots = await readJsonl(config.dataDir, "gateway-update-snapshots");
   const previousSnapshot = previousSnapshots.at(-1) || null;

@@ -18,6 +18,22 @@ export const AUTO_PROMOTION_DEFAULTS = Object.freeze({
     minSamplePeriods: 12,
   }),
 
+  // Out-of-sample holdout gate (last N days, never seen during fit).
+  // oosNetPositive is a hard blocker — any candidate failing this is rejected.
+  oosHoldout: Object.freeze({
+    enabled: true,
+    minHoldoutDays: 30,
+    requireNetPositive: true,
+  }),
+
+  // Regime breakdown gate — evidence must report bear/neutral/bull_peak
+  // sample counts and net PnL. Engine doesn't judge "good", only presence.
+  regimeBreakdown: Object.freeze({
+    enabled: true,
+    requiredRegimes: Object.freeze(["bear", "neutral", "bull_peak"]),
+    minSamplesPerRegime: 1,
+  }),
+
   // Shadow / replay continuity gates.
   shadow: Object.freeze({
     enabled: true,
@@ -56,6 +72,17 @@ export function buildAutoPromotionConfig(overrides = {}) {
     walkForward: Object.freeze({
       ...AUTO_PROMOTION_DEFAULTS.walkForward,
       ...(overrides.walkForward || {}),
+    }),
+    oosHoldout: Object.freeze({
+      ...AUTO_PROMOTION_DEFAULTS.oosHoldout,
+      ...(overrides.oosHoldout || {}),
+    }),
+    regimeBreakdown: Object.freeze({
+      ...AUTO_PROMOTION_DEFAULTS.regimeBreakdown,
+      ...(overrides.regimeBreakdown || {}),
+      requiredRegimes: Object.freeze(
+        overrides.regimeBreakdown?.requiredRegimes ?? AUTO_PROMOTION_DEFAULTS.regimeBreakdown.requiredRegimes,
+      ),
     }),
     shadow: Object.freeze({
       ...AUTO_PROMOTION_DEFAULTS.shadow,

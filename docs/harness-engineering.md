@@ -139,6 +139,7 @@ are not part of source refactor commits.
 | Docs only | `npm run graph:focus -- status` |
 | Git hygiene | `node --test test/repo-hygiene.test.mjs test/git-ops-automation.test.mjs` |
 | Gateway chain policy | `node --test test/diversification.test.mjs test/diversification-kpi.test.mjs test/all-chain-autopilot.test.mjs test/gateway-update-autopilot.test.mjs` |
+| Dev route remediation | `node --test test/route-remediation-autopilot.test.mjs` |
 | Signer/policy | `node --test test/gateway-availability.test.mjs test/executor-policy-index.test.mjs` |
 | Watchdog/auto-kill | `node --test test/executor-watchdog-runner.test.mjs test/auto-kill-triggers.test.mjs test/auto-kill-triggers-extended.test.mjs` |
 | Payback | `node --test test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs` |

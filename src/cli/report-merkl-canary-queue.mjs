@@ -32,11 +32,12 @@ async function readJson(path) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const report = await readJson(join(config.dataDir, "merkl-opportunities-report.json"));
-  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, positionRecords] = await Promise.all([
+  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, positionRecords, representativeRuns] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
     readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
     readJsonl(config.dataDir, "merkl-portfolio-positions").catch(() => []),
+    readJsonl(config.dataDir, "destination-representative-autopilot-runs").catch(() => []),
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, report?.address || inventoryRecords.at(-1)?.address || null);
@@ -46,6 +47,7 @@ async function main() {
     inventorySnapshot,
     canaryExecutions,
     positionRecords,
+    representativeRuns,
   });
 
   if (args.write) {

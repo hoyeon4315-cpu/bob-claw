@@ -219,6 +219,7 @@ export function buildMerklCanaryQueue({
   inventorySnapshot = null,
   canaryExecutions = [],
   positionRecords = [],
+  representativeRuns = [],
 } = {}) {
   const sourceItems = report?.opportunities || report?.topCandidates || [];
   const candidates = sourceItems
@@ -245,6 +246,7 @@ export function buildMerklCanaryQueue({
   const representativeCoverage = buildRepresentativeChainCoverage({
     queue,
     positionRecords,
+    representativeRuns,
     now: generatedAt,
   });
   const topBlockingReason =

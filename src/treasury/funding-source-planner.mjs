@@ -1,4 +1,4 @@
-import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
 import { acrossSupportsPair } from "../config/across.mjs";
 import {
   BRIDGE_PROVIDERS,
@@ -249,6 +249,20 @@ function sourceInventoryCoversTargetAmount(action, source = null) {
   }
 }
 
+function shouldUseRawAmountCoverage(action, source = null) {
+  if (action?.type !== "refill_token" || !source?.token || !action?.token) return false;
+  if (normalized(source.token) !== normalized(action.token)) return false;
+  const sourceAsset = tokenAsset(source.chain, source.token);
+  const targetAsset = tokenAsset(action.chain, action.token);
+  return sourceAsset?.decimals === targetAsset?.decimals;
+}
+
+function sourceInventoryCoversTarget(action, source = null) {
+  return shouldUseRawAmountCoverage(action, source)
+    ? sourceInventoryCoversTargetAmount(action, source)
+    : sourceInventoryCoversTargetValue(action, source);
+}
+
 function candidateRecord({
   action,
   method,
@@ -292,7 +306,10 @@ function candidateRecord({
 function nativeSwapCandidate(action, plan, preferred) {
   const chainInventory = inventoryForChain(plan, action.chain);
   const native = chainInventory.native;
-  const tokenSource = sortByEstimatedUsd(chainInventory.tokens.filter((item) => Number(item.actual || 0) > 0))[0] || null;
+  const tokenSources = sortByEstimatedUsd(chainInventory.tokens.filter((item) => Number(item.actual || 0) > 0));
+  const wrappedNativeToken = normalized(WRAPPED_NATIVE_TOKENS[action.chain]);
+  const wrappedNativeSource = tokenSources.find((item) => normalized(item.token) === wrappedNativeToken && sourceInventoryCoversTargetValue(action, item));
+  const tokenSource = wrappedNativeSource || tokenSources[0] || null;
   if (!tokenSource) {
     return candidateRecord({
       action,
@@ -556,15 +573,7 @@ function crossChainCandidate(action, plan, policy, routeContext = null, gatewayA
         "BOB Gateway is currently disabled (committed flag or runtime state file). Gateway-backed cross-chain methods are not selectable until the pause clears. Route through an alternate bridge provider or manual funding instead.",
     });
   }
-  const sameTokenRefill =
-    action.type === "refill_token" &&
-    selectedSource &&
-    selectedSource.chain === action.chain &&
-    normalized(selectedSource.token) === normalized(action.token);
-  const coversTarget =
-    action.type === "refill_token" && sameTokenRefill
-      ? sourceInventoryCoversTargetAmount(action, selectedSource)
-      : sourceInventoryCoversTargetValue(action, selectedSource);
+  const coversTarget = sourceInventoryCoversTarget(action, selectedSource);
   if (!selectedSource) {
     return candidateRecord({
       action,
@@ -717,10 +726,7 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
     const missingInputs = isLive
       ? []
       : [`bridge_provider_executor_missing:${provider.id}`];
-    const coversTarget =
-      action.type === "refill_token"
-        ? sourceInventoryCoversTargetAmount(action, selectedSource)
-        : sourceInventoryCoversTargetValue(action, selectedSource);
+    const coversTarget = sourceInventoryCoversTarget(action, selectedSource);
     if (!coversTarget) missingInputs.push("source_inventory_below_target_amount");
     // For Across specifically, also check the token/chain pair matches
     // the committed registry — otherwise the quote call would fail at

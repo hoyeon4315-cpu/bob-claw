@@ -13,6 +13,7 @@ import { evaluateDiscretionaryBudget } from "./policy/cap-check.mjs";
 import {
   refillCandidateExecutable,
   refillExecutionCandidates,
+  jobWithCandidate,
 } from "./helpers/refill-fallback.mjs";
 
 const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
@@ -259,6 +260,9 @@ function classifyRefillRouteError(result = {}) {
 
 function normalizeRefillBlockedReason(reason = null) {
   if (!reason) return null;
+  if (/Signer did not complete/iu.test(String(reason))) {
+    return "signer_execution_failed";
+  }
   if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance/iu.test(String(reason))) {
     return "insufficient_native_gas_balance";
   }
@@ -309,6 +313,7 @@ function refillExecutionRetryable(result = {}, { activeMethod = null } = {}) {
   const status = refillExecutionStatus(result);
   if (!reason && !status) return false;
   if (["source_confirmed_only", "confirmed", "delivered", "succeeded"].includes(status)) return false;
+  if (refillExecutionHasSourceDebitBroadcast(result)) return false;
   if (blocksRefillFallbackForSourceNativeGas({ reason, activeMethod })) return false;
   return [
     "no_route",
@@ -323,6 +328,7 @@ function refillExecutionRetryable(result = {}, { activeMethod = null } = {}) {
     "insufficient_funds",
     "insufficient_native_gas_balance",
     "executor_output_below_refill_target",
+    "signer_execution_failed",
   ].includes(reason);
 }
 
@@ -836,6 +842,48 @@ function normalizedToken(value = "") {
   return String(value || "").trim().toLowerCase();
 }
 
+function sourceIsNative(source = {}) {
+  return source?.isNative === true || normalizedToken(source?.token) === "0x0000000000000000000000000000000000000000";
+}
+
+function signerResultTxHash(result = {}) {
+  return result?.broadcast?.txHash || result?.txHash || result?.receipt?.transactionHash || null;
+}
+
+function refillStepTxHash(step = {}) {
+  return signerResultTxHash(step?.signerResult) || signerResultTxHash(step) || null;
+}
+
+function refillStepLikelyDebitsSource(step = {}) {
+  if (!refillStepTxHash(step)) return false;
+  const id = String(step?.id || step?.stepId || "").trim();
+  if (!id) return true;
+  if (/^approve_/iu.test(id)) return false;
+  if (/^reset_.*allowance$/iu.test(id)) return false;
+  return true;
+}
+
+function refillExecutionStepResults(execution = null) {
+  if (!execution || typeof execution !== "object") return [];
+  const stepResults = [];
+  const stack = [execution];
+  const seen = new Set();
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (!item || typeof item !== "object" || seen.has(item)) continue;
+    seen.add(item);
+    if (Array.isArray(item.stepResults)) stepResults.push(...item.stepResults);
+    for (const key of ["step1Result", "step2Result", "step3Result", "sourceExecution", "bridgeExecution", "destinationExecution"]) {
+      if (item[key] && typeof item[key] === "object") stack.push(item[key]);
+    }
+  }
+  return stepResults;
+}
+
+function refillExecutionHasSourceDebitBroadcast(result = {}) {
+  return refillExecutionStepResults(result?.json?.execution || result).some(refillStepLikelyDebitsSource);
+}
+
 function refillSourceReservationKey(job = {}) {
   const source = job?.fundingSource?.source || null;
   if (!source?.chain || !source?.token) return null;
@@ -882,7 +930,8 @@ function refillSourceReservationAmount(job = {}) {
   if (
     job.type === "refill_native" &&
     targetAmount &&
-    String(source?.chain || "").toLowerCase() === String(job?.chain || "").toLowerCase()
+    String(source?.chain || "").toLowerCase() === String(job?.chain || "").toLowerCase() &&
+    sourceIsNative(source)
   ) {
     return targetAmount;
   }
@@ -922,7 +971,14 @@ function reserveRefillSource(reservations, reservation) {
 
 function refillSourceDebitLikely(execution = null) {
   const status = refillExecutionStatus(execution);
-  return refillDeliveredStatus(status) || status === "source_confirmed_only";
+  return refillDeliveredStatus(status) || status === "source_confirmed_only" || refillExecutionHasSourceDebitBroadcast(execution);
+}
+
+function refillJobForSelectedMethod(job = {}, method = null) {
+  if (!method) return job;
+  const candidate = refillExecutionCandidates(job).find((item) => item.method === method) || null;
+  if (!candidate || !refillCandidateExecutable(candidate)) return job;
+  return jobWithCandidate(job, candidate);
 }
 
 function blockedRefillPreview(job = {}, blockedReason) {
@@ -1282,6 +1338,7 @@ export async function runAllChainAutopilot({
       }
     }
     let execution = null;
+    let debitSourceReservation = null;
     if (allowLiveCapableExecution && refillPreparationReady(preview.json)) {
       while (refillPreparationReady(preview.json)) {
         const discretionaryCategory = refillDiscretionaryCategory({ job, preview });
@@ -1301,6 +1358,13 @@ export async function runAllChainAutopilot({
           }
         }
         const method = refillSelectedMethod(preview, job.executionMethod);
+        const activeJob = refillJobForSelectedMethod(job, method);
+        const activeSourceReservation = refillSourceReservation(activeJob, sourceReservations);
+        if (!activeSourceReservation.accepted) {
+          preview = blockedRefillPreview(activeJob, "source_inventory_reserved");
+          steps.push(commandStep(`treasury_refill_preview:${job.jobId}:${method}:source_inventory_reserved`, [], preview));
+          break;
+        }
         execution = await runJsonStep({
           name: `treasury_refill_execute:${job.jobId}`,
           args: [
@@ -1318,6 +1382,9 @@ export async function runAllChainAutopilot({
           timeoutMs,
           steps,
         });
+        if (refillSourceDebitLikely(execution)) {
+          debitSourceReservation = activeSourceReservation;
+        }
         if (!refillExecutionRetryable(execution, { activeMethod: method })) break;
         const retryMethods = forcedRefillMethodArgs(job, method);
         let nextPreview = null;
@@ -1355,8 +1422,8 @@ export async function runAllChainAutopilot({
         if (!refillPreparationReady(preview.json)) break;
       }
     }
-    if (refillSourceDebitLikely(execution)) {
-      reserveRefillSource(sourceReservations, sourceReservation);
+    if (debitSourceReservation) {
+      reserveRefillSource(sourceReservations, debitSourceReservation);
     }
     refillExecutions.push(compactRefillExecution(job, preview, execution));
   }

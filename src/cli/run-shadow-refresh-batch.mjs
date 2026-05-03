@@ -6,6 +6,7 @@ import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { exitIfDevLocked } from "../runtime/dev-lock.mjs";
 import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
 import { buildShadowRefreshBatchSummary, executeShadowRefreshBatch } from "../session/shadow-refresh-batch.mjs";
 import { parseWhitelistedRefreshCommand, runParsedRefreshSteps } from "../session/shadow-refresh-runner.mjs";
@@ -67,6 +68,9 @@ async function loadRefreshPlan() {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if ((args.execute || args.write) && exitIfDevLocked({ cliName: "run-shadow-refresh-batch" })) {
+    return;
+  }
   const plan = await loadRefreshPlan();
   let items = plan.items || [];
   if (Number.isFinite(args.rank)) {

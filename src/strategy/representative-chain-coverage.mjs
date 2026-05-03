@@ -1,13 +1,17 @@
 import { WRAPPED_BTC_VENUES } from "../config/destination-venues.mjs";
+import { representativeBindingForTemplate } from "../config/destination-representative-bindings.mjs";
 import { STABLE_VENUES } from "../config/stable-venues.mjs";
 
 const PROTOCOL_ALIASES = Object.freeze({
   aave: Object.freeze(["aave", "aave_v3"]),
-  aave_v3: Object.freeze(["aave", "aave_v3"]),
+  aave_v3: Object.freeze(["aave", "aave_v3", "aave-v3"]),
+  "aave-v3": Object.freeze(["aave", "aave_v3", "aave-v3"]),
   euler: Object.freeze(["euler", "euler_v2"]),
-  euler_v2: Object.freeze(["euler", "euler_v2"]),
+  euler_v2: Object.freeze(["euler", "euler_v2", "euler-v2"]),
+  "euler-v2": Object.freeze(["euler", "euler_v2", "euler-v2"]),
   gmx: Object.freeze(["gmx", "gmx_v2"]),
-  gmx_v2: Object.freeze(["gmx", "gmx_v2"]),
+  gmx_v2: Object.freeze(["gmx", "gmx_v2", "gmx-v2"]),
+  "gmx-v2": Object.freeze(["gmx", "gmx_v2", "gmx-v2"]),
   pancakeswap: Object.freeze(["pancake", "pancakeswap"]),
   bend: Object.freeze(["bend", "berachain-bend-bex"]),
   bex: Object.freeze(["bex", "berachain-bend-bex"]),
@@ -71,6 +75,24 @@ function activePositions(positionRecords = []) {
     .map(([, record]) => record);
 }
 
+function representativeProofsFromRuns(representativeRuns = []) {
+  const proofs = [];
+  for (const record of representativeRuns || []) {
+    if (record?.status !== "delivered" && record?.summary?.proofStatus !== "delivered") continue;
+    const templateId = record?.summary?.selected?.templateId || record?.plan?.templateId || null;
+    const binding = templateId ? representativeBindingForTemplate(templateId) : null;
+    if (!binding) continue;
+    proofs.push({
+      chain: binding.chain,
+      protocolId: binding.protocolId,
+      templateId,
+      observedAt: record.observedAt || null,
+      source: "destination_representative_autopilot",
+    });
+  }
+  return uniqueBy(proofs, (item) => `${item.chain}:${normalized(item.protocolId)}:${item.templateId}`);
+}
+
 export function buildRepresentativeTargets({
   wrappedBtcVenues = WRAPPED_BTC_VENUES,
   stableVenues = STABLE_VENUES,
@@ -108,15 +130,17 @@ function targetCoveredBy(target, observed = []) {
   return observed.some((item) => item.chain === target.chain && protocolsMatch(item.protocolId, target.protocolId));
 }
 
-function chainNextAction({ queuedCoverCount, activeCoverCount, targetCount }) {
+function chainNextAction({ queuedCoverCount, activeCoverCount, proofCoverCount, targetCount }) {
   if (activeCoverCount > 0) return "monitor_active_representative_receipts";
+  if (proofCoverCount > 0) return "monitor_representative_proof_and_source_queue";
   if (queuedCoverCount > 0) return "satisfy_inventory_binding_and_run_canary";
   if (targetCount > 0) return "source_or_build_representative_opportunity";
   return "add_representative_venue_config";
 }
 
-function chainStatus({ queuedCoverCount, activeCoverCount, targetCount }) {
+function chainStatus({ queuedCoverCount, activeCoverCount, proofCoverCount, targetCount }) {
   if (activeCoverCount > 0) return "active_representative";
+  if (proofCoverCount > 0) return "covered_by_representative_proof";
   if (queuedCoverCount > 0) return "queued_representative";
   if (targetCount > 0) return "missing_representative_queue";
   return "missing_representative_config";
@@ -125,10 +149,12 @@ function chainStatus({ queuedCoverCount, activeCoverCount, targetCount }) {
 export function buildRepresentativeChainCoverage({
   queue = [],
   positionRecords = [],
+  representativeRuns = [],
   now = new Date().toISOString(),
   targets = buildRepresentativeTargets(),
 } = {}) {
   const active = activePositions(positionRecords);
+  const representativeProofs = representativeProofsFromRuns(representativeRuns);
   const chains = [...new Set(targets.map((target) => target.chain))].sort();
   const queueObserved = (queue || []).map((item) => ({
     chain: item.chain,
@@ -141,16 +167,25 @@ export function buildRepresentativeChainCoverage({
     protocolId: item.protocolId,
     amountUsd: item.amountUsd ?? null,
   }));
+  const proofObserved = representativeProofs.map((item) => ({
+    chain: item.chain,
+    protocolId: item.protocolId,
+    templateId: item.templateId,
+    observedAt: item.observedAt,
+  }));
 
   const chainCoverage = chains.map((chain) => {
     const chainTargets = targets.filter((target) => target.chain === chain);
     const queuedTargets = chainTargets.filter((target) => targetCoveredBy(target, queueObserved));
     const activeTargets = chainTargets.filter((target) => targetCoveredBy(target, activeObserved));
+    const proofTargets = chainTargets.filter((target) => targetCoveredBy(target, proofObserved));
     const queuedItems = queueObserved.filter((item) => item.chain === chain);
     const activeItems = activeObserved.filter((item) => item.chain === chain);
+    const proofItems = proofObserved.filter((item) => item.chain === chain);
     const status = chainStatus({
       queuedCoverCount: queuedTargets.length,
       activeCoverCount: activeTargets.length,
+      proofCoverCount: proofTargets.length,
       targetCount: chainTargets.length,
     });
     const blockers = [];
@@ -167,17 +202,21 @@ export function buildRepresentativeChainCoverage({
       nextAction: chainNextAction({
         queuedCoverCount: queuedTargets.length,
         activeCoverCount: activeTargets.length,
+        proofCoverCount: proofTargets.length,
         targetCount: chainTargets.length,
       }),
       targetCount: chainTargets.length,
       queuedRepresentativeCount: queuedTargets.length,
       activeRepresentativeCount: activeTargets.length,
+      coveredByRepresentativeProofCount: proofTargets.length,
       queueCount: queuedItems.length,
       activePositionCount: activeItems.length,
+      representativeProofCount: proofItems.length,
       protocols: {
         target: [...new Set(chainTargets.map((target) => target.protocolId))],
         queued: [...new Set(queuedItems.map((item) => item.protocolId).filter(Boolean))],
         active: [...new Set(activeItems.map((item) => item.protocolId).filter(Boolean))],
+        proven: [...new Set(proofItems.map((item) => item.protocolId).filter(Boolean))],
       },
       blockers,
     };
@@ -187,6 +226,7 @@ export function buildRepresentativeChainCoverage({
   const missing = chainCoverage.filter((item) => item.status.startsWith("missing_"));
   const queued = chainCoverage.filter((item) => item.status === "queued_representative");
   const activeRepresentative = chainCoverage.filter((item) => item.status === "active_representative");
+  const coveredByRepresentativeProof = chainCoverage.filter((item) => item.status === "covered_by_representative_proof");
 
   return {
     schemaVersion: 1,
@@ -199,6 +239,7 @@ export function buildRepresentativeChainCoverage({
       chainCount: chainCoverage.length,
       targetCount: targets.length,
       activeRepresentativeChainCount: activeRepresentative.length,
+      coveredByRepresentativeProofChainCount: coveredByRepresentativeProof.length,
       queuedRepresentativeChainCount: queued.length,
       missingRepresentativeChainCount: missing.length,
       statusCounts,

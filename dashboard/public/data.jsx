@@ -107,26 +107,36 @@ function accumulateUsd(map, key, usd) {
 
 function buildCapitalMaps(holdings = null) {
   const byChain = {};
+  const walletByChain = {};
+  const deployedByChain = {};
   const byProtocol = {};
   const walletItems = Array.isArray(holdings?.all) ? holdings.all : [];
   const positionItems = Array.isArray(holdings?.positions) ? holdings.positions : [];
 
   walletItems.forEach((item) => {
     accumulateUsd(byChain, item?.chain || null, Number(item?.usd));
+    accumulateUsd(walletByChain, item?.chain || null, Number(item?.usd));
   });
 
   positionItems.forEach((item) => {
     const usd = Number(item?.usd);
     accumulateUsd(byChain, item?.chain || null, usd);
+    accumulateUsd(deployedByChain, item?.chain || null, usd);
     accumulateUsd(byProtocol, capitalProtocolKey(item?.chain || null, item?.protocol || null), usd);
   });
 
   return {
     byChain,
+    walletByChain,
+    deployedByChain,
     byProtocol,
     walletUsd: Number.isFinite(holdings?.walletUsd) ? holdings.walletUsd : null,
     deployedUsd: Number.isFinite(holdings?.deployedUsd) ? holdings.deployedUsd : null,
     totalUsd: Number.isFinite(holdings?.totalUsd) ? holdings.totalUsd : null,
+    estimatedProtocolDeployedUsd: Number.isFinite(holdings?.estimatedProtocolDeployedUsd) ? holdings.estimatedProtocolDeployedUsd : null,
+    estimatedCurrentTotalUsd: Number.isFinite(holdings?.estimatedCurrentTotalUsd) ? holdings.estimatedCurrentTotalUsd : null,
+    estimatedUntrackedProtocolUsd: Number.isFinite(holdings?.estimatedUntrackedProtocolUsd) ? holdings.estimatedUntrackedProtocolUsd : null,
+    verifiedMinimumUsd: Number.isFinite(holdings?.verifiedMinimumUsd) ? holdings.verifiedMinimumUsd : null,
     pending: holdings?.pending === true,
     generatedAt: holdings?.generatedAt || null,
   };
@@ -295,6 +305,37 @@ function buildActivitySurfaces(activities = [], strategies = []) {
   };
 }
 
+function buildMovementSurfaces(movements = []) {
+  const byChain = {};
+  const seenMovementKeys = new Set();
+  for (const movement of movements || []) {
+    const movementKey = movement?.routeKey || `${movement?.fromChainId}->${movement?.toChainId}:${movement?.assetId || 'asset'}`;
+    if (seenMovementKeys.has(movementKey)) continue;
+    seenMovementKeys.add(movementKey);
+    const usd = Number.isFinite(movement?.amountUsd) && movement.amountUsd > 0 ? movement.amountUsd : 0;
+    const assetId = cleanUnknown(movement?.assetId) || cleanUnknown(movement?.asset) || cleanUnknown(movement?.finalAssetId) || null;
+    const observedAt = movement?.observedAt || movement?.createdAt || movement?.timestamp || null;
+    const chainIds = [movement?.fromChainId, movement?.toChainId]
+      .map(cleanUnknown)
+      .filter(Boolean);
+    const uniqueChainIds = [...new Set(chainIds)];
+    for (const chain of uniqueChainIds) {
+      const chainSurface = (byChain[chain] ||= {
+        chain,
+        count: 0,
+        usd: 0,
+        latestAt: null,
+        assets: [],
+      });
+      chainSurface.count += 1;
+      chainSurface.usd += usd;
+      updateLatestSurface(chainSurface, observedAt);
+      addSurfaceAsset(chainSurface, assetId);
+    }
+  }
+  return { byChain };
+}
+
 const LIVE_STATUS_PATH = './api/live-status';
 const LIVE_EVENTS_PATH = './api/live-events';
 const STATIC_STATUS_PATH = './dashboard-status.json';
@@ -319,6 +360,16 @@ function hasActiveReportingBaseline(status = null) {
   return baseline?.active === true && baseline?.applied !== false;
 }
 
+function hasDashboardCapital(status = null) {
+  return Boolean(
+    status?.capitalSummary &&
+    Number.isFinite(status.capitalSummary.currentTotalUsd) &&
+    status.capitalSummary.assetConfidence &&
+    status?.walletHoldings &&
+    status?.flow,
+  );
+}
+
 function statusSourceRank(source = null) {
   if (source === 'remote-live-sse') return 5;
   if (source === 'live-sse') return 4;
@@ -331,7 +382,9 @@ function statusSourceRank(source = null) {
 function selectPreferredStatusPayload(candidates = []) {
   const available = candidates.filter((candidate) => candidate?.status);
   if (available.length === 0) return { status: null, source: 'unavailable', live: false };
-  return [...available].sort((left, right) => {
+  const complete = available.filter((candidate) => hasDashboardCapital(candidate.status));
+  const comparable = complete.length > 0 ? complete : available;
+  return [...comparable].sort((left, right) => {
     const sourceDiff = statusSourceRank(right.source) - statusSourceRank(left.source);
     if (sourceDiff !== 0) return sourceDiff;
     const baselineDiff = Number(hasActiveReportingBaseline(right.status)) - Number(hasActiveReportingBaseline(left.status));
@@ -477,6 +530,73 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   const btcUsd = status?.market?.btcUsd || status?.market?.btc?.usd || null;
 
   const liveApr = holdings?.protocolApr || {};
+  const summaryDisplayWalletUsd = Number.isFinite(capitalSummary?.walletUsd)
+    ? capitalSummary.walletUsd
+    : (Number.isFinite(capitalSummary?.displayWalletUsd) ? capitalSummary.displayWalletUsd : null);
+  const summaryDisplayTotalUsd = Number.isFinite(summaryDisplayWalletUsd) && Number.isFinite(capitalSummary?.deployedUsd)
+    ? summaryDisplayWalletUsd + capitalSummary.deployedUsd
+    : (Number.isFinite(capitalSummary?.displayTotalUsd) ? capitalSummary.displayTotalUsd : null);
+  const summaryCurrentWalletUsd = Number.isFinite(capitalSummary?.currentWalletUsd)
+    ? capitalSummary.currentWalletUsd
+    : summaryDisplayWalletUsd;
+  const summaryProtocolDeployedUsd = Number.isFinite(capitalSummary?.protocolDeployedUsd)
+    ? capitalSummary.protocolDeployedUsd
+    : (Number.isFinite(capitalSummary?.deployedUsd) ? capitalSummary.deployedUsd : null);
+  const summaryCurrentTotalUsd = Number.isFinite(capitalSummary?.currentTotalUsd)
+    ? capitalSummary.currentTotalUsd
+    : (Number.isFinite(summaryCurrentWalletUsd) && Number.isFinite(summaryProtocolDeployedUsd)
+      ? summaryCurrentWalletUsd + summaryProtocolDeployedUsd
+      : summaryDisplayTotalUsd);
+  const summaryHasCurrentExternalReference =
+    capitalSummary?.walletCoverage === 'full_external' &&
+    capitalSummary?.fullWalletStale !== true &&
+    Number.isFinite(capitalSummary?.fullWalletUsd);
+  const summaryReferenceFullWalletGapUsd = Number.isFinite(capitalSummary?.referenceFullWalletGapUsd)
+    ? capitalSummary.referenceFullWalletGapUsd
+    : (summaryHasCurrentExternalReference && Number.isFinite(summaryCurrentTotalUsd)
+      ? Math.max(0, Math.round((capitalSummary.fullWalletUsd - summaryCurrentTotalUsd) * 100) / 100)
+      : null);
+  const summaryPlanGapUsd = Number.isFinite(capitalSummary?.planGapUsd)
+    ? capitalSummary.planGapUsd
+    : null;
+  const summaryProtocolTrackingGapUsd = Number.isFinite(capitalSummary?.protocolTrackingGapUsd)
+    ? capitalSummary.protocolTrackingGapUsd
+    : (Number.isFinite(capitalSummary?.trackingGapUsd) ? capitalSummary.trackingGapUsd : null);
+  const summaryEstimatedUntrackedProtocolUsd = Number.isFinite(capitalSummary?.estimatedUntrackedProtocolUsd)
+    ? capitalSummary.estimatedUntrackedProtocolUsd
+    : null;
+  const summaryEstimatedProtocolDeployedUsd = Number.isFinite(capitalSummary?.estimatedProtocolDeployedUsd)
+    ? capitalSummary.estimatedProtocolDeployedUsd
+    : (Number.isFinite(summaryProtocolDeployedUsd) && Number.isFinite(summaryEstimatedUntrackedProtocolUsd)
+      ? Math.round((summaryProtocolDeployedUsd + summaryEstimatedUntrackedProtocolUsd) * 100) / 100
+      : summaryProtocolDeployedUsd);
+  const summaryEstimatedCurrentTotalUsd = Number.isFinite(capitalSummary?.estimatedCurrentTotalUsd)
+    ? capitalSummary.estimatedCurrentTotalUsd
+    : (Number.isFinite(summaryCurrentWalletUsd) && Number.isFinite(summaryEstimatedProtocolDeployedUsd)
+      ? Math.round((summaryCurrentWalletUsd + summaryEstimatedProtocolDeployedUsd) * 100) / 100
+      : summaryCurrentTotalUsd);
+  const summaryVerifiedMinimumUsd = Number.isFinite(capitalSummary?.verifiedMinimumUsd)
+    ? capitalSummary.verifiedMinimumUsd
+    : summaryCurrentTotalUsd;
+  const summaryNeedsReconciliation =
+    capitalSummary?.assetConfidence === 'verified_minimum' ||
+    capitalSummary?.reconciliationState === 'needs_reconciliation' ||
+    Number(capitalSummary?.walletScanErrorCount || 0) > 0 ||
+    (Number.isFinite(summaryReferenceFullWalletGapUsd) && summaryReferenceFullWalletGapUsd > 1) ||
+    Boolean(capitalSummary?.accountingWarning);
+  const summaryAssetConfidence = capitalSummary?.assetConfidence || (summaryNeedsReconciliation ? 'verified_minimum' : 'verified_current');
+  const summaryAssetHeadline = capitalSummary?.assetHeadline || (summaryAssetConfidence === 'verified_minimum' ? 'Verified minimum assets' : 'Current total assets');
+  const summaryReconciliationState = capitalSummary?.reconciliationState || (summaryNeedsReconciliation ? 'needs_reconciliation' : 'reconciled');
+  const summaryDisplayTotalUsdSource = summaryHasCurrentExternalReference
+    ? (capitalSummary?.fullWalletStale === true
+      ? 'supported_wallet_plus_positions_cached_external_reference'
+      : (capitalSummary?.displayTotalUsdSource || 'supported_wallet_plus_positions_external_reference'))
+    : (capitalSummary?.displayTotalUsdSource || null);
+  const fallbackDisplayWalletUsd = Number.isFinite(holdings?.totalUsd) ? holdings.totalUsd : null;
+  const fallbackHasCurrentExternalReference =
+    holdings?.walletCoverage === 'full_external' &&
+    holdings?.fullWalletStale !== true &&
+    Number.isFinite(holdings?.fullWalletUsd);
   const HOLDINGS = capitalSummary && Array.isArray(capitalSummary.walletItems)
     ? {
         all: capitalSummary.walletItems,
@@ -484,11 +604,44 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
         totalUsd: Number.isFinite(capitalSummary.totalUsd) ? capitalSummary.totalUsd : null,
         walletUsd: Number.isFinite(capitalSummary.walletUsd) ? capitalSummary.walletUsd : null,
         deployedUsd: Number.isFinite(capitalSummary.deployedUsd) ? capitalSummary.deployedUsd : null,
+        currentWalletUsd: summaryCurrentWalletUsd,
+        protocolDeployedUsd: summaryProtocolDeployedUsd,
+        currentTotalUsd: summaryCurrentTotalUsd,
+        estimatedProtocolDeployedUsd: summaryEstimatedProtocolDeployedUsd,
+        estimatedCurrentTotalUsd: summaryEstimatedCurrentTotalUsd,
+        verifiedMinimumUsd: summaryVerifiedMinimumUsd,
+        estimatedUntrackedProtocolUsd: summaryEstimatedUntrackedProtocolUsd,
+        estimatedTotalUsdSource: capitalSummary.estimatedTotalUsdSource || null,
+        assetFormula: capitalSummary.assetFormula || 'current_wallet_plus_protocol_positions',
+        accountedUsd: Number.isFinite(capitalSummary.accountedUsd) ? capitalSummary.accountedUsd : null,
+        executorEstimatedTotalUsd: Number.isFinite(capitalSummary.executorEstimatedTotalUsd) ? capitalSummary.executorEstimatedTotalUsd : null,
+        executorEstimateDeltaUsd: Number.isFinite(capitalSummary.executorEstimateDeltaUsd) ? capitalSummary.executorEstimateDeltaUsd : null,
+        capitalPlanRefillRequiredUsd: Number.isFinite(capitalSummary.capitalPlanRefillRequiredUsd) ? capitalSummary.capitalPlanRefillRequiredUsd : null,
+        totalUsdSource: capitalSummary.totalUsdSource || null,
+        displayWalletUsd: summaryDisplayWalletUsd,
+        displayTotalUsd: summaryDisplayTotalUsd,
+        displayTotalUsdSource: summaryDisplayTotalUsdSource,
+        itemizedSupportedWalletUsd: Number.isFinite(capitalSummary.itemizedSupportedWalletUsd) ? capitalSummary.itemizedSupportedWalletUsd : null,
+        walletCoverage: summaryHasCurrentExternalReference ? capitalSummary.walletCoverage || null : (capitalSummary.walletCoverage === 'full_external_stale' ? 'partial_supported' : capitalSummary.walletCoverage || null),
+        fullWalletUsd: summaryHasCurrentExternalReference ? capitalSummary.fullWalletUsd : null,
+        fullWalletObservedAt: summaryHasCurrentExternalReference ? capitalSummary.fullWalletObservedAt || null : null,
+        fullWalletProvider: summaryHasCurrentExternalReference ? capitalSummary.fullWalletProvider || null : null,
+        fullWalletStale: false,
+        accountingWarning: capitalSummary.accountingWarning || null,
+        assetConfidence: summaryAssetConfidence,
+        assetHeadline: summaryAssetHeadline,
+        reconciliationState: summaryReconciliationState,
+        referenceFullWalletGapUsd: summaryReferenceFullWalletGapUsd,
+        planGapUsd: summaryPlanGapUsd,
+        protocolTrackingGapUsd: summaryProtocolTrackingGapUsd,
+        trackingGapUsd: summaryProtocolTrackingGapUsd,
+        trackingGapSource: capitalSummary.trackingGapSource || (Number.isFinite(summaryProtocolTrackingGapUsd) && summaryProtocolTrackingGapUsd > 0 ? 'automation_estimate_minus_verified_assets' : null),
         walletSource: capitalSummary.walletSource || null,
         walletObservedAt: capitalSummary.walletObservedAt || null,
         walletScanErrorCount: Number.isFinite(capitalSummary.walletScanErrorCount) ? capitalSummary.walletScanErrorCount : 0,
-        externalWalletUsd: Number.isFinite(capitalSummary.externalWalletUsd) ? capitalSummary.externalWalletUsd : null,
-        unclassifiedUsd: Number.isFinite(capitalSummary.unclassifiedUsd) ? capitalSummary.unclassifiedUsd : null,
+        walletScanErrors: Array.isArray(capitalSummary.walletScanErrors) ? capitalSummary.walletScanErrors : [],
+        externalWalletUsd: summaryHasCurrentExternalReference && Number.isFinite(capitalSummary.externalWalletUsd) ? capitalSummary.externalWalletUsd : null,
+        unclassifiedUsd: summaryHasCurrentExternalReference && Number.isFinite(capitalSummary.unclassifiedUsd) ? capitalSummary.unclassifiedUsd : null,
         pending: false,
         generatedAt: capitalSummary.generatedAt || status?.generatedAt || null,
       }
@@ -499,11 +652,40 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
         totalUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
         walletUsd: Number.isFinite(holdings.totalUsd) ? holdings.totalUsd : null,
         deployedUsd: 0,
+        currentWalletUsd: fallbackDisplayWalletUsd,
+        protocolDeployedUsd: 0,
+        currentTotalUsd: fallbackDisplayWalletUsd,
+        estimatedProtocolDeployedUsd: 0,
+        estimatedCurrentTotalUsd: fallbackDisplayWalletUsd,
+        verifiedMinimumUsd: fallbackDisplayWalletUsd,
+        estimatedUntrackedProtocolUsd: null,
+        estimatedTotalUsdSource: null,
+        assetFormula: 'current_wallet_plus_protocol_positions',
+        displayWalletUsd: fallbackDisplayWalletUsd,
+        displayTotalUsd: fallbackDisplayWalletUsd,
+        displayTotalUsdSource: fallbackHasCurrentExternalReference
+          ? (holdings.fullWalletStale === true ? 'supported_wallet_cached_external_reference' : 'supported_wallet_external_reference')
+          : 'partial_supported_wallet',
+        itemizedSupportedWalletUsd: Number.isFinite(holdings.itemizedSupportedWalletUsd) ? holdings.itemizedSupportedWalletUsd : null,
+        walletCoverage: fallbackHasCurrentExternalReference ? holdings.walletCoverage || null : (holdings.walletCoverage === 'full_external_stale' ? 'partial_supported' : holdings.walletCoverage || null),
+        fullWalletUsd: fallbackHasCurrentExternalReference ? holdings.fullWalletUsd : null,
+        fullWalletObservedAt: fallbackHasCurrentExternalReference ? holdings.fullWalletObservedAt || null : null,
+        fullWalletProvider: fallbackHasCurrentExternalReference ? holdings.fullWalletProvider || null : null,
+        fullWalletStale: false,
         walletSource: holdings.source || null,
         walletObservedAt: holdings.observedAt || null,
         walletScanErrorCount: Number.isFinite(holdings.scanErrorCount) ? holdings.scanErrorCount : 0,
-        externalWalletUsd: Number.isFinite(holdings.externalWalletUsd) ? holdings.externalWalletUsd : null,
-        unclassifiedUsd: Number.isFinite(holdings.unclassifiedUsd) ? holdings.unclassifiedUsd : null,
+        walletScanErrors: Array.isArray(holdings.scanErrors) ? holdings.scanErrors : [],
+        externalWalletUsd: fallbackHasCurrentExternalReference && Number.isFinite(holdings.externalWalletUsd) ? holdings.externalWalletUsd : null,
+        unclassifiedUsd: fallbackHasCurrentExternalReference && Number.isFinite(holdings.unclassifiedUsd) ? holdings.unclassifiedUsd : null,
+        assetConfidence: Number(holdings.scanErrorCount || 0) > 0 ? 'verified_minimum' : 'verified_current',
+        assetHeadline: Number(holdings.scanErrorCount || 0) > 0 ? 'Verified minimum assets' : 'Current total assets',
+        reconciliationState: Number(holdings.scanErrorCount || 0) > 0 ? 'needs_reconciliation' : 'reconciled',
+        referenceFullWalletGapUsd: null,
+        planGapUsd: null,
+        protocolTrackingGapUsd: null,
+        trackingGapUsd: null,
+        trackingGapSource: null,
         pending: holdings.pending === true || holdings.items.length === 0,
         generatedAt: holdings.generatedAt || null,
       }
@@ -514,11 +696,38 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
         totalUsd: null,
         walletUsd: null,
         deployedUsd: null,
+        currentWalletUsd: null,
+        protocolDeployedUsd: null,
+        currentTotalUsd: null,
+        estimatedProtocolDeployedUsd: null,
+        estimatedCurrentTotalUsd: null,
+        verifiedMinimumUsd: null,
+        estimatedUntrackedProtocolUsd: null,
+        estimatedTotalUsdSource: null,
+        assetFormula: null,
+        displayWalletUsd: null,
+        displayTotalUsd: null,
+        displayTotalUsdSource: null,
+        itemizedSupportedWalletUsd: null,
+        walletCoverage: null,
+        fullWalletUsd: null,
+        fullWalletObservedAt: null,
+        fullWalletProvider: null,
+        fullWalletStale: false,
         walletSource: null,
         walletObservedAt: null,
         walletScanErrorCount: 0,
+        walletScanErrors: [],
         externalWalletUsd: null,
         unclassifiedUsd: null,
+        assetConfidence: 'verified_current',
+        assetHeadline: 'Current total assets',
+        reconciliationState: null,
+        referenceFullWalletGapUsd: null,
+        planGapUsd: null,
+        protocolTrackingGapUsd: null,
+        trackingGapUsd: null,
+        trackingGapSource: null,
       };
   const CAPITAL = buildCapitalMaps(HOLDINGS);
 
@@ -577,6 +786,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     ...STRATEGY_CATALOG,
     ...fallbackActivityCatalog,
   ]);
+  const movementSurfaces = buildMovementSurfaces(flow?.recentMovements || []);
 
   const STRATEGIES = Array.from(allIds).map(id => {
     const catalogEntry = STRATEGY_CATALOG.find(s => s.id === id);
@@ -766,6 +976,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   const CHAINS_PARITY = CHAINS.map(c => {
     const p = chainParity.byChain?.[c.id] || null;
     const chainSurface = activitySurfaces.byChain?.[c.id] || null;
+    const movementSurface = movementSurfaces.byChain?.[c.id] || null;
     return {
       ...c,
       capitalUsd: CAPITAL.byChain[c.id] || 0,
@@ -780,6 +991,10 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       recentActivityAssets: chainSurface?.assets || [],
       recentActivityActions: chainSurface?.actions || [],
       latestActivityAt: chainSurface?.latestAt || null,
+      recentMovementCount: movementSurface?.count || 0,
+      recentMovementUsd: movementSurface?.usd || 0,
+      recentMovementAssets: movementSurface?.assets || [],
+      latestMovementAt: movementSurface?.latestAt || null,
     };
   });
 
@@ -792,9 +1007,11 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       ...(flow || {}),
       metrics: FLOW_METRICS,
       recentActivities: Array.isArray(flow?.recentActivities) ? flow.recentActivities : [],
+      recentMovements: Array.isArray(flow?.recentMovements) ? flow.recentMovements : [],
       strategyRiskById: flow?.strategyRiskById || {},
     },
     ACTIVITY_SURFACES: activitySurfaces,
+    MOVEMENT_SURFACES: movementSurfaces,
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,
     CAPITAL,
@@ -954,7 +1171,7 @@ Object.assign(window, {
   HOLDINGS: { all: [] },
   FLOW: { metrics: {}, recentActivities: [], strategyRiskById: {} },
   OPERATIONS: null,
-  CAPITAL: { byChain: {}, byProtocol: {}, walletUsd: null, deployedUsd: null, totalUsd: null, pending: true, generatedAt: null },
+  CAPITAL: { byChain: {}, walletByChain: {}, deployedByChain: {}, byProtocol: {}, walletUsd: null, deployedUsd: null, totalUsd: null, pending: true, generatedAt: null },
   STATUS: null,
   RAW_STATUS: null,
   LIVE_STATUS: { source: 'pending', live: false, generatedAt: null },

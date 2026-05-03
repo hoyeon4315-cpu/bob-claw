@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { WBTC_OFT_TOKEN, ZERO_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, WBTC_OFT_TOKEN, ZERO_TOKEN } from "../src/assets/tokens.mjs";
 import {
   buildCapitalManagerRefillJobs,
   mergeCapitalInventory,
@@ -246,6 +246,49 @@ test("capital manager wrapper emits wrapped-BTC settlement rebalance jobs from o
   assert.equal(result.jobs.jobs[0].executionMethod, "cross_chain_bridge_or_swap");
   assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "base");
   assert.equal(result.jobs.jobs[0].fundingSource.source.token, WBTC_OFT_TOKEN);
+});
+
+test("capital manager targets Ethereum canonical WBTC instead of non-canonical wBTC.OFT", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const result = buildCapitalManagerRefillJobs({
+    strategyCaps: [
+      {
+        strategyId: "wrapped-btc-ethereum",
+        autoExecute: true,
+        caps: {
+          perChainUsd: {
+            ethereum: 50,
+          },
+        },
+        gasFloat: {
+          ethereum: { minUsd: 0, targetUsd: 0 },
+        },
+      },
+    ],
+    policy,
+    wholeWalletInventory: {
+      native: [],
+      tokenBalances: [
+        {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          balance: "150000",
+          actualDecimal: 0.0015,
+          estimatedUsd: 120,
+        },
+      ],
+    },
+    prices: priceFixture(),
+    address: "0x1111111111111111111111111111111111111111",
+    now: "2026-04-20T12:00:00.000Z",
+  });
+
+  assert.equal(result.capitalPlan.actions.length, 1);
+  assert.equal(result.capitalPlan.actions[0].chain, "ethereum");
+  assert.equal(result.capitalPlan.actions[0].token, ETHEREUM_WBTC_TOKEN);
+  assert.equal(result.capitalPlan.actions[0].ticker, "WBTC");
+  assert.equal(result.jobs.jobs[0].token, ETHEREUM_WBTC_TOKEN);
 });
 
 test("capital manager wrapper prefers cross-chain wrapped BTC when destination native gas exists but cannot cover settlement refill", () => {

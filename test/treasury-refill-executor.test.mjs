@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { WBTC_OFT_TOKEN, ZERO_TOKEN } from "../src/assets/tokens.mjs";
+import { ETHEREUM_WBTC_TOKEN, WBTC_OFT_TOKEN, ZERO_TOKEN } from "../src/assets/tokens.mjs";
 import {
   buildTreasuryRefillExecutionPlan,
   executeTreasuryRefillExecutionPlan,
@@ -965,6 +965,93 @@ test("treasury refill executor falls back to destination stable swap for wrapped
   assert.equal(dexCalls[0].inputToken, WBTC_OFT_TOKEN);
   assert.equal(dexCalls[0].outputToken, bobUsdc);
   assert.equal(preparation.plan.step2.type, "destination_dex_swap");
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
+test("treasury refill executor uses Ethereum canonical WBTC for stable fallback bridge leg", async () => {
+  const ethereumRlusd = "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD";
+  const gatewayCalls = [];
+  const dexCalls = [];
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-base-wbtc-oft-ethereum-rlusd",
+      type: "refill_token",
+      chain: "ethereum",
+      asset: "RLUSD",
+      token: ethereumRlusd,
+      targetAmount: "25288497754491860000",
+      targetAmountDecimal: 25.28849775449186,
+      estimatedAssetValueUsd: 25.29,
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          actual: "40214",
+          actualDecimal: 0.00040214,
+          estimatedUsd: 31.49,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildGatewayBtcPlanImpl: async (input) => {
+      gatewayCalls.push(input);
+      if (input.dstToken === ethereumRlusd) {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-05-02T00:00:00.000Z",
+          planStatus: "blocked",
+          blockedReason: "no_route",
+          route: {
+            srcChain: input.srcChain,
+            dstChain: input.dstChain,
+            srcToken: input.srcToken,
+            dstToken: input.dstToken,
+          },
+        };
+      }
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-02T00:00:00.000Z",
+        planStatus: "ready",
+        route: {
+          srcChain: input.srcChain,
+          dstChain: input.dstChain,
+          srcToken: input.srcToken,
+          dstToken: input.dstToken,
+        },
+        amount: input.amount,
+        quote: { outputAmount: { amount: "38000" } },
+        gasPreflight: { gasUnits: 100000 },
+        intent: { strategyId: "gateway-btc-funding-transfer" },
+      };
+    },
+    buildTokenDexPlanImpl: async (input) => {
+      dexCalls.push(input);
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-02T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "token-dex-experiment",
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "25300000000000000000",
+        steps: [{ id: "swap_input_to_output" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(gatewayCalls.length, 2);
+  assert.equal(gatewayCalls[0].dstToken, ethereumRlusd);
+  assert.equal(gatewayCalls[1].dstToken, ETHEREUM_WBTC_TOKEN);
+  assert.equal(dexCalls[0].chain, "ethereum");
+  assert.equal(dexCalls[0].inputToken, ETHEREUM_WBTC_TOKEN);
+  assert.equal(dexCalls[0].outputToken, ethereumRlusd);
   assert.equal(preparation.coverage.coversTarget, true);
 });
 

@@ -1,4 +1,4 @@
-import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN, gatewayBtcSettlementTokenForChain, isBtcLikeAsset, tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { readNativeBalance } from "../../evm/account-state.mjs";
 import {
@@ -351,6 +351,7 @@ export async function buildTreasuryRefillExecutionPlan({
     const sourceAmount = positiveBigInt(source.actual);
     const targetAsset = job.type === "refill_token" ? tokenAsset(job.chain, job.token) : null;
     const stableTokenRefill = job.type === "refill_token" && !isBtcLikeAsset(targetAsset);
+    const destinationBtcSettlementToken = gatewayBtcSettlementTokenForChain(job.chain);
     const amount = job.type === "refill_native"
       ? estimateInputAmountFromSource({ job, source })
       : stableTokenRefill
@@ -379,7 +380,7 @@ export async function buildTreasuryRefillExecutionPlan({
         srcChain: source.chain,
         dstChain: job.chain,
         srcToken: source.token,
-        dstToken: WBTC_OFT_TOKEN,
+        dstToken: destinationBtcSettlementToken,
         amount,
         senderAddress,
         recipient: senderAddress,
@@ -394,7 +395,7 @@ export async function buildTreasuryRefillExecutionPlan({
           chain: job.chain,
           amount: destinationWrappedBtcAmount,
           senderAddress,
-          inputToken: WBTC_OFT_TOKEN,
+          inputToken: destinationBtcSettlementToken,
           outputToken: job.token,
         });
         if (destinationDexPlan.planStatus !== "ready") {
@@ -511,6 +512,7 @@ export async function buildTreasuryRefillExecutionPlan({
     // Step 2: Gateway consolidation wBTC.OFT from source chain → destination chain
     const gatewayAmount = step1Plan.minimumOutputAmount;
     const gasRefill = job.type === "refill_native" ? job.targetAmount : null;
+    const destinationBtcSettlementToken = gatewayBtcSettlementTokenForChain(job.chain);
 
     let step2Plan = await buildGatewayBtcPlanImpl({
       srcChain: source.chain,
@@ -533,7 +535,7 @@ export async function buildTreasuryRefillExecutionPlan({
         srcChain: source.chain,
         dstChain: job.chain,
         srcToken: WBTC_OFT_TOKEN,
-        dstToken: WBTC_OFT_TOKEN,
+        dstToken: destinationBtcSettlementToken,
         amount: gatewayAmount,
         senderAddress,
         recipient: senderAddress,
@@ -548,7 +550,7 @@ export async function buildTreasuryRefillExecutionPlan({
           chain: job.chain,
           amount: destinationWrappedBtcAmount,
           senderAddress,
-          inputToken: WBTC_OFT_TOKEN,
+          inputToken: destinationBtcSettlementToken,
           outputToken: job.token,
         });
         if (step3Plan.planStatus !== "ready") {

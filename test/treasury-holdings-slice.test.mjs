@@ -161,19 +161,101 @@ test("treasury holdings prefer fresh whole-wallet inventory when address scan da
           ],
           summary: {
             chainCount: 1,
+            scanErrorCount: 2,
             externalWalletUsd: 25,
             externalUnclassifiedUsd: 12.8,
           },
+          scanErrors: [
+            { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
+            { kind: "token", chain: "ethereum", token: "0x0555", message: "All RPC endpoints failed for chain: ethereum" },
+          ],
         },
       ],
     },
   );
 
   assert.equal(holdings.source, "whole_wallet_inventory");
-  assert.equal(holdings.totalUsd, 25);
+  assert.equal(holdings.scanErrorCount, 1);
+  assert.deepEqual(holdings.scanErrors.map((error) => error.provider || error.chain), ["ethereum"]);
+  assert.equal(holdings.totalUsd, 12.2);
   assert.equal(holdings.externalWalletUsd, 25);
   assert.equal(holdings.unclassifiedUsd, 12.8);
-  assert.ok(holdings.items.some((item) => item.sym === "other" && item.usd === 12.8));
+  assert.equal(holdings.items.some((item) => item.sym === "other"), false);
+});
+
+test("treasury holdings ignore cached Zerion full-wallet coverage for live totals", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [],
+    {
+      generatedAt: "2026-04-26T07:05:00.000Z",
+      wholeWalletRecords: [
+        {
+          observedAt: "2026-04-26T06:45:00.000Z",
+          totalUsd: 250,
+          native: [],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "USDC",
+              actualDecimal: 220,
+              estimatedUsd: 220,
+            },
+            {
+              chain: null,
+              ticker: "OTHER",
+              actualDecimal: 0,
+              estimatedUsd: 30,
+              family: "external_unclassified",
+            },
+          ],
+          summary: {
+            itemizedWalletUsd: 220,
+            chainCount: 1,
+            scanErrorCount: 0,
+            externalWalletUsd: 250,
+            externalUnclassifiedUsd: 30,
+            externalProvider: "zerion",
+          },
+          scanErrors: [],
+        },
+        {
+          observedAt: "2026-04-26T07:04:00.000Z",
+          totalUsd: 214,
+          native: [],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "USDC",
+              actualDecimal: 214,
+              estimatedUsd: 214,
+            },
+          ],
+          summary: {
+            itemizedWalletUsd: 214,
+            chainCount: 1,
+            scanErrorCount: 1,
+            externalWalletUsd: null,
+            externalUnclassifiedUsd: null,
+          },
+          scanErrors: [
+            { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(holdings.totalUsd, 214);
+  assert.equal(holdings.itemizedSupportedWalletUsd, 214);
+  assert.equal(holdings.scanErrorCount, 0);
+  assert.equal(holdings.fullWalletUsd, null);
+  assert.equal(holdings.fullWalletObservedAt, null);
+  assert.equal(holdings.fullWalletProvider, null);
+  assert.equal(holdings.fullWalletStale, false);
+  assert.equal(holdings.walletCoverage, "partial_supported");
+  assert.equal(holdings.externalWalletUsd, null);
+  assert.equal(holdings.unclassifiedUsd, null);
+  assert.equal(holdings.items.some((item) => item.sym === "other"), false);
 });
 
 test("treasury holdings preserve injected protocol APR entries for dashboard consumers", () => {

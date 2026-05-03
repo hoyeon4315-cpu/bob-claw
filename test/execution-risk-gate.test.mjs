@@ -101,6 +101,27 @@ test("risk state treats delivered executions as terminal successes that reset fa
   assert.equal(riskState.consecutiveFailures, 1);
 });
 
+test("risk state resume timestamp ignores older execution failures", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T07:00:00.000Z",
+    resumeAfterFailureAt: "2026-04-11T06:56:00.000Z",
+    inventory: inventoryFixture(),
+    receiptRecords: [],
+    executionEvents: [
+      { observedAt: "2026-04-11T06:40:00.000Z", status: "failed" },
+      { observedAt: "2026-04-11T06:50:00.000Z", status: "failed" },
+      { observedAt: "2026-04-11T06:55:00.000Z", status: "failed" },
+    ],
+  });
+
+  assert.equal(riskState.consecutiveFailures, 0);
+  assert.equal(riskState.resumeAfterFailureAt, "2026-04-11T06:56:00.000Z");
+});
+
+test("default risk policy does not globally reset consecutive failures", () => {
+  assert.equal(buildDefaultRiskPolicy().resumeAfterFailureAt, null);
+});
+
 test("risk gate allows a healthy refill job", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture(),

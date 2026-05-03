@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evaluateOpportunityPolicy } from "../src/executor/policy/opportunity-policy.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../src/config/small-capital-campaign-mode.mjs";
 
 function makeIntent(overrides = {}) {
   return {
@@ -119,6 +120,36 @@ test("evaluateOpportunityPolicy BLOCK on position above maxSinglePositionPct", a
   assert.ok(result.blockers.includes("position_above_max_single_position_pct"));
 });
 
+test("evaluateOpportunityPolicy uses aggressive small-cap micro-test budget", async () => {
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      strategyId: "base-micro-test-yo",
+      amountUsd: 45,
+      metadata: { microTest: true },
+    }),
+    capitalState: { totalDeployableCapital: 500 },
+    killSwitchExistsImpl: async () => false,
+  });
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.blockers.includes("micro_test_max_30usd"), false);
+  assert.equal(result.blockers.includes("micro_test_cap_exceeded_6pct"), false);
+});
+
+test("evaluateOpportunityPolicy blocks micro-tests above aggressive small-cap budget", async () => {
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      strategyId: "base-micro-test-yo",
+      amountUsd: 55,
+      metadata: { microTest: true },
+    }),
+    capitalState: { totalDeployableCapital: 500 },
+    killSwitchExistsImpl: async () => false,
+  });
+  assert.equal(result.decision, "BLOCK");
+  assert.ok(result.blockers.includes("micro_test_max_50usd"));
+  assert.ok(result.blockers.includes("micro_test_cap_exceeded_10pct"));
+});
+
 test("evaluateOpportunityPolicy BLOCK on exit rule triggered", async () => {
   const result = await evaluateOpportunityPolicy({
     intent: makeIntent(),
@@ -159,7 +190,44 @@ test("evaluateOpportunityPolicy does not treat generic deposit as capital moveme
   });
 
   assert.equal(result.decision, "BLOCK");
-  assert.ok(result.blockers.includes("non_base_entry_insufficient_expected_net"));
+  assert.ok(result.blockers.includes("non_primary_entry_insufficient_expected_net"));
+});
+
+test("evaluateOpportunityPolicy does not apply non-primary entry floor to committed evidence-primary chains", async () => {
+  const optimismPrimaryPolicy = {
+    ...SMALL_CAPITAL_CAMPAIGN_MODE,
+    chainSelection: {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+      chainProfiles: {
+        base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+        optimism: {
+          role: "primary",
+          maxSharePct: 0.70,
+          evidenceStatus: "live_evidence_primary",
+          evidenceSource: "test committed evidence",
+          reviewBy: "2026-05-16",
+        },
+      },
+    },
+  };
+  const result = await evaluateOpportunityPolicy({
+    intent: makeIntent({
+      chain: "optimism",
+      intentType: "deposit",
+      amountUsd: 25,
+      displayedApr: 10,
+      apr: 10,
+      rewardTokenType: "stable",
+      expectedHoldDays: 1,
+      estimatedCostsUsd: 5,
+      estimatedBridgeCostUsd: 0,
+    }),
+    smallCapitalPolicy: optimismPrimaryPolicy,
+    capitalState: { totalDeployableCapital: 1000 },
+    killSwitchExistsImpl: async () => false,
+  });
+
+  assert.equal(result.blockers.includes("non_primary_entry_insufficient_expected_net"), false);
 });
 
 test("evaluateOpportunityPolicy derives hold days from campaign end time before using fallback", async () => {

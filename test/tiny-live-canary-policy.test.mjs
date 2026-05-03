@@ -80,6 +80,38 @@ test("tiny_live_canary BLOCK when emergency_unwind not proven in 24h", () => {
   assert.ok(result.blockers.includes("tiny_live_emergency_unwind_not_proven"));
 });
 
+test("tiny_live_canary ALLOW for non-leverage deposit canary with committed exit path", () => {
+  const result = evaluateTinyLiveCanaryPolicy({
+    intent: {
+      intentType: "tiny_live_canary",
+      executionSubType: "erc4626_deposit",
+      strategyId: "stablecoin_spread_loop",
+      unwindPlan: { steps: [{ action: "erc4626_redeem" }] },
+    },
+    strategyCaps: {},
+    microCanaryStatus: "minimal_live_proof_exists",
+    auditRecords: [],
+  });
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.blockers.length, 0);
+  assert.equal(result.requiresTinyLive, true);
+});
+
+test("tiny_live_canary BLOCK for non-leverage deposit canary without exit path", () => {
+  const result = evaluateTinyLiveCanaryPolicy({
+    intent: {
+      intentType: "tiny_live_canary",
+      executionSubType: "erc4626_deposit",
+      strategyId: "stablecoin_spread_loop",
+    },
+    strategyCaps: {},
+    microCanaryStatus: "minimal_live_proof_exists",
+    auditRecords: [],
+  });
+  assert.equal(result.decision, "BLOCK");
+  assert.ok(result.blockers.includes("tiny_live_exit_path_missing"));
+});
+
 test("non-tiny_live_canary intent returns ALLOW immediately", () => {
   const result = evaluateTinyLiveCanaryPolicy({
     intent: { intentType: "entry", strategyId: "wrapped-btc-loop-base-moonwell" },

@@ -11,6 +11,19 @@ const VALID_MICRO_CANARY_STAGES = new Set([
   "micro_canary_repeatable",
 ]);
 
+function hasLeveragePolicy(strategyCaps = {}) {
+  return strategyCaps?.leverage && typeof strategyCaps.leverage === "object";
+}
+
+function hasCommittedExitPath(intent = {}) {
+  if (Array.isArray(intent.exitPath) && intent.exitPath.length > 0) return true;
+  if (Array.isArray(intent.unwindPath) && intent.unwindPath.length > 0) return true;
+  if (Array.isArray(intent.unwindPlan?.steps) && intent.unwindPlan.steps.length > 0) return true;
+  if (Array.isArray(intent.metadata?.exitPath) && intent.metadata.exitPath.length > 0) return true;
+  if (Array.isArray(intent.metadata?.unwindPlan?.steps) && intent.metadata.unwindPlan.steps.length > 0) return true;
+  return false;
+}
+
 export function evaluateTinyLiveCanaryPolicy({
   intent = {},
   strategyCaps = null,
@@ -34,11 +47,23 @@ export function evaluateTinyLiveCanaryPolicy({
     blockers.push("tiny_live_micro_canary_stage_insufficient");
   }
 
+  if (!hasLeveragePolicy(strategyCaps)) {
+    if (!hasCommittedExitPath(intent)) {
+      blockers.push("tiny_live_exit_path_missing");
+    }
+    return {
+      policy: "tiny_live_canary",
+      observedAt: now,
+      decision: blockers.length > 0 ? "BLOCK" : "ALLOW",
+      blockers,
+      requiresTinyLive: blockers.length === 0,
+    };
+  }
+
   const emergencyUnwindPath = strategyCaps?.leverage?.emergencyUnwindPath || null;
   if (!Array.isArray(emergencyUnwindPath) || emergencyUnwindPath.length === 0) {
     blockers.push("tiny_live_emergency_unwind_path_missing");
   }
-
   const provenEmergencyUnwind = auditRecords.some(
     (record) =>
       record.strategyId === intent.strategyId &&

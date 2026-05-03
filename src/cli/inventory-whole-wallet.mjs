@@ -22,6 +22,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
+    externalAddressScan: flags.has("--external-address-scan"),
     address: options.address || null,
     families: options.families ? options.families.split(",").map((item) => item.trim()).filter(Boolean) : null,
   };
@@ -115,13 +116,15 @@ async function main() {
   });
   const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
   const bitcoinAddress = await resolveBitcoinAddress();
-  const externalPortfolioReader = resolveAddressScanPortfolioReader({
-    providers: config.addressScanProviders,
-    zerionApiKey: config.zerionApiKey,
-    zerionApiBase: config.zerionApiBase,
-    tatumApiKey: config.tatumApiKey,
-    tatumApiBase: config.tatumApiBase,
-  });
+  const externalPortfolioReader = args.externalAddressScan
+    ? resolveAddressScanPortfolioReader({
+        providers: config.addressScanProviders,
+        zerionApiKey: config.zerionApiKey,
+        zerionApiBase: config.zerionApiBase,
+        tatumApiKey: config.tatumApiKey,
+        tatumApiBase: config.tatumApiBase,
+      })
+    : null;
   const liveInventory = await scanWholeWalletInventory({
     address: resolved.address,
     bitcoinAddress,

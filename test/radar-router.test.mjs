@@ -43,21 +43,24 @@ function candidate(overrides = {}) {
 }
 
 test("resolveFamilyBinding maps known families and blocks managed-only surfaces", () => {
-  assert.deepEqual(resolveFamilyBinding({ familyKey: "wrapped_btc_direct_lending" }), {
+  assert.deepEqual(resolveFamilyBinding({ familyKey: "wrapped_btc_direct_lending", chain: "base" }), {
     strategyId: "wrapped-btc-loop-base-moonwell",
     executionSubType: "erc4626_deposit",
     defaultHoldDays: 21,
     requiredFields: [],
   });
+  assert.equal(resolveFamilyBinding({ familyKey: "wrapped_btc_direct_lending", chain: "bsc" }), null);
   assert.equal(resolveFamilyBinding({ familyKey: "cl_managed_required" }), null);
   assert.equal(resolveFamilyBinding({ familyKey: "point_or_pre_tge" }), null);
 });
 
 test("buildRadarCanaryIntent emits tiny live canary intent clamped to tiny cap", () => {
+  const now = "2026-05-02T00:00:00.000Z";
   const result = buildRadarCanaryIntent({
     packet,
     candidate: candidate(),
     policy: calibratedPolicy,
+    now,
     strategyCapsById: {
       "wrapped-btc-loop-base-moonwell": {
         caps: { tinyLivePerTxUsd: 25 },
@@ -76,8 +79,38 @@ test("buildRadarCanaryIntent emits tiny live canary intent clamped to tiny cap",
   assert.equal(result.intent.executionSubType, "erc4626_deposit");
   assert.equal(result.intent.strategyId, "wrapped-btc-loop-base-moonwell");
   assert.equal(result.intent.amountUsd, 25);
+  assert.equal(result.intent.expectedHoldDays, 7);
+  assert.equal(result.intent.observedAt, now);
+  assert.equal(result.intent.quote.observedAt, now);
   assert.equal(result.intent.metadata.radarCandidateId, "candidate_1");
   assert.equal(result.intent.metadata.btcPaybackConversionRequired, true);
+});
+
+test("buildRadarCanaryIntent uses campaignRemainingHours before campaignEndsAt for hold days", () => {
+  const now = "2026-05-02T00:00:00.000Z";
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      campaignRemainingHours: 48,
+      campaignEndsAt: "2026-05-12T00:00:00.000Z",
+    }),
+    policy: calibratedPolicy,
+    now,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0.12,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.1,
+      p90RewardSwapCostUsdForToken: () => 0.1,
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.intent.expectedHoldDays, 2);
 });
 
 test("buildRadarCanaryIntent clamps Merkl-derived canaries to candidate inventory amount", () => {
@@ -126,6 +159,27 @@ test("buildRadarCanaryIntent blocks when tiny live cap is missing", () => {
 
   assert.equal(result.status, "blocked");
   assert.ok(result.blockers.includes("tiny_live_cap_missing"));
+});
+
+test("buildRadarCanaryIntent blocks non-Base candidates for Base-specific family bindings", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      executionPath: "gateway_destination",
+      chain: "bsc",
+      protocol: "venus",
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(result.blockers, ["family_binding_missing"]);
+  assert.equal(result.intent, undefined);
 });
 
 test("buildRadarCanaryIntent blocks when radar lane lock is active", () => {

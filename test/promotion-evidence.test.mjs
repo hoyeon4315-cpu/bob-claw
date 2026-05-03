@@ -152,6 +152,9 @@ describe("promotion evidence — pure gate", () => {
     assert.equal(hint.strategyId, "recursive_wrapped_btc_lending_loop");
     assert.match(hint.change, /autoExecute/);
     assert.ok(hint.operatorAction.includes("npm test"));
+    assert.equal(hint.requiresCommittedDiff, true);
+    assert.equal(hint.autoRaise, false);
+    assert.equal(hint.runtimeMutation, false);
   });
 
   test("summarizePromotionEvidence aggregates correctly", () => {

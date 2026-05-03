@@ -43,3 +43,37 @@ test("target balances use max live unit sizing instead of summing raw chain caps
   assert.equal(targets.items[0].gasFloatMinUsd, 10);
   assert.equal(targets.items[0].gasFloatTargetUsd, 20);
 });
+
+test("target balances can use aggressive committed execution budget without exceeding strategy caps", () => {
+  const targets = buildTargetBalances({
+    strategyCaps: [
+      {
+        strategyId: "base-opportunistic",
+        autoExecute: true,
+        caps: {
+          perTxUsd: 200,
+          perChainUsd: { base: 1_000 },
+        },
+      },
+      {
+        strategyId: "base-tiny",
+        autoExecute: true,
+        caps: {
+          perTxUsd: 200,
+          tinyLivePerTxUsd: 25,
+          perChainUsd: { base: 1_000 },
+        },
+      },
+    ],
+    policy: {
+      capital: {
+        canaryStartUsdMax: 125,
+        maxIdleCapitalPerChainUsd: 200,
+      },
+    },
+  });
+
+  assert.equal(targets.items.length, 1);
+  assert.equal(targets.items[0].chain, "base");
+  assert.equal(targets.items[0].settlementTargetUsd, 125);
+});

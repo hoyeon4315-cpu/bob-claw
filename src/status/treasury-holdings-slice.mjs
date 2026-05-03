@@ -28,9 +28,33 @@ function inventoryItem(entry = {}, family) {
   };
 }
 
+function scanErrorItem(error = {}) {
+  return {
+    kind: error.kind || null,
+    provider: error.provider || null,
+    chain: error.chain || null,
+    token: error.token || null,
+    message: error.message || null,
+  };
+}
+
+function isExternalUnclassifiedEntry(entry = {}) {
+  return entry?.family === "external_unclassified";
+}
+
+function isAuthoritativeScanError(error = {}) {
+  return error?.kind !== "external_portfolio";
+}
+
 function observedAtMs(value) {
   const ts = new Date(value || 0).getTime();
   return Number.isFinite(ts) ? ts : 0;
+}
+
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function hasWholeWalletValue(record = null) {
@@ -54,6 +78,32 @@ function selectWalletSource(treasuryRecord, wholeWalletRecord) {
     return { record: wholeWalletRecord, source: "whole_wallet_inventory" };
   }
   return { record: treasuryRecord, source: "treasury_inventory" };
+}
+
+function externalCoverageFromRecord(record = null, { stale = false } = {}) {
+  const walletUsd = finiteNumber(record?.summary?.externalWalletUsd);
+  if (!Number.isFinite(walletUsd)) return null;
+  return {
+    walletUsd,
+    totalPortfolioUsd: finiteNumber(record?.summary?.externalTotalPortfolioUsd),
+    unclassifiedUsd: finiteNumber(record?.summary?.externalUnclassifiedUsd),
+    provider: record?.summary?.externalProvider || null,
+    observedAt: record?.observedAt || null,
+    stale,
+  };
+}
+
+function selectExternalCoverage(selectedRecord = null, wholeWalletRecords = []) {
+  const current = externalCoverageFromRecord(selectedRecord, { stale: false });
+  if (current) return current;
+  void wholeWalletRecords;
+  return null;
+}
+
+function supportedItemizedUsd(record = null, itemTotalUsd = 0) {
+  const summaryValue = finiteNumber(record?.summary?.itemizedWalletUsd);
+  if (Number.isFinite(summaryValue)) return summaryValue;
+  return itemTotalUsd;
 }
 
 function stablecoinUsd(amount, asset) {
@@ -144,9 +194,14 @@ export function buildTreasuryHoldingsSlice(
     };
   }
 
+  const externalCoverage = selected.source === "whole_wallet_inventory"
+    ? selectExternalCoverage(latest, wholeWalletRecords)
+    : null;
   const items = applyReconciledExitBalances([
     ...(latest.native || []).map((entry) => inventoryItem(entry, "native")),
-    ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || []).map((entry) =>
+    ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || [])
+      .filter((entry) => !isExternalUnclassifiedEntry(entry))
+      .map((entry) =>
       inventoryItem(entry, "token"),
     ),
   ], merklPositionEvents, latest.observedAt)
@@ -154,6 +209,15 @@ export function buildTreasuryHoldingsSlice(
     .sort((a, b) => (b.usd || 0) - (a.usd || 0));
 
   const itemTotalUsd = items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0);
+  const itemizedSupportedWalletUsd = supportedItemizedUsd(latest, itemTotalUsd);
+  const scanErrors = Array.isArray(latest.scanErrors)
+    ? latest.scanErrors.filter(isAuthoritativeScanError)
+    : [];
+  const walletCoverage = externalCoverage
+    ? externalCoverage.stale ? "full_external_stale" : "full_external"
+    : selected.source === "whole_wallet_inventory"
+      ? "partial_supported"
+      : selected.source;
 
   return {
     schemaVersion: 1,
@@ -176,8 +240,16 @@ export function buildTreasuryHoldingsSlice(
     items,
     protocolApr,
     source: selected.source,
-    scanErrorCount: latest.summary?.scanErrorCount ?? 0,
-    externalWalletUsd: latest.summary?.externalWalletUsd ?? null,
-    unclassifiedUsd: latest.summary?.externalUnclassifiedUsd ?? null,
+    scanErrorCount: scanErrors.length,
+    scanErrors: scanErrors.slice(0, 5).map(scanErrorItem),
+    itemizedSupportedWalletUsd,
+    walletCoverage,
+    fullWalletUsd: externalCoverage?.walletUsd ?? null,
+    fullWalletObservedAt: externalCoverage?.observedAt ?? null,
+    fullWalletProvider: externalCoverage?.provider ?? null,
+    fullWalletStale: externalCoverage?.stale === true,
+    externalWalletUsd: externalCoverage?.walletUsd ?? null,
+    externalTotalPortfolioUsd: externalCoverage?.totalPortfolioUsd ?? null,
+    unclassifiedUsd: externalCoverage?.unclassifiedUsd ?? null,
   };
 }

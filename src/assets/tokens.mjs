@@ -177,6 +177,12 @@ export function isBtcLikeAsset(asset) {
   return asset?.family === "btc" || asset?.family === "wrapped_btc";
 }
 
+export function gatewayBtcSettlementTokenForChain(chain) {
+  return String(chain || "").toLowerCase() === "ethereum"
+    ? ETHEREUM_WBTC_TOKEN
+    : WBTC_OFT_TOKEN;
+}
+
 export function isEthLikeAsset(asset) {
   return asset?.priceKey === "ethereum" && (asset?.ticker === "ETH" || asset?.family === "native_or_wrapped");
 }

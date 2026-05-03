@@ -169,18 +169,51 @@ test("consecutive failure state ignores pure kill-switch policy rejections", () 
   assert.equal(state.terminalRecordCount, 1);
 });
 
+test("consecutive failure state ignores no-tx cap policy rejections", () => {
+  const state = buildConsecutiveFailureState({
+    strategyId: "gateway-btc-funding-transfer",
+    auditRecords: [
+      {
+        strategyId: "gateway-btc-funding-transfer",
+        intentId: "cap-reject-1",
+        timestamp: "2026-04-17T00:10:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: {
+          stage: "rejected",
+          blockers: ["strategy_per_chain_cap_exceeded"],
+        },
+        broadcast: null,
+      },
+      {
+        strategyId: "gateway-btc-funding-transfer",
+        intentId: "cap-and-breaker-reject",
+        timestamp: "2026-04-17T00:11:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: {
+          stage: "rejected",
+          blockers: ["max_consecutive_failures_reached", "strategy_per_day_cap_exceeded"],
+        },
+        broadcast: null,
+      },
+    ],
+  });
+
+  assert.equal(state.consecutiveFailures, 0);
+  assert.equal(state.terminalRecordCount, 0);
+});
+
 test("consecutive failure state still counts rejections with substantive blockers", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "gateway-btc-funding-transfer",
     auditRecords: [
       {
         strategyId: "gateway-btc-funding-transfer",
-        intentId: "cap-and-breaker-reject",
+        intentId: "executor-binding-reject",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "rejected",
         lifecycle: {
           stage: "rejected",
-          blockers: ["max_consecutive_failures_reached", "strategy_per_chain_cap_exceeded"],
+          blockers: ["protocol_executor_missing"],
         },
         broadcast: null,
       },

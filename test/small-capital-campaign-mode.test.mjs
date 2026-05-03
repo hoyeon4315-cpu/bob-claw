@@ -7,36 +7,78 @@ import {
   effectiveOpportunisticBudgetUsd,
   effectiveMicroBudgetUsd,
   applyRewardHaircut,
+  chainProfileFor,
+  evidencePrimaryChainIds,
+  evidencePrimaryChainShareOverrides,
+  isEvidencePrimaryChain,
 } from "../src/config/small-capital-campaign-mode.mjs";
 
 describe("small-capital-campaign-mode config", () => {
   it("has required fields", () => {
     assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.enabled, true);
+    assert.strictEqual(
+      SMALL_CAPITAL_CAMPAIGN_MODE.executionStage,
+      "aggressive_non_auto_cap_small_cap_v1",
+    );
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.autoCapRaise, false);
     assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.capitalThresholdUsd, 1_000);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.anchorTargetPct.min, 0.65);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.anchorTargetPct.max, 0.80);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.opportunisticMaxPct, 0.20);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.microMaxPct, 0.06);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.opportunisticMaxUsd, 80);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.microMaxUsd, 30);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.initialCampaignUsd, 25);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.maxCampaignUsd, 50);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.anchorTargetPct.min, 0.55);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.anchorTargetPct.max, 0.70);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.opportunisticMaxPct, 0.30);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.microMaxPct, 0.10);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.opportunisticMaxUsd, 125);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.microMaxUsd, 50);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.initialCampaignUsd, 35);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.maxCampaignUsd, 80);
     assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.initialMicroUsd, 10);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.maxMicroUsd, 25);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.defaultBudgetsUsd.maxMicroUsd, 35);
   });
 
-  it("baseFirstChains includes base", () => {
-    assert.ok(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes("base"));
+  it("uses evidence-led chain profiles instead of the legacy Base-first list", () => {
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.mode, "evidence_led_primary_chains");
+    assert.strictEqual(Object.hasOwn(SMALL_CAPITAL_CAMPAIGN_MODE, "baseFirstChains"), false);
+
+    assert.deepStrictEqual(evidencePrimaryChainIds(), ["base"]);
+    assert.strictEqual(isEvidencePrimaryChain("base"), true);
+    assert.strictEqual(isEvidencePrimaryChain("optimism"), false);
+
+    const baseProfile = chainProfileFor("base");
+    assert.strictEqual(baseProfile.role, "primary");
+    assert.strictEqual(baseProfile.maxSharePct, 0.70);
+    assert.match(baseProfile.evidenceStatus, /evidence/);
   });
 
-  it("baseFirstChains excludes non-Gateway manual-bridge chains", () => {
-    assert.equal(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes("arbitrum"), false);
-    assert.equal(SMALL_CAPITAL_CAMPAIGN_MODE.baseFirstChains.includes("polygon"), false);
+  it("chain profiles exclude non-Gateway manual-bridge chains", () => {
+    assert.equal(chainProfileFor("arbitrum"), null);
+    assert.equal(chainProfileFor("polygon"), null);
   });
 
-  it("nonBaseEntry thresholds are positive", () => {
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonBaseEntry.minNetProfitUsd, 10);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonBaseEntry.minNetProfitPctOfPosition, 0.05);
+  it("allows any official chain to become primary through committed evidence profiles", () => {
+    const policy = {
+      ...SMALL_CAPITAL_CAMPAIGN_MODE,
+      chainSelection: {
+        ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection,
+        chainProfiles: {
+          base: { ...SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.chainProfiles.base, role: "candidate" },
+          optimism: {
+            role: "primary",
+            maxSharePct: 0.70,
+            evidenceStatus: "live_evidence_primary",
+            evidenceSource: "test committed evidence",
+            reviewBy: "2026-05-16",
+          },
+        },
+      },
+    };
+
+    assert.deepStrictEqual(evidencePrimaryChainIds(policy), ["optimism"]);
+    assert.strictEqual(isEvidencePrimaryChain("optimism", policy), true);
+    assert.deepStrictEqual(evidencePrimaryChainShareOverrides(policy), { optimism: 0.70 });
+  });
+
+  it("non-primary entry thresholds are positive", () => {
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.minNetProfitUsd, 10);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.minNetProfitPctOfPosition, 0.05);
   });
 
   it("reward haircuts are within [0,1]", () => {
@@ -99,6 +141,16 @@ describe("small-capital-campaign-mode config", () => {
     assert.strictEqual(ladder.realizedDailyLossLockUsd, 25);
     assert.strictEqual(ladder.noTxSentIsNeutral, true);
   });
+
+  it("keeps radar and canary hard caps separate from the more aggressive ratio mix", () => {
+    const lane = SMALL_CAPITAL_CAMPAIGN_MODE.radarLane;
+    const ladder = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation;
+    assert.strictEqual(lane.perCanaryUsd, 30);
+    assert.strictEqual(lane.perDayUsd, 90);
+    assert.strictEqual(lane.cumulativeOpenUsd, 200);
+    assert.strictEqual(ladder.maxAutoGraduatedUsd, 80);
+    assert.deepStrictEqual(ladder.rungsUsd, [5, 10, 25, 50, 80]);
+  });
 });
 
 describe("small-capital helpers", () => {
@@ -110,17 +162,17 @@ describe("small-capital helpers", () => {
   });
 
   it("effectiveAnchorBudgetUsd uses max anchor pct", () => {
-    assert.strictEqual(effectiveAnchorBudgetUsd(500), 500 * 0.80);
+    assert.strictEqual(effectiveAnchorBudgetUsd(500), 500 * 0.70);
   });
 
   it("effectiveOpportunisticBudgetUsd caps at default max", () => {
-    assert.strictEqual(effectiveOpportunisticBudgetUsd(500), Math.min(500 * 0.20, 80));
-    assert.strictEqual(effectiveOpportunisticBudgetUsd(10_000), 80);
+    assert.strictEqual(effectiveOpportunisticBudgetUsd(500), Math.min(500 * 0.30, 125));
+    assert.strictEqual(effectiveOpportunisticBudgetUsd(10_000), 125);
   });
 
   it("effectiveMicroBudgetUsd caps at default max", () => {
-    assert.strictEqual(effectiveMicroBudgetUsd(500), Math.min(500 * 0.06, 30));
-    assert.strictEqual(effectiveMicroBudgetUsd(10_000), 30);
+    assert.strictEqual(effectiveMicroBudgetUsd(500), Math.min(500 * 0.10, 50));
+    assert.strictEqual(effectiveMicroBudgetUsd(10_000), 50);
   });
 
   it("applyRewardHaircut reduces value correctly", () => {

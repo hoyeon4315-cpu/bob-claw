@@ -15,14 +15,13 @@ const WRAPPED_BTC_LOOP_SLICE_PATH = path.join(ROOT, 'data', 'wrapped-btc-lending
 const RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH = path.join(ROOT, 'data', 'recursive_wrapped_btc_lending_loop-scaffold.json');
 const OUTPUT_PATH = path.join(ROOT, 'dashboard', 'public', 'wallet-holdings.json');
 
-async function readLastJsonlLine(file) {
+async function readJsonlRecords(file) {
   try {
     const raw = await fs.readFile(file, 'utf8');
     const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i -= 1) {
-      try { return JSON.parse(lines[i]); } catch { /* skip malformed */ }
-    }
-    return null;
+    return lines.map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
@@ -69,6 +68,7 @@ function buildItems(inv) {
     });
   }
   for (const t of inv.tokenBalances || []) {
+    if (t?.family === 'external_unclassified') continue;
     const usd = Number(t.estimatedUsd);
     const amt = Number(t.actualDecimal);
     if (!Number.isFinite(amt) || amt === 0) continue;
@@ -86,8 +86,43 @@ function buildItems(inv) {
   return out;
 }
 
+function buildScanErrors(inv) {
+  return Array.isArray(inv?.scanErrors)
+    ? inv.scanErrors.filter((error) => error?.kind !== 'external_portfolio').map((error) => ({
+        kind: error?.kind || null,
+        provider: error?.provider || null,
+        chain: normaliseChain(error?.chain),
+        token: error?.token || null,
+        message: error?.message || null,
+      }))
+    : [];
+}
+
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function latestExternalCoverage(records = [], inv = null) {
+  const currentWalletUsd = finiteNumber(inv?.summary?.externalWalletUsd);
+  if (Number.isFinite(currentWalletUsd)) {
+    return {
+      walletUsd: currentWalletUsd,
+      totalPortfolioUsd: finiteNumber(inv.summary?.externalTotalPortfolioUsd),
+      unclassifiedUsd: finiteNumber(inv.summary?.externalUnclassifiedUsd),
+      provider: inv.summary?.externalProvider || null,
+      observedAt: inv.observedAt || null,
+      stale: false,
+    };
+  }
+  void records;
+  return null;
+}
+
 async function main() {
-  const inv = await readLastJsonlLine(INVENTORY_PATH);
+  const inventoryRecords = await readJsonlRecords(INVENTORY_PATH);
+  const inv = Array.isArray(inventoryRecords) ? inventoryRecords.at(-1) : null;
   const [wrappedBtcLoopSlice, recursiveWrappedBtcLoopScaffold] = await Promise.all([
     readJsonIfExists(WRAPPED_BTC_LOOP_SLICE_PATH),
     readJsonIfExists(RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH),
@@ -110,15 +145,32 @@ async function main() {
     };
   } else {
     const items = buildItems(inv);
+    const scanErrors = buildScanErrors(inv);
+    const coverage = latestExternalCoverage(inventoryRecords, inv);
+    const walletCoverage = coverage
+      ? coverage.stale ? 'full_external_stale' : 'full_external'
+      : 'partial_supported';
     payload = {
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       observedAt: inv.observedAt || null,
       pending: items.length === 0,
       address: inv.address || null,
-      totalUsd: Number.isFinite(inv.totalUsd) ? inv.totalUsd : null,
+      totalUsd: items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0),
       items,
       protocolApr,
+      source: 'whole_wallet_inventory',
+      scanErrorCount: scanErrors.length,
+      scanErrors,
+      itemizedSupportedWalletUsd: finiteNumber(inv.summary?.itemizedWalletUsd),
+      walletCoverage,
+      fullWalletUsd: coverage?.walletUsd ?? null,
+      fullWalletObservedAt: coverage?.observedAt ?? null,
+      fullWalletProvider: coverage?.provider ?? null,
+      fullWalletStale: coverage?.stale === true,
+      externalWalletUsd: coverage?.walletUsd ?? null,
+      externalTotalPortfolioUsd: coverage?.totalPortfolioUsd ?? null,
+      unclassifiedUsd: coverage?.unclassifiedUsd ?? null,
     };
   }
   await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
