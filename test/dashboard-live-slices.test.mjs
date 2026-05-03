@@ -439,6 +439,9 @@ test("capital summary uses wallet plus marked protocol positions as current tota
   assert.equal(slice.assetHeadline, "Current total assets");
   assert.equal(slice.assetFormula, "current_wallet_plus_marked_protocol_positions");
   assert.equal(slice.reconciliationState, "reconciled");
+  assert.equal(slice.systemConfidence, "high");
+  assert.equal(slice.autoExecutionSafe, true);
+  assert.equal(slice.invariantViolationCount, 0);
   assert.equal(slice.positionItems[0].usd, 5.015801);
   assert.equal(slice.positionItems[0].entryUsd, 5.56);
   assert.equal(slice.positionItems[0].markSource, "protocol_position_mark");
@@ -482,6 +485,9 @@ test("capital summary stays verified minimum when latest protocol mark diagnosti
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
   assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
   assert.equal(slice.protocolMarkFailedCount, 1);
+  assert.equal(slice.systemConfidence, "low");
+  assert.equal(slice.autoExecutionSafe, false);
+  assert.equal(slice.protocolMarkIssueCount, 1);
 });
 
 test("capital summary treats expired protocol marks as verified minimum", () => {
@@ -519,6 +525,75 @@ test("capital summary treats expired protocol marks as verified minimum", () => 
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
   assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
   assert.equal(slice.unmarkedProtocolPositionCount, 1);
+});
+
+test("capital summary surfaces adapter gaps and recent signer settlement as reconciliation alerts", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 267.79,
+      walletCoverage: "partial_supported",
+      items: [{ sym: "usdc", usd: 267.79 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 5.56,
+          valueUsd: 5.015801,
+          markSource: "protocol_position_mark",
+          markFreshness: "fresh",
+          markConfidence: "verified_current",
+          markObservedAt: "2026-05-03T12:00:00.000Z",
+        },
+      ],
+    },
+    protocolPositionMarks: {
+      confidence: "verified_minimum",
+      failedPositionCount: 1,
+      stalePositionCount: 0,
+      expiredPositionCount: 0,
+      items: [
+        {
+          positionId: "p1",
+          event: "position_marked",
+          freshness: "fresh",
+          confidence: "verified_current",
+          valueUsd: 5.015801,
+          observedAt: "2026-05-03T12:00:00.000Z",
+        },
+        {
+          positionId: "p2",
+          event: "position_mark_failed",
+          freshness: "failed",
+          confidence: "adapter_missing",
+          failureKind: "no_reader_no_adapter",
+          observedAt: "2026-05-03T12:00:30.000Z",
+        },
+      ],
+    },
+    signerAuditRecords: [
+      {
+        timestamp: "2026-05-03T12:00:45.000Z",
+        lifecycle: { stage: "broadcasted" },
+      },
+    ],
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.systemConfidence, "low");
+  assert.equal(slice.autoExecutionSafe, false);
+  assert.equal(slice.pendingSignerActionCount, 1);
+  assert.equal(slice.adapterCoverageGapCount, 1);
+  assert.equal(slice.currentProtocolMarkCount, 1);
+  assert.equal(slice.protocolMarkCoverageState, "needs_adapter");
+  assert.equal(slice.protocolMarkIssueCount, 1);
+  assert.equal(slice.latestProtocolMarkObservedAt, "2026-05-03T12:00:30.000Z");
+  assert.equal(slice.invariantViolations.some((item) => item.code === "adapter_coverage_gap"), true);
+  assert.equal(slice.invariantViolations.some((item) => item.code === "pending_signer_activity"), true);
 });
 
 test("capital summary treats unmarked protocol entries as a verified minimum", () => {

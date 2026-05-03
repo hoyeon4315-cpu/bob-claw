@@ -56,3 +56,45 @@ test("track2 stays within tolerance when drift small", () => {
   });
   assert.equal(r.track2.pass, true);
 });
+
+test("requireTotals=true + missing totals fails track1 even with positions present", () => {
+  const r = evaluateCoverage({
+    auditPositions: [],
+    snapshotPositions: [{ positionId: "p1", valueUsd: 100, bindingKind: "k", protocolId: "x" }],
+    totals: null,
+    requireTotals: true,
+  });
+  assert.equal(r.track1.pass, false);
+  assert.equal(r.track1.protocolUsdViolation, true);
+});
+
+test("requireTotals=true + totals.protocolUsd<=0 with positions fails track1", () => {
+  const r = evaluateCoverage({
+    auditPositions: [],
+    snapshotPositions: [{ positionId: "p1", valueUsd: 100, bindingKind: "k", protocolId: "x" }],
+    totals: { tokenUsd: 50, protocolUsd: 0, totalUsd: 50 },
+    requireTotals: true,
+  });
+  assert.equal(r.track1.pass, false);
+  assert.equal(r.track1.protocolUsdViolation, true);
+});
+
+test("requireTotals=true + healthy totals passes track1", () => {
+  const r = evaluateCoverage({
+    auditPositions: [],
+    snapshotPositions: [{ positionId: "p1", valueUsd: 100, bindingKind: "k", protocolId: "x" }],
+    totals: { tokenUsd: 50, protocolUsd: 100, totalUsd: 150 },
+    requireTotals: true,
+  });
+  assert.equal(r.track1.pass, true);
+});
+
+test("requireTotals=false (default) + missing totals does not violate", () => {
+  const r = evaluateCoverage({
+    auditPositions: [],
+    snapshotPositions: [{ positionId: "p1", valueUsd: 100, bindingKind: "k", protocolId: "x" }],
+    totals: null,
+  });
+  assert.equal(r.track1.pass, true);
+  assert.equal(r.track1.protocolUsdViolation, false);
+});

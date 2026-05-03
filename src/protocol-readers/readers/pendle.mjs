@@ -28,6 +28,12 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
     ]);
     const ptAddress = tokens?.pt ?? tokens?.[1];
     const ytAddress = tokens?.yt ?? tokens?.[2];
+    if (!ptAddress || !ytAddress) {
+      return makeReaderError({
+        error: `pendle market ${marketAddress} returned unexpected readTokens shape (missing PT/YT)`,
+        code: "missing_params",
+      });
+    }
 
     const [pt, yt] = await Promise.all([
       loadContract({ chain, address: ptAddress, abi: ERC20_ABI, _providerFactory }),
@@ -109,7 +115,7 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
 async function loadContract({ chain, address, abi, _providerFactory }) {
   if (_providerFactory) return _providerFactory({ chain, address, abi });
   const { ethers } = await import("ethers");
-  const { EVM_CHAIN_CONFIGS } = await import("../../../config/chains.mjs");
+  const { EVM_CHAIN_CONFIGS } = await import("../../config/chains.mjs");
   const cfg = EVM_CHAIN_CONFIGS[chain];
   if (!cfg) throw new Error(`unknown chain ${chain}`);
   const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);

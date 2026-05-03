@@ -471,6 +471,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     merklActivePositions: dashboardStatus.strategy.merklActivePositions,
     protocolPositionMarks: dashboardStatus.strategy.protocolPositionMarks,
     executorEstimatedAssetValueUsd: allChainAutopilotReport?.summary?.capitalManager?.estimatedAssetValueUsd ?? null,
+    signerAuditRecords,
     generatedAt: dashboardStatus.generatedAt,
   });
   dashboardStatus.operations = {

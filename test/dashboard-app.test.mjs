@@ -247,6 +247,12 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(assetsPane, /scan errors \$\{HOLDINGS\.walletScanErrorCount\}\$\{walletScanErrorDetails\.length/);
     assert.match(assetsPane, /capital refill target \$\{fmtUsd\(HOLDINGS\.capitalPlanRefillRequiredUsd\)\} · not wallet assets/);
     assert.match(assetsPane, /plan need above verified \$\{HOLDINGS\.executorEstimateDeltaUsd > 0 \? '\+' : ''\}\$\{fmtUsd\(HOLDINGS\.executorEstimateDeltaUsd\)\}/);
+    assert.match(assetsPane, /system confidence \$\{HOLDINGS\.systemConfidence\}/);
+    assert.match(assetsPane, /audit alerts \$\{HOLDINGS\.invariantViolationCount\}/);
+    assert.match(assetsPane, /audit clean/);
+    assert.match(assetsPane, /protocol marks current \$\{HOLDINGS\?\.currentProtocolMarkCount \|\| 0\} · issues \$\{HOLDINGS\?\.protocolMarkIssueCount \|\| 0\}/);
+    assert.match(assetsPane, /needs adapter \$\{HOLDINGS\.adapterCoverageGapCount\}/);
+    assert.match(assetsPane, /signer settling \$\{HOLDINGS\.pendingSignerActionCount\}/);
     assert.match(assetsPane, /HOLDINGS\?\.accountingWarning \? '#FFF6E8'/);
     assert.doesNotMatch(assetsPane, /full wallet live/);
     assert.match(assetsPane, /supported-assets live/);
@@ -263,6 +269,11 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(assetsPane, /unclassified \$\{fmtUsd\(HOLDINGS\.unclassifiedUsd\)\}/);
     assert.match(assetsPane, /const isExternalDelta = symBase === 'other' \|\| a\.family === 'external_unclassified'/);
     assert.match(assetsPane, /external scan delta/);
+    assert.match(APP_SOURCE, /function protocolTrackingLabel\(position = \{\}\)/);
+    assert.match(APP_SOURCE, /function protocolTrackingTone\(position = \{\}\)/);
+    assert.match(assetsPane, /protocolTrackingLabel\(p\)/);
+    assert.match(assetsPane, /String\(p\.markConfidence\)\.replace\(\/_\/g, ' '\)/);
+    assert.match(assetsPane, /mark \{formatStatusAge\(p\.markObservedAt\) \|\| fmtWhen\(p\.markObservedAt\)\}/);
   });
 
   test("flow pane expands the map above lower cards during focus mode", () => {
@@ -341,6 +352,13 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(adapter, /planGapUsd: summaryPlanGapUsd/);
     assert.match(adapter, /protocolTrackingGapUsd: summaryProtocolTrackingGapUsd/);
     assert.match(adapter, /trackingGapUsd: summaryProtocolTrackingGapUsd/);
+    assert.match(adapter, /reconciliationGapUsd: Number\.isFinite\(capitalSummary\.reconciliationGapUsd\) \? capitalSummary\.reconciliationGapUsd : null/);
+    assert.match(adapter, /systemConfidence: capitalSummary\.systemConfidence \|\| \(summaryAssetConfidence === 'verified_current' \? 'high' : 'medium'\)/);
+    assert.match(adapter, /autoExecutionSafe: capitalSummary\.autoExecutionSafe === true/);
+    assert.match(adapter, /invariantViolations: Array\.isArray\(capitalSummary\.invariantViolations\) \? capitalSummary\.invariantViolations : \[\]/);
+    assert.match(adapter, /adapterCoverageGapCount: Number\.isFinite\(capitalSummary\.adapterCoverageGapCount\) \? capitalSummary\.adapterCoverageGapCount : 0/);
+    assert.match(adapter, /currentProtocolMarkCount: Number\.isFinite\(capitalSummary\.currentProtocolMarkCount\) \? capitalSummary\.currentProtocolMarkCount : 0/);
+    assert.match(adapter, /protocolMarkIssueCount: Number\.isFinite\(capitalSummary\.protocolMarkIssueCount\) \? capitalSummary\.protocolMarkIssueCount : 0/);
     assert.match(adapter, /supported_wallet_plus_positions_cached_external_reference/);
     assert.match(adapter, /const fallbackDisplayWalletUsd = Number\.isFinite\(holdings\?\.totalUsd\) \? holdings\.totalUsd : null/);
     assert.doesNotMatch(adapter, /hasFreshFullWalletSummary/);

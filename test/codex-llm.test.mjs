@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,9 +9,9 @@ import { maskText, maskJson, buildContextPack } from "../src/llm/context-pack.mj
 import { scanBanList, validateOutput } from "../src/llm/output-validator.mjs";
 import { tallyDailyUsageUsd, isBudgetLocked, setBudgetLock, clearBudgetLock, budgetGate } from "../src/llm/codex-budget-lock.mjs";
 
-function withTempDir(fn) {
+async function withTempDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), "codex-test-"));
-  try { return fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
+  try { return await fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
 // --- codex-client ---
@@ -47,6 +47,60 @@ test("callCodex respects budgetGate block", async () => {
     delete process.env.CODEX_AUDIT_LOG;
   });
 });
+
+test("callCodex cli auth mode uses logged-in Codex CLI without API key", async () => {
+	await withTempDir(async (dir) => {
+	    const cliPath = join(dir, "codex-cli-stub.sh");
+	    const outPath = join(dir, "audit.jsonl");
+	    const promptPath = join(dir, "prompt.json");
+	    writeFileSync(cliPath, `#!/bin/sh
+out=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+cat > "${promptPath}"
+printf "stub-output" > "$out"
+exit 0
+`);
+	    chmodSync(cliPath, 0o700);
+	    process.env.CODEX_AUTH_MODE = "cli";
+	    process.env.CODEX_CLI_PATH = cliPath;
+	    process.env.CODEX_AUDIT_LOG = outPath;
+	    process.env.BURNER_CONTEXT_SECRET = "supersecretXYZ987654";
+	    process.env.OPENAI_CODEX_MODEL_TRIAGE = "";
+	    delete process.env.OPENAI_API_KEY_PATH;
+	    const r = await callCodex({
+      purpose: PURPOSE.TRIAGE,
+      prompt: "hi",
+      model: null,
+      fetchImpl: async () => {
+        throw new Error("should_not_use_fetch");
+      },
+	      context: {
+	        secret: "supersecretXYZ987654",
+	        address: "0x1234567890abcdef1234567890ABCDEF12345678",
+	      },
+	      inputForHash: "x",
+	    });
+	    assert.equal(r.ok, true);
+	    assert.equal(r.output, "stub-output");
+	    assert.equal(r.audit.authMode, "cli");
+	    const captured = readFileSync(promptPath, "utf8");
+	    assert.ok(!captured.includes("supersecretXYZ987654"));
+	    assert.ok(!JSON.stringify(r.audit.context).includes("supersecretXYZ987654"));
+	    assert.match(captured, /\[masked\]/);
+	    assert.match(captured, /0x<masked-evm:1>/);
+	    delete process.env.CODEX_AUTH_MODE;
+	    delete process.env.CODEX_CLI_PATH;
+	    delete process.env.CODEX_AUDIT_LOG;
+	    delete process.env.BURNER_CONTEXT_SECRET;
+	    delete process.env.OPENAI_CODEX_MODEL_TRIAGE;
+	  });
+	});
 
 test("callCodex throws on invalid purpose", async () => {
   await assert.rejects(callCodex({ purpose: "bogus", prompt: "x" }));

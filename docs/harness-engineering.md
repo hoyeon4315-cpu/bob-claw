@@ -1,6 +1,6 @@
 ---
 status: canonical
-updated_at: 2026-05-02
+updated_at: 2026-05-03
 policy_authority: AGENTS.md
 derived_from:
   - AGENTS.md
@@ -38,6 +38,7 @@ Then read:
 | `dashboard/public/*.jsx` | `dashboard/public/*.js` |
 | `dashboard/public/index.html` | `dashboard/public/*.json` |
 | `dashboard/public/_headers` | `.playwright-cli/**`, `.cloudflare/**`, `.wrangler/**` |
+| `docs/protocol-readers-unification.md` | `data/codex/**`, `data/health/**` |
 
 Generated public dashboard JSON can be useful locally but should not be mixed
 into source commits by accident. `src/session/git-ops-automation.mjs` excludes
@@ -88,6 +89,7 @@ Before dashboard UI changes:
 
 ```bash
 node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs
+node --test test/dashboard-cache-headers.test.mjs
 npm run dashboard:build
 ```
 
@@ -109,6 +111,40 @@ the public artifact set.
 node --test test/gateway-availability.test.mjs test/executor-policy-index.test.mjs
 node --test test/payback-scheduler.test.mjs test/auto-kill-triggers.test.mjs
 ```
+
+## DeFi Visibility And Codex Harness
+
+Merged PR #4 on 2026-05-03 added four harness families. Treat them as source
+surface with strict runtime boundaries:
+
+- Protocol visibility lives in `src/protocol-readers/`,
+  `src/treasury/protocol-position-*`, `src/config/token-registry.mjs`, and
+  `src/status/protocol-position-marks-slice.mjs`. Readers must return explicit
+  ok/error envelopes, never silent skips. Portfolio coverage Track 1 is a hard
+  gate for missing/unlabeled positions; Track 2 is a value-drift warning.
+- Codex LLM tooling lives in `src/llm/`, `src/cli/codex-*`, and
+  `src/cli/auto-research-*`. It is dev/report/scaffold only. Keys are
+  path-indirected through `OPENAI_API_KEY_PATH`; contexts are masked; calls
+  append to `logs/codex-audit.jsonl`; budget lock state is separate from both
+  kill-switch and dev-lock.
+- Position health lives in `src/executor/health/`. The action engine may emit
+  `exit`, `unwind`, `pause`, or `review` descriptors only. Rebalance intent
+  creation remains in Capital Manager, not the health monitor.
+- Auto-promotion now includes OOS holdout and regime-breakdown blockers in
+  addition to the older walk-forward/shadow/cost gates. Missing regime or
+  negative holdout evidence blocks promotion.
+
+Operational outputs from this lane are generated or append-only:
+
+- `data/codex/**`
+- `data/health/**`
+- `logs/codex-audit.jsonl`
+- `logs/codex-budget-lock-audit.jsonl`
+- `logs/auto-research-audit.jsonl`
+- `logs/position-monitor-audit.jsonl`
+
+Do not stage those outputs unless the task explicitly asks for a local evidence
+artifact, and never rewrite append-only logs.
 
 ## Cleanup Checklist
 
@@ -140,10 +176,13 @@ are not part of source refactor commits.
 | Git hygiene | `node --test test/repo-hygiene.test.mjs test/git-ops-automation.test.mjs` |
 | Gateway chain policy | `node --test test/diversification.test.mjs test/diversification-kpi.test.mjs test/all-chain-autopilot.test.mjs test/gateway-update-autopilot.test.mjs` |
 | Dev route remediation | `node --test test/route-remediation-autopilot.test.mjs` |
+| Codex LLM/dev harness | `node --test test/codex-llm.test.mjs test/phase35-cli.test.mjs test/auto-research-pipeline.test.mjs` |
+| Protocol readers/position marks | `node --test test/protocol-reader-spec.test.mjs test/protocol-reader-registry.test.mjs test/protocol-readers.test.mjs test/protocol-position-marker.test.mjs test/protocol-position-marks-slice.test.mjs test/report-portfolio-coverage.test.mjs` |
+| Position health monitor | `node --test test/position-action-engine.test.mjs test/phase4-cli.test.mjs` |
 | Signer/policy | `node --test test/gateway-availability.test.mjs test/executor-policy-index.test.mjs` |
 | Watchdog/auto-kill | `node --test test/executor-watchdog-runner.test.mjs test/auto-kill-triggers.test.mjs test/auto-kill-triggers-extended.test.mjs` |
 | Payback | `node --test test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs` |
-| Dashboard UI/status | `node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs && npm run dashboard:build` |
+| Dashboard UI/status | `node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs test/dashboard-cache-headers.test.mjs && npm run dashboard:build` |
 | Any source refactor | `npm run check && npm test` |
 
 Do not claim completion until the verification output has been read and the

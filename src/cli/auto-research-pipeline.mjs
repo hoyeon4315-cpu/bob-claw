@@ -12,10 +12,15 @@
 // scaffold yields zero files and the loop aborts on same_failure_cap quickly.
 // That is the expected, safe default.
 
-import { runTriage } from "./codex-triage.mjs";
-import { runScaffold } from "./codex-scaffold-adapter.mjs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { scoreCandidateResults } from "../../research/score.mjs";
 import { runLoop, LOOP_LIMITS } from "./auto-research-loop.mjs";
+import { runScaffold } from "./codex-scaffold-adapter.mjs";
+import { runTriage } from "./codex-triage.mjs";
+
+const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
 export function buildIterate({
   triagePaths = {},
@@ -44,9 +49,14 @@ export function buildIterate({
 export function buildScorer({ candidateName = "auto-research", track = "trackA", foldResults = [] } = {}) {
   return async function scorer(iter) {
     const okResults = (iter.scaffold?.results || []).filter((r) => r.ok);
+    const triageItems = iter.triage?.items || [];
+    if (okResults.length === 0 && triageItems.length === 0) {
+      return { passed: true, reason: "no_candidates" };
+    }
     if (okResults.length === 0) {
       const blockers = ["scaffold_zero_ok"];
-      if ((iter.scaffold?.results || []).every((r) => r.reason === "llm_unavailable")) {
+      const scaffoldResults = iter.scaffold?.results || [];
+      if (scaffoldResults.length > 0 && scaffoldResults.every((r) => r.reason === "llm_unavailable")) {
         blockers.push("llm_unavailable");
       }
       return { passed: false, blockers };
@@ -71,9 +81,30 @@ export async function runAutoResearch({
   return runLoop({ iterate, scorer, limits, auditPath });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const dryLimits = { ...LOOP_LIMITS, iterationCap: 3, sameFailureCap: 2 };
-  const r = await runAutoResearch({ limits: dryLimits });
-  console.log(JSON.stringify({ summary: { ok: r.ok, reason: r.reason, iterations: r.history.length, cumulativeCostUsd: r.cumulativeCostUsd } }, null, 2));
-  process.exit(r.ok ? 0 : 0);
+function parseArgs(argv = []) {
+  const flags = new Set(argv);
+  return {
+    json: flags.has("--json"),
+  };
+}
+
+if (IS_MAIN) {
+  const args = parseArgs(process.argv.slice(2));
+  const r = await runAutoResearch();
+  const payload = {
+    summary: {
+      ok: r.ok,
+      reason: r.reason || null,
+      iterations: r.history.length,
+      cumulativeCostUsd: r.cumulativeCostUsd || 0,
+    },
+  };
+  if (args.json) console.log(JSON.stringify(payload, null, 2));
+  else {
+    console.log(`ok=${payload.summary.ok}`);
+    console.log(`reason=${payload.summary.reason || "none"}`);
+    console.log(`iterations=${payload.summary.iterations}`);
+    console.log(`cumulativeCostUsd=${payload.summary.cumulativeCostUsd}`);
+  }
+  process.exit(r.ok ? 0 : 1);
 }

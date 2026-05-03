@@ -91,6 +91,7 @@
     "report:protocol-trust-tiers": "node src/cli/report-protocol-trust-tiers.mjs",
     "report:protocol-codehash-watch": "node src/cli/report-protocol-codehash-watch.mjs",
     "report:protocol-market-watchers": "node src/cli/report-protocol-market-watchers.mjs",
+    "report:portfolio-coverage": "node src/cli/report-portfolio-coverage.mjs",
     "report:btc-only-e2e-dry-run": "node src/cli/report-btc-only-e2e-dry-run.mjs",
     "report:tiny-live-canary-rollout": "node src/cli/report-tiny-live-canary-rollout.mjs",
     "report:final-operator-explainer": "node src/cli/report-final-operator-explainer.mjs",

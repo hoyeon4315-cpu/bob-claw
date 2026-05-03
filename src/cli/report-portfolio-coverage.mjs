@@ -15,7 +15,11 @@
 //   --tolerance-pct=<n> default 0.005
 
 import { readFileSync } from "node:fs";
-import { argv, exit, stdin, stdout, stderr } from "node:process";
+import { argv, exit, stdout, stderr } from "node:process";
+import { pathToFileURL } from "node:url";
+import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
+
+bootstrapReaders();
 
 function parseArgs(arr) {
   const out = {};
@@ -27,7 +31,15 @@ function parseArgs(arr) {
   return out;
 }
 
-export function evaluateCoverage({ auditPositions, snapshotPositions, tolUsd = 1, tolPct = 0.005 }) {
+export function evaluateCoverage({
+  auditPositions,
+  snapshotPositions,
+  readerErrors = [],
+  totals = null,
+  tolUsd = 1,
+  tolPct = 0.005,
+  requireTotals = false,
+}) {
   const snapById = new Map();
   for (const p of snapshotPositions) {
     if (p && p.positionId) snapById.set(p.positionId, p);
@@ -46,7 +58,38 @@ export function evaluateCoverage({ auditPositions, snapshotPositions, tolUsd = 1
     if (!p.bindingKind || !p.protocolId) unlabeled.push(p.positionId || "<no-id>");
   }
   const accounted = auditPositions.length - missing.length;
-  const track1Pass = missing.length === 0 && silentSkips === 0 && unlabeled.length === 0;
+  // Reader-error count = positions with no reader-or-legacy hit. These count
+  // as track1 violations because they represent "ledger position with no
+  // explicit coverage". Never silent-skip.
+  const readerErrorCount = Array.isArray(readerErrors) ? readerErrors.length : 0;
+  const readerErrorByCode = new Map();
+  for (const err of readerErrors || []) {
+    const code = err?.code || "unknown";
+    readerErrorByCode.set(code, (readerErrorByCode.get(code) || 0) + 1);
+  }
+  const protocolUsd = Number.isFinite(totals?.protocolUsd) ? Number(totals.protocolUsd) : null;
+  const protocolPositionCount = snapshotPositions.length;
+  // Two violation paths:
+  //  - totals supplied but protocolUsd missing/<=0 while positions exist
+  //  - totals omitted entirely while positions exist (covers older snapshots,
+  //    partial writers, corrupt JSON — never silent-skip a USD gate).
+  // evaluateCoverage callers that intentionally pass `totals=null` for unit
+  // testing must also pass `requireTotals: false` to opt out of the missing
+  // gate; production main() always supplies totals.
+  const totalsMissing = totals === null || totals === undefined;
+  const protocolUsdViolation =
+    protocolPositionCount > 0
+    && (
+      (totalsMissing && requireTotals)
+      || (!totalsMissing && (!Number.isFinite(protocolUsd) || protocolUsd <= 0))
+    );
+
+  const track1Pass =
+    missing.length === 0
+    && silentSkips === 0
+    && unlabeled.length === 0
+    && readerErrorCount === 0
+    && !protocolUsdViolation;
 
   const outOfTolerance = [];
   for (const a of auditPositions) {
@@ -72,6 +115,11 @@ export function evaluateCoverage({ auditPositions, snapshotPositions, tolUsd = 1
       missing,
       silentSkips,
       unlabeled: [...new Set(unlabeled)],
+      readerErrorCount,
+      readerErrorByCode: [...readerErrorByCode.entries()].map(([code, count]) => ({ code, count })),
+      protocolPositionCount,
+      protocolUsd,
+      protocolUsdViolation,
     },
     track2: {
       pass: track2Pass,
@@ -81,53 +129,65 @@ export function evaluateCoverage({ auditPositions, snapshotPositions, tolUsd = 1
   };
 }
 
-async function readStdin() {
-  let buf = "";
-  for await (const chunk of stdin) buf += chunk;
-  return buf;
-}
-
 async function main() {
   const args = parseArgs(argv.slice(2));
-  if (!args.audit) {
-    stderr.write("[coverage] --audit=<path> required\n");
-    exit(2);
-  }
-  const auditLines = readFileSync(args.audit, "utf8").split(/\n/).filter(Boolean);
-  const auditPositions = [];
-  for (const line of auditLines) {
+  let auditPositions = [];
+  if (args.audit) {
     try {
-      const obj = JSON.parse(line);
-      if (obj && obj.positionId) auditPositions.push(obj);
-    } catch {
-      // ignore bad lines
+      const auditLines = readFileSync(args.audit, "utf8").split(/\n/).filter(Boolean);
+      for (const line of auditLines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj && obj.positionId) auditPositions.push(obj);
+        } catch {
+          // ignore bad lines
+        }
+      }
+    } catch (error) {
+      stderr.write(`[coverage] could not read audit ${args.audit}: ${error.message}\n`);
     }
   }
 
-  const snapshot = args.snapshot
-    ? JSON.parse(readFileSync(args.snapshot, "utf8"))
-    : JSON.parse(await readStdin());
+  if (!args.snapshot) {
+    stderr.write("[coverage] --snapshot=<path> required\n");
+    exit(1);
+  }
+  const snapshot = JSON.parse(readFileSync(args.snapshot, "utf8"));
 
   const snapshotPositions = Array.isArray(snapshot.protocolPositions) ? snapshot.protocolPositions : [];
+  const readerErrors = Array.isArray(snapshot.reader_errors) ? snapshot.reader_errors : [];
+  const totals = snapshot.totals || null;
   const tolUsd = Number(args["tolerance-usd"] ?? 1);
   const tolPct = Number(args["tolerance-pct"] ?? 0.005);
-  const result = evaluateCoverage({ auditPositions, snapshotPositions, tolUsd, tolPct });
+  const result = evaluateCoverage({
+    auditPositions,
+    snapshotPositions,
+    readerErrors,
+    totals,
+    tolUsd,
+    tolPct,
+    requireTotals: true,
+  });
   stdout.write(JSON.stringify(result, null, 2) + "\n");
 
   const t1 = result.track1;
   if (!t1.pass) {
-    stderr.write(`[coverage] TRACK1 FAIL accounted=${t1.accounted}/${t1.total} missing=${t1.missing.length} silentSkips=${t1.silentSkips} unlabeled=${t1.unlabeled.length}\n`);
-    exit(1);
-  }
-  if (!result.track2.pass) {
+    stderr.write(
+      `[coverage] TRACK1 FAIL accounted=${t1.accounted}/${t1.total} missing=${t1.missing.length} silentSkips=${t1.silentSkips} unlabeled=${t1.unlabeled.length} readerErrors=${t1.readerErrorCount} protocolUsd=${t1.protocolUsd}\n`,
+    );
+  } else if (!result.track2.pass) {
     stderr.write(`[coverage] TRACK1 PASS, TRACK2 WARN ${result.track2.outOfTolerance.length} positions outside tolerance\n`);
   } else {
     stderr.write(`[coverage] PASS ${t1.accounted} positions accounted, value drift within tolerance\n`);
   }
-  exit(0);
+
+  // Machine-parsable final line.
+  stdout.write(`${JSON.stringify({ track: "track1", pass: t1.pass, ...t1 })}\n`);
+
+  exit(t1.pass ? 0 : 2);
 }
 
-const isMain = import.meta.url === `file://${argv[1]}`;
+const isMain = argv[1] && import.meta.url === pathToFileURL(argv[1]).href;
 if (isMain) {
   main().catch((e) => {
     stderr.write(`[coverage] error: ${e.message}\n`);
