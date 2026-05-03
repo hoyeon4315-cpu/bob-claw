@@ -1,49 +1,49 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-01T13:21:09.824Z",
-  "observedAt": "2026-05-01T13:21:08.565Z",
+  "generatedAt": "2026-05-03T07:49:18.339Z",
+  "observedAt": "2026-05-03T07:49:05.966Z",
   "pending": false,
   "address": "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-  "totalUsd": 243.86010468944264,
+  "totalUsd": 267.3242821652985,
   "items": [
     {
       "sym": "wbtc",
       "name": "wBTC.OFT",
       "chain": "base",
-      "amount": 0.00049495,
-      "usd": 38.74220877524999,
+      "amount": 0.00078908,
+      "usd": 61.835465119999995,
+      "family": "token"
+    },
+    {
+      "sym": "wbtc",
+      "name": "wBTC.OFT",
+      "chain": "sei",
+      "amount": 0.00069792,
+      "usd": 54.69180288,
       "family": "token"
     },
     {
       "sym": "cbbtc",
       "name": "cbBTC",
       "chain": "base",
-      "amount": 0.00037287,
-      "usd": 29.18639738565,
+      "amount": 0.00036195,
+      "usd": 28.3638498,
       "family": "token"
     },
     {
-      "sym": "wbtc",
-      "name": "wBTC.OFT",
-      "chain": "bsc",
-      "amount": 0.00036779,
-      "usd": 28.78876041105,
-      "family": "token"
+      "sym": "eth",
+      "name": "ETH",
+      "chain": "ethereum",
+      "amount": 0.008462972899063337,
+      "usd": 19.550059804939245,
+      "family": "native"
     },
     {
       "sym": "wbtc",
       "name": "wBTC.OFT",
       "chain": "avalanche",
-      "amount": 0.00014533,
-      "usd": 11.37570502335,
-      "family": "token"
-    },
-    {
-      "sym": "wbtc",
-      "name": "wBTC.OFT",
-      "chain": "soneium",
-      "amount": 0.00013385,
-      "usd": 10.47710808075,
+      "amount": 0.00014586,
+      "usd": 11.43017304,
       "family": "token"
     },
     {
@@ -55,35 +55,51 @@
       "family": "token"
     },
     {
-      "sym": "wbtc",
-      "name": "WBTC",
-      "chain": "ethereum",
-      "amount": 0.0001102,
-      "usd": 8.625904448999998,
-      "family": "token"
-    },
-    {
       "sym": "eth",
       "name": "ETH",
       "chain": "soneium",
-      "amount": 0.00272631767311825,
-      "usd": 6.295353770585717,
+      "amount": 0.002704804051087642,
+      "usd": 6.248286694296029,
       "family": "native"
+    },
+    {
+      "sym": "usdc",
+      "name": "USDC",
+      "chain": "bsc",
+      "amount": 6.1631419089769235,
+      "usd": 6.1631419089769235,
+      "family": "token"
     },
     {
       "sym": "bera",
       "name": "BERA",
       "chain": "bera",
       "amount": 15.732921508672012,
-      "usd": 5.947044330278021,
+      "usd": 5.7829184930995545,
       "family": "native"
     },
     {
       "sym": "bnb",
       "name": "BNB",
       "chain": "bsc",
-      "amount": 0.0086065042010543,
-      "usd": 5.342831742972498,
+      "amount": 0.008352191650645985,
+      "usd": 5.157394822357389,
+      "family": "native"
+    },
+    {
+      "sym": "wbtc",
+      "name": "wBTC.OFT",
+      "chain": "soneium",
+      "amount": 0.00006431,
+      "usd": 5.0395888399999995,
+      "family": "token"
+    },
+    {
+      "sym": "avax",
+      "name": "AVAX",
+      "chain": "avalanche",
+      "amount": 0.5517146608579622,
+      "usd": 4.998534827373137,
       "family": "native"
     },
     {
@@ -91,7 +107,7 @@
       "name": "wS",
       "chain": "sonic",
       "amount": 109.02421826898852,
-      "usd": 4.759997369624038,
+      "usd": 4.731829872592063,
       "family": "token"
     },
     {
@@ -99,16 +115,8 @@
       "name": "S",
       "chain": "sonic",
       "amount": 104.68892717500393,
-      "usd": 4.570718560460671,
+      "usd": 4.5436711292357375,
       "family": "native"
-    },
-    {
-      "sym": "wavax",
-      "name": "WAVAX",
-      "chain": "avalanche",
-      "amount": 0.4477160910246634,
-      "usd": 4.112272296061533,
-      "family": "token"
     },
     {
       "sym": "usdc",
@@ -127,43 +135,19 @@
       "family": "token"
     },
     {
-      "sym": "eth",
-      "name": "ETH",
-      "chain": "base",
-      "amount": 0.001633966783762374,
-      "usd": 3.7730008702196165,
-      "family": "native"
-    },
-    {
-      "sym": "usdc",
-      "name": "USDC",
-      "chain": "bsc",
-      "amount": 3.7633581229589894,
-      "usd": 3.7633581229589894,
-      "family": "token"
-    },
-    {
       "sym": "weth",
       "name": "WETH",
       "chain": "optimism",
       "amount": 0.001628833947489551,
-      "usd": 3.7611486123178595,
+      "usd": 3.762720437077187,
       "family": "token"
-    },
-    {
-      "sym": "avax",
-      "name": "AVAX",
-      "chain": "avalanche",
-      "amount": 0.3881922094086501,
-      "usd": 3.5655454434184515,
-      "family": "native"
     },
     {
       "sym": "eth",
       "name": "ETH",
       "chain": "optimism",
       "amount": 0.001532227234776493,
-      "usd": 3.5380735689585743,
+      "usd": 3.539552168240134,
       "family": "native"
     },
     {
@@ -179,7 +163,7 @@
       "name": "SEI",
       "chain": "sei",
       "amount": 57.70453914142724,
-      "usd": 3.3485944063770225,
+      "usd": 3.3546533829868728,
       "family": "native"
     },
     {
@@ -187,7 +171,7 @@
       "name": "WETH",
       "chain": "ethereum",
       "amount": 0.001303582434937507,
-      "usd": 3.010108718426372,
+      "usd": 3.011366675476087,
       "family": "token"
     },
     {
@@ -203,7 +187,7 @@
       "name": "BTC",
       "chain": "bitcoin",
       "amount": 0.0000265,
-      "usd": 2.0742873674999998,
+      "usd": 2.076646,
       "family": "native"
     },
     {
@@ -211,7 +195,7 @@
       "name": "ETH",
       "chain": "bob",
       "amount": 0.000814797971168514,
-      "usd": 1.8814540692150716,
+      "usd": 1.8822403492572493,
       "family": "native"
     },
     {
@@ -219,15 +203,7 @@
       "name": "WETH",
       "chain": "unichain",
       "amount": 0.000800193009490752,
-      "usd": 1.8477296791801427,
-      "family": "token"
-    },
-    {
-      "sym": "usdc",
-      "name": "USDC",
-      "chain": "base",
-      "amount": 1.292646,
-      "usd": 1.292646,
+      "usd": 1.8485018654343015,
       "family": "token"
     },
     {
@@ -235,7 +211,7 @@
       "name": "ETH",
       "chain": "unichain",
       "amount": 0.000511221689513472,
-      "usd": 1.1804645593640057,
+      "usd": 1.1809578882943863,
       "family": "native"
     },
     {
@@ -245,14 +221,6 @@
       "amount": 1.0460983484099835,
       "usd": 1.0460983484099835,
       "family": "token"
-    },
-    {
-      "sym": "eth",
-      "name": "ETH",
-      "chain": "ethereum",
-      "amount": 0.000414209949625014,
-      "usd": 0.9564542657288679,
-      "family": "native"
     },
     {
       "sym": "usdt",
@@ -267,7 +235,7 @@
       "name": "wBTC.OFT",
       "chain": "unichain",
       "amount": 0.00001,
-      "usd": 0.78274995,
+      "usd": 0.7836400000000001,
       "family": "token"
     },
     {
@@ -282,16 +250,32 @@
       "sym": "wbnb",
       "name": "WBNB",
       "chain": "bsc",
-      "amount": 0.001100655441286502,
-      "usd": 0.6832758913962476,
+      "amount": 0.001128877543319731,
+      "usd": 0.6970705942245007,
+      "family": "token"
+    },
+    {
+      "sym": "wavax",
+      "name": "WAVAX",
+      "chain": "avalanche",
+      "amount": 0.04860636469616601,
+      "usd": 0.4403736641472641,
       "family": "token"
     },
     {
       "sym": "weth",
       "name": "WETH",
       "chain": "base",
-      "amount": 0.000054325818911026,
-      "usd": 0.12544402007654468,
+      "amount": 0.000035046651511156,
+      "usd": 0.08096021825637616,
+      "family": "token"
+    },
+    {
+      "sym": "usdc",
+      "name": "USDC",
+      "chain": "base",
+      "amount": 0.054546,
+      "usd": 0.054546,
       "family": "token"
     },
     {
@@ -299,8 +283,16 @@
       "name": "wBTC.OFT",
       "chain": "bob",
       "amount": 4.1e-7,
-      "usd": 0.03209274795,
+      "usd": 0.032129239999999996,
       "family": "token"
+    },
+    {
+      "sym": "eth",
+      "name": "ETH",
+      "chain": "base",
+      "amount": 0.000003474290872536,
+      "usd": 0.008025855115919238,
+      "family": "native"
     }
   ],
   "protocolApr": {
@@ -324,5 +316,17 @@
       "borrowApyPct": 1.3,
       "netApyPct": 1.1
     }
-  }
+  },
+  "source": "whole_wallet_inventory",
+  "scanErrorCount": 0,
+  "scanErrors": [],
+  "itemizedSupportedWalletUsd": 267.3242821652984,
+  "walletCoverage": "partial_supported",
+  "fullWalletUsd": null,
+  "fullWalletObservedAt": null,
+  "fullWalletProvider": null,
+  "fullWalletStale": false,
+  "externalWalletUsd": null,
+  "externalTotalPortfolioUsd": null,
+  "unclassifiedUsd": null
 }
