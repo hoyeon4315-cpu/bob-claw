@@ -59,6 +59,7 @@ test("parseDashboardLiveArgs includes refresh cadence defaults", () => {
   assert.equal(parsed.port, 9999);
   assert.equal(parsed.streamMs, 5000);
   assert.equal(parsed.wholeWalletRefreshMs, 20000);
+  assert.equal(typeof parsed.protocolPositionRefreshMs, "number");
   assert.equal(typeof parsed.strategyTickRefreshMs, "number");
   assert.equal(typeof parsed.autoKillRefreshMs, "number");
   assert.equal(typeof parsed.statusBuildTimeoutMs, "number");
@@ -76,6 +77,7 @@ test("dashboard live runtime tracks every public dashboard refresh task", () => 
   const tasks = server.runtimeState().tasks;
   assert.ok(tasks.wholeWallet);
   assert.ok(tasks.treasury);
+  assert.ok(tasks.protocolPositionMarks);
   assert.ok(tasks.walletHoldingsSlice);
   assert.ok(tasks.strategyTickStatus);
   assert.ok(tasks.autoKillEvents);
@@ -97,6 +99,8 @@ test("dashboard live status serves the latest public-safe disk snapshot without 
   const server = createDashboardLiveServer({
     port: 9997,
     rootDir,
+    dataDir: rootDir,
+    projectRoot: rootDir,
     refreshEnabled: false,
     statusBuildTimeoutMs: 100,
     buildCurrentContext: () => {
@@ -160,6 +164,8 @@ test("dashboard live status overlays the freshest wallet holdings slice", async 
   const server = createDashboardLiveServer({
     port: 9996,
     rootDir,
+    dataDir: rootDir,
+    projectRoot: rootDir,
     refreshEnabled: false,
   });
   const status = await server.buildLiveStatus({ force: true });
@@ -247,6 +253,8 @@ test("dashboard live wallet overlay does not revive stale external wallet metada
   const server = createDashboardLiveServer({
     port: 9993,
     rootDir,
+    dataDir: rootDir,
+    projectRoot: rootDir,
     refreshEnabled: false,
   });
   const status = await server.buildLiveStatus({ force: true });
@@ -274,6 +282,99 @@ test("dashboard live wallet overlay does not revive stale external wallet metada
   assert.equal(status.capitalSummary.totalUsd, 222);
   assert.equal(status.capitalSummary.executorEstimatedTotalUsd, null);
   assert.equal(status.flow.metrics.assetValueUsd, 222);
+});
+
+test("dashboard live status overlays fresh protocol marks and recalculates deployed assets", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "bob-claw-dashboard-live-marks-"));
+  const now = new Date().toISOString();
+  await writeFile(
+    join(rootDir, "dashboard-status.json"),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      generatedAt: now,
+      walletHoldings: {
+        generatedAt: now,
+        observedAt: now,
+        totalUsd: 100,
+        items: [{ sym: "usdc", usd: 100 }],
+      },
+      capitalSummary: {
+        generatedAt: now,
+        walletUsd: 100,
+        deployedUsd: 5.5,
+        totalUsd: 105.5,
+        currentWalletUsd: 100,
+        protocolDeployedUsd: 5.5,
+        currentTotalUsd: 105.5,
+        assetConfidence: "verified_minimum",
+      },
+      strategy: {
+        merklActivePositions: {
+          items: [
+            {
+              opportunityId: "a",
+              label: "Deposit USDC to YO",
+              chain: "base",
+              protocol: "yo",
+              pair: ["usdc"],
+              capUsd: 5.5,
+            },
+          ],
+        },
+      },
+      flow: { metrics: {}, recentActivities: [], strategyRiskById: {} },
+    })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(rootDir, "merkl-portfolio-positions.jsonl"),
+    `${JSON.stringify({
+      event: "position_opened",
+      status: "open",
+      positionId: "p1",
+      opportunityId: "a",
+      chain: "base",
+      protocolId: "yo",
+      name: "Deposit USDC to YO",
+      amountUsd: 5.5,
+      observedAt: now,
+    })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(rootDir, "protocol-position-marks.jsonl"),
+    `${JSON.stringify({
+      event: "position_marked",
+      status: "open",
+      positionId: "p1",
+      opportunityId: "a",
+      chain: "base",
+      protocolId: "yo",
+      valueUsd: 7.25,
+      observedAt: now,
+      freshness: "fresh",
+      confidence: "verified_current",
+    })}\n`,
+    "utf8",
+  );
+
+  const server = createDashboardLiveServer({
+    port: 9992,
+    rootDir,
+    dataDir: rootDir,
+    projectRoot: rootDir,
+    refreshEnabled: false,
+  });
+  const status = await server.buildLiveStatus({ force: true });
+
+  assert.equal(status.strategy.protocolPositionMarks.markedPositionCount, 1);
+  assert.equal(status.strategy.merklActivePositions.items[0].valueUsd, 7.25);
+  assert.equal(status.strategy.merklActivePositions.items[0].markFreshness, "fresh");
+  assert.equal(status.capitalSummary.protocolDeployedUsd, 7.25);
+  assert.equal(status.capitalSummary.currentTotalUsd, 107.25);
+  assert.equal(status.capitalSummary.systemConfidence, "high");
+  assert.equal(status.liveOverlay.protocolPositionMarks.source, "protocol-position-marks.jsonl");
+  assert.equal(status.liveOverlay.merklActivePositions.source, "merkl-portfolio-positions.jsonl");
 });
 
 test("dashboard live status overlays strategy tick slice without waiting for full status rebuild", async () => {
@@ -399,6 +500,8 @@ test("dashboard live status refreshes active yield estimate at serve time", asyn
   const server = createDashboardLiveServer({
     port: 9995,
     rootDir,
+    dataDir: rootDir,
+    projectRoot: rootDir,
     refreshEnabled: false,
   });
   const status = await server.buildLiveStatus({ force: true });

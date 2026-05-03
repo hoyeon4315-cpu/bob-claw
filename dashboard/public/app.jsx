@@ -1622,6 +1622,39 @@ function WalletBalanceChainLabel({ chainId, label }) {
   );
 }
 
+function statusChipStyle(tone = 'neutral') {
+  if (tone === 'ok') {
+    return { background:'#EAF6EE', color:'var(--green)', border:'0.5px solid rgba(21,128,61,0.16)' };
+  }
+  if (tone === 'warning') {
+    return { background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' };
+  }
+  if (tone === 'critical') {
+    return { background:'#FDECEC', color:'#B42318', border:'0.5px solid rgba(180,35,24,0.16)' };
+  }
+  return { background:'rgba(255,255,255,0.06)', color:'var(--ink-3)', border:'0.5px solid var(--line)' };
+}
+
+function protocolTrackingTone(position = {}) {
+  if (position?.markFailureKind === 'no_reader_no_adapter' || position?.markFailureKind === 'missing_binding_kind') return 'warning';
+  if (position?.markFreshness === 'failed') return 'critical';
+  if (position?.markFreshness === 'expired' || position?.markFreshness === 'stale') return 'warning';
+  if (position?.markSource === 'protocol_position_mark' && (position?.markFreshness === 'fresh' || position?.markFreshness === 'recent')) {
+    return 'ok';
+  }
+  if (position?.markConfidence === 'adapter_missing') return 'warning';
+  return 'neutral';
+}
+
+function protocolTrackingLabel(position = {}) {
+  if (position?.markFailureKind === 'no_reader_no_adapter' || position?.markFailureKind === 'missing_binding_kind') return 'needs adapter';
+  if (position?.markSource === 'protocol_position_mark') {
+    return `tracking ${position?.markFreshness || 'marked'}`;
+  }
+  if (position?.markConfidence === 'adapter_missing') return 'needs adapter';
+  return 'entry only';
+}
+
 function AssetsPane({ refreshTick }) {
   const HOLDINGS = window.HOLDINGS || globalThis.HOLDINGS;
   const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
@@ -1685,6 +1718,24 @@ function AssetsPane({ refreshTick }) {
     : null;
   const estimateGapLabel = Number.isFinite(HOLDINGS?.executorEstimateDeltaUsd) && Math.abs(HOLDINGS.executorEstimateDeltaUsd) >= 1
     ? `plan need above verified ${HOLDINGS.executorEstimateDeltaUsd > 0 ? '+' : ''}${fmtUsd(HOLDINGS.executorEstimateDeltaUsd)}`
+    : null;
+  const systemConfidenceLabel = HOLDINGS?.systemConfidence
+    ? `system confidence ${HOLDINGS.systemConfidence}`
+    : null;
+  const invariantAlertLabel = HOLDINGS?.invariantViolationCount > 0
+    ? `audit alerts ${HOLDINGS.invariantViolationCount}`
+    : 'audit clean';
+  const protocolMarkHealthLabel = Number(HOLDINGS?.currentProtocolMarkCount || 0) > 0 || Number(HOLDINGS?.protocolMarkIssueCount || 0) > 0
+    ? `protocol marks current ${HOLDINGS?.currentProtocolMarkCount || 0} · issues ${HOLDINGS?.protocolMarkIssueCount || 0}`
+    : null;
+  const protocolMarkObservedLabel = HOLDINGS?.latestProtocolMarkObservedAt
+    ? `protocol marks observed ${formatStatusAge(HOLDINGS.latestProtocolMarkObservedAt) || fmtWhen(HOLDINGS.latestProtocolMarkObservedAt)}`
+    : null;
+  const adapterCoverageLabel = HOLDINGS?.adapterCoverageGapCount > 0
+    ? `needs adapter ${HOLDINGS.adapterCoverageGapCount}`
+    : null;
+  const pendingSignerLabel = HOLDINGS?.pendingSignerActionCount > 0
+    ? `signer settling ${HOLDINGS.pendingSignerActionCount}`
     : null;
   const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === 'verified_minimum';
   const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
@@ -1789,6 +1840,34 @@ function AssetsPane({ refreshTick }) {
                 {estimateGapLabel}
               </span>
             )}
+            {systemConfidenceLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(HOLDINGS?.systemConfidence === 'high' ? 'ok' : HOLDINGS?.systemConfidence === 'medium' ? 'warning' : 'critical') }}>
+                {systemConfidenceLabel}
+              </span>
+            )}
+            <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(HOLDINGS?.invariantViolationCount > 0 ? 'warning' : 'ok') }}>
+              {invariantAlertLabel}
+            </span>
+            {protocolMarkHealthLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(Number(HOLDINGS?.protocolMarkIssueCount || 0) > 0 ? 'warning' : 'ok') }}>
+                {protocolMarkHealthLabel}
+              </span>
+            )}
+            {protocolMarkObservedLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('neutral') }}>
+                {protocolMarkObservedLabel}
+              </span>
+            )}
+            {adapterCoverageLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('warning') }}>
+                {adapterCoverageLabel}
+              </span>
+            )}
+            {pendingSignerLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('warning') }}>
+                {pendingSignerLabel}
+              </span>
+            )}
           </div>
         )}
         {pending && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>treasury snapshot pending</div>}
@@ -1867,6 +1946,21 @@ function AssetsPane({ refreshTick }) {
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13.5, fontWeight:500, lineHeight:1.25 }}>{p.name}</div>
                   <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>{p.chain} · {p.protocol}</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
+                    <span style={{ fontSize:9.5, padding:'2px 6px', borderRadius:999, ...statusChipStyle(protocolTrackingTone(p)) }}>
+                      {protocolTrackingLabel(p)}
+                    </span>
+                    {p.markConfidence && (
+                      <span style={{ fontSize:9.5, padding:'2px 6px', borderRadius:999, ...statusChipStyle(p.markConfidence === 'verified_current' ? 'ok' : 'warning') }}>
+                        {String(p.markConfidence).replace(/_/g, ' ')}
+                      </span>
+                    )}
+                    {p.markObservedAt && (
+                      <span style={{ fontSize:9.5, padding:'2px 6px', borderRadius:999, ...statusChipStyle('neutral') }}>
+                        mark {formatStatusAge(p.markObservedAt) || fmtWhen(p.markObservedAt)}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div style={{ textAlign:'right' }}>
                   <div style={{ fontSize:13, fontWeight:600, letterSpacing:-0.2 }}>{fmtUsd(p.usd || 0)}</div>

@@ -4,15 +4,25 @@ import { readFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import process from "node:process";
 import { config } from "../config/env.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildCapitalSummarySlice } from "../status/capital-summary-slice.mjs";
 import { buildLiveYieldSlice, liveYieldMetricFields } from "../status/live-yield-slice.mjs";
+import { buildMerklActivePositions } from "../status/merkl-active-slice.mjs";
+import { buildProtocolPositionMarksSlice } from "../status/protocol-position-marks-slice.mjs";
+import {
+  activeProtocolPositions,
+  latestProtocolMarksByPosition,
+  mergeProtocolMarksIntoPositions,
+} from "../treasury/protocol-position-ledger.mjs";
 
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_STREAM_MS = 1500;
 export const DEFAULT_SNAPSHOT_CACHE_MS = 750;
 export const DEFAULT_REFRESH_TICK_MS = 2000;
 export const DEFAULT_WHOLE_WALLET_REFRESH_MS = 8000;
+export const DEFAULT_PROTOCOL_POSITION_REFRESH_MS = 12000;
 export const DEFAULT_TREASURY_REFRESH_MS = 20000;
 export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 300_000;
 export const DEFAULT_STRATEGY_TICK_REFRESH_MS = 4000;
@@ -73,8 +83,10 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
         return [key, parts.join("=")];
       }),
   );
+  const rootDir = resolve(options["root-dir"] || env.BOB_CLAW_DASHBOARD_PUBLIC_DIR || "dashboard/public");
   return {
-    rootDir: resolve(options["root-dir"] || env.BOB_CLAW_DASHBOARD_PUBLIC_DIR || "dashboard/public"),
+    rootDir,
+    projectRoot: resolve(options["project-root"] || env.BOB_CLAW_PROJECT_ROOT || join(rootDir, "..", "..")),
     port: finiteInteger(options.port || env.BOB_CLAW_DASHBOARD_LIVE_PORT, DEFAULT_PORT),
     streamMs: finiteInteger(options["stream-ms"] || env.BOB_CLAW_DASHBOARD_LIVE_STREAM_MS, DEFAULT_STREAM_MS),
     dataDir: options["data-dir"] || env.BOB_CLAW_DATA_DIR || config.dataDir,
@@ -92,6 +104,10 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
     wholeWalletRefreshMs: finiteInteger(
       options["whole-wallet-refresh-ms"] || env.BOB_CLAW_DASHBOARD_WHOLE_WALLET_REFRESH_MS,
       DEFAULT_WHOLE_WALLET_REFRESH_MS,
+    ),
+    protocolPositionRefreshMs: finiteInteger(
+      options["protocol-position-refresh-ms"] || env.BOB_CLAW_DASHBOARD_PROTOCOL_POSITION_REFRESH_MS,
+      DEFAULT_PROTOCOL_POSITION_REFRESH_MS,
     ),
     treasuryRefreshMs: finiteInteger(
       options["treasury-refresh-ms"] || env.BOB_CLAW_DASHBOARD_TREASURY_REFRESH_MS,
@@ -177,6 +193,21 @@ function timestampMs(value) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function buildAprByOpportunity(slice = null) {
+  const map = {};
+  for (const item of slice?.items || []) {
+    if (!item?.opportunityId || !Number.isFinite(item?.aprPct)) continue;
+    map[item.opportunityId] = item.aprPct;
+  }
+  return map;
+}
+
+function latestObservedAt(items = []) {
+  return items.reduce((latest, item) =>
+    timestampMs(item?.observedAt) >= timestampMs(latest) ? item?.observedAt || latest : latest
+  , null);
+}
+
 function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
   if (!strategyTickStatus || !Array.isArray(strategyTickStatus.strategies)) return status;
   const currentStrategy = status.strategy || {};
@@ -244,8 +275,10 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
   };
 }
 
-async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
+async function applyLiveSliceOverlay(status, { rootDir, dataDir, projectRoot, servedAt }) {
   let nextStatus = status;
+  const previousStrategy = nextStatus?.strategy || status?.strategy || {};
+  const previousCapitalSummary = nextStatus?.capitalSummary || status?.capitalSummary || null;
   const walletHoldings = await loadJsonFromCandidates([
     join(rootDir, "wallet-holdings.json"),
     join(dataDir, "wallet-holdings.json"),
@@ -279,7 +312,7 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
       const capitalSummary = buildCapitalSummarySlice({
         walletHoldings: walletHoldingsWithMetadata,
         merklActivePositions: status?.strategy?.merklActivePositions || null,
-        executorEstimatedAssetValueUsd: status?.capitalSummary?.executorEstimatedTotalUsd ?? null,
+        executorEstimatedAssetValueUsd: status?.capitalSummary?.capitalPlanRefillRequiredUsd ?? null,
         generatedAt: incomingWalletAt || servedAt,
       });
 
@@ -298,6 +331,76 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, servedAt }) {
         },
       };
     }
+  }
+
+  const [merklPositionEvents, protocolPositionMarkEvents, signerAuditRecords] = await Promise.all([
+    readJsonl(dataDir, "merkl-portfolio-positions"),
+    readJsonl(dataDir, "protocol-position-marks"),
+    readSignerAuditLog({ rootDir: projectRoot }),
+  ]);
+  const activeMerklProtocolPositions = activeProtocolPositions(merklPositionEvents);
+  const livePositionEvents =
+    activeMerklProtocolPositions.length > 0 ? activeMerklProtocolPositions : merklPositionEvents;
+  const protocolPositionMarks = protocolPositionMarkEvents.length > 0
+    ? buildProtocolPositionMarksSlice(protocolPositionMarkEvents, {
+        generatedAt: servedAt,
+        activePositionIds: activeMerklProtocolPositions.map((position) => position.positionId),
+      })
+    : previousStrategy.protocolPositionMarks || null;
+  const merklActivePositions = livePositionEvents.length > 0
+    ? buildMerklActivePositions(
+        mergeProtocolMarksIntoPositions(
+          livePositionEvents,
+          latestProtocolMarksByPosition(protocolPositionMarkEvents),
+        ),
+        {
+          generatedAt: servedAt,
+          aprByOpportunity: buildAprByOpportunity(previousStrategy.merklActivePositions),
+        },
+      )
+    : previousStrategy.merklActivePositions || null;
+
+  if (protocolPositionMarks || merklActivePositions || nextStatus?.walletHoldings || status?.walletHoldings || previousCapitalSummary) {
+    const capitalSummary = buildCapitalSummarySlice({
+      walletHoldings: nextStatus?.walletHoldings || status?.walletHoldings || null,
+      merklActivePositions,
+      protocolPositionMarks,
+      executorEstimatedAssetValueUsd: finiteNumberOrNull(
+        previousCapitalSummary?.capitalPlanRefillRequiredUsd,
+        previousCapitalSummary?.executorEstimatedTotalUsd,
+      ),
+      signerAuditRecords,
+      generatedAt: servedAt,
+    });
+    nextStatus = {
+      ...nextStatus,
+      strategy: {
+        ...previousStrategy,
+        ...(nextStatus?.strategy || {}),
+        protocolPositionMarks,
+        merklActivePositions,
+      },
+      capitalSummary,
+      liveOverlay: {
+        ...(nextStatus?.liveOverlay || {}),
+        protocolPositionMarks: protocolPositionMarks
+          ? {
+              source: "protocol-position-marks.jsonl",
+              generatedAt: protocolPositionMarks.generatedAt || null,
+              observedAt: latestObservedAt(protocolPositionMarkEvents),
+              appliedAt: servedAt,
+            }
+          : null,
+        merklActivePositions: merklActivePositions
+          ? {
+              source: "merkl-portfolio-positions.jsonl",
+              generatedAt: merklActivePositions.generatedAt || null,
+              observedAt: latestObservedAt(livePositionEvents),
+              appliedAt: servedAt,
+            }
+          : null,
+      },
+    };
   }
 
   const strategyTickStatus = await loadJsonFromCandidates([
@@ -359,6 +462,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     ...parseDashboardLiveArgs([], process.env),
     ...rawOptions,
     rootDir: resolve(rawOptions.rootDir || parseDashboardLiveArgs([], process.env).rootDir),
+    projectRoot: resolve(rawOptions.projectRoot || parseDashboardLiveArgs([], process.env).projectRoot),
   };
   const tasks = {
     wholeWallet: {
@@ -379,6 +483,20 @@ export function createDashboardLiveServer(rawOptions = {}) {
       label: "treasury inventory",
       script: "src/cli/inventory-treasury.mjs",
       intervalMs: options.treasuryRefreshMs,
+      lastStartedAt: null,
+      lastFinishedAt: null,
+      lastSucceededAt: null,
+      lastFailedAt: null,
+      lastError: null,
+      lastResult: null,
+      running: false,
+    },
+    protocolPositionMarks: {
+      id: "protocolPositionMarks",
+      label: "protocol position marks",
+      script: "src/cli/mark-protocol-positions.mjs",
+      args: ["--write"],
+      intervalMs: options.protocolPositionRefreshMs,
       lastStartedAt: null,
       lastFinishedAt: null,
       lastSucceededAt: null,
@@ -449,6 +567,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
   const taskOrder = [
     tasks.wholeWallet,
     tasks.treasury,
+    tasks.protocolPositionMarks,
     tasks.walletHoldingsSlice,
     tasks.strategyTickStatus,
     tasks.autoKillEvents,
@@ -466,7 +585,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
 
-  for (const task of [tasks.wholeWallet, tasks.treasury, tasks.walletHoldingsSlice]) {
+  for (const task of [tasks.wholeWallet, tasks.treasury, tasks.protocolPositionMarks, tasks.walletHoldingsSlice]) {
     task.timeoutMs = options.refreshTaskTimeoutMs;
   }
 
@@ -568,8 +687,10 @@ export function createDashboardLiveServer(rawOptions = {}) {
 
   async function maybeRunRefreshCycle() {
     if (!options.refreshEnabled || shuttingDown || refreshPromise) return refreshPromise;
-    const dueTasks = taskOrder.filter(taskDue);
-    if (dueTasks.length === 0) return null;
+    const upstreamTasks = taskOrder.filter((task) => task.id !== "statusSnapshot");
+    const dueTasks = upstreamTasks.filter(taskDue);
+    const statusDue = taskDue(tasks.statusSnapshot);
+    if (dueTasks.length === 0 && !statusDue) return null;
     refreshPromise = (async () => {
       await Promise.all(dueTasks.map(async (task) => {
         try {
@@ -578,6 +699,13 @@ export function createDashboardLiveServer(rawOptions = {}) {
           // Task failure is already recorded in the task state and surfaced via health/runtime endpoints.
         }
       }));
+      if (statusDue) {
+        try {
+          await runTask(tasks.statusSnapshot);
+        } catch {
+          // Task failure is already recorded in the task state and surfaced via health/runtime endpoints.
+        }
+      }
     })().finally(() => {
       refreshPromise = null;
     });
@@ -660,6 +788,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     }), {
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+      projectRoot: options.projectRoot,
       servedAt,
     });
     return {
@@ -684,6 +813,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     }), {
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+      projectRoot: options.projectRoot,
       servedAt,
     });
     return {

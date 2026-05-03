@@ -93,6 +93,8 @@ function aggregateByOpportunity(events = []) {
       latestMarkSource: null,
       latestMarkFreshness: null,
       latestMarkConfidence: null,
+      latestMarkFailureKind: null,
+      latestMarkFailureMessage: null,
     };
     current.eventCount += 1;
     current.activePositionCount += 1;
@@ -125,6 +127,10 @@ function aggregateByOpportunity(events = []) {
       }
     } else if (Number.isFinite(event.amountUsd)) {
       current.totalValueUsd += event.amountUsd;
+    }
+    if (event.markFailure && (!current.latestMarkAt || observedAtMs(event.markFailure.observedAt || event.observedAt) >= observedAtMs(current.latestMarkAt))) {
+      current.latestMarkFailureKind = event.markFailure.failureKind || current.latestMarkFailureKind;
+      current.latestMarkFailureMessage = event.markFailure.message || current.latestMarkFailureMessage;
     }
     const entryAprPct = finiteNumber(event.entryAprPct);
     if (Number.isFinite(entryAprPct)) {
@@ -180,7 +186,9 @@ export function buildMerklActivePositions(
       markSource: position.latestMarkSource,
       markObservedAt: position.latestMarkAt,
       markFreshness: position.latestMarkFreshness,
-      markConfidence: position.latestMarkConfidence,
+      markConfidence: position.latestMarkConfidence || (position.latestMarkFailureKind ? "adapter_missing" : null),
+      markFailureKind: position.latestMarkFailureKind,
+      markFailureMessage: position.latestMarkFailureMessage,
       markedPositionCount: position.markedPositionCount ?? 0,
       aprPct: apr.value,
       aprSource: apr.source,

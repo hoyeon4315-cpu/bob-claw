@@ -234,3 +234,96 @@ test("runMarkProtocolPositionMarksCli preview allows missing walletAddress diagn
   assert.equal(summary.failedCount, 1);
   assert.equal(summary.events[0].failureKind, "missing_params");
 });
+
+test("runMarkProtocolPositionMarksCli uses persisted price snapshot for legacy adapter marks", async () => {
+  let fetched = 0;
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    dataDir: "/tmp/bob-claw-protocol-mark-prices",
+    observedAt: OBSERVED_AT,
+    positionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        observedAt: OBSERVED_AT,
+        positionId: "p-weth-vault",
+        chain: "base",
+        protocolId: "compound",
+        bindingKind: "compound_v2_supply_withdraw",
+        cTokenAddress: "0xVault",
+        assetAddress: "0x4200000000000000000000000000000000000006",
+        assetDecimals: 18,
+        assetSymbol: "WETH",
+      },
+    ],
+    walletAddress: WALLET_ADDRESS,
+    contractReader: async ({ functionName }) => {
+      if (functionName === "balanceOf") return 2_000_000_000_000_000_000n;
+      if (functionName === "exchangeRateStored") return 1_000_000_000_000_000_000n;
+      throw new Error(functionName);
+    },
+    readFileImpl: async () => JSON.stringify({
+      schemaVersion: 1,
+      observedAt: OBSERVED_AT,
+      btcUsd: 103000,
+      tokenByKey: {
+        btc: 103000,
+        wbtc: 103000,
+        ethereum: 2500,
+        usd_stable: 1,
+      },
+      nativeByChain: {
+        base: 2500,
+      },
+    }),
+    fetchPrices: async () => {
+      fetched += 1;
+      return {};
+    },
+  });
+
+  assert.equal(fetched, 0);
+  assert.equal(summary.markedCount, 1);
+  assert.equal(summary.events[0].valueUsd, 5000);
+});
+
+test("runMarkProtocolPositionMarksCli skips remote price fetch for stable legacy positions", async () => {
+  let fetched = 0;
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    dataDir: "/tmp/bob-claw-protocol-mark-stables",
+    observedAt: OBSERVED_AT,
+    positionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        observedAt: OBSERVED_AT,
+        positionId: "p-usdc-vault",
+        chain: "base",
+        protocolId: "compound",
+        bindingKind: "compound_v2_supply_withdraw",
+        cTokenAddress: "0xVault",
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        assetDecimals: 6,
+        assetSymbol: "USDC",
+      },
+    ],
+    walletAddress: WALLET_ADDRESS,
+    contractReader: async ({ functionName }) => {
+      if (functionName === "balanceOf") return 5_100_000n;
+      if (functionName === "exchangeRateStored") return 1_000_000_000_000_000_000n;
+      throw new Error(functionName);
+    },
+    readFileImpl: async () => {
+      throw new Error("price snapshot should not be read for stable-only marks");
+    },
+    fetchPrices: async () => {
+      fetched += 1;
+      return {};
+    },
+  });
+
+  assert.equal(fetched, 0);
+  assert.equal(summary.markedCount, 1);
+  assert.equal(summary.events[0].valueUsd, 5.1);
+});

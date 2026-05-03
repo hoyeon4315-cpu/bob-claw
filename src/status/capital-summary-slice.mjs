@@ -1,3 +1,5 @@
+import { buildReconciliationSummary } from "./reconciliation-loop.mjs";
+
 function positionAssetSymbol(position = {}) {
   const pair = Array.isArray(position.pair) ? position.pair : [];
   return String(pair[0] || "position").toLowerCase();
@@ -27,6 +29,8 @@ function deployedPositionItem(position = {}) {
     markFreshness: position.markFreshness || null,
     markConfidence: position.markConfidence || null,
     markObservedAt: position.markObservedAt || null,
+    markFailureKind: position.markFailureKind || null,
+    markFailureMessage: position.markFailureMessage || null,
   };
 }
 
@@ -75,6 +79,7 @@ export function buildCapitalSummarySlice({
   merklActivePositions = null,
   protocolPositionMarks = null,
   executorEstimatedAssetValueUsd = null,
+  signerAuditRecords = [],
   generatedAt = new Date().toISOString(),
 } = {}) {
   const walletItems = Array.isArray(walletHoldings?.items) ? walletHoldings.items : [];
@@ -167,7 +172,7 @@ export function buildCapitalSummarySlice({
   const assetFormula = everyProtocolPositionMarked
     ? "current_wallet_plus_marked_protocol_positions"
     : "current_wallet_plus_tracked_protocol_positions";
-  return {
+  const baseSummary = {
     schemaVersion: 1,
     generatedAt,
     walletUsd,
@@ -224,5 +229,16 @@ export function buildCapitalSummarySlice({
     activePositionCount: positionItems.length,
     walletItems,
     positionItems,
+  };
+  const reconciliation = buildReconciliationSummary({
+    capitalSummary: baseSummary,
+    protocolPositionMarks,
+    merklActivePositions,
+    signerAuditRecords,
+    generatedAt,
+  });
+  return {
+    ...baseSummary,
+    ...reconciliation,
   };
 }
