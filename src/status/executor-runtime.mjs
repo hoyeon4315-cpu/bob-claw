@@ -1,5 +1,10 @@
 import { access } from "node:fs/promises";
 import { getEnv, getNumberEnv } from "../config/env.mjs";
+import {
+  readKillSwitchStatus,
+  resolveKillSwitchAuditPath,
+  resolveKillSwitchPath,
+} from "../executor/policy/kill-switch.mjs";
 import { DEFAULT_SIGNER_SOCKET_PATH } from "../executor/signer/client.mjs";
 import { readSignerHealth } from "../executor/signer/client.mjs";
 import { evaluateWatchdogHeartbeat, readHeartbeat, writeHeartbeat } from "../executor/watchdog/heartbeat.mjs";
@@ -19,6 +24,7 @@ export function summarizeExecutorRuntime({
   heartbeatPath = "./state/executor-heartbeat.json",
   signerSocketPath = DEFAULT_SIGNER_SOCKET_PATH,
   signerSocketPresent = false,
+  killSwitch = null,
   ttlMs = 60_000,
   now = new Date().toISOString(),
 } = {}) {
@@ -38,6 +44,18 @@ export function summarizeExecutorRuntime({
     signerSocketPresent,
     signerStatus: heartbeat?.status || (signerSocketPresent ? "socket_present" : "missing_socket"),
     lastCommand: heartbeat?.lastCommand || null,
+    killSwitch: killSwitch
+      ? {
+          killSwitchPath: killSwitch.killSwitchPath || null,
+          halted: killSwitch.halted === true,
+          fileMtime: killSwitch.fileMtime || null,
+          activeReason: killSwitch.activeReason || null,
+          activeActor: killSwitch.activeActor || null,
+          activeSince: killSwitch.activeSince || null,
+          triggers: Array.isArray(killSwitch.triggers) ? killSwitch.triggers : [],
+          lastAudit: killSwitch.lastAudit || null,
+        }
+      : null,
     watchdog,
     runtimeStatus,
     available: runtimeStatus === "healthy",
@@ -48,10 +66,13 @@ export async function loadExecutorRuntime({
   now = new Date().toISOString(),
   heartbeatPath = getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
   signerSocketPath = getEnv("EXECUTOR_SIGNER_SOCKET_PATH", DEFAULT_SIGNER_SOCKET_PATH),
+  killSwitchPath = getEnv("KILL_SWITCH_PATH", resolveKillSwitchPath()),
+  killSwitchAuditPath = getEnv("KILL_SWITCH_AUDIT_PATH", resolveKillSwitchAuditPath()),
   ttlMs = getNumberEnv("EXECUTOR_WATCHDOG_TTL_MS", 60_000),
   healthReader = readSignerHealth,
   heartbeatReader = readHeartbeat,
   heartbeatWriter = writeHeartbeat,
+  killSwitchStatusReader = readKillSwitchStatus,
 } = {}) {
   let heartbeat = await heartbeatReader(heartbeatPath);
   const effectiveSocketPath = heartbeat?.socketPath || signerSocketPath;
@@ -78,6 +99,10 @@ export async function loadExecutorRuntime({
       // Keep the stale/missing heartbeat result when the socket cannot answer health checks.
     }
   }
+  const killSwitch = await killSwitchStatusReader({
+    killSwitchPath,
+    auditPath: killSwitchAuditPath,
+  });
 
   return summarizeExecutorRuntime({
     heartbeat,
@@ -86,5 +111,6 @@ export async function loadExecutorRuntime({
     signerSocketPresent,
     ttlMs,
     now,
+    killSwitch,
   });
 }

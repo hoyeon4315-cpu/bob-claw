@@ -19,11 +19,14 @@
  */
 
 import process from "node:process";
-import { existsSync, statSync } from "node:fs";
-import { mkdir, appendFile, writeFile, rm, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, appendFile, writeFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { getEnv } from "../config/env.mjs";
-import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
+import {
+  readKillSwitchStatus,
+  resolveKillSwitchPath,
+} from "../executor/policy/kill-switch.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -52,36 +55,6 @@ async function appendAudit(auditPath, record) {
   await appendFile(resolve(auditPath), JSON.stringify(record) + "\n", "utf8");
 }
 
-async function readLastAudit(auditPath) {
-  try {
-    const raw = await readFile(resolve(auditPath), "utf8");
-    const lines = raw.split("\n").filter((line) => line.trim().length > 0);
-    if (lines.length === 0) return null;
-    return JSON.parse(lines[lines.length - 1]);
-  } catch (err) {
-    if (err && err.code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-function buildStatus(killSwitchPath, lastAudit) {
-  const exists = killSwitchPath ? existsSync(killSwitchPath) : false;
-  let mtime = null;
-  if (exists) {
-    try {
-      mtime = statSync(killSwitchPath).mtime.toISOString();
-    } catch {
-      mtime = null;
-    }
-  }
-  return {
-    killSwitchPath,
-    halted: exists,
-    fileMtime: mtime,
-    lastAudit,
-  };
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -101,19 +74,24 @@ async function main() {
     process.exit(2);
   }
 
-  const lastAudit = await readLastAudit(args.auditPath);
-
   if (args.status) {
-    const status = buildStatus(args.killSwitchPath, lastAudit);
+    const status = await readKillSwitchStatus({
+      killSwitchPath: args.killSwitchPath,
+      auditPath: args.auditPath,
+    });
     if (args.json) {
       console.log(JSON.stringify(status, null, 2));
     } else {
       console.log(`kill-switch: ${status.halted ? "HALTED" : "RUNNING"}`);
       console.log(`  path: ${status.killSwitchPath}`);
       if (status.fileMtime) console.log(`  mtime: ${status.fileMtime}`);
-      if (lastAudit) {
-        console.log(`  last toggle: ${lastAudit.action} @ ${lastAudit.ts} by ${lastAudit.actor}`);
-        console.log(`    reason: ${lastAudit.reason}`);
+      if (status.halted && status.activeReason) {
+        console.log(`  active reason: ${status.activeReason}`);
+        if (status.activeActor) console.log(`  active actor: ${status.activeActor}`);
+      }
+      if (status.lastAudit) {
+        console.log(`  last toggle: ${status.lastAudit.action} @ ${status.lastAudit.ts} by ${status.lastAudit.actor}`);
+        console.log(`    reason: ${status.lastAudit.reason}`);
       }
     }
     return;

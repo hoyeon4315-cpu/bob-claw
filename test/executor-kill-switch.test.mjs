@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -7,6 +7,9 @@ import {
   appendKillSwitchAuditRecord,
   buildKillSwitchAuditRecord,
   checkKillSwitch,
+  parseKillSwitchFileContents,
+  readKillSwitchStatus,
+  readLatestKillSwitchAuditRecord,
   resolveKillSwitchAuditPath,
   resolveKillSwitchPath,
 } from "../src/executor/policy/kill-switch.mjs";
@@ -62,4 +65,97 @@ test("kill-switch audit helpers append jsonl records", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("kill-switch audit reader filters to the requested kill-switch path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-audit-filter-"));
+  try {
+    const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
+    const productionPath = join(root, "prod.kill");
+    const testPath = join(root, "test.kill");
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "halt",
+      reason: "auto_kill:failure_burst_per_strategy",
+      actor: "risk:auto-kill",
+      killSwitchPath: productionPath,
+      previousState: "running",
+      now: "2026-05-04T18:16:45.378Z",
+    }), { auditPath });
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "halt",
+      reason: "watchdog_heartbeat_stale",
+      actor: "executor:watchdog",
+      killSwitchPath: testPath,
+      previousState: "running",
+      now: "2026-05-04T21:10:26.618Z",
+    }), { auditPath });
+
+    const latest = await readLatestKillSwitchAuditRecord({
+      auditPath,
+      killSwitchPath: productionPath,
+    });
+
+    assert.equal(latest.killSwitchPath, productionPath);
+    assert.equal(latest.reason, "auto_kill:failure_burst_per_strategy");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("kill-switch status reads current file payload and matching audit reason", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-status-"));
+  try {
+    const killSwitchPath = join(root, "KILL_SWITCH");
+    const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
+    await writeFile(killSwitchPath, JSON.stringify({
+      schemaVersion: 1,
+      evaluatedAt: "2026-05-04T18:16:45.378Z",
+      triggers: [
+        {
+          trigger: "failure_burst_per_strategy",
+          strategyId: "gateway-btc-funding-transfer",
+          failureCount: 6,
+          threshold: 5,
+          windowMs: 300000,
+        },
+      ],
+      killSwitchPath,
+      alreadyArmed: false,
+    }, null, 2));
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "halt",
+      reason: "auto_kill:failure_burst_per_strategy",
+      actor: "risk:auto-kill",
+      killSwitchPath,
+      previousState: "running",
+      now: "2026-05-04T18:16:45.378Z",
+    }), { auditPath });
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "halt",
+      reason: "watchdog_heartbeat_stale",
+      actor: "executor:watchdog",
+      killSwitchPath: join(root, "TEST_ONLY.kill"),
+      previousState: "running",
+      now: "2026-05-04T21:10:26.618Z",
+    }), { auditPath });
+
+    const status = await readKillSwitchStatus({ killSwitchPath, auditPath });
+
+    assert.equal(status.halted, true);
+    assert.equal(status.activeReason, "auto_kill:failure_burst_per_strategy");
+    assert.equal(status.activeActor, "risk:auto-kill");
+    assert.equal(status.triggers.length, 1);
+    assert.equal(status.lastAudit.reason, "auto_kill:failure_burst_per_strategy");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("kill-switch parser handles operator key-value payloads", () => {
+  const parsed = parseKillSwitchFileContents(
+    "halted_at=2026-05-05T00:00:00.000Z\nreason=manual halt\nactor=operator-via-llm\n",
+  );
+  assert.equal(parsed.halted_at, "2026-05-05T00:00:00.000Z");
+  assert.equal(parsed.reason, "manual halt");
+  assert.equal(parsed.actor, "operator-via-llm");
 });
