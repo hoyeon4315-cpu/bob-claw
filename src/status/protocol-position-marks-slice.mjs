@@ -1,4 +1,5 @@
 import { freshnessForObservedAt } from "../treasury/protocol-position-mark-schema.mjs";
+import { detectTransientDegradation } from "../treasury/protocol-position-ledger.mjs";
 
 function observedAtMs(value) {
   const ms = Date.parse(value || "");
@@ -58,19 +59,32 @@ export function buildProtocolPositionMarksSlice(
     : null;
   const latest = latestMarks(marks)
     .filter((mark) => !activeIdSet || activeIdSet.has(mark.positionId));
+  
+  // Detect transient degradation: latest failure with recent prior success within grace window
+  const latestMarkMap = new Map();
+  for (const mark of latest) {
+    latestMarkMap.set(mark.positionId, mark);
+  }
+  const transientDegradations = detectTransientDegradation(marks, latestMarkMap);
+  
   const byChain = {};
   let totalMarkedUsd = 0;
   let markedPositionCount = 0;
   let failedPositionCount = 0;
   let stalePositionCount = 0;
   let expiredPositionCount = 0;
+  let transientDegradedCount = 0;
 
   const items = latest.map((mark) => {
     const freshness = markFreshness(mark, generatedAt);
     const valueUsd = finiteNumber(mark.valueUsd);
     const successful = isSuccessfulMarkedPosition(mark);
+    const isTransientDegraded = transientDegradations.has(mark.positionId);
 
-    if (mark.event === "position_mark_failed" || freshness === "failed") failedPositionCount += 1;
+    if (mark.event === "position_mark_failed" || freshness === "failed") {
+      failedPositionCount += 1;
+      if (isTransientDegraded) transientDegradedCount += 1;
+    }
     if (freshness === "stale") stalePositionCount += 1;
     if (freshness === "expired") expiredPositionCount += 1;
 
@@ -99,6 +113,7 @@ export function buildProtocolPositionMarksSlice(
       adapterId: mark.adapterId || null,
       failureKind: mark.failureKind || null,
       message: mark.message || null,
+      isTransientDegraded,
     };
   });
 
@@ -111,6 +126,14 @@ export function buildProtocolPositionMarksSlice(
       ? "verified_current"
       : "verified_minimum";
 
+  const transientDegradedWarning = transientDegradedCount > 0
+    ? {
+        message: `${transientDegradedCount} protocol position mark(s) experienced transient RPC failures, but recent successful observations available.`,
+        count: transientDegradedCount,
+        observedAt: new Date().toISOString(),
+      }
+    : null;
+
   return {
     schemaVersion: 1,
     generatedAt,
@@ -120,8 +143,10 @@ export function buildProtocolPositionMarksSlice(
     failedPositionCount,
     stalePositionCount,
     expiredPositionCount,
+    transientDegradedCount,
     totalMarkedUsd: roundUsd(totalMarkedUsd),
     confidence,
+    transientDegradedWarning,
     byChain,
     items,
   };

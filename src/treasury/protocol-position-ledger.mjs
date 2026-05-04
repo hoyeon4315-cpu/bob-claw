@@ -121,6 +121,33 @@ export function activeProtocolPositions(events = []) {
     .sort((left, right) => observedAtMs(left.observedAt) - observedAtMs(right.observedAt));
 }
 
+function isRetryableFailure(failureKind) {
+  return failureKind === "rpc_failed" || failureKind === "reader_throw";
+}
+
+function getRecentSuccessIfTransient(marks = [], latestMark) {
+  if (!latestMark || latestMark.event !== "position_mark_failed" || !isRetryableFailure(latestMark.failureKind)) {
+    return null;
+  }
+
+  const positionId = latestMark?.positionId;
+  const latestFailureMs = observedAtMs(latestMark.observedAt);
+  const GRACE_WINDOW_MS = 5 * 60 * 1000; // 5 min grace for isolated transient failures
+
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const mark = marks[i];
+    if (mark?.positionId !== positionId || !mark.observedAt) continue;
+    if (mark.event !== "position_marked") continue;
+
+    const successMs = observedAtMs(mark.observedAt);
+    if (successMs >= latestFailureMs) continue; // must be before the failure
+    if (latestFailureMs - successMs > GRACE_WINDOW_MS) break; // beyond grace window
+
+    return mark;
+  }
+  return null;
+}
+
 export function latestProtocolMarksByPosition(marks = []) {
   const latest = new Map();
 
@@ -135,6 +162,25 @@ export function latestProtocolMarksByPosition(marks = []) {
   }
 
   return latest;
+}
+
+export function detectTransientDegradation(marks = [], latestMarksByPosition = new Map()) {
+  const transientByPosition = new Map();
+
+  for (const [positionId, latestMark] of latestMarksByPosition.entries()) {
+    const recentSuccess = getRecentSuccessIfTransient(marks, latestMark);
+    if (recentSuccess) {
+      transientByPosition.set(positionId, {
+        positionId,
+        latestFailure: latestMark,
+        recentSuccess,
+        failureKind: latestMark.failureKind,
+        observedAt: latestMark.observedAt,
+      });
+    }
+  }
+
+  return transientByPosition;
 }
 
 export function mergeProtocolMarksIntoPositions(positions = [], marksByPosition = new Map()) {

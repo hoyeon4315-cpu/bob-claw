@@ -14,13 +14,17 @@ const TOKEN_ABI = [
 export async function readAaveV3({ chain, walletAddress, params = {}, now = new Date(), _providerFactory } = {}) {
   const {
     poolAddress,
-    aTokenAddress,
-    underlyingTokenAddress,
+    aTokenAddress: rawATokenAddress,
+    underlyingTokenAddress: rawUnderlyingTokenAddress,
     variableDebtTokenAddress,
     opportunityId,
     strategyId,
-    marketLabel = aTokenAddress,
+    protocolId = "aave-v3",
+    bindingKind = "aave_v3_supply_withdraw",
+    marketLabel = params.marketName || rawATokenAddress,
   } = params;
+  const aTokenAddress = rawATokenAddress || params.shareTokenAddress || params.vaultAddress;
+  const underlyingTokenAddress = rawUnderlyingTokenAddress || params.assetAddress;
   if (!chain || !walletAddress || !poolAddress || !aTokenAddress) {
     return makeReaderError({ error: "missing chain/walletAddress/poolAddress/aTokenAddress", code: "missing_params" });
   }
@@ -50,12 +54,12 @@ export async function readAaveV3({ chain, walletAddress, params = {}, now = new 
     const ltv = ltvRaw !== undefined && ltvRaw !== null ? Number(ltvRaw) / 1e4 : null;
     const liqThreshold = liqRaw !== undefined && liqRaw !== null ? Number(liqRaw) / 1e4 : null;
     const position = {
-      positionId: defaultPositionId({ chain, protocolId: "aave-v3", walletAddress, marketKey: String(marketLabel).toLowerCase() }),
+      positionId: defaultPositionId({ chain, protocolId, walletAddress, marketKey: String(marketLabel).toLowerCase() }),
       opportunityId: opportunityId || null,
       strategyId: strategyId || null,
       walletAddress,
-      bindingKind: "aave_v3_supply_withdraw",
-      protocolId: "aave-v3",
+      bindingKind,
+      protocolId,
       adapterId: "aave-v3",
       chain,
       family: "lending_loop",
@@ -92,6 +96,6 @@ async function loadContract({ chain, address, abi, _providerFactory }) {
 
 export const aaveV3ReaderRegistration = {
   id: "aave-v3",
-  bindingKinds: ["aave_v3_supply_withdraw", "aave_v3_borrow_repay"],
+  bindingKinds: ["aave_v3_supply_withdraw", "aave_v3_pool_supply_withdraw", "aave_v3_borrow_repay"],
   reader: readAaveV3,
 };

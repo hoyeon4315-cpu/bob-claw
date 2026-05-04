@@ -600,6 +600,52 @@ test("dashboard live health and readiness agree while status snapshot refresh is
   assert.match(health.tasks.statusSnapshot.lastError?.message || "", /timed out/u);
 });
 
+test("dashboard live runtime surfaces protocol mark summary warnings as degraded health", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "bob-claw-dashboard-live-mark-warning-"));
+  await writeFile(
+    join(rootDir, "dashboard-status.json"),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      generatedAt: "2026-05-02T00:00:00.000Z",
+      overall: { liveTrading: "ALLOWED" },
+    })}\n`,
+    "utf8",
+  );
+
+  const server = createDashboardLiveServer({
+    port: await unusedPort(),
+    rootDir,
+    dataDir: rootDir,
+    projectRoot: rootDir,
+    refreshEnabled: true,
+    refreshTickMs: 10,
+    wholeWalletRefreshMs: 60_000,
+    treasuryRefreshMs: 60_000,
+    strategyTickRefreshMs: 60_000,
+    autoKillRefreshMs: 60_000,
+    statusSnapshotRefreshMs: 60_000,
+    runNodeScript: (script) => {
+      if (script === "src/cli/mark-protocol-positions.mjs") {
+        return Promise.resolve({
+          status: 0,
+          stdout: JSON.stringify({ markedCount: 0, failedCount: 2, totalValueUsd: 0, events: [] }),
+          stderr: "",
+        });
+      }
+      return Promise.resolve({ status: 0, stdout: "", stderr: "" });
+    },
+  });
+
+  const local = await server.start();
+  await waitFor(() => Boolean(server.runtimeState().tasks.protocolPositionMarks.lastWarning));
+  const health = await fetch(`${local.localUrl}/healthz`).then((response) => response.json());
+  await server.close();
+
+  assert.equal(health.ready, true);
+  assert.equal(health.readiness.degradedTasks.includes("protocolPositionMarks"), true);
+  assert.match(health.tasks.protocolPositionMarks.lastWarning?.message || "", /failed/u);
+});
+
 test("dashboard live health probe uses cached readiness without kicking due status refresh", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "bob-claw-dashboard-live-health-cache-"));
   await writeFile(

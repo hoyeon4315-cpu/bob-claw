@@ -457,6 +457,24 @@ function commandSummary(result = {}) {
   };
 }
 
+function parseProtocolMarkTaskWarning(result = {}) {
+  try {
+    const summary = JSON.parse(String(result.stdout || "").trim() || "{}");
+    const failedCount = Number(summary?.failedCount || 0);
+    if (failedCount <= 0) return null;
+    return {
+      message: `${failedCount} protocol position marks failed during the latest refresh.`,
+      observedAt: new Date().toISOString(),
+      details: {
+        failedCount,
+        markedCount: Number(summary?.markedCount || 0),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function createDashboardLiveServer(rawOptions = {}) {
   const options = {
     ...parseDashboardLiveArgs([], process.env),
@@ -475,6 +493,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -488,6 +507,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -502,6 +522,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -515,6 +536,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -530,6 +552,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -545,6 +568,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -560,6 +584,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: null,
       lastFailedAt: null,
       lastError: null,
+      lastWarning: null,
       lastResult: null,
       running: false,
     },
@@ -659,6 +684,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       task.lastResult = commandSummary(result);
       task.lastSucceededAt = task.lastResult.observedAt;
       task.lastError = null;
+      task.lastWarning = task.id === "protocolPositionMarks" ? parseProtocolMarkTaskWarning(result) : null;
       lastStatusPayload = null;
       lastStatusBuiltAtMs = 0;
       return result;
@@ -724,6 +750,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastSucceededAt: task.lastSucceededAt,
       lastFailedAt: task.lastFailedAt,
       lastError: task.lastError ? Object.freeze({ ...task.lastError }) : null,
+      lastWarning: task.lastWarning ? Object.freeze({ ...task.lastWarning }) : null,
       lastResult: task.lastResult ? Object.freeze({ ...task.lastResult }) : null,
     });
   }
@@ -746,7 +773,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       blockers.push("live_transport_unavailable");
     }
     for (const task of Object.values(taskSnapshots)) {
-      if (task.lastError) degradedTasks.push(task.id);
+      if (task.lastError || task.lastWarning) degradedTasks.push(task.id);
     }
     const transportDegraded = [];
     if (status?.liveTransport?.warning) transportDegraded.push("status_build_warning");

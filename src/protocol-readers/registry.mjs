@@ -6,6 +6,7 @@
 // Step B (later PR): legacy adapters become wrappers that call into new readers.
 
 import { makeReaderError, makeReaderResult, validateNormalizedPosition, isReaderResult } from "./spec.mjs";
+import { canonicalBindingKind } from "./binding-kind.mjs";
 
 import { resolveProtocolPositionAdapter } from "../treasury/protocol-position-adapter-registry.mjs";
 
@@ -30,7 +31,7 @@ export function getReader(id) {
 }
 
 export function resolveReaderForBinding(bindingKind) {
-  const id = READERS_BY_BINDING.get(bindingKind);
+  const id = READERS_BY_BINDING.get(canonicalBindingKind(bindingKind));
   return id ? READERS.get(id) : null;
 }
 

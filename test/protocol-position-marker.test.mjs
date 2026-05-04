@@ -32,6 +32,7 @@ test("resolveProtocolPositionAdapter maps current lending bindings", () => {
     resolveProtocolPositionAdapter({ bindingKind: "compound_v2_supply_withdraw" }).id,
     "compound-v2",
   );
+  assert.equal(resolveProtocolPositionAdapter({ bindingKind: "aave_v3_pool_supply_withdraw" }).id, "aave-v3");
   assert.equal(resolveProtocolPositionAdapter({ bindingKind: "unknown" }), null);
 });
 
@@ -233,6 +234,150 @@ test("runMarkProtocolPositionMarksCli preview allows missing walletAddress diagn
   assert.equal(summary.markedCount, 0);
   assert.equal(summary.failedCount, 1);
   assert.equal(summary.events[0].failureKind, "missing_params");
+});
+
+test("runMarkProtocolPositionMarksCli writes reader-backed logical marks with USD hydration", async () => {
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    observedAt: OBSERVED_AT,
+    positionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        observedAt: OBSERVED_AT,
+        positionId: "merkl:base:yo-opportunity:0xentry",
+        opportunityId: "yo-opportunity",
+        chain: "base",
+        protocolId: "yo",
+        bindingKind: "erc4626_vault_supply_withdraw",
+        vaultAddress: "0xVault",
+        shareTokenAddress: "0xVault",
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      },
+    ],
+    walletAddress: WALLET_ADDRESS,
+    readerProviderFactory: ({ address }) => {
+      if (address === "0xVault") {
+        return {
+          balanceOf: async () => 5_000_000n,
+          convertToAssets: async () => 5_100_000n,
+          asset: async () => "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          decimals: async () => 6,
+          symbol: async () => "YO-USDC",
+        };
+      }
+      return {
+        decimals: async () => 6,
+      };
+    },
+    fetchPrices: async () => {
+      throw new Error("stable reader-backed marks should not fetch remote prices");
+    },
+  });
+
+  assert.equal(summary.markedCount, 1);
+  assert.equal(summary.failedCount, 0);
+  assert.equal(
+    summary.events[0].positionId,
+    "protocol:base:yo:yo-opportunity:erc4626_vault_supply_withdraw:0xvault",
+  );
+  assert.equal(summary.events[0].markSource, "protocol_reader");
+  assert.equal(summary.events[0].valueUsd, 5.1);
+});
+
+test("runMarkProtocolPositionMarksCli supports aave_v3 pool bindings through the reader path", async () => {
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    observedAt: OBSERVED_AT,
+    positionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        observedAt: OBSERVED_AT,
+        positionId: "merkl:ethereum:aave-opportunity:0xentry",
+        opportunityId: "aave-opportunity",
+        chain: "ethereum",
+        protocolId: "aave",
+        bindingKind: "aave_v3_pool_supply_withdraw",
+        poolAddress: "0xPool",
+        vaultAddress: "0xAToken",
+        shareTokenAddress: "0xAToken",
+        assetAddress: "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+        marketName: "proto_mainnet_v3",
+      },
+    ],
+    walletAddress: WALLET_ADDRESS,
+    readerProviderFactory: ({ address }) => {
+      if (address === "0xPool") {
+        return {
+          getUserAccountData: async () => ({ healthFactor: 2_000000000000000000n, ltv: 7500n, currentLiquidationThreshold: 8000n }),
+        };
+      }
+      if (address === "0xAToken") {
+        return {
+          balanceOf: async () => 25_000000000000000000n,
+          decimals: async () => 18,
+          symbol: async () => "aEthRLUSD",
+        };
+      }
+      throw new Error(`unexpected address ${address}`);
+    },
+    fetchPrices: async () => {
+      throw new Error("known aave asset marks should not fetch remote prices");
+    },
+  });
+
+  assert.equal(summary.markedCount, 1);
+  assert.equal(summary.failedCount, 0);
+  assert.equal(summary.events[0].bindingKind, "aave_v3_pool_supply_withdraw");
+  assert.equal(summary.events[0].protocolId, "aave");
+  assert.equal(summary.events[0].valueUsd, 25);
+});
+
+test("runMarkProtocolPositionMarksCli falls back to the legacy adapter after retryable reader rpc failures", async () => {
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    observedAt: OBSERVED_AT,
+    positionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        observedAt: OBSERVED_AT,
+        positionId: "merkl:base:yo-opportunity:0xentry",
+        opportunityId: "yo-opportunity",
+        chain: "base",
+        protocolId: "yo",
+        bindingKind: "erc4626_vault_supply_withdraw",
+        vaultAddress: "0xVault",
+        shareTokenAddress: "0xVault",
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        assetDecimals: 6,
+        assetSymbol: "USDC",
+      },
+    ],
+    walletAddress: WALLET_ADDRESS,
+    readerProviderFactory: () => ({
+      balanceOf: async () => {
+        throw new Error("reader rpc exploded");
+      },
+    }),
+    contractReader: async ({ functionName }) => {
+      if (functionName === "balanceOf") return 5_000_000n;
+      if (functionName === "convertToAssets") return 5_100_000n;
+      if (functionName === "asset") return "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+      if (functionName === "decimals") return 6;
+      if (functionName === "symbol") return "USDC";
+      throw new Error(functionName);
+    },
+    fetchPrices: async () => {
+      throw new Error("legacy stable fallback should not fetch remote prices");
+    },
+  });
+
+  assert.equal(summary.markedCount, 1);
+  assert.equal(summary.failedCount, 0);
+  assert.equal(summary.events[0].markSource, "onchain_erc4626_convert_to_assets");
+  assert.equal(summary.events[0].valueUsd, 5.1);
 });
 
 test("runMarkProtocolPositionMarksCli uses persisted price snapshot for legacy adapter marks", async () => {

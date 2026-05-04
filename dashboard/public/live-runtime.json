@@ -1,7 +1,7 @@
 {
-  "enabled": false,
-  "origin": null,
-  "statusUrl": null,
-  "eventsUrl": null,
-  "updatedAt": "2026-05-03T07:47:51.657Z"
+  "enabled": true,
+  "origin": "https://park-grew-inspector-millions.trycloudflare.com",
+  "statusUrl": "https://park-grew-inspector-millions.trycloudflare.com/api/live-status",
+  "eventsUrl": "https://park-grew-inspector-millions.trycloudflare.com/api/live-events",
+  "updatedAt": "2026-05-04T03:21:56.532Z"
 }

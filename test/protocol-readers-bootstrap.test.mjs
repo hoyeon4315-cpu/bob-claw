@@ -7,7 +7,7 @@ import {
   _resetForTesting,
 } from "../src/protocol-readers/registry.mjs";
 import { bootstrapReaders, _resetBootstrap } from "../src/protocol-readers/bootstrap.mjs";
-import { dispatchPosition } from "../src/protocol-readers/dispatch.mjs";
+import { buildReaderParams, dispatchPosition } from "../src/protocol-readers/dispatch.mjs";
 
 function freshBootstrap() {
   _resetForTesting();
@@ -31,6 +31,7 @@ test("bootstrapReaders covers expected bindingKinds", () => {
     "morpho_metamorpho_supply_withdraw",
     "yo_protocol_vault_deposit_withdraw",
     "aave_v3_supply_withdraw",
+    "aave_v3_pool_supply_withdraw",
     "aave_v3_borrow_repay",
     "beefy_vault_deposit_withdraw",
     "pendle_market_swap",
@@ -65,6 +66,28 @@ test("dispatchPosition routes erc4626 binding to reader", async () => {
   assert.equal(dispatch.id, "erc4626");
   assert.equal(dispatch.result.ok, false);
   assert.equal(dispatch.result.code, "missing_params");
+});
+
+test("buildReaderParams hoists live top-level fields into canonical reader params", () => {
+  const params = buildReaderParams({
+    bindingKind: "aave_v3_pool_supply_withdraw",
+    vaultAddress: "0xVault",
+    shareTokenAddress: "0xAToken",
+    poolAddress: "0xPool",
+    poolAddressProviderAddress: "0xProvider",
+    assetAddress: "0xAsset",
+    marketName: "proto_mainnet_v3",
+    assetDecimals: 18,
+  });
+
+  assert.equal(params.vaultAddress, "0xVault");
+  assert.equal(params.aTokenAddress, "0xAToken");
+  assert.equal(params.shareTokenAddress, "0xAToken");
+  assert.equal(params.poolAddress, "0xPool");
+  assert.equal(params.poolAddressProviderAddress, "0xProvider");
+  assert.equal(params.underlyingTokenAddress, "0xAsset");
+  assert.equal(params.marketLabel, "proto_mainnet_v3");
+  assert.equal(params.underlyingDecimals, 18);
 });
 
 test("dispatchPosition unknown bindingKind does not throw", async () => {
@@ -110,6 +133,26 @@ test("dispatchPosition aave_v3 binding routes to aave-v3 reader", async () => {
   });
   assert.equal(dispatch.kind, "reader");
   assert.equal(dispatch.id, "aave-v3");
+});
+
+test("dispatchPosition canonicalizes aave_v3 pool bindings to the aave-v3 reader", async () => {
+  freshBootstrap();
+  const dispatch = await dispatchPosition({
+    position: {
+      bindingKind: "aave_v3_pool_supply_withdraw",
+      protocolId: "aave",
+      chain: "ethereum",
+      shareTokenAddress: "0xAToken",
+      assetAddress: "0xAsset",
+      poolAddress: "0xPool",
+    },
+    chain: "ethereum",
+    walletAddress: null,
+  });
+  assert.equal(dispatch.kind, "reader");
+  assert.equal(dispatch.id, "aave-v3");
+  assert.equal(dispatch.result.ok, false);
+  assert.equal(dispatch.result.code, "missing_params");
 });
 
 test("dispatchPosition legacy fallback for compound-v2 (no reader, has legacy adapter)", async () => {
