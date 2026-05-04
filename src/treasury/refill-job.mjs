@@ -48,6 +48,10 @@ function fundingSourceAutoExecutable(fundingSource) {
   );
 }
 
+function crossChainFallbackAutoPromotionAllowed(job = {}) {
+  return typeof job.executionMethod === "string" && job.executionMethod.startsWith("cross_chain_");
+}
+
 function fundingSourceReviewReasons(fundingSource) {
   if (!fundingSource) return ["funding_source_missing"];
   const reasons = [];
@@ -311,7 +315,9 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
             : "Token refill can come from reserve transfer in dual-wallet mode or native-to-token swap when bootstrap gas exists.",
         },
       };
-    if (fundingSourceAutoExecutable(draftJob.fundingSource)) return draftJob;
+    if (fundingSourceAutoExecutable(draftJob.fundingSource) || !crossChainFallbackAutoPromotionAllowed(draftJob)) {
+      return draftJob;
+    }
     const promotedCandidate = candidateMethods.find(refillCandidateExecutable) || null;
     return promotedCandidate ? jobWithCandidate(draftJob, promotedCandidate) : draftJob;
   });
