@@ -81,7 +81,7 @@ function hasBroadcastEvidence(record = {}) {
   );
 }
 
-function classifyConsecutiveFailureRecord(record = {}) {
+export function classifyConsecutiveFailureRecord(record = {}) {
   const stage = record.lifecycle?.stage || null;
   const broadcasted = hasBroadcastEvidence(record);
 
@@ -101,7 +101,7 @@ function classifyConsecutiveFailureRecord(record = {}) {
   return null;
 }
 
-function latestClassifiedRecords(auditRecords = [], { strategyId = null, chain = null, resumeAfter = null } = {}) {
+export function latestClassifiedRecords(auditRecords = [], { strategyId = null, chain = null, resumeAfter = null } = {}) {
   const resumeAfterMs = resumeAfterTimestamp(resumeAfter);
   const grouped = new Map();
   for (const record of auditRecords.filter((item) => matchesStrategyChain(item, strategyId, chain))) {
@@ -123,7 +123,7 @@ function latestClassifiedRecords(auditRecords = [], { strategyId = null, chain =
     }));
 }
 
-function countConsecutiveBroadcastFailures(sortedClassifiedRecords = []) {
+export function countConsecutiveBroadcastFailures(sortedClassifiedRecords = []) {
   let count = 0;
   let latestFailureAt = null;
   let boundaryStatus = null;

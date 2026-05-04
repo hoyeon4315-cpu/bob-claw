@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-04T17:34:22.382Z",
+  "generatedAt": "2026-05-04T17:51:51.275Z",
   "fastTrackThresholds": {
     "minSignerBackedReceipts": 0,
     "minConsecutiveSuccess": 0,
@@ -33,7 +33,7 @@
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 6102,
+      "receiptCountTotal": 6103,
       "receiptCountSignerBacked": 3940,
       "autoExecute": true,
       "operatorHold": false,
@@ -83,7 +83,7 @@
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 186,
+      "receiptCountTotal": 187,
       "receiptCountSignerBacked": 50,
       "autoExecute": true,
       "operatorHold": false,
@@ -132,7 +132,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 9,
+      "receiptCountTotal": 10,
       "receiptCountSignerBacked": 3,
       "autoExecute": true,
       "operatorHold": false,
@@ -177,7 +177,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 9,
+      "receiptCountTotal": 12,
       "receiptCountSignerBacked": 5,
       "autoExecute": true,
       "operatorHold": false,
@@ -222,7 +222,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 659,
+      "receiptCountTotal": 669,
       "receiptCountSignerBacked": 199,
       "autoExecute": true,
       "operatorHold": false,
@@ -310,7 +310,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 4564,
+      "receiptCountTotal": 4571,
       "receiptCountSignerBacked": 2813,
       "autoExecute": true,
       "operatorHold": false,
@@ -354,7 +354,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 3544,
+      "receiptCountTotal": 3551,
       "receiptCountSignerBacked": 2335,
       "autoExecute": true,
       "operatorHold": false,
@@ -373,8 +373,8 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 156,
-          "consecutiveSuccess": 156
+          "signerBackedReceiptCount": 150,
+          "consecutiveSuccess": 150
         },
         "strict": {
           "eligible": false,
@@ -398,7 +398,7 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 77,
+      "receiptCountTotal": 83,
       "receiptCountSignerBacked": 48,
       "autoExecute": true,
       "operatorHold": false,
@@ -486,7 +486,7 @@
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 106,
+      "receiptCountTotal": 107,
       "receiptCountSignerBacked": 54,
       "autoExecute": true,
       "operatorHold": false,
@@ -587,7 +587,7 @@
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 3,
+      "receiptCountTotal": 4,
       "receiptCountSignerBacked": 0,
       "autoExecute": true,
       "operatorHold": false,
@@ -926,7 +926,7 @@
       "gasFloatConfiguredChainCount": 10,
       "gasFloatObservedChainCount": 10,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 3769,
+      "receiptCountTotal": 3783,
       "receiptCountSignerBacked": 1936,
       "autoExecute": true,
       "operatorHold": false,
@@ -970,7 +970,7 @@
       "gasFloatConfiguredChainCount": 2,
       "gasFloatObservedChainCount": 2,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 157,
+      "receiptCountTotal": 158,
       "receiptCountSignerBacked": 42,
       "autoExecute": true,
       "operatorHold": false,
@@ -1019,7 +1019,7 @@
       "gasFloatConfiguredChainCount": 3,
       "gasFloatObservedChainCount": 3,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 18,
+      "receiptCountTotal": 19,
       "receiptCountSignerBacked": 12,
       "autoExecute": true,
       "operatorHold": false,
@@ -1069,7 +1069,7 @@
       "gasFloatConfiguredChainCount": 2,
       "gasFloatObservedChainCount": 2,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 42,
+      "receiptCountTotal": 43,
       "receiptCountSignerBacked": 28,
       "autoExecute": true,
       "operatorHold": false,
@@ -1120,7 +1120,7 @@
       "gasFloatConfiguredChainCount": 2,
       "gasFloatObservedChainCount": 2,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 147,
+      "receiptCountTotal": 148,
       "receiptCountSignerBacked": 32,
       "autoExecute": true,
       "operatorHold": false,
@@ -1169,7 +1169,7 @@
       "gasFloatConfiguredChainCount": 2,
       "gasFloatObservedChainCount": 2,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 12,
+      "receiptCountTotal": 13,
       "receiptCountSignerBacked": 8,
       "autoExecute": true,
       "operatorHold": false,
@@ -1460,7 +1460,7 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-04T17:34:22.956Z"
+    "generatedAt": "2026-05-04T17:51:51.831Z"
   },
   "strategyStage": {
     "total": 18,
@@ -1668,6 +1668,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-04T17:34:22.959Z"
+    "generatedAt": "2026-05-04T17:51:51.833Z"
   }
 }
