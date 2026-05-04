@@ -905,6 +905,7 @@ export async function buildCurrentDashboardContext({
     liveBaseline: dashboardStatus.liveBaseline,
     edgeViability: dashboardStatus.strategy?.edgeViability,
     stageEvaluation,
+    executorRuntime: dashboardStatus.executorRuntime,
   });
   dashboardStatus.prelive.liveTradingPolicy = dashboardStatus.overall.liveTrading;
   reviewPackage.liveDecision =

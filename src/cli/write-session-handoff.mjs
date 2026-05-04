@@ -1913,6 +1913,7 @@ async function main() {
     prelive: dashboardStatusWithSnapshot.prelive,
     liveBaseline: dashboardStatusWithSnapshot.liveBaseline,
     edgeViability: dashboardStatusWithSnapshot.strategy?.edgeViability,
+    executorRuntime: dashboardStatusWithSnapshot.executorRuntime,
   });
   dashboardStatusWithSnapshot.prelive.liveTradingPolicy = dashboardStatusWithSnapshot.overall.liveTrading;
   reviewPackage.liveDecision =

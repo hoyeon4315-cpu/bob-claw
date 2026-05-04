@@ -213,8 +213,61 @@ test("lane-aware live policy surfaces Stage B shadow-only gating without erasing
   });
 
   assert.equal(overall.liveTrading, "BLOCKED");
+  assert.deepEqual(overall.blockers, ["refill_routes_unresolved"]);
   assert.equal(overall.warnings.includes("lane_stage_B_shadow_only"), true);
   assert.equal(overall.lanePolicy.stage, "B");
   assert.equal(overall.lanePolicy.preStageLiveTrading, "ALLOWED");
   assert.deepEqual(overall.lanePolicy.stageBlockers, ["refill_routes_unresolved"]);
+});
+
+test("lane-aware live policy surfaces kill-switch runtime blockers and stale-arm evidence", () => {
+  const overall = applyLaneAwareLivePolicy({
+    overall: {
+      liveTrading: "ALLOWED",
+      shadowTrading: "ALLOWED",
+      blockers: [],
+      warnings: [],
+    },
+    reviewPackage: {
+      candidateType: "strategy",
+      candidateId: "wrapped-btc-loop-base-moonwell",
+    },
+    prelive: {
+      currentStage: "tiny_live_canary_review",
+    },
+    liveBaseline: {
+      counts: {
+        total: 0,
+      },
+    },
+    stageEvaluation: {
+      currentStage: "C",
+      blockers: [],
+      evidence: {},
+    },
+    executorRuntime: {
+      killSwitch: {
+        halted: true,
+        activeReason: "auto_kill:failure_burst_per_strategy",
+        replay: {
+          staleArm: true,
+        },
+      },
+    },
+  });
+
+  assert.equal(overall.liveTrading, "BLOCKED");
+  assert.deepEqual(overall.blockers, [
+    "kill_switch_present",
+    "kill_switch_stale_arm_present",
+  ]);
+  assert.deepEqual(overall.lanePolicy.runtimeBlockers, [
+    "kill_switch_present",
+    "kill_switch_stale_arm_present",
+  ]);
+  assert.deepEqual(overall.lanePolicy.runtimeEvidence, {
+    halted: true,
+    activeReason: "auto_kill:failure_burst_per_strategy",
+    staleArm: true,
+  });
 });

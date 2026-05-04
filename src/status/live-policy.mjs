@@ -8,6 +8,15 @@ function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function runtimeBlockerCodes(executorRuntime = null) {
+  const killSwitch = executorRuntime?.killSwitch || null;
+  if (!killSwitch?.halted) return [];
+  return unique([
+    "kill_switch_present",
+    killSwitch?.replay?.staleArm ? "kill_switch_stale_arm_present" : null,
+  ]);
+}
+
 function baselineBlockerCodes(liveBaseline = null) {
   return unique(
     ["refresh", "operator", "technical", "objective"].flatMap((category) =>
@@ -86,6 +95,7 @@ export function applyLaneAwareLivePolicy({
   liveBaseline = null,
   edgeViability = null,
   stageEvaluation = null,
+  executorRuntime = null,
 } = {}) {
   const candidate = primaryCandidate(reviewPackage);
   const policy = strategyPolicy(candidate);
@@ -118,9 +128,19 @@ export function applyLaneAwareLivePolicy({
   }
   const preStageLiveTrading = liveTrading;
   const stage = stageEvaluation?.currentStage || null;
+  const stageBlockers = stage && stage !== "C" ? unique(stageEvaluation?.blockers || []) : [];
+  const runtimeBlockers = runtimeBlockerCodes(executorRuntime);
   if (stage && stage !== "C") {
     liveTrading = "BLOCKED";
   }
+  if (runtimeBlockers.length > 0) {
+    liveTrading = "BLOCKED";
+  }
+  blockers = unique([
+    ...blockers,
+    ...stageBlockers,
+    ...runtimeBlockers,
+  ]);
 
   return {
     ...(overall || {}),
@@ -143,8 +163,16 @@ export function applyLaneAwareLivePolicy({
       edgeViabilityCode: edgeViability?.verdict?.code || null,
       preStageLiveTrading,
       stage,
-      stageBlockers: stageEvaluation?.blockers || [],
+      stageBlockers,
       stageEvidence: stageEvaluation?.evidence || null,
+      runtimeBlockers,
+      runtimeEvidence: executorRuntime?.killSwitch
+        ? {
+            halted: executorRuntime.killSwitch.halted === true,
+            activeReason: executorRuntime.killSwitch.activeReason || null,
+            staleArm: executorRuntime.killSwitch.replay?.staleArm === true,
+          }
+        : null,
     },
   };
 }
