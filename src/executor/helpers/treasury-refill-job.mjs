@@ -69,6 +69,14 @@ function floorUnitsFromDecimalAmount(amountDecimal, decimals) {
   return scaled >= 0 ? String(scaled) : null;
 }
 
+function clampAmountToSourceBalance(amount, source = null) {
+  const estimatedAmount = positiveBigInt(amount);
+  const sourceAmount = positiveBigInt(source?.actual ?? source?.balance);
+  if (!estimatedAmount) return null;
+  if (!sourceAmount || estimatedAmount <= sourceAmount) return estimatedAmount.toString();
+  return sourceAmount.toString();
+}
+
 function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = INPUT_BUFFER_MULTIPLIER }) {
   const targetUsd = job?.estimatedAssetValueUsd;
   const sourceUsd = source?.estimatedUsd;
@@ -85,7 +93,7 @@ function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = IN
     ? inputBufferMultiplier
     : INPUT_BUFFER_MULTIPLIER;
   const inputDecimal = Math.min(sourceDecimal, (targetUsd * buffer) / sourceUnitUsd);
-  return ceilUnitsFromDecimalAmount(inputDecimal, sourceAsset.decimals);
+  return clampAmountToSourceBalance(ceilUnitsFromDecimalAmount(inputDecimal, sourceAsset.decimals), source);
 }
 
 function gatewayOnrampAmountSats({ job, source }) {

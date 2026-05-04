@@ -407,6 +407,48 @@ test("treasury refill executor allows explicit live override for bridge quote ce
   assert.equal(preparation.discretionaryBudget.bypassed, true);
 });
 
+test("treasury refill executor clamps LI.FI input amount to the observed source balance", async () => {
+  let capturedInput = null;
+  const sourceActual = "109024218268988514466";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-lifi-clamped-source",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "1000",
+      targetAmountDecimal: 0.00001,
+      estimatedAssetValueUsd: 54.51210913449426,
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        expectedExecutionRefillCostUsd: 0.49530449110522415,
+        source: {
+          chain: "sonic",
+          token: ZERO_TOKEN,
+          ticker: "S",
+          actual: sourceActual,
+          actualDecimal: 109.02421826898852,
+          estimatedUsd: 54.51210913449426,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        planStatus: "ready",
+        minimumOutputAmount: "1000",
+        expectedOutputAmount: "1000",
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "lifi_bridge");
+  assert.equal(capturedInput.amount, sourceActual);
+});
+
 test("treasury refill executor bypasses new movement ceilings for strategy_realized_pnl jobs", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob({
