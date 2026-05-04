@@ -1128,6 +1128,13 @@ export function createDashboardLiveServer(rawOptions = {}) {
         clearInterval(statusWarmTimer);
         statusWarmTimer = null;
       }
+      if (refreshPromise) {
+        try {
+          await refreshPromise;
+        } catch {
+          // Task failures are already recorded in runtime state.
+        }
+      }
       if (server.listening) {
         await new Promise((resolvePromise, rejectPromise) =>
           server.close((error) => (error ? rejectPromise(error) : resolvePromise())),

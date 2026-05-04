@@ -712,6 +712,111 @@ test("treasury refill executor builds BSC USDT to Base USDC composite refill pre
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor falls back from native direct BTC swap into source stable -> Base stable -> Base BTC", async () => {
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const sonicWs = "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38";
+  const sonicUsdc = "0x29219dd400f2Bf60E5a23d13Be72B486D4038894";
+  const dexCalls = [];
+  const lifiCalls = [];
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-sonic-native-base-wbtc-oft",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 8,
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+      fundingSource: {
+        source: {
+          chain: "sonic",
+          token: ZERO_TOKEN,
+          actual: "20000000000000000000",
+          actualDecimal: 20,
+          estimatedUsd: 10,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      dexCalls.push(input);
+      if (input.chain === "sonic" && input.outputToken === "wbtc.oft") {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-05-04T00:00:00.000Z",
+          planStatus: "blocked",
+          blockedReason: "odos_direct_native_to_wbtc_unavailable",
+        };
+      }
+      if (input.chain === "sonic" && input.outputToken === sonicUsdc) {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-05-04T00:00:00.000Z",
+          planStatus: "ready",
+          chain: input.chain,
+          inputToken: input.inputToken,
+          outputToken: input.outputToken,
+          amount: input.amount,
+          minimumOutputAmount: "8050000",
+          steps: [{ id: "source_native_to_stable" }],
+        };
+      }
+      if (input.chain === "base" && input.inputToken === baseUsdc && input.outputToken === WBTC_OFT_TOKEN) {
+        return {
+          schemaVersion: 1,
+          observedAt: "2026-05-04T00:00:00.000Z",
+          planStatus: "ready",
+          chain: input.chain,
+          inputToken: input.inputToken,
+          outputToken: input.outputToken,
+          amount: input.amount,
+          minimumOutputAmount: "10000",
+          steps: [{ id: "destination_stable_to_wbtc" }],
+        };
+      }
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-04T00:00:00.000Z",
+        planStatus: "blocked",
+        blockedReason: "unexpected_dex_call",
+      };
+    },
+    buildLifiBridgePlanImpl: async (input) => {
+      lifiCalls.push(input);
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-04T00:00:00.000Z",
+        planStatus: "ready",
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+        amount: input.amount,
+        minimumOutputAmount: "8040000",
+        expectedOutputAmount: "8060000",
+        steps: [{ id: "lifi_bridge" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "cross_chain_btc_intermediate");
+  assert.equal(preparation.plan.step1.type, "source_native_to_stable_swap");
+  assert.equal(preparation.plan.step2.type, "lifi_bridge");
+  assert.equal(preparation.plan.step3.type, "destination_dex_swap");
+  assert.equal(dexCalls[0].inputToken, ZERO_TOKEN);
+  assert.equal(dexCalls[1].inputToken, ZERO_TOKEN);
+  assert.equal(dexCalls[1].outputToken, sonicUsdc);
+  assert.equal(lifiCalls[0].srcToken, sonicUsdc);
+  assert.equal(lifiCalls[0].dstToken, baseUsdc);
+  assert.equal(dexCalls[2].chain, "base");
+  assert.equal(dexCalls[2].inputToken, baseUsdc);
+  assert.equal(dexCalls[2].outputToken, WBTC_OFT_TOKEN);
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor falls back to destination DEX when Gateway lacks stablecoin route", async () => {
   const gatewayCalls = [];
   const dexCalls = [];

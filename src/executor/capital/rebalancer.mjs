@@ -8,6 +8,10 @@ import { evaluateGasFloatKeeper } from "./gas-float-keeper.mjs";
 import { buildTargetBalances } from "./target-balances.mjs";
 
 const SETTLEMENT_FAMILIES = new Set(["wrapped_btc", "stablecoin"]);
+const CONSOLIDATION_SOURCE_FAMILIES = new Set(["wrapped_btc", "stablecoin", "native_or_wrapped"]);
+export const DEFAULT_RESERVE_CHAIN = "base";
+export const DEFAULT_RESERVE_CHAIN_TARGET_WALLET_SHARE = 0.8;
+export const DEFAULT_RESERVE_CONCENTRATION_TOLERANCE_USD = 0.5;
 export const DEFAULT_SETTLEMENT_TOKEN_BY_CHAIN = Object.freeze({
   avalanche: WBTC_OFT_TOKEN,
   base: WBTC_OFT_TOKEN,
@@ -149,6 +153,19 @@ export function buildCapitalRebalanceMatchedTransfers({ shortfalls = [], surplus
       from: have.chain,
       to: need.chain,
       amountUsd: moveUsd,
+      sourceToken: have.token || null,
+      sourceTicker: have.ticker || null,
+      sourceKind: have.sourceKind || null,
+      sourceActual: have.actual ?? null,
+      sourceActualDecimal: have.actualDecimal ?? null,
+      sourceEstimatedUsd: finite(have.currentUsd) ?? finite(have.estimatedUsd),
+      sourceHoldbackUsd: finite(have.holdbackUsd),
+      sourceResidualUsd: Math.max(0, (have.amountUsd || 0) - moveUsd),
+      reason: need.reason || null,
+      currentUsd: finite(need.currentUsd) ?? 0,
+      targetUsd: finite(need.targetUsd),
+      targetWalletUsd: finite(need.targetWalletUsd),
+      targetWalletShare: finite(need.targetWalletShare),
     });
     need.amountUsd -= moveUsd;
     have.amountUsd -= moveUsd;
@@ -163,6 +180,8 @@ export function buildCapitalRebalancePlan({
   policy = null,
   balancesByChain = {},
   scoredTargets = null,
+  inventory = null,
+  prices = null,
   now = new Date().toISOString(),
 } = {}) {
   const targets = scoredTargets && scoredTargets.perChain
@@ -194,52 +213,84 @@ export function buildCapitalRebalancePlan({
     now,
     activeChainSet: activeDestinationChains,
   });
-  const actions = [...gasFloat.actions];
   const tolerance = Number.isFinite(policy?.capital?.rebalanceToleranceUsd)
     ? policy.capital.rebalanceToleranceUsd
     : 5;
+  const reserveConcentration = buildReserveConcentrationPlan({
+    inventory,
+    policy,
+    prices,
+    tolerance,
+  });
+  const actions = reserveConcentration.active
+    ? [...gasFloat.actions.filter((item) => item.chain === reserveConcentration.reserveChain)]
+    : [...gasFloat.actions];
 
   const targetByChain = new Map();
   const shortfalls = [];
   const surpluses = [];
 
-  for (const item of targets.items || []) {
-    if (!activeDestinationChains.has(item.chain)) continue;
-    targetByChain.set(item.chain, item.settlementTargetUsd || 0);
-    const currentSettlementUsd = finite(balancesByChain[item.chain]?.settlementUsd) ?? 0;
-    const shortfallUsd = Math.max(0, (item.settlementTargetUsd || 0) - currentSettlementUsd);
-    if (shortfallUsd > tolerance) {
-      shortfalls.push({
-        chain: item.chain,
-        amountUsd: shortfallUsd,
-        targetUsd: item.settlementTargetUsd,
-        currentUsd: currentSettlementUsd,
-      });
-      actions.push({
-        type: "capital_rebalance",
-        chain: item.chain,
-        amountUsd: shortfallUsd,
-        targetUsd: item.settlementTargetUsd,
-        currentUsd: currentSettlementUsd,
-      });
+  if (reserveConcentration.active) {
+    shortfalls.push({
+      chain: reserveConcentration.reserveChain,
+      amountUsd: reserveConcentration.shortfallUsd,
+      targetUsd: reserveConcentration.targetReserveWalletUsd,
+      currentUsd: reserveConcentration.currentReserveWalletUsd,
+      targetWalletUsd: reserveConcentration.targetReserveWalletUsd,
+      targetWalletShare: reserveConcentration.targetWalletShare,
+      reason: "reserve_wallet_share",
+    });
+    actions.push({
+      type: "capital_rebalance",
+      chain: reserveConcentration.reserveChain,
+      amountUsd: reserveConcentration.shortfallUsd,
+      targetUsd: reserveConcentration.targetReserveWalletUsd,
+      currentUsd: reserveConcentration.currentReserveWalletUsd,
+      reason: "reserve_wallet_share",
+      targetWalletShare: reserveConcentration.targetWalletShare,
+    });
+    surpluses.push(...reserveConcentration.surpluses);
+  } else {
+    for (const item of targets.items || []) {
+      if (!activeDestinationChains.has(item.chain)) continue;
+      targetByChain.set(item.chain, item.settlementTargetUsd || 0);
+      const currentSettlementUsd = finite(balancesByChain[item.chain]?.settlementUsd) ?? 0;
+      const shortfallUsd = Math.max(0, (item.settlementTargetUsd || 0) - currentSettlementUsd);
+      if (shortfallUsd > tolerance) {
+        shortfalls.push({
+          chain: item.chain,
+          amountUsd: shortfallUsd,
+          targetUsd: item.settlementTargetUsd,
+          currentUsd: currentSettlementUsd,
+        });
+        actions.push({
+          type: "capital_rebalance",
+          chain: item.chain,
+          amountUsd: shortfallUsd,
+          targetUsd: item.settlementTargetUsd,
+          currentUsd: currentSettlementUsd,
+        });
+      }
+    }
+
+    for (const [chain, balance] of Object.entries(balancesByChain || {})) {
+      const targetUsd = targetByChain.get(chain) ?? 0;
+      const currentSettlementUsd = finite(balance?.settlementUsd) ?? 0;
+      const surplusUsd = currentSettlementUsd - targetUsd;
+      if (surplusUsd > tolerance) {
+        surpluses.push({
+          chain,
+          amountUsd: surplusUsd,
+          targetUsd,
+          currentUsd: currentSettlementUsd,
+        });
+      }
     }
   }
 
-  for (const [chain, balance] of Object.entries(balancesByChain || {})) {
-    const targetUsd = targetByChain.get(chain) ?? 0;
-    const currentSettlementUsd = finite(balance?.settlementUsd) ?? 0;
-    const surplusUsd = currentSettlementUsd - targetUsd;
-    if (surplusUsd > tolerance) {
-      surpluses.push({
-        chain,
-        amountUsd: surplusUsd,
-        targetUsd,
-        currentUsd: currentSettlementUsd,
-      });
-    }
-  }
-
-  const matchedTransfers = buildCapitalRebalanceMatchedTransfers({ shortfalls, surpluses });
+  const matchedTransfers = reserveConcentration.active
+    ? reserveConcentration.matchedTransfers
+    : buildCapitalRebalanceMatchedTransfers({ shortfalls, surpluses });
   const matchedSourceUsdByChain = new Map();
   for (const transfer of matchedTransfers) {
     matchedSourceUsdByChain.set(
@@ -248,25 +299,27 @@ export function buildCapitalRebalancePlan({
     );
   }
 
-  for (const surplus of surpluses) {
-    const matched = matchedSourceUsdByChain.get(surplus.chain) || 0;
-    const residual = surplus.amountUsd - matched;
-    if (residual > tolerance) {
-      actions.push({
-        type: "capital_drain",
-        chain: surplus.chain,
-        amountUsd: residual,
-        currentUsd: surplus.currentUsd,
-        targetUsd: surplus.targetUsd,
-        matchedToShortfallUsd: matched,
-      });
+  if (!reserveConcentration.active) {
+    for (const surplus of surpluses) {
+      const matched = matchedSourceUsdByChain.get(surplus.chain) || 0;
+      const residual = surplus.amountUsd - matched;
+      if (residual > tolerance) {
+        actions.push({
+          type: "capital_drain",
+          chain: surplus.chain,
+          amountUsd: residual,
+          currentUsd: surplus.currentUsd,
+          targetUsd: surplus.targetUsd,
+          matchedToShortfallUsd: matched,
+        });
+      }
     }
   }
 
   return {
     schemaVersion: 1,
     observedAt: now,
-    decision: actions.length > 0 ? "REBALANCE_REQUIRED" : "BALANCED",
+    decision: actions.length > 0 || matchedTransfers.length > 0 ? "REBALANCE_REQUIRED" : "BALANCED",
     targets,
     activeChains: [...activeDestinationChains],
     gasFloat,
@@ -274,6 +327,7 @@ export function buildCapitalRebalancePlan({
     matchedTransfers,
     surpluses,
     shortfalls,
+    reserveConcentration,
   };
 }
 
@@ -332,6 +386,155 @@ export function observedCapitalBalancesByChain({ inventory = null } = {}) {
   return balances;
 }
 
+export function observedWalletUsdByChain({ inventory = null } = {}) {
+  const balances = {};
+
+  for (const item of inventory?.native || []) {
+    if (!item?.chain) continue;
+    const current = balances[item.chain] || { walletUsd: 0 };
+    current.walletUsd += finite(item.estimatedUsd) ?? 0;
+    balances[item.chain] = current;
+  }
+
+  for (const item of inventory?.tokens || []) {
+    if (!item?.chain) continue;
+    const current = balances[item.chain] || { walletUsd: 0 };
+    current.walletUsd += finite(item.estimatedUsd) ?? 0;
+    balances[item.chain] = current;
+  }
+
+  return balances;
+}
+
+function nativeHoldbackUsd(chain, policy, prices) {
+  const minBalanceDecimal = Number(policy?.nativeBalances?.[chain]?.minBalance);
+  if (!(Number.isFinite(minBalanceDecimal) && minBalanceDecimal > 0)) return 0;
+  const nativePriceUsd = priceForAssetUsd(tokenAsset(chain, ZERO_TOKEN), prices);
+  if (!(Number.isFinite(nativePriceUsd) && nativePriceUsd > 0)) return 0;
+  return minBalanceDecimal * nativePriceUsd;
+}
+
+function buildReserveConsolidationSurpluses({
+  inventory = null,
+  reserveChain = DEFAULT_RESERVE_CHAIN,
+  policy = null,
+  prices = null,
+  tolerance = 0,
+} = {}) {
+  const surpluses = [];
+
+  for (const item of inventory?.native || []) {
+    if (!item?.chain || item.chain === reserveChain) continue;
+    const currentUsd = finite(item.estimatedUsd) ?? 0;
+    const holdbackUsd = nativeHoldbackUsd(item.chain, policy, prices);
+    const amountUsd = Math.max(0, currentUsd - holdbackUsd);
+    if (!(amountUsd > tolerance)) continue;
+    surpluses.push({
+      chain: item.chain,
+      token: ZERO_TOKEN,
+      ticker: item.ticker || tokenAsset(item.chain, ZERO_TOKEN).ticker,
+      sourceKind: "native",
+      actual: item.actual ?? item.balance ?? null,
+      actualDecimal: finite(item.actualDecimal),
+      currentUsd,
+      holdbackUsd,
+      amountUsd,
+    });
+  }
+
+  for (const item of inventory?.tokens || []) {
+    if (!item?.chain || item.chain === reserveChain) continue;
+    const asset = tokenAsset(item.chain, item.token);
+    if (!CONSOLIDATION_SOURCE_FAMILIES.has(asset.family)) continue;
+    const currentUsd = finite(item.estimatedUsd) ?? 0;
+    if (!(currentUsd > tolerance)) continue;
+    surpluses.push({
+      chain: item.chain,
+      token: item.token,
+      ticker: item.ticker || asset.ticker,
+      sourceKind: "token",
+      actual: item.actual ?? item.balance ?? null,
+      actualDecimal: finite(item.actualDecimal),
+      currentUsd,
+      holdbackUsd: 0,
+      amountUsd: currentUsd,
+    });
+  }
+
+  return surpluses.sort((left, right) => (right.amountUsd || 0) - (left.amountUsd || 0));
+}
+
+function buildReserveConcentrationPlan({
+  inventory = null,
+  policy = null,
+  prices = null,
+  tolerance = 0,
+} = {}) {
+  const consolidationTolerance = finite(policy?.capital?.reserveConcentrationToleranceUsd)
+    ?? DEFAULT_RESERVE_CONCENTRATION_TOLERANCE_USD;
+  const reserveChain = String(policy?.capital?.reserveChain || DEFAULT_RESERVE_CHAIN).toLowerCase();
+  const targetWalletShare = finite(policy?.capital?.reserveChainTargetWalletShare)
+    ?? DEFAULT_RESERVE_CHAIN_TARGET_WALLET_SHARE;
+  const walletUsdByChain = observedWalletUsdByChain({ inventory });
+  const totalWalletUsd = Object.values(walletUsdByChain).reduce((sum, item) => sum + (finite(item.walletUsd) ?? 0), 0);
+  const currentReserveWalletUsd = finite(walletUsdByChain[reserveChain]?.walletUsd) ?? 0;
+  const targetReserveWalletUsd = totalWalletUsd * targetWalletShare;
+  const shortfallUsd = Math.max(0, targetReserveWalletUsd - currentReserveWalletUsd);
+  if (
+    !inventory ||
+    !(targetWalletShare > 0 && targetWalletShare < 1) ||
+    !(shortfallUsd > consolidationTolerance)
+  ) {
+    return {
+      active: false,
+      reserveChain,
+      targetWalletShare,
+      toleranceUsd: consolidationTolerance,
+      walletUsdByChain,
+      totalWalletUsd,
+      currentReserveWalletUsd,
+      targetReserveWalletUsd,
+      shortfallUsd,
+      surpluses: [],
+      matchedTransfers: [],
+    };
+  }
+  const surpluses = buildReserveConsolidationSurpluses({
+    inventory,
+    reserveChain,
+    policy,
+    prices,
+    tolerance: consolidationTolerance,
+  });
+  const matchedTransfers = buildCapitalRebalanceMatchedTransfers({
+    shortfalls: [
+      {
+        chain: reserveChain,
+        amountUsd: shortfallUsd,
+        currentUsd: currentReserveWalletUsd,
+        targetUsd: targetReserveWalletUsd,
+        targetWalletUsd: targetReserveWalletUsd,
+        targetWalletShare,
+        reason: "reserve_wallet_share",
+      },
+    ],
+    surpluses,
+  });
+  return {
+    active: matchedTransfers.length > 0,
+    reserveChain,
+    targetWalletShare,
+    toleranceUsd: consolidationTolerance,
+    walletUsdByChain,
+    totalWalletUsd,
+    currentReserveWalletUsd,
+    targetReserveWalletUsd,
+    shortfallUsd,
+    surpluses,
+    matchedTransfers,
+  };
+}
+
 export function buildCapitalRebalanceRefillPlan({
   rebalancePlan,
   prices,
@@ -342,6 +545,52 @@ export function buildCapitalRebalanceRefillPlan({
 } = {}) {
   const actions = [];
   const blockers = [];
+  const matchedAmountByDestination = new Map();
+
+  for (const transfer of rebalancePlan?.matchedTransfers || []) {
+    matchedAmountByDestination.set(
+      transfer.to,
+      (matchedAmountByDestination.get(transfer.to) || 0) + (transfer.amountUsd || 0),
+    );
+    const settlementToken = settlementTokenByChain?.[transfer.to] || null;
+    if (!settlementToken) {
+      blockers.push({
+        type: "settlement_token_unconfigured",
+        chain: transfer.to,
+        amountUsd: transfer.amountUsd,
+      });
+      continue;
+    }
+    const { action, blocker } = refillActionForUsdShortfall({
+      type: "refill_token",
+      chain: transfer.to,
+      token: settlementToken,
+      amountUsd: transfer.amountUsd,
+      currentUsd: transfer.currentUsd,
+      targetUsd: transfer.targetUsd,
+      prices,
+      rationale: `Capital Manager matched transfer from ${transfer.from} into ${transfer.to}.`,
+      origin: "capital_rebalance_matched_transfer",
+    });
+    if (action) {
+      actions.push({
+        ...action,
+        sourceHint: {
+          chain: transfer.from,
+          token: transfer.sourceToken || null,
+          ticker: transfer.sourceTicker || null,
+          sourceKind: transfer.sourceKind || null,
+          amountUsd: transfer.amountUsd,
+          estimatedUsd: transfer.sourceEstimatedUsd ?? null,
+          actual: transfer.sourceActual ?? null,
+          actualDecimal: transfer.sourceActualDecimal ?? null,
+          holdbackUsd: transfer.sourceHoldbackUsd ?? null,
+          reason: transfer.reason || null,
+        },
+      });
+    }
+    if (blocker) blockers.push(blocker);
+  }
 
   for (const item of rebalancePlan?.actions || []) {
     if (item.type === "gas_float_top_up") {
@@ -362,12 +611,14 @@ export function buildCapitalRebalanceRefillPlan({
     }
 
     if (item.type === "capital_rebalance") {
+      const residualAmountUsd = Math.max(0, (item.amountUsd || 0) - (matchedAmountByDestination.get(item.chain) || 0));
+      if (!(residualAmountUsd > 0)) continue;
       const settlementToken = settlementTokenByChain?.[item.chain] || null;
       if (!settlementToken) {
         blockers.push({
           type: "settlement_token_unconfigured",
           chain: item.chain,
-          amountUsd: item.amountUsd,
+          amountUsd: residualAmountUsd,
         });
         continue;
       }
@@ -375,7 +626,7 @@ export function buildCapitalRebalanceRefillPlan({
         type: "refill_token",
         chain: item.chain,
         token: settlementToken,
-        amountUsd: item.amountUsd,
+        amountUsd: residualAmountUsd,
         currentUsd: item.currentUsd,
         targetUsd: item.targetUsd,
         prices,
@@ -419,7 +670,15 @@ export function buildCapitalManagerRefillJobs({
 } = {}) {
   const inventory = mergeCapitalInventory({ treasuryInventory, wholeWalletInventory });
   const balancesByChain = observedCapitalBalancesByChain({ inventory });
-  const rebalancePlan = buildCapitalRebalancePlan({ strategyCaps, policy, balancesByChain, scoredTargets, now });
+  const rebalancePlan = buildCapitalRebalancePlan({
+    strategyCaps,
+    policy,
+    balancesByChain,
+    scoredTargets,
+    inventory,
+    prices,
+    now,
+  });
   const capitalPlan = buildCapitalRebalanceRefillPlan({
     rebalancePlan,
     prices,

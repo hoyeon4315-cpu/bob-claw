@@ -218,6 +218,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       amount: action.refillAmount,
       amountDecimal: action.refillAmountDecimal,
       decision: plan.decision,
+      sourceHint: action.sourceHint || null,
     };
     const selection = selectionByKey.get(resourceKeyForRefillAction(action)) || null;
     const actionRouteContext = selectRouteContextForAction(action, selection, routeCandidates, resolvedFundingSourcePlan.routeContext || null);

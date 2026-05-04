@@ -5,14 +5,15 @@ import { readFile } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { ZERO_TOKEN, tokenAsset } from "../assets/tokens.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { buildCanaryRoutePlan } from "../estimator/canary-route-plan.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
-import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
+import { buildDefaultTreasuryPolicy, decimalToUnits, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { buildTreasuryRouteDemand, selectFundingRouteContext } from "../treasury/route-demand.mjs";
-import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
+import { knownWholeWalletTokenTargets, latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
 import { buildCapitalManagerRefillJobs } from "../executor/capital/rebalancer.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -92,6 +93,69 @@ async function readJsonIfExists(path) {
   }
 }
 
+function normalizeAssetName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function unitsFromActualDecimal(amount, decimals) {
+  if (!Number.isFinite(amount) || !Number.isInteger(decimals) || decimals < 0) return null;
+  const precision = Math.min(decimals, 18);
+  return decimalToUnits(Number(amount).toFixed(precision), decimals).toString();
+}
+
+function resolveDashboardWalletItemToken(chain, item = {}) {
+  if (item.family === "native") return ZERO_TOKEN;
+  const targets = new Set([
+    normalizeAssetName(item.name),
+    normalizeAssetName(item.sym),
+  ].filter(Boolean));
+  for (const definition of knownWholeWalletTokenTargets({ chain })) {
+    const asset = tokenAsset(chain, definition.token);
+    const labels = new Set([
+      normalizeAssetName(definition.ticker),
+      normalizeAssetName(asset.ticker),
+    ].filter(Boolean));
+    if ([...targets].some((label) => labels.has(label))) {
+      return definition.token;
+    }
+  }
+  return null;
+}
+
+function dashboardWalletInventoryFromStatus(dashboardStatus = null) {
+  const items = Array.isArray(dashboardStatus?.capitalSummary?.walletItems)
+    ? dashboardStatus.capitalSummary.walletItems
+    : [];
+  const native = [];
+  const tokenBalances = [];
+  for (const item of items) {
+    if (!item?.chain || !Number.isFinite(item.amount) || !Number.isFinite(item.usd)) continue;
+    const token = resolveDashboardWalletItemToken(item.chain, item);
+    if (!token) continue;
+    const asset = tokenAsset(item.chain, token);
+    const entry = {
+      chain: item.chain,
+      token,
+      ticker: asset.ticker,
+      balance: unitsFromActualDecimal(item.amount, asset.decimals),
+      actualDecimal: item.amount,
+      estimatedUsd: item.usd,
+      source: "dashboard_status_snapshot",
+    };
+    if (token === ZERO_TOKEN) native.push(entry);
+    else tokenBalances.push(entry);
+  }
+  return { native, tokenBalances };
+}
+
+function mergeWholeWalletSources(primary = null, dashboard = null) {
+  return {
+    ...(primary || {}),
+    native: [...(primary?.native || []), ...(dashboard?.native || [])],
+    tokenBalances: [...(primary?.tokenBalances || []), ...(dashboard?.tokenBalances || [])],
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
@@ -115,12 +179,14 @@ async function main() {
     prices,
   });
 
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords] = await Promise.all([
+  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords, bootstrapSnapshot, dashboardStatus] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
     readJsonIfExists(join(config.dataDir, "gateway-scores.json")),
     readJsonl(config.dataDir, "whole-wallet-inventory").catch(() => []),
+    readJsonIfExists(join(config.dataDir, "bootstrap-from-btc.json")),
+    readJsonIfExists(resolve("dashboard/public/dashboard-status.json")),
   ]);
 
   const routePlan = buildCanaryRoutePlan(
@@ -138,7 +204,10 @@ async function main() {
   );
   const routeDemand = buildTreasuryRouteDemand({ routePlan, inventory: treasuryInventory, policy });
   const routeContext = selectFundingRouteContext(routePlan);
-  const wholeWalletInventory = latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, resolved.address);
+  const wholeWalletInventory = mergeWholeWalletSources(
+    latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, resolved.address),
+    dashboardWalletInventoryFromStatus(dashboardStatus),
+  );
 
   const result = buildCapitalManagerRefillJobs({
     strategyCaps,
@@ -150,6 +219,7 @@ async function main() {
     routeContext,
     routeCandidates: routePlan.candidates || [],
     supplementalInventory: wholeWalletInventory,
+    scoredTargets: bootstrapSnapshot?.scoredTargets || null,
   });
 
   if (args.write) {
@@ -167,9 +237,10 @@ async function main() {
     console.log(JSON.stringify({
       ...result,
       inventorySource,
-      inventoryRefreshError,
-      routeDemandSignalCount: (routeDemand?.signals || []).length,
-    }, null, 2));
+        inventoryRefreshError,
+        routeDemandSignalCount: (routeDemand?.signals || []).length,
+        bootstrapObservedAt: bootstrapSnapshot?.generatedAt || null,
+      }, null, 2));
     return;
   }
 

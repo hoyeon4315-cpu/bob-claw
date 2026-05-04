@@ -125,7 +125,9 @@ function isStablecoinTicker(value) {
 }
 
 function resourceKeyForRefillAction(action) {
-  return action.type === "refill_native" ? `${action.chain}:native` : `${action.chain}:${normalized(action.token)}`;
+  const baseKey = action.type === "refill_native" ? `${action.chain}:native` : `${action.chain}:${normalized(action.token)}`;
+  if (!action?.sourceHint?.chain) return baseKey;
+  return `${baseKey}:from:${action.sourceHint.chain}:${normalized(action.sourceHint.token || ZERO_TOKEN)}`;
 }
 
 function normalizeInventoryEntry(entry = {}, kind) {
@@ -400,6 +402,14 @@ function crossChainRoutePreference(source, action, routeContext = null) {
   return 5;
 }
 
+function preferredSourceRank(source, action = {}) {
+  const hint = action?.sourceHint || null;
+  if (!hint?.chain) return 2;
+  if (source.chain !== hint.chain) return 2;
+  if (hint.token && normalized(source.token) !== normalized(hint.token)) return 1;
+  return 0;
+}
+
 function selectCrossChainSource(action, plan, routeContext = null) {
   const nativeSources = (plan.inventory?.native || [])
     .filter((item) => item.chain !== action.chain && Number(item.actual || 0) > 0)
@@ -423,6 +433,8 @@ function selectCrossChainSource(action, plan, routeContext = null) {
     }));
   return [...nativeSources, ...tokenSources]
     .sort((left, right) => {
+      const hintDelta = preferredSourceRank(left, action) - preferredSourceRank(right, action);
+      if (hintDelta !== 0) return hintDelta;
       const leftCoversTarget = sourceInventoryCoversTargetValue(action, left);
       const rightCoversTarget = sourceInventoryCoversTargetValue(action, right);
       if (leftCoversTarget !== rightCoversTarget) return leftCoversTarget ? -1 : 1;
@@ -860,11 +872,12 @@ function estimateCapitalFragmentationDrag({ selections = [], routeContext = null
 export function buildFundingSourceCandidates(action, plan, policy, routeContext = null, gatewayAvailability = null) {
   const candidates = [];
   const gatewayAvailable = gatewayAvailability?.available !== false;
+  const sourcePinned = Boolean(action?.sourceHint?.chain);
   if (policy.walletMode === "dual_wallet") {
     candidates.push(reserveTransferCandidate(action, true));
   }
 
-  if (policy.refillPolicy.enableDexRefill) {
+  if (policy.refillPolicy.enableDexRefill && !sourcePinned) {
     if (action.type === "refill_native") {
       candidates.push(nativeSwapCandidate(action, plan, policy.walletMode !== "dual_wallet"));
     } else if (action.type === "refill_token") {

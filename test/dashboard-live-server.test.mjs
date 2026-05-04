@@ -545,9 +545,13 @@ test("dashboard live refresh task times out and clears running state when a scri
   });
 
   await server.start();
-  await new Promise((resolve) => setTimeout(resolve, 90));
-  const task = server.runtimeState().tasks.statusSnapshot;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const taskState = server.runtimeState().tasks.statusSnapshot;
+    if (taskState.lastFailedAt || taskState.running === false) break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
   await server.close();
+  const task = server.runtimeState().tasks.statusSnapshot;
 
   assert.equal(task.running, false);
   assert.ok(task.lastFailedAt);

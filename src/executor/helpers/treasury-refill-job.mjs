@@ -22,6 +22,15 @@ const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
 const GATEWAY_BTC_ONRAMP_MIN_SATS = 5000n;
 const PARTIAL_REFILL_MIN_COVERAGE_BPS = 8500n;
 const NATIVE_GAS_REFILL_STRATEGY_ID = "native-gas-refill";
+const PREFERRED_STABLE_TOKEN_BY_CHAIN = Object.freeze({
+  avalanche: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+  base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  bsc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+  ethereum: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  optimism: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+  sonic: "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+  unichain: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+});
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
@@ -38,6 +47,10 @@ function positiveBigInt(value) {
 
 function normalizedToken(value) {
   return String(value || "").toLowerCase();
+}
+
+function preferredStableTokenForChain(chain) {
+  return PREFERRED_STABLE_TOKEN_BY_CHAIN[String(chain || "").toLowerCase()] || null;
 }
 
 function ceilUnitsFromDecimalAmount(amountDecimal, decimals) {
@@ -107,6 +120,14 @@ function outputAmountForCoverage(plan, executor) {
     return plan.minimumOutputAmount || plan.expectedOutputAmount || null;
   }
   return plan.minimumOutputAmount || plan.quote?.outputAmount || null;
+}
+
+function crossChainStepExecutor(step = {}) {
+  if (step?.executor) return step.executor;
+  if (step?.type === "gateway_consolidation") return "gateway_btc_consolidation";
+  if (step?.type === "across_bridge") return "across_bridge";
+  if (step?.type === "lifi_bridge") return "lifi_bridge";
+  return null;
 }
 
 function coverageForPlan({ plan, job, executor }) {
@@ -275,6 +296,83 @@ export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "cross_chain_bridge_across") return "across_bridge";
   if (job.executionMethod === "cross_chain_bridge_lifi") return "lifi_bridge";
   return null;
+}
+
+async function buildStableBridgeFallbackCompositePlan({
+  job,
+  source,
+  dexAmount,
+  senderAddress,
+  buildTokenDexPlanImpl,
+  buildAcrossBridgePlanImpl,
+  buildLifiBridgePlanImpl,
+}) {
+  const sourceAsset = tokenAsset(source.chain, source.token || ZERO_TOKEN);
+  const targetAsset = tokenAsset(job.chain, job.token);
+  if (sourceAsset.family !== "native_or_wrapped" || !isBtcLikeAsset(targetAsset)) return null;
+  const sourceStableToken = preferredStableTokenForChain(source.chain);
+  const destinationStableToken = preferredStableTokenForChain(job.chain);
+  if (!sourceStableToken || !destinationStableToken) return null;
+
+  const step1Plan = await buildTokenDexPlanImpl({
+    chain: source.chain,
+    amount: dexAmount,
+    senderAddress,
+    inputToken: source.token,
+    outputToken: sourceStableToken,
+  });
+  if (step1Plan.planStatus !== "ready") return null;
+
+  const bridgeAmount = outputAmountForCoverage(step1Plan, "token_dex_experiment");
+  if (!positiveBigInt(bridgeAmount)) return null;
+
+  const acrossTicker = acrossTickerForToken(source.chain, sourceStableToken);
+  let step2Plan = null;
+  let step2Executor = null;
+  if (acrossTicker && acrossTicker === acrossTickerForToken(job.chain, destinationStableToken)) {
+    step2Plan = await buildAcrossBridgePlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      ticker: acrossTicker,
+      amount: bridgeAmount,
+      senderAddress,
+      recipient: senderAddress,
+    });
+    if (step2Plan.planStatus === "ready") step2Executor = "across_bridge";
+  }
+  if (!step2Plan || step2Plan.planStatus !== "ready") {
+    step2Plan = await buildLifiBridgePlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      srcToken: sourceStableToken,
+      dstToken: destinationStableToken,
+      amount: bridgeAmount,
+      senderAddress,
+      recipient: senderAddress,
+    });
+    if (step2Plan.planStatus !== "ready") return null;
+    step2Executor = "lifi_bridge";
+  }
+
+  const destinationStableAmount = outputAmountForCoverage(step2Plan, step2Executor);
+  if (!positiveBigInt(destinationStableAmount)) return null;
+
+  const step3Plan = await buildTokenDexPlanImpl({
+    chain: job.chain,
+    amount: destinationStableAmount,
+    senderAddress,
+    inputToken: destinationStableToken,
+    outputToken: job.token,
+  });
+  if (step3Plan.planStatus !== "ready") return null;
+
+  return {
+    planStatus: "ready",
+    executor: "cross_chain_btc_intermediate",
+    step1: { type: "source_native_to_stable_swap", plan: step1Plan },
+    step2: { type: step2Executor, executor: step2Executor, plan: step2Plan },
+    step3: { type: "destination_dex_swap", plan: step3Plan },
+  };
 }
 
 export async function buildTreasuryRefillExecutionPlan({
@@ -497,7 +595,7 @@ export async function buildTreasuryRefillExecutionPlan({
     const dexAmount = estimateInputAmountFromSource({ job, source });
     if (!dexAmount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
 
-    const step1Plan = await buildTokenDexPlanImpl({
+    let step1Plan = await buildTokenDexPlanImpl({
       chain: source.chain,
       amount: dexAmount,
       senderAddress,
@@ -506,120 +604,136 @@ export async function buildTreasuryRefillExecutionPlan({
     });
 
     if (step1Plan.planStatus !== "ready") {
-      return blockedPreparation({ job, executor, blockedReason: step1Plan.blockedReason || "dex_step_blocked", plan: step1Plan });
+      const fallbackPlan = await buildStableBridgeFallbackCompositePlan({
+        job,
+        source,
+        dexAmount,
+        senderAddress,
+        buildTokenDexPlanImpl,
+        buildAcrossBridgePlanImpl,
+        buildLifiBridgePlanImpl,
+      });
+      if (!fallbackPlan) {
+        return blockedPreparation({ job, executor, blockedReason: step1Plan.blockedReason || "dex_step_blocked", plan: step1Plan });
+      }
+      plan = fallbackPlan;
     }
 
-    // Step 2: Gateway consolidation wBTC.OFT from source chain → destination chain
-    const gatewayAmount = step1Plan.minimumOutputAmount;
-    const gasRefill = job.type === "refill_native" ? job.targetAmount : null;
-    const destinationBtcSettlementToken = gatewayBtcSettlementTokenForChain(job.chain);
+    if (plan?.planStatus === "ready") {
+      // already resolved by the native->stable->bridge->destination swap fallback
+    } else {
+      // Step 2: Gateway consolidation wBTC.OFT from source chain → destination chain
+      const gatewayAmount = step1Plan.minimumOutputAmount;
+      const gasRefill = job.type === "refill_native" ? job.targetAmount : null;
+      const destinationBtcSettlementToken = gatewayBtcSettlementTokenForChain(job.chain);
 
-    let step2Plan = await buildGatewayBtcPlanImpl({
-      srcChain: source.chain,
-      dstChain: job.chain,
-      srcToken: WBTC_OFT_TOKEN,
-      dstToken: job.type === "refill_native" ? WBTC_OFT_TOKEN : job.token,
-      amount: gatewayAmount,
-      senderAddress,
-      recipient: senderAddress,
-      gasRefill,
-    });
-
-    let step3Plan = null;
-    if (
-      isNoRoutePlan(step2Plan) &&
-      job.type === "refill_token" &&
-      !isBtcLikeAsset(tokenAsset(job.chain, job.token))
-    ) {
-      step2Plan = await buildGatewayBtcPlanImpl({
+      let step2Plan = await buildGatewayBtcPlanImpl({
         srcChain: source.chain,
         dstChain: job.chain,
         srcToken: WBTC_OFT_TOKEN,
-        dstToken: destinationBtcSettlementToken,
+        dstToken: job.type === "refill_native" ? WBTC_OFT_TOKEN : job.token,
         amount: gatewayAmount,
         senderAddress,
         recipient: senderAddress,
         gasRefill,
       });
-      if (step2Plan.planStatus === "ready") {
-        const destinationWrappedBtcAmount = step2Plan.quote?.outputAmount?.amount;
-        if (!destinationWrappedBtcAmount) {
-          return blockedPreparation({ job, executor, blockedReason: "gateway_output_amount_unavailable", plan: step2Plan });
-        }
-        step3Plan = await buildTokenDexPlanImpl({
-          chain: job.chain,
-          amount: destinationWrappedBtcAmount,
-          senderAddress,
-          inputToken: destinationBtcSettlementToken,
-          outputToken: job.token,
-        });
-        if (step3Plan.planStatus !== "ready") {
-          return blockedPreparation({ job, executor, blockedReason: step3Plan.blockedReason || "destination_dex_step_blocked", plan: step3Plan });
-        }
-      }
-    }
 
-    if (step2Plan.planStatus !== "ready" && isNoRoutePlan(step2Plan) && job.type === "refill_token") {
-      const lifiAmount = estimateInputAmountFromSource({ job, source });
-      if (lifiAmount) {
-        const lifiPlan = await buildLifiBridgePlanImpl({
+      let step3Plan = null;
+      if (
+        isNoRoutePlan(step2Plan) &&
+        job.type === "refill_token" &&
+        !isBtcLikeAsset(tokenAsset(job.chain, job.token))
+      ) {
+        step2Plan = await buildGatewayBtcPlanImpl({
           srcChain: source.chain,
           dstChain: job.chain,
-          srcToken: source.token,
-          dstToken: job.token,
-          amount: lifiAmount,
+          srcToken: WBTC_OFT_TOKEN,
+          dstToken: destinationBtcSettlementToken,
+          amount: gatewayAmount,
           senderAddress,
           recipient: senderAddress,
+          gasRefill,
         });
-        if (lifiPlan.planStatus === "ready") {
-          const lifiCoverage = coverageForPlan({ plan: lifiPlan, job, executor: "lifi_bridge" });
-          const lifiBridgeBudget = evaluateBridgeMovementCostGuard({
-            method: "cross_chain_bridge_lifi",
-            costUsd: bridgeQuoteCostUsd(job, lifiPlan),
-            record: job,
+        if (step2Plan.planStatus === "ready") {
+          const destinationWrappedBtcAmount = step2Plan.quote?.outputAmount?.amount;
+          if (!destinationWrappedBtcAmount) {
+            return blockedPreparation({ job, executor, blockedReason: "gateway_output_amount_unavailable", plan: step2Plan });
+          }
+          step3Plan = await buildTokenDexPlanImpl({
+            chain: job.chain,
+            amount: destinationWrappedBtcAmount,
+            senderAddress,
+            inputToken: destinationBtcSettlementToken,
+            outputToken: job.token,
           });
-          if (!lifiBridgeBudget.accepted) {
+          if (step3Plan.planStatus !== "ready") {
+            return blockedPreparation({ job, executor, blockedReason: step3Plan.blockedReason || "destination_dex_step_blocked", plan: step3Plan });
+          }
+        }
+      }
+
+      if (step2Plan.planStatus !== "ready" && isNoRoutePlan(step2Plan) && job.type === "refill_token") {
+        const lifiAmount = estimateInputAmountFromSource({ job, source });
+        if (lifiAmount) {
+          const lifiPlan = await buildLifiBridgePlanImpl({
+            srcChain: source.chain,
+            dstChain: job.chain,
+            srcToken: source.token,
+            dstToken: job.token,
+            amount: lifiAmount,
+            senderAddress,
+            recipient: senderAddress,
+          });
+          if (lifiPlan.planStatus === "ready") {
+            const lifiCoverage = coverageForPlan({ plan: lifiPlan, job, executor: "lifi_bridge" });
+            const lifiBridgeBudget = evaluateBridgeMovementCostGuard({
+              method: "cross_chain_bridge_lifi",
+              costUsd: bridgeQuoteCostUsd(job, lifiPlan),
+              record: job,
+            });
+            if (!lifiBridgeBudget.accepted) {
+              return blockedPreparation({
+                job,
+                executor: "lifi_bridge",
+                blockedReason: lifiBridgeBudget.reason,
+                plan: lifiPlan,
+                coverage: lifiCoverage,
+                discretionaryBudget: lifiBridgeBudget,
+              });
+            }
+            if (refillCoverageAcceptable(lifiCoverage)) {
+              return readyPreparation({
+                job,
+                executor: "lifi_bridge",
+                plan: lifiPlan,
+                coverage: lifiCoverage,
+                discretionaryBudget: lifiBridgeBudget,
+              });
+            }
             return blockedPreparation({
               job,
               executor: "lifi_bridge",
-              blockedReason: lifiBridgeBudget.reason,
+              blockedReason: "executor_output_below_refill_target",
               plan: lifiPlan,
               coverage: lifiCoverage,
               discretionaryBudget: lifiBridgeBudget,
             });
           }
-          if (refillCoverageAcceptable(lifiCoverage)) {
-            return readyPreparation({
-              job,
-              executor: "lifi_bridge",
-              plan: lifiPlan,
-              coverage: lifiCoverage,
-              discretionaryBudget: lifiBridgeBudget,
-            });
-          }
-          return blockedPreparation({
-            job,
-            executor: "lifi_bridge",
-            blockedReason: "executor_output_below_refill_target",
-            plan: lifiPlan,
-            coverage: lifiCoverage,
-            discretionaryBudget: lifiBridgeBudget,
-          });
         }
       }
-    }
 
-    if (step2Plan.planStatus !== "ready") {
-      return blockedPreparation({ job, executor, blockedReason: step2Plan.blockedReason || "gateway_step_blocked", plan: step2Plan });
-    }
+      if (step2Plan.planStatus !== "ready") {
+        return blockedPreparation({ job, executor, blockedReason: step2Plan.blockedReason || "gateway_step_blocked", plan: step2Plan });
+      }
 
-    plan = {
-      planStatus: "ready",
-      executor: "cross_chain_btc_intermediate",
-      step1: { type: "dex_swap", plan: step1Plan },
-      step2: { type: "gateway_consolidation", plan: step2Plan },
-      ...(step3Plan ? { step3: { type: "destination_dex_swap", plan: step3Plan } } : {}),
-    };
+      plan = {
+        planStatus: "ready",
+        executor: "cross_chain_btc_intermediate",
+        step1: { type: "dex_swap", plan: step1Plan },
+        step2: { type: "gateway_consolidation", plan: step2Plan },
+        ...(step3Plan ? { step3: { type: "destination_dex_swap", plan: step3Plan } } : {}),
+      };
+    }
   }
 
   if (plan?.planStatus !== "ready") {
@@ -722,7 +836,17 @@ export async function executeTreasuryRefillExecutionPlan({
   }
   if (preparation.executor === "cross_chain_btc_intermediate") {
     const step1Result = await executeTokenDexPlanImpl({ plan: preparation.plan.step1.plan, ...executionOptions });
-    const step2Result = await executeGatewayBtcPlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+    const step2Executor = crossChainStepExecutor(preparation.plan.step2);
+    let step2Result = null;
+    if (step2Executor === "gateway_btc_consolidation") {
+      step2Result = await executeGatewayBtcPlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+    } else if (step2Executor === "across_bridge") {
+      step2Result = await executeAcrossBridgePlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+    } else if (step2Executor === "lifi_bridge") {
+      step2Result = await executeLifiBridgePlanImpl({ plan: preparation.plan.step2.plan, ...executionOptions });
+    } else {
+      throw new Error(`Unsupported cross-chain intermediate step2 executor: ${step2Executor || "missing"}`);
+    }
     const step3Result = preparation.plan.step3
       ? await executeTokenDexPlanImpl({ plan: preparation.plan.step3.plan, ...executionOptions })
       : null;

@@ -60,7 +60,10 @@ test("buildCapitalRebalancePlan drains inactive surplus without creating inactiv
   });
   assert.equal(plan.actions.some((item) => item.type === "gas_float_top_up" && item.chain === "soneium"), false);
   assert.equal(plan.actions.some((item) => item.type === "capital_rebalance" && item.chain === "soneium"), false);
-  assert.deepEqual(plan.matchedTransfers, [{ from: "soneium", to: "base", amountUsd: 90 }]);
+  assert.equal(plan.matchedTransfers.length, 1);
+  assert.equal(plan.matchedTransfers[0].from, "soneium");
+  assert.equal(plan.matchedTransfers[0].to, "base");
+  assert.equal(plan.matchedTransfers[0].amountUsd, 90);
 });
 
 test("matched transfers pair surplus chains with shortfall chains", () => {
@@ -152,7 +155,10 @@ test("buildCapitalRebalancePlan keeps matchedTransfers as cross-chain pull plan"
   assert.equal(refills.length, 1);
   assert.equal(refills[0].chain, "base");
   assert.equal(refills[0].amountUsd, 100);
-  assert.deepEqual(plan.matchedTransfers, [{ from: "bera", to: "base", amountUsd: 30 }]);
+  assert.equal(plan.matchedTransfers.length, 1);
+  assert.equal(plan.matchedTransfers[0].from, "bera");
+  assert.equal(plan.matchedTransfers[0].to, "base");
+  assert.equal(plan.matchedTransfers[0].amountUsd, 30);
 });
 
 test("buildCapitalRebalancePlan stays balanced within tolerance", () => {
