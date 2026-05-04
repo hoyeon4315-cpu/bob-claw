@@ -128,6 +128,7 @@ export async function readLatestKillSwitchAuditRecord({
 export async function readKillSwitchStatus({
   killSwitchPath = resolveKillSwitchPath(),
   auditPath = resolveKillSwitchAuditPath(),
+  dashboardStatus = null,
 } = {}) {
   const lastAudit = await readLatestKillSwitchAuditRecord({ auditPath, killSwitchPath });
   const normalizedKillSwitchPath = normalizePath(killSwitchPath);
@@ -159,6 +160,11 @@ export async function readKillSwitchStatus({
     payload?.evaluatedAt ||
     fileMtime ||
     null;
+  const dashboardKillSwitch = dashboardStatus?.executorRuntime?.killSwitch || null;
+  const replay =
+    normalizePath(dashboardKillSwitch?.killSwitchPath) === normalizedKillSwitchPath
+      ? (dashboardKillSwitch?.replay || null)
+      : null;
   return {
     killSwitchPath: normalizedKillSwitchPath || killSwitchPath,
     halted,
@@ -169,5 +175,6 @@ export async function readKillSwitchStatus({
     activeSince,
     triggers: Array.isArray(payload?.triggers) ? payload.triggers : [],
     lastAudit,
+    replay,
   };
 }

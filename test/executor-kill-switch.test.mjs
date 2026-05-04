@@ -151,6 +151,54 @@ test("kill-switch status reads current file payload and matching audit reason", 
   }
 });
 
+test("kill-switch status includes dashboard replay only for the matching kill-switch path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-status-replay-"));
+  try {
+    const killSwitchPath = join(root, "KILL_SWITCH");
+    const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
+    await writeFile(killSwitchPath, "halted_at=2026-05-05T00:00:00.000Z\nreason=manual\nactor=operator\n");
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "halt",
+      reason: "manual",
+      actor: "operator",
+      killSwitchPath,
+      previousState: "running",
+      now: "2026-05-05T00:00:00.000Z",
+    }), { auditPath });
+
+    const replay = { triggered: false, staleArm: true };
+    const status = await readKillSwitchStatus({
+      killSwitchPath,
+      auditPath,
+      dashboardStatus: {
+        executorRuntime: {
+          killSwitch: {
+            killSwitchPath,
+            replay,
+          },
+        },
+      },
+    });
+    const mismatched = await readKillSwitchStatus({
+      killSwitchPath,
+      auditPath,
+      dashboardStatus: {
+        executorRuntime: {
+          killSwitch: {
+            killSwitchPath: join(root, "OTHER_KILL_SWITCH"),
+            replay,
+          },
+        },
+      },
+    });
+
+    assert.deepEqual(status.replay, replay);
+    assert.equal(mismatched.replay, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("kill-switch parser handles operator key-value payloads", () => {
   const parsed = parseKillSwitchFileContents(
     "halted_at=2026-05-05T00:00:00.000Z\nreason=manual halt\nactor=operator-via-llm\n",

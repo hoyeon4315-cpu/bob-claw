@@ -20,7 +20,7 @@
 
 import process from "node:process";
 import { existsSync } from "node:fs";
-import { mkdir, appendFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, appendFile, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { getEnv } from "../config/env.mjs";
 import {
@@ -47,12 +47,25 @@ function parseArgs(argv) {
     actor: options.actor || "operator-via-llm",
     killSwitchPath: options["kill-switch-path"] || getEnv("KILL_SWITCH_PATH", resolveKillSwitchPath()),
     auditPath: options["audit-path"] || getEnv("KILL_SWITCH_AUDIT_PATH", "logs/kill-switch-audit.jsonl"),
+    dashboardPath:
+      options["dashboard-path"] ||
+      getEnv("DASHBOARD_STATUS_PATH", "dashboard/public/dashboard-status.json"),
   };
 }
 
 async function appendAudit(auditPath, record) {
   await mkdir(dirname(resolve(auditPath)), { recursive: true });
   await appendFile(resolve(auditPath), JSON.stringify(record) + "\n", "utf8");
+}
+
+async function readJsonIfExists(path) {
+  if (!path) return null;
+  try {
+    return JSON.parse(await readFile(resolve(path), "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 async function main() {
@@ -75,9 +88,11 @@ async function main() {
   }
 
   if (args.status) {
+    const dashboardStatus = await readJsonIfExists(args.dashboardPath);
     const status = await readKillSwitchStatus({
       killSwitchPath: args.killSwitchPath,
       auditPath: args.auditPath,
+      dashboardStatus,
     });
     if (args.json) {
       console.log(JSON.stringify(status, null, 2));
@@ -88,6 +103,10 @@ async function main() {
       if (status.halted && status.activeReason) {
         console.log(`  active reason: ${status.activeReason}`);
         if (status.activeActor) console.log(`  active actor: ${status.activeActor}`);
+        if (status.replay) {
+          console.log(`  replay triggered now: ${status.replay.triggered ? "yes" : "no"}`);
+          if (status.replay.staleArm) console.log("  stale arm: yes");
+        }
       }
       if (status.lastAudit) {
         console.log(`  last toggle: ${status.lastAudit.action} @ ${status.lastAudit.ts} by ${status.lastAudit.actor}`);
