@@ -291,6 +291,51 @@ test("capital manager targets Ethereum canonical WBTC instead of non-canonical w
   assert.equal(result.jobs.jobs[0].token, ETHEREUM_WBTC_TOKEN);
 });
 
+test("capital manager promotes executable LI.FI fallback when preferred gateway token refill is not auto-executable", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const result = buildCapitalManagerRefillJobs({
+    strategyCaps: [
+      {
+        strategyId: "wrapped-btc-base",
+        autoExecute: true,
+        caps: {
+          perChainUsd: {
+            base: 50,
+          },
+        },
+        gasFloat: {
+          base: { minUsd: 0, targetUsd: 0 },
+        },
+      },
+    ],
+    policy,
+    wholeWalletInventory: {
+      native: [
+        {
+          chain: "bera",
+          token: ZERO_TOKEN,
+          balance: "15576907036978404619",
+          actualDecimal: 15.576907036978405,
+          estimatedUsd: 5.768985405680137,
+        },
+      ],
+      tokenBalances: [],
+    },
+    prices: priceFixture(),
+    address: "0x1111111111111111111111111111111111111111",
+    now: "2026-05-04T18:31:47.947Z",
+  });
+
+  assert.equal(result.jobs.requiresManualReview, false);
+  assert.equal(result.jobs.summary.manualReviewJobCount, 0);
+  assert.equal(result.jobs.summary.autoQueuedJobCount, 1);
+  assert.equal(result.jobs.jobs[0].executionMethod, "cross_chain_bridge_lifi");
+  assert.equal(result.jobs.jobs[0].fundingSource.method, "cross_chain_bridge_lifi");
+  assert.equal(result.jobs.jobs[0].fundingSource.selectionStatus, "ready");
+  assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "bera");
+  assert.deepEqual(result.jobs.jobs[0].reviewReasons, []);
+});
+
 test("capital manager wrapper prefers cross-chain wrapped BTC when destination native gas exists but cannot cover settlement refill", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const result = buildCapitalManagerRefillJobs({

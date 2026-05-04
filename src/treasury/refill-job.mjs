@@ -5,6 +5,7 @@ import {
   liveInventoryDependencyOverride,
   movementClassification,
 } from "./discretionary-budget-guard.mjs";
+import { jobWithCandidate, refillCandidateExecutable } from "../executor/helpers/refill-fallback.mjs";
 import { buildFundingSourcePlan, resourceKeyForRefillAction } from "./funding-source-planner.mjs";
 
 function isFiniteNumber(value) {
@@ -246,7 +247,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       record: action,
       ceilingUsd: bridgeQuoteCostCeilingUsd,
     });
-    return {
+    const draftJob = {
       schemaVersion: 1,
       jobId: deterministicJobId(basis),
       createdAt: plan.observedAt,
@@ -310,7 +311,10 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
             : "Token refill can come from reserve transfer in dual-wallet mode or native-to-token swap when bootstrap gas exists.",
         },
       };
-    });
+    if (fundingSourceAutoExecutable(draftJob.fundingSource)) return draftJob;
+    const promotedCandidate = candidateMethods.find(refillCandidateExecutable) || null;
+    return promotedCandidate ? jobWithCandidate(draftJob, promotedCandidate) : draftJob;
+  });
 
   const planReasons = Array.isArray(plan.reasons) ? [...plan.reasons] : [];
   const explicitGlobalReviewReasons = planReasons.filter((reason) => reason !== "too_many_pending_refills");
