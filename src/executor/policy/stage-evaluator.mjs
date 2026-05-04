@@ -25,9 +25,21 @@ export function evaluateStage({
   const refreshSuccessRatio24h =
     finiteNumber(marksSlice?.reliability?.rolling24h?.refreshSuccessRatio) ??
     finiteNumber(marksSlice?.refreshSuccessRatio?.rolling24h);
+  const refreshSuccessRatio1h =
+    finiteNumber(marksSlice?.reliability?.rolling1h?.refreshSuccessRatio) ??
+    finiteNumber(marksSlice?.refreshSuccessRatio?.rolling1h);
+  const refreshSuccessRatio3h =
+    finiteNumber(marksSlice?.reliability?.rolling3h?.refreshSuccessRatio) ??
+    finiteNumber(marksSlice?.refreshSuccessRatio?.rolling3h);
   const refreshSuccessRatio7d =
     finiteNumber(marksSlice?.reliability?.rolling7d?.refreshSuccessRatio) ??
     finiteNumber(marksSlice?.refreshSuccessRatio?.rolling7d);
+  const transientFrequency1h =
+    finiteNumber(marksSlice?.reliability?.rolling1h?.transientFrequency) ??
+    finiteNumber(marksSlice?.transientFrequency?.rolling1h);
+  const transientFrequency3h =
+    finiteNumber(marksSlice?.reliability?.rolling3h?.transientFrequency) ??
+    finiteNumber(marksSlice?.transientFrequency?.rolling3h);
   const transientFrequency24h =
     finiteNumber(marksSlice?.reliability?.rolling24h?.transientFrequency) ??
     finiteNumber(marksSlice?.transientFrequency?.rolling24h);
@@ -56,8 +68,13 @@ export function evaluateStage({
     finiteNumber(payback?.scheduler?.minimumPaybackProgress?.progressToMinimumRatio) ??
     null;
   const hysteresis = marksSlice?.reliability?.hysteresis || {};
+  const latestAttempt = marksSlice?.reliability?.latestAttempt || {};
   const refreshBelow90SustainedFor1h = hysteresis.refreshBelow90SustainedFor1h === true;
   const refreshBelow90Since = hysteresis.refreshBelow90Since || null;
+  const latestMarkSuccessObservedAt = latestAttempt.successObservedAt || null;
+  const latestMarkFailureObservedAt = latestAttempt.failureObservedAt || null;
+  const latestMarkFailureKind = latestAttempt.failureKind || null;
+  const latestMarkFailurePositionId = latestAttempt.failurePositionId || null;
   const calibrated = evGateCalibrated(evGateStats);
 
   const stageBReady =
@@ -93,8 +110,12 @@ export function evaluateStage({
       refreshBelow90SustainedFor1h ? "stage_c_hysteresis_demoted" : null,
     ]),
     evidence: {
+      refreshSuccessRatio1h,
+      refreshSuccessRatio3h,
       refreshSuccessRatio24h,
       refreshSuccessRatio7d,
+      transientFrequency1h,
+      transientFrequency3h,
       transientFrequency24h,
       transientFrequency7d,
       unresolvedRefillRoutes,
@@ -108,6 +129,10 @@ export function evaluateStage({
       evGateMatchedReceiptCount: finiteNumber(evGateStats?.matchedReceiptCount) ?? 0,
       evGateKeyedEntryCount: finiteNumber(evGateStats?.keyedEntryCount) ?? 0,
       evGateLookbackDays: finiteNumber(evGateStats?.lookbackDays) ?? null,
+      latestMarkSuccessObservedAt,
+      latestMarkFailureObservedAt,
+      latestMarkFailureKind,
+      latestMarkFailurePositionId,
       refreshBelow90Since,
       refreshBelow90SustainedFor1h,
     },

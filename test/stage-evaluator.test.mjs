@@ -5,6 +5,14 @@ import { evaluateStage } from "../src/executor/policy/stage-evaluator.mjs";
 function marksSlice(overrides = {}) {
   return {
     reliability: {
+      rolling1h: {
+        refreshSuccessRatio: 1,
+        transientFrequency: 0,
+      },
+      rolling3h: {
+        refreshSuccessRatio: 0.98,
+        transientFrequency: 0,
+      },
       rolling24h: {
         refreshSuccessRatio: 0.98,
         transientFrequency: 0.01,
@@ -146,4 +154,8 @@ test("stage evaluator surfaces payback carry evidence for missing delivered peri
   assert.equal(result.evidence.paybackReason, "planned_payback_below_minimum");
   assert.equal(result.evidence.paybackPendingSats, 601);
   assert.equal(result.evidence.paybackProgressToMinimumRatio, 0.0024);
+  assert.equal(result.evidence.refreshSuccessRatio1h, 1);
+  assert.equal(result.evidence.refreshSuccessRatio3h, 0.98);
+  assert.equal(result.evidence.transientFrequency1h, 0);
+  assert.equal(result.evidence.transientFrequency3h, 0);
 });

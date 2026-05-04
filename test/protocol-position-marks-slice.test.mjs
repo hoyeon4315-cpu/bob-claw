@@ -184,10 +184,18 @@ test("buildProtocolPositionMarksSlice emits rolling refresh success ratios and t
     { generatedAt: "2026-05-04T00:30:00.000Z" },
   );
 
+  assert.equal(slice.refreshSuccessRatio.rolling1h, 1);
+  assert.equal(slice.transientFrequency.rolling1h, 0);
+  assert.equal(slice.refreshSuccessRatio.rolling3h, 1);
+  assert.equal(slice.transientFrequency.rolling3h, 0);
   assert.equal(slice.refreshSuccessRatio.rolling24h, 0.75);
   assert.equal(slice.transientFrequency.rolling24h, 0.25);
   assert.equal(slice.refreshSuccessRatio.rolling7d, 0.8);
   assert.equal(slice.transientFrequency.rolling7d, 0.2);
+  assert.equal(slice.reliability.latestAttempt.successObservedAt, "2026-05-04T00:00:00.000Z");
+  assert.equal(slice.reliability.latestAttempt.failureObservedAt, "2026-05-03T20:02:00.000Z");
+  assert.equal(slice.reliability.latestAttempt.failureKind, "rpc_failed");
+  assert.equal(slice.reliability.latestAttempt.failurePositionId, "p1");
 });
 
 test("buildProtocolPositionMarksSlice flags sustained sub-0.90 refresh hysteresis", () => {

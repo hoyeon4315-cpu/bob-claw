@@ -4,6 +4,8 @@ import {
   isTransientFailureMark,
 } from "../treasury/protocol-position-ledger.mjs";
 
+const ROLLING_1H_MS = 60 * 60 * 1000;
+const ROLLING_3H_MS = 3 * 60 * 60 * 1000;
 const ROLLING_24H_MS = 24 * 60 * 60 * 1000;
 const ROLLING_7D_MS = 7 * 24 * 60 * 60 * 1000;
 const STAGE_C_HYSTERESIS_THRESHOLD = 0.9;
@@ -87,6 +89,17 @@ function rollingReliabilityWindow(marks = [], { generatedAt, windowMs } = {}) {
     oldestObservedAt: attempts[0]?.observedAt || null,
     latestObservedAt: attempts.at(-1)?.observedAt || null,
   };
+}
+
+function latestAttemptMark(marks = [], predicate = () => true) {
+  let latest = null;
+  for (const mark of marks) {
+    if (!attemptOutcome(mark) || !predicate(mark)) continue;
+    if (!latest || observedAtMs(mark.observedAt) >= observedAtMs(latest.observedAt)) {
+      latest = mark;
+    }
+  }
+  return latest;
 }
 
 function refreshBelowThresholdSince(marks = [], {
@@ -211,6 +224,8 @@ export function buildProtocolPositionMarksSlice(
         observedAt: new Date().toISOString(),
       }
     : null;
+  const rolling1h = rollingReliabilityWindow(marks, { generatedAt, windowMs: ROLLING_1H_MS });
+  const rolling3h = rollingReliabilityWindow(marks, { generatedAt, windowMs: ROLLING_3H_MS });
   const rolling24h = rollingReliabilityWindow(marks, { generatedAt, windowMs: ROLLING_24H_MS });
   const rolling7d = rollingReliabilityWindow(marks, { generatedAt, windowMs: ROLLING_7D_MS });
   const refreshBelow90Since = refreshBelowThresholdSince(marks, {
@@ -221,6 +236,8 @@ export function buildProtocolPositionMarksSlice(
   const refreshBelow90SustainedFor1h =
     Boolean(refreshBelow90Since) &&
     observedAtMs(generatedAt) - observedAtMs(refreshBelow90Since) >= STAGE_C_HYSTERESIS_SUSTAIN_MS;
+  const latestSuccess = latestAttemptMark(marks, (mark) => isSuccessfulMarkedPosition(mark));
+  const latestFailure = latestAttemptMark(marks, (mark) => mark.event === "position_mark_failed");
 
   return {
     schemaVersion: 2,
@@ -236,14 +253,20 @@ export function buildProtocolPositionMarksSlice(
     confidence,
     transientDegradedWarning,
     refreshSuccessRatio: {
+      rolling1h: rolling1h.refreshSuccessRatio,
+      rolling3h: rolling3h.refreshSuccessRatio,
       rolling24h: rolling24h.refreshSuccessRatio,
       rolling7d: rolling7d.refreshSuccessRatio,
     },
     transientFrequency: {
+      rolling1h: rolling1h.transientFrequency,
+      rolling3h: rolling3h.transientFrequency,
       rolling24h: rolling24h.transientFrequency,
       rolling7d: rolling7d.transientFrequency,
     },
     reliability: {
+      rolling1h,
+      rolling3h,
       rolling24h,
       rolling7d,
       hysteresis: {
@@ -251,6 +274,12 @@ export function buildProtocolPositionMarksSlice(
         refreshBelow90SustainedFor1h,
         threshold: STAGE_C_HYSTERESIS_THRESHOLD,
         sustainMs: STAGE_C_HYSTERESIS_SUSTAIN_MS,
+      },
+      latestAttempt: {
+        successObservedAt: latestSuccess?.observedAt || null,
+        failureObservedAt: latestFailure?.observedAt || null,
+        failureKind: latestFailure?.failureKind || null,
+        failurePositionId: latestFailure?.positionId || null,
       },
     },
     byChain,
