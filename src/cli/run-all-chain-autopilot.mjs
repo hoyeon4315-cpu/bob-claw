@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { runAllChainAutopilot, OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../executor/all-chain-autopilot.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 
@@ -11,7 +12,7 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const entries = Object.fromEntries(
     argv
@@ -23,6 +24,7 @@ function parseArgs(argv) {
   );
   return {
     execute: flags.has("--execute"),
+    dryRunFirst: flags.has("--dry-run-first"),
     enableDexProbeExecution: flags.has("--enable-dex-probe-execution"),
     json: flags.has("--json"),
     write: flags.has("--write"),
@@ -64,21 +66,79 @@ function printSummary(report = {}) {
   console.log(`executionGate=liveSteps:${report.summary?.executionGate?.liveCapableStepExecution === true ? "enabled" : "blocked"} reason=${report.summary?.executionGate?.blockedReason || "none"}`);
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  let report = null;
+export async function runAutopilotCommand(args, { runner = runAllChainAutopilot } = {}) {
+  if (!(args?.execute && args?.dryRunFirst)) {
+    const report = await runner(args);
+    return {
+      mode: args?.execute ? "execute" : "preview",
+      preview: null,
+      execution: null,
+      final: report,
+    };
+  }
+
+  const preview = await runner({
+    ...args,
+    execute: false,
+  });
+  if (preview?.status === "error") {
+    return {
+      mode: "dry_run_first",
+      preview,
+      execution: null,
+      final: preview,
+    };
+  }
+
+  const execution = await runner({
+    ...args,
+    execute: true,
+  });
+  return {
+    mode: "dry_run_first",
+    preview,
+    execution,
+    final: execution,
+  };
+}
+
+export async function main(argv = process.argv.slice(2), { runner = runAllChainAutopilot } = {}) {
+  const args = parseArgs(argv);
+  let finalReport = null;
   do {
-    report = await runAllChainAutopilot(args);
-    if (args.json) console.log(safeJsonStringify(report, 2));
-    else printSummary(report);
+    const outcome = await runAutopilotCommand(args, { runner });
+    finalReport = outcome.final;
+    if (args.json) {
+      if (outcome.mode === "dry_run_first") {
+        console.log(safeJsonStringify({
+          schemaVersion: 1,
+          mode: outcome.mode,
+          preview: outcome.preview,
+          execution: outcome.execution,
+          final: outcome.final,
+        }, 2));
+      } else {
+        console.log(safeJsonStringify(outcome.final, 2));
+      }
+    } else {
+      if (outcome.mode === "dry_run_first") {
+        console.log("[dry-run-first:preview]");
+        printSummary(outcome.preview);
+        console.log("");
+        console.log("[dry-run-first:execution]");
+      }
+      printSummary(outcome.final);
+    }
     if (!args.loop) break;
     await delay(Math.max(5_000, args.intervalMs));
   } while (true);
 
-  if (report?.status === "error") process.exitCode = 1;
+  if (finalReport?.status === "error") process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
