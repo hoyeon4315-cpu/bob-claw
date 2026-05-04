@@ -229,7 +229,14 @@ async function runConsecutiveFailureDrill(rootDir) {
         },
         policyVerdict: "errored",
         lifecycle: {
-          stage: "error",
+          stage: "reverted",
+          txHash: `0x${String(index + 1).padStart(64, "0")}`,
+        },
+        broadcast: {
+          txHash: `0x${String(index + 1).padStart(64, "0")}`,
+          nonce: index + 1,
+          from: "0x0000000000000000000000000000000000000001",
+          to: "0x0000000000000000000000000000000000000002",
         },
         error: {
           name: "SimulatedExecutionFailure",

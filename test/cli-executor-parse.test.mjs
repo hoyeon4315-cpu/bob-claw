@@ -10,6 +10,7 @@ import { buildFullAutomationReadiness, parseArgs as parseFullAutomationArgs } fr
 import { parseArgs as parseRuntimeReadinessArgs } from "../src/cli/check-executor-runtime.mjs";
 import { parseArgs as parseLaunchdArgs, retryableBootstrapFailure } from "../src/cli/manage-executor-launchd.mjs";
 import { retryableBootstrapFailure as retryableLiveAutomationBootstrapFailure } from "../src/cli/manage-live-automation-launchd.mjs";
+import { parseArgs as parseResetConsecutiveFailureArgs } from "../src/cli/run-reset-consecutive-failures.mjs";
 import {
   parseArgs as parsePaybackSchedulerArgs,
   paybackDisbursementRecordFromTickResult,
@@ -76,6 +77,24 @@ test("plan-capital-manager-refill-jobs parseArgs reads planner flags", () => {
   assert.equal(args.refreshInventory, true);
   assert.equal(args.includeInactive, true);
   assert.equal(args.address, "0x3333333333333333333333333333333333333333");
+});
+
+test("reset-consecutive-failures parseArgs reads operator reset options", () => {
+  const args = parseResetConsecutiveFailureArgs([
+    "--strategy=wrapped-btc-loop-base-moonwell",
+    "--chain=base",
+    "--reason=clear after funding gas",
+    "--actor=operator_via_cli",
+    "--root-dir=/tmp/bob-claw",
+    "--json",
+  ]);
+
+  assert.equal(args.strategyId, "wrapped-btc-loop-base-moonwell");
+  assert.equal(args.chain, "base");
+  assert.equal(args.reason, "clear after funding gas");
+  assert.equal(args.actor, "operator_via_cli");
+  assert.equal(args.rootDir, "/tmp/bob-claw");
+  assert.equal(args.json, true);
 });
 
 test("run-payback-scheduler parseArgs reads loop and poll settings", () => {

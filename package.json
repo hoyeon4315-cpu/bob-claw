@@ -210,6 +210,7 @@
     "executor:merkl-portfolio-orchestrator": "node src/cli/run-merkl-portfolio-orchestrator.mjs",
     "executor:merkl-portfolio-orchestrator:loop": "node src/cli/run-merkl-portfolio-orchestrator.mjs --loop --write",
     "executor:bootstrap-from-btc": "node src/cli/run-bootstrap-from-btc.mjs",
+    "executor:reset-consecutive-failures": "node src/cli/run-reset-consecutive-failures.mjs",
     "executor:all-chain-autopilot": "node src/cli/run-all-chain-autopilot.mjs",
     "executor:all-chain-autopilot:loop": "node src/cli/run-all-chain-autopilot.mjs --loop --write",
     "executor:erc4626-protocol-canary": "node src/cli/run-erc4626-protocol-canary.mjs",

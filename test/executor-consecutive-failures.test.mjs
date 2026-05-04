@@ -30,9 +30,11 @@ function intentFixture(overrides = {}) {
 test("consecutive failure state counts only terminal failures until the latest success boundary", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "wrapped-btc-loop-base-moonwell",
+    chain: "base",
     auditRecords: [
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "older-success",
         timestamp: "2026-04-17T00:00:00.000Z",
         policyVerdict: "approved",
@@ -40,20 +42,23 @@ test("consecutive failure state counts only terminal failures until the latest s
       },
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "fail-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "fail-2",
         timestamp: "2026-04-17T00:11:00.000Z",
-        policyVerdict: "rejected",
-        lifecycle: { stage: "rejected" },
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "fail-3",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "errored",
@@ -63,7 +68,7 @@ test("consecutive failure state counts only terminal failures until the latest s
   });
 
   assert.equal(state.consecutiveFailures, 3);
-  assert.equal(state.lastTerminalStatus, "failure");
+  assert.equal(state.lastTerminalStatus, "broadcastFailed");
 });
 
 test("evaluateIntentPolicies blocks when the strategy already has three consecutive terminal failures", async () => {
@@ -73,20 +78,23 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
     auditRecords: [
       {
         strategyId,
+        chain: "base",
         intentId: "fail-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId,
+        chain: "base",
         intentId: "fail-2",
         timestamp: "2026-04-17T00:11:00.000Z",
-        policyVerdict: "rejected",
-        lifecycle: { stage: "rejected" },
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId,
+        chain: "base",
         intentId: "fail-3",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "errored",
@@ -103,16 +111,19 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
 test("consecutive failure state ignores pure circuit-breaker self rejections", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "gateway_native_asset_conversion_sleeve",
+    chain: "ethereum",
     auditRecords: [
       {
         strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "ethereum",
         intentId: "real-fail-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "ethereum",
         intentId: "self-reject-1",
         timestamp: "2026-04-17T00:11:00.000Z",
         policyVerdict: "rejected",
@@ -121,6 +132,7 @@ test("consecutive failure state ignores pure circuit-breaker self rejections", (
       },
       {
         strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "ethereum",
         intentId: "self-reject-2",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "rejected",
@@ -138,9 +150,11 @@ test("consecutive failure state ignores pure circuit-breaker self rejections", (
 test("consecutive failure state ignores pure kill-switch policy rejections", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "wrapped-btc-loop-base-moonwell",
+    chain: "base",
     auditRecords: [
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "real-fail-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
@@ -148,6 +162,7 @@ test("consecutive failure state ignores pure kill-switch policy rejections", () 
       },
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "kill-switch-reject-1",
         timestamp: "2026-04-17T00:11:00.000Z",
         policyVerdict: "rejected",
@@ -156,6 +171,7 @@ test("consecutive failure state ignores pure kill-switch policy rejections", () 
       },
       {
         strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "base",
         intentId: "kill-switch-reject-2",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "rejected",
@@ -172,9 +188,11 @@ test("consecutive failure state ignores pure kill-switch policy rejections", () 
 test("consecutive failure state ignores no-tx cap policy rejections", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "gateway-btc-funding-transfer",
+    chain: "base",
     auditRecords: [
       {
         strategyId: "gateway-btc-funding-transfer",
+        chain: "base",
         intentId: "cap-reject-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "rejected",
@@ -186,6 +204,7 @@ test("consecutive failure state ignores no-tx cap policy rejections", () => {
       },
       {
         strategyId: "gateway-btc-funding-transfer",
+        chain: "base",
         intentId: "cap-and-breaker-reject",
         timestamp: "2026-04-17T00:11:00.000Z",
         policyVerdict: "rejected",
@@ -205,9 +224,11 @@ test("consecutive failure state ignores no-tx cap policy rejections", () => {
 test("consecutive failure state still counts rejections with substantive blockers", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "gateway-btc-funding-transfer",
+    chain: "base",
     auditRecords: [
       {
         strategyId: "gateway-btc-funding-transfer",
+        chain: "base",
         intentId: "executor-binding-reject",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "rejected",
@@ -220,8 +241,9 @@ test("consecutive failure state still counts rejections with substantive blocker
     ],
   });
 
-  assert.equal(state.consecutiveFailures, 1);
-  assert.equal(state.terminalRecordCount, 1);
+  assert.equal(state.consecutiveFailures, 0);
+  assert.equal(state.policyRejectedCount, 1);
+  assert.equal(state.terminalRecordCount, 0);
 });
 
 test("approval revocations bypass consecutive failure blocking", async () => {
@@ -243,6 +265,7 @@ test("approval revocations bypass consecutive failure blocking", async () => {
     auditRecords: [
       {
         strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
         intentId: "fail-1",
         timestamp: "2026-04-24T01:35:22.000Z",
         policyVerdict: "rejected",
@@ -250,6 +273,7 @@ test("approval revocations bypass consecutive failure blocking", async () => {
       },
       {
         strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
         intentId: "fail-2",
         timestamp: "2026-04-24T01:36:22.000Z",
         policyVerdict: "rejected",
@@ -257,6 +281,7 @@ test("approval revocations bypass consecutive failure blocking", async () => {
       },
       {
         strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
         intentId: "fail-3",
         timestamp: "2026-04-24T01:37:22.000Z",
         policyVerdict: "rejected",
@@ -282,20 +307,23 @@ test("committed resume timestamp ignores older terminal failures without rewriti
     auditRecords: [
       {
         strategyId: "native-dex-experiment",
+        chain: "optimism",
         intentId: "fail-1",
         timestamp: "2026-04-22T15:10:00.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId: "native-dex-experiment",
+        chain: "optimism",
         intentId: "fail-2",
         timestamp: "2026-04-22T15:11:00.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId: "native-dex-experiment",
+        chain: "optimism",
         intentId: "fail-3",
         timestamp: "2026-04-22T15:16:41.000Z",
         policyVerdict: "rejected",
@@ -319,17 +347,19 @@ test("new failures after a committed resume timestamp are still counted", () => 
     auditRecords: [
       {
         strategyId: "native-dex-experiment",
+        chain: "optimism",
         intentId: "older-fail",
         timestamp: "2026-04-22T15:16:41.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
       {
         strategyId: "native-dex-experiment",
+        chain: "optimism",
         intentId: "new-fail",
         timestamp: "2026-04-22T15:17:00.000Z",
         policyVerdict: "errored",
-        lifecycle: { stage: "error" },
+        lifecycle: { stage: "reverted" },
       },
     ],
   });
@@ -352,6 +382,7 @@ test("LI.FI bridge committed resume timestamp clears older rejection streaks", a
     auditRecords: [
       {
         strategyId: "lifi-bridge",
+        chain: "avalanche",
         intentId: "fail-1",
         timestamp: "2026-04-27T00:55:35.069Z",
         policyVerdict: "rejected",
@@ -359,6 +390,7 @@ test("LI.FI bridge committed resume timestamp clears older rejection streaks", a
       },
       {
         strategyId: "lifi-bridge",
+        chain: "avalanche",
         intentId: "fail-2",
         timestamp: "2026-04-27T01:01:06.602Z",
         policyVerdict: "rejected",
@@ -366,6 +398,7 @@ test("LI.FI bridge committed resume timestamp clears older rejection streaks", a
       },
       {
         strategyId: "lifi-bridge",
+        chain: "avalanche",
         intentId: "fail-3",
         timestamp: "2026-04-27T01:17:46.856Z",
         policyVerdict: "rejected",
@@ -384,9 +417,11 @@ test("LI.FI bridge committed resume timestamp clears older rejection streaks", a
 test("prelive fork sign-only rejections do not count as terminal failures", () => {
   const state = buildConsecutiveFailureState({
     strategyId: "prelive_fork_execution",
+    chain: "sonic",
     auditRecords: [
       {
         strategyId: "prelive_fork_execution",
+        chain: "sonic",
         intentId: "fork-reject-1",
         timestamp: "2026-04-19T10:00:00.000Z",
         policyVerdict: "rejected",
@@ -395,6 +430,7 @@ test("prelive fork sign-only rejections do not count as terminal failures", () =
       },
       {
         strategyId: "prelive_fork_execution",
+        chain: "sonic",
         intentId: "fork-reject-2",
         timestamp: "2026-04-19T10:01:00.000Z",
         policyVerdict: "rejected",
@@ -408,31 +444,102 @@ test("prelive fork sign-only rejections do not count as terminal failures", () =
   assert.equal(state.terminalRecordCount, 0);
 });
 
-test("per-intentId consecutive failures catch repeated sub-step reverts masked by sibling successes", () => {
-  // Bug fix: wrapped-btc-loop mint step kept reverting, but approve/enter-market
-  // succeeded, so the old strategy-level count never reached the threshold.
+test("successful broadcast on the same strategy and chain resets the auto-pause streak", () => {
   const auditRecords = [
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:10:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:enter", timestamp: "2026-04-16T20:10:05Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:mint", timestamp: "2026-04-16T20:10:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:11:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:enter", timestamp: "2026-04-16T20:11:05Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:mint", timestamp: "2026-04-16T20:11:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:12:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:enter", timestamp: "2026-04-16T20:12:05Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
-    { strategyId: "wrapped-btc-loop", intentId: "wrapped-btc-loop:mint", timestamp: "2026-04-16T20:12:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
+    { strategyId: "wrapped-btc-loop", chain: "base", intentId: "wrapped-btc-loop:mint:1", timestamp: "2026-04-16T20:10:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
+    { strategyId: "wrapped-btc-loop", chain: "base", intentId: "wrapped-btc-loop:mint:2", timestamp: "2026-04-16T20:11:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
+    { strategyId: "wrapped-btc-loop", chain: "base", intentId: "wrapped-btc-loop:approve", timestamp: "2026-04-16T20:12:00Z", policyVerdict: "approved", lifecycle: { stage: "confirmed" } },
+    { strategyId: "wrapped-btc-loop", chain: "base", intentId: "wrapped-btc-loop:mint:3", timestamp: "2026-04-16T20:13:10Z", policyVerdict: "errored", lifecycle: { stage: "reverted" } },
   ];
 
-  const mintState = buildConsecutiveFailureState({
+  const state = buildConsecutiveFailureState({
     strategyId: "wrapped-btc-loop",
+    chain: "base",
     auditRecords,
-    intentId: "wrapped-btc-loop:mint",
   });
 
-  // Strategy-level count is broken by successful approve/enter steps
-  assert.equal(mintState.strategyConsecutiveFailures, 1);
-  // Intent-level count correctly sees 3 consecutive mint reverts
-  assert.equal(mintState.intentConsecutiveFailures, 3);
-  // Total uses the max
-  assert.equal(mintState.consecutiveFailures, 3);
+  assert.equal(state.strategyConsecutiveFailures, 1);
+  assert.equal(state.successfulBroadcastCount, 1);
+  assert.equal(state.consecutiveFailures, 1);
+});
+
+test("policy rejections and no-tx errors do not trip the 3-strike auto-pause", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: intentFixture({
+      strategyId: "gateway_proxy_spread_rebalance_recheck",
+      chain: "base",
+    }),
+    auditRecords: [
+      {
+        strategyId: "gateway_proxy_spread_rebalance_recheck",
+        chain: "base",
+        intentId: "reject-1",
+        timestamp: "2026-05-04T00:00:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["kill_switch_present"] },
+      },
+      {
+        strategyId: "gateway_proxy_spread_rebalance_recheck",
+        chain: "base",
+        intentId: "error-1",
+        timestamp: "2026-05-04T00:01:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "error" },
+        error: { name: "Error", message: "insufficient_native_balance_for_gas" },
+      },
+      {
+        strategyId: "gateway_proxy_spread_rebalance_recheck",
+        chain: "base",
+        intentId: "reject-2",
+        timestamp: "2026-05-04T00:02:00.000Z",
+        policyVerdict: "rejected",
+        lifecycle: { stage: "rejected", blockers: ["strategy_per_day_cap_exceeded"] },
+      },
+    ],
+    now: "2026-05-04T00:03:00.000Z",
+  });
+
+  assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), false);
+  const consecutiveResult = policy.results.find((item) => item.policy === "consecutive_failures");
+  assert.equal(consecutiveResult.metrics.consecutiveFailures, 0);
+  assert.equal(consecutiveResult.metrics.policyRejectedCount, 2);
+  assert.equal(consecutiveResult.metrics.noTxFailureCount, 1);
+});
+
+test("strategy and chain streaks are isolated", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: intentFixture({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+    }),
+    auditRecords: [
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "ethereum",
+        intentId: "eth-fail-1",
+        timestamp: "2026-05-04T00:00:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
+      },
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "ethereum",
+        intentId: "eth-fail-2",
+        timestamp: "2026-05-04T00:01:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
+      },
+      {
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "ethereum",
+        intentId: "eth-fail-3",
+        timestamp: "2026-05-04T00:02:00.000Z",
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted" },
+      },
+    ],
+    now: "2026-05-04T00:03:00.000Z",
+  });
+
+  assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), false);
 });
