@@ -73,7 +73,7 @@ function refillBlockers(refillExecutions = []) {
       reason:
         compactReason(item.executionBlockedReason) ||
         compactReason(item.previewBlockedReason) ||
-        compactReason(item.previewStatus) ||
+        (compactReason(item.previewStatus) === "ready" ? null : compactReason(item.previewStatus)) ||
         (item.selectedExecutionMethod || item.executionMethod ? null : "refill_not_executed"),
       selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
     }))

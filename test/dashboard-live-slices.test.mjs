@@ -192,6 +192,7 @@ test("all-chain autopilot dashboard slice treats route-ready planned refills as 
         chain: "base",
         asset: "wBTC.OFT",
         selectedExecutionMethod: "cross_chain_swap_via_btc_intermediate",
+        previewStatus: "ready",
         attempted: false,
         executed: false,
       },
@@ -199,6 +200,7 @@ test("all-chain autopilot dashboard slice treats route-ready planned refills as 
         chain: "base",
         asset: "wBTC.OFT",
         selectedExecutionMethod: "cross_chain_bridge_or_swap",
+        previewStatus: "ready",
         attempted: false,
         executed: false,
       },
@@ -209,6 +211,48 @@ test("all-chain autopilot dashboard slice treats route-ready planned refills as 
   assert.equal(slice.refill.unresolvedCount, 0);
   assert.equal(slice.refill.manualBacklogCount, 2);
   assert.equal(slice.nextAction, "accrue_payback_until_minimum");
+});
+
+test("all-chain autopilot dashboard slice does not count preview-ready refill jobs as blockers", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-04T22:43:45.380Z",
+    mode: "preview",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 2,
+      autoRefillJobCount: 2,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: { batchStatus: "preview", selectedCount: 0, successCount: 0, failedCount: 0, liveEligibleCount: 0, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        chain: "bob",
+        asset: "ETH",
+        selectedExecutionMethod: "cross_chain_bridge_or_swap",
+        previewStatus: "ready",
+        attempted: false,
+        executed: false,
+      },
+      {
+        chain: "ethereum",
+        asset: "ETH",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        previewStatus: "ready",
+        attempted: false,
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.blockedCount, 0);
+  assert.equal(slice.refill.unresolvedCount, 0);
+  assert.deepEqual(slice.refill.blockers, []);
 });
 
 test("all-chain autopilot truth prefers latest completed report over running progress", () => {
