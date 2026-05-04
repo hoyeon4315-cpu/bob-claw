@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 
 export function readDashboardStatus() {
   try {
@@ -12,6 +13,23 @@ export function readDashboardStatus() {
   } catch (error) {
     return null;
   }
+}
+
+export async function loadDashboardForStageExplain({
+  snapshotOnly = false,
+  snapshotReader = readDashboardStatus,
+  buildDashboardContext = buildCurrentDashboardContext,
+} = {}) {
+  if (!snapshotOnly) {
+    try {
+      const current = await buildDashboardContext({ syncStageAudit: false });
+      if (current?.dashboardStatus) return current.dashboardStatus;
+      if (current?.overall?.lanePolicy) return current;
+    } catch {
+      // Fall back to the last written snapshot when live context assembly fails.
+    }
+  }
+  return snapshotReader();
 }
 
 export function explainCurrentStage(dashboard) {
@@ -42,7 +60,8 @@ export function explainCurrentStage(dashboard) {
 }
 
 async function main() {
-  const dashboard = readDashboardStatus();
+  const snapshotOnly = process.argv.slice(2).includes("--snapshot-only");
+  const dashboard = await loadDashboardForStageExplain({ snapshotOnly });
   if (!dashboard) {
     console.error("Error: dashboard-status.json not found");
     process.exit(1);

@@ -188,6 +188,7 @@ export async function buildCurrentDashboardContext({
   dataDir = config.dataDir,
   logsDir = join(dataDir, "..", "logs"),
   address = null,
+  syncStageAudit = true,
 } = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
@@ -530,11 +531,13 @@ export async function buildCurrentDashboardContext({
         },
       })
     : null;
-  await syncStageTransitionAudit({
-    logsDir,
-    stageEvaluation,
-    observedAt: dashboardStatus.generatedAt,
-  });
+  if (syncStageAudit) {
+    await syncStageTransitionAudit({
+      logsDir,
+      stageEvaluation,
+      observedAt: dashboardStatus.generatedAt,
+    });
+  }
   dashboardStatus.strategy.reopenStage = stageEvaluation;
   dashboardStatus.flow = buildFlowDashboardSlice({
     executionEvents,
