@@ -100,6 +100,7 @@ function latestTerminalStatuses(events = [], resumeAfterFailureAt = null) {
   return [...events]
     .filter((item) => ["confirmed", "delivered", "failed"].includes(item.status))
     .filter((item) => !isSignerAvailabilityFailure(item))
+    .filter((item) => !isPartialPreparationFailure(item))
     .filter((item) => resumeAfterMs === null || new Date(item.observedAt || 0).getTime() > resumeAfterMs)
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt));
 }
@@ -111,6 +112,30 @@ function errorMessage(record = {}) {
 function isSignerAvailabilityFailure(record = {}) {
   if (record.status !== "failed") return false;
   return /ECONNREFUSED.+executor-signer\.sock|executor-signer\.sock.+ECONNREFUSED/u.test(errorMessage(record));
+}
+
+function hasExecutionProgressEvidence(record = {}) {
+  return Boolean(
+    record.sourceBalanceAfter ||
+    record.destinationBalanceAfter ||
+    record.destinationProof ||
+    record.receiptIngest ||
+    record.destinationObservedDelta,
+  );
+}
+
+function isPartialPreparationFailure(record = {}) {
+  if (record.status !== "failed") return false;
+  if (hasExecutionProgressEvidence(record)) return false;
+  const txHashes = Array.isArray(record.txHashes) ? record.txHashes.filter(Boolean) : [];
+  const stepIds = Array.isArray(record.stepIds) ? record.stepIds.filter(Boolean) : [];
+  if (txHashes.length > 0 && stepIds.length > 0 && txHashes.length < stepIds.length) {
+    return true;
+  }
+  if (txHashes.length === 0 && /insufficient_native_balance_for_gas/u.test(errorMessage(record))) {
+    return true;
+  }
+  return false;
 }
 
 export function buildExecutionRiskState({

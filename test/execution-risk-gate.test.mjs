@@ -177,6 +177,93 @@ test("risk gate does not pin refill execution after signer socket outage failure
   assert.equal(decision.blockers.includes("max_consecutive_failures_reached"), false);
 });
 
+test("risk state ignores approval-only partial failures when the main step never executes", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T06:10:00.000Z",
+    inventory: inventoryFixture(280),
+    receiptRecords: [],
+    executionEvents: [
+      {
+        observedAt: "2026-04-11T06:01:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token", "swap_input_to_output"],
+        txHashes: ["0xapprove-1"],
+        sourceBalanceAfter: null,
+        destinationBalanceAfter: null,
+        destinationProof: null,
+        receiptIngest: null,
+        error: { message: "Signer did not complete swap_input_to_output" },
+      },
+      {
+        observedAt: "2026-04-11T06:02:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token", "swap_input_to_output"],
+        txHashes: ["0xapprove-2"],
+        sourceBalanceAfter: null,
+        destinationBalanceAfter: null,
+        destinationProof: null,
+        receiptIngest: null,
+        error: { message: "Signer did not complete swap_input_to_output" },
+      },
+      {
+        observedAt: "2026-04-11T06:03:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token", "swap_input_to_output"],
+        txHashes: ["0xapprove-3"],
+        sourceBalanceAfter: null,
+        destinationBalanceAfter: null,
+        destinationProof: null,
+        receiptIngest: null,
+        error: { message: "insufficient_native_balance_for_gas: chain=base requiredWei=10 balanceWei=1" },
+      },
+    ],
+  });
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({ type: "refill_token" }),
+    riskState,
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(riskState.consecutiveFailures, 0);
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("max_consecutive_failures_reached"), false);
+});
+
+test("risk state still counts failed executions once all planned steps broadcast", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T06:10:00.000Z",
+    inventory: inventoryFixture(280),
+    receiptRecords: [],
+    executionEvents: [
+      {
+        observedAt: "2026-04-11T06:01:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token", "swap_input_to_output"],
+        txHashes: ["0xapprove-1", "0xswap-1"],
+        error: { message: "execution reverted" },
+      },
+      {
+        observedAt: "2026-04-11T06:02:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token", "swap_input_to_output"],
+        txHashes: ["0xapprove-2", "0xswap-2"],
+        error: { message: "execution reverted" },
+      },
+      {
+        observedAt: "2026-04-11T06:03:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token", "swap_input_to_output"],
+        txHashes: ["0xapprove-3", "0xswap-3"],
+        error: { message: "execution reverted" },
+      },
+    ],
+  });
+
+  assert.equal(riskState.consecutiveFailures, 3);
+});
+
 test("risk gate blocks jobs when economics or limits fail", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({
