@@ -3,6 +3,7 @@ import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
 import { evaluateConcentrationGuard } from "../risk/concentration-guard.mjs";
 import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
+import { evaluateEvGate } from "./ev-gate.mjs";
 import { checkGatewayAvailability } from "./gateway-availability.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
@@ -50,10 +51,12 @@ function mapConcentrationBlockers(verdict) {
 export async function evaluateIntentPolicies({
   intent,
   auditRecords = [],
+  receiptRecords = [],
   activeBudgetUsd = null,
   now = new Date().toISOString(),
   killSwitchPath,
   riskContext = null,
+  evCostModel = null,
 } = {}) {
   const strategyCaps = assertStrategyCaps(intent.strategyId);
 
@@ -77,6 +80,12 @@ export async function evaluateIntentPolicies({
       intent,
       availability: riskContext?.gatewayAvailability || intent.metadata?.gatewayAvailability || null,
       now,
+    }),
+    evaluateEvGate({
+      intent,
+      receiptHistory: evCostModel || { receiptRecords, auditRecords },
+      now,
+      policy: riskContext?.evCostPolicy || undefined,
     }),
     evaluateConsecutiveFailures({
       intent,

@@ -4,7 +4,8 @@ import net from "node:net";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { getBooleanEnv, getEnv, getNumberEnv } from "../../config/env.mjs";
+import { config, getBooleanEnv, getEnv, getNumberEnv } from "../../config/env.mjs";
+import { readJsonl } from "../../lib/jsonl-read.mjs";
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { evaluateIntentPolicies } from "../policy/index.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord, readSignerAuditLog } from "./audit-log.mjs";
@@ -102,10 +103,14 @@ export async function handleIntentCommand({
   transactionNotifyImpl = null,
 }) {
   const intent = normalizeExecutionIntent(message.intent);
-  const auditRecords = await readSignerAuditLog({ rootDir: cwd });
+  const [auditRecords, receiptRecords] = await Promise.all([
+    readSignerAuditLog({ rootDir: cwd }),
+    readJsonl(resolve(cwd, config.dataDir), "receipt-reconciliations"),
+  ]);
   const policy = await evaluateIntentPolicies({
     intent,
     auditRecords,
+    receiptRecords,
     activeBudgetUsd: args.activeBudgetUsd,
     killSwitchPath: args.killSwitchPath,
     riskContext: intent.metadata?.riskContext || null,

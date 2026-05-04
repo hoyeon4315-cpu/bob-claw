@@ -27,6 +27,28 @@ export const TINY_CANARY_COST_POLICY = Object.freeze({
   fallbackHoldDays: 7,
 });
 
+export const EXECUTION_EV_COST_POLICY = Object.freeze({
+  lookbackDays: 90,
+  minSamples: 10,
+  costPercentile: 0.9,
+  costMultiplier: 1,
+  minProfitFloorUsd: 0,
+  defaultP99CostUsd: 0.12,
+  p99CostUsdByChain: Object.freeze({
+    avalanche: 0.081,
+    base: 5.25,
+    bera: 0.10,
+    bob: 4.25,
+    bsc: 0.067,
+    ethereum: 8.52,
+    optimism: 0.002,
+    sei: 9.21,
+    soneium: 0.057,
+    sonic: 0.001,
+    unichain: 0.002,
+  }),
+});
+
 export function sizingPolicy(overrides = {}) {
   return Object.freeze({
     ...SIZING_POLICY,
@@ -80,6 +102,15 @@ export function tinyCanarySameChainRoundTripCostUsd({
   const chainKey = String(chain || "").trim().toLowerCase();
   const chainCost = policy.sameChainRoundTripCostUsdByChain?.[chainKey];
   return finitePositive(chainCost) ?? policy.defaultSameChainRoundTripCostUsd;
+}
+
+export function executionEvFallbackCostUsd({
+  chain = null,
+  policy = EXECUTION_EV_COST_POLICY,
+} = {}) {
+  const chainKey = String(chain || "").trim().toLowerCase();
+  const chainCost = policy.p99CostUsdByChain?.[chainKey];
+  return finitePositive(chainCost) ?? policy.defaultP99CostUsd;
 }
 
 export function computeMinProfitablePositionUsd({

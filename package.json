@@ -112,6 +112,7 @@
     "report:destination-allowlist-board": "node src/cli/report-destination-allowlist-board.mjs",
     "report:destination-allocation-plan": "node src/cli/report-destination-allocation-plan.mjs",
     "report:destination-promotion-gate": "node src/cli/report-destination-promotion-gate.mjs",
+    "policy:backfill-ev-cost-model": "node src/cli/backfill-ev-cost-model.mjs",
     "seed:destination-input-overrides": "node src/cli/seed-destination-input-overrides.mjs",
     "seed:destination-allowlist-candidates": "node src/cli/seed-destination-allowlist-candidates.mjs",
     "seed:destination-source-metadata": "node src/cli/seed-destination-source-metadata.mjs",
