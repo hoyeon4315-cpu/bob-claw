@@ -275,8 +275,8 @@ test("evaluateAutoKillTriggers aggregates all 8 triggers when each trips", () =>
   const result = evaluateAutoKillTriggers({
     auditRecords: [
       { timestamp: new Date(NOW_MS - 1 * 60_000).toISOString(), strategyId: "x", lifecycle: { stage: "confirmed" }, realized: { netUsd: -100 } },
-      { timestamp: new Date(NOW_MS - 2 * 60_000).toISOString(), strategyId: "x", lifecycle: { stage: "rejected" } },
-      { timestamp: new Date(NOW_MS - 3 * 60_000).toISOString(), strategyId: "x", lifecycle: { stage: "rejected" } },
+      { timestamp: new Date(NOW_MS - 2 * 60_000).toISOString(), strategyId: "x", policyVerdict: "errored", lifecycle: { stage: "error" } },
+      { timestamp: new Date(NOW_MS - 3 * 60_000).toISOString(), strategyId: "x", policyVerdict: "errored", lifecycle: { stage: "error" } },
     ],
     oracleSamples: [
       { source: "a", priceUsd: 100 },

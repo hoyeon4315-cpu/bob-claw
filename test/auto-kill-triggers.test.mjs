@@ -68,9 +68,9 @@ test("failure burst fires on per-strategy threshold", () => {
     failureBurst: { perStrategyFailureCount: 3, failureCount: 99 },
   });
   const records = [
-    failureRecord({ minutesAgo: 1, strategyId: "alpha" }),
-    failureRecord({ minutesAgo: 2, strategyId: "alpha" }),
-    failureRecord({ minutesAgo: 3, strategyId: "alpha" }),
+    { timestamp: new Date(NOW_MS - 1 * 60_000).toISOString(), strategyId: "alpha", policyVerdict: "errored", lifecycle: { stage: "error" } },
+    { timestamp: new Date(NOW_MS - 2 * 60_000).toISOString(), strategyId: "alpha", policyVerdict: "errored", lifecycle: { stage: "error" } },
+    { timestamp: new Date(NOW_MS - 3 * 60_000).toISOString(), strategyId: "alpha", policyVerdict: "errored", lifecycle: { stage: "error" } },
   ];
   const result = evaluateFailureBurst({
     auditRecords: records,
@@ -109,7 +109,7 @@ test("failure burst ignores no-tx policy guard rejections", () => {
   assert.equal(result, null);
 });
 
-test("failure burst still counts rejected records with substantive blockers", () => {
+test("failure burst ignores no-tx policy rejections with substantive blockers", () => {
   const config = buildAutoKillConfig({
     failureBurst: { perStrategyFailureCount: 1, failureCount: 99 },
   });
@@ -119,6 +119,27 @@ test("failure burst still counts rejected records with substantive blockers", ()
       strategyId: "alpha",
       policyVerdict: "rejected",
       lifecycle: { stage: "rejected", blockers: ["strategy_per_chain_cap_exceeded"] },
+      broadcast: null,
+    },
+  ];
+  const result = evaluateFailureBurst({
+    auditRecords: records,
+    config: config.failureBurst,
+    nowMs: NOW_MS,
+  });
+  assert.equal(result, null);
+});
+
+test("failure burst still counts no-tx policy errors", () => {
+  const config = buildAutoKillConfig({
+    failureBurst: { perStrategyFailureCount: 1, failureCount: 99 },
+  });
+  const records = [
+    {
+      timestamp: new Date(NOW_MS - 60_000).toISOString(),
+      strategyId: "alpha",
+      policyVerdict: "errored",
+      lifecycle: { stage: "error" },
       broadcast: null,
     },
   ];
@@ -204,8 +225,8 @@ test("evaluateAutoKillTriggers aggregates multiple triggers", () => {
   const result = evaluateAutoKillTriggers({
     auditRecords: [
       lossRecord({ minutesAgo: 1, netUsd: -100 }),
-      failureRecord({ minutesAgo: 1, strategyId: "x" }),
-      failureRecord({ minutesAgo: 2, strategyId: "x" }),
+      { timestamp: new Date(NOW_MS - 1 * 60_000).toISOString(), strategyId: "x", policyVerdict: "errored", lifecycle: { stage: "error" } },
+      { timestamp: new Date(NOW_MS - 2 * 60_000).toISOString(), strategyId: "x", policyVerdict: "errored", lifecycle: { stage: "error" } },
     ],
     oracleSamples: [
       { source: "a", priceUsd: 100 },
