@@ -1,12 +1,16 @@
-// src/executor/policy/stage-transition-audit.mjs
-// Stage transition recording: A→B, B→C, demotions
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { JsonlStore } from "../../lib/jsonl-store.mjs";
 
-import { appendJsonlRecord } from "../../lib/jsonl-store.mjs";
-import { resolve } from "node:path";
-
-const STAGE_TRANSITIONS_PATH = resolve(process.cwd(), "logs/stage-transitions.jsonl");
+const STAGE_ORDER = Object.freeze({
+  unknown: 0,
+  A: 1,
+  B: 2,
+  C: 3,
+});
 
 export async function recordStageTransition({
+  logsDir = join(process.cwd(), "logs"),
   fromStage = "unknown",
   toStage = "unknown",
   timestamp = new Date().toISOString(),
@@ -15,6 +19,8 @@ export async function recordStageTransition({
   reason = "",
   actor = "system",
 } = {}) {
+  const fromOrder = STAGE_ORDER[fromStage] ?? STAGE_ORDER.unknown;
+  const toOrder = STAGE_ORDER[toStage] ?? STAGE_ORDER.unknown;
   const record = {
     schemaVersion: 1,
     timestamp,
@@ -24,42 +30,73 @@ export async function recordStageTransition({
     evidence,
     reason,
     actor,
-    transitionType:
-      fromStage === toStage
-        ? "no_change"
-        : toStage > fromStage
-          ? "promote"
-          : "demote",
+    transitionType: fromStage === toStage ? "no_change" : toOrder > fromOrder ? "promote" : "demote",
   };
 
-  await appendJsonlRecord(STAGE_TRANSITIONS_PATH, record);
+  await new JsonlStore(logsDir).append("stage-transitions", record);
   return record;
 }
 
-export async function getLatestStageTransition() {
+async function readStageTransitions(logsDir = join(process.cwd(), "logs")) {
   try {
-    const fs = await import("node:fs/promises");
-    const content = await fs.readFile(STAGE_TRANSITIONS_PATH, "utf8");
-    if (!content.trim()) return null;
-
-    const lines = content.trim().split("\n");
-    if (lines.length === 0) return null;
-
-    return JSON.parse(lines[lines.length - 1]);
+    const content = await readFile(join(logsDir, "stage-transitions.jsonl"), "utf8");
+    if (!content.trim()) return [];
+    return content
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
   } catch (error) {
-    return null;
+    if (error?.code === "ENOENT") return [];
+    throw error;
   }
 }
 
-export async function getStageTransitionHistory(limit = 50) {
-  try {
-    const fs = await import("node:fs/promises");
-    const content = await fs.readFile(STAGE_TRANSITIONS_PATH, "utf8");
-    if (!content.trim()) return [];
+export async function getLatestStageTransition({ logsDir = join(process.cwd(), "logs") } = {}) {
+  const history = await readStageTransitions(logsDir);
+  return history.at(-1) || null;
+}
 
-    const lines = content.trim().split("\n");
-    return lines.slice(-limit).map((line) => JSON.parse(line));
-  } catch (error) {
-    return [];
+export async function getStageTransitionHistory({ logsDir = join(process.cwd(), "logs"), limit = 50 } = {}) {
+  const history = await readStageTransitions(logsDir);
+  return history.slice(-limit);
+}
+
+export async function syncStageTransitionAudit({
+  logsDir = join(process.cwd(), "logs"),
+  stageEvaluation = null,
+  observedAt = new Date().toISOString(),
+  actor = "dashboard_status",
+} = {}) {
+  const nextStage = stageEvaluation?.currentStage || null;
+  if (!nextStage) {
+    return {
+      changed: false,
+      latest: await getLatestStageTransition({ logsDir }),
+    };
   }
+
+  const latest = await getLatestStageTransition({ logsDir });
+  if (latest?.toStage === nextStage) {
+    return {
+      changed: false,
+      latest,
+    };
+  }
+
+  const record = await recordStageTransition({
+    logsDir,
+    fromStage: latest?.toStage || "unknown",
+    toStage: nextStage,
+    timestamp: observedAt,
+    blockers: [...(stageEvaluation?.blockers || [])],
+    evidence: stageEvaluation?.evidence || {},
+    reason: (stageEvaluation?.blockers || []).join(",") || "stage_transition",
+    actor,
+  });
+
+  return {
+    changed: true,
+    latest: record,
+  };
 }

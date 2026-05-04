@@ -28,7 +28,8 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as envConfig } from "../config/env.mjs";
 import { runStrategyTick } from "../executor/tick/strategy-tick.mjs";
-import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { getStrategyCaps, listStrategyCaps, resolveStrategyCapMatrix } from "../config/strategy-caps.mjs";
+import { ACTIVE_SLEEVE_PROFILE_ID } from "../config/sleeve-profile.mjs";
 import { getProtocolAddress } from "../config/protocol-addresses.mjs";
 import { getEvmChainConfig } from "../config/chains.mjs";
 import { Contract, JsonRpcProvider } from "ethers";
@@ -493,6 +494,79 @@ function buildAdaptiveCapitalPlan(strategyIds) {
   };
 }
 
+function finiteNumber(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function pushCapConflict(conflicts, field, committed, resolved, extra = {}) {
+  if (!Number.isFinite(committed) || !Number.isFinite(resolved) || committed === resolved) return;
+  conflicts.push({
+    field,
+    committed,
+    resolved,
+    ...extra,
+  });
+}
+
+export function validateCommittedProfileSelection({
+  profileId = ACTIVE_SLEEVE_PROFILE_ID,
+  strategies = listStrategyCaps(),
+} = {}) {
+  if (profileId !== "aggressive_v1") {
+    return {
+      ok: true,
+      profileId,
+      conflicts: [],
+    };
+  }
+
+  const conflicts = [];
+  for (const strategy of strategies || []) {
+    if (strategy?.autoExecute !== true) continue;
+    const resolved = resolveStrategyCapMatrix(strategy, {
+      profileId,
+      includeRadarCaps: true,
+    });
+    const strategyConflicts = [];
+    pushCapConflict(strategyConflicts, "caps.perTxUsd", finiteNumber(strategy?.caps?.perTxUsd), resolved?.perTxUsd);
+    pushCapConflict(strategyConflicts, "caps.perDayUsd", finiteNumber(strategy?.caps?.perDayUsd), resolved?.perDayUsd);
+    pushCapConflict(
+      strategyConflicts,
+      "caps.tinyLivePerTxUsd",
+      finiteNumber(strategy?.caps?.tinyLivePerTxUsd),
+      resolved?.tinyLivePerTxUsd,
+    );
+
+    const chainKeys = new Set([
+      ...Object.keys(strategy?.caps?.perChainUsd || {}),
+      ...Object.keys(resolved?.perChainUsd || {}),
+    ]);
+    chainKeys.delete("default");
+    for (const chain of [...chainKeys].sort()) {
+      pushCapConflict(
+        strategyConflicts,
+        "caps.perChainUsd",
+        finiteNumber(strategy?.caps?.perChainUsd?.[chain]),
+        finiteNumber(resolved?.perChainUsd?.[chain]),
+        { chain },
+      );
+    }
+
+    if (strategyConflicts.length > 0) {
+      conflicts.push({
+        strategyId: strategy.strategyId || null,
+        conflicts: strategyConflicts,
+      });
+    }
+  }
+
+  return {
+    ok: conflicts.length === 0,
+    profileId,
+    conflicts,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.strategies.length === 0) {
@@ -504,6 +578,18 @@ async function main() {
   if (unknown.length > 0) {
     console.error(`ERR: unknown strategies: ${unknown.join(",")}`);
     console.error(`     known: ${Object.keys(ADAPTERS).join(",")}`);
+    process.exit(2);
+  }
+
+  const profileValidation = validateCommittedProfileSelection();
+  if (!profileValidation.ok) {
+    console.error(`ERR: active sleeve profile ${profileValidation.profileId} has inconsistent committed strategy caps`);
+    for (const entry of profileValidation.conflicts) {
+      const details = entry.conflicts
+        .map((conflict) => `${conflict.field}${conflict.chain ? `.${conflict.chain}` : ""}:${conflict.committed}->${conflict.resolved}`)
+        .join(", ");
+      console.error(`     ${entry.strategyId}: ${details}`);
+    }
     process.exit(2);
   }
 

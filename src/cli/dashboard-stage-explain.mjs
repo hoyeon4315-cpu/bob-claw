@@ -2,7 +2,8 @@
 // Explain current stage and blockers with source data points
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export function readDashboardStatus() {
   try {
@@ -24,8 +25,8 @@ export function explainCurrentStage(dashboard) {
   }
 
   const stage = dashboard.overall.lanePolicy.stage || "A";
-  const blockers = dashboard.overall.lanePolicy.blockers || [];
-  const evidence = dashboard.overall.lanePolicy.evidence || {};
+  const blockers = dashboard.overall.lanePolicy.stageBlockers || [];
+  const evidence = dashboard.overall.lanePolicy.stageEvidence || {};
 
   return {
     stage,
@@ -51,8 +52,6 @@ async function main() {
   console.log(JSON.stringify(explanation, null, 2));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(console.error);
 }
-
-export { explainCurrentStage };

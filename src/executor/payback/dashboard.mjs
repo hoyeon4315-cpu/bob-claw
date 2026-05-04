@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import snapshotPaybackAccumulator from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
@@ -10,12 +11,15 @@ import {
   readReportingPnlBaseline,
   summarizeReportingPnlBaseline,
 } from "../../status/reporting-pnl-baseline.mjs";
+import { writeTextIfChanged } from "../../lib/file-write.mjs";
 
 const PREVIEW_BTC_DESTINATION = "bc1qpayback0000000000000000000000000000000";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PAYBACK_FORECAST_WINDOW_DAYS = 90;
+const PAYBACK_FORECAST_WINDOW_DAYS = 30;
 // PAYBACK_CONFIG currently commits a weekly Monday scheduler, so period forecasts stay week-based.
 const PAYBACK_FORECAST_PERIOD_DAYS = 7;
+const PROPOSED_MIN_PAYBACK_SATS = 5_000;
+const PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH = "data/payback/proposed-min-payback-diff.patch";
 
 function isMissingDestinationDecision(decision = null) {
   return (
@@ -254,6 +258,43 @@ function requiredGrossProfitSats({ minPaybackSats, baseRatio, regimeMultiplier, 
   return Math.ceil(minPaybackSats / appliedMultiplier);
 }
 
+function shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback = null) {
+  const profiles = estimatedPeriodsToFirstPayback?.profiles || {};
+  const profileIds = ["smallCapital_v1", "aggressive_v1"];
+  return profileIds.every((profileId) => {
+    const estimate = profiles[profileId];
+    return Number.isFinite(estimate?.estimatedPeriods) && estimate.estimatedPeriods >= 8;
+  });
+}
+
+export function buildProposedMinPaybackPatch({
+  currentMinPaybackSats = PAYBACK_CONFIG.minPaybackSats,
+  proposedMinPaybackSats = PROPOSED_MIN_PAYBACK_SATS,
+} = {}) {
+  return [
+    "diff --git a/src/config/payback.mjs b/src/config/payback.mjs",
+    "--- a/src/config/payback.mjs",
+    "+++ b/src/config/payback.mjs",
+    "@@",
+    `-  minPaybackSats: ${currentMinPaybackSats.toLocaleString("en-US").replace(/,/g, "_")}, // ~= 0.0005 BTC`,
+    `+  minPaybackSats: ${proposedMinPaybackSats.toLocaleString("en-US").replace(/,/g, "_")}, // PR candidate: lower bookkeeping floor`,
+    "",
+  ].join("\n");
+}
+
+async function maybeWriteProposedMinPaybackPatch({
+  dataDir = null,
+  estimatedPeriodsToFirstPayback = null,
+} = {}) {
+  if (!dataDir || !shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback)) {
+    return null;
+  }
+  const patchPath = join(dataDir, "payback", "proposed-min-payback-diff.patch");
+  const patchContents = buildProposedMinPaybackPatch();
+  await writeTextIfChanged(patchPath, patchContents);
+  return PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH;
+}
+
 function minimumPaybackProgress(decision, { source = null } = {}) {
   if (!decision || typeof decision !== "object") return null;
   const grossTargetBeforeCostsSats = firstFinite(decision, [
@@ -423,6 +464,10 @@ export async function buildPaybackDashboardSlice({
     receiptStore: resolvedReceiptStore,
     reportingPnlBaseline,
   });
+  const proposedMinPaybackPatch = await maybeWriteProposedMinPaybackPatch({
+    dataDir,
+    estimatedPeriodsToFirstPayback,
+  });
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
     schemaVersion: 1,
@@ -439,6 +484,7 @@ export async function buildPaybackDashboardSlice({
     grossProfitSatsPeriod: snapshot.grossProfitSats_period,
     paidBackSatsLifetime: snapshot.paidBackSats_lifetime,
     estimatedPeriodsToFirstPayback,
+    proposedMinPaybackPatch,
     scheduler: {
       status: decision?.status || null,
       reason: decision?.reason || null,

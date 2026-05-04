@@ -7,71 +7,49 @@
   - `minPaybackSats = 50_000`
   - `cronExpression = "0 0 * * 1"` (weekly)
 
-That means the scheduler needs roughly `250_000` sats of weekly gross realized profit before the first payback can clear the minimum:
+That means the scheduler needs roughly `250_000` sats of gross realized profit
+before the first payback can clear the current minimum:
 
 `requiredGrossProfitSats = minPaybackSats / baseRatio = 50_000 / 0.20 = 250_000`
 
-## Receipt-backed findings
+## Current 30-day receipt-backed view
 
-### Current reporting-baseline view
+Dashboard/payback forecasting now uses a rolling 30-day realized-PnL window.
 
 - Reporting PnL baseline is active from `2026-04-27T06:13:35.097Z`.
-- Since that reset, rolling 90-day realized gross profit is `0` sats.
-- Result: `estimatedPeriodsToFirstPayback` is currently unavailable under both profiles because there is no positive realized run-rate to project from.
+- Rolling 30-day realized gross profit inside that active baseline is currently `0`
+  sats.
+- Result: `estimatedPeriodsToFirstPayback` is unavailable under both
+  `smallCapital_v1` and `aggressive_v1` because there is no positive realized
+  run-rate to project from.
 
-### Conservative historical bound (same 90-day model, no baseline reset)
+## What this means operationally
 
-- Rolling 90-day realized gross profit: `601` sats
-- Observed scheduler periods in that window: `12.86`
-- Realized gross profit per weekly period under `smallCapital_v1`: `46.74` sats
-- Profile scaling from committed non-BTC settlement targets:
-  - `smallCapital_v1`: `650` USD
-  - `aggressive_v1`: `1_040` USD
-  - aggressive scaling ratio vs active small profile: `1.6x`
-- Projected weekly gross profit under `aggressive_v1`: `74.79` sats
+1. The current accumulator state (`601 / 50_000 sats`) is still far below the
+   configured minimum.
+2. The 30-day realized run-rate is not yet positive enough to justify an
+   automatic PR candidate that lowers the minimum.
+3. Because both profile forecasts are currently `unavailable` rather than
+   `>= 8 periods`, the dashboard now surfaces
+   `payback.proposedMinPaybackPatch = null`.
 
-Derived first-payback estimates:
+## Why the runtime minimum stays unchanged in this parcel
 
-| Profile | Weekly gross profit sats | Estimated periods to first payback |
-| --- | ---: | ---: |
-| `smallCapital_v1` | 46.74 | 5348.23 |
-| `aggressive_v1` | 74.79 | 3342.64 |
+- A min-only change without fresh realized-positive reserve-chain periods would
+  still be disconnected from the current receipt-backed run-rate.
+- The active reporting baseline intentionally fail-closes here: no positive
+  realized run-rate means no automatic minimum-lowering proposal.
+- Runtime payback policy therefore stays unchanged until fresh realized-positive
+  periods exist and the same 30-day model can estimate both profiles
+  deterministically.
 
-Both are far beyond two quarters.
+## Next trigger for revisiting the minimum
 
-## What this proves
+Re-open the PR-only minimum discussion only after:
 
-1. The current `50_000` sat minimum is not reality-based for the observed realized run-rate.
-2. Lowering only `minPaybackSats` does **not** restore an economically meaningful cadence by itself.
-3. To reach a first payback within 26 weekly periods at the current receipt-backed run-rate, the minimum would need to fall below roughly `243` sats under the small profile:
-
-`46.74 sats/week * 26 weeks * 0.20 = 243.048 sats`
-
-That is below any sensible Bitcoin batch threshold and would almost certainly be dominated by the existing offramp-cost guard.
-
-## PR-only recommendation
-
-Do **not** change runtime payback config in this parcel.
-
-If the operator still wants a PR discussion, frame it as a **proof-of-life bookkeeping floor** discussion, not as an economics-complete optimization:
-
-```diff
-diff --git a/src/config/payback.mjs b/src/config/payback.mjs
-@@
--  minPaybackSats: 50_000,
-+  minPaybackSats: 5_000,
-```
-
-Rationale for the draft:
-
-- `50_000` sats is disconnected from realized weekly profit.
-- A lower floor would allow earlier accumulator flushes once a positive run-rate returns.
-- This remains PR-only because a min-only reduction does not solve the current cash-out economics on its own.
-
-Required before merging any such PR:
-
-1. Re-run the receipt-backed cost model on the actual reserve-chain payback path.
-2. Confirm the effective cash-out cost floor is compatible with the lowered minimum.
-3. Recompute `estimatedPeriodsToFirstPayback` after fresh realized-positive periods exist past the current reporting baseline.
-
-Until those conditions are met, `minPaybackSats = 50_000` should remain unchanged in runtime code.
+1. The 30-day receipt-backed run-rate becomes positive after the current
+   reporting baseline.
+2. Both committed sleeve profiles produce deterministic
+   `estimatedPeriodsToFirstPayback` values.
+3. The reserve-chain offramp cost surface is rechecked against the then-current
+   minimum candidate.

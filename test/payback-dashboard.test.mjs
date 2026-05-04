@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,7 +9,10 @@ import {
   appendExecutionReceiptReconciliation,
   loadLivePaybackReceiptStore,
 } from "../src/executor/ingestor/execution-receipt-ingest.mjs";
-import { buildPaybackDashboardSlice } from "../src/executor/payback/dashboard.mjs";
+import {
+  buildPaybackDashboardSlice,
+  buildProposedMinPaybackPatch,
+} from "../src/executor/payback/dashboard.mjs";
 
 function nativePriceFixture() {
   return {
@@ -427,28 +430,82 @@ test("payback dashboard estimates periods to first payback for both committed sl
   });
 
   const estimate = payback.estimatedPeriodsToFirstPayback;
-  assert.equal(estimate.windowDays, 90);
+  assert.equal(estimate.windowDays, 30);
   assert.equal(estimate.periodDays, 7);
   assert.equal(estimate.schedulerCronExpression, "0 0 * * 1");
   assert.equal(estimate.activeProfileId, "smallCapital_v1");
   assert.equal(estimate.requiredGrossProfitSats, 250_000);
   assert.equal(estimate.realizedGrossProfitSatsWindow, 10_000);
-  assert.equal(estimate.observedPeriods, 12.86);
-  assert.equal(estimate.realizedGrossProfitSatsPerPeriod, 777.78);
+  assert.equal(estimate.observedPeriods, 4.29);
+  assert.equal(estimate.realizedGrossProfitSatsPerPeriod, 2333.33);
 
   assert.equal(estimate.profiles.smallCapital_v1.status, "estimated");
   assert.equal(estimate.profiles.smallCapital_v1.reason, null);
   assert.equal(estimate.profiles.smallCapital_v1.profileSettlementTargetUsd, 650);
   assert.equal(estimate.profiles.smallCapital_v1.scalingRatio, 1);
-  assert.equal(estimate.profiles.smallCapital_v1.projectedGrossProfitSatsPerPeriod, 777.78);
-  assert.equal(estimate.profiles.smallCapital_v1.estimatedPeriods, 321.43);
+  assert.equal(estimate.profiles.smallCapital_v1.projectedGrossProfitSatsPerPeriod, 2333.33);
+  assert.equal(estimate.profiles.smallCapital_v1.estimatedPeriods, 107.14);
 
   assert.equal(estimate.profiles.aggressive_v1.status, "estimated");
   assert.equal(estimate.profiles.aggressive_v1.reason, null);
   assert.equal(estimate.profiles.aggressive_v1.profileSettlementTargetUsd, 1040);
   assert.equal(estimate.profiles.aggressive_v1.scalingRatio, 1.6);
-  assert.equal(estimate.profiles.aggressive_v1.projectedGrossProfitSatsPerPeriod, 1244.44);
-  assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, 200.89);
+  assert.equal(estimate.profiles.aggressive_v1.projectedGrossProfitSatsPerPeriod, 3733.33);
+  assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, 66.96);
+  assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
+});
+
+test("payback dashboard writes deterministic PR-only minimum-payback patch when both profiles stay above threshold", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-payback-patch-"));
+  const payback = await buildPaybackDashboardSlice({
+    dataDir,
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [
+        {
+          observedAt: "2026-04-10T12:00:00.000Z",
+          realized: {
+            realizedNetPnlUsd: 10,
+          },
+        },
+      ],
+      treasuryInventory: [],
+      marketPriceSnapshots: [
+        {
+          observedAt: "2026-04-17T11:05:00.000Z",
+          btcUsd: 100_000,
+          tokenByKey: { btc: 100_000, usd_stable: 1 },
+          nativeByChain: { base: 2_000 },
+        },
+      ],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "carry",
+      reason: "planned_payback_below_minimum",
+      policy: {
+        baseRatio: 0.2,
+        minPaybackSats: 50_000,
+      },
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 289,
+          baseRatio: 0.2,
+          regimeMultiplier: 1,
+          volMultiplier: 1,
+          grossTargetBeforeCostsSats: 58,
+          minPaybackSats: 50_000,
+        },
+      },
+    }),
+  });
+
+  assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
+  const expected = buildProposedMinPaybackPatch();
+  const actual = await readFile(join(dataDir, "payback", "proposed-min-payback-diff.patch"), "utf8");
+  assert.equal(actual, expected);
 });
 
 test("payback dashboard leaves periods-to-first-payback unavailable when realized run rate is non-positive", async () => {

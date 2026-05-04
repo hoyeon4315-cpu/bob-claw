@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { buildStrategyBuilderChainUnsupportedMarker } from "../src/cli/run-strategy-tick.mjs";
+import {
+  buildStrategyBuilderChainUnsupportedMarker,
+  validateCommittedProfileSelection,
+} from "../src/cli/run-strategy-tick.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -97,4 +100,58 @@ test("Base-specific strategy builder blocker preserves canonical supported chain
 
   assert.equal(marker.metadata.supportedChain, "base");
   assert.equal(marker.metadata.requestedChain, "Ethereum");
+});
+
+test("aggressive profile validation fails when committed non-BTC caps exceed profile matrix", () => {
+  const validation = validateCommittedProfileSelection({
+    profileId: "aggressive_v1",
+    strategies: [
+      {
+        strategyId: "too-large",
+        autoExecute: true,
+        exposure: {
+          btcDenominated: false,
+        },
+        caps: {
+          perTxUsd: 500,
+          perDayUsd: 1_000,
+          tinyLivePerTxUsd: 250,
+          perChainUsd: {
+            base: 1_000,
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(validation.ok, false);
+  assert.equal(validation.conflicts.length, 1);
+  assert.equal(validation.conflicts[0].strategyId, "too-large");
+  assert.equal(validation.conflicts[0].conflicts.some((conflict) => conflict.field === "caps.perTxUsd"), true);
+});
+
+test("aggressive profile validation passes when committed caps already fit the profile matrix", () => {
+  const validation = validateCommittedProfileSelection({
+    profileId: "aggressive_v1",
+    strategies: [
+      {
+        strategyId: "aligned",
+        autoExecute: true,
+        exposure: {
+          btcDenominated: false,
+        },
+        caps: {
+          perTxUsd: 200,
+          perDayUsd: 600,
+          tinyLivePerTxUsd: 100,
+          perChainUsd: {
+            base: 400,
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.conflicts, []);
 });

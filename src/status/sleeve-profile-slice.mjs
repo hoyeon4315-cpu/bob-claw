@@ -1,28 +1,40 @@
-// src/status/sleeve-profile-slice.mjs
-// Emits current sleeve profile status and resolved cap matrix
+import { ACTIVE_SLEEVE_PROFILE_ID, resolveSleeveProfile } from "../config/sleeve-profile.mjs";
+import { listStrategyCaps, resolveStrategyCapMatrix } from "../config/strategy-caps.mjs";
 
-import { getSleeveProfConfig } from "../config/sleeve-profile.mjs";
+function compareStrategyId(left, right) {
+  return String(left?.strategyId || "").localeCompare(String(right?.strategyId || ""));
+}
 
-export async function emitSleeveProfileSlice() {
-  const profile = getSleeveProfConfig();
+export function buildSleeveProfileSlice({
+  profileId = ACTIVE_SLEEVE_PROFILE_ID,
+  generatedAt = new Date().toISOString(),
+  strategies = listStrategyCaps(),
+} = {}) {
+  const profile = resolveSleeveProfile(profileId);
+  const overrides = profile?.smallCapitalOverrides || {};
+  const portfolioExposure = profile?.portfolioExposure || {};
 
-  const slice = {
+  return {
     schemaVersion: 1,
-    timestamp: new Date().toISOString(),
-    activeProfile: profile.activeProfile,
-    profileConfig: {
-      btcFloorPct: profile.btcFloorPct,
-      anchorPct: profile.anchorPct,
-      opportunisticPct: profile.opportunisticPct,
-      microTestPct: profile.microTestPct,
-      perProtocolMaxPct: profile.perProtocolMaxPct,
-      perChainMaxPct: profile.perChainMaxPct,
-    },
-    capConstraints: {
-      note: "Minimum of (profile cap, radar canary cap, strategy cap) wins",
-      description: `Under ${profile.activeProfile}: ${profile.description}`,
-    },
+    generatedAt,
+    activeProfile: profile.id,
+    profileLabel: profile.label || null,
+    anchorPct: overrides.anchorTargetPct || null,
+    opportunisticPct: overrides.opportunisticMaxPct ?? null,
+    microTestPct: overrides.microMaxPct ?? null,
+    btcFloorPct: profile.btcFloorPct ?? null,
+    perProtocolMaxPct: portfolioExposure.maxProtocolSharePct ?? null,
+    perChainMaxPct: profile?.diversification?.perChainMaxShare ?? null,
+    resolvedStrategyCapMatrix: [...(strategies || [])]
+      .sort(compareStrategyId)
+      .map((strategy) => ({
+        strategyId: strategy.strategyId || null,
+        autoExecute: strategy.autoExecute === true,
+        btcDenominated: strategy?.exposure?.btcDenominated === true,
+        resolvedCaps: resolveStrategyCapMatrix(strategy, {
+          profileId,
+          includeRadarCaps: true,
+        }),
+      })),
   };
-
-  return slice;
 }

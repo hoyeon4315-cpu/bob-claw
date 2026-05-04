@@ -19,6 +19,7 @@ import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocato
 import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { evaluateStage } from "../executor/policy/stage-evaluator.mjs";
+import { syncStageTransitionAudit } from "../executor/policy/stage-transition-audit.mjs";
 import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
 import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
 import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
@@ -40,6 +41,7 @@ import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
 import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
+import { buildSleeveProfileSlice } from "./sleeve-profile-slice.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { readReportingPnlBaseline } from "./reporting-pnl-baseline.mjs";
@@ -181,7 +183,11 @@ function buildMerklAprMap(allocatorLatest = null, merklCanaryQueue = null) {
   return map;
 }
 
-export async function buildCurrentDashboardContext({ dataDir = config.dataDir, address = null } = {}) {
+export async function buildCurrentDashboardContext({
+  dataDir = config.dataDir,
+  logsDir = join(dataDir, "..", "logs"),
+  address = null,
+} = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
   const [
@@ -480,6 +486,9 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
   };
+  dashboardStatus.sleeveProfile = buildSleeveProfileSlice({
+    generatedAt: dashboardStatus.generatedAt,
+  });
   const stageEvaluation = evCostModel
     ? evaluateStage({
         marksSlice: dashboardStatus.strategy.protocolPositionMarks,
@@ -497,6 +506,11 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
         },
       })
     : null;
+  await syncStageTransitionAudit({
+    logsDir,
+    stageEvaluation,
+    observedAt: dashboardStatus.generatedAt,
+  });
   dashboardStatus.strategy.reopenStage = stageEvaluation;
   dashboardStatus.flow = buildFlowDashboardSlice({
     executionEvents,
