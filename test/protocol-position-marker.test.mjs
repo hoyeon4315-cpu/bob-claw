@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Interface } from "ethers";
 import { resolveProtocolPositionAdapter } from "../src/treasury/protocol-position-adapter-registry.mjs";
-import { runMarkProtocolPositionMarksCli } from "../src/cli/mark-protocol-positions.mjs";
+import { createContractReader, runMarkProtocolPositionMarksCli } from "../src/cli/mark-protocol-positions.mjs";
 import {
   buildProtocolPositionMarkSummary,
   createCachedRetryingContractReader,
@@ -9,6 +10,9 @@ import {
 } from "../src/treasury/protocol-position-marker.mjs";
 
 const OBSERVED_AT = "2026-05-03T12:00:00.000Z";
+const READ_INTERFACE = new Interface([
+  "function balanceOf(address) view returns (uint256)",
+]);
 const WALLET_ADDRESS = "0x96262bE63AA687563789225c2fE898c27a3b0AE4";
 
 test("resolveProtocolPositionAdapter maps current Merkl ERC4626 bindings to erc4626 adapter", () => {
@@ -168,6 +172,35 @@ test("createCachedRetryingContractReader retries transient read failures and cac
   assert.equal(await reader({ chain: "base", address: "0xVault", functionName: "balanceOf", args: [WALLET_ADDRESS] }), 42n);
   assert.equal(await reader({ chain: "base", address: "0xVault", functionName: "balanceOf", args: [WALLET_ADDRESS] }), 42n);
   assert.equal(calls, 2);
+});
+
+test("createContractReader falls back to later configured rpcUrls when the first rpc call reverts", async () => {
+  const rpcCalls = [];
+  const contractReader = createContractReader({
+    chainConfigResolver: () => ({
+      chainId: 8453,
+      rpcUrls: ["https://rpc-one.example", "https://rpc-two.example"],
+    }),
+    providerFactory: (rpcUrl) => ({
+      call: async () => {
+        rpcCalls.push(rpcUrl);
+        if (rpcUrl === "https://rpc-one.example") {
+          throw new Error("missing revert data");
+        }
+        return READ_INTERFACE.encodeFunctionResult("balanceOf", [42n]);
+      },
+    }),
+  });
+
+  const value = await contractReader({
+    chain: "base",
+    address: "0xVault",
+    functionName: "balanceOf",
+    args: [WALLET_ADDRESS],
+  });
+
+  assert.equal(value, 42n);
+  assert.deepEqual(rpcCalls, ["https://rpc-one.example", "https://rpc-two.example"]);
 });
 
 test("runMarkProtocolPositionMarksCli refuses to write active positions without walletAddress", async () => {

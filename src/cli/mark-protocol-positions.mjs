@@ -72,14 +72,19 @@ function providerCacheKey(chain, rpcUrl) {
   return `${chain}:${rpcUrl}`;
 }
 
-function createContractReader() {
+export function createContractReader({
+  chainConfigResolver = getEvmChainConfig,
+  providerFactory = (rpcUrl, chainId) => new JsonRpcProvider(rpcUrl, chainId),
+} = {}) {
   const providers = new Map();
 
   return async ({ chain, address, functionName, args = [] }) => {
-    const chainConfig = getEvmChainConfig(chain);
+    const chainConfig = chainConfigResolver(chain);
     if (!chainConfig) throw new Error(`No EVM chain config for ${chain || "unknown"}`);
-    const rpcUrl = chainConfig.rpcUrl;
-    if (!rpcUrl) throw new Error(`No RPC URL configured for chain ${chain || "unknown"}`);
+    const rpcUrls = Array.isArray(chainConfig.rpcUrls) && chainConfig.rpcUrls.length > 0
+      ? chainConfig.rpcUrls
+      : [chainConfig.rpcUrl].filter(Boolean);
+    if (rpcUrls.length === 0) throw new Error(`No RPC URL configured for chain ${chain || "unknown"}`);
     if (!address) throw new Error(`Missing contract address for ${functionName}`);
     try {
       readInterface.getFunction(functionName);
@@ -87,17 +92,27 @@ function createContractReader() {
       throw new Error(`Unsupported read function ${functionName}`);
     }
 
-    const key = providerCacheKey(chain, rpcUrl);
-    let provider = providers.get(key);
-    if (!provider) {
-      provider = new JsonRpcProvider(rpcUrl, chainConfig.chainId);
-      providers.set(key, provider);
+    const data = readInterface.encodeFunctionData(functionName, args);
+    let lastError = null;
+
+    for (const rpcUrl of rpcUrls) {
+      const key = providerCacheKey(chain, rpcUrl);
+      let provider = providers.get(key);
+      if (!provider) {
+        provider = providerFactory(rpcUrl, chainConfig.chainId);
+        providers.set(key, provider);
+      }
+
+      try {
+        const result = await provider.call({ to: address, data });
+        const decoded = readInterface.decodeFunctionResult(functionName, result);
+        return decoded.length === 1 ? decoded[0] : decoded;
+      } catch (error) {
+        lastError = error;
+      }
     }
 
-    const data = readInterface.encodeFunctionData(functionName, args);
-    const result = await provider.call({ to: address, data });
-    const decoded = readInterface.decodeFunctionResult(functionName, result);
-    return decoded.length === 1 ? decoded[0] : decoded;
+    throw lastError;
   };
 }
 
