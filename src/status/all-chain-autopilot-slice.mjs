@@ -4,6 +4,16 @@ function compactReason(reason) {
   return typeof reason === "string" && reason.length > 0 ? reason : null;
 }
 
+function finiteCount(value) {
+  return Number.isFinite(value) && value >= 0 ? Number(value) : 0;
+}
+
+const REFILL_MANUAL_DEFERRAL_REASONS = new Set([
+  "routing_exhausted",
+  "cross_chain_token_refill_executor_missing",
+  "cross_chain_native_refill_executor_missing",
+]);
+
 function isTransientLatestError(report = null) {
   if (report?.status !== "error") return false;
   const blockedReason = compactReason(report?.blockedReason)?.toLowerCase() || "";
@@ -51,7 +61,7 @@ function canaryLadderSummary(policy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduati
 }
 
 function refillNeedsLiveRemediation(item = {}) {
-  return item.reason !== "routing_exhausted";
+  return Boolean(item.reason) && !REFILL_MANUAL_DEFERRAL_REASONS.has(item.reason);
 }
 
 function refillBlockers(refillExecutions = []) {
@@ -64,7 +74,7 @@ function refillBlockers(refillExecutions = []) {
         compactReason(item.executionBlockedReason) ||
         compactReason(item.previewBlockedReason) ||
         compactReason(item.previewStatus) ||
-        "refill_not_executed",
+        (item.selectedExecutionMethod || item.executionMethod ? null : "refill_not_executed"),
       selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
     }))
     .filter((item) => item.reason)
@@ -174,6 +184,10 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
   const strategyDispatch = summary.strategyDispatch || {};
   const payback = summary.payback || {};
   const deployments = openedDeployments(summary.portfolio?.allocator?.deployments || []);
+  const manualBacklogCount = Math.max(
+    refill.filter((item) => REFILL_MANUAL_DEFERRAL_REASONS.has(item.reason)).length,
+    finiteCount(report?.jobs?.summary?.manualReviewJobCount),
+  );
   const slice = {
     schemaVersion: 1,
     present: true,
@@ -197,7 +211,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       executedCount: summary.refillExecutedCount ?? 0,
       blockedCount: refill.length,
       unresolvedCount: refill.filter(refillNeedsLiveRemediation).length,
-      manualBacklogCount: refill.filter((item) => !refillNeedsLiveRemediation(item)).length,
+      manualBacklogCount,
       blockers: refill,
     },
     portfolio: {

@@ -165,6 +165,52 @@ test("all-chain autopilot dashboard slice treats routing exhausted as manual bac
   assert.equal(slice.nextAction, "accrue_payback_until_minimum");
 });
 
+test("all-chain autopilot dashboard slice treats route-ready planned refills as backlog, not unresolved routes", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-04T18:31:47.947Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    blockedReason: "kill_switch_armed",
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 11,
+      autoRefillJobCount: 9,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: { batchStatus: "succeeded", selectedCount: 8, successCount: 8, failedCount: 0, liveEligibleCount: 0, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    jobs: {
+      summary: {
+        manualReviewJobCount: 2,
+      },
+    },
+    refillExecutions: [
+      {
+        chain: "base",
+        asset: "wBTC.OFT",
+        selectedExecutionMethod: "cross_chain_swap_via_btc_intermediate",
+        attempted: false,
+        executed: false,
+      },
+      {
+        chain: "base",
+        asset: "wBTC.OFT",
+        selectedExecutionMethod: "cross_chain_bridge_or_swap",
+        attempted: false,
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.blockedCount, 0);
+  assert.equal(slice.refill.unresolvedCount, 0);
+  assert.equal(slice.refill.manualBacklogCount, 2);
+  assert.equal(slice.nextAction, "accrue_payback_until_minimum");
+});
+
 test("all-chain autopilot truth prefers latest completed report over running progress", () => {
   const resolved = resolveAllChainAutopilotReport(
     { observedAt: "2026-04-27T01:35:00.000Z", status: "running", phase: "refill_complete" },
