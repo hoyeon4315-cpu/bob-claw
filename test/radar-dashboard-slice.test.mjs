@@ -18,6 +18,17 @@ test("buildRadarDashboardSlice exposes public-safe stage counts and guardrails",
         totalNetRealizedPnlUsd: 2.5,
         totalNetRealizedPnlSats: "42",
       },
+      funnel: {
+        produced: 4,
+        calibrated: 3,
+        costPositive: 2,
+        executable: 1,
+        rejectReasons: {
+          calibrated: { radar_policy_not_calibrated_aggressive: 1 },
+          costPositive: { realized_pnl_ev_insufficient: 1 },
+          executable: { sanctions_check_not_clean: 1 },
+        },
+      },
       blockerCounts: {
         radar_policy_thresholds_unresolved: 2,
         non_gateway_manual_bridge: 1,
@@ -48,6 +59,13 @@ test("buildRadarDashboardSlice exposes public-safe stage counts and guardrails",
   assert.equal(slice.capReview.eligibleCount, 1);
   assert.equal(slice.capReview.lossLockOn, false);
   assert.equal(slice.capReview.topSuggestedNextTinyLivePerTxUsd, 50);
+  assert.equal(slice.funnel.produced, 4);
+  assert.equal(slice.funnel.calibrated, 3);
+  assert.equal(slice.funnel.costPositive, 2);
+  assert.equal(slice.funnel.executable, 1);
+  assert.equal(slice.funnel.rejectReasons.calibrated.radar_policy_not_calibrated_aggressive, 1);
+  assert.equal(slice.funnel.rejectReasons.costPositive.realized_pnl_ev_insufficient, 1);
+  assert.equal(slice.funnel.rejectReasons.executable.sanctions_check_not_clean, 1);
   assert.deepEqual(slice.topBlocker, { code: "radar_policy_thresholds_unresolved", count: 2 });
   assert.equal(slice.guardrails.readOnly, true);
   assert.equal(slice.guardrails.externalWalletPnlUnverified, true);

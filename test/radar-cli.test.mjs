@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { readRadarJsonl as readJsonl } from "../src/strategy/radar/jsonl.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -183,11 +184,17 @@ test("radar cap review CLI reports committed-diff cap raise candidates", async (
 
   assert.equal(report.status, 0, report.stderr);
   assert.match(report.stdout, /capRaiseCandidates=1/);
+  assert.match(report.stdout, /capRaiseCandidateIntents=1/);
 
   const review = JSON.parse(await readFile(reportPath, "utf8"));
   assert.equal(review.candidates[0].eligible, true);
   assert.equal(review.candidates[0].suggestedNextTinyLivePerTxUsd, 50);
   assert.equal(review.candidates[0].requiresCommittedDiff, true);
+
+  const candidateIntents = await readJsonl(dataDir, "cap-raise-candidates");
+  assert.equal(candidateIntents.length, 1);
+  assert.equal(candidateIntents[0].intentType, "capRaiseCandidate");
+  assert.equal(candidateIntents[0].strategyId, "wrapped-btc-loop-base-moonwell");
 });
 
 test("radar promote CLI writes ready tiny live canary intents without signing", async () => {

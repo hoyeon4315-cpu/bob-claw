@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
+import { appendRadarJsonl, readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 
@@ -18,6 +18,45 @@ function parseArgs(argv = process.argv.slice(2)) {
   return args;
 }
 
+function capRaiseCandidateIntent(candidate = {}, now = new Date().toISOString()) {
+  const currentCap = Number(candidate.currentTinyLivePerTxUsd);
+  const suggestedCap = Number(candidate.suggestedNextTinyLivePerTxUsd);
+  return {
+    intentId: [
+      "radar_cap_raise_candidate",
+      candidate.strategyId || candidate.key || "unknown",
+      Number.isFinite(currentCap) ? currentCap : "na",
+      Number.isFinite(suggestedCap) ? suggestedCap : "na",
+    ].join(":"),
+    intentType: "capRaiseCandidate",
+    generatedAt: now,
+    strategyId: candidate.strategyId || null,
+    familyKey: candidate.familyKey || null,
+    candidateKey: candidate.key || null,
+    currentTinyLivePerTxUsd: Number.isFinite(currentCap) ? currentCap : null,
+    suggestedNextTinyLivePerTxUsd: Number.isFinite(suggestedCap) ? suggestedCap : null,
+    positiveRealizedPnlCount: Number(candidate.positiveRealizedPnlCount || 0),
+    distinctCampaignWindowCount: Number(candidate.distinctCampaignWindowCount || 0),
+    requiresCommittedDiff: true,
+    autoRaise: false,
+    source: "radar_cap_review",
+  };
+}
+
+async function appendMissingCapRaiseCandidates(dataDir, candidates = [], now = new Date().toISOString()) {
+  const existing = await readRadarJsonl(dataDir, "cap-raise-candidates");
+  const seen = new Set(existing.map((record) => record?.intentId).filter(Boolean));
+  let written = 0;
+  for (const candidate of candidates) {
+    const record = capRaiseCandidateIntent(candidate, now);
+    if (!record.intentId || seen.has(record.intentId)) continue;
+    await appendRadarJsonl(dataDir, "cap-raise-candidates", record);
+    seen.add(record.intentId);
+    written += 1;
+  }
+  return written;
+}
+
 async function main() {
   const args = parseArgs();
   const dataDir = resolve(args["data-dir"] || "data");
@@ -28,6 +67,12 @@ async function main() {
     now: args.now || new Date().toISOString(),
     strategyCapsById,
   });
+  const eligibleCandidates = review.candidates.filter((candidate) => candidate.eligible);
+  const writtenCandidateIntents = await appendMissingCapRaiseCandidates(
+    dataDir,
+    eligibleCandidates,
+    args.now || new Date().toISOString(),
+  );
 
   if (args.write) {
     const outputPath = resolve(args.write);
@@ -39,6 +84,7 @@ async function main() {
   }
 
   console.log(`capRaiseCandidates=${review.candidates.filter((candidate) => candidate.eligible).length}`);
+  console.log(`capRaiseCandidateIntents=${writtenCandidateIntents}`);
   console.log(`radarLossLock=${review.lossLock.tripped ? "TRIPPED" : "clear"}`);
 }
 

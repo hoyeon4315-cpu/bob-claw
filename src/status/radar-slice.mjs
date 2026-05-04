@@ -102,6 +102,17 @@ export function buildRadarDashboardSlice({ board = null, capReview = null, gener
       totalNetRealizedPnlUsd: normalizeUsd(summary.totalNetRealizedPnlUsd),
       totalNetRealizedPnlSats: normalizeSats(summary.totalNetRealizedPnlSats),
     }),
+    funnel: Object.freeze({
+      produced: finiteCount(board?.funnel?.produced),
+      calibrated: finiteCount(board?.funnel?.calibrated),
+      costPositive: finiteCount(board?.funnel?.costPositive),
+      executable: finiteCount(board?.funnel?.executable),
+      rejectReasons: Object.freeze({
+        calibrated: Object.freeze(board?.funnel?.rejectReasons?.calibrated || {}),
+        costPositive: Object.freeze(board?.funnel?.rejectReasons?.costPositive || {}),
+        executable: Object.freeze(board?.funnel?.rejectReasons?.executable || {}),
+      }),
+    }),
     capReview: capReviewSummary(capReview),
     topBlocker: topBlockerFromCounts(board?.blockerCounts || {}),
     guardrails: Object.freeze({

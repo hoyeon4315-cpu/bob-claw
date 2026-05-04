@@ -71,6 +71,25 @@ test("syncMerklQueueToRadar creates radar observations and candidates from ready
   assert.equal(candidates[0].killSwitchState, "running");
 });
 
+test("syncMerklQueueToRadar emits gateway_destination candidates for Base wrapped-BTC gateway sleeves", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
+
+  await syncMerklQueueToRadar({
+    dataDir,
+    merklQueue: merklQueue({
+      family: "wrapped_btc_lending",
+      executionSurface: "lending",
+      executionReadiness: {
+        matchedToken: { ticker: "wBTC.OFT", estimatedUsd: 30 },
+      },
+    }),
+  });
+
+  const candidates = await readRadarJsonl(dataDir, "executable-candidates");
+  assert.equal(candidates[0].familyKey, "wrapped_btc_direct_lending");
+  assert.equal(candidates[0].executionPath, "gateway_destination");
+});
+
 test("syncMerklQueueToRadar appends a new candidate version when gate state changes", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-radar-merkl-sync-"));
 

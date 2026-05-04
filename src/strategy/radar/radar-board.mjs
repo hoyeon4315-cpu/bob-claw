@@ -1,9 +1,26 @@
 import { summarizeRealizationRecords } from "./realization-record-ingest.mjs";
 
+const CALIBRATION_BLOCKERS = new Set([
+  "radar_policy_thresholds_unresolved",
+  "radar_policy_not_calibrated_aggressive",
+  "manual_bridge_execution_not_supported",
+]);
+
 function countBlockers(candidates = []) {
   const counts = {};
   for (const candidate of candidates) {
     for (const blocker of candidate.blockers || []) {
+      counts[blocker] = (counts[blocker] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+function countSelectedBlockers(candidates = [], predicate = () => true) {
+  const counts = {};
+  for (const candidate of candidates) {
+    for (const blocker of candidate.blockers || []) {
+      if (!predicate(blocker, candidate)) continue;
       counts[blocker] = (counts[blocker] || 0) + 1;
     }
   }
@@ -45,6 +62,53 @@ function latestCandidatesById(candidates = []) {
   return [...latest.values()];
 }
 
+function countExecutionPaths(candidates = []) {
+  return candidates.reduce((counts, candidate) => {
+    const key = candidate.executionPath || "unknown";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function isCalibrationBlocker(blocker = "") {
+  return CALIBRATION_BLOCKERS.has(blocker);
+}
+
+function isCostBlocker(blocker = "") {
+  return (
+    blocker === "realized_pnl_ev_insufficient" ||
+    blocker === "reward_exit_liquidity_unproven" ||
+    blocker.startsWith("same_chain_unprofitable:")
+  );
+}
+
+function buildFunnel(latestCandidates = []) {
+  const produced = latestCandidates.length;
+  const calibratedCandidates = latestCandidates.filter(
+    (candidate) => !(candidate.blockers || []).some(isCalibrationBlocker),
+  );
+  const costPositiveCandidates = calibratedCandidates.filter(
+    (candidate) => !(candidate.blockers || []).some(isCostBlocker),
+  );
+  const executableCandidates = costPositiveCandidates.filter(
+    (candidate) => candidate.gateStatus === "executable",
+  );
+  return {
+    produced,
+    calibrated: calibratedCandidates.length,
+    costPositive: costPositiveCandidates.length,
+    executable: executableCandidates.length,
+    rejectReasons: {
+      calibrated: countSelectedBlockers(latestCandidates, isCalibrationBlocker),
+      costPositive: countSelectedBlockers(calibratedCandidates, isCostBlocker),
+      executable: countSelectedBlockers(
+        costPositiveCandidates.filter((candidate) => candidate.gateStatus !== "executable"),
+        (blocker) => !isCalibrationBlocker(blocker) && !isCostBlocker(blocker),
+      ),
+    },
+  };
+}
+
 function safeObservation(item = {}) {
   return {
     obsId: item.obsId || null,
@@ -64,6 +128,7 @@ export function buildRadarBoard({
   const blockerCounts = countBlockers(latestCandidates);
   const executableCount = latestCandidates.filter((candidate) => candidate.gateStatus === "executable").length;
   const blockedCandidateCount = latestCandidates.length - executableCount;
+  const funnel = buildFunnel(latestCandidates);
   return {
     schemaVersion: 1,
     generatedAt,
@@ -76,6 +141,7 @@ export function buildRadarBoard({
       executableCount,
       blockedCandidateCount,
       candidateStatusCounts: countGateStatuses(latestCandidates),
+      candidateExecutionPathCounts: countExecutionPaths(latestCandidates),
       topCandidateBlocker: topCountKey(blockerCounts),
       strategyRealizedCount: realizationSummary.strategyRealizedCount,
       positiveRealizedPnlCount: realizationSummary.positiveRealizedPnlCount,
@@ -83,6 +149,7 @@ export function buildRadarBoard({
       totalNetRealizedPnlUsd: realizationSummary.totalNetRealizedPnlUsd,
       totalNetRealizedPnlSats: realizationSummary.totalNetRealizedPnlSats,
     },
+    funnel,
     blockerCounts,
     observations: observations.map(safeObservation),
     episodes: episodes.map((episode) => ({

@@ -60,8 +60,19 @@ function familyKeyForMerkl(item = {}) {
   return null;
 }
 
-function candidateExecutionPath(item = {}) {
+function gatewayDestinationCandidate(item = {}, familyKey = familyKeyForMerkl(item)) {
   const chain = String(item.chain || "").toLowerCase();
+  const ticker = String(item.executionReadiness?.matchedToken?.ticker || "").toUpperCase();
+  return (
+    chain === "base" &&
+    familyKey === "wrapped_btc_direct_lending" &&
+    /WBTC|CBBTC|LBTC|SOLVBTC/u.test(ticker)
+  );
+}
+
+function candidateExecutionPath(item = {}, familyKey = familyKeyForMerkl(item)) {
+  const chain = String(item.chain || "").toLowerCase();
+  if (gatewayDestinationCandidate(item, familyKey)) return "gateway_destination";
   return BASE_NATIVE_CHAINS.has(chain) ? "base_native_evm" : "gateway_to_evm_bridged";
 }
 
@@ -162,7 +173,7 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
     minProfitBlocker(item),
   ].filter(Boolean);
   const gateStatus = blockers.length === 0 ? "executable" : "blocked";
-  const executionPath = candidateExecutionPath(item);
+  const executionPath = candidateExecutionPath(item, familyKey);
   const amountUsd = itemAmountUsd(item);
   const candidate = {
     candidateId: `merkl:${id}`,
