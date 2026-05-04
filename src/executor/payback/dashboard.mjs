@@ -2,8 +2,20 @@ import snapshotPaybackAccumulator from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
 import { buildPaybackDecision } from "./scheduler.mjs";
+import { PAYBACK_CONFIG } from "../../config/payback.mjs";
+import { ACTIVE_SLEEVE_PROFILE_ID, SLEEVE_PROFILES, resolveSleeveProfile } from "../../config/sleeve-profile.mjs";
+import { listStrategyCaps, resolveStrategyCapMatrix } from "../../config/strategy-caps.mjs";
+import {
+  filterRecordsByReportingPnlBaseline,
+  readReportingPnlBaseline,
+  summarizeReportingPnlBaseline,
+} from "../../status/reporting-pnl-baseline.mjs";
 
 const PREVIEW_BTC_DESTINATION = "bc1qpayback0000000000000000000000000000000";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PAYBACK_FORECAST_WINDOW_DAYS = 90;
+// PAYBACK_CONFIG currently commits a weekly Monday scheduler, so period forecasts stay week-based.
+const PAYBACK_FORECAST_PERIOD_DAYS = 7;
 
 function isMissingDestinationDecision(decision = null) {
   return (
@@ -31,6 +43,12 @@ function finiteNumber(value) {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function round(value, digits = 2) {
+  if (!Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
 }
 
 function normalizeRecords(items = []) {
@@ -68,6 +86,157 @@ function buildMinimumGapMetrics(grossTargetBeforeCostsSats, minPaybackSats) {
   return {
     satsToMinimumPayback: Math.max(0, Math.round(minPaybackSats - grossTargetBeforeCostsSats)),
     progressToMinimumRatio: Math.max(0, Math.min(1, grossTargetBeforeCostsSats / minPaybackSats)),
+  };
+}
+
+function laterTimestampMs(...values) {
+  const timestamps = values.map(normalizeTimestamp).filter(Number.isFinite);
+  return timestamps.length > 0 ? Math.max(...timestamps) : null;
+}
+
+function isoTimestamp(value) {
+  return Number.isFinite(value) ? new Date(value).toISOString() : null;
+}
+
+function scaleRatio(baseValue, scaledValue) {
+  if (!Number.isFinite(baseValue) || !(baseValue > 0) || !Number.isFinite(scaledValue) || !(scaledValue > 0)) {
+    return null;
+  }
+  return scaledValue / baseValue;
+}
+
+function forecastReceiptStore(receiptStore = {}, reportingPnlBaseline = null) {
+  if (!receiptStore || typeof receiptStore !== "object") return {};
+  const scoped = { ...receiptStore };
+  for (const key of ["receiptReconciliations", "wrappedBtcLoopReceipts", "wrappedBtcLoopLiveProofs"]) {
+    if (!Array.isArray(scoped[key])) continue;
+    scoped[key] = filterRecordsByReportingPnlBaseline(scoped[key], reportingPnlBaseline);
+  }
+  return scoped;
+}
+
+function nonBtcAutoExecuteStrategies() {
+  return listStrategyCaps().filter(
+    (strategy) => strategy?.autoExecute === true && strategy?.exposure?.btcDenominated !== true,
+  );
+}
+
+function effectiveProfileSettlementTargetUsd(strategy = {}, chain, profileId) {
+  const resolvedCaps = resolveStrategyCapMatrix(strategy, { profileId });
+  const profileCapital = resolveSleeveProfile(profileId)?.capital || {};
+  const perChainUsd = finiteNumber(resolvedCaps?.perChainUsd?.[chain]);
+  if (perChainUsd === 0) return 0;
+  const liveUnitUsd = finiteNumber(resolvedCaps?.tinyLivePerTxUsd) ?? finiteNumber(resolvedCaps?.perTxUsd);
+  const candidates = [
+    perChainUsd,
+    liveUnitUsd,
+    finiteNumber(profileCapital?.canaryStartUsdMax),
+    finiteNumber(profileCapital?.maxIdleCapitalPerChainUsd),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  return candidates.length > 0 ? Math.min(...candidates) : 0;
+}
+
+function profileSettlementTargetUsd(profileId) {
+  const byChain = new Map();
+  for (const strategy of nonBtcAutoExecuteStrategies()) {
+    const chainKeys = Object.keys(strategy?.caps?.perChainUsd || {}).filter((chain) => chain !== "default");
+    for (const chain of chainKeys) {
+      byChain.set(
+        chain,
+        Math.max(byChain.get(chain) || 0, effectiveProfileSettlementTargetUsd(strategy, chain, profileId)),
+      );
+    }
+  }
+  return [...byChain.values()].reduce((sum, value) => sum + value, 0);
+}
+
+function observedPeriodCount(startMs, endMs) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 1;
+  return Math.max(1, (endMs - startMs) / (PAYBACK_FORECAST_PERIOD_DAYS * DAY_MS));
+}
+
+function buildEstimatedPeriodsToFirstPayback({
+  now,
+  minimumProgress = null,
+  auditLogLines = [],
+  receiptStore = {},
+  reportingPnlBaseline = null,
+} = {}) {
+  const nowMs = normalizeTimestamp(now);
+  const rollingWindowStartMs =
+    Number.isFinite(nowMs) ? nowMs - (PAYBACK_FORECAST_WINDOW_DAYS * DAY_MS) : null;
+  const scopedWindowStartMs = laterTimestampMs(rollingWindowStartMs, reportingPnlBaseline?.anchoredAt);
+  const scopedAuditLogLines = filterRecordsByReportingPnlBaseline(auditLogLines, reportingPnlBaseline);
+  const scopedReceiptStore = forecastReceiptStore(receiptStore, reportingPnlBaseline);
+  const scopedPeriodStartAt = isoTimestamp(scopedWindowStartMs);
+  const forecastSnapshot = snapshotPaybackAccumulator(scopedAuditLogLines, scopedReceiptStore, {
+    paybackStrategyIds: [GATEWAY_BTC_OFFRAMP_STRATEGY_ID],
+    paybackIntentTypes: ["gateway_btc_offramp"],
+    periodId: "rolling_payback_forecast",
+    periodStartAt: scopedPeriodStartAt,
+    periodEndAt: now,
+  });
+  const requiredGrossProfitSats = finiteNumber(minimumProgress?.requiredGrossProfitSats);
+  const realizedGrossProfitSatsWindow = finiteNumber(forecastSnapshot?.grossProfitSats_period) ?? 0;
+  const periodsObserved = observedPeriodCount(scopedWindowStartMs, nowMs);
+  const realizedGrossProfitSatsPerPeriod =
+    realizedGrossProfitSatsWindow > 0 ? realizedGrossProfitSatsWindow / periodsObserved : 0;
+  const activeProfileBudgetUsd = profileSettlementTargetUsd(ACTIVE_SLEEVE_PROFILE_ID);
+  const baselineApplied =
+    Number.isFinite(reportingPnlBaseline?.anchoredAtMs) &&
+    (!Number.isFinite(rollingWindowStartMs) || reportingPnlBaseline.anchoredAtMs > rollingWindowStartMs);
+  const profiles = Object.fromEntries(
+    Object.keys(SLEEVE_PROFILES).map((profileId) => {
+      const profileBudgetUsd = profileSettlementTargetUsd(profileId);
+      const scalingRatio = scaleRatio(activeProfileBudgetUsd, profileBudgetUsd) ?? (profileId === ACTIVE_SLEEVE_PROFILE_ID ? 1 : null);
+      const projectedGrossProfitSatsPerPeriod =
+        realizedGrossProfitSatsPerPeriod > 0 && Number.isFinite(scalingRatio)
+          ? realizedGrossProfitSatsPerPeriod * scalingRatio
+          : null;
+      let status = "estimated";
+      let reason = null;
+      let estimatedPeriods = null;
+      if (!(requiredGrossProfitSats > 0)) {
+        status = "unavailable";
+        reason = "required_gross_profit_unknown";
+      } else if (!(realizedGrossProfitSatsPerPeriod > 0)) {
+        status = "unavailable";
+        reason = "non_positive_realized_run_rate";
+      } else if (!(projectedGrossProfitSatsPerPeriod > 0)) {
+        status = "unavailable";
+        reason = "profile_budget_unresolved";
+      } else {
+        estimatedPeriods = round(requiredGrossProfitSats / projectedGrossProfitSatsPerPeriod, 2);
+      }
+      return [
+        profileId,
+        {
+          status,
+          reason,
+          estimatedPeriods,
+          scalingRatio: round(scalingRatio, 4),
+          profileSettlementTargetUsd: round(profileBudgetUsd, 2),
+          projectedGrossProfitSatsPerPeriod: round(projectedGrossProfitSatsPerPeriod, 2),
+        },
+      ];
+    }),
+  );
+  return {
+    windowDays: PAYBACK_FORECAST_WINDOW_DAYS,
+    periodDays: PAYBACK_FORECAST_PERIOD_DAYS,
+    schedulerCronExpression: PAYBACK_CONFIG.cronExpression,
+    activeProfileId: ACTIVE_SLEEVE_PROFILE_ID,
+    requiredGrossProfitSats,
+    rollingWindowStartAt: scopedPeriodStartAt,
+    rollingWindowEndAt: now,
+    realizedGrossProfitSatsWindow,
+    realizedGrossProfitSatsPerPeriod: round(realizedGrossProfitSatsPerPeriod, 2),
+    observedPeriods: round(periodsObserved, 2),
+    reportingBaseline: summarizeReportingPnlBaseline(reportingPnlBaseline, {
+      now,
+      applied: baselineApplied,
+    }),
+    profiles,
   };
 }
 
@@ -216,6 +385,7 @@ export async function buildPaybackDashboardSlice({
 } = {}) {
   const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
   const resolvedReceiptStore = receiptStore || await loadLivePaybackReceiptStore({ dataDir });
+  const reportingPnlBaseline = dataDir ? await readReportingPnlBaseline({ dataDir }) : null;
   const snapshot = snapshotPaybackAccumulator(resolvedAuditLogLines, resolvedReceiptStore, {
     paybackStrategyIds: [GATEWAY_BTC_OFFRAMP_STRATEGY_ID],
     paybackIntentTypes: ["gateway_btc_offramp"],
@@ -246,6 +416,13 @@ export async function buildPaybackDashboardSlice({
     decision?.reason === "planned_payback_below_minimum"
       ? currentMinimumPaybackProgress
       : previewMinimumPaybackProgress;
+  const estimatedPeriodsToFirstPayback = buildEstimatedPeriodsToFirstPayback({
+    now,
+    minimumProgress: effectiveMinimumProgress,
+    auditLogLines: resolvedAuditLogLines,
+    receiptStore: resolvedReceiptStore,
+    reportingPnlBaseline,
+  });
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
     schemaVersion: 1,
@@ -261,6 +438,7 @@ export async function buildPaybackDashboardSlice({
     accumulatorPendingSats: snapshot.pendingDeferredSats,
     grossProfitSatsPeriod: snapshot.grossProfitSats_period,
     paidBackSatsLifetime: snapshot.paidBackSats_lifetime,
+    estimatedPeriodsToFirstPayback,
     scheduler: {
       status: decision?.status || null,
       reason: decision?.reason || null,

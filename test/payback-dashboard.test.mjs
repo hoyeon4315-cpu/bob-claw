@@ -377,3 +377,127 @@ test("payback dashboard prefers destination settlement time for last settled tim
   assert.equal(payback.scheduler.status, "plan");
   assert.equal(payback.scheduler.reason, "planning_required");
 });
+
+test("payback dashboard estimates periods to first payback for both committed sleeve profiles", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-payback-forecast-"));
+  const now = "2026-04-17T12:00:00.000Z";
+  const payback = await buildPaybackDashboardSlice({
+    dataDir,
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [
+        {
+          observedAt: "2026-04-10T12:00:00.000Z",
+          realized: {
+            realizedNetPnlUsd: 10,
+          },
+        },
+      ],
+      treasuryInventory: [],
+      marketPriceSnapshots: [
+        {
+          observedAt: "2026-04-17T11:05:00.000Z",
+          btcUsd: 100_000,
+          tokenByKey: { btc: 100_000, usd_stable: 1 },
+          nativeByChain: { base: 2_000 },
+        },
+      ],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now,
+    decisionBuilder: async () => ({
+      status: "carry",
+      reason: "planned_payback_below_minimum",
+      policy: {
+        baseRatio: 0.2,
+        minPaybackSats: 50_000,
+      },
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 289,
+          baseRatio: 0.2,
+          regimeMultiplier: 1,
+          volMultiplier: 1,
+          grossTargetBeforeCostsSats: 58,
+          minPaybackSats: 50_000,
+        },
+      },
+    }),
+  });
+
+  const estimate = payback.estimatedPeriodsToFirstPayback;
+  assert.equal(estimate.windowDays, 90);
+  assert.equal(estimate.periodDays, 7);
+  assert.equal(estimate.schedulerCronExpression, "0 0 * * 1");
+  assert.equal(estimate.activeProfileId, "smallCapital_v1");
+  assert.equal(estimate.requiredGrossProfitSats, 250_000);
+  assert.equal(estimate.realizedGrossProfitSatsWindow, 10_000);
+  assert.equal(estimate.observedPeriods, 12.86);
+  assert.equal(estimate.realizedGrossProfitSatsPerPeriod, 777.78);
+
+  assert.equal(estimate.profiles.smallCapital_v1.status, "estimated");
+  assert.equal(estimate.profiles.smallCapital_v1.reason, null);
+  assert.equal(estimate.profiles.smallCapital_v1.profileSettlementTargetUsd, 650);
+  assert.equal(estimate.profiles.smallCapital_v1.scalingRatio, 1);
+  assert.equal(estimate.profiles.smallCapital_v1.projectedGrossProfitSatsPerPeriod, 777.78);
+  assert.equal(estimate.profiles.smallCapital_v1.estimatedPeriods, 321.43);
+
+  assert.equal(estimate.profiles.aggressive_v1.status, "estimated");
+  assert.equal(estimate.profiles.aggressive_v1.reason, null);
+  assert.equal(estimate.profiles.aggressive_v1.profileSettlementTargetUsd, 1040);
+  assert.equal(estimate.profiles.aggressive_v1.scalingRatio, 1.6);
+  assert.equal(estimate.profiles.aggressive_v1.projectedGrossProfitSatsPerPeriod, 1244.44);
+  assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, 200.89);
+});
+
+test("payback dashboard leaves periods-to-first-payback unavailable when realized run rate is non-positive", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-payback-forecast-empty-"));
+  const payback = await buildPaybackDashboardSlice({
+    dataDir,
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [],
+      treasuryInventory: [],
+      marketPriceSnapshots: [
+        {
+          observedAt: "2026-04-17T11:05:00.000Z",
+          btcUsd: 100_000,
+          tokenByKey: { btc: 100_000, usd_stable: 1 },
+          nativeByChain: { base: 2_000 },
+        },
+      ],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "carry",
+      reason: "planned_payback_below_minimum",
+      policy: {
+        baseRatio: 0.2,
+        minPaybackSats: 50_000,
+      },
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 289,
+          baseRatio: 0.2,
+          regimeMultiplier: 1,
+          volMultiplier: 1,
+          grossTargetBeforeCostsSats: 58,
+          minPaybackSats: 50_000,
+        },
+      },
+    }),
+  });
+
+  const estimate = payback.estimatedPeriodsToFirstPayback;
+  assert.equal(estimate.realizedGrossProfitSatsWindow, 0);
+  assert.equal(estimate.realizedGrossProfitSatsPerPeriod, 0);
+  assert.equal(estimate.profiles.smallCapital_v1.status, "unavailable");
+  assert.equal(estimate.profiles.smallCapital_v1.reason, "non_positive_realized_run_rate");
+  assert.equal(estimate.profiles.smallCapital_v1.estimatedPeriods, null);
+  assert.equal(estimate.profiles.aggressive_v1.status, "unavailable");
+  assert.equal(estimate.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
+  assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, null);
+});
