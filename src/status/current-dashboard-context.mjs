@@ -29,6 +29,7 @@ import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import {
   buildAllChainAutopilotDashboardSlice,
+  resolveUnresolvedRefillCount,
   resolveAllChainAutopilotReport,
 } from "./all-chain-autopilot-slice.mjs";
 import { buildCapitalSummarySlice } from "./capital-summary-slice.mjs";
@@ -241,6 +242,7 @@ export async function buildCurrentDashboardContext({
     promotionReport,
     allChainAutopilotLatest,
     allChainAutopilotLatestCompleted,
+    capitalManagerRefillJobsLatest,
     devAgentAutomationBridgeReport,
     evCostModel,
     treasuryInventoryRecords,
@@ -305,6 +307,7 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "promotion-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest-completed.json")),
+    readJsonIfExists(join(dataDir, "capital-manager-refill-jobs-latest.json")),
     readJsonIfExists(join(dataDir, "dev-agent-automation-bridge.json")),
     readJsonIfExists(join(dataDir, "policy", "ev-cost-model.json")),
     readJsonl(dataDir, "treasury-inventory"),
@@ -518,7 +521,11 @@ export async function buildCurrentDashboardContext({
     ? evaluateStage({
         marksSlice: dashboardStatus.strategy.protocolPositionMarks,
         capitalPlan: {
-          unresolvedRefillRoutes: dashboardStatus.operations.allChainAutopilot?.refill?.unresolvedCount ?? 0,
+          unresolvedRefillRoutes: resolveUnresolvedRefillCount({
+            report: allChainAutopilotReport,
+            slice: dashboardStatus.operations.allChainAutopilot,
+            capitalManagerRefillJobsLatest,
+          }),
           payback: dashboardStatus.payback || null,
         },
         evGateStats: {

@@ -1306,6 +1306,56 @@ test("treasury refill executor allows high-coverage partial LI.FI refills", asyn
   assert.equal(preparation.coverage.coverageBps, "8700");
 });
 
+test("treasury refill executor allows high-coverage partial Gateway BTC-family refills", async () => {
+  let capturedInput = null;
+  const sourceActual = "9870";
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-partial-gateway-btc-family",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 8,
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "sei",
+          token: WBTC_OFT_TOKEN,
+          actual: sourceActual,
+          actualDecimal: 0.0000987,
+          estimatedUsd: 7.9,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildGatewayBtcPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-05T00:00:00.000Z",
+        planStatus: "ready",
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+        amount: input.amount,
+        quote: { outputAmount: { amount: "8700" } },
+        steps: [{ id: "gateway_btc_consolidation" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "gateway_btc_consolidation");
+  assert.equal(capturedInput.amount, sourceActual);
+  assert.equal(preparation.coverage.coversTarget, false);
+  assert.equal(preparation.coverage.partialRefill, true);
+  assert.equal(preparation.coverage.coverageBps, "8700");
+});
+
 test("treasury refill executor still blocks low-coverage partial LI.FI refills", async () => {
   const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
   const preparation = await buildTreasuryRefillExecutionPlan({
@@ -1341,6 +1391,49 @@ test("treasury refill executor still blocks low-coverage partial LI.FI refills",
       amount: input.amount,
       minimumOutputAmount: "8400",
       steps: [{ id: "lifi_bridge" }],
+    }),
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.blockedReason, "executor_output_below_refill_target");
+  assert.equal(preparation.coverage.partialRefill, false);
+  assert.equal(preparation.coverage.coverageBps, "8400");
+});
+
+test("treasury refill executor still blocks low-coverage partial Gateway BTC-family refills", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-low-partial-gateway-btc-family",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 8,
+      executionMethod: "cross_chain_bridge_or_swap",
+      fundingSource: {
+        source: {
+          chain: "sei",
+          token: WBTC_OFT_TOKEN,
+          actual: "9870",
+          actualDecimal: 0.0000987,
+          estimatedUsd: 7.9,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildGatewayBtcPlanImpl: async (input) => ({
+      schemaVersion: 1,
+      observedAt: "2026-05-05T00:00:00.000Z",
+      planStatus: "ready",
+      srcChain: input.srcChain,
+      dstChain: input.dstChain,
+      srcToken: input.srcToken,
+      dstToken: input.dstToken,
+      amount: input.amount,
+      quote: { outputAmount: { amount: "8400" } },
+      steps: [{ id: "gateway_btc_consolidation" }],
     }),
   });
 

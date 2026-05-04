@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { buildAllChainAutopilotDashboardSlice, resolveAllChainAutopilotReport } from "../status/all-chain-autopilot-slice.mjs";
+import {
+  buildAllChainAutopilotDashboardSlice,
+  resolveAllChainAutopilotReport,
+  resolveUnresolvedRefillCount,
+} from "../status/all-chain-autopilot-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "../status/protocol-position-marks-slice.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { evaluateStage } from "../executor/policy/stage-evaluator.mjs";
@@ -49,12 +53,14 @@ export async function buildStageExplainDashboard({
   const [
     allChainAutopilotLatest,
     allChainAutopilotLatestCompleted,
+    capitalManagerRefillJobsLatest,
     evCostModel,
     merklPositionEvents,
     protocolPositionMarks,
   ] = await Promise.all([
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest-completed.json")),
+    readJsonIfExists(join(dataDir, "capital-manager-refill-jobs-latest.json")),
     readJsonIfExists(join(dataDir, "policy", "ev-cost-model.json")),
     readJsonl(dataDir, "merkl-portfolio-positions"),
     readJsonl(dataDir, "protocol-position-marks"),
@@ -80,7 +86,11 @@ export async function buildStageExplainDashboard({
     ? evaluateStage({
         marksSlice,
         capitalPlan: {
-          unresolvedRefillRoutes: allChainAutopilot?.refill?.unresolvedCount ?? 0,
+          unresolvedRefillRoutes: resolveUnresolvedRefillCount({
+            report: allChainAutopilotReport,
+            slice: allChainAutopilot,
+            capitalManagerRefillJobsLatest,
+          }),
           payback,
         },
         evGateStats: {

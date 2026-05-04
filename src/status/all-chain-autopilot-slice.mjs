@@ -64,21 +64,70 @@ function refillNeedsLiveRemediation(item = {}) {
   return Boolean(item.reason) && !REFILL_MANUAL_DEFERRAL_REASONS.has(item.reason);
 }
 
+function refillReason(item = {}) {
+  return (
+    compactReason(item.executionBlockedReason) ||
+    compactReason(item.previewBlockedReason) ||
+    (compactReason(item.previewStatus) === "ready" ? null : compactReason(item.previewStatus)) ||
+    (item.selectedExecutionMethod || item.executionMethod ? null : "refill_not_executed")
+  );
+}
+
 function refillBlockers(refillExecutions = []) {
   return refillExecutions
     .filter((item) => !item.executed)
     .map((item) => ({
       chain: item.chain || null,
       asset: item.asset || null,
-      reason:
-        compactReason(item.executionBlockedReason) ||
-        compactReason(item.previewBlockedReason) ||
-        (compactReason(item.previewStatus) === "ready" ? null : compactReason(item.previewStatus)) ||
-        (item.selectedExecutionMethod || item.executionMethod ? null : "refill_not_executed"),
+      reason: refillReason(item),
       selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
     }))
     .filter((item) => item.reason)
     .slice(0, 8);
+}
+
+function unwrapCapitalManagerRefillJobsLatest(payload = null) {
+  if (!payload || typeof payload !== "object") return null;
+  return payload.jobs && typeof payload.jobs === "object" ? payload.jobs : payload;
+}
+
+function countUnresolvedRefillExecutions(refillExecutions = [], { refillSource = null } = {}) {
+  return refillExecutions
+    .filter((item) => !item.executed)
+    .filter((item) => !refillSource || item.refillSource === refillSource)
+    .map((item) => ({
+      reason: refillReason(item),
+    }))
+    .filter(refillNeedsLiveRemediation)
+    .length;
+}
+
+export function resolveUnresolvedRefillCount({
+  report = null,
+  slice = null,
+  capitalManagerRefillJobsLatest = null,
+} = {}) {
+  const baseUnresolved =
+    finiteCount(slice?.refill?.unresolvedCount) ||
+    countUnresolvedRefillExecutions(report?.refillExecutions || []);
+  const capitalManagerLatest = unwrapCapitalManagerRefillJobsLatest(capitalManagerRefillJobsLatest);
+  if (!report || !capitalManagerLatest) return baseUnresolved;
+  const latestObservedAt = observedMs(capitalManagerLatest);
+  if (!(latestObservedAt > observedMs(report))) return baseUnresolved;
+  const staleCapitalManagerUnresolved = countUnresolvedRefillExecutions(report.refillExecutions || [], {
+    refillSource: "capital_manager",
+  });
+  if (staleCapitalManagerUnresolved === 0) return baseUnresolved;
+  const summary = capitalManagerLatest.summary || {};
+  const jobCount = finiteCount(summary.jobCount);
+  const manualReviewJobCount = finiteCount(summary.manualReviewJobCount);
+  const autoQueuedJobCount = finiteCount(summary.autoQueuedJobCount);
+  const capitalManagerFullyAutoQueued =
+    jobCount > 0 &&
+    manualReviewJobCount === 0 &&
+    autoQueuedJobCount >= jobCount;
+  if (!capitalManagerFullyAutoQueued) return baseUnresolved;
+  return Math.max(0, baseUnresolved - staleCapitalManagerUnresolved);
 }
 
 function openedDeployments(deployments = []) {

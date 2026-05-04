@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildAllChainAutopilotDashboardSlice,
+  resolveUnresolvedRefillCount,
   resolveAllChainAutopilotReport,
 } from "../src/status/all-chain-autopilot-slice.mjs";
 import { buildCapitalSummarySlice } from "../src/status/capital-summary-slice.mjs";
@@ -253,6 +254,56 @@ test("all-chain autopilot dashboard slice does not count preview-ready refill jo
   assert.equal(slice.refill.blockedCount, 0);
   assert.equal(slice.refill.unresolvedCount, 0);
   assert.deepEqual(slice.refill.blockers, []);
+});
+
+test("all-chain autopilot unresolved refill count prefers fresher fully auto-queued capital-manager plans", () => {
+  const report = {
+    observedAt: "2026-05-04T23:32:21.602Z",
+    refillExecutions: [
+      {
+        refillSource: "capital_manager",
+        chain: "base",
+        asset: "wBTC.OFT",
+        selectedExecutionMethod: "cross_chain_bridge_or_swap",
+        previewBlockedReason: "source_inventory_below_target_amount",
+        executed: false,
+      },
+    ],
+  };
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: report.observedAt,
+    mode: "preview",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 1,
+      autoRefillJobCount: 0,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: { batchStatus: "preview", selectedCount: 0, successCount: 0, failedCount: 0, liveEligibleCount: 0, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: report.refillExecutions,
+  });
+
+  const unresolved = resolveUnresolvedRefillCount({
+    report,
+    slice,
+    capitalManagerRefillJobsLatest: {
+      observedAt: "2026-05-04T23:37:57.631Z",
+      summary: {
+        jobCount: 11,
+        manualReviewJobCount: 0,
+        autoQueuedJobCount: 11,
+      },
+    },
+  });
+
+  assert.equal(slice.refill.unresolvedCount, 1);
+  assert.equal(unresolved, 0);
 });
 
 test("all-chain autopilot truth prefers latest completed report over running progress", () => {

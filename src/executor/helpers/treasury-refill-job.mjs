@@ -454,7 +454,6 @@ export async function buildTreasuryRefillExecutionPlan({
     });
   } else if (executor === "gateway_btc_consolidation") {
     const targetAmount = positiveBigInt(job.targetAmount);
-    const sourceAmount = positiveBigInt(source.actual);
     const targetAsset = job.type === "refill_token" ? tokenAsset(job.chain, job.token) : null;
     const stableTokenRefill = job.type === "refill_token" && !isBtcLikeAsset(targetAsset);
     const destinationBtcSettlementToken = gatewayBtcSettlementTokenForChain(job.chain);
@@ -462,14 +461,12 @@ export async function buildTreasuryRefillExecutionPlan({
       ? estimateInputAmountFromSource({ job, source })
       : stableTokenRefill
         ? estimateInputAmountFromSource({ job, source })
-        : targetAmount?.toString() || null;
+        : clampAmountToSourceBalance(targetAmount?.toString(), source);
     if (job.type === "refill_native" && !amount) {
       return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     }
     if (job.type !== "refill_native" && !targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
-    if (job.type !== "refill_native" && !stableTokenRefill && sourceAmount != null && sourceAmount < targetAmount) {
-      return blockedPreparation({ job, executor, blockedReason: "source_inventory_below_target_amount" });
-    }
+    if (job.type !== "refill_native" && !amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     let gatewayPlan = await buildGatewayBtcPlanImpl({
       srcChain: source.chain,
       dstChain: job.chain,
