@@ -423,6 +423,7 @@ export async function buildPaybackDashboardSlice({
   auditLogLines = null,
   receiptStore = null,
   decisionBuilder = buildPaybackDecision,
+  writeProposedPatch = true,
 } = {}) {
   const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
   const resolvedReceiptStore = receiptStore || await loadLivePaybackReceiptStore({ dataDir });
@@ -464,10 +465,12 @@ export async function buildPaybackDashboardSlice({
     receiptStore: resolvedReceiptStore,
     reportingPnlBaseline,
   });
-  const proposedMinPaybackPatch = await maybeWriteProposedMinPaybackPatch({
-    dataDir,
-    estimatedPeriodsToFirstPayback,
-  });
+  const proposedMinPaybackPatch = writeProposedPatch
+    ? await maybeWriteProposedMinPaybackPatch({
+        dataDir,
+        estimatedPeriodsToFirstPayback,
+      })
+    : "data/payback/proposed-min-payback-diff.patch";
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
     schemaVersion: 1,
