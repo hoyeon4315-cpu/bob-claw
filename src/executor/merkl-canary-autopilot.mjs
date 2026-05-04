@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tokenAsset, ZERO_TOKEN } from "../assets/tokens.mjs";
 import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { config } from "../config/env.mjs";
-import { getStrategyCaps, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
+import { getStrategyCaps, resolveStrategyCapMatrix, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
 import { evaluateCapCheck } from "./policy/cap-check.mjs";
 import { evaluateCanaryGraduation } from "./canary/canary-graduation.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -71,11 +71,6 @@ function bindingKind(queueItem = {}) {
   return queueItem.protocolBindingPlan?.bindingKind || null;
 }
 
-function perChainCapUsd(strategyCaps, chain) {
-  const value = strategyCaps?.caps?.perChainUsd?.[chain];
-  return Number.isFinite(value) ? Number(value) : Number.POSITIVE_INFINITY;
-}
-
 export function sizeMerklCanaryAmount(queueItem = {}, {
   maxUsd = null,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
@@ -104,7 +99,9 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       graduation: null,
     };
   }
-  const tinyCapUsd = finite(strategyCaps.caps.tinyLivePerTxUsd);
+  const resolvedCapMatrix = resolveStrategyCapMatrix(strategyCaps);
+  const tinyCapUsd = finite(resolvedCapMatrix?.tinyLivePerTxUsd);
+  const chainCapUsd = finite(resolvedCapMatrix?.perChainUsd?.[queueItem.chain]);
   const graduation = useGraduationCap
     ? evaluateCanaryGraduation({
         queueItem,
@@ -122,8 +119,8 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
       : finite(strategyCaps.caps.perTxUsd);
   const hardCapUsd = Math.min(
     canaryCapUsd ?? Number.NaN,
+    chainCapUsd ?? Number.POSITIVE_INFINITY,
     useTinyLiveCap ? (tinyCapUsd ?? Number.NaN) : Number.POSITIVE_INFINITY,
-    perChainCapUsd(strategyCaps, queueItem.chain),
     finite(maxUsd) ?? Number.POSITIVE_INFINITY,
     finite(matchedToken?.estimatedUsd) ?? Number.POSITIVE_INFINITY,
   );

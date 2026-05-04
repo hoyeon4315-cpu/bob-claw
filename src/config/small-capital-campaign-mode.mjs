@@ -3,8 +3,11 @@
 // Commit-only changes. Runtime overrides are forbidden by AGENTS.md.
 
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "./gateway-destinations.mjs";
+import { ACTIVE_SLEEVE_PROFILE } from "./sleeve-profile.mjs";
 
 const CHAIN_PROFILE_REVIEW_BY = "2026-05-16";
+const ACTIVE_SMALL_CAPITAL_OVERRIDES = ACTIVE_SLEEVE_PROFILE.smallCapitalOverrides || {};
+const ACTIVE_CHAIN_SELECTION = ACTIVE_SMALL_CAPITAL_OVERRIDES.chainSelection || {};
 
 function freezeChainProfile(profile) {
   return Object.freeze({ ...profile });
@@ -13,7 +16,7 @@ function freezeChainProfile(profile) {
 const CURRENT_EVIDENCE_PRIMARY_CHAIN_PROFILES = Object.freeze({
   base: freezeChainProfile({
     role: "primary",
-    maxSharePct: 0.70,
+    maxSharePct: ACTIVE_CHAIN_SELECTION.primaryMaxSharePct ?? 0.70,
     evidenceStatus: "current_evidence_primary",
     evidenceSource: "live receipts, low same-chain cost, current inventory, and supported executor paths",
     reviewBy: CHAIN_PROFILE_REVIEW_BY,
@@ -36,16 +39,16 @@ export const SMALL_CAPITAL_CHAIN_PROFILES = Object.freeze(Object.fromEntries(
 ));
 
 export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
-  profileId: "small_capital_campaign_mode_v1",
-  executionStage: "aggressive_non_auto_cap_small_cap_v1",
+  profileId: ACTIVE_SMALL_CAPITAL_OVERRIDES.profileId || "small_capital_campaign_mode_v1",
+  executionStage: ACTIVE_SMALL_CAPITAL_OVERRIDES.executionStage || "aggressive_non_auto_cap_small_cap_v1",
   autoCapRaise: false,
   enabled: true,
   autoMicroTest: true,
   capitalThresholdUsd: 1_000,
-  anchorTargetPct: Object.freeze({ min: 0.55, max: 0.70 }),
-  opportunisticMaxPct: 0.30,
-  microMaxPct: 0.10,
-  defaultBudgetsUsd: Object.freeze({
+  anchorTargetPct: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.anchorTargetPct || { min: 0.55, max: 0.70 }),
+  opportunisticMaxPct: ACTIVE_SMALL_CAPITAL_OVERRIDES.opportunisticMaxPct ?? 0.30,
+  microMaxPct: ACTIVE_SMALL_CAPITAL_OVERRIDES.microMaxPct ?? 0.10,
+  defaultBudgetsUsd: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.defaultBudgetsUsd || {
     opportunisticMaxUsd: 125,
     microMaxUsd: 50,
     initialCampaignUsd: 35,
@@ -55,12 +58,12 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
   }),
   chainSelection: Object.freeze({
     mode: "evidence_led_primary_chains",
-    primaryMaxSharePct: 0.70,
+    primaryMaxSharePct: ACTIVE_CHAIN_SELECTION.primaryMaxSharePct ?? 0.70,
     defaultCandidateRole: "candidate",
     reviewCadenceHours: 14 * 24,
     chainProfiles: SMALL_CAPITAL_CHAIN_PROFILES,
   }),
-  nonPrimaryEntry: Object.freeze({
+  nonPrimaryEntry: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.nonPrimaryEntry || {
     minNetProfitUsd: 10,
     minNetProfitPctOfPosition: 0.05,
   }),
@@ -89,7 +92,7 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
     minTimeInRangePct24h: 0.80,
     exitWhenIlExceedsFeesHours: 24,
   }),
-  protocolConcentration: Object.freeze({
+  protocolConcentration: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.protocolConcentration || {
     defaultMaxPct: 0.25,
     venueMaxPctWithLiveMonitor: 0.50,
   }),

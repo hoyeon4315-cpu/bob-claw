@@ -1,6 +1,7 @@
 import { ETHEREUM_WBTC_TOKEN, tokenAsset, ZERO_TOKEN, WBTC_OFT_TOKEN } from "../assets/tokens.mjs";
 import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-representative-bindings.mjs";
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
+import { ACTIVE_SLEEVE_PROFILE } from "../config/sleeve-profile.mjs";
 import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
@@ -40,6 +41,7 @@ const WRAPPED_BTC_LOOP_COLLATERAL_REFILL_POLICY = {
   maxLtvPct: 62,
 };
 const EXPLICIT_REPRESENTATIVE_FLOAT_CHAINS = new Set(["ethereum", "base", "bsc"]);
+const ACTIVE_CAPITAL_PROFILE = ACTIVE_SLEEVE_PROFILE.capital || {};
 
 function normalizedAddress(value) {
   return String(value || "").toLowerCase();
@@ -224,14 +226,14 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
     capital: {
       activeBudgetUsd,
       referenceBudgetUsd: activeBudgetUsd,
-      canaryStartUsdMin: 20,
-      canaryStartUsdMax: 50,
-      reserveChain: "base",
-      reserveChainTargetWalletShare: 0.8,
-      reserveConcentrationToleranceUsd: 0.5,
-      maxIdleCapitalPerChainUsd: 60,
-      fragmentationDragPct: 0.005,
-      maxRefillCost24hUsd: 12,
+      canaryStartUsdMin: ACTIVE_CAPITAL_PROFILE.canaryStartUsdMin ?? 20,
+      canaryStartUsdMax: ACTIVE_CAPITAL_PROFILE.canaryStartUsdMax ?? 50,
+      reserveChain: ACTIVE_CAPITAL_PROFILE.reserveChain || "base",
+      reserveChainTargetWalletShare: ACTIVE_CAPITAL_PROFILE.reserveChainTargetWalletShare ?? 0.8,
+      reserveConcentrationToleranceUsd: ACTIVE_CAPITAL_PROFILE.reserveConcentrationToleranceUsd ?? 0.5,
+      maxIdleCapitalPerChainUsd: ACTIVE_CAPITAL_PROFILE.maxIdleCapitalPerChainUsd ?? 60,
+      fragmentationDragPct: ACTIVE_CAPITAL_PROFILE.fragmentationDragPct ?? 0.005,
+      maxRefillCost24hUsd: ACTIVE_CAPITAL_PROFILE.maxRefillCost24hUsd ?? 12,
     },
     supportedChains: GATEWAY_DESTINATION_CHAINS,
     activeChains: GATEWAY_DESTINATION_CHAINS,

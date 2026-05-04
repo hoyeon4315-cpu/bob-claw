@@ -5,17 +5,19 @@ import {
   SMALL_CAPITAL_CAMPAIGN_MODE,
   evidencePrimaryChainShareOverrides,
 } from "./small-capital-campaign-mode.mjs";
+import { ACTIVE_SLEEVE_PROFILE } from "./sleeve-profile.mjs";
+
+const PORTFOLIO_EXPOSURE_OVERRIDES = ACTIVE_SLEEVE_PROFILE.portfolioExposure || {};
 
 export const PORTFOLIO_EXPOSURE_POLICY = Object.freeze({
-  profileId: "aggressive_non_btc_payback_v1",
-  maxProtocolSharePct: 0.25,
+  profileId: PORTFOLIO_EXPOSURE_OVERRIDES.profileId || "aggressive_non_btc_payback_v1",
+  maxProtocolSharePct: PORTFOLIO_EXPOSURE_OVERRIDES.maxProtocolSharePct ?? 0.25,
   chainSelectionMode: SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.mode,
-  maxDefaultChainSharePct: 0.20,
+  maxDefaultChainSharePct: PORTFOLIO_EXPOSURE_OVERRIDES.maxDefaultChainSharePct ?? 0.20,
   chainSharePct: Object.freeze({
     ...evidencePrimaryChainShareOverrides(),
-    ethereum: 0.50,
-    bob: 0.10,
+    ...(PORTFOLIO_EXPOSURE_OVERRIDES.chainSharePct || {}),
   }),
-  minBtcDenominatedSharePct: 0.20,
-  maxNonBtcDenominatedSharePct: 0.80,
+  minBtcDenominatedSharePct: PORTFOLIO_EXPOSURE_OVERRIDES.minBtcDenominatedSharePct ?? 0.20,
+  maxNonBtcDenominatedSharePct: PORTFOLIO_EXPOSURE_OVERRIDES.maxNonBtcDenominatedSharePct ?? 0.80,
 });

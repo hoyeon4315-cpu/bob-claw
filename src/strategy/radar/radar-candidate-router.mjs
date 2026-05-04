@@ -1,10 +1,12 @@
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../../config/small-capital-campaign-mode.mjs";
+import { resolveProfileCapMatrix } from "../../config/sleeve-profile.mjs";
 import { resolveTinyCanaryExpectedHoldDays } from "../../config/sizing.mjs";
 import { evaluateExecutableCandidateGate } from "./executable-candidate-gate.mjs";
 import { resolveFamilyBinding } from "./family-binding-registry.mjs";
 import { computeRealizedPnlEv } from "./pnl-ev-gate.mjs";
 
 function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -81,13 +83,18 @@ export function buildRadarCanaryIntent({
     };
   }
 
-  const caps = strategyCapsById[binding.strategyId]?.caps ?? {};
-  const tinyLiveCapUsd = finiteNumber(caps.tinyLivePerTxUsd);
+  const resolvedCapMatrix = resolveProfileCapMatrix(strategyCapsById[binding.strategyId], {
+    includeRadarCaps: true,
+  });
+  const tinyLiveCapUsd = finiteNumber(resolvedCapMatrix?.tinyLivePerTxUsd);
   if (tinyLiveCapUsd === null) {
     return { status: "blocked", blockers: ["tiny_live_cap_missing"], gate, binding };
   }
 
-  const radarPerCanaryUsd = finiteNumber(radarLanePolicy?.perCanaryUsd) ?? tinyLiveCapUsd;
+  const radarPerCanaryUsd =
+    finiteNumber(resolvedCapMatrix?.radarCaps?.perCanaryUsd) ??
+    finiteNumber(radarLanePolicy?.perCanaryUsd) ??
+    tinyLiveCapUsd;
   const candidateAmountUsd = finiteNumber(candidate.amountUsd ?? candidate.positionUsd ?? candidate.estimatedUsd);
   const amountUsd = Math.min(
     tinyLiveCapUsd,

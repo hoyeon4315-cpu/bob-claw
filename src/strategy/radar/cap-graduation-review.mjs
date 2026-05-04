@@ -1,6 +1,8 @@
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../../config/small-capital-campaign-mode.mjs";
+import { resolveProfileCapMatrix } from "../../config/sleeve-profile.mjs";
 
 function finite(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -23,7 +25,11 @@ function windowKey(record = {}) {
 
 function currentTinyCapUsd(strategyId, strategyCapsById = {}) {
   const config = strategyCapsById[strategyId];
-  return finite(config?.caps?.tinyLivePerTxUsd);
+  const resolved = resolveProfileCapMatrix(config, { includeRadarCaps: true });
+  return finite(Math.min(
+    resolved?.tinyLivePerTxUsd ?? Number.POSITIVE_INFINITY,
+    resolved?.radarCaps?.perCanaryUsd ?? Number.POSITIVE_INFINITY,
+  ));
 }
 
 function nextGraduationCap(current, ladder = []) {

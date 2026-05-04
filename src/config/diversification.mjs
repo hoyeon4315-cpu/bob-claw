@@ -16,16 +16,19 @@ import {
   SMALL_CAPITAL_CAMPAIGN_MODE,
   evidencePrimaryChainShareOverrides,
 } from "./small-capital-campaign-mode.mjs";
+import { ACTIVE_SLEEVE_PROFILE } from "./sleeve-profile.mjs";
+
+const DIVERSIFICATION_OVERRIDES = ACTIVE_SLEEVE_PROFILE.diversification || {};
 
 export const DIVERSIFICATION_POLICY = Object.freeze({
-  perStrategyMaxShare: 0.25,
-  perChainMaxShare: 0.35,
+  perStrategyMaxShare: DIVERSIFICATION_OVERRIDES.perStrategyMaxShare ?? 0.25,
+  perChainMaxShare: DIVERSIFICATION_OVERRIDES.perChainMaxShare ?? 0.35,
   chainSelectionMode: SMALL_CAPITAL_CAMPAIGN_MODE.chainSelection.mode,
   perChainMaxShareByChain: evidencePrimaryChainShareOverrides(),
-  perProtocolMaxShare: 0.30,
-  hhiMax: 0.30,
-  bobL2DirectMaxShare: 0.10,
-  minSharesForHhi: 2,
+  perProtocolMaxShare: DIVERSIFICATION_OVERRIDES.perProtocolMaxShare ?? 0.30,
+  hhiMax: DIVERSIFICATION_OVERRIDES.hhiMax ?? 0.30,
+  bobL2DirectMaxShare: DIVERSIFICATION_OVERRIDES.bobL2DirectMaxShare ?? 0.10,
+  minSharesForHhi: DIVERSIFICATION_OVERRIDES.minSharesForHhi ?? 2,
 });
 
 function perChainMaxShareFor(id, policy) {

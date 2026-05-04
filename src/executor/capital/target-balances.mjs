@@ -1,16 +1,16 @@
-import { listStrategyCaps } from "../../config/strategy-caps.mjs";
+import { listStrategyCaps, resolveStrategyCapMatrix } from "../../config/strategy-caps.mjs";
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
 function effectivePerStrategySettlementTargetUsd(strategy = {}, chain, policy = null) {
-  const perChainRaw = strategy.caps?.perChainUsd?.[chain];
-  const perChainUsd = finite(perChainRaw);
+  const resolvedCaps = resolveStrategyCapMatrix(strategy);
+  const perChainUsd = finite(resolvedCaps?.perChainUsd?.[chain]);
   // Operator explicitly setting perChainUsd=0 means "do not target this chain".
   // Do NOT fall through to policy defaults in that case.
   if (perChainUsd === 0) return 0;
-  const liveUnitUsd = finite(strategy.caps?.tinyLivePerTxUsd) ?? finite(strategy.caps?.perTxUsd);
+  const liveUnitUsd = finite(resolvedCaps?.tinyLivePerTxUsd) ?? finite(resolvedCaps?.perTxUsd);
   const canaryStartUsdMax = finite(policy?.capital?.canaryStartUsdMax);
   const maxIdleCapitalPerChainUsd = finite(policy?.capital?.maxIdleCapitalPerChainUsd);
   const candidates = [

@@ -1,4 +1,5 @@
 import { STRATEGY_CAPS } from "./strategy-caps/registry.mjs";
+import { ACTIVE_SLEEVE_PROFILE, resolveProfileCapMatrix } from "./sleeve-profile.mjs";
 
 export { STRATEGY_CAPS };
 
@@ -12,6 +13,15 @@ export function getStrategyCaps(strategyId) {
 
 export function listStrategyCaps() {
   return Object.values(STRATEGY_CAPS);
+}
+
+export function resolveStrategyCapMatrix(
+  strategyOrId,
+  { profileId = ACTIVE_SLEEVE_PROFILE.id, includeRadarCaps = false } = {},
+) {
+  const strategy = typeof strategyOrId === "string" ? getStrategyCaps(strategyOrId) : strategyOrId;
+  if (!strategy) return null;
+  return resolveProfileCapMatrix(strategy, { profileId, includeRadarCaps });
 }
 
 function effectiveActiveStrategyCapUsd(config = {}) {
