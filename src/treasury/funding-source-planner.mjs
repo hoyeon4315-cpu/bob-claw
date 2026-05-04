@@ -8,6 +8,8 @@ import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction, gasZipInboundChain } from 
 import { isGatewayMethod } from "../config/gateway.mjs";
 import { dexProvidersForChain } from "../dex/providers.mjs";
 
+const PARTIAL_REFILL_MIN_COVERAGE_BPS = 8500n;
+
 const METHOD_PROFILES = {
   same_chain_native_transfer: {
     fixedCostUsd: 0.01,
@@ -245,7 +247,9 @@ function sourceInventoryCoversTargetAmount(action, source = null) {
   try {
     const targetAmount = BigInt(action?.refillAmount ?? 0);
     const sourceAmount = BigInt(source?.actual ?? source?.balance ?? 0);
-    return targetAmount > 0n && sourceAmount >= targetAmount;
+    if (targetAmount <= 0n) return false;
+    if (sourceAmount >= targetAmount) return true;
+    return (sourceAmount * 10_000n) / targetAmount >= PARTIAL_REFILL_MIN_COVERAGE_BPS;
   } catch {
     return false;
   }

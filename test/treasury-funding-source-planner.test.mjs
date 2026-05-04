@@ -410,7 +410,7 @@ test("alternate bridge candidates use USD coverage for cross-asset token refills
   assert.equal(lifi.missingInputs.includes("source_inventory_below_target_amount"), false);
 });
 
-test("alternate bridge candidates still use raw amount coverage for same-token wrapped BTC refills", () => {
+test("alternate bridge candidates allow high-coverage same-token wrapped BTC partial refills", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const funding = buildFundingSourcePlan({
     plan: {
@@ -447,7 +447,7 @@ test("alternate bridge candidates still use raw amount coverage for same-token w
 
   const lifi = funding.selections[0].candidates.find((candidate) => candidate.method === "cross_chain_bridge_lifi");
   assert.ok(lifi);
-  assert.equal(lifi.missingInputs.includes("source_inventory_below_target_amount"), true);
+  assert.equal(lifi.missingInputs.includes("source_inventory_below_target_amount"), false);
 });
 
 test("Ethereum WBTC target can use value coverage from cross-chain wBTC.OFT inventory", () => {
@@ -552,6 +552,45 @@ test("cross-chain BTC-family token refill stays conditional when observed source
         refillAmount: "10000",
         refillAmountDecimal: 0.0001,
         refillEstimatedUsd: 7.4,
+        rationale: "Route token buffer",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].missingInputs.includes("source_inventory_below_target_amount"), true);
+});
+
+test("cross-chain BTC-family token refill stays conditional when same-token partial coverage is below threshold", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [],
+      tokens: [
+        {
+          chain: "base",
+          actual: "8400",
+          actualDecimal: 0.000084,
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          estimatedUsd: 6.72,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "bob",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 8,
         rationale: "Route token buffer",
       },
     ],
