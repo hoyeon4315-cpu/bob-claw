@@ -1,5 +1,13 @@
 import { freshnessForObservedAt } from "../treasury/protocol-position-mark-schema.mjs";
-import { detectTransientDegradation } from "../treasury/protocol-position-ledger.mjs";
+import {
+  detectTransientDegradation,
+  isTransientFailureMark,
+} from "../treasury/protocol-position-ledger.mjs";
+
+const ROLLING_24H_MS = 24 * 60 * 60 * 1000;
+const ROLLING_7D_MS = 7 * 24 * 60 * 60 * 1000;
+const STAGE_C_HYSTERESIS_THRESHOLD = 0.9;
+const STAGE_C_HYSTERESIS_SUSTAIN_MS = 60 * 60 * 1000;
 
 function observedAtMs(value) {
   const ms = Date.parse(value || "");
@@ -48,6 +56,76 @@ function chainBucket(byChain, chain) {
   const key = chain || "unknown";
   byChain[key] ||= { valueUsd: 0, count: 0 };
   return byChain[key];
+}
+
+function attemptOutcome(mark = {}) {
+  if (isSuccessfulMarkedPosition(mark)) return "success";
+  if (mark.event === "position_mark_failed") return "failure";
+  return null;
+}
+
+function marksInWindow(marks = [], generatedAt, windowMs) {
+  const generatedAtMs = observedAtMs(generatedAt);
+  return marks.filter((mark) => {
+    const observed = observedAtMs(mark.observedAt);
+    return Number.isFinite(observed) && observed >= generatedAtMs - windowMs && observed <= generatedAtMs;
+  });
+}
+
+function rollingReliabilityWindow(marks = [], { generatedAt, windowMs } = {}) {
+  const attempts = marksInWindow(marks, generatedAt, windowMs).filter((mark) => attemptOutcome(mark));
+  const successCount = attempts.filter((mark) => attemptOutcome(mark) === "success").length;
+  const failureCount = attempts.length - successCount;
+  const transientCount = attempts.filter((mark) => mark.event === "position_mark_failed" && isTransientFailureMark(marks, mark)).length;
+  return {
+    attemptCount: attempts.length,
+    successCount,
+    failureCount,
+    transientCount,
+    refreshSuccessRatio: attempts.length > 0 ? successCount / attempts.length : null,
+    transientFrequency: attempts.length > 0 ? transientCount / attempts.length : null,
+    oldestObservedAt: attempts[0]?.observedAt || null,
+    latestObservedAt: attempts.at(-1)?.observedAt || null,
+  };
+}
+
+function refreshBelowThresholdSince(marks = [], {
+  generatedAt,
+  windowMs = ROLLING_24H_MS,
+  threshold = STAGE_C_HYSTERESIS_THRESHOLD,
+} = {}) {
+  const attempts = marks
+    .filter((mark) => attemptOutcome(mark))
+    .sort((left, right) => observedAtMs(left.observedAt) - observedAtMs(right.observedAt));
+  if (attempts.length === 0) return null;
+
+  let start = 0;
+  let successCount = 0;
+  let attemptCount = 0;
+  let belowSince = null;
+  let latestRatio = null;
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    const mark = attempts[index];
+    const currentMs = observedAtMs(mark.observedAt);
+    attemptCount += 1;
+    if (attemptOutcome(mark) === "success") successCount += 1;
+
+    while (start <= index && observedAtMs(attempts[start].observedAt) < currentMs - windowMs) {
+      attemptCount -= 1;
+      if (attemptOutcome(attempts[start]) === "success") successCount -= 1;
+      start += 1;
+    }
+
+    latestRatio = attemptCount > 0 ? successCount / attemptCount : null;
+    if (Number.isFinite(latestRatio) && latestRatio < threshold) {
+      belowSince ||= mark.observedAt || null;
+    } else {
+      belowSince = null;
+    }
+  }
+
+  return Number.isFinite(latestRatio) && latestRatio < threshold ? belowSince : null;
 }
 
 export function buildProtocolPositionMarksSlice(
@@ -133,9 +211,19 @@ export function buildProtocolPositionMarksSlice(
         observedAt: new Date().toISOString(),
       }
     : null;
+  const rolling24h = rollingReliabilityWindow(marks, { generatedAt, windowMs: ROLLING_24H_MS });
+  const rolling7d = rollingReliabilityWindow(marks, { generatedAt, windowMs: ROLLING_7D_MS });
+  const refreshBelow90Since = refreshBelowThresholdSince(marks, {
+    generatedAt,
+    windowMs: ROLLING_24H_MS,
+    threshold: STAGE_C_HYSTERESIS_THRESHOLD,
+  });
+  const refreshBelow90SustainedFor1h =
+    Boolean(refreshBelow90Since) &&
+    observedAtMs(generatedAt) - observedAtMs(refreshBelow90Since) >= STAGE_C_HYSTERESIS_SUSTAIN_MS;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt,
     markRecordCount: marks.length,
     latestPositionCount: latest.length,
@@ -147,6 +235,24 @@ export function buildProtocolPositionMarksSlice(
     totalMarkedUsd: roundUsd(totalMarkedUsd),
     confidence,
     transientDegradedWarning,
+    refreshSuccessRatio: {
+      rolling24h: rolling24h.refreshSuccessRatio,
+      rolling7d: rolling7d.refreshSuccessRatio,
+    },
+    transientFrequency: {
+      rolling24h: rolling24h.transientFrequency,
+      rolling7d: rolling7d.transientFrequency,
+    },
+    reliability: {
+      rolling24h,
+      rolling7d,
+      hysteresis: {
+        refreshBelow90Since,
+        refreshBelow90SustainedFor1h,
+        threshold: STAGE_C_HYSTERESIS_THRESHOLD,
+        sustainMs: STAGE_C_HYSTERESIS_SUSTAIN_MS,
+      },
+    },
     byChain,
     items,
   };

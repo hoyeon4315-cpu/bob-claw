@@ -181,3 +181,40 @@ test("lane-aware live policy recognizes reopened recursive loop caps", () => {
   assert.equal(policy.exposure.btcDenominated, true);
   assert.equal(policy.leverage.healthFactorMin, 1.35);
 });
+
+test("lane-aware live policy surfaces Stage B shadow-only gating without erasing pre-stage approval", () => {
+  const overall = applyLaneAwareLivePolicy({
+    overall: {
+      liveTrading: "ALLOWED",
+      shadowTrading: "ALLOWED",
+      blockers: [],
+      warnings: [],
+    },
+    reviewPackage: {
+      candidateType: "strategy",
+      candidateId: "wrapped-btc-loop-base-moonwell",
+    },
+    prelive: {
+      currentStage: "tiny_live_canary_review",
+    },
+    liveBaseline: {
+      counts: {
+        total: 0,
+      },
+    },
+    stageEvaluation: {
+      currentStage: "B",
+      blockers: ["refill_routes_unresolved"],
+      evidence: {
+        refreshSuccessRatio24h: 0.98,
+        transientFrequency24h: 0.01,
+      },
+    },
+  });
+
+  assert.equal(overall.liveTrading, "BLOCKED");
+  assert.equal(overall.warnings.includes("lane_stage_B_shadow_only"), true);
+  assert.equal(overall.lanePolicy.stage, "B");
+  assert.equal(overall.lanePolicy.preStageLiveTrading, "ALLOWED");
+  assert.deepEqual(overall.lanePolicy.stageBlockers, ["refill_routes_unresolved"]);
+});

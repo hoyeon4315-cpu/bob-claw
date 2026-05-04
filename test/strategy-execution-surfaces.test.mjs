@@ -198,6 +198,96 @@ test("execution surfaces include executor-backed live strategies when artifacts 
   assert.equal(report.summary.liveEligibleCount, 2);
 });
 
+test("execution surfaces force shadow mode for Stage B even when live evidence is otherwise ready", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "BLOCKED",
+        lanePolicy: {
+          stage: "B",
+          preStageLiveTrading: "ALLOWED",
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 1.3552 },
+          realized: { valueUsd: 1.3552 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            oosSplitStatus: "signer_backed_window_recorded",
+            shockTestStatus: "live_roundtrip_recorded",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+              realizedNetCarryUsd: 0,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 3,
+          executableNowCount: 2,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-1",
+            chain: "base",
+            protocolId: "yo",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 150 },
+            },
+            aprPct: 100,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.selectedMode, "shadow");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.selectedMode, "shadow");
+  assert.equal(merkl.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
+});
+
 test("Merkl surface does not mark policy-blocked tiny entries as executable now", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {

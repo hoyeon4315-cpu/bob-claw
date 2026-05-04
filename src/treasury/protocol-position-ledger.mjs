@@ -148,6 +148,10 @@ function getRecentSuccessIfTransient(marks = [], latestMark) {
   return null;
 }
 
+export function isTransientFailureMark(marks = [], mark = null) {
+  return Boolean(getRecentSuccessIfTransient(marks, mark));
+}
+
 export function latestProtocolMarksByPosition(marks = []) {
   const latest = new Map();
 

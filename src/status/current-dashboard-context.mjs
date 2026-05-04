@@ -18,6 +18,7 @@ import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocator-core.mjs";
 import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
+import { evaluateStage } from "../executor/policy/stage-evaluator.mjs";
 import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
 import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
 import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
@@ -232,6 +233,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     allChainAutopilotLatest,
     allChainAutopilotLatestCompleted,
     devAgentAutomationBridgeReport,
+    evCostModel,
     treasuryInventoryRecords,
     wholeWalletInventoryRecords,
     merklPositionEvents,
@@ -291,6 +293,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "all-chain-autopilot-latest-completed.json")),
     readJsonIfExists(join(dataDir, "dev-agent-automation-bridge.json")),
+    readJsonIfExists(join(dataDir, "policy", "ev-cost-model.json")),
     readJsonl(dataDir, "treasury-inventory"),
     readJsonl(dataDir, "whole-wallet-inventory"),
     readJsonl(dataDir, "merkl-portfolio-positions"),
@@ -477,6 +480,24 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
   };
+  const stageEvaluation = evCostModel
+    ? evaluateStage({
+        marksSlice: dashboardStatus.strategy.protocolPositionMarks,
+        capitalPlan: {
+          unresolvedRefillRoutes: dashboardStatus.operations.allChainAutopilot?.refill?.unresolvedCount ?? 0,
+          payback: dashboardStatus.payback?.expansionGate || null,
+        },
+        evGateStats: {
+          calibrated:
+            (evCostModel?.summary?.matchedReceiptCount ?? 0) > 0 &&
+            (evCostModel?.summary?.keyedEntryCount ?? 0) > 0,
+          matchedReceiptCount: evCostModel?.summary?.matchedReceiptCount ?? 0,
+          keyedEntryCount: evCostModel?.summary?.keyedEntryCount ?? 0,
+          lookbackDays: evCostModel?.lookbackDays ?? null,
+        },
+      })
+    : null;
+  dashboardStatus.strategy.reopenStage = stageEvaluation;
   dashboardStatus.flow = buildFlowDashboardSlice({
     executionEvents,
     merklPositionEvents,
@@ -845,6 +866,7 @@ export async function buildCurrentDashboardContext({ dataDir = config.dataDir, a
     prelive: dashboardStatus.prelive,
     liveBaseline: dashboardStatus.liveBaseline,
     edgeViability: dashboardStatus.strategy?.edgeViability,
+    stageEvaluation,
   });
   dashboardStatus.prelive.liveTradingPolicy = dashboardStatus.overall.liveTrading;
   reviewPackage.liveDecision =

@@ -478,6 +478,11 @@ export function buildStrategyCatalog({
     generatedAt: dashboardStatus?.generatedAt || new Date().toISOString(),
     policy: {
       liveTrading: dashboardStatus?.overall?.liveTrading || "BLOCKED",
+      preStageLiveTrading:
+        dashboardStatus?.overall?.lanePolicy?.preStageLiveTrading ||
+        dashboardStatus?.overall?.liveTrading ||
+        "BLOCKED",
+      laneStage: dashboardStatus?.overall?.lanePolicy?.stage || null,
       ethereumL1: "allowed_when_positive_ev",
       flashLiveAdmission: "blocked_pending_explicit_review",
       odosExecutionTrust: "safe_whitelist_required_for_execution_claims",
