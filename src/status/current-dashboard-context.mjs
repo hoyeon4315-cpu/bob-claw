@@ -494,7 +494,7 @@ export async function buildCurrentDashboardContext({
         marksSlice: dashboardStatus.strategy.protocolPositionMarks,
         capitalPlan: {
           unresolvedRefillRoutes: dashboardStatus.operations.allChainAutopilot?.refill?.unresolvedCount ?? 0,
-          payback: dashboardStatus.payback?.expansionGate || null,
+          payback: dashboardStatus.payback || null,
         },
         evGateStats: {
           calibrated:

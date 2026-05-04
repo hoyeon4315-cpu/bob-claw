@@ -26,8 +26,18 @@ function capitalPlan(overrides = {}) {
   return {
     unresolvedRefillRoutes: 1,
     payback: {
-      reserveChain: "base",
-      deliveredPeriodCountOnReserveChain: 0,
+      scheduler: {
+        status: "carry",
+        reason: "planned_payback_below_minimum",
+      },
+      carry: {
+        pendingSats: 601,
+        progressToMinimumRatio: 0.0024,
+      },
+      expansionGate: {
+        reserveChain: "base",
+        deliveredPeriodCountOnReserveChain: 0,
+      },
     },
     ...overrides,
   };
@@ -67,8 +77,14 @@ test("stage evaluator progresses monotonically from A to B to C", () => {
     capitalPlan: capitalPlan({
       unresolvedRefillRoutes: 0,
       payback: {
-        reserveChain: "base",
-        deliveredPeriodCountOnReserveChain: 1,
+        scheduler: {
+          status: "ready",
+          reason: null,
+        },
+        expansionGate: {
+          reserveChain: "base",
+          deliveredPeriodCountOnReserveChain: 1,
+        },
       },
     }),
     evGateStats: evGateStats(),
@@ -100,8 +116,14 @@ test("stage evaluator demotes Stage C readiness to B when refresh stays below 0.
     capitalPlan: capitalPlan({
       unresolvedRefillRoutes: 0,
       payback: {
-        reserveChain: "base",
-        deliveredPeriodCountOnReserveChain: 2,
+        scheduler: {
+          status: "delivered",
+          reason: null,
+        },
+        expansionGate: {
+          reserveChain: "base",
+          deliveredPeriodCountOnReserveChain: 2,
+        },
       },
     }),
     evGateStats: evGateStats(),
@@ -109,4 +131,19 @@ test("stage evaluator demotes Stage C readiness to B when refresh stays below 0.
 
   assert.equal(result.currentStage, "B");
   assert.equal(result.blockers.includes("stage_c_hysteresis_demoted"), true);
+});
+
+test("stage evaluator surfaces payback carry evidence for missing delivered periods", () => {
+  const result = evaluateStage({
+    marksSlice: marksSlice(),
+    capitalPlan: capitalPlan(),
+    evGateStats: evGateStats(),
+  });
+
+  assert.equal(result.evidence.reserveChain, "base");
+  assert.equal(result.evidence.deliveredPeriodCountOnReserveChain, 0);
+  assert.equal(result.evidence.paybackStatus, "carry");
+  assert.equal(result.evidence.paybackReason, "planned_payback_below_minimum");
+  assert.equal(result.evidence.paybackPendingSats, 601);
+  assert.equal(result.evidence.paybackProgressToMinimumRatio, 0.0024);
 });

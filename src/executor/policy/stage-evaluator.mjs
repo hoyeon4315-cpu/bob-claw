@@ -20,6 +20,8 @@ export function evaluateStage({
   capitalPlan = null,
   evGateStats = null,
 } = {}) {
+  const payback = capitalPlan?.payback || capitalPlan?.expansionGate || null;
+  const expansionGate = payback?.expansionGate || payback;
   const refreshSuccessRatio24h =
     finiteNumber(marksSlice?.reliability?.rolling24h?.refreshSuccessRatio) ??
     finiteNumber(marksSlice?.refreshSuccessRatio?.rolling24h);
@@ -37,14 +39,22 @@ export function evaluateStage({
     finiteNumber(capitalPlan?.refill?.unresolvedCount) ??
     0;
   const reserveChain =
-    capitalPlan?.payback?.reserveChain ||
-    capitalPlan?.expansionGate?.reserveChain ||
+    expansionGate?.reserveChain ||
     capitalPlan?.reserveChain ||
     null;
   const deliveredPeriodCountOnReserveChain =
-    finiteNumber(capitalPlan?.payback?.deliveredPeriodCountOnReserveChain) ??
-    finiteNumber(capitalPlan?.expansionGate?.deliveredPeriodCountOnReserveChain) ??
+    finiteNumber(expansionGate?.deliveredPeriodCountOnReserveChain) ??
     0;
+  const paybackStatus = payback?.scheduler?.status || payback?.status || null;
+  const paybackReason = payback?.scheduler?.reason || payback?.reason || null;
+  const paybackPendingSats =
+    finiteNumber(payback?.carry?.pendingSats) ??
+    finiteNumber(payback?.accumulatorPendingSats) ??
+    null;
+  const paybackProgressToMinimumRatio =
+    finiteNumber(payback?.carry?.progressToMinimumRatio) ??
+    finiteNumber(payback?.scheduler?.minimumPaybackProgress?.progressToMinimumRatio) ??
+    null;
   const hysteresis = marksSlice?.reliability?.hysteresis || {};
   const refreshBelow90SustainedFor1h = hysteresis.refreshBelow90SustainedFor1h === true;
   const refreshBelow90Since = hysteresis.refreshBelow90Since || null;
@@ -90,6 +100,10 @@ export function evaluateStage({
       unresolvedRefillRoutes,
       reserveChain,
       deliveredPeriodCountOnReserveChain,
+      paybackStatus,
+      paybackReason,
+      paybackPendingSats,
+      paybackProgressToMinimumRatio,
       evGateCalibrated: calibrated,
       evGateMatchedReceiptCount: finiteNumber(evGateStats?.matchedReceiptCount) ?? 0,
       evGateKeyedEntryCount: finiteNumber(evGateStats?.keyedEntryCount) ?? 0,
