@@ -21,12 +21,14 @@
 import process from "node:process";
 import { existsSync } from "node:fs";
 import { mkdir, appendFile, readFile, writeFile, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { getEnv } from "../config/env.mjs";
+import { dirname, join, resolve } from "node:path";
+import { config, getEnv } from "../config/env.mjs";
 import {
   readKillSwitchStatus,
   resolveKillSwitchPath,
 } from "../executor/policy/kill-switch.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
+import { buildAutoKillReplayStatus } from "../risk/auto-kill-replay.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -68,6 +70,48 @@ async function readJsonIfExists(path) {
   }
 }
 
+async function buildLiveKillSwitchReplay({ status, dashboardStatus, dashboardPath }) {
+  if (!status?.halted) return null;
+  if (status?.replay) return status.replay;
+
+  const dataDir = config.dataDir || "./data";
+  const [
+    auditRecords,
+    heartbeatPayload,
+    oraclePayload,
+    priceSamplesPayload,
+    anchorHealthPayload,
+    activeProtocolsPayload,
+    campaignStatusPayload,
+  ] = await Promise.all([
+    readSignerAuditLog(),
+    readJsonIfExists(getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json")),
+    readJsonIfExists(getEnv("AUTO_KILL_ORACLES_PATH", join(dataDir, "oracles", "btc-latest.json"))),
+    readJsonIfExists(join(dataDir, "price-samples.json")),
+    readJsonIfExists(join(dataDir, "anchor-position-health.json")),
+    readJsonIfExists(join(dataDir, "active-protocols.json")),
+    readJsonIfExists(join(dataDir, "campaign-status.json")),
+  ]);
+  const effectiveDashboardStatus = dashboardStatus || (await readJsonIfExists(dashboardPath));
+  return buildAutoKillReplayStatus({
+    auditRecords,
+    executorRuntime: {
+      observedAt: heartbeatPayload?.updatedAt || heartbeatPayload?.observedAt || null,
+      killSwitch: {
+        halted: status.halted,
+        activeReason: status.activeReason,
+        killSwitchPath: status.killSwitchPath,
+      },
+    },
+    oraclePayload,
+    priceSamplesPayload,
+    anchorHealthPayload,
+    activeProtocolsPayload,
+    campaignStatusPayload,
+    operatingCapitalUsd: effectiveDashboardStatus?.capitalSummary?.totalUsd ?? null,
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -89,11 +133,17 @@ async function main() {
 
   if (args.status) {
     const dashboardStatus = await readJsonIfExists(args.dashboardPath);
-    const status = await readKillSwitchStatus({
+    const baseStatus = await readKillSwitchStatus({
       killSwitchPath: args.killSwitchPath,
       auditPath: args.auditPath,
       dashboardStatus,
     });
+    const replay = await buildLiveKillSwitchReplay({
+      status: baseStatus,
+      dashboardStatus,
+      dashboardPath: args.dashboardPath,
+    });
+    const status = replay ? { ...baseStatus, replay } : baseStatus;
     if (args.json) {
       console.log(JSON.stringify(status, null, 2));
     } else {
