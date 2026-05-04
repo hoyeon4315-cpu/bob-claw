@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { config } from "../config/env.mjs";
+import { config, getEnv } from "../config/env.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
@@ -54,6 +54,7 @@ import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
 import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
+import { buildAutoKillReplayStatus } from "../risk/auto-kill-replay.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import {
   activeProtocolPositions,
@@ -190,6 +191,7 @@ export async function buildCurrentDashboardContext({
 } = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
+  const autoKillOraclesPath = getEnv("AUTO_KILL_ORACLES_PATH", join(dataDir, "oracles", "btc-latest.json"));
   const [
     quoteFailures,
     gasFailures,
@@ -250,6 +252,10 @@ export async function buildCurrentDashboardContext({
     radarPackets,
     radarCandidates,
     radarRealizationRecords,
+    autoKillPriceSamples,
+    autoKillActiveProtocols,
+    autoKillCampaignStatus,
+    autoKillOraclePayload,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -310,6 +316,10 @@ export async function buildCurrentDashboardContext({
     readRadarJsonl(dataDir, "portable-packets"),
     readRadarJsonl(dataDir, "executable-candidates"),
     readRadarJsonl(dataDir, "realization-records"),
+    readJsonIfExists(join(dataDir, "price-samples.json")),
+    readJsonIfExists(join(dataDir, "active-protocols.json")),
+    readJsonIfExists(join(dataDir, "campaign-status.json")),
+    readJsonIfExists(autoKillOraclesPath),
   ]);
   const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
@@ -486,6 +496,20 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
   };
+  const autoKillReplay = buildAutoKillReplayStatus({
+    auditRecords: signerAuditRecords,
+    executorRuntime,
+    oraclePayload: autoKillOraclePayload,
+    priceSamplesPayload: autoKillPriceSamples,
+    anchorHealthPayload: anchorPositionHealth,
+    activeProtocolsPayload: autoKillActiveProtocols,
+    campaignStatusPayload: autoKillCampaignStatus,
+    operatingCapitalUsd: dashboardStatus.capitalSummary?.totalUsd ?? null,
+    now: dashboardStatus.generatedAt,
+  });
+  if (dashboardStatus.executorRuntime?.killSwitch) {
+    dashboardStatus.executorRuntime.killSwitch.replay = autoKillReplay;
+  }
   dashboardStatus.sleeveProfile = buildSleeveProfileSlice({
     generatedAt: dashboardStatus.generatedAt,
   });

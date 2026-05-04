@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAutoKillConfig } from "../src/config/auto-kill.mjs";
-import { heartbeatTimestampMs } from "../src/cli/run-auto-kill-check.mjs";
+import { heartbeatTimestampMs } from "../src/risk/auto-kill-replay.mjs";
 import {
   evaluateAutoKillTriggers,
   evaluateCumulativeLoss,

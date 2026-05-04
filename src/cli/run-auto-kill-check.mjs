@@ -9,7 +9,13 @@ import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { runAutoKillCheck } from "../risk/auto-kill-events.mjs";
 import { buildAutoKillConfig } from "../config/auto-kill.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
-
+import {
+  buildClStatusFromAnchorHealth,
+  deriveActiveProtocols,
+  heartbeatTimestampMs,
+  normalizeOracleSamples,
+  normalizePriceSamples,
+} from "../risk/auto-kill-replay.mjs";
 function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
@@ -46,73 +52,22 @@ async function readJsonIfExists(path) {
   }
 }
 
-function buildClStatusFromAnchorHealth(payload) {
-  if (!payload || !Array.isArray(payload.positions)) return {};
-  let sum = 0;
-  let count = 0;
-  let ilExceedsFeesHours = null;
-  for (const pos of payload.positions) {
-    const rawTimeInRange =
-      typeof pos.timeInRange === "string"
-        ? pos.timeInRange.replace("%", "")
-        : pos.timeInRange;
-    const v = Number(rawTimeInRange);
-    if (Number.isFinite(v)) {
-      sum += v > 1 ? v / 100 : v;
-      count += 1;
-    }
-    const rawIlHours = Number(pos.ilExceedsFeesHours ?? pos.health?.ilExceedsFeesHours);
-    if (Number.isFinite(rawIlHours)) {
-      ilExceedsFeesHours = Math.max(ilExceedsFeesHours ?? 0, rawIlHours);
-    }
-  }
-  const timeInRangePct24h = count > 0 ? sum / count : null;
-  return { timeInRangePct24h, ilExceedsFeesHours };
-}
-
-function deriveActiveProtocols(anchorHealth) {
-  if (!anchorHealth || !Array.isArray(anchorHealth.positions) || anchorHealth.positions.length === 0) {
-    return [];
-  }
-  return ["aerodrome"];
-}
-
-export function heartbeatTimestampMs(payload = null) {
-  if (!payload || typeof payload !== "object") return null;
-  const directRaw = payload.observedAtMs;
-  if (typeof directRaw === "number" && Number.isFinite(directRaw)) return directRaw;
-  if (typeof directRaw === "string" && directRaw.trim() !== "") {
-    const direct = Number(directRaw);
-    if (Number.isFinite(direct)) return direct;
-  }
-  const timestamp = payload.observedAt || payload.updatedAt || null;
-  if (!timestamp) return null;
-  const parsed = new Date(timestamp).getTime();
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const auditRecords = await readSignerAuditLog();
   const heartbeatPayload = await readJsonIfExists(args.heartbeatPath);
   const heartbeatAtMs = heartbeatTimestampMs(heartbeatPayload);
   const oraclePayload = await readJsonIfExists(args.oraclesPath);
-  const oracleSamples = Array.isArray(oraclePayload?.samples) ? oraclePayload.samples : [];
+  const oracleSamples = normalizeOracleSamples(oraclePayload);
 
   const priceSamplesPayload = await readJsonIfExists(args.priceSamplesPath);
-  const priceSamples = Array.isArray(priceSamplesPayload)
-    ? priceSamplesPayload
-    : (priceSamplesPayload?.samples || []);
+  const priceSamples = normalizePriceSamples(priceSamplesPayload);
 
   const clStatusPayload = await readJsonIfExists(args.clStatusPath);
   const clStatus = buildClStatusFromAnchorHealth(clStatusPayload);
 
   const activeProtocolsPayload = await readJsonIfExists(args.activeProtocolsPath);
-  const activeProtocols = Array.isArray(activeProtocolsPayload)
-    ? activeProtocolsPayload
-    : (Array.isArray(activeProtocolsPayload?.protocols)
-        ? activeProtocolsPayload.protocols
-        : deriveActiveProtocols(clStatusPayload));
+  const activeProtocols = deriveActiveProtocols(activeProtocolsPayload, clStatusPayload);
 
   const campaignStatusPayload = await readJsonIfExists(args.campaignStatusPath);
   const campaignStatus = campaignStatusPayload || {};
