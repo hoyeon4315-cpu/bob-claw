@@ -681,7 +681,7 @@ function buildLiveExecutionGate({ execute = false, autoKillStep = null } = {}) {
     return {
       requestedExecute: false,
       liveCapableStepExecution: false,
-      blockedReason: null,
+      blockedReason: "preview_only",
     };
   }
   if (!autoKillStep?.ok || !autoKillStep?.json) {

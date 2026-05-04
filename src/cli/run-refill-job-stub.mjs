@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
@@ -55,6 +56,21 @@ export function parseArgs(argv) {
     destinationSettlementTimeoutMs: options["destination-timeout-ms"] ? Number(options["destination-timeout-ms"]) : null,
     destinationPollIntervalMs: options["destination-poll-interval-ms"] ? Number(options["destination-poll-interval-ms"]) : 5_000,
   };
+}
+
+export async function ensureExecutionGuardsAllow({
+  execute = false,
+  mode = "dry_run",
+  emergencyStopPath = config.emergencyStopFlagPath,
+  liveModePath = config.liveModeFlagPath,
+  readExecutionGuardsImpl = readExecutionGuards,
+} = {}) {
+  if (!execute) return { blocked: false, reasons: [] };
+  return readExecutionGuardsImpl({
+    emergencyStopPath,
+    liveModePath,
+    mode,
+  });
 }
 
 function printBlockedEvent(event, job) {
@@ -142,9 +158,8 @@ async function main() {
     return;
   }
 
-  const guards = await readExecutionGuards({
-    emergencyStopPath: config.emergencyStopFlagPath,
-    liveModePath: config.liveModeFlagPath,
+  const guards = await ensureExecutionGuardsAllow({
+    execute: args.execute,
     mode: args.mode,
   });
   if (guards.blocked) {
@@ -321,7 +336,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

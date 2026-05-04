@@ -1597,6 +1597,8 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
   });
 
   assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
+  assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
+  assert.equal(report.summary.executionGate.blockedReason, "preview_only");
 });
 
 test("all-chain autopilot retries alternate refill methods after native gas bootstrap deadlock", async () => {
