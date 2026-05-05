@@ -1356,3 +1356,30 @@ Decision:
 - This is a receipt-proven tiny live canary, not profitable payback evidence.
 - The budget overshoot is a safety-surface bug, not an on-chain failure.
 - No further live attempts should run until the pre-execution broadcast-step budget guard is committed and the operator explicitly resumes.
+
+## 2026-05-05T19:25Z broadcast-step guard validation
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --chains=base --dry-run-first --execute --write --enable-dex-probe-execution --max-refill-jobs=0 --canary-limit=2 --canary-max-executed-candidates=1 --canary-max-broadcast-steps=2 --canary-max-recent-broadcasts=1 --canary-recent-broadcast-window-ms=600000 --timeout-ms=300000 --canary-timeout-ms=180000 --dispatch-timeout-ms=120000`
+
+Resume discipline before command:
+
+- `npm run kill:resume-review` appended a non-mutating review packet.
+- The review packet reported `replay triggered now: no` and `stale arm: yes`.
+- The kill-switch was resumed with reason `operator-approved-continue-after-canary-budget-guard`.
+
+Observed result:
+
+- Preview phase completed with one Base candidate ready.
+- Execute phase completed with no canary execution:
+  - executed candidate count `0`
+  - broadcast step count `0`
+  - `executionBudget.blockedReason: "max_broadcast_steps_reached"`
+- The first two Base candidates returned `not_run_execution_budget_reached`.
+- Signer audit did not advance beyond the earlier `2026-05-05T19:15Z` native DEX canary rows.
+
+Decision:
+
+- The pre-execution broadcast-step guard blocked the same class of over-budget canary before signer execution.
+- Live operation may continue through normal policy gates; the next profitable payback path is still blocked by insufficient realized positive PnL, not by the canary guard.
