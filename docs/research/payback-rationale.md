@@ -27,29 +27,38 @@ Dashboard/payback forecasting now uses a rolling 30-day realized-PnL window.
 
 1. The current accumulator state (`601 / 50_000 sats`) is still far below the
    configured minimum.
-2. The 30-day realized run-rate is not yet positive enough to justify an
-   automatic PR candidate that lowers the minimum.
-3. Because both profile forecasts are currently `unavailable` rather than
-   `>= 8 periods`, the dashboard now surfaces
-   `payback.proposedMinPaybackPatch = null`.
+2. The 30-day realized run-rate is not yet positive in either committed sleeve
+   profile.
+3. A non-positive realized run-rate makes the projected periods to first payback
+   unbounded, which trivially exceeds the eight-period proposal threshold.
+   Parcel 18 therefore widened the proposal logic so that the dashboard surfaces
+   `payback.proposedMinPaybackPatch = "data/payback/proposed-min-payback-diff.patch"`
+   and emits a PR-only diff under
+   `data/payback/proposed-min-payback-diff.patch`.
+4. The PR-only patch is annotated with the trigger
+   (`both_profiles_non_positive_run_rate` or `both_profiles_above_threshold`)
+   and explicitly marked as a draft for operator review.
 
-## Why the runtime minimum stays unchanged in this parcel
+## Why the runtime minimum stays unchanged
 
-- A min-only change without fresh realized-positive reserve-chain periods would
-  still be disconnected from the current receipt-backed run-rate.
-- The active reporting baseline intentionally fail-closes here: no positive
-  realized run-rate means no automatic minimum-lowering proposal.
-- Runtime payback policy therefore stays unchanged until fresh realized-positive
-  periods exist and the same 30-day model can estimate both profiles
-  deterministically.
+- The dashboard surface and the on-disk patch are PR drafts only. Per AGENTS.md,
+  any change to payback ratio, timing, or `minPaybackSats` requires a committed
+  config diff with rationale in this document. The dashboard pipeline never
+  rewrites `src/config/payback.mjs` and never raises caps at runtime.
+- The proposal exists so that operator review is not blocked behind the same
+  positivity gate that prevents the forecast from estimating a finite period
+  count. It does not by itself authorise a runtime change.
 
-## Next trigger for revisiting the minimum
+## Next trigger for promoting the proposal into a committed change
 
-Re-open the PR-only minimum discussion only after:
+Promote the PR draft into a real commit only after:
 
-1. The 30-day receipt-backed run-rate becomes positive after the current
-   reporting baseline.
-2. Both committed sleeve profiles produce deterministic
-   `estimatedPeriodsToFirstPayback` values.
-3. The reserve-chain offramp cost surface is rechecked against the then-current
-   minimum candidate.
+1. The 30-day receipt-backed run-rate has at least one positive period under the
+   active reporting baseline.
+2. The reserve-chain offramp cost surface is rechecked against the then-current
+   minimum candidate (`PROPOSED_MIN_PAYBACK_SATS = 5_000` is a placeholder, not
+   a vetted target).
+3. Both committed sleeve profiles produce deterministic
+   `estimatedPeriodsToFirstPayback` values that still exceed eight periods, or
+   an explicit operator note records why the floor change is desired despite a
+   shorter forecast.

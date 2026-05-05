@@ -570,12 +570,20 @@ test("payback dashboard leaves periods-to-first-payback unavailable when realize
   assert.equal(estimate.profiles.aggressive_v1.status, "unavailable");
   assert.equal(estimate.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
   assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, null);
-  assert.equal(payback.proposedMinPaybackPatch, null);
-  assert.equal(payback.minimumReview.status, "keep_current");
-  assert.equal(payback.minimumReview.reason, "non_positive_realized_run_rate");
-  assert.equal(payback.minimumReview.proposedPatchPath, null);
+  // A non-positive realized run rate trivially exceeds the eight-period
+  // proposal threshold, so the dashboard surfaces a PR-draft patch even
+  // though the projected periods themselves are unbounded. The patch is a
+  // PR draft, never a runtime change.
+  assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
+  assert.equal(payback.minimumReview.status, "propose_patch");
+  assert.equal(payback.minimumReview.reason, "both_profiles_non_positive_run_rate");
+  assert.equal(payback.minimumReview.proposedPatchPath, "data/payback/proposed-min-payback-diff.patch");
   assert.equal(payback.minimumReview.profiles.smallCapital_v1.reason, "non_positive_realized_run_rate");
   assert.equal(payback.minimumReview.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
+  const patchContents = await readFile(join(dataDir, "payback", "proposed-min-payback-diff.patch"), "utf8");
+  assert.match(patchContents, /both_profiles_non_positive_run_rate/u);
+  assert.match(patchContents, /non-positive realized run rate/u);
+  assert.match(patchContents, /PR draft only/u);
 });
 
 test("payback dashboard treats explicit zero payback-eligible sats as authoritative over positive USD fallback", async () => {
@@ -637,12 +645,14 @@ test("payback dashboard treats explicit zero payback-eligible sats as authoritat
   assert.equal(estimate.profiles.smallCapital_v1.medianEstimatedPeriods, null);
   assert.equal(estimate.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
   assert.equal(estimate.profiles.aggressive_v1.medianEstimatedPeriods, null);
-  assert.equal(payback.proposedMinPaybackPatch, null);
-  assert.equal(payback.minimumReview.status, "keep_current");
-  assert.equal(payback.minimumReview.reason, "non_positive_realized_run_rate");
+  // Same proposal trigger as above: explicit zero payback-eligible sats means
+  // the realized run rate is non-positive in both profiles.
+  assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
+  assert.equal(payback.minimumReview.status, "propose_patch");
+  assert.equal(payback.minimumReview.reason, "both_profiles_non_positive_run_rate");
 });
 
-test("payback dashboard does not surface a proposed patch path in read-only mode when forecast does not qualify", async () => {
+test("payback dashboard surfaces a proposed patch path in read-only mode when both profiles report a non-positive realized run rate", async () => {
   const payback = await buildPaybackDashboardSlice({
     auditLogLines: [],
     receiptStore: {
@@ -681,7 +691,26 @@ test("payback dashboard does not surface a proposed patch path in read-only mode
     }),
   });
 
-  assert.equal(payback.proposedMinPaybackPatch, null);
-  assert.equal(payback.minimumReview.status, "keep_current");
-  assert.equal(payback.minimumReview.reason, "non_positive_realized_run_rate");
+  // Read-only mode advertises the patch path so dashboards can link to it,
+  // but no file is materialised on disk because dataDir was not provided.
+  assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
+  assert.equal(payback.minimumReview.status, "propose_patch");
+  assert.equal(payback.minimumReview.reason, "both_profiles_non_positive_run_rate");
+  assert.equal(payback.minimumReview.proposedPatchPath, "data/payback/proposed-min-payback-diff.patch");
+});
+
+test("buildProposedMinPaybackPatch annotates the trigger and rationale for operator review", () => {
+  const aboveThreshold = buildProposedMinPaybackPatch({ trigger: "both_profiles_above_threshold" });
+  assert.match(aboveThreshold, /^# Trigger: both_profiles_above_threshold$/mu);
+  assert.match(aboveThreshold, /both committed sleeve profiles forecast at least eight periods/u);
+  assert.match(aboveThreshold, /PR draft only/u);
+
+  const nonPositive = buildProposedMinPaybackPatch({ trigger: "both_profiles_non_positive_run_rate" });
+  assert.match(nonPositive, /^# Trigger: both_profiles_non_positive_run_rate$/mu);
+  assert.match(nonPositive, /non-positive realized run rate/u);
+
+  const fallback = buildProposedMinPaybackPatch({ trigger: "unknown_trigger" });
+  // Unknown triggers fall back to the default rationale rather than throwing.
+  assert.match(fallback, /both committed sleeve profiles forecast at least eight periods/u);
+  assert.match(fallback, /^# Trigger: unknown_trigger$/mu);
 });

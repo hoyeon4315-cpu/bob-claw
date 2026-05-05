@@ -333,24 +333,43 @@ function requiredGrossProfitSats({ minPaybackSats, baseRatio, regimeMultiplier, 
   return Math.ceil(minPaybackSats / appliedMultiplier);
 }
 
-function shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback = null) {
+const MIN_PAYBACK_PROPOSAL_PROFILE_IDS = ["smallCapital_v1", "aggressive_v1"];
+
+function minPaybackProposalTrigger(estimatedPeriodsToFirstPayback = null) {
   const profiles = estimatedPeriodsToFirstPayback?.profiles || {};
-  const profileIds = ["smallCapital_v1", "aggressive_v1"];
-  return profileIds.every((profileId) => {
+  const profileIds = MIN_PAYBACK_PROPOSAL_PROFILE_IDS;
+  const allAboveThreshold = profileIds.every((profileId) => {
     const estimate = profiles[profileId];
     const forecastPeriods = Number.isFinite(estimate?.medianEstimatedPeriods)
       ? estimate.medianEstimatedPeriods
       : estimate?.estimatedPeriods;
     return Number.isFinite(forecastPeriods) && forecastPeriods >= 8;
   });
+  if (allAboveThreshold) return "both_profiles_above_threshold";
+  const allNonPositiveRunRate = profileIds.every((profileId) => {
+    const estimate = profiles[profileId];
+    return estimate?.reason === "non_positive_realized_run_rate";
+  });
+  // A non-positive realized run rate means projected periods to first payback
+  // is unbounded, which trivially exceeds the eight-period proposal threshold.
+  // The patch is a PR draft for operator review, never a runtime change, so
+  // surfacing it here keeps the floor visible in dashboard while AGENTS.md's
+  // committed-config rule still gates any actual change.
+  if (allNonPositiveRunRate) return "both_profiles_non_positive_run_rate";
+  return null;
+}
+
+function shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback = null) {
+  return Boolean(minPaybackProposalTrigger(estimatedPeriodsToFirstPayback));
 }
 
 function buildMinimumPaybackReview({
   estimatedPeriodsToFirstPayback = null,
   proposedMinPaybackPatch = null,
+  proposalTrigger = null,
 } = {}) {
   const profiles = estimatedPeriodsToFirstPayback?.profiles || {};
-  const profileIds = ["smallCapital_v1", "aggressive_v1"];
+  const profileIds = MIN_PAYBACK_PROPOSAL_PROFILE_IDS;
   const profileSummaries = Object.fromEntries(
     profileIds.map((profileId) => {
       const estimate = profiles[profileId] || {};
@@ -365,10 +384,11 @@ function buildMinimumPaybackReview({
       ];
     }),
   );
+  const resolvedTrigger = proposalTrigger || minPaybackProposalTrigger(estimatedPeriodsToFirstPayback);
   if (proposedMinPaybackPatch) {
     return {
       status: "propose_patch",
-      reason: "both_profiles_above_threshold",
+      reason: resolvedTrigger || "both_profiles_above_threshold",
       thresholdPeriods: 8,
       currentMinPaybackSats: PAYBACK_CONFIG.minPaybackSats,
       proposedMinPaybackSats: PROPOSED_MIN_PAYBACK_SATS,
@@ -404,11 +424,24 @@ function buildMinimumPaybackReview({
   };
 }
 
+const MIN_PAYBACK_PROPOSAL_RATIONALE = Object.freeze({
+  both_profiles_above_threshold:
+    "both committed sleeve profiles forecast at least eight periods to first payback at current capital",
+  both_profiles_non_positive_run_rate:
+    "both committed sleeve profiles report a non-positive realized run rate, so projected periods are unbounded",
+});
+
 export function buildProposedMinPaybackPatch({
   currentMinPaybackSats = PAYBACK_CONFIG.minPaybackSats,
   proposedMinPaybackSats = PROPOSED_MIN_PAYBACK_SATS,
+  trigger = "both_profiles_above_threshold",
 } = {}) {
+  const rationale = MIN_PAYBACK_PROPOSAL_RATIONALE[trigger] || MIN_PAYBACK_PROPOSAL_RATIONALE.both_profiles_above_threshold;
   return [
+    `# Trigger: ${trigger}`,
+    `# Rationale: ${rationale}`,
+    "# Note: PR draft only. Per AGENTS.md, payback ratio/timing changes require",
+    "# a committed config diff with rationale in docs/research/payback-rationale.md.",
     "diff --git a/src/config/payback.mjs b/src/config/payback.mjs",
     "--- a/src/config/payback.mjs",
     "+++ b/src/config/payback.mjs",
@@ -423,13 +456,13 @@ async function maybeWriteProposedMinPaybackPatch({
   dataDir = null,
   estimatedPeriodsToFirstPayback = null,
 } = {}) {
-  if (!dataDir || !shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback)) {
-    return null;
-  }
+  if (!dataDir) return { path: null, trigger: null };
+  const trigger = minPaybackProposalTrigger(estimatedPeriodsToFirstPayback);
+  if (!trigger) return { path: null, trigger: null };
   const patchPath = join(dataDir, "payback", "proposed-min-payback-diff.patch");
-  const patchContents = buildProposedMinPaybackPatch();
+  const patchContents = buildProposedMinPaybackPatch({ trigger });
   await writeTextIfChanged(patchPath, patchContents);
-  return PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH;
+  return { path: PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH, trigger };
 }
 
 function minimumPaybackProgress(decision, { source = null } = {}) {
@@ -602,17 +635,21 @@ export async function buildPaybackDashboardSlice({
     receiptStore: resolvedReceiptStore,
     reportingPnlBaseline,
   });
-  const proposedMinPaybackPatch = writeProposedPatch
-    ? await maybeWriteProposedMinPaybackPatch({
-        dataDir,
-        estimatedPeriodsToFirstPayback,
-      })
-    : shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback)
-      ? PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH
-      : null;
+  const proposalTrigger = minPaybackProposalTrigger(estimatedPeriodsToFirstPayback);
+  let proposedMinPaybackPatch = null;
+  if (writeProposedPatch) {
+    const writeResult = await maybeWriteProposedMinPaybackPatch({
+      dataDir,
+      estimatedPeriodsToFirstPayback,
+    });
+    proposedMinPaybackPatch = writeResult.path;
+  } else if (proposalTrigger) {
+    proposedMinPaybackPatch = PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH;
+  }
   const minimumReview = buildMinimumPaybackReview({
     estimatedPeriodsToFirstPayback,
     proposedMinPaybackPatch,
+    proposalTrigger,
   });
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
