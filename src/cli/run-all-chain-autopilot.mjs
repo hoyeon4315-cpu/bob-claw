@@ -87,6 +87,16 @@ export async function runAutopilotCommand(args, { runner = runAllChainAutopilot 
       preview,
       execution: null,
       final: preview,
+      executionSkippedReason: "preview_error",
+    };
+  }
+  if (preview?.status !== "completed") {
+    return {
+      mode: "dry_run_first",
+      preview,
+      execution: null,
+      final: preview,
+      executionSkippedReason: "preview_not_full_green",
     };
   }
 

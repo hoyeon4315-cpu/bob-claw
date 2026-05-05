@@ -574,3 +574,89 @@ Next required mitigation:
   blockers, not signer-runtime surprises.
 - Re-run `kill:resume-review`, resume only with an explicit operator
   reason, then require a completed full-green dry-run before live execute.
+
+## 2026-05-05T12:25Z Revalidation After Finalization Mitigation
+
+Mitigation landed and pushed:
+
+- `7efb565d fix(wrapped-loop): bound receipt auto-ingest finalization`
+- `5fda09e5 fix(status): make stage explain read snapshot by default`
+
+Resume review and auto-kill replay:
+
+- `npm run kill:resume-review -- --json`
+  - `state`: `HALTED`
+  - `activeReason`: `wrapped-btc-loop-roundtrip-confirmed-cli-finalization-hung`
+  - `replay.triggered`: `false`
+  - `triggers`: `[]`
+  - `blocker_mitigated`: `yes`
+- `npm run risk:auto-kill-check:json`
+  - `triggered`: `false`
+  - `triggers`: `[]`
+
+Operator-approved resume:
+
+- Command:
+  `npm run kill:off -- --reason="wrapped-btc-loop-finalization-mitigated"`
+- Audit row:
+  - `ts`: `2026-05-05T12:16:55.713Z`
+  - `action`: `resume`
+  - `previousState`: `halted`
+
+Dry-run-first revalidation:
+
+- Command:
+  `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --write --json --timeout-ms=180000 --canary-timeout-ms=180000 --dispatch-timeout-ms=180000`
+- Result from `data/all-chain-autopilot-latest.json`:
+  - `observedAt`: `2026-05-05T12:25:36.308Z`
+  - `status`: `completed_with_blockers`
+  - `mode`: `preview`
+  - `autopilotRunId`: `f358be9b-4be7-46e7-adac-ea36a11d4043`
+  - `autoKill.triggered`: `false`
+  - `autoKill.triggers`: `[]`
+  - `executionGate.blockedReason`: `preview_only`
+  - `canarySweep.previewReadyCount`: `11`
+  - `canarySweep.executedCount`: `0`
+  - `canarySweep.broadcastStepCount`: `0`
+  - `strategyDispatch.liveEligibleCount`: `0`
+  - `payback.status`: `carry`
+  - `payback.pendingCarrySats`: `601`
+
+Blockers observed:
+
+- Refill jobs:
+  - `refillJobCount`: `25`
+  - `preview ready`: `6`
+  - `preview blocked`: `15`
+  - dominant reason: `routing_exhausted`
+  - examples:
+    - `059ad2b43191221254ee` bob ETH `routing_exhausted`
+    - `8c13fdc33232b55a0cf3` base wBTC.OFT `routing_exhausted`
+    - `d181723afb4128ef86f6` base wBTC.OFT `routing_exhausted`
+    - `d82c989c11f7805a2114` base wBTC.OFT `routing_exhausted`
+    - `dfc32463930dd4e1000f` base wBTC.OFT `routing_exhausted`
+- Merkl canary:
+  - status `blocked`
+  - reason `same_chain_unprofitable:need_$2_on_base`
+  - selected amount `0.099977` USD
+- Wrapped BTC loop:
+  - not live eligible due `fresh_roundtrip_proof_recorded`
+  - proof observed at `2026-05-05T11:51:48.718Z`
+  - cooldown `86400000ms`
+
+Safety decision:
+
+- No live canary was attempted because the dry-run was not full green.
+- Kill-switch was re-armed:
+  `npm run kill:on -- --reason="parcel-20-dry-run-completed-with-blockers"`
+- Audit row:
+  - `ts`: `2026-05-05T12:25:50.517Z`
+  - `action`: `halt`
+  - `previousState`: `running`
+- Fresh kill status showed `replay.triggered=false`, so this is an operator hold, not an active auto-kill trigger.
+
+Next required mitigation:
+
+- Convert the remaining refill `routing_exhausted` cases into either executable alternate routes or deterministic planner-actionable deferrals.
+- Do not bypass `same_chain_unprofitable` or `fresh_roundtrip_proof_recorded`; those are correct safety/cooldown blockers.
+- Re-run `kill:resume-review`, resume only with an explicit operator reason, then require a completed dry-run with no execution blockers before live execute.
