@@ -1294,3 +1294,65 @@ Decision:
 - The live refill path remains operational after the replay-status fix.
 - The refill is execution evidence and inventory-consolidation evidence, not payback evidence.
 - Stage remains blocked on missing receipt-proven payback delivery and insufficient payback carry, not on kill-switch or refill execution.
+
+## 2026-05-05T19:15Z Base tiny DEX canary with explicit probe execution
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --chains=base --dry-run-first --execute --write --enable-dex-probe-execution --max-refill-jobs=0 --canary-limit=2 --canary-max-executed-candidates=1 --canary-max-broadcast-steps=2 --canary-max-recent-broadcasts=1 --canary-recent-broadcast-window-ms=600000 --timeout-ms=300000 --canary-timeout-ms=180000 --dispatch-timeout-ms=120000`
+
+Reason for command shape:
+
+- The prior all-chain run had `previewReadyCount > 0` but no canary execution because generic DEX probes are preview-only unless `--enable-dex-probe-execution` is explicit.
+- The chain set was narrowed to Base to avoid selecting Ethereum dust probes before the primary-chain candidate.
+- Refill was set to `0` jobs so this pass isolated the live canary path.
+
+Observed result:
+
+- Preview phase:
+  - Base-only candidate preview ready count `2`
+  - no execution
+- Execute phase:
+  - canary sweep status `completed`
+  - executed candidate count `1`
+  - delivered count `1`
+  - selected candidate `native_dex:base:native->base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
+
+Signer audit:
+
+- Strategy id: `native-dex-experiment`
+- Wrap tx: `0x3da696ef23faa2b4e978f5a2d62aed449e07ceed4a5a12d654fff2914f435ca5`
+- Approval tx: `0x8b14eff53f769dd6f4726e81b7791da08b267d9df5957565246f3188444bfd41`
+- Swap tx: `0x927da2b65ae832123fce486ee5556ee643f1c11ee517dba005898a4d8fe1aedd`
+- Swap receipt block: `45609589`
+- Receipt status: `1`
+
+Receipt reconciliation:
+
+- `data/receipt-reconciliations.jsonl`
+- kind `native_dex_experiment`
+- chain `base`
+- observed at `2026-05-05T19:15:29.156Z`
+- reconciliation status `reconciled`
+- actual output `100026` USDC units
+- realizedNetPnlSats `-4`
+- paybackEligibleRealizedPnlSats `0`
+
+Safety finding:
+
+- The command asked for `--canary-max-broadcast-steps=2`.
+- The delivered native DEX candidate required three live txs: wrap, approve, swap.
+- The sweep counted `broadcastStepCount: 3` after execution and stopped on `max_executed_candidates_reached`, meaning the broadcast-step cap was enforced only after the candidate completed.
+- The kill-switch was re-armed with reason `canary-broadcast-step-budget-overshoot`.
+
+Code hardening:
+
+- Add a pre-execution guard in `runLiveCanarySweep`: after a candidate plan is built but before signer execution, compare `plan.steps.length` to remaining `maxBroadcastSteps`.
+- If the plan exceeds the remaining broadcast-step budget, return `not_run_execution_budget_reached` with `executionBudgetBlocker: "max_broadcast_steps_reached"` and do not call the signer.
+- Regression test: `sweep execute mode blocks a candidate whose plan exceeds remaining broadcast step budget`.
+
+Decision:
+
+- This is a receipt-proven tiny live canary, not profitable payback evidence.
+- The budget overshoot is a safety-surface bug, not an on-chain failure.
+- No further live attempts should run until the pre-execution broadcast-step budget guard is committed and the operator explicitly resumes.

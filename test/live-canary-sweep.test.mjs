@@ -411,6 +411,69 @@ test("sweep execute mode stops after the per-tick executed candidate budget", as
   assert.equal(report.summary.executionBudget.blockedReason, "max_executed_candidates_reached");
 });
 
+test("sweep execute mode blocks a candidate whose plan exceeds remaining broadcast step budget", async () => {
+  const inventory = {
+    observedAt: "2026-05-05T00:00:00.000Z",
+    totalUsd: 1,
+    tokenBalances: [
+      {
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        ticker: "USDC",
+        family: "stablecoin",
+        balance: "1000000",
+        estimatedUsd: 1,
+      },
+      {
+        chain: "bsc",
+        token: "0x55d398326f99059fF775485246999027B3197955",
+        ticker: "USDT",
+        family: "stablecoin",
+        balance: "1000000000000000000",
+        estimatedUsd: 1,
+      },
+    ],
+    native: [],
+    summary: { nativeCount: 0, tokenCount: 2, scanErrorCount: 0 },
+    scanErrors: [],
+  };
+
+  let executed = false;
+  const report = await runLiveCanarySweep({
+    execute: true,
+    inventory,
+    limit: 8,
+    maxBroadcastSteps: 2,
+    preflightImpl: async () => readyPreflight(),
+    buildTokenDexPlanImpl: async ({ chain }) => ({
+      strategyId: "token-dex-experiment",
+      planStatus: "ready",
+      chain,
+      inputToken: "in",
+      outputToken: "out",
+      amount: "100000",
+      amountUsd: 0.1,
+      minimumOutputAmount: "1",
+      steps: [{ id: "wrap" }, { id: "approve" }, { id: "swap" }],
+    }),
+    executeTokenDexPlanImpl: async () => {
+      executed = true;
+      throw new Error("plan that exceeds broadcast budget must not execute");
+    },
+    readStateImpl: async () => ({}),
+    now: "2026-05-05T00:00:00.000Z",
+  });
+
+  assert.equal(executed, false);
+  assert.equal(report.results[0].status, "not_run_execution_budget_reached");
+  assert.equal(report.results[0].blockedReason, "execution_budget_reached");
+  assert.equal(report.results[0].executionBudgetBlocker, "max_broadcast_steps_reached");
+  assert.equal(report.results[1].status, "not_run_execution_budget_reached");
+  assert.equal(report.summary.executedCandidateCount, 0);
+  assert.equal(report.summary.broadcastStepCount, 0);
+  assert.equal(report.summary.executionBudget.blockedReason, "max_broadcast_steps_reached");
+});
+
 test("sweep execute mode refuses new probes when recent signer broadcast budget is exhausted", async () => {
   const inventory = {
     observedAt: "2026-05-01T00:00:00.000Z",

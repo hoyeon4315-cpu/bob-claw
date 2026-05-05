@@ -479,6 +479,9 @@ async function buildExecutionBudget({
 }
 
 function localExecutionBudgetBlocker(budget = {}) {
+  if (budget.blockers?.includes("max_broadcast_steps_reached")) {
+    return "max_broadcast_steps_reached";
+  }
   if (countBudgetReached(budget.executedCandidateCount, budget.maxExecutedCandidates)) {
     return "max_executed_candidates_reached";
   }
@@ -498,6 +501,7 @@ async function evaluateCandidate({
   buildNativeDexPlanImpl = buildNativeDexExperimentPlan,
   executeTokenDexPlanImpl = executeTokenDexExperimentPlan,
   executeNativeDexPlanImpl = executeNativeDexExperimentPlan,
+  remainingBroadcastSteps = null,
 } = {}) {
   if (candidate.status !== "candidate") {
     return {
@@ -553,6 +557,18 @@ async function evaluateCandidate({
       candidate,
       status: "preview_ready",
       blockedReason: null,
+      plan: summarizePlan(plan),
+      execution: null,
+      shouldStopGlobally: false,
+    };
+  }
+  const planBroadcastSteps = (plan.steps || []).length;
+  if (Number.isFinite(remainingBroadcastSteps) && planBroadcastSteps > remainingBroadcastSteps) {
+    return {
+      candidate,
+      status: "not_run_execution_budget_reached",
+      blockedReason: "execution_budget_reached",
+      executionBudgetBlocker: "max_broadcast_steps_reached",
       plan: summarizePlan(plan),
       execution: null,
       shouldStopGlobally: false,
@@ -804,8 +820,17 @@ export async function runLiveCanarySweep({
       buildNativeDexPlanImpl,
       executeTokenDexPlanImpl,
       executeNativeDexPlanImpl,
+      remainingBroadcastSteps: Number.isFinite(executionBudget.maxBroadcastSteps)
+        ? Math.max(0, executionBudget.maxBroadcastSteps - executionBudget.broadcastStepCount)
+        : null,
     });
     results.push(result);
+    if (execute && result.executionBudgetBlocker) {
+      executionBudget.blockedReason ||= result.executionBudgetBlocker;
+      if (!executionBudget.blockers.includes(result.executionBudgetBlocker)) {
+        executionBudget.blockers.push(result.executionBudgetBlocker);
+      }
+    }
     const txHashes = txHashesFromExecution(result.execution);
     if (execute && txHashes.length > 0) {
       executionBudget.executedCandidateCount += 1;
