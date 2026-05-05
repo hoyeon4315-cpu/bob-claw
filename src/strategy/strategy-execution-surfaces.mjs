@@ -111,6 +111,7 @@ function stageAwareExecutionMode({
   policy = null,
   rawLiveEligible = false,
   fallbackMode = "dry_run",
+  allowStageBPaybackBootstrap = false,
 } = {}) {
   const stage = String(policy?.laneStage || "").trim().toUpperCase() || null;
   if (!rawLiveEligible) {
@@ -121,6 +122,13 @@ function stageAwareExecutionMode({
     };
   }
   if (stage === "B") {
+    if (allowStageBPaybackBootstrap) {
+      return {
+        currentLiveEligible: true,
+        selectedMode: "live",
+        stageBlocker: null,
+      };
+    }
     return {
       currentLiveEligible: false,
       selectedMode: "shadow",
@@ -138,6 +146,29 @@ function stageAwareExecutionMode({
     currentLiveEligible: rawLiveEligible,
     selectedMode: "live",
     stageBlocker: null,
+  };
+}
+
+function sameMembers(left = [], right = []) {
+  const normalizedLeft = compact(left).sort();
+  const normalizedRight = compact(right).sort();
+  return normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+function stageBPaybackBootstrap(policy = null, strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID) {
+  const stage = String(policy?.laneStage || "").trim().toUpperCase();
+  const candidateId = policy?.laneCandidateId || null;
+  const requiredBlockers = ["receipt_proven_payback_period_missing"];
+  const allowed =
+    stage === "B" &&
+    strategyId === WRAPPED_BTC_LOOP_STRATEGY_ID &&
+    candidateId === WRAPPED_BTC_LOOP_STRATEGY_ID &&
+    sameMembers(policy?.blockers || [], requiredBlockers) &&
+    sameMembers(policy?.stageBlockers || [], requiredBlockers);
+  return {
+    allowed,
+    reason: allowed ? "single_payback_receipt_blocker" : null,
   };
 }
 
@@ -238,6 +269,11 @@ function evaluateWrappedBtcLoopLiveRunControl({
   now = new Date().toISOString(),
 } = {}) {
   const proofAgeMs = ageMs(liveProof?.observedAt, now);
+  const proofObservedMs = timestampMs(liveProof?.observedAt);
+  const proofNextEligibleAt =
+    wrappedBtcLoopProofIsSuccess(liveProof) && proofObservedMs !== null
+      ? new Date(proofObservedMs + WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS).toISOString()
+      : null;
   const freshProof =
     wrappedBtcLoopProofIsSuccess(liveProof) &&
     proofAgeMs !== null &&
@@ -251,18 +287,23 @@ function evaluateWrappedBtcLoopLiveRunControl({
       proofObservedAt: liveProof.observedAt || null,
       proofAgeMs,
       proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+      nextEligibleAt: proofNextEligibleAt,
       recentTxCount: recent.recentTxCount,
       latestTxAt: recent.latestAt,
       latestTxAgeMs: recent.latestAgeMs,
     };
   }
   if (recent.recentTxCount > 0) {
+    const latestTxMs = timestampMs(recent.latestAt);
+    const recentNextEligibleAt =
+      latestTxMs !== null ? new Date(latestTxMs + WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS).toISOString() : null;
     return {
       blocked: true,
       reason: "recent_live_transaction_cooldown",
       proofObservedAt: liveProof?.observedAt || null,
       proofAgeMs,
       proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+      nextEligibleAt: recentNextEligibleAt,
       recentTxCount: recent.recentTxCount,
       latestTxAt: recent.latestAt,
       latestTxAgeMs: recent.latestAgeMs,
@@ -275,6 +316,7 @@ function evaluateWrappedBtcLoopLiveRunControl({
     proofObservedAt: liveProof?.observedAt || null,
     proofAgeMs,
     proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+    nextEligibleAt: null,
     recentTxCount: 0,
     latestTxAt: null,
     latestTxAgeMs: null,
@@ -332,11 +374,13 @@ function buildWrappedBtcLoopExecutorSurface({
     signerAuditRecords,
     now,
   });
+  const paybackBootstrap = stageBPaybackBootstrap(policy, strategy.id);
   const rawLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked;
   const stageMode = stageAwareExecutionMode({
     policy,
     rawLiveEligible,
     fallbackMode: "dry_run",
+    allowStageBPaybackBootstrap: paybackBootstrap.allowed,
   });
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
@@ -378,6 +422,7 @@ function buildWrappedBtcLoopExecutorSurface({
       realizedNetCarryBtc: null,
       realizedNetCarryUsd: validation?.evidence?.realizedNetCarryUsd ?? wrappedBtcLendingLoopSlice?.pnl?.realized?.valueUsd ?? null,
       liveRunControl,
+      stageBPaybackBootstrap: paybackBootstrap,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",

@@ -483,6 +483,9 @@ export function buildStrategyCatalog({
         dashboardStatus?.overall?.liveTrading ||
         "BLOCKED",
       laneStage: dashboardStatus?.overall?.lanePolicy?.stage || null,
+      laneCandidateId: dashboardStatus?.overall?.lanePolicy?.candidateId || null,
+      blockers: dashboardStatus?.overall?.blockers || [],
+      stageBlockers: dashboardStatus?.overall?.lanePolicy?.stageBlockers || [],
       ethereumL1: "allowed_when_positive_ev",
       flashLiveAdmission: "blocked_pending_explicit_review",
       odosExecutionTrust: "safe_whitelist_required_for_execution_claims",

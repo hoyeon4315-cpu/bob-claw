@@ -288,6 +288,146 @@ test("execution surfaces force shadow mode for Stage B even when live evidence i
   assert.equal(merkl.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
 });
 
+test("wrapped BTC loop may surface Stage B payback bootstrap live only for the single payback receipt blocker", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-06T12:00:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: ["receipt_proven_payback_period_missing"],
+        lanePolicy: {
+          candidateId: "wrapped-btc-loop-base-moonwell",
+          stage: "B",
+          preStageLiveTrading: "ALLOWED",
+          stageBlockers: ["receipt_proven_payback_period_missing"],
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 1.3552 },
+          realized: { valueUsd: 1.3552 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            oosSplitStatus: "signer_backed_window_recorded",
+            shockTestStatus: "live_roundtrip_recorded",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+              realizedNetCarryUsd: 0,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, true);
+  assert.equal(wrapped.selectedMode, "live");
+  assert.equal(wrapped.capabilityBucket, "executable_now");
+  assert.equal(wrapped.fallbackReason, null);
+  assert.equal(wrapped.liveAdmissionBlockers.length, 0);
+  assert.equal(wrapped.liveAdmissionBlockers.includes("lane_stage_shadow_only"), false);
+  assert.equal(wrapped.evidence.stageBPaybackBootstrap.allowed, true);
+  assert.equal(wrapped.evidence.stageBPaybackBootstrap.reason, "single_payback_receipt_blocker");
+  assert.equal(wrapped.evidence.liveRunControl.blocked, false);
+  assert.equal(wrapped.selectedCommands[0].script, "executor:wrapped-btc-loop");
+  assert.equal(wrapped.selectedCommands[0].command.includes("--per-trade-cap-usd="), true);
+  assert.equal(wrapped.evidence.livePerTradeCapUsd <= 25, true);
+  assert.equal(wrapped.evidence.livePerTradeCapUsd >= 5, true);
+  assert.equal(wrapped.selectedCommands[0].command.includes("--max-loop-iterations=1"), true);
+  assert.equal(report.summary.liveEligibleCount, 1);
+});
+
+test("wrapped BTC loop Stage B payback bootstrap stays shadow when any other blocker remains", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-06T12:00:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: ["receipt_proven_payback_period_missing", "refill_routes_unresolved"],
+        lanePolicy: {
+          candidateId: "wrapped-btc-loop-base-moonwell",
+          stage: "B",
+          preStageLiveTrading: "ALLOWED",
+          stageBlockers: ["receipt_proven_payback_period_missing", "refill_routes_unresolved"],
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 1.3552 },
+          realized: { valueUsd: 1.3552 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            oosSplitStatus: "signer_backed_window_recorded",
+            shockTestStatus: "live_roundtrip_recorded",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+              realizedNetCarryUsd: 0,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.selectedMode, "shadow");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
+  assert.equal(wrapped.evidence.stageBPaybackBootstrap.allowed, false);
+  assert.equal(report.summary.liveEligibleCount, 0);
+});
+
 test("Merkl surface does not mark policy-blocked tiny entries as executable now", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
@@ -454,6 +594,7 @@ test("wrapped BTC loop live dispatch cools down after a fresh signer-backed proo
   assert.equal(wrapped.liveAdmissionBlockers.includes("fresh_roundtrip_proof_recorded"), true);
   assert.equal(wrapped.evidence.liveRunControl.blocked, true);
   assert.equal(wrapped.evidence.liveRunControl.reason, "fresh_roundtrip_proof_recorded");
+  assert.equal(wrapped.evidence.liveRunControl.nextEligibleAt, "2026-05-02T12:58:59.137Z");
 });
 
 test("wrapped BTC loop live dispatch cools down after recent signer activity even before proof finalizes", () => {
