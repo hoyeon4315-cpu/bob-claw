@@ -350,3 +350,42 @@ Regression coverage asserts the sequence:
 2. supply preflight fails
 3. revoke allowance
 4. do not broadcast supply
+
+### Follow-up: Soneium Aave reserve root cause
+
+The Soneium binding addresses were internally consistent:
+
+- Pool address provider `getPool()` resolved to
+  `0xDd3d7A7d03D9fD9ef45f3E587287922eF65CA38B`.
+- The configured aToken reported the same pool and the configured underlying
+  USDC.e asset.
+- The operator allowance was successfully revoked back to `0`.
+
+The reserve itself was not supplyable. A live `eth_call` to
+`Pool.getConfiguration(USDC.e)` showed:
+
+- `active=true`
+- `frozen=true`
+- `paused=false`
+- `supplyCapWholeTokens=8000000`
+
+Root cause classification: Aave reserve frozen. The previous representative
+candidate readiness check treated a verified binding plus inventory and gas as
+ready, but did not inspect the current Aave reserve configuration before
+approval/supply planning.
+
+Mitigation:
+
+- `buildAaveProtocolCanaryPlan()` now verifies the configured pool against
+  the addresses provider, then reads `getConfiguration(asset)` and
+  `getReserveData(asset)` before gas estimation or approval planning.
+- Reserves with `active=false`, `frozen=true`, or `paused=true` throw
+  `AaveReservePreflightFailed` with blocker
+  `aave_reserve_not_supplyable:<reason>`.
+- A reserve whose returned aToken does not match the binding also blocks with
+  `aave_reserve_not_supplyable:a_token_mismatch`.
+- `runDestinationRepresentativeAutopilot()` now records plan-preflight
+  failures as blocked reports instead of letting the CLI crash before writing
+  the report.
+- A live read of the Soneium binding now blocks before `estimateGas` with
+  `aave_reserve_not_supplyable:frozen`.

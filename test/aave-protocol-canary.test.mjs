@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Interface } from "ethers";
 import {
   buildAaveProtocolCanaryPlan,
+  decodeAaveReserveConfiguration,
   executeAaveProtocolCanaryPlan,
   resolveAavePoolAddress,
   selectAaveQueueItem,
@@ -11,6 +12,49 @@ import {
 const AAVE_PROVIDER_INTERFACE = new Interface([
   "function getPool() view returns (address)",
 ]);
+const AAVE_POOL_INTERFACE = new Interface([
+  "function getConfiguration(address asset) view returns (uint256)",
+  "function getReserveData(address asset) view returns ((uint256 configuration,uint128 liquidityIndex,uint128 currentLiquidityRate,uint128 variableBorrowIndex,uint128 currentVariableBorrowRate,uint128 currentStableBorrowRate,uint40 lastUpdateTimestamp,uint16 id,address aTokenAddress,address stableDebtTokenAddress,address variableDebtTokenAddress,address interestRateStrategyAddress,uint128 accruedToTreasury,uint128 unbacked,uint128 isolationModeTotalDebt))",
+]);
+
+function reserveConfiguration({
+  decimals = 6,
+  active = true,
+  frozen = false,
+  paused = false,
+  supplyCapWholeTokens = 0n,
+} = {}) {
+  let value = 0n;
+  value |= BigInt(decimals) << 48n;
+  if (active) value |= 1n << 56n;
+  if (frozen) value |= 1n << 57n;
+  if (paused) value |= 1n << 60n;
+  value |= BigInt(supplyCapWholeTokens) << 116n;
+  return value;
+}
+
+function reserveDataResult({
+  configuration = reserveConfiguration(),
+  aTokenAddress = "0x4444444444444444444444444444444444444444",
+} = {}) {
+  return [
+    configuration,
+    1n,
+    0n,
+    1n,
+    0n,
+    0n,
+    0,
+    1,
+    aTokenAddress,
+    "0x0000000000000000000000000000000000000000",
+    "0x5555555555555555555555555555555555555555",
+    "0x6666666666666666666666666666666666666666",
+    0n,
+    0n,
+    0n,
+  ];
+}
 
 test("aave protocol canary resolves pool address through the addresses provider", async () => {
   const poolAddress = await resolveAavePoolAddress({
@@ -58,9 +102,25 @@ test("aave protocol canary selects binding-ready item and builds approve/supply 
     senderAddress: "0x2222222222222222222222222222222222222222",
     amount: "1000000000000000",
     estimateGasImpl: async () => ({ gasUnits: 50_000 }),
-    simulateTransactionCallImpl: async () => ({
-      returnData: AAVE_PROVIDER_INTERFACE.encodeFunctionResult("getPool", ["0x1111111111111111111111111111111111111111"]),
-    }),
+    simulateTransactionCallImpl: async (_chain, tx) => {
+      if (tx.to === "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e") {
+        return {
+          returnData: AAVE_PROVIDER_INTERFACE.encodeFunctionResult("getPool", ["0x1111111111111111111111111111111111111111"]),
+        };
+      }
+      if (tx.data.startsWith(AAVE_POOL_INTERFACE.getFunction("getReserveData").selector)) {
+        return {
+          returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getReserveData", [
+            reserveDataResult({
+              aTokenAddress: "0x2D62109243b87C4bA3EE7bA1D91B0dD0A074d7b1",
+            }),
+          ]),
+        };
+      }
+      return {
+        returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getConfiguration", [reserveConfiguration()]),
+      };
+    },
     now: "2026-04-23T00:00:00.000Z",
   });
 
@@ -71,6 +131,143 @@ test("aave protocol canary selects binding-ready item and builds approve/supply 
   assert.equal(plan.steps[0].intent.intentType, "approve_exact");
   assert.equal(plan.steps[1].intent.intentType, "aave_supply");
   assert.equal(plan.minimumRedeemAssetDelta, "950000000000000");
+  assert.equal(plan.reserveState.status, "supplyable");
+});
+
+test("aave protocol canary rejects provider pool mismatch", async () => {
+  await assert.rejects(
+    resolveAavePoolAddress({
+      chain: "soneium",
+      binding: {
+        poolAddress: "0x1111111111111111111111111111111111111111",
+        poolAddressProviderAddress: "0x2222222222222222222222222222222222222222",
+      },
+      simulateTransactionCallImpl: async () => ({
+        returnData: AAVE_PROVIDER_INTERFACE.encodeFunctionResult("getPool", ["0x3333333333333333333333333333333333333333"]),
+      }),
+    }),
+    /aave_pool_provider_mismatch/,
+  );
+});
+
+test("aave reserve configuration decoder surfaces supply blockers", () => {
+  const decoded = decodeAaveReserveConfiguration(reserveConfiguration({ frozen: true, paused: true, supplyCapWholeTokens: 8_000_000n }));
+
+  assert.equal(decoded.decimals, 6);
+  assert.equal(decoded.active, true);
+  assert.equal(decoded.frozen, true);
+  assert.equal(decoded.paused, true);
+  assert.equal(decoded.supplyCapWholeTokens, "8000000");
+});
+
+test("aave protocol canary blocks frozen reserves before gas estimation", async () => {
+  const queue = {
+    queue: [
+      {
+        queueId: "representative:soneium",
+        opportunityId: "soneium:stablecoin_lending_carry",
+        chain: "soneium",
+        protocolId: "aave-v3",
+        name: "Soneium Aave representative",
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        protocolBindingPlan: {
+          status: "binding_ready",
+          bindingKind: "aave_v3_pool_supply_withdraw",
+          resolvedBinding: {
+            poolAddress: "0x1111111111111111111111111111111111111111",
+            assetAddress: "0x3333333333333333333333333333333333333333",
+            aTokenAddress: "0x4444444444444444444444444444444444444444",
+            assetSymbol: "USDC",
+            assetDecimals: 6,
+            aTokenSymbol: "aSonUSDC",
+          },
+        },
+      },
+    ],
+  };
+  let gasCalls = 0;
+
+  await assert.rejects(
+    buildAaveProtocolCanaryPlan({
+      queueItem: selectAaveQueueItem(queue, { opportunityId: "soneium:stablecoin_lending_carry" }),
+      senderAddress: "0x2222222222222222222222222222222222222222",
+      amount: "2999768",
+      estimateGasImpl: async () => {
+        gasCalls += 1;
+        return { gasUnits: 50_000 };
+      },
+      simulateTransactionCallImpl: async (_chain, tx) => {
+        if (tx.data.startsWith(AAVE_POOL_INTERFACE.getFunction("getReserveData").selector)) {
+          return {
+            returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getReserveData", [
+              reserveDataResult({ configuration: reserveConfiguration({ frozen: true }) }),
+            ]),
+          };
+        }
+        return {
+          returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getConfiguration", [reserveConfiguration({ frozen: true })]),
+        };
+      },
+    }),
+    /aave_reserve_not_supplyable:frozen/,
+  );
+
+  assert.equal(gasCalls, 0);
+});
+
+test("aave protocol canary blocks reserve aToken mismatches before gas estimation", async () => {
+  const queue = {
+    queue: [
+      {
+        queueId: "representative:soneium",
+        opportunityId: "soneium:stablecoin_lending_carry",
+        chain: "soneium",
+        protocolId: "aave-v3",
+        name: "Soneium Aave representative",
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        protocolBindingPlan: {
+          status: "binding_ready",
+          bindingKind: "aave_v3_pool_supply_withdraw",
+          resolvedBinding: {
+            poolAddress: "0x1111111111111111111111111111111111111111",
+            assetAddress: "0x3333333333333333333333333333333333333333",
+            aTokenAddress: "0x4444444444444444444444444444444444444444",
+            assetSymbol: "USDC",
+            assetDecimals: 6,
+            aTokenSymbol: "aSonUSDC",
+          },
+        },
+      },
+    ],
+  };
+  let gasCalls = 0;
+
+  await assert.rejects(
+    buildAaveProtocolCanaryPlan({
+      queueItem: selectAaveQueueItem(queue, { opportunityId: "soneium:stablecoin_lending_carry" }),
+      senderAddress: "0x2222222222222222222222222222222222222222",
+      amount: "2999768",
+      estimateGasImpl: async () => {
+        gasCalls += 1;
+        return { gasUnits: 50_000 };
+      },
+      simulateTransactionCallImpl: async (_chain, tx) => {
+        if (tx.data.startsWith(AAVE_POOL_INTERFACE.getFunction("getReserveData").selector)) {
+          return {
+            returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getReserveData", [
+              reserveDataResult({ aTokenAddress: "0x7777777777777777777777777777777777777777" }),
+            ]),
+          };
+        }
+        return {
+          returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getConfiguration", [reserveConfiguration()]),
+        };
+      },
+    }),
+    /aave_reserve_not_supplyable:a_token_mismatch/,
+  );
+
+  assert.equal(gasCalls, 0);
 });
 
 test("aave protocol canary accepts asset-spent proof when share token delta is opaque", async () => {

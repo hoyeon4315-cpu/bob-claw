@@ -17,6 +17,8 @@ const ERC20_INTERFACE = new Interface([
 ]);
 
 const AAVE_POOL_INTERFACE = new Interface([
+  "function getConfiguration(address asset) view returns (uint256)",
+  "function getReserveData(address asset) view returns ((uint256 configuration,uint128 liquidityIndex,uint128 currentLiquidityRate,uint128 variableBorrowIndex,uint128 currentVariableBorrowRate,uint128 currentStableBorrowRate,uint40 lastUpdateTimestamp,uint16 id,address aTokenAddress,address stableDebtTokenAddress,address variableDebtTokenAddress,address interestRateStrategyAddress,uint128 accruedToTreasury,uint128 unbacked,uint128 isolationModeTotalDebt))",
   "function supply(address asset,uint256 amount,address onBehalfOf,uint16 referralCode)",
   "function withdraw(address asset,uint256 amount,address to) returns (uint256)",
 ]);
@@ -53,6 +55,108 @@ function amountUsdFromUnits(amount, decimals) {
 function minimumRedeemDelta(amount, minimumReturnBps) {
   const bps = BigInt(Math.max(1, Math.min(10_000, Number(minimumReturnBps) || 9_500)));
   return ((BigInt(amount) * bps) / 10_000n).toString();
+}
+
+function bitRange(value, start, width) {
+  const mask = (1n << BigInt(width)) - 1n;
+  return (BigInt(value) >> BigInt(start)) & mask;
+}
+
+export function decodeAaveReserveConfiguration(configuration) {
+  const raw = BigInt(configuration?.toString?.() ?? configuration ?? 0);
+  return {
+    raw: raw.toString(),
+    ltvBps: Number(bitRange(raw, 0, 16)),
+    liquidationThresholdBps: Number(bitRange(raw, 16, 16)),
+    liquidationBonusBps: Number(bitRange(raw, 32, 16)),
+    decimals: Number(bitRange(raw, 48, 8)),
+    active: bitRange(raw, 56, 1) === 1n,
+    frozen: bitRange(raw, 57, 1) === 1n,
+    borrowingEnabled: bitRange(raw, 58, 1) === 1n,
+    stableBorrowingEnabled: bitRange(raw, 59, 1) === 1n,
+    paused: bitRange(raw, 60, 1) === 1n,
+    isolationMode: bitRange(raw, 61, 1) === 1n,
+    siloedBorrowing: bitRange(raw, 62, 1) === 1n,
+    flashLoanEnabled: bitRange(raw, 63, 1) === 1n,
+    reserveFactorBps: Number(bitRange(raw, 64, 16)),
+    borrowCapWholeTokens: bitRange(raw, 80, 36).toString(),
+    supplyCapWholeTokens: bitRange(raw, 116, 36).toString(),
+    liquidationProtocolFeeBps: Number(bitRange(raw, 152, 16)),
+    eModeCategory: Number(bitRange(raw, 168, 8)),
+    unbackedMintCapWholeTokens: bitRange(raw, 176, 36).toString(),
+    debtCeiling: bitRange(raw, 212, 40).toString(),
+  };
+}
+
+export async function readAaveReserveSupplyState({
+  chain,
+  poolAddress,
+  assetAddress,
+  expectedATokenAddress = null,
+  simulateTransactionCallImpl = simulateTransactionCall,
+} = {}) {
+  const configurationCall = await simulateTransactionCallImpl(chain, {
+    to: assertAddress(poolAddress, "poolAddress"),
+    data: AAVE_POOL_INTERFACE.encodeFunctionData("getConfiguration", [
+      assertAddress(assetAddress, "assetAddress"),
+    ]),
+    value: "0",
+  });
+  const [configuration] = AAVE_POOL_INTERFACE.decodeFunctionResult("getConfiguration", configurationCall.returnData || "0x");
+  const reserveDataCall = await simulateTransactionCallImpl(chain, {
+    to: assertAddress(poolAddress, "poolAddress"),
+    data: AAVE_POOL_INTERFACE.encodeFunctionData("getReserveData", [
+      assertAddress(assetAddress, "assetAddress"),
+    ]),
+    value: "0",
+  });
+  const [reserveData] = AAVE_POOL_INTERFACE.decodeFunctionResult("getReserveData", reserveDataCall.returnData || "0x");
+  const decoded = decodeAaveReserveConfiguration(configuration);
+  const blockers = [];
+  if (!decoded.active) blockers.push("inactive");
+  if (decoded.frozen) blockers.push("frozen");
+  if (decoded.paused) blockers.push("paused");
+  const reserveATokenAddress = assertAddress(reserveData.aTokenAddress, "reserveData.aTokenAddress");
+  if (
+    expectedATokenAddress &&
+    reserveATokenAddress.toLowerCase() !== assertAddress(expectedATokenAddress, "expectedATokenAddress").toLowerCase()
+  ) {
+    blockers.push("a_token_mismatch");
+  }
+  return {
+    status: blockers.length ? "blocked" : "supplyable",
+    blockers,
+    configuration: decoded,
+    reserveData: {
+      id: Number(reserveData.id),
+      aTokenAddress: reserveATokenAddress,
+      stableDebtTokenAddress: assertAddress(reserveData.stableDebtTokenAddress, "reserveData.stableDebtTokenAddress"),
+      variableDebtTokenAddress: assertAddress(reserveData.variableDebtTokenAddress, "reserveData.variableDebtTokenAddress"),
+    },
+    observedAt: configurationCall.observedAt || reserveDataCall.observedAt || new Date().toISOString(),
+    rpcUrl: configurationCall.rpcUrl || reserveDataCall.rpcUrl || null,
+  };
+}
+
+async function assertAaveReserveSupplyable({
+  chain,
+  poolAddress,
+  assetAddress,
+  aTokenAddress = null,
+  simulateTransactionCallImpl,
+} = {}) {
+  const reserveState = await readAaveReserveSupplyState({
+    chain,
+    poolAddress,
+    assetAddress,
+    expectedATokenAddress: aTokenAddress,
+    simulateTransactionCallImpl,
+  });
+  if (reserveState.status === "supplyable") return reserveState;
+  const error = new Error(`aave_reserve_not_supplyable:${reserveState.blockers.join(",")}`);
+  error.name = "AaveReservePreflightFailed";
+  error.reserveState = reserveState;
+  throw error;
 }
 
 function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps) {
@@ -174,7 +278,8 @@ export async function resolveAavePoolAddress({
 } = {}) {
   if (!chain) throw new Error("chain is required");
   if (!getEvmChainConfig(chain)) throw new Error(`Unsupported EVM chain: ${chain}`);
-  if (binding.poolAddress) return assertAddress(binding.poolAddress, "poolAddress");
+  const configuredPoolAddress = binding.poolAddress ? assertAddress(binding.poolAddress, "poolAddress") : null;
+  if (configuredPoolAddress && !binding.poolAddressProviderAddress) return configuredPoolAddress;
 
   const poolAddressProviderAddress = assertAddress(binding.poolAddressProviderAddress, "poolAddressProviderAddress");
   const call = await simulateTransactionCallImpl(chain, {
@@ -183,7 +288,15 @@ export async function resolveAavePoolAddress({
     value: "0",
   });
   const [poolAddress] = AAVE_PROVIDER_INTERFACE.decodeFunctionResult("getPool", call.returnData || "0x");
-  return assertAddress(poolAddress, "poolAddress");
+  const resolvedPoolAddress = assertAddress(poolAddress, "poolAddress");
+  if (configuredPoolAddress && configuredPoolAddress.toLowerCase() !== resolvedPoolAddress.toLowerCase()) {
+    const error = new Error("aave_pool_provider_mismatch");
+    error.name = "AavePoolAddressMismatch";
+    error.configuredPoolAddress = configuredPoolAddress;
+    error.resolvedPoolAddress = resolvedPoolAddress;
+    throw error;
+  }
+  return configuredPoolAddress || resolvedPoolAddress;
 }
 
 export async function buildAaveProtocolCanaryPlan({
@@ -211,6 +324,13 @@ export async function buildAaveProtocolCanaryPlan({
   });
   const assetAddress = assertAddress(binding.assetAddress, "assetAddress");
   const aTokenAddress = assertAddress(binding.aTokenAddress, "aTokenAddress");
+  const reserveState = await assertAaveReserveSupplyable({
+    chain,
+    poolAddress,
+    assetAddress,
+    aTokenAddress,
+    simulateTransactionCallImpl,
+  });
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
   const assetMetadata = tokenAsset(chain, assetAddress, {
     ticker: binding.assetSymbol || tokenAsset(chain, assetAddress).ticker,
@@ -336,6 +456,7 @@ export async function buildAaveProtocolCanaryPlan({
       decimals: assetDecimals,
       priceKey: null,
     }),
+    reserveState,
     steps,
   };
 }

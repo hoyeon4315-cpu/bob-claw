@@ -508,11 +508,50 @@ export async function runDestinationRepresentativeAutopilot({
     return report;
   }
 
-  const plan = await helper.buildPlan({
-    candidate: selected,
-    senderAddress: preflight.senderAddress,
-    amount: selected.amount,
-  });
+  let plan = null;
+  let planError = null;
+  try {
+    plan = await helper.buildPlan({
+      candidate: selected,
+      senderAddress: preflight.senderAddress,
+      amount: selected.amount,
+    });
+  } catch (error) {
+    planError = {
+      name: error?.name || "DestinationRepresentativePlanError",
+      message: error?.message || String(error),
+      reserveState: error?.reserveState || null,
+    };
+  }
+  if (planError) {
+    const report = {
+      schemaVersion: 1,
+      observedAt,
+      mode: execute ? "execute" : "preview",
+      status: "blocked",
+      blockedReason: "destination_representative_plan_preflight_failed",
+      preflight: {
+        status: preflight.status,
+        senderAddress: preflight.senderAddress,
+        killSwitchPath: preflight.killSwitchPath,
+      },
+      summary: {
+        candidateCount: candidates.length,
+        readyCount: candidates.filter((item) => item.status === "ready").length,
+        coveredCount: candidates.filter((item) => item.status === "covered").length,
+        selected: compactCandidate(selected),
+        proofStatus: null,
+        txHashes: [],
+      },
+      candidates: candidates.map(compactCandidate),
+      plan: null,
+      planError,
+      execution: null,
+      executionError: null,
+    };
+    if (write) await writeReport(report);
+    return report;
+  }
   let execution = null;
   let executionError = null;
   if (execute) {
