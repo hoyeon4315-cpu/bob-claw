@@ -85,3 +85,116 @@ If a future dry-run shows `auto_kill_check.triggered: true`, halt the
 loop, append a per-trigger postmortem under `docs/research/`, and do not
 clear the kill-switch. Use `npm run kill:status:json` to capture the
 exact arming reason and feed it into the new postmortem.
+
+## 2026-05-05 operator-approved resume and live canary attempt
+
+### Operator approval
+
+- The operator approved moving to execution after reviewing the staged
+  blockers.
+- The kill-switch was resumed with:
+  `npm run kill:off -- --reason="parcel-16-mitigated"`.
+- Audit row:
+  - `ts`: `2026-05-05T07:14:59.961Z`
+  - `action`: `resume`
+  - `reason`: `parcel-16-mitigated`
+  - `previousState`: `halted`
+
+### Post-resume dry run
+
+- Command:
+  `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first`
+- CLI behavior note: without `--execute`, this command runs preview mode.
+- Outcome:
+  - `mode`: `preview`
+  - `status`: `completed_with_blockers`
+  - `executionGate`: `preview_only`
+  - `refillExecutedCount`: `0`
+  - `strategyDispatch.liveEligibleCount`: `0`
+  - `payback`: `carry`, `pendingCarrySats: 601`
+- No signer audit rows were appended by the all-chain dry run after
+  the resume timestamp.
+- No `gateway-btc-funding-transfer` signer attempt was emitted after
+  the resume timestamp.
+
+### Smallest eligible canary selected
+
+- Preview command:
+  `npm run executor:merkl-canary-autopilot -- --json --max-candidates=1 --max-usd=5 --timeout-ms=120000`
+- Preview status: `preview_ready`.
+- Selected canary:
+  - `strategyId`: `gateway_native_asset_conversion_sleeve`
+  - `opportunityId`: `13747891056392346282`
+  - `chain`: `base`
+  - `protocolId`: `yo`
+  - `bindingKind`: `erc4626_vault_supply_withdraw`
+  - `amountUsd`: `5`
+  - `asset`: Base USDC
+  - `plan steps`: `approve_asset_to_vault`, `deposit_asset_to_vault`
+- Preconditions observed by the canary preview:
+  - kill-switch preflight ready
+  - inventory ready: Base USDC and native ETH present
+  - auto-entry ready
+  - sizing ready with `capUsd: 5`
+
+### Live attempt outcome
+
+- Execute command:
+  `npm run executor:merkl-canary-autopilot -- --json --write --execute --max-candidates=1 --max-usd=5 --timeout-ms=180000`
+- Result:
+  - `mode`: `execute`
+  - `status`: `blocked`
+  - `blockedReason`: `max_consecutive_failures_reached`
+  - `settlementStatus`: `signer_rejected`
+  - first step: `approve_asset_to_vault`
+  - signer policy decision: `BLOCK`
+  - signer policy blockers: `["max_consecutive_failures_reached"]`
+- Consecutive-failure policy metrics:
+  - `maxConsecutiveFailures`: `3`
+  - `consecutiveFailures`: `3`
+  - `terminalRecordCount`: `111`
+  - `lastTerminalStatus`: `failure`
+  - `latestFailureAt`: `2026-05-02T09:35:18.475Z`
+  - `resumeAfter`: `2026-05-01T22:54:52.000Z`
+- Kill-switch policy inside the signer evaluation was `ALLOW`; the
+  block came from the consecutive-failure policy only.
+- Broadcast count after the operator resume: `0`.
+- Signer audit rows after the operator resume:
+  - one rejected row for `gateway_native_asset_conversion_sleeve`
+  - no broadcast row
+  - no receipt reconciliation row
+  - no payback accumulator delta
+
+### Safety action taken
+
+- Per Parcel 20 instruction, the agent did not bypass the signer policy
+  flag.
+- The kill-switch was immediately re-armed with:
+  `npm run kill:on -- --reason="parcel-20-live-canary-blocked-max-consecutive-failures"`.
+- Audit row:
+  - `ts`: `2026-05-05T07:24:26.567Z`
+  - `action`: `halt`
+  - `reason`: `parcel-20-live-canary-blocked-max-consecutive-failures`
+  - `previousState`: `running`
+
+### Decision
+
+The first live canary attempt did not reach broadcast. The system behaved
+correctly: policy rejected the intent before signing because
+`gateway_native_asset_conversion_sleeve` still has a true
+`max_consecutive_failures_reached` state. This is a different strategy
+from the Parcel 16 gateway funding trigger and must not be reset
+automatically.
+
+### Next required work
+
+1. Investigate the `gateway_native_asset_conversion_sleeve` consecutive
+   failure state, especially the terminal failures ending at
+   `2026-05-02T09:35:18.475Z`.
+2. Classify those failures with the corrected broadcast/no-tx classifier.
+3. Only if the failures are confirmed to be stale no-broadcast artifacts,
+   use the existing audited reset CLI with a new explicit reason.
+4. If the failures are true broadcast failures, keep the strategy paused
+   and fix the underlying execution issue before any new live attempt.
+5. Do not clear the kill-switch again until that investigation is
+   complete and the operator explicitly resumes it.
