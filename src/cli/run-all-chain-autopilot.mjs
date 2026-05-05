@@ -66,6 +66,46 @@ function printSummary(report = {}) {
   console.log(`executionGate=liveSteps:${report.summary?.executionGate?.liveCapableStepExecution === true ? "enabled" : "blocked"} reason=${report.summary?.executionGate?.blockedReason || "none"}`);
 }
 
+function cleanRefillPreview(item = {}) {
+  if (!item) return true;
+  if (item.previewStatus === "ready") return true;
+  if (
+    item.previewStatus === "deferred" &&
+    item.previewBlockedReason === "routing_exhausted" &&
+    item.routeDeferralReason &&
+    item.routeDeferralAction
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function cleanPaybackPreview(summary = {}) {
+  const payback = summary.payback || {};
+  if (!payback.status) return true;
+  if (payback.status === "carry" && payback.reason === "planned_payback_below_minimum") return true;
+  if (payback.status === "deferred") return true;
+  return false;
+}
+
+export function previewAllowsDryRunFirstExecution(preview = {}) {
+  if (preview?.status === "completed") return true;
+  if (preview?.status !== "completed_with_blockers") return false;
+  if (preview?.blockedReason) return false;
+  const summary = preview.summary || {};
+  if (summary.autoKill?.triggered === true || summary.autoKill?.killSwitchActive === true || summary.autoKill?.alreadyArmed === true) {
+    return false;
+  }
+  const executionGate = summary.executionGate || {};
+  if (executionGate.autoKillTriggered === true || executionGate.killSwitchActive === true || executionGate.killSwitchAlreadyArmed === true) {
+    return false;
+  }
+  if (executionGate.blockedReason !== "preview_only") return false;
+  if (!(preview.refillExecutions || []).every(cleanRefillPreview)) return false;
+  if (!cleanPaybackPreview(summary)) return false;
+  return true;
+}
+
 export async function runAutopilotCommand(args, { runner = runAllChainAutopilot } = {}) {
   if (!(args?.execute && args?.dryRunFirst)) {
     const report = await runner(args);
@@ -90,7 +130,7 @@ export async function runAutopilotCommand(args, { runner = runAllChainAutopilot 
       executionSkippedReason: "preview_error",
     };
   }
-  if (preview?.status !== "completed") {
+  if (!previewAllowsDryRunFirstExecution(preview)) {
     return {
       mode: "dry_run_first",
       preview,
