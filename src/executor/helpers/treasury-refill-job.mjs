@@ -11,7 +11,11 @@ import {
 } from "./gas-zip-refuel.mjs";
 import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "./gateway-btc-onramp.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
-import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
+import {
+  TOKEN_DEX_EXPERIMENT_STRATEGY_ID,
+  buildTokenDexExperimentPlan,
+  executeTokenDexExperimentPlan,
+} from "./token-dex-experiment.mjs";
 import { buildAcrossBridgePlan, executeAcrossBridgePlan } from "./across-bridge.mjs";
 import { acrossTickerForToken } from "../../config/across.mjs";
 import { buildLifiBridgePlan, executeLifiBridgePlan } from "./lifi-bridge.mjs";
@@ -344,6 +348,7 @@ function bridgeQuoteCostUsd(job = {}, plan = null) {
 
 export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "same_chain_token_to_native_swap") return "token_dex_experiment";
+  if (job.executionMethod === "same_chain_token_to_token_swap") return "token_dex_experiment";
   if (job.executionMethod === "same_chain_native_to_token_swap") return "native_dex_experiment";
   if (job.executionMethod === "gas_refuel_bridge_gas_zip" && job.type === "refill_native") return "gas_zip_native_refuel";
   if (
@@ -483,13 +488,14 @@ export async function buildTreasuryRefillExecutionPlan({
   if (executor === "token_dex_experiment") {
     const amount = estimateInputAmountFromSource({ job, source });
     if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    const tokenToToken = job.executionMethod === "same_chain_token_to_token_swap";
     plan = await buildTokenDexPlanImpl({
       chain: job.chain,
       amount,
       senderAddress,
       inputToken: source.token,
-      outputToken: "native",
-      strategyId: NATIVE_GAS_REFILL_STRATEGY_ID,
+      outputToken: tokenToToken ? job.token : "native",
+      strategyId: tokenToToken ? TOKEN_DEX_EXPERIMENT_STRATEGY_ID : NATIVE_GAS_REFILL_STRATEGY_ID,
     });
     const requiredGasBudgetWei = nativeGasBudgetForPlan(plan);
     const currentNativeBalanceWei = await resolveNativeBalanceWei({

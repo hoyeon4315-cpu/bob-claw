@@ -43,6 +43,14 @@ const METHOD_PROFILES = {
     reserveReplenishmentKnown: true,
     manualFundingDependency: false,
   },
+  same_chain_token_to_token_swap: {
+    fixedCostUsd: 0.035,
+    variableCostBps: 40,
+    expectedLatencyMs: 30_000,
+    requiresReserveState: false,
+    reserveReplenishmentKnown: true,
+    manualFundingDependency: false,
+  },
   gas_refuel_bridge_gas_zip: {
     fixedCostUsd: 0.05,
     variableCostBps: 50,
@@ -280,6 +288,8 @@ function candidateRecord({
   bootstrapNativeSatisfied = true,
   requiresReserveState = undefined,
   reserveReplenishmentKnown = undefined,
+  partialRefill = false,
+  partialRefillEstimatedUsd = null,
   missingInputs = [],
   settlementRequirements = [],
   notes,
@@ -303,6 +313,8 @@ function candidateRecord({
     bootstrapNativeSatisfied,
     requiresReserveState: resolvedRequiresReserveState,
     manualFundingDependency: profile.manualFundingDependency,
+    partialRefill,
+    partialRefillEstimatedUsd: Number.isFinite(partialRefillEstimatedUsd) ? partialRefillEstimatedUsd : null,
     missingInputs,
     settlementRequirements,
     notes,
@@ -376,6 +388,84 @@ function tokenSwapCandidate(action, plan, preferred) {
     notes: coversTargetValue
       ? "Use same-chain native balance to acquire the route token inventory."
       : "Same-chain native balance exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required.",
+  });
+}
+
+function actionablePartialRefillUsd(action, source, policy) {
+  const targetUsd = finite(action?.refillEstimatedUsd);
+  const sourceUsd = finite(source?.estimatedUsd);
+  if (!Number.isFinite(targetUsd) || !(targetUsd > 0) || !Number.isFinite(sourceUsd) || !(sourceUsd > 0)) {
+    return null;
+  }
+  const minPartialUsd = Math.min(
+    targetUsd,
+    finite(action?.strategyPolicy?.minPartialRefillUsd) ??
+      finite(policy?.capital?.canaryStartUsdMin) ??
+      10,
+  );
+  const inputBuffer = 1.1;
+  const partialUsd = Math.min(targetUsd, sourceUsd / inputBuffer);
+  return partialUsd >= minPartialUsd ? partialUsd : null;
+}
+
+function tokenToTokenSwapCandidate(action, plan, policy, preferred) {
+  const chainInventory = inventoryForChain(plan, action.chain);
+  const native = chainInventory.native;
+  const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
+  const dexSupported = dexProvidersForChain(action.chain).length > 0;
+  const tokenSources = chainInventory.tokens
+    .filter((item) => Number(item.actual || 0) > 0 && normalized(item.token) !== normalized(action.token))
+    .sort((left, right) => {
+      const leftCovers = sourceInventoryCoversTargetValue(action, left);
+      const rightCovers = sourceInventoryCoversTargetValue(action, right);
+      if (leftCovers !== rightCovers) return leftCovers ? -1 : 1;
+      const leftPartial = actionablePartialRefillUsd(action, left, policy) ?? 0;
+      const rightPartial = actionablePartialRefillUsd(action, right, policy) ?? 0;
+      if (leftPartial !== rightPartial) return rightPartial - leftPartial;
+      return (finite(right.estimatedUsd) ?? -1) - (finite(left.estimatedUsd) ?? -1);
+    });
+  const tokenSource = tokenSources[0] || null;
+  if (!tokenSource) {
+    return candidateRecord({
+      action,
+      method: "same_chain_token_to_token_swap",
+      source: null,
+      availability: "conditional",
+      preferred: false,
+      requiresBootstrapNative: true,
+      bootstrapNativeSatisfied,
+      missingInputs: [
+        "same_chain_token_inventory_missing",
+        ...(bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"]),
+      ],
+      notes: "No same-chain non-target token inventory is available for a direct DEX refill into the target token.",
+    });
+  }
+  const coversTargetValue = sourceInventoryCoversTargetValue(action, tokenSource);
+  const partialRefillEstimatedUsd = coversTargetValue ? null : actionablePartialRefillUsd(action, tokenSource, policy);
+  const actionable = coversTargetValue || Number.isFinite(partialRefillEstimatedUsd);
+  const missingInputs = [
+    ...(bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"]),
+    ...(dexSupported ? [] : ["same_chain_dex_executor_missing"]),
+    ...(actionable ? [] : ["source_inventory_below_target_amount"]),
+  ];
+  const ready = bootstrapNativeSatisfied && dexSupported && actionable;
+  return candidateRecord({
+    action,
+    method: "same_chain_token_to_token_swap",
+    source: describeSourceAsset(action.chain, tokenSource.token, sourceAmountMetadata(tokenSource)),
+    availability: ready ? "ready" : "conditional",
+    preferred: ready ? preferred : false,
+    requiresBootstrapNative: true,
+    bootstrapNativeSatisfied,
+    partialRefill: !coversTargetValue && Number.isFinite(partialRefillEstimatedUsd),
+    partialRefillEstimatedUsd,
+    missingInputs,
+    notes: coversTargetValue
+      ? "Use same-chain token inventory to acquire the target token inventory directly through the chain DEX executor."
+      : actionable
+        ? "Use source-limited same-chain token inventory for a deterministic partial refill large enough to unlock the next yield canary."
+        : "Same-chain token inventory exists, but its observed value is below the actionable partial refill threshold.",
   });
 }
 
@@ -811,7 +901,7 @@ function rankConditionalSupport(candidate = {}) {
   ) {
     return 3;
   }
-  if (missingInputs.has("same_chain_token_inventory_missing")) return 4;
+  if (missingInputs.has("same_chain_token_inventory_missing")) return 6;
   if (candidate.method === "gas_refuel_bridge_gas_zip") return 5;
   return 5;
 }
@@ -885,6 +975,7 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
     if (action.type === "refill_native") {
       candidates.push(nativeSwapCandidate(action, plan, policy.walletMode !== "dual_wallet"));
     } else if (action.type === "refill_token") {
+      candidates.push(tokenToTokenSwapCandidate(action, plan, policy, policy.walletMode !== "dual_wallet"));
       candidates.push(tokenSwapCandidate(action, plan, policy.walletMode !== "dual_wallet"));
     }
   }

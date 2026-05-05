@@ -420,6 +420,61 @@ test("refill jobs use route candidates that match each action chain instead of o
   assert.equal(jobs.jobs[1].systemEconomics.executionRefillExpectedCostUsd, jobs.jobs[1].fundingSource.expectedExecutionRefillCostUsd);
 });
 
+test("treasury refill jobs shrink same-chain token-to-token yield refill to source-limited partial target", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "base",
+          actual: "2951182258674551",
+          actualDecimal: 0.002951182258674551,
+          estimatedUsd: 7.03,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "47345000",
+          actualDecimal: 0.00047345,
+          token: baseCbbtc,
+          ticker: "cbBTC",
+          estimatedUsd: 38.66,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: baseUsdc,
+        refillAmount: "67807303",
+        refillAmountDecimal: 67.807303,
+        refillEstimatedUsd: 67.807303,
+        rationale: "Merkl portfolio live-capital validation float on Base",
+        strategyPolicy: {
+          id: "merkl_portfolio_stable_carry_refill",
+          strategyType: "merkl_portfolio_stable_carry",
+          perTradeCapUsd: 75,
+        },
+      },
+    ],
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy });
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.jobs[0].executionMethod, "same_chain_token_to_token_swap");
+  assert.equal(jobs.jobs[0].requiresManualReview, false);
+  assert.equal(jobs.jobs[0].estimatedAssetValueUsd, jobs.jobs[0].fundingSource.partialRefillEstimatedUsd);
+  assert.equal(jobs.jobs[0].estimatedAssetValueUsd < 67.807303, true);
+  assert.equal(jobs.jobs[0].estimatedAssetValueUsd > 20, true);
+  assert.equal(BigInt(jobs.jobs[0].targetAmount) < 67_807_303n, true);
+});
+
 test("refill jobs combine pending overflow review with non-ready funding-source reasons", () => {
   const basePolicy = buildDefaultTreasuryPolicy();
   const policy = validateTreasuryPolicy({

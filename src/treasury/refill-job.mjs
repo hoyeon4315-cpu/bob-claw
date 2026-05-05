@@ -78,6 +78,45 @@ function jobEconomicReviewReasons(job = {}) {
   return ["route_refill_economically_unjustified"];
 }
 
+function scaledUnits(amount, bps) {
+  try {
+    const parsed = BigInt(amount ?? 0);
+    const scaled = (parsed * BigInt(bps)) / 10_000n;
+    return scaled > 0n ? scaled.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function actionWithSourceLimitedPartialRefill(action, selection = null) {
+  if (selection?.selectedMethod !== "same_chain_token_to_token_swap") return action;
+  const partialUsd = finiteOrNull(selection?.selectedSource?.partialRefillEstimatedUsd);
+  const targetUsd = finiteOrNull(action?.refillEstimatedUsd);
+  if (!isFiniteNumber(partialUsd) || !isFiniteNumber(targetUsd) || !(partialUsd > 0) || !(targetUsd > partialUsd)) {
+    return action;
+  }
+  const bps = Math.max(1, Math.floor((partialUsd * 10_000) / targetUsd));
+  const refillAmount = scaledUnits(action.refillAmount, bps);
+  if (!refillAmount) return action;
+  const refillAmountDecimal = isFiniteNumber(action.refillAmountDecimal)
+    ? (action.refillAmountDecimal * bps) / 10_000
+    : action.refillAmountDecimal;
+  return {
+    ...action,
+    refillAmount,
+    refillAmountDecimal,
+    refillEstimatedUsd: partialUsd,
+    sourceLimitedPartialRefill: {
+      originalRefillAmount: action.refillAmount,
+      originalRefillAmountDecimal: action.refillAmountDecimal,
+      originalRefillEstimatedUsd: action.refillEstimatedUsd,
+      partialRefillEstimatedUsd: partialUsd,
+      partialRefillBps: bps,
+      reason: "same_chain_token_to_token_source_limited",
+    },
+  };
+}
+
 function routeNetUsd(routeContext = null) {
   return finiteOrNull(routeContext?.executableNetEdgeUsd) ?? finiteOrNull(routeContext?.netEdgeUsd);
 }
@@ -221,20 +260,21 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
   const resolvedFundingSourcePlan = fundingSourcePlan || buildFundingSourcePlan({ plan, policy });
   const selectionByKey = new Map((resolvedFundingSourcePlan.selections || []).map((item) => [item.resourceKey, item]));
   const draftJobs = (plan.actions || []).map((action) => {
+    const selection = selectionByKey.get(resourceKeyForRefillAction(action)) || null;
+    const effectiveAction = actionWithSourceLimitedPartialRefill(action, selection);
     const basis = {
       schemaVersion: 1,
       address: plan.address,
       observedAt: plan.observedAt,
-      type: action.type,
-      chain: action.chain,
-      token: action.token || null,
-      amount: action.refillAmount,
-      amountDecimal: action.refillAmountDecimal,
+      type: effectiveAction.type,
+      chain: effectiveAction.chain,
+      token: effectiveAction.token || null,
+      amount: effectiveAction.refillAmount,
+      amountDecimal: effectiveAction.refillAmountDecimal,
       decision: plan.decision,
-      sourceHint: action.sourceHint || null,
+      sourceHint: effectiveAction.sourceHint || null,
     };
-    const selection = selectionByKey.get(resourceKeyForRefillAction(action)) || null;
-    const actionRouteContext = selectRouteContextForAction(action, selection, routeCandidates, resolvedFundingSourcePlan.routeContext || null);
+    const actionRouteContext = selectRouteContextForAction(effectiveAction, selection, routeCandidates, resolvedFundingSourcePlan.routeContext || null);
     const candidateMethods = (selection?.candidates || []).map((item) => ({
       method: item.method,
       availability: item.availability,
@@ -245,6 +285,8 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       requiresBootstrapNative: item.requiresBootstrapNative,
       requiresManualFunding: item.manualFundingDependency,
       requiresReserveState: item.requiresReserveState,
+      partialRefill: item.partialRefill || false,
+      partialRefillEstimatedUsd: item.partialRefillEstimatedUsd ?? null,
       preferred: item.preferred,
       manualFundingDependency: item.manualFundingDependency,
       missingInputs: item.missingInputs,
@@ -275,13 +317,14 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       liveInventoryDependencyOverride: liveInventoryDependencyOverride(action),
       candidateMethods,
       executionMethod: selectedMethod,
-      chain: action.chain,
+      chain: effectiveAction.chain,
       resourceKey: resourceKeyForRefillAction(action),
-      asset: action.asset || action.ticker,
-      token: action.token || null,
-      targetAmount: action.refillAmount,
-      targetAmountDecimal: action.refillAmountDecimal,
-      estimatedAssetValueUsd: action.refillEstimatedUsd ?? null,
+      asset: effectiveAction.asset || effectiveAction.ticker,
+      token: effectiveAction.token || null,
+      targetAmount: effectiveAction.refillAmount,
+      targetAmountDecimal: effectiveAction.refillAmountDecimal,
+      estimatedAssetValueUsd: effectiveAction.refillEstimatedUsd ?? null,
+      sourceLimitedPartialRefill: effectiveAction.sourceLimitedPartialRefill || null,
       policy: {
         activeChainRequired: refillPolicy.requireActiveChain,
         routeDemandRequired: refillPolicy.requireRouteDemandSignal,
@@ -303,6 +346,8 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
             expectedReserveReplenishmentCostUsd: selection.expectedReserveReplenishmentCostUsd,
             requiresManualFunding: selection.requiresManualFunding,
             requiresReserveState: selection.requiresReserveState,
+            partialRefill: selection.selectedSource?.partialRefill || false,
+            partialRefillEstimatedUsd: selection.selectedSource?.partialRefillEstimatedUsd ?? null,
             missingInputs: selection.missingInputs,
             settlementRequirements: selection.settlementRequirements || [],
           }
@@ -314,14 +359,14 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
         liveInventoryDependencyOverride: bridgeCostGuard.liveInventoryDependencyOverride,
         classification,
       },
-      systemEconomics: buildJobSystemEconomics({ action, selection, routeContext: actionRouteContext, policy }),
-      rationale: action.rationale,
+      systemEconomics: buildJobSystemEconomics({ action: effectiveAction, selection, routeContext: actionRouteContext, policy }),
+      rationale: effectiveAction.rationale,
       sourceHint: {
         strategy: policy.walletMode === "dual_wallet" ? "same_chain_reserve_first" : "single_wallet_swap_or_manual",
         notes:
           action.type === "refill_native"
             ? "Native refill can come from reserve transfer in dual-wallet mode or token-to-native swap when bootstrap gas exists."
-            : "Token refill can come from reserve transfer in dual-wallet mode or native-to-token swap when bootstrap gas exists.",
+            : "Token refill can come from reserve transfer in dual-wallet mode, same-chain token-to-token swap, or native-to-token swap when bootstrap gas exists.",
         },
       };
     if (fundingSourceAutoExecutable(draftJob.fundingSource) || !crossChainFallbackAutoPromotionAllowed(draftJob)) {

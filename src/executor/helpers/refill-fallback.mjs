@@ -13,6 +13,7 @@ const EXECUTABLE_REFILL_METHODS = new Set([
   "cross_chain_bridge_lifi",
   "gas_refuel_bridge_gas_zip",
   "same_chain_token_to_native_swap",
+  "same_chain_token_to_token_swap",
   "same_chain_native_to_token_swap",
 ]);
 

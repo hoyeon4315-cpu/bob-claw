@@ -70,6 +70,61 @@ test("treasury refill executor builds same-chain token-to-native refill preview"
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor builds same-chain token-to-token refill preview", async () => {
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  let capturedInput = null;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-base-cbbtc-usdc",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: baseUsdc,
+      targetAmount: "35140000",
+      targetAmountDecimal: 35.14,
+      estimatedAssetValueUsd: 35.14,
+      executionMethod: "same_chain_token_to_token_swap",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: baseCbbtc,
+          ticker: "cbBTC",
+          actual: "47345000",
+          actualDecimal: 0.00047345,
+          estimatedUsd: 38.66,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-06T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: input.strategyId,
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "35200000",
+        quote: { outputAmount: "35400000" },
+        steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }],
+      };
+    },
+  });
+
+  assert.equal(refillExecutorForJob({ executionMethod: "same_chain_token_to_token_swap" }), "token_dex_experiment");
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "token_dex_experiment");
+  assert.equal(capturedInput.inputToken, baseCbbtc);
+  assert.equal(capturedInput.outputToken, baseUsdc);
+  assert.equal(capturedInput.strategyId, "token-dex-experiment");
+  assert.equal(preparation.coverage.coversTarget, true);
+});
+
 test("treasury refill executor blocks same-chain token-to-native refill when native gas bootstrap is insufficient", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob({

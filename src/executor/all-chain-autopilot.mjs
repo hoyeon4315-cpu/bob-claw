@@ -38,6 +38,7 @@ const DISCRETIONARY_REFILL_EXECUTOR_TO_CATEGORY = Object.freeze({
 });
 const DISCRETIONARY_REFILL_METHOD_TO_CATEGORY = Object.freeze({
   same_chain_token_to_native_swap: "probe",
+  same_chain_token_to_token_swap: "probe",
   same_chain_native_to_token_swap: "probe",
   gas_refuel_bridge_gas_zip: "refuel",
   cross_chain_bridge_across: "bridge",
@@ -58,6 +59,7 @@ const SOURCE_NATIVE_GAS_CONSUMING_METHODS = new Set([
 const SOURCE_DEBITING_METHODS = new Set([
   ...SOURCE_NATIVE_GAS_CONSUMING_METHODS,
   "same_chain_token_to_native_swap",
+  "same_chain_token_to_token_swap",
   "same_chain_native_to_token_swap",
   "gas_refuel_bridge_gas_zip",
 ]);

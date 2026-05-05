@@ -839,6 +839,62 @@ test("token refill prefers cross-chain wrapped BTC when same-chain native invent
   );
 });
 
+test("token refill uses same-chain token inventory for a source-limited yield partial refill", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "base",
+          actual: "2951182258674551",
+          actualDecimal: 0.002951182258674551,
+          estimatedUsd: 7.03,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "47345000",
+          actualDecimal: 0.00047345,
+          token: baseCbbtc,
+          ticker: "cbBTC",
+          estimatedUsd: 38.66,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: baseUsdc,
+        refillAmount: "67807303",
+        refillAmountDecimal: 67.807303,
+        refillEstimatedUsd: 67.807303,
+        rationale: "Merkl portfolio live-capital validation float on Base",
+        strategyPolicy: {
+          id: "merkl_portfolio_stable_carry_refill",
+          strategyType: "merkl_portfolio_stable_carry",
+          perTradeCapUsd: 75,
+        },
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "same_chain_token_to_token_swap");
+  assert.equal(funding.selections[0].selectionStatus, "ready");
+  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
+  assert.equal(funding.selections[0].selectedSource.source.ticker, "cbBTC");
+  assert.equal(funding.selections[0].missingInputs.includes("source_inventory_below_target_amount"), false);
+  assert.equal(funding.selections[0].selectedSource.partialRefill, true);
+  assert.equal(funding.selections[0].selectedSource.partialRefillEstimatedUsd > 20, true);
+});
+
 test("cross-chain token refill prefers a source that covers target over an undersized preferred route source", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {
