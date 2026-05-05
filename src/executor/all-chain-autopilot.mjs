@@ -259,7 +259,7 @@ function routingExhaustedPreparation(preview = {}, routeAttemptReasons = []) {
       ...(preview.json || {}),
       preparation: {
         ...(preview.json?.preparation || {}),
-        status: "blocked",
+        status: "deferred",
         blockedReason: "routing_exhausted",
         routeAttemptReasons,
         ...deferral,

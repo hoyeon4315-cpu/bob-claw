@@ -1596,6 +1596,7 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
     runCommandImpl: command,
   });
 
+  assert.equal(report.refillExecutions[0].previewStatus, "deferred");
   assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
   assert.deepEqual(report.refillExecutions[0].routeAttemptReasons, [
     {
@@ -1693,6 +1694,7 @@ test("all-chain autopilot classifies native refill route exhaustion as planner-a
     runCommandImpl: command,
   });
 
+  assert.equal(report.refillExecutions[0].previewStatus, "deferred");
   assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
   assert.equal(
     report.refillExecutions[0].routeDeferralReason,
@@ -1765,6 +1767,7 @@ test("all-chain autopilot classifies single-provider no-route exhaustion as plan
     runCommandImpl: command,
   });
 
+  assert.equal(report.refillExecutions[0].previewStatus, "deferred");
   assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
   assert.equal(
     report.refillExecutions[0].routeDeferralReason,
