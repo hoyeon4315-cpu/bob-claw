@@ -135,6 +135,18 @@ export function buildReconciliationSummary({
       details: { walletSource: capitalSummary?.walletSource || null },
     });
   }
+  if (capitalSummary?.walletCoverage && capitalSummary.walletCoverage !== "full_rpc") {
+    pushViolation(invariantViolations, {
+      code: "wallet_coverage_partial",
+      severity: "medium",
+      message: "Wallet scan has not proven complete token coverage for the address.",
+      details: {
+        walletCoverage: capitalSummary.walletCoverage,
+        walletSource: capitalSummary.walletSource || null,
+        walletObservedAt: capitalSummary.walletObservedAt || null,
+      },
+    });
+  }
   if (Number(capitalSummary?.unmarkedProtocolPositionCount || 0) > 0) {
     pushViolation(invariantViolations, {
       code: "unmarked_protocol_positions",

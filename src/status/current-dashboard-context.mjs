@@ -33,6 +33,7 @@ import {
   resolveAllChainAutopilotReport,
 } from "./all-chain-autopilot-slice.mjs";
 import { buildCapitalSummarySlice } from "./capital-summary-slice.mjs";
+import { buildAssetTrackingSlice } from "./asset-tracking-slice.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
@@ -495,6 +496,10 @@ export async function buildCurrentDashboardContext({
     protocolPositionMarks: dashboardStatus.strategy.protocolPositionMarks,
     executorEstimatedAssetValueUsd: allChainAutopilotReport?.summary?.capitalManager?.estimatedAssetValueUsd ?? null,
     signerAuditRecords,
+    generatedAt: dashboardStatus.generatedAt,
+  });
+  dashboardStatus.assetTracking = buildAssetTrackingSlice({
+    capitalSummary: dashboardStatus.capitalSummary,
     generatedAt: dashboardStatus.generatedAt,
   });
   dashboardStatus.operations = {

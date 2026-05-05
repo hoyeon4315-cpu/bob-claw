@@ -1689,6 +1689,11 @@ function AssetsPane({ refreshTick }) {
   const assetEstimateAvailable = Number.isFinite(estimatedCurrentTotalUsd) && Number.isFinite(currentTotalUsd) && estimatedCurrentTotalUsd > currentTotalUsd + 1;
   const displayAssetUsd = assetEstimateAvailable ? estimatedCurrentTotalUsd : currentTotalUsd;
   const pending = HOLDINGS?.pending;
+  const tracking = HOLDINGS?.assetTracking || null;
+  const trackingExactTotalUsd = Number.isFinite(tracking?.exactTotalUsd) ? tracking.exactTotalUsd : null;
+  const trackingRiskUsableUsd = Number.isFinite(tracking?.riskUsableUsd) ? tracking.riskUsableUsd : null;
+  const trackingRiskReady = tracking?.riskReady === true;
+  const trackingBlockers = Array.isArray(tracking?.blockers) ? tracking.blockers : [];
   const walletSourceLabel = HOLDINGS?.walletSource === 'whole_wallet_inventory' || HOLDINGS?.walletCoverage === 'full_external'
         ? 'supported-assets live'
     : HOLDINGS?.walletSource === 'treasury_inventory'
@@ -1739,14 +1744,18 @@ function AssetsPane({ refreshTick }) {
     : null;
   const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === 'verified_minimum';
   const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
-  const assetHeadline = assetEstimateAvailable
+  const assetHeadline = tracking && !Number.isFinite(trackingExactTotalUsd)
+    ? (tracking.dashboardHeadline || 'Verified known assets only')
+    : assetEstimateAvailable
     ? 'Estimated total assets'
     : assetIsVerifiedFloor
     ? 'Verified minimum assets'
     : assetHasReconciliationGap
       ? 'Observed assets'
       : 'Current total assets';
-  const assetEquationTotalLabel = assetEstimateAvailable
+  const assetEquationTotalLabel = tracking && !Number.isFinite(trackingExactTotalUsd)
+    ? 'verified known'
+    : assetEstimateAvailable
     ? 'estimated total'
     : assetIsVerifiedFloor || assetHasReconciliationGap
       ? 'verified minimum'
@@ -1785,6 +1794,9 @@ function AssetsPane({ refreshTick }) {
             {protocolTrackingGapUsd > 1 && (
               <>{' · '}unreconciled protocol estimate {fmtUsd(protocolTrackingGapUsd)}</>
             )}
+            {tracking && Number.isFinite(trackingRiskUsableUsd) && (
+              <>{' · '}risk usable {fmtUsd(trackingRiskUsableUsd)}</>
+            )}
             {' · '}live supported {fmtUsd(HOLDINGS?.walletUsd)}
             {' · '}open positions {positions.length}
           </div>
@@ -1820,6 +1832,26 @@ function AssetsPane({ refreshTick }) {
                 verified minimum {fmtUsd(verifiedMinimumUsd)}
               </span>
             )}
+            {tracking && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(trackingRiskReady ? 'ok' : 'critical') }}>
+                {trackingRiskReady ? 'risk-ready exact' : 'not exact for sizing'}
+              </span>
+            )}
+            {tracking && Number.isFinite(trackingExactTotalUsd) && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('ok') }}>
+                exact total {fmtUsd(trackingExactTotalUsd)}
+              </span>
+            )}
+            {tracking && !Number.isFinite(trackingExactTotalUsd) && Number.isFinite(trackingRiskUsableUsd) && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('critical') }}>
+                risk usable {fmtUsd(trackingRiskUsableUsd)}
+              </span>
+            )}
+            {tracking && trackingBlockers.slice(0, 3).map((item) => (
+              <span key={item.code} style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('warning') }}>
+                {String(item.code || 'tracking_gap').replace(/_/g, ' ')}
+              </span>
+            ))}
             {protocolTrackingGapUsd > 1 && (
               <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, background:'#FFF6E8', color:'var(--orange)', border:'0.5px solid rgba(201,140,0,0.22)' }}>
                 protocol tracking gap {fmtUsd(protocolTrackingGapUsd)}

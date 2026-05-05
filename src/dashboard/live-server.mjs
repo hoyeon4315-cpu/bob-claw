@@ -7,6 +7,7 @@ import { config } from "../config/env.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
+import { buildAssetTrackingSlice } from "../status/asset-tracking-slice.mjs";
 import { buildCapitalSummarySlice } from "../status/capital-summary-slice.mjs";
 import { buildLiveYieldSlice, liveYieldMetricFields } from "../status/live-yield-slice.mjs";
 import { buildMerklActivePositions } from "../status/merkl-active-slice.mjs";
@@ -320,6 +321,10 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, projectRoot, se
         ...status,
         walletHoldings: walletHoldingsWithMetadata,
         capitalSummary,
+        assetTracking: buildAssetTrackingSlice({
+          capitalSummary,
+          generatedAt: incomingWalletAt || servedAt,
+        }),
         liveOverlay: {
           ...(status.liveOverlay || {}),
           walletHoldings: {
@@ -381,6 +386,10 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, projectRoot, se
         merklActivePositions,
       },
       capitalSummary,
+      assetTracking: buildAssetTrackingSlice({
+        capitalSummary,
+        generatedAt: servedAt,
+      }),
       liveOverlay: {
         ...(nextStatus?.liveOverlay || {}),
         protocolPositionMarks: protocolPositionMarks

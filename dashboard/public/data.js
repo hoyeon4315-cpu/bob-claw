@@ -461,6 +461,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   const realizedBreakdown = pnl?.realized?.breakdown || {};
   const btcUsd = status?.market?.btcUsd || status?.market?.btc?.usd || null;
   const liveApr = holdings?.protocolApr || {};
+  const assetTracking = status?.assetTracking || null;
   const summaryDisplayWalletUsd = Number.isFinite(capitalSummary?.walletUsd) ? capitalSummary.walletUsd : Number.isFinite(capitalSummary?.displayWalletUsd) ? capitalSummary.displayWalletUsd : null;
   const summaryDisplayTotalUsd = Number.isFinite(summaryDisplayWalletUsd) && Number.isFinite(capitalSummary?.deployedUsd) ? summaryDisplayWalletUsd + capitalSummary.deployedUsd : Number.isFinite(capitalSummary?.displayTotalUsd) ? capitalSummary.displayTotalUsd : null;
   const summaryCurrentWalletUsd = Number.isFinite(capitalSummary?.currentWalletUsd) ? capitalSummary.currentWalletUsd : summaryDisplayWalletUsd;
@@ -520,6 +521,18 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     trackingGapUsd: summaryProtocolTrackingGapUsd,
     trackingGapSource: capitalSummary.trackingGapSource || (Number.isFinite(summaryProtocolTrackingGapUsd) && summaryProtocolTrackingGapUsd > 0 ? "automation_estimate_minus_verified_assets" : null),
     reconciliationGapUsd: Number.isFinite(capitalSummary.reconciliationGapUsd) ? capitalSummary.reconciliationGapUsd : null,
+    assetTracking: assetTracking ? {
+      coverageState: assetTracking.coverageState || null,
+      dashboardHeadline: assetTracking.dashboardHeadline || null,
+      riskReady: assetTracking.riskReady === true,
+      exactTotalUsd: Number.isFinite(assetTracking.exactTotalUsd) ? assetTracking.exactTotalUsd : null,
+      verifiedKnownUsd: Number.isFinite(assetTracking.verifiedKnownUsd) ? assetTracking.verifiedKnownUsd : null,
+      riskUsableUsd: Number.isFinite(assetTracking.riskUsableUsd) ? assetTracking.riskUsableUsd : null,
+      externalReferenceUsd: Number.isFinite(assetTracking.externalReferenceUsd) ? assetTracking.externalReferenceUsd : null,
+      externalUnclassifiedUsd: Number.isFinite(assetTracking.externalUnclassifiedUsd) ? assetTracking.externalUnclassifiedUsd : null,
+      unexplainedGapUsd: Number.isFinite(assetTracking.unexplainedGapUsd) ? assetTracking.unexplainedGapUsd : null,
+      blockers: Array.isArray(assetTracking.blockers) ? assetTracking.blockers : []
+    } : null,
     systemConfidence: capitalSummary.systemConfidence || (summaryAssetConfidence === "verified_current" ? "high" : "medium"),
     autoExecutionSafe: capitalSummary.autoExecutionSafe === true,
     invariantViolationCount: Number.isFinite(capitalSummary.invariantViolationCount) ? capitalSummary.invariantViolationCount : 0,
@@ -577,6 +590,18 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     trackingGapUsd: null,
     trackingGapSource: null,
     reconciliationGapUsd: null,
+    assetTracking: assetTracking ? {
+      coverageState: assetTracking.coverageState || null,
+      dashboardHeadline: assetTracking.dashboardHeadline || null,
+      riskReady: assetTracking.riskReady === true,
+      exactTotalUsd: Number.isFinite(assetTracking.exactTotalUsd) ? assetTracking.exactTotalUsd : null,
+      verifiedKnownUsd: Number.isFinite(assetTracking.verifiedKnownUsd) ? assetTracking.verifiedKnownUsd : null,
+      riskUsableUsd: Number.isFinite(assetTracking.riskUsableUsd) ? assetTracking.riskUsableUsd : null,
+      externalReferenceUsd: Number.isFinite(assetTracking.externalReferenceUsd) ? assetTracking.externalReferenceUsd : null,
+      externalUnclassifiedUsd: Number.isFinite(assetTracking.externalUnclassifiedUsd) ? assetTracking.externalUnclassifiedUsd : null,
+      unexplainedGapUsd: Number.isFinite(assetTracking.unexplainedGapUsd) ? assetTracking.unexplainedGapUsd : null,
+      blockers: Array.isArray(assetTracking.blockers) ? assetTracking.blockers : []
+    } : null,
     systemConfidence: Number(holdings.scanErrorCount || 0) > 0 ? "medium" : "high",
     autoExecutionSafe: Number(holdings.scanErrorCount || 0) === 0,
     invariantViolationCount: Number(holdings.scanErrorCount || 0) > 0 ? 1 : 0,
@@ -629,6 +654,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     trackingGapUsd: null,
     trackingGapSource: null,
     reconciliationGapUsd: null,
+    assetTracking: null,
     systemConfidence: "high",
     autoExecutionSafe: false,
     invariantViolationCount: 0,

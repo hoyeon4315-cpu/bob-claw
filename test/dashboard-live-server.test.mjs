@@ -175,6 +175,11 @@ test("dashboard live status overlays the freshest wallet holdings slice", async 
   assert.equal(status.capitalSummary.deployedUsd, 5.25);
   assert.equal(status.capitalSummary.totalUsd, 128.7);
   assert.equal(status.capitalSummary.walletObservedAt, "2026-04-29T00:00:59.000Z");
+  assert.equal(status.assetTracking.coverageState, "protocol_or_movement_gap");
+  assert.equal(status.assetTracking.exactTotalUsd, null);
+  assert.equal(status.assetTracking.verifiedKnownUsd, 128.7);
+  assert.equal(status.assetTracking.riskUsableUsd, 0);
+  assert.equal(status.assetTracking.blockers.some((item) => item.code === "protocol_position_gap"), true);
   assert.equal(status.liveOverlay.walletHoldings.source, "wallet-holdings.json");
 });
 
@@ -281,6 +286,11 @@ test("dashboard live wallet overlay does not revive stale external wallet metada
   assert.equal(status.capitalSummary.unclassifiedUsd, null);
   assert.equal(status.capitalSummary.totalUsd, 222);
   assert.equal(status.capitalSummary.executorEstimatedTotalUsd, null);
+  assert.equal(status.assetTracking.coverageState, "protocol_or_movement_gap");
+  assert.equal(status.assetTracking.exactTotalUsd, null);
+  assert.equal(status.assetTracking.riskReady, false);
+  assert.equal(status.assetTracking.blockers.some((item) => item.code === "wallet_coverage_partial"), true);
+  assert.equal(status.assetTracking.blockers.some((item) => item.code === "protocol_position_gap"), true);
   assert.equal(status.flow.metrics.assetValueUsd, 222);
 });
 

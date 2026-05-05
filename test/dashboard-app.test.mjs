@@ -223,9 +223,9 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(assetsPane, /const estimatedProtocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.estimatedProtocolDeployedUsd\)/);
     assert.match(assetsPane, /const estimatedCurrentTotalUsd = Number\.isFinite\(HOLDINGS\?\.estimatedCurrentTotalUsd\)/);
     assert.match(assetsPane, /const verifiedMinimumUsd = Number\.isFinite\(HOLDINGS\?\.verifiedMinimumUsd\)/);
-    assert.match(assetsPane, /const assetHeadline = assetEstimateAvailable/);
+    assert.match(assetsPane, /const assetHeadline = tracking && !Number\.isFinite\(trackingExactTotalUsd\)/);
     assert.match(assetsPane, /const assetMain = pending \? '—' : fmtUsd\(displayAssetUsd\)/);
-    assert.match(assetsPane, /const assetEquationTotalLabel = assetEstimateAvailable/);
+    assert.match(assetsPane, /const assetEquationTotalLabel = tracking && !Number\.isFinite\(trackingExactTotalUsd\)/);
     assert.match(assetsPane, /current total/);
     assert.match(assetsPane, /verified minimum \{fmtUsd\(verifiedMinimumUsd\)\}/);
     assert.doesNotMatch(assetsPane, /full-wallet gap/);
@@ -329,6 +329,7 @@ describe("dashboard defi renewal source guard", () => {
 
   test("data adapter treats stale full-wallet scans as reference, not primary display value", () => {
     const adapter = extractSection("const liveApr = holdings?.protocolApr || {};", "  const STRATEGIES = Array.from", DATA_SOURCE);
+    assert.match(adapter, /const assetTracking = status\?\.assetTracking \|\| null;/);
     assert.match(adapter, /const summaryDisplayWalletUsd = Number\.isFinite\(capitalSummary\?\.walletUsd\)/);
     assert.match(adapter, /displayWalletUsd: summaryDisplayWalletUsd/);
     assert.match(adapter, /displayTotalUsd: summaryDisplayTotalUsd/);
@@ -353,6 +354,9 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(adapter, /protocolTrackingGapUsd: summaryProtocolTrackingGapUsd/);
     assert.match(adapter, /trackingGapUsd: summaryProtocolTrackingGapUsd/);
     assert.match(adapter, /reconciliationGapUsd: Number\.isFinite\(capitalSummary\.reconciliationGapUsd\) \? capitalSummary\.reconciliationGapUsd : null/);
+    assert.match(adapter, /assetTracking: assetTracking \? \{/);
+    assert.match(adapter, /exactTotalUsd: Number\.isFinite\(assetTracking\.exactTotalUsd\) \? assetTracking\.exactTotalUsd : null/);
+    assert.match(adapter, /riskUsableUsd: Number\.isFinite\(assetTracking\.riskUsableUsd\) \? assetTracking\.riskUsableUsd : null/);
     assert.match(adapter, /systemConfidence: capitalSummary\.systemConfidence \|\| \(summaryAssetConfidence === 'verified_current' \? 'high' : 'medium'\)/);
     assert.match(adapter, /autoExecutionSafe: capitalSummary\.autoExecutionSafe === true/);
     assert.match(adapter, /invariantViolations: Array\.isArray\(capitalSummary\.invariantViolations\) \? capitalSummary\.invariantViolations : \[\]/);
@@ -364,6 +368,15 @@ describe("dashboard defi renewal source guard", () => {
     assert.doesNotMatch(adapter, /hasFreshFullWalletSummary/);
     assert.doesNotMatch(adapter, /hasFreshFullWalletFallback/);
     assert.doesNotMatch(adapter, /displayWalletUsd: Number\.isFinite\(capitalSummary\.displayWalletUsd\) \? capitalSummary\.displayWalletUsd : null/);
+  });
+
+  test("asset pane surfaces exact tracking blockers instead of implying total certainty", () => {
+    const assetsPane = extractSection("function AssetsPane", "function App");
+    assert.match(assetsPane, /const tracking = HOLDINGS\?\.assetTracking \|\| null/);
+    assert.match(assetsPane, /const trackingExactTotalUsd = Number\.isFinite\(tracking\?\.exactTotalUsd\) \? tracking\.exactTotalUsd : null/);
+    assert.match(assetsPane, /const trackingRiskUsableUsd = Number\.isFinite\(tracking\?\.riskUsableUsd\) \? tracking\.riskUsableUsd : null/);
+    assert.match(assetsPane, /trackingRiskReady \? 'risk-ready exact' : 'not exact for sizing'/);
+    assert.match(assetsPane, /trackingBlockers\.slice\(0, 3\)\.map/);
   });
 
   test("data adapter keeps wallet and protocol capital split for map cards", () => {

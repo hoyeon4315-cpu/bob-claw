@@ -130,6 +130,7 @@ export function buildCapitalSummarySlice({
     : walletCoverage === "full_external_stale"
       ? "supported_wallet_plus_positions_cached_external_reference"
       : "partial_supported_wallet_plus_positions";
+  const walletCoverageNotExact = walletCoverage !== "full_rpc";
   const capitalPlanRefillRequiredUsd = Number.isFinite(executorEstimatedAssetValueUsd)
     ? roundUsd(executorEstimatedAssetValueUsd)
     : null;
@@ -158,6 +159,7 @@ export function buildCapitalSummarySlice({
     ? "automation_plan_estimate_differs_from_wallet_scan"
     : null;
   const needsReconciliation =
+    walletCoverageNotExact ||
     walletScanErrorCount > 0 ||
     unmarkedProtocolPositionCount > 0 ||
     protocolMarkNeedsReconciliation ||
@@ -165,7 +167,9 @@ export function buildCapitalSummarySlice({
     Boolean(accountingWarning);
   const assetConfidence = needsReconciliation ? "verified_minimum" : "verified_current";
   const reconciliationState = needsReconciliation
-    ? (unmarkedProtocolPositionCount > 0 || protocolMarkNeedsReconciliation) && walletScanErrorCount === 0 && !accountingWarning
+    ? walletCoverageNotExact && unmarkedProtocolPositionCount === 0 && !protocolMarkNeedsReconciliation && walletScanErrorCount === 0 && !accountingWarning
+      ? "needs_full_wallet_coverage"
+      : (unmarkedProtocolPositionCount > 0 || protocolMarkNeedsReconciliation) && walletScanErrorCount === 0 && !accountingWarning
       ? "needs_protocol_position_marks"
       : "needs_reconciliation"
     : "reconciled";
