@@ -258,6 +258,136 @@ test("treasury holdings ignore cached Zerion full-wallet coverage for live total
   assert.equal(holdings.items.some((item) => item.sym === "other"), false);
 });
 
+test("treasury holdings preserves full_rpc coverage from closed tx-derived asset universe", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [],
+    {
+      generatedAt: "2026-05-05T22:30:00.000Z",
+      wholeWalletRecords: [
+        {
+          observedAt: "2026-05-05T22:29:00.000Z",
+          totalUsd: 100,
+          native: [],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "USDC",
+              actualDecimal: 100,
+              estimatedUsd: 100,
+            },
+          ],
+          summary: {
+            itemizedWalletUsd: 100,
+            chainCount: 1,
+            scanErrorCount: 0,
+            walletCoverage: "full_rpc",
+            assetUniverseStatus: "closed",
+            unknownAssetBalanceCount: 0,
+          },
+          assetUniverse: {
+            status: "closed",
+            targetCount: 3,
+            unknownTargetCount: 0,
+          },
+          scanErrors: [],
+        },
+      ],
+    },
+  );
+
+  assert.equal(holdings.walletCoverage, "full_rpc");
+  assert.equal(holdings.assetUniverse.status, "closed");
+  assert.equal(holdings.unknownAssetBalanceCount, 0);
+});
+
+test("treasury holdings surfaces tx-derived unknown asset balances for dashboard blockers", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [],
+    {
+      generatedAt: "2026-05-05T22:30:00.000Z",
+      wholeWalletRecords: [
+        {
+          observedAt: "2026-05-05T22:29:00.000Z",
+          totalUsd: 0,
+          native: [],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "NEW",
+              actualDecimal: 1,
+              estimatedUsd: null,
+              trackingStatus: "pending_whitelist_review",
+            },
+          ],
+          summary: {
+            itemizedWalletUsd: 0,
+            chainCount: 1,
+            scanErrorCount: 0,
+            walletCoverage: "partial_supported",
+            assetUniverseStatus: "needs_review",
+            unknownAssetBalanceCount: 1,
+          },
+          assetUniverse: {
+            status: "needs_review",
+            targetCount: 1,
+            unknownTargetCount: 1,
+          },
+          unknownAssetBalances: [{ chain: "base", ticker: "NEW", actualDecimal: 1 }],
+          scanErrors: [],
+        },
+      ],
+    },
+  );
+
+  assert.equal(holdings.walletCoverage, "partial_supported");
+  assert.equal(holdings.assetUniverse.unknownTargetCount, 1);
+  assert.equal(holdings.unknownAssetBalanceCount, 1);
+  assert.equal(holdings.unknownAssetBalances[0].ticker, "NEW");
+});
+
+test("treasury holdings excludes protocol-reader-covered share tokens from wallet totals", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [],
+    {
+      generatedAt: "2026-05-05T22:30:00.000Z",
+      wholeWalletRecords: [
+        {
+          observedAt: "2026-05-05T22:29:00.000Z",
+          totalUsd: 50,
+          native: [],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "yoUSD",
+              actualDecimal: 50,
+              estimatedUsd: 50,
+              countedInWalletTotal: false,
+              trackingStatus: "protocol_reader_covered",
+            },
+            {
+              chain: "base",
+              ticker: "USDC",
+              actualDecimal: 10,
+              estimatedUsd: 10,
+            },
+          ],
+          summary: {
+            itemizedWalletUsd: 10,
+            chainCount: 1,
+            scanErrorCount: 0,
+            walletCoverage: "full_rpc",
+          },
+          scanErrors: [],
+        },
+      ],
+    },
+  );
+
+  assert.equal(holdings.totalUsd, 10);
+  assert.equal(holdings.items.some((item) => item.name === "yoUSD"), false);
+  assert.equal(holdings.items.some((item) => item.name === "USDC"), true);
+});
+
 test("treasury holdings preserve injected protocol APR entries for dashboard consumers", () => {
   const protocolApr = {
     "wrapped-btc-loop-base-moonwell": {

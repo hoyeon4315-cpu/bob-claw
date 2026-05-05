@@ -120,6 +120,8 @@ export function buildCapitalSummarySlice({
   const walletScanErrorCount = Array.isArray(walletHoldings?.scanErrors)
     ? walletScanErrors.length
     : walletHoldings?.scanErrorCount ?? 0;
+  const unknownAssetBalanceCount = Number(walletHoldings?.unknownAssetBalanceCount || 0);
+  const assetUniverseUnknownTargetCount = Number(walletHoldings?.assetUniverse?.unknownTargetCount || 0);
   const displayWalletUsd = walletUsd;
   const displayTotalUsd = displayWalletUsd + deployedUsd;
   const currentWalletUsd = displayWalletUsd;
@@ -161,6 +163,7 @@ export function buildCapitalSummarySlice({
   const needsReconciliation =
     walletCoverageNotExact ||
     walletScanErrorCount > 0 ||
+    unknownAssetBalanceCount > 0 ||
     unmarkedProtocolPositionCount > 0 ||
     protocolMarkNeedsReconciliation ||
     (Number.isFinite(referenceFullWalletGapUsd) && referenceFullWalletGapUsd > 1) ||
@@ -227,6 +230,10 @@ export function buildCapitalSummarySlice({
     walletObservedAt: walletHoldings?.observedAt || null,
     walletScanErrorCount,
     walletScanErrors,
+    assetUniverse: walletHoldings?.assetUniverse || null,
+    assetUniverseUnknownTargetCount,
+    unknownAssetBalanceCount,
+    unknownAssetBalances: (walletHoldings?.unknownAssetBalances || []).slice(0, 10),
     externalWalletUsd: hasCurrentExternalReference ? walletHoldings?.externalWalletUsd ?? null : null,
     unclassifiedUsd: hasCurrentExternalReference ? walletHoldings?.unclassifiedUsd ?? null : null,
     walletItemCount: walletItems.length,

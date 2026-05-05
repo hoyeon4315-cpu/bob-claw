@@ -370,6 +370,15 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
     if (dispatch.kind === "reader") {
       const result = dispatch.result;
       if (result?.ok) {
+        if (!Array.isArray(result.positions) || result.positions.length === 0) {
+          readerEvents.push(defaultReaderMarkFailure(position, {
+            observedAt,
+            adapterId: dispatch.id,
+            failureKind: "zero_position_observed",
+            message: `Reader ${dispatch.id || "unknown"} returned zero positions for active ledger entry`,
+          }));
+          continue;
+        }
         for (const [index, observed] of (result.positions || []).entries()) {
           readerEvents.push(await buildReaderBackedMark({
             position,

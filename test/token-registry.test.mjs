@@ -37,10 +37,17 @@ test("registry covers currently held Gateway BTC and stable assets on official d
   }
   for (const [chain, symbol] of [
     ["ethereum", "RLUSD"],
+    ["ethereum", "alphaForexV2"],
+    ["ethereum", "steakUSDT"],
     ["bob", "oUSDT"],
+    ["avalanche", "aAvaUSDC"],
+    ["bera", "USDC"],
     ["optimism", "USDC"],
+    ["optimism", "aOptUSDCn"],
+    ["soneium", "USDC"],
     ["unichain", "USDC"],
     ["sonic", "USDC"],
+    ["sonic", "aSonUSDC"],
   ]) {
     assert.ok(findToken(chain, symbol), `missing ${symbol} on ${chain}`);
   }

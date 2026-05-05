@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readErc20Allowance, readErc20Balance, readNativeBalance, summarizeRequirement } from "../src/evm/account-state.mjs";
+import { readErc20Allowance, readErc20Balance, readErc20Metadata, readErc4626SharePreview, readNativeBalance, summarizeRequirement } from "../src/evm/account-state.mjs";
 
 function rpcResponse(result) {
   return {
@@ -47,6 +47,61 @@ test("native balance reader returns bigint and summarizeRequirement computes sho
   assert.equal(native.balanceWei, 10n ** 18n);
   assert.equal(summary.ok, false);
   assert.equal(summary.shortfall, (10n ** 18n).toString());
+});
+
+test("account state reader decodes ERC20 metadata from dynamic string responses", async () => {
+  const calls = [];
+  const encodedUsdc = "0x" +
+    "0000000000000000000000000000000000000000000000000000000000000020" +
+    "0000000000000000000000000000000000000000000000000000000000000004" +
+    "5553444300000000000000000000000000000000000000000000000000000000";
+  const fetchImpl = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body.method === "eth_call" ? body.params[0].data : body.method);
+    if (body.params[0].data === "0x313ce567") return rpcResponse("0x06");
+    if (body.params[0].data === "0x95d89b41") return rpcResponse(encodedUsdc);
+    if (body.params[0].data === "0x06fdde03") return rpcResponse(encodedUsdc);
+    return rpcResponse("0x");
+  };
+
+  const metadata = await readErc20Metadata("base", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", { fetchImpl });
+
+  assert.equal(metadata.decimals, 6);
+  assert.equal(metadata.symbol, "USDC");
+  assert.equal(metadata.name, "USDC");
+  assert.deepEqual(calls.sort(), ["0x06fdde03", "0x313ce567", "0x95d89b41"].sort());
+});
+
+test("account state reader decodes ERC20 metadata from bytes32 symbol responses", async () => {
+  const fetchImpl = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.params[0].data === "0x313ce567") return rpcResponse("0x12");
+    return rpcResponse("0x5745544800000000000000000000000000000000000000000000000000000000");
+  };
+
+  const metadata = await readErc20Metadata("base", "0x4200000000000000000000000000000000000006", { fetchImpl });
+
+  assert.equal(metadata.decimals, 18);
+  assert.equal(metadata.symbol, "WETH");
+});
+
+test("account state reader previews ERC4626 shares into underlying assets", async () => {
+  const calls = [];
+  const fetchImpl = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body.params[0].data);
+    if (body.params[0].data === "0x38d52e0f") {
+      return rpcResponse("0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+    }
+    assert.match(body.params[0].data, /^0x07a2d13a/u);
+    return rpcResponse("0x0000000000000000000000000000000000000000000000000000000000989680");
+  };
+
+  const preview = await readErc4626SharePreview("base", "0x0000000f2eB9f69274678c76222B35eEc7588a65", 10n, { fetchImpl });
+
+  assert.equal(preview.asset, "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+  assert.equal(preview.assets, 10_000_000n);
+  assert.deepEqual(calls.map((call) => call.slice(0, 10)), ["0x38d52e0f", "0x07a2d13a"]);
 });
 
 test("account state readers bypass fetch for loopback RPC URLs", async () => {

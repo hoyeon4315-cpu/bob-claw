@@ -12,6 +12,7 @@ import { activeProtocolPositions } from "../treasury/protocol-position-ledger.mj
 import { resolveAddressScanPortfolioReader } from "../treasury/address-scan-api.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
+import { buildAssetUniverse } from "../treasury/asset-universe.mjs";
 
 bootstrapReaders();
 
@@ -132,6 +133,24 @@ async function main() {
     : null;
   const ledgerEvents = await readJsonl(config.dataDir, "merkl-portfolio-positions").catch(() => []);
   const ledgerPositions = activeProtocolPositions(ledgerEvents);
+  const [
+    receiptReconciliations,
+    signerAuditRecords,
+    inboundEvents,
+    protocolPositionMarks,
+  ] = await Promise.all([
+    readJsonl(config.dataDir, "receipt-reconciliations").catch(() => []),
+    readJsonl("logs", "signer-audit").catch(() => []),
+    readJsonl(config.dataDir, "treasury/inbound-events").catch(() => []),
+    readJsonl(config.dataDir, "protocol-position-marks").catch(() => []),
+  ]);
+  const assetUniverse = buildAssetUniverse({
+    chains: policy.supportedChains,
+    receiptReconciliations,
+    signerAuditRecords,
+    inboundEvents,
+    protocolPositionMarks,
+  });
   const liveInventory = await scanWholeWalletInventory({
     address: resolved.address,
     bitcoinAddress,
@@ -140,6 +159,7 @@ async function main() {
     families: args.families,
     externalPortfolioReader,
     ledgerPositions,
+    assetUniverse,
   });
   const inventory = materializeWholeWalletInventory(liveInventory, context.inventorySnapshot);
   const store = new JsonlStore(config.dataDir);
@@ -161,6 +181,10 @@ async function main() {
     console.log(`externalUnclassifiedUsd=${inventory.summary.externalUnclassifiedUsd.toFixed(4)}`);
   }
   console.log(`native=${inventory.summary.nativeCount} tokens=${inventory.summary.tokenCount} scanErrors=${inventory.summary.scanErrorCount}`);
+  console.log(`assetUniverse=${inventory.summary.assetUniverseStatus || "inactive"} targets=${inventory.summary.assetUniverseTargetCount ?? "n/a"} unknown=${inventory.summary.assetUniverseUnknownTargetCount ?? "n/a"}`);
+  if (inventory.summary.unknownAssetBalanceCount > 0) {
+    console.log(`unknownAssetBalances=${inventory.summary.unknownAssetBalanceCount}`);
+  }
   for (const item of [...inventory.native, ...inventory.tokenBalances].slice(0, 12)) {
     console.log(`${item.chain} ${item.ticker}=${item.actualDecimal} usd=${item.estimatedUsd ?? "n/a"}`);
   }

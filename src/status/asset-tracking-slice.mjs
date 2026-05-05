@@ -70,6 +70,8 @@ export function buildAssetTrackingSlice({
   const walletCoverage = summary.walletCoverage || null;
   const walletScanErrorCount = Number(summary.walletScanErrorCount || 0);
   const pendingSignerActionCount = Number(summary.pendingSignerActionCount || 0);
+  const unknownAssetBalanceCount = Number(summary.unknownAssetBalanceCount || 0);
+  const assetUniverseUnknownTargetCount = Number(summary.assetUniverseUnknownTargetCount || summary.assetUniverse?.unknownTargetCount || 0);
   const blockers = [];
 
   if (walletCoverage !== "full_rpc") {
@@ -83,6 +85,14 @@ export function buildAssetTrackingSlice({
     blockers.push(blocker("wallet_scan_error", "At least one authoritative wallet scan failed.", {
       count: walletScanErrorCount,
       errors: Array.isArray(summary.walletScanErrors) ? summary.walletScanErrors.slice(0, 5) : [],
+    }));
+  }
+  if (unknownAssetBalanceCount > 0) {
+    blockers.push(blocker("unknown_asset_universe_gap", "Transaction-derived asset universe contains token targets that are not committed to the registry or protocol-reader covered.", {
+      unknownTargetCount: assetUniverseUnknownTargetCount,
+      unknownAssetBalanceCount,
+      unknownTargets: Array.isArray(summary.assetUniverse?.unknownTargets) ? summary.assetUniverse.unknownTargets.slice(0, 5) : [],
+      unknownAssetBalances: Array.isArray(summary.unknownAssetBalances) ? summary.unknownAssetBalances.slice(0, 5) : [],
     }));
   }
   const protocolIssues = protocolIssueCount(summary);
@@ -136,6 +146,9 @@ export function buildAssetTrackingSlice({
     walletCoverage,
     walletSource: summary.walletSource || null,
     walletObservedAt: summary.walletObservedAt || null,
+    assetUniverse: summary.assetUniverse || null,
+    unknownAssetBalanceCount,
+    assetUniverseUnknownTargetCount,
     externalReferenceUsd,
     externalProvider: summary.fullWalletProvider || null,
     externalUnclassifiedUsd,

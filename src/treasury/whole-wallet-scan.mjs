@@ -1,6 +1,6 @@
 import { EVM_CHAINS } from "../chains/registry.mjs";
 import { readBitcoinAddressBalance } from "../executor/helpers/settlement-proof.mjs";
-import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
+import { readErc20Balance, readErc20Metadata, readErc4626SharePreview, readNativeBalance } from "../evm/account-state.mjs";
 import { priceForAssetUsd } from "../market/prices.mjs";
 import {
   ETHEREUM_WBTC_TOKEN,
@@ -15,6 +15,7 @@ import {
 } from "../assets/tokens.mjs";
 import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
 import { dispatchPosition } from "../protocol-readers/dispatch.mjs";
+import { assetUniverseTokenTargets } from "./asset-universe.mjs";
 
 // Side-effect: ensure protocol readers are registered before any inventory
 // scan runs. bootstrapReaders is idempotent (guarded by _bootstrapped).
@@ -98,10 +99,31 @@ function nativeRecord(chain, balanceWei, prices, rpcUrl) {
   };
 }
 
-function tokenRecord(chain, token, balance, prices, rpcUrl) {
-  const asset = tokenAsset(chain, token);
+function stablePriceMetadata(symbol = "") {
+  const normalized = String(symbol || "").toUpperCase();
+  if (["USDC", "USDT", "RLUSD", "USDC.E"].includes(normalized) || /(?:USDC|USDT|RLUSD)/u.test(normalized)) {
+    return { family: "stablecoin", priceKey: "usd_stable" };
+  }
+  return {};
+}
+
+function tokenRecord(chain, token, balance, prices, rpcUrl, metadata = {}) {
+  const overrides = {};
+  if (metadata.ticker || metadata.symbol) overrides.ticker = metadata.ticker || metadata.symbol;
+  if (metadata.family) overrides.family = metadata.family;
+  if (Number.isInteger(metadata.decimals)) overrides.decimals = metadata.decimals;
+  if (metadata.priceKey) overrides.priceKey = metadata.priceKey;
+  Object.assign(overrides, {
+    ...stablePriceMetadata(overrides.ticker),
+    ...Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined)),
+  });
+  const asset = tokenAsset(chain, token, overrides);
   const actualDecimal = unitsToDecimal(balance, asset.decimals ?? 18);
-  const estimatedUsd = Number.isFinite(actualDecimal) ? actualDecimal * (priceForAssetUsd(asset, prices) ?? NaN) : null;
+  const estimatedUsd = Number.isFinite(metadata.estimatedUsdOverride)
+    ? metadata.estimatedUsdOverride
+    : Number.isFinite(actualDecimal)
+      ? actualDecimal * (priceForAssetUsd(asset, prices) ?? NaN)
+      : null;
   return {
     chain,
     token,
@@ -111,6 +133,13 @@ function tokenRecord(chain, token, balance, prices, rpcUrl) {
     actualDecimal,
     estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null,
     rpcUrl: rpcUrl || null,
+    registered: metadata.registered ?? null,
+    trackingStatus: metadata.trackingStatus || null,
+    sourceKinds: metadata.sourceKinds || [],
+    tokenName: metadata.name || null,
+    metadataRpcUrl: metadata.metadataRpcUrl || null,
+    valuation: metadata.valuation || null,
+    countedInWalletTotal: metadata.trackingStatus === "protocol_reader_covered" ? false : true,
   };
 }
 
@@ -356,6 +385,8 @@ export function buildWholeWalletInventory({
   observedAt,
   protocolPositions = [],
   readerErrors = [],
+  assetUniverse = null,
+  tokenMetadata = {},
 } = {}) {
   const native = [];
   const tokenEntries = [];
@@ -387,7 +418,8 @@ export function buildWholeWalletInventory({
       continue;
     }
     if (entry?.balance && BigInt(entry.balance) > 0n) {
-      tokenEntries.push(tokenRecord(entry.chain, entry.token, BigInt(entry.balance), prices, entry.rpcUrl));
+      const metadata = tokenMetadata[tokenBalanceKey(entry)] || {};
+      tokenEntries.push(tokenRecord(entry.chain, entry.token, BigInt(entry.balance), prices, entry.rpcUrl, metadata));
     }
   }
 
@@ -399,7 +431,8 @@ export function buildWholeWalletInventory({
   if (Number.isFinite(externalPortfolio?.walletUsd) && externalPortfolio.walletUsd > localTotalUsd + 0.01) {
     externalUnclassifiedUsd = externalPortfolio.walletUsd - localTotalUsd;
   }
-  const holdings = [...native, ...tokenEntries];
+  const walletTokenEntries = tokenEntries.filter((item) => item.countedInWalletTotal !== false);
+  const holdings = [...native, ...walletTokenEntries];
   const tokenUsd = holdings
     .map((item) => item.estimatedUsd)
     .filter(Number.isFinite)
@@ -422,6 +455,13 @@ export function buildWholeWalletInventory({
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
   const totalUsd = tokenUsd + protocolUsd;
+  const unknownAssetBalances = tokenEntries.filter((item) => item.trackingStatus === "pending_whitelist_review");
+  const assetUniverseStatus = assetUniverse?.status || null;
+  const authoritativeScanErrorCount = scanErrors.filter((item) => item.kind !== "external_portfolio").length;
+  const walletCoverage =
+    authoritativeScanErrorCount === 0 && unknownAssetBalances.length === 0
+      ? "full_rpc"
+      : "partial_supported";
 
   return {
     schemaVersion: 2,
@@ -453,8 +493,72 @@ export function buildWholeWalletInventory({
       externalTotalPortfolioUsd: externalPortfolio?.totalPortfolioUsd ?? null,
       externalUnclassifiedUsd,
       externalProvider: externalPortfolio?.provider || null,
+      walletCoverage,
+      assetUniverseStatus,
+      assetUniverseTargetCount: assetUniverse?.targetCount ?? null,
+      assetUniverseUnknownTargetCount: assetUniverse?.unknownTargetCount ?? null,
+      unknownAssetBalanceCount: unknownAssetBalances.length,
     },
+    assetUniverse: assetUniverse ? {
+      status: assetUniverse.status,
+      targetCount: assetUniverse.targetCount,
+      registeredTargetCount: assetUniverse.registeredTargetCount,
+      protocolReaderCoveredTargetCount: assetUniverse.protocolReaderCoveredTargetCount,
+      unknownTargetCount: assetUniverse.unknownTargetCount,
+      unknownTargets: (assetUniverse.unknownTargets || []).slice(0, 25),
+    } : null,
+    unknownAssetBalances,
     source: externalPortfolio ? "live_scan_with_external_reference" : "live_scan",
+  };
+}
+
+function mergeTokenTargets(primary = [], extra = []) {
+  const byKey = new Map();
+  for (const target of [...primary, ...extra]) {
+    const key = tokenBalanceKey(target);
+    if (!key) continue;
+    byKey.set(key, {
+      ...(byKey.get(key) || {}),
+      ...target,
+      token: target.token,
+      chain: target.chain,
+    });
+  }
+  return [...byKey.values()];
+}
+
+async function enrichErc4626Valuation({ chain, token, balance, metadata, prices, fetchImpl }) {
+  if (!balance || BigInt(balance) <= 0n) return metadata;
+  const hasDirectPrice = Boolean(metadata.priceKey || stablePriceMetadata(metadata.ticker || metadata.symbol).priceKey);
+  if (hasDirectPrice && metadata.trackingStatus !== "pending_whitelist_review") return metadata;
+  const preview = await readErc4626SharePreview(chain, token, balance, { fetchImpl }).catch(() => null);
+  if (!preview?.asset) return metadata;
+  const underlyingMetadata = await readErc20Metadata(chain, preview.asset, { fetchImpl }).catch(() => null);
+  const underlyingSymbol = underlyingMetadata?.symbol || null;
+  const underlyingDecimals = Number.isInteger(underlyingMetadata?.decimals) ? underlyingMetadata.decimals : null;
+  const underlyingAsset = tokenAsset(chain, preview.asset, {
+    ticker: underlyingSymbol || undefined,
+    decimals: underlyingDecimals ?? undefined,
+    ...stablePriceMetadata(underlyingSymbol),
+  });
+  const underlyingDecimal = unitsToDecimal(preview.assets, underlyingAsset.decimals ?? 18);
+  const underlyingPriceUsd = priceForAssetUsd(underlyingAsset, prices);
+  const estimatedUsdOverride = Number.isFinite(underlyingDecimal) && Number.isFinite(underlyingPriceUsd)
+    ? underlyingDecimal * underlyingPriceUsd
+    : null;
+  return {
+    ...metadata,
+    valuation: {
+      kind: "erc4626_preview",
+      underlyingToken: preview.asset,
+      underlyingSymbol,
+      underlyingDecimals: underlyingAsset.decimals ?? null,
+      underlyingAssets: preview.assets.toString(),
+      underlyingDecimal,
+      underlyingPriceUsd: Number.isFinite(underlyingPriceUsd) ? underlyingPriceUsd : null,
+      rpcUrl: preview.rpcUrl || null,
+    },
+    estimatedUsdOverride,
   };
 }
 
@@ -470,6 +574,7 @@ export async function scanWholeWalletInventory({
   ledgerPositions = [],
   signer = null,
   protocolPositionDispatcher = dispatchLedgerPositions,
+  assetUniverse = null,
 } = {}) {
   const scanErrors = [];
 
@@ -484,16 +589,42 @@ export async function scanWholeWalletInventory({
   }
 
   const tokenEntries = [];
+  const universeTargets = assetUniverseTokenTargets(assetUniverse);
+  const tokenMetadata = Object.fromEntries(universeTargets.map((target) => [tokenBalanceKey(target), target]));
   for (const chain of chains) {
-    const targets = knownWholeWalletTokenTargets({ families, chain });
+    const targets = mergeTokenTargets(
+      knownWholeWalletTokenTargets({ families, chain }),
+      universeTargets.filter((target) => target.chain === chain),
+    );
     const seenTokensForChain = new Set();
     for (const target of targets) {
       const tokenKey = normalized(target.token);
       if (seenTokensForChain.has(tokenKey)) continue;
       seenTokensForChain.add(tokenKey);
       try {
+        const metadata = tokenMetadata[`${chain}:${tokenKey}`] || {};
+        if (!Number.isInteger(metadata.decimals) || !metadata.ticker) {
+          const onchain = await readErc20Metadata(chain, target.token, { fetchImpl });
+          if (onchain) {
+            metadata.decimals ??= onchain.decimals;
+            metadata.ticker ??= onchain.symbol;
+            metadata.symbol ??= onchain.symbol;
+            metadata.name ??= onchain.name;
+            metadata.metadataRpcUrl ??= onchain.rpcUrl;
+            tokenMetadata[`${chain}:${tokenKey}`] = metadata;
+          }
+        }
         const result = await readErc20Balance(chain, target.token, address, { fetchImpl });
         if (result.balance > 0n) {
+          const enrichedMetadata = await enrichErc4626Valuation({
+            chain,
+            token: target.token,
+            balance: result.balance,
+            metadata,
+            prices,
+            fetchImpl,
+          });
+          tokenMetadata[`${chain}:${tokenKey}`] = enrichedMetadata;
           tokenEntries.push({
             chain,
             token: target.token,
@@ -577,6 +708,8 @@ export async function scanWholeWalletInventory({
     externalPortfolio,
     protocolPositions,
     readerErrors,
+    assetUniverse,
+    tokenMetadata,
   });
 }
 

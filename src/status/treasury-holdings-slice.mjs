@@ -201,6 +201,7 @@ export function buildTreasuryHoldingsSlice(
     ...(latest.native || []).map((entry) => inventoryItem(entry, "native")),
     ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || [])
       .filter((entry) => !isExternalUnclassifiedEntry(entry))
+      .filter((entry) => entry.countedInWalletTotal !== false)
       .map((entry) =>
       inventoryItem(entry, "token"),
     ),
@@ -216,7 +217,7 @@ export function buildTreasuryHoldingsSlice(
   const walletCoverage = externalCoverage
     ? externalCoverage.stale ? "full_external_stale" : "full_external"
     : selected.source === "whole_wallet_inventory"
-      ? "partial_supported"
+      ? latest.summary?.walletCoverage || "partial_supported"
       : selected.source;
 
   return {
@@ -251,5 +252,8 @@ export function buildTreasuryHoldingsSlice(
     externalWalletUsd: externalCoverage?.walletUsd ?? null,
     externalTotalPortfolioUsd: externalCoverage?.totalPortfolioUsd ?? null,
     unclassifiedUsd: externalCoverage?.unclassifiedUsd ?? null,
+    assetUniverse: latest.assetUniverse || null,
+    unknownAssetBalanceCount: latest.summary?.unknownAssetBalanceCount ?? 0,
+    unknownAssetBalances: (latest.unknownAssetBalances || []).slice(0, 10),
   };
 }

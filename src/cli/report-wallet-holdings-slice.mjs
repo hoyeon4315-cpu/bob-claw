@@ -52,7 +52,7 @@ function normaliseTicker(t) {
   return map[low] || low;
 }
 
-function buildItems(inv) {
+export function buildItems(inv) {
   const out = [];
   for (const n of inv.native || []) {
     const usd = Number(n.estimatedUsd);
@@ -69,6 +69,7 @@ function buildItems(inv) {
   }
   for (const t of inv.tokenBalances || []) {
     if (t?.family === 'external_unclassified') continue;
+    if (t?.countedInWalletTotal === false) continue;
     const usd = Number(t.estimatedUsd);
     const amt = Number(t.actualDecimal);
     if (!Number.isFinite(amt) || amt === 0) continue;
@@ -79,6 +80,25 @@ function buildItems(inv) {
       amount: amt,
       usd: Number.isFinite(usd) ? usd : null,
       family: 'token',
+      trackingStatus: t.trackingStatus || null,
+    });
+  }
+  for (const p of inv.protocolPositions || []) {
+    const usd = Number(p.estimatedUsd ?? p.usdValue);
+    const amt = Number(p.actualDecimal);
+    if (!Number.isFinite(amt) || amt === 0) continue;
+    out.push({
+      sym: normaliseTicker(p.symbol),
+      name: p.symbol || p.positionId || '',
+      chain: normaliseChain(p.chain),
+      amount: amt,
+      usd: Number.isFinite(usd) ? usd : null,
+      family: 'protocol',
+      protocolId: p.protocolId || null,
+      positionId: p.positionId || null,
+      bindingKind: p.bindingKind || null,
+      confidence: p.confidence || null,
+      freshness: p.freshness || null,
     });
   }
   // Sort richest first, then stable tie-break on sym/chain.
@@ -86,7 +106,7 @@ function buildItems(inv) {
   return out;
 }
 
-function buildScanErrors(inv) {
+export function buildScanErrors(inv) {
   return Array.isArray(inv?.scanErrors)
     ? inv.scanErrors.filter((error) => error?.kind !== 'external_portfolio').map((error) => ({
         kind: error?.kind || null,
@@ -104,7 +124,7 @@ function finiteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function latestExternalCoverage(records = [], inv = null) {
+export function latestExternalCoverage(records = [], inv = null) {
   const currentWalletUsd = finiteNumber(inv?.summary?.externalWalletUsd);
   if (Number.isFinite(currentWalletUsd)) {
     return {
@@ -120,22 +140,21 @@ function latestExternalCoverage(records = [], inv = null) {
   return null;
 }
 
-async function main() {
-  const inventoryRecords = await readJsonlRecords(INVENTORY_PATH);
+export function buildWalletHoldingsPayload({
+  inventoryRecords,
+  wrappedBtcLoopSlice = null,
+  recursiveWrappedBtcLoopScaffold = null,
+  now = new Date(),
+} = {}) {
   const inv = Array.isArray(inventoryRecords) ? inventoryRecords.at(-1) : null;
-  const [wrappedBtcLoopSlice, recursiveWrappedBtcLoopScaffold] = await Promise.all([
-    readJsonIfExists(WRAPPED_BTC_LOOP_SLICE_PATH),
-    readJsonIfExists(RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH),
-  ]);
   const protocolApr = buildProtocolAprSlice({
     wrappedBtcLoopSlice,
     recursiveWrappedBtcLoopScaffold,
   });
-  let payload;
   if (!inv) {
-    payload = {
+    return {
       schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
+      generatedAt: now.toISOString(),
       pending: true,
       reason: 'whole-wallet-inventory.jsonl missing or empty',
       address: null,
@@ -143,36 +162,60 @@ async function main() {
       items: [],
       protocolApr,
     };
-  } else {
-    const items = buildItems(inv);
-    const scanErrors = buildScanErrors(inv);
-    const coverage = latestExternalCoverage(inventoryRecords, inv);
-    const walletCoverage = coverage
-      ? coverage.stale ? 'full_external_stale' : 'full_external'
-      : 'partial_supported';
-    payload = {
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      observedAt: inv.observedAt || null,
-      pending: items.length === 0,
-      address: inv.address || null,
-      totalUsd: items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0),
-      items,
-      protocolApr,
-      source: 'whole_wallet_inventory',
-      scanErrorCount: scanErrors.length,
-      scanErrors,
-      itemizedSupportedWalletUsd: finiteNumber(inv.summary?.itemizedWalletUsd),
-      walletCoverage,
-      fullWalletUsd: coverage?.walletUsd ?? null,
-      fullWalletObservedAt: coverage?.observedAt ?? null,
-      fullWalletProvider: coverage?.provider ?? null,
-      fullWalletStale: coverage?.stale === true,
-      externalWalletUsd: coverage?.walletUsd ?? null,
-      externalTotalPortfolioUsd: coverage?.totalPortfolioUsd ?? null,
-      unclassifiedUsd: coverage?.unclassifiedUsd ?? null,
-    };
   }
+
+  const items = buildItems(inv);
+  const scanErrors = buildScanErrors(inv);
+  const coverage = latestExternalCoverage(inventoryRecords, inv);
+  const walletCoverage = coverage
+    ? coverage.stale ? 'full_external_stale' : 'full_external'
+    : inv.summary?.walletCoverage || 'partial_supported';
+  const tokenUsd = finiteNumber(inv.totals?.tokenUsd);
+  const protocolUsd = finiteNumber(inv.totals?.protocolUsd);
+  const totalUsd = finiteNumber(inv.totals?.totalUsd)
+    ?? items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0);
+  return {
+    schemaVersion: 1,
+    generatedAt: now.toISOString(),
+    observedAt: inv.observedAt || null,
+    pending: items.length === 0,
+    address: inv.address || null,
+    totalUsd,
+    walletUsd: tokenUsd,
+    protocolUsd,
+    protocolStaleUsd: finiteNumber(inv.totals?.protocolStaleUsd),
+    items,
+    protocolApr,
+    source: 'whole_wallet_inventory',
+    scanErrorCount: scanErrors.length,
+    scanErrors,
+    itemizedSupportedWalletUsd: finiteNumber(inv.summary?.itemizedWalletUsd),
+    walletCoverage,
+    fullWalletUsd: coverage?.walletUsd ?? null,
+    fullWalletObservedAt: coverage?.observedAt ?? null,
+    fullWalletProvider: coverage?.provider ?? null,
+    fullWalletStale: coverage?.stale === true,
+    externalWalletUsd: coverage?.walletUsd ?? null,
+    externalTotalPortfolioUsd: coverage?.totalPortfolioUsd ?? null,
+    unclassifiedUsd: coverage?.unclassifiedUsd ?? null,
+    assetUniverse: inv.assetUniverse || null,
+    unknownAssetBalanceCount: Number(inv.summary?.unknownAssetBalanceCount || 0),
+    unknownAssetBalances: Array.isArray(inv.unknownAssetBalances) ? inv.unknownAssetBalances : [],
+  };
+}
+
+export async function main() {
+  const inventoryRecords = await readJsonlRecords(INVENTORY_PATH);
+  const [wrappedBtcLoopSlice, recursiveWrappedBtcLoopScaffold] = await Promise.all([
+    readJsonIfExists(WRAPPED_BTC_LOOP_SLICE_PATH),
+    readJsonIfExists(RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH),
+  ]);
+  const payload = buildWalletHoldingsPayload({
+    inventoryRecords,
+    wrappedBtcLoopSlice,
+    recursiveWrappedBtcLoopScaffold,
+    now: new Date(),
+  });
   await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
   await fs.writeFile(OUTPUT_PATH, JSON.stringify(payload, null, 2) + '\n', 'utf8');
   process.stdout.write(JSON.stringify({
@@ -184,7 +227,9 @@ async function main() {
   }) + '\n');
 }
 
-main().catch(err => {
-  process.stderr.write(`[report-wallet-holdings-slice] ${err?.stack || err}\n`);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch(err => {
+    process.stderr.write(`[report-wallet-holdings-slice] ${err?.stack || err}\n`);
+    process.exit(1);
+  });
+}

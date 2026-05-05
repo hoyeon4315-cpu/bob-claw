@@ -625,6 +625,51 @@ test("capital summary uses wallet plus marked protocol positions as current tota
   assert.equal(slice.positionItems[0].markSource, "protocol_position_mark");
 });
 
+test("capital summary keeps unknown asset universe gaps out of exact confidence", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 100,
+      walletCoverage: "full_rpc",
+      items: [{ sym: "usdc", usd: 100 }],
+      assetUniverse: {
+        status: "needs_review",
+        unknownTargetCount: 1,
+      },
+      unknownAssetBalanceCount: 1,
+      unknownAssetBalances: [{ chain: "base", token: "0x1234567890123456789012345678901234567890" }],
+    },
+    merklActivePositions: { items: [] },
+    generatedAt: "2026-05-05T22:31:00.000Z",
+  });
+
+  assert.equal(slice.assetConfidence, "verified_minimum");
+  assert.equal(slice.reconciliationState, "needs_reconciliation");
+  assert.equal(slice.assetUniverseUnknownTargetCount, 1);
+  assert.equal(slice.unknownAssetBalanceCount, 1);
+  assert.equal(slice.autoExecutionSafe, false);
+});
+
+test("capital summary can reach verified_current when wallet coverage is full_rpc and no gaps remain", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 100,
+      walletCoverage: "full_rpc",
+      items: [{ sym: "usdc", usd: 100 }],
+      assetUniverse: {
+        status: "closed",
+        unknownTargetCount: 0,
+      },
+      unknownAssetBalanceCount: 0,
+    },
+    merklActivePositions: { items: [] },
+    generatedAt: "2026-05-05T22:31:00.000Z",
+  });
+
+  assert.equal(slice.assetConfidence, "verified_current");
+  assert.equal(slice.reconciliationState, "reconciled");
+  assert.equal(slice.currentTotalUsd, 100);
+});
+
 test("capital summary stays verified minimum when latest protocol mark diagnostics failed", () => {
   const slice = buildCapitalSummarySlice({
     walletHoldings: {

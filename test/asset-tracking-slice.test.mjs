@@ -112,3 +112,27 @@ test("asset tracking blocks risk readiness for protocol mark or signer gaps", ()
   assert.equal(slice.blockers.some((item) => item.code === "protocol_position_gap"), true);
   assert.equal(slice.blockers.some((item) => item.code === "movement_in_flight"), true);
 });
+
+test("asset tracking blocks risk readiness for tx-derived unknown asset universe gaps", () => {
+  const slice = buildAssetTrackingSlice({
+    capitalSummary: {
+      currentWalletUsd: 200,
+      protocolDeployedUsd: 0,
+      currentTotalUsd: 200,
+      walletCoverage: "full_rpc",
+      walletScanErrorCount: 0,
+      protocolMarkIssueCount: 0,
+      pendingSignerActionCount: 0,
+      assetUniverseUnknownTargetCount: 1,
+      unknownAssetBalanceCount: 1,
+      assetUniverse: {
+        unknownTargets: [{ chain: "base", token: "0x1234567890123456789012345678901234567890" }],
+      },
+      unknownAssetBalances: [{ chain: "base", token: "0x1234567890123456789012345678901234567890" }],
+    },
+  });
+
+  assert.equal(slice.riskReady, false);
+  assert.equal(slice.exactTotalUsd, null);
+  assert.equal(slice.blockers.some((item) => item.code === "unknown_asset_universe_gap"), true);
+});

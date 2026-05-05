@@ -318,6 +318,46 @@ test("runMarkProtocolPositionMarksCli writes reader-backed logical marks with US
   assert.equal(summary.events[0].valueUsd, 5.1);
 });
 
+test("runMarkProtocolPositionMarksCli emits explicit failure when reader returns zero positions for active ledger entry", async () => {
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    observedAt: OBSERVED_AT,
+    positionEvents: [
+      {
+        event: "position_opened",
+        status: "open",
+        observedAt: OBSERVED_AT,
+        positionId: "merkl:base:yo-opportunity:0xentry",
+        opportunityId: "yo-opportunity",
+        chain: "base",
+        protocolId: "yo",
+        bindingKind: "erc4626_vault_supply_withdraw",
+        vaultAddress: "0xVault",
+        shareTokenAddress: "0xVault",
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      },
+    ],
+    walletAddress: WALLET_ADDRESS,
+    readerProviderFactory: ({ address }) => {
+      if (address === "0xVault") {
+        return {
+          balanceOf: async () => 0n,
+          convertToAssets: async () => 0n,
+          asset: async () => "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          decimals: async () => 6,
+          symbol: async () => "YO-USDC",
+        };
+      }
+      return { decimals: async () => 6 };
+    },
+    priceReader: async () => 1,
+  });
+
+  assert.equal(summary.markedCount, 0);
+  assert.equal(summary.failedCount, 1);
+  assert.equal(summary.events[0].failureKind, "zero_position_observed");
+});
+
 test("runMarkProtocolPositionMarksCli supports aave_v3 pool bindings through the reader path", async () => {
   const summary = await runMarkProtocolPositionMarksCli({
     args: { write: false, json: true },
