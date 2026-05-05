@@ -20,8 +20,33 @@ test("dashboard stage explain reads stage blockers and evidence from lanePolicy"
   assert.deepEqual(explanation.evidence, { unresolvedRefillRoutes: 7 });
 });
 
-test("dashboard stage explain prefers live dashboard context over stale snapshot", async () => {
+test("dashboard stage explain defaults to the latest written snapshot", async () => {
   const dashboard = await loadDashboardForStageExplain({
+    snapshotReader: () => ({
+      overall: {
+        lanePolicy: {
+          stage: "B",
+          stageBlockers: ["snapshot"],
+        },
+      },
+    }),
+    buildDashboardContext: async () => ({
+      overall: {
+        lanePolicy: {
+          stage: "C",
+          stageBlockers: [],
+        },
+      },
+    }),
+  });
+
+  assert.equal(dashboard.overall.lanePolicy.stage, "B");
+  assert.deepEqual(dashboard.overall.lanePolicy.stageBlockers, ["snapshot"]);
+});
+
+test("dashboard stage explain can explicitly prefer live dashboard context", async () => {
+  const dashboard = await loadDashboardForStageExplain({
+    snapshotOnly: false,
     snapshotReader: () => ({
       overall: {
         lanePolicy: {
@@ -46,6 +71,7 @@ test("dashboard stage explain prefers live dashboard context over stale snapshot
 
 test("dashboard stage explain falls back to snapshot when live context fails", async () => {
   const dashboard = await loadDashboardForStageExplain({
+    snapshotOnly: false,
     snapshotReader: () => ({
       overall: {
         lanePolicy: {

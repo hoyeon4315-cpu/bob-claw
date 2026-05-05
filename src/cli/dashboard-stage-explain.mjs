@@ -27,7 +27,7 @@ export function readDashboardStatus() {
 }
 
 export async function loadDashboardForStageExplain({
-  snapshotOnly = false,
+  snapshotOnly = true,
   snapshotReader = readDashboardStatus,
   buildDashboardContext = null,
 } = {}) {
@@ -144,7 +144,8 @@ export function explainCurrentStage(dashboard) {
 }
 
 async function main() {
-  const snapshotOnly = process.argv.slice(2).includes("--snapshot-only");
+  const argv = process.argv.slice(2);
+  const snapshotOnly = !argv.includes("--live");
   const dashboard = await loadDashboardForStageExplain({ snapshotOnly });
   if (!dashboard) {
     console.error("Error: dashboard-status.json not found");
