@@ -78,7 +78,6 @@ async function readJsonIfExists(path) {
 
 async function buildLiveKillSwitchReplay({ status, dashboardStatus, dashboardPath }) {
   if (!status?.halted) return null;
-  if (status?.replay) return status.replay;
 
   const dataDir = config.dataDir || "./data";
   const [
