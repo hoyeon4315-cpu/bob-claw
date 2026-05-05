@@ -166,6 +166,42 @@ test("all-chain autopilot dashboard slice treats routing exhausted as manual bac
   assert.equal(slice.nextAction, "accrue_payback_until_minimum");
 });
 
+test("all-chain autopilot dashboard slice treats LiFi native gas shortfall as deterministic backlog", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-05T10:28:00.000Z",
+    mode: "preview",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 3,
+      autoRefillJobCount: 3,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: { batchStatus: "preview", selectedCount: 0, successCount: 0, failedCount: 0, liveEligibleCount: 1, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        chain: "base",
+        asset: "wBTC.OFT",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        previewBlockedReason: "insufficient_native_balance_for_lifi_gas",
+        attempted: false,
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.blockedCount, 1);
+  assert.equal(slice.refill.unresolvedCount, 0);
+  assert.equal(slice.refill.manualBacklogCount, 1);
+  assert.equal(slice.refill.blockers[0].reason, "insufficient_native_balance_for_lifi_gas");
+  assert.equal(slice.nextAction, "accrue_payback_until_minimum");
+});
+
 test("all-chain autopilot dashboard slice treats route-ready planned refills as backlog, not unresolved routes", () => {
   const slice = buildAllChainAutopilotDashboardSlice({
     observedAt: "2026-05-04T18:31:47.947Z",

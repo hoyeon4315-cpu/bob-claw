@@ -190,6 +190,58 @@ function lifiNativeSourceRequirementBlocked({ plan, source }) {
   };
 }
 
+async function buildLifiBridgePlanWithNativeGasReserve({
+  job,
+  source,
+  amount,
+  senderAddress,
+  buildLifiBridgePlanImpl,
+}) {
+  const buildPlan = (nextAmount) => buildLifiBridgePlanImpl({
+    srcChain: source.chain,
+    dstChain: job.chain,
+    srcToken: source.token,
+    dstToken: job.type === "refill_native" ? ZERO_TOKEN : job.token,
+    amount: nextAmount,
+    senderAddress,
+    recipient: senderAddress,
+  });
+
+  const plan = await buildPlan(amount);
+  const nativeRequirement = lifiNativeSourceRequirementBlocked({ plan, source });
+  if (!nativeRequirement || plan?.planStatus !== "ready") return { plan, blockedReason: null };
+
+  const required = toBigIntOrNull(nativeRequirement.requiredWei);
+  const actual = toBigIntOrNull(nativeRequirement.actualWei);
+  const initialAmount = toBigIntOrNull(plan.amount ?? amount);
+  if (required === null || actual === null || initialAmount === null) {
+    return { plan, blockedReason: "insufficient_native_balance_for_lifi_gas" };
+  }
+
+  const gasReserve = required - initialAmount;
+  if (gasReserve <= 0n) return { plan, blockedReason: "insufficient_native_balance_for_lifi_gas" };
+  if (gasReserve >= actual) return { plan, blockedReason: "source_input_amount_unavailable" };
+
+  const adjustedAmount = actual - gasReserve;
+  if (adjustedAmount <= 0n) return { plan, blockedReason: "source_input_amount_unavailable" };
+  if (adjustedAmount >= initialAmount) return { plan, blockedReason: "insufficient_native_balance_for_lifi_gas" };
+
+  const adjustedPlan = await buildPlan(adjustedAmount.toString());
+  const adjustedRequirement = lifiNativeSourceRequirementBlocked({ plan: adjustedPlan, source });
+  if (adjustedRequirement) {
+    return {
+      plan: adjustedPlan,
+      blockedReason: "insufficient_native_balance_for_lifi_gas",
+      adjustedAmount: adjustedAmount.toString(),
+    };
+  }
+  return {
+    plan: adjustedPlan,
+    blockedReason: null,
+    adjustedAmount: adjustedAmount.toString(),
+  };
+}
+
 function nativeGasBudgetForPlan(plan = {}) {
   const chainConfig = getEvmChainConfig(plan.chain || "");
   if (!chainConfig) return null;
@@ -597,21 +649,19 @@ export async function buildTreasuryRefillExecutionPlan({
       ? positiveBigInt(job.targetAmount)?.toString() || null
       : estimateInputAmountFromSource({ job, source });
     if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
-    plan = await buildLifiBridgePlanImpl({
-      srcChain: source.chain,
-      dstChain: job.chain,
-      srcToken: source.token,
-      dstToken: job.type === "refill_native" ? ZERO_TOKEN : job.token,
+    const lifiResult = await buildLifiBridgePlanWithNativeGasReserve({
+      job,
+      source,
       amount,
       senderAddress,
-      recipient: senderAddress,
+      buildLifiBridgePlanImpl,
     });
-    const nativeRequirement = lifiNativeSourceRequirementBlocked({ plan, source });
-    if (nativeRequirement) {
+    plan = lifiResult.plan;
+    if (lifiResult.blockedReason) {
       return blockedPreparation({
         job,
         executor,
-        blockedReason: "insufficient_native_balance_for_lifi_gas",
+        blockedReason: lifiResult.blockedReason,
         plan,
       });
     }
@@ -700,15 +750,22 @@ export async function buildTreasuryRefillExecutionPlan({
       if (step2Plan.planStatus !== "ready" && isNoRoutePlan(step2Plan) && job.type === "refill_token") {
         const lifiAmount = estimateInputAmountFromSource({ job, source });
         if (lifiAmount) {
-          const lifiPlan = await buildLifiBridgePlanImpl({
-            srcChain: source.chain,
-            dstChain: job.chain,
-            srcToken: source.token,
-            dstToken: job.token,
+          const lifiResult = await buildLifiBridgePlanWithNativeGasReserve({
+            job,
+            source,
             amount: lifiAmount,
             senderAddress,
-            recipient: senderAddress,
+            buildLifiBridgePlanImpl,
           });
+          const lifiPlan = lifiResult.plan;
+          if (lifiResult.blockedReason) {
+            return blockedPreparation({
+              job,
+              executor: "lifi_bridge",
+              blockedReason: lifiResult.blockedReason,
+              plan: lifiPlan,
+            });
+          }
           if (lifiPlan.planStatus === "ready") {
             const lifiCoverage = coverageForPlan({ plan: lifiPlan, job, executor: "lifi_bridge" });
             const lifiBridgeBudget = evaluateBridgeMovementCostGuard({

@@ -412,6 +412,68 @@ test("full automation readiness ignores routing exhausted refill backlog as non-
   assert.deepEqual(report.blockers, []);
 });
 
+test("full automation readiness ignores deterministic LiFi native gas refill deferrals as non-live-blocking", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 1 },
+        jobs: [{ requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 4 },
+      executionSurfaces: { summary: { liveEligibleCount: 1 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+          nextAction: null,
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      status: "completed_with_blockers",
+      nextAction: "continue_live_watch",
+      refill: {
+        blockedCount: 1,
+        blockers: [
+          {
+            reason: "insufficient_native_balance_for_lifi_gas",
+            chain: "base",
+            asset: "wBTC.OFT",
+            selectedMethod: "cross_chain_bridge_lifi",
+          },
+        ],
+        attemptedCount: 0,
+        executedCount: 0,
+      },
+    },
+  });
+
+  assert.equal(report.ready, true);
+  assert.equal(report.liveAutomation.ready, true);
+  assert.deepEqual(report.liveAutomation.refillIssueCounts, { native_gas: 1 });
+  assert.deepEqual(report.blockers, []);
+});
+
 test("manage-executor-launchd parseArgs reads install and path overrides", () => {
   const args = parseLaunchdArgs([
     "--json",

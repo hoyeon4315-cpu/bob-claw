@@ -12,6 +12,7 @@ const REFILL_MANUAL_DEFERRAL_REASONS = new Set([
   "routing_exhausted",
   "cross_chain_token_refill_executor_missing",
   "cross_chain_native_refill_executor_missing",
+  "insufficient_native_balance_for_lifi_gas",
 ]);
 
 function isTransientLatestError(report = null) {
@@ -60,7 +61,7 @@ function canaryLadderSummary(policy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduati
   };
 }
 
-function refillNeedsLiveRemediation(item = {}) {
+export function refillNeedsLiveRemediation(item = {}) {
   return Boolean(item.reason) && !REFILL_MANUAL_DEFERRAL_REASONS.has(item.reason);
 }
 

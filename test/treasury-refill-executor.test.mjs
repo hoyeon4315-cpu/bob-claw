@@ -1306,10 +1306,66 @@ test("treasury refill executor allows high-coverage partial LI.FI refills", asyn
   assert.equal(preparation.coverage.coverageBps, "8700");
 });
 
-test("treasury refill executor blocks native-source LI.FI refill when source cannot cover amount plus gas", async () => {
+test("treasury refill executor retries native-source LI.FI refill with source gas reserved", async () => {
+  const calls = [];
+  const gasReserveWei = 37_597_052_000_000n;
+  const sourceActual = 8_236_895_891_095_136n;
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
       jobId: "job-bsc-native-base-wbtc-lifi",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "6324",
+      targetAmountDecimal: 0.00006324,
+      estimatedAssetValueUsd: 5.16,
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: ZERO_TOKEN,
+          actual: "8236895891095136",
+          actualDecimal: 0.008236895891095136,
+          estimatedUsd: 5.16,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async (input) => {
+      calls.push(input);
+      const amount = BigInt(input.amount);
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-05T09:09:18.974Z",
+        planStatus: "ready",
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+        srcAsset: { isNative: true, chain: input.srcChain, token: input.srcToken },
+        dstAsset: { isNative: false, chain: input.dstChain, token: input.dstToken },
+        amount: input.amount,
+        minimumOutputAmount: "6324",
+        expectedOutputAmount: "6325",
+        nativeSourceRequirementWei: (amount + gasReserveWei).toString(),
+        steps: [{ id: "lifi_bridge" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.executor, "lifi_bridge");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].amount, sourceActual.toString());
+  assert.equal(calls[1].amount, (sourceActual - gasReserveWei).toString());
+  assert.equal(preparation.plan.amount, calls[1].amount);
+});
+
+test("treasury refill executor blocks native-source LI.FI refill when gas reserve consumes source", async () => {
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-bsc-native-base-wbtc-lifi-no-spendable",
       type: "refill_token",
       chain: "base",
       asset: "wBTC.OFT",
@@ -1342,14 +1398,65 @@ test("treasury refill executor blocks native-source LI.FI refill when source can
       amount: input.amount,
       minimumOutputAmount: "6324",
       expectedOutputAmount: "6325",
-      nativeSourceRequirementWei: "8274493443031136",
+      nativeSourceRequirementWei: "16473791782190272",
       steps: [{ id: "lifi_bridge" }],
     }),
   });
 
   assert.equal(preparation.status, "blocked");
   assert.equal(preparation.executor, "lifi_bridge");
-  assert.equal(preparation.blockedReason, "insufficient_native_balance_for_lifi_gas");
+  assert.equal(preparation.blockedReason, "source_input_amount_unavailable");
+});
+
+test("treasury refill executor blocks gas-reserved native-source LI.FI when reduced output is below refill target", async () => {
+  const gasReserveWei = 37_597_052_000_000n;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-bsc-native-base-wbtc-lifi-low-coverage",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: WBTC_OFT_TOKEN,
+      targetAmount: "10000",
+      targetAmountDecimal: 0.0001,
+      estimatedAssetValueUsd: 5.16,
+      executionMethod: "cross_chain_bridge_lifi",
+      fundingSource: {
+        source: {
+          chain: "bsc",
+          token: ZERO_TOKEN,
+          actual: "8236895891095136",
+          actualDecimal: 0.008236895891095136,
+          estimatedUsd: 5.16,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildLifiBridgePlanImpl: async (input) => {
+      const amount = BigInt(input.amount);
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-05T09:09:18.974Z",
+        planStatus: "ready",
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+        srcAsset: { isNative: true, chain: input.srcChain, token: input.srcToken },
+        dstAsset: { isNative: false, chain: input.dstChain, token: input.dstToken },
+        amount: input.amount,
+        minimumOutputAmount: "8000",
+        expectedOutputAmount: "8000",
+        nativeSourceRequirementWei: (amount + gasReserveWei).toString(),
+        steps: [{ id: "lifi_bridge" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "blocked");
+  assert.equal(preparation.executor, "lifi_bridge");
+  assert.equal(preparation.blockedReason, "executor_output_below_refill_target");
+  assert.equal(preparation.coverage.coverageBps, "8000");
 });
 
 test("treasury refill executor allows high-coverage partial Gateway BTC-family refills", async () => {

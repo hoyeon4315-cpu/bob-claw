@@ -9,6 +9,7 @@ import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { collectExecutorRuntimeReadiness } from "../runtime/executor-runtime-readiness.mjs";
 import {
   buildAllChainAutopilotDashboardSlice,
+  refillNeedsLiveRemediation,
   resolveAllChainAutopilotReport,
 } from "../status/all-chain-autopilot-slice.mjs";
 
@@ -60,7 +61,7 @@ function classifyRefillIssue(reason = null) {
   ) {
     return "inventory_insufficient";
   }
-  if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance|native gas|gas bootstrap/iu.test(text)) {
+  if (/insufficient_native_balance_for_lifi_gas|insufficient_native_balance_for_gas|insufficient_native_gas_balance|native gas|gas bootstrap/iu.test(text)) {
     return "native_gas";
   }
   if (/signer_execution_failed|Signer did not complete/iu.test(text)) {
@@ -143,7 +144,7 @@ export function buildFullAutomationReadiness({
   const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
   const unresolvedRefillRoutes = liveAutomationObserved &&
     (refillBlockers.length > 0
-      ? refillBlockers.some((item) => item?.reason !== "routing_exhausted")
+      ? refillBlockers.some((item) => refillNeedsLiveRemediation(item))
       : (autopilot?.refill?.blockedCount ?? 0) > 0);
   const capitalAutomationReady =
     capitalPlanDecision === "BALANCED" ||
