@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runAutopilotCommand } from "../src/cli/run-all-chain-autopilot.mjs";
+import { parseArgs, runAutopilotCommand } from "../src/cli/run-all-chain-autopilot.mjs";
+
+test("all-chain CLI parses controlled refill stop mode", () => {
+  const args = parseArgs(["--execute", "--dry-run-first", "--stop-after-refill"]);
+  assert.equal(args.execute, true);
+  assert.equal(args.dryRunFirst, true);
+  assert.equal(args.stopAfterRefill, true);
+});
 
 test("all-chain dry-run-first does not execute after preview blockers", async () => {
   const calls = [];

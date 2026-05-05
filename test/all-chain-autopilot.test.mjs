@@ -836,6 +836,51 @@ test("all-chain autopilot writes latest completed snapshot after a finished run"
   assert.equal(latestCompleted.summary.refillExecutedCount, report.summary.refillExecutedCount);
 });
 
+test("all-chain autopilot can stop cleanly after refill finalization", async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), "all-chain-autopilot-"));
+  t.after(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  const seen = [];
+  const command = ({ args }) => {
+    seen.push(args);
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: true,
+    stopAfterRefill: true,
+    dataDir,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.phase, "refill_complete");
+  assert.equal(report.blockedReason, null);
+  assert.equal(report.summary.stopAfterRefill, true);
+  assert.equal(report.summary.refillExecutedCount, 2);
+  assert.equal(seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs"), false);
+  assert.equal(seen.some((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs"), false);
+
+  const latest = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest.json"), "utf8"));
+  const latestCompleted = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"));
+  assert.equal(latest.status, "completed_with_blockers");
+  assert.equal(latest.phase, "refill_complete");
+  assert.equal(latestCompleted.status, "completed_with_blockers");
+  assert.equal(latestCompleted.phase, "refill_complete");
+  assert.equal(latestCompleted.summary.stopAfterRefill, true);
+
+  const runs = (await readFile(join(dataDir, "all-chain-autopilot-runs.jsonl"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].autopilotRunId, report.autopilotRunId);
+  assert.equal(runs[0].phase, "refill_complete");
+});
+
 test("all-chain autopilot runs auto-kill before live-capable steps and suppresses execute when armed", async () => {
   const seen = [];
   const command = ({ args }) => {

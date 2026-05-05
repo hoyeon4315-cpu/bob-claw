@@ -1140,6 +1140,12 @@ async function writeAutopilotLatestCompleted(dataDir, report) {
   await writeTextIfChanged(join(dataDir, "all-chain-autopilot-latest-completed.json"), `${safeJsonStringify(report, 2)}\n`);
 }
 
+async function writeAutopilotCompletedArtifacts(dataDir, report) {
+  await writeAutopilotLatest(dataDir, report);
+  await writeAutopilotLatestCompleted(dataDir, report);
+  await new JsonlStore(dataDir).append("all-chain-autopilot-runs", report);
+}
+
 async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }) {
   const result = await runCommandImpl({ args, cwd, timeoutMs });
   steps.push(commandStep(name, args, result));
@@ -1161,6 +1167,7 @@ export async function runAllChainAutopilot({
   enableDexProbeExecution = false,
   canaryTimeoutMs = 600_000,
   dispatchTimeoutMs = 600_000,
+  stopAfterRefill = false,
   runCommandImpl = defaultRunCommand,
   readJsonlImpl = readJsonl,
   dataDir = config.dataDir,
@@ -1506,6 +1513,38 @@ export async function runAllChainAutopilot({
       : "ready";
   const allowLiveStrategyDispatch = allowLiveCapableExecution;
 
+  const refillSummary = {
+    officialChainCount: chains.length,
+    refillJobCount: mergedRefillJobs.length,
+    treasuryRefillJobCount: refillPlan?.summary?.jobCount ?? 0,
+    capitalManagerRefillJobCount: capitalManagerRefillPlan?.jobs?.summary?.jobCount ?? 0,
+    inboundRouteJobCount: inboundWatcherResult.json?.routingPlan?.jobs?.length ?? 0,
+    autoRefillJobCount: autoRefillJobs.length,
+    refillAttemptedCount: refillExecutions.filter((item) => item.attempted).length,
+    refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
+    autoRefillSourceCounts: autoRefillJobs.reduce((counts, job) => {
+      const key = job.autopilotRefillSource || "unknown";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {}),
+    inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
+    inventoryFreshness: {
+      treasuryBlocker: treasuryInventoryBlocker,
+      capitalManagerBlocker: capitalManagerInventoryBlocker,
+    },
+    capitalManager: compactCapitalManager(capitalManagerRefillPlan),
+    executionGate: {
+      ...liveExecutionGate,
+      autopilotRunId,
+      autoKillTriggered: autoKillResult.json?.triggered === true,
+      killSwitchActive: autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
+      killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
+    },
+    strategyDispatch: {
+      capitalDispatchReadiness,
+    },
+  };
+
   if (write) {
     await writeAutopilotLatest(dataDir, buildAutopilotProgressReport({
       execute,
@@ -1513,40 +1552,47 @@ export async function runAllChainAutopilot({
       autopilotRunId,
       chains,
       phase: "refill_complete",
-      summary: {
-        officialChainCount: chains.length,
-        refillJobCount: mergedRefillJobs.length,
-        treasuryRefillJobCount: refillPlan?.summary?.jobCount ?? 0,
-        capitalManagerRefillJobCount: capitalManagerRefillPlan?.jobs?.summary?.jobCount ?? 0,
-        inboundRouteJobCount: inboundWatcherResult.json?.routingPlan?.jobs?.length ?? 0,
-        autoRefillJobCount: autoRefillJobs.length,
-        refillAttemptedCount: refillExecutions.filter((item) => item.attempted).length,
-        refillExecutedCount: refillExecutions.filter((item) => item.executed).length,
-        autoRefillSourceCounts: autoRefillJobs.reduce((counts, job) => {
-          const key = job.autopilotRefillSource || "unknown";
-          counts[key] = (counts[key] || 0) + 1;
-          return counts;
-        }, {}),
-        inboundInventory: compactInboundWatcher(inboundWatcherResult.json),
-        inventoryFreshness: {
-          treasuryBlocker: treasuryInventoryBlocker,
-          capitalManagerBlocker: capitalManagerInventoryBlocker,
-        },
-        capitalManager: compactCapitalManager(capitalManagerRefillPlan),
-        executionGate: {
-          ...liveExecutionGate,
-          autopilotRunId,
-          autoKillTriggered: autoKillResult.json?.triggered === true,
-          killSwitchActive: autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
-          killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
-        },
-        strategyDispatch: {
-          capitalDispatchReadiness,
-        },
-      },
+      summary: refillSummary,
       refillExecutions,
       steps,
     }));
+  }
+
+  if (stopAfterRefill) {
+    const report = {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      autopilotRunId,
+      mode: execute ? "execute" : "preview",
+      status: "completed_with_blockers",
+      phase: "refill_complete",
+      blockedReason: null,
+      chains,
+      summary: {
+        ...refillSummary,
+        stopAfterRefill: true,
+        skippedPostRefillSteps: [
+          "live_canary_sweep",
+          "merkl_canary_queue_refresh",
+          "radar_merkl_queue_sync",
+          "radar_board_refresh",
+          "destination_promotion_gate_refresh",
+          "destination_allocator_refresh",
+          "destination_representative_autopilot",
+          "merkl_canary_autopilot",
+          "merkl_portfolio_orchestrator",
+          "strategy_catalog_dispatch",
+          "payback_scheduler",
+          "auto_kill_dashboard_slice",
+        ],
+      },
+      refillExecutions,
+      steps,
+    };
+    if (write) {
+      await writeAutopilotCompletedArtifacts(dataDir, report);
+    }
+    return report;
   }
 
   const canaryBudgetVerdict = allowLiveCapableExecution
@@ -1833,9 +1879,7 @@ export async function runAllChainAutopilot({
   };
 
   if (write) {
-    await writeAutopilotLatest(dataDir, report);
-    await writeAutopilotLatestCompleted(dataDir, report);
-    await new JsonlStore(dataDir).append("all-chain-autopilot-runs", report);
+    await writeAutopilotCompletedArtifacts(dataDir, report);
   }
 
   return report;

@@ -29,6 +29,7 @@ export function parseArgs(argv) {
     json: flags.has("--json"),
     write: flags.has("--write"),
     loop: flags.has("--loop"),
+    stopAfterRefill: flags.has("--stop-after-refill") || flags.has("--refill-only"),
     intervalMs: entries["interval-ms"] ? Number(entries["interval-ms"]) : 300_000,
     chains: entries.chains ? parseCsv(entries.chains) : OFFICIAL_GATEWAY_DESTINATION_CHAINS,
     maxRefillJobs: entries["max-refill-jobs"] ? Number(entries["max-refill-jobs"]) : 24,
