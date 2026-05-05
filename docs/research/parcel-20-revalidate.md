@@ -1239,3 +1239,58 @@ Decision:
 - The live refill is receipt-proven and reconciled.
 - It is execution evidence, not payback evidence, because it was a consolidation/refill cost and did not create payback-eligible profit.
 - The kill-switch was re-armed after the stale replay mismatch with reason `relative-price-stale-after-controlled-refill`; later replay recomputation showed no active auto-kill trigger, but resume remains an explicit operator action.
+
+## 2026-05-05T19:02Z dry-run-first execution after replay-status fix
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --execute --write --max-refill-jobs=3 --timeout-ms=360000 --canary-timeout-ms=120000 --dispatch-timeout-ms=120000`
+
+Resume discipline before command:
+
+- `npm run kill:resume-review` appended a non-mutating review packet.
+- The review packet reported `replay triggered now: no` and `stale arm: yes`.
+- The kill-switch was resumed with reason `operator-approved-continue-after-status-replay-fix`.
+- Post-resume `kill:status --json` reported `halted: false` and `replay: null`, confirming the stale dashboard replay fix for running state.
+
+Observed result:
+
+- Preview phase completed with blockers and executed nothing.
+- Execute phase completed with blockers and executed one live refill.
+- Canary sweep completed with no live candidate execution:
+  - ready `11`
+  - executed `0`
+  - candidates `0`
+  - tx steps `0`
+- Strategy dispatch completed with no live-eligible strategies.
+- Payback stayed in carry:
+  - reason `planned_payback_below_minimum`
+  - carry `601` sats
+- Execution gate was enabled for live-capable steps and auto-kill remained clear.
+
+Live refill:
+
+- Strategy id: `gateway-btc-funding-transfer`
+- Source chain: BOB
+- Destination chain: Sonic
+- Route: BOB `wBTC.OFT` to Sonic `wBTC.OFT`
+- Intent id: `gateway-btc-funding-transfer:bob:6d74c8def1282f6e`
+- Tx hash: `0x23ed58244276adbd2661dea0befad8d751a42e072514a92ab35105f4803858d7`
+- Source receipt block: `32572878`
+- Receipt status: `1`
+
+Receipt reconciliation:
+
+- `data/receipt-reconciliations.jsonl`
+- kind `gateway_btc_consolidation`
+- observed at `2026-05-05T19:03:12.668Z`
+- reconciliation status `reconciled`
+- actual output units `10000`
+- realizedNetPnlSats `-306`
+- paybackEligibleRealizedPnlSats `0`
+
+Decision:
+
+- The live refill path remains operational after the replay-status fix.
+- The refill is execution evidence and inventory-consolidation evidence, not payback evidence.
+- Stage remains blocked on missing receipt-proven payback delivery and insufficient payback carry, not on kill-switch or refill execution.
