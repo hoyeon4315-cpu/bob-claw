@@ -42,6 +42,72 @@ function normalizeTxValue(value) {
   return BigInt(value).toString();
 }
 
+function sumWei(values = []) {
+  return values.reduce((sum, value) => {
+    try {
+      return sum + BigInt(value ?? 0);
+    } catch {
+      return sum;
+    }
+  }, 0n);
+}
+
+function lifiGasCostWei(quote = null) {
+  const topLevel = sumWei((quote?.estimate?.gasCosts || []).map((item) => item?.amount));
+  const includedSteps = sumWei(
+    (quote?.includedSteps || []).flatMap((step) => (step?.estimate?.gasCosts || []).map((item) => item?.amount)),
+  );
+  const best = topLevel > includedSteps ? topLevel : includedSteps;
+  return best > 0n ? best : null;
+}
+
+function nativeSourceRequirementWei({ srcAsset, amount, txValueWei, quote }) {
+  if (!srcAsset?.isNative) return null;
+  const spendAmount = [amount, txValueWei].reduce((max, value) => {
+    try {
+      const parsed = BigInt(value ?? 0);
+      return parsed > max ? parsed : max;
+    } catch {
+      return max;
+    }
+  }, 0n);
+  const gasCost = lifiGasCostWei(quote);
+  if (spendAmount <= 0n || gasCost === null) return null;
+  return (spendAmount + gasCost).toString();
+}
+
+function assertNativeSourceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
+  if (!plan?.srcAsset?.isNative || !plan.nativeSourceRequirementWei) return;
+  const available = BigInt(sourceBalanceBefore?.balance ?? 0);
+  const required = BigInt(plan.nativeSourceRequirementWei);
+  if (available >= required) return;
+  const error = new Error(`Insufficient native balance for LI.FI gas: required ${required.toString()}, available ${available.toString()}`);
+  error.name = "InsufficientNativeBalanceForLifiGas";
+  error.partialExecution = {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    settlementStatus: "blocked",
+    blockedReason: "insufficient_native_balance_for_lifi_gas",
+    plan,
+    stepResults: [],
+    sourceBalanceBefore: {
+      ...sourceBalanceBefore,
+      ticker: plan.srcAsset?.ticker || null,
+      token: plan.srcToken || null,
+      chain: plan.srcChain,
+    },
+    destinationBalanceBefore,
+    destinationProof: null,
+    error: {
+      name: error.name,
+      message: error.message,
+      requiredAmount: required.toString(),
+      availableBalance: available.toString(),
+    },
+  };
+  throw error;
+}
+
 async function lifiQuote({ apiBase = LIFI_API_BASE, fetchImpl = fetch, params }) {
   const url = `${apiBase.replace(/\/+$/, "")}/quote?${new URLSearchParams(params).toString()}`;
   const startedAt = Date.now();
@@ -163,20 +229,22 @@ export async function buildLifiBridgePlan({
     amountUsd = amountUsdFromRaw(normalizedAmount, srcAsset, prices, quote.action?.fromToken?.priceUSD);
     const approvalAddress = quote.estimate?.approvalAddress;
     const tx = quote.transactionRequest;
-    if (!approvalAddress) throw new Error("LI.FI quote missing approvalAddress");
+    if (!srcAsset.isNative && !approvalAddress) throw new Error("LI.FI quote missing approvalAddress");
     if (!tx?.to || !tx?.data) throw new Error("LI.FI quote missing transactionRequest");
     const gasBuffer = Math.max(10_000, Number(gasBufferBps) || 10_000);
-    approvalGasPreflight = await estimateGasImpl(
-      srcChain,
-      {
-        from: senderAddress,
-        to: srcToken,
-        data: ERC20_INTERFACE.encodeFunctionData("approve", [approvalAddress, normalizedAmount]),
-        valueWei: "0",
-      },
-      srcConfig,
-    );
     const txValueWei = normalizeTxValue(tx.value);
+    if (!srcAsset.isNative) {
+      approvalGasPreflight = await estimateGasImpl(
+        srcChain,
+        {
+          from: senderAddress,
+          to: srcToken,
+          data: ERC20_INTERFACE.encodeFunctionData("approve", [approvalAddress, normalizedAmount]),
+          valueWei: "0",
+        },
+        srcConfig,
+      );
+    }
     const quotedGasLimit = tx.gasLimit ? Number(BigInt(tx.gasLimit)) : null;
     const bridgeGasLimit = Number.isFinite(quotedGasLimit) && quotedGasLimit > 0
       ? applyGasBuffer(quotedGasLimit, gasBuffer)
@@ -221,7 +289,7 @@ export async function buildLifiBridgePlan({
       },
     });
     steps = [
-      {
+      ...(srcAsset.isNative ? [] : [{
         id: "approve_lifi_spender",
         intent: buildIntent({
           intentType: "approve_exact",
@@ -243,7 +311,7 @@ export async function buildLifiBridgePlan({
             dstToken,
           },
         }),
-      },
+      }]),
       {
         id: "lifi_bridge",
         intent: buildIntent({
@@ -289,6 +357,12 @@ export async function buildLifiBridgePlan({
     amountUsd,
     minimumOutputAmount: quote?.estimate?.toAmountMin || null,
     expectedOutputAmount: quote?.estimate?.toAmount || null,
+    nativeSourceRequirementWei: nativeSourceRequirementWei({
+      srcAsset,
+      amount: normalizedAmount,
+      txValueWei: quote?.transactionRequest ? normalizeTxValue(quote.transactionRequest.value) : null,
+      quote,
+    }),
     quote,
     approvalGasPreflight,
     gasPreflight,
@@ -330,6 +404,7 @@ export async function executeLifiBridgePlan({
       })
     : null;
   assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore });
+  assertNativeSourceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore });
   const stepResults = [];
   for (const step of plan.steps) {
     const result = await sendCommand({

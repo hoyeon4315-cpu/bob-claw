@@ -179,6 +179,17 @@ function toBigIntOrNull(value) {
   }
 }
 
+function lifiNativeSourceRequirementBlocked({ plan, source }) {
+  if (!plan?.srcAsset?.isNative || !plan.nativeSourceRequirementWei) return null;
+  const required = toBigIntOrNull(plan.nativeSourceRequirementWei);
+  const actual = toBigIntOrNull(source?.actual ?? source?.balance);
+  if (required === null || actual === null || actual >= required) return null;
+  return {
+    requiredWei: required.toString(),
+    actualWei: actual.toString(),
+  };
+}
+
 function nativeGasBudgetForPlan(plan = {}) {
   const chainConfig = getEvmChainConfig(plan.chain || "");
   if (!chainConfig) return null;
@@ -595,6 +606,15 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       recipient: senderAddress,
     });
+    const nativeRequirement = lifiNativeSourceRequirementBlocked({ plan, source });
+    if (nativeRequirement) {
+      return blockedPreparation({
+        job,
+        executor,
+        blockedReason: "insufficient_native_balance_for_lifi_gas",
+        plan,
+      });
+    }
   } else if (executor === "cross_chain_btc_intermediate") {
     // Step 1: DEX swap source token → wBTC.OFT on source chain
     const dexAmount = estimateInputAmountFromSource({ job, source });

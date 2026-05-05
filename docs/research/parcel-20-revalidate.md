@@ -389,3 +389,86 @@ Mitigation:
   the report.
 - A live read of the Soneium binding now blocks before `estimateGas` with
   `aave_reserve_not_supplyable:frozen`.
+
+## 2026-05-05 all-chain execute attempt after preflight patches
+
+After the Soneium Aave frozen-reserve preflight and generic strategy
+executor-missing marker were committed, the operator approved another
+execution attempt.
+
+Pre-execution state:
+
+- `npm run kill:resume-review` appended a review packet.
+- The Soneium hold was resumed with
+  `parcel-20-soneium-aave-frozen-reserve-mitigated`.
+- Auto-kill immediately re-armed on stale ETH/BTC relative-price evidence.
+- `npm run price:snapshot` refreshed the price sample.
+- Auto-kill replay then returned `triggered=false`.
+- The kill-switch was resumed with
+  `parcel-20-relative-price-sample-refreshed`.
+- `npm run dashboard:stage-explain` reported Stage B with the remaining
+  blocker `receipt_proven_payback_period_missing`.
+
+Fresh dry-run:
+
+- Command:
+  `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --write`
+- Result:
+  - `mode`: `preview`
+  - `status`: `completed_with_blockers`
+  - `refillJobs`: `25`
+  - `liveEligibleCount`: `0`
+  - no new signer-audit rows after the generic fallback patch
+
+Execute command:
+
+`npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --execute --write`
+
+Live execution outcome:
+
+- One Base LI.FI/Across refill completed:
+  - approve tx:
+    `0x50cb89eb702741eecadcfade614e65f81cf4aac50729c1444ebcb469342711d7`
+    confirmed in block `45591378`
+  - bridge tx:
+    `0x6b9b70d5888f3c45bb20b17d35be0bcc0a847e788c727d913ddec2be149a15f6`
+    confirmed in block `45591381`
+  - signer audit classification: `approved`, `broadcasted`, then
+    `confirmed`
+- The next BSC LI.FI candidate flagged before bridge broadcast:
+  - no-op native-source `approve_exact` tx:
+    `0xcd8fbaec7f0a51df2d5b4b4a213e20e5276639d4578d8c21886c5fec533f09c0`
+    confirmed in block `96486316`
+  - bridge step was not broadcast
+  - signer error:
+    `insufficient_native_balance_for_gas: chain=bsc requiredWei=8304570141095136 balanceWei=8235765391095136`
+
+Safety action:
+
+- The kill-switch was re-armed immediately with
+  `parcel-20-bsc-lifi-insufficient-native-gas`.
+- The parent all-chain run then exited in execute phase with
+  `Execution guard blocked: kill_switch_active`.
+
+Root cause:
+
+- The LI.FI helper always emitted an ERC20 `approve_exact` step, even when
+  the source token was native `0x0000000000000000000000000000000000000000`.
+  On BSC this produced a zero-value tx to the zero address and burned gas.
+- The direct LI.FI refill planner did not compare native-source balance
+  against the quoted source amount plus LI.FI gas budget before marking the
+  refill executable. The signer caught the shortfall before bridge broadcast,
+  but this still fed an execution error into signer audit.
+
+Mitigation:
+
+- `buildLifiBridgePlan()` now skips approval steps for native source assets.
+- Native-source LI.FI plans expose `nativeSourceRequirementWei`, computed
+  from the source spend amount plus LI.FI quoted gas costs.
+- `buildTreasuryRefillExecutionPlan()` blocks direct LI.FI refills with
+  `insufficient_native_balance_for_lifi_gas` when the source balance cannot
+  cover that requirement.
+- `executeLifiBridgePlan()` performs the same pre-signer check so direct
+  helper callers also fail before signer broadcast.
+- Regression tests cover native approval omission and the deterministic
+  pre-signer insufficient-gas block.
