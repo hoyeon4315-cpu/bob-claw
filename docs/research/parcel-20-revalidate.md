@@ -1073,3 +1073,100 @@ Decision:
 
 - The refill route blocker is cleared for Stage evaluation without bypassing live execution.
 - The kill-switch remains armed under `parcel-20-live-run-timeout-hold-for-review`.
+
+## 2026-05-05T14:16Z operator resume and controlled live refill
+
+Operator instruction:
+
+- The operator approved continuing the Parcel 20 live path.
+- Kill-switch resume was executed with audit reason
+  `operator-approved-continue-after-parcel-20-timeout-review`.
+- Pre-resume replay showed no active auto-kill triggers.
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --execute --write --max-refill-jobs=2 --timeout-ms=240000 --canary-timeout-ms=120000 --dispatch-timeout-ms=120000`
+
+Outcome:
+
+- Preview completed with blockers and no live steps.
+- Execute phase completed with blockers and one live refill execution.
+- `gateway-btc-funding-transfer` moved Base `wBTC.OFT` to Avalanche.
+- Signer audit:
+  - intent `gateway-btc-funding-transfer:base:1702a3ed548022f1`
+  - tx `0xd7ac3858adced61c78952fd0b782c4921d1ac29f2756278eabaa6c68d23c696d`
+  - block `45600801`
+  - receipt status `1`
+- Destination proof:
+  - proof source `erc20_balance_delta`
+  - Avalanche settled balance delta `9974`
+  - observed at `2026-05-05T14:23:08.946Z`
+- Receipt reconciliation:
+  - `data/receipt-reconciliations.jsonl`
+  - kind `gateway_btc_consolidation`
+  - realizedNetPnlSats `-75`
+  - paybackEligibleRealizedPnlSats `0`
+
+Decision:
+
+- This live refill is receipt-proven and reconciled.
+- It is execution evidence, not payback evidence, because it was a consolidation cost and did not create payback-eligible profit.
+
+## 2026-05-05T14:33Z second controlled refill and timeout hold
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --execute --write --max-refill-jobs=3 --timeout-ms=240000 --canary-timeout-ms=120000 --dispatch-timeout-ms=120000`
+
+Observed live result before halt:
+
+- `gateway-btc-funding-transfer` moved BOB `wBTC.OFT` to BSC.
+- Signer audit:
+  - intent `gateway-btc-funding-transfer:bob:b9742a5e9d1157d4`
+  - tx `0x3a04479e035bb6dfc45af722989941e39c90bf6a818312d1b70470665683e585`
+  - block `32564817`
+  - receipt status `1`
+- Destination proof:
+  - proof source `erc20_balance_delta`
+  - BSC settled balance delta `9974`
+  - observed at `2026-05-05T14:34:00.217Z`
+- Receipt reconciliation:
+  - `data/receipt-reconciliations.jsonl`
+  - kind `gateway_btc_consolidation`
+  - realizedNetPnlSats `-330`
+  - paybackEligibleRealizedPnlSats `0`
+
+Timeout hold:
+
+- `data/all-chain-autopilot-latest.json` remained at status `running` after the delivered proof was written.
+- The parent process was still alive beyond the configured command timeout envelope.
+- Following Parcel 20 discipline, the run was stopped and the kill-switch was re-armed with reason
+  `parcel-20-controlled-refill-timeout-hold-for-review`.
+- Post-halt replay reports no active auto-kill triggers; the active hold is a stale manual safety arm pending review.
+
+Dashboard after halt:
+
+- `npm run status:dashboard:light` completed successfully.
+- `node src/cli/check-dashboard-public.mjs` passed.
+- Stage remains `B`.
+- Stage blocker remains only `receipt_proven_payback_period_missing`.
+- Runtime blockers include `kill_switch_present` and `kill_switch_stale_arm_present`.
+- Payback remains carry-only:
+  - pending `601` sats
+  - minimum `50000` sats
+  - delivered reserve-chain payback periods `0`
+
+Decision:
+
+- Two additional live refill broadcasts are receipt-proven and reconciled.
+- No further live attempt should run until the second controlled-run timeout is reviewed and the operator explicitly resumes with a new audit reason.
+
+Subagent review:
+
+- Harvey reviewed the 2026-05-05T14:33Z controlled run read-only.
+- The latest all-chain autopilot artifact was at `phase: "refill_complete"` for run
+  `4ceb966a-1666-4da6-81f7-6673502051d3`.
+- The final completed record was not appended to `data/all-chain-autopilot-runs.jsonl` because the parent was killed before finalization.
+- Source flow writes `data/all-chain-autopilot-latest.json` at `refill_complete`, then continues into post-refill work before the final `completed` / `completed_with_blockers` report is built.
+- There is no evidence of a settlement/refill execution bug for the BOB -> BSC transfer; the destination proof and receipt reconciliation are complete.
+- Hardening candidate: add a controlled refill-only stop mode, or signal/timeout finalization that records `timeout` / `interrupted_after_refill` before exit so the dashboard does not retain a stale `running` artifact.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-05T14:05:38.540Z",
+  "generatedAt": "2026-05-05T14:38:03.130Z",
   "fastTrackThresholds": {
     "minSignerBackedReceipts": 0,
     "minConsecutiveSuccess": 0,
@@ -222,8 +222,8 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 685,
-      "receiptCountSignerBacked": 203,
+      "receiptCountTotal": 691,
+      "receiptCountSignerBacked": 207,
       "autoExecute": true,
       "operatorHold": false,
       "liveEligibility": {
@@ -233,7 +233,7 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 4
+        "signerBackedReceiptCount": 8
       },
       "scoredAllocation": null,
       "generatedIntentCount": 0,
@@ -241,8 +241,8 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 92,
-          "consecutiveSuccess": 92
+          "signerBackedReceiptCount": 90,
+          "consecutiveSuccess": 90
         },
         "strict": {
           "eligible": false,
@@ -996,8 +996,8 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 12,
-          "consecutiveSuccess": 12
+          "signerBackedReceiptCount": 10,
+          "consecutiveSuccess": 10
         },
         "strict": {
           "eligible": false,
@@ -1305,7 +1305,7 @@
     "strategiesLiveEligible": 27,
     "strategiesOperatorHold": 0,
     "strategiesEligibleStrict": 0,
-    "totalSignerBackedReceipts": 11535,
+    "totalSignerBackedReceipts": 11539,
     "strategiesWithGeneratedIntents": 3,
     "totalGeneratedIntents": 3
   },
@@ -1423,7 +1423,7 @@
       "recursive_stablecoin_lending_loop": {
         "microCanaryStatus": "micro_canary_repeatable",
         "signerBackedCount": 42,
-        "passedCount": 12,
+        "passedCount": 10,
         "mode": "live_candidate",
         "lastFailureReason": null,
         "realizedNetUsd": null
@@ -1461,7 +1461,7 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-05T14:05:38.862Z"
+    "generatedAt": "2026-05-05T14:38:03.752Z"
   },
   "strategyStage": {
     "total": 18,
@@ -1669,6 +1669,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-05T14:05:38.864Z"
+    "generatedAt": "2026-05-05T14:38:03.756Z"
   }
 }
