@@ -277,3 +277,76 @@ Current live data after the fix has no Merkl policy-pass candidate:
 Therefore the next live-canary route must come from another policy-ready
 surface, such as destination representative execution, or wait for a new
 Merkl inventory/campaign state.
+
+### Follow-up: destination representative live attempt
+
+Because Merkl had no policy-pass candidate, the next policy-ready surface
+was destination representative execution.
+
+Preview:
+
+- Command:
+  `node src/cli/run-destination-representative-autopilot.mjs --json --write --timeout-ms=180000`
+- Result: `preview_ready`
+- Selected template: `soneium:stablecoin_lending_carry`
+- Chain/protocol: Soneium / Aave v3
+- Amount: `2999768` raw USDC, approximately `$2.999768`
+- Planned steps: `approve_asset_to_pool`, `supply_asset_to_pool`
+
+Execution:
+
+- Command:
+  `node src/cli/run-destination-representative-autopilot.mjs --json --write --execute --timeout-ms=240000`
+- Result: `blocked`
+- Blocker: `destination_representative_execution_error`
+- The approve step broadcast and confirmed:
+  - txHash: `0x47309a61fa104bf4a0be121643864bdebcf0a23545c37c42c36b5a1ca08cfe56`
+  - block: `22416394`
+- The supply step broadcast and reverted:
+  - txHash: `0xac8b0635ff3829c76dd6a22e463c2eb418a60a790a706c4302e074789e8f0818`
+  - block: `22416399`
+  - receipt status: `0`
+  - revert message from replay call: `execution reverted`
+  - revert data: `0x6d305815`
+
+At the same resume window, a background `run-all-chain-autopilot --loop
+--write --execute` launchd job also fired a refill transfer:
+
+- strategy: `gateway-btc-funding-transfer`
+- txHash: `0x0693053f48d6e5c3d0630d1352a8ef74a29fc11d5e7163dee0a132ac2e386786`
+- block: `45589094`
+- receipt status: `1`
+
+Safety actions:
+
+- Kill-switch was re-armed immediately after the destination representative
+  revert:
+  `parcel-20-destination-representative-reverted-after-broadcast`.
+- The live all-chain autopilot launchd job was unloaded so a later
+  kill-switch resume does not automatically restart the loop:
+  `com.bobclaw.all-chain-autopilot` is `configured_not_loaded`.
+- The reverted supply left an exact USDC allowance on Soneium. A protective
+  revocation was executed:
+  - reason: `parcel-20-revoke-stale-soneium-allowance`
+  - txHash: `0x2bc6ca231cbab0300bac77ba27cc2864dd19fcf85bd6111e9d1cf0cd52d98ebf`
+  - block: `22416469`
+  - receipt status: `1`
+  - post-check allowance: `0`
+- Kill-switch was re-armed after revocation:
+  `parcel-20-post-revoke-hold-for-revert-review`.
+
+### Follow-up: Aave supply preflight patch
+
+The Soneium Aave helper estimated supply gas after approval, but if the
+estimate failed it fell back to a default gas limit and still broadcast the
+supply. That transformed a preflight failure into a live revert.
+
+The helper now treats supply gas-estimate failure as a hard pre-broadcast
+blocker. If approval has already been sent, it automatically broadcasts an
+exact zero-allowance revocation before throwing `AaveSupplyPreflightFailed`.
+Regression coverage asserts the sequence:
+
+1. approve exact allowance
+2. supply preflight fails
+3. revoke allowance
+4. do not broadcast supply

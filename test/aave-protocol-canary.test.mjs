@@ -150,3 +150,103 @@ test("aave protocol canary accepts asset-spent proof when share token delta is o
   assert.equal(execution.positionProof.proofSource, "erc20_balance_delta");
   assert.equal(execution.positionProof.observedDelta, "250");
 });
+
+test("aave protocol canary revokes approval and blocks before supply broadcast when supply preflight reverts", async () => {
+  const plan = {
+    schemaVersion: 1,
+    observedAt: "2026-05-05T00:00:00.000Z",
+    strategyId: "gateway_native_asset_conversion_sleeve",
+    planStatus: "ready",
+    chain: "soneium",
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    opportunityId: "soneium:stablecoin_lending_carry",
+    protocolId: "aave-v3",
+    bindingKind: "aave_v3_pool_supply_withdraw",
+    name: "Soneium Aave representative",
+    poolAddress: "0x1111111111111111111111111111111111111111",
+    assetAddress: "0x3333333333333333333333333333333333333333",
+    shareTokenAddress: "0x4444444444444444444444444444444444444444",
+    amount: "2999768",
+    amountUsd: 2.999768,
+    minimumReturnBps: 9500,
+    minimumRedeemAssetDelta: "2849779",
+    asset: {
+      token: "0x3333333333333333333333333333333333333333",
+      ticker: "USDC",
+      family: "stablecoin",
+      decimals: 6,
+      chain: "soneium",
+      isNative: false,
+    },
+    shareAsset: {
+      token: "0x4444444444444444444444444444444444444444",
+      ticker: "aSonUSDC",
+      family: "protocol_share",
+      decimals: 6,
+      chain: "soneium",
+      isNative: false,
+    },
+    steps: [
+      {
+        id: "approve_asset_to_pool",
+        intent: {
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          chain: "soneium",
+          family: "evm",
+          intentType: "approve_exact",
+          amountUsd: 0,
+          mode: "live",
+          tx: { to: "0x3333333333333333333333333333333333333333", data: "0x", value: "0", gasLimit: "80000" },
+          approval: {
+            token: "0x3333333333333333333333333333333333333333",
+            spender: "0x1111111111111111111111111111111111111111",
+            amount: "2999768",
+            mode: "per_tx",
+          },
+          metadata: { capCheckAmountUsd: 0 },
+        },
+      },
+      {
+        id: "supply_asset_to_pool",
+        intent: {
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          chain: "soneium",
+          family: "evm",
+          intentType: "aave_supply",
+          amountUsd: 2.999768,
+          mode: "live",
+          tx: { to: "0x1111111111111111111111111111111111111111", data: "0x", value: "0", gasLimit: "432000" },
+          metadata: { capCheckAmountUsd: 2.999768 },
+        },
+      },
+    ],
+  };
+  const sent = [];
+
+  await assert.rejects(
+    executeAaveProtocolCanaryPlan({
+      plan,
+      sendCommand: async ({ message }) => {
+        sent.push(message.intent);
+        return {
+          status: "ok",
+          broadcast: { txHash: `0x${sent.length}` },
+        };
+      },
+      estimateGasImpl: async () => {
+        throw new Error("execution reverted: m0X");
+      },
+      readErc20BalanceImpl: async (_chain, token) => ({
+        rpcUrl: "memory",
+        balance: token.toLowerCase() === plan.asset.token.toLowerCase() ? "3293553" : "0",
+      }),
+      settlementTimeoutMs: 0,
+      sleepImpl: async () => {},
+    }),
+    /aave_supply_preflight_failed/,
+  );
+
+  assert.deepEqual(sent.map((intent) => intent.intentType), ["approve_exact", "approve_exact"]);
+  assert.equal(sent[1].approval.amount, "0");
+  assert.equal(sent[1].metadata.approvalResetReason, "aave_supply_preflight_failed");
+});

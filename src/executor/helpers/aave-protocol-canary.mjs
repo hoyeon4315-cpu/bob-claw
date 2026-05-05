@@ -101,6 +101,40 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
   };
 }
 
+function buildApprovalRevokeIntent({ plan, reason }) {
+  const now = new Date().toISOString();
+  return buildIntent({
+    strategyId: plan.strategyId,
+    chain: plan.chain,
+    amountUsd: 0,
+    now,
+    ttlMs: assertStrategyCaps(plan.strategyId).intentTtlMs,
+    intentType: "approve_exact",
+    approval: {
+      token: plan.assetAddress,
+      spender: plan.poolAddress,
+      amount: "0",
+      mode: "per_tx",
+    },
+    tx: {
+      to: plan.assetAddress,
+      data: ERC20_INTERFACE.encodeFunctionData("approve", [plan.poolAddress, 0]),
+      value: "0",
+      gasLimit: "80000",
+    },
+    metadata: {
+      capCheckAmountUsd: 0,
+      opportunityId: plan.opportunityId,
+      protocol: plan.protocolId,
+      marketName: plan.marketName || null,
+      poolAddress: plan.poolAddress,
+      assetAddress: plan.assetAddress,
+      shareTokenAddress: plan.shareTokenAddress,
+      approvalResetReason: reason,
+    },
+  });
+}
+
 export function selectAaveQueueItem(
   queue = {},
   {
@@ -365,8 +399,35 @@ export async function executeAaveProtocolCanaryPlan({
           },
           getEvmChainConfig(plan.chain),
         );
-      } catch {
-        supplyGas = { gasUnits: DEFAULT_SUPPLY_GAS_UNITS };
+      } catch (error) {
+        const revokeIntent = buildApprovalRevokeIntent({
+          plan,
+          reason: "aave_supply_preflight_failed",
+        });
+        const revokeResult = await sendCommand({
+          socketPath,
+          timeoutMs,
+          message: {
+            command: "sign_and_broadcast",
+            intent: revokeIntent,
+            awaitConfirmation,
+            confirmations,
+            timeoutMs: confirmationTimeoutMs,
+          },
+        });
+        stepResults.push({ id: "revoke_asset_allowance_after_supply_preflight_failed", signerResult: revokeResult });
+        const preflightError = new Error(`aave_supply_preflight_failed: ${error?.message || String(error)}`);
+        preflightError.name = "AaveSupplyPreflightFailed";
+        preflightError.partialExecution = {
+          schemaVersion: 1,
+          observedAt: new Date().toISOString(),
+          settlementStatus: "supply_preflight_failed",
+          plan,
+          stepResults,
+          assetBalanceBefore,
+          shareBalanceBefore,
+        };
+        throw preflightError;
       }
       step.intent.tx.gasLimit = gasLimitWithFallback(supplyGas, DEFAULT_SUPPLY_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS);
     }
