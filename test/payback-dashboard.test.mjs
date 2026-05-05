@@ -453,6 +453,11 @@ test("payback dashboard estimates periods to first payback for both committed sl
   assert.equal(estimate.profiles.aggressive_v1.projectedGrossProfitSatsPerPeriod, 3733.33);
   assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, 66.96);
   assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
+  assert.equal(payback.minimumReview.status, "propose_patch");
+  assert.equal(payback.minimumReview.reason, "both_profiles_above_threshold");
+  assert.equal(payback.minimumReview.proposedPatchPath, "data/payback/proposed-min-payback-diff.patch");
+  assert.equal(payback.minimumReview.profiles.smallCapital_v1.estimatedPeriods, 107.14);
+  assert.equal(payback.minimumReview.profiles.aggressive_v1.estimatedPeriods, 66.96);
 });
 
 test("payback dashboard writes deterministic PR-only minimum-payback patch when both profiles stay above threshold", async () => {
@@ -557,4 +562,54 @@ test("payback dashboard leaves periods-to-first-payback unavailable when realize
   assert.equal(estimate.profiles.aggressive_v1.status, "unavailable");
   assert.equal(estimate.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
   assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, null);
+  assert.equal(payback.proposedMinPaybackPatch, null);
+  assert.equal(payback.minimumReview.status, "keep_current");
+  assert.equal(payback.minimumReview.reason, "non_positive_realized_run_rate");
+  assert.equal(payback.minimumReview.proposedPatchPath, null);
+  assert.equal(payback.minimumReview.profiles.smallCapital_v1.reason, "non_positive_realized_run_rate");
+  assert.equal(payback.minimumReview.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
+});
+
+test("payback dashboard does not surface a proposed patch path in read-only mode when forecast does not qualify", async () => {
+  const payback = await buildPaybackDashboardSlice({
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [],
+      treasuryInventory: [],
+      marketPriceSnapshots: [
+        {
+          observedAt: "2026-04-17T11:05:00.000Z",
+          btcUsd: 100_000,
+          tokenByKey: { btc: 100_000, usd_stable: 1 },
+          nativeByChain: { base: 2_000 },
+        },
+      ],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now: "2026-04-17T12:00:00.000Z",
+    writeProposedPatch: false,
+    decisionBuilder: async () => ({
+      status: "carry",
+      reason: "planned_payback_below_minimum",
+      policy: {
+        baseRatio: 0.2,
+        minPaybackSats: 50_000,
+      },
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 289,
+          baseRatio: 0.2,
+          regimeMultiplier: 1,
+          volMultiplier: 1,
+          grossTargetBeforeCostsSats: 58,
+          minPaybackSats: 50_000,
+        },
+      },
+    }),
+  });
+
+  assert.equal(payback.proposedMinPaybackPatch, null);
+  assert.equal(payback.minimumReview.status, "keep_current");
+  assert.equal(payback.minimumReview.reason, "non_positive_realized_run_rate");
 });

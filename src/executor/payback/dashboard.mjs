@@ -267,6 +267,64 @@ function shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback = null) {
   });
 }
 
+function buildMinimumPaybackReview({
+  estimatedPeriodsToFirstPayback = null,
+  proposedMinPaybackPatch = null,
+} = {}) {
+  const profiles = estimatedPeriodsToFirstPayback?.profiles || {};
+  const profileIds = ["smallCapital_v1", "aggressive_v1"];
+  const profileSummaries = Object.fromEntries(
+    profileIds.map((profileId) => {
+      const estimate = profiles[profileId] || {};
+      return [
+        profileId,
+        {
+          status: estimate.status || "unavailable",
+          reason: estimate.reason || null,
+          estimatedPeriods: Number.isFinite(estimate.estimatedPeriods) ? estimate.estimatedPeriods : null,
+        },
+      ];
+    }),
+  );
+  if (proposedMinPaybackPatch) {
+    return {
+      status: "propose_patch",
+      reason: "both_profiles_above_threshold",
+      thresholdPeriods: 8,
+      currentMinPaybackSats: PAYBACK_CONFIG.minPaybackSats,
+      proposedMinPaybackSats: PROPOSED_MIN_PAYBACK_SATS,
+      proposedPatchPath: proposedMinPaybackPatch,
+      profiles: profileSummaries,
+    };
+  }
+
+  const profileReasons = profileIds
+    .map((profileId) => profileSummaries[profileId]?.reason)
+    .filter(Boolean);
+  const estimatedWithinThresholdProfiles = profileIds.filter((profileId) => {
+    const periods = profileSummaries[profileId]?.estimatedPeriods;
+    return Number.isFinite(periods) && periods < 8;
+  });
+  let reason = "forecast_unavailable";
+  if (
+    profileReasons.length > 0 &&
+    profileReasons.every((profileReason) => profileReason === "non_positive_realized_run_rate")
+  ) {
+    reason = "non_positive_realized_run_rate";
+  } else if (estimatedWithinThresholdProfiles.length > 0) {
+    reason = "forecast_within_threshold";
+  }
+  return {
+    status: "keep_current",
+    reason,
+    thresholdPeriods: 8,
+    currentMinPaybackSats: PAYBACK_CONFIG.minPaybackSats,
+    proposedMinPaybackSats: null,
+    proposedPatchPath: null,
+    profiles: profileSummaries,
+  };
+}
+
 export function buildProposedMinPaybackPatch({
   currentMinPaybackSats = PAYBACK_CONFIG.minPaybackSats,
   proposedMinPaybackSats = PROPOSED_MIN_PAYBACK_SATS,
@@ -470,7 +528,13 @@ export async function buildPaybackDashboardSlice({
         dataDir,
         estimatedPeriodsToFirstPayback,
       })
-    : "data/payback/proposed-min-payback-diff.patch";
+    : shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback)
+      ? PROPOSED_MIN_PAYBACK_PATCH_RELATIVE_PATH
+      : null;
+  const minimumReview = buildMinimumPaybackReview({
+    estimatedPeriodsToFirstPayback,
+    proposedMinPaybackPatch,
+  });
   const latestDelivered = deliveredPaybackRecord(allRecordsForPayback(resolvedAuditLogLines, resolvedReceiptStore));
   return {
     schemaVersion: 1,
@@ -488,6 +552,7 @@ export async function buildPaybackDashboardSlice({
     paidBackSatsLifetime: snapshot.paidBackSats_lifetime,
     estimatedPeriodsToFirstPayback,
     proposedMinPaybackPatch,
+    minimumReview,
     scheduler: {
       status: decision?.status || null,
       reason: decision?.reason || null,
