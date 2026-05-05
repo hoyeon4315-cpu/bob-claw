@@ -1028,3 +1028,48 @@ Decision:
 
 - The stale relative-price replay blocker is cleared by data regeneration and the artifact-selection patch.
 - The kill-switch remains armed because the current halt reason is the Parcel 20 live-run timeout review hold, not an active replay trigger.
+
+## 2026-05-05T14:04Z dashboard refresh after safe preview
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --write --timeout-ms=180000 --canary-timeout-ms=120000 --dispatch-timeout-ms=120000`
+
+Outcome:
+
+- `mode`: `preview`
+- `status`: `completed_with_blockers`
+- `executionGate.blockedReason`: `preview_only`
+- `autoKill.triggered`: `false`
+- `autoKill.killSwitchActive`: `true`
+- `refillJobCount`: `24`
+- `autoRefillJobCount`: `7`
+- `refillAttemptedCount`: `0`
+- `refillExecutedCount`: `0`
+
+Refill route status:
+
+- Previous live-timeout residue for Ethereum `RLUSD` and the Unichain stale-source `insufficient_source_balance` row are no longer counted in the latest written preview.
+- Remaining refill blockers are deterministic manual deferrals:
+  - BOB `ETH`: `routing_exhausted`, `defer_until_dex_quote_or_gateway_route_available`
+  - Optimism `wBTC.OFT`: `routing_exhausted`, `defer_until_bridge_provider_supports_pair`
+- `dashboard/public/dashboard-status.json` now reports:
+  - `operations.allChainAutopilot.refill.unresolvedCount`: `0`
+  - `overall.lanePolicy.stageEvidence.unresolvedRefillRoutes`: `0`
+
+Stage:
+
+- `npm run dashboard:stage-explain` reports Stage `B`.
+- Current Stage blocker list is only:
+  - `receipt_proven_payback_period_missing`
+- Runtime blockers remain outside the Stage C receipt blocker:
+  - `kill_switch_present`
+  - `kill_switch_stale_arm_present`
+- Payback remains carry-only:
+  - `paybackPendingSats`: `601`
+  - `minPaybackSats`: `50000`
+
+Decision:
+
+- The refill route blocker is cleared for Stage evaluation without bypassing live execution.
+- The kill-switch remains armed under `parcel-20-live-run-timeout-hold-for-review`.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-05T13:49:22.133Z",
+  "generatedAt": "2026-05-05T14:05:38.540Z",
   "fastTrackThresholds": {
     "minSignerBackedReceipts": 0,
     "minConsecutiveSuccess": 0,
@@ -17,12 +17,12 @@
     "defaultLookbackDays": 14,
     "minRoundTripEfficiency": 0.9
   },
-  "tickCountTotal": 202,
-  "latestTickAt": "2026-05-05T13:02:37.337Z",
+  "tickCountTotal": 203,
+  "latestTickAt": "2026-05-05T13:55:39.981Z",
   "strategies": [
     {
       "strategyId": "wrapped-btc-loop-base-moonwell",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -72,7 +72,7 @@
     },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -241,8 +241,8 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 94,
-          "consecutiveSuccess": 94
+          "signerBackedReceiptCount": 92,
+          "consecutiveSuccess": 92
         },
         "strict": {
           "eligible": false,
@@ -475,7 +475,7 @@
     },
     {
       "strategyId": "beefy-folding-vault",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -525,7 +525,7 @@
     },
     {
       "strategyId": "pendle-pt-lbtc-base",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -576,7 +576,7 @@
     },
     {
       "strategyId": "aerodrome-cl-base",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -627,7 +627,7 @@
     },
     {
       "strategyId": "pendle-pt-solvbtc-bbn-bsc",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -678,7 +678,7 @@
     },
     {
       "strategyId": "berachain-bend-bex-bgt",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -729,7 +729,7 @@
     },
     {
       "strategyId": "gmx-v2-perp-basis-avax",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -915,7 +915,7 @@
     },
     {
       "strategyId": "gateway_native_asset_conversion_sleeve",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -960,7 +960,7 @@
     },
     {
       "strategyId": "recursive_stablecoin_lending_loop",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -1009,7 +1009,7 @@
     },
     {
       "strategyId": "destination_wrapped_btc_rotation",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -1059,7 +1059,7 @@
     },
     {
       "strategyId": "stablecoin_treasury_rotation",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -1110,7 +1110,7 @@
     },
     {
       "strategyId": "gateway_proxy_spread_rebalance_recheck",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -1159,7 +1159,7 @@
     },
     {
       "strategyId": "macro_asset_rotation",
-      "lastTickAt": "2026-05-05T13:02:37.337Z",
+      "lastTickAt": "2026-05-05T13:55:39.981Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickCandidateCount": 16,
@@ -1461,7 +1461,7 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-05T13:49:22.427Z"
+    "generatedAt": "2026-05-05T14:05:38.862Z"
   },
   "strategyStage": {
     "total": 18,
@@ -1669,6 +1669,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-05T13:49:22.428Z"
+    "generatedAt": "2026-05-05T14:05:38.864Z"
   }
 }
