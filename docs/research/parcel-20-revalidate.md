@@ -1170,3 +1170,72 @@ Subagent review:
 - Source flow writes `data/all-chain-autopilot-latest.json` at `refill_complete`, then continues into post-refill work before the final `completed` / `completed_with_blockers` report is built.
 - There is no evidence of a settlement/refill execution bug for the BOB -> BSC transfer; the destination proof and receipt reconciliation are complete.
 - Hardening candidate: add a controlled refill-only stop mode, or signal/timeout finalization that records `timeout` / `interrupted_after_refill` before exit so the dashboard does not retain a stale `running` artifact.
+
+## 2026-05-05T18:48Z controlled refill-only rerun after hardening
+
+Command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --execute --write --stop-after-refill --max-refill-jobs=3 --timeout-ms=240000 --canary-timeout-ms=120000 --dispatch-timeout-ms=120000`
+
+Observed result:
+
+- Preview phase completed with blockers and did not execute because `dryRunFirst` preview holds execution.
+- Execute phase stopped at `phase: "refill_complete"` by the committed `stopAfterRefill` hardening.
+- Refill summary:
+  - refill jobs: `24`
+  - auto jobs: `3`
+  - attempted: `1`
+  - executed: `1`
+  - auto-kill triggered: `false`
+  - kill-switch active: `false`
+- Deferred jobs:
+  - BOB `ETH`: `routing_exhausted`
+  - Optimism `wBTC.OFT`: `routing_exhausted`
+- Executed job:
+  - Base `wBTC.OFT` to Sei `wBTC.OFT`
+  - execution status `delivered`
+
+Signer audit:
+
+- Strategy id: `lifi-bridge`
+- Exact approval tx: `0x1fec5804335b41949431b369fdf17f76b753741e9e214ac5ee1a3ab8d4e68351`
+- Bridge tx: `0x2e9db74ad2f3f85cd7deb37c08f4634995f6c305dbdea72abf96f0913fb7fe4c`
+- Source chain: Base
+- Receipt block: `45608830`
+- Receipt status: `1`
+- Policy verdicts: allowed for kill-switch, stale-quote, cap check, and overall policy.
+
+Destination proof:
+
+- Proof source: `erc20_balance_delta`
+- Destination chain: Sei
+- Initial balance: `2707`
+- Settled balance: `9869`
+- Observed delta: `7162`
+- Required delta: `7161`
+- Observed at: `2026-05-05T18:50:46.602Z`
+
+Receipt reconciliation:
+
+- `data/receipt-reconciliations.jsonl`
+- kind `lifi_bridge`
+- tx `0x2e9db74ad2f3f85cd7deb37c08f4634995f6c305dbdea72abf96f0913fb7fe4c`
+- route Base `wBTC.OFT` to Sei `wBTC.OFT`
+- actual output units `7162`
+- realizedNetPnlSats `-161`
+- paybackEligibleRealizedPnlSats `0`
+
+Post-run status-surface issue:
+
+- After the controlled run, `kill:status` reported `halted: false` while still surfacing a stale dashboard replay for `relative_price_stale`.
+- Fresh auto-kill input aggregation showed current ETH/BTC samples and no active replay trigger once the kill-switch was armed and recomputed live.
+- Root cause: `readKillSwitchStatus()` attached dashboard replay whenever the dashboard kill-switch path matched, even when the kill-switch file was not armed.
+- Fix: only attach dashboard replay when `halted === true`, so a running system cannot inherit an old replay object from generated dashboard status.
+- Regression test: `kill-switch status ignores dashboard replay when the kill-switch is not armed`.
+
+Decision:
+
+- The hardened refill-only mode produced a completed artifact instead of leaving the run stuck at `running`.
+- The live refill is receipt-proven and reconciled.
+- It is execution evidence, not payback evidence, because it was a consolidation/refill cost and did not create payback-eligible profit.
+- The kill-switch was re-armed after the stale replay mismatch with reason `relative-price-stale-after-controlled-refill`; later replay recomputation showed no active auto-kill trigger, but resume remains an explicit operator action.

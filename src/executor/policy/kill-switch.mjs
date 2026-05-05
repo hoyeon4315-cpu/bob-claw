@@ -231,7 +231,7 @@ export async function readKillSwitchStatus({
     null;
   const dashboardKillSwitch = dashboardStatus?.executorRuntime?.killSwitch || null;
   const replay =
-    normalizePath(dashboardKillSwitch?.killSwitchPath) === normalizedKillSwitchPath
+    halted && normalizePath(dashboardKillSwitch?.killSwitchPath) === normalizedKillSwitchPath
       ? (dashboardKillSwitch?.replay || null)
       : null;
   return {

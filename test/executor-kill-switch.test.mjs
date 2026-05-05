@@ -200,6 +200,36 @@ test("kill-switch status includes dashboard replay only for the matching kill-sw
   }
 });
 
+test("kill-switch status ignores dashboard replay when the kill-switch is not armed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-status-running-replay-"));
+  try {
+    const killSwitchPath = join(root, "KILL_SWITCH");
+    const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
+    const replay = {
+      triggered: true,
+      triggers: [{ trigger: "relative_price_stale" }],
+    };
+
+    const status = await readKillSwitchStatus({
+      killSwitchPath,
+      auditPath,
+      dashboardStatus: {
+        executorRuntime: {
+          killSwitch: {
+            killSwitchPath,
+            replay,
+          },
+        },
+      },
+    });
+
+    assert.equal(status.halted, false);
+    assert.equal(status.replay, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("kill-switch status does not let resume review packets replace the active halt reason", async () => {
   const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-status-review-audit-"));
   try {
