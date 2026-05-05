@@ -74,3 +74,42 @@ test("reset-consecutive-failures CLI appends an audit row and clears the active 
     await rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test("reset-consecutive-failures CLI is idempotent when latest row already reset the scope", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "bob-claw-reset-consecutive-failures-idempotent-"));
+  const auditPath = join(rootDir, "logs", "signer-audit.jsonl");
+
+  try {
+    await mkdir(join(rootDir, "logs"), { recursive: true });
+    await writeFile(auditPath, "", "utf8");
+
+    const first = await resetConsecutiveFailures({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      reason: "parcel-9 backfill from corrected classifier",
+      rootDir,
+      now: "2026-05-04T00:03:00.000Z",
+    });
+    const second = await resetConsecutiveFailures({
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      reason: "parcel-9 backfill from corrected classifier",
+      rootDir,
+      now: "2026-05-04T00:04:00.000Z",
+    });
+
+    const auditLines = (await readFile(auditPath, "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+
+    assert.equal(first.status, "ok");
+    assert.equal(second.status, "noop");
+    assert.equal(second.reason, "already_reset");
+    assert.equal(auditLines.length, 1);
+    assert.equal(auditLines[0].lifecycle.reason, "parcel-9 backfill from corrected classifier");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});

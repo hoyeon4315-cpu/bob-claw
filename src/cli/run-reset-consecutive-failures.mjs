@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import { appendSignerAuditRecord, buildConsecutiveFailureResetAuditRecord } from "../executor/signer/audit-log.mjs";
+import {
+  appendSignerAuditRecord,
+  buildConsecutiveFailureResetAuditRecord,
+  readSignerAuditLog,
+} from "../executor/signer/audit-log.mjs";
+import { latestClassifiedRecords } from "../executor/policy/consecutive-failures.mjs";
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = {
@@ -30,6 +35,22 @@ export async function resetConsecutiveFailures({
   rootDir = process.cwd(),
   now = new Date().toISOString(),
 } = {}) {
+  const auditRecords = await readSignerAuditLog({ rootDir });
+  const latest = latestClassifiedRecords(auditRecords, { strategyId, chain })[0] || null;
+  if (latest?.classification === "reset") {
+    return {
+      status: "noop",
+      reason: "already_reset",
+      strategyId,
+      chain,
+      actor,
+      resetScope: latest.record?.lifecycle?.resetScope || null,
+      timestamp: latest.record?.timestamp || latest.record?.observedAt || null,
+      auditPath: null,
+      auditRecord: latest.record,
+    };
+  }
+
   const record = buildConsecutiveFailureResetAuditRecord({
     strategyId,
     chain,

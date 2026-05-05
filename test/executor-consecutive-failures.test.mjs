@@ -331,6 +331,7 @@ test("committed resume timestamp ignores older terminal failures without rewriti
       },
     ],
     now: "2026-04-22T15:17:00.000Z",
+    killSwitchPath: null,
   });
 
   assert.equal(policy.decision, "ALLOW");

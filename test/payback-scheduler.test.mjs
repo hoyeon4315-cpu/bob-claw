@@ -268,6 +268,7 @@ test("composite payback plan reuses existing helper intent formats and passes po
         intent,
         auditRecords: [],
         now: "2026-04-17T00:00:00.000Z",
+        killSwitchPath: null,
       });
       assert.equal(policy.decision, "ALLOW");
     }
@@ -293,6 +294,7 @@ test("payback scheduler tick keeps audit-log-safe planning mode by default", asy
     }),
     consolidationPlanBuilder: async () => consolidationPlanFixture(),
     offrampPlanBuilder: async () => offrampPlanFixture(),
+    killSwitchPath: null,
   });
 
   assert.equal(result.status, "ready");

@@ -403,6 +403,7 @@ test("signer notifies once in Korean when a large transaction is broadcast witho
   };
 
   try {
+    const killSwitchPath = join(dir, "missing-kill-switch");
     const result = await handleIntentCommand({
       message: {
         command: "sign_and_broadcast",
@@ -419,7 +420,7 @@ test("signer notifies once in Korean when a large transaction is broadcast witho
       signers,
       args: {
         activeBudgetUsd: null,
-        killSwitchPath: null,
+        killSwitchPath,
         autoIngest: false,
       },
       cwd: dir,
@@ -469,6 +470,7 @@ test("signer waits for confirmation before notifying when confirmation is reques
   };
 
   try {
+    const killSwitchPath = join(dir, "missing-kill-switch");
     const result = await handleIntentCommand({
       message: {
         command: "sign_and_broadcast",
@@ -487,7 +489,7 @@ test("signer waits for confirmation before notifying when confirmation is reques
       signers,
       args: {
         activeBudgetUsd: null,
-        killSwitchPath: null,
+        killSwitchPath,
         autoIngest: false,
       },
       cwd: dir,

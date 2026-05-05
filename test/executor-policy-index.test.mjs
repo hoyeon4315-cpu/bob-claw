@@ -30,6 +30,7 @@ test("policy index blocks intent when liquidity snapshot shows queue_unwind", as
       },
     },
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
   assert.equal(policy.decision, "BLOCK");
   assert.ok(policy.blockers.includes("liquidity_queue_unwind"));
@@ -78,6 +79,7 @@ test("policy index allows intent when risk context is absent", async () => {
     intent: baseIntent(),
     auditRecords: [],
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
   assert.equal(policy.decision, "ALLOW");
   assert.ok(!policy.results.some((r) => r.policy === "liquidity_watch"));
@@ -102,6 +104,7 @@ test("policy index blocks Gateway intents when Gateway availability is paused", 
       },
     },
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
 
   assert.equal(policy.decision, "BLOCK");
@@ -127,6 +130,7 @@ test("policy index does not block non-Gateway intents when Gateway availability 
       },
     },
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
 
   assert.equal(policy.decision, "ALLOW");
@@ -170,6 +174,7 @@ test("policy index allows intent when concentration is within caps", async () =>
       totalOperatingCapitalUsd: 1000,
     },
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
   assert.equal(policy.decision, "ALLOW");
   const concentrationResult = policy.results.find((r) => r.policy === "concentration_guard");
@@ -233,6 +238,7 @@ test("emergency unwind intent passes cap-check and hf-check via policy", async (
     intent: emergencyIntent,
     auditRecords: [],
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
   assert.equal(policy.decision, "ALLOW");
 });
@@ -259,6 +265,7 @@ test("tiny_live_canary policy passes for reopened recursive wrapped BTC loop", a
       microCanaryStatus: "minimal_live_proof_exists",
     },
     now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
   });
   assert.equal(policy.decision, "ALLOW");
   assert.equal(policy.blockers.includes("strategy_auto_execute_disabled"), false);

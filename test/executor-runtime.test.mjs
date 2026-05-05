@@ -11,6 +11,7 @@ test("executor runtime refreshes a stale heartbeat when signer health responds",
   const dir = await mkdtemp(join(tmpdir(), "bob-claw-executor-runtime-"));
   const heartbeatPath = join(dir, "executor-heartbeat.json");
   const socketPath = join(dir, "executor-signer.sock");
+  const killSwitchPath = join(dir, "missing-kill-switch");
 
   await writeHeartbeat({
     path: heartbeatPath,
@@ -29,6 +30,8 @@ test("executor runtime refreshes a stale heartbeat when signer health responds",
     now: "2026-04-19T04:05:00.000Z",
     heartbeatPath,
     signerSocketPath: socketPath,
+    killSwitchPath,
+    killSwitchAuditPath: join(dir, "logs", "kill-switch-audit.jsonl"),
     ttlMs: 60_000,
     healthReader: async () => ({
       status: "ok",
