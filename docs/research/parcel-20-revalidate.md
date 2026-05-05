@@ -758,3 +758,71 @@ Next required mitigation:
   - Sonic single-route no-route case
 - Keep `same_chain_unprofitable:need_$2_on_base`, `fresh_roundtrip_proof_recorded`, and payback carry blockers intact.
 - Do not resume for live execution until a dry-run-first preview returns full `completed`.
+
+## 2026-05-05T13:01Z preview after deterministic route deferral labels
+
+Code baseline:
+
+- `f8fe1511 fix(refill): classify exhausted route deferrals`
+- Verification before preview:
+  - RED check: new route deferral tests failed before implementation.
+  - Focused: `node --test test/treasury-refill-job.test.mjs test/all-chain-autopilot.test.mjs` => `47 pass / 0 fail`
+  - Full: `npm test` => `2685 pass / 1 skip / 0 fail`
+  - Subagent review: no policy or execution-semantics issues found.
+
+Preview command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --write --json --timeout-ms=180000 --canary-timeout-ms=180000 --dispatch-timeout-ms=180000`
+
+Result from `data/all-chain-autopilot-latest.json`:
+
+- `observedAt`: `2026-05-05T13:01:29.814Z`
+- `autopilotRunId`: `e7bc1c43-5100-4a70-8c97-b7ee3b3be493`
+- `mode`: `preview`
+- `status`: `completed_with_blockers`
+- `autoRefillJobCount`: `9`
+- `refillAttemptedCount`: `0`
+- `refillExecutedCount`: `0`
+- `autoKill.triggered`: `false`
+- `autoKill.killSwitchActive`: `true`
+- `canarySweep.status`: `blocked`
+- `canarySweep.blockedReason`: `kill_switch_present`
+- `payback.status`: `halted`
+- `payback.reason`: `kill_switch_present`
+
+Route deferral classification:
+
+- Blocked with deterministic deferral:
+  - bob ETH:
+    - `routeDeferralReason`: `native_bootstrap_unavailable_dex_quote_failed_gateway_no_route`
+    - `routeDeferralAction`: `defer_until_dex_quote_or_gateway_route_available`
+  - avalanche wBTC.OFT:
+    - `routeDeferralReason`: `bridge_route_unavailable_gateway_no_route_lifi_quote_rejected`
+    - `routeDeferralAction`: `defer_until_bridge_provider_supports_pair`
+  - bsc wBTC.OFT:
+    - `routeDeferralReason`: `bridge_route_unavailable_gateway_no_route_lifi_quote_rejected`
+    - `routeDeferralAction`: `defer_until_bridge_provider_supports_pair`
+  - optimism wBTC.OFT:
+    - `routeDeferralReason`: `bridge_route_unavailable_gateway_no_route_lifi_quote_rejected`
+    - `routeDeferralAction`: `defer_until_bridge_provider_supports_pair`
+  - sonic wBTC.OFT:
+    - `routeDeferralReason`: `bridge_route_unavailable_gateway_no_route_no_alternate_provider`
+    - `routeDeferralAction`: `defer_until_gateway_route_available_or_add_alternate_provider`
+
+- Preview-ready this run:
+  - bera wBTC.OFT
+  - ethereum RLUSD
+  - soneium wBTC.OFT
+  - unichain wBTC.OFT
+
+Safety decision:
+
+- Kill-switch was not cleared.
+- No live broadcast was attempted.
+- The preview confirms the remaining route blockers are now planner-actionable instead of opaque `routing_exhausted` rows.
+
+Next required mitigation:
+
+- Use the ready refill previews only after operator resume review and a full dry-run-first pass.
+- Keep kill-switch armed until the next explicit resume decision.
+- Convert the five remaining route deferral labels into either executable route support or a planner policy that treats them as clean cost/provider deferrals.
