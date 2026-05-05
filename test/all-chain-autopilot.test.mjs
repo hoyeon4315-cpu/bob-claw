@@ -1609,8 +1609,168 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
       planBlockedReason: null,
     },
   ]);
+  assert.equal(
+    report.refillExecutions[0].routeDeferralReason,
+    "bridge_route_unavailable_gateway_no_route_lifi_quote_rejected",
+  );
+  assert.equal(report.refillExecutions[0].routeDeferralAction, "defer_until_bridge_provider_supports_pair");
   assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
   assert.equal(report.summary.executionGate.blockedReason, "preview_only");
+});
+
+test("all-chain autopilot classifies native refill route exhaustion as planner-actionable", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "bob-native-exhausted",
+              chain: "bob",
+              asset: "ETH",
+              type: "refill_native",
+              executionMethod: "same_chain_token_to_native_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "same_chain_token_to_native_swap",
+                  availability: "ready",
+                  source: { chain: "bob", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+                {
+                  method: "cross_chain_bridge_or_swap",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          preparation: {
+            status: "blocked",
+            blockedReason: args.includes("--method=cross_chain_bridge_or_swap") ? "no_route" : "dex_quote_failed",
+          },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: false,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
+  assert.equal(
+    report.refillExecutions[0].routeDeferralReason,
+    "native_bootstrap_unavailable_dex_quote_failed_gateway_no_route",
+  );
+  assert.equal(report.refillExecutions[0].routeDeferralAction, "defer_until_dex_quote_or_gateway_route_available");
+});
+
+test("all-chain autopilot classifies single-provider no-route exhaustion as planner-actionable", async () => {
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 1 },
+          jobs: [
+            {
+              jobId: "sonic-single-route",
+              chain: "sonic",
+              asset: "wBTC.OFT",
+              type: "refill_token",
+              executionMethod: "cross_chain_bridge_or_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_or_swap",
+                  availability: "ready",
+                  source: { chain: "sei", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: { preparation: { status: "blocked", blockedReason: "no_route" } },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: false,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
+  assert.equal(
+    report.refillExecutions[0].routeDeferralReason,
+    "bridge_route_unavailable_gateway_no_route_no_alternate_provider",
+  );
+  assert.equal(report.refillExecutions[0].routeDeferralAction, "defer_until_gateway_route_available_or_add_alternate_provider");
 });
 
 test("all-chain autopilot retries alternate refill methods after native gas bootstrap deadlock", async () => {

@@ -218,6 +218,56 @@ function refillRouteAttemptReason(result = {}, { method = null } = {}) {
   };
 }
 
+function routeExhaustionDeferral(routeAttemptReasons = []) {
+  const reasons = new Set((routeAttemptReasons || []).map((item) => item?.blockedReason).filter(Boolean));
+  const methods = new Set((routeAttemptReasons || []).map((item) => item?.method).filter(Boolean));
+  if (reasons.has("dex_quote_failed") && reasons.has("no_route")) {
+    return {
+      routeDeferralReason: "native_bootstrap_unavailable_dex_quote_failed_gateway_no_route",
+      routeDeferralAction: "defer_until_dex_quote_or_gateway_route_available",
+    };
+  }
+  if (reasons.has("no_route") && reasons.has("lifi_quote_rejected")) {
+    return {
+      routeDeferralReason: "bridge_route_unavailable_gateway_no_route_lifi_quote_rejected",
+      routeDeferralAction: "defer_until_bridge_provider_supports_pair",
+    };
+  }
+  if (reasons.size === 1 && reasons.has("no_route") && methods.size <= 1) {
+    return {
+      routeDeferralReason: "bridge_route_unavailable_gateway_no_route_no_alternate_provider",
+      routeDeferralAction: "defer_until_gateway_route_available_or_add_alternate_provider",
+    };
+  }
+  if (reasons.has("quote_unavailable") || reasons.has("lifi_quote_rejected")) {
+    return {
+      routeDeferralReason: "bridge_route_quote_unavailable_after_alternates",
+      routeDeferralAction: "defer_until_bridge_quote_provider_recovers",
+    };
+  }
+  return {
+    routeDeferralReason: "route_exhausted_retryable_provider_blockers",
+    routeDeferralAction: "defer_until_route_provider_or_inventory_state_changes",
+  };
+}
+
+function routingExhaustedPreparation(preview = {}, routeAttemptReasons = []) {
+  const deferral = routeExhaustionDeferral(routeAttemptReasons);
+  return {
+    ...preview,
+    json: {
+      ...(preview.json || {}),
+      preparation: {
+        ...(preview.json?.preparation || {}),
+        status: "blocked",
+        blockedReason: "routing_exhausted",
+        routeAttemptReasons,
+        ...deferral,
+      },
+    },
+  };
+}
+
 function refillPreviewStatus(result = {}) {
   return result?.json?.preparation?.status || result?.json?.event?.status || result?.json?.status || null;
 }
@@ -356,6 +406,8 @@ function compactRefillExecution(job, preview, execution = null) {
     previewStatus: execution ? null : refillPreviewStatus(preview),
     previewBlockedReason: refillPreparationReady(preview?.json) ? null : refillPreviewBlockedReason(preview),
     routeAttemptReasons: preview?.json?.preparation?.routeAttemptReasons || [],
+    routeDeferralReason: preview?.json?.preparation?.routeDeferralReason || null,
+    routeDeferralAction: preview?.json?.preparation?.routeDeferralAction || null,
     attempted: Boolean(execution),
     executed: delivered,
     executionStatus,
@@ -1339,18 +1391,7 @@ export async function runAllChainAutopilot({
         if (refillPreparationReady(preview.json) || !refillPreviewRetryable(preview, { activeMethod: method })) break;
       }
       if (refillPreviewRetryable(preview, { activeMethod: refillSelectedMethod(preview, job.executionMethod) })) {
-        preview = {
-          ...preview,
-          json: {
-            ...(preview.json || {}),
-            preparation: {
-              ...(preview.json?.preparation || {}),
-              status: "blocked",
-              blockedReason: "routing_exhausted",
-              routeAttemptReasons,
-            },
-          },
-        };
+        preview = routingExhaustedPreparation(preview, routeAttemptReasons);
         steps[steps.length - 1] = commandStep(steps[steps.length - 1]?.name || `treasury_refill_preview:${job.jobId}`, steps[steps.length - 1]?.args || [], preview);
       }
     }
@@ -1421,18 +1462,7 @@ export async function runAllChainAutopilot({
         if (!nextPreview) break;
         preview = nextPreview;
         if (refillPreviewRetryable(preview, { activeMethod: refillSelectedMethod(preview, job.executionMethod) })) {
-          preview = {
-            ...preview,
-            json: {
-              ...(preview.json || {}),
-              preparation: {
-                ...(preview.json?.preparation || {}),
-                status: "blocked",
-                blockedReason: "routing_exhausted",
-                routeAttemptReasons,
-              },
-            },
-          };
+          preview = routingExhaustedPreparation(preview, routeAttemptReasons);
           steps[steps.length - 1] = commandStep(
             steps[steps.length - 1]?.name || `treasury_refill_preview:${job.jobId}`,
             steps[steps.length - 1]?.args || [],
