@@ -2945,6 +2945,131 @@ test("all-chain autopilot keeps parsed refill execution failures as blockers", a
   assert.equal(report.refillExecutions[0].executionBlockedReason, "Signer daemon response timed out after 30000ms");
 });
 
+test("all-chain autopilot reserves source inventory after indeterminate refill timeout", async () => {
+  const seen = [];
+  const sharedSource = {
+    chain: "sei",
+    token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+    actual: "12000",
+    actualDecimal: 0.00012,
+    estimatedUsd: 9.6,
+  };
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 2 },
+          jobs: [
+            {
+              jobId: "timeout-source-1",
+              chain: "ethereum",
+              asset: "RLUSD",
+              token: "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+              type: "refill_token",
+              targetAmount: "3000000",
+              targetAmountDecimal: 3,
+              estimatedAssetValueUsd: 8,
+              executionMethod: "cross_chain_bridge_lifi",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready", source: sharedSource },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: sharedSource,
+                  missingInputs: [],
+                },
+              ],
+            },
+            {
+              jobId: "timeout-source-2",
+              chain: "unichain",
+              asset: "wBTC.OFT",
+              token: sharedSource.token,
+              type: "refill_token",
+              targetAmount: "9000",
+              targetAmountDecimal: 0.00009,
+              estimatedAssetValueUsd: 7.2,
+              executionMethod: "cross_chain_bridge_lifi",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready", source: sharedSource },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: sharedSource,
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--execute") && args.includes("--job-id=timeout-source-1")) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: "spawnSync node ETIMEDOUT",
+          json: null,
+          error: { name: "Error", message: "Command timed out after 180000ms" },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "cross_chain_bridge_lifi",
+          preparation: { status: "ready", executionMethod: "cross_chain_bridge_lifi" },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+    timeoutMs: 180000,
+  });
+
+  assert.equal(report.summary.refillAttemptedCount, 1);
+  assert.equal(report.summary.refillExecutedCount, 0);
+  assert.equal(report.refillExecutions.length, 2);
+  assert.equal(report.refillExecutions[0].jobId, "timeout-source-1");
+  assert.equal(report.refillExecutions[0].attempted, true);
+  assert.equal(report.refillExecutions[0].executionBlockedReason, "Command timed out after 180000ms");
+  assert.equal(report.refillExecutions[1].jobId, "timeout-source-2");
+  assert.equal(report.refillExecutions[1].attempted, false);
+  assert.equal(report.refillExecutions[1].previewBlockedReason, "source_inventory_reserved");
+  assert.equal(seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length, 1);
+});
+
 test("all-chain autopilot treats Merkl canary blocked json as recoverable during execute", async () => {
   const command = ({ args }) => {
     const name = args[0];

@@ -55,6 +55,12 @@ const SOURCE_NATIVE_GAS_CONSUMING_METHODS = new Set([
   "cross_chain_bridge_lifi",
   "cross_chain_bridge_stargate",
 ]);
+const SOURCE_DEBITING_METHODS = new Set([
+  ...SOURCE_NATIVE_GAS_CONSUMING_METHODS,
+  "same_chain_token_to_native_swap",
+  "same_chain_native_to_token_swap",
+  "gas_refuel_bridge_gas_zip",
+]);
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -322,6 +328,9 @@ function normalizeRefillBlockedReason(reason = null) {
   if (!reason) return null;
   if (/Signer did not complete/iu.test(String(reason))) {
     return "signer_execution_failed";
+  }
+  if (/Insufficient source balance/iu.test(String(reason))) {
+    return "insufficient_source_balance";
   }
   if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance/iu.test(String(reason))) {
     return "insufficient_native_gas_balance";
@@ -1037,6 +1046,13 @@ function refillSourceDebitLikely(execution = null) {
   return refillDeliveredStatus(status) || status === "source_confirmed_only" || refillExecutionHasSourceDebitBroadcast(execution);
 }
 
+function refillSourceDebitIndeterminate(execution = null, { activeMethod = null } = {}) {
+  if (!SOURCE_DEBITING_METHODS.has(activeMethod)) return false;
+  if (refillSourceDebitLikely(execution)) return false;
+  const text = commandErrorText(execution).toLowerCase();
+  return /etimedout|timed out|timeout/u.test(text);
+}
+
 function refillJobForSelectedMethod(job = {}, method = null) {
   if (!method) return job;
   const candidate = refillExecutionCandidates(job).find((item) => item.method === method) || null;
@@ -1440,7 +1456,10 @@ export async function runAllChainAutopilot({
           timeoutMs,
           steps,
         });
-        if (refillSourceDebitLikely(execution)) {
+        if (
+          refillSourceDebitLikely(execution) ||
+          refillSourceDebitIndeterminate(execution, { activeMethod: method })
+        ) {
           debitSourceReservation = activeSourceReservation;
         }
         if (!refillExecutionRetryable(execution, { activeMethod: method })) break;

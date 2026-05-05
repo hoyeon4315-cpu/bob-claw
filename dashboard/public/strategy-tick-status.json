@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-05T13:34:14.608Z",
+  "generatedAt": "2026-05-05T13:49:22.133Z",
   "fastTrackThresholds": {
     "minSignerBackedReceipts": 0,
     "minConsecutiveSuccess": 0,
@@ -241,8 +241,8 @@
         "fastTrack": {
           "eligible": true,
           "blockers": [],
-          "signerBackedReceiptCount": 96,
-          "consecutiveSuccess": 96
+          "signerBackedReceiptCount": 94,
+          "consecutiveSuccess": 94
         },
         "strict": {
           "eligible": false,
@@ -1461,7 +1461,7 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-05T13:34:14.928Z"
+    "generatedAt": "2026-05-05T13:49:22.427Z"
   },
   "strategyStage": {
     "total": 18,
@@ -1669,6 +1669,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-05T13:34:14.930Z"
+    "generatedAt": "2026-05-05T13:49:22.428Z"
   }
 }

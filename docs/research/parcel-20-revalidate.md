@@ -956,3 +956,37 @@ Next required mitigation:
 - Investigate the Ethereum `RLUSD` refill timeout and determine whether it left a pending provider/order state or simply exceeded the CLI timeout.
 - Convert the Unichain insufficient-source-balance case into a preflight deferral before any bridge attempt.
 - Keep the kill-switch armed until the operator reviews this packet and explicitly resumes with a new reason.
+
+## 2026-05-05T13:40Z mitigation: reserve source after indeterminate refill timeout
+
+Root cause:
+
+- Bera and Soneium delivered from the same Sei `wBTC.OFT` source inventory.
+- The Ethereum `RLUSD` refill used the same source and timed out at the all-chain subprocess boundary:
+  `spawnSync ... ETIMEDOUT` / `Command timed out after 180000ms`.
+- Because that timeout returned no structured execution JSON, the all-chain autopilot could not mark the source inventory as debited.
+- The next Unichain refill then planned against stale source inventory and was blocked by the refill executor before broadcast:
+  `Insufficient source balance: required 9000, available 2707`.
+
+Patch:
+
+- `src/executor/all-chain-autopilot.mjs` now treats a timeout from a source-debiting refill method as indeterminate source progress.
+- When this happens, the same source reservation is conservatively consumed for the rest of that tick.
+- Later jobs using the same source are blocked at preview/accounting time with `source_inventory_reserved` instead of launching another live refill executor.
+- `Insufficient source balance: ...` is normalized to `insufficient_source_balance` for deterministic reporting.
+
+Test:
+
+- Added `all-chain autopilot reserves source inventory after indeterminate refill timeout`.
+- The regression fixture reproduces the Ethereum-timeout -> Unichain-stale-source pattern:
+  - first job executes and times out with no JSON
+  - second job shares the source
+  - expected result: second job is `attempted: false`, `previewBlockedReason: source_inventory_reserved`, and no second execute command is launched
+- Focused verification:
+  `node --test test/all-chain-autopilot.test.mjs test/all-chain-autopilot-cli.test.mjs`
+  passed with `42 pass / 0 fail`.
+
+Remaining review item:
+
+- Reconcile the Ethereum source txs from signer audit against `data/treasury-refill-executions.jsonl` and `data/receipt-reconciliations.jsonl`.
+- If destination settlement exists, backfill the missing refill outcome; if not, keep the current hold and record the provider/order timeout as unresolved.
