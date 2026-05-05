@@ -8,6 +8,7 @@ import { readErc20Balance } from "../../evm/account-state.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { writeTextIfChanged } from "../../lib/file-write.mjs";
+import { ReceiptAutoIngestTimeoutError } from "../ingestor/receipt-auto-ingest.mjs";
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { readSignerHealth, sendSignerCommand } from "../signer/client.mjs";
 import { buildDefaultWrappedBtcLendingLoopConfig } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
@@ -528,6 +529,7 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
   now = new Date().toISOString(),
   dataDir = config.dataDir,
   runReceiptAutoIngestImpl = runReceiptAutoIngest,
+  autoIngestTimeoutMs = 60_000,
   writeTextIfChangedImpl = writeTextIfChanged,
   readExistingLiveProofImpl = undefined,
 } = {}) {
@@ -579,10 +581,30 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
         previousProof: existingLiveProof,
         receiptContext,
       });
-  const receiptAutoIngest = await runReceiptAutoIngestImpl({
-    context: autoIngestContext,
-    cwd,
-  });
+  let receiptAutoIngest = null;
+  try {
+    receiptAutoIngest = await runReceiptAutoIngestImpl({
+      context: autoIngestContext,
+      cwd,
+      timeoutMs: autoIngestTimeoutMs,
+    });
+  } catch (error) {
+    if (!(error instanceof ReceiptAutoIngestTimeoutError) && error?.timedOut !== true) {
+      throw error;
+    }
+    receiptAutoIngest = {
+      ran: true,
+      failed: true,
+      timedOut: true,
+      reason: "auto_ingest_timeout",
+      timeoutMs: error.timeoutMs || autoIngestTimeoutMs,
+      command: error.command || null,
+      error: {
+        name: error.name,
+        message: error.message,
+      },
+    };
+  }
 
   const liveProof = buildWrappedBtcLoopLiveProof({
     result: {

@@ -1,5 +1,18 @@
 import { spawn } from "node:child_process";
 
+export const DEFAULT_RECEIPT_AUTO_INGEST_TIMEOUT_MS = 60_000;
+export const RECEIPT_AUTO_INGEST_KILL_GRACE_MS = 5_000;
+
+export class ReceiptAutoIngestTimeoutError extends Error {
+  constructor({ timeoutMs, command } = {}) {
+    super(`Receipt auto-ingest timed out after ${timeoutMs}ms`);
+    this.name = "ReceiptAutoIngestTimeoutError";
+    this.timeoutMs = timeoutMs;
+    this.command = command;
+    this.timedOut = true;
+  }
+}
+
 function nonEmptyList(values = []) {
   return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
 }
@@ -30,6 +43,7 @@ function buildWrappedBtcLoopCommand(context = {}) {
     "ingest:wrapped-btc-loop-receipt",
     "--",
     "--write",
+    "--no-refresh-live-packet",
     `--scenario=${scenario}`,
     `--execution-mode=${executionMode}`,
     `--result=${result}`,
@@ -88,6 +102,8 @@ export function buildAutoIngestCommand(context = {}) {
 export async function runReceiptAutoIngest({
   context,
   cwd = process.cwd(),
+  timeoutMs = DEFAULT_RECEIPT_AUTO_INGEST_TIMEOUT_MS,
+  spawnImpl = spawn,
 } = {}) {
   const command = buildAutoIngestCommand(context);
   if (!command) {
@@ -98,21 +114,41 @@ export async function runReceiptAutoIngest({
   }
 
   const result = await new Promise((resolve) => {
-    const child = spawn(command.command, command.args, {
+    const child = spawnImpl(command.command, command.args, {
       cwd,
       stdio: "pipe",
       env: process.env,
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => {
+    let timeout = null;
+    let killGraceTimeout = null;
+    let settled = false;
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      if (killGraceTimeout) clearTimeout(killGraceTimeout);
+      resolve(payload);
+    };
+    child.stdout?.on("data", (chunk) => {
       stdout += chunk.toString();
     });
-    child.stderr.on("data", (chunk) => {
+    child.stderr?.on("data", (chunk) => {
       stderr += chunk.toString();
     });
+    child.on("error", (error) => {
+      finish({
+        ran: true,
+        code: null,
+        stdout,
+        stderr,
+        command,
+        error,
+      });
+    });
     child.on("close", (code) => {
-      resolve({
+      finish({
         ran: true,
         code,
         stdout,
@@ -120,8 +156,40 @@ export async function runReceiptAutoIngest({
         command,
       });
     });
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timeout = setTimeout(() => {
+        try {
+          child.kill?.("SIGTERM");
+        } catch {
+          // The close/error handlers below still provide the final outcome.
+        }
+        killGraceTimeout = setTimeout(() => {
+          try {
+            child.kill?.("SIGKILL");
+          } catch {
+            // If the process already exited, there is nothing more to do.
+          }
+          finish({
+            ran: true,
+            code: null,
+            signal: "SIGKILL",
+            stdout,
+            stderr,
+            command,
+            timedOut: true,
+            timeoutMs,
+          });
+        }, RECEIPT_AUTO_INGEST_KILL_GRACE_MS);
+      }, timeoutMs);
+    }
   });
 
+  if (result.timedOut) {
+    throw new ReceiptAutoIngestTimeoutError({ timeoutMs, command });
+  }
+  if (result.error) {
+    throw result.error;
+  }
   if (result.code !== 0) {
     throw new Error(`Auto-ingest failed with code ${result.code}: ${result.stderr || result.stdout}`);
   }

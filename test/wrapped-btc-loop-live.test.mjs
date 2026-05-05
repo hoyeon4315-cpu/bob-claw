@@ -916,6 +916,56 @@ test("wrapped loop live receipt writes proof before auto-ingest and rewrites fin
   assert.equal(finalized.liveProof.receiptAutoIngest.ran, true);
 });
 
+test("wrapped loop live receipt returns proof when auto-ingest times out", async () => {
+  const writes = [];
+  const timeoutError = Object.assign(new Error("Receipt auto-ingest timed out after 25ms"), {
+    name: "ReceiptAutoIngestTimeoutError",
+    timedOut: true,
+    timeoutMs: 25,
+    command: {
+      command: "npm",
+      args: ["run", "ingest:wrapped-btc-loop-receipt"],
+    },
+  });
+
+  const finalized = await finalizeWrappedBtcLoopLiveReceipt({
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    scenarioId: "healthy_baseline",
+    entryResults: [
+      { broadcast: { txHash: "0xentry1" } },
+      { broadcast: { txHash: "0xentry2" } },
+    ],
+    unwindResults: [
+      { broadcast: { txHash: "0xunwind1" } },
+    ],
+    receiptContext: {
+      actualLoopFeesUsd: 0.01,
+      actualUnwindCostUsd: 0.02,
+      realizedNetCarryUsd: 0,
+    },
+    dataDir: "/tmp/bob-claw-test",
+    writeTextIfChangedImpl: async (path, contents) => {
+      writes.push({
+        path,
+        proof: JSON.parse(contents),
+      });
+      return { path, changed: true };
+    },
+    runReceiptAutoIngestImpl: async ({ timeoutMs }) => {
+      assert.equal(timeoutMs, 60_000);
+      throw timeoutError;
+    },
+  });
+
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0].proof.entryTxHashes, ["0xentry1", "0xentry2"]);
+  assert.deepEqual(writes[0].proof.unwindTxHashes, ["0xunwind1"]);
+  assert.equal(writes[1].proof.receiptAutoIngest.reason, "auto_ingest_timeout");
+  assert.equal(writes[1].proof.receiptAutoIngest.timedOut, true);
+  assert.equal(finalized.receiptAutoIngest.reason, "auto_ingest_timeout");
+  assert.equal(finalized.liveProof.proofStatus, "signer_backed_roundtrip_recorded");
+});
+
 test("wrapped loop live receipt reuses the prior entry proof for unwind-only auto-ingest", async () => {
   const ingestCalls = [];
 

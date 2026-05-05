@@ -18,6 +18,7 @@ test("wrapped loop auto-ingest builds a fully populated receipt command", () => 
 
   assert.equal(command.command, "npm");
   assert.equal(command.args.includes("--write"), true);
+  assert.equal(command.args.includes("--no-refresh-live-packet"), true);
   assert.equal(command.args.includes("--scenario=healthy_baseline"), true);
   assert.equal(command.args.includes("--entry-tx-hashes=0xentry1,0xentry2"), true);
   assert.equal(command.args.includes("--unwind-tx-hashes=0xunwind1"), true);
@@ -46,6 +47,7 @@ test("wrapped loop auto-ingest builds a minimal receipt command when proof hydra
   });
 
   assert.equal(command.command, "npm");
+  assert.equal(command.args.includes("--no-refresh-live-packet"), true);
   assert.equal(command.args.includes("--entry-tx-hashes=0xentry1"), true);
   assert.equal(command.args.includes("--unwind-tx-hashes=0xunwind1"), true);
   assert.equal(command.args.some((arg) => arg.startsWith("--health-factor-path=")), false);

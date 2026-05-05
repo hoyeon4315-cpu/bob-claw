@@ -427,9 +427,14 @@ export function buildWrappedBtcLoopLiveProof({
     realizedNetCarryUsd: round(receiptContext?.realizedNetCarryUsd),
     receiptAutoIngest: {
       ran: result.receiptAutoIngest?.ran === true,
+      failed: result.receiptAutoIngest?.failed === true,
+      timedOut: result.receiptAutoIngest?.timedOut === true,
       reason: result.receiptAutoIngest?.reason || null,
     },
-    oosReceiptStatus: result.receiptAutoIngest?.ran === true ? "ingested" : "extended_receipt_context_pending",
+    oosReceiptStatus:
+      result.receiptAutoIngest?.ran === true && result.receiptAutoIngest?.failed !== true
+        ? "ingested"
+        : "extended_receipt_context_pending",
     },
   });
 }
