@@ -1,12 +1,31 @@
 {
   "schemaVersion": 1,
-  "observedAt": "2026-05-04T18:01:33.776Z",
+  "observedAt": "2026-05-05T13:33:15.266Z",
   "summaryKind": "event_window_with_current_kill_switch_state",
   "windowMs": 86400000,
-  "totalEvaluations24h": 0,
-  "triggerCounts": {},
-  "lastEvent": null,
-  "armedAt": null,
-  "killSwitchActive": false,
-  "currentState": "running"
+  "totalEvaluations24h": 4,
+  "triggerCounts": {
+    "failure_burst_per_strategy": 1,
+    "relative_price_stale": 3
+  },
+  "lastEvent": {
+    "schemaVersion": 1,
+    "evaluatedAt": "2026-05-05T12:03:43.308Z",
+    "triggers": [
+      {
+        "trigger": "relative_price_stale",
+        "pair": "ETH/BTC",
+        "ageMs": 2328847,
+        "threshold": 1800000,
+        "windowMs": 604800000,
+        "sampleCount": 518,
+        "latestSampleAt": "2026-05-05T11:24:54.461Z"
+      }
+    ],
+    "killSwitchPath": "/Users/love/.bob-claw/KILL_SWITCH",
+    "alreadyArmed": true
+  },
+  "armedAt": "2026-05-04T18:16:45.378Z",
+  "killSwitchActive": true,
+  "currentState": "halted"
 }

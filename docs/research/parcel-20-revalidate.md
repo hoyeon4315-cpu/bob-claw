@@ -826,3 +826,133 @@ Next required mitigation:
 - Use the ready refill previews only after operator resume review and a full dry-run-first pass.
 - Keep kill-switch armed until the next explicit resume decision.
 - Convert the five remaining route deferral labels into either executable route support or a planner policy that treats them as clean cost/provider deferrals.
+
+## 2026-05-05T13:29Z operator-approved live-safe dry-run-first execution
+
+Code baseline:
+
+- `bf54cc4b fix(autopilot): allow live-safe dry-run-first previews`
+- Verification before execution:
+  - Focused CLI/autopilot tests passed.
+  - Full `npm test` passed: `2689 pass / 1 skip / 0 fail`.
+  - Subagent review found no remaining issues in the dry-run-first safety predicate after the refill/payback predicate fixes.
+
+Operator approval and resume:
+
+- Resume-review packet was appended at `2026-05-05T13:09:03.917Z`.
+- Kill-switch resume command:
+  `npm run kill:off -- --reason="operator-approved-live-safe-dry-run-first-after-route-deferral-gate"`
+- Audit row:
+  - `action`: `resume`
+  - `reason`: `operator-approved-live-safe-dry-run-first-after-route-deferral-gate`
+  - `previousState`: `halted`
+
+Execution command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --execute --dry-run-first --write --json --timeout-ms=180000 --canary-timeout-ms=180000 --dispatch-timeout-ms=180000`
+
+Dry-run-first preview result:
+
+- `mode`: `preview`
+- `status`: `completed_with_blockers`
+- `executionGate.blockedReason`: `preview_only`
+- `autoKill.triggered`: `false`
+- `autoKill.killSwitchActive`: `false`
+- `payback.status`: `carry`
+- `payback.reason`: `planned_payback_below_minimum`
+- `payback.pendingCarrySats`: `601`
+- The live-safe predicate accepted the preview because remaining refill blockers were either ready jobs or deterministic route deferrals, and payback was a below-minimum carry rather than an execution failure.
+
+Live execution result from `data/all-chain-autopilot-latest.json`:
+
+- `observedAt`: `2026-05-05T13:28:40.763Z`
+- `autopilotRunId`: `cb38e763-079b-4f88-87eb-84e6ee10db88`
+- `status`: `error`
+- `blockedReason`: `Command timed out after 180000ms`
+- `executionGate.requestedExecute`: `true`
+- `executionGate.liveCapableStepExecution`: `true`
+- `executionGate.blockedReason`: `null`
+- `autoKill.triggered`: `false`
+- `autoKill.triggers`: `[]`
+
+Refill outcomes:
+
+- `refillAttemptedCount`: `4`
+- `refillExecutedCount`: `2`
+- Delivered:
+  - Bera `wBTC.OFT`, job `f2de5e3d6ebe1386d8ce`
+  - Soneium `wBTC.OFT`, job `e96409c9d08c143d4c97`
+- Attempted but not completed:
+  - Ethereum `RLUSD`, job `8b521eee30d60fc195d4`
+    - `executionBlockedReason`: `Command timed out after 180000ms`
+  - Unichain `wBTC.OFT`, job `1873aaa5a9cc05ceaf76`
+    - `executionStatus`: `blocked`
+    - `executionBlockedReason`: `Insufficient source balance: required 9000, available 2707`
+- Still cleanly deferred:
+  - BOB `ETH`: `native_bootstrap_unavailable_dex_quote_failed_gateway_no_route`
+  - Avalanche `wBTC.OFT`: `bridge_route_unavailable_gateway_no_route_lifi_quote_rejected`
+  - BSC `wBTC.OFT`: `bridge_route_unavailable_gateway_no_route_lifi_quote_rejected`
+  - Optimism `wBTC.OFT`: `bridge_route_unavailable_gateway_no_route_lifi_quote_rejected`
+  - Sonic `wBTC.OFT`: `bridge_route_unavailable_gateway_no_route_no_alternate_provider`
+
+Signer audit rows after `2026-05-05T13:15Z`:
+
+- `21` rows appended.
+- No signer policy rejection or reverted receipt appeared in this window.
+- Confirmed live broadcasts:
+  - Sei LI.FI approval: `0xde52dc6d4e57dc67b98eeab37cd123909eaf4d242c00235c4fbe8072ac9f4323`
+  - Sei LI.FI bridge: `0x8214d228df95d85885013cf3ec2c0e08706f4e9f96a36381df85c46ec56f95c9`
+  - Sei LI.FI approval: `0x82247775b72fd6007d14e213e683e1a576fed28583ba41368946e1dbe25a6ced`
+  - Sei LI.FI bridge: `0xc00394eb188ba66cdd4326a37d8ab589687028514df5f21f5d9a0837599bef57`
+  - Sei LI.FI approval: `0xf7627f76e8107803d94573aa3d074c4c0d0c73c6648aee023c08eba7d137ef05`
+  - Sei LI.FI bridge: `0xf97262ee22853bc9344a27a56fca78bd4f885e015f576b31342693bdbf160662`
+  - Ethereum Morpho ERC-4626 redeem: `0x4c00db567c67dbe838dff93c88a840a33296886f2be6252eb09d0f739ae7f39c`
+
+Canary and payback result:
+
+- `canarySweep.status`: `completed`
+- `canarySweep.executedCount`: `0`
+- `canarySweep.broadcastStepCount`: `0`
+- `portfolio.exit.status`: `positions_closed`
+- `portfolio.exit.exitsExecuted`: `1`
+- `portfolio.exit.txHashes`: `0x4c00db567c67dbe838dff93c88a840a33296886f2be6252eb09d0f739ae7f39c`
+- `payback.status`: `carry`
+- `payback.pendingCarrySats`: `601`
+- No payback off-ramp was emitted because the planned payback remains below `minPaybackSats: 50000`.
+
+Safety action taken:
+
+- The command timed out after live broadcasts, so Parcel 20's halt-on-flag rule applies even though auto-kill itself stayed green.
+- The kill-switch was re-armed with:
+  `npm run kill:on -- --reason="parcel-20-live-run-timeout-hold-for-review"`
+- Audit row:
+  - `ts`: `2026-05-05T13:29:39.436Z`
+  - `action`: `halt`
+  - `reason`: `parcel-20-live-run-timeout-hold-for-review`
+  - `previousState`: `running`
+- `npm run kill:status -- --json` after the halt reports:
+  - `halted`: `true`
+  - `activeReason`: `parcel-20-live-run-timeout-hold-for-review`
+  - replay `triggered`: `false`
+  - replay `triggers`: `[]`
+
+Stage after halt:
+
+- `npm run dashboard:stage-explain` reports `stage: B`.
+- Current blocker: `receipt_proven_payback_period_missing`.
+- `refreshSuccessRatio24h`: `0.9806930693069307`.
+- `paybackPendingSats`: `601`.
+- `deliveredPeriodCountOnReserveChain`: `0`.
+
+Decision:
+
+- This run achieved policy-approved live broadcasts and two delivered refill jobs, plus one confirmed Ethereum position exit.
+- It did **not** complete cleanly because the all-chain autopilot timed out during live execution and one Unichain refill was blocked by insufficient source balance.
+- No further live execution should run until the timeout is diagnosed and the Ethereum/Unichain refill outcomes are either reconciled or deterministically deferred.
+
+Next required mitigation:
+
+- Reconcile the delivered Bera and Soneium refill receipts into the capital/refill dashboard surfaces.
+- Investigate the Ethereum `RLUSD` refill timeout and determine whether it left a pending provider/order state or simply exceeded the CLI timeout.
+- Convert the Unichain insufficient-source-balance case into a preflight deferral before any bridge attempt.
+- Keep the kill-switch armed until the operator reviews this packet and explicitly resumes with a new reason.
