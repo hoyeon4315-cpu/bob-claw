@@ -47,6 +47,7 @@
     "report:wallet-holdings-slice": "node src/cli/report-wallet-holdings-slice.mjs",
     "report:capital-audit": "node src/cli/report-capital-audit.mjs",
     "report:capital-forensics": "node src/cli/report-capital-forensics.mjs",
+    "report:transaction-ledger": "node src/cli/report-transaction-ledger.mjs",
     "report:btc-proxy-spreads": "node src/cli/report-btc-proxy-spreads.mjs",
     "report:native-btc-surface": "node src/cli/report-native-btc-opportunity-surface.mjs",
     "report:native-btc-plan": "node src/cli/report-native-btc-plan.mjs",
