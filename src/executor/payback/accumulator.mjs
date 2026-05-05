@@ -242,7 +242,7 @@ function usdToSats(usdValue, btcUsd) {
   return roundSats((usdValue / btcUsd) * BTC_SATS);
 }
 
-function profitSatsFromRecord(record, marketPriceSnapshots, config) {
+export function profitSatsFromRecord(record, marketPriceSnapshots, config) {
   const direct = firstFinitePathValue(record, config?.profitSatsPaths || DEFAULT_PROFIT_SATS_PATHS);
   if (Number.isFinite(direct)) return roundSats(direct);
   const projectedUsd = firstFinitePathValue(record, config?.profitUsdPaths || DEFAULT_PROFIT_USD_PATHS);

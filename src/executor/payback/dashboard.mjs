@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import snapshotPaybackAccumulator from "./accumulator.mjs";
+import snapshotPaybackAccumulator, { profitSatsFromRecord } from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
 import { buildPaybackDecision } from "./scheduler.mjs";
@@ -159,6 +159,57 @@ function observedPeriodCount(startMs, endMs) {
   return Math.max(1, (endMs - startMs) / (PAYBACK_FORECAST_PERIOD_DAYS * DAY_MS));
 }
 
+function median(values = []) {
+  const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function recordsFromForecastStore(auditLogLines = [], receiptStore = {}) {
+  return [
+    ...normalizeRecords(auditLogLines),
+    ...Object.entries(receiptStore || {})
+      .filter(([key, value]) => Array.isArray(value) && key !== "marketPriceSnapshots" && key !== "priceSnapshots")
+      .flatMap(([, value]) => normalizeRecords(value)),
+  ];
+}
+
+function buildRealizedProfitPeriodDistribution({
+  auditLogLines = [],
+  receiptStore = {},
+  marketPriceSnapshots = [],
+  windowStartMs,
+  nowMs,
+} = {}) {
+  const periodMs = PAYBACK_FORECAST_PERIOD_DAYS * DAY_MS;
+  const periodBuckets = new Map();
+  for (const record of recordsFromForecastStore(auditLogLines, receiptStore)) {
+    const observedAtMs = normalizeTimestamp(
+      record.observedAt ??
+      record.timestamp ??
+      record.createdAt ??
+      record.receipt?.observedAt ??
+      record.realized?.observedAt,
+    );
+    if (!Number.isFinite(observedAtMs) || !Number.isFinite(windowStartMs) || !Number.isFinite(nowMs)) continue;
+    if (observedAtMs < windowStartMs || observedAtMs > nowMs) continue;
+    const profitSats = profitSatsFromRecord(record, marketPriceSnapshots, {});
+    if (!Number.isFinite(profitSats)) continue;
+    const periodIndex = Math.max(0, Math.floor((observedAtMs - windowStartMs) / periodMs));
+    periodBuckets.set(periodIndex, (periodBuckets.get(periodIndex) || 0) + profitSats);
+  }
+  const periodTotals = [...periodBuckets.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, value]) => value);
+  return {
+    sampleCount: periodTotals.length,
+    medianSatsPerPeriod: median(periodTotals),
+    periodTotalsSats: periodTotals.map((value) => round(value, 2)),
+  };
+}
+
 function buildEstimatedPeriodsToFirstPayback({
   now,
   minimumProgress = null,
@@ -185,6 +236,17 @@ function buildEstimatedPeriodsToFirstPayback({
   const periodsObserved = observedPeriodCount(scopedWindowStartMs, nowMs);
   const realizedGrossProfitSatsPerPeriod =
     realizedGrossProfitSatsWindow > 0 ? realizedGrossProfitSatsWindow / periodsObserved : 0;
+  const realizedPeriodDistribution = buildRealizedProfitPeriodDistribution({
+    auditLogLines: scopedAuditLogLines,
+    receiptStore: scopedReceiptStore,
+    marketPriceSnapshots: scopedReceiptStore.marketPriceSnapshots || [],
+    windowStartMs: scopedWindowStartMs,
+    nowMs,
+  });
+  const realizedGrossProfitSatsPeriodMedian =
+    Number.isFinite(realizedPeriodDistribution.medianSatsPerPeriod)
+      ? realizedPeriodDistribution.medianSatsPerPeriod
+      : null;
   const activeProfileBudgetUsd = profileSettlementTargetUsd(ACTIVE_SLEEVE_PROFILE_ID);
   const baselineApplied =
     Number.isFinite(reportingPnlBaseline?.anchoredAtMs) &&
@@ -197,9 +259,14 @@ function buildEstimatedPeriodsToFirstPayback({
         realizedGrossProfitSatsPerPeriod > 0 && Number.isFinite(scalingRatio)
           ? realizedGrossProfitSatsPerPeriod * scalingRatio
           : null;
+      const projectedMedianGrossProfitSatsPerPeriod =
+        realizedGrossProfitSatsPeriodMedian > 0 && Number.isFinite(scalingRatio)
+          ? realizedGrossProfitSatsPeriodMedian * scalingRatio
+          : null;
       let status = "estimated";
       let reason = null;
       let estimatedPeriods = null;
+      let medianEstimatedPeriods = null;
       if (!(requiredGrossProfitSats > 0)) {
         status = "unavailable";
         reason = "required_gross_profit_unknown";
@@ -211,6 +278,9 @@ function buildEstimatedPeriodsToFirstPayback({
         reason = "profile_budget_unresolved";
       } else {
         estimatedPeriods = round(requiredGrossProfitSats / projectedGrossProfitSatsPerPeriod, 2);
+        medianEstimatedPeriods = projectedMedianGrossProfitSatsPerPeriod > 0
+          ? round(requiredGrossProfitSats / projectedMedianGrossProfitSatsPerPeriod, 2)
+          : null;
       }
       return [
         profileId,
@@ -218,9 +288,11 @@ function buildEstimatedPeriodsToFirstPayback({
           status,
           reason,
           estimatedPeriods,
+          medianEstimatedPeriods,
           scalingRatio: round(scalingRatio, 4),
           profileSettlementTargetUsd: round(profileBudgetUsd, 2),
           projectedGrossProfitSatsPerPeriod: round(projectedGrossProfitSatsPerPeriod, 2),
+          projectedMedianGrossProfitSatsPerPeriod: round(projectedMedianGrossProfitSatsPerPeriod, 2),
         },
       ];
     }),
@@ -235,6 +307,9 @@ function buildEstimatedPeriodsToFirstPayback({
     rollingWindowEndAt: now,
     realizedGrossProfitSatsWindow,
     realizedGrossProfitSatsPerPeriod: round(realizedGrossProfitSatsPerPeriod, 2),
+    realizedGrossProfitSatsPeriodMedian: round(realizedGrossProfitSatsPeriodMedian, 2),
+    realizedGrossProfitPeriodSampleCount: realizedPeriodDistribution.sampleCount,
+    realizedGrossProfitPeriodTotalsSats: realizedPeriodDistribution.periodTotalsSats,
     observedPeriods: round(periodsObserved, 2),
     reportingBaseline: summarizeReportingPnlBaseline(reportingPnlBaseline, {
       now,
@@ -263,7 +338,10 @@ function shouldProposeMinPaybackPatch(estimatedPeriodsToFirstPayback = null) {
   const profileIds = ["smallCapital_v1", "aggressive_v1"];
   return profileIds.every((profileId) => {
     const estimate = profiles[profileId];
-    return Number.isFinite(estimate?.estimatedPeriods) && estimate.estimatedPeriods >= 8;
+    const forecastPeriods = Number.isFinite(estimate?.medianEstimatedPeriods)
+      ? estimate.medianEstimatedPeriods
+      : estimate?.estimatedPeriods;
+    return Number.isFinite(forecastPeriods) && forecastPeriods >= 8;
   });
 }
 
@@ -282,6 +360,7 @@ function buildMinimumPaybackReview({
           status: estimate.status || "unavailable",
           reason: estimate.reason || null,
           estimatedPeriods: Number.isFinite(estimate.estimatedPeriods) ? estimate.estimatedPeriods : null,
+          medianEstimatedPeriods: Number.isFinite(estimate.medianEstimatedPeriods) ? estimate.medianEstimatedPeriods : null,
         },
       ];
     }),

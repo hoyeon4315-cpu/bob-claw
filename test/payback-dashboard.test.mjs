@@ -438,12 +438,16 @@ test("payback dashboard estimates periods to first payback for both committed sl
   assert.equal(estimate.realizedGrossProfitSatsWindow, 10_000);
   assert.equal(estimate.observedPeriods, 4.29);
   assert.equal(estimate.realizedGrossProfitSatsPerPeriod, 2333.33);
+  assert.equal(estimate.realizedGrossProfitSatsPeriodMedian, 10_000);
+  assert.equal(estimate.realizedGrossProfitPeriodSampleCount, 1);
 
   assert.equal(estimate.profiles.smallCapital_v1.status, "estimated");
   assert.equal(estimate.profiles.smallCapital_v1.reason, null);
   assert.equal(estimate.profiles.smallCapital_v1.profileSettlementTargetUsd, 650);
   assert.equal(estimate.profiles.smallCapital_v1.scalingRatio, 1);
   assert.equal(estimate.profiles.smallCapital_v1.projectedGrossProfitSatsPerPeriod, 2333.33);
+  assert.equal(estimate.profiles.smallCapital_v1.projectedMedianGrossProfitSatsPerPeriod, 10_000);
+  assert.equal(estimate.profiles.smallCapital_v1.medianEstimatedPeriods, 25);
   assert.equal(estimate.profiles.smallCapital_v1.estimatedPeriods, 107.14);
 
   assert.equal(estimate.profiles.aggressive_v1.status, "estimated");
@@ -451,13 +455,17 @@ test("payback dashboard estimates periods to first payback for both committed sl
   assert.equal(estimate.profiles.aggressive_v1.profileSettlementTargetUsd, 1040);
   assert.equal(estimate.profiles.aggressive_v1.scalingRatio, 1.6);
   assert.equal(estimate.profiles.aggressive_v1.projectedGrossProfitSatsPerPeriod, 3733.33);
+  assert.equal(estimate.profiles.aggressive_v1.projectedMedianGrossProfitSatsPerPeriod, 16_000);
+  assert.equal(estimate.profiles.aggressive_v1.medianEstimatedPeriods, 15.63);
   assert.equal(estimate.profiles.aggressive_v1.estimatedPeriods, 66.96);
   assert.equal(payback.proposedMinPaybackPatch, "data/payback/proposed-min-payback-diff.patch");
   assert.equal(payback.minimumReview.status, "propose_patch");
   assert.equal(payback.minimumReview.reason, "both_profiles_above_threshold");
   assert.equal(payback.minimumReview.proposedPatchPath, "data/payback/proposed-min-payback-diff.patch");
   assert.equal(payback.minimumReview.profiles.smallCapital_v1.estimatedPeriods, 107.14);
+  assert.equal(payback.minimumReview.profiles.smallCapital_v1.medianEstimatedPeriods, 25);
   assert.equal(payback.minimumReview.profiles.aggressive_v1.estimatedPeriods, 66.96);
+  assert.equal(payback.minimumReview.profiles.aggressive_v1.medianEstimatedPeriods, 15.63);
 });
 
 test("payback dashboard writes deterministic PR-only minimum-payback patch when both profiles stay above threshold", async () => {
@@ -568,6 +576,70 @@ test("payback dashboard leaves periods-to-first-payback unavailable when realize
   assert.equal(payback.minimumReview.proposedPatchPath, null);
   assert.equal(payback.minimumReview.profiles.smallCapital_v1.reason, "non_positive_realized_run_rate");
   assert.equal(payback.minimumReview.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
+});
+
+test("payback dashboard treats explicit zero payback-eligible sats as authoritative over positive USD fallback", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-payback-explicit-zero-"));
+  const payback = await buildPaybackDashboardSlice({
+    dataDir,
+    auditLogLines: [],
+    receiptStore: {
+      receiptReconciliations: [
+        {
+          observedAt: "2026-04-17T10:00:00.000Z",
+          pnl: {
+            paybackEligibleRealizedPnlSats: 0,
+          },
+          realized: {
+            realizedNetPnlUsd: 3,
+          },
+        },
+      ],
+      treasuryInventory: [],
+      marketPriceSnapshots: [
+        {
+          observedAt: "2026-04-17T09:55:00.000Z",
+          btcUsd: 100_000,
+          tokenByKey: { btc: 100_000, usd_stable: 1 },
+          nativeByChain: { base: 2_000 },
+        },
+      ],
+      wrappedBtcLoopReceipts: [],
+      wrappedBtcLoopLiveProofs: [],
+    },
+    now: "2026-04-17T12:00:00.000Z",
+    decisionBuilder: async () => ({
+      status: "carry",
+      reason: "planned_payback_below_minimum",
+      policy: {
+        baseRatio: 0.2,
+        minPaybackSats: 50_000,
+      },
+      decisionLog: {
+        inputs: {
+          grossProfitSatsPeriod: 289,
+          baseRatio: 0.2,
+          regimeMultiplier: 1,
+          volMultiplier: 1,
+          grossTargetBeforeCostsSats: 58,
+          minPaybackSats: 50_000,
+        },
+      },
+    }),
+  });
+
+  const estimate = payback.estimatedPeriodsToFirstPayback;
+  assert.equal(estimate.realizedGrossProfitSatsWindow, 0);
+  assert.equal(estimate.realizedGrossProfitSatsPerPeriod, 0);
+  assert.equal(estimate.realizedGrossProfitSatsPeriodMedian, 0);
+  assert.equal(estimate.realizedGrossProfitPeriodSampleCount, 1);
+  assert.equal(estimate.profiles.smallCapital_v1.reason, "non_positive_realized_run_rate");
+  assert.equal(estimate.profiles.smallCapital_v1.medianEstimatedPeriods, null);
+  assert.equal(estimate.profiles.aggressive_v1.reason, "non_positive_realized_run_rate");
+  assert.equal(estimate.profiles.aggressive_v1.medianEstimatedPeriods, null);
+  assert.equal(payback.proposedMinPaybackPatch, null);
+  assert.equal(payback.minimumReview.status, "keep_current");
+  assert.equal(payback.minimumReview.reason, "non_positive_realized_run_rate");
 });
 
 test("payback dashboard does not surface a proposed patch path in read-only mode when forecast does not qualify", async () => {
