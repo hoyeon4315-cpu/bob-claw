@@ -59,6 +59,7 @@ export function evaluateStage({
     0;
   const paybackStatus = payback?.scheduler?.status || payback?.status || null;
   const paybackReason = payback?.scheduler?.reason || payback?.reason || null;
+  const paybackMinimumProgress = payback?.scheduler?.minimumPaybackProgress || payback?.scheduler?.previewAfterDestination || null;
   const paybackPendingSats =
     finiteNumber(payback?.carry?.pendingSats) ??
     finiteNumber(payback?.accumulatorPendingSats) ??
@@ -128,6 +129,20 @@ export function evaluateStage({
       paybackReason,
       paybackPendingSats,
       paybackProgressToMinimumRatio,
+      paybackReceiptProof: {
+        reserveChain,
+        requiredDeliveredPeriodCountOnReserveChain: 1,
+        deliveredPeriodCountOnReserveChain,
+        ready: deliveredPeriodCountOnReserveChain >= 1,
+        blocker: deliveredPeriodCountOnReserveChain >= 1 ? null : "receipt_proven_payback_period_missing",
+        status: paybackStatus,
+        reason: paybackReason,
+        pendingSats: paybackPendingSats,
+        minPaybackSats: finiteNumber(paybackMinimumProgress?.minPaybackSats),
+        grossTargetBeforeCostsSats: finiteNumber(paybackMinimumProgress?.grossTargetBeforeCostsSats),
+        satsToMinimumPayback: finiteNumber(paybackMinimumProgress?.satsToMinimumPayback),
+        proposedMinPaybackPatch: payback?.proposedMinPaybackPatch || payback?.minimumReview?.proposedPatchPath || null,
+      },
       evGateCalibrated: calibrated,
       evGateMatchedReceiptCount: finiteNumber(evGateStats?.matchedReceiptCount) ?? 0,
       evGateKeyedEntryCount: finiteNumber(evGateStats?.keyedEntryCount) ?? 0,

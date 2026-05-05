@@ -244,7 +244,7 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
   return {
     schemaVersion: 1,
     generatedAt: dashboardStatus?.generatedAt || new Date().toISOString(),
-    status: dashboardStatus?.overall?.liveTrading === "ALLOWED" && counts.total === 0 ? "ready" : "blocked",
+    status: counts.total === 0 ? "ready" : "blocked",
     liveTrading: dashboardStatus?.overall?.liveTrading || null,
     shadowTrading: dashboardStatus?.overall?.shadowTrading || null,
     currentStageId: preliveValidation?.currentStageId || dashboardStatus?.prelive?.currentStage || null,

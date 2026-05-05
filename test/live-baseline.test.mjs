@@ -203,7 +203,7 @@ test("live baseline suppresses secondary route blockers when a strategy candidat
     },
   });
 
-  assert.equal(summary.status, "blocked");
+  assert.equal(summary.status, "ready");
   assert.equal(summary.currentStageId, "tiny_live_canary_review");
   assert.equal(summary.primaryCandidate.candidateType, "strategy");
   assert.equal(summary.counts.refresh, 0);

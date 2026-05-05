@@ -47,6 +47,11 @@ function capitalPlan(overrides = {}) {
       scheduler: {
         status: "carry",
         reason: "planned_payback_below_minimum",
+        minimumPaybackProgress: {
+          minPaybackSats: 50_000,
+          grossTargetBeforeCostsSats: 120,
+          satsToMinimumPayback: 49_880,
+        },
       },
       carry: {
         pendingSats: 601,
@@ -164,6 +169,11 @@ test("stage evaluator surfaces payback carry evidence for missing delivered peri
   assert.equal(result.evidence.paybackReason, "planned_payback_below_minimum");
   assert.equal(result.evidence.paybackPendingSats, 601);
   assert.equal(result.evidence.paybackProgressToMinimumRatio, 0.0024);
+  assert.equal(result.evidence.paybackReceiptProof.ready, false);
+  assert.equal(result.evidence.paybackReceiptProof.blocker, "receipt_proven_payback_period_missing");
+  assert.equal(result.evidence.paybackReceiptProof.minPaybackSats, 50_000);
+  assert.equal(result.evidence.paybackReceiptProof.grossTargetBeforeCostsSats, 120);
+  assert.equal(result.evidence.paybackReceiptProof.satsToMinimumPayback, 49_880);
   assert.equal(result.evidence.refreshSuccessRatio1h, 1);
   assert.equal(result.evidence.refreshSuccessRatio3h, 0.98);
   assert.equal(result.evidence.transientFrequency1h, 0);

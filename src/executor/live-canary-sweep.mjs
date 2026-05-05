@@ -626,7 +626,7 @@ export async function preflightLiveCanarySweep({
 
   const context = requireLiveBaseline ? await buildDashboardContextImpl({ dataDir: config.dataDir }) : null;
   const liveBaseline = context?.dashboardStatus?.liveBaseline || null;
-  if (requireLiveBaseline && (liveBaseline?.liveTrading !== "ALLOWED" || liveBaseline?.status !== "ready")) {
+  if (requireLiveBaseline && liveBaseline?.status !== "ready") {
     return {
       status: "blocked",
       blockedReason: "live_baseline_blocked",

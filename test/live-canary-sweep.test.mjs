@@ -148,6 +148,30 @@ test("preflight keeps route live-baseline gate by default", async () => {
   assert.equal(result.blockedReason, "live_baseline_blocked");
 });
 
+test("preflight accepts a ready route baseline while stage live trading remains blocked", async () => {
+  const result = await preflightLiveCanarySweep({
+    killSwitchPath: "/tmp/kill",
+    killSwitchExistsImpl: () => false,
+    readSignerHealthImpl: async () => ({
+      status: "ok",
+      addresses: {
+        base: ADDRESS,
+      },
+    }),
+    buildDashboardContextImpl: async () => ({
+      dashboardStatus: {
+        liveBaseline: {
+          status: "ready",
+          liveTrading: "BLOCKED",
+        },
+      },
+    }),
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.liveBaseline.liveTrading, "BLOCKED");
+});
+
 test("sweep continues after per-candidate plan blocker and quarantines signer-uncertain chain", async () => {
   const inventory = {
     observedAt: "2026-04-23T00:00:00.000Z",
