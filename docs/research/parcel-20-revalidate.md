@@ -660,3 +660,101 @@ Next required mitigation:
 - Convert the remaining refill `routing_exhausted` cases into either executable alternate routes or deterministic planner-actionable deferrals.
 - Do not bypass `same_chain_unprofitable` or `fresh_roundtrip_proof_recorded`; those are correct safety/cooldown blockers.
 - Re-run `kill:resume-review`, resume only with an explicit operator reason, then require a completed dry-run with no execution blockers before live execute.
+
+## 2026-05-05T12:44Z dry-run-first revalidation after route blocker surface
+
+Code baseline:
+
+- `68c8bb85 fix(refill): surface exhausted route blockers`
+- Full verification before resume: `npm test` => `2683 pass / 1 skip / 0 fail`
+- Subagent review: prior execute-mode `routeAttemptReasons` gap resolved.
+
+Resume review:
+
+- Command:
+  `npm run kill:resume-review -- --json`
+- Result:
+  - `state`: `HALTED`
+  - `activeReason`: `parcel-20-dry-run-completed-with-blockers`
+  - `replay.triggered`: `false`
+  - `triggers`: `[]`
+  - `staleArm`: `true`
+  - `blocker_mitigated`: `yes`
+  - `inventory_restored`: `no` / `operator_confirmation_required`
+
+Operator-approved resume for dry-run-first revalidation:
+
+- Command:
+  `npm run kill:off -- --reason="operator-approved-dry-run-first-revalidation-after-refill-route-surface"`
+- Audit: `logs/kill-switch-audit.jsonl`
+
+Dry-run-first command:
+
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --execute --dry-run-first --write --json --timeout-ms=180000 --canary-timeout-ms=180000 --dispatch-timeout-ms=180000`
+
+Result from `data/all-chain-autopilot-latest.json`:
+
+- `observedAt`: `2026-05-05T12:44:17.038Z`
+- `autopilotRunId`: `5676d5ed-8820-475e-8722-bb11c0683043`
+- `mode`: `preview`
+- `status`: `completed_with_blockers`
+- `executionGate.blockedReason`: `preview_only`
+- `autoKill.triggered`: `false`
+- `autoKill.triggers`: `[]`
+- `canarySweep.previewReadyCount`: `11`
+- `canarySweep.executedCount`: `0`
+- `canarySweep.broadcastStepCount`: `0`
+- `strategyDispatch.liveEligibleCount`: `0`
+- `refillJobCount`: `25`
+- `autoRefillJobCount`: `9`
+- `refillAttemptedCount`: `0`
+- `refillExecutedCount`: `0`
+- `payback.status`: `carry`
+- `payback.pendingCarrySats`: `601`
+
+The `--execute --dry-run-first` safety gate correctly skipped live execution because preview status was not full `completed`.
+
+Refill route blockers now preserved:
+
+- `51cd16f66a65cc421f62` bob ETH:
+  - `same_chain_token_to_native_swap`: `dex_quote_failed`
+  - `cross_chain_bridge_or_swap`: `no_route`
+- `faf3de9220c9c997f8dd` avalanche wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+- `7d377480a1d5e1df65d4` bera wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+- `d2ecb088b09f873ec066` bsc wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+- `f8179e163e99b82ad7dc` ethereum RLUSD:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+- `8337de66d4924eea96da` optimism wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+- `a36c165b8d4d885ff3b9` soneium wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+- `7d62dda805ebe11cea35` sonic wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+- `dca42df93eb55d1d8a5c` unichain wBTC.OFT:
+  - `cross_chain_bridge_or_swap`: `no_route`
+  - `cross_chain_bridge_lifi`: `lifi_quote_rejected`
+
+Safety decision:
+
+- No live canary was attempted.
+- Kill-switch was re-armed:
+  `npm run kill:on -- --reason="parcel-20-dry-run-completed-with-blockers-after-route-surface"`
+- This is an operator hold after a blocked dry-run, not an active auto-kill trigger.
+
+Next required mitigation:
+
+- Build deterministic deferral/action labels for the nine remaining route-exhausted refill jobs:
+  - route unsupported by Gateway and rejected by LI.FI
+  - DEX quote unavailable for bob ETH bootstrap
+  - Sonic single-route no-route case
+- Keep `same_chain_unprofitable:need_$2_on_base`, `fresh_roundtrip_proof_recorded`, and payback carry blockers intact.
+- Do not resume for live execution until a dry-run-first preview returns full `completed`.
