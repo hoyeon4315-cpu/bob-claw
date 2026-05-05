@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   buildStrategyBuilderChainUnsupportedMarker,
+  buildStrategyExecutorMissingMarker,
   validateCommittedProfileSelection,
 } from "../src/cli/run-strategy-tick.mjs";
 
@@ -100,6 +101,27 @@ test("Base-specific strategy builder blocker preserves canonical supported chain
 
   assert.equal(marker.metadata.supportedChain, "base");
   assert.equal(marker.metadata.requestedChain, "Ethereum");
+});
+
+test("generic strategy fallback is a non-broadcastable executor-missing marker", () => {
+  const marker = buildStrategyExecutorMissingMarker({
+    alloc: {
+      strategyId: "recursive_stablecoin_lending_loop",
+      chain: "base",
+      protocol: "morpho",
+    },
+    amountUsd: 5,
+    observedAt: "2026-05-05T00:00:00.000Z",
+    family: "lending",
+  });
+
+  assert.equal(marker.strategyId, "recursive_stablecoin_lending_loop");
+  assert.equal(marker.mode, "blocked");
+  assert.equal(marker.normalizationError, "strategy_executor_missing");
+  assert.equal(marker.metadata.blocker, "strategy_executor_missing");
+  assert.equal(marker.metadata.source, "scored_allocation");
+  assert.equal(marker.intentType, undefined);
+  assert.equal(marker.tx, undefined);
 });
 
 test("aggressive profile validation fails when committed non-BTC caps exceed profile matrix", () => {

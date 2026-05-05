@@ -125,6 +125,28 @@ export function buildStrategyBuilderChainUnsupportedMarker({
   };
 }
 
+export function buildStrategyExecutorMissingMarker({
+  alloc,
+  amountUsd,
+  observedAt,
+  family,
+}) {
+  return {
+    strategyId: alloc.strategyId,
+    chain: alloc.chain,
+    amountUsd,
+    mode: "blocked",
+    observedAt,
+    normalizationError: "strategy_executor_missing",
+    metadata: {
+      protocol: alloc.protocol,
+      source: "scored_allocation",
+      family: family || "unknown",
+      blocker: "strategy_executor_missing",
+    },
+  };
+}
+
 function isSupportedBuilderChain(alloc, supportedChain) {
   return String(alloc.chain || "").trim().toLowerCase() === String(supportedChain || "").trim().toLowerCase();
 }
@@ -681,19 +703,6 @@ async function main() {
     totalAvailableSats,
   });
 
-  function intentTypeForFamily(family) {
-    const map = {
-      lending: "aave_supply",
-      lp: "add_liquidity",
-      vault: "vault_deposit",
-      perp: "perp_open",
-      yield: "yield_deposit",
-      rotation: "swap",
-      spread: "swap",
-    };
-    return map[family] || "strategy_execution";
-  }
-
   const strategyOperatorMap = Object.fromEntries(entries.map((e) => [e.strategyId, e.operatorAddress]));
 
   const generatedIntents = [];
@@ -1035,24 +1044,14 @@ async function main() {
       }
     }
 
-    // ── Generic fallback intent ──
+    // ── Generic fallback marker ──
     if (!strategyIntentsBuilt && !suppressGenericFallback) {
-      const intentType = intentTypeForFamily(family);
-      const raw = {
-        strategyId: alloc.strategyId,
-        chain: alloc.chain,
-        intentType,
+      generatedIntents.push(buildStrategyExecutorMissingMarker({
+        alloc,
         amountUsd,
-        mode: "live",
         observedAt: result.observedAt,
-        strategyConfig: { intentTtlMs: caps?.intentTtlMs ?? 300_000 },
-        metadata: { protocol: alloc.protocol, skipAutoIngest: true, source: "scored_allocation" },
-      };
-      try {
-        generatedIntents.push(normalizeExecutionIntent(raw));
-      } catch (err) {
-        generatedIntents.push({ ...raw, normalizationError: err.message });
-      }
+        family,
+      }));
     }
   }
 
