@@ -24,6 +24,8 @@ import { mkdir, appendFile, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
 import {
+  buildKillSwitchAuditRecord,
+  buildKillSwitchResumeReviewPacket,
   readKillSwitchStatus,
   resolveKillSwitchPath,
 } from "../executor/policy/kill-switch.mjs";
@@ -44,6 +46,7 @@ function parseArgs(argv) {
     on: flags.has("--on"),
     off: flags.has("--off"),
     status: flags.has("--status"),
+    resumeReview: flags.has("--resume-review"),
     json: flags.has("--json"),
     reason: options.reason || null,
     actor: options.actor || "operator-via-llm",
@@ -52,6 +55,9 @@ function parseArgs(argv) {
     dashboardPath:
       options["dashboard-path"] ||
       getEnv("DASHBOARD_STATUS_PATH", "dashboard/public/dashboard-status.json"),
+    postmortemPath:
+      options["postmortem-path"] ||
+      "docs/research/parcel-16-gateway-btc-funding-postmortem.md",
   };
 }
 
@@ -120,9 +126,9 @@ async function main() {
     process.exit(2);
   }
 
-  const actionCount = [args.on, args.off, args.status].filter(Boolean).length;
+  const actionCount = [args.on, args.off, args.status, args.resumeReview].filter(Boolean).length;
   if (actionCount !== 1) {
-    console.error("Specify exactly one of --on, --off, --status.");
+    console.error("Specify exactly one of --on, --off, --status, --resume-review.");
     process.exit(2);
   }
 
@@ -162,6 +168,69 @@ async function main() {
         console.log(`  last toggle: ${status.lastAudit.action} @ ${status.lastAudit.ts} by ${status.lastAudit.actor}`);
         console.log(`    reason: ${status.lastAudit.reason}`);
       }
+    }
+    return;
+  }
+
+  if (args.resumeReview) {
+    const dashboardStatus = await readJsonIfExists(args.dashboardPath);
+    const baseStatus = await readKillSwitchStatus({
+      killSwitchPath: args.killSwitchPath,
+      auditPath: args.auditPath,
+      dashboardStatus,
+    });
+    const replay = await buildLiveKillSwitchReplay({
+      status: baseStatus,
+      dashboardStatus,
+      dashboardPath: args.dashboardPath,
+    });
+    const status = replay ? { ...baseStatus, replay } : baseStatus;
+    const packet = buildKillSwitchResumeReviewPacket({
+      status,
+      replay,
+      postmortemPath: args.postmortemPath,
+      postmortemExists: existsSync(args.postmortemPath),
+    });
+    const record = buildKillSwitchAuditRecord({
+      action: "resume_review_packet",
+      reason: "operator_resume_review",
+      actor: args.actor,
+      killSwitchPath: args.killSwitchPath,
+      previousState: status.halted ? "halted" : "running",
+      metadata: {
+        activeReason: status.activeReason || null,
+        activeSince: status.activeSince || null,
+        triggers: packet.triggers,
+        replay: packet.replay,
+        checklist: packet.checklist,
+      },
+    });
+    await appendAudit(args.auditPath, record);
+
+    if (args.json) {
+      console.log(JSON.stringify(packet, null, 2));
+    } else {
+      console.log(`kill-switch resume review: ${packet.state}`);
+      console.log(`  path: ${packet.killSwitchPath}`);
+      if (packet.activeReason) console.log(`  active reason: ${packet.activeReason}`);
+      if (packet.activeSince) console.log(`  active since: ${packet.activeSince}`);
+      for (const trigger of packet.triggers) {
+        const strategy = trigger.strategyId ? ` strategy=${trigger.strategyId}` : "";
+        const count = Number.isFinite(trigger.failureCount) ? ` failures=${trigger.failureCount}` : "";
+        const threshold = Number.isFinite(trigger.threshold) ? ` threshold=${trigger.threshold}` : "";
+        const window = Number.isFinite(trigger.windowMs) ? ` windowMs=${trigger.windowMs}` : "";
+        console.log(`  trigger: ${trigger.trigger || "unknown"}${strategy}${count}${threshold}${window}`);
+      }
+      if (packet.replay) {
+        console.log(`  replay triggered now: ${packet.replay.triggered ? "yes" : "no"}`);
+        if (packet.replay.staleArm) console.log("  stale arm: yes");
+      }
+      console.log("  checklist:");
+      for (const item of packet.checklist) {
+        console.log(`    ${item.question} ${item.answer}`);
+      }
+      console.log("  clears kill-switch: no");
+      console.log(`  audit: ${args.auditPath}`);
     }
     return;
   }

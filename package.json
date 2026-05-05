@@ -184,6 +184,7 @@
     "kill:on": "node src/cli/run-kill-switch.mjs --on",
     "kill:off": "node src/cli/run-kill-switch.mjs --off",
     "kill:status": "node src/cli/run-kill-switch.mjs --status",
+    "kill:resume-review": "node src/cli/run-kill-switch.mjs --resume-review",
     "kill:status:json": "node src/cli/run-kill-switch.mjs --status --json",
     "live:stop": "npm run kill:on --",
     "live:start": "npm run kill:off --",

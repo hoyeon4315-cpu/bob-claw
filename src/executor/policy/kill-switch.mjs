@@ -46,6 +46,67 @@ export function buildKillSwitchAuditRecord({
   return record;
 }
 
+export function buildKillSwitchResumeReviewChecklist({
+  replay = null,
+  postmortemPath = null,
+  postmortemExists = false,
+} = {}) {
+  const blockerMitigated = replay?.triggered === false;
+  return [
+    {
+      id: "inventory_restored",
+      question: "inventory restored?",
+      answer: "no",
+      source: "operator_confirmation_required",
+    },
+    {
+      id: "postmortem_written",
+      question: "postmortem written?",
+      answer: postmortemExists ? "yes" : "no",
+      source: postmortemPath,
+    },
+    {
+      id: "blocker_mitigated",
+      question: "blocker mitigated?",
+      answer: blockerMitigated ? "yes" : "no",
+      source: replay ? "auto_kill_replay" : "replay_unavailable",
+    },
+  ];
+}
+
+export function buildKillSwitchResumeReviewPacket({
+  status = {},
+  replay = null,
+  postmortemPath = null,
+  postmortemExists = false,
+  now = new Date().toISOString(),
+} = {}) {
+  const effectiveReplay = replay || status.replay || null;
+  const halted = status.halted === true;
+  const triggers = Array.isArray(status.triggers) && status.triggers.length > 0
+    ? status.triggers
+    : (Array.isArray(effectiveReplay?.triggers) ? effectiveReplay.triggers : []);
+  return {
+    schemaVersion: 1,
+    generatedAt: now,
+    state: halted ? "HALTED" : "RUNNING",
+    halted,
+    killSwitchPath: status.killSwitchPath || null,
+    activeReason: status.activeReason || null,
+    activeActor: status.activeActor || null,
+    activeSince: status.activeSince || null,
+    triggers,
+    replay: effectiveReplay,
+    checklist: buildKillSwitchResumeReviewChecklist({
+      replay: effectiveReplay,
+      postmortemPath,
+      postmortemExists,
+    }),
+    clearsKillSwitch: false,
+    nextAction: halted ? "operator_may_review_resume_command" : "no_resume_needed",
+  };
+}
+
 export async function appendKillSwitchAuditRecord(
   record,
   {
@@ -106,13 +167,16 @@ export function parseKillSwitchFileContents(raw = "") {
 export async function readLatestKillSwitchAuditRecord({
   auditPath = resolveKillSwitchAuditPath(),
   killSwitchPath = resolveKillSwitchPath(),
+  actions = null,
 } = {}) {
   try {
     const normalizedKillSwitchPath = normalizePath(killSwitchPath);
+    const actionSet = Array.isArray(actions) && actions.length > 0 ? new Set(actions) : null;
     const raw = await readFile(resolve(auditPath), "utf8");
     const lines = raw.split("\n").filter((line) => line.trim().length > 0);
     for (let index = lines.length - 1; index >= 0; index -= 1) {
       const record = JSON.parse(lines[index]);
+      if (actionSet && !actionSet.has(record.action)) continue;
       if (!normalizedKillSwitchPath) return record;
       if (normalizePath(record.killSwitchPath) === normalizedKillSwitchPath) {
         return record;
@@ -131,6 +195,11 @@ export async function readKillSwitchStatus({
   dashboardStatus = null,
 } = {}) {
   const lastAudit = await readLatestKillSwitchAuditRecord({ auditPath, killSwitchPath });
+  const stateAudit = await readLatestKillSwitchAuditRecord({
+    auditPath,
+    killSwitchPath,
+    actions: ["halt", "resume"],
+  });
   const normalizedKillSwitchPath = normalizePath(killSwitchPath);
   const halted = normalizedKillSwitchPath ? await fileExists(normalizedKillSwitchPath) : false;
   let fileMtime = null;
@@ -149,11 +218,11 @@ export async function readKillSwitchStatus({
   }
   const activeReason =
     payload?.reason ||
-    lastAudit?.reason ||
+    stateAudit?.reason ||
     null;
   const activeActor =
     payload?.actor ||
-    lastAudit?.actor ||
+    stateAudit?.actor ||
     null;
   const activeSince =
     payload?.halted_at ||

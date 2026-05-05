@@ -6,6 +6,7 @@ import { test } from "node:test";
 import {
   appendKillSwitchAuditRecord,
   buildKillSwitchAuditRecord,
+  buildKillSwitchResumeReviewPacket,
   checkKillSwitch,
   parseKillSwitchFileContents,
   readKillSwitchStatus,
@@ -199,6 +200,42 @@ test("kill-switch status includes dashboard replay only for the matching kill-sw
   }
 });
 
+test("kill-switch status does not let resume review packets replace the active halt reason", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-status-review-audit-"));
+  try {
+    const killSwitchPath = join(root, "KILL_SWITCH");
+    const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
+    await writeFile(killSwitchPath, JSON.stringify({
+      schemaVersion: 1,
+      evaluatedAt: "2026-05-04T18:16:45.378Z",
+    }), "utf8");
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "halt",
+      reason: "auto_kill:failure_burst_per_strategy",
+      actor: "risk:auto-kill",
+      killSwitchPath,
+      previousState: "running",
+      now: "2026-05-04T18:16:45.378Z",
+    }), { auditPath });
+    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
+      action: "resume_review_packet",
+      reason: "operator_resume_review",
+      actor: "operator-via-llm",
+      killSwitchPath,
+      previousState: "halted",
+      now: "2026-05-05T06:00:00.000Z",
+    }), { auditPath });
+
+    const status = await readKillSwitchStatus({ killSwitchPath, auditPath });
+
+    assert.equal(status.activeReason, "auto_kill:failure_burst_per_strategy");
+    assert.equal(status.activeActor, "risk:auto-kill");
+    assert.equal(status.lastAudit.action, "resume_review_packet");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("kill-switch parser handles operator key-value payloads", () => {
   const parsed = parseKillSwitchFileContents(
     "halted_at=2026-05-05T00:00:00.000Z\nreason=manual halt\nactor=operator-via-llm\n",
@@ -206,4 +243,39 @@ test("kill-switch parser handles operator key-value payloads", () => {
   assert.equal(parsed.halted_at, "2026-05-05T00:00:00.000Z");
   assert.equal(parsed.reason, "manual halt");
   assert.equal(parsed.actor, "operator-via-llm");
+});
+
+test("resume review packet keeps operator checklist explicit and non-mutating", () => {
+  const packet = buildKillSwitchResumeReviewPacket({
+    status: {
+      halted: true,
+      killSwitchPath: "/tmp/KILL_SWITCH",
+      activeReason: "auto_kill:failure_burst_per_strategy",
+      activeSince: "2026-05-04T18:16:45.378Z",
+      triggers: [
+        {
+          trigger: "failure_burst_per_strategy",
+          strategyId: "gateway-btc-funding-transfer",
+          failureCount: 6,
+          threshold: 5,
+          windowMs: 300000,
+        },
+      ],
+    },
+    replay: {
+      triggered: false,
+      staleArm: true,
+    },
+    postmortemPath: "docs/research/parcel-16-gateway-btc-funding-postmortem.md",
+    postmortemExists: true,
+    now: "2026-05-05T06:00:00.000Z",
+  });
+
+  assert.equal(packet.state, "HALTED");
+  assert.equal(packet.activeReason, "auto_kill:failure_burst_per_strategy");
+  assert.equal(packet.checklist.find((item) => item.id === "inventory_restored").answer, "no");
+  assert.equal(packet.checklist.find((item) => item.id === "postmortem_written").answer, "yes");
+  assert.equal(packet.checklist.find((item) => item.id === "blocker_mitigated").answer, "yes");
+  assert.equal(packet.nextAction, "operator_may_review_resume_command");
+  assert.equal(packet.clearsKillSwitch, false);
 });
