@@ -68,6 +68,9 @@ export function evaluateStage({
     finiteNumber(payback?.scheduler?.minimumPaybackProgress?.progressToMinimumRatio) ??
     null;
   const hysteresis = marksSlice?.reliability?.hysteresis || {};
+  const recovery24h = marksSlice?.reliability?.recovery24h || {};
+  const recovery24hStageB = recovery24h.stageB || {};
+  const recovery24hHysteresis = recovery24h.hysteresis || {};
   const latestAttempt = marksSlice?.reliability?.latestAttempt || {};
   const refreshBelow90SustainedFor1h = hysteresis.refreshBelow90SustainedFor1h === true;
   const refreshBelow90Since = hysteresis.refreshBelow90Since || null;
@@ -135,6 +138,10 @@ export function evaluateStage({
       latestMarkFailurePositionId,
       refreshBelow90Since,
       refreshBelow90SustainedFor1h,
+      refresh24hStageBSuccessesNeeded: finiteNumber(recovery24hStageB.successesNeeded),
+      refresh24hStageBEarliestRecoveryAt: recovery24hStageB.earliestRecoveryAt || null,
+      refresh24hHysteresisSuccessesNeeded: finiteNumber(recovery24hHysteresis.successesNeeded),
+      refresh24hHysteresisEarliestRecoveryAt: recovery24hHysteresis.earliestRecoveryAt || null,
     },
   };
 }

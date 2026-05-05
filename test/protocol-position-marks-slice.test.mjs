@@ -196,6 +196,10 @@ test("buildProtocolPositionMarksSlice emits rolling refresh success ratios and t
   assert.equal(slice.reliability.latestAttempt.failureObservedAt, "2026-05-03T20:02:00.000Z");
   assert.equal(slice.reliability.latestAttempt.failureKind, "rpc_failed");
   assert.equal(slice.reliability.latestAttempt.failurePositionId, "p1");
+  assert.equal(slice.reliability.recovery24h.stageB.successesNeeded, 16);
+  assert.equal(slice.reliability.recovery24h.stageB.earliestRecoveryAt, "2026-05-04T20:02:00.001Z");
+  assert.equal(slice.reliability.recovery24h.hysteresis.successesNeeded, 6);
+  assert.equal(slice.reliability.recovery24h.hysteresis.earliestRecoveryAt, "2026-05-04T20:02:00.001Z");
 });
 
 test("buildProtocolPositionMarksSlice flags sustained sub-0.90 refresh hysteresis", () => {
@@ -239,4 +243,5 @@ test("buildProtocolPositionMarksSlice flags sustained sub-0.90 refresh hysteresi
 
   assert.equal(slice.reliability.hysteresis.refreshBelow90SustainedFor1h, true);
   assert.equal(slice.reliability.hysteresis.refreshBelow90Since, "2026-05-03T11:00:00.000Z");
+  assert.equal(slice.reliability.recovery24h.hysteresis.earliestRecoveryAt, "2026-05-04T11:40:00.001Z");
 });

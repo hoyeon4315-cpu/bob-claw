@@ -91,6 +91,64 @@ function rollingReliabilityWindow(marks = [], { generatedAt, windowMs } = {}) {
   };
 }
 
+function attemptsForWindow(marks = [], { generatedAt, windowMs } = {}) {
+  return marksInWindow(marks, generatedAt, windowMs)
+    .filter((mark) => attemptOutcome(mark))
+    .sort((left, right) => observedAtMs(left.observedAt) - observedAtMs(right.observedAt));
+}
+
+function successesNeededForThreshold({ attemptCount, successCount, threshold }) {
+  if (!Number.isFinite(attemptCount) || attemptCount <= 0) return null;
+  if (!Number.isFinite(successCount) || successCount < 0) return null;
+  if (!Number.isFinite(threshold) || !(threshold > 0) || !(threshold < 1)) return null;
+  const thresholdBps = Math.round(threshold * 10_000);
+  const currentRatioBps = successCount * 10_000;
+  if (currentRatioBps >= thresholdBps * attemptCount) return 0;
+  const numerator = (thresholdBps * attemptCount) - currentRatioBps;
+  const denominator = 10_000 - thresholdBps;
+  return Math.max(1, Math.ceil(numerator / denominator));
+}
+
+function earliestThresholdRecoveryAtFromAging(attempts = [], { generatedAt, windowMs, threshold } = {}) {
+  if (!Array.isArray(attempts) || attempts.length === 0) return null;
+  if (!Number.isFinite(threshold) || !(threshold > 0) || !Number.isFinite(windowMs) || windowMs <= 0) return null;
+  const currentSuccessCount = attempts.filter((mark) => attemptOutcome(mark) === "success").length;
+  if ((currentSuccessCount / attempts.length) >= threshold) return generatedAt || null;
+  const dropTimestamps = [...new Set(attempts.map((mark) => observedAtMs(mark.observedAt)).filter(Number.isFinite))];
+  for (const observedMs of dropTimestamps) {
+    const candidateMs = observedMs + windowMs + 1;
+    const remaining = attempts.filter((mark) => observedAtMs(mark.observedAt) >= candidateMs - windowMs);
+    if (remaining.length === 0) continue;
+    const remainingSuccessCount = remaining.filter((mark) => attemptOutcome(mark) === "success").length;
+    if ((remainingSuccessCount / remaining.length) >= threshold) {
+      return new Date(candidateMs).toISOString();
+    }
+  }
+  return null;
+}
+
+function thresholdRecoveryWindow(marks = [], { generatedAt, windowMs, threshold } = {}) {
+  const attempts = attemptsForWindow(marks, { generatedAt, windowMs });
+  const successCount = attempts.filter((mark) => attemptOutcome(mark) === "success").length;
+  const failureCount = attempts.length - successCount;
+  return {
+    threshold,
+    attemptCount: attempts.length,
+    successCount,
+    failureCount,
+    successesNeeded: successesNeededForThreshold({
+      attemptCount: attempts.length,
+      successCount,
+      threshold,
+    }),
+    earliestRecoveryAt: earliestThresholdRecoveryAtFromAging(attempts, {
+      generatedAt,
+      windowMs,
+      threshold,
+    }),
+  };
+}
+
 function latestAttemptMark(marks = [], predicate = () => true) {
   let latest = null;
   for (const mark of marks) {
@@ -238,6 +296,16 @@ export function buildProtocolPositionMarksSlice(
     observedAtMs(generatedAt) - observedAtMs(refreshBelow90Since) >= STAGE_C_HYSTERESIS_SUSTAIN_MS;
   const latestSuccess = latestAttemptMark(marks, (mark) => isSuccessfulMarkedPosition(mark));
   const latestFailure = latestAttemptMark(marks, (mark) => mark.event === "position_mark_failed");
+  const recovery24hStageB = thresholdRecoveryWindow(marks, {
+    generatedAt,
+    windowMs: ROLLING_24H_MS,
+    threshold: 0.95,
+  });
+  const recovery24hHysteresis = thresholdRecoveryWindow(marks, {
+    generatedAt,
+    windowMs: ROLLING_24H_MS,
+    threshold: STAGE_C_HYSTERESIS_THRESHOLD,
+  });
 
   return {
     schemaVersion: 2,
@@ -274,6 +342,10 @@ export function buildProtocolPositionMarksSlice(
         refreshBelow90SustainedFor1h,
         threshold: STAGE_C_HYSTERESIS_THRESHOLD,
         sustainMs: STAGE_C_HYSTERESIS_SUSTAIN_MS,
+      },
+      recovery24h: {
+        stageB: recovery24hStageB,
+        hysteresis: recovery24hHysteresis,
       },
       latestAttempt: {
         successObservedAt: latestSuccess?.observedAt || null,

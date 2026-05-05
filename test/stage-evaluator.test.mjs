@@ -25,6 +25,16 @@ function marksSlice(overrides = {}) {
         refreshBelow90Since: null,
         refreshBelow90SustainedFor1h: false,
       },
+      recovery24h: {
+        stageB: {
+          successesNeeded: 0,
+          earliestRecoveryAt: "2026-05-05T00:00:00.000Z",
+        },
+        hysteresis: {
+          successesNeeded: 0,
+          earliestRecoveryAt: "2026-05-05T00:00:00.000Z",
+        },
+      },
     },
     ...overrides,
   };
@@ -158,4 +168,8 @@ test("stage evaluator surfaces payback carry evidence for missing delivered peri
   assert.equal(result.evidence.refreshSuccessRatio3h, 0.98);
   assert.equal(result.evidence.transientFrequency1h, 0);
   assert.equal(result.evidence.transientFrequency3h, 0);
+  assert.equal(result.evidence.refresh24hStageBSuccessesNeeded, 0);
+  assert.equal(result.evidence.refresh24hStageBEarliestRecoveryAt, "2026-05-05T00:00:00.000Z");
+  assert.equal(result.evidence.refresh24hHysteresisSuccessesNeeded, 0);
+  assert.equal(result.evidence.refresh24hHysteresisEarliestRecoveryAt, "2026-05-05T00:00:00.000Z");
 });
