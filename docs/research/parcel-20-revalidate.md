@@ -472,3 +472,105 @@ Mitigation:
   helper callers also fail before signer broadcast.
 - Regression tests cover native approval omission and the deterministic
   pre-signer insufficient-gas block.
+
+## 2026-05-05 resume-review replay fix and guarded revalidation
+
+The operator approved continuing toward execution after the native LI.FI
+gas mitigation. Pre-resume review initially showed a stale
+`relative_price_stale` replay because `kill:resume-review` reused the
+dashboard-embedded replay instead of recomputing from the refreshed
+`data/price-samples.json` input.
+
+Code fix shipped:
+
+- Commit: `7aab0eee fix(ops): recompute kill resume replay`
+- Change: `kill:resume-review` now recomputes live auto-kill replay from
+  current inputs instead of trusting the stale dashboard replay snapshot.
+- Test: `kill-switch resume review recomputes replay instead of reusing stale dashboard replay`.
+- Verification before commit: `npm run check && npm test` reported 2676
+  tests total, 2676 pass / 1 skip / 0 fail.
+- Pushed to `origin/main`.
+
+Fresh resume packet:
+
+- Command: `npm run kill:resume-review -- --json`
+- Result:
+  - `state`: `HALTED`
+  - `activeReason`: `parcel-20-bsc-lifi-insufficient-native-gas`
+  - `replay.triggered`: `false`
+  - `triggers`: `[]`
+  - `blocker_mitigated`: `yes`
+  - `postmortem_written`: `yes`
+  - `inventory_restored`: `no`, source `operator_confirmation_required`
+
+Operator-approved resume:
+
+- Command:
+  `npm run kill:off -- --reason="parcel-20-native-lifi-gas-and-resume-replay-mitigated"`
+- Audit row:
+  - `ts`: `2026-05-05T10:23:44.458Z`
+  - `action`: `resume`
+  - `previousState`: `halted`
+- Immediate auto-kill check:
+  - `triggered`: `false`
+  - `alreadyArmed`: `false`
+  - `killSwitchActive`: `false`
+
+Dry-run-first revalidation:
+
+- Command:
+  `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first --write`
+- CLI note: the process refreshed status and execution-journal outputs but
+  did not return a final summary before it was interrupted after the
+  configured timeout window had passed.
+- Recorded output from `data/all-chain-autopilot-latest.json`:
+  - `mode`: `preview`
+  - `status`: `running`
+  - `executionGate.blockedReason`: `preview_only`
+  - `refillJobCount`: `26`
+  - `refillExecutedCount`: `0`
+  - `autoKillTriggered`: `false`
+  - `killSwitchActive`: `false`
+- Recent `data/execution-journal.jsonl` entries after the resume captured
+  36 refill quote/route attempts across 22 jobs. Blocker counts:
+  - `no_route`: 10
+  - `lifi_quote_rejected`: 9
+  - `dex_quote_failed`: 3
+  - `insufficient_native_balance_for_lifi_gas`: 3
+  - `routing_unavailable`: 2
+  - `execution_reverted`: 2
+- No new signer broadcast row was observed during this dry-run window.
+- No `gateway-btc-funding-transfer` intent was emitted.
+
+Stage and safety decision:
+
+- `npm run dashboard:stage-explain` reported Stage B.
+- Remaining blockers:
+  - `refill_routes_unresolved`
+  - `receipt_proven_payback_period_missing`
+- Evidence:
+  - `refreshSuccessRatio24h`: `0.9684343434343434`
+  - `unresolvedRefillRoutes`: `3`
+  - `paybackPendingSats`: `601`
+  - `deliveredPeriodCountOnReserveChain`: `0`
+- Because the dry-run was not full green, no live canary or all-chain
+  execute command was run.
+- The kill-switch was re-armed conservatively:
+  `npm run kill:on -- --reason="parcel-20-dry-run-refill-routes-unresolved"`.
+- Audit row:
+  - `ts`: `2026-05-05T10:32:06.050Z`
+  - `action`: `halt`
+  - `previousState`: `running`
+- Fresh auto-kill replay after re-arm:
+  - `triggered`: `false`
+  - `alreadyArmed`: `true`
+  - `killSwitchActive`: `true`
+
+Next required mitigation:
+
+- Resolve the three unresolved refill routes before another live attempt.
+- Treat `no_route`, `lifi_quote_rejected`, and
+  `insufficient_native_balance_for_lifi_gas` as deterministic planner
+  blockers, not signer-runtime surprises.
+- Re-run `kill:resume-review`, resume only with an explicit operator
+  reason, then require a completed full-green dry-run before live execute.
