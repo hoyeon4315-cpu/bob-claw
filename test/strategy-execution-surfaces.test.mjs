@@ -597,6 +597,226 @@ test("wrapped BTC loop live dispatch cools down after a fresh signer-backed proo
   assert.equal(wrapped.evidence.liveRunControl.nextEligibleAt, "2026-05-02T12:58:59.137Z");
 });
 
+test("wrapped BTC loop one-time operator cooldown waiver unlocks only the matching fresh proof", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-01T14:00:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+      wrappedBtcLoopLiveProof: {
+        observedAt: "2026-05-01T12:58:59.137Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        success: true,
+        proofStatus: "signer_backed_roundtrip_recorded",
+        proofKind: "signer_backed_roundtrip",
+      },
+      operatorCooldownWaivers: [
+        {
+          waiverId: "test-waiver",
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          scope: "wrapped_btc_loop_live_proof_cooldown",
+          reason: "operator-approved-payback-bootstrap-proof",
+          operatorApprovedAt: "2026-05-01T13:30:00.000Z",
+          expiresAt: "2026-05-02T12:58:59.137Z",
+          waivesProofObservedAt: "2026-05-01T12:58:59.137Z",
+          maxUses: 1,
+        },
+      ],
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, true);
+  assert.equal(wrapped.selectedMode, "live");
+  assert.equal(wrapped.capabilityBucket, "executable_now");
+  assert.equal(wrapped.evidence.liveRunControl.blocked, false);
+  assert.equal(wrapped.evidence.liveRunControl.operatorCooldownWaiver.applied, true);
+  assert.equal(wrapped.evidence.liveRunControl.operatorCooldownWaiver.waiverId, "test-waiver");
+});
+
+test("wrapped BTC loop one-time operator cooldown waiver is consumed by post-approval signer activity", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-01T14:20:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+      signerAuditRecords: [
+        {
+          timestamp: "2026-05-01T13:35:00.000Z",
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          chain: "base",
+          lifecycle: { stage: "confirmed", txHash: "0xdef" },
+          broadcast: { txHash: "0xdef" },
+          policyVerdict: "approved",
+        },
+      ],
+      wrappedBtcLoopLiveProof: {
+        observedAt: "2026-05-01T12:58:59.137Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        success: true,
+        proofStatus: "signer_backed_roundtrip_recorded",
+        proofKind: "signer_backed_roundtrip",
+      },
+      operatorCooldownWaivers: [
+        {
+          waiverId: "test-waiver",
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          scope: "wrapped_btc_loop_live_proof_cooldown",
+          reason: "operator-approved-payback-bootstrap-proof",
+          operatorApprovedAt: "2026-05-01T13:30:00.000Z",
+          expiresAt: "2026-05-02T12:58:59.137Z",
+          waivesProofObservedAt: "2026-05-01T12:58:59.137Z",
+          maxUses: 1,
+        },
+      ],
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.fallbackReason, "operator_cooldown_waiver_consumed");
+  assert.equal(wrapped.evidence.liveRunControl.blocked, true);
+  assert.equal(wrapped.evidence.liveRunControl.operatorCooldownWaiver.consumed, true);
+  assert.equal(wrapped.evidence.liveRunControl.operatorCooldownWaiver.consumedAt, "2026-05-01T13:35:00.000Z");
+});
+
+test("wrapped BTC loop cooldown waiver does not convert non-payback runtime blockers into live dispatch", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-01T14:00:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "BLOCKED",
+        blockers: ["kill_switch_present"],
+        lanePolicy: {
+          candidateId: "wrapped-btc-loop-base-moonwell",
+          stage: "C",
+          preStageLiveTrading: "ALLOWED",
+          stageBlockers: ["kill_switch_present"],
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+      wrappedBtcLoopLiveProof: {
+        observedAt: "2026-05-01T12:58:59.137Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        success: true,
+        proofStatus: "signer_backed_roundtrip_recorded",
+        proofKind: "signer_backed_roundtrip",
+      },
+      operatorCooldownWaivers: [
+        {
+          waiverId: "test-waiver",
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          scope: "wrapped_btc_loop_live_proof_cooldown",
+          reason: "operator-approved-payback-bootstrap-proof",
+          operatorApprovedAt: "2026-05-01T13:30:00.000Z",
+          expiresAt: "2026-05-02T12:58:59.137Z",
+          waivesProofObservedAt: "2026-05-01T12:58:59.137Z",
+          maxUses: 1,
+        },
+      ],
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.fallbackReason, "live_trading_blocked");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("live_trading_blocked"), true);
+  assert.equal(wrapped.evidence.liveRunControl.operatorCooldownWaiver.applied, true);
+});
+
 test("wrapped BTC loop live dispatch cools down after recent signer activity even before proof finalizes", () => {
   const report = buildStrategyExecutionSurfaces({
     now: "2026-05-01T13:05:00.000Z",

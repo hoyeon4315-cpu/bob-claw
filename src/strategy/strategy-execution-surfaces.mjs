@@ -1,5 +1,6 @@
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { OPERATOR_COOLDOWN_WAIVERS } from "../config/operator-waivers.mjs";
 import {
   computeTinyCanaryMinProfitablePositionUsd,
   resolveTinyCanaryExpectedHoldDays,
@@ -15,6 +16,7 @@ const WRAPPED_BTC_LOOP_AUTOMATED_MAX_INTENTS = 14;
 const WRAPPED_BTC_LOOP_AUTOMATED_MIN_INCREMENT_USD = 5;
 const WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS = 30 * 60 * 1000;
+const WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_SCOPE = "wrapped_btc_loop_live_proof_cooldown";
 
 function compact(values = []) {
   return [...new Set((values || []).filter(Boolean))];
@@ -263,9 +265,93 @@ function wrappedBtcLoopRecentSignerActivity(records = [], { now = new Date().toI
   };
 }
 
+function wrappedBtcLoopSignerActivityAfter(records = [], { since = null } = {}) {
+  const sinceMs = timestampMs(since);
+  if (sinceMs === null) {
+    return {
+      consumed: false,
+      consumedAt: null,
+      txHash: null,
+      stage: null,
+    };
+  }
+  const consumedRecord = (records || [])
+    .filter((record) => {
+      if (record?.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
+      const stage = signerAuditRecordStage(record);
+      if (!["signed", "broadcasted", "confirmed"].includes(stage)) return false;
+      if (!signerAuditRecordTxHash(record)) return false;
+      const recordMs = timestampMs(record.timestamp);
+      return recordMs !== null && recordMs > sinceMs;
+    })
+    .sort((left, right) => timestampMs(left.timestamp) - timestampMs(right.timestamp))[0] || null;
+  return {
+    consumed: Boolean(consumedRecord),
+    consumedAt: consumedRecord?.timestamp || null,
+    txHash: signerAuditRecordTxHash(consumedRecord),
+    stage: signerAuditRecordStage(consumedRecord),
+  };
+}
+
+function proofObservedAtMatches(waiver = null, liveProof = null) {
+  const waivedMs = timestampMs(waiver?.waivesProofObservedAt);
+  const proofMs = timestampMs(liveProof?.observedAt);
+  return waivedMs !== null && proofMs !== null && waivedMs === proofMs;
+}
+
+function resolveWrappedBtcLoopCooldownWaiver({
+  waivers = [],
+  liveProof = null,
+  signerAuditRecords = [],
+  now = new Date().toISOString(),
+} = {}) {
+  const base = {
+    applied: false,
+    consumed: false,
+    waiverId: null,
+    reason: null,
+    approvedAt: null,
+    expiresAt: null,
+    waivesProofObservedAt: null,
+    consumedAt: null,
+    consumedTxHash: null,
+    consumedStage: null,
+  };
+  if (!wrappedBtcLoopProofIsSuccess(liveProof)) return base;
+  const nowMs = timestampMs(now);
+  const waiver = (waivers || []).find((entry) => {
+    if (!entry || entry.enabled === false) return false;
+    if (entry.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
+    if (entry.scope !== WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_SCOPE) return false;
+    if (!proofObservedAtMatches(entry, liveProof)) return false;
+    const approvedMs = timestampMs(entry.operatorApprovedAt);
+    const expiresMs = timestampMs(entry.expiresAt);
+    if (nowMs === null || approvedMs === null || expiresMs === null) return false;
+    if (nowMs < approvedMs || nowMs > expiresMs) return false;
+    return Number(entry.maxUses ?? 1) === 1;
+  }) || null;
+  if (!waiver) return base;
+  const consumed = wrappedBtcLoopSignerActivityAfter(signerAuditRecords, {
+    since: waiver.operatorApprovedAt,
+  });
+  return {
+    applied: !consumed.consumed,
+    consumed: consumed.consumed,
+    waiverId: waiver.waiverId || null,
+    reason: waiver.reason || null,
+    approvedAt: waiver.operatorApprovedAt || null,
+    expiresAt: waiver.expiresAt || null,
+    waivesProofObservedAt: waiver.waivesProofObservedAt || null,
+    consumedAt: consumed.consumedAt,
+    consumedTxHash: consumed.txHash,
+    consumedStage: consumed.stage,
+  };
+}
+
 function evaluateWrappedBtcLoopLiveRunControl({
   liveProof = null,
   signerAuditRecords = [],
+  operatorCooldownWaivers = [],
   now = new Date().toISOString(),
 } = {}) {
   const proofAgeMs = ageMs(liveProof?.observedAt, now);
@@ -280,7 +366,27 @@ function evaluateWrappedBtcLoopLiveRunControl({
     proofAgeMs >= 0 &&
     proofAgeMs <= WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS;
   const recent = wrappedBtcLoopRecentSignerActivity(signerAuditRecords, { now });
-  if (freshProof) {
+  const operatorCooldownWaiver = resolveWrappedBtcLoopCooldownWaiver({
+    waivers: operatorCooldownWaivers,
+    liveProof,
+    signerAuditRecords,
+    now,
+  });
+  if (freshProof && operatorCooldownWaiver.consumed) {
+    return {
+      blocked: true,
+      reason: "operator_cooldown_waiver_consumed",
+      proofObservedAt: liveProof.observedAt || null,
+      proofAgeMs,
+      proofCooldownMs: WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_MS,
+      nextEligibleAt: proofNextEligibleAt,
+      recentTxCount: recent.recentTxCount,
+      latestTxAt: recent.latestAt,
+      latestTxAgeMs: recent.latestAgeMs,
+      operatorCooldownWaiver,
+    };
+  }
+  if (freshProof && !operatorCooldownWaiver.applied) {
     return {
       blocked: true,
       reason: "fresh_roundtrip_proof_recorded",
@@ -291,6 +397,7 @@ function evaluateWrappedBtcLoopLiveRunControl({
       recentTxCount: recent.recentTxCount,
       latestTxAt: recent.latestAt,
       latestTxAgeMs: recent.latestAgeMs,
+      operatorCooldownWaiver,
     };
   }
   if (recent.recentTxCount > 0) {
@@ -308,6 +415,7 @@ function evaluateWrappedBtcLoopLiveRunControl({
       latestTxAt: recent.latestAt,
       latestTxAgeMs: recent.latestAgeMs,
       recentTxCooldownMs: WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS,
+      operatorCooldownWaiver,
     };
   }
   return {
@@ -321,6 +429,7 @@ function evaluateWrappedBtcLoopLiveRunControl({
     latestTxAt: null,
     latestTxAgeMs: null,
     recentTxCooldownMs: WRAPPED_BTC_LOOP_RECENT_TX_COOLDOWN_MS,
+    operatorCooldownWaiver,
   };
 }
 
@@ -350,12 +459,15 @@ function buildWrappedBtcLoopExecutorSurface({
   treasuryInventoryRecords = [],
   wrappedBtcLoopLiveProof = null,
   signerAuditRecords = [],
+  operatorCooldownWaivers = [],
   now = new Date().toISOString(),
 } = {}) {
   const validation = phase3ValidationById(phase3Validation).get("wrapped_btc_loop_validation") || null;
   const strategy = wrappedBtcLendingLoopSlice?.strategy || {};
   if (!strategy.id) return null;
+  const paybackBootstrap = stageBPaybackBootstrap(policy, strategy.id);
   const liveAllowed = baseLiveTradingAllowed(policy);
+  const runtimeLiveAllowed = liveTradingAllowed(policy) || paybackBootstrap.allowed;
   const validationPassed = validation?.overallStatus === "passed";
   const bindingReady = wrappedBtcLendingLoopSlice?.bindingSupport?.executableFromRepo === true;
   const dryRunRecorded = wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true;
@@ -372,9 +484,9 @@ function buildWrappedBtcLoopExecutorSurface({
   const liveRunControl = evaluateWrappedBtcLoopLiveRunControl({
     liveProof: wrappedBtcLoopLiveProof,
     signerAuditRecords,
+    operatorCooldownWaivers,
     now,
   });
-  const paybackBootstrap = stageBPaybackBootstrap(policy, strategy.id);
   const rawLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked;
   const stageMode = stageAwareExecutionMode({
     policy,
@@ -383,7 +495,7 @@ function buildWrappedBtcLoopExecutorSurface({
     allowStageBPaybackBootstrap: paybackBootstrap.allowed,
   });
   const blockers = compact([
-    !liveAllowed ? "live_trading_blocked" : null,
+    !runtimeLiveAllowed ? "live_trading_blocked" : null,
     validationPassed ? null : validation?.blockers?.[0] || "phase3_validation_not_passed",
     bindingReady ? null : "repo_auto_build_not_supported",
     dryRunRecorded ? null : "dry_run_receipt_missing",
@@ -391,8 +503,8 @@ function buildWrappedBtcLoopExecutorSurface({
     liveRunControl.blocked ? liveRunControl.reason : null,
     stageMode.stageBlocker,
   ]);
-  const currentLiveEligible = stageMode.currentLiveEligible;
-  const selectedMode = stageMode.selectedMode;
+  const currentLiveEligible = stageMode.currentLiveEligible && runtimeLiveAllowed;
+  const selectedMode = currentLiveEligible ? stageMode.selectedMode : stageMode.selectedMode === "live" ? "dry_run" : stageMode.selectedMode;
   return {
     id: strategy.id,
     label: strategy.label || "Wrapped BTC lending loop (Base / Moonwell)",
@@ -806,6 +918,7 @@ export function buildStrategyExecutionSurfaces({
       treasuryInventoryRecords: artifacts.treasuryInventoryRecords || [],
       wrappedBtcLoopLiveProof: artifacts.wrappedBtcLoopLiveProof || null,
       signerAuditRecords: artifacts.signerAuditRecords || [],
+      operatorCooldownWaivers: artifacts.operatorCooldownWaivers || OPERATOR_COOLDOWN_WAIVERS,
       now: now || catalog.generatedAt || new Date().toISOString(),
     }),
     buildMerklAutopilotSurface({
