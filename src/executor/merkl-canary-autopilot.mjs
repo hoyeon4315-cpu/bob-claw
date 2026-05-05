@@ -447,6 +447,47 @@ export async function evaluateMerklCanaryOpportunityPolicy({
   };
 }
 
+function opportunityPolicyBlockedResult(candidate = {}, opportunityPolicy = {}) {
+  return {
+    status: "blocked",
+    blockedReason: opportunityPolicy.blockers?.[0] || "opportunity_policy_blocked",
+    queueItem: candidate.queueItem,
+    sizing: candidate.sizing,
+    opportunityPolicy,
+  };
+}
+
+export async function selectMerklCanaryOpportunityPolicyReadyCandidates(selection = {}, {
+  auditRecords = [],
+  now = new Date().toISOString(),
+  maxCandidates = 1,
+  evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
+} = {}) {
+  const limit = Math.max(1, Number.isInteger(maxCandidates) ? maxCandidates : 1);
+  const selected = [];
+  const deferred = [];
+  for (const candidate of selection.selected || []) {
+    const opportunityPolicy = await evaluateMerklCanaryOpportunityPolicy({
+      queueItem: candidate.queueItem,
+      sizing: candidate.sizing,
+      auditRecords,
+      now,
+      evaluateOpportunityPolicyImpl,
+    });
+    if (!opportunityPolicy.ok) {
+      deferred.push(opportunityPolicyBlockedResult(candidate, opportunityPolicy));
+      continue;
+    }
+    selected.push({ ...candidate, opportunityPolicy });
+    if (selected.length >= limit) break;
+  }
+  return {
+    ...selection,
+    selected,
+    deferred,
+  };
+}
+
 export async function buildLiveMerklInventorySnapshot({
   queueItem,
   senderAddress,
@@ -633,9 +674,13 @@ export async function runMerklCanaryAutopilot({
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
+  const requestedMaxCandidates = Math.max(1, Number.isInteger(maxCandidates) ? maxCandidates : 6);
+  const selectionMaxCandidates = execute
+    ? Math.max(requestedMaxCandidates * 6, requestedMaxCandidates + 5)
+    : requestedMaxCandidates;
   const selection = selectMerklCanaryAutopilotCandidates(queue, {
     maxUsd,
-    maxCandidates,
+    maxCandidates: selectionMaxCandidates,
     maxPerChain,
     maxPerProtocol,
     minEthereumNotionalUsd,
@@ -672,7 +717,16 @@ export async function runMerklCanaryAutopilot({
 
   const representativeCoverage = compactRepresentativeCoverage(queue);
   const results = [];
-  for (const selected of selection.selected) {
+  const executionSelection = execute
+    ? await selectMerklCanaryOpportunityPolicyReadyCandidates(selection, {
+        auditRecords,
+        now: new Date().toISOString(),
+        maxCandidates: requestedMaxCandidates,
+        evaluateOpportunityPolicyImpl,
+      })
+    : selection;
+  results.push(...(executionSelection.deferred || []));
+  for (const selected of executionSelection.selected) {
     let { queueItem, sizing } = selected;
     if (sizing.status !== "ready") {
       results.push({

@@ -177,24 +177,103 @@ exact arming reason and feed it into the new postmortem.
   - `reason`: `parcel-20-live-canary-blocked-max-consecutive-failures`
   - `previousState`: `running`
 
+### Follow-up: daemon reload and second attempt
+
+Investigation of the `gateway_native_asset_conversion_sleeve` blocker
+showed that the current repository code and audit log classified the Base
+scope correctly after the reset row:
+
+- `consecutiveFailures`: `0`
+- `lastResetAt`: `2026-05-04T17:49:29.589Z`
+- `broadcastFailureCount`: `0`
+- latest post-reset rejection: no-broadcast policy rejection, therefore
+  not counted by the corrected classifier
+
+The signer daemon process was still the long-running process started on
+`2026-05-02T20:15:54` and had not reloaded the parcel code. The daemon and
+watchdog were restarted through launchd while the kill-switch remained
+armed. New daemon pid: `39707`; new watchdog pid: `39796`.
+
+After an operator-approved resume:
+
+- Resume-review packet was appended at `2026-05-05T07:39:04.996Z`.
+- Kill-switch resume command:
+  `npm run kill:off -- --reason="parcel-20-daemon-reloaded-after-counter-reset"`.
+- Fresh auto-kill replay:
+  `triggered=false`, `killSwitchWritten=false`, `alreadyArmed=false`.
+- `npm run autopilot:all-chains -- --profile=aggressive_v1 --dry-run-first`
+  completed in preview mode with live steps blocked only by `preview_only`.
+
+The next live Merkl canary attempt did not reach signer broadcast. It was
+blocked earlier by deterministic opportunity policy:
+
+- Execute command:
+  `npm run executor:merkl-canary-autopilot -- --json --write --execute --max-candidates=1 --max-usd=5 --timeout-ms=180000`
+- Result:
+  - `status`: `blocked`
+  - `blockedReason`: `same_chain_unprofitable:need_$18_on_optimism`
+  - selected chain: `optimism`
+  - selected protocol: `morpho`
+  - selected amountUsd: `4.09698`
+  - plan: `null`
+  - execution: `null`
+
+Per Parcel 20, the agent did not bypass the policy flag. The kill-switch
+was immediately re-armed with:
+
+`npm run kill:on -- --reason="parcel-20-live-canary-blocked-opportunity-policy-unprofitable"`
+
+Audit row:
+
+- `ts`: `2026-05-05T07:47:46.243Z`
+- `action`: `halt`
+- `reason`: `parcel-20-live-canary-blocked-opportunity-policy-unprofitable`
+- `previousState`: `running`
+
 ### Decision
 
-The first live canary attempt did not reach broadcast. The system behaved
-correctly: policy rejected the intent before signing because
-`gateway_native_asset_conversion_sleeve` still has a true
-`max_consecutive_failures_reached` state. This is a different strategy
-from the Parcel 16 gateway funding trigger and must not be reset
-automatically.
+No live broadcast occurred in either attempt. The first block was caused
+by a stale signer daemon process that had not reloaded the corrected
+counter classifier. The second block was a valid opportunity-policy
+rejection: the selected Optimism canary was too small to clear the
+same-chain profitability floor. The selector should avoid advancing an
+execute candidate that fails deterministic opportunity policy when another
+ready candidate may exist.
 
 ### Next required work
 
-1. Investigate the `gateway_native_asset_conversion_sleeve` consecutive
-   failure state, especially the terminal failures ending at
-   `2026-05-02T09:35:18.475Z`.
-2. Classify those failures with the corrected broadcast/no-tx classifier.
-3. Only if the failures are confirmed to be stale no-broadcast artifacts,
-   use the existing audited reset CLI with a new explicit reason.
-4. If the failures are true broadcast failures, keep the strategy paused
-   and fix the underlying execution issue before any new live attempt.
-5. Do not clear the kill-switch again until that investigation is
-   complete and the operator explicitly resumes it.
+1. Keep the kill-switch armed until the selector/preflight behavior is
+   corrected and reviewed.
+2. Update Merkl canary candidate selection so execute mode chooses the
+   first candidate that passes opportunity policy, or reports all
+   policy-failing candidates as deterministic deferrals.
+3. Add a regression fixture where an Optimism candidate is inventory-ready
+   but unprofitable and a Base candidate is policy-pass; execution should
+   select Base.
+4. Re-run dry-run-first, then retry the smallest policy-pass live canary
+   only after operator resume.
+
+### Follow-up: Merkl selector fix
+
+The Merkl execute selector now scans beyond the requested live execution
+count, applies deterministic opportunity policy before plan construction,
+and defers policy-failing candidates instead of selecting them as the sole
+execute candidate. Regression coverage:
+
+- Optimism candidate: inventory-ready but blocked by
+  `same_chain_unprofitable:need_$18_on_optimism`
+- Base candidate: lower priority but policy-pass
+- Expected selection: Base selected, Optimism emitted as deterministic
+  deferral
+
+Current live data after the fix has no Merkl policy-pass candidate:
+
+- ready Merkl candidates: `1`
+- only ready candidate: Optimism Morpho opportunity
+  `17563083078147412604`, amountUsd `4.09698`
+- deterministic deferral:
+  `same_chain_unprofitable:need_$18_on_optimism`
+
+Therefore the next live-canary route must come from another policy-ready
+surface, such as destination representative execution, or wait for a new
+Merkl inventory/campaign state.

@@ -5,6 +5,7 @@ import {
   evaluateMerklCanaryOpportunityPolicy,
   merklExecutionErrorReport,
   refreshMerklAutopilotSelectionForExecute,
+  selectMerklCanaryOpportunityPolicyReadyCandidates,
   selectMerklCanaryAutopilotCandidate,
   selectMerklCanaryAutopilotCandidates,
   sizeMerklCanaryAmount,
@@ -365,6 +366,58 @@ test("batch selection spreads Merkl canaries across chains before repeating a ch
     "base",
     "ethereum-b",
   ]);
+});
+
+test("execute selection defers policy-failing candidates and keeps the first policy-pass candidate", async () => {
+  const optimism = queueItem({
+    opportunityId: "optimism-unprofitable",
+    chain: "optimism",
+    priorityScore: 110,
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: { ticker: "USDC", actual: "4096980", estimatedUsd: 4.09698 },
+      matchedNative: { asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 },
+    },
+    protocolBindingPlan: {
+      ...queueItem().protocolBindingPlan,
+      resolvedBinding: {
+        ...queueItem().protocolBindingPlan.resolvedBinding,
+        assetAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+      },
+    },
+  });
+  const base = queueItem({
+    opportunityId: "base-policy-pass",
+    chain: "base",
+    priorityScore: 100,
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: { ticker: "USDC", actual: "5000000", estimatedUsd: 5 },
+      matchedNative: { asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 },
+    },
+  });
+  const selection = selectMerklCanaryAutopilotCandidates(
+    { queue: [optimism, base] },
+    { maxCandidates: 2 },
+  );
+
+  const filtered = await selectMerklCanaryOpportunityPolicyReadyCandidates(selection, {
+    maxCandidates: 1,
+    evaluateOpportunityPolicyImpl: async ({ intent }) => {
+      if (intent.chain === "optimism") {
+        return {
+          decision: "BLOCK",
+          blockers: ["same_chain_unprofitable:need_$18_on_optimism"],
+        };
+      }
+      return { decision: "ALLOW", blockers: [] };
+    },
+  });
+
+  assert.equal(filtered.selected.length, 1);
+  assert.equal(filtered.selected[0].queueItem.opportunityId, "base-policy-pass");
+  assert.equal(filtered.deferred.length, 1);
+  assert.equal(filtered.deferred[0].blockedReason, "same_chain_unprofitable:need_$18_on_optimism");
 });
 
 test("refreshes queue readiness from latest canary executions before selecting", () => {
