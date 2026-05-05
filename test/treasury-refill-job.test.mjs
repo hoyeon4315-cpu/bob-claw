@@ -146,6 +146,62 @@ test("refill jobs defer bridge methods above discretionary quote-cost ceiling", 
   assert.equal(jobs.jobs[0].reviewReasons.includes("bridge_quote_cost_above_discretionary_ceiling"), true);
 });
 
+test("refill jobs defer economically negative route refills before execution preview", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "1000000",
+        refillAmountDecimal: 1,
+        refillEstimatedUsd: 1,
+        rationale: "Tiny route refill with negative system economics.",
+      },
+    ],
+  };
+
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan: {
+      routeContext: {
+        routeKey: "base-negative",
+        srcChain: "ethereum",
+        dstChain: "base",
+        dstToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        netEdgeUsd: -0.25,
+        inputUsd: 1,
+      },
+      selections: [
+        {
+          resourceKey: "base:0x833589fcD6eDb6E08f4c7C32D4f71b54bdA02913".toLowerCase(),
+          actionType: "refill_token",
+          chain: "base",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          selectionStatus: "ready",
+          selectedMethod: "cross_chain_bridge_lifi",
+          selectedSource: { source: { chain: "ethereum", token: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" } },
+          expectedExecutionRefillCostUsd: 0.05,
+          expectedReserveReplenishmentCostUsd: 0,
+          requiresManualFunding: false,
+          requiresReserveState: false,
+          missingInputs: [],
+          settlementRequirements: [],
+          candidates: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(jobs.jobs[0].requiresManualReview, true);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("route_refill_economically_unjustified"), true);
+  assert.equal(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd < 0, true);
+});
+
 test("refill jobs keep explicit live destination-inventory override bridgeable", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

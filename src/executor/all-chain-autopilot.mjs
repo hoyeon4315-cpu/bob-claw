@@ -208,6 +208,16 @@ function refillPreviewBlockedReason(result = {}) {
   );
 }
 
+function refillRouteAttemptReason(result = {}, { method = null } = {}) {
+  const blockedReason = refillPreviewBlockedReason(result);
+  if (!blockedReason) return null;
+  return {
+    method: method || refillSelectedMethod(result) || null,
+    blockedReason,
+    planBlockedReason: result?.json?.preparation?.plan?.blockedReason || null,
+  };
+}
+
 function refillPreviewStatus(result = {}) {
   return result?.json?.preparation?.status || result?.json?.event?.status || result?.json?.status || null;
 }
@@ -345,6 +355,7 @@ function compactRefillExecution(job, preview, execution = null) {
     selectedExecutionMethod: refillSelectedMethod(execution || preview, job.executionMethod),
     previewStatus: execution ? null : refillPreviewStatus(preview),
     previewBlockedReason: refillPreparationReady(preview?.json) ? null : refillPreviewBlockedReason(preview),
+    routeAttemptReasons: preview?.json?.preparation?.routeAttemptReasons || [],
     attempted: Boolean(execution),
     executed: delivered,
     executionStatus,
@@ -1309,6 +1320,9 @@ export async function runAllChainAutopilot({
       timeoutMs,
       steps,
     });
+    const routeAttemptReasons = [];
+    const firstAttemptReason = refillRouteAttemptReason(preview, { method: job.executionMethod });
+    if (firstAttemptReason) routeAttemptReasons.push(firstAttemptReason);
     if (refillPreviewRetryable(preview, { activeMethod: job.executionMethod })) {
       for (const method of forcedRefillMethodArgs(job, job.executionMethod)) {
         const alternatePreview = await runJsonStep({
@@ -1320,6 +1334,8 @@ export async function runAllChainAutopilot({
           steps,
         });
         preview = alternatePreview;
+        const attemptReason = refillRouteAttemptReason(alternatePreview, { method });
+        if (attemptReason) routeAttemptReasons.push(attemptReason);
         if (refillPreparationReady(preview.json) || !refillPreviewRetryable(preview, { activeMethod: method })) break;
       }
       if (refillPreviewRetryable(preview, { activeMethod: refillSelectedMethod(preview, job.executionMethod) })) {
@@ -1331,6 +1347,7 @@ export async function runAllChainAutopilot({
               ...(preview.json?.preparation || {}),
               status: "blocked",
               blockedReason: "routing_exhausted",
+              routeAttemptReasons,
             },
           },
         };
@@ -1397,6 +1414,8 @@ export async function runAllChainAutopilot({
             timeoutMs,
             steps,
           });
+          const attemptReason = refillRouteAttemptReason(nextPreview, { method: retryMethod });
+          if (attemptReason) routeAttemptReasons.push(attemptReason);
           if (refillPreparationReady(nextPreview.json) || !refillPreviewRetryable(nextPreview, { activeMethod: retryMethod })) break;
         }
         if (!nextPreview) break;
@@ -1410,6 +1429,7 @@ export async function runAllChainAutopilot({
                 ...(preview.json?.preparation || {}),
                 status: "blocked",
                 blockedReason: "routing_exhausted",
+                routeAttemptReasons,
               },
             },
           };

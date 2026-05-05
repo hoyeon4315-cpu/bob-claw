@@ -70,6 +70,14 @@ function jobExecutionCostUsd(job) {
   return finiteOrNull(job.estimatedAssetValueUsd) ?? Number.POSITIVE_INFINITY;
 }
 
+function jobEconomicReviewReasons(job = {}) {
+  if (job.decision !== "REFILL_REQUIRED") return [];
+  if (!fundingSourceAutoExecutable(job.fundingSource)) return [];
+  const effectiveSystemNetPnlUsd = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
+  if (effectiveSystemNetPnlUsd === null || effectiveSystemNetPnlUsd >= 0) return [];
+  return ["route_refill_economically_unjustified"];
+}
+
 function routeNetUsd(routeContext = null) {
   return finiteOrNull(routeContext?.executableNetEdgeUsd) ?? finiteOrNull(routeContext?.netEdgeUsd);
 }
@@ -256,6 +264,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       jobId: deterministicJobId(basis),
       createdAt: plan.observedAt,
       address: plan.address,
+      decision: plan.decision,
       status: "planned",
       requiresManualReview: false,
       reviewReasons: [],
@@ -368,6 +377,7 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
           record: job,
           ceilingUsd: bridgeQuoteCostCeilingUsd,
         }).accepted ? ["bridge_quote_cost_above_discretionary_ceiling"] : []),
+        ...jobEconomicReviewReasons(job),
         ...fundingSourceReviewReasons(job.fundingSource),
       ];
     const requiresManualReview =
