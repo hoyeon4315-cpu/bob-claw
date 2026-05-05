@@ -74,6 +74,59 @@ test("erc4626 reader returns empty positions on zero shares", async () => {
   assert.deepEqual(r.notes, ["zero_shares"]);
 });
 
+test("erc4626 reader tries configured rpcUrls in deterministic fallback order", async () => {
+  const rpcCalls = [];
+  class JsonRpcProvider {
+    constructor(rpcUrl) {
+      this.rpcUrl = rpcUrl;
+    }
+  }
+  class Contract {
+    constructor(address, abi, provider) {
+      this.address = address.toLowerCase();
+      this.provider = provider;
+    }
+    async balanceOf() {
+      rpcCalls.push(`${this.provider.rpcUrl}:balanceOf:${this.address}`);
+      if (this.provider.rpcUrl === "https://primary.example") throw new Error("missing revert data");
+      return 100n;
+    }
+    async convertToAssets(shares) {
+      rpcCalls.push(`${this.provider.rpcUrl}:convertToAssets:${this.address}`);
+      return shares * 2n;
+    }
+    async asset() {
+      rpcCalls.push(`${this.provider.rpcUrl}:asset:${this.address}`);
+      return "0xunderlying";
+    }
+    async decimals() {
+      rpcCalls.push(`${this.provider.rpcUrl}:decimals:${this.address}`);
+      return 18;
+    }
+    async symbol() {
+      rpcCalls.push(`${this.provider.rpcUrl}:symbol:${this.address}`);
+      return "yoUSDC";
+    }
+  }
+
+  const r = await readErc4626({
+    chain: "base",
+    walletAddress: "0xwallet",
+    params: { vaultAddress: "0xVault" },
+    _chainConfigResolver: () => ({
+      rpcUrls: ["https://primary.example", "https://fallback.example"],
+    }),
+    _ethersLoader: async () => ({ ethers: { JsonRpcProvider, Contract } }),
+  });
+
+  assert.equal(r.ok, true);
+  assert.equal(r.positions[0].assetBalance, "200");
+  assert.deepEqual(rpcCalls.slice(0, 2), [
+    "https://primary.example:balanceOf:0xvault",
+    "https://fallback.example:balanceOf:0xvault",
+  ]);
+});
+
 test("aave-v3 reader returns lending position with HF", async () => {
   const _providerFactory = makeMockProvider({
     "ethereum:0xpool": {

@@ -135,6 +135,7 @@ test("buildProtocolPositionMarksSlice ignores marks for inactive source entries 
   assert.equal(slice.failedPositionCount, 0);
   assert.equal(slice.confidence, "verified_current");
   assert.equal(slice.totalMarkedUsd, 45.77);
+  assert.equal(slice.refreshSuccessRatio.rolling24h, 1);
 });
 
 test("buildProtocolPositionMarksSlice emits rolling refresh success ratios and transient frequency", () => {
@@ -200,6 +201,75 @@ test("buildProtocolPositionMarksSlice emits rolling refresh success ratios and t
   assert.equal(slice.reliability.recovery24h.stageB.earliestRecoveryAt, "2026-05-04T20:02:00.001Z");
   assert.equal(slice.reliability.recovery24h.hysteresis.successesNeeded, 6);
   assert.equal(slice.reliability.recovery24h.hysteresis.earliestRecoveryAt, "2026-05-04T20:02:00.001Z");
+});
+
+test("buildProtocolPositionMarksSlice attributes 24h failures by position and root-cause class", () => {
+  const slice = buildProtocolPositionMarksSlice(
+    [
+      {
+        event: "position_marked",
+        positionId: "base-yo",
+        chain: "base",
+        protocolId: "yo",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        valueUsd: 5,
+        observedAt: "2026-05-04T11:00:00.000Z",
+        confidence: "verified_current",
+      },
+      {
+        event: "position_mark_failed",
+        positionId: "base-yo",
+        chain: "base",
+        protocolId: "yo",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        observedAt: "2026-05-04T11:05:00.000Z",
+        failureKind: "adapter_error",
+        message: "missing revert data (action=\"call\", reason=null)",
+      },
+      {
+        event: "position_mark_failed",
+        positionId: "base-yo",
+        chain: "base",
+        protocolId: "yo",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        observedAt: "2026-05-04T11:06:00.000Z",
+        failureKind: "adapter_error",
+        message: "CALL_EXCEPTION: missing revert data",
+      },
+      {
+        event: "position_mark_failed",
+        positionId: "eth-morpho",
+        chain: "ethereum",
+        protocolId: "morpho",
+        observedAt: "2026-05-04T11:07:00.000Z",
+        failureKind: "adapter_missing",
+        message: "unsupported binding",
+      },
+      {
+        event: "position_marked",
+        positionId: "base-yo",
+        chain: "base",
+        protocolId: "yo",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        valueUsd: 5.1,
+        observedAt: "2026-05-04T12:00:00.000Z",
+        confidence: "verified_current",
+      },
+    ],
+    { generatedAt: "2026-05-04T12:30:00.000Z" },
+  );
+
+  assert.equal(slice.reliability.failureAttribution.window24h.failureCount, 3);
+  assert.deepEqual(slice.reliability.failureAttribution.window24h.byFailureClass, [
+    { failureClass: "rpc_transient", failureCount: 2, failureShare: 2 / 3 },
+    { failureClass: "binding_stale", failureCount: 1, failureShare: 1 / 3 },
+  ]);
+  assert.equal(slice.reliability.failureAttribution.window24h.byPosition[0].positionId, "base-yo");
+  assert.equal(slice.reliability.failureAttribution.window24h.byPosition[0].failureClass, "rpc_transient");
+  assert.equal(slice.reliability.failureAttribution.window24h.byPosition[0].failureShare, 2 / 3);
+  assert.equal(slice.reliability.failureAttribution.window24h.byPosition[0].latestSuccessAt, "2026-05-04T12:00:00.000Z");
+  assert.equal(slice.reliability.failureAttribution.window24h.byChain[0].chain, "base");
+  assert.equal(slice.reliability.failureAttribution.window24h.byChain[0].failureClass, "rpc_transient");
 });
 
 test("buildProtocolPositionMarksSlice flags sustained sub-0.90 refresh hysteresis", () => {
