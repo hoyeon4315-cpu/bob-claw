@@ -990,3 +990,41 @@ Remaining review item:
 
 - Reconcile the Ethereum source txs from signer audit against `data/treasury-refill-executions.jsonl` and `data/receipt-reconciliations.jsonl`.
 - If destination settlement exists, backfill the missing refill outcome; if not, keep the current hold and record the provider/order timeout as unresolved.
+
+## 2026-05-05T13:52Z mitigation: prefer complete market artifacts for ETH/BTC
+
+Observation:
+
+- After the refill timeout mitigation, `run-kill-switch --status --json` replayed an active `relative_price_stale` trigger for `ETH/BTC`.
+- A fresh market snapshot existed at `2026-05-05T13:49:59.849Z`, but `aggregate:auto-kill-inputs` could select the newest fresh `price-snapshot.json` even when that artifact carried only BTC data.
+- In that case, no fresh `ETH/USD` or computed `ETH/BTC` sample was appended, leaving the kill replay pinned to the older `2026-05-05T13:16:05.271Z` dashboard-derived sample.
+
+Patch:
+
+- `src/cli/aggregate-auto-kill-inputs.mjs` now prefers the freshest artifact that can build both BTC/USD and ETH/USD before falling back to a BTC-only snapshot.
+- BTC and ETH extraction share small helpers, so `price-snapshot.json`, `market-price-snapshots.jsonl`, and dashboard fallback are treated consistently.
+
+Test:
+
+- Added `aggregate-auto-kill-inputs skips BTC-only snapshot when ETH market snapshot is available`.
+- Focused verification:
+  `node --test test/aggregate-auto-kill-inputs.test.mjs`
+  passed with `4 pass / 0 fail`.
+
+Post-fix replay:
+
+- `npm run aggregate:auto-kill-inputs` regenerated `data/price-samples.json`.
+- Latest `ETH/BTC` sample:
+  - `timestamp`: `2026-05-05T13:49:59.849Z`
+  - `source`: `computed_from_market_price_snapshot`
+  - `priceUsd`: `0.029351378521144767`
+- `node src/cli/run-kill-switch.mjs --status --json` reports:
+  - `halted`: `true`
+  - `activeReason`: `parcel-20-live-run-timeout-hold-for-review`
+  - replay `triggered`: `false`
+  - replay `triggers`: `[]`
+
+Decision:
+
+- The stale relative-price replay blocker is cleared by data regeneration and the artifact-selection patch.
+- The kill-switch remains armed because the current halt reason is the Parcel 20 live-run timeout review hold, not an active replay trigger.

@@ -84,6 +84,26 @@ function selectFreshestArtifact(artifacts = [], { now = new Date(), maxAgeMs = M
     .sort((left, right) => artifactTimestampMs(right.payload) - artifactTimestampMs(left.payload))[0] || null;
 }
 
+function artifactBtcUsd(payload = {}) {
+  return finiteNumber(payload?.btcUsd, payload?.tokenByKey?.btc, payload?.tokenByKey?.wbtc, payload?.wbtcUsd);
+}
+
+function artifactEthUsd(payload = {}) {
+  return finiteNumber(payload?.tokenByKey?.ethereum, payload?.nativeByChain?.ethereum, payload?.ethUsd);
+}
+
+function artifactCanBuildEthBtc(payload = {}) {
+  return Boolean(artifactBtcUsd(payload) && artifactEthUsd(payload));
+}
+
+function selectMarketArtifact(artifacts = [], { now = new Date(), maxAgeMs = MARKET_PRICE_SNAPSHOT_MAX_AGE_MS } = {}) {
+  const freshArtifacts = artifacts.filter((artifact) => artifact?.payload && isFreshArtifact(artifact.payload, { now, maxAgeMs }));
+  return (
+    selectFreshestArtifact(freshArtifacts.filter((artifact) => artifactCanBuildEthBtc(artifact.payload)), { now, maxAgeMs }) ||
+    selectFreshestArtifact(freshArtifacts, { now, maxAgeMs })
+  );
+}
+
 function isLegacyUnsafeEthSample(sample = {}) {
   if (!["ETH/USD", "ETH/BTC"].includes(sample.pair)) return false;
   return ["dashboard", "computed_ratio"].includes(sample.source);
@@ -123,7 +143,7 @@ async function buildPriceSamples() {
         observedAt: dashboard.market.observedAt || dashboard.generatedAt,
       }
     : null;
-  const selectedMarket = selectFreshestArtifact([
+  const selectedMarket = selectMarketArtifact([
     { kind: "price-snapshot", payload: latestPriceSnapshot },
     { kind: "market-price-snapshots", payload: latestMarketJsonlSnapshot },
   ], { now });
@@ -132,18 +152,8 @@ async function buildPriceSamples() {
     : null;
   const latestMarketSnapshot = selectedMarket?.payload || null;
   const fallbackMarket = selectedDashboard?.payload || null;
-  const btcUsd = finiteNumber(
-    latestMarketSnapshot?.btcUsd,
-    latestMarketSnapshot?.tokenByKey?.btc,
-    latestMarketSnapshot?.tokenByKey?.wbtc,
-    fallbackMarket?.btcUsd,
-    fallbackMarket?.wbtcUsd,
-  );
-  const ethUsd = finiteNumber(
-    latestMarketSnapshot?.tokenByKey?.ethereum,
-    latestMarketSnapshot?.nativeByChain?.ethereum,
-    fallbackMarket?.ethUsd,
-  );
+  const btcUsd = artifactBtcUsd(latestMarketSnapshot) || artifactBtcUsd(fallbackMarket);
+  const ethUsd = artifactEthUsd(latestMarketSnapshot) || artifactEthUsd(fallbackMarket);
   const timestamp = latestMarketSnapshot?.observedAt || fallbackMarket?.observedAt || now.toISOString();
   const source = latestMarketSnapshot ? "market_price_snapshot" : "dashboard_market";
   const computedSource = latestMarketSnapshot

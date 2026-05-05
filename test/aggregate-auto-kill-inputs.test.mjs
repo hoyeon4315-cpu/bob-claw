@@ -73,6 +73,42 @@ test("aggregate-auto-kill-inputs derives ETH/BTC from market snapshots and prese
   });
 });
 
+test("aggregate-auto-kill-inputs skips BTC-only snapshot when ETH market snapshot is available", async () => {
+  await withTempRoot(async (rootDir) => {
+    const scriptPath = join(process.cwd(), "src", "cli", "aggregate-auto-kill-inputs.mjs");
+    const now = Date.now();
+    const btcOnlyAt = new Date(now).toISOString();
+    const marketAt = new Date(now - 30_000).toISOString();
+    await writeFile(
+      join(rootDir, "data", "price-snapshot.json"),
+      `${JSON.stringify({
+        observedAt: btcOnlyAt,
+        source: "coingecko_or_fallback",
+        btcUsd: 100_000,
+      })}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(rootDir, "data", "market-price-snapshots.jsonl"),
+      `${JSON.stringify({
+        observedAt: marketAt,
+        source: "coingecko_or_fallback",
+        btcUsd: 100_000,
+        tokenByKey: { btc: 100_000, ethereum: 2_500 },
+        nativeByChain: { ethereum: 2_500 },
+      })}\n`,
+      "utf8",
+    );
+
+    await execFileAsync(process.execPath, [scriptPath], { cwd: rootDir });
+
+    const payload = JSON.parse(await readFile(join(rootDir, "data", "price-samples.json"), "utf8"));
+    assert.equal(payload.freshness.selectedMarketSource, "market-price-snapshots");
+    assert.equal(payload.samples.some((sample) => sample.pair === "ETH/USD" && sample.timestamp === marketAt), true);
+    assert.equal(payload.samples.some((sample) => sample.pair === "ETH/BTC" && sample.priceUsd === 0.025), true);
+  });
+});
+
 test("aggregate-auto-kill-inputs does not treat stale price snapshots as current market data", async () => {
   await withTempRoot(async (rootDir) => {
     const scriptPath = join(process.cwd(), "src", "cli", "aggregate-auto-kill-inputs.mjs");
