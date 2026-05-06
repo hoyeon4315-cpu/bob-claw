@@ -153,6 +153,36 @@ function receiptOutputAttributionCandidates(receiptRecords = []) {
     .filter((candidate) => candidate.chain && (candidate.token || candidate.ticker));
 }
 
+function transferAttributionCandidates(transferAttributionRecords = []) {
+  return transferAttributionRecords
+    .filter((record) => record.eventId && record.txHash)
+    .map((record) => ({
+      sourceFile: record.sourceFile || "data/treasury/inbound-transfer-attributions.jsonl",
+      observedAt: observedAt(record),
+      observedAtMs: observedAtMs(record),
+      txHash: record.txHash,
+      chain: normalized(record.chain),
+      token: normalized(record.token),
+      ticker: normalized(record.ticker),
+      outputUsd: finiteNumber(record.estimatedUsd ?? record.actualOutputUsd),
+      amount: record.amount === null || record.amount === undefined ? null : String(record.amount),
+      amountDecimal: finiteNumber(record.amountDecimal),
+      eventId: record.eventId,
+      kind: record.kind || "erc20_transfer",
+      strategyId: record.strategyId || null,
+      routeKey: record.routeKey || null,
+      category: "external_or_internal_inbound_tx",
+      confidence: "tx_attributed_erc20_transfer_log",
+      matchReason: "erc20_transfer_log_matches_inbound_event_id_chain_token_and_amount",
+      timeToleranceMs: SIGNER_SNAPSHOT_SKEW_MS,
+      blockNumber: record.blockNumber ?? null,
+      logIndex: record.logIndex ?? null,
+      from: record.from || null,
+      to: record.to || null,
+    }))
+    .filter((candidate) => candidate.chain && candidate.token);
+}
+
 function signerConfirmedOutputAsset(record = {}) {
   const chain = normalized(record.chain);
   const strategyId = record.strategyId || record.intent?.strategyId || record.intent?.metadata?.capStrategyId || null;
@@ -215,12 +245,14 @@ function signerOutputAttributionCandidates(signerAuditRecords = []) {
 }
 
 function candidateMatchesInbound(event = {}, candidate = {}) {
+  if (candidate.eventId && event.eventId !== candidate.eventId) return false;
   if (normalized(event.chain) !== candidate.chain) return false;
   const eventToken = normalized(event.token);
   const eventTicker = normalized(event.ticker);
   if (eventToken && candidate.token && eventToken !== candidate.token) return false;
   if (eventToken && !candidate.token) return false;
   if (!eventToken && eventTicker && candidate.ticker && eventTicker !== candidate.ticker) return false;
+  if (candidate.amount !== null && candidate.amount !== undefined && event.amount !== null && event.amount !== undefined && String(event.amount) !== candidate.amount) return false;
   const previousMs = timestampMs(event.previousObservedAt);
   const observedMs = timestampMs(event.observedAt);
   const toleranceMs = Number.isFinite(candidate.timeToleranceMs) ? candidate.timeToleranceMs : 0;
@@ -277,6 +309,10 @@ function inboundRow(event = {}, attribution = null) {
       routeKey: attribution.routeKey,
       outputUsd: attribution.outputUsd,
       matchReason: attribution.matchReason,
+      blockNumber: attribution.blockNumber ?? null,
+      logIndex: attribution.logIndex ?? null,
+      from: attribution.from || null,
+      to: attribution.to || null,
     } : null,
   };
 }
@@ -337,6 +373,7 @@ export function buildTransactionLedger({
   signerAuditRecords = [],
   gatewayOfframpRecords = [],
   inboundEvents = [],
+  transferAttributionRecords = [],
   currentNav = null,
   baselineUsd = null,
   now = new Date().toISOString(),
@@ -351,6 +388,7 @@ export function buildTransactionLedger({
     })
     .map(signerRevertRow);
   const inboundAttributionCandidates = [
+    ...transferAttributionCandidates(transferAttributionRecords),
     ...receiptOutputAttributionCandidates(receiptRecords),
     ...signerOutputAttributionCandidates(signerAuditRecords),
   ];
@@ -365,7 +403,7 @@ export function buildTransactionLedger({
   const totalCostUsd = rows.reduce((sum, row) => sum + (finiteNumber(row.costUsd) ?? 0), 0);
   const receiptGasUsd = receiptRows.reduce((sum, row) => sum + (finiteNumber(row.receiptGasUsd) ?? 0), 0);
   const inboundDiffUsd = inboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0);
-  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed_signer_strategy_output" || row.confidence === "tx_attributed");
+  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed_signer_strategy_output" || row.confidence === "tx_attributed_erc20_transfer_log" || row.confidence === "tx_attributed");
   const unattributedInboundRows = inboundRows.filter((row) => row.confidence === "balance_diff_not_tx_attributed");
 
   return Object.freeze({

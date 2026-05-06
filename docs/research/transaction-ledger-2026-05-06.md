@@ -54,12 +54,12 @@ Latest run:
 - Inbound inventory-diff rows: `42`
 - BTC offramp rows: `4`
 - Unquantified signer reverts not already reconciled: about `90`
-- Inbound rows attributed to internal receipt/signer outputs: `34`, about
-  `258.51` USD
-- Inbound rows still not tx-attributed: `8`, about `27.68` USD
-- Current NAV: about `370.66` USD
+- Inbound rows attributed to internal receipt/signer outputs or ERC20 Transfer
+  logs: `37`, about `284.52` USD
+- Inbound rows still not tx-attributed: `5`, about `1.67` USD
+- Current NAV: about `372.86` USD
 - Baseline: `450.00` USD
-- Delta from current: about `79.34` USD
+- Delta from current: about `77.14` USD
 
 Cost and PnL:
 
@@ -83,7 +83,8 @@ effects. Gas is shown as a sub-explanation.
 | `protocol_position_cost` | `259` | `33.80` | `-33.80` | `33.82` |
 | `failed_tx_cost` | `5` | `9.80` | `-9.80` | `0.01` |
 | `btc_offramp_delivery` | `4` | `0.00` | `0.00` | `0.00` |
-| `inbound_inventory_diff` | `8` | `0.00` | `0.00` | `0.00` |
+| `external_or_internal_inbound_tx` | `3` | `0.00` | `0.00` | `0.00` |
+| `inbound_inventory_diff` | `5` | `0.00` | `0.00` | `0.00` |
 | `internal_route_output` | `17` | `0.00` | `0.00` | `0.00` |
 | `internal_strategy_output` | `17` | `0.00` | `0.00` | `0.00` |
 | `unquantified_revert_cost` | about `90` | `0.00` | `0.00` | `0.00` |
@@ -106,6 +107,7 @@ The ledger combines:
 - `logs/signer-audit.jsonl`
 - `data/gateway-btc-offramp-executions.jsonl`
 - `data/treasury/inbound-events.jsonl`
+- `data/treasury/inbound-transfer-attributions.jsonl` when present locally
 - `data/whole-wallet-inventory.jsonl`
 
 Receipt rows are the strongest cost evidence because they include tx hash,
@@ -119,6 +121,9 @@ Inbound events start as balance-diff evidence because current inbound event rows
 lack tx hashes. The transaction ledger now deterministically upgrades an inbound
 row when either:
 
+- a matching ERC20 `Transfer` log is found through read-only RPC `eth_getLogs`
+  for the same event id, chain, token, recipient, and exact raw amount
+  (`external_or_internal_inbound_tx`),
 - a reconciled receipt output matches the inbound row's chain, token, and
   snapshot window (`internal_route_output`), or
 - a confirmed signer-audit row has an output-producing intent with a safe token
@@ -131,22 +136,54 @@ the intended route, not a balance increase. The tests cover this regression
 because approval misclassification would make the ledger look more certain than
 the evidence supports.
 
-This pass reduced unattributed inbound value from about `204.55` USD to about
-`27.68` USD. The largest remaining item is Base `wBTC.OFT` at about `24.90`
-USD from the wide `2026-04-24T21:09Z` to `2026-04-25T22:54Z` scan window.
-Local logs show plausible nearby wrapped-BTC strategy activity, but the signer
-metadata does not explicitly identify a Base `wBTC.OFT` output, so the ledger
-keeps it as `inbound_inventory_diff` instead of inventing certainty.
+This pass first reduced unattributed inbound value from about `204.55` USD to
+about `27.68` USD through receipt/signer output attribution. The ERC20 Transfer
+log pass then resolved the largest remaining Base `wBTC.OFT` item and two small
+USDC items:
+
+- Base `wBTC.OFT`, event `eb3a5b7c9ddc26099affaae5`, amount `0.00032105`,
+  tx `0xa834d2b42fc4c53ef2dfdc646e686ca1e132f2b44abb4f83e37d577cd7b82390`,
+  block `45183051`, log index `369`, from zero address, to operator wallet.
+- Base `USDC`, event `0c9196ee924a5d9d74e54c39`, amount `1.01`,
+  tx `0xac6c7f387b48310dd16e1ed5c42ced466593b230f2be43f2050a5b657bc823d8`,
+  block `45303024`, log index `171`.
+- Sonic `USDC`, event `0f5b84ccf7670e436f0b1f30`, amount `0.099896`,
+  tx `0x5514e58b7ec0e194e69b37a651144418fdfbd0dfbeed84c6de6d33d46bea5228`,
+  block `68861378`, log index `4`.
+
+After these local attributions, the current run shows `37` attributed inbound
+rows worth about `284.52` USD and `5` unattributed rows worth about `1.67` USD.
+The unresolved value is now small and mostly explainability cleanup:
+
+- Unichain `wBTC.OFT`, about `0.78` USD: no exact Transfer log found in the
+  balance-diff window through the current public RPC path.
+- Avalanche `wBTC.OFT`, about `0.78` USD: no exact Transfer log found in the
+  balance-diff window through the current public RPC path.
+- Sei native `SEI`, about `0.12` USD: native asset, not covered by ERC20
+  Transfer logs.
+- Bera and Soneium USDC rows: amount is null in the original inventory diff, so
+  automatic exact Transfer matching intentionally skips them.
+
+The new command is:
+
+```bash
+npm run report:inbound-transfer-attributions -- --write
+```
+
+By default it only scans inbound rows that the current transaction ledger still
+marks as `balance_diff_not_tx_attributed`. Use `--all-candidates` only for a
+full historical RPC audit.
 
 ## Remaining Work
 
-The next improvement is transaction-history attribution for the remaining
-unattributed inbound rows:
+The next improvement is native-asset and explorer-style transaction-history
+attribution for the remaining unattributed rows:
 
-- `external_deposit`
-- `internal_route_output`
-- `reward_claim`
-- `manual_adjustment`
+- Native transfer attribution for SEI and future native assets.
+- Explorer or archive-node fallback for chains whose public RPC misses
+  Gateway-style mint logs in a historical window.
+- A structured `manual_adjustment` proof type for cases where a protocol UI
+  proves the source but RPC logs are unavailable.
 
 That requires mining transaction history around balance-diff windows and
 linking token deltas back to tx hashes. Once implemented, the system can explain

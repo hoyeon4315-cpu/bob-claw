@@ -46,12 +46,14 @@ async function main() {
     signerAuditRecords,
     gatewayOfframpRecords,
     inboundEvents,
+    transferAttributionRecords,
   ] = await Promise.all([
     readOptionalJsonl(config.dataDir, "whole-wallet-inventory"),
     readOptionalJsonl(config.dataDir, "receipt-reconciliations"),
     readOptionalJsonl("./logs", "signer-audit"),
     readOptionalJsonl(config.dataDir, "gateway-btc-offramp-executions"),
     readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-events"),
+    readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-transfer-attributions"),
   ]);
   const forensics = buildCapitalForensicsReport({
     inventoryRecords,
@@ -64,6 +66,7 @@ async function main() {
     signerAuditRecords,
     gatewayOfframpRecords,
     inboundEvents,
+    transferAttributionRecords,
     currentNav: forensics.current,
     baselineUsd: args.baselineUsd,
   });

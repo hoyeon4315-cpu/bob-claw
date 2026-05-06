@@ -91,6 +91,91 @@ test("transaction ledger keeps inbound balance diffs separate from external-depo
   assert.equal(ledger.rows[0].confidence, "balance_diff_not_tx_attributed");
 });
 
+test("transaction ledger attributes inbound balance diffs to exact ERC20 transfer-log records", () => {
+  const ledger = buildTransactionLedger({
+    transferAttributionRecords: [
+      {
+        eventId: "evt-transfer",
+        observedAt: "2026-05-01T00:01:30.000Z",
+        chain: "base",
+        token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        txHash: "0xtransfer",
+        blockNumber: 123,
+        logIndex: 7,
+        from: "0x1111111111111111111111111111111111111111",
+        to: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+        amount: "32105",
+        amountDecimal: 0.00032105,
+        estimatedUsd: 24.89,
+        sourceFile: "data/treasury/inbound-transfer-attributions.jsonl",
+      },
+    ],
+    inboundEvents: [
+      {
+        observedAt: "2026-05-01T00:02:00.000Z",
+        previousObservedAt: "2026-05-01T00:00:00.000Z",
+        eventId: "evt-transfer",
+        chain: "base",
+        token: "0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+        ticker: "wBTC.OFT",
+        amount: "32105",
+        amountDecimal: 0.00032105,
+        estimatedUsd: 24.8967854,
+        txHash: null,
+        detectionSource: "treasury_inventory_diff",
+      },
+    ],
+  });
+
+  const inbound = ledger.rows.find((row) => row.rowType === "inbound_event");
+  assert.equal(inbound.txHash, "0xtransfer");
+  assert.equal(inbound.category, "external_or_internal_inbound_tx");
+  assert.equal(inbound.confidence, "tx_attributed_erc20_transfer_log");
+  assert.equal(inbound.attribution.sourceFile, "data/treasury/inbound-transfer-attributions.jsonl");
+  assert.equal(inbound.attribution.matchReason, "erc20_transfer_log_matches_inbound_event_id_chain_token_and_amount");
+  assert.equal(ledger.summary.attributedInboundCount, 1);
+  assert.equal(ledger.summary.unattributedInboundCount, 0);
+});
+
+test("transaction ledger refuses transfer-log attribution when amount does not match", () => {
+  const ledger = buildTransactionLedger({
+    transferAttributionRecords: [
+      {
+        eventId: "evt-transfer",
+        observedAt: "2026-05-01T00:01:30.000Z",
+        chain: "base",
+        token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        txHash: "0xwrongamount",
+        amount: "1",
+        amountDecimal: 0.00000001,
+        sourceFile: "data/treasury/inbound-transfer-attributions.jsonl",
+      },
+    ],
+    inboundEvents: [
+      {
+        observedAt: "2026-05-01T00:02:00.000Z",
+        previousObservedAt: "2026-05-01T00:00:00.000Z",
+        eventId: "evt-transfer",
+        chain: "base",
+        token: "0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+        ticker: "wBTC.OFT",
+        amount: "32105",
+        amountDecimal: 0.00032105,
+        estimatedUsd: 24.8967854,
+        txHash: null,
+        detectionSource: "treasury_inventory_diff",
+      },
+    ],
+  });
+
+  const inbound = ledger.rows.find((row) => row.rowType === "inbound_event");
+  assert.equal(inbound.txHash, null);
+  assert.equal(inbound.category, "inbound_inventory_diff");
+  assert.equal(inbound.confidence, "balance_diff_not_tx_attributed");
+  assert.equal(ledger.summary.attributedInboundCount, 0);
+  assert.equal(ledger.summary.unattributedInboundCount, 1);
+});
+
 test("transaction ledger attributes inbound balance diffs to matching receipt outputs", () => {
   const ledger = buildTransactionLedger({
     receiptRecords: [
@@ -122,6 +207,7 @@ test("transaction ledger attributes inbound balance diffs to matching receipt ou
         chain: "base",
         token: "0xusdc",
         ticker: "USDC",
+        amount: "5000000",
         estimatedUsd: 5,
         txHash: null,
         detectionSource: "treasury_inventory_diff",
