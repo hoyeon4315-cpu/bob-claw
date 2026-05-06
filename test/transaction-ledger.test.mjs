@@ -70,6 +70,141 @@ test("transaction ledger adds unreconciled signer reverts as unquantified gaps",
   assert.equal(ledger.rows[0].confidence, "needs_receipt_price");
 });
 
+test("transaction ledger prices signer revert receipt fees when native prices are available", () => {
+  const ledger = buildTransactionLedger({
+    prices: {
+      nativeByChain: { base: 2000 },
+      tokenByKey: { usd_stable: 1 },
+    },
+    receiptRecords: [],
+    signerAuditRecords: [
+      {
+        timestamp: "2026-05-01T00:01:00.000Z",
+        strategyId: "stablecoin_treasury_rotation",
+        chain: "base",
+        amountUsd: 9.99,
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted", txHash: "0xrevert" },
+        realized: { gasUsed: "47474", fee: "284844000000" },
+        error: { message: "Transaction reverted after broadcast" },
+      },
+    ],
+  });
+
+  assert.equal(ledger.summary.unquantifiedRevertCount, 0);
+  assert.equal(ledger.summary.quantifiedRevertCount, 1);
+  assert.equal(ledger.rows[0].category, "failed_tx_cost");
+  assert.equal(ledger.rows[0].confidence, "revert_receipt_fee_priced_from_audit");
+  assert.equal(ledger.rows[0].knownCostUsd, 0.000569688);
+  assert.equal(ledger.rows[0].costUsd, 0.000569688);
+  assert.equal(ledger.summary.totalCostUsd, 0.000569688);
+});
+
+test("transaction ledger prices signer reverts from RPC receipt cost attributions", () => {
+  const ledger = buildTransactionLedger({
+    receiptRecords: [],
+    signerRevertCostRecords: [
+      {
+        observedAt: "2026-05-01T00:03:00.000Z",
+        chain: "base",
+        txHash: "0xrevert",
+        feeWei: "284844000000",
+        estimatedUsd: 0.00057,
+        blockNumber: 123,
+        status: 0,
+        rpcUrl: "https://mainnet.base.org",
+        sourceFile: "data/signer-revert-receipt-costs.jsonl",
+      },
+    ],
+    signerAuditRecords: [
+      {
+        timestamp: "2026-05-01T00:01:00.000Z",
+        strategyId: "stablecoin_treasury_rotation",
+        chain: "base",
+        amountUsd: 9.99,
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted", txHash: "0xrevert" },
+        realized: { actualKnownCostUsd: null },
+        error: { message: "Transaction reverted after broadcast" },
+      },
+    ],
+  });
+
+  assert.equal(ledger.summary.unquantifiedRevertCount, 0);
+  assert.equal(ledger.summary.quantifiedRevertCount, 1);
+  assert.equal(ledger.rows[0].category, "failed_tx_cost");
+  assert.equal(ledger.rows[0].confidence, "revert_receipt_fee_priced_from_rpc_receipt");
+  assert.equal(ledger.rows[0].knownCostUsd, 0.00057);
+  assert.equal(ledger.rows[0].costAttribution.blockNumber, 123);
+});
+
+test("transaction ledger counts one signer revert cost per chain tx hash", () => {
+  const signerAuditRecords = [
+    {
+      timestamp: "2026-05-01T00:01:00.000Z",
+      strategyId: "stablecoin_treasury_rotation",
+      chain: "base",
+      amountUsd: 9.99,
+      policyVerdict: "errored",
+      lifecycle: { stage: "reverted", txHash: "0xrevert" },
+      error: { message: "Transaction reverted after broadcast" },
+    },
+    {
+      timestamp: "2026-05-01T00:01:05.000Z",
+      strategyId: "stablecoin_treasury_rotation",
+      chain: "base",
+      amountUsd: 9.99,
+      policyVerdict: "errored",
+      lifecycle: { stage: "reverted", txHash: "0xrevert" },
+      error: { message: "same tx surfaced again" },
+    },
+  ];
+
+  const ledger = buildTransactionLedger({
+    receiptRecords: [],
+    signerAuditRecords,
+    signerRevertCostRecords: [{
+      chain: "base",
+      txHash: "0xrevert",
+      feeWei: "284844000000",
+      estimatedUsd: 0.00057,
+    }],
+  });
+
+  assert.equal(ledger.rows.length, 1);
+  assert.equal(ledger.summary.quantifiedRevertCount, 1);
+  assert.equal(ledger.summary.totalCostUsd, 0.00057);
+});
+
+test("transaction ledger prices existing receipt-cost feeWei when estimatedUsd was missing", () => {
+  const ledger = buildTransactionLedger({
+    prices: {
+      nativeByChain: { base: 2000 },
+      tokenByKey: { usd_stable: 1 },
+    },
+    receiptRecords: [],
+    signerRevertCostRecords: [{
+      chain: "base",
+      txHash: "0xrevert",
+      feeWei: "284844000000",
+      estimatedUsd: null,
+    }],
+    signerAuditRecords: [
+      {
+        timestamp: "2026-05-01T00:01:00.000Z",
+        strategyId: "stablecoin_treasury_rotation",
+        chain: "base",
+        policyVerdict: "errored",
+        lifecycle: { stage: "reverted", txHash: "0xrevert" },
+      },
+    ],
+  });
+
+  assert.equal(ledger.summary.unquantifiedRevertCount, 0);
+  assert.equal(ledger.summary.quantifiedRevertCount, 1);
+  assert.equal(ledger.rows[0].knownCostUsd, 0.000569688);
+});
+
 test("transaction ledger keeps inbound balance diffs separate from external-deposit proof", () => {
   const ledger = buildTransactionLedger({
     inboundEvents: [

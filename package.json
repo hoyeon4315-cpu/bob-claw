@@ -48,6 +48,7 @@
     "report:capital-audit": "node src/cli/report-capital-audit.mjs",
     "report:capital-forensics": "node src/cli/report-capital-forensics.mjs",
     "report:transaction-ledger": "node src/cli/report-transaction-ledger.mjs",
+    "report:signer-revert-costs": "node src/cli/report-signer-revert-costs.mjs",
     "report:inbound-transfer-attributions": "node src/cli/report-inbound-transfer-attributions.mjs",
     "report:btc-proxy-spreads": "node src/cli/report-btc-proxy-spreads.mjs",
     "report:native-btc-surface": "node src/cli/report-native-btc-opportunity-surface.mjs",

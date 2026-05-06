@@ -1,4 +1,5 @@
-import { tokenAsset } from "../assets/tokens.mjs";
+import { tokenAsset, ZERO_TOKEN } from "../assets/tokens.mjs";
+import { priceForAssetUsd } from "../market/prices.mjs";
 
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -91,8 +92,81 @@ function isSignerRevert(record = {}) {
   return record.lifecycle?.stage === "reverted" || record.policyVerdict === "errored" && signerTxHash(record);
 }
 
-function signerRevertRow(record = {}) {
+function bigintFromValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function signerRevertFeeWei(record = {}) {
+  const directFee = bigintFromValue(record.realized?.fee ?? record.receipt?.fee ?? record.receipt?.gasCostWei);
+  if (directFee !== null) return directFee;
+  const gasUsed = bigintFromValue(record.realized?.gasUsed ?? record.receipt?.gasUsed);
+  const gasPrice = bigintFromValue(
+    record.realized?.effectiveGasPrice ??
+      record.realized?.gasPrice ??
+      record.receipt?.effectiveGasPrice ??
+      record.receipt?.gasPrice,
+  );
+  if (gasUsed === null || gasPrice === null) return null;
+  return gasUsed * gasPrice;
+}
+
+function signerRevertCostRecordKey(record = {}) {
+  const chain = normalized(record.chain);
+  const txHash = normalized(record.txHash);
+  return chain && txHash ? `${chain}:${txHash}` : null;
+}
+
+function signerRevertFeeUsd(record = {}, prices = null, costRecord = null) {
+  const attributedCost = finiteNumber(costRecord?.estimatedUsd ?? costRecord?.costUsd);
+  if (Number.isFinite(attributedCost)) return attributedCost;
+  const explicit = finiteNumber(record.realized?.actualKnownCostUsd);
+  if (Number.isFinite(explicit)) return explicit;
+  const feeWei = bigintFromValue(costRecord?.feeWei) ?? signerRevertFeeWei(record);
+  if (feeWei === null) return null;
+  const chain = normalized(record.chain || costRecord?.chain);
+  const priceUsd = finiteNumber(prices?.nativeByChain?.[chain]) ?? priceForAssetUsd(tokenAsset(chain, ZERO_TOKEN), prices);
+  if (!Number.isFinite(priceUsd)) return null;
+  return (Number(feeWei) / 1e18) * priceUsd;
+}
+
+function hasSignerRevertFeeEvidence(record = {}) {
+  return Number.isFinite(finiteNumber(record.realized?.actualKnownCostUsd)) || signerRevertFeeWei(record) !== null;
+}
+
+function dedupeSignerRevertRecords(records = []) {
+  const byKey = new Map();
+  for (const record of records) {
+    const key = signerRevertCostRecordKey({
+      chain: record.chain,
+      txHash: signerTxHash(record),
+    });
+    if (!key) continue;
+    const existing = byKey.get(key);
+    if (!existing || !hasSignerRevertFeeEvidence(existing) && hasSignerRevertFeeEvidence(record)) {
+      byKey.set(key, record);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function signerRevertRow(record = {}, { prices = null, costRecord = null } = {}) {
   const txHash = signerTxHash(record);
+  const knownCostUsd = signerRevertFeeUsd(record, prices, costRecord);
+  const feeWei = bigintFromValue(costRecord?.feeWei) ?? signerRevertFeeWei(record);
+  const confidence = Number.isFinite(knownCostUsd)
+    ? (
+        costRecord
+          ? "revert_receipt_fee_priced_from_rpc_receipt"
+          : Number.isFinite(finiteNumber(record.realized?.actualKnownCostUsd))
+            ? "signer_realized_cost"
+            : "revert_receipt_fee_priced_from_audit"
+      )
+    : "needs_receipt_price";
   return {
     schemaVersion: 1,
     ledgerRowId: `signer_revert:${txHash || record.intentHash || record.timestamp || "unknown"}`,
@@ -103,16 +177,24 @@ function signerRevertRow(record = {}) {
     txHash,
     strategyId: record.strategyId || record.intent?.metadata?.capStrategyId || null,
     kind: record.intent?.intentType || null,
-    category: "unquantified_revert_cost",
-    confidence: finiteNumber(record.realized?.actualKnownCostUsd) === null ? "needs_receipt_price" : "signer_realized_cost",
+    category: Number.isFinite(knownCostUsd) ? "failed_tx_cost" : "unquantified_revert_cost",
+    confidence,
     routeKey: record.intent?.metadata?.routeKey || null,
     inputUsd: finiteNumber(record.amountUsd ?? record.intent?.amountUsd),
     expectedOutputUsd: null,
     actualOutputUsd: null,
-    receiptGasUsd: null,
-    knownCostUsd: finiteNumber(record.realized?.actualKnownCostUsd),
+    receiptGasUsd: knownCostUsd,
+    knownCostUsd,
     realizedNetPnlUsd: null,
-    costUsd: finiteNumber(record.realized?.actualKnownCostUsd),
+    costUsd: knownCostUsd,
+    feeWei: feeWei !== null ? feeWei.toString() : null,
+    costAttribution: costRecord ? {
+      sourceFile: costRecord.sourceFile || "data/signer-revert-receipt-costs.jsonl",
+      observedAt: costRecord.observedAt || null,
+      blockNumber: costRecord.blockNumber ?? null,
+      status: costRecord.status ?? null,
+      rpcUrl: costRecord.rpcUrl || null,
+    } : null,
     errorMessage: record.error?.message || record.error || null,
   };
 }
@@ -381,19 +463,33 @@ export function buildTransactionLedger({
   gatewayOfframpRecords = [],
   inboundEvents = [],
   transferAttributionRecords = [],
+  signerRevertCostRecords = [],
+  prices = null,
   currentNav = null,
   baselineUsd = null,
   now = new Date().toISOString(),
 } = {}) {
   const receiptTxHashes = new Set(receiptRecords.map((record) => String(record.txHash || "").toLowerCase()).filter(Boolean));
+  const signerRevertCostsByKey = new Map(
+    signerRevertCostRecords
+      .map((record) => [signerRevertCostRecordKey(record), record])
+      .filter(([key]) => key),
+  );
   const receiptRows = receiptRecords.map(receiptRow);
-  const revertRows = signerAuditRecords
+  const revertRecords = signerAuditRecords
     .filter(isSignerRevert)
     .filter((record) => {
       const txHash = signerTxHash(record);
       return txHash && !receiptTxHashes.has(String(txHash).toLowerCase());
-    })
-    .map(signerRevertRow);
+    });
+  const revertRows = dedupeSignerRevertRecords(revertRecords)
+    .map((record) => signerRevertRow(record, {
+      prices,
+      costRecord: signerRevertCostsByKey.get(signerRevertCostRecordKey({
+        chain: record.chain,
+        txHash: signerTxHash(record),
+      })),
+    }));
   const inboundAttributionCandidates = [
     ...transferAttributionCandidates(transferAttributionRecords),
     ...receiptOutputAttributionCandidates(receiptRecords),
@@ -408,10 +504,17 @@ export function buildTransactionLedger({
     .reduce((sum, row) => sum + (finiteNumber(row.realizedNetPnlUsd) ?? 0), 0);
   const recordedNetPnlUsd = receiptRows.reduce((sum, row) => sum + (finiteNumber(row.realizedNetPnlUsd) ?? 0), 0);
   const totalCostUsd = rows.reduce((sum, row) => sum + (finiteNumber(row.costUsd) ?? 0), 0);
-  const receiptGasUsd = receiptRows.reduce((sum, row) => sum + (finiteNumber(row.receiptGasUsd) ?? 0), 0);
+  const receiptGasUsd = rows.reduce((sum, row) => sum + (finiteNumber(row.receiptGasUsd) ?? 0), 0);
   const inboundDiffUsd = inboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0);
   const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed_signer_strategy_output" || row.confidence === "tx_attributed_erc20_transfer_log" || row.confidence === "tx_attributed_native_transfer_history" || row.confidence === "tx_attributed");
   const unattributedInboundRows = inboundRows.filter((row) => row.confidence === "balance_diff_not_tx_attributed");
+  const unquantifiedRevertCount = revertRows.filter((row) => row.confidence === "needs_receipt_price").length;
+  const quantifiedRevertCount = revertRows.filter((row) => row.confidence !== "needs_receipt_price").length;
+  const caveats = [
+    "totalCostUsd_uses_negative_realized_net_pnl_and_does_not_add_receipt_gas_again",
+    "inbound_inventory_diff_rows_are_not_external_deposit_proof_until_txhash_attributed",
+    ...(unquantifiedRevertCount > 0 ? ["unquantified_revert_cost_rows_need_receipt_price_lookup_before_usd_cost_is_exact"] : []),
+  ];
 
   return Object.freeze({
     schemaVersion: 1,
@@ -431,7 +534,8 @@ export function buildTransactionLedger({
       receiptRowCount: receiptRows.length,
       inboundRowCount: inboundRows.length,
       gatewayOfframpRowCount: offrampRows.length,
-      unquantifiedRevertCount: revertRows.length,
+      unquantifiedRevertCount,
+      quantifiedRevertCount,
       attributedInboundCount: attributedInboundRows.length,
       unattributedInboundCount: unattributedInboundRows.length,
       attributedInboundUsd: attributedInboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0),
@@ -446,10 +550,6 @@ export function buildTransactionLedger({
     },
     categories: groupByCategory(rows),
     rows,
-    caveats: [
-      "totalCostUsd_uses_negative_realized_net_pnl_and_does_not_add_receipt_gas_again",
-      "inbound_inventory_diff_rows_are_not_external_deposit_proof_until_txhash_attributed",
-      "unquantified_revert_cost_rows_need_receipt_price_lookup_before_usd_cost_is_exact",
-    ],
+    caveats,
   });
 }

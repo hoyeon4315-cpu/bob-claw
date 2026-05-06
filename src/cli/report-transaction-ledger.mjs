@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildCapitalForensicsReport } from "../audit/capital-forensics.mjs";
 import { buildTransactionLedger } from "../audit/transaction-ledger.mjs";
+import { emptyPricesUsd, latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 
 function parseArgs(argv = []) {
   const out = {
@@ -38,6 +41,21 @@ async function readOptionalJsonl(dir, name) {
   return readJsonl(dir, name).catch(() => []);
 }
 
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function readLedgerPrices(dataDir = config.dataDir) {
+  const latestJson = await readJsonIfExists(join(dataDir, "price-snapshot.json"));
+  if (latestJson) return pricesFromSnapshot(latestJson);
+  const latestJsonl = latestPriceSnapshot(await readOptionalJsonl(dataDir, "market-price-snapshots"));
+  return latestJsonl ? pricesFromSnapshot(latestJsonl) : emptyPricesUsd();
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const [
@@ -47,6 +65,8 @@ async function main() {
     gatewayOfframpRecords,
     inboundEvents,
     transferAttributionRecords,
+    signerRevertCostRecords,
+    prices,
   ] = await Promise.all([
     readOptionalJsonl(config.dataDir, "whole-wallet-inventory"),
     readOptionalJsonl(config.dataDir, "receipt-reconciliations"),
@@ -54,6 +74,8 @@ async function main() {
     readOptionalJsonl(config.dataDir, "gateway-btc-offramp-executions"),
     readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-events"),
     readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-transfer-attributions"),
+    readOptionalJsonl(config.dataDir, "signer-revert-receipt-costs"),
+    readLedgerPrices(config.dataDir),
   ]);
   const forensics = buildCapitalForensicsReport({
     inventoryRecords,
@@ -67,6 +89,8 @@ async function main() {
     gatewayOfframpRecords,
     inboundEvents,
     transferAttributionRecords,
+    signerRevertCostRecords,
+    prices,
     currentNav: forensics.current,
     baselineUsd: args.baselineUsd,
   });
@@ -80,7 +104,7 @@ async function main() {
   if (Number.isFinite(ledger.baseline.baselineUsd)) {
     console.log(`baseline=${fmtUsd(ledger.baseline.baselineUsd)} deltaFromCurrent=${fmtUsd(ledger.baseline.deltaFromCurrentUsd)}`);
   }
-  console.log(`rows=${ledger.summary.rowCount} receipts=${ledger.summary.receiptRowCount} inboundDiffs=${ledger.summary.inboundRowCount} offramps=${ledger.summary.gatewayOfframpRowCount} unquantifiedReverts=${ledger.summary.unquantifiedRevertCount}`);
+  console.log(`rows=${ledger.summary.rowCount} receipts=${ledger.summary.receiptRowCount} inboundDiffs=${ledger.summary.inboundRowCount} offramps=${ledger.summary.gatewayOfframpRowCount} quantifiedReverts=${ledger.summary.quantifiedRevertCount} unquantifiedReverts=${ledger.summary.unquantifiedRevertCount}`);
   console.log(`inboundAttributed=${ledger.summary.attributedInboundCount} attributedUsd=${fmtUsd(ledger.summary.attributedInboundUsd)} inboundUnattributed=${ledger.summary.unattributedInboundCount} unattributedUsd=${fmtUsd(ledger.summary.unattributedInboundUsd)}`);
   console.log(`reconciledRealizedNetPnl=${fmtUsd(ledger.summary.reconciledRealizedNetPnlUsd)} recordedNetIncludingFailed=${fmtUsd(ledger.summary.recordedNetPnlUsd)} totalCost=${fmtUsd(ledger.summary.totalCostUsd)} receiptGas=${fmtUsd(ledger.summary.receiptGasUsd)} inboundDiff=${fmtUsd(ledger.summary.inboundDiffUsd)}`);
   console.log("categories:");
