@@ -49,11 +49,13 @@ npm run report:transaction-ledger -- --baseline-usd=450 --json
 
 Latest run:
 
-- Rows: `1599`
+- Rows: about `1600`
 - Receipt rows: `1464`
 - Inbound inventory-diff rows: `42`
 - BTC offramp rows: `4`
-- Unquantified signer reverts not already reconciled: `89`
+- Unquantified signer reverts not already reconciled: about `90`
+- Inbound rows attributed to internal receipt outputs: `18`, about `81.64` USD
+- Inbound rows still not tx-attributed: `24`, about `204.55` USD
 - Current NAV: about `370.66` USD
 - Baseline: `450.00` USD
 - Delta from current: about `79.34` USD
@@ -79,9 +81,10 @@ effects. Gas is shown as a sub-explanation.
 | `gas_refuel_cost` | `22` | `38.87` | `-38.87` | `0.04` |
 | `protocol_position_cost` | `259` | `33.80` | `-33.80` | `33.82` |
 | `failed_tx_cost` | `5` | `9.80` | `-9.80` | `0.01` |
-| `inbound_inventory_diff` | `42` | `0.00` | `0.00` | `0.00` |
 | `btc_offramp_delivery` | `4` | `0.00` | `0.00` | `0.00` |
-| `unquantified_revert_cost` | `89` | `0.00` | `0.00` | `0.00` |
+| `inbound_inventory_diff` | `24` | `0.00` | `0.00` | `0.00` |
+| `internal_route_output` | `18` | `0.00` | `0.00` | `0.00` |
+| `unquantified_revert_cost` | about `90` | `0.00` | `0.00` | `0.00` |
 
 Largest current cost rows:
 
@@ -110,13 +113,17 @@ reconciliations. In the latest run, `89` reverted signer rows are present
 outside the receipt store. They are listed as `unquantified_revert_cost` until
 receipt pricing or native fee lookup converts them into exact USD cost.
 
-Inbound events remain balance-diff evidence because all current inbound event
-rows lack tx hashes. They should not be treated as proven external deposits
-until tx attribution is added.
+Inbound events start as balance-diff evidence because current inbound event rows
+lack tx hashes. The transaction ledger now deterministically upgrades an inbound
+row to `internal_route_output` when a reconciled receipt output matches the
+inbound row's chain, token, and snapshot window. Remaining
+`inbound_inventory_diff` rows should not be treated as proven external deposits
+until transaction-history attribution is added.
 
 ## Remaining Work
 
-The next improvement is tx-attributed inbound classification:
+The next improvement is transaction-history attribution for the remaining
+unattributed inbound rows:
 
 - `external_deposit`
 - `internal_route_output`

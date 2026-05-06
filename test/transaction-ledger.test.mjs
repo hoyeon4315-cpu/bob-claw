@@ -91,6 +91,53 @@ test("transaction ledger keeps inbound balance diffs separate from external-depo
   assert.equal(ledger.rows[0].confidence, "balance_diff_not_tx_attributed");
 });
 
+test("transaction ledger attributes inbound balance diffs to matching receipt outputs", () => {
+  const ledger = buildTransactionLedger({
+    receiptRecords: [
+      {
+        observedAt: "2026-05-01T00:01:00.000Z",
+        kind: "token_dex_experiment",
+        chain: "base",
+        txHash: "0xrouteout",
+        reconciliationStatus: "reconciled",
+        output: {
+          actualOutputUsd: 5.01,
+          asset: {
+            chain: "base",
+            token: "0xUSDC",
+            ticker: "USDC",
+          },
+        },
+        realized: {
+          receiptGasUsd: 0.01,
+          realizedNetPnlUsd: -0.02,
+        },
+      },
+    ],
+    inboundEvents: [
+      {
+        observedAt: "2026-05-01T00:02:00.000Z",
+        previousObservedAt: "2026-05-01T00:00:00.000Z",
+        eventId: "evt-internal",
+        chain: "base",
+        token: "0xusdc",
+        ticker: "USDC",
+        estimatedUsd: 5,
+        txHash: null,
+        detectionSource: "treasury_inventory_diff",
+      },
+    ],
+  });
+
+  const inbound = ledger.rows.find((row) => row.rowType === "inbound_event");
+  assert.equal(inbound.txHash, "0xrouteout");
+  assert.equal(inbound.category, "internal_route_output");
+  assert.equal(inbound.confidence, "tx_attributed_internal_route_output");
+  assert.equal(inbound.attribution.sourceFile, "data/receipt-reconciliations.jsonl");
+  assert.equal(ledger.summary.attributedInboundCount, 1);
+  assert.equal(ledger.summary.unattributedInboundCount, 0);
+});
+
 test("transaction ledger summarizes current NAV against baseline", () => {
   const ledger = buildTransactionLedger({
     baselineUsd: 450,

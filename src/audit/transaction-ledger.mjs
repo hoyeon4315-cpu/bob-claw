@@ -13,6 +13,15 @@ function observedAtMs(record = {}) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function timestampMs(value) {
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalized(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function currentNavConfidence(currentNav = null) {
   if (!currentNav) return "missing";
   return currentNav.walletCoverage === "full_rpc" &&
@@ -101,7 +110,66 @@ function signerRevertRow(record = {}) {
   };
 }
 
-function inboundRow(event = {}) {
+function outputToken(record = {}) {
+  return normalized(record.output?.asset?.token || record.output?.token || record.routeContext?.dstAsset?.token);
+}
+
+function outputTicker(record = {}) {
+  return normalized(record.output?.asset?.ticker || record.output?.asset?.symbol || record.routeContext?.dstAsset?.ticker);
+}
+
+function outputChain(record = {}) {
+  return normalized(record.output?.asset?.chain || record.routeContext?.dstChain || record.chain);
+}
+
+function receiptOutputAttributionCandidates(receiptRecords = []) {
+  return receiptRecords
+    .filter((record) => record.reconciliationStatus === "reconciled")
+    .filter((record) => record.txHash && Number.isFinite(finiteNumber(record.output?.actualOutputUsd)))
+    .map((record) => ({
+      sourceFile: "data/receipt-reconciliations.jsonl",
+      observedAt: observedAt(record),
+      observedAtMs: observedAtMs(record),
+      txHash: record.txHash,
+      chain: outputChain(record),
+      token: outputToken(record),
+      ticker: outputTicker(record),
+      outputUsd: finiteNumber(record.output?.actualOutputUsd),
+      kind: record.kind || null,
+      routeKey: record.routeContext?.routeKey || null,
+    }))
+    .filter((candidate) => candidate.chain && (candidate.token || candidate.ticker));
+}
+
+function candidateMatchesInbound(event = {}, candidate = {}) {
+  if (normalized(event.chain) !== candidate.chain) return false;
+  const eventToken = normalized(event.token);
+  const eventTicker = normalized(event.ticker);
+  if (eventToken && candidate.token && eventToken !== candidate.token) return false;
+  if (!eventToken && eventTicker && candidate.ticker && eventTicker !== candidate.ticker) return false;
+  const previousMs = timestampMs(event.previousObservedAt);
+  const observedMs = timestampMs(event.observedAt);
+  if (previousMs && candidate.observedAtMs && candidate.observedAtMs < previousMs) return false;
+  if (observedMs && candidate.observedAtMs && candidate.observedAtMs > observedMs) return false;
+  return true;
+}
+
+function matchInboundAttribution(event = {}, candidates = []) {
+  if (event.txHash) return null;
+  const eventUsd = finiteNumber(event.estimatedUsd);
+  const matches = candidates.filter((candidate) => candidateMatchesInbound(event, candidate));
+  if (matches.length === 0) return null;
+  return [...matches].sort((left, right) => {
+    const leftUsdDistance = Number.isFinite(eventUsd) ? Math.abs((left.outputUsd ?? 0) - eventUsd) : 0;
+    const rightUsdDistance = Number.isFinite(eventUsd) ? Math.abs((right.outputUsd ?? 0) - eventUsd) : 0;
+    return leftUsdDistance - rightUsdDistance || right.observedAtMs - left.observedAtMs || String(left.txHash).localeCompare(String(right.txHash));
+  })[0];
+}
+
+function inboundRow(event = {}, attribution = null) {
+  const txHash = event.txHash || attribution?.txHash || null;
+  const category = attribution ? "internal_route_output" : event.txHash ? "external_or_internal_inbound_tx" : "inbound_inventory_diff";
+  const confidence = attribution ? "tx_attributed_internal_route_output" : event.txHash ? "tx_attributed" : "balance_diff_not_tx_attributed";
   return {
     schemaVersion: 1,
     ledgerRowId: `inbound:${event.eventId || event.txHash || event.observedAt || "unknown"}`,
@@ -109,12 +177,12 @@ function inboundRow(event = {}) {
     rowType: "inbound_event",
     observedAt: observedAt(event),
     chain: event.chain || null,
-    txHash: event.txHash || null,
+    txHash,
     eventId: event.eventId || null,
     strategyId: null,
     kind: event.kind || "inbound",
-    category: event.txHash ? "external_or_internal_inbound_tx" : "inbound_inventory_diff",
-    confidence: event.txHash ? "tx_attributed" : "balance_diff_not_tx_attributed",
+    category,
+    confidence,
     ticker: event.ticker || null,
     amountDecimal: finiteNumber(event.amountDecimal),
     inputUsd: null,
@@ -124,6 +192,15 @@ function inboundRow(event = {}) {
     realizedNetPnlUsd: null,
     costUsd: 0,
     detectionSource: event.detectionSource || null,
+    attribution: attribution ? {
+      sourceFile: attribution.sourceFile,
+      txHash: attribution.txHash,
+      observedAt: attribution.observedAt,
+      kind: attribution.kind,
+      routeKey: attribution.routeKey,
+      outputUsd: attribution.outputUsd,
+      matchReason: "receipt_output_matches_inbound_chain_token_and_snapshot_window",
+    } : null,
   };
 }
 
@@ -196,7 +273,8 @@ export function buildTransactionLedger({
       return txHash && !receiptTxHashes.has(String(txHash).toLowerCase());
     })
     .map(signerRevertRow);
-  const inboundRows = inboundEvents.map(inboundRow);
+  const inboundAttributionCandidates = receiptOutputAttributionCandidates(receiptRecords);
+  const inboundRows = inboundEvents.map((event) => inboundRow(event, matchInboundAttribution(event, inboundAttributionCandidates)));
   const offrampRows = gatewayOfframpRecords.map(gatewayOfframpRow);
   const rows = [...receiptRows, ...revertRows, ...inboundRows, ...offrampRows]
     .sort((left, right) => observedAtMs(left) - observedAtMs(right) || String(left.txHash || left.eventId || "").localeCompare(String(right.txHash || right.eventId || "")));
@@ -207,6 +285,8 @@ export function buildTransactionLedger({
   const totalCostUsd = rows.reduce((sum, row) => sum + (finiteNumber(row.costUsd) ?? 0), 0);
   const receiptGasUsd = receiptRows.reduce((sum, row) => sum + (finiteNumber(row.receiptGasUsd) ?? 0), 0);
   const inboundDiffUsd = inboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0);
+  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed");
+  const unattributedInboundRows = inboundRows.filter((row) => row.confidence === "balance_diff_not_tx_attributed");
 
   return Object.freeze({
     schemaVersion: 1,
@@ -227,6 +307,10 @@ export function buildTransactionLedger({
       inboundRowCount: inboundRows.length,
       gatewayOfframpRowCount: offrampRows.length,
       unquantifiedRevertCount: revertRows.length,
+      attributedInboundCount: attributedInboundRows.length,
+      unattributedInboundCount: unattributedInboundRows.length,
+      attributedInboundUsd: attributedInboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0),
+      unattributedInboundUsd: unattributedInboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0),
       realizedNetPnlUsd: reconciledRealizedNetPnlUsd,
       reconciledRealizedNetPnlUsd,
       recordedNetPnlUsd,

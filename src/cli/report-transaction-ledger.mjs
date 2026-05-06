@@ -78,6 +78,7 @@ async function main() {
     console.log(`baseline=${fmtUsd(ledger.baseline.baselineUsd)} deltaFromCurrent=${fmtUsd(ledger.baseline.deltaFromCurrentUsd)}`);
   }
   console.log(`rows=${ledger.summary.rowCount} receipts=${ledger.summary.receiptRowCount} inboundDiffs=${ledger.summary.inboundRowCount} offramps=${ledger.summary.gatewayOfframpRowCount} unquantifiedReverts=${ledger.summary.unquantifiedRevertCount}`);
+  console.log(`inboundAttributed=${ledger.summary.attributedInboundCount} attributedUsd=${fmtUsd(ledger.summary.attributedInboundUsd)} inboundUnattributed=${ledger.summary.unattributedInboundCount} unattributedUsd=${fmtUsd(ledger.summary.unattributedInboundUsd)}`);
   console.log(`reconciledRealizedNetPnl=${fmtUsd(ledger.summary.reconciledRealizedNetPnlUsd)} recordedNetIncludingFailed=${fmtUsd(ledger.summary.recordedNetPnlUsd)} totalCost=${fmtUsd(ledger.summary.totalCostUsd)} receiptGas=${fmtUsd(ledger.summary.receiptGasUsd)} inboundDiff=${fmtUsd(ledger.summary.inboundDiffUsd)}`);
   console.log("categories:");
   for (const item of ledger.categories) {
