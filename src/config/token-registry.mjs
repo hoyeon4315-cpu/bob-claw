@@ -14,6 +14,10 @@ export const TOKEN_REGISTRY = Object.freeze({
     { symbol: "WETH",  address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", decimals: 18 },
     { symbol: "alphaForexV2", address: "0x153bd1ABE60104bD46AA05a27fA12D1346D64A57", decimals: 18 },
     { symbol: "steakUSDT", address: "0xBEEF003C68896c7D2c3C60D363e8d71a49Ab2Bf9", decimals: 18 },
+    { symbol: "aHorRwaRLUSD", address: "0xE3190143Eb552456F88464662f0c0C4aC67A77eB", decimals: 18 },
+    { symbol: "eRLUSD-7", address: "0xaF5372792a29dC6b296d6FFD4AA3386aff8f9BB2", decimals: 18 },
+    { symbol: "bbqUSDT", address: "0xbeeff07d991C04CD640DE9F15C08ba59c4FEDEb7", decimals: 18 },
+    { symbol: "gtusdtf", address: "0x79FD640000F8563A866322483524a4b48f1Ed702", decimals: 18 },
   ],
   base: [
     { symbol: "USDC",  address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
@@ -22,6 +26,8 @@ export const TOKEN_REGISTRY = Object.freeze({
     { symbol: "wBTC",  address: "0x1ceA84203673764244E05693e42E6Ace62bD9ad4", decimals: 8 },
     { symbol: "AERO",  address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631", decimals: 18 },
     { symbol: "WETH",  address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+    { symbol: "mwUSDC", address: "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca", decimals: 18 },
+    { symbol: "steakUSDC", address: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183", decimals: 18 },
   ],
   bsc: [
     { symbol: "USDC", address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", decimals: 18 },
@@ -51,27 +57,32 @@ export const TOKEN_REGISTRY = Object.freeze({
     { symbol: "USDC",     address: "0x078D782b760474a361dDA0AF3839290b0EF57AD6", decimals: 6 },
     { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
     { symbol: "WETH",     address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+    { symbol: "eUSDC-1",  address: "0x6eAe95ee783e4D862867C4e0E4c3f4B95AA682Ba", decimals: 6 },
   ],
   bera: [
     { symbol: "USDC",     address: "0x549943e04f40284185054145c6E4e9568C1D3241", decimals: 6 },
     { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
     { symbol: "WBERA",    address: "0x6969696969696969696969696969696969696969", decimals: 18 },
+    { symbol: "dUSDC.e",  address: "0x444868B6e8079ac2c55eea115250f92C2b2c4D14", decimals: 6 },
   ],
   berachain: [
     { symbol: "USDC",     address: "0x549943e04f40284185054145c6E4e9568C1D3241", decimals: 6 },
     { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
     { symbol: "WBERA",    address: "0x6969696969696969696969696969696969696969", decimals: 18 },
+    { symbol: "dUSDC.e",  address: "0x444868B6e8079ac2c55eea115250f92C2b2c4D14", decimals: 6 },
   ],
   optimism: [
     { symbol: "USDC",     address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", decimals: 6 },
     { symbol: "aOptUSDCn", address: "0x38d693cE1dF5AaDF7bC62595A37D667aD57922e5", decimals: 6 },
     { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
     { symbol: "WETH",     address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+    { symbol: "gtusdcp",  address: "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59", decimals: 18 },
   ],
   soneium: [
     { symbol: "USDC",     address: "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369", decimals: 6 },
     { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
     { symbol: "WETH",     address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+    { symbol: "aSoneUSDCe", address: "0xb2C9E934A55B58D20496A5019F8722a96d8A44d8", decimals: 6 },
   ],
   sei: [
     { symbol: "wBTC.OFT", address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", decimals: 8 },
