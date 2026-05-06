@@ -180,7 +180,9 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.activeLaneBudgetUsd, 1_000_000);
   assert.equal(snapshot.planningLayers.capitalExpansionReview.summary.planningLaneBudgetUsd, null);
   assert.equal(snapshot.planningLayers.formulaAudit.summary.implementedCount, 3);
-  assert.equal(snapshot.planningLayers.formulaAudit.summary.topGap.id, "advanced_overfit_statistics");
+  assert.equal(snapshot.planningLayers.formulaAudit.summary.partialCount, 4);
+  assert.equal(snapshot.planningLayers.formulaAudit.summary.missingCount, 0);
+  assert.equal(snapshot.planningLayers.formulaAudit.summary.topGap.id, "profit_floor_and_variance_gate");
   assert.equal(snapshot.planningLayers.leverageAutoUnwindRuntime.runtimeCount, 2);
   assert.equal(snapshot.planningLayers.leverageAutoUnwindRuntime.topPriority.strategyId, "recursive_wrapped_btc_lending_loop");
   assert.equal(snapshot.summary.autonomousDiscoveryOpportunityCount, 3);
@@ -198,7 +200,7 @@ test("strategy snapshot preserves implemented strategies and planning layers in 
   assert.equal(summary.capitalExpansionReview.activeLaneBudgetUsd, 1_000_000);
   assert.equal(summary.capitalExpansionReview.planningLaneBudgetUsd, null);
   assert.equal(summary.capitalExpansionReview.approvalRequiredForPlanningLane, false);
-  assert.equal(summary.formulaAudit.summary.missingCount, 1);
+  assert.equal(summary.formulaAudit.summary.missingCount, 0);
   assert.equal(summary.leverageAutoUnwindRuntime.topPriority.status, "pause_new_entries");
   assert.equal(summary.autonomousDiscoveryBoard.topOpportunity.id, "recursive_wrapped_btc_lending_loop");
   assert.equal(summary.productCoverage.pillarCount, 3);

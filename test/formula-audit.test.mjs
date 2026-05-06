@@ -8,9 +8,9 @@ test("formula audit highlights implemented, partial, and missing formula familie
 
   assert.equal(report.summary.entryCount, 7);
   assert.equal(report.summary.implementedCount, 3);
-  assert.equal(report.summary.partialCount, 3);
-  assert.equal(report.summary.missingCount, 1);
-  assert.equal(report.summary.topGap.id, "advanced_overfit_statistics");
+  assert.equal(report.summary.partialCount, 4);
+  assert.equal(report.summary.missingCount, 0);
+  assert.equal(report.summary.topGap.id, "profit_floor_and_variance_gate");
 
   const profitFloor = report.entries.find((entry) => entry.id === "profit_floor_and_variance_gate");
   assert.ok(profitFloor);
@@ -21,5 +21,14 @@ test("formula audit highlights implemented, partial, and missing formula familie
   assert.equal(
     report.mismatches.some((item) => item.id === "risk_policy_zero_profit_floor"),
     true,
+  );
+
+  const advancedOverfit = report.entries.find((entry) => entry.id === "advanced_overfit_statistics");
+  assert.ok(advancedOverfit);
+  assert.equal(advancedOverfit.status, "partial");
+  assert.equal(advancedOverfit.details.enforcement, "reporting_only");
+  assert.equal(
+    report.mismatches.some((item) => item.id === "no_runtime_dsr_pbo_wfe"),
+    false,
   );
 });

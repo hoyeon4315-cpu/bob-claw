@@ -147,6 +147,29 @@ test("protocol market watchers block protocol codehash drift but only observe mi
   assert.deepEqual(blockedCodehash.blockers, ["protocol_codehash_drift"]);
 });
 
+test("wrapped BTC loop market watcher passes when only nullable blockers are present", () => {
+  const watchers = buildProtocolMarketWatchers({
+    dashboardStatus: {
+      overall: { blockers: [] },
+    },
+    phase3Validation: {
+      validations: [
+        {
+          id: "wrapped_btc_loop_validation",
+          overallStatus: "passed",
+          blockers: [],
+        },
+      ],
+    },
+    now: "2026-04-19T00:00:00.000Z",
+  });
+
+  const wrappedWatch = watchers.watchers.find((item) => item.id === "wrapped_btc_loop_market_watch");
+  assert.ok(wrappedWatch);
+  assert.equal(wrappedWatch.status, "passed");
+  assert.deepEqual(wrappedWatch.blockers, []);
+});
+
 test("protocol market watchers include recursive lending loop market watches", () => {
   const watchers = buildProtocolMarketWatchers({
     dashboardStatus: {

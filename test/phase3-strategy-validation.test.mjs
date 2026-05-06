@@ -228,6 +228,46 @@ test("phase3 strategy validation clears wrapped loop blocker once extended recei
   assert.equal(wrappedLoop.evidence.realizedNetCarryUsd, 0);
 });
 
+test("phase3 strategy validation stops asking for wrapped-loop extended receipt context once ready", () => {
+  const report = buildPhase3StrategyValidation({
+    wrappedBtcLendingLoopSlice: {
+      strategy: { id: "wrapped-btc-loop-base-moonwell", protocol: "moonwell" },
+    },
+    wrappedBtcLoopDryRun: {
+      dryRunReceiptRecorded: true,
+      autoUnwindPassCount: 3,
+    },
+    wrappedBtcLoopLiveProof: {
+      success: true,
+      proofStatus: "signer_backed_roundtrip_recorded",
+      entryCount: 8,
+      unwindCount: 4,
+      extendedReceiptContextReady: true,
+      missingExtendedReceiptFields: [],
+      actualLoopFeesUsd: 0.035,
+      actualUnwindCostUsd: 0.033,
+      realizedNetCarryUsd: 0,
+    },
+    protocolTrustTiers: {
+      generatedAt: "2026-04-18T09:00:00.000Z",
+      items: [
+        {
+          id: "moonwell",
+          status: "recorded",
+          tier: "B",
+        },
+      ],
+    },
+    resolveTrustTierDecision,
+    now: "2026-04-18T09:00:00.000Z",
+  });
+
+  const wrappedLoop = report.validations.find((item) => item.id === "wrapped_btc_loop_validation");
+  assert.ok(wrappedLoop);
+  assert.equal(wrappedLoop.overallStatus, "passed");
+  assert.equal(wrappedLoop.nextAction?.code, undefined);
+});
+
 test("phase3 strategy validation records signer-backed wrapped-loop roundtrip before full OOS packet exists", () => {
   const report = buildPhase3StrategyValidation({
     wrappedBtcLendingLoopSlice: {

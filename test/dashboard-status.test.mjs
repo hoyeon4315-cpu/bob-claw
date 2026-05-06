@@ -229,6 +229,13 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.exposurePolicy.containsPrivateKeys, false);
   assert.equal(status.gateway.updateDetected, false);
   assert.equal(status.gateway.probeOk, 2);
+  assert.equal(status.audit.advancedOverfitStatistics.status, "insufficient_evidence");
+  assert.equal(status.audit.advancedOverfitStatistics.enforcement, "reporting_only");
+  assert.equal(status.audit.advancedOverfitStatistics.blockers.includes("deflated_sharpe:min_30_returns_required"), true);
+  assert.equal(status.audit.validQuotes, 2);
+  assert.equal(status.audit.activeFailures, 0);
+  assert.equal(status.audit.gasSnapshots, 2);
+  assert.equal(status.audit.gasFailures, 0);
   assert.equal(status.gateway.ethFamilyWatch.routeCount, 1);
   assert.equal(status.gateway.ethFamilyWatch.surfaceChanged, true);
   assert.equal(status.gateway.ethFamilyWatch.addedRoutesCount, 1);

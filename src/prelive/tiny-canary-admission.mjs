@@ -154,12 +154,42 @@ export function buildTinyCanaryAdmission({
 
 export function reconcileTinyCanaryAdmissionWithLivePolicy(admission = null, overall = null) {
   if (!admission) return null;
+  const liveTradingPolicy = overall?.liveTrading || admission.constraints?.liveTradingPolicy || "BLOCKED";
+  const blockers = admission.blockers || [];
+  const staleAutoExecute =
+    liveTradingPolicy !== "ALLOWED" &&
+    blockers.length === 0 &&
+    (admission.decision === "GO_FOR_AUTO_EXECUTE" || admission.status === "auto_execute_policy_ready");
+  if (staleAutoExecute) {
+    return {
+      ...admission,
+      decision: "GO_FOR_MANUAL_APPROVAL",
+      status: "manual_approval_required",
+      requirements: (admission.requirements || []).map((requirement) =>
+        requirement?.code === "auto_execute_policy_ready"
+          ? {
+              ...requirement,
+              code: "manual_approval_required",
+              label: "manual approval is still required before any live canary",
+              status: "required",
+              blockers: [],
+            }
+          : requirement,
+      ),
+      nextActionCode: "manual_approval_required",
+      nextActionCommand: null,
+      constraints: {
+        ...(admission.constraints || {}),
+        liveTradingPolicy,
+      },
+    };
+  }
   if (overall?.liveTrading !== "ALLOWED" || (admission.blockers || []).length > 0) {
     return {
       ...admission,
       constraints: {
         ...(admission.constraints || {}),
-        liveTradingPolicy: overall?.liveTrading || admission.constraints?.liveTradingPolicy || "BLOCKED",
+        liveTradingPolicy,
       },
     };
   }

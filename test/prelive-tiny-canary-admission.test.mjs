@@ -253,3 +253,51 @@ test("tiny canary admission reconciliation updates stale manual approval package
   assert.equal(reconciled.constraints.liveTradingPolicy, "ALLOWED");
   assert.equal(reconciled.requirements.some((item) => item.code === "auto_execute_policy_ready" && item.status === "passed"), true);
 });
+
+test("tiny canary admission reconciliation downgrades stale auto-execute package after live policy blocks", () => {
+  const candidate = {
+    candidateType: "strategy",
+    candidateId: "wrapped-btc-loop-base-moonwell",
+    candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
+  };
+  const reconciled = reconcileTinyCanaryAdmissionWithLivePolicy(
+    {
+      decision: "GO_FOR_AUTO_EXECUTE",
+      status: "auto_execute_policy_ready",
+      blockers: [],
+      nextActionCode: "auto_execute_policy_ready",
+      nextActionCommand: null,
+      candidate,
+      requirements: [
+        { code: "candidate_selected", label: "candidate selected", status: "passed", blockers: [] },
+        {
+          code: "auto_execute_policy_ready",
+          label: "auto-execute policy is ready for the selected strategy",
+          status: "passed",
+          blockers: [],
+        },
+      ],
+      constraints: {
+        liveTradingPolicy: "ALLOWED",
+      },
+    },
+    {
+      liveTrading: "BLOCKED",
+    },
+  );
+
+  assert.equal(reconciled.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(reconciled.status, "manual_approval_required");
+  assert.deepEqual(reconciled.blockers, []);
+  assert.deepEqual(reconciled.candidate, candidate);
+  assert.equal(reconciled.nextActionCode, "manual_approval_required");
+  assert.equal(reconciled.nextActionCommand, null);
+  assert.equal(reconciled.constraints.liveTradingPolicy, "BLOCKED");
+  assert.equal(reconciled.requirements.some((item) => item.code === "auto_execute_policy_ready"), false);
+  assert.equal(
+    reconciled.requirements.some(
+      (item) => item.code === "manual_approval_required" && item.status === "required" && item.blockers.length === 0,
+    ),
+    true,
+  );
+});

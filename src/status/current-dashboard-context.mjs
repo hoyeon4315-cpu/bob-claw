@@ -38,6 +38,7 @@ import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
+import { buildMerklUserRewardsSlice } from "./merkl-user-rewards-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "./protocol-position-marks-slice.mjs";
 import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
 import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
@@ -58,6 +59,7 @@ import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildAutoKillReplayStatus } from "../risk/auto-kill-replay.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
+import { merklUserRewardPolicy } from "../config/merkl-user-rewards.mjs";
 import {
   activeProtocolPositions,
   latestProtocolMarksByPosition,
@@ -326,13 +328,14 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "campaign-status.json")),
     readJsonIfExists(autoKillOraclesPath),
   ]);
-  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth] = await Promise.all([
+  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth, merklUserRewardsLatest] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
     readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
     readJsonIfExists(join(dataDir, "merkl-portfolio-allocator-latest.json")),
     readJsonIfExists(join(dataDir, "campaign-aware-opportunities.json")),
     readJsonIfExists(join(dataDir, "anchor-position-health.json")),
+    readJsonIfExists(join(dataDir, "merkl-user-rewards-latest.json")),
   ]);
   const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
@@ -476,6 +479,15 @@ export async function buildCurrentDashboardContext({
     generatedAt: dashboardStatus.generatedAt,
     aprByOpportunity: buildMerklAprMap(merklPortfolioAllocatorLatest, merklCanaryQueue),
   });
+  const rewardPolicy = merklUserRewardPolicy();
+  dashboardStatus.strategy.merklUserRewards = merklUserRewardsLatest
+    ? buildMerklUserRewardsSlice(merklUserRewardsLatest.rows || [], {
+        generatedAt: dashboardStatus.generatedAt,
+        minClaimUsd: rewardPolicy.minClaimUsd,
+        maxClaimCostUsdByChainId: rewardPolicy.maxClaimCostUsdByChainId,
+        distributorsByChainId: rewardPolicy.distributorsByChainId,
+      })
+    : null;
   const protocolApr = buildProtocolAprSlice({
     wrappedBtcLoopSlice: wrappedBtcLendingLoopSlice,
     recursiveWrappedBtcLoopScaffold: recursiveWrappedBtcLoop,
@@ -566,6 +578,9 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.dataCounts.merklOpportunityReportPresent = merklOpportunityReport ? 1 : 0;
   dashboardStatus.dataCounts.merklOpportunityAlertCount = merklOpportunityAlerts.length;
   dashboardStatus.dataCounts.merklCanaryQueuePresent = merklCanaryQueue ? 1 : 0;
+  dashboardStatus.dataCounts.merklUserRewardsPresent = merklUserRewardsLatest ? 1 : 0;
+  dashboardStatus.dataCounts.merklUserRewardCount =
+    dashboardStatus.strategy.merklUserRewards?.rewardCount ?? 0;
   dashboardStatus.dataCounts.merklActivePositionCount =
     dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
   dashboardStatus.dataCounts.protocolPositionMarkCount = protocolPositionMarks.length;

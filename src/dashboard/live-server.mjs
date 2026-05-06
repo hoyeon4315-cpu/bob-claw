@@ -11,7 +11,9 @@ import { buildAssetTrackingSlice } from "../status/asset-tracking-slice.mjs";
 import { buildCapitalSummarySlice } from "../status/capital-summary-slice.mjs";
 import { buildLiveYieldSlice, liveYieldMetricFields } from "../status/live-yield-slice.mjs";
 import { buildMerklActivePositions } from "../status/merkl-active-slice.mjs";
+import { buildMerklUserRewardsSlice } from "../status/merkl-user-rewards-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "../status/protocol-position-marks-slice.mjs";
+import { merklUserRewardPolicy } from "../config/merkl-user-rewards.mjs";
 import {
   activeProtocolPositions,
   latestProtocolMarksByPosition,
@@ -28,6 +30,7 @@ export const DEFAULT_TREASURY_REFRESH_MS = 20000;
 export const DEFAULT_STATUS_SNAPSHOT_REFRESH_MS = 300_000;
 export const DEFAULT_STRATEGY_TICK_REFRESH_MS = 4000;
 export const DEFAULT_AUTO_KILL_REFRESH_MS = 5000;
+export const DEFAULT_MERKL_USER_REWARD_REFRESH_MS = 60_000;
 export const DEFAULT_STATUS_BUILD_TIMEOUT_MS = 3500;
 export const DEFAULT_REFRESH_TASK_TIMEOUT_MS = 120_000;
 
@@ -121,6 +124,10 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
     autoKillRefreshMs: finiteInteger(
       options["auto-kill-refresh-ms"] || env.BOB_CLAW_DASHBOARD_AUTO_KILL_REFRESH_MS,
       DEFAULT_AUTO_KILL_REFRESH_MS,
+    ),
+    merklUserRewardsRefreshMs: finiteInteger(
+      options["merkl-user-rewards-refresh-ms"] || env.BOB_CLAW_DASHBOARD_MERKL_USER_REWARDS_REFRESH_MS,
+      DEFAULT_MERKL_USER_REWARD_REFRESH_MS,
     ),
     statusSnapshotRefreshMs: finiteInteger(
       options["status-refresh-ms"] || env.BOB_CLAW_DASHBOARD_STATUS_REFRESH_MS,
@@ -418,6 +425,36 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, projectRoot, se
   ]);
   nextStatus = overlayStrategyTickStatus(nextStatus, strategyTickStatus, servedAt);
 
+  const merklUserRewardsLatest = await loadJsonFromCandidates([
+    join(rootDir, "merkl-user-rewards-latest.json"),
+    join(dataDir, "merkl-user-rewards-latest.json"),
+  ]);
+  if (merklUserRewardsLatest && Array.isArray(merklUserRewardsLatest.rows)) {
+    const rewardPolicy = merklUserRewardPolicy();
+    const merklUserRewards = buildMerklUserRewardsSlice(merklUserRewardsLatest.rows, {
+      generatedAt: servedAt,
+      minClaimUsd: rewardPolicy.minClaimUsd,
+      maxClaimCostUsdByChainId: rewardPolicy.maxClaimCostUsdByChainId,
+      distributorsByChainId: rewardPolicy.distributorsByChainId,
+    });
+    nextStatus = {
+      ...nextStatus,
+      strategy: {
+        ...(nextStatus.strategy || {}),
+        merklUserRewards,
+      },
+      liveOverlay: {
+        ...(nextStatus.liveOverlay || {}),
+        merklUserRewards: {
+          source: "merkl-user-rewards-latest.json",
+          generatedAt: merklUserRewardsLatest.generatedAt || null,
+          observedAt: merklUserRewardsLatest.observedAt || null,
+          appliedAt: servedAt,
+        },
+      },
+    };
+  }
+
   const liveYield = buildLiveYieldSlice({
     merklActivePositions: nextStatus?.strategy?.merklActivePositions || null,
     btcUsd: nextStatus?.market?.btcUsd ?? null,
@@ -581,6 +618,22 @@ export function createDashboardLiveServer(rawOptions = {}) {
       lastResult: null,
       running: false,
     },
+    merklUserRewards: {
+      id: "merklUserRewards",
+      label: "Merkl user rewards",
+      script: "src/cli/report-merkl-user-rewards.mjs",
+      args: ["--write"],
+      intervalMs: options.merklUserRewardsRefreshMs,
+      timeoutMs: options.refreshTaskTimeoutMs,
+      lastStartedAt: null,
+      lastFinishedAt: null,
+      lastSucceededAt: null,
+      lastFailedAt: null,
+      lastError: null,
+      lastWarning: null,
+      lastResult: null,
+      running: false,
+    },
     statusSnapshot: {
       id: "statusSnapshot",
       label: "dashboard snapshot",
@@ -605,6 +658,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
     tasks.walletHoldingsSlice,
     tasks.strategyTickStatus,
     tasks.autoKillEvents,
+    tasks.merklUserRewards,
     tasks.statusSnapshot,
   ];
   let refreshTimer = null;

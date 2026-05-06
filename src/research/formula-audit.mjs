@@ -151,16 +151,21 @@ export function buildFormulaAudit({
     entry({
       id: "advanced_overfit_statistics",
       label: "Advanced overfit statistics",
-      status: "missing",
-      reason: "docs call for DSR, PBO, WFE / walk-forward evidence, but current runtime overfit gate is heuristic and does not compute those formulas",
+      status: "partial",
+      reason: "audit:overfit now includes reporting-only DSR proxy, CSCV/PBO, and WFE sections, but these statistics are not live gates",
       docRefs: [
         "docs/research/ops-costs.md",
         "docs/_archive/bobclaw-guidelines-v3-final.md Part 12.7",
       ],
       codeRefs: [
+        "src/audit/advanced-overfit-statistics.mjs",
         "src/cli/audit-overfit.mjs",
         "src/audit/overfit.mjs",
       ],
+      details: {
+        enforcement: "reporting_only",
+        formulas: ["deflated_sharpe_proxy", "cscv_pbo", "walk_forward_efficiency"],
+      },
     }),
   ];
 
@@ -170,12 +175,6 @@ export function buildFormulaAudit({
       severity: "high",
       reason: "Default risk policy still uses minNetProfitUsd=0 and minNetProfitPct=0.",
       codeRefs: ["src/risk/policy.mjs:18"],
-    },
-    {
-      id: "no_runtime_dsr_pbo_wfe",
-      severity: "high",
-      reason: "Overfit docs mention DSR/PBO/WFE, but the runtime audit does not calculate them.",
-      codeRefs: ["src/cli/audit-overfit.mjs", "src/audit/overfit.mjs"],
     },
     {
       id: "btc_scenario_audit_missing",

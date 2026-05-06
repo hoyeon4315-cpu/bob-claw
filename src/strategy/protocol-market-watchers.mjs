@@ -94,7 +94,7 @@ function wrappedLoopWatcher({ wrappedBtcLendingLoopSlice = null, phase3Validatio
   const blockers = [
     ...(validation?.blockers || []),
     staleGas ? "stale_gas_snapshots" : null,
-  ];
+  ].filter(Boolean);
   return watcher({
     id: "wrapped_btc_loop_market_watch",
     label: "Wrapped-BTC loop market watch",

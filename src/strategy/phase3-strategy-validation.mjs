@@ -133,20 +133,22 @@ function wrappedLoopValidation({
           ? ["borrow_inclusive_live_receipt_missing"]
           : ["extended_receipt_context_missing"];
   const nextAction =
-    liveRoundtrip.recorded && entryReceiptMode === "collateral_only_roundtrip"
-      ? {
-          code: "collect_wrapped_btc_loop_borrow_receipt",
-          command: null,
-        }
-      : {
-          code: liveRoundtrip.recorded
-            ? "capture_wrapped_btc_loop_extended_receipt_context"
-            : "collect_wrapped_btc_loop_oos_receipts",
-          command: buildWrappedBtcLoopReceiptGuide({
-            scaffold: wrappedBtcLendingLoopSlice,
-            liveProof: liveRoundtrip.recorded ? wrappedBtcLoopLiveProof : null,
-          }).sampleCommand,
-        };
+    liveRoundtrip.recorded && extendedReceiptContextReady
+      ? null
+      : liveRoundtrip.recorded && entryReceiptMode === "collateral_only_roundtrip"
+        ? {
+            code: "collect_wrapped_btc_loop_borrow_receipt",
+            command: null,
+          }
+        : {
+            code: liveRoundtrip.recorded
+              ? "capture_wrapped_btc_loop_extended_receipt_context"
+              : "collect_wrapped_btc_loop_oos_receipts",
+            command: buildWrappedBtcLoopReceiptGuide({
+              scaffold: wrappedBtcLendingLoopSlice,
+              liveProof: liveRoundtrip.recorded ? wrappedBtcLoopLiveProof : null,
+            }).sampleCommand,
+          };
   const trustBlockers = trustTierBlockers(
     protocolTrustTiers,
     [wrappedBtcLendingLoopSlice?.strategy?.protocol].filter(Boolean),

@@ -145,6 +145,57 @@ test("audit prefers shadow observations for depth and amount diversity gates", (
   });
 });
 
+test("audit reports advanced overfit statistics without changing live gate decision", () => {
+  const routes = makeRoutes(1);
+  const route = routes[0];
+  const returns = Array.from({ length: 35 }, (_, index) => (index % 7 === 0 ? -0.003 : 0.006));
+  const audit = buildOverfitAudit(
+    {
+      now: "2026-04-10T03:00:00.000Z",
+      routesRecords: [{ observedAt: "2026-04-10T00:00:00.000Z", routes, summary: { totalRoutes: routes.length } }],
+      quotes: [makeQuote(route, "2026-04-10T00:00:00.000Z", "10000")],
+      failures: [],
+      gasSnapshots: [{ observedAt: "2026-04-10T02:45:00.000Z", chain: "bob" }],
+      gasFailures: [],
+      advancedOverfitStatistics: {
+        deflatedSharpe: { returns, trials: 9 },
+        cscvPbo: {
+          performanceMatrix: [
+            [1.0, 0.4],
+            [1.0, 0.4],
+            [0.1, 0.8],
+            [0.1, 0.8],
+          ],
+        },
+        walkForwardEfficiency: {
+          folds: [
+            { inSample: 10, outOfSample: 5 },
+            { inSample: 8, outOfSample: 4 },
+          ],
+        },
+      },
+    },
+    {
+      minShadowHours: 168,
+      minBobNeighborCoveragePct: 100,
+      minGlobalRouteCoveragePctForDiscovery: 0,
+      minSamplesPerCandidateRoute: 30,
+      minAmountLevelsPerCandidateRoute: 4,
+      minHourBuckets: 24,
+      maxFailureRatePct: 10,
+      maxGasSnapshotAgeMinutes: 30,
+      requiredQuoteDecayWindowsSeconds: [],
+    },
+  );
+
+  assert.equal(audit.decision, "LIVE_BLOCKED");
+  assert.equal(audit.advancedOverfitStatistics.status, "reported");
+  assert.equal(audit.advancedOverfitStatistics.enforcement, "reporting_only");
+  assert.equal(typeof audit.advancedOverfitStatistics.metrics.deflatedSharpeProxy, "number");
+  assert.equal(typeof audit.advancedOverfitStatistics.metrics.pbo, "number");
+  assert.equal(audit.advancedOverfitStatistics.metrics.wfe, 0.5);
+});
+
 test("audit summarizes quote decay coverage and survival windows from shadow observations", () => {
   const routes = makeRoutes(1);
   const route = routes[0];

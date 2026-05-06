@@ -196,6 +196,10 @@ test("gateway btc offramp execution waits for bitcoin balance proof", async () =
         proofSource: "bitcoin_address_balance_delta",
         source: "https://mempool.example",
         balance: BigInt(reads > 1 ? 4_110 : 0),
+        transactions:
+          reads > 1
+            ? [{ txid: "btc-delivery" }, { txid: "btc-before" }]
+            : [{ txid: "btc-before" }],
       };
     },
     sendCommand: async () => ({
@@ -213,4 +217,59 @@ test("gateway btc offramp execution waits for bitcoin balance proof", async () =
   assert.equal(execution.signerResult.broadcast.txHash, "0xhash");
   assert.equal(execution.settlementStatus, "delivered");
   assert.equal(execution.destinationProof.observedDelta, "4110");
+  assert.equal(execution.destinationProof.txid, "btc-delivery");
+});
+
+test("gateway btc offramp execution includes newly observed bitcoin txid in settlement proof", async () => {
+  const plan = await buildGatewayBtcOfframpPlan({
+    client: gatewayClientFixture(),
+    priceReader: async () => ({ btc: 100_000, tokenByKey: { btc: 100_000 } }),
+    estimateGasImpl: async () => ({
+      observedAt: "2026-04-16T06:00:01.000Z",
+      chain: "base",
+      rpcUrl: "https://base-rpc.example",
+      latencyMs: 20,
+      gasUnits: 200_000,
+      gasUnitsHex: "0x30d40",
+      rpcFallbacksTried: 0,
+    }),
+    srcChain: "base",
+    amount: "5000",
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "bc1qrecipient0000000000000000000000000000000",
+  });
+
+  let reads = 0;
+  const execution = await executeGatewayBtcOfframpPlan({
+    plan,
+    receiptIngest: async () => ({ appended: false, reason: "test_stub" }),
+    bitcoinSettlementTimeoutMs: 1_000,
+    bitcoinPollIntervalMs: 0,
+    readBitcoinBalanceImpl: async () => {
+      reads += 1;
+      return {
+        proofSource: "bitcoin_address_balance_delta",
+        source: "https://mempool.example",
+        balance: BigInt(reads > 1 ? 4_110 : 0),
+        transactions:
+          reads > 1
+            ? [{ txid: "btc-new" }, { txid: "btc-old" }]
+            : [{ txid: "btc-old" }],
+      };
+    },
+    sendCommand: async () => ({
+      status: "ok",
+      broadcast: {
+        txHash: "0xhash",
+      },
+      receipt: {
+        hash: "0xhash",
+        status: 1,
+      },
+    }),
+  });
+
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.equal(execution.destinationProof.observedDelta, "4110");
+  assert.equal(execution.destinationProof.txid, "btc-new");
 });

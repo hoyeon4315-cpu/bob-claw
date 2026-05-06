@@ -1,6 +1,7 @@
 import { summarizeQuoteDecay } from "../shadow/quote-decay.mjs";
 import { isBtcFamilyRoute, isEthFamilyRoute } from "../assets/tokens.mjs";
 import { buildEthereumRoutePersistenceSummary } from "../strategy/ethereum-route-persistence.mjs";
+import { buildAdvancedOverfitStatistics } from "./advanced-overfit-statistics.mjs";
 
 export const DEFAULT_AUDIT_TARGETS = {
   currentQuoteSchemaVersion: null,
@@ -189,6 +190,7 @@ export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS, scope 
   const shadowObservations = filterByRoute(input.shadowObservations || [], routeFilter);
   const gasSnapshots = input.gasSnapshots || [];
   const gasFailures = input.gasFailures || [];
+  const advancedOverfitStatistics = buildAdvancedOverfitStatistics(input.advancedOverfitStatistics || {});
   const now = input.now || new Date().toISOString();
 
   const latestRoutes = routesRecords.at(-1);
@@ -418,6 +420,7 @@ export function buildOverfitAudit(input, targets = DEFAULT_AUDIT_TARGETS, scope 
     executionGasP95Usd,
     quoteDecayCoveredGroups: quoteDecay.coveredGroups,
     quoteDecayWindows,
+    advancedOverfitStatistics,
     totalGatewayRoutes,
     sampledRoutes: sampledRouteKeys.size,
     focusRoutes: focusRouteKeys.size,
@@ -518,6 +521,19 @@ export function formatAudit(audit) {
   if (audit.persistence) {
     lines.push(
       `persistence snapshots=${audit.persistence.snapshotCount} currentRoutes=${audit.persistence.currentRouteCount} stableRoutes=${audit.persistence.stableRouteCount} sampledCurrentRoutes=${audit.persistence.currentSampledRouteCount}`,
+    );
+  }
+  if (audit.advancedOverfitStatistics) {
+    lines.push(
+      `advancedOverfitStatistics=${audit.advancedOverfitStatistics.status} enforcement=${audit.advancedOverfitStatistics.enforcement} dsrProxy=${
+        Number.isFinite(audit.advancedOverfitStatistics.metrics?.deflatedSharpeProxy)
+          ? audit.advancedOverfitStatistics.metrics.deflatedSharpeProxy.toFixed(4)
+          : "n/a"
+      } pbo=${
+        Number.isFinite(audit.advancedOverfitStatistics.metrics?.pbo) ? audit.advancedOverfitStatistics.metrics.pbo.toFixed(4) : "n/a"
+      } wfe=${
+        Number.isFinite(audit.advancedOverfitStatistics.metrics?.wfe) ? audit.advancedOverfitStatistics.metrics.wfe.toFixed(4) : "n/a"
+      }`,
     );
   }
   lines.push("");

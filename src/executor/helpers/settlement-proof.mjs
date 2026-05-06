@@ -96,13 +96,34 @@ export async function readBitcoinAddressBalance({
   client = new MempoolClient(),
 }) {
   const result = await client.getAddressBalance(address);
+  const txHistory = typeof client.getAddressTransactions === "function"
+    ? await client.getAddressTransactions(address)
+    : null;
   return {
     proofSource: "bitcoin_address_balance_delta",
     source: result.source,
     balance: BigInt(result.balanceSats),
     confirmedBalance: BigInt(result.confirmedBalanceSats),
     mempoolBalance: BigInt(result.mempoolBalanceSats),
+    transactions: Array.isArray(txHistory?.transactions) ? txHistory.transactions : [],
   };
+}
+
+function bitcoinTxidFromTransaction(transaction) {
+  if (typeof transaction === "string") return transaction.trim() || null;
+  if (!transaction || typeof transaction !== "object") return null;
+  return transaction.txid || transaction.hash || transaction.id || null;
+}
+
+export function identifyNewBitcoinTxids({ before = [], after = [] } = {}) {
+  const beforeTxids = new Set(
+    (Array.isArray(before) ? before : [])
+      .map(bitcoinTxidFromTransaction)
+      .filter(Boolean),
+  );
+  return (Array.isArray(after) ? after : [])
+    .map(bitcoinTxidFromTransaction)
+    .filter((txid) => txid && !beforeTxids.has(txid));
 }
 
 export async function waitForBitcoinBalanceDelta({
@@ -123,7 +144,12 @@ export async function waitForBitcoinBalanceDelta({
     const observedAt = new Date().toISOString();
     const current = await readBitcoinBalanceImpl({ address });
     const observedDelta = current.balance - initialBalance.balance;
-    if (observedDelta >= neededDelta) {
+    const newlyObservedTxids = identifyNewBitcoinTxids({
+      before: initialBalance.transactions,
+      after: current.transactions,
+    });
+    const bitcoinTxid = newlyObservedTxids[0] || null;
+    if (observedDelta >= neededDelta && bitcoinTxid) {
       return {
         status: "delivered",
         proofSource: current.proofSource,
@@ -133,6 +159,9 @@ export async function waitForBitcoinBalanceDelta({
         requiredDelta: neededDelta.toString(),
         observedAt,
         source: current.source,
+        txid: bitcoinTxid,
+        bitcoinTxid,
+        newlyObservedTxids,
         attempts,
       };
     }
@@ -146,6 +175,9 @@ export async function waitForBitcoinBalanceDelta({
         requiredDelta: neededDelta.toString(),
         observedAt,
         source: current.source,
+        txid: bitcoinTxid,
+        bitcoinTxid,
+        newlyObservedTxids,
         attempts,
       };
     }
