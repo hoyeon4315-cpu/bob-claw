@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   materializeWholeWalletInventory,
+  resolveInventoryPrices,
   shouldUseStoredWholeWalletFallback,
 } from "../src/cli/inventory-whole-wallet.mjs";
 
@@ -65,4 +69,46 @@ test("whole-wallet inventory keeps live scan when it already has value", () => {
   assert.equal(inventory.totalUsd, 5.5);
   assert.equal(inventory.summary.nativeCount, 1);
   assert.equal(inventory.summary.tokenCount, 1);
+});
+
+test("inventory price resolver fills missing live prices from latest local snapshot", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-inventory-prices-"));
+  await writeFile(join(dataDir, "price-snapshot.json"), JSON.stringify({
+    schemaVersion: 1,
+    observedAt: "2026-05-06T08:00:00.000Z",
+    btcUsd: 81000,
+    tokenByKey: {
+      btc: 81000,
+      wbtc: 80950,
+      ethereum: 2300,
+      usd_stable: 1,
+    },
+    nativeByChain: {
+      base: 2300,
+      ethereum: 2300,
+    },
+  }));
+
+  const prices = await resolveInventoryPrices({
+    dataDir,
+    livePriceReader: async () => ({
+      btc: null,
+      tokenByKey: {
+        btc: null,
+        wbtc: null,
+        ethereum: 2400,
+        usd_stable: 1,
+      },
+      nativeByChain: {
+        base: null,
+        ethereum: 2400,
+      },
+    }),
+  });
+
+  assert.equal(prices.btc, 81000);
+  assert.equal(prices.tokenByKey.wbtc, 80950);
+  assert.equal(prices.tokenByKey.ethereum, 2400);
+  assert.equal(prices.nativeByChain.base, 2300);
+  assert.equal(prices.nativeByChain.ethereum, 2400);
 });

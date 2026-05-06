@@ -5,6 +5,7 @@ import {
   buildPriceSnapshot,
   emptyPricesUsd,
   getMultiSourcePricesUsd,
+  mergeMissingPricesUsd,
   mergePriceSourceSamples,
   overlayObservedPricesUsd,
   priceForAssetUsd,
@@ -31,6 +32,44 @@ test("observed snapshots backfill missing btc and ethereum prices", () => {
   assert.equal(prices.nativeByChain.ethereum, 2242.72);
   assert.equal(prices.nativeByChain.base, 2242.72);
   assert.equal(prices.nativeByChain.bob, 2242.72);
+});
+
+test("missing live prices merge from a local fallback without overriding fresh values", () => {
+  const merged = mergeMissingPricesUsd(
+    {
+      btc: null,
+      tokenByKey: {
+        btc: null,
+        wbtc: null,
+        ethereum: 2400,
+        usd_stable: 1,
+      },
+      nativeByChain: {
+        base: null,
+        ethereum: 2400,
+      },
+    },
+    {
+      btc: 81000,
+      tokenByKey: {
+        btc: 81000,
+        wbtc: 80950,
+        ethereum: 2300,
+        usd_stable: 1,
+      },
+      nativeByChain: {
+        base: 2300,
+        ethereum: 2300,
+      },
+    },
+  );
+
+  assert.equal(merged.btc, 81000);
+  assert.equal(merged.tokenByKey.btc, 81000);
+  assert.equal(merged.tokenByKey.wbtc, 80950);
+  assert.equal(merged.tokenByKey.ethereum, 2400);
+  assert.equal(merged.nativeByChain.base, 2300);
+  assert.equal(merged.nativeByChain.ethereum, 2400);
 });
 
 test("missing BSC native price can be backfilled from Coinbase spot data", async () => {

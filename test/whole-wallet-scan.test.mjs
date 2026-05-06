@@ -149,6 +149,41 @@ test("whole-wallet inventory can be full_rpc with zero-balance unknown universe 
   assert.equal(inventory.summary.unknownAssetBalanceCount, 0);
 });
 
+test("whole-wallet inventory downgrades coverage when nonzero balances lack USD valuation", () => {
+  const inventory = buildWholeWalletInventory({
+    address: "0x000000000000000000000000000000000000dEaD",
+    prices: {
+      tokenByKey: { usd_stable: 1 },
+      nativeByChain: {},
+    },
+    chains: ["base"],
+    nativeBalances: {
+      base: { balanceWei: "1000000000000000000", rpcUrl: "https://mainnet.base.org" },
+    },
+    tokenBalances: [{
+      chain: "base",
+      token: WBTC_OFT_TOKEN,
+      balance: "10000",
+      rpcUrl: "https://mainnet.base.org",
+    }],
+    assetUniverse: {
+      status: "closed",
+      targetCount: 2,
+      registeredTargetCount: 2,
+      protocolReaderCoveredTargetCount: 0,
+      unknownTargetCount: 0,
+      unknownTargets: [],
+    },
+  });
+
+  assert.equal(inventory.summary.walletCoverage, "partial_supported");
+  assert.equal(inventory.summary.missingValuationCount, 2);
+  assert.deepEqual(
+    inventory.summary.missingValuationAssets.map((item) => `${item.chain}:${item.ticker}`).sort(),
+    ["base:ETH", "base:wBTC.OFT"],
+  );
+});
+
 test("whole-wallet inventory blocks exact coverage when tx-derived universe has unknown token balances", () => {
   const inventory = buildWholeWalletInventory({
     address: "0x000000000000000000000000000000000000dEaD",

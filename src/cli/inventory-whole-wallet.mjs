@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd, latestPriceSnapshot, mergeMissingPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { scanWholeWalletInventory } from "../treasury/whole-wallet-scan.mjs";
@@ -99,6 +102,32 @@ export function materializeWholeWalletInventory(liveInventory = null, treasurySn
   };
 }
 
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export async function readLatestLocalPriceSnapshot(dataDir = config.dataDir) {
+  const latestJson = await readJsonIfExists(join(dataDir, "price-snapshot.json"));
+  if (latestJson) return latestJson;
+  return latestPriceSnapshot(await readJsonl(dataDir, "market-price-snapshots").catch(() => []));
+}
+
+export async function resolveInventoryPrices({
+  dataDir = config.dataDir,
+  livePriceReader = getCoinGeckoPricesUsd,
+} = {}) {
+  const [livePrices, localSnapshot] = await Promise.all([
+    livePriceReader().catch(() => emptyPricesUsd()),
+    readLatestLocalPriceSnapshot(dataDir),
+  ]);
+  const localPrices = localSnapshot ? pricesFromSnapshot(localSnapshot) : emptyPricesUsd();
+  return mergeMissingPricesUsd(livePrices, localPrices);
+}
+
 async function resolveBitcoinAddress() {
   try {
     const health = await readSignerHealth({
@@ -120,7 +149,7 @@ async function main() {
     explicitAddress: resolved.address,
     configuredAddress: config.estimateFrom,
   });
-  const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+  const prices = await resolveInventoryPrices({ dataDir: config.dataDir });
   const bitcoinAddress = await resolveBitcoinAddress();
   const externalPortfolioReader = args.externalAddressScan
     ? resolveAddressScanPortfolioReader({
@@ -190,7 +219,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

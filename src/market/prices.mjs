@@ -217,6 +217,48 @@ export function overlayObservedPricesUsd(prices, options = {}) {
   return next;
 }
 
+function firstFinite(...values) {
+  for (const value of values) {
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+export function mergeMissingPricesUsd(primary, fallback) {
+  const empty = emptyPricesUsd();
+  const primaryTokenByKey = primary?.tokenByKey || {};
+  const fallbackTokenByKey = fallback?.tokenByKey || {};
+  const primaryNativeByChain = primary?.nativeByChain || {};
+  const fallbackNativeByChain = fallback?.nativeByChain || {};
+  const tokenKeys = new Set([
+    ...Object.keys(empty.tokenByKey),
+    ...Object.keys(primaryTokenByKey),
+    ...Object.keys(fallbackTokenByKey),
+  ]);
+  const nativeKeys = new Set([
+    ...Object.keys(empty.nativeByChain),
+    ...Object.keys(primaryNativeByChain),
+    ...Object.keys(fallbackNativeByChain),
+  ]);
+  const tokenByKey = {};
+  for (const key of tokenKeys) {
+    tokenByKey[key] = firstFinite(primaryTokenByKey[key], fallbackTokenByKey[key], empty.tokenByKey[key]);
+  }
+  const nativeByChain = {};
+  for (const key of nativeKeys) {
+    nativeByChain[key] = firstFinite(primaryNativeByChain[key], fallbackNativeByChain[key], empty.nativeByChain[key]);
+  }
+  const btc = firstFinite(primary?.btc, fallback?.btc, tokenByKey.btc);
+  if (!Number.isFinite(tokenByKey.btc)) tokenByKey.btc = btc;
+  if (!Number.isFinite(tokenByKey.wbtc)) tokenByKey.wbtc = btc;
+  if (!Number.isFinite(tokenByKey.usd_stable)) tokenByKey.usd_stable = 1;
+  return {
+    btc,
+    tokenByKey,
+    nativeByChain,
+  };
+}
+
 export function priceForAssetUsd(asset, prices) {
   if (!asset?.priceKey) return null;
   if (asset.priceKey === "btc") return prices?.btc ?? prices?.tokenByKey?.btc ?? null;

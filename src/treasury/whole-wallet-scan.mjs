@@ -456,10 +456,20 @@ export function buildWholeWalletInventory({
     .reduce((sum, value) => sum + value, 0);
   const totalUsd = tokenUsd + protocolUsd;
   const unknownAssetBalances = tokenEntries.filter((item) => item.trackingStatus === "pending_whitelist_review");
+  const missingValuationAssets = holdings
+    .filter((item) => Number.isFinite(item.actualDecimal) && item.actualDecimal > 0 && !Number.isFinite(item.estimatedUsd))
+    .map((item) => ({
+      chain: item.chain,
+      token: item.token,
+      ticker: item.ticker,
+      family: item.family,
+      actualDecimal: item.actualDecimal,
+      trackingStatus: item.trackingStatus || null,
+    }));
   const assetUniverseStatus = assetUniverse?.status || null;
   const authoritativeScanErrorCount = scanErrors.filter((item) => item.kind !== "external_portfolio").length;
   const walletCoverage =
-    authoritativeScanErrorCount === 0 && unknownAssetBalances.length === 0
+    authoritativeScanErrorCount === 0 && unknownAssetBalances.length === 0 && missingValuationAssets.length === 0
       ? "full_rpc"
       : "partial_supported";
 
@@ -498,6 +508,8 @@ export function buildWholeWalletInventory({
       assetUniverseTargetCount: assetUniverse?.targetCount ?? null,
       assetUniverseUnknownTargetCount: assetUniverse?.unknownTargetCount ?? null,
       unknownAssetBalanceCount: unknownAssetBalances.length,
+      missingValuationCount: missingValuationAssets.length,
+      missingValuationAssets: missingValuationAssets.slice(0, 25),
     },
     assetUniverse: assetUniverse ? {
       status: assetUniverse.status,
