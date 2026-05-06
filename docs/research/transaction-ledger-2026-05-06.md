@@ -54,8 +54,9 @@ Latest run:
 - Inbound inventory-diff rows: `42`
 - BTC offramp rows: `4`
 - Unquantified signer reverts not already reconciled: about `90`
-- Inbound rows attributed to internal receipt outputs: `18`, about `81.64` USD
-- Inbound rows still not tx-attributed: `24`, about `204.55` USD
+- Inbound rows attributed to internal receipt/signer outputs: `34`, about
+  `258.51` USD
+- Inbound rows still not tx-attributed: `8`, about `27.68` USD
 - Current NAV: about `370.66` USD
 - Baseline: `450.00` USD
 - Delta from current: about `79.34` USD
@@ -82,8 +83,9 @@ effects. Gas is shown as a sub-explanation.
 | `protocol_position_cost` | `259` | `33.80` | `-33.80` | `33.82` |
 | `failed_tx_cost` | `5` | `9.80` | `-9.80` | `0.01` |
 | `btc_offramp_delivery` | `4` | `0.00` | `0.00` | `0.00` |
-| `inbound_inventory_diff` | `24` | `0.00` | `0.00` | `0.00` |
-| `internal_route_output` | `18` | `0.00` | `0.00` | `0.00` |
+| `inbound_inventory_diff` | `8` | `0.00` | `0.00` | `0.00` |
+| `internal_route_output` | `17` | `0.00` | `0.00` | `0.00` |
+| `internal_strategy_output` | `17` | `0.00` | `0.00` | `0.00` |
 | `unquantified_revert_cost` | about `90` | `0.00` | `0.00` | `0.00` |
 
 Largest current cost rows:
@@ -115,10 +117,26 @@ receipt pricing or native fee lookup converts them into exact USD cost.
 
 Inbound events start as balance-diff evidence because current inbound event rows
 lack tx hashes. The transaction ledger now deterministically upgrades an inbound
-row to `internal_route_output` when a reconciled receipt output matches the
-inbound row's chain, token, and snapshot window. Remaining
-`inbound_inventory_diff` rows should not be treated as proven external deposits
-until transaction-history attribution is added.
+row when either:
+
+- a reconciled receipt output matches the inbound row's chain, token, and
+  snapshot window (`internal_route_output`), or
+- a confirmed signer-audit row has an output-producing intent with a safe token
+  source matching the same chain, token, and snapshot window
+  (`internal_strategy_output`).
+
+Signer-audit attribution is intentionally allowlisted. `approve_exact` rows are
+not outputs even when metadata includes an `outputToken`; that field describes
+the intended route, not a balance increase. The tests cover this regression
+because approval misclassification would make the ledger look more certain than
+the evidence supports.
+
+This pass reduced unattributed inbound value from about `204.55` USD to about
+`27.68` USD. The largest remaining item is Base `wBTC.OFT` at about `24.90`
+USD from the wide `2026-04-24T21:09Z` to `2026-04-25T22:54Z` scan window.
+Local logs show plausible nearby wrapped-BTC strategy activity, but the signer
+metadata does not explicitly identify a Base `wBTC.OFT` output, so the ledger
+keeps it as `inbound_inventory_diff` instead of inventing certainty.
 
 ## Remaining Work
 

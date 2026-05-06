@@ -1,3 +1,10 @@
+import { tokenAsset } from "../assets/tokens.mjs";
+
+const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const SIGNER_SNAPSHOT_SKEW_MS = 5 * 60 * 1000;
+const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
+
 function finiteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
@@ -136,9 +143,75 @@ function receiptOutputAttributionCandidates(receiptRecords = []) {
       ticker: outputTicker(record),
       outputUsd: finiteNumber(record.output?.actualOutputUsd),
       kind: record.kind || null,
+      strategyId: record.strategyId || null,
       routeKey: record.routeContext?.routeKey || null,
+      category: "internal_route_output",
+      confidence: "tx_attributed_internal_route_output",
+      matchReason: "receipt_output_matches_inbound_chain_token_and_snapshot_window",
+      timeToleranceMs: 0,
     }))
     .filter((candidate) => candidate.chain && (candidate.token || candidate.ticker));
+}
+
+function signerConfirmedOutputAsset(record = {}) {
+  const chain = normalized(record.chain);
+  const strategyId = record.strategyId || record.intent?.strategyId || record.intent?.metadata?.capStrategyId || null;
+  const intentType = record.intent?.intentType || null;
+  const metadata = record.intent?.metadata || {};
+  const explicitOutputToken = intentType === "dex_swap" || intentType === "unwrap_native"
+    ? metadata.outputToken
+    : null;
+  const explicitAssetAddress = intentType === "erc4626_redeem" ? metadata.assetAddress : null;
+  const token = explicitOutputToken ||
+    explicitAssetAddress ||
+    (
+      strategyId === WRAPPED_BTC_LOOP_STRATEGY_ID &&
+        chain === "base" &&
+        intentType === "risk_unwind" &&
+        metadata.kind === "withdraw_initial_collateral"
+        ? BASE_CBBTC_TOKEN
+        : strategyId === WRAPPED_BTC_LOOP_STRATEGY_ID &&
+          chain === "base" &&
+          intentType === "risk_unwind" &&
+          metadata.kind === "swap_collateral_to_repay_asset"
+          ? BASE_USDC_TOKEN
+        : null
+    );
+  if (!token) return null;
+  const asset = tokenAsset(chain, token);
+  return {
+    chain,
+    token: normalized(token),
+    ticker: normalized(asset.ticker),
+  };
+}
+
+function signerOutputAttributionCandidates(signerAuditRecords = []) {
+  return signerAuditRecords
+    .filter((record) => record.lifecycle?.stage === "confirmed")
+    .filter((record) => signerTxHash(record))
+    .map((record) => {
+      const asset = signerConfirmedOutputAsset(record);
+      if (!asset) return null;
+      return {
+        sourceFile: "logs/signer-audit.jsonl",
+        observedAt: observedAt(record),
+        observedAtMs: observedAtMs(record),
+        txHash: signerTxHash(record),
+        chain: asset.chain,
+        token: asset.token,
+        ticker: asset.ticker,
+        outputUsd: finiteNumber(record.amountUsd ?? record.intent?.amountUsd ?? record.intent?.metadata?.capCheckAmountUsd),
+        kind: record.intent?.intentType || null,
+        strategyId: record.strategyId || record.intent?.strategyId || record.intent?.metadata?.capStrategyId || null,
+        routeKey: record.intent?.metadata?.routeKey || null,
+        category: "internal_strategy_output",
+        confidence: "tx_attributed_signer_strategy_output",
+        matchReason: "signer_output_matches_inbound_chain_token_and_snapshot_window",
+        timeToleranceMs: SIGNER_SNAPSHOT_SKEW_MS,
+      };
+    })
+    .filter(Boolean);
 }
 
 function candidateMatchesInbound(event = {}, candidate = {}) {
@@ -146,11 +219,13 @@ function candidateMatchesInbound(event = {}, candidate = {}) {
   const eventToken = normalized(event.token);
   const eventTicker = normalized(event.ticker);
   if (eventToken && candidate.token && eventToken !== candidate.token) return false;
+  if (eventToken && !candidate.token) return false;
   if (!eventToken && eventTicker && candidate.ticker && eventTicker !== candidate.ticker) return false;
   const previousMs = timestampMs(event.previousObservedAt);
   const observedMs = timestampMs(event.observedAt);
-  if (previousMs && candidate.observedAtMs && candidate.observedAtMs < previousMs) return false;
-  if (observedMs && candidate.observedAtMs && candidate.observedAtMs > observedMs) return false;
+  const toleranceMs = Number.isFinite(candidate.timeToleranceMs) ? candidate.timeToleranceMs : 0;
+  if (previousMs && candidate.observedAtMs && candidate.observedAtMs < previousMs - toleranceMs) return false;
+  if (observedMs && candidate.observedAtMs && candidate.observedAtMs > observedMs + toleranceMs) return false;
   return true;
 }
 
@@ -168,8 +243,8 @@ function matchInboundAttribution(event = {}, candidates = []) {
 
 function inboundRow(event = {}, attribution = null) {
   const txHash = event.txHash || attribution?.txHash || null;
-  const category = attribution ? "internal_route_output" : event.txHash ? "external_or_internal_inbound_tx" : "inbound_inventory_diff";
-  const confidence = attribution ? "tx_attributed_internal_route_output" : event.txHash ? "tx_attributed" : "balance_diff_not_tx_attributed";
+  const category = attribution?.category || (event.txHash ? "external_or_internal_inbound_tx" : "inbound_inventory_diff");
+  const confidence = attribution?.confidence || (event.txHash ? "tx_attributed" : "balance_diff_not_tx_attributed");
   return {
     schemaVersion: 1,
     ledgerRowId: `inbound:${event.eventId || event.txHash || event.observedAt || "unknown"}`,
@@ -179,10 +254,11 @@ function inboundRow(event = {}, attribution = null) {
     chain: event.chain || null,
     txHash,
     eventId: event.eventId || null,
-    strategyId: null,
+    strategyId: attribution?.strategyId || null,
     kind: event.kind || "inbound",
     category,
     confidence,
+    token: event.token || null,
     ticker: event.ticker || null,
     amountDecimal: finiteNumber(event.amountDecimal),
     inputUsd: null,
@@ -197,9 +273,10 @@ function inboundRow(event = {}, attribution = null) {
       txHash: attribution.txHash,
       observedAt: attribution.observedAt,
       kind: attribution.kind,
+      strategyId: attribution.strategyId || null,
       routeKey: attribution.routeKey,
       outputUsd: attribution.outputUsd,
-      matchReason: "receipt_output_matches_inbound_chain_token_and_snapshot_window",
+      matchReason: attribution.matchReason,
     } : null,
   };
 }
@@ -273,7 +350,10 @@ export function buildTransactionLedger({
       return txHash && !receiptTxHashes.has(String(txHash).toLowerCase());
     })
     .map(signerRevertRow);
-  const inboundAttributionCandidates = receiptOutputAttributionCandidates(receiptRecords);
+  const inboundAttributionCandidates = [
+    ...receiptOutputAttributionCandidates(receiptRecords),
+    ...signerOutputAttributionCandidates(signerAuditRecords),
+  ];
   const inboundRows = inboundEvents.map((event) => inboundRow(event, matchInboundAttribution(event, inboundAttributionCandidates)));
   const offrampRows = gatewayOfframpRecords.map(gatewayOfframpRow);
   const rows = [...receiptRows, ...revertRows, ...inboundRows, ...offrampRows]
@@ -285,7 +365,7 @@ export function buildTransactionLedger({
   const totalCostUsd = rows.reduce((sum, row) => sum + (finiteNumber(row.costUsd) ?? 0), 0);
   const receiptGasUsd = receiptRows.reduce((sum, row) => sum + (finiteNumber(row.receiptGasUsd) ?? 0), 0);
   const inboundDiffUsd = inboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0);
-  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed");
+  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed_signer_strategy_output" || row.confidence === "tx_attributed");
   const unattributedInboundRows = inboundRows.filter((row) => row.confidence === "balance_diff_not_tx_attributed");
 
   return Object.freeze({
