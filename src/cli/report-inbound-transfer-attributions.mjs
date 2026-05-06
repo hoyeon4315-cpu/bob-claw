@@ -94,6 +94,7 @@ async function main() {
     gatewayOfframpRecords,
     inboundEvents,
     existingAttributions,
+    nativeTransactionRecords,
   ] = await Promise.all([
     readOptionalJsonl(config.dataDir, "whole-wallet-inventory"),
     readOptionalJsonl(config.dataDir, "receipt-reconciliations"),
@@ -101,6 +102,7 @@ async function main() {
     readOptionalJsonl(config.dataDir, "gateway-btc-offramp-executions"),
     readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-events"),
     readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-transfer-attributions"),
+    readOptionalJsonl(`${config.dataDir}/treasury`, "inbound-native-transfer-history"),
   ]);
   const unattributedEventIds = args.allCandidates
     ? null
@@ -118,6 +120,7 @@ async function main() {
   const report = await buildInboundTransferAttributionReport({
     inboundEvents: candidateInboundEvents,
     existingAttributions,
+    nativeTransactionRecords,
     limit: args.limit,
     eventId: args.eventId,
   });

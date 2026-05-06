@@ -3,6 +3,7 @@ import { ZERO_TOKEN } from "../assets/tokens.mjs";
 import { getEvmChainConfig } from "../config/chains.mjs";
 import { rpc } from "../evm/json-rpc.mjs";
 import {
+  attributeInboundNativeEventFromTransactions,
   attributeInboundEventFromTransferLogs,
   buildErc20InboundTransferFilter,
 } from "./evm-transfer-attribution.mjs";
@@ -39,6 +40,10 @@ function isZeroToken(token) {
   return normalized(token) === normalized(ZERO_TOKEN);
 }
 
+function isNativeInboundEvent(event = {}) {
+  return event.kind === "native" && isZeroToken(event.token);
+}
+
 function attributionKey(record = {}) {
   return [
     record.eventId || "",
@@ -62,9 +67,8 @@ export function inboundTransferAttributionCandidates({
   return inboundEvents
     .filter((event) => event && !event.txHash)
     .filter((event) => event.eventId && !existingEventIds.has(event.eventId))
-    .filter((event) => event.kind !== "native")
     .filter((event) => event.address)
-    .filter((event) => event.token && !isZeroToken(event.token))
+    .filter((event) => event.token && (event.kind === "native" ? isNativeInboundEvent(event) : !isZeroToken(event.token)))
     .filter((event) => event.amount !== null && event.amount !== undefined && event.amount !== "")
     .filter((event) => Boolean(chainConfigFor(normalized(event.chain))))
     .sort((left, right) =>
@@ -201,6 +205,7 @@ export async function fetchErc20TransferLogsChunked({
 export async function buildInboundTransferAttributionReport({
   inboundEvents = [],
   existingAttributions = [],
+  nativeTransactionRecords = [],
   chainConfigFor = getEvmChainConfig,
   rpcImpl = rpc,
   blockWindowResolver = resolveInboundEventBlockWindow,
@@ -221,6 +226,29 @@ export async function buildInboundTransferAttributionReport({
     const chainConfig = chainConfigFor(chain);
     const rpcUrls = chainConfig?.rpcUrls || [chainConfig?.rpcUrl].filter(Boolean);
     try {
+      if (isNativeInboundEvent(event)) {
+        const record = attributeInboundNativeEventFromTransactions({
+          event,
+          transactions: nativeTransactionRecords.filter((tx) => normalized(tx.chain) === chain),
+          operatorAddress: event.address,
+          sourceFile: "data/treasury/inbound-native-transfer-history.jsonl",
+        });
+        if (record) {
+          const key = attributionKey(record);
+          if (!existingKeys.has(key)) {
+            records.push(record);
+            existingKeys.add(key);
+          }
+        } else {
+          misses.push({
+            eventId: event.eventId,
+            chain,
+            token: normalized(event.token),
+            reason: "native_transfer_history_missing_or_no_exact_match",
+          });
+        }
+        continue;
+      }
       const { result } = await firstSuccessfulRpcCall({
         rpcUrls,
         method: "eth_chainId",

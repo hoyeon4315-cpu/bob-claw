@@ -176,6 +176,55 @@ test("transaction ledger refuses transfer-log attribution when amount does not m
   assert.equal(ledger.summary.unattributedInboundCount, 1);
 });
 
+test("transaction ledger attributes native inbound balance diffs to native transfer history records", () => {
+  const ledger = buildTransactionLedger({
+    transferAttributionRecords: [
+      {
+        eventId: "evt-native",
+        observedAt: "2026-05-01T00:01:30.000Z",
+        chain: "sei",
+        token: "0x0000000000000000000000000000000000000000",
+        txHash: "0xnative",
+        blockNumber: 1110,
+        transactionIndex: 3,
+        from: "0x1111111111111111111111111111111111111111",
+        to: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+        amount: "2035889450612546048",
+        amountDecimal: 2.035889450612546,
+        estimatedUsd: 0.12348687462690398,
+        sourceFile: "explorer:sei:account_txs",
+        confidence: "tx_attributed_native_transfer_history",
+      },
+    ],
+    inboundEvents: [
+      {
+        observedAt: "2026-05-01T00:02:00.000Z",
+        previousObservedAt: "2026-05-01T00:00:00.000Z",
+        eventId: "evt-native",
+        chain: "sei",
+        token: "0x0000000000000000000000000000000000000000",
+        ticker: "SEI",
+        kind: "native",
+        amount: "2035889450612546048",
+        amountDecimal: 2.035889450612546,
+        estimatedUsd: 0.12348687462690398,
+        txHash: null,
+        detectionSource: "treasury_inventory_diff",
+      },
+    ],
+  });
+
+  const inbound = ledger.rows.find((row) => row.rowType === "inbound_event");
+  assert.equal(inbound.txHash, "0xnative");
+  assert.equal(inbound.category, "external_or_internal_inbound_tx");
+  assert.equal(inbound.confidence, "tx_attributed_native_transfer_history");
+  assert.equal(inbound.attribution.sourceFile, "explorer:sei:account_txs");
+  assert.equal(inbound.attribution.matchReason, "native_transfer_history_matches_inbound_event_id_chain_token_and_amount");
+  assert.equal(inbound.attribution.transactionIndex, 3);
+  assert.equal(ledger.summary.attributedInboundCount, 1);
+  assert.equal(ledger.summary.unattributedInboundCount, 0);
+});
+
 test("transaction ledger attributes inbound balance diffs to matching receipt outputs", () => {
   const ledger = buildTransactionLedger({
     receiptRecords: [

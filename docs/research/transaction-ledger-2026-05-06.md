@@ -108,6 +108,7 @@ The ledger combines:
 - `data/gateway-btc-offramp-executions.jsonl`
 - `data/treasury/inbound-events.jsonl`
 - `data/treasury/inbound-transfer-attributions.jsonl` when present locally
+- `data/treasury/inbound-native-transfer-history.jsonl` when present locally
 - `data/whole-wallet-inventory.jsonl`
 
 Receipt rows are the strongest cost evidence because they include tx hash,
@@ -124,6 +125,8 @@ row when either:
 - a matching ERC20 `Transfer` log is found through read-only RPC `eth_getLogs`
   for the same event id, chain, token, recipient, and exact raw amount
   (`external_or_internal_inbound_tx`),
+- a matching native transaction-history row is imported for the same chain,
+  recipient, and exact raw amount (`external_or_internal_inbound_tx`),
 - a reconciled receipt output matches the inbound row's chain, token, and
   snapshot window (`internal_route_output`), or
 - a confirmed signer-audit row has an output-producing intent with a safe token
@@ -160,7 +163,9 @@ The unresolved value is now small and mostly explainability cleanup:
 - Avalanche `wBTC.OFT`, about `0.78` USD: no exact Transfer log found in the
   balance-diff window through the current public RPC path.
 - Sei native `SEI`, about `0.12` USD: native asset, not covered by ERC20
-  Transfer logs.
+  Transfer logs. The ledger now has an exact native-history matcher, but the
+  local `data/treasury/inbound-native-transfer-history.jsonl` source does not
+  yet contain a matching account-history row.
 - Bera and Soneium USDC rows: amount is null in the original inventory diff, so
   automatic exact Transfer matching intentionally skips them.
 
@@ -176,10 +181,11 @@ full historical RPC audit.
 
 ## Remaining Work
 
-The next improvement is native-asset and explorer-style transaction-history
-attribution for the remaining unattributed rows:
+The next improvement is explorer/indexer ingestion for the remaining
+unattributed rows:
 
-- Native transfer attribution for SEI and future native assets.
+- Fetch or import native account history for SEI and future native assets into
+  `data/treasury/inbound-native-transfer-history.jsonl`.
 - Explorer or archive-node fallback for chains whose public RPC misses
   Gateway-style mint logs in a historical window.
 - A structured `manual_adjustment` proof type for cases where a protocol UI

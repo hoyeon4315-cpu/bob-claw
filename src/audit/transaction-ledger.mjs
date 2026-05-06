@@ -156,30 +156,36 @@ function receiptOutputAttributionCandidates(receiptRecords = []) {
 function transferAttributionCandidates(transferAttributionRecords = []) {
   return transferAttributionRecords
     .filter((record) => record.eventId && record.txHash)
-    .map((record) => ({
-      sourceFile: record.sourceFile || "data/treasury/inbound-transfer-attributions.jsonl",
-      observedAt: observedAt(record),
-      observedAtMs: observedAtMs(record),
-      txHash: record.txHash,
-      chain: normalized(record.chain),
-      token: normalized(record.token),
-      ticker: normalized(record.ticker),
-      outputUsd: finiteNumber(record.estimatedUsd ?? record.actualOutputUsd),
-      amount: record.amount === null || record.amount === undefined ? null : String(record.amount),
-      amountDecimal: finiteNumber(record.amountDecimal),
-      eventId: record.eventId,
-      kind: record.kind || "erc20_transfer",
-      strategyId: record.strategyId || null,
-      routeKey: record.routeKey || null,
-      category: "external_or_internal_inbound_tx",
-      confidence: "tx_attributed_erc20_transfer_log",
-      matchReason: "erc20_transfer_log_matches_inbound_event_id_chain_token_and_amount",
-      timeToleranceMs: SIGNER_SNAPSHOT_SKEW_MS,
-      blockNumber: record.blockNumber ?? null,
-      logIndex: record.logIndex ?? null,
-      from: record.from || null,
-      to: record.to || null,
-    }))
+    .map((record) => {
+      const confidence = record.confidence || "tx_attributed_erc20_transfer_log";
+      return {
+        sourceFile: record.sourceFile || "data/treasury/inbound-transfer-attributions.jsonl",
+        observedAt: observedAt(record),
+        observedAtMs: observedAtMs(record),
+        txHash: record.txHash,
+        chain: normalized(record.chain),
+        token: normalized(record.token),
+        ticker: normalized(record.ticker),
+        outputUsd: finiteNumber(record.estimatedUsd ?? record.actualOutputUsd),
+        amount: record.amount === null || record.amount === undefined ? null : String(record.amount),
+        amountDecimal: finiteNumber(record.amountDecimal),
+        eventId: record.eventId,
+        kind: record.kind || (confidence === "tx_attributed_native_transfer_history" ? "native_transfer" : "erc20_transfer"),
+        strategyId: record.strategyId || null,
+        routeKey: record.routeKey || null,
+        category: "external_or_internal_inbound_tx",
+        confidence,
+        matchReason: confidence === "tx_attributed_native_transfer_history"
+          ? "native_transfer_history_matches_inbound_event_id_chain_token_and_amount"
+          : "erc20_transfer_log_matches_inbound_event_id_chain_token_and_amount",
+        timeToleranceMs: SIGNER_SNAPSHOT_SKEW_MS,
+        blockNumber: record.blockNumber ?? null,
+        logIndex: record.logIndex ?? null,
+        transactionIndex: record.transactionIndex ?? null,
+        from: record.from || null,
+        to: record.to || null,
+      };
+    })
     .filter((candidate) => candidate.chain && candidate.token);
 }
 
@@ -311,6 +317,7 @@ function inboundRow(event = {}, attribution = null) {
       matchReason: attribution.matchReason,
       blockNumber: attribution.blockNumber ?? null,
       logIndex: attribution.logIndex ?? null,
+      transactionIndex: attribution.transactionIndex ?? null,
       from: attribution.from || null,
       to: attribution.to || null,
     } : null,
@@ -403,7 +410,7 @@ export function buildTransactionLedger({
   const totalCostUsd = rows.reduce((sum, row) => sum + (finiteNumber(row.costUsd) ?? 0), 0);
   const receiptGasUsd = receiptRows.reduce((sum, row) => sum + (finiteNumber(row.receiptGasUsd) ?? 0), 0);
   const inboundDiffUsd = inboundRows.reduce((sum, row) => sum + (finiteNumber(row.actualOutputUsd) ?? 0), 0);
-  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed_signer_strategy_output" || row.confidence === "tx_attributed_erc20_transfer_log" || row.confidence === "tx_attributed");
+  const attributedInboundRows = inboundRows.filter((row) => row.confidence === "tx_attributed_internal_route_output" || row.confidence === "tx_attributed_signer_strategy_output" || row.confidence === "tx_attributed_erc20_transfer_log" || row.confidence === "tx_attributed_native_transfer_history" || row.confidence === "tx_attributed");
   const unattributedInboundRows = inboundRows.filter((row) => row.confidence === "balance_diff_not_tx_attributed");
 
   return Object.freeze({

@@ -25,10 +25,19 @@ function bigintFromHex(value) {
   return BigInt(value);
 }
 
+function bigintFromQuantity(value) {
+  if (value === undefined || value === null || value === "") return 0n;
+  return BigInt(value);
+}
+
 function finiteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function isZeroToken(value) {
+  return /^0x0{40}$/u.test(normalizeHex(value));
 }
 
 export function addressTopic(address) {
@@ -122,5 +131,64 @@ export function attributeInboundEventFromTransferLogs({
     estimatedUsd: finiteNumber(event.estimatedUsd),
     sourceFile,
     confidence: "tx_attributed_erc20_transfer_log",
+  };
+}
+
+export function normalizeNativeTransferTransaction({ chain, tx } = {}) {
+  if (!tx) return null;
+  const to = normalizeHex(tx.to);
+  const from = normalizeHex(tx.from);
+  const value = bigintFromQuantity(tx.value);
+  if (!tx.hash || !to || value <= 0n) return null;
+  return {
+    chain: String(chain || "").trim().toLowerCase(),
+    txHash: tx.hash,
+    blockNumber: numberFromHex(tx.blockNumber),
+    transactionIndex: numberFromHex(tx.transactionIndex),
+    from,
+    to,
+    amount: value.toString(),
+  };
+}
+
+export function attributeInboundNativeEventFromTransactions({
+  event,
+  transactions = [],
+  operatorAddress,
+  sourceFile = "explorer:account_txs",
+} = {}) {
+  const eventChain = String(event?.chain || "").trim().toLowerCase();
+  const eventToken = normalizeHex(event?.token);
+  const eventAmount = event?.amount === undefined || event?.amount === null ? null : String(event.amount);
+  if (!isZeroToken(eventToken) || eventAmount === null) return null;
+  const operator = normalizeHex(operatorAddress);
+  const matches = transactions
+    .map((tx) => normalizeNativeTransferTransaction({ chain: eventChain, tx }))
+    .filter(Boolean)
+    .filter((tx) => tx.chain === eventChain)
+    .filter((tx) => tx.to === operator)
+    .filter((tx) => tx.amount === eventAmount);
+  if (matches.length === 0) return null;
+  const match = [...matches].sort((left, right) => {
+    return (left.blockNumber ?? 0) - (right.blockNumber ?? 0) ||
+      (left.transactionIndex ?? 0) - (right.transactionIndex ?? 0) ||
+      String(left.txHash).localeCompare(String(right.txHash));
+  })[0];
+  return {
+    schemaVersion: 1,
+    eventId: event.eventId || null,
+    observedAt: event.observedAt || null,
+    chain: eventChain,
+    token: eventToken,
+    txHash: match.txHash,
+    blockNumber: match.blockNumber,
+    transactionIndex: match.transactionIndex,
+    from: match.from,
+    to: match.to,
+    amount: match.amount,
+    amountDecimal: finiteNumber(event.amountDecimal),
+    estimatedUsd: finiteNumber(event.estimatedUsd),
+    sourceFile,
+    confidence: "tx_attributed_native_transfer_history",
   };
 }

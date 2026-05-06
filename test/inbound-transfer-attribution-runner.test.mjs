@@ -117,6 +117,64 @@ test("buildInboundTransferAttributionReport records misses without inventing att
   assert.equal(report.misses[0].eventId, "evt-transfer");
 });
 
+test("buildInboundTransferAttributionReport attributes native events from imported tx history", async () => {
+  const report = await buildInboundTransferAttributionReport({
+    chainConfigFor,
+    inboundEvents: [inboundEvent({
+      eventId: "evt-native",
+      chain: "base",
+      kind: "native",
+      token: "0x0000000000000000000000000000000000000000",
+      amount: "2035889450612546048",
+      amountDecimal: 2.035889450612546,
+      estimatedUsd: 0.12348687462690398,
+    })],
+    nativeTransactionRecords: [
+      {
+        chain: "base",
+        hash: "0xnative",
+        from: SENDER,
+        to: OPERATOR,
+        value: "0x1c40eeab31b9da00",
+        blockNumber: "0x456",
+        transactionIndex: "0x3",
+        sourceFile: "data/treasury/inbound-native-transfer-history.jsonl",
+      },
+    ],
+    rpcImpl: async () => {
+      throw new Error("native history attribution should not call RPC");
+    },
+  });
+
+  assert.equal(report.summary.candidateEventCount, 1);
+  assert.equal(report.summary.attributedCount, 1);
+  assert.equal(report.records[0].eventId, "evt-native");
+  assert.equal(report.records[0].txHash, "0xnative");
+  assert.equal(report.records[0].confidence, "tx_attributed_native_transfer_history");
+});
+
+test("buildInboundTransferAttributionReport records native misses when history is absent", async () => {
+  const report = await buildInboundTransferAttributionReport({
+    chainConfigFor,
+    inboundEvents: [inboundEvent({
+      eventId: "evt-native",
+      chain: "base",
+      kind: "native",
+      token: "0x0000000000000000000000000000000000000000",
+      amount: "2035889450612546048",
+    })],
+  });
+
+  assert.equal(report.summary.attributedCount, 0);
+  assert.equal(report.summary.missCount, 1);
+  assert.deepEqual(report.misses[0], {
+    eventId: "evt-native",
+    chain: "base",
+    token: "0x0000000000000000000000000000000000000000",
+    reason: "native_transfer_history_missing_or_no_exact_match",
+  });
+});
+
 test("fetchErc20TransferLogsChunked respects RPC block range limits", async () => {
   const ranges = [];
   const logs = await fetchErc20TransferLogsChunked({
