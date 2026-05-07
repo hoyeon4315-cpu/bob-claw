@@ -195,6 +195,7 @@ function createPriceReader(options = {}) {
   const readPrice = async ({ token, symbol, chain } = {}) => {
     if (STABLE_SYMBOLS.has(String(symbol || "").toUpperCase())) return 1;
     const priceKey = inferPriceKey({ token, symbol, chain });
+    if (priceKey === "usd_stable") return 1;
     if (!priceKey) {
       throw new Error(`No price reader configured for ${symbol || token || "unknown token"} on ${chain || "unknown chain"}`);
     }
