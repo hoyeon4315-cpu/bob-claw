@@ -1,21 +1,74 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { readLatestJsonlRecord } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
-import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
+import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 
-function parseArgs(argv) {
+const IS_MAIN = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
+
+export function parseArgs(argv) {
   return {
     json: argv.includes("--json"),
     write: argv.includes("--write"),
   };
 }
 
+export async function loadStrategyExecutionSurfaceInputs({
+  dataDir = config.dataDir,
+  readSignerAuditLogImpl = readSignerAuditLog,
+  readTriangleArtifactsImpl = readTriangleArtifacts,
+} = {}) {
+  const [
+    dashboardStatus,
+    scoreSnapshot,
+    triangleArtifacts,
+    phase3StrategyValidation,
+    wrappedBtcLendingLoopSlice,
+    latestTreasuryInventory,
+    wrappedBtcLoopLiveProof,
+    signerAuditRecords,
+    merklCanaryQueue,
+    autonomousDiscoveryBoard,
+  ] = await Promise.all([
+    readJsonIfExists(join(dataDir, "dashboard-status.json")),
+    readJsonIfExists(join(dataDir, "gateway-scores.json")),
+    readTriangleArtifactsImpl(dataDir),
+    readJsonIfExists(join(dataDir, "phase3-strategy-validation.json")),
+    readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-slice.json")),
+    readLatestJsonlRecord(dataDir, "treasury-inventory"),
+    readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
+    readSignerAuditLogImpl(),
+    readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
+    readJsonIfExists(join(dataDir, "autonomous-discovery-board.json")),
+  ]);
+
+  return {
+    dashboardStatus,
+    state: {
+      scoreSnapshot,
+    },
+    triangleArtifacts,
+    artifacts: {
+      phase3StrategyValidation,
+      wrappedBtcLendingLoopSlice,
+      treasuryInventoryRecords: latestTreasuryInventory ? [latestTreasuryInventory] : [],
+      wrappedBtcLoopLiveProof,
+      signerAuditRecords,
+      merklCanaryQueue,
+      autonomousDiscoveryBoard,
+    },
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { state, dashboardStatus, triangleArtifacts, artifacts } = await buildCurrentDashboardContext();
+  const { state, dashboardStatus, triangleArtifacts, artifacts } = await loadStrategyExecutionSurfaceInputs();
   const report = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
 
   if (args.write) {
@@ -49,7 +102,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (IS_MAIN) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

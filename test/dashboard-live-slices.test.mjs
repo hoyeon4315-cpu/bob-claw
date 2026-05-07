@@ -386,6 +386,40 @@ test("all-chain autopilot truth prefers newer running progress over stale comple
   assert.equal(resolved?.summary?.refillExecutedCount, 1);
 });
 
+test("all-chain autopilot dashboard slice asks operator to wait while a run is active", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-06T18:20:00.000Z",
+    mode: "execute",
+    status: "running",
+    phase: "refill_complete",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 2,
+      autoRefillJobCount: 2,
+      refillAttemptedCount: 1,
+      refillExecutedCount: 1,
+      canarySweep: { status: "running", executedCount: 1, deliveredCount: 1, blockedCount: 0, chainsTouched: ["base"] },
+      strategyDispatch: { batchStatus: "succeeded", selectedCount: 1, successCount: 1, failedCount: 0, liveEligibleCount: 1, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        chain: "base",
+        asset: "cbBTC",
+        selectedExecutionMethod: "same_chain_token_to_token_swap",
+        previewBlockedReason: "max_consecutive_failures_reached",
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.activeRun, true);
+  assert.equal(slice.phase, "refill_complete");
+  assert.equal(slice.nextAction, "await_all_chain_autopilot_completion");
+});
+
 test("Merkl active positions aggregate open live-capital entries", () => {
   const slice = buildMerklActivePositions(
     [

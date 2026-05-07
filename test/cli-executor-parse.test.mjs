@@ -474,6 +474,73 @@ test("full automation readiness ignores deterministic LiFi native gas refill def
   assert.deepEqual(report.blockers, []);
 });
 
+test("full automation readiness surfaces active all-chain autopilot runs as wait state", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 1 },
+        jobs: [{ requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 4 },
+      executionSurfaces: { summary: { liveEligibleCount: 1 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+          nextAction: null,
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      activeRun: true,
+      phase: "refill_complete",
+      status: "running",
+      nextAction: "await_all_chain_autopilot_completion",
+      refill: {
+        blockedCount: 1,
+        unresolvedCount: 1,
+        blockers: [
+          {
+            reason: "max_consecutive_failures_reached",
+            chain: "base",
+            asset: "cbBTC",
+            selectedMethod: "same_chain_token_to_token_swap",
+          },
+        ],
+        attemptedCount: 1,
+        executedCount: 0,
+      },
+    },
+  });
+
+  assert.equal(report.ready, false);
+  assert.equal(report.liveAutomation.activeRun, true);
+  assert.equal(report.liveAutomation.phase, "refill_complete");
+  assert.equal(report.liveAutomation.ready, false);
+  assert.equal(report.liveAutomation.nextAction, "await_all_chain_autopilot_completion");
+  assert.deepEqual(report.blockers, ["all_chain_autopilot_running"]);
+});
+
 test("manage-executor-launchd parseArgs reads install and path overrides", () => {
   const args = parseLaunchdArgs([
     "--json",

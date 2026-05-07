@@ -9,6 +9,12 @@ import { buildExecutorLaunchAgentSpecs, readLaunchAgentStatus } from "./launchd.
 
 const DEFAULT_HEARTBEAT_PATH = "./state/executor-heartbeat.json";
 const DEFAULT_WATCHDOG_TTL_MS = 60_000;
+const REQUIRED_LAUNCHD_ENV_KEYS = new Set([
+  "BURNER_EVM_KEY_PATH",
+  "BURNER_PRIVATE_KEY_PATH",
+  "BURNER_BTC_KEY_PATH",
+  "KILL_SWITCH_PATH",
+]);
 
 function envValue(env, name, fallback = undefined) {
   const value = env?.[name];
@@ -180,6 +186,12 @@ export function summarizeExecutorRuntimeReadiness({
 
   const envReady = missingEnv.length === 0 && insecureFiles.length === 0;
   const launchdConfigured = launchdStatuses.every((status) => status.plistPresent);
+  const launchdMissingEnv = launchdStatuses.flatMap((status) =>
+    (status.missingEnvironmentKeys || [])
+      .filter((key) => REQUIRED_LAUNCHD_ENV_KEYS.has(key))
+      .map((key) => `${status.id}:${key}`),
+  );
+  const launchdEnvReady = launchdMissingEnv.length === 0;
   const launchdLoaded = launchdStatuses.every((status) => status.loaded);
   const runtimeHealthy = runtime?.available === true && runtime?.runtimeStatus === "healthy";
 
@@ -190,6 +202,9 @@ export function summarizeExecutorRuntimeReadiness({
   } else if (!launchdConfigured) {
     nextActionCode = "write_launchd_agents";
     nextActionCommand = "npm run ops:launchd:write";
+  } else if (!launchdEnvReady) {
+    nextActionCode = "install_launchd_agents";
+    nextActionCommand = "npm run ops:launchd:install";
   } else if (!launchdLoaded) {
     nextActionCode = "install_launchd_agents";
     nextActionCommand = "npm run ops:launchd:install";
@@ -199,9 +214,11 @@ export function summarizeExecutorRuntimeReadiness({
   }
 
   return {
-    ready: envReady && launchdConfigured && launchdLoaded && runtimeHealthy,
+    ready: envReady && launchdConfigured && launchdEnvReady && launchdLoaded && runtimeHealthy,
     envReady,
     launchdConfigured,
+    launchdEnvReady,
+    launchdMissingEnv,
     launchdLoaded,
     runtimeHealthy,
     missingEnv,

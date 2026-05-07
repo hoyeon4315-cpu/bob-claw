@@ -168,6 +168,7 @@ function buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payba
 
 function nextActionFor(slice) {
   if (!slice.present) return "run_all_chain_autopilot";
+  if (slice.activeRun) return "await_all_chain_autopilot_completion";
   if (slice.refill.unresolvedCount > 0) return "resolve_refill_routes";
   if (slice.payback.reason === "reserve_asset_missing") return "restore_payback_reserve";
   if (slice.portfolio.status === "positions_opened") return "monitor_live_positions";
@@ -183,7 +184,9 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       present: false,
       observedAt: null,
       mode: null,
+      phase: null,
       status: "missing",
+      activeRun: false,
       blockedReason: null,
       officialChainCount: 0,
       canary: {
@@ -243,7 +246,9 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
     present: true,
     observedAt: report.observedAt || null,
     mode: report.mode || null,
+    phase: report.phase || null,
     status: report.status || null,
+    activeRun: report.status === "running",
     blockedReason: report.blockedReason || null,
     officialChainCount: summary.officialChainCount ?? report.chains?.length ?? 0,
     canary: {

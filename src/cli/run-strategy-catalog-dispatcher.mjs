@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
-import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
+import { loadStrategyExecutionSurfaceInputs } from "./report-strategy-execution-surfaces.mjs";
 import { buildStrategyDispatchPlanningBridge } from "../session/strategy-dispatch-planning-bridge.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 import { buildStrategyDispatchSummary, executeStrategyDispatch } from "../session/strategy-dispatch-runner.mjs";
 import { defaultRunCommand as runRefreshCommand } from "../session/shadow-refresh-runner.mjs";
 
-function parseArgs(argv) {
+const IS_MAIN = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
+
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
     argv
@@ -34,6 +37,19 @@ function parseArgs(argv) {
     scope: options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [],
     bucket: options.bucket ? options.bucket.split(",").map((item) => item.trim()).filter(Boolean) : [],
   };
+}
+
+export async function loadStrategyCatalogDispatchInputs({
+  loadStrategyExecutionSurfaceInputsImpl = loadStrategyExecutionSurfaceInputs,
+  dataDir = config.dataDir,
+} = {}) {
+  const { state, dashboardStatus, triangleArtifacts, artifacts } = await loadStrategyExecutionSurfaceInputsImpl({ dataDir });
+  const executionSurfaces = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
+  const planningBridge = buildStrategyDispatchPlanningBridge({
+    autonomousDiscoveryBoard: artifacts.autonomousDiscoveryBoard || null,
+    executionSurfaces,
+  });
+  return { executionSurfaces, planningBridge };
 }
 
 function compactDispatchOutput(output = {}) {
@@ -87,12 +103,7 @@ function stripVolatile(value) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { state, dashboardStatus, triangleArtifacts, artifacts } = await buildCurrentDashboardContext();
-  const executionSurfaces = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
-  const planningBridge = buildStrategyDispatchPlanningBridge({
-    autonomousDiscoveryBoard: artifacts.autonomousDiscoveryBoard || null,
-    executionSurfaces,
-  });
+  const { executionSurfaces, planningBridge } = await loadStrategyCatalogDispatchInputs();
   let strategies = executionSurfaces.strategies || [];
   if (args.scope.length) {
     const scopeSet = new Set(args.scope);
@@ -186,11 +197,13 @@ async function main() {
   console.log(`dispatchSummary runs=${summary.runCount} success=${summary.successCount} failed=${summary.failureCount} preview=${summary.previewCount}`);
 }
 
-main()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error(error.stack || error.message);
-    process.exit(1);
-  });
+if (IS_MAIN) {
+  main()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error(error.stack || error.message);
+      process.exit(1);
+    });
+}

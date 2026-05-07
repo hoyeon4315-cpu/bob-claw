@@ -158,3 +158,49 @@ test("readLaunchAgentStatus distinguishes configured services from loaded servic
   assert.equal(loaded.running, true);
   assert.equal(loaded.pid, 4242);
 });
+
+test("readLaunchAgentStatus reports environment keys missing from a stale plist", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-launchd-env-"));
+  const plistPath = join(dir, "com.bobclaw.executor-daemon.plist");
+  await writeFile(
+    plistPath,
+    [
+      "<plist>",
+      "<dict>",
+      "<key>EnvironmentVariables</key>",
+      "<dict>",
+      "<key>PATH</key>",
+      "<string>/usr/bin:/bin</string>",
+      "</dict>",
+      "</dict>",
+      "</plist>",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const status = await readLaunchAgentStatus(
+    {
+      id: "daemon",
+      label: "com.bobclaw.executor-daemon",
+      plistPath,
+      environmentVariables: {
+        PATH: "/usr/bin:/bin",
+        BURNER_EVM_KEY_PATH: "/keys/evm",
+        BURNER_BTC_KEY_PATH: "/keys/btc",
+      },
+    },
+    {
+      uid: 501,
+      launchctlRunner: () => ({
+        status: 0,
+        stdout: "state = running\npid = 4242\nlast exit code = 0\n",
+        stderr: "",
+        error: null,
+      }),
+    },
+  );
+
+  assert.equal(status.status, "loaded_running");
+  assert.deepEqual(status.missingEnvironmentKeys, ["BURNER_EVM_KEY_PATH", "BURNER_BTC_KEY_PATH"]);
+});

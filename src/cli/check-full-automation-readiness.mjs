@@ -139,10 +139,12 @@ export function buildFullAutomationReadiness({
   const paybackReason = payback?.payback?.scheduler?.reason || null;
   const paybackIsolationReady = ingressIsolationReady;
   const liveAutomationObserved = autopilot?.present === true;
+  const activeLiveAutomationRun = autopilot?.activeRun === true;
   const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || []);
   const refillIssueCounts = countByCategory(refillBlockers);
   const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
   const unresolvedRefillRoutes = liveAutomationObserved &&
+    !activeLiveAutomationRun &&
     (refillBlockers.length > 0
       ? refillBlockers.some((item) => refillNeedsLiveRemediation(item))
       : (autopilot?.refill?.blockedCount ?? 0) > 0);
@@ -160,6 +162,7 @@ export function buildFullAutomationReadiness({
     ...(capitalAutomationReady ? [] : ["capital_rebalancer_not_ready"]),
     ...(dispatchReady ? [] : ["strategy_dispatch_not_ready"]),
     ...(paybackIsolationReady ? [] : ["payback_isolation_not_ready"]),
+    ...(activeLiveAutomationRun ? ["all_chain_autopilot_running"] : []),
     ...(unresolvedRefillRoutes ? ["refill_routes_unresolved"] : []),
     ...(paybackReserveReady ? [] : ["payback_reserve_missing"]),
   ];
@@ -196,7 +199,9 @@ export function buildFullAutomationReadiness({
     },
     liveAutomation: {
       observed: liveAutomationObserved,
+      activeRun: activeLiveAutomationRun,
       status: autopilot?.status || null,
+      phase: autopilot?.phase || null,
       nextAction: autopilot?.nextAction || null,
       refillBlockedCount: autopilot?.refill?.blockedCount ?? null,
       refillUnresolvedCount: autopilot?.refill?.unresolvedCount ?? null,
@@ -205,7 +210,7 @@ export function buildFullAutomationReadiness({
       refillExecutedCount: autopilot?.refill?.executedCount ?? null,
       refillIssueCounts,
       refillBlockers,
-      ready: !unresolvedRefillRoutes,
+      ready: !activeLiveAutomationRun && !unresolvedRefillRoutes,
     },
     payback: {
       status: paybackStatus,

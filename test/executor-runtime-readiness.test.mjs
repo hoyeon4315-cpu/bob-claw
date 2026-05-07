@@ -96,3 +96,64 @@ test("runtime readiness reports healthy when env, launchd, and runtime are all r
   assert.equal(report.env.required.btcKeyPath.securePermissions, true);
   assert.equal(maskBitcoinAddress("bc1qexample0000000000000000000000000000000"), "bc1qex…0000");
 });
+
+test("runtime readiness blocks when installed launchd plist is missing required key path env", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-runtime-readiness-launchd-env-"));
+  const evmKeyPath = join(cwd, "evm.key");
+  const btcKeyPath = join(cwd, "btc.wif");
+  const killSwitchPath = join(cwd, ".killswitch");
+  await writeFile(evmKeyPath, "0xabc\n", "utf8");
+  await writeFile(btcKeyPath, "L1btcWifExample\n", "utf8");
+  await chmod(evmKeyPath, 0o600);
+  await chmod(btcKeyPath, 0o400);
+
+  const report = await collectExecutorRuntimeReadiness({
+    cwd,
+    env: {
+      PAYBACK_BTC_DEST_ADDR: "bc1qexample0000000000000000000000000000000",
+      BURNER_EVM_KEY_PATH: evmKeyPath,
+      BURNER_BTC_KEY_PATH: btcKeyPath,
+      KILL_SWITCH_PATH: killSwitchPath,
+    },
+    launchdSpecBuilder: () => [
+      {
+        id: "daemon",
+        label: "daemon",
+        plistPath: join(cwd, "daemon.plist"),
+        environmentVariables: {
+          BURNER_EVM_KEY_PATH: evmKeyPath,
+          BURNER_BTC_KEY_PATH: btcKeyPath,
+          KILL_SWITCH_PATH: killSwitchPath,
+        },
+      },
+    ],
+    launchdStatusReader: async (spec) => ({
+      ...spec,
+      plistPresent: true,
+      loaded: true,
+      running: true,
+      pid: 123,
+      state: "running",
+      lastExitCode: 0,
+      status: "loaded_running",
+      reason: null,
+      launchctlError: null,
+      missingEnvironmentKeys: ["BURNER_EVM_KEY_PATH", "BURNER_BTC_KEY_PATH"],
+    }),
+    runtimeLoader: async () => ({
+      available: true,
+      runtimeStatus: "healthy",
+      signerStatus: "listening",
+      signerSocketPresent: true,
+      watchdog: { status: "healthy" },
+    }),
+  });
+
+  assert.equal(report.summary.ready, false);
+  assert.equal(report.summary.launchdEnvReady, false);
+  assert.equal(report.summary.nextActionCode, "install_launchd_agents");
+  assert.deepEqual(report.summary.launchdMissingEnv, [
+    "daemon:BURNER_EVM_KEY_PATH",
+    "daemon:BURNER_BTC_KEY_PATH",
+  ]);
+});

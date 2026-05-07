@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { constants } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -111,6 +111,39 @@ function renderPlistValue(value, indent = "  ") {
     return [`${indent}<dict>`, ...lines, `${indent}</dict>`].join("\n");
   }
   return `${indent}<string></string>`;
+}
+
+async function inspectLaunchAgentEnvironmentKeys(spec, plistPresent, readFileImpl = readFile) {
+  const expectedEnvironmentKeys = Object.keys(spec.environmentVariables || {});
+  if (expectedEnvironmentKeys.length === 0) {
+    return {
+      expectedEnvironmentKeys,
+      missingEnvironmentKeys: [],
+    };
+  }
+  if (!plistPresent) {
+    return {
+      expectedEnvironmentKeys,
+      missingEnvironmentKeys: expectedEnvironmentKeys,
+    };
+  }
+  let plistText = "";
+  try {
+    plistText = await readFileImpl(spec.plistPath, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return {
+      expectedEnvironmentKeys,
+      missingEnvironmentKeys: expectedEnvironmentKeys,
+    };
+  }
+  const missingEnvironmentKeys = expectedEnvironmentKeys.filter(
+    (key) => !plistText.includes(`<key>${xmlEscape(key)}</key>`),
+  );
+  return {
+    expectedEnvironmentKeys,
+    missingEnvironmentKeys,
+  };
 }
 
 export function buildExecutorLaunchAgentSpecs({
@@ -533,15 +566,18 @@ export async function readLaunchAgentStatus(
     uid = typeof process.getuid === "function" ? process.getuid() : null,
     launchctlRunner = defaultLaunchctlRunner,
     fileExistsImpl = fileExists,
+    readFileImpl = readFile,
   } = {},
 ) {
   const plistPresent = await fileExistsImpl(spec.plistPath);
+  const environmentStatus = await inspectLaunchAgentEnvironmentKeys(spec, plistPresent, readFileImpl);
   if (!Number.isInteger(uid)) {
     return {
       id: spec.id,
       label: spec.label,
       plistPath: spec.plistPath,
       plistPresent,
+      ...environmentStatus,
       loaded: false,
       running: false,
       pid: null,
@@ -560,6 +596,7 @@ export async function readLaunchAgentStatus(
       label: spec.label,
       plistPath: spec.plistPath,
       plistPresent,
+      ...environmentStatus,
       loaded: false,
       running: false,
       pid: null,
@@ -578,6 +615,7 @@ export async function readLaunchAgentStatus(
       label: spec.label,
       plistPath: spec.plistPath,
       plistPresent,
+      ...environmentStatus,
       loaded: false,
       running: false,
       pid: null,
@@ -596,6 +634,7 @@ export async function readLaunchAgentStatus(
     label: spec.label,
     plistPath: spec.plistPath,
     plistPresent,
+    ...environmentStatus,
     loaded: true,
     running,
     pid: parsed.pid,
