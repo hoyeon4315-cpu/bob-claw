@@ -1,6 +1,7 @@
 import {
   EXECUTION_EV_COST_POLICY,
   executionEvFallbackCostUsd,
+  tinyCanarySameChainRoundTripCostUsd,
 } from "../../config/sizing.mjs";
 
 function finiteNumber(value) {
@@ -284,7 +285,13 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
   const sampleThreshold = finiteNumber(policy.minSamples) ?? EXECUTION_EV_COST_POLICY.minSamples;
   const fallbackP99CostUsd = executionEvFallbackCostUsd({ chain, policy });
   const hasSufficientHistory = Number.isFinite(entry?.sampleCount) && entry.sampleCount >= sampleThreshold;
-  const p90CostUsd = hasSufficientHistory ? entry.p90CostUsd : fallbackP99CostUsd;
+  const tinyCanaryFallbackUsd = intentType === "tiny_live_canary"
+    ? tinyCanarySameChainRoundTripCostUsd({
+        chain,
+        estimatedGasCostUsd: intent.estimatedGasCostUsd,
+      })
+    : null;
+  const p90CostUsd = hasSufficientHistory ? entry.p90CostUsd : tinyCanaryFallbackUsd ?? fallbackP99CostUsd;
   const costMultiplier = finiteNumber(policy.costMultiplier) ?? EXECUTION_EV_COST_POLICY.costMultiplier;
   const minProfitFloorUsd = finiteNumber(policy.minProfitFloorUsd) ?? EXECUTION_EV_COST_POLICY.minProfitFloorUsd;
   const requiredNetUsd = p90CostUsd * costMultiplier + minProfitFloorUsd;
@@ -305,7 +312,7 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
       costMultiplier,
       minProfitFloorUsd,
       fallbackP99CostUsd,
-      costSource: hasSufficientHistory ? "history_p90" : "fallback_chain_p99",
+      costSource: hasSufficientHistory ? "history_p90" : tinyCanaryFallbackUsd !== null ? "tiny_canary_shared_p90" : "fallback_chain_p99",
       modelGeneratedAt: model.generatedAt || null,
       lookbackDays: model.lookbackDays ?? null,
     },

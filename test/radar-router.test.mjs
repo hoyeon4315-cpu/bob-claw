@@ -82,7 +82,9 @@ test("buildRadarCanaryIntent emits tiny live canary intent clamped to tiny cap",
   assert.equal(result.intent.expectedHoldDays, 7);
   assert.equal(result.intent.observedAt, now);
   assert.equal(result.intent.quote.observedAt, now);
+  assert.equal(result.intent.expectedNetUsd > 0, true);
   assert.equal(result.intent.metadata.radarCandidateId, "candidate_1");
+  assert.equal(result.intent.metadata.expectedNetUsd, result.intent.expectedNetUsd);
   assert.equal(result.intent.metadata.btcPaybackConversionRequired, true);
 });
 

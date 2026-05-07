@@ -80,6 +80,43 @@ const btcDecisionContext = {
   btcPriceSnapshotAt: "2026-04-24T06:00:00.000Z",
 };
 
+function activePosition({ id, chain, protocolId, amountUsd = 100 }) {
+  return {
+    event: "position_opened",
+    status: "open",
+    positionId: id,
+    opportunityId: id,
+    chain,
+    protocolId,
+    amountUsd,
+  };
+}
+
+function inventoryWithUsdc({ chain = "base", usd = 500 } = {}) {
+  return {
+    native: [{ chain, actual: "1", actualDecimal: 1, estimatedUsd: 20 }],
+    tokens: [
+      {
+        chain,
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        actual: String(Math.floor(usd * 1_000_000)),
+        actualDecimal: usd,
+        estimatedUsd: usd,
+      },
+    ],
+  };
+}
+
+function deliveredProof(opportunityId) {
+  return {
+    observedAt: "2026-04-24T06:01:00.000Z",
+    mode: "execute",
+    queueItem: { opportunityId },
+    execution: { settlementStatus: "delivered" },
+  };
+}
+
 test("portfolio score rewards canary-proven inventory-ready opportunities", () => {
   const scored = merklPortfolioScore({
     ...queueItem(),
@@ -529,6 +566,85 @@ test("allocator diversification gate blocks the next Ethereum pick when current 
   assert.equal(ethAllocation.status, "blocked");
   assert.ok(ethAllocation.blockers.includes("diversification_policy_rejected"));
   assert.notEqual(plan.entryQueue[0]?.queueItem.chain, "ethereum");
+});
+
+test("allocator allows evidence-primary Base resize above the default chain cap", () => {
+  const baseNext = queueItem({
+    opportunityId: "base-next",
+    protocolId: "new-base-protocol",
+    aprPct: 500,
+    expectedHoldDays: 10,
+  });
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [baseNext] },
+    inventorySnapshot: inventoryWithUsdc({ chain: "base", usd: 500 }),
+    canaryExecutions: [deliveredProof("base-next")],
+    positionRecords: [
+      activePosition({ id: "base-a", chain: "base", protocolId: "base-a" }),
+      activePosition({ id: "base-b", chain: "base", protocolId: "base-b" }),
+      activePosition({ id: "base-c", chain: "base", protocolId: "base-c" }),
+      activePosition({ id: "bob-a", chain: "bob", protocolId: "bob-a" }),
+      activePosition({ id: "bob-b", chain: "bob", protocolId: "bob-b" }),
+      activePosition({ id: "avax-a", chain: "avalanche", protocolId: "avax-a" }),
+      activePosition({ id: "avax-b", chain: "avalanche", protocolId: "avax-b" }),
+      activePosition({ id: "sonic-a", chain: "sonic", protocolId: "sonic-a" }),
+      activePosition({ id: "sonic-b", chain: "sonic", protocolId: "sonic-b" }),
+      activePosition({ id: "uni-a", chain: "unichain", protocolId: "uni-a" }),
+    ],
+    maxUsd: 500,
+    ...btcDecisionContext,
+    policy: {
+      maxActiveUsd: 2000,
+      perOpportunityMaxUsd: 500,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 1,
+    },
+    now: "2026-04-25T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].queueItem.opportunityId, "base-next");
+  assert.ok(plan.entryQueue[0].targetUsd > 100);
+});
+
+test("allocator keeps non-primary chains near the default chain cap", () => {
+  const bscNext = queueItem({
+    opportunityId: "bsc-next",
+    chain: "bsc",
+    protocolId: "new-bsc-protocol",
+    aprPct: 500,
+    expectedHoldDays: 10,
+  });
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [bscNext] },
+    inventorySnapshot: inventoryWithUsdc({ chain: "bsc", usd: 500 }),
+    canaryExecutions: [deliveredProof("bsc-next")],
+    positionRecords: [
+      activePosition({ id: "bsc-a", chain: "bsc", protocolId: "bsc-a" }),
+      activePosition({ id: "bsc-b", chain: "bsc", protocolId: "bsc-b" }),
+      activePosition({ id: "bsc-c", chain: "bsc", protocolId: "bsc-c" }),
+      activePosition({ id: "bob-a", chain: "bob", protocolId: "bob-a" }),
+      activePosition({ id: "bob-b", chain: "bob", protocolId: "bob-b" }),
+      activePosition({ id: "avax-a", chain: "avalanche", protocolId: "avax-a" }),
+      activePosition({ id: "avax-b", chain: "avalanche", protocolId: "avax-b" }),
+      activePosition({ id: "sonic-a", chain: "sonic", protocolId: "sonic-a" }),
+      activePosition({ id: "sonic-b", chain: "sonic", protocolId: "sonic-b" }),
+      activePosition({ id: "uni-a", chain: "unichain", protocolId: "uni-a" }),
+    ],
+    maxUsd: 500,
+    ...btcDecisionContext,
+    policy: {
+      maxActiveUsd: 2000,
+      perOpportunityMaxUsd: 500,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 1,
+    },
+    now: "2026-04-25T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].queueItem.opportunityId, "bsc-next");
+  assert.ok(plan.entryQueue[0].targetUsd < 80);
 });
 
 test("allocator includes external wallet chain exposure before re-entering after rebalance exits", () => {

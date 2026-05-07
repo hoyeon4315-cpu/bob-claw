@@ -43,11 +43,11 @@ test("buildRadarCostLedger returns sparse-sample buffered p90 costs by route and
   assert.equal(ledger.p90RewardSwapCostUsdForToken("USDC"), 1.2);
 });
 
-test("buildRadarCostLedger uses conservative fallbacks when no samples exist", () => {
+test("buildRadarCostLedger defers gas fallback when no chain samples exist", () => {
   const ledger = buildRadarCostLedger({ auditRecords: [] });
 
   assert.equal(ledger.p90BridgeCostUsdForRoute("unknown"), 0);
-  assert.equal(ledger.p90GasCostUsdForChain("base"), 0.5);
+  assert.equal(ledger.p90GasCostUsdForChain("base"), null);
   assert.equal(ledger.p90ClaimCostUsdForProtocol("moonwell"), 0.2);
   assert.equal(ledger.p90RewardSwapCostUsdForToken("TOKEN"), 0.3);
 });

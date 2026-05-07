@@ -253,6 +253,73 @@ test("diversification shrink keeps allow when slack exists", () => {
   assert.equal(i.detail.bindingConstraint, "diversification");
 });
 
+test("diversification uses evidence-primary per-chain override for candidate chain", () => {
+  const absoluteAllocations = {
+    perStrategy: { S1_moonwell_base: 10_000_000, other: 90_000_000 },
+    perChain: { base: 30_000_000, bob: 70_000_000 },
+    perProtocol: { moonwell: 10_000_000, other: 90_000_000 },
+  };
+  const divSlice = {
+    policy: {
+      perStrategyMaxShare: 0.80,
+      perChainMaxShare: 0.35,
+      perChainMaxShareByChain: { base: 0.70 },
+      perProtocolMaxShare: 0.80,
+      hhiMax: 0.80,
+    },
+  };
+  const out = dispatchStrategyCatalog({
+    candidates: [{ ...candidateA, proposedAllocationSats: 50_000_000 }],
+    adaptiveCapitalPlan: plan({
+      strategies: [
+        { strategyId: "S1_moonwell_base", perTxUsd: 1_000_000, perDayUsd: 1_000_000 },
+      ],
+    }),
+    diversificationSlice: divSlice,
+    absoluteAllocations,
+    feedFreshness: freshFeeds,
+    btcPriceUsd: BTC_PRICE,
+  });
+
+  const i = out.intents[0];
+  assert.equal(i.decision, "allow");
+  assert.equal(i.allowedAllocationSats, 50_000_000);
+});
+
+test("diversification keeps non-primary chains on the default per-chain cap", () => {
+  const absoluteAllocations = {
+    perStrategy: { S1_moonwell_base: 10_000_000, other: 90_000_000 },
+    perChain: { bsc: 30_000_000, bob: 70_000_000 },
+    perProtocol: { moonwell: 10_000_000, other: 90_000_000 },
+  };
+  const divSlice = {
+    policy: {
+      perStrategyMaxShare: 0.80,
+      perChainMaxShare: 0.35,
+      perChainMaxShareByChain: { base: 0.70 },
+      perProtocolMaxShare: 0.80,
+      hhiMax: 0.80,
+    },
+  };
+  const out = dispatchStrategyCatalog({
+    candidates: [{ ...candidateA, chain: "bsc", proposedAllocationSats: 50_000_000 }],
+    adaptiveCapitalPlan: plan({
+      strategies: [
+        { strategyId: "S1_moonwell_base", perTxUsd: 1_000_000, perDayUsd: 1_000_000 },
+      ],
+    }),
+    diversificationSlice: divSlice,
+    absoluteAllocations,
+    feedFreshness: freshFeeds,
+    btcPriceUsd: BTC_PRICE,
+  });
+
+  const i = out.intents[0];
+  assert.equal(i.decision, "allow");
+  assert.equal(i.allowedAllocationSats < 50_000_000, true);
+  assert.equal(i.detail.bindingConstraint, "diversification");
+});
+
 test("ranked allow-first by net sats desc", () => {
   const c1 = { ...candidateA, strategyId: "A", expectedYieldSats: 20_000 };
   const c2 = { ...candidateA, strategyId: "B", expectedYieldSats: 100_000 };

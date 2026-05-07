@@ -163,3 +163,59 @@ test("aggregates per-chain across multiple strategies on same chain", () => {
   assert.equal(result.perChain[0].chain, "base");
   assert.equal(result.perChain[0].settlementTargetUsd, 400);
 });
+
+test("honors evidence-primary per-chain override while default chain cap stays lower", () => {
+  const caps = [
+    { strategyId: "base-primary", familyId: "base-family", autoExecute: true, caps: { perChainUsd: { base: 1000 } } },
+    { strategyId: "bsc-secondary", familyId: "bsc-family", autoExecute: true, caps: { perChainUsd: { bsc: 1000 } } },
+  ];
+  const promotionGate = {
+    items: [
+      { templateId: "base:base-family", chain: "base", familyId: "base-family", score: 0.9, allocationGate: { status: "allocation_ready" } },
+      { templateId: "bsc:bsc-family", chain: "bsc", familyId: "bsc-family", score: 0.1, allocationGate: { status: "allocation_ready" } },
+    ],
+  };
+  const result = buildScoredTargetBalances({
+    promotionGate,
+    strategyCaps: caps,
+    totalCapitalUsd: 1000,
+    diversificationPolicy: {
+      perStrategyMaxShare: 1,
+      perChainMaxShare: 0.35,
+      perChainMaxShareByChain: { base: 0.70 },
+    },
+  });
+
+  const base = result.perChain.find((item) => item.chain === "base");
+  const bsc = result.perChain.find((item) => item.chain === "bsc");
+  assert.equal(base.settlementTargetUsd, 700);
+  assert.equal(bsc.settlementTargetUsd, 100);
+});
+
+test("keeps non-primary chains on the default per-chain cap", () => {
+  const caps = [
+    { strategyId: "base-secondary", familyId: "base-family", autoExecute: true, caps: { perChainUsd: { base: 1000 } } },
+    { strategyId: "bsc-secondary", familyId: "bsc-family", autoExecute: true, caps: { perChainUsd: { bsc: 1000 } } },
+  ];
+  const promotionGate = {
+    items: [
+      { templateId: "base:base-family", chain: "base", familyId: "base-family", score: 0.1, allocationGate: { status: "allocation_ready" } },
+      { templateId: "bsc:bsc-family", chain: "bsc", familyId: "bsc-family", score: 0.9, allocationGate: { status: "allocation_ready" } },
+    ],
+  };
+  const result = buildScoredTargetBalances({
+    promotionGate,
+    strategyCaps: caps,
+    totalCapitalUsd: 1000,
+    diversificationPolicy: {
+      perStrategyMaxShare: 1,
+      perChainMaxShare: 0.35,
+      perChainMaxShareByChain: { base: 0.70 },
+    },
+  });
+
+  const base = result.perChain.find((item) => item.chain === "base");
+  const bsc = result.perChain.find((item) => item.chain === "bsc");
+  assert.equal(base.settlementTargetUsd, 100);
+  assert.equal(bsc.settlementTargetUsd, 350);
+});

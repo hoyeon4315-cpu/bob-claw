@@ -23,6 +23,8 @@
 //     roundTripCostSats,       // onramp + dest gas + offramp + slippage
 //   }
 
+import { perChainMaxShareFor } from "../../config/diversification.mjs";
+
 const DENY_REASONS = Object.freeze({
   FEED_STALE: "feed_stale",
   OPERATING_FLOOR: "below_operating_floor",
@@ -84,8 +86,9 @@ function wouldViolateDiversification({
     };
   }
   const projChain = projectedShare(perChain, total, candidate.chain, addSats);
-  if (policy.perChainMaxShare && projChain > policy.perChainMaxShare) {
-    return { dimension: "chain", share: projChain, max: policy.perChainMaxShare };
+  const perChainMaxShare = perChainMaxShareFor(candidate.chain, policy);
+  if (perChainMaxShare && projChain > perChainMaxShare) {
+    return { dimension: "chain", share: projChain, max: perChainMaxShare };
   }
   const projProtocol = projectedShare(perProtocol, total, candidate.protocol, addSats);
   if (policy.perProtocolMaxShare && projProtocol > policy.perProtocolMaxShare) {

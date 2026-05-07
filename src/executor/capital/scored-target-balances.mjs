@@ -20,7 +20,7 @@
 //   4. Per-chain max share is a hard ceiling (no redistribution beyond it).
 
 import { listStrategyCaps } from "../../config/strategy-caps.mjs";
-import { DIVERSIFICATION_POLICY } from "../../config/diversification.mjs";
+import { DIVERSIFICATION_POLICY, perChainMaxShareFor } from "../../config/diversification.mjs";
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../../config/gateway-destinations.mjs";
 
 const DEFAULT_REDUCED_WEIGHT_FACTOR = 0.3;
@@ -236,15 +236,16 @@ export function buildScoredTargetBalances({
     perStrategyCapUsd,
   });
 
-  const perChainMaxShare = Number(diversificationPolicy?.perChainMaxShare);
-  const perChainCapUsd =
-    Number.isFinite(perChainMaxShare) && perChainMaxShare > 0 ? perChainMaxShare * total : null;
-  if (perChainCapUsd !== null) {
+  if (diversificationPolicy) {
     const sumByChain = new Map();
     candidates.forEach((c, i) => {
       sumByChain.set(c.chain, (sumByChain.get(c.chain) || 0) + allocations[i]);
     });
     for (const [chain, sum] of sumByChain.entries()) {
+      const perChainMaxShare = Number(perChainMaxShareFor(chain, diversificationPolicy));
+      const perChainCapUsd =
+        Number.isFinite(perChainMaxShare) && perChainMaxShare > 0 ? perChainMaxShare * total : null;
+      if (perChainCapUsd === null) continue;
       if (sum <= perChainCapUsd) continue;
       const scale = perChainCapUsd / sum;
       candidates.forEach((c, i) => {
