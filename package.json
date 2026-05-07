@@ -69,6 +69,7 @@
     "report:dev-agent-automation-bridge": "node src/cli/report-dev-agent-automation-bridge.mjs",
     "report:git-ops-automation": "node src/cli/report-git-ops-automation.mjs",
     "report:gateway-update-autopilot": "node src/cli/report-gateway-update-autopilot.mjs",
+    "report:multicall3-gateway-matrix": "node src/cli/report-multicall3-gateway-matrix.mjs",
     "run:autonomous-discovery-board": "node src/cli/run-autonomous-discovery-board.mjs",
     "run:git-ops-automation": "node src/cli/run-git-ops-automation.mjs",
     "run:gateway-update-autopilot": "node src/cli/run-gateway-update-autopilot.mjs",
