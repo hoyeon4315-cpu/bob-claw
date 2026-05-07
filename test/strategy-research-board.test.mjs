@@ -198,6 +198,7 @@ test("strategy research board includes Karpathy-style auto research candidates f
     lendingLoopResearchEntries: [],
     nativeBtcOpportunitySurface: null,
     autoResearchSummary: {
+      generatedAt: "2026-04-26T18:00:00.000Z",
       candidates: [
         {
           candidateName: "agent_mean_reversion_base",
@@ -221,11 +222,6 @@ test("strategy research board includes Karpathy-style auto research candidates f
         candidateName: "agent_mean_reversion_base",
       },
     ],
-    researchFunnel: {
-      summary: {
-        latestRunAt: "2026-04-26T18:00:00.000Z",
-      },
-    },
     now: "2026-04-26T18:05:00.000Z",
   });
 

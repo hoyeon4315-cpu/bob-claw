@@ -64,7 +64,7 @@ function gateDecision(strategy = {}) {
       nextAction: "collect new evidence before rescoring",
       reasons: tags.includes("negative_edge")
         ? ["measured edge is blocked or negative on current evidence"]
-        : ["overfit or evidence blockers prevent promotion"],
+        : ["overfit or evidence blockers prevent score readiness"],
     };
   }
 
@@ -82,16 +82,16 @@ function gateDecision(strategy = {}) {
       status: "thesis_review_required",
       allocatable: false,
       nextAction: "define macro exposure policy and unwind rules first",
-      reasons: ["directional rotation is not auto-promotable in the current allocator"],
+      reasons: ["directional rotation is not score-ready in the current allocator"],
     };
   }
 
   if (track === "experimental_research") {
     return {
-      status: "manual_review_only",
+      status: "policy_review_only",
       allocatable: false,
-      nextAction: "require manual review and explicit allowlist decision",
-      reasons: ["experimental paths need manual review before any deeper scoring"],
+      nextAction: "require policy review and explicit allowlist decision",
+      reasons: ["experimental paths need policy review before any deeper scoring"],
     };
   }
 
@@ -169,7 +169,7 @@ export function buildDestinationTruthfulnessGate({ scoring = null } = {}) {
       observeOnlyCount: allStrategies.filter((strategy) => strategy.gate.status === "observe_only").length,
       transportOnlyCount: allStrategies.filter((strategy) => strategy.gate.status === "transport_only").length,
       thesisReviewRequiredCount: allStrategies.filter((strategy) => strategy.gate.status === "thesis_review_required").length,
-      manualReviewOnlyCount: allStrategies.filter((strategy) => strategy.gate.status === "manual_review_only").length,
+      policyReviewOnlyCount: allStrategies.filter((strategy) => strategy.gate.status === "policy_review_only").length,
       topGateReadyCandidates: allStrategies
         .filter((strategy) => strategy.gate.status === "ready_for_venue_scoring")
         .sort(

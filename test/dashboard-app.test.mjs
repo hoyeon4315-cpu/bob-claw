@@ -393,10 +393,10 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(capitalMaps, /deployedByChain,/);
   });
 
-  test("data adapter separates active live positions from live candidates and activity-only surfaces", () => {
+  test("data adapter separates active live positions from policy-ready and activity-only surfaces", () => {
     const statusSection = extractSection("function activeStrategyStatus", "function deriveStatus", DATA_SOURCE);
     assert.match(statusSection, /if \(hasLivePosition\) return 'LIVE'/);
-    assert.match(statusSection, /if \(isLiveCandidate\) return 'LIVE CANDIDATE'/);
+    assert.match(statusSection, /if \(isLiveCandidate\) return 'POLICY READY'/);
     assert.match(statusSection, /if \(hasRecentActivity\) return 'ACTIVITY'/);
 
     const strategyMapping = extractSection("const STRATEGIES = Array.from", "const grossProfitSats", DATA_SOURCE);
@@ -421,7 +421,7 @@ describe("dashboard defi renewal source guard", () => {
   });
 
   test("defi pane includes the read-only onchain radar card", () => {
-    const radarCard = extractSection("function OnchainRadarCard", "function ResearchFunnelCard");
+    const radarCard = extractSection("function OnchainRadarCard", "function DevAgentQueueCard");
     assert.match(radarCard, /window\.RADAR \|\| window\.STATUS\?\.radar/);
     assert.match(radarCard, /Onchain radar/);
     assert.match(radarCard, /read-only · no signing/);
@@ -432,15 +432,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(radarCard, /No signing path/);
     assert.match(radarCard, /<TriCard compact cells=\{\[/);
 
-    const researchCard = extractSection("function ResearchFunnelCard", "function pairTokens");
-    assert.match(researchCard, /Research funnel/);
-    assert.match(researchCard, /<TriCard compact cells=\{\[/);
-
     const defiPane = extractSection("function DefiPane", "function pairTokens");
     assert.match(defiPane, /<OnchainRadarCard\/>/);
-    assert.ok(
-      defiPane.indexOf("<OnchainRadarCard/>") < defiPane.indexOf("<ResearchFunnelCard/>"),
-      "radar card should sit above the broader research funnel",
-    );
+    assert.doesNotMatch(defiPane, /<ResearchFunnelCard\/>/);
   });
 });

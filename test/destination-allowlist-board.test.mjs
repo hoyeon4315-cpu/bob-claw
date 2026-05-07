@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDestinationAllowlistBoard } from "../src/strategy/destination-allowlist-board.mjs";
 
-test("destination allowlist board surfaces candidate, manual review, and blocked items", () => {
+test("destination allowlist board surfaces candidate, policy review, and blocked items", () => {
   const workbench = {
     workItems: [
       {
@@ -69,7 +69,7 @@ test("destination allowlist board surfaces candidate, manual review, and blocked
   const report = buildDestinationAllowlistBoard({ workbench, researchQueue });
 
   assert.equal(report.summary.candidateCount, 1);
-  assert.equal(report.summary.manualContractReviewCount, 1);
+  assert.equal(report.summary.contractPolicyReviewCount, 1);
   assert.equal(report.summary.blockedByRiskCount, 1);
   assert.equal(report.summary.topReviewTargets[0].familyId, "stablecoin_lending_carry");
 });

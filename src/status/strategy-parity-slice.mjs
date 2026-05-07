@@ -53,7 +53,7 @@ function resolveFromDeterministic(candidates, id) {
       : c.dryRunReceiptRecorded
         ? "minimal_live_proof_exists"
         : "not_started",
-    promotionVerdict:
+    readinessVerdict:
       c.status === "receipt_backed_validation_ready"
         ? "live_candidate"
         : c.status === "dry_run_evidence_recorded"
@@ -77,7 +77,7 @@ function resolveFromScaffold(scaffolds, id) {
     marketLoader: Boolean(s.protocolTrack?.protocols?.length),
     receiptSchema: false,
     microCanaryStatus: "not_started",
-    promotionVerdict: "blocked",
+    readinessVerdict: "blocked",
     demotionSummary: { demoted: false, triggers: [] },
     topBlocker: s.blockers?.[0] || "design_scaffold_incomplete",
     blockers: s.blockers || ["design_scaffold_incomplete"],
@@ -100,7 +100,7 @@ function resolveFromResearch(board, id) {
       : c.evidence?.dryRunReceiptRecorded
         ? "micro_canary_ready"
         : "not_started",
-    promotionVerdict:
+    readinessVerdict:
       c.status === "receipt_backed_validation_ready"
         ? "live_candidate"
         : c.status === "dry_run_evidence_recorded"
@@ -126,7 +126,7 @@ function resolveFromCaps(id) {
     marketLoader: true,
     receiptSchema: false,
     microCanaryStatus: "not_started",
-    promotionVerdict: caps.autoExecute ? "blocked" : "blocked",
+    readinessVerdict: "blocked",
     demotionSummary: { demoted: false, triggers: [] },
     topBlocker: "dry_run_receipt_missing",
     blockers: ["dry_run_receipt_missing"],
@@ -142,20 +142,20 @@ function resolveFromTick(tickStatus, id) {
   if (!s && !stage && !micro) return null;
   const hasReceipts = (s?.receiptCountTotal ?? 0) > 0;
   const hasSignerBacked = (s?.receiptCountSignerBacked ?? 0) > 0;
-  const baseVerdict = stage?.promotionVerdict || s?.lastTickMode || "blocked";
+  const baseVerdict = stage?.readinessVerdict || s?.lastTickMode || "blocked";
   const baseBlockers = s?.lastTickBlockers || [];
   // Remove dry_run_receipt_missing when receipts exist.
   const cleanedBlockers = hasReceipts
     ? baseBlockers.filter((b) => b !== "dry_run_receipt_missing")
     : baseBlockers;
   // If no tick record but receipts exist, promote to shadow_ready.
-  const promotionVerdict =
+  const readinessVerdict =
     baseVerdict === "blocked" && !s?.lastTickAt && hasSignerBacked
       ? "shadow_ready"
       : baseVerdict;
   return {
     microCanaryStatus: micro?.microCanaryStatus || s?.microCanaryStatus || "not_started",
-    promotionVerdict,
+    readinessVerdict,
     demotionSummary: {
       demoted: s?.demotion?.demoted || false,
       triggers: s?.demotion?.triggers || [],
@@ -184,7 +184,7 @@ function fallbackCandidate(id) {
     marketLoader: false,
     receiptSchema: false,
     microCanaryStatus: "not_started",
-    promotionVerdict: "blocked",
+    readinessVerdict: "blocked",
     demotionSummary: { demoted: false, triggers: [] },
     topBlocker: "candidate_not_yet_built_in_repo",
     blockers: ["candidate_not_yet_built_in_repo"],
@@ -226,15 +226,15 @@ export function buildStrategyParitySlice({
       const mergedBlockers = tick.blockers?.length > 0
         ? tick.blockers
         : row.blockers.filter((b) => b !== "dry_run_receipt_missing");
-      // Only override promotionVerdict if tick provides a real signal.
+      // Only override readinessVerdict if tick provides a real signal.
       const tickVerdictIsReal =
-        tick.promotionVerdict !== "blocked" ||
+        tick.readinessVerdict !== "blocked" ||
         tick.blockers?.length > 0 ||
         tick.microCanaryStatus !== "not_started";
       row = {
         ...row,
         microCanaryStatus: tick.microCanaryStatus,
-        promotionVerdict: tickVerdictIsReal ? tick.promotionVerdict : row.promotionVerdict,
+        readinessVerdict: tickVerdictIsReal ? tick.readinessVerdict : row.readinessVerdict,
         demotionSummary: tick.demotionSummary,
         tickMode: tick.tickMode,
         lastTickAt: tick.lastTickAt,

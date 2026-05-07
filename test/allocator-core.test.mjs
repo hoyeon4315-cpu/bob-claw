@@ -215,7 +215,7 @@ test("allocator core keeps review_only destination venues out of active plan wit
           gate: { status: "promotable", blockers: [] },
           allocationGate: {
             status: "review_only",
-            blockers: ["manual_contract_review_required", "evidence_policy_incomplete"],
+            blockers: ["contract_policy_review_required", "evidence_policy_incomplete"],
           },
         },
       ],
@@ -227,7 +227,7 @@ test("allocator core keeps review_only destination venues out of active plan wit
   assert.ok(candidate, "review_only candidate must be present");
   assert.equal(candidate.activeEligibility, "blocked");
   assert.equal(candidate.planningEligibility, "review_only");
-  assert.equal(candidate.blockers.includes("manual_contract_review_required"), true);
+  assert.equal(candidate.blockers.includes("contract_policy_review_required"), true);
   assert.equal(report.summary.activeAllocationCount, 0);
   assert.equal(
     report.activeView.activePlan.find((item) => item.id === "base:wrapped_btc_lp_positions"),

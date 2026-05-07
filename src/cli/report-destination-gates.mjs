@@ -41,7 +41,7 @@ async function main() {
   console.log(`observeOnly=${report.summary.observeOnlyCount}`);
   console.log(`transportOnly=${report.summary.transportOnlyCount}`);
   console.log(`thesisReviewRequired=${report.summary.thesisReviewRequiredCount}`);
-  console.log(`manualReviewOnly=${report.summary.manualReviewOnlyCount}`);
+  console.log(`policyReviewOnly=${report.summary.policyReviewOnlyCount}`);
   console.log("");
   console.log("Top gate-ready candidates:");
   for (const item of report.summary.topGateReadyCandidates) {

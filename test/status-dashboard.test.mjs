@@ -334,7 +334,6 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   );
   assert.match(result.stdout, /paybackGrossProfitSatsPeriod=\d+ paidBackSatsLifetime=0/);
   assert.match(result.stdout, /opportunityPositiveInsufficient=count:\d+ top:[^ ]+ net:[^ ]+ gap:[^ \n]+/);
-  assert.match(result.stdout, /formulaAudit=implemented:\d+ partial:\d+ missing:\d+ topGap:.+/);
   assert.match(result.stdout, /merklCanaryQueue=.*inventoryReady:1.*autoEntryReady:1.*stage:inventory_ready_before_sizing_policy_and_signer/);
   assert.match(result.stdout, /gasFreshness=missing:\d+ stale:\d+ staleChains=.*/);
   assert.equal(result.stdout.includes("paybackPreviewAfterDestination="), false);
@@ -367,11 +366,6 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(
     publicStatus.strategy?.strategySnapshot?.researchBoard == null ||
       typeof publicStatus.strategy?.strategySnapshot?.researchBoard?.candidateCount === "number",
-    true,
-  );
-  assert.equal(
-    publicStatus.strategy?.strategySnapshot?.formulaAudit == null ||
-      typeof publicStatus.strategy?.strategySnapshot?.formulaAudit?.summary?.missingCount === "number",
     true,
   );
   assert.equal(

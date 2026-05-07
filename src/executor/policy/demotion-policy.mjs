@@ -4,7 +4,7 @@
 // should be demoted due to adverse recent evidence.
 //
 // Rollback is NOT a runtime auto-flip of autoExecute.
-// It is a policy blocker that prevents promotionVerdict from advancing
+// It is a policy blocker that prevents readinessVerdict from advancing
 // (or forces it back down) until the operator commits a cap diff.
 //
 // Pure function. No I/O.

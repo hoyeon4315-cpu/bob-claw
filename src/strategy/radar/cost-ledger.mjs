@@ -1,6 +1,6 @@
 const DEFAULT_COSTS_USD = Object.freeze({
   bridge: 0,
-  gas: 0.5,
+  gas: null,
   claim: 0.2,
   rewardSwap: 0.3,
 });

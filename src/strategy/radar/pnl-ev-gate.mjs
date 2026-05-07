@@ -30,7 +30,10 @@ export function computeRealizedPnlEv({
     candidate.effectiveAprPct ?? candidate.displayedAprPct ?? candidate.displayedApr ?? candidate.apr
   );
   const grossRewardUsd = notionalUsd * (displayedAprPct / 100) * (effectiveHoldDays / 365);
-  const haircutRewardUsd = applyRewardHaircut(candidate.rewardTokenType, grossRewardUsd);
+  const rewardTokenPresent = hasRewardToken(candidate);
+  const haircutRewardUsd = rewardTokenPresent
+    ? applyRewardHaircut(candidate.rewardTokenType, grossRewardUsd)
+    : grossRewardUsd;
 
   const p90BridgeUsd = callCost(
     costLedger,
@@ -46,7 +49,6 @@ export function computeRealizedPnlEv({
     callCost(costLedger, "p90GasCostUsdForChain", candidate.chain, p90GasFallbackUsd),
     p90GasFallbackUsd
   );
-  const rewardTokenPresent = hasRewardToken(candidate);
   const p90ClaimUsd = rewardTokenPresent
     ? callCost(
         costLedger,
@@ -64,9 +66,9 @@ export function computeRealizedPnlEv({
       )
     : 0;
   const expectedCostUsd = p90BridgeUsd + p90GasUsd + p90ClaimUsd + p90SwapUsd;
-  const expectedNetPnlUsd = haircutRewardUsd - expectedCostUsd;
+  const expectedNetUsd = haircutRewardUsd - expectedCostUsd;
   const requiredBufferUsd = finiteNumber(costVarianceBufferUsd);
-  const ok = expectedNetPnlUsd > requiredBufferUsd;
+  const ok = expectedNetUsd > requiredBufferUsd;
 
   return {
     ok,
@@ -81,7 +83,7 @@ export function computeRealizedPnlEv({
     p90ClaimUsd,
     p90SwapUsd,
     expectedCostUsd,
-    expectedNetPnlUsd,
+    expectedNetUsd,
     requiredBufferUsd,
     btcAccountingRequired: true,
     paybackConversionRequired: true,

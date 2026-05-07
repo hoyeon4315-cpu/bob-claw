@@ -734,7 +734,7 @@ export function buildPreliveReviewPackage({
   });
   const ethFamilyObservation = buildEthFamilyObservation(dashboardStatus);
   const ethFamilyProfitability = buildEthFamilyProfitability(dashboardStatus);
-  const readyForManualReview = ["GO_FOR_MANUAL_APPROVAL", "GO_FOR_AUTO_EXECUTE"].includes(tinyCanaryAdmission.decision);
+  const readyForManualReview = ["GO_FOR_POLICY_READY", "GO_FOR_AUTO_EXECUTE"].includes(tinyCanaryAdmission.decision);
   const reviewBlockers = readyForManualReview ? [] : tinyCanaryAdmission.blockers;
   const liveBlockers = unique([...(executionStage.liveReasons || []), ...(dashboardStatus?.overall?.blockers || [])]);
   const reviewDecision = readyForManualReview ? "READY_FOR_MANUAL_CANARY_REVIEW" : executionStage.reviewStage;

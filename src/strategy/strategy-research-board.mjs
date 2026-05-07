@@ -283,11 +283,10 @@ function latestIntentByCandidate(intents = []) {
   return latest;
 }
 
-function buildAutoResearchEntry(candidate = null, intent = null, researchFunnel = null) {
+function buildAutoResearchEntry(candidate = null, intent = null, latestRunAt = null) {
   if (!candidate?.candidateName) return null;
   const passed = candidate.passed === true;
   const track = candidate.track === "A" || candidate.track === "B" ? candidate.track : null;
-  const latestRunAt = researchFunnel?.summary?.latestRunAt || null;
   return {
     rank: passed ? (track === "A" ? 8 : 9) : (track === "A" ? 18 : 19),
     id: candidate.candidateName,
@@ -358,7 +357,6 @@ export function buildStrategyResearchBoard({
   recursiveLoopSurfaces = null,
   autoResearchSummary = null,
   autoResearchPromotionIntents = [],
-  researchFunnel = null,
   now = null,
 } = {}) {
   const lanes = laneById(laneReclassification);
@@ -374,7 +372,11 @@ export function buildStrategyResearchBoard({
     ...lendingLoopResearchEntries.map((entry) => buildLendingLoopEntry(entry, loopSurfaces.get(entry.id) || null)),
     ...(surfaceFamilies.map((family) => buildSurfaceResearchEntry(family))),
     ...((autoResearchSummary?.candidates || []).map((candidate) =>
-      buildAutoResearchEntry(candidate, autoResearchIntents.get(candidate.candidateName) || null, researchFunnel)
+      buildAutoResearchEntry(
+        candidate,
+        autoResearchIntents.get(candidate.candidateName) || null,
+        autoResearchSummary?.generatedAt || null,
+      )
     )),
   ]
     .filter(Boolean)

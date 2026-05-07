@@ -8,7 +8,6 @@ import { latestBy } from "../lib/jsonl-read.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaign.mjs";
-import { buildPromotionSlice } from "./promotion-slice.mjs";
 import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
 import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
 import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.mjs";
@@ -68,34 +67,52 @@ function normalizeDashboardStatusContents(contents) {
   }
 }
 
-function emptyResearchFunnelSlice() {
-  return {
-    available: false,
-    generatedAt: null,
-    summary: {
-      candidateCount: 0,
-      oosEligibleCount: 0,
-      promotionIntentCount: 0,
-      latestBlocker: null,
-      latestRunAt: null,
-    },
-    tracks: {
-      A: {
-        candidateCount: 0,
-        oosEligibleCount: 0,
-        promotionIntentCount: 0,
-        latestBlocker: null,
-        latestRunAt: null,
-      },
-      B: {
-        candidateCount: 0,
-        oosEligibleCount: 0,
-        promotionIntentCount: 0,
-        latestBlocker: null,
-        latestRunAt: null,
-      },
-    },
-  };
+export function buildAutoPromotionDashboardSummary(report) {
+  if (!report || typeof report !== "object") {
+    return Object.freeze({
+      available: false,
+      generatedAt: null,
+      source: "auto_promotion_evidence",
+      advisoryOnly: true,
+      eligibleCount: 0,
+      blockedCount: 0,
+      evidenceProvidedCount: 0,
+      eligible: Object.freeze([]),
+      blocked: Object.freeze([]),
+    });
+  }
+
+  const reports = Array.isArray(report.reports) ? report.reports : [];
+  const eligible = [];
+  const blocked = [];
+  for (const item of reports) {
+    if (!item || typeof item.strategyId !== "string") continue;
+    const passed = item.passed === true || item.eligible === true;
+    if (passed) {
+      eligible.push(Object.freeze({ strategyId: item.strategyId }));
+      continue;
+    }
+    const firstBlocker = Array.isArray(item.blockers) && item.blockers.length > 0
+      ? String(item.blockers[0])
+      : "unknown";
+    blocked.push(Object.freeze({
+      strategyId: item.strategyId,
+      firstBlocker,
+      evidenceProvided: item.evidenceProvided === true,
+    }));
+  }
+
+  return Object.freeze({
+    available: true,
+    generatedAt: typeof report.generatedAt === "string" ? report.generatedAt : null,
+    source: report.source || "auto_promotion_evidence",
+    advisoryOnly: report.advisoryOnly !== false,
+    eligibleCount: report.summary?.eligibleCount ?? eligible.length,
+    blockedCount: report.summary?.blockedCount ?? blocked.length,
+    evidenceProvidedCount: report.summary?.evidenceProvidedCount ?? reports.filter((item) => item?.evidenceProvided === true).length,
+    eligible: Object.freeze(eligible),
+    blocked: Object.freeze(blocked),
+  });
 }
 
 function latest(items) {
@@ -1863,7 +1880,7 @@ export function buildDashboardStatus(input, options = {}) {
     proxySpreadSummary: strategyBase.btcProxySpreads || null,
     now,
   });
-  const promotion = buildPromotionSlice(input.promotionReport || null);
+  const promotion = buildAutoPromotionDashboardSummary(input.promotionReport || null);
   const strategy = {
     ...strategyBase,
     pivotPlan: summarizeStrategyPivotPlan(pivotPlan),
@@ -1952,7 +1969,6 @@ export function buildDashboardStatus(input, options = {}) {
     audit: auditStatus,
     executorRuntime,
     promotion,
-    researchFunnel: input.researchFunnel || emptyResearchFunnelSlice(),
     quoteLag,
     dexSpread,
     dataCounts: {

@@ -4,8 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { buildCapitalForensicsReport } from "../audit/capital-forensics.mjs";
-import { buildTransactionLedger } from "../audit/transaction-ledger.mjs";
+import { buildTransactionLedger, buildTransactionLedgerNav } from "../audit/transaction-ledger.mjs";
 import { emptyPricesUsd, latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 
 function parseArgs(argv = []) {
@@ -77,12 +76,7 @@ async function main() {
     readOptionalJsonl(config.dataDir, "signer-revert-receipt-costs"),
     readLedgerPrices(config.dataDir),
   ]);
-  const forensics = buildCapitalForensicsReport({
-    inventoryRecords,
-    receiptRecords,
-    inboundEvents,
-    baselineUsd: args.baselineUsd,
-  });
+  const currentNav = buildTransactionLedgerNav({ inventoryRecords });
   const ledger = buildTransactionLedger({
     receiptRecords,
     signerAuditRecords,
@@ -91,7 +85,7 @@ async function main() {
     transferAttributionRecords,
     signerRevertCostRecords,
     prices,
-    currentNav: forensics.current,
+    currentNav,
     baselineUsd: args.baselineUsd,
   });
 
@@ -101,6 +95,12 @@ async function main() {
   }
 
   console.log(`currentNav=${fmtUsd(ledger.currentNav?.totalUsd)} confidence=${ledger.currentNav?.confidence || "n/a"} observedAt=${ledger.currentNav?.observedAt || "n/a"}`);
+  if (ledger.currentNav?.externalReferenceWarning) {
+    console.log(`navWarning=${ledger.currentNav.externalReferenceWarning} maxExternalReference=${fmtUsd(ledger.currentNav.maxExternalReference?.totalUsd)}`);
+  }
+  if (Number.isFinite(ledger.currentNav?.excludedDoubleCountInventoryCount)) {
+    console.log(`excludedDoubleCountInventoryRows=${ledger.currentNav.excludedDoubleCountInventoryCount}`);
+  }
   if (Number.isFinite(ledger.baseline.baselineUsd)) {
     console.log(`baseline=${fmtUsd(ledger.baseline.baselineUsd)} deltaFromCurrent=${fmtUsd(ledger.baseline.deltaFromCurrentUsd)}`);
   }

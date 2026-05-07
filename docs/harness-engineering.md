@@ -1,6 +1,6 @@
 ---
 status: canonical
-updated_at: 2026-05-03
+updated_at: 2026-05-08
 policy_authority: AGENTS.md
 derived_from:
   - AGENTS.md
@@ -75,6 +75,9 @@ For any live-capable feature, verify the intent path:
    confirmed, reverted, or errored outcomes.
 6. Receipt ingest records settlement proof. For payback, delivered means a
    Bitcoin L1 balance delta matching the Gateway order.
+7. No dashboard/report/prelive/stage/destination field is consulted as a
+   runtime signer bypass. Advisory score sources may rank, but only policy and
+   signer approval can execute.
 
 ## Dashboard Checklist
 
@@ -105,6 +108,11 @@ the public artifact set.
 - Preserve BTC/sats-first fields. USD fields are projections or caps.
 - For campaign/radar tiny live canaries, use `src/config/sizing.mjs` helpers
   for hold days and cost floors.
+- When removing dashboard/report fields, run `rg` across `src`, `test`,
+  `docs`, `package.json`, and dashboard sources; leave public JSON snapshots
+  unstaged unless intentionally publishing a snapshot refresh.
+- Treat `destination-promotion-gate.json` as a score source only. It must not
+  become an execution gate, a cap source, or a signer input.
 - Add tests before or with policy changes. The fastest high-signal set is:
 
 ```bash
@@ -167,6 +175,21 @@ Do not remove as "trash":
 Large local caches such as `.playwright-cli/`, `.cloudflare/`, `.wrangler/`,
 and `.opencode/node_modules/` can be deleted locally after inspection, but they
 are not part of source refactor commits.
+
+## Final Review Loop
+
+Use evidence-complete confidence before merging:
+
+1. Caller graph: `rg` deleted file/symbol names across `src`, `test`, `docs`,
+   `package.json`, and dashboard sources, excluding generated/ignored outputs.
+2. Targeted tests: run the narrow suites for touched policy, dashboard, capital,
+   radar/Merkl, destination, and reporting modules.
+3. Full checks: run `npm run check`, `npm test`, dashboard build when UI or
+   public JS changed, and `git diff --check`.
+4. Safety review: confirm no cap raise, no `autoExecute` flip, no signer
+   bypass, no key/log/audit mutation, and no unintended generated dashboard
+   JSON staging.
+5. Repeat if any stale caller, loophole, or failed check appears.
 
 ## Verification Matrix
 

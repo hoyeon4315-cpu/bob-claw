@@ -11,7 +11,6 @@ import { summarizePhase1Revalidation } from "./phase1-revalidation.mjs";
 import { summarizePhase3StrategyValidation } from "./phase3-strategy-validation.mjs";
 import { summarizeProtocolMarketWatchers } from "./protocol-market-watchers.mjs";
 import { summarizeProtocolTrustTiers } from "./protocol-trust-tiers.mjs";
-import { buildFormulaAudit } from "../research/formula-audit.mjs";
 import { summarizeSecondaryStrategyScaffolds } from "./secondary-strategy-scaffolds.mjs";
 import { summarizeStrategyResearchBoard } from "./strategy-research-board.mjs";
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
@@ -187,7 +186,7 @@ function buildProductCoverageItem({ id, label, status, reason = null, nextAction
 }
 
 export function buildProductPlanningCoverage({ dashboardStatus = null, strategySnapshot = null } = {}) {
-  const milestoneValidation = strategySnapshot?.planningLayers?.milestoneValidationGates || null;
+  const strategyValidation = strategySnapshot?.planningLayers?.phase3StrategyValidation || null;
   const payback = dashboardStatus?.payback || null;
   const executorRuntime = dashboardStatus?.executorRuntime || null;
   const liveBaseline = dashboardStatus?.liveBaseline || null;
@@ -222,23 +221,23 @@ export function buildProductPlanningCoverage({ dashboardStatus = null, strategyS
           ? "missing_plan"
           : "tracked_blocked";
   const pillars = [
-    milestoneValidation
+    strategyValidation
       ? buildProductCoverageItem({
-          id: "strategy_validation",
+          id: "strategy_evidence",
           label: "Strategy validation",
           status:
-            milestoneValidation.overallStatus === "passed"
+            Number(strategyValidation.passedCount ?? 0) > 0 && Number(strategyValidation.blockedCount ?? 0) === 0
               ? "tracked_ready"
-              : milestoneValidation.overallStatus === "in_progress"
+              : Number(strategyValidation.validationCount ?? 0) > 0
                 ? "tracked_in_progress"
                 : "tracked_blocked",
-          reason: milestoneValidation?.nextGate?.id || milestoneValidation?.overallStatus || null,
-          nextAction: milestoneValidation?.nextAction || null,
+          reason: strategyValidation?.topBlocked?.id || strategyValidation?.nextAction?.code || null,
+          nextAction: strategyValidation?.nextAction || null,
           evidence: {
-            passedCount: milestoneValidation.passedCount ?? 0,
-            gateCount: milestoneValidation.gateCount ?? 0,
-            blockedCount: milestoneValidation.blockedCount ?? 0,
-            nextGateId: milestoneValidation.nextGate?.id || null,
+            passedCount: strategyValidation.passedCount ?? 0,
+            validationCount: strategyValidation.validationCount ?? 0,
+            blockedCount: strategyValidation.blockedCount ?? 0,
+            topBlockedId: strategyValidation.topBlocked?.id || null,
           },
         })
       : null,
@@ -396,7 +395,6 @@ export function buildStrategySnapshot({
   const allocatorCoreSummary = summarizeAllocatorCore(allocatorCore || null);
   const protocolTrustTiersSummary = summarizeProtocolTrustTiers(protocolTrustTiers || null);
   const protocolMarketWatchersSummary = summarizeProtocolMarketWatchers(protocolMarketWatchers || null);
-  const formulaAudit = buildFormulaAudit({ now: generatedAt });
   const strategyResearchSummary = summarizeStrategyResearchBoard(strategyResearchBoard || null);
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
   const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
@@ -463,10 +461,6 @@ export function buildStrategySnapshot({
       trustTierRecordedCount: protocolTrustTiersSummary?.recordedCount ?? 0,
       watcherBlockedCount: protocolMarketWatchersSummary?.blockedCount ?? 0,
       watcherTopBlockedId: protocolMarketWatchersSummary?.topBlocked?.id || null,
-      formulaImplementedCount: formulaAudit?.summary?.implementedCount ?? 0,
-      formulaPartialCount: formulaAudit?.summary?.partialCount ?? 0,
-      formulaMissingCount: formulaAudit?.summary?.missingCount ?? 0,
-      formulaTopGapId: formulaAudit?.summary?.topGap?.id || null,
       leverageRuntimeCount: leverageAutoUnwindRuntimeSummary?.runtimeCount ?? 0,
       leverageRuntimeTopPriorityId: leverageAutoUnwindRuntimeSummary?.topPriority?.strategyId || null,
       leverageAutoUnwindReadyCount: leverageAutoUnwindExecutionStatus?.autoUnwindReadyCount ?? 0,
@@ -492,7 +486,6 @@ export function buildStrategySnapshot({
       allocatorCore: allocatorCoreSummary,
       protocolTrustTiers: protocolTrustTiersSummary,
       protocolMarketWatchers: protocolMarketWatchersSummary,
-      formulaAudit,
       leverageAutoUnwindRuntime: leverageAutoUnwindRuntimeSummary,
       leverageAutoUnwindExecutionStatus,
       strategyResearchBoard: strategyResearchSummary,
@@ -514,7 +507,6 @@ export function buildStrategySnapshot({
         { kind: "allocator_core", path: "data/allocator-core.json" },
         { kind: "protocol_trust_tiers", path: "data/protocol-trust-tiers.json" },
         { kind: "protocol_market_watchers", path: "data/protocol-market-watchers.json" },
-        { kind: "formula_audit", path: "data/formula-audit.json" },
         { kind: "wrapped_btc_loop_auto_unwind_runtime", path: "data/wrapped-btc-loop-base-moonwell-auto-unwind-runtime-latest.json" },
         { kind: "recursive_wrapped_btc_loop_auto_unwind_runtime", path: "data/recursive_wrapped_btc_lending_loop-auto-unwind-runtime-latest.json" },
         { kind: "strategy_research_board", path: "data/strategy-research-board.json" },
@@ -582,13 +574,11 @@ export function summarizeStrategySnapshot(snapshot = null) {
     allocatorCore: snapshot.planningLayers?.allocatorCore || null,
     protocolTrustTiers: snapshot.planningLayers?.protocolTrustTiers || null,
     protocolMarketWatchers: snapshot.planningLayers?.protocolMarketWatchers || null,
-    formulaAudit: snapshot.planningLayers?.formulaAudit || null,
     leverageAutoUnwindRuntime: snapshot.planningLayers?.leverageAutoUnwindRuntime || null,
     researchBoard: snapshot.planningLayers?.strategyResearchBoard || null,
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
     deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,
     autonomousDiscoveryBoard: snapshot.planningLayers?.autonomousDiscoveryBoard || null,
-    milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
     productCoverage: snapshot.planningLayers?.productCoverage || null,
     productCoverageTopGapId: snapshot.summary?.productCoverageTopGapId || null,
     topSecondaryScaffold: snapshot.planningLayers?.secondaryStrategyScaffolds?.topScaffold || null,

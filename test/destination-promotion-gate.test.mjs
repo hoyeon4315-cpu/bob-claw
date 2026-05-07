@@ -24,7 +24,7 @@ test("destination promotion gate blocks candidates without allowlist decisions o
         score: 0.59,
         values: {},
         recommendation: {
-          status: "manual_contract_review",
+          status: "contract_policy_review",
         },
       },
     ],
@@ -71,6 +71,8 @@ test("destination promotion gate blocks candidates without allowlist decisions o
 
   const report = buildDestinationPromotionGate({ allowlistBoard, evidencePolicy, economics, freshnessAudit });
 
+  assert.equal(report.scoreSourceOnly, true);
+  assert.equal(report.runtimeAuthority, "none");
   assert.equal(report.summary.promotableCount, 0);
   assert.equal(report.summary.blockedCount, 2);
   assert.equal(report.summary.topBlockers[0].blocker, "allowlist_decision_missing");

@@ -399,7 +399,7 @@ const ev = computeRealizedPnlEv({
   holdDays: 3,
   costLedger: fixtureCostLedger({ p90GasUsd: 0.12, p90ClaimUsd: 0.1, p90SwapUsd: 0.1 }),
 });
-assert.equal(ev.expectedNetPnlUsd > 0, true);
+assert.equal(ev.expectedNetUsd > 0, true);
 assert.equal(ev.btcAccountingRequired, true);
 ```
 
@@ -424,10 +424,10 @@ Use realized net PnL:
 ```js
 grossRewardUsd = positionUsd * displayedAprDecimal * holdYearFraction
 haircutRewardUsd = applyRewardHaircut(rewardTokenType, grossRewardUsd)
-expectedNetPnlUsd = haircutRewardUsd - p90GasUsd - p90BridgeUsd - p90ClaimUsd - p90SwapUsd
+expectedNetUsd = haircutRewardUsd - p90GasUsd - p90BridgeUsd - p90ClaimUsd - p90SwapUsd
 ```
 
-Reject when `expectedNetPnlUsd <= costVarianceBufferUsd`.
+Reject when `expectedNetUsd <= costVarianceBufferUsd`.
 
 ---
 

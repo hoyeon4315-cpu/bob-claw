@@ -126,19 +126,15 @@ export function applyLaneAwareLivePolicy({
     warnings.push(...blockers.map((b) => `promoted_from_blocker:${b}`));
     blockers = [];
   }
-  const preStageLiveTrading = liveTrading;
+  const policyLiveTrading = liveTrading;
   const stage = stageEvaluation?.currentStage || null;
   const stageBlockers = stage && stage !== "C" ? unique(stageEvaluation?.blockers || []) : [];
   const runtimeBlockers = runtimeBlockerCodes(executorRuntime);
-  if (stage && stage !== "C") {
-    liveTrading = "BLOCKED";
-  }
   if (runtimeBlockers.length > 0) {
     liveTrading = "BLOCKED";
   }
   blockers = unique([
     ...blockers,
-    ...stageBlockers,
     ...runtimeBlockers,
   ]);
 
@@ -149,8 +145,7 @@ export function applyLaneAwareLivePolicy({
     blockers,
     warnings: unique([
       ...warnings,
-      stage === "A" ? "lane_stage_A_locked" : null,
-      stage === "B" ? "lane_stage_B_shadow_only" : null,
+      stage && stage !== "C" ? "lane_stage_advisory_only" : null,
     ]),
     lanePolicy: {
       candidateType: candidate?.candidateType || null,
@@ -161,7 +156,7 @@ export function applyLaneAwareLivePolicy({
       auditSuppressedForStrategy: canSuppressAudit,
       strategyPolicy: policy,
       edgeViabilityCode: edgeViability?.verdict?.code || null,
-      preStageLiveTrading,
+      policyLiveTrading,
       stage,
       stageBlockers,
       stageEvidence: stageEvaluation?.evidence || null,

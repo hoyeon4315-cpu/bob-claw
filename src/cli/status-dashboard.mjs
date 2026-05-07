@@ -400,11 +400,6 @@ async function main() {
       `allChainAutopilot=${ops.status || "none"} chains:${ops.officialChainCount ?? 0} canary:${ops.canary?.deliveredCount ?? 0}/${ops.canary?.executedCount ?? 0} refill:${ops.refill?.executedCount ?? 0}/${ops.refill?.autoJobCount ?? 0} positions:${ops.portfolio?.openedCount ?? 0} payback:${ops.payback?.status || "none"} blocker:${ops.topBlockers?.[0]?.reason || "none"}`,
     );
   }
-  if (status.strategy?.strategySnapshot?.formulaAudit) {
-    console.log(
-      `formulaAudit=implemented:${status.strategy.strategySnapshot.formulaAudit.summary?.implementedCount ?? 0} partial:${status.strategy.strategySnapshot.formulaAudit.summary?.partialCount ?? 0} missing:${status.strategy.strategySnapshot.formulaAudit.summary?.missingCount ?? 0} topGap:${status.strategy.strategySnapshot.formulaAudit.summary?.topGap?.id || "none"}`,
-    );
-  }
   if (status.liveBaseline) {
     console.log(
       `liveBaseline=${status.liveBaseline.status} stage=${status.liveBaseline.currentStageId || "none"} refreshInputs=${status.liveBaseline.counts?.requiredRefreshCount ?? 0} operator=${status.liveBaseline.counts?.operator ?? 0} technical=${status.liveBaseline.counts?.technical ?? 0} objective=${status.liveBaseline.counts?.objective ?? 0}`,

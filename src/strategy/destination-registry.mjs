@@ -38,7 +38,7 @@ function phasePolicy(chain, family = null) {
   if (chain === "ethereum") return "allowed_when_positive_ev";
   if (family?.category === "monetization") return "non_trading_track";
   if (family?.status === "measured_blocked" || family?.status === "research_only_overfit_blocked") return "blocked_until_new_evidence";
-  if (family?.status === "experimental_only") return "manual_review_only";
+  if (family?.status === "experimental_only") return "policy_review_only";
   return "research_only_until_scored";
 }
 

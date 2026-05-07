@@ -61,7 +61,7 @@
 
 > Opus가 아직 코딩 중. 다음 분석 요청 시 `git log --oneline -20` + `git diff HEAD~5..HEAD --stat`으로 변경 여부 먼저 확인.
 
-### T1 `src/config/capital-adaptive.mjs` — 완료 (commit 포함됨)
+### T1 legacy adaptive-cap config — removed by later cleanup
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
@@ -90,7 +90,7 @@
 |---|---|---|---|
 | `concentration-guard.mjs` | `diversification.mjs` | `canAcceptNewAllocation`을 thin wrapper로 감싸 RiskVerdict 반환. T2의 policy 함수를 재사용. | **아님** |
 | `circuit-breaker.mjs` | `kill-switch.mjs` | fan-in 결정자. "touch는 caller 책임"이라고 명시. pure function. `kill-switch.mjs`는 실행자. 역할 분리. | **아님** |
-| `layerzero-oft-watcher.mjs` | `layerzero-scan.mjs` | supply deviation/mint-burn ratio 감시. 기존 scan은 경로 탐색. 기능 다름. | **아님** |
+| legacy LayerZero OFT watcher | `layerzero-scan.mjs` | supply deviation/mint-burn ratio 감시. 기존 scan은 경로 탐색. 기능 다름. | **아님** |
 
 **실제 발견한 이슈들**
 
@@ -156,7 +156,7 @@
 | **테스트** | 통과 | `test/live-policy.test.mjs` 5개 전부 통과. |
 | **실제 효과** | 제한적 | 현재 `policy_ready` 상태 전략이 없으므로, 이 코드는 아직 실행되지 않음. lending loop에서 `policy_ready`가 나오면 자동으로 `ALLOWED`로 전환될 것. |
 
-**결론**: T6 1단계(내 수정)는 live-policy.mjs에 직접 연동됨. **2단계(Opus 추가 `dynamic-live-gate.mjs`)는 아직 live-policy.mjs에 주입되지 않음**. follow-up wiring commit 필요.
+**결론**: T6 1단계(내 수정)는 live-policy.mjs에 직접 연동됨. **2단계(Opus 추가 동적 live gate 실험)는 이후 cleanup에서 제거됨**. 현재 liveTrading 의미는 deterministic policy/signer eligibility다.
 
 ### T22 watchdog 강화 + gas-snapshot freshness cron 수리 — 완료 (commit 21477da), 13테스트
 
@@ -208,10 +208,10 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `src/risk/oft-exploit-detector/oft-exploit-detector.mjs` | 완료 | `detectOftExploit` pure function. 7개 시그널. Kelp $292M 패턴 기반. |
+| legacy standalone OFT exploit detector | removed | cleanup 이후 standalone detector는 삭제됐고 OFT/incident coverage belongs in existing protocol/auto-kill watchers. |
 | **7개 시그널** | OK | (1) peg_deviation > 200 bps, (2) supply_mismatch > 0.5%, (3) mint_velocity > 5M sats/hr, (4) burn_velocity > 5M sats/hr, (5) bridge_withdrawal_spike > 10M sats/hr, (6) oracle_stale > 10m, (7) protocol_in_blocklist. |
 | **심각도 상승** | OK | 단일 soft → HALT_PROTOCOL. blocklist/supply_mismatch 또는 2+ HALT → UNWIND_ALL. bridge_spike alone → UNWIND_ALL. **peg_deviation + bridge_spike → KILL_SWITCH** (Kelp composite). |
-| **T3와의 관계** | **상위 호환** | `src/executor/risk/layerzero-oft-watcher.mjs`(T3)보다 시그널 더 많고, escalation 더 세밀. T16이 T3를 대체할 수 있음. |
+| **T3와의 관계** | **상위 호환** | legacy LayerZero watcher보다 시그널 더 많고, escalation 더 세밀하다는 설계 평가였음. |
 | **caller 연동** | **없음** | "Signer Daemon preflight and Payback Scheduler emergency-pause check"에서 소비한다고 하지만, 실제 호출 코드 없음. grep 결과 0건. |
 | **OFT snapshot 수집** | **미연결** | chain별 공급, bridge withdrawal 속도, peg oracle 등을 수집하는 어댑터 없음. |
 
@@ -235,15 +235,15 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `src/strategy/promotion-evidence.mjs` | 완료 | `evaluatePromotionEvidence` pure function. `logs/signer-audit.jsonl` receipt → 5-gate eligibility 판정. |
+| legacy receipt-promotion evidence module | removed | cleanup 이후 auto-promotion preview는 `evaluateAutoPromotion` dev guard를 사용한다. |
 | **5개 promotion gate** | frozen | `minSignerBackedReceipts: 8`, `minConsecutiveSuccess: 5`, `maxFailureCount: 1`, `minCumulativeProfitSats: 5_000`, `minRoundTripEfficiency: 0.9`. lookback: 14일. |
 | **AGENTS.md 불변 원칙** | **준수** | `PROMOTION_THRESHOLDS`는 Object.freeze. "This module never rewrites strategy-caps.mjs and never opens a PR." `suggestedDiff`는 hint만 — operator가 수동 commit. |
-| `src/cli/promotion-pr-preview.mjs` | 완료 | CLI. `logs/signer-audit.jsonl` read + `src/config/strategy-caps.mjs` read → `autoExecute=false` 전략 필터 → `evaluatePromotionEvidence` per strategy → JSON report. |
+| `src/cli/promotion-pr-preview.mjs` | updated | CLI. current implementation reports advisory auto-promotion preview through `evaluateAutoPromotion`. |
 | `--write=<path>` | OK | `mkdir -p` 포함 원자 쓰기. `--quiet`는 stdout 억제. |
 | `.github/workflows/promotion-watch.yml` | 완료 | Daily cron(23:00 UTC) + workflow_dispatch. `npm run report:promotion-pr-preview -- --lookback-days=14 --write=reports/promotion-latest.json --quiet`. artifact 30일 보관. |
 | **permissions** | `contents: read` | **write 없음**. audit log 읽기만. 캡 변경은 여전히 사람 commit. |
 | **현재 출력** | blocked | `recursive_wrapped_btc_lending_loop = blocked: insufficient_signer_backed_receipts (0/8)`. 사실관계상 정확 — live receipt 0개. |
-| **caller 연동** | **없음** | `evaluatePromotionEvidence`를 dispatcher나 policy engine이 호출하지 않음. standalone CLI + cron 전용. |
+| **caller 연동** | **없음** | legacy receipt-promotion evidence was never a dispatcher or policy-engine input. |
 | **auto PR 생성** | **미구현** | eligible 나와도 자동 PR 생성 없음. operator가 `suggestedDiff` 보고 수동 커밋. |
 
 **결론**: T18은 **deterministic promotion gate + PR preview CLI + daily cron** 완성. cap 변경은 AGENTS.md invariant #5대로 사람의 commit으로만. 현재는 receipt 부족으로 모든 전략 blocked. 첫 ELIGIBLE 로그가 찍히면 operator가 `suggestedDiff`를 보고 수동 PR 생성.
@@ -252,7 +252,7 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `src/status/promotion-slice.mjs` | 신규 | `buildPromotionSlice(report)` pure function. promotion report를 dashboard-friendly shape로 변환. |
+| legacy dashboard promotion slice | removed | cleanup 이후 dashboard promotion summary is advisory auto-promotion preview data only. |
 | **Invariant** | `suggestedDiff` 누출 방지 | `buildPromotionSlice`는 `suggestedDiff` body를 **전혀 반환하지 않음**. public-visible dashboard에 민감한 PR 정보 노출 방지. 테스트에서 `JSON.stringify(slice).includes("suggestedDiff") === false` 검증. |
 | **Output shape** | 6개 필드 | `available`, `generatedAt`, `lookbackDays`, `eligibleCount`, `blockedCount`, `eligible[]`, `blocked[]`. `blocked` 항목: `strategyId`, `firstBlocker`, `receiptsObserved`, `receiptsRequired`. |
 | `src/status/dashboard-status.mjs` | 수정 | `buildDashboardStatus`에 `promotionReport` 파라미터 추가 → `buildPromotionSlice(promotionReport)` → `dashboardStatus.promotion = ...`. |
@@ -296,11 +296,11 @@
 | **Aggregate criteria** | 60% pass | `minFoldsPassedFraction: 0.6`. 5개 fold 중 3개 이상 pass해야 전체 pass. |
 | **Per-sample 정규화** | **버그 수정** | 초기 구현은 총 순이익 비율(train 14d vs test 3d)로 비교 → 안정 데이터에서도 test가 짧아서 0.214 ratio → 오탐. **샘플당 정규화로 교정**: `trainNetPerSample = net / count`, `testNetPerSample = net / count` → ratio 비교. |
 | **Zero I/O** | OK | deterministic, frozen output. 샘플 배열 + 설정 상수만 입력. |
-| **promotion-evidence 연동** | **미통합** | 의도적으로 isolated unit으로 먼저 착지. `evaluatePromotionEvidence`는 이 모듈을 아직 호출하지 않음. regime-change detector 완성 후 함께 통합 예정. |
+| **auto-promotion evidence 연동** | **미통합** | 의도적으로 isolated unit으로 먼저 착지. current dev guard integration belongs in `evaluateAutoPromotion` evidence, not runtime signer policy. |
 | **Tests** | 12개 | non-array reject, empty samples, frozen shape, short span blocker, stable dense history pass, degradation detection, per-sample normalization, insufficient samples, custom thresholds, edge cases. |
 | **전체 테스트** | 1247/1249 green | 2개 pre-skip. commit 42a225e 기준. |
 
-**결론**: walk-forward CV evaluator는 AGENTS.md의 live 승격 전 필수 조건 중 첫 번째(시간 순서 분할 CV)를 충족. **regime-change detection(두 번째 조건)과 promotion-evidence 통합은 미완**. 현재는 standalone 모듈. 실제 전략 샘플이 쌓이면 `evaluateWalkForwardCv({samples})`를 `promotion-evidence.mjs`의 5-gate에 추가하면 live 승격 기준 강화.
+**결론**: walk-forward CV evaluator는 AGENTS.md의 live 승격 전 필수 조건 중 첫 번째(시간 순서 분할 CV)를 충족. **regime-change detection(두 번째 조건)과 auto-promotion evidence 통합은 미완**. 현재는 standalone 모듈. 실제 전략 샘플이 쌓이면 `evaluateWalkForwardCv({samples})`를 `evaluateAutoPromotion` evidence path에 추가하면 commit-guard 기준 강화.
 
 ### T18c Regime-Change Detector (Mayer Multiple) — 완료 (commit 6c5ffd7), 17테스트
 
@@ -313,7 +313,7 @@
 | **extractRegimeChanges** | unknown 무시 | `unknown` → known 전환, known → `unknown` 전환 모두 regime change로 집계하지 않음. 오직 known↔known 다른 label 간만 기록. |
 | **hasRegimeChangeInWindow** | window 내 검사 | `[startMs, endMs)` 안에 regime change가 1개 이상 있으면 `true`. |
 | **summarizeRegimeWindow** | convenience | window 내 regime 분포 + change list + `hasChange` boolean. |
-| **promotion-evidence 통합** | **미통합** | 의도적으로 isolated. regime-change detector 완성 후 walk-forward와 함께 `promotion-evidence.mjs`에 6번째 gate로 추가 예정. |
+| **auto-promotion evidence 통합** | **미통합** | 의도적으로 isolated. regime-change detector 완성 후 walk-forward와 함께 auto-promotion dev guard evidence에 추가 예정. |
 | **Tests** | 17개 | classifyRegime(4), annotateRegimeSeries(5: non-array, unknown warmup, neutral stable, bull_peak rally, bear collapse), extractRegimeChanges(3: basic, unknown ignored, no change), hasRegimeChangeInWindow(2: present, absent), summarizeRegimeWindow(3). |
 | **전체 테스트** | 1264/1266 green | 2개 pre-skip. commit 6c5ffd7 기준. |
 
@@ -450,7 +450,7 @@ Plan §3의 9개 전략에 대응하는 adapter 목록 (T8-T13 반영):
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `src/executor/capital/adaptive-caps.mjs` | 완료, 11테스트 | `buildAdaptiveCapitalPlan`이 `deriveCaps()` + `projectToUsd()` → static caps와 overlay. `effective = min(static, adaptive)`. `bindingConstraint` 필드로 어떤 cap이 bind되는지 표시. |
+| legacy adaptive-cap overlay | removed | committed caps remain canonical; tick-time adaptive cap overlays were deleted. |
 | `newEntriesAllowed` | OK | `operatingBtcSats < 50_000`이면 전략별 `newEntriesAllowed = false`. |
 | **rebalancer.mjs 연동** | **없음** | `src/executor/capital/rebalancer.mjs`가 `buildAdaptiveCapitalPlan`를 **전혀 호출하지 않음**. grep 결과 0건. |
 | **tick loop** | **없음** | 매 10분마다 잔고 read → cap 재산출 → strategyCaps 업데이트하는 loop 없음. |
@@ -619,12 +619,12 @@ Opus 보고 "T15 완료"는 **`src/executor/payback/diversification-kpi.mjs` 파
 
 | # | Todo | 파일 | 테스트 | caller 연동 | I/O |
 |---|---|---|---|---|---|
-| T1 | capital-adaptive caps | `src/config/capital-adaptive.mjs` | 11 | **없음** | 없음 |
+| T1 | legacy adaptive-cap config | removed | 11 historical | **없음** | 없음 |
 | T2 | diversification policy | `src/config/diversification.mjs` | 16 | **없음** | 없음 |
 | T3 | risk daemon 7 modules | `src/executor/risk/*` | 23 | **없음** | 없음 |
-| T4 | adaptive capital plan | `src/executor/capital/adaptive-caps.mjs` | 11 | **없음** | 없음 |
+| T4 | legacy adaptive capital plan | removed | 11 historical | **없음** | 없음 |
 | T5 | revalidation scheduler | `src/executor/revalidation/scheduler.mjs` | — | **없음** | 없음 |
-| T6 | dynamic liveTrading gate | `src/status/live-policy.mjs`(Kimi) + `dynamic-live-gate.mjs` | — | **부분** | 없음 |
+| T6 | liveTrading policy eligibility | `src/status/live-policy.mjs`(Kimi) + removed dynamic-gate experiment | — | **부분** | 없음 |
 | T7 | recursive lending loop measurement | **미착수(운영 blocker)** | — | — | **필요** |
 | T8 | Pendle PT-LBTC | `src/strategy/pendle-pt-lbtc-adapter.mjs` | 18 | **없음** | 없음 |
 | T9 | Pendle PT-SolvBTC | `src/strategy/pendle-pt-solvbtc-bbn-adapter.mjs` | 18 | **없음** | 없음 |
@@ -634,9 +634,9 @@ Opus 보고 "T15 완료"는 **`src/executor/payback/diversification-kpi.mjs` 파
 | T13 | Beefy folding | `src/strategy/beefy-folding-adapter.mjs` | 17 | **없음** | 없음 |
 | T14 | strategy catalog dispatcher | `src/executor/dispatcher/strategy-catalog-dispatcher.mjs` | 14 | **없음** | 없음 |
 | T15 | diversification KPI slice | `src/executor/payback/diversification-kpi.mjs` | — | **없음** | 없음 |
-| T16 | OFT exploit detector | `src/risk/oft-exploit-detector/oft-exploit-detector.mjs` | 13 | **없음** | 없음 |
+| T16 | standalone OFT exploit detector | removed | 13 historical | **없음** | 없음 |
 | T17 | shadow run aggregator | `src/executor/shadow/shadow-run-aggregator.mjs` | 14 | **없음** | 없음 |
-| T18 | autoExecute=true commit gate | `src/strategy/promotion-evidence.mjs` + `src/cli/promotion-pr-preview.mjs` + `src/status/promotion-slice.mjs` | 14 + 6 | **없음** | **부분** |
+| T18 | autoExecute=true commit guard | auto-promotion dev guard + `src/cli/promotion-pr-preview.mjs` | 14 + 6 historical | **없음** | **부분** |
 | T18b | walk-forward purged CV | `src/strategy/walk-forward-cv.mjs` | 12 | **없음** | 없음 |
 | T18c | regime-change detector | `src/strategy/regime-detector.mjs` | 17 | **없음** | 없음 |
 | T18d | adapter→dispatcher bridge | `src/executor/dispatcher/candidate-builder.mjs` | 13 | **없음** | 없음 |

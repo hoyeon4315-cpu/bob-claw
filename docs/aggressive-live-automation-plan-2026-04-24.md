@@ -214,7 +214,7 @@ node --test test/*payback*.test.mjs test/*receipt*.test.mjs
 - `src/executor/capital/gas-float-keeper.mjs`
 - `src/executor/bootstrap/gas-bootstrap.mjs`
 - `src/executor/dispatcher/candidate-builder.mjs`
-- `src/config/capital-adaptive.mjs`
+- legacy adaptive-cap config overlay (removed; committed caps remain canonical)
 
 구현:
 

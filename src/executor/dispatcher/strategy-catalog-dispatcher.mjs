@@ -2,12 +2,11 @@
 //
 // Plan §5b.3 T14. Single integration point that turns a catalog of
 // candidate strategy proposals into a ranked list of deploy intents.
-// Combines four previously-built gates:
+// Combines deterministic dispatch inputs:
 //
-//   1. Adaptive capital plan     (T4)  — per-strategy effective caps
-//   2. Diversification KPI slice (T15) — HHI/per-chain/per-protocol shares
-//   3. Dynamic live gate         (T6)  — verdict horizon + revalidation freshness
-//   4. Feed freshness            (T22) — gas/oracle/inventory/TVL watchdog
+//   1. Adaptive capital plan     — per-strategy effective caps
+//   2. Diversification KPI slice — HHI/per-chain/per-protocol shares
+//   3. Feed freshness            — gas/oracle/inventory/TVL watchdog
 //
 // Pure function. No I/O, no LLM. Callers (Capital Manager tick,
 // Signer Daemon preflight) consume the frozen output as the authoritative
@@ -24,9 +23,10 @@
 //     roundTripCostSats,       // onramp + dest gas + offramp + slippage
 //   }
 
+import { perChainMaxShareFor } from "../../config/diversification.mjs";
+
 const DENY_REASONS = Object.freeze({
   FEED_STALE: "feed_stale",
-  LIVE_GATE_BLOCKED: "live_gate_blocked",
   OPERATING_FLOOR: "below_operating_floor",
   UNKNOWN_STRATEGY: "unknown_strategy",
   AUTO_EXECUTE_OFF: "auto_execute_off",
@@ -86,8 +86,9 @@ function wouldViolateDiversification({
     };
   }
   const projChain = projectedShare(perChain, total, candidate.chain, addSats);
-  if (policy.perChainMaxShare && projChain > policy.perChainMaxShare) {
-    return { dimension: "chain", share: projChain, max: policy.perChainMaxShare };
+  const perChainMaxShare = perChainMaxShareFor(candidate.chain, policy);
+  if (perChainMaxShare && projChain > perChainMaxShare) {
+    return { dimension: "chain", share: projChain, max: perChainMaxShare };
   }
   const projProtocol = projectedShare(perProtocol, total, candidate.protocol, addSats);
   if (policy.perProtocolMaxShare && projProtocol > policy.perProtocolMaxShare) {
@@ -174,16 +175,12 @@ export function dispatchStrategyCatalog({
   adaptiveCapitalPlan,
   diversificationSlice = null,
   absoluteAllocations = null,
-  dynamicLiveGate,
   feedFreshness,
   btcPriceUsd,
   now = new Date().toISOString(),
 } = {}) {
   if (!adaptiveCapitalPlan) {
     throw new TypeError("adaptiveCapitalPlan is required");
-  }
-  if (!dynamicLiveGate) {
-    throw new TypeError("dynamicLiveGate is required");
   }
   if (!feedFreshness) {
     throw new TypeError("feedFreshness is required");
@@ -205,21 +202,6 @@ export function dispatchStrategyCatalog({
         denyAll(candidates, DENY_REASONS.FEED_STALE, feedFreshness.worstSeverity, now),
       ),
       summary: summarize([], candidates.length, "feed_stale"),
-    });
-  }
-  if (dynamicLiveGate.gated === true) {
-    return Object.freeze({
-      schemaVersion: 1,
-      observedAt: now,
-      globalGate: Object.freeze({
-        action: "block_all",
-        reason: DENY_REASONS.LIVE_GATE_BLOCKED,
-        detail: JSON.stringify(dynamicLiveGate.blockers || []),
-      }),
-      intents: Object.freeze(
-        denyAll(candidates, DENY_REASONS.LIVE_GATE_BLOCKED, dynamicLiveGate.blockers, now),
-      ),
-      summary: summarize([], candidates.length, "live_gate_blocked"),
     });
   }
   if (adaptiveCapitalPlan.newEntriesAllowed !== true) {

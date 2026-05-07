@@ -1,8 +1,8 @@
-// W7/W10 — Strategy promotion-stage dashboard slice.
+// W7/W10 — Strategy readiness-stage dashboard slice.
 //
-// Summarizes the promotion ladder (blocked → shadow_ready → live_candidate → live_ready)
+// Summarizes advisory readiness (blocked → shadow_ready → live_candidate → live_ready)
 // across all strategy tick reports so the dashboard can display
-// "which stage is each strategy in" without reading raw JSONL.
+// "which display state is each strategy in" without reading raw JSONL.
 //
 // Demotion evidence (W10-C) can override live_ready back to live_candidate
 // when adverse runtime signals are detected. Rollback is still a committed-cap
@@ -17,9 +17,9 @@ export const STAGES = Object.freeze([
   "live_ready",
 ]);
 
-function resolvePromotionVerdict(mode, promo, demotion) {
+function resolveReadinessVerdict(mode, readiness, demotion) {
   let verdict = mode;
-  if (mode === "live_candidate" && promo?.eligible === true) {
+  if (mode === "live_candidate" && readiness?.eligible === true) {
     verdict = "live_ready";
   }
   if (verdict === "live_ready" && demotion?.demoted === true) {
@@ -28,33 +28,33 @@ function resolvePromotionVerdict(mode, promo, demotion) {
   return verdict;
 }
 
-export function buildStrategyStageSlice(reports = [], promotionEvidence = {}, demotionEvidence = {}) {
+export function buildStrategyStageSlice(reports = [], readinessEvidence = {}, demotionEvidence = {}) {
   const total = reports.length;
   const blocked = reports.filter((r) => r?.mode === "blocked");
   const shadowReady = reports.filter((r) => r?.mode === "shadow_ready");
   const liveCandidate = reports.filter((r) => r?.mode === "live_candidate");
 
-  // promotionEvidence is a map: strategyId -> { eligible: boolean }
+  // readinessEvidence is a map: strategyId -> { eligible: boolean }
   // demotionEvidence is a map: strategyId -> { demoted: boolean, triggers: string[] }
   const liveReady = reports.filter((r) => {
     const sid = r?.strategyId;
-    const promo = sid ? promotionEvidence[sid] : null;
+    const readiness = sid ? readinessEvidence[sid] : null;
     const demotion = sid ? demotionEvidence[sid] : null;
-    return r?.mode === "live_candidate" && promo?.eligible === true && demotion?.demoted !== true;
+    return r?.mode === "live_candidate" && readiness?.eligible === true && demotion?.demoted !== true;
   });
 
   const byStrategy = Object.fromEntries(
     reports.map((r) => {
       const sid = r.strategyId || "unknown";
-      const promo = promotionEvidence[sid] || null;
+      const readiness = readinessEvidence[sid] || null;
       const demotion = demotionEvidence[sid] || null;
       const mode = r?.mode || "blocked";
-      const promotionVerdict = resolvePromotionVerdict(mode, promo, demotion);
+      const readinessVerdict = resolveReadinessVerdict(mode, readiness, demotion);
       return [
         sid,
         {
           mode,
-          promotionVerdict,
+          readinessVerdict,
           shadowReady: Boolean(r?.shadowReady),
           liveReady: Boolean(r?.liveReady),
           blockerCount:
@@ -63,7 +63,7 @@ export function buildStrategyStageSlice(reports = [], promotionEvidence = {}, de
               : r?.blockers?.length ?? 0,
           topBlocker: r?.topBlocker ?? r?.blockers?.[0] ?? null,
           projectedNetUsd: r?.projectedNetUsd ?? r?.economics?.projectedNetUsd ?? null,
-          promotionEligible: promo?.eligible ?? null,
+          policyReady: readiness?.eligible ?? null,
           demotionTriggers: demotion?.triggers ?? [],
         },
       ];
@@ -80,16 +80,16 @@ export function buildStrategyStageSlice(reports = [], promotionEvidence = {}, de
   });
 }
 
-export function summarizeStageDistribution(reports = [], promotionEvidence = {}, demotionEvidence = {}) {
+export function summarizeStageDistribution(reports = [], readinessEvidence = {}, demotionEvidence = {}) {
   const out = {};
   for (const stage of STAGES) {
     const subset = reports.filter((r) => {
       const sid = r?.strategyId;
-      const promo = sid ? promotionEvidence[sid] : null;
+      const readiness = sid ? readinessEvidence[sid] : null;
       const demotion = sid ? demotionEvidence[sid] : null;
       const mode = r?.mode || "blocked";
-      const promotionVerdict = resolvePromotionVerdict(mode, promo, demotion);
-      return promotionVerdict === stage;
+      const readinessVerdict = resolveReadinessVerdict(mode, readiness, demotion);
+      return readinessVerdict === stage;
     });
     out[stage] = Object.freeze({
       count: subset.length,

@@ -478,8 +478,8 @@ export function buildStrategyCatalog({
     generatedAt: dashboardStatus?.generatedAt || new Date().toISOString(),
     policy: {
       liveTrading: dashboardStatus?.overall?.liveTrading || "BLOCKED",
-      preStageLiveTrading:
-        dashboardStatus?.overall?.lanePolicy?.preStageLiveTrading ||
+      policyLiveTrading:
+        dashboardStatus?.overall?.lanePolicy?.policyLiveTrading ||
         dashboardStatus?.overall?.liveTrading ||
         "BLOCKED",
       laneStage: dashboardStatus?.overall?.lanePolicy?.stage || null,

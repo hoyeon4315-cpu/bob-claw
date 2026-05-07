@@ -31,8 +31,9 @@ export const DIVERSIFICATION_POLICY = Object.freeze({
   minSharesForHhi: DIVERSIFICATION_OVERRIDES.minSharesForHhi ?? 2,
 });
 
-function perChainMaxShareFor(id, policy) {
-  return policy.perChainMaxShareByChain?.[id] ?? policy.perChainMaxShare;
+export function perChainMaxShareFor(id, policy = DIVERSIFICATION_POLICY) {
+  const source = policy || DIVERSIFICATION_POLICY;
+  return source.perChainMaxShareByChain?.[id] ?? source.perChainMaxShare;
 }
 
 function sumShares(sharesByKey) {

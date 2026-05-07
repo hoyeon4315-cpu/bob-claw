@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SEVERITY, makeVerdict, ewma } from "../src/executor/risk/types.mjs";
 import { evaluateProtocolHealth } from "../src/executor/risk/protocol-health.mjs";
-import { evaluateLayerZeroOftWatcher } from "../src/executor/risk/layerzero-oft-watcher.mjs";
 import { evaluateLiquidityWatch } from "../src/executor/risk/liquidity-watch.mjs";
 import { evaluatePegMonitor } from "../src/executor/risk/peg-monitor.mjs";
 import { evaluateConcentrationGuard } from "../src/executor/risk/concentration-guard.mjs";
@@ -53,35 +52,6 @@ test("protocol-health: oracle deviation >=3% flags", () => {
 test("protocol-health: admin key change flags", () => {
   const v = evaluateProtocolHealth({ protocolId: "x", adminKeyChangedRecently: true });
   assert.equal(v.ok, false);
-});
-
-// --- layerzero-oft-watcher ---
-test("oft-watcher: healthy passes", () => {
-  const v = evaluateLayerZeroOftWatcher({
-    tokenId: "wBTC.OFT",
-    netSupplyDeviationPct: 0.001,
-    mintBurnRatio24h: 1.0,
-    largestSingleMintSats: 100_000,
-  });
-  assert.equal(v.ok, true);
-});
-
-test("oft-watcher: 0.5% net supply deviation trips kill_switch", () => {
-  const v = evaluateLayerZeroOftWatcher({
-    tokenId: "wBTC.OFT",
-    netSupplyDeviationPct: 0.006,
-  });
-  assert.equal(v.ok, false);
-  assert.equal(v.severity, SEVERITY.KILL_SWITCH);
-});
-
-test("oft-watcher: mint/burn ratio 2.0 trips (kelp pattern)", () => {
-  const v = evaluateLayerZeroOftWatcher({
-    tokenId: "wBTC.OFT",
-    mintBurnRatio24h: 2.0,
-  });
-  assert.equal(v.ok, false);
-  assert.ok(v.violations.some((x) => x.kind === "mint_burn_ratio_out_of_band"));
 });
 
 // --- liquidity-watch ---

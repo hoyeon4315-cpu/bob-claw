@@ -34,7 +34,7 @@ describe("buildStrategyStageSlice", () => {
     assert.ok(Object.isFrozen(slice.byStrategy));
   });
 
-  test("counts 4 vanilla stages without promotion evidence", () => {
+  test("counts 4 vanilla stages without readiness evidence", () => {
     const reports = [
       reportFixture({ strategyId: "a", mode: "blocked" }),
       reportFixture({ strategyId: "b", mode: "shadow_ready", shadowReady: true }),
@@ -49,32 +49,32 @@ describe("buildStrategyStageSlice", () => {
     assert.equal(slice.liveReadyCount, 0);
   });
 
-  test("promotes live_candidate to live_ready when evidence says eligible", () => {
+  test("marks live_candidate to live_ready when evidence says eligible", () => {
     const reports = [
       reportFixture({ strategyId: "c1", mode: "live_candidate" }),
       reportFixture({ strategyId: "c2", mode: "live_candidate" }),
     ];
-    const promotionEvidence = {
+    const readinessEvidence = {
       c1: { eligible: true },
       c2: { eligible: false },
     };
-    const slice = buildStrategyStageSlice(reports, promotionEvidence);
+    const slice = buildStrategyStageSlice(reports, readinessEvidence);
     assert.equal(slice.total, 2);
     assert.equal(slice.liveCandidateCount, 1);
     assert.equal(slice.liveReadyCount, 1);
-    assert.equal(slice.byStrategy.c1.promotionVerdict, "live_ready");
-    assert.equal(slice.byStrategy.c2.promotionVerdict, "live_candidate");
-    assert.equal(slice.byStrategy.c1.promotionEligible, true);
-    assert.equal(slice.byStrategy.c2.promotionEligible, false);
+    assert.equal(slice.byStrategy.c1.readinessVerdict, "live_ready");
+    assert.equal(slice.byStrategy.c2.readinessVerdict, "live_candidate");
+    assert.equal(slice.byStrategy.c1.policyReady, true);
+    assert.equal(slice.byStrategy.c2.policyReady, false);
   });
 
-  test("promotionVerdict falls back to mode when no evidence", () => {
+  test("readinessVerdict falls back to mode when no evidence", () => {
     const reports = [
       reportFixture({ strategyId: "x", mode: "shadow_ready", shadowReady: true }),
     ];
     const slice = buildStrategyStageSlice(reports);
-    assert.equal(slice.byStrategy.x.promotionVerdict, "shadow_ready");
-    assert.equal(slice.byStrategy.x.promotionEligible, null);
+    assert.equal(slice.byStrategy.x.readinessVerdict, "shadow_ready");
+    assert.equal(slice.byStrategy.x.policyReady, null);
   });
 
   test("byStrategy fields are populated from report and evidence", () => {
@@ -134,7 +134,7 @@ describe("buildStrategyStageSlice", () => {
       reportFixture({ strategyId: "dem1", mode: "live_candidate" }),
       reportFixture({ strategyId: "dem2", mode: "live_candidate" }),
     ];
-    const promotionEvidence = {
+    const readinessEvidence = {
       dem1: { eligible: true },
       dem2: { eligible: true },
     };
@@ -142,11 +142,11 @@ describe("buildStrategyStageSlice", () => {
       dem1: { demoted: true, triggers: ["recent_failure_burst"] },
       dem2: { demoted: false, triggers: [] },
     };
-    const slice = buildStrategyStageSlice(reports, promotionEvidence, demotionEvidence);
+    const slice = buildStrategyStageSlice(reports, readinessEvidence, demotionEvidence);
     assert.equal(slice.liveReadyCount, 1);
     assert.equal(slice.liveCandidateCount, 1);
-    assert.equal(slice.byStrategy.dem1.promotionVerdict, "live_candidate");
-    assert.equal(slice.byStrategy.dem2.promotionVerdict, "live_ready");
+    assert.equal(slice.byStrategy.dem1.readinessVerdict, "live_candidate");
+    assert.equal(slice.byStrategy.dem2.readinessVerdict, "live_ready");
     assert.deepEqual(slice.byStrategy.dem1.demotionTriggers, ["recent_failure_burst"]);
     assert.deepEqual(slice.byStrategy.dem2.demotionTriggers, []);
   });
@@ -161,8 +161,8 @@ describe("buildStrategyStageSlice", () => {
       shd: { demoted: true, triggers: ["stale_evidence"] },
     };
     const slice = buildStrategyStageSlice(reports, {}, demotionEvidence);
-    assert.equal(slice.byStrategy.blk.promotionVerdict, "blocked");
-    assert.equal(slice.byStrategy.shd.promotionVerdict, "shadow_ready");
+    assert.equal(slice.byStrategy.blk.readinessVerdict, "blocked");
+    assert.equal(slice.byStrategy.shd.readinessVerdict, "shadow_ready");
   });
 });
 
@@ -174,10 +174,10 @@ describe("summarizeStageDistribution", () => {
       reportFixture({ strategyId: "c", mode: "live_candidate" }),
       reportFixture({ strategyId: "d", mode: "live_candidate" }),
     ];
-    const promotionEvidence = {
+    const readinessEvidence = {
       d: { eligible: true },
     };
-    const dist = summarizeStageDistribution(reports, promotionEvidence);
+    const dist = summarizeStageDistribution(reports, readinessEvidence);
     assert.equal(dist.blocked.count, 1);
     assert.deepEqual(dist.blocked.strategyIds, ["a"]);
     assert.equal(dist.shadow_ready.count, 1);
@@ -200,9 +200,9 @@ describe("summarizeStageDistribution", () => {
       reportFixture({ strategyId: "a", mode: "live_candidate" }),
       reportFixture({ strategyId: "b", mode: "live_candidate" }),
     ];
-    const promotionEvidence = { a: { eligible: true }, b: { eligible: true } };
+    const readinessEvidence = { a: { eligible: true }, b: { eligible: true } };
     const demotionEvidence = { a: { demoted: true, triggers: ["x"] }, b: { demoted: false, triggers: [] } };
-    const dist = summarizeStageDistribution(reports, promotionEvidence, demotionEvidence);
+    const dist = summarizeStageDistribution(reports, readinessEvidence, demotionEvidence);
     assert.equal(dist.live_ready.count, 1);
     assert.deepEqual(dist.live_ready.strategyIds, ["b"]);
     assert.equal(dist.live_candidate.count, 1);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTransactionLedger } from "../src/audit/transaction-ledger.mjs";
+import { buildTransactionLedger, buildTransactionLedgerNav } from "../src/audit/transaction-ledger.mjs";
 
 test("transaction ledger turns reconciled receipts into cost rows without double-counting gas", () => {
   const ledger = buildTransactionLedger({
@@ -606,4 +606,87 @@ test("transaction ledger summarizes current NAV against baseline", () => {
 
   assert.equal(ledger.currentNav.confidence, "verified_current");
   assert.equal(ledger.baseline.deltaFromCurrentUsd, 80);
+});
+
+test("transaction ledger NAV prefers full-rpc inventory and preserves forensic caveats", () => {
+  const currentNav = buildTransactionLedgerNav({
+    inventoryRecords: [
+      {
+        observedAt: "2026-05-05T00:00:00.000Z",
+        totalUsd: 362,
+        totals: { tokenUsd: 295, protocolUsd: 67, totalUsd: 362 },
+        summary: { walletCoverage: "partial_supported", scanErrorCount: 5, unknownAssetBalanceCount: 0 },
+        source: "live_scan",
+      },
+      {
+        observedAt: "2026-05-05T00:01:00.000Z",
+        totalUsd: 370,
+        totals: { tokenUsd: 303, protocolUsd: 67, totalUsd: 370 },
+        summary: { walletCoverage: "full_rpc", scanErrorCount: 0, unknownAssetBalanceCount: 0 },
+        source: "live_scan",
+      },
+      {
+        observedAt: "2026-04-28T00:00:00.000Z",
+        totalUsd: 700,
+        totals: { totalUsd: 700 },
+        summary: {
+          walletCoverage: "full_external",
+          scanErrorCount: 1,
+          externalTotalPortfolioUsd: 700,
+          externalUnclassifiedUsd: 525,
+        },
+        source: "live_scan_with_external_portfolio",
+      },
+    ],
+  });
+  const ledger = buildTransactionLedger({ currentNav, baselineUsd: 450 });
+
+  assert.equal(ledger.currentNav.observedAt, "2026-05-05T00:01:00.000Z");
+  assert.equal(ledger.currentNav.totalUsd, 370);
+  assert.equal(ledger.currentNav.walletCoverage, "full_rpc");
+  assert.equal(ledger.currentNav.confidence, "verified_current");
+  assert.equal(ledger.currentNav.maxExternalReference.totalUsd, 700);
+  assert.equal(ledger.currentNav.externalReferenceWarning, "external_reference_not_current_nav");
+  assert.equal(ledger.baseline.deltaFromCurrentUsd, 80);
+});
+
+test("transaction ledger NAV flags protocol share double-count inventory rows", () => {
+  const currentNav = buildTransactionLedgerNav({
+    inventoryRecords: [
+      {
+        observedAt: "2026-05-05T00:00:00.000Z",
+        totalUsd: 437,
+        totals: { tokenUsd: 370, protocolUsd: 67, totalUsd: 437 },
+        summary: { walletCoverage: "full_rpc", scanErrorCount: 0 },
+        tokenBalances: [{
+          ticker: "yoUSD",
+          estimatedUsd: 67,
+          trackingStatus: "protocol_reader_covered",
+        }],
+        protocolPositions: [{
+          symbol: "yoUSD",
+          estimatedUsd: 67,
+        }],
+      },
+      {
+        observedAt: "2026-05-05T00:01:00.000Z",
+        totalUsd: 370,
+        totals: { tokenUsd: 303, protocolUsd: 67, totalUsd: 370 },
+        summary: { walletCoverage: "full_rpc", scanErrorCount: 0 },
+        tokenBalances: [{
+          ticker: "yoUSD",
+          estimatedUsd: 67,
+          trackingStatus: "protocol_reader_covered",
+          countedInWalletTotal: false,
+        }],
+        protocolPositions: [{
+          symbol: "yoUSD",
+          estimatedUsd: 67,
+        }],
+      },
+    ],
+  });
+
+  assert.equal(currentNav.totalUsd, 370);
+  assert.equal(currentNav.excludedDoubleCountInventoryCount, 1);
 });

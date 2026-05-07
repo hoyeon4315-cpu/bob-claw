@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { merklPortfolioPolicy } from "../config/merkl-portfolio.mjs";
-import { DIVERSIFICATION_POLICY, canAcceptNewAllocation, computeHhi } from "../config/diversification.mjs";
+import { DIVERSIFICATION_POLICY, canAcceptNewAllocation, computeHhi, perChainMaxShareFor } from "../config/diversification.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd, latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -251,7 +251,7 @@ function diversificationMaxAddUsd({ activePositions = [], queueItem = {} } = {})
     maxAddForShareCap({
       currentGroupUsd: chainUsd,
       activeUsd: activePositionUsd,
-      maxShare: DIVERSIFICATION_POLICY.perChainMaxShare,
+      maxShare: perChainMaxShareFor(queueItem.chain, DIVERSIFICATION_POLICY),
     }),
     maxAddForShareCap({
       currentGroupUsd: protocolUsd,

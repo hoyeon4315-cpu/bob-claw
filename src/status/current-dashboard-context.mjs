@@ -16,7 +16,6 @@ import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../pre
 import { reconcileTinyCanaryAdmissionWithLivePolicy } from "../prelive/tiny-canary-admission.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocator-core.mjs";
-import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { evaluateStage } from "../executor/policy/stage-evaluator.mjs";
 import { syncStageTransitionAudit } from "../executor/policy/stage-transition-audit.mjs";
@@ -41,7 +40,6 @@ import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
 import { buildMerklUserRewardsSlice } from "./merkl-user-rewards-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "./protocol-position-marks-slice.mjs";
 import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
-import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
 import { buildSleeveProfileSlice } from "./sleeve-profile-slice.mjs";
@@ -344,11 +342,6 @@ export async function buildCurrentDashboardContext({
 
   const executorRuntime = await loadExecutorRuntime({ now });
   const reportingPnlBaseline = await readReportingPnlBaseline({ dataDir });
-  const researchFunnel = await loadResearchFunnelSlice({
-    rootDir: join(dataDir, ".."),
-    dataDir,
-    generatedAt: now,
-  });
   const radarBoard = buildRadarBoard({
     observations: radarObservations,
     episodes: radarEpisodes,
@@ -399,7 +392,6 @@ export async function buildCurrentDashboardContext({
     triangleArtifacts,
      executorRuntime,
      promotionReport,
-     researchFunnel,
      reportingPnlBaseline,
      campaignOpportunities: campaignAwareOpportunities || null,
      anchorPositions: anchorPositionHealth || null,
@@ -756,28 +748,7 @@ export async function buildCurrentDashboardContext({
     exactRouteForkPackage,
   });
   dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
-  let milestoneValidationGates = buildMilestoneValidationGates({
-    phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
-    strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
-    flashFloorDecision,
-    wrappedBtcLendingLoopSlice,
-    wrappedBtcLoopDryRun,
-    recursiveWrappedBtcLoop,
-    recursiveWrappedBtcLoopDryRun,
-    recursiveStablecoinLoop,
-    recursiveStablecoinLoopDryRun,
-    phase3Validation: phase3StrategyValidation,
-    protocolMarketWatchers,
-    allocatorCore,
-    preliveValidation,
-    now: dashboardStatus.generatedAt,
-  });
-  strategySnapshot.summary.milestoneOverallStatus = milestoneValidationGates.summary?.overallStatus || null;
-  strategySnapshot.summary.milestoneNextGateId = milestoneValidationGates.summary?.nextGateId || null;
-  strategySnapshot.planningLayers.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
-  strategySnapshot.artifacts.source.push({ kind: "milestone_validation_gates", path: "data/milestone-validation-gates.json" });
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
-  dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   let operationalJudgmentReview = buildOperationalJudgmentReview({
     dashboardStatus,
     strategySnapshot,
@@ -889,27 +860,7 @@ export async function buildCurrentDashboardContext({
     exactRouteForkPackage,
   });
   dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
-  milestoneValidationGates = buildMilestoneValidationGates({
-    phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
-    strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
-    flashFloorDecision,
-    wrappedBtcLendingLoopSlice,
-    wrappedBtcLoopDryRun,
-    recursiveWrappedBtcLoop,
-    recursiveWrappedBtcLoopDryRun,
-    recursiveStablecoinLoop,
-    recursiveStablecoinLoopDryRun,
-    phase3Validation: phase3StrategyValidation,
-    protocolMarketWatchers,
-    allocatorCore,
-    preliveValidation,
-    now: dashboardStatus.generatedAt,
-  });
-  strategySnapshot.summary.milestoneOverallStatus = milestoneValidationGates.summary?.overallStatus || null;
-  strategySnapshot.summary.milestoneNextGateId = milestoneValidationGates.summary?.nextGateId || null;
-  strategySnapshot.planningLayers.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
-  dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   operationalJudgmentReview = buildOperationalJudgmentReview({
     dashboardStatus,
     strategySnapshot,
@@ -1079,7 +1030,6 @@ export async function buildCurrentDashboardContext({
       wrappedBtcLendingLoopSlice,
       wrappedBtcLoopDryRun,
       wrappedBtcLoopOosEvidence,
-      milestoneValidationGates,
        v1InfraDrills,
        merklOpportunityReport,
        merklOpportunityAlerts,

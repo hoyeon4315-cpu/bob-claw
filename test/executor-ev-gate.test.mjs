@@ -5,7 +5,7 @@ import {
   evGate,
 } from "../src/executor/policy/ev-gate.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
-import { executionEvFallbackCostUsd } from "../src/config/sizing.mjs";
+import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../src/config/sizing.mjs";
 
 function makeAuditRecord({
   txHash,
@@ -118,6 +118,23 @@ test("evGate falls back to committed chain p99 cost when sample history is spars
   assert.equal(verdict.allow, false);
   assert.equal(verdict.evidence.costSource, "fallback_chain_p99");
   assert.equal(verdict.evidence.fallbackP99CostUsd, fallbackP99CostUsd);
+});
+
+test("evGate uses shared tiny-canary cost floor for sparse tiny_live_canary history", () => {
+  const required = tinyCanarySameChainRoundTripCostUsd({ chain: "base" });
+  const verdict = evGate(
+    makeIntent({
+      intentType: "tiny_live_canary",
+      expectedNetUsd: required,
+    }),
+    makeHistory([], { intentType: "tiny_live_canary" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.equal(verdict.evidence.costSource, "tiny_canary_shared_p90");
+  assert.equal(verdict.evidence.requiredNetUsd, required);
+  assert.equal(verdict.evidence.fallbackP99CostUsd, executionEvFallbackCostUsd({ chain: "base" }));
 });
 
 test("buildEvCostModel computes deterministic p90 entries regardless of input order", () => {
