@@ -223,7 +223,7 @@ export function validateEvmTransactionSemantics(intent = {}) {
 }
 
 function isLikelyAlreadyBroadcast(error) {
-  return /already known|already imported|known transaction|nonce too low/iu.test(errorMessage(error));
+  return /already known|already imported|known transaction|nonce too low|replacement transaction underpriced/iu.test(errorMessage(error));
 }
 
 function isNonRetryableLocalError(error) {

@@ -271,6 +271,33 @@ test("evm signer submits accepted raw transactions to fallback RPCs too", async 
   ]);
 });
 
+test("evm signer treats replacement-underpriced broadcast errors as already propagated", async () => {
+  const calls = [];
+  const providers = new Map([
+    ["https://mainnet.base.org", buildProvider({ broadcastError: new Error("replacement transaction underpriced"), calls, label: "primary" })],
+    ["https://mainnet-preconf.base.org", buildProvider({ broadcastError: new Error("replacement transaction underpriced"), calls, label: "fallback" })],
+  ]);
+  const signer = new EvmLocalKeySigner({
+    keyReader: async () => PRIVATE_KEY,
+    providerFactory: (url) => providers.get(url),
+  });
+
+  const signed = await signer.signIntent(intent(), { reserveNonce: true });
+  const broadcast = await signer.broadcastSignedIntent(signed);
+
+  assert.equal(broadcast.txHash, signed.txHash);
+  assert.equal(broadcast.nonce, signed.metadata.nonce);
+  assert.equal(broadcast.from, signed.metadata.from);
+  assert.equal(broadcast.to, signed.metadata.to);
+  assert.deepEqual(calls, [
+    "primary:fee",
+    "primary:balance",
+    "primary:nonce",
+    "primary:broadcast",
+    "fallback:broadcast",
+  ]);
+});
+
 test("evm signer rejects transactions that cannot cover max native gas debit before reserving nonce", async () => {
   const calls = [];
   const signer = buildSigner(buildProvider({ nativeBalanceWei: 20_999_999_999_999n, calls }));
