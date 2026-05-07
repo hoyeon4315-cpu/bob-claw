@@ -1237,7 +1237,7 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.dataCounts.advanceCanaryPresent, 1);
 });
 
-test("dashboard status adds manual memos for refresh, review, and treasury follow-up", () => {
+test("dashboard status adds operator memos for refresh, review, and treasury follow-up", () => {
   const bobBase = route("bob", "base");
   const status = buildDashboardStatus({
     routesRecords: [
@@ -1286,13 +1286,13 @@ test("dashboard status adds manual memos for refresh, review, and treasury follo
     },
   }, { now: "2026-04-10T12:00:00.000Z" });
 
-  assert.equal(status.manualMemos.length, 3);
-  assert.equal(status.manualMemos[0].id, "refresh_inputs");
-  assert.equal(status.manualMemos[0].command, "npm run watch:canary-readiness");
-  assert.equal(status.manualMemos[1].id, "execution_review");
-  assert.equal(status.manualMemos[1].whenLabel, "자금 준비 후");
-  assert.equal(status.manualMemos[2].id, "treasury_check");
-  assert.equal(status.manualMemos[2].command, "npm run plan:treasury-actions -- --json");
+  assert.equal(status.operatorMemos.length, 3);
+  assert.equal(status.operatorMemos[0].id, "refresh_inputs");
+  assert.equal(status.operatorMemos[0].command, "npm run watch:canary-readiness");
+  assert.equal(status.operatorMemos[1].id, "execution_review");
+  assert.equal(status.operatorMemos[1].whenLabel, "자금 준비 후");
+  assert.equal(status.operatorMemos[2].id, "treasury_check");
+  assert.equal(status.operatorMemos[2].command, "npm run plan:treasury-actions -- --json");
 });
 
 test("dashboard status adds ETH-family evidence memo when a new ETH surface appears", () => {
@@ -1348,7 +1348,7 @@ test("dashboard status adds ETH-family evidence memo when a new ETH surface appe
     },
   }, { now: "2026-04-10T12:00:00.000Z" });
 
-  const memo = status.manualMemos.find((item) => item.id === "eth_family_surface");
+  const memo = status.operatorMemos.find((item) => item.id === "eth_family_surface");
   assert.equal(Boolean(memo), true);
   assert.match(memo.command, /audit:eth-family-overfit/);
   assert.match(memo.summary, /base->ethereum/);

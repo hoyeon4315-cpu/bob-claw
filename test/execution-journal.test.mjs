@@ -134,7 +134,7 @@ test("blocked execution events preserve blockers and funding-source context", ()
     },
     riskDecision: {
       decision: "REVIEW",
-      reviews: ["job_requires_manual_review"],
+      reviews: ["job_requires_policy_review"],
       blockers: [],
     },
     observedAt: "2026-04-11T05:10:00.000Z",

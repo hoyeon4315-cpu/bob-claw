@@ -483,7 +483,7 @@ test("risk gate returns review for conditional/manual funding without hard block
   });
 
   assert.equal(decision.decision, "REVIEW");
-  assert.equal(decision.reviews.includes("job_requires_manual_review"), true);
+  assert.equal(decision.reviews.includes("job_requires_policy_review"), true);
   assert.equal(decision.reviews.includes("conditional_funding_source"), true);
   assert.equal(decision.reviews.includes("reserve_state_unmodelled"), true);
   assert.equal(decision.reviews.includes("manual_funding_dependency"), true);

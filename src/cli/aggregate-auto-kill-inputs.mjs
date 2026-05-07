@@ -197,7 +197,7 @@ async function buildActiveProtocols() {
   const campaign = await readJson("data/campaign-aware-opportunities.json");
   if (campaign?.candidates) {
     for (const c of campaign.candidates) {
-      if (c.entryStatus === "auto_allowed" || c.entryStatus === "manual_confirm") {
+      if (c.entryStatus === "auto_allowed" || c.entryStatus === "policy_review") {
         if (c.protocol) protocols.add(c.protocol);
       }
     }
@@ -218,7 +218,7 @@ async function buildCampaignStatus() {
   if (candidates.length === 0) return {};
   // Aggregate the most significant campaign
   const top = candidates
-    .filter((c) => c.entryStatus === "auto_allowed" || c.entryStatus === "manual_confirm")
+    .filter((c) => c.entryStatus === "auto_allowed" || c.entryStatus === "policy_review")
     .sort((a, b) => (b.expectedRealizedAprAfterHaircut || 0) - (a.expectedRealizedAprAfterHaircut || 0))[0];
   if (!top) return {};
   return {

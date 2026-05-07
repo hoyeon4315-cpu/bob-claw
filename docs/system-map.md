@@ -100,7 +100,7 @@ and receipt/audit behavior.
 
 Stage/readiness/admission fields are advisory metadata. `liveTrading` and
 `policyLiveTrading` mean deterministic policy/signer eligibility, not a Stage C
-or manual approval milestone.
+or ad hoc approval milestone.
 
 Route remediation autopilot (`src/strategy/route-remediation-autopilot.mjs`,
 `npm run report:route-remediation-autopilot`) is dev-lane only. It consumes

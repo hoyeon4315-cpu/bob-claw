@@ -375,7 +375,7 @@ async function runCompositeTests() {
   console.log("GOVERNANCE & WHITELIST:");
   console.log("  ✅ Unknown protocols blocked by policy gate");
   console.log("  ✅ Auto-queue to pending-whitelist.jsonl");
-  console.log("  ✅ No auto-execution without manual verification");
+  console.log("  ✅ No auto-execution without policy verification");
   console.log("");
   console.log("ROUTE & ARBITRAGE:");
   console.log("  ✅ New routes require minimum 5 quote samples");

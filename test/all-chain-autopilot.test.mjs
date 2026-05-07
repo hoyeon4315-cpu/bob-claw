@@ -461,7 +461,7 @@ function fakeCommand({ args }) {
       json: {
         generatedAt: new Date().toISOString(),
         candidateCount: 0,
-        summary: { blocked: 0, manual_confirm: 0, auto_allowed: 0, observe: 0 },
+        summary: { blocked: 0, policy_review: 0, auto_allowed: 0, observe: 0 },
         candidates: [],
       },
     };

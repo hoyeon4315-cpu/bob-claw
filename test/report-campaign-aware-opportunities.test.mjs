@@ -258,7 +258,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.strictEqual(c.isMicroTest, true);
   });
 
-  test("manual_confirm when reward token is pre-TGE/points", () => {
+  test("policy_review when reward token is pre-TGE/points", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -275,7 +275,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "manual_confirm");
+    assert.strictEqual(c.entryStatus, "policy_review");
     assert.ok(c.blockers.includes("pre_tge_or_points_reward"));
   });
 

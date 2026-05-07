@@ -198,7 +198,7 @@ async function main() {
   console.log("✅ CL rebalancing detected and queued");
   console.log("✅ YO position increase approved when APY spikes");
   console.log("⛔ Ethereum high-gas opportunities blocked (micro-test only)");
-  console.log("⛔ Unknown protocols require manual verification");
+  console.log("⛔ Unknown protocols require policy verification");
   console.log("✅ Real-time RPC tracking works (0 gas cost)");
   console.log("══════════════════════════════════════════════════");
 }

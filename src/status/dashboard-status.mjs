@@ -1258,7 +1258,7 @@ function tradeHistorySummary({
   };
 }
 
-function buildManualMemos({ decisionInputs = null, shadowCycle = null, prelive = null, gateway = null }) {
+function buildOperatorMemos({ decisionInputs = null, shadowCycle = null, prelive = null, gateway = null }) {
   const memos = [];
 
   if (decisionInputs?.warnings?.length) {
@@ -1927,7 +1927,7 @@ export function buildDashboardStatus(input, options = {}) {
     now,
     reportingPnlBaseline: input.reportingPnlBaseline || null,
   });
-  const manualMemos = buildManualMemos({ decisionInputs, shadowCycle, prelive, gateway });
+  const operatorMemos = buildOperatorMemos({ decisionInputs, shadowCycle, prelive, gateway });
   const executorRuntime = input.executorRuntime || null;
 
   const campaignAware = buildCampaignAwareSlice({
@@ -1964,7 +1964,7 @@ export function buildDashboardStatus(input, options = {}) {
     tradeHistory,
     decisionInputs,
     researchSignals,
-    manualMemos,
+    operatorMemos,
     dex,
     audit: auditStatus,
     executorRuntime,

@@ -174,7 +174,7 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
     return { entryStatus: "auto_allowed", blockers, isMicroTest: true };
   }
 
-  // manual_confirm triggers
+  // policy_review triggers
   if (candidate.campaignAgeHours !== null && candidate.campaignAgeHours < 48) {
     blockers.push("campaign_age_under_48h");
   }
@@ -185,14 +185,14 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
     blockers.push("realized_apr_under_10pct");
   }
 
-  const isManualConfirm =
+  const isPolicyReview =
     (candidate.campaignAgeHours !== null && candidate.campaignAgeHours < 48) ||
     candidate.rewardTokenHaircut === 0.85 ||
     candidate.expectedRealizedAprAfterHaircut < 10 ||
     blockers.length > 0;
 
-  if (isManualConfirm) {
-    return { entryStatus: "manual_confirm", blockers };
+  if (isPolicyReview) {
+    return { entryStatus: "policy_review", blockers };
   }
 
   // Standard auto_allowed (higher bar)
@@ -430,7 +430,7 @@ async function main() {
     candidateCount: candidates.length,
     summary: {
       blocked: candidates.filter((c) => c.entryStatus === "blocked").length,
-      manual_confirm: candidates.filter((c) => c.entryStatus === "manual_confirm").length,
+      policy_review: candidates.filter((c) => c.entryStatus === "policy_review").length,
       auto_allowed: candidates.filter((c) => c.entryStatus === "auto_allowed").length,
       observe: candidates.filter((c) => c.entryStatus === "observe").length,
     },

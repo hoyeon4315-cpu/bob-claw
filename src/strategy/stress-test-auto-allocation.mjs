@@ -219,8 +219,8 @@ function main() {
   console.log("✅ Gas costs checked against profitability");
   console.log("✅ Low-TVL opportunities down-weighted");
   console.log("✅ Reward-token-heavy APYs discounted 70%");
-  console.log("⚠️ Ethereum opportunities need manual review (high gas)");
-  console.log("⚠️ New/untrusted protocols require manual verification");
+  console.log("⚠️ Ethereum opportunities need policy review (high gas)");
+  console.log("⚠️ New/untrusted protocols require policy verification");
   console.log("══════════════════════════════════════════════════");
 }
 

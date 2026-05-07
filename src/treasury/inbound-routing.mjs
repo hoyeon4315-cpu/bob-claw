@@ -100,8 +100,8 @@ export function buildInboundRoutingDecision({
     return {
       schemaVersion: 1,
       sourceEventId: event.eventId || null,
-      status: "manual_review",
-      routeType: "manual_review",
+      status: "policy_review",
+      routeType: "policy_review",
       classification,
       reviewReasons: [classification.reviewReason],
       job: null,
@@ -186,7 +186,7 @@ export function buildInboundRoutingPlan({ events = [], policy = INBOUND_ROUTING_
     summary: {
       eventCount: events.length,
       routeReadyCount: decisions.filter((item) => item.status === "route_ready").length,
-      manualReviewCount: decisions.filter((item) => item.status === "manual_review").length,
+      manualReviewCount: decisions.filter((item) => item.status === "policy_review").length,
       candidateQueueCount: decisions.filter((item) => item.status === "candidate_queue").length,
     },
     decisions,

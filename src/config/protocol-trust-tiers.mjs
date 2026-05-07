@@ -79,7 +79,7 @@ export function getProtocolTier(protocolName = "") {
     name: "unknown",
     riskMultiplier: 0.1,
     maxSingleExposurePct: 0.02,
-    requirements: ["manual_review_required"],
+    requirements: ["policy_review_required"],
     protocols: new Set(),
   };
 }

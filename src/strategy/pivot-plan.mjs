@@ -472,9 +472,9 @@ function buildYieldBlueprintPivot({ riskPolicy, treasuryPolicy, budgetUsd, allow
         deliverable: "Separate executor process with no LLM in the decision path and no private keys in dashboard surfaces.",
       },
       {
-        stage: "tiny_manual_pilot_review",
+        stage: "tiny_policy_pilot_review",
         required: true,
-        deliverable: "Manual-only pre-execution checklist after paper yield survives time, fee, and withdrawal checks.",
+        deliverable: "Policy-review pre-execution checklist after paper yield survives time, fee, and withdrawal checks.",
       },
     ],
   };

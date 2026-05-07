@@ -97,7 +97,7 @@ export function buildCampaignAwareSlice(input, options = {}) {
   }
 
   if (opportunisticTopCandidate && opportunisticActivePositionCount === 0) {
-    opportunisticNextAction = "manual_confirm";
+    opportunisticNextAction = "policy_review";
   } else if (opportunisticActivePositionCount > 0) {
     opportunisticNextAction = "auto_allowed";
   }
@@ -145,7 +145,7 @@ export function buildCampaignAwareSlice(input, options = {}) {
     const blocked = candidates.find((c) => c.blocker);
     if (blocked) {
       topBlockerLabel = blocked.blocker;
-      campaignQueueNextAction = "manual_review";
+      campaignQueueNextAction = "policy_review";
     } else {
       campaignQueueNextAction = "wait";
     }

@@ -277,7 +277,7 @@ export function buildExecutionRiskDecision({
   }
 
   if (typeof job.requiresManualReview === "boolean" && job.requiresManualReview) {
-    reviews.push("job_requires_manual_review");
+    reviews.push("job_requires_policy_review");
   }
   if (job.fundingSource?.selectionStatus === "manual_only") {
     reviews.push("manual_funding_only");
