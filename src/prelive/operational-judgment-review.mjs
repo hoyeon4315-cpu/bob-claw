@@ -7,11 +7,11 @@ function issue({ code, severity = "medium", headline, detail, command = null }) 
 }
 
 function routeContext({ executionRunbook = null, reviewPackage = null } = {}) {
-  return executionRunbook?.currentRoute || reviewPackage?.manualReviewCandidate || null;
+  return executionRunbook?.currentRoute || reviewPackage?.policyReviewCandidate || null;
 }
 
 function primaryCandidate(reviewPackage = null) {
-  return reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  return reviewPackage?.primaryLiveCandidate || reviewPackage?.policyReviewCandidate || null;
 }
 
 function strategyPrimaryCandidate(reviewPackage = null) {
@@ -71,7 +71,7 @@ function nextActionFrom(issues = [], validation = null, connectedRefreshPackage 
       command: actionable.command,
     };
   }
-  if (reviewPackage?.readyForManualReview || strategyPrimaryCandidate(reviewPackage)) return null;
+  if (reviewPackage?.readyForPolicyReview || strategyPrimaryCandidate(reviewPackage)) return null;
   if (connectedRefreshPackage?.summary?.nextActionCode || connectedRefreshPackage?.summary?.nextActionCommand) {
     return {
       code: connectedRefreshPackage.summary.nextActionCode || null,
@@ -114,7 +114,7 @@ export function buildOperationalJudgmentReview({
   if (
     !strategyPrimary &&
     exactRouteForkPackage?.readiness?.technicalStatus === "submit_ready" &&
-    exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_manual_review"
+    exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_policy_review"
   ) {
     issues.push(
       issue({
@@ -151,13 +151,13 @@ export function buildOperationalJudgmentReview({
     );
   }
 
-  if ((executionRunbook?.summary?.readyForManualReview || false) !== true) {
+  if ((executionRunbook?.summary?.readyForPolicyReview || false) !== true) {
     issues.push(
       issue({
         code: "prelive_evidence_still_incomplete",
         severity: "high",
         headline: "Pre-live evidence is still incomplete",
-        detail: `Execution runbook remains at ${executionRunbook?.summary?.nextStageId || executionRunbook?.currentStageId || "unknown"}; manual review is not ready.`,
+        detail: `Execution runbook remains at ${executionRunbook?.summary?.nextStageId || executionRunbook?.currentStageId || "unknown"}; policy review is not ready.`,
         command: preliveValidation?.nextAction?.command || preliveValidation?.summary?.nextActionCommand || null,
       }),
     );
@@ -165,7 +165,7 @@ export function buildOperationalJudgmentReview({
 
   const highSeverityCount = issues.filter((entry) => entry.severity === "high").length;
   const mediumSeverityCount = issues.filter((entry) => entry.severity === "medium").length;
-  const status = highSeverityCount > 0 ? "guarded_blocked" : mediumSeverityCount > 0 ? "guarded_review" : "aligned_for_manual_review";
+  const status = highSeverityCount > 0 ? "guarded_blocked" : mediumSeverityCount > 0 ? "guarded_review" : "aligned_for_policy_review";
   const nextAction = nextActionFrom(issues, preliveValidation, connectedRefreshPackage, reviewPackage);
 
   return {
@@ -209,7 +209,7 @@ export function buildOperationalJudgmentReview({
     ],
     notes: unique([
       dashboardStatus?.overall?.liveTrading === "BLOCKED" ? "liveTrading remains BLOCKED throughout this review." : null,
-      "Use this review to challenge false confidence before any manual canary discussion.",
+      "Use this review to challenge false confidence before any policy canary review discussion.",
     ]),
   };
 }

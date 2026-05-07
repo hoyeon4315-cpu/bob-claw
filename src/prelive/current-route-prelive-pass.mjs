@@ -26,7 +26,7 @@ function routeFromContext(context = null) {
     context?.exactRouteForkPackage?.currentRoute ||
     context?.executionRunbook?.currentRoute ||
     context?.connectedRefreshPackage?.currentRoute ||
-    context?.reviewPackage?.manualReviewCandidate ||
+    context?.reviewPackage?.policyReviewCandidate ||
     null;
   if (!route) return null;
   return {
@@ -105,7 +105,7 @@ function statusForPass({ route = null, connectedRefresh = null, exactRouteFork =
   if (!route?.routeKey || !route?.amount) return "missing_route_context";
   if ((connectedRefresh?.requiredRefreshCount || 0) > 0) return "connected_refresh_required";
   if ((connectedRefresh?.blockedInputCount || 0) > 0) return connectedRefresh?.status || "blocked_nonrefreshable_input";
-  if (exactRouteFork?.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review") {
+  if (exactRouteFork?.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review") {
     return exactRouteFork.economicStatus;
   }
   if ((exactRouteFork?.simulationSuccessRemaining || 0) > 0) return "exact_simulation_required";
@@ -136,7 +136,7 @@ function nextActionForPass({ route = null, connectedRefresh = null, exactRouteFo
       command: null,
     };
   }
-  if (exactRouteFork?.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review") {
+  if (exactRouteFork?.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review") {
     return {
       code: "hold_negative_edge",
       label: "stop because current exact route is still economically blocked",
@@ -227,7 +227,7 @@ export function buildCurrentRoutePrelivePass({ context = null, simulationLimit =
               ? "conditional"
               : (connectedRefresh.blockedInputCount || 0) > 0
                 ? "blocked"
-              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review"
+              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review"
                 ? "blocked"
                 : (exactRouteFork.simulationSuccessRemaining || 0) > 0
                   ? "ready"
@@ -243,7 +243,7 @@ export function buildCurrentRoutePrelivePass({ context = null, simulationLimit =
             ? "refresh_first"
             : (connectedRefresh.blockedInputCount || 0) > 0
               ? connectedRefresh.status || "blocked_nonrefreshable_input"
-            : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review"
+            : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review"
               ? exactRouteFork.economicStatus
               : (exactRouteFork.simulationSuccessRemaining || 0) > 0
                 ? "simulation_target_remaining"
@@ -259,7 +259,7 @@ export function buildCurrentRoutePrelivePass({ context = null, simulationLimit =
                 ? "blocked"
                 : (connectedRefresh.requiredRefreshCount || 0) > 0 || (exactRouteFork.simulationSuccessRemaining || 0) > 0
                   ? "conditional"
-              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review"
+              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review"
                 ? "blocked"
                 : exactRouteFork.technicalStatus !== "submit_ready"
                   ? "ready"
@@ -272,7 +272,7 @@ export function buildCurrentRoutePrelivePass({ context = null, simulationLimit =
               ? connectedRefresh.status || "blocked_nonrefreshable_input"
             : (exactRouteFork.simulationSuccessRemaining || 0) > 0
               ? "simulation_first"
-              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review"
+              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review"
                 ? exactRouteFork.economicStatus
                 : exactRouteFork.technicalStatus !== "submit_ready"
                   ? exactRouteFork.technicalStatus || "exact_route_plan_not_ready"
@@ -295,12 +295,12 @@ export function buildCurrentRoutePrelivePass({ context = null, simulationLimit =
                 ? "blocked"
                 : (connectedRefresh.requiredRefreshCount || 0) > 0 || (exactRouteFork.simulationSuccessRemaining || 0) > 0
                   ? "conditional"
-              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_manual_review"
+              : exactRouteFork.economicStatus && exactRouteFork.economicStatus !== "eligible_for_policy_review"
                 ? "blocked"
                 : exactRouteFork.technicalStatus !== "submit_ready"
                   ? "conditional"
                   : (exactRouteFork.forkSuccessRemaining || 0) > 0
-                    ? "manual"
+                    ? "policy_review"
                     : "done",
         command: exactRouteFork.submitCommand || null,
         reason:
@@ -450,7 +450,7 @@ export async function executeCurrentRoutePrelivePass({
     return record;
   }
 
-  if (currentPass.exactRouteFork?.economicStatus && currentPass.exactRouteFork.economicStatus !== "eligible_for_manual_review") {
+  if (currentPass.exactRouteFork?.economicStatus && currentPass.exactRouteFork.economicStatus !== "eligible_for_policy_review") {
     const ok = await syncArtifacts();
     if (!ok) return record;
     record.executionStatus = "blocked";

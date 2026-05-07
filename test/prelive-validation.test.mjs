@@ -13,7 +13,7 @@ function blockedDashboardStatus() {
       shadowReplay: {
         ready: false,
         status: "shadow_replay_blocked",
-        blockers: ["manual_canary_review_not_ready"],
+        blockers: ["policy_canary_review_not_ready"],
       },
       mechanicalSimulation: {
         ready: false,
@@ -45,7 +45,7 @@ function blockedDashboardStatus() {
 
 function blockedReviewPackage() {
   return {
-    readyForManualReview: false,
+    readyForPolicyReview: false,
     reviewBlockers: ["shadow_replay_not_ready"],
     liveBlockers: ["audit_blocks_live"],
     remediationPlan: {
@@ -55,7 +55,7 @@ function blockedReviewPackage() {
         command: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
       },
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       routeKey: "bob:0x0555->base:0x0555",
       routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
       amount: "10000",
@@ -152,7 +152,7 @@ test("prelive validation reports blocked readiness without inventing budget lane
   assert.equal(summary.exactRouteForkEconomicStatus, "blocked_no_net_edge");
 });
 
-test("prelive validation flips to manual review ready when all stages are complete", () => {
+test("prelive validation flips to policy review ready when all stages are complete", () => {
   const report = buildPreliveValidationReport({
     dashboardStatus: {
       overall: { liveTrading: "BLOCKED" },
@@ -164,32 +164,32 @@ test("prelive validation flips to manual review ready when all stages are comple
         { id: "shadow_replay", complete: true },
         { id: "mechanical_simulation", complete: true },
         { id: "fork_execution", complete: true },
-        { id: "manual_canary_review", complete: true },
+        { id: "policy_canary_review", complete: true },
       ],
       summary: {
         stageCount: 4,
         completeCount: 4,
         blockedCount: 0,
-        readyForManualReview: true,
-        nextStageId: "manual_canary_review",
-        nextActionCode: "manual_canary_review_only",
+        readyForPolicyReview: true,
+        nextStageId: "policy_canary_review",
+        nextActionCode: "policy_canary_review_only",
         nextActionCommand: null,
       },
       currentStageId: "tiny_live_canary_review",
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       reviewBlockers: [],
       liveBlockers: [],
     },
   });
 
-  assert.equal(report.validationStatus, "ready_for_manual_review");
-  assert.equal(report.summary.readyForManualReview, true);
+  assert.equal(report.validationStatus, "ready_for_policy_review");
+  assert.equal(report.summary.readyForPolicyReview, true);
   assert.equal(report.readinessPct, 100);
 });
 
-test("prelive validation suppresses route-only warnings when a strategy candidate is manual-review ready", () => {
+test("prelive validation suppresses route-only warnings when a strategy candidate is policy-review ready", () => {
   const report = buildPreliveValidationReport({
     dashboardStatus: {
       overall: { liveTrading: "BLOCKED" },
@@ -201,21 +201,21 @@ test("prelive validation suppresses route-only warnings when a strategy candidat
         { id: "shadow_replay", complete: true },
         { id: "mechanical_simulation", complete: true },
         { id: "fork_execution", complete: true },
-        { id: "manual_canary_review", complete: true },
+        { id: "policy_canary_review", complete: true },
       ],
       summary: {
         stageCount: 4,
         completeCount: 4,
         blockedCount: 0,
-        readyForManualReview: true,
-        nextStageId: "manual_canary_review",
-        nextActionCode: "manual_canary_review_only",
+        readyForPolicyReview: true,
+        nextStageId: "policy_canary_review",
+        nextActionCode: "policy_canary_review_only",
         nextActionCommand: null,
       },
       currentStageId: "tiny_live_canary_review",
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       reviewBlockers: [],
       liveBlockers: ["audit_blocks_live"],
       primaryLiveCandidate: {
@@ -238,7 +238,7 @@ test("prelive validation suppresses route-only warnings when a strategy candidat
     },
   });
 
-  assert.equal(report.validationStatus, "ready_for_manual_review");
+  assert.equal(report.validationStatus, "ready_for_policy_review");
   assert.equal(report.summary.nextActionCode, null);
   assert.equal(report.warnings.includes("no_policy_ready_implemented_strategy"), false);
   assert.equal(report.warnings.includes("proxy_surface_still_needs_refresh"), false);
@@ -261,21 +261,21 @@ test("prelive validation ignores stale live blockers after lane-aware live polic
         { id: "shadow_replay", complete: true },
         { id: "mechanical_simulation", complete: true },
         { id: "fork_execution", complete: true },
-        { id: "manual_canary_review", complete: true },
+        { id: "policy_canary_review", complete: true },
       ],
       summary: {
         stageCount: 4,
         completeCount: 4,
         blockedCount: 0,
-        readyForManualReview: true,
-        nextStageId: "manual_canary_review",
-        nextActionCode: "manual_canary_review_only",
+        readyForPolicyReview: true,
+        nextStageId: "policy_canary_review",
+        nextActionCode: "policy_canary_review_only",
         nextActionCommand: null,
       },
       currentStageId: "tiny_live_canary_review",
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       reviewBlockers: [],
       liveBlockers: ["audit_blocks_live"],
       primaryLiveCandidate: {
@@ -285,7 +285,7 @@ test("prelive validation ignores stale live blockers after lane-aware live polic
     },
   });
 
-  assert.equal(report.validationStatus, "ready_for_manual_review");
+  assert.equal(report.validationStatus, "ready_for_policy_review");
   assert.deepEqual(report.blockers, []);
   assert.equal(report.warnings.includes("live_execution_locked"), false);
 });
@@ -311,14 +311,14 @@ test("prelive validation prefers the strategy candidate next action over blocked
         stageCount: 4,
         completeCount: 0,
         blockedCount: 1,
-        readyForManualReview: false,
+        readyForPolicyReview: false,
         nextStageId: "shadow_replay",
         nextActionCode: "hold_dex_quote",
         nextActionCommand: null,
       },
     },
     reviewPackage: {
-      readyForManualReview: false,
+      readyForPolicyReview: false,
       reviewBlockers: ["signer_backed_oos_receipts_missing"],
       liveBlockers: [],
       primaryLiveCandidate: {
@@ -360,14 +360,14 @@ test("prelive validation can lift the strategy remediation next action from the 
         stageCount: 4,
         completeCount: 0,
         blockedCount: 1,
-        readyForManualReview: false,
+        readyForPolicyReview: false,
         nextStageId: "shadow_replay",
         nextActionCode: "refresh_gateway_quote",
         nextActionCommand: "npm run verify:gateway -- --route-key=\"bob:0x0555->base:0x0555\" --amounts=\"10000\"",
       },
     },
     reviewPackage: {
-      readyForManualReview: false,
+      readyForPolicyReview: false,
       reviewBlockers: ["signer_backed_oos_receipts_missing"],
       liveBlockers: [],
       remediationPlan: {

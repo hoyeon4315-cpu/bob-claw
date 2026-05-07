@@ -88,12 +88,12 @@ function action({
 function isShadowReplayPolicyGate(blockers = []) {
   if (!blockers.length) return false;
   return blockers.every(
-    (blocker) => blocker === "manual_canary_review_not_ready" || String(blocker).startsWith("audit:"),
+    (blocker) => blocker === "policy_canary_review_not_ready" || String(blocker).startsWith("audit:"),
   );
 }
 
-function strategyPrimaryReadyForManualReview(reviewPackage = null) {
-  return reviewPackage?.readyForManualReview === true && reviewPackage?.primaryLiveCandidate?.candidateType === "strategy";
+function strategyPrimaryReadyForPolicyReview(reviewPackage = null) {
+  return reviewPackage?.readyForPolicyReview === true && reviewPackage?.primaryLiveCandidate?.candidateType === "strategy";
 }
 
 export function buildPreliveEvidenceCampaign({
@@ -107,7 +107,7 @@ export function buildPreliveEvidenceCampaign({
   simulationLimit = 4,
   now = new Date().toISOString(),
 } = {}) {
-  const suppressRouteRefreshWork = strategyPrimaryReadyForManualReview(reviewPackage);
+  const suppressRouteRefreshWork = strategyPrimaryReadyForPolicyReview(reviewPackage);
   const queueFollowUps = suppressRouteRefreshWork ? [] : reviewPackage?.queueFollowUps || [];
   const shadowReplay = reviewPackage?.preliveEvidence?.shadowReplay || null;
   const mechanicalSimulation = reviewPackage?.preliveEvidence?.mechanicalSimulation || null;
@@ -323,7 +323,7 @@ export function buildPreliveEvidenceCampaign({
           ? action({
               code: "submit_fork_cycle",
               label: "submit fork cycle",
-              status: "manual",
+              status: "policy_review",
               automated: false,
               reason: "external_signer_required",
               command: plannedCycle.commands?.submit || null,
@@ -352,7 +352,7 @@ export function buildPreliveEvidenceCampaign({
         ? action({
             code: "reconcile_fork_cycle",
             label: "reconcile fork cycle",
-            status: "manual",
+            status: "policy_review",
             automated: false,
             reason: "fork_output_resolution_required",
             command: pendingOutputCycle.resolutionCommand || null,
@@ -366,7 +366,7 @@ export function buildPreliveEvidenceCampaign({
         ? action({
             code: "reconcile_fork_cycle",
             label: "reconcile fork cycle",
-            status: "manual",
+            status: "policy_review",
             automated: false,
             reason: "fork_submission_pending_reconciliation",
             command: replacePlaceholder(
@@ -414,15 +414,15 @@ export function buildPreliveEvidenceCampaign({
 
   const readyActionCount = actions.filter((item) => item.status === "ready").length;
   const blockedActionCount = actions.filter((item) => item.status === "blocked").length;
-  const manualActionCount = actions.filter((item) => item.status === "manual").length;
+  const policyReviewActionCount = actions.filter((item) => item.status === "policy_review").length;
   const doneActionCount = actions.filter((item) => item.status === "done").length;
   const nextAction = actions.find((item) => item.status !== "done") || null;
-  const overallStatus = reviewPackage?.readyForManualReview
-    ? "ready_for_manual_review"
+  const overallStatus = reviewPackage?.readyForPolicyReview
+    ? "ready_for_policy_review"
     : readyActionCount > 0
       ? "ready"
-      : manualActionCount > 0
-        ? "awaiting_manual"
+      : policyReviewActionCount > 0
+        ? "awaiting_policy_review"
         : "blocked";
 
   return {
@@ -433,7 +433,7 @@ export function buildPreliveEvidenceCampaign({
     currentStage: reviewPackage?.currentStage || null,
     readyActionCount,
     blockedActionCount,
-    manualActionCount,
+    policyReviewActionCount,
     doneActionCount,
     simulation: {
       successCount: simulationSummary.successCount,
@@ -492,7 +492,7 @@ export function summarizePreliveEvidenceCampaign(campaign = null) {
     currentStage: campaign.currentStage || null,
     readyActionCount: campaign.readyActionCount ?? 0,
     blockedActionCount: campaign.blockedActionCount ?? 0,
-    manualActionCount: campaign.manualActionCount ?? 0,
+    policyReviewActionCount: campaign.policyReviewActionCount ?? 0,
     doneActionCount: campaign.doneActionCount ?? 0,
     simulationSuccessCount: campaign.simulation?.successCount ?? 0,
     simulationTargetCount: campaign.simulation?.targetSuccessCount ?? 0,
@@ -563,7 +563,7 @@ export async function executePreliveEvidenceCampaign({
   }
 
   if (!executedAny) {
-    record.executionStatus = campaign?.overallStatus === "awaiting_manual" ? "awaiting_manual" : campaign?.overallStatus || "blocked";
+    record.executionStatus = campaign?.overallStatus === "awaiting_policy_review" ? "awaiting_policy_review" : campaign?.overallStatus || "blocked";
     record.finalStatus = record.executionStatus;
     record.stopReason = campaign?.nextAction?.reason || null;
     return record;
@@ -604,8 +604,8 @@ export function buildPreliveEvidenceCampaignSummary(records = [], now = new Date
   const executeRecords = sorted.filter((item) => item.mode === "execute");
   const previewCount = sorted.filter((item) => item.mode === "preview").length;
   const readyCount = executeRecords.filter((item) => statusForRecord(item) === "ready").length;
-  const reviewReadyCount = executeRecords.filter((item) => statusForRecord(item) === "ready_for_manual_review").length;
-  const awaitingManualCount = executeRecords.filter((item) => statusForRecord(item) === "awaiting_manual").length;
+  const reviewReadyCount = executeRecords.filter((item) => statusForRecord(item) === "ready_for_policy_review").length;
+  const awaitingPolicyReviewCount = executeRecords.filter((item) => statusForRecord(item) === "awaiting_policy_review").length;
   const blockedCount = executeRecords.filter((item) => statusForRecord(item) === "blocked").length;
   const failureCount = executeRecords.filter((item) => statusForRecord(item) === "failed").length;
   return {
@@ -615,7 +615,7 @@ export function buildPreliveEvidenceCampaignSummary(records = [], now = new Date
     previewCount,
     readyCount,
     reviewReadyCount,
-    awaitingManualCount,
+    awaitingPolicyReviewCount,
     blockedCount,
     failureCount,
     latestObservedAt: latest?.observedAt || null,
@@ -634,7 +634,7 @@ export function buildPreliveEvidenceCampaignSummary(records = [], now = new Date
         currentStage: campaign?.currentStage || null,
         readyActionCount: campaign?.readyActionCount ?? 0,
         blockedActionCount: campaign?.blockedActionCount ?? 0,
-        manualActionCount: campaign?.manualActionCount ?? 0,
+        policyReviewActionCount: campaign?.policyReviewActionCount ?? 0,
         simulationRemaining: campaign?.simulation?.successRemaining ?? 0,
         forkRemaining: campaign?.forkExecution?.successRemaining ?? 0,
         ethFamilyRouteCount: campaign?.ethFamilyObservation?.routeCount ?? 0,

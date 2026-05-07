@@ -7,7 +7,7 @@ import { buildLiveOpsHandoff } from "../src/strategy/live-ops-handoff.mjs";
 
 test("final roadmap artifacts explain blocked dry-run and canary state coherently", () => {
   const reviewPackage = {
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       routeKey: "bob->base",
       amount: "10000",
       tradeReadiness: "insufficient_data",
@@ -210,7 +210,7 @@ test("live ops handoff prefers ready rollout status over stale strategy snapshot
     },
     preliveValidation: {
       currentStageId: "tiny_live_canary_review",
-      nextActionCode: "manual_canary_review_only",
+      nextActionCode: "policy_canary_review_only",
       nextActionCommand: null,
       exactRouteForkTechnicalStatus: "missing_plan",
       exactRouteForkEconomicStatus: "blocked_insufficient_data",
@@ -273,7 +273,7 @@ test("tiny live canary rollout keeps policy waiting as next action after blocker
       },
     },
     preliveValidation: {
-      validationStatus: "ready_for_manual_review",
+      validationStatus: "ready_for_policy_review",
       currentStageId: "tiny_live_canary_review",
       nextActionCode: "token",
       nextActionCommand: "npm run check:estimator-wallet -- --route-key=base:btc->ethereum:btc --amount=25000",
@@ -308,7 +308,7 @@ test("tiny live canary rollout keeps auto-execute policy as next action after po
       },
     },
     preliveValidation: {
-      validationStatus: "ready_for_manual_review",
+      validationStatus: "ready_for_policy_review",
       currentStageId: "tiny_live_canary_review",
       nextActionCode: "token",
       nextActionCommand: "npm run check:estimator-wallet -- --route-key=base:btc->ethereum:btc --amount=25000",

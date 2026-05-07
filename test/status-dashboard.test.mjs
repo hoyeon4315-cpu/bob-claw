@@ -381,7 +381,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(Array.isArray(publicStatus.prelive?.executionAudit?.recentTransitions), true);
   assert.equal(typeof publicStatus.prelive?.tinyLiveCanary?.status, "string");
   assert.equal(typeof publicStatus.prelive?.reviewPackage?.packageStatus, "string");
-  assert.equal(typeof publicStatus.prelive?.reviewPackage?.readyForManualReview, "boolean");
+  assert.equal(typeof publicStatus.prelive?.reviewPackage?.readyForPolicyReview, "boolean");
   assert.equal(Array.isArray(publicStatus.prelive?.reviewPackage?.reviewBlockers), true);
   assert.equal(
     publicStatus.prelive?.connectedRefresh == null || typeof publicStatus.prelive?.connectedRefresh?.status === "string",

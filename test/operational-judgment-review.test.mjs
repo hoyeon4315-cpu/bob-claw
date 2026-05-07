@@ -12,7 +12,7 @@ test("operational judgment review surfaces stale-input and false-confidence risk
       summary: { planningBudgetUsd: null },
     },
     reviewPackage: {
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->base:0x0555",
         routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -35,7 +35,7 @@ test("operational judgment review surfaces stale-input and false-confidence risk
       },
       currentStageId: "shadow_replay",
       summary: {
-        readyForManualReview: false,
+        readyForPolicyReview: false,
         nextStageId: "shadow_replay",
       },
     },
@@ -97,7 +97,7 @@ test("operational judgment review falls back to objective discovery divergence w
       summary: { planningBudgetUsd: null },
     },
     reviewPackage: {
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->base:0x0555",
         routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -111,7 +111,7 @@ test("operational judgment review falls back to objective discovery divergence w
       },
       currentStageId: "shadow_replay",
       summary: {
-        readyForManualReview: false,
+        readyForPolicyReview: false,
         nextStageId: "shadow_replay",
       },
     },
@@ -148,7 +148,7 @@ test("operational judgment review suppresses route-only issues when a strategy c
         candidateId: "wrapped-btc-loop-base-moonwell",
         candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
         candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
@@ -162,8 +162,8 @@ test("operational judgment review suppresses route-only issues when a strategy c
     executionRunbook: {
       currentStageId: "tiny_live_canary_review",
       summary: {
-        readyForManualReview: true,
-        nextStageId: "manual_canary_review",
+        readyForPolicyReview: true,
+        nextStageId: "policy_canary_review",
       },
     },
     connectedRefreshPackage: {
@@ -184,7 +184,7 @@ test("operational judgment review suppresses route-only issues when a strategy c
     },
   });
 
-  assert.equal(report.status, "aligned_for_manual_review");
+  assert.equal(report.status, "aligned_for_policy_review");
   assert.equal(report.issueCount, 0);
   assert.equal(report.nextAction, null);
 });

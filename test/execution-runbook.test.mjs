@@ -13,7 +13,7 @@ function dashboardStatusFixture() {
       shadowReplay: {
         ready: false,
         status: "shadow_replay_blocked",
-        blockers: ["manual_canary_review_not_ready"],
+        blockers: ["policy_canary_review_not_ready"],
         policyReadyMeasuredRoutes: 1,
         executionReviewRoute: "bob:0x0555->base:0x0555",
       },
@@ -47,7 +47,7 @@ function dashboardStatusFixture() {
 
 function reviewPackageFixture() {
   return {
-    readyForManualReview: false,
+    readyForPolicyReview: false,
     reviewBlockers: ["shadow_replay_not_ready", "stale_gateway_quote"],
     remediationPlan: {
       runnerCommand: "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3",

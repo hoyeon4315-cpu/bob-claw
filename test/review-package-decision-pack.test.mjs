@@ -5,10 +5,10 @@ import { summarizePreliveReviewPackage } from "../src/prelive/review-package.mjs
 test("review package summary carries connected refresh, exact-route fork, and judgment review summaries", () => {
   const summary = summarizePreliveReviewPackage({
     generatedAt: "2026-04-14T06:00:00.000Z",
-    packageStatus: "not_ready_for_manual_review",
-    readyForManualReview: false,
+    packageStatus: "not_ready_for_policy_review",
+    readyForPolicyReview: false,
     currentStage: "shadow_replay",
-    reviewDecision: "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+    reviewDecision: "NOT_READY_FOR_POLICY_CANARY_REVIEW",
     reviewBlockers: ["shadow_replay_not_ready"],
     liveDecision: "LIVE_EXECUTION_BLOCKED",
     liveBlockers: ["audit_blocks_live"],

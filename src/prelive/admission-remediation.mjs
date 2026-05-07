@@ -31,18 +31,18 @@ function unique(values = []) {
 }
 
 function primaryCandidate(reviewPackage = null) {
-  return reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  return reviewPackage?.primaryLiveCandidate || reviewPackage?.policyReviewCandidate || null;
 }
 
 function routeCandidate(reviewPackage = null) {
   const candidate = primaryCandidate(reviewPackage);
   if (candidate?.candidateType !== "strategy") return candidate;
-  if (reviewPackage?.manualReviewCandidate?.candidateType === "strategy") return null;
-  return reviewPackage?.manualReviewCandidate || null;
+  if (reviewPackage?.policyReviewCandidate?.candidateType === "strategy") return null;
+  return reviewPackage?.policyReviewCandidate || null;
 }
 
-function strategyPrimaryReadyForManualReview(reviewPackage = null) {
-  return reviewPackage?.readyForManualReview === true && primaryCandidate(reviewPackage)?.candidateType === "strategy";
+function strategyPrimaryReadyForPolicyReview(reviewPackage = null) {
+  return reviewPackage?.readyForPolicyReview === true && primaryCandidate(reviewPackage)?.candidateType === "strategy";
 }
 
 function humanizeCode(code = null) {
@@ -297,7 +297,7 @@ function inputItems(reviewPackage = null, address = null) {
 
 function strategyCandidateItems(reviewPackage = null) {
   const candidate = primaryCandidate(reviewPackage);
-  if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForManualReview) return [];
+  if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForPolicyReview) return [];
   const blockers = unique([...(candidate?.blockerReasons || []), ...(candidate?.evidenceBlockers || [])]);
   if (candidate?.reviewReady === true && blockers.length === 0) return [];
   const nextAction = candidate?.nextAction || null;
@@ -307,7 +307,7 @@ function strategyCandidateItems(reviewPackage = null) {
       priority: 110,
       code: nextAction?.code || "clear_strategy_candidate_blockers",
       label: nextAction?.label || humanizeCode(nextAction?.code) || candidate?.candidateLabel || "advance primary strategy candidate",
-      status: nextAction?.command ? "ready" : "manual",
+      status: nextAction?.command ? "ready" : "policy_review",
       reason: blockers[0] || candidate?.tradeReadiness || null,
       command: nextAction?.command || null,
       blockers,
@@ -322,16 +322,16 @@ function strategyCandidateItems(reviewPackage = null) {
 function measuredLeaderItem(reviewPackage = null) {
   const measuredLeader = reviewPackage?.measuredLeaderReview || null;
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
-  if (!measuredLeader?.command || !blockers.includes("manual_review_stage_not_ready")) return [];
+  if (!measuredLeader?.command || !blockers.includes("policy_review_stage_not_ready")) return [];
   return [
     item({
       priority: 89,
       code: measuredLeader.nextActionCode || "review_measured_route",
       label: measuredLeader.nextActionLabels?.[0] || measuredLeader.nextActionCode || "review measured leader",
       status: "ready",
-      reason: blockers.includes("manual_review_stage_not_ready") ? "manual_review_stage_not_ready" : null,
+      reason: blockers.includes("policy_review_stage_not_ready") ? "policy_review_stage_not_ready" : null,
       command: measuredLeader.command,
-      resolves: ["manual_review_stage_not_ready"],
+      resolves: ["policy_review_stage_not_ready"],
       routeKey: measuredLeader.routeKey || null,
       routeLabel: measuredLeader.routeLabel || null,
       amount: measuredLeader.amount || null,
@@ -370,16 +370,16 @@ function retainSuppressedQueueItem(entry = null) {
 }
 
 function retainSuppressedInputItem(entry = null) {
-  return entry?.status === "blocked" || entry?.status === "manual";
+  return entry?.status === "blocked" || entry?.status === "policy_review";
 }
 
 function evidenceCampaignItems(evidenceCampaign = null) {
   return (evidenceCampaign?.actions || [])
     .filter((entry) => entry?.command)
-    .filter((entry) => entry.status === "ready" || entry.status === "manual" || entry.status === "blocked")
+    .filter((entry) => entry.status === "ready" || entry.status === "policy_review" || entry.status === "blocked")
     .map((entry, index) =>
       item({
-        priority: (entry.status === "ready" ? 82 : entry.status === "manual" ? 78 : 60) - index,
+        priority: (entry.status === "ready" ? 82 : entry.status === "policy_review" ? 78 : 60) - index,
         code: entry.code || null,
         label: entry.label || entry.code || "campaign action",
         status: entry.status || "ready",
@@ -421,7 +421,7 @@ export function buildAdmissionRemediationPlan({
 } = {}) {
   if (!reviewPackage) return null;
   const blockers = reviewPackage?.tinyCanaryAdmission?.blockers || [];
-  const suppressRouteRefreshWork = strategyPrimaryReadyForManualReview(reviewPackage);
+  const suppressRouteRefreshWork = strategyPrimaryReadyForPolicyReview(reviewPackage);
   const evidenceItems = evidenceCampaignItems(evidenceCampaign);
   const canaryWalletItems = advanceCanaryWalletItems(advanceCanary, address);
   const routeInputItems = inputItems(reviewPackage, address);
@@ -450,7 +450,7 @@ export function buildAdmissionRemediationPlan({
       schemaVersion: 1,
       blockerCount: blockers.length,
       readyCount: 0,
-      manualCount: 0,
+      policyReviewCount: 0,
       blockedCount: 0,
       overallStatus: blockers.length ? "blocked_without_command" : "clear",
       nextAction: null,
@@ -461,17 +461,17 @@ export function buildAdmissionRemediationPlan({
   }
 
   const readyCount = items.filter((entry) => entry.status === "ready").length;
-  const manualCount = items.filter((entry) => entry.status === "manual").length;
+  const policyReviewCount = items.filter((entry) => entry.status === "policy_review").length;
   const blockedCount = items.filter((entry) => entry.status === "blocked").length;
-  const nextAction = items.find((entry) => entry.status === "ready" || entry.status === "manual") || items[0] || null;
+  const nextAction = items.find((entry) => entry.status === "ready" || entry.status === "policy_review") || items[0] || null;
 
   return {
     schemaVersion: 1,
     blockerCount: blockers.length,
     readyCount,
-    manualCount,
+    policyReviewCount,
     blockedCount,
-    overallStatus: readyCount > 0 ? "ready" : manualCount > 0 ? "awaiting_manual" : "blocked",
+    overallStatus: readyCount > 0 ? "ready" : policyReviewCount > 0 ? "awaiting_policy_review" : "blocked",
     nextAction,
     items,
     runnerCommand: DEFAULT_ADMISSION_REMEDIATION_RUNNER_COMMAND,
@@ -485,7 +485,7 @@ export function summarizeAdmissionRemediationPlan(plan = null) {
     overallStatus: plan.overallStatus || null,
     blockerCount: plan.blockerCount ?? 0,
     readyCount: plan.readyCount ?? 0,
-    manualCount: plan.manualCount ?? 0,
+    policyReviewCount: plan.policyReviewCount ?? 0,
     blockedCount: plan.blockedCount ?? 0,
     nextAction: plan.nextAction
       ? {
@@ -550,7 +550,7 @@ export async function executeAdmissionRemediationPlan({
   const selectedItems = (plan?.items || [])
     .filter((entry) => entry.status === "ready" && entry.command)
     .slice(0, Math.max(1, Number(limit) || 1));
-  const manualItems = (plan?.items || []).filter((entry) => entry.status === "manual" && entry.command);
+  const policyReviewItems = (plan?.items || []).filter((entry) => entry.status === "policy_review" && entry.command);
   const record = {
     schemaVersion: 1,
     observedAt: now,
@@ -577,9 +577,9 @@ export async function executeAdmissionRemediationPlan({
   if (!execute) return record;
 
   if (!selectedItems.length) {
-    record.executionStatus = manualItems.length > 0 ? "awaiting_manual" : plan?.overallStatus || "blocked";
+    record.executionStatus = policyReviewItems.length > 0 ? "awaiting_policy_review" : plan?.overallStatus || "blocked";
     record.finalStatus = record.executionStatus;
-    record.stopReason = manualItems.length > 0 ? manualItems[0]?.reason || "manual_action_required" : plan?.nextAction?.reason || null;
+    record.stopReason = policyReviewItems.length > 0 ? policyReviewItems[0]?.reason || "policy_review_action_required" : plan?.nextAction?.reason || null;
     return record;
   }
 
@@ -622,7 +622,7 @@ export function buildAdmissionRemediationExecutionSummary(records = [], now = ne
   const executeRecords = sorted.filter((item) => item.mode === "execute");
   const previewCount = sorted.filter((item) => item.mode === "preview").length;
   const successCount = executeRecords.filter((item) => statusForRecord(item) === "succeeded").length;
-  const awaitingManualCount = executeRecords.filter((item) => statusForRecord(item) === "awaiting_manual").length;
+  const awaitingPolicyReviewCount = executeRecords.filter((item) => statusForRecord(item) === "awaiting_policy_review").length;
   const blockedCount = executeRecords.filter((item) => statusForRecord(item) === "blocked").length;
   const failureCount = executeRecords.filter((item) => statusForRecord(item) === "failed").length;
   return {
@@ -631,7 +631,7 @@ export function buildAdmissionRemediationExecutionSummary(records = [], now = ne
     runCount: executeRecords.length,
     previewCount,
     successCount,
-    awaitingManualCount,
+    awaitingPolicyReviewCount,
     blockedCount,
     failureCount,
     latestObservedAt: latest?.observedAt || null,

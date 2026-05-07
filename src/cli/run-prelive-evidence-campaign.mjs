@@ -120,7 +120,7 @@ async function main() {
     );
   }
   console.log(
-    `campaignSummary runs=${summary.runCount} preview=${summary.previewCount} ready=${summary.readyCount} reviewReady=${summary.reviewReadyCount} awaitingManual=${summary.awaitingManualCount} blocked=${summary.blockedCount} failed=${summary.failureCount}`,
+    `campaignSummary runs=${summary.runCount} preview=${summary.previewCount} ready=${summary.readyCount} reviewReady=${summary.reviewReadyCount} awaitingPolicyReview=${summary.awaitingPolicyReviewCount} blocked=${summary.blockedCount} failed=${summary.failureCount}`,
   );
 }
 

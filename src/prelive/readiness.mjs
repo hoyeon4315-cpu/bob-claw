@@ -160,9 +160,9 @@ export function buildPreliveReadinessSummary({
   targetSimulationSuccessCount = 50,
   targetForkConfirmedCount = 3,
 } = {}) {
-  const manualReviewReady = Boolean(
-    strategy?.manualCanaryReviewReady ||
-      reviewPackage?.readyForManualReview ||
+  const policyReviewReady = Boolean(
+    strategy?.policyCanaryReviewReady ||
+      reviewPackage?.readyForPolicyReview ||
       reviewPackage?.tinyCanaryAdmission?.status === "policy_waiting" ||
       reviewPackage?.tinyCanaryAdmission?.status === "auto_execute_policy_ready",
   );
@@ -171,7 +171,7 @@ export function buildPreliveReadinessSummary({
     primaryCandidate?.candidateType === "strategy" &&
       (primaryCandidate.reviewReady === true ||
         primaryCandidate.tradeReadiness === "strategy_candidate_review_only" ||
-        reviewPackage?.readyForManualReview === true),
+        reviewPackage?.readyForPolicyReview === true),
   );
   const strategyProof = strategyExecutionProof(primaryCandidate);
   const measuredPolicyReady = Number(strategy?.edgeViability?.policyReadyCount || 0);
@@ -197,8 +197,8 @@ export function buildPreliveReadinessSummary({
   if (auditBlocksLane) {
     shadowReplayBlockers.push(`audit:${audit?.decision || "missing_audit"}`);
   }
-  if (!manualReviewReady) {
-    shadowReplayBlockers.push("manual_canary_review_not_ready");
+  if (!policyReviewReady) {
+    shadowReplayBlockers.push("policy_canary_review_not_ready");
   }
   if (measuredPolicyReady <= 0 && !strategyReviewCandidateReady) {
     shadowReplayBlockers.push("no_policy_ready_measured_route");
@@ -337,7 +337,7 @@ export function buildPreliveReadinessSummary({
       auditBlockers,
       auditBlocksSelectedLane: auditBlocksLane,
       transportAuditWarningOnly,
-      manualCanaryReviewReady: manualReviewReady,
+      policyCanaryReviewReady: policyReviewReady,
       strategyReviewCandidateReady,
       policyReadyMeasuredRoutes: measuredPolicyReady,
       executionReviewRoute: objectiveExecutionRoute,

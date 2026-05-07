@@ -287,7 +287,7 @@ export function shadowActionForCandidate(candidate, { address = null } = {}) {
   if (candidate.tradeReadiness === "shadow_candidate_review_only") {
     return {
       code: "review_candidate",
-      label: "manual review candidate",
+      label: "policy review candidate",
       reason: "shadow_candidate_review_only",
       command: scoreRefreshCommand(candidate),
     };

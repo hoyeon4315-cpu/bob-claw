@@ -186,14 +186,14 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
     suppressedRouteBlockers.push(currentRoutePrelivePass.latestStatus || "hold_negative_edge");
   } else if (
     exactRouteForkPackage?.economicStatus &&
-    exactRouteForkPackage.economicStatus !== "eligible_for_manual_review" &&
+    exactRouteForkPackage.economicStatus !== "eligible_for_policy_review" &&
     !strategyPrimary
   ) {
     objective.push(
       createBlocker(
         "objective",
         exactRouteForkPackage.economicStatus,
-        "Exact-route economics still block the lane from manual review.",
+        "Exact-route economics still block the lane from policy review.",
         {
           economicStatus: exactRouteForkPackage.economicStatus,
         },
@@ -201,7 +201,7 @@ export function buildLiveBaselineSummary({ dashboardStatus = null, nextStep = nu
     );
   } else if (
     exactRouteForkPackage?.economicStatus &&
-    exactRouteForkPackage.economicStatus !== "eligible_for_manual_review" &&
+    exactRouteForkPackage.economicStatus !== "eligible_for_policy_review" &&
     strategyPrimary
   ) {
     suppressedRouteBlockers.push(exactRouteForkPackage.economicStatus);

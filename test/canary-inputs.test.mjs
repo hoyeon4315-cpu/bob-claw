@@ -344,7 +344,7 @@ test("canary stage checklist shows completed and remaining stages conservatively
   ]);
 });
 
-test("execution stage summary separates manual canary review from live execution", () => {
+test("execution stage summary separates policy canary review from live execution", () => {
   const summary = buildExecutionStageSummary({
     nextStep: {
       decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
@@ -365,7 +365,7 @@ test("execution stage summary separates manual canary review from live execution
     },
   });
 
-  assert.equal(summary.reviewStage, "NOT_READY_FOR_MANUAL_CANARY_REVIEW");
+  assert.equal(summary.reviewStage, "NOT_READY_FOR_POLICY_CANARY_REVIEW");
   assert.deepEqual(summary.reviewReasons, ["reject_no_net_edge"]);
   assert.equal(summary.liveStage, "LIVE_EXECUTION_BLOCKED");
   assert.equal(summary.auditDecision, "LIVE_BLOCKED");

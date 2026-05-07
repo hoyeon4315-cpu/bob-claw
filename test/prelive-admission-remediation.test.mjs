@@ -6,9 +6,9 @@ test("admission remediation plan maps stale inputs and measured-leader review to
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
       tinyCanaryAdmission: {
-        blockers: ["manual_review_stage_not_ready", "stale_src_gas", "stale_dex_quote"],
+        blockers: ["policy_review_stage_not_ready", "stale_src_gas", "stale_dex_quote"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->base:0x0555",
         routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -54,7 +54,7 @@ test("admission remediation plan prefers evidence-campaign execution over raw qu
       tinyCanaryAdmission: {
         blockers: ["shadow_replay_not_ready", "mechanical_simulation_not_ready"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "base:0x0555->unichain:0x0555",
         routeLabel: "base->unichain wBTC.OFT->wBTC.OFT",
         amount: "25000",
@@ -105,7 +105,7 @@ test("admission remediation plan preserves blocked DEX input as a hold action", 
       tinyCanaryAdmission: {
         blockers: ["blocked_dex_quote"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "avalanche:0x0555->bera:0x0555",
         routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -133,7 +133,7 @@ test("admission remediation plan infers unsupported bob dex routes as blocked in
       tinyCanaryAdmission: {
         blockers: ["missing_dex_quote"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "sonic:0x0555->bob:0x0555",
         routeLabel: "sonic->bob wBTC.OFT->wBTC.OFT",
         amount: "50000",
@@ -158,7 +158,7 @@ test("admission remediation plan infers unsupported bob dex routes as blocked in
 test("admission remediation plan prioritizes strategy-candidate receipts over blocked exact-route refreshes", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
-      readyForManualReview: false,
+      readyForPolicyReview: false,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
@@ -174,7 +174,7 @@ test("admission remediation plan prioritizes strategy-candidate receipts over bl
       tinyCanaryAdmission: {
         blockers: ["signer_backed_oos_receipts_missing", "stale_gateway_quote"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->base:0x0555",
         routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -200,7 +200,7 @@ test("admission remediation plan prioritizes strategy-candidate receipts over bl
 test("admission remediation plan skips review-ready strategy candidates with no remaining evidence blockers", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
-      readyForManualReview: false,
+      readyForPolicyReview: false,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
@@ -217,7 +217,7 @@ test("admission remediation plan skips review-ready strategy candidates with no 
       tinyCanaryAdmission: {
         blockers: ["live_policy_state_changed"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "avalanche:0x0555->soneium:0x0555",
         routeLabel: "avalanche->soneium wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -240,14 +240,14 @@ test("admission remediation plan skips review-ready strategy candidates with no 
 test("admission remediation plan suppresses stale route refreshes but keeps wallet readiness when strategy review is already ready", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
         candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
         amount: "300",
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "base:0x0555->bsc:0x0555",
         routeLabel: "base->bsc wBTC.OFT->wBTC.OFT",
         amount: "25000",
@@ -278,7 +278,7 @@ test("admission remediation plan suppresses stale route refreshes but keeps wall
         {
           code: "submit_fork_cycle",
           label: "submit fork cycle",
-          status: "manual",
+          status: "policy_review",
           reason: "external_signer_required",
           command: 'npm run submit:prelive-fork-execution -- --plan-id="plan-1" --use-signer-daemon --rpc-url="<forkRpcUrl>"',
         },
@@ -300,7 +300,7 @@ test("admission remediation plan prioritizes active canary wallet readiness over
       tinyCanaryAdmission: {
         blockers: ["stale_gateway_quote", "stale_market"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->bera:0x0555",
         routeLabel: "bob->bera wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -338,7 +338,7 @@ test("admission remediation plan skips stale gateway and missing exact gas when 
       tinyCanaryAdmission: {
         blockers: ["token", "missing_exact_gas"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->unichain:0x0555",
         routeLabel: "bob->unichain wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -375,7 +375,7 @@ test("admission remediation plan skips dex refresh when wallet blocker is alread
       tinyCanaryAdmission: {
         blockers: ["native", "stale_dex_quote"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "base:0x0555->bsc:0x0555",
         routeLabel: "base->bsc wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -411,7 +411,7 @@ test("admission remediation plan keeps high-priority active canary readiness eve
       tinyCanaryAdmission: {
         blockers: ["stale_gateway_quote"],
       },
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->bera:0x0555",
         routeLabel: "bob->bera wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -463,7 +463,7 @@ test("admission remediation plan keeps high-priority active canary readiness eve
 test("admission remediation plan keeps advance-canary wallet blockers visible even when strategy review is ready", () => {
   const plan = buildAdmissionRemediationPlan({
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",

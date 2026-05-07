@@ -40,7 +40,7 @@ async function main() {
   }
 
   console.log(`packageStatus=${report.packageStatus}`);
-  console.log(`readyForManualReview=${report.readyForManualReview}`);
+  console.log(`readyForPolicyReview=${report.readyForPolicyReview}`);
   console.log(`currentStage=${report.currentStage}`);
   console.log(`reviewDecision=${report.reviewDecision}`);
   console.log(`reviewBlockers=${report.reviewBlockers.join(",") || "none"}`);
@@ -53,7 +53,7 @@ async function main() {
   }
   if (report.remediationPlan) {
     console.log(
-      `admissionRemediation=${report.remediationPlan.overallStatus} ready=${report.remediationPlan.readyCount} manual=${report.remediationPlan.manualCount} blocked=${report.remediationPlan.blockedCount}`,
+      `admissionRemediation=${report.remediationPlan.overallStatus} ready=${report.remediationPlan.readyCount} policyReview=${report.remediationPlan.policyReviewCount} blocked=${report.remediationPlan.blockedCount}`,
     );
     console.log(`admissionRemediationRunner=${report.remediationPlan.runnerCommand || "n/a"}`);
     if (report.remediationPlan.nextAction) {
@@ -67,7 +67,7 @@ async function main() {
       );
     }
   }
-  const candidate = report.primaryLiveCandidate || report.manualReviewCandidate || null;
+  const candidate = report.primaryLiveCandidate || report.policyReviewCandidate || null;
   if (candidate) {
     console.log(
       `candidate=${candidate.candidateLabel || candidate.routeLabel || candidate.routeKey || candidate.candidateId} amount=${candidate.amount || "n/a"} readiness=${candidate.tradeReadiness}`,

@@ -14,10 +14,10 @@ test("tiny canary admission returns go-for-policy-ready when all gates clear", (
       },
     },
     executionStage: {
-      reviewStage: "READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewStage: "READY_FOR_POLICY_CANARY_REVIEW",
       reviewReasons: [],
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       routeKey: "base:0x0555->unichain:0x0555",
       routeLabel: "base->unichain wBTC.OFT->wBTC.OFT",
       amount: "25000",
@@ -55,10 +55,10 @@ test("tiny canary admission blocks on stale inputs and readiness blockers", () =
       },
     },
     executionStage: {
-      reviewStage: "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewStage: "NOT_READY_FOR_POLICY_CANARY_REVIEW",
       reviewReasons: ["reject_no_net_edge"],
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       routeKey: "bob:0x0555->base:0x0555",
       routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
       amount: "10000",
@@ -95,10 +95,10 @@ test("tiny canary admission treats blocked DEX coverage as a blocker", () => {
       },
     },
     executionStage: {
-      reviewStage: "READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewStage: "READY_FOR_POLICY_CANARY_REVIEW",
       reviewReasons: [],
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       routeKey: "avalanche:0x0555->bera:0x0555",
       routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
       amount: "10000",
@@ -130,10 +130,10 @@ test("tiny canary admission supports strategy-level candidates", () => {
       },
     },
     executionStage: {
-      reviewStage: "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewStage: "NOT_READY_FOR_POLICY_CANARY_REVIEW",
       reviewReasons: ["reject_no_net_edge"],
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       candidateType: "strategy",
       candidateId: "wrapped-btc-loop-base-moonwell",
       candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
@@ -166,10 +166,10 @@ test("tiny canary admission supports strategy-level candidates", () => {
       },
     },
     executionStage: {
-      reviewStage: "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewStage: "NOT_READY_FOR_POLICY_CANARY_REVIEW",
       reviewReasons: [],
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       candidateType: "strategy",
       candidateId: "wrapped-btc-loop-base-moonwell",
       candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",
@@ -199,10 +199,10 @@ test("tiny canary admission promotes cleared strategy candidate when live policy
       },
     },
     executionStage: {
-      reviewStage: "READY_FOR_MANUAL_CANARY_REVIEW",
+      reviewStage: "READY_FOR_POLICY_CANARY_REVIEW",
       reviewReasons: [],
     },
-    manualReviewCandidate: {
+    policyReviewCandidate: {
       candidateType: "strategy",
       candidateId: "wrapped-btc-loop-base-moonwell",
       candidateLabel: "Wrapped BTC lending loop (Base / Moonwell)",

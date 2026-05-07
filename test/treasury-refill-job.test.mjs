@@ -55,7 +55,7 @@ test("refill jobs are deterministic and carry execution constraints", () => {
   assert.equal(jobs.jobs[0].jobId, buildTreasuryRefillJobs({ plan: planFixture(), policy, fundingSourcePlan }).jobs[0].jobId);
 });
 
-test("refill jobs stop requiring manual review when plan is refill-ready", () => {
+test("refill jobs stop requiring policy review when plan is refill-ready", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const fundingSourcePlan = buildFundingSourcePlan({ plan: planFixture("REFILL_REQUIRED"), policy });
   const jobs = buildTreasuryRefillJobs({ plan: planFixture("REFILL_REQUIRED"), policy, fundingSourcePlan });

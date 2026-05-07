@@ -322,7 +322,7 @@ export function buildCanaryStageChecklist({ route = null, nextStep = null, input
   } else if (nextStep?.decision === "RERUN_SCORING") {
     remaining.push("rerun scoring with the latest inputs");
   } else if (nextStep?.decision === "REVIEW_CANARY_CANDIDATE") {
-    completed.push("route reached manual canary review state");
+    completed.push("route reached policy canary review state");
   } else if (String(nextStep?.decision || "").startsWith("BLOCKED")) {
     if ((nextStep?.reasons || []).length > 0) {
       remaining.push(`clear objective blocker (${nextStep.reasons.join(", ")})`);
@@ -351,7 +351,7 @@ export function buildExecutionStageSummary({ nextStep = null, dashboardStatus = 
   const liveReasons = dashboardStatus?.overall?.blockers || [];
 
   return {
-    reviewStage: canReview ? "READY_FOR_MANUAL_CANARY_REVIEW" : "NOT_READY_FOR_MANUAL_CANARY_REVIEW",
+    reviewStage: canReview ? "READY_FOR_POLICY_CANARY_REVIEW" : "NOT_READY_FOR_POLICY_CANARY_REVIEW",
     reviewReasons,
     liveStage: liveBlocked ? "LIVE_EXECUTION_BLOCKED" : "LIVE_EXECUTION_ALLOWED",
     liveReasons,

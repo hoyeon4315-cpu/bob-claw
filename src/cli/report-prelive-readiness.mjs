@@ -84,7 +84,7 @@ async function main() {
     console.log(`tinyCanaryAdmissionBlockers=${report.reviewPackage.tinyCanaryAdmissionBlockers?.join(",") || "none"}`);
     if (report.reviewPackage.remediationPlan) {
       console.log(
-        `tinyCanaryRemediation=${report.reviewPackage.remediationPlan.overallStatus || "unknown"} ready=${report.reviewPackage.remediationPlan.readyCount ?? 0} manual=${report.reviewPackage.remediationPlan.manualCount ?? 0} blocked=${report.reviewPackage.remediationPlan.blockedCount ?? 0}`,
+        `tinyCanaryRemediation=${report.reviewPackage.remediationPlan.overallStatus || "unknown"} ready=${report.reviewPackage.remediationPlan.readyCount ?? 0} policyReview=${report.reviewPackage.remediationPlan.policyReviewCount ?? 0} blocked=${report.reviewPackage.remediationPlan.blockedCount ?? 0}`,
       );
       console.log(`tinyCanaryRemediationRunner=${report.reviewPackage.remediationPlan.runnerCommand || "n/a"}`);
       if (report.reviewPackage.remediationPlan.nextAction) {

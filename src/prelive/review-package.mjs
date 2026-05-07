@@ -108,7 +108,7 @@ function normalizeInputFreshness(inputFreshness = null, { routeKey = null, srcCh
   return normalized;
 }
 
-function buildManualReviewCandidate({ dashboardStatus = null, canaryInputs = null, matchedCandidate = null, nextStep = null, address = null } = {}) {
+function buildPolicyReviewCandidate({ dashboardStatus = null, canaryInputs = null, matchedCandidate = null, nextStep = null, address = null } = {}) {
   const topRoute = dashboardStatus?.shadowCycle?.topRoute || null;
   const route = nextStep?.route || null;
   const routeLabel = canaryInputs?.routeLabel || matchedCandidate?.label || route?.label || topRoute?.label || null;
@@ -471,14 +471,14 @@ function selectBestStrategyLiveCandidate(strategyLiveCandidates = []) {
 }
 
 function selectPrimaryLiveCandidate({
-  manualReviewCandidate = null,
+  policyReviewCandidate = null,
   strategyLiveCandidate = null,
   dashboardStatus = null,
 } = {}) {
-  if (isRouteEconomicallyBlocked(manualReviewCandidate, dashboardStatus) && strategyLiveCandidate) return strategyLiveCandidate;
-  if (isRouteReviewReady(manualReviewCandidate)) return manualReviewCandidate;
-  if (isRouteStructurallyBlocked(manualReviewCandidate) && strategyLiveCandidate) return strategyLiveCandidate;
-  return manualReviewCandidate || strategyLiveCandidate || null;
+  if (isRouteEconomicallyBlocked(policyReviewCandidate, dashboardStatus) && strategyLiveCandidate) return strategyLiveCandidate;
+  if (isRouteReviewReady(policyReviewCandidate)) return policyReviewCandidate;
+  if (isRouteStructurallyBlocked(policyReviewCandidate) && strategyLiveCandidate) return strategyLiveCandidate;
+  return policyReviewCandidate || strategyLiveCandidate || null;
 }
 
 function buildMeasuredLeaderReview({ canarySelectionGap = null, executionReview = null } = {}) {
@@ -511,14 +511,14 @@ function buildMeasuredLeaderReview({ canarySelectionGap = null, executionReview 
   };
 }
 
-function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview = null, readyForManualReview = false } = {}) {
+function buildAntiOverfitCaveats({ dashboardStatus = null, measuredLeaderReview = null, readyForPolicyReview = false } = {}) {
   return unique([
     ...(dashboardStatus?.prelive?.notes || []),
     measuredLeaderReview?.hypothesisGuard || null,
     dashboardStatus?.gateway?.ethFamilyWatch?.routeCount > 0
       ? "ETH-family routes remain evidence-gated until route persistence, amount diversity, and ETH-family overfit audit all clear."
       : null,
-    !readyForManualReview
+    !readyForPolicyReview
       ? "Do not promote any route to canary or live execution while review blockers, stale inputs, or missing pre-live evidence remain."
       : null,
     dashboardStatus?.overall?.liveTrading === "BLOCKED"
@@ -547,7 +547,7 @@ function buildStrategyCandidateChecklist(candidate = null) {
       blockerReasons.includes("recursive_observed_receipts_missing") ? "ingest recursive lending-loop observed receipts" : null,
       blockerReasons.length ? `clear strategy evidence blockers (${blockerReasons.join(",")})` : null,
       ...stages.filter((stage) => stage.status !== "complete").map((stage) => `rail proof needed: ${stage.label}`),
-      "manual approval before live canary",
+      "deterministic policy/signer eligibility before live canary",
     ]),
   };
 }
@@ -654,7 +654,7 @@ function summarizeDestinationAllocator({ destinationAllocationPlan = null, desti
         }
       : null,
     note:
-      "Destination allocator candidates are research and manual-review inputs only; they do not authorize route execution or live trading.",
+      "Destination allocator candidates are research and policy-review inputs only; they do not authorize route execution or live trading.",
   };
 }
 
@@ -697,7 +697,7 @@ export function buildPreliveReviewPackage({
     advanceCanary: advanceCanary || dashboardStatus?.canaryAdvance || null,
   });
   const matchedCandidate = matchedCanaryCandidate(dashboardStatus, canaryInputs);
-  const manualReviewCandidate = buildManualReviewCandidate({
+  const policyReviewCandidate = buildPolicyReviewCandidate({
     dashboardStatus,
     canaryInputs,
     matchedCandidate,
@@ -716,7 +716,7 @@ export function buildPreliveReviewPackage({
   });
   const bestStrategyLiveCandidate = selectBestStrategyLiveCandidate(strategyLiveCandidates);
   const primaryLiveCandidate = selectPrimaryLiveCandidate({
-    manualReviewCandidate,
+    policyReviewCandidate,
     strategyLiveCandidate: bestStrategyLiveCandidate,
     dashboardStatus,
   });
@@ -729,22 +729,22 @@ export function buildPreliveReviewPackage({
   const tinyCanaryAdmission = buildTinyCanaryAdmission({
     prelive,
     executionStage,
-    manualReviewCandidate: primaryLiveCandidate || manualReviewCandidate,
+    policyReviewCandidate: primaryLiveCandidate || policyReviewCandidate,
     overall: dashboardStatus?.overall || null,
   });
   const ethFamilyObservation = buildEthFamilyObservation(dashboardStatus);
   const ethFamilyProfitability = buildEthFamilyProfitability(dashboardStatus);
-  const readyForManualReview = ["GO_FOR_POLICY_READY", "GO_FOR_AUTO_EXECUTE"].includes(tinyCanaryAdmission.decision);
-  const reviewBlockers = readyForManualReview ? [] : tinyCanaryAdmission.blockers;
+  const readyForPolicyReview = ["GO_FOR_POLICY_READY", "GO_FOR_AUTO_EXECUTE"].includes(tinyCanaryAdmission.decision);
+  const reviewBlockers = readyForPolicyReview ? [] : tinyCanaryAdmission.blockers;
   const liveBlockers = unique([...(executionStage.liveReasons || []), ...(dashboardStatus?.overall?.blockers || [])]);
-  const reviewDecision = readyForManualReview ? "READY_FOR_MANUAL_CANARY_REVIEW" : executionStage.reviewStage;
+  const reviewDecision = readyForPolicyReview ? "READY_FOR_POLICY_CANARY_REVIEW" : executionStage.reviewStage;
 
   const reviewPackage = {
     schemaVersion: 1,
     generatedAt,
     reviewScope: "tiny_live_canary",
-    packageStatus: readyForManualReview ? "ready_for_manual_review" : "not_ready_for_manual_review",
-    readyForManualReview,
+    packageStatus: readyForPolicyReview ? "ready_for_policy_review" : "not_ready_for_policy_review",
+    readyForPolicyReview,
     currentStage: executionRunbook?.currentStageId || preliveValidation?.currentStageId || prelive?.currentStage || null,
     reviewDecision,
     reviewBlockers,
@@ -774,7 +774,7 @@ export function buildPreliveReviewPackage({
       reasons: nextStep?.reasons || [],
     },
     primaryLiveCandidate,
-    manualReviewCandidate,
+    policyReviewCandidate,
     measuredLeaderReview,
     ethFamilyObservation,
     ethFamilyProfitability,
@@ -841,7 +841,7 @@ export function buildPreliveReviewPackage({
     antiOverfitCaveats: buildAntiOverfitCaveats({
       dashboardStatus: effectiveStatus,
       measuredLeaderReview,
-      readyForManualReview,
+      readyForPolicyReview,
     }),
   };
   reviewPackage.remediationPlan = buildAdmissionRemediationPlan({
@@ -854,11 +854,11 @@ export function buildPreliveReviewPackage({
 
 export function summarizePreliveReviewPackage(reviewPackage = null) {
   if (!reviewPackage) return null;
-  const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.manualReviewCandidate || null;
+  const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.policyReviewCandidate || null;
   return {
     generatedAt: reviewPackage.generatedAt || null,
     packageStatus: reviewPackage.packageStatus || null,
-    readyForManualReview: Boolean(reviewPackage.readyForManualReview),
+    readyForPolicyReview: Boolean(reviewPackage.readyForPolicyReview),
     currentStage: reviewPackage.currentStage || null,
     reviewDecision: reviewPackage.reviewDecision || null,
     reviewBlockers: reviewPackage.reviewBlockers || [],

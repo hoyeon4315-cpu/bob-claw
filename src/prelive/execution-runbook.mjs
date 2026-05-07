@@ -4,7 +4,7 @@ function unique(values = []) {
 
 function routeContext({ dashboardStatus = null, reviewPackage = null, canaryInputs = null, nextStep = null } = {}) {
   const route = nextStep?.route || null;
-  const candidate = reviewPackage?.manualReviewCandidate || null;
+  const candidate = reviewPackage?.policyReviewCandidate || null;
   const topRoute = dashboardStatus?.shadowCycle?.topRoute || null;
   return {
     routeKey: route?.routeKey || candidate?.routeKey || null,
@@ -85,13 +85,13 @@ function cloneAction(action = null) {
     code: action.code || null,
     label: action.label || null,
     command: action.command || null,
-    manualStep: action.manualStep || null,
+    policyReviewStep: action.policyReviewStep || null,
   };
 }
 
 function strategyCandidateNextAction(reviewPackage = null) {
-  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
-  if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForManualReview) return null;
+  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.policyReviewCandidate || null;
+  if (candidate?.candidateType !== "strategy" || reviewPackage?.readyForPolicyReview) return null;
   return cloneAction(reviewPackage?.remediationPlan?.nextAction || candidate?.nextAction || null);
 }
 
@@ -105,7 +105,7 @@ function shadowNextAction({ reviewPackage = null, problems = [], route = null, a
       code: `hold_${blockedProblem.key}`,
       label: `hold on blocked ${blockedProblem.label}`,
       command: null,
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   if (reviewPackage?.remediationPlan?.nextAction) {
@@ -118,21 +118,21 @@ function shadowNextAction({ reviewPackage = null, problems = [], route = null, a
         code: `hold_${firstProblem.key}`,
         label: `hold on blocked ${firstProblem.label}`,
         command: null,
-        manualStep: null,
+        policyReviewStep: null,
       };
     }
     return {
       code: `refresh_${firstProblem.key}`,
       label: `refresh ${firstProblem.label}`,
       command: commandForInput(firstProblem, route, address),
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   return {
     code: "run_shadow_cycle",
     label: "run shadow cycle",
     command: "npm run run:shadow-cycle -- --write",
-    manualStep: null,
+    policyReviewStep: null,
   };
 }
 
@@ -142,7 +142,7 @@ function mechanicalNextAction({ shadowComplete = false, prelive = null } = {}) {
       code: "wait_for_shadow_replay",
       label: "complete shadow evidence first",
       command: null,
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   const successCount = prelive?.mechanicalSimulation?.successCount || 0;
@@ -152,7 +152,7 @@ function mechanicalNextAction({ shadowComplete = false, prelive = null } = {}) {
     code: "run_mechanical_simulations",
     label: "run mechanical simulations",
     command: `npm run run:prelive-simulations -- --write --source=objective --limit=${Math.max(1, Math.min(4, remaining || 1))}`,
-    manualStep: null,
+    policyReviewStep: null,
   };
 }
 
@@ -162,7 +162,7 @@ function forkNextAction({ mechanicalComplete = false, prelive = null } = {}) {
       code: "wait_for_mechanical_simulation",
       label: "complete mechanical simulations first",
       command: null,
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   if ((prelive?.forkExecution?.pendingOutputCount || 0) > 0) {
@@ -170,7 +170,7 @@ function forkNextAction({ mechanicalComplete = false, prelive = null } = {}) {
       code: "reconcile_fork_execution",
       label: "reconcile fork execution",
       command: "npm run reconcile:prelive-fork-execution",
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   if ((prelive?.forkExecution?.planCount || 0) <= 0) {
@@ -178,25 +178,25 @@ function forkNextAction({ mechanicalComplete = false, prelive = null } = {}) {
       code: "plan_fork_execution",
       label: "plan fork execution",
       command: "npm run plan:prelive-fork-execution -- --source=objective --write",
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   return {
     code: "prepare_external_signed_fork_submission",
     label: "prepare externally signed fork submission",
     command: "npm run plan:prelive-fork-execution -- --source=objective --write",
-    manualStep:
+    policyReviewStep:
       "After refreshing the fork plan, submit through the isolated signer path via npm run submit:prelive-fork-execution -- --plan-id=<planId> --use-signer-daemon --rpc-url=<forkRpc>.",
   };
 }
 
 function reviewNextAction(reviewPackage = null) {
-  if (reviewPackage?.readyForManualReview) {
+  if (reviewPackage?.readyForPolicyReview) {
     return {
-      code: "manual_canary_review_only",
-      label: "manual canary review only",
+      code: "policy_canary_review_only",
+      label: "policy canary review only",
       command: null,
-      manualStep: "Keep liveTrading BLOCKED and review the candidate manually before any architecture change.",
+      policyReviewStep: "Keep liveTrading BLOCKED and keep this review advisory before any architecture change.",
     };
   }
   const strategyAction = strategyCandidateNextAction(reviewPackage);
@@ -209,14 +209,14 @@ function reviewNextAction(reviewPackage = null) {
       code: "run_admission_remediation",
       label: "run admission remediation",
       command: reviewPackage.remediationPlan.runnerCommand,
-      manualStep: null,
+      policyReviewStep: null,
     };
   }
   return {
     code: "refresh_review_package",
     label: "refresh review package",
     command: "npm run build:prelive-review-package -- --write",
-    manualStep: null,
+    policyReviewStep: null,
   };
 }
 
@@ -272,7 +272,7 @@ export function buildExecutionRunbook({
     Boolean(prelive?.forkExecution?.ready) ||
     prelive?.forkExecution?.status === "fork_execution_proven" ||
     prelive?.currentStage === "tiny_live_canary_review";
-  const reviewReady = Boolean(reviewPackage?.readyForManualReview || prelive?.tinyLiveCanary?.ready);
+  const reviewReady = Boolean(reviewPackage?.readyForPolicyReview || prelive?.tinyLiveCanary?.ready);
   const exactRouteForkPlan = summarizeExactRouteForkPlan({ forkPlan, route });
 
   const stages = [
@@ -347,8 +347,8 @@ export function buildExecutionRunbook({
       route,
     },
     {
-      id: "manual_canary_review",
-      label: "Manual canary review",
+      id: "policy_canary_review",
+      label: "Policy canary review",
       sequence: 4,
       current: prelive?.currentStage === "tiny_live_canary_review",
       complete: reviewReady,
@@ -356,14 +356,14 @@ export function buildExecutionRunbook({
       status: reviewPackage?.packageStatus || prelive?.tinyLiveCanary?.status || null,
       blockers: reviewReady ? [] : unique([...(reviewPackage?.reviewBlockers || []), ...(prelive?.tinyLiveCanary?.blockers || [])]),
       progress: {
-        readyForManualReview: reviewReady,
+        readyForPolicyReview: reviewReady,
         liveTradingPolicy: dashboardStatus?.overall?.liveTrading || prelive?.liveTradingPolicy || "BLOCKED",
       },
       requiredEvidence: [
         "shadow replay ready",
         "mechanical simulations proven",
         "fork execution proven",
-        "manual approval only while liveTrading stays BLOCKED",
+        "policy/signer review only while liveTrading stays BLOCKED",
       ],
       nextAction: reviewNextAction(reviewPackage),
       route,
@@ -394,7 +394,7 @@ export function buildExecutionRunbook({
       stageCount: stages.length,
       completeCount: stages.filter((stage) => stage.complete).length,
       blockedCount: stages.filter((stage) => !stage.complete && stage.blockers.length > 0).length,
-      readyForManualReview: reviewReady,
+      readyForPolicyReview: reviewReady,
       nextStageId: nextStage?.id || null,
       nextStageState: nextStage?.state || null,
       nextActionCode: nextAction?.code || null,
@@ -423,7 +423,7 @@ export function summarizeExecutionRunbook(runbook = null) {
     stageCount: runbook.summary?.stageCount ?? runbook.stages?.length ?? 0,
     completeCount: runbook.summary?.completeCount ?? 0,
     blockedCount: runbook.summary?.blockedCount ?? 0,
-    readyForManualReview: Boolean(runbook.summary?.readyForManualReview),
+    readyForPolicyReview: Boolean(runbook.summary?.readyForPolicyReview),
     nextStageId: nextStage?.id || runbook.summary?.nextStageId || null,
     nextStageState: nextStage?.state || runbook.summary?.nextStageState || null,
     nextActionCode: nextStage?.nextAction?.code || runbook.summary?.nextActionCode || null,

@@ -83,16 +83,16 @@ test("admission remediation runner executes selected items and follow-up refresh
   assert.deepEqual(calls, ["verify:gateway", "gas:snapshot", "status:dashboard", "write:session-handoff"]);
 });
 
-test("admission remediation runner returns awaiting-manual when no ready items can run", async () => {
+test("admission remediation runner returns awaiting-policy-review when no ready items can run", async () => {
   const record = await executeAdmissionRemediationPlan({
     plan: {
-      overallStatus: "awaiting_manual",
+      overallStatus: "awaiting_policy_review",
       items: [
         {
           rank: 1,
           code: "reconcile_fork_cycle",
           label: "reconcile fork cycle",
-          status: "manual",
+          status: "policy_review",
           reason: "fork_output_resolution_required",
           command: 'npm run reconcile:prelive-fork-execution -- --plan-id="plan-1" --tx-hash="<txHash>" --rpc-url="<forkRpcUrl>" --actual-output-units="<actualOutputUnits>"',
         },
@@ -101,7 +101,7 @@ test("admission remediation runner returns awaiting-manual when no ready items c
     execute: true,
   });
 
-  assert.equal(record.executionStatus, "awaiting_manual");
+  assert.equal(record.executionStatus, "awaiting_policy_review");
   assert.equal(record.stopReason, "fork_output_resolution_required");
   assert.equal(record.actionResults.length, 0);
 });
@@ -124,7 +124,7 @@ test("admission remediation execution summary aggregates preview and execute run
       observedAt: "2026-04-12T12:01:00.000Z",
       runId: "r2",
       mode: "execute",
-      finalStatus: "awaiting_manual",
+      finalStatus: "awaiting_policy_review",
       stopReason: "fork_output_resolution_required",
       selectedCount: 0,
       actionResults: [],
@@ -150,7 +150,7 @@ test("admission remediation execution summary aggregates preview and execute run
   assert.equal(summary.runCount, 2);
   assert.equal(summary.previewCount, 1);
   assert.equal(summary.successCount, 1);
-  assert.equal(summary.awaitingManualCount, 1);
+  assert.equal(summary.awaitingPolicyReviewCount, 1);
   assert.equal(summary.latestStatus, "preview");
   assert.equal(summary.nextAction.code, "refresh_gateway_quote");
 });

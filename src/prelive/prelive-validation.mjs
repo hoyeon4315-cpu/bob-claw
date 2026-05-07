@@ -12,7 +12,7 @@ function unique(values = []) {
 }
 
 function primaryCandidate(reviewPackage = null) {
-  return reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || null;
+  return reviewPackage?.primaryLiveCandidate || reviewPackage?.policyReviewCandidate || null;
 }
 
 function strategyPrimaryCandidate(reviewPackage = null) {
@@ -35,7 +35,7 @@ function warningsFor(strategySummary = null, dashboardStatus = null, reviewPacka
 
 function candidateNextAction(reviewPackage = null) {
   const candidate = primaryCandidate(reviewPackage);
-  if (candidate?.candidateType === "strategy" && !reviewPackage?.readyForManualReview) {
+  if (candidate?.candidateType === "strategy" && !reviewPackage?.readyForPolicyReview) {
     const action = reviewPackage?.remediationPlan?.nextAction || candidate?.nextAction || null;
     if (!action) return null;
     return {
@@ -48,7 +48,7 @@ function candidateNextAction(reviewPackage = null) {
 }
 
 function nextActionFrom(runbook = null, reviewPackage = null) {
-  if (reviewPackage?.readyForManualReview) return null;
+  if (reviewPackage?.readyForPolicyReview) return null;
   const strategyCandidateAction = candidateNextAction(reviewPackage);
   if (strategyCandidateAction) return strategyCandidateAction;
   const nextStage = runbook?.stages?.find((stage) => !stage.complete) || null;
@@ -95,7 +95,7 @@ export function buildPreliveValidationReport({
     strategyPrimary ||
     !(
       exactRouteForkPackage?.readiness?.technicalStatus === "submit_ready" &&
-      exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_manual_review"
+      exactRouteForkPackage?.readiness?.economicStatus !== "eligible_for_policy_review"
     )
       ? null
       : "technical_ready_economic_blocked",
@@ -104,8 +104,8 @@ export function buildPreliveValidationReport({
   const stageCount = runbookSummary?.stageCount ?? 0;
   const completeCount = runbookSummary?.completeCount ?? 0;
   const readinessPct = stageCount > 0 ? round((completeCount / stageCount) * 100) : 0;
-  const readyForManualReview = Boolean(reviewPackage?.readyForManualReview || runbookSummary?.readyForManualReview);
-  const validationStatus = readyForManualReview ? "ready_for_manual_review" : blockers.length ? "blocked" : "in_progress";
+  const readyForPolicyReview = Boolean(reviewPackage?.readyForPolicyReview || runbookSummary?.readyForPolicyReview);
+  const validationStatus = readyForPolicyReview ? "ready_for_policy_review" : blockers.length ? "blocked" : "in_progress";
   const candidate = primaryCandidate(reviewPackage);
 
   return {
@@ -120,7 +120,7 @@ export function buildPreliveValidationReport({
       completeCount,
       blockerCount: blockers.length,
       warningCount: warnings.length,
-      readyForManualReview,
+      readyForPolicyReview,
       nextStageId: runbookSummary?.nextStageId || nextStage?.id || null,
       nextStageState: runbookSummary?.nextStageState || nextStage?.state || null,
       nextActionCode: nextAction?.code || null,
@@ -142,7 +142,7 @@ export function buildPreliveValidationReport({
       pivotId: strategySummary?.topPivot?.id || null,
       yieldTopProfileId: strategySummary?.yieldTopProfileId || null,
     },
-    manualReviewCandidate: candidate
+    policyReviewCandidate: candidate
       ? {
           candidateType: candidate.candidateType || "route",
           candidateId: candidate.candidateId || candidate.routeKey || null,

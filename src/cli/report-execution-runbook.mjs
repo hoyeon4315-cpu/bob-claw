@@ -43,7 +43,7 @@ async function main() {
   console.log(`liveTradingPolicy=${report?.liveTradingPolicy || "BLOCKED"}`);
   console.log(`completeStages=${report?.summary?.completeCount ?? 0}/${report?.summary?.stageCount ?? 0}`);
   console.log(`blockedStages=${report?.summary?.blockedCount ?? 0}`);
-  console.log(`readyForManualReview=${Boolean(report?.summary?.readyForManualReview)}`);
+  console.log(`readyForPolicyReview=${Boolean(report?.summary?.readyForPolicyReview)}`);
   console.log(`nextStage=${report?.summary?.nextStageId || "n/a"} state=${report?.summary?.nextStageState || "n/a"}`);
   console.log(`nextAction=${report?.summary?.nextActionCode || "n/a"} command=${report?.summary?.nextActionCommand || "n/a"}`);
   if (report?.summary?.exactRouteForkPlanStatus || report?.summary?.exactRouteForkPlanId) {

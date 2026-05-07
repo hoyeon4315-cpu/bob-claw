@@ -122,7 +122,7 @@ function sourceInventoryProblem({ route = null, wholeWalletRecords = [], now = n
 
 function routeContext({ dashboardStatus = null, reviewPackage = null, canaryInputs = null, nextStep = null } = {}) {
   const route = nextStep?.route || null;
-  const candidate = reviewPackage?.manualReviewCandidate || null;
+  const candidate = reviewPackage?.policyReviewCandidate || null;
   const topRoute = dashboardStatus?.shadowCycle?.topRoute || null;
   const inferredRouteKey = route?.routeKey || candidate?.routeKey || topRoute?.routeKey || canaryInputs?.routeKey || null;
   const inferredChains = parseRouteChains(inferredRouteKey);

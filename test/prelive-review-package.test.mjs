@@ -78,7 +78,7 @@ test("prelive review package stays blocked while canary and prelive gates are no
         notes: ["Mechanical simulation uses RPC estimation and eth_call only; it is not realized execution proof."],
         shadowReplay: {
           status: "shadow_replay_blocked",
-          blockers: ["audit:LIVE_BLOCKED", "manual_canary_review_not_ready"],
+          blockers: ["audit:LIVE_BLOCKED", "policy_canary_review_not_ready"],
           auditDecision: "LIVE_BLOCKED",
           policyReadyMeasuredRoutes: 1,
         },
@@ -186,10 +186,10 @@ test("prelive review package stays blocked while canary and prelive gates are no
     address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
   });
 
-  assert.equal(reviewPackage.packageStatus, "not_ready_for_manual_review");
-  assert.equal(reviewPackage.reviewDecision, "NOT_READY_FOR_MANUAL_CANARY_REVIEW");
-  assert.equal(reviewPackage.manualReviewCandidate.routeKey, "bob:0x0555->base:0x0555");
-  assert.equal(reviewPackage.manualReviewCandidate.evidence.shadowObservationCount, 31);
+  assert.equal(reviewPackage.packageStatus, "not_ready_for_policy_review");
+  assert.equal(reviewPackage.reviewDecision, "NOT_READY_FOR_POLICY_CANARY_REVIEW");
+  assert.equal(reviewPackage.policyReviewCandidate.routeKey, "bob:0x0555->base:0x0555");
+  assert.equal(reviewPackage.policyReviewCandidate.evidence.shadowObservationCount, 31);
   assert.equal(reviewPackage.measuredLeaderReview.routeKey, "ethereum:0x2260->base:0x0555");
   assert.equal(reviewPackage.reviewBlockers.includes("shadow_replay_not_ready"), true);
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "NO_GO");
@@ -239,7 +239,7 @@ test("prelive review package becomes review-ready once canary and prelive gates 
       },
       shadowCycle: {
         canaryDecision: "REVIEW_CANARY_CANDIDATE",
-        headline: "Route is prepared for manual canary review",
+        headline: "Route is prepared for policy canary review",
         topRoute: {
           label: "base->unichain wBTC.OFT->wBTC.OFT",
           amount: "25000",
@@ -305,7 +305,7 @@ test("prelive review package becomes review-ready once canary and prelive gates 
       canaryAdvance: {
         final: {
           decision: "REVIEW_CANARY_CANDIDATE",
-          headline: "Route is prepared for manual canary review",
+          headline: "Route is prepared for policy canary review",
         },
       },
     },
@@ -325,7 +325,7 @@ test("prelive review package becomes review-ready once canary and prelive gates 
     },
     nextStep: {
       decision: "REVIEW_CANARY_CANDIDATE",
-      headline: "Route is prepared for manual canary review",
+      headline: "Route is prepared for policy canary review",
       reasons: [],
       route: {
         routeKey: "base:0x0555->unichain:0x0555",
@@ -349,25 +349,25 @@ test("prelive review package becomes review-ready once canary and prelive gates 
     },
     executionRunbook: {
       currentStageId: "tiny_live_canary_review",
-      nextStageId: "manual_canary_review",
-      nextActionCode: "manual_canary_review_only",
+      nextStageId: "policy_canary_review",
+      nextActionCode: "policy_canary_review_only",
     },
     preliveValidation: {
-      validationStatus: "ready_for_manual_review",
-      nextActionCode: "manual_canary_review_only",
+      validationStatus: "ready_for_policy_review",
+      nextActionCode: "policy_canary_review_only",
     },
   });
 
   const summary = summarizePreliveReviewPackage(reviewPackage);
 
-  assert.equal(reviewPackage.packageStatus, "ready_for_manual_review");
-  assert.equal(reviewPackage.reviewDecision, "READY_FOR_MANUAL_CANARY_REVIEW");
+  assert.equal(reviewPackage.packageStatus, "ready_for_policy_review");
+  assert.equal(reviewPackage.reviewDecision, "READY_FOR_POLICY_CANARY_REVIEW");
   assert.deepEqual(reviewPackage.reviewBlockers, []);
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_POLICY_READY");
   assert.equal(reviewPackage.tinyCanaryAdmission.constraints.dailyLossCapUsd, null);
-  assert.equal(reviewPackage.manualReviewCandidate.routeLabel, "base->unichain wBTC.OFT->wBTC.OFT");
-  assert.equal(summary.readyForManualReview, true);
-  assert.equal(summary.packageStatus, "ready_for_manual_review");
+  assert.equal(reviewPackage.policyReviewCandidate.routeLabel, "base->unichain wBTC.OFT->wBTC.OFT");
+  assert.equal(summary.readyForPolicyReview, true);
+  assert.equal(summary.packageStatus, "ready_for_policy_review");
   assert.equal(summary.tinyCanaryAdmissionDecision, "GO_FOR_POLICY_READY");
   assert.equal(summary.remediationPlan.overallStatus, "clear");
   assert.equal(summary.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3");
@@ -380,8 +380,8 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(summary.yieldTopProfileId, "research_pilot");
   assert.equal(summary.proxyCoverageNextProxyGroup, "wbtc");
   assert.equal(summary.strategySnapshotTopImplementedId, "stablecoin_entry_exit_loops");
-  assert.equal(summary.executionRunbookNextActionCode, "manual_canary_review_only");
-  assert.equal(summary.preliveValidationStatus, "ready_for_manual_review");
+  assert.equal(summary.executionRunbookNextActionCode, "policy_canary_review_only");
+  assert.equal(summary.preliveValidationStatus, "ready_for_policy_review");
 });
 
 test("prelive review package marks reviewDecision ready when auto-execute policy is already allowed", () => {
@@ -421,7 +421,7 @@ test("prelive review package marks reviewDecision ready when auto-execute policy
       },
       shadowCycle: {
         canaryDecision: "REVIEW_CANARY_CANDIDATE",
-        headline: "Route is prepared for manual canary review",
+        headline: "Route is prepared for policy canary review",
         topRoute: {
           label: "base->unichain wBTC.OFT->wBTC.OFT",
           amount: "25000",
@@ -487,7 +487,7 @@ test("prelive review package marks reviewDecision ready when auto-execute policy
       canaryAdvance: {
         final: {
           decision: "REVIEW_CANARY_CANDIDATE",
-          headline: "Route is prepared for manual canary review",
+          headline: "Route is prepared for policy canary review",
         },
       },
     },
@@ -507,7 +507,7 @@ test("prelive review package marks reviewDecision ready when auto-execute policy
     },
     nextStep: {
       decision: "REVIEW_CANARY_CANDIDATE",
-      headline: "Route is prepared for manual canary review",
+      headline: "Route is prepared for policy canary review",
       reasons: [],
       route: {
         routeKey: "base:0x0555->unichain:0x0555",
@@ -531,19 +531,19 @@ test("prelive review package marks reviewDecision ready when auto-execute policy
     },
     executionRunbook: {
       currentStageId: "tiny_live_canary_review",
-      nextStageId: "manual_canary_review",
-      nextActionCode: "manual_canary_review_only",
+      nextStageId: "policy_canary_review",
+      nextActionCode: "policy_canary_review_only",
     },
     preliveValidation: {
-      validationStatus: "ready_for_manual_review",
-      nextActionCode: "manual_canary_review_only",
+      validationStatus: "ready_for_policy_review",
+      nextActionCode: "policy_canary_review_only",
     },
   });
 
-  assert.equal(reviewPackage.packageStatus, "ready_for_manual_review");
+  assert.equal(reviewPackage.packageStatus, "ready_for_policy_review");
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_AUTO_EXECUTE");
   assert.equal(reviewPackage.currentStage, "tiny_live_canary_review");
-  assert.equal(reviewPackage.reviewDecision, "READY_FOR_MANUAL_CANARY_REVIEW");
+  assert.equal(reviewPackage.reviewDecision, "READY_FOR_POLICY_CANARY_REVIEW");
 });
 
 test("prelive review package can promote wrapped loop as the primary live candidate when the route path is structurally blocked", () => {
@@ -643,7 +643,7 @@ test("prelive review package can promote wrapped loop as the primary live candid
   assert.equal(summary.candidateType, "strategy");
   assert.equal(summary.remediationPlan.nextAction.code, "collect_wrapped_btc_loop_oos_receipts");
   assert.equal(summary.remediationPlan.nextAction.command, "npm run ingest:wrapped-btc-loop-receipt -- --write");
-  assert.equal(reviewPackage.readyForManualReview, false);
+  assert.equal(reviewPackage.readyForPolicyReview, false);
 });
 
 test("prelive review package infers unsupported bob dex routes as structurally blocked", () => {
@@ -735,8 +735,8 @@ test("prelive review package infers unsupported bob dex routes as structurally b
     },
   });
 
-  assert.equal(reviewPackage.manualReviewCandidate.inputFreshness.dexQuote.state, "blocked");
-  assert.equal(reviewPackage.manualReviewCandidate.inputFreshness.dexQuote.failureReason, "no_supported_router_for_chain:60808");
+  assert.equal(reviewPackage.policyReviewCandidate.inputFreshness.dexQuote.state, "blocked");
+  assert.equal(reviewPackage.policyReviewCandidate.inputFreshness.dexQuote.failureReason, "no_supported_router_for_chain:60808");
   assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
   assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "wrapped-btc-loop-base-moonwell");
 });
@@ -1020,7 +1020,7 @@ test("prelive review package promotes the strategy candidate when route refill e
 
   assert.equal(reviewPackage.primaryLiveCandidate.candidateType, "strategy");
   assert.equal(reviewPackage.primaryLiveCandidate.candidateId, "wrapped-btc-loop-base-moonwell");
-  assert.equal(reviewPackage.manualReviewCandidate.routeKey, "sonic:0x0555->base:0x0555");
+  assert.equal(reviewPackage.policyReviewCandidate.routeKey, "sonic:0x0555->base:0x0555");
 });
 
 test("prelive review package prefers the wrapped loop when signer-backed roundtrip proof outranks recursive dry-run-only evidence", () => {
@@ -1280,7 +1280,7 @@ test("prelive review package keeps yield strategies blocked until live carry is 
   const reviewPackage = buildPreliveReviewPackage(baseInput);
   const summary = summarizePreliveReviewPackage(reviewPackage);
 
-  assert.equal(reviewPackage.packageStatus, "not_ready_for_manual_review");
+  assert.equal(reviewPackage.packageStatus, "not_ready_for_policy_review");
   assert.equal(reviewPackage.tinyCanaryAdmission.decision, "NO_GO");
   assert.equal(reviewPackage.primaryLiveCandidate.tradeReadiness, "strategy_evidence_blocked");
   assert.equal(reviewPackage.primaryLiveCandidate.railProof.completeStageCount, 3);

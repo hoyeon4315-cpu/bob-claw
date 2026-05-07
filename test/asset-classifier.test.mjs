@@ -35,7 +35,7 @@ test("classifier recognizes non-ETH/BTC native gas tokens as known bluechip", ()
   for (const chain of ["avalanche", "sei", "bsc", "bera", "sonic"]) {
     const result = classifyInboundAsset({ chain, token: ZERO_TOKEN });
     assert.equal(result.assetClass, ASSET_CLASSES.OTHER_BLUECHIP, `${chain} native should classify`);
-    assert.equal(result.manualReviewRequired, false, `${chain} native should not require manual review`);
+    assert.equal(result.manualReviewRequired, false, `${chain} native should not require policy review`);
     assert.equal(result.routeAllowed, true);
   }
 });

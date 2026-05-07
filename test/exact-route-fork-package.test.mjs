@@ -18,7 +18,7 @@ test("exact-route fork package separates technical readiness from economic block
       scoreTradeReadiness: "reject_no_net_edge",
     },
     reviewPackage: {
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "bob:0x0555->base:0x0555",
         routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -97,7 +97,7 @@ test("exact-route fork package carries blocked connected inputs into freshness b
       scoreTradeReadiness: "reject_no_net_edge",
     },
     reviewPackage: {
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "avalanche:0x0555->bera:0x0555",
         routeLabel: "avalanche->bera wBTC.OFT->wBTC.OFT",
         amount: "10000",
@@ -138,7 +138,7 @@ test("exact-route fork package does not attach an unrelated exact-route plan to 
       scoreTradeReadiness: "reject_no_net_edge",
     },
     reviewPackage: {
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey: "soneium:0x0555->bob:0x0555",
         routeLabel: "soneium->bob wBTC.OFT->wBTC.OFT",
         amount: "100",

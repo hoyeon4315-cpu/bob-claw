@@ -844,7 +844,7 @@ function strategySummary({
     directionalBtcAccumulationCountsAsProfit: false,
     boundaryNote:
       "Long-term BTC appreciation may be a discretionary thesis, but it does not count as route profit or canary readiness.",
-    manualCanaryReviewReady: topTradeReadiness === "shadow_candidate_review_only",
+    policyCanaryReviewReady: topTradeReadiness === "shadow_candidate_review_only",
     liveExecutionBlocked: overall?.liveTrading !== "ALLOWED",
     pivotDecision: shadowCycle?.pivotDecision || null,
     crossAssetArbitrage,
@@ -1852,7 +1852,7 @@ export function buildDashboardStatus(input, options = {}) {
       previewCount: evidenceCampaign.previewCount,
       readyCount: evidenceCampaign.readyCount,
       reviewReadyCount: evidenceCampaign.reviewReadyCount,
-      awaitingManualCount: evidenceCampaign.awaitingManualCount,
+      awaitingPolicyReviewCount: evidenceCampaign.awaitingPolicyReviewCount,
       blockedCount: evidenceCampaign.blockedCount,
       failureCount: evidenceCampaign.failureCount,
       latestObservedAt: evidenceCampaign.latestObservedAt,

@@ -21,13 +21,13 @@ export function buildBtcOnlyE2eDryRun({
   operationalJudgmentReview = null,
   now = null,
 } = {}) {
-  const candidate = reviewPackage?.manualReviewCandidate || reviewPackage?.tinyCanaryAdmission?.candidate || null;
+  const candidate = reviewPackage?.policyReviewCandidate || reviewPackage?.tinyCanaryAdmission?.candidate || null;
   const stages = [
     stage({
       id: "route_selection",
       label: "Current BTC route selected",
       status: candidate?.routeKey ? "passed" : "blocked",
-      blockers: candidate?.routeKey ? [] : ["manual_review_candidate_missing"],
+      blockers: candidate?.routeKey ? [] : ["policy_review_candidate_missing"],
       evidence: candidate
         ? {
             routeKey: candidate.routeKey || null,

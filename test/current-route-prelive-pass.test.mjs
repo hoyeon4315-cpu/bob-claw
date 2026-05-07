@@ -12,7 +12,7 @@ function makeContext({
   amount = "10000",
   requiredRefreshCount = 0,
   blockedInputCount = 0,
-  economicStatus = "eligible_for_manual_review",
+  economicStatus = "eligible_for_policy_review",
   technicalStatus = "submit_ready",
   simulationSuccessCount = 50,
   simulationTargetCount = 50,
@@ -67,7 +67,7 @@ function makeContext({
       status:
         requiredRefreshCount > 0
           ? "refresh_required_before_submit"
-          : economicStatus !== "eligible_for_manual_review"
+          : economicStatus !== "eligible_for_policy_review"
             ? "technical_ready_economic_blocked"
             : simulationSuccessRemaining > 0
               ? "simulation_runway_remaining"
@@ -111,7 +111,7 @@ function makeContext({
       },
     },
     reviewPackage: {
-      manualReviewCandidate: {
+      policyReviewCandidate: {
         routeKey,
         routeLabel,
         amount,
@@ -242,14 +242,14 @@ test("current route prelive pass can advance to ready_for_external_signer after 
   const contexts = [
     makeContext({
       requiredRefreshCount: 0,
-      economicStatus: "eligible_for_manual_review",
+      economicStatus: "eligible_for_policy_review",
       technicalStatus: "missing_plan",
       simulationSuccessCount: 50,
       simulationSuccessRemaining: 0,
     }),
     makeContext({
       requiredRefreshCount: 0,
-      economicStatus: "eligible_for_manual_review",
+      economicStatus: "eligible_for_policy_review",
       technicalStatus: "submit_ready",
       simulationSuccessCount: 50,
       simulationSuccessRemaining: 0,
@@ -257,7 +257,7 @@ test("current route prelive pass can advance to ready_for_external_signer after 
   ];
   const initial = makeContext({
     requiredRefreshCount: 0,
-    economicStatus: "eligible_for_manual_review",
+    economicStatus: "eligible_for_policy_review",
     technicalStatus: "missing_plan",
     simulationSuccessCount: 48,
     simulationSuccessRemaining: 2,

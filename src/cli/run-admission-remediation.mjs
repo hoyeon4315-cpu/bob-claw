@@ -105,7 +105,7 @@ async function main() {
     );
   }
   console.log(
-    `remediationSummary runs=${summary.runCount} preview=${summary.previewCount} success=${summary.successCount} awaitingManual=${summary.awaitingManualCount} blocked=${summary.blockedCount} failed=${summary.failureCount}`,
+    `remediationSummary runs=${summary.runCount} preview=${summary.previewCount} success=${summary.successCount} awaitingPolicyReview=${summary.awaitingPolicyReviewCount} blocked=${summary.blockedCount} failed=${summary.failureCount}`,
   );
 }
 

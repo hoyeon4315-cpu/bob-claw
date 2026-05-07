@@ -27,7 +27,7 @@ test("prelive readiness advances to tiny canary review when shadow and simulatio
       ],
     },
     strategy: {
-      manualCanaryReviewReady: true,
+      policyCanaryReviewReady: true,
       edgeViability: {
         policyReadyCount: 2,
       },
@@ -109,7 +109,7 @@ test("prelive readiness stays in shadow replay when audit and policy gates are b
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 0,
       },
@@ -120,7 +120,7 @@ test("prelive readiness stays in shadow replay when audit and policy gates are b
 
   assert.equal(summary.currentStage, "shadow_replay");
   assert.equal(summary.shadowReplay.ready, false);
-  assert.equal(summary.shadowReplay.blockers.includes("manual_canary_review_not_ready"), true);
+  assert.equal(summary.shadowReplay.blockers.includes("policy_canary_review_not_ready"), true);
   assert.equal(summary.shadowReplay.blockers.includes("no_policy_ready_measured_route"), true);
   assert.equal(summary.mechanicalSimulation.blockers.includes("shadow_replay_not_ready"), true);
   assert.equal(summary.tinyLiveCanary.blockers.includes("shadow_replay_not_ready"), true);
@@ -143,13 +143,13 @@ test("prelive readiness honors review-package policy waiting state even when str
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 1,
       },
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       tinyCanaryAdmission: {
         status: "policy_waiting",
       },
@@ -157,8 +157,8 @@ test("prelive readiness honors review-package policy waiting state even when str
     targetSimulationSuccessCount: 1,
   });
 
-  assert.equal(summary.shadowReplay.blockers.includes("manual_canary_review_not_ready"), false);
-  assert.equal(summary.shadowReplay.manualCanaryReviewReady, true);
+  assert.equal(summary.shadowReplay.blockers.includes("policy_canary_review_not_ready"), false);
+  assert.equal(summary.shadowReplay.policyCanaryReviewReady, true);
   assert.equal(summary.currentStage, "mechanical_simulation");
 });
 
@@ -174,13 +174,13 @@ test("prelive readiness does not require a route edge when a strategy candidate 
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 0,
       },
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
@@ -220,13 +220,13 @@ test("prelive readiness treats transport-only audit blockers as warnings for rea
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 0,
       },
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
@@ -268,13 +268,13 @@ test("prelive readiness still blocks strategy candidates on non-transport audit 
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 0,
       },
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
@@ -312,7 +312,7 @@ test("prelive readiness pauses at fork execution after mechanical proof", () => 
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: true,
+      policyCanaryReviewReady: true,
       edgeViability: {
         policyReadyCount: 1,
       },
@@ -345,13 +345,13 @@ test("prelive readiness accepts signer-backed strategy execution proof instead o
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 0,
       },
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "wrapped-btc-loop-base-moonwell",
@@ -397,13 +397,13 @@ test("prelive readiness still requires fork cycles when a strategy lacks signer-
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: false,
+      policyCanaryReviewReady: false,
       edgeViability: {
         policyReadyCount: 0,
       },
     },
     reviewPackage: {
-      readyForManualReview: true,
+      readyForPolicyReview: true,
       primaryLiveCandidate: {
         candidateType: "strategy",
         candidateId: "recursive_wrapped_btc_lending_loop",
@@ -451,7 +451,7 @@ test("prelive readiness blocks on unresolved pending fork output", () => {
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: true,
+      policyCanaryReviewReady: true,
       edgeViability: {
         policyReadyCount: 1,
       },
@@ -532,7 +532,7 @@ test("prelive readiness does not keep remediated active insufficient-funds failu
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: true,
+      policyCanaryReviewReady: true,
       edgeViability: {
         policyReadyCount: 1,
       },
@@ -590,7 +590,7 @@ test("prelive readiness treats failures outside active routes as historical inst
       refreshQueue: [],
     },
     strategy: {
-      manualCanaryReviewReady: true,
+      policyCanaryReviewReady: true,
       edgeViability: {
         policyReadyCount: 1,
       },

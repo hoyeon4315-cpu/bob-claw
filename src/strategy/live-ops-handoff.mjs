@@ -69,7 +69,7 @@ export function buildLiveOpsHandoff({
   operationalJudgmentReview = null,
   now = null,
 } = {}) {
-  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.manualReviewCandidate || reviewPackage?.tinyCanaryAdmission?.candidate || null;
+  const candidate = reviewPackage?.primaryLiveCandidate || reviewPackage?.policyReviewCandidate || reviewPackage?.tinyCanaryAdmission?.candidate || null;
   const primaryLiveLane = buildPrimaryLiveLane(candidate, tinyLiveCanaryRollout, preliveValidation);
   const blockedExactRouteLane = buildExactRouteLane(btcOnlyE2eDryRun, currentRoutePrelivePass, preliveValidation);
   const liveTrading = resolvedLiveTrading(strategySnapshot, reviewPackage);

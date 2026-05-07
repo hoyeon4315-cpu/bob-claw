@@ -7,7 +7,7 @@ function unique(values = []) {
 
 function routeContext({ dashboardStatus = null, reviewPackage = null, canaryInputs = null, nextStep = null } = {}) {
   const route = nextStep?.route || null;
-  const candidate = reviewPackage?.manualReviewCandidate || null;
+  const candidate = reviewPackage?.policyReviewCandidate || null;
   const topRoute = dashboardStatus?.shadowCycle?.topRoute || null;
   return {
     routeKey: route?.routeKey || candidate?.routeKey || topRoute?.routeKey || canaryInputs?.routeKey || null,
@@ -52,7 +52,7 @@ function technicalStatus(plan = null) {
 
 function economicStatus(plan = null, route = null) {
   const readiness = plan?.routeContext?.tradeReadiness || route?.tradeReadiness || null;
-  if (!readiness || readiness === "shadow_candidate_review_only") return "eligible_for_manual_review";
+  if (!readiness || readiness === "shadow_candidate_review_only") return "eligible_for_policy_review";
   if (readiness === "reject_no_net_edge") return "blocked_no_net_edge";
   return `blocked_${readiness}`;
 }
@@ -101,7 +101,7 @@ function nextActionFor({
       command: plan?.commands?.plan || planCommand(route),
     };
   }
-  if (economic !== "eligible_for_manual_review") {
+  if (economic !== "eligible_for_policy_review") {
     return {
       code: "hold_negative_edge",
       label: "hold fork submit until economics clear",
@@ -133,7 +133,7 @@ function packageStatus({ technical = null, economic = null, connectedRefreshPack
   if (technical === "missing_plan") return "missing_exact_route_plan";
   if (technical !== "submit_ready") return "exact_route_plan_not_ready";
   if (connectedRefreshPackage?.summary?.requiredRefreshCount > 0) return "refresh_required_before_submit";
-  if (economic !== "eligible_for_manual_review") return "technical_ready_economic_blocked";
+  if (economic !== "eligible_for_policy_review") return "technical_ready_economic_blocked";
   if ((simulation?.successRemaining || 0) > 0) return "simulation_runway_remaining";
   if ((forkHistory?.successRemaining || 0) > 0) return "prelive_submit_ready";
   return "fork_cycle_proven";
@@ -171,7 +171,7 @@ export function buildExactRouteForkPackage({
   const blockers = unique([
     ...(plan?.blockers || []),
     ...freshnessBlockers(connectedRefreshPackage),
-    economic !== "eligible_for_manual_review" ? economic : null,
+    economic !== "eligible_for_policy_review" ? economic : null,
     (simulation?.successRemaining || 0) > 0 ? `needs_${simulation.successRemaining}_more_simulations` : null,
     (forkHistory?.successRemaining || 0) > 0 ? `needs_${forkHistory.successRemaining}_more_confirmed_fork_cycles` : null,
   ]);
@@ -228,7 +228,7 @@ export function buildExactRouteForkPackage({
     blockers,
     warnings: unique([
       (dashboardStatus?.overall?.liveTrading || "BLOCKED") === "BLOCKED" ? "live_execution_locked" : null,
-      economic !== "eligible_for_manual_review" ? "technical_readiness_does_not_override_negative_edge" : null,
+      economic !== "eligible_for_policy_review" ? "technical_readiness_does_not_override_negative_edge" : null,
       connectedRefreshPackage?.summary?.requiredRefreshCount > 0 ? "refresh_required_before_any_fork_submit" : null,
       (connectedRefreshPackage?.summary?.blockedInputCount || connectedRefreshPackage?.blockedInputs?.length || 0) > 0
         ? "blocked_connected_input_prevents_exact_route_progress"

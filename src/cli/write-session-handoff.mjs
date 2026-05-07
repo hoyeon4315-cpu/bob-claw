@@ -723,7 +723,7 @@ function canaryInputsLines(summary) {
 function preliveReviewPackageLines(reviewPackage = null, options = {}) {
   const wholeWalletFunding = options.wholeWalletFunding || null;
   if (!reviewPackage) return ["- Review package unavailable"];
-  const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.manualReviewCandidate || null;
+  const candidate = reviewPackage.primaryLiveCandidate || reviewPackage.policyReviewCandidate || null;
   const leader = reviewPackage.measuredLeaderReview || null;
   const lines = [
     `- Summary: status=\`${reviewPackage.packageStatus || "unknown"}\` review=\`${reviewPackage.reviewDecision || "unknown"}\` live=\`${reviewPackage.liveDecision || "unknown"}\` stage=\`${reviewPackage.currentStage || "unknown"}\` blockers=${reviewPackage.reviewBlockers.join(",") || "none"}`,
@@ -735,7 +735,7 @@ function preliveReviewPackageLines(reviewPackage = null, options = {}) {
   }
   if (reviewPackage.remediationPlan) {
     lines.push(
-      `- Admission remediation: status=\`${reviewPackage.remediationPlan.overallStatus || "unknown"}\` ready=${reviewPackage.remediationPlan.readyCount ?? 0} manual=${reviewPackage.remediationPlan.manualCount ?? 0} blocked=${reviewPackage.remediationPlan.blockedCount ?? 0}`,
+      `- Admission remediation: status=\`${reviewPackage.remediationPlan.overallStatus || "unknown"}\` ready=${reviewPackage.remediationPlan.readyCount ?? 0} policyReview=${reviewPackage.remediationPlan.policyReviewCount ?? 0} blocked=${reviewPackage.remediationPlan.blockedCount ?? 0}`,
     );
     if (reviewPackage.remediationPlan.runnerCommand) {
       lines.push(`- Admission remediation runner: \`${reviewPackage.remediationPlan.runnerCommand}\``);
@@ -759,7 +759,7 @@ function preliveReviewPackageLines(reviewPackage = null, options = {}) {
   }
   if (candidate) {
     lines.push(
-      `- Manual review candidate: target=\`${candidate.candidateLabel || candidate.routeLabel || candidate.candidateId || candidate.routeKey || "unknown"}\` amount=\`${candidate.amount || "n/a"}\` readiness=\`${candidate.tradeReadiness || "unknown"}\` net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} txReady=${candidate.txReady} viableForPrep=${candidate.viableForPrep}`,
+      `- Policy review candidate: target=\`${candidate.candidateLabel || candidate.routeLabel || candidate.candidateId || candidate.routeKey || "unknown"}\` amount=\`${candidate.amount || "n/a"}\` readiness=\`${candidate.tradeReadiness || "unknown"}\` net=${money(candidate.netEdgeUsd)} prepFunding=${money(candidate.prepFundingUsd)} txReady=${candidate.txReady} viableForPrep=${candidate.viableForPrep}`,
     );
     if (candidate.inputFreshness) {
       lines.push(
@@ -855,7 +855,7 @@ function preliveReviewPackageLines(reviewPackage = null, options = {}) {
 function preliveEvidenceCampaignLines(campaign = null) {
   if (!campaign) return ["- Evidence campaign unavailable"];
   const lines = [
-    `- Summary: status=\`${campaign.overallStatus || "unknown"}\` reviewPackage=\`${campaign.reviewPackageStatus || "unknown"}\` stage=\`${campaign.currentStage || "unknown"}\` ready=${campaign.readyActionCount ?? 0} manual=${campaign.manualActionCount ?? 0} blocked=${campaign.blockedActionCount ?? 0} done=${campaign.doneActionCount ?? 0}`,
+    `- Summary: status=\`${campaign.overallStatus || "unknown"}\` reviewPackage=\`${campaign.reviewPackageStatus || "unknown"}\` stage=\`${campaign.currentStage || "unknown"}\` ready=${campaign.readyActionCount ?? 0} policyReview=${campaign.policyReviewActionCount ?? 0} blocked=${campaign.blockedActionCount ?? 0} done=${campaign.doneActionCount ?? 0}`,
     `- Evidence progress: simulations=${campaign.simulation?.successCount ?? 0}/${campaign.simulation?.targetSuccessCount ?? 0} forkConfirmed=${campaign.forkExecution?.confirmedCount ?? 0}/${campaign.forkExecution?.targetConfirmedCount ?? 0} refreshRuns=${campaign.refreshBatch?.runCount ?? 0}`,
   ];
   if (campaign.nextAction) {
@@ -1053,7 +1053,7 @@ function v1InfraDrillLines(summary = null) {
 function executionRunbookLines(summary = null, runbook = null) {
   if (!summary?.currentStageId && !runbook?.stages?.length) return ["- Execution runbook unavailable"];
   const lines = [
-    `- Runbook: currentStage=\`${summary?.currentStageId || "unknown"}\` completed=${summary?.completeCount ?? 0}/${summary?.stageCount ?? runbook?.stages?.length ?? 0} blocked=${summary?.blockedCount ?? 0} reviewReady=${Boolean(summary?.readyForManualReview)}`,
+    `- Runbook: currentStage=\`${summary?.currentStageId || "unknown"}\` completed=${summary?.completeCount ?? 0}/${summary?.stageCount ?? runbook?.stages?.length ?? 0} blocked=${summary?.blockedCount ?? 0} reviewReady=${Boolean(summary?.readyForPolicyReview)}`,
   ];
   if (summary?.nextActionCode || summary?.nextActionCommand) {
     lines.push(`- Runbook next action: \`${summary.nextActionCode || "unknown"}\`${summary.nextActionCommand ? ` command=\`${summary.nextActionCommand}\`` : ""}`);
@@ -1301,7 +1301,7 @@ function checklistLines(checklist) {
 
 export function checklistLinesForReviewState(checklist, reviewPackage = null) {
   const completed = checklist?.completed || [];
-  const remaining = reviewPackage?.readyForManualReview ? ["manual canary review only"] : checklist?.remaining || [];
+  const remaining = reviewPackage?.readyForPolicyReview ? ["policy canary review only"] : checklist?.remaining || [];
   return [
     `- Completed so far: ${completed.join(" · ") || "none yet"}`,
     `- Remaining steps: ${remaining.join(" · ") || "none"}`,
@@ -1309,16 +1309,16 @@ export function checklistLinesForReviewState(checklist, reviewPackage = null) {
 }
 
 export function executionStageLines(summary, reviewPackage = null) {
-  if (reviewPackage?.readyForManualReview) {
-    const nextAction = reviewPackage?.executionRunbook?.nextActionCode || "manual_canary_review_only";
+  if (reviewPackage?.readyForPolicyReview) {
+    const nextAction = reviewPackage?.executionRunbook?.nextActionCode || "policy_canary_review_only";
     const auditText = summary?.auditDecision ? `; audit=${summary.auditDecision}` : "";
     return [
-      `- Manual canary review: READY_FOR_MANUAL_CANARY_REVIEW (${nextAction})`,
+      `- Policy canary review: READY_FOR_POLICY_CANARY_REVIEW (${nextAction})`,
       `- Live execution: ${reviewPackage.liveDecision || summary?.liveStage || "unknown"}${auditText}`,
     ];
   }
   return [
-    `- Manual canary review: ${summary.reviewStage}${summary.reviewReasons.length ? ` (${summary.reviewReasons.join(",")})` : ""}`,
+    `- Policy canary review: ${summary.reviewStage}${summary.reviewReasons.length ? ` (${summary.reviewReasons.join(",")})` : ""}`,
     `- Live execution: ${summary.liveStage}${summary.auditDecision ? `; audit=${summary.auditDecision}` : ""}${summary.liveReasons.length ? ` (${summary.liveReasons.join(",")})` : ""}`,
   ];
 }

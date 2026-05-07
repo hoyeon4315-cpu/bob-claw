@@ -26,11 +26,11 @@ function inputBlockers(inputFreshness = null) {
 export function buildTinyCanaryAdmission({
   prelive = null,
   executionStage = null,
-  manualReviewCandidate = null,
+  policyReviewCandidate = null,
   overall = null,
 } = {}) {
   const riskPolicy = buildDefaultRiskPolicy();
-  const candidate = manualReviewCandidate || null;
+  const candidate = policyReviewCandidate || null;
   const strategyCandidate = candidate?.candidateType === "strategy";
   const candidateReady = Boolean(
     strategyCandidate ? candidate?.candidateId || candidate?.candidateLabel : candidate?.routeLabel || candidate?.routeKey,
@@ -45,7 +45,7 @@ export function buildTinyCanaryAdmission({
       ]);
   const reviewReady = strategyCandidate
     ? candidate?.reviewReady === true || candidate?.tradeReadiness === "strategy_candidate_review_only"
-    : executionStage?.reviewStage === "READY_FOR_MANUAL_CANARY_REVIEW";
+    : executionStage?.reviewStage === "READY_FOR_POLICY_CANARY_REVIEW";
   const preliveReady = strategyCandidate ? candidate?.preliveReady === true && strategyEvidenceBlockers.length === 0 : Boolean(prelive?.tinyLiveCanary?.ready);
   const tradeReady =
     (strategyCandidate && reviewReady) ||
@@ -58,15 +58,15 @@ export function buildTinyCanaryAdmission({
   const requirements = [
     {
       code: "candidate_selected",
-      label: "manual review candidate selected",
+      label: "policy review candidate selected",
       status: candidateReady ? "passed" : "blocked",
-      blockers: candidateReady ? [] : ["missing_manual_review_candidate"],
+      blockers: candidateReady ? [] : ["missing_policy_review_candidate"],
     },
     {
       code: "objective_review_ready",
-      label: "objective review reached manual canary stage",
+      label: "objective review reached policy canary stage",
       status: reviewReady && tradeReady ? "passed" : "blocked",
-      blockers: reviewReady && tradeReady ? [] : unique([strategyCandidate ? "strategy_candidate_not_ready" : "manual_review_stage_not_ready", ...preliveBlockers]),
+      blockers: reviewReady && tradeReady ? [] : unique([strategyCandidate ? "strategy_candidate_not_ready" : "policy_review_stage_not_ready", ...preliveBlockers]),
     },
     {
       code: "fresh_inputs",

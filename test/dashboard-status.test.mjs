@@ -178,7 +178,7 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
             },
             readyActionCount: 1,
             blockedActionCount: 2,
-            manualActionCount: 0,
+            policyReviewActionCount: 0,
             simulation: {
               successRemaining: 50,
             },
