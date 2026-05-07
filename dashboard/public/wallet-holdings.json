@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-07T10:13:55.397Z",
-  "observedAt": "2026-05-07T10:13:53.738Z",
+  "generatedAt": "2026-05-07T13:03:00.978Z",
+  "observedAt": "2026-05-07T13:02:42.706Z",
   "pending": false,
   "address": "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-  "totalUsd": 369.4264886496757,
-  "walletUsd": 302.5043716496757,
-  "protocolUsd": 66.92211700000001,
+  "totalUsd": 366.3510398324631,
+  "walletUsd": 300.89298683246307,
+  "protocolUsd": 65.458053,
   "protocolStaleUsd": 0,
   "items": [
     {
       "sym": "yousd",
       "name": "yoUSD",
       "chain": "base",
-      "amount": 65.682499,
-      "usd": 65.682499,
+      "amount": 65.458053,
+      "usd": 65.458053,
       "family": "protocol",
       "protocolId": "yo",
       "positionId": "base:yo:0x96262bE63AA687563789225c2fE898c27a3b0AE4:0x0000000f2eb9f69274678c76222b35eec7588a65",
@@ -23,20 +23,11 @@
       "freshness": "fresh"
     },
     {
-      "sym": "usdt",
-      "name": "USDT",
+      "sym": "usdc",
+      "name": "USDC",
       "chain": "ethereum",
-      "amount": 33.108495,
-      "usd": 33.108495,
-      "family": "token",
-      "trackingStatus": "registered"
-    },
-    {
-      "sym": "wbtc",
-      "name": "wBTC.OFT",
-      "chain": "bob",
-      "amount": 0.0003873,
-      "usd": 31.330633499999998,
+      "amount": 33.108556,
+      "usd": 33.108556,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -45,7 +36,7 @@
       "name": "alphaForexV2",
       "chain": "ethereum",
       "amount": 12.38697998451659,
-      "usd": 25.047796,
+      "usd": 25.048379,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -59,28 +50,38 @@
       "trackingStatus": "registered"
     },
     {
-      "sym": "cbbtc",
-      "name": "cbBTC",
-      "chain": "base",
-      "amount": 0.00023204,
-      "usd": 18.7708758,
+      "sym": "wbtc",
+      "name": "wBTC.OFT",
+      "chain": "bob",
+      "amount": 0.00028464,
+      "usd": 23.08487328,
       "family": "token",
       "trackingStatus": "registered"
     },
     {
-      "sym": "eth",
-      "name": "ETH",
-      "chain": "ethereum",
-      "amount": 0.004046989009633216,
-      "usd": 9.410018375309058,
-      "family": "native"
+      "sym": "cbbtc",
+      "name": "cbBTC",
+      "chain": "base",
+      "amount": 0.00023204,
+      "usd": 18.81890808,
+      "family": "token",
+      "trackingStatus": "registered"
+    },
+    {
+      "sym": "wbtc",
+      "name": "wBTC.OFT",
+      "chain": "base",
+      "amount": 0.00015157,
+      "usd": 12.292630139999998,
+      "family": "token",
+      "trackingStatus": "registered"
     },
     {
       "sym": "wbtc",
       "name": "wBTC.OFT",
       "chain": "bsc",
       "amount": 0.0001,
-      "usd": 8.089500000000001,
+      "usd": 8.1102,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -89,7 +90,7 @@
       "name": "wBTC.OFT",
       "chain": "avalanche",
       "amount": 0.0001,
-      "usd": 8.089500000000001,
+      "usd": 8.1102,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -98,7 +99,7 @@
       "name": "wBTC.OFT",
       "chain": "unichain",
       "amount": 0.0001,
-      "usd": 8.089500000000001,
+      "usd": 8.1102,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -107,7 +108,7 @@
       "name": "wBTC.OFT",
       "chain": "sonic",
       "amount": 0.0001,
-      "usd": 8.089500000000001,
+      "usd": 8.1102,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -116,7 +117,7 @@
       "name": "WBTC",
       "chain": "ethereum",
       "amount": 0.0001,
-      "usd": 8.075800000000001,
+      "usd": 8.085,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -125,7 +126,7 @@
       "name": "wBTC.OFT",
       "chain": "sei",
       "amount": 0.00009869,
-      "usd": 7.983527550000001,
+      "usd": 8.00395638,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -134,7 +135,7 @@
       "name": "wBTC.OFT",
       "chain": "bera",
       "amount": 0.00009805,
-      "usd": 7.93175475,
+      "usd": 7.9520511,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -143,16 +144,16 @@
       "name": "wBTC.OFT",
       "chain": "soneium",
       "amount": 0.000098,
-      "usd": 7.927709999999999,
+      "usd": 7.947996,
       "family": "token",
       "trackingStatus": "registered"
     },
     {
       "sym": "eth",
       "name": "ETH",
-      "chain": "base",
-      "amount": 0.002795724072453197,
-      "usd": 6.500589656027449,
+      "chain": "ethereum",
+      "amount": 0.003232119253484886,
+      "usd": 7.533261950059899,
       "family": "native"
     },
     {
@@ -160,7 +161,15 @@
       "name": "ETH",
       "chain": "soneium",
       "amount": 0.002706166721023665,
-      "usd": 6.292351798057016,
+      "usd": 6.307398085025907,
+      "family": "native"
+    },
+    {
+      "sym": "eth",
+      "name": "ETH",
+      "chain": "base",
+      "amount": 0.002682006136367283,
+      "usd": 6.251085802338046,
       "family": "native"
     },
     {
@@ -177,7 +186,7 @@
       "name": "BERA",
       "chain": "bera",
       "amount": 15.576907036978405,
-      "usd": 5.9971870937718705,
+      "usd": 6.074993744421578,
       "family": "native"
     },
     {
@@ -185,7 +194,7 @@
       "name": "wS",
       "chain": "sonic",
       "amount": 109.02421826898852,
-      "usd": 5.384954715522996,
+      "usd": 5.41632316360335,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -194,7 +203,7 @@
       "name": "BNB",
       "chain": "bsc",
       "amount": 0.008235765391095136,
-      "usd": 5.338999630085244,
+      "usd": 5.356377095060455,
       "family": "native"
     },
     {
@@ -202,7 +211,7 @@
       "name": "S",
       "chain": "sonic",
       "amount": 104.68892717500393,
-      "usd": 5.1708248039274025,
+      "usd": 5.200945902054195,
       "family": "native"
     },
     {
@@ -210,8 +219,17 @@
       "name": "AVAX",
       "chain": "avalanche",
       "amount": 0.5394232523492692,
-      "usd": 5.162280524982507,
+      "usd": 5.194645920123463,
       "family": "native"
+    },
+    {
+      "sym": "usdc",
+      "name": "USDC",
+      "chain": "optimism",
+      "amount": 4.097095,
+      "usd": 4.097095,
+      "family": "token",
+      "trackingStatus": "registered"
     },
     {
       "sym": "usdc",
@@ -223,20 +241,11 @@
       "trackingStatus": "registered"
     },
     {
-      "sym": "wbtc",
-      "name": "wBTC.OFT",
-      "chain": "base",
-      "amount": 0.00004891,
-      "usd": 3.9565744499999997,
-      "family": "token",
-      "trackingStatus": "registered"
-    },
-    {
       "sym": "weth",
       "name": "WETH",
       "chain": "optimism",
       "amount": 0.001628833947489551,
-      "usd": 3.787348406363229,
+      "usd": 3.7964047231112708,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -244,8 +253,8 @@
       "sym": "eth",
       "name": "ETH",
       "chain": "optimism",
-      "amount": 0.001531816454515207,
-      "usd": 3.5617643018742142,
+      "amount": 0.001531504307126421,
+      "usd": 3.5695536638349057,
       "family": "native"
     },
     {
@@ -280,7 +289,7 @@
       "name": "WETH",
       "chain": "ethereum",
       "amount": 0.001315113520411139,
-      "usd": 3.0578888065247765,
+      "usd": 3.0652008376982622,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -288,17 +297,8 @@
       "sym": "asonusdc",
       "name": "aSonUSDC",
       "chain": "sonic",
-      "amount": 3.001974,
-      "usd": 3.001974,
-      "family": "token",
-      "trackingStatus": "registered"
-    },
-    {
-      "sym": "usdc",
-      "name": "USDC",
-      "chain": "optimism",
-      "amount": 2.85747,
-      "usd": 2.85747,
+      "amount": 3.002002,
+      "usd": 3.002002,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -307,7 +307,7 @@
       "name": "BTC",
       "chain": "bitcoin",
       "amount": 0.0000265,
-      "usd": 2.1437175,
+      "usd": 2.149203,
       "family": "native"
     },
     {
@@ -324,7 +324,7 @@
       "name": "SEI",
       "chain": "sei",
       "amount": 31.446354438947616,
-      "usd": 1.919139565054534,
+      "usd": 1.9493595116703628,
       "family": "native"
     },
     {
@@ -332,29 +332,7 @@
       "name": "WETH",
       "chain": "unichain",
       "amount": 0.000800193009490752,
-      "usd": 1.8606007837378016,
-      "family": "token",
-      "trackingStatus": "registered"
-    },
-    {
-      "sym": "gtusdcp",
-      "name": "gtusdcp",
-      "chain": "optimism",
-      "amount": 1.239618,
-      "usd": 1.239618,
-      "family": "protocol",
-      "protocolId": "morpho",
-      "positionId": "optimism:morpho:0x96262bE63AA687563789225c2fE898c27a3b0AE4:0xc30ce6a5758786e0f640cc5f881dd96e9a1c5c59",
-      "bindingKind": "erc4626_vault_supply_withdraw",
-      "confidence": "verified_current",
-      "freshness": "fresh"
-    },
-    {
-      "sym": "gtusdcp",
-      "name": "gtusdcp",
-      "chain": "optimism",
-      "amount": 1.225380456458894,
-      "usd": 1.225380456458894,
+      "usd": 1.8650498568705702,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -363,7 +341,7 @@
       "name": "ETH",
       "chain": "unichain",
       "amount": 0.000511221689513472,
-      "usd": 1.18868756023983,
+      "usd": 1.1915299528335248,
       "family": "native"
     },
     {
@@ -376,19 +354,11 @@
       "trackingStatus": "registered"
     },
     {
-      "sym": "eth",
-      "name": "ETH",
-      "chain": "bob",
-      "amount": 0.000439930645272244,
-      "usd": 1.0229223370805691,
-      "family": "native"
-    },
-    {
       "sym": "aoptusdcn",
       "name": "aOptUSDCn",
       "chain": "optimism",
-      "amount": 0.932486,
-      "usd": 0.932486,
+      "amount": 0.932493,
+      "usd": 0.932493,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -396,8 +366,8 @@
       "sym": "aavausdc",
       "name": "aAvaUSDC",
       "chain": "avalanche",
-      "amount": 0.842577,
-      "usd": 0.842577,
+      "amount": 0.842595,
+      "usd": 0.842595,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -406,16 +376,33 @@
       "name": "WBNB",
       "chain": "bsc",
       "amount": 0.001128877543319731,
-      "usd": 0.7318174450078819,
+      "usd": 0.7341993766242866,
       "family": "token",
       "trackingStatus": "registered"
+    },
+    {
+      "sym": "eth",
+      "name": "ETH",
+      "chain": "bob",
+      "amount": 0.000313128042998343,
+      "usd": 0.7298231862183879,
+      "family": "native"
     },
     {
       "sym": "wavax",
       "name": "WAVAX",
       "chain": "avalanche",
       "amount": 0.04860636469616601,
-      "usd": 0.46516291014230876,
+      "usd": 0.4680792920240787,
+      "family": "token",
+      "trackingStatus": "registered"
+    },
+    {
+      "sym": "usdc",
+      "name": "USDC",
+      "chain": "base",
+      "amount": 0.265641,
+      "usd": 0.265641,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -424,16 +411,7 @@
       "name": "WETH",
       "chain": "base",
       "amount": 0.000035046651511156,
-      "usd": 0.08149012362722483,
-      "family": "token",
-      "trackingStatus": "registered"
-    },
-    {
-      "sym": "usdc",
-      "name": "USDC",
-      "chain": "base",
-      "amount": 0.04068,
-      "usd": 0.04068,
+      "usd": 0.08168498300962686,
       "family": "token",
       "trackingStatus": "registered"
     },
@@ -472,7 +450,7 @@
   "source": "whole_wallet_inventory",
   "scanErrorCount": 0,
   "scanErrors": [],
-  "itemizedSupportedWalletUsd": 368.1868706496757,
+  "itemizedSupportedWalletUsd": 366.3510398324633,
   "walletCoverage": "full_rpc",
   "fullWalletUsd": null,
   "fullWalletObservedAt": null,
