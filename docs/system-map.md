@@ -8,6 +8,9 @@ graph_inputs:
 report_inputs:
   - npm run report:strategy-catalog -- --json
   - npm run graph:focus -- status
+  - npm run report:automation-health -- --json
+  - npm run report:radar-board -- --json
+  - npm run report:merkl-canary-queue -- --json
 ---
 
 # BOB Claw System Map
@@ -66,6 +69,22 @@ flowchart TD
 | Payback | `src/executor/payback/*.mjs` | Sats-first accumulator, scheduler, payback dashboard slice | Choose ratio/timing by LLM |
 | Dashboard | `src/status/*.mjs`, `src/dashboard/*.mjs`, `dashboard/public/*.jsx` | Read-only public slices and visual UI | Execute trades or hold secrets |
 
+## Runtime Automation Map
+
+These are runtime services or long-running automation surfaces. Some are
+execution-capable, but none may bypass committed caps, policy, signer approval,
+the kill-switch, or append-only audit.
+
+| Runtime Surface | Primary Files / Commands | Function | Verification Handle |
+| --- | --- | --- | --- |
+| Signer daemon | `src/executor/signer/daemon.mjs`, `npm run executor:daemon`, `npm run ops:launchd:status` | Holds EVM/BTC keys, checks policy, signs/broadcasts, writes signer audit | `readSignerHealth()`, `state/executor-heartbeat.json`, `logs/signer-audit.jsonl` |
+| Watchdog and auto-kill | `src/executor/watchdog/*`, `src/risk/auto-kill-triggers.mjs`, `npm run executor:watchdog:once`, `npm run risk:auto-kill-check:json` | Detects stale signer heartbeat and systemic loss/failure/oracle/campaign/protocol hazards | `logs/kill-switch-audit.jsonl`, `dashboard/public/auto-kill-events.json` |
+| Live all-chain autopilot | `src/cli/run-all-chain-autopilot.mjs`, `npm run executor:all-chain-autopilot:loop`, `npm run live:automation:launchd:status` | Runs refresh, refill planning, canary/portfolio orchestration, strategy dispatch, payback, auto-kill slice | `data/all-chain-autopilot-latest.json`, `data/all-chain-autopilot-runs.jsonl` |
+| Gate self-heal | `src/cli/run-gate-self-heal.mjs` | Refreshes stuck gate/report inputs and keeps advisory evidence moving | `data/*latest.json`, automation health report |
+| Strategy evidence refresh | `src/cli/run-strategy-evidence-refresh.mjs`, `npm run auto:strategy-evidence:launchd:status` | Periodically refreshes strategy evidence, auto-research summaries, promotion/dev artifacts | `data/strategy-evidence-refresh-latest.json` |
+| Dashboard public live | `src/cli/run-dashboard-public-live.mjs`, `src/cli/deploy-dashboard-public-live.mjs` | Builds and serves read-only public slices | `dashboard/public/*.json`, `npm run dashboard:build` |
+| Research automation | `research/*`, `src/cli/run-auto-research-refresh.mjs`, `npm run research:launchd:status` | Generates research hypotheses and dev-lane candidate artifacts only | `data/auto-research-refresh-latest.json`, `logs/auto-research-audit.jsonl` |
+
 ## Functional Owners
 
 | System | Function |
@@ -81,6 +100,31 @@ flowchart TD
 | Dashboard and reporting | `src/status/`, report CLIs, and `dashboard/public/` render read-only, public-safe state. They may expose policy eligibility but cannot sign, change caps, or act as gates. |
 | Dev automation | `src/llm/`, `src/cli/codex-*`, auto-research, and route-remediation surfaces scaffold and validate code under budget/masking/audit limits. `evaluateAutoPromotion` is a coding-session commit guard, not a runtime gate. |
 | Protocol and position health | `src/protocol-readers/`, `src/treasury/protocol-position-*`, and `src/executor/health/` report positions and produce protective descriptors; Capital Manager remains the owner of rebalance intents. |
+
+## Opportunity Discovery And Evaluation Map
+
+This table maps the major opportunity-finding systems. Discovery and scoring
+surfaces may propose work, but live execution still flows through proposer ->
+`evaluateIntentPolicies()` -> signer daemon.
+
+| Surface | Primary Files / Commands | What It Finds | Output / Data | Runtime Authority |
+| --- | --- | --- | --- | --- |
+| Gateway route and quote surface | `check-gateway-onramp`, `verify-gateway`, `score-gateway`, `gas-snapshot`, `estimate-gateway-gas`, `src/scoring/gateway-score.mjs` | Native BTC transport, Gateway destination quotes, gas/fee/latency proof, exact route viability | `data/gateway-*.jsonl`, `data/gateway-scores.json`, canary route plans | Observation only until a strategy/helper emits a policy-checked intent |
+| Canary readiness loop | `plan-canary-routes`, `plan-canary-next-step`, `advance-canary`, `watch-canary-readiness`, `src/session/shadow-cycle.mjs` | Route readiness and next best action for tiny live validation | `data/shadow-cycle-latest.json`, canary state summaries | Advisory; can trigger deterministic refresh commands, not signer bypass |
+| Merkl opportunity ingestion | `report:merkl-opportunities`, `watch:merkl-opportunities`, `src/strategy/merkl-opportunity-*` | Campaign/yield opportunities from Merkl and related campaign feeds | `data/merkl-opportunity-*.jsonl`, campaign candidate reports | Observation/scoring only |
+| Merkl canary queue | `src/strategy/merkl-canary-queue.mjs`, `src/strategy/merkl-canary-execution-readiness.mjs`, `report:merkl-canary-queue` | Tiny-canary candidates with binding, inventory, EV, reward, and proof status | `data/merkl-canary-queue.json` | Queue source; executor still requires caps, EV, signer policy, receipt path |
+| Merkl live canary autopilot | `src/executor/merkl-canary-autopilot.mjs`, `npm run executor:merkl-canary-autopilot` | Selects eligible queued Merkl canaries for live tiny-cap execution | `data/merkl-canary-autopilot-latest.json`, run jsonl | Execution-capable only through signer policy and tiny-canary caps |
+| Merkl portfolio allocator/orchestrator | `src/executor/merkl-portfolio-allocator.mjs`, `src/executor/merkl-portfolio-orchestrator.mjs`, `src/executor/merkl-portfolio-exit.mjs` | Portfolio entry/exit/refill actions for committed Merkl lane | `data/merkl-portfolio-*-latest.json` | Execution-capable only through caps, route proof, signer policy, exit proof |
+| Radar ingestion and board | `radar:ingest`, `radar:sync-merkl`, `report:radar-board`, `src/strategy/radar/*` | Portable opportunities, executable tiny canaries, cost-ledger and realization episodes | `data/radar-board.json`, radar JSONL stores | Router may emit executable candidates; signer policy remains source of truth |
+| Radar cap review | `radar:cap-review`, `src/strategy/radar/cap-graduation-review.mjs` | Receipt-backed cap raise candidates above the committed ladder | cap review report | Report-only; cap raise still requires committed config diff |
+| Campaign-aware opportunity report | `report:campaign-aware-opportunities`, `src/status/campaign-aware-dashboard-slice.mjs` | Small-capital campaign candidates after haircut, cost, duration, and primary-chain rules | `data/campaign-aware-opportunities.json`, dashboard slice | Advisory; `policy_review` is not a manual promotion gate |
+| Destination allocator and score source | `report:allocator-core`, `src/strategy/allocator-core.mjs`, `src/executor/capital/scored-target-balances.mjs`, `data/destination-promotion-gate.json` | Official-destination allocation candidates, score-weighted target balances, representative coverage gaps | `data/allocator-core.json`, destination reports | Score/allocation input only; not signer approval |
+| Destination representative autopilot | `src/executor/destination-representative-autopilot.mjs`, protocol canary CLIs | Representative protocol proof for official destination chains | `data/destination-representative-autopilot-latest.json` | Execution-capable only for bounded protocol canaries through signer policy |
+| Autonomous discovery board | `src/strategy/autonomous-discovery-board.mjs`, `report:autonomous-discovery-board` | Route/protocol/candidate gaps worth dev work | discovery board report | Dev/report only |
+| Route remediation autopilot | `src/strategy/route-remediation-autopilot.mjs`, `report:route-remediation-autopilot` | Work orders for blocked routes/campaigns after overfit and scope checks | remediation report | Dev work orders only; `runtimeAuthority: none` |
+| Native BTC opportunity surface | `report:native-btc-surface`, `report:native-btc-plan`, `src/strategy/native-btc-opportunity-surface.mjs` | BTC-first capital placement and post-arrival allocator options | `data/native-btc-opportunity-surface.json` | Planning/report only until proposer emits a valid intent |
+| Generic opportunity scan/rank | `scan:opportunities`, `rank:opportunities`, `dryrun:opportunity-candidate`, `src/config/opportunity-*` | Broad pool/opportunity candidates and dry-run scoring | `data/opportunities/**`, ranked reports | Research/dry-run unless bound to committed strategy and caps |
+| Protocol discovery and watch | `src/strategy/protocol-discovery-scanner.mjs`, `protocol-codehash-watch`, `protocol-market-watchers`, `protocol-trust-tiers` | Protocol changes, market health, trust tier blockers, codehash drift | protocol watch reports and dashboard slices | Observation and protective blockers; no token auto-whitelist |
 
 ## Strategy Lanes
 
@@ -109,6 +153,39 @@ overfit, official-Gateway-scope, cost-variance, and no-runtime-authority
 checks. Its output is a committed-diff planning surface, not a live execution
 approval.
 
+## Execution And Settlement Map
+
+| Execution Surface | Primary Files / Commands | Function | Required Proof / Guard |
+| --- | --- | --- | --- |
+| Signer policy spine | `src/executor/policy/index.mjs` and its 11 checks | Deterministically approve/block every live intent before signing | kill-switch, gateway, EV, consecutive failures, caps, HF, stale quote, approval hygiene, tiny canary, liquidity, concentration |
+| Live canary sweep | `src/executor/live-canary-sweep.mjs`, `npm run executor:live-canary-sweep` | Runs bounded canary helpers across available candidate families | signer health, execution budget, tiny cap, route proof, policy allow |
+| Protocol canary helpers | `aave-protocol-canary`, `erc4626-protocol-canary`, `compound-*`, `moonwell-*`, vault intent builders | Build protocol-specific approve/deposit/withdraw proof transactions | preflight, exact cap amount, executor binding, receipt/unwind proof |
+| Refill and capital movement | `src/treasury/*`, `src/executor/capital/*`, `run-refill-job-stub`, bridge/swap helpers | Refill gas/token targets and drain over-target inventory | source inventory, route proof, bridge/swap cost ceiling, signer policy |
+| Strategy catalog dispatch | `src/cli/run-strategy-catalog-dispatcher.mjs`, `src/session/strategy-dispatch-runner.mjs` | Dispatches catalog strategies that are config/cap eligible | `autoExecute: true`, cap registry, policy eligibility, current evidence |
+| Merkl portfolio execution | `src/executor/merkl-portfolio-*` | Executes or exits Merkl portfolio positions | queue readiness, positive realized-net EV, route and exit proof, signer policy |
+| Payback scheduler | `src/executor/payback/scheduler.mjs`, `npm run executor:payback-scheduler` | Emits deterministic BTC payback intent when period profit clears policy | sats-first accumulator, min/cost caps, Gateway/Bitcoin settlement proof |
+| Receipt ingestion and ledger | `src/executor/ingestor/*`, `src/ledger/*`, `report:receipt-ledger`, `report:transaction-ledger` | Normalizes broadcasts, confirmations, reverts, delivered settlement, and PnL evidence | append-only audit, no rewrite, explicit reverted/errored classification |
+| Position health actions | `src/executor/health/position-action-engine.mjs`, `position-monitor-loop.mjs` | Emits protective `exit`, `unwind`, `pause`, or `review` descriptors | deterministic policy only; Capital Manager owns actual rebalance intents |
+
+## External Pattern Adoption Boundary
+
+BNBAgent SDK research is not a runtime dependency and not a live trader model.
+It is a source of engineering patterns that must be translated into BOB Claw's
+single-operator, BTC-first, deterministic signer architecture.
+
+| Pattern / Idea | BOB Claw Mapping | Status | Boundary |
+| --- | --- | --- | --- |
+| BNBAgent APEX job lifecycle | Dev/research task lifecycle for scaffolds and reports | Adopt after design | `runtimeAuthority: none`; never a live promotion gate |
+| Deliverable / negotiation hashes | Private proof manifests for radar packets, payback periods, Codex outputs | Adopt after design | append-only local/private hash records; no raw audit IPFS publish |
+| Startup/progressive scan | Protocol reader, position monitor, inventory, and payback proof collectors | Adopt after design | read-only observation; explicit ok/error envelopes |
+| Module registry discipline | Protocol reader registry, dev-agent role registry, proof collector registry | Limited adoption | no live strategy plugin auto-discovery |
+| Nonce/retry lessons | Signer nonce and replacement-tx error coverage | Adopt now when tested | signer daemon only; no key-boundary widening |
+| Keystore V3 wallet pattern | Possible signer-daemon-internal encrypted-at-rest backend | Research only | no app-process keys, no `.env PRIVATE_KEY`, password path/keychain only |
+| Paymaster/sponsorship | Deferred gas research | Deferred | no assumption of full ERC-4337 stack; policy fallback required |
+| `on_job` runtime server | Rejected | Rejected | would put external job/LLM flow near runtime execution |
+| ERC-8004 reputation | Discovery metadata at most | Rejected for policy | never cap/evidence/profit proof |
+| UMA/optimistic oracle settlement | Not payback proof | Rejected | native BTC L1 delivery proof remains required |
+
 ## Config And Policy Owners
 
 | Concern | Canonical Owner | Notes |
@@ -123,6 +200,24 @@ approval.
 | Auto-kill | `src/config/auto-kill.mjs`, `src/risk/auto-kill-triggers.mjs` | Writes kill-switch and audit record |
 | Payback policy | `src/config/payback.mjs` | Ratio, min, caps, schedule, emergency pauses |
 | Concentration | `src/config/diversification.mjs`, `src/executor/risk/concentration-guard.mjs` | Keep units explicit when refactoring |
+
+## Verification Entry Points
+
+Use this section when auditing whether a system is mapped, alive, or safe to
+change. These commands are examples, not runtime gates.
+
+| Area | Read First | High-Signal Commands / Tests |
+| --- | --- | --- |
+| Runtime liveness | `docs/operations/live-capital-playbook.md`, `docs/operations/system-automation-report-2026-05-07.md` | `npm run kill:status:json`, `npm run ops:launchd:status`, `npm run live:automation:launchd:status`, `npm run executor:watchdog:once` |
+| Signer and policy | `src/executor/policy/index.mjs`, `src/executor/signer/daemon.mjs` | `node --test test/executor-policy-index.test.mjs test/executor-consecutive-failures.test.mjs test/executor-signer-client.test.mjs` |
+| Merkl/radar canaries | `src/strategy/merkl-*`, `src/executor/merkl-*`, `src/strategy/radar/*` | `node --test test/merkl-canary-autopilot.test.mjs test/radar-candidate-router.test.mjs test/radar-merkl-queue-sync.test.mjs` |
+| Capital/refill/concentration | `src/executor/capital/*`, `src/treasury/*`, `src/config/diversification.mjs` | `node --test test/capital-rebalancer.test.mjs test/scored-target-balances.test.mjs test/treasury-refill-job.test.mjs test/diversification.test.mjs` |
+| Payback | `src/executor/payback/*`, `src/config/payback.mjs` | `node --test test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs` |
+| Protocol/position health | `src/protocol-readers/*`, `src/executor/health/*`, `src/status/protocol-position-marks-slice.mjs` | `node --test test/protocol-readers.test.mjs test/protocol-position-marker.test.mjs test/position-action-engine.test.mjs` |
+| Opportunity discovery | `src/strategy/autonomous-discovery-board.mjs`, `route-remediation-autopilot.mjs`, `native-btc-opportunity-surface.mjs` | `npm run report:autonomous-discovery-board -- --json`, `npm run report:route-remediation-autopilot -- --json`, `npm run report:native-btc-surface -- --json` |
+| BNB Agent pattern adoption | `docs/research/bnbagent-sdk-lessons-2026-05-07.md`, `docs/research/bnbagent-sdk-bobclaw-deep-review-plan-2026-05-07.md` | docs/design review first; targeted tests depend on the adopted pattern |
+| Dashboard/read-only reporting | `src/status/*`, `dashboard/public/*.jsx` | `node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs && npm run dashboard:build` |
+| Whole repo safety | this file, `docs/harness-engineering.md` | `npm run check`, `npm test`, `git diff --check` |
 
 ## Data And Audit Surfaces
 
