@@ -25,7 +25,7 @@ test("strategy parity carries tick timing and allocation through to dashboard ro
       strategyStage: {
         byStrategy: {
           "wrapped-btc-loop-base-moonwell": {
-            promotionVerdict: "live_ready",
+            readinessVerdict: "live_ready",
             topBlocker: null,
           },
         },
@@ -50,5 +50,5 @@ test("strategy parity carries tick timing and allocation through to dashboard ro
       score: 0.905,
     },
   );
-  assert.equal(slice.byStrategy["wrapped-btc-loop-base-moonwell"].promotionVerdict, "live_ready");
+  assert.equal(slice.byStrategy["wrapped-btc-loop-base-moonwell"].readinessVerdict, "live_ready");
 });

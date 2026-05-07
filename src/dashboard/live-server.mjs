@@ -238,7 +238,7 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
       ...current,
       strategyId,
       microCanaryStatus: micro?.microCanaryStatus || tick.microCanaryStatus || current.microCanaryStatus || "not_started",
-      promotionVerdict: stage?.promotionVerdict || tick.lastTickMode || current.promotionVerdict || null,
+      readinessVerdict: stage?.readinessVerdict || tick.lastTickMode || current.readinessVerdict || null,
       demotionSummary: {
         demoted: tick.demotion?.demoted || false,
         triggers: Array.isArray(tick.demotion?.triggers) ? tick.demotion.triggers : [],

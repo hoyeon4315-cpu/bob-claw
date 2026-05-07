@@ -57,7 +57,7 @@ function normalizeStrategyId(id) {
 
 function activeStrategyStatus({ hasLivePosition, isLiveCandidate, hasRecentActivity, tickMode, fallbackStatus }) {
   if (hasLivePosition) return 'LIVE';
-  if (isLiveCandidate) return 'LIVE CANDIDATE';
+  if (isLiveCandidate) return 'POLICY READY';
   if (hasRecentActivity) return 'ACTIVITY';
   if (tickMode === 'shadow_ready') return 'SHADOW';
   if (tickMode === 'blocked') return 'BLOCKED';
@@ -794,7 +794,6 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
   const strategyParity = status?.strategy?.strategyParity || {};
   const chainParity = status?.strategy?.chainParity || {};
   const microCanary = status?.strategy?.microCanarySummary || {};
-  const promotion = status?.strategy?.promotionSummary || {};
   const riskById = flow?.strategyRiskById || {};
 
   const tickById = strategyParity.byStrategy || {};
@@ -855,7 +854,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     const normalizedId = normalizeStrategyId(s.id);
     const parity = tickByNormalized[normalizedId] || tickById[s.id] || null;
     const micro = microByNormalized[normalizedId] || microById[s.id] || null;
-    const tickMode = parity?.promotionVerdict || parity?.tickMode || null;
+    const tickMode = parity?.readinessVerdict || parity?.tickMode || null;
     const protocolCapitalUsd = CAPITAL.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || 0;
     const chainCapitalUsd = CAPITAL.byChain[s.chain] || 0;
     const activitySurface = activitySurfaces.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || null;
@@ -871,19 +870,19 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     const hasRecentActivity = Number(activitySurface?.count || 0) > 0;
 
     let fallbackStatus;
-    if (tickMode === 'live_candidate') fallbackStatus = 'LIVE CANDIDATE';
-    else if (tickMode === 'fast_track_eligible') fallbackStatus = 'FAST TRACK';
+    if (tickMode === 'live_candidate') fallbackStatus = 'POLICY READY';
+    else if (tickMode === 'live_ready') fallbackStatus = 'POLICY READY';
     else if (tickMode === 'shadow_ready') fallbackStatus = 'SHADOW';
     else if (tickMode === 'blocked') fallbackStatus = 'BLOCKED';
     else {
       const autoExec = live?.autoExecute != null ? Boolean(live.autoExecute) : defaultAutoExec(s.id);
       if (isPrimary) {
-        fallbackStatus = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'LIVE CANDIDATE' : (autoExec ? 'ARMED' : 'DRY RUN');
+        fallbackStatus = Array.isArray(live?.blockers) && live.blockers.length === 0 && autoExec ? 'POLICY READY' : (autoExec ? 'ARMED' : 'DRY RUN');
       } else {
         fallbackStatus = defaultAutoExec(s.id) ? 'ARMED' : 'CANDIDATE';
       }
     }
-    const isLiveCandidate = tickMode === 'live_candidate' || fallbackStatus === 'LIVE CANDIDATE';
+    const isLiveCandidate = tickMode === 'live_candidate' || tickMode === 'live_ready' || fallbackStatus === 'POLICY READY';
     const statusLabel = activeStrategyStatus({
       hasLivePosition,
       isLiveCandidate,

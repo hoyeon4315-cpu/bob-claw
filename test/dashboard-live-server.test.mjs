@@ -401,7 +401,7 @@ test("dashboard live status overlays strategy tick slice without waiting for ful
             {
               strategyId: "wrapped-btc-loop-base-moonwell",
               lastTickAt: "2026-04-29T00:00:00.000Z",
-              promotionVerdict: "blocked",
+              readinessVerdict: "blocked",
               blockers: ["stale_blocker"],
             },
           ],
@@ -409,7 +409,7 @@ test("dashboard live status overlays strategy tick slice without waiting for ful
             "wrapped-btc-loop-base-moonwell": {
               strategyId: "wrapped-btc-loop-base-moonwell",
               lastTickAt: "2026-04-29T00:00:00.000Z",
-              promotionVerdict: "blocked",
+              readinessVerdict: "blocked",
               blockers: ["stale_blocker"],
             },
           },
@@ -454,7 +454,7 @@ test("dashboard live status overlays strategy tick slice without waiting for ful
   const row = status.strategy.strategyParity.byStrategy["wrapped-btc-loop-base-moonwell"];
 
   assert.equal(row.lastTickAt, "2026-05-01T11:29:55.000Z");
-  assert.equal(row.promotionVerdict, "live_candidate");
+  assert.equal(row.readinessVerdict, "live_candidate");
   assert.deepEqual(row.blockers, []);
   assert.equal(row.scoredAllocation.allocatedSats, 12345);
   assert.equal(row.microCanaryStatus, "active");
