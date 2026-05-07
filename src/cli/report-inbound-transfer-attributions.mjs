@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 import { config } from "../config/env.mjs";
-import { buildCapitalForensicsReport } from "../audit/capital-forensics.mjs";
 import { buildInboundTransferAttributionReport } from "../audit/inbound-transfer-attribution-runner.mjs";
-import { buildTransactionLedger } from "../audit/transaction-ledger.mjs";
+import { buildTransactionLedger, buildTransactionLedgerNav } from "../audit/transaction-ledger.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 
@@ -39,14 +38,14 @@ function ledgerUnattributedEventIds({
   inboundEvents,
   transferAttributionRecords,
 } = {}) {
-  const forensics = buildCapitalForensicsReport({ inventoryRecords, receiptRecords, inboundEvents });
+  const currentNav = buildTransactionLedgerNav({ inventoryRecords });
   const ledger = buildTransactionLedger({
     receiptRecords,
     signerAuditRecords,
     gatewayOfframpRecords,
     inboundEvents,
     transferAttributionRecords,
-    currentNav: forensics.current,
+    currentNav,
   });
   return new Set(
     ledger.rows

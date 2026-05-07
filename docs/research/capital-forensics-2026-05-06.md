@@ -104,7 +104,7 @@ The clean local inventory peak in the current forensic report is:
 Use:
 
 ```bash
-npm run report:capital-forensics -- --baseline-usd=450
+npm run report:transaction-ledger -- --baseline-usd=450
 ```
 
 The command reports current verified NAV, wallet/protocol split, baseline gap,

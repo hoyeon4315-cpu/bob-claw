@@ -39,6 +39,151 @@ function currentNavConfidence(currentNav = null) {
     : "verified_known_assets";
 }
 
+function inventoryTotalUsd(record = {}) {
+  return finiteNumber(record.totals?.totalUsd)
+    ?? finiteNumber(record.totalUsd)
+    ?? finiteNumber(record.summary?.itemizedWalletUsd)
+    ?? finiteNumber(record.summary?.estimatedWalletUsd)
+    ?? null;
+}
+
+function inventoryWalletUsd(record = {}) {
+  return finiteNumber(record.totals?.tokenUsd)
+    ?? finiteNumber(record.summary?.estimatedWalletUsd)
+    ?? null;
+}
+
+function inventoryProtocolUsd(record = {}) {
+  return finiteNumber(record.totals?.protocolUsd) ?? 0;
+}
+
+function inventoryObservedAtMs(record = {}) {
+  const parsed = new Date(record.observedAt || record.generatedAt || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function scanErrorCount(record = {}) {
+  return Number(record.summary?.scanErrorCount ?? record.scanErrors?.length ?? 0) || 0;
+}
+
+function walletCoverage(record = {}) {
+  return record.summary?.walletCoverage || record.walletCoverage || null;
+}
+
+function unknownAssetBalanceCount(record = {}) {
+  return Number(record.summary?.unknownAssetBalanceCount ?? record.unknownAssetBalanceCount ?? 0) || 0;
+}
+
+function isFullRpcInventory(record = {}) {
+  return walletCoverage(record) === "full_rpc" && scanErrorCount(record) === 0 && unknownAssetBalanceCount(record) === 0;
+}
+
+function isExternalReference(record = {}) {
+  const source = String(record.source || "");
+  return (
+    source.includes("external") ||
+    walletCoverage(record) === "full_external" ||
+    walletCoverage(record) === "full_external_stale" ||
+    Number.isFinite(record.summary?.externalTotalPortfolioUsd) ||
+    Number.isFinite(record.summary?.externalUnclassifiedUsd)
+  );
+}
+
+function normalizedAssetKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.:-]/g, "");
+}
+
+function protocolPositionKeys(record = {}) {
+  const keys = new Set();
+  for (const position of record.protocolPositions || []) {
+    for (const value of [
+      position.symbol,
+      position.ticker,
+      position.asset,
+      position.assetSymbol,
+      position.token,
+      position.tokenSymbol,
+      position.shareTokenSymbol,
+      position.tokenAddress,
+      position.shareTokenAddress,
+      position.contractAddress,
+    ]) {
+      const key = normalizedAssetKey(value);
+      if (key) keys.add(key);
+    }
+  }
+  return keys;
+}
+
+function hasProtocolShareDoubleCountRisk(record = {}) {
+  if (!Array.isArray(record.protocolPositions) || record.protocolPositions.length === 0) return false;
+  const positionKeys = protocolPositionKeys(record);
+  if (positionKeys.size === 0) return false;
+
+  return (record.tokenBalances || []).some((token) => {
+    if (token?.countedInWalletTotal === false) return false;
+    if (token?.trackingStatus !== "protocol_reader_covered") return false;
+    if ((finiteNumber(token.estimatedUsd) ?? 0) <= 0) return false;
+    return [
+      token.ticker,
+      token.symbol,
+      token.name,
+      token.tokenAddress,
+      token.contractAddress,
+      token.address,
+    ].some((value) => positionKeys.has(normalizedAssetKey(value)));
+  });
+}
+
+function inventorySnapshot(record = null) {
+  if (!record) return null;
+  return {
+    observedAt: record.observedAt || record.generatedAt || null,
+    totalUsd: inventoryTotalUsd(record),
+    walletUsd: inventoryWalletUsd(record),
+    protocolUsd: inventoryProtocolUsd(record),
+    walletCoverage: walletCoverage(record),
+    scanErrorCount: scanErrorCount(record),
+    unknownAssetBalanceCount: unknownAssetBalanceCount(record),
+    source: record.source || null,
+  };
+}
+
+function maxInventoryBy(records = [], valueFn) {
+  let best = null;
+  let bestValue = -Infinity;
+  for (const record of records) {
+    const value = valueFn(record);
+    if (!Number.isFinite(value)) continue;
+    if (value > bestValue || (value === bestValue && inventoryObservedAtMs(record) > inventoryObservedAtMs(best))) {
+      best = record;
+      bestValue = value;
+    }
+  }
+  return best;
+}
+
+export function buildTransactionLedgerNav({ inventoryRecords = [] } = {}) {
+  const sorted = [...inventoryRecords]
+    .filter((record) => Number.isFinite(inventoryTotalUsd(record)))
+    .sort((a, b) => inventoryObservedAtMs(b) - inventoryObservedAtMs(a));
+  const currentRecord = sorted.find(isFullRpcInventory) || sorted[0] || null;
+  const localInventoryRecords = inventoryRecords.filter((record) => !isExternalReference(record));
+  const cleanLocalInventoryRecords = localInventoryRecords.filter((record) => !hasProtocolShareDoubleCountRisk(record));
+  const externalReferenceRecords = inventoryRecords.filter(isExternalReference);
+  const maxExternalReference = inventorySnapshot(maxInventoryBy(externalReferenceRecords, inventoryTotalUsd));
+  const current = inventorySnapshot(currentRecord);
+  return current ? Object.freeze({
+    ...current,
+    excludedDoubleCountInventoryCount: localInventoryRecords.length - cleanLocalInventoryRecords.length,
+    externalReferenceWarning: maxExternalReference ? "external_reference_not_current_nav" : null,
+    maxExternalReference,
+  }) : null;
+}
+
 function receiptCategory(record = {}) {
   if (record.reconciliationStatus === "failed") return "failed_tx_cost";
   const kind = String(record.kind || "");
@@ -513,6 +658,8 @@ export function buildTransactionLedger({
   const caveats = [
     "totalCostUsd_uses_negative_realized_net_pnl_and_does_not_add_receipt_gas_again",
     "inbound_inventory_diff_rows_are_not_external_deposit_proof_until_txhash_attributed",
+    "external_portfolio_reference_must_not_override_current_rpc_nav",
+    "protocol_share_double_count_risk_rows_are_excluded_from_current_nav_selection",
     ...(unquantifiedRevertCount > 0 ? ["unquantified_revert_cost_rows_need_receipt_price_lookup_before_usd_cost_is_exact"] : []),
   ];
 
