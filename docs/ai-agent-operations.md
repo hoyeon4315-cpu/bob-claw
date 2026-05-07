@@ -60,6 +60,19 @@ npm run ai:claude:kimi:coordinator
 5. Run targeted checks before broad `npm test`.
 6. Keep generated operational artifacts out of code commits unless the task explicitly asks for refreshed outputs.
 
+## Dev-Agent Lifecycle
+
+The dev-agent lifecycle is report-only. It may describe coding and research task progress with these stages:
+
+- `proposed`
+- `scoped`
+- `submitted`
+- `validated`
+- `accepted`
+- `rejected`
+
+The lifecycle never grants live execution authority. A task with `runtimeAuthority: "none"` may propose source, tests, reports, or committed config diffs. It may not call the signer, sign transactions, bypass policy, raise caps at runtime, decide payback timing or ratio, mutate `autoExecute` through a side channel, or publish raw wallet/route/inventory artifacts.
+
 ## Sources
 
 - Ollama Claude Code integration: https://docs.ollama.com/integrations/claude-code

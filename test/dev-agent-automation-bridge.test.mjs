@@ -75,6 +75,12 @@ test("dev-agent bridge converts remediation work orders into safe coding task sp
   assert.equal(task.kind, "route_coding");
   assert.equal(task.queueStatus, "ready_for_dev_agent");
   assert.equal(task.source.kind, "route_remediation_work_order");
+  assert.deepEqual(task.lifecycle, {
+    stage: "proposed",
+    allowedStages: ["proposed", "scoped", "submitted", "validated", "accepted", "rejected"],
+    runtimeAuthority: "none",
+    requiresCommittedDiff: true,
+  });
   assert.equal(task.safety.artifactOnly, true);
   assert.equal(task.safety.allowedToExecuteLive, false);
   assert.equal(task.safety.signerBypass, false);
@@ -161,6 +167,7 @@ test("dev-agent bridge converts discovery opportunities and de-duplicates remedi
 
   const summary = summarizeDevAgentAutomationBridge(report);
   assert.equal(summary.taskCount, 3);
+  assert.equal(summary.lifecycleStageCounts.proposed, 3);
   assert.equal(summary.kindCounts.route_coding, 1);
   assert.equal(summary.kindCounts.route_finding, 1);
   assert.equal(summary.kindCounts.strategy_discovery, 1);
@@ -189,4 +196,25 @@ test("dev-agent bridge refuses work orders that request runtime authority", () =
   assert.equal(report.rejectedItems.length, 1);
   assert.equal(report.rejectedItems[0].reason, "runtime_authority_requested");
   assert.equal(report.summary.liveExecutableTaskCount, 0);
+});
+
+test("dev-agent lifecycle does not create live execution authority", () => {
+  const report = buildDevAgentAutomationBridge({
+    routeRemediation: {
+      workOrders: [workOrder()],
+    },
+    autonomousDiscoveryBoard: {
+      opportunities: [],
+      summary: { opportunityCount: 0 },
+    },
+    now: NOW,
+  });
+
+  const [task] = report.tasks;
+  assert.equal(task.lifecycle.runtimeAuthority, "none");
+  assert.equal(task.lifecycle.requiresCommittedDiff, true);
+  assert.equal(task.safety.allowedToExecuteLive, false);
+  assert.equal(task.modelPolicy.llmMayCallSigner, false);
+  assert.equal(report.summary.liveExecutableTaskCount, 0);
+  assert.equal(report.summary.lifecycleStageCounts.proposed, 1);
 });

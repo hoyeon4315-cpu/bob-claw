@@ -68,7 +68,9 @@ test("dev-agent bridge CLI writes a JSON artifact from existing discovery report
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
 
     assert.equal(output.summary.taskCount, 1);
+    assert.equal(output.summary.lifecycleStageCounts.proposed, 1);
     assert.equal(artifact.mode, "dev_agent_task_queue");
+    assert.equal(artifact.tasks[0].lifecycle.runtimeAuthority, "none");
     assert.equal(artifact.tasks[0].safety.allowedToExecuteLive, false);
     assert.equal(artifact.modelPolicy.runtimeAuthority, "none");
   } finally {

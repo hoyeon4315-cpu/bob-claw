@@ -27,6 +27,14 @@ const BASE_SAFE_INSTRUCTIONS = Object.freeze([
 ]);
 
 const DEFAULT_DISCOVERY_WRITE_SCOPE = Object.freeze(["src/strategy/", "src/config/", "src/executor/policy/", "test/"]);
+const DEV_AGENT_ALLOWED_LIFECYCLE_STAGES = Object.freeze([
+  "proposed",
+  "scoped",
+  "submitted",
+  "validated",
+  "accepted",
+  "rejected",
+]);
 
 function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
@@ -84,6 +92,15 @@ function baseSafety(overrides = {}) {
     policyPipelineRequired: true,
     llmSigningAllowed: false,
     ...overrides,
+  };
+}
+
+function reportOnlyLifecycle(stage = "proposed") {
+  return {
+    stage,
+    allowedStages: [...DEV_AGENT_ALLOWED_LIFECYCLE_STAGES],
+    runtimeAuthority: "none",
+    requiresCommittedDiff: true,
   };
 }
 
@@ -146,6 +163,7 @@ function workOrderTask(order = {}) {
         score: round(order.costEfficiencyScore ?? order.estimatedNetAfterBuildUsd ?? 0),
       },
       source: sourceRef("route_remediation_work_order", order),
+      lifecycle: reportOnlyLifecycle(),
       chain: order.chain || null,
       blockers: unique(order.sourceBlockers || []),
       resolves: unique(order.resolves || []),
@@ -188,6 +206,7 @@ function opportunityTask(opportunity = {}) {
         score: round(opportunity.selectionScore ?? opportunity.priorityScore ?? 0),
       },
       source: sourceRef("autonomous_discovery_opportunity", opportunity),
+      lifecycle: reportOnlyLifecycle(),
       chain: opportunity.chain || null,
       blockers: unique(opportunity.blockers || []),
       resolves: [],
@@ -232,6 +251,7 @@ export function summarizeDevAgentAutomationBridge(report = {}) {
     readyTaskCount: tasks.filter((task) => task.queueStatus === "ready_for_dev_agent").length,
     rejectedCount: (report.rejectedItems || []).length,
     liveExecutableTaskCount: tasks.filter((task) => task.safety?.allowedToExecuteLive === true).length,
+    lifecycleStageCounts: countBy(tasks, (task) => task.lifecycle?.stage),
     kindCounts: countBy(tasks, (task) => task.kind),
     sourceCounts: countBy(tasks, (task) => task.source?.kind),
     topTask: tasks[0]
