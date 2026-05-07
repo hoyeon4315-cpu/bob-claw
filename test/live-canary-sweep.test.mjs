@@ -124,6 +124,33 @@ test("preflight can skip route live-baseline for independent protocol canaries",
   assert.equal(result.liveBaseline, null);
 });
 
+test("preflight reads cached live baseline without building full dashboard context", async () => {
+  const result = await preflightLiveCanarySweep({
+    dataDir: "/tmp/bob-claw-live-canary-test",
+    killSwitchPath: "/tmp/kill",
+    killSwitchExistsImpl: () => false,
+    readSignerHealthImpl: async () => ({
+      status: "ok",
+      addresses: {
+        base: ADDRESS,
+      },
+    }),
+    readLiveBaselineImpl: async ({ dataDir }) => {
+      assert.equal(dataDir, "/tmp/bob-claw-live-canary-test");
+      return {
+        status: "ready",
+        liveTrading: "BLOCKED",
+      };
+    },
+    buildDashboardContextImpl: async () => {
+      throw new Error("dashboard context should not be loaded");
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.liveBaseline.liveTrading, "BLOCKED");
+});
+
 test("preflight keeps route live-baseline gate by default", async () => {
   const result = await preflightLiveCanarySweep({
     killSwitchPath: "/tmp/kill",

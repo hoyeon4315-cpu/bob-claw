@@ -22,6 +22,7 @@ const DEFAULT_CHAIN_QUARANTINE_MS = 30 * 60_000;
 const DEFAULT_OUTPUT_ASSET_COOLDOWN_MS = 10 * 60_000;
 const TOKEN_MAX_BALANCE_BPS = 2_500;
 const NATIVE_MAX_BALANCE_BPS = 500;
+const DEFAULT_DASHBOARD_CONTEXT_IMPL = buildCurrentDashboardContext;
 
 function lowerSet(values = []) {
   return new Set((values || []).map((item) => String(item || "").trim().toLowerCase()).filter(Boolean));
@@ -603,11 +604,13 @@ async function evaluateCandidate({
 }
 
 export async function preflightLiveCanarySweep({
+  dataDir = config.dataDir,
   killSwitchPath = process.env.KILL_SWITCH_PATH || config.emergencyStopFlagPath,
   socketPath = signerSocketPath(),
   timeoutMs = signerClientTimeoutMs(),
   readSignerHealthImpl = readSignerHealth,
-  buildDashboardContextImpl = buildCurrentDashboardContext,
+  buildDashboardContextImpl = DEFAULT_DASHBOARD_CONTEXT_IMPL,
+  readLiveBaselineImpl = null,
   killSwitchExistsImpl = existsSync,
   requireLiveBaseline = true,
 } = {}) {
@@ -640,8 +643,17 @@ export async function preflightLiveCanarySweep({
     };
   }
 
-  const context = requireLiveBaseline ? await buildDashboardContextImpl({ dataDir: config.dataDir }) : null;
-  const liveBaseline = context?.dashboardStatus?.liveBaseline || null;
+  let liveBaseline = null;
+  if (requireLiveBaseline) {
+    if (readLiveBaselineImpl) {
+      liveBaseline = await readLiveBaselineImpl({ dataDir });
+    } else if (buildDashboardContextImpl !== DEFAULT_DASHBOARD_CONTEXT_IMPL) {
+      const context = await buildDashboardContextImpl({ dataDir });
+      liveBaseline = context?.dashboardStatus?.liveBaseline || null;
+    } else {
+      liveBaseline = await readCachedLiveBaseline({ dataDir });
+    }
+  }
   if (requireLiveBaseline && liveBaseline?.status !== "ready") {
     return {
       status: "blocked",
@@ -676,6 +688,16 @@ async function scanInventoryForSweep({ senderAddress, bitcoinAddress, families =
   });
 }
 
+export async function readCachedLiveBaseline({ dataDir = config.dataDir } = {}) {
+  try {
+    const dashboardStatus = JSON.parse(await readFile(join(dataDir, "dashboard-status.json"), "utf8"));
+    return dashboardStatus?.liveBaseline || null;
+  } catch (error) {
+    if (error.code === "ENOENT" || error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
 export async function runLiveCanarySweep({
   execute = false,
   write = false,
@@ -707,7 +729,7 @@ export async function runLiveCanarySweep({
   recentBroadcastWindowMs = 10 * 60_000,
   now = new Date().toISOString(),
 } = {}) {
-  const preflight = await preflightImpl({ socketPath, timeoutMs });
+  const preflight = await preflightImpl({ dataDir, socketPath, timeoutMs });
   if (preflight.status !== "ready") {
     const report = {
       schemaVersion: 1,
