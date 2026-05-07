@@ -43,7 +43,7 @@
 | **자동화 갭** | 미다룸 | 5개 (supportedSwapVenue·payback cap 수정완 / revalidation cron, lending live receipts, liveTrading 자동해제 미해결) | Phase 1-4 로드맵 | Kimi 잔여 3개 + GLM Phase 2-3 + 분산/리스크 데몬 + 잔고정합성 + 부트스트랩 |
 | **2026-04 익스플로잇** | 일반 매트릭스 | 미다룸 | Kelp $292M, Drift $285M, Aperture $3.7M, Moonwell oracle $1.78M | LayerZero OFT 패턴 emergency-pause trigger 코드화 권장 |
 | **자본 가정** | 미명시 | 미명시 | $300/$500/$1000 | 잔고 감지 후 동적 cap 함수 (사용자 결정) |
-| **리스크 관리** | 일반 룰 (HF, buffer) | 미다룸 | 전략별 청산 조건 | 7개 데몬 (protocol-health, layerzero-oft-watcher, liquidity-watch, peg-monitor, concentration-guard, funding-rate-gate, circuit-breaker) |
+| **리스크 관리** | 일반 룰 (HF, buffer) | 미다룸 | 전략별 청산 조건 | protocol-health, liquidity-watch, peg-monitor, concentration-guard, funding-rate-gate, circuit-breaker 등 deterministic risk surfaces |
 | **대시보드** | dashboard-context.md 룰만 | 미다룸 | 미다룸 | 마인드맵 모바일 재배치 + Gateway 경유 swap만 + 프로토콜 로고 |
 | **약점** | 권장 없음 (의도) | 전략 alpha는 다루지 않음 | 자본적응 미설계, 리스크 자동관리 미설계, 코드 구조 미반영 | (본 문서가 위 셋의 갭을 메움) |
 
@@ -101,7 +101,7 @@
 | 모듈 | 역할 | 데이터 소스 | 트리거 액션 |
 |---|---|---|---|
 | protocol-health | 프로토콜별 TVL/oracle/admin key 모니터 | DefiLlama, Chainlink, on-chain | TVL 24h -30% OR oracle deviation>3% → 해당 프로토콜 전 unwind |
-| layerzero-oft-watcher | LZ OFT 어댑터 비정상 mint/burn 감지 | LZ explorer, on-chain | Kelp-패턴 → BOB Gateway 정지, payback 일시중지 |
+| LayerZero OFT monitor concept | LZ OFT 어댑터 비정상 mint/burn 감지 | LZ explorer, on-chain | Kelp-패턴 → BOB Gateway 정지, payback 일시중지 |
 | liquidity-watch | DEX/렌딩 풀 utilization, withdrawal queue | Subgraph polling | utilization>95% 1h → 신규 진입 정지 + 회수 큐 |
 | peg-monitor | LST/wrapped BTC depeg | DEX mid price | depeg>0.5% 30분 → 해당 자산 unwind |
 | concentration-guard | §6 분산 룰 강제 | 자체 ledger | 룰 위반 intent → policy reject |
@@ -110,7 +110,7 @@
 
 ---
 
-## 8. 자본적응형 cap (코드, `src/config/capital-adaptive.mjs` 신설)
+## 8. 자본적응형 cap (legacy concept; removed in favor of committed caps)
 
 ```
 export function deriveCaps(operatingBtcSats, btcUsd) {
@@ -126,7 +126,7 @@ export function deriveCaps(operatingBtcSats, btcUsd) {
 
 - 비율 = commit (불변 원칙 5 준수)
 - 잔고 = balance reconciliation 모듈이 매 tick polling하여 입력
-- USD cap (기존 strategy-caps.mjs)은 호환 유지 — capital-adaptive cap이 더 빡빡할 때만 발효
+- USD cap (기존 strategy-caps.mjs)은 호환 유지 — legacy adaptive-cap overlay가 더 빡빡할 때만 발효한다는 아이디어였으나, cleanup 이후 committed caps가 canonical이다.
 
 ---
 
@@ -136,7 +136,7 @@ export function deriveCaps(operatingBtcSats, btcUsd) {
 - 11체인 EVM RPC + BTC L1 polling
 - `logs/balance-snapshots.jsonl` append-only
 - 직전 스냅샷 대비 unexpected delta(서명 데몬이 만들지 않은 변화) → emergency-pause + Telegram
-- 사용자 BTC 입금 자동 감지 → 다음 tick에 capital-adaptive cap 자동 반영
+- 사용자 BTC 입금 자동 감지 → 다음 tick에 committed-cap-aware routing으로 반영
 - RPC 일시 실패 → 직전 스냅샷 fallback, 5 tick 연속 실패 시 신규 진입만 정지
 
 ### 9.2 자동 가스/경로 부트스트랩

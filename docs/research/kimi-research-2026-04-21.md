@@ -61,7 +61,7 @@
 
 > Opus가 아직 코딩 중. 다음 분석 요청 시 `git log --oneline -20` + `git diff HEAD~5..HEAD --stat`으로 변경 여부 먼저 확인.
 
-### T1 `src/config/capital-adaptive.mjs` — 완료 (commit 포함됨)
+### T1 legacy adaptive-cap config — removed by later cleanup
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
@@ -90,7 +90,7 @@
 |---|---|---|---|
 | `concentration-guard.mjs` | `diversification.mjs` | `canAcceptNewAllocation`을 thin wrapper로 감싸 RiskVerdict 반환. T2의 policy 함수를 재사용. | **아님** |
 | `circuit-breaker.mjs` | `kill-switch.mjs` | fan-in 결정자. "touch는 caller 책임"이라고 명시. pure function. `kill-switch.mjs`는 실행자. 역할 분리. | **아님** |
-| `layerzero-oft-watcher.mjs` | `layerzero-scan.mjs` | supply deviation/mint-burn ratio 감시. 기존 scan은 경로 탐색. 기능 다름. | **아님** |
+| legacy LayerZero OFT watcher | `layerzero-scan.mjs` | supply deviation/mint-burn ratio 감시. 기존 scan은 경로 탐색. 기능 다름. | **아님** |
 
 **실제 발견한 이슈들**
 
@@ -208,10 +208,10 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `src/risk/oft-exploit-detector/oft-exploit-detector.mjs` | 완료 | `detectOftExploit` pure function. 7개 시그널. Kelp $292M 패턴 기반. |
+| legacy standalone OFT exploit detector | removed | cleanup 이후 standalone detector는 삭제됐고 OFT/incident coverage belongs in existing protocol/auto-kill watchers. |
 | **7개 시그널** | OK | (1) peg_deviation > 200 bps, (2) supply_mismatch > 0.5%, (3) mint_velocity > 5M sats/hr, (4) burn_velocity > 5M sats/hr, (5) bridge_withdrawal_spike > 10M sats/hr, (6) oracle_stale > 10m, (7) protocol_in_blocklist. |
 | **심각도 상승** | OK | 단일 soft → HALT_PROTOCOL. blocklist/supply_mismatch 또는 2+ HALT → UNWIND_ALL. bridge_spike alone → UNWIND_ALL. **peg_deviation + bridge_spike → KILL_SWITCH** (Kelp composite). |
-| **T3와의 관계** | **상위 호환** | `src/executor/risk/layerzero-oft-watcher.mjs`(T3)보다 시그널 더 많고, escalation 더 세밀. T16이 T3를 대체할 수 있음. |
+| **T3와의 관계** | **상위 호환** | legacy LayerZero watcher보다 시그널 더 많고, escalation 더 세밀하다는 설계 평가였음. |
 | **caller 연동** | **없음** | "Signer Daemon preflight and Payback Scheduler emergency-pause check"에서 소비한다고 하지만, 실제 호출 코드 없음. grep 결과 0건. |
 | **OFT snapshot 수집** | **미연결** | chain별 공급, bridge withdrawal 속도, peg oracle 등을 수집하는 어댑터 없음. |
 
@@ -450,7 +450,7 @@ Plan §3의 9개 전략에 대응하는 adapter 목록 (T8-T13 반영):
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `src/executor/capital/adaptive-caps.mjs` | 완료, 11테스트 | `buildAdaptiveCapitalPlan`이 `deriveCaps()` + `projectToUsd()` → static caps와 overlay. `effective = min(static, adaptive)`. `bindingConstraint` 필드로 어떤 cap이 bind되는지 표시. |
+| legacy adaptive-cap overlay | removed | committed caps remain canonical; tick-time adaptive cap overlays were deleted. |
 | `newEntriesAllowed` | OK | `operatingBtcSats < 50_000`이면 전략별 `newEntriesAllowed = false`. |
 | **rebalancer.mjs 연동** | **없음** | `src/executor/capital/rebalancer.mjs`가 `buildAdaptiveCapitalPlan`를 **전혀 호출하지 않음**. grep 결과 0건. |
 | **tick loop** | **없음** | 매 10분마다 잔고 read → cap 재산출 → strategyCaps 업데이트하는 loop 없음. |
@@ -619,10 +619,10 @@ Opus 보고 "T15 완료"는 **`src/executor/payback/diversification-kpi.mjs` 파
 
 | # | Todo | 파일 | 테스트 | caller 연동 | I/O |
 |---|---|---|---|---|---|
-| T1 | capital-adaptive caps | `src/config/capital-adaptive.mjs` | 11 | **없음** | 없음 |
+| T1 | legacy adaptive-cap config | removed | 11 historical | **없음** | 없음 |
 | T2 | diversification policy | `src/config/diversification.mjs` | 16 | **없음** | 없음 |
 | T3 | risk daemon 7 modules | `src/executor/risk/*` | 23 | **없음** | 없음 |
-| T4 | adaptive capital plan | `src/executor/capital/adaptive-caps.mjs` | 11 | **없음** | 없음 |
+| T4 | legacy adaptive capital plan | removed | 11 historical | **없음** | 없음 |
 | T5 | revalidation scheduler | `src/executor/revalidation/scheduler.mjs` | — | **없음** | 없음 |
 | T6 | liveTrading policy eligibility | `src/status/live-policy.mjs`(Kimi) + removed dynamic-gate experiment | — | **부분** | 없음 |
 | T7 | recursive lending loop measurement | **미착수(운영 blocker)** | — | — | **필요** |
@@ -634,7 +634,7 @@ Opus 보고 "T15 완료"는 **`src/executor/payback/diversification-kpi.mjs` 파
 | T13 | Beefy folding | `src/strategy/beefy-folding-adapter.mjs` | 17 | **없음** | 없음 |
 | T14 | strategy catalog dispatcher | `src/executor/dispatcher/strategy-catalog-dispatcher.mjs` | 14 | **없음** | 없음 |
 | T15 | diversification KPI slice | `src/executor/payback/diversification-kpi.mjs` | — | **없음** | 없음 |
-| T16 | OFT exploit detector | `src/risk/oft-exploit-detector/oft-exploit-detector.mjs` | 13 | **없음** | 없음 |
+| T16 | standalone OFT exploit detector | removed | 13 historical | **없음** | 없음 |
 | T17 | shadow run aggregator | `src/executor/shadow/shadow-run-aggregator.mjs` | 14 | **없음** | 없음 |
 | T18 | autoExecute=true commit guard | auto-promotion dev guard + `src/cli/promotion-pr-preview.mjs` | 14 + 6 historical | **없음** | **부분** |
 | T18b | walk-forward purged CV | `src/strategy/walk-forward-cv.mjs` | 12 | **없음** | 없음 |
