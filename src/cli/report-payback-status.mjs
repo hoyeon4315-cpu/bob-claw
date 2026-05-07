@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { PAYBACK_CONFIG } from "../config/payback.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../executor/ingestor/execution-receipt-ingest.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
+import { buildPaybackDeliveryRunway } from "../executor/payback/delivery-runway.mjs";
 import { buildCompositePaybackPlan, buildPaybackDecision, loadPaybackPolicyConfig } from "../executor/payback/scheduler.mjs";
 
 function parseArgs(argv) {
@@ -40,13 +43,24 @@ function withTemporaryEnv(name, value, fn) {
     });
 }
 
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 async function collectPaybackStatus({ btcDestination = null } = {}) {
   const policy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
   const recipientEnvName = policy.destinationPath.bitcoinDestAddressEnv;
   return withTemporaryEnv(recipientEnvName, btcDestination, async () => {
-    const [auditLogLines, receiptStore] = await Promise.all([
+    const [auditLogLines, receiptStore, merklAllocatorReport, merklCanaryReport, allChainReport] = await Promise.all([
       loadPaybackAuditLog(),
       loadLivePaybackReceiptStore({ dataDir: config.dataDir }),
+      readJsonIfExists(join(config.dataDir, "merkl-portfolio-allocator-latest.json")),
+      readJsonIfExists(join(config.dataDir, "merkl-canary-autopilot-latest.json")),
+      readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest.json")),
     ]);
     const payback = await buildPaybackDashboardSlice({
       dataDir: config.dataDir,
@@ -72,7 +86,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
         };
       }
     }
-    return {
+    const report = {
       schemaVersion: 1,
       observedAt: new Date().toISOString(),
       policy: {
@@ -100,6 +114,16 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
             estimatedOfframpCostSats: compositePreview.compositePlan?.estimatedOfframpCostSats || null,
           }
         : null,
+    };
+    return {
+      ...report,
+      runway: buildPaybackDeliveryRunway({
+        paybackStatus: report,
+        merklAllocatorReport,
+        merklCanaryReport,
+        allChainReport,
+        now: report.observedAt,
+      }),
     };
   });
 }
@@ -158,6 +182,13 @@ async function main() {
     console.log(`compositePreviewStepCount=${report.compositePreview.stepCount}`);
     console.log(`plannedPaybackSats=${report.compositePreview.plannedPaybackSats ?? "n/a"}`);
     console.log(`estimatedOfframpCostSats=${report.compositePreview.estimatedOfframpCostSats ?? "n/a"}`);
+  }
+  if (report.runway) {
+    console.log(`runwayGoal=${report.runway.finalGoal}`);
+    console.log(`runwayStatus=${report.runway.status}`);
+    console.log(`runwayNext=${report.runway.nextActions?.[0]?.code || "n/a"}`);
+    const topBlocker = report.runway.blockers?.[0];
+    if (topBlocker) console.log(`runwayTopBlocker=${topBlocker.source}:${topBlocker.code}`);
   }
   const expansionGate = report.payback?.expansionGate;
   if (expansionGate) {

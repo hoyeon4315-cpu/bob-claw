@@ -92,6 +92,9 @@ test("payback status cli reports missing destination env and supports destinatio
   assert.equal(blockedReport.payback.scheduler.previewAfterDestination.progressToMinimumRatio, 1);
   assert.equal(blockedReport.payback.grossProfitSatsPeriod, 250_000);
   assert.equal(blockedReport.compositePreview, null);
+  assert.equal(blockedReport.runway.finalGoal, "native_btc_payback_delivery");
+  assert.equal(blockedReport.runway.status, "payback_blocked");
+  assert.equal(blockedReport.runway.nextActions[0].code, "set_payback_btc_destination_env");
 
   const preview = spawnSync(
     process.execPath,
@@ -113,6 +116,7 @@ test("payback status cli reports missing destination env and supports destinatio
   assert.equal(previewReport.compositePreview.status, "blocked");
   assert.equal(previewReport.compositePreview.reason, "composite_preview_failed");
   assert.match(previewReport.compositePreview.error, /executor-signer\.sock/);
+  assert.equal(previewReport.runway.status, "payback_planning_required");
 });
 
 test("payback status cli reports current below-minimum gap when destination is already configured", async () => {
@@ -155,4 +159,37 @@ test("payback status cli reports current below-minimum gap when destination is a
   assert.equal(report.payback.scheduler.minimumPaybackProgress.grossTargetBeforeCostsSats, 58);
   assert.equal(report.payback.scheduler.minimumPaybackProgress.minPaybackSats, 50_000);
   assert.equal(report.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback, 49_942);
+  assert.equal(report.runway.status, "profit_creation_required");
+  assert.equal(report.runway.nextActions[0].code, "create_payback_eligible_realized_pnl");
+});
+
+test("payback status cli text output includes delivery runway", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-payback-cli-runway-"));
+  const dataDir = join(cwd, "data");
+  await seedPaybackFixture(dataDir);
+  await writeJsonl(dataDir, "receipt-reconciliations", [
+    {
+      observedAt: "2026-04-17T00:00:00.000Z",
+      pricing: { btcUsd: 100_000 },
+      realized: { realizedNetPnlSats: 289 },
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, "src/cli/report-payback-status.mjs")],
+    {
+      cwd,
+      env: {
+        ...process.env,
+        BOB_CLAW_DATA_DIR: dataDir,
+        PAYBACK_BTC_DEST_ADDR: "bc1qpayback0000000000000000000000000000000",
+      },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /runwayGoal=native_btc_payback_delivery/);
+  assert.match(result.stdout, /runwayStatus=profit_creation_required/);
+  assert.match(result.stdout, /runwayNext=create_payback_eligible_realized_pnl/);
 });
