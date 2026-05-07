@@ -165,6 +165,10 @@ test("payback status cli reports current below-minimum gap when destination is a
   assert.equal(report.preMinimumCompositePreview.executionEligible, false);
   assert.equal(report.preMinimumCompositePreview.intentEligible, false);
   assert.equal(report.preMinimumCompositePreview.reason, "signer_health_unavailable");
+  assert.equal(report.quoteProofMatrix.readOnly, true);
+  assert.equal(report.quoteProofMatrix.executionEligible, false);
+  assert.equal(report.quoteProofMatrix.rowCount, 11);
+  assert.equal(report.runway.current.quoteProofMatrixRows, 11);
 });
 
 test("payback status cli text output includes delivery runway", async () => {
@@ -196,4 +200,5 @@ test("payback status cli text output includes delivery runway", async () => {
   assert.match(result.stdout, /runwayGoal=native_btc_payback_delivery/);
   assert.match(result.stdout, /runwayStatus=profit_creation_required/);
   assert.match(result.stdout, /runwayNext=create_payback_eligible_realized_pnl/);
+  assert.match(result.stdout, /quoteProofMatrixRows=11/);
 });

@@ -72,6 +72,13 @@ test("runway keeps profit creation required when pre-minimum cost preview is pre
             estimatedNetPaybackSats: 0,
             satsToMinimumAfterCosts: 54_630,
           },
+          quoteProofMatrix: {
+            readOnly: true,
+            rows: [{ chain: "base" }],
+            statusCounts: {
+              cost_preview_available: 1,
+            },
+          },
         },
       },
     },
@@ -81,6 +88,9 @@ test("runway keeps profit creation required when pre-minimum cost preview is pre
   assert.equal(report.current.preMinimumCompositePreviewStatus, "preview");
   assert.equal(report.current.preMinimumEstimatedOfframpCostSats, 4_750);
   assert.equal(report.current.preMinimumIntentEligible, false);
+  assert.equal(report.current.quoteProofMatrixRows, 1);
+  assert.equal(report.current.quoteProofMatrixReadOnly, true);
+  assert.equal(report.current.quoteProofMatrixStatusCounts.cost_preview_available, 1);
   assert.equal(report.nextActions[0].code, "create_payback_eligible_realized_pnl");
 });
 

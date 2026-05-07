@@ -291,12 +291,21 @@ test("payback dashboard exposes current minimum payback gap when destination is 
       estimatedNetPaybackSats: 0,
       satsToMinimumAfterCosts: 54_692,
     }),
+    quoteProofMatrixBuilder: async () => ({
+      readOnly: true,
+      executionEligible: false,
+      intentEligible: false,
+      rows: [{ chain: "base", status: "cost_preview_available" }],
+      statusCounts: { cost_preview_available: 1 },
+    }),
   });
 
   assert.equal(payback.scheduler.status, "carry");
   assert.equal(payback.scheduler.reason, "planned_payback_below_minimum");
   assert.equal(payback.scheduler.preMinimumCompositePreview.status, "preview");
   assert.equal(payback.scheduler.preMinimumCompositePreview.executionEligible, false);
+  assert.equal(payback.scheduler.quoteProofMatrix.readOnly, true);
+  assert.equal(payback.scheduler.quoteProofMatrix.statusCounts.cost_preview_available, 1);
   assert.equal(payback.carry.costPreview.estimatedOfframpCostSats, 4_750);
   assert.equal(payback.scheduler.previewAfterDestination, null);
   assert.equal(payback.scheduler.minimumPaybackProgress?.source, "current");

@@ -113,6 +113,10 @@ function normalizeCurrent({ paybackStatus = null } = {}) {
     payback?.carry?.costPreview ||
     paybackStatus?.preMinimumCompositePreview ||
     null;
+  const quoteProofMatrix =
+    payback?.scheduler?.quoteProofMatrix ||
+    paybackStatus?.quoteProofMatrix ||
+    null;
   return {
     schedulerStatus: payback?.scheduler?.status || paybackStatus?.decision?.status || null,
     schedulerReason: payback?.scheduler?.reason || paybackStatus?.decision?.reason || null,
@@ -138,6 +142,9 @@ function normalizeCurrent({ paybackStatus = null } = {}) {
     preMinimumEstimatedOfframpCostSats: firstFinite(preMinimumPreview, ["estimatedOfframpCostSats"]),
     preMinimumEstimatedNetPaybackSats: firstFinite(preMinimumPreview, ["estimatedNetPaybackSats", "plannedPaybackSats"]),
     preMinimumSatsToMinimumAfterCosts: firstFinite(preMinimumPreview, ["satsToMinimumAfterCosts"]),
+    quoteProofMatrixStatusCounts: quoteProofMatrix?.statusCounts || null,
+    quoteProofMatrixRows: Array.isArray(quoteProofMatrix?.rows) ? quoteProofMatrix.rows.length : null,
+    quoteProofMatrixReadOnly: quoteProofMatrix?.readOnly === true,
     lastPaybackSettledSats: firstFinite(payback, ["lastPaybackSettledSats"]),
     lastPaybackSettledAt: payback?.lastPaybackSettledAt || null,
   };

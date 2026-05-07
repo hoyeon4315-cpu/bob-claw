@@ -56,6 +56,27 @@ async function readJsonIfExists(path) {
   }
 }
 
+function summarizeQuoteProofMatrix(matrix) {
+  if (!matrix) return null;
+  return {
+    schemaVersion: matrix.schemaVersion || 1,
+    observedAt: matrix.observedAt || null,
+    kind: matrix.kind || "payback_quote_proof_matrix",
+    readOnly: matrix.readOnly === true,
+    executionEligible: matrix.executionEligible === true,
+    intentEligible: matrix.intentEligible === true,
+    reserveChain: matrix.reserveChain || null,
+    officialChainCount: matrix.officialChainCount ?? null,
+    rowCount: Array.isArray(matrix.rows) ? matrix.rows.length : 0,
+    statusCounts: matrix.statusCounts || {},
+    missingChains: Array.isArray(matrix.rows)
+      ? matrix.rows
+          .filter((row) => row.status === "missing_quote_proof" || row.status === "quote_blocked")
+          .map((row) => row.chain)
+      : [],
+  };
+}
+
 async function collectPaybackStatus({ btcDestination = null } = {}) {
   const policy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
   const recipientEnvName = policy.destinationPath.bitcoinDestAddressEnv;
@@ -77,7 +98,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
       receiptStore,
     });
     let compositePreview = null;
-    let preMinimumCompositePreview = null;
+    let preMinimumCompositePreview = payback?.scheduler?.preMinimumCompositePreview || null;
     if (decision.status === "plan") {
       try {
         compositePreview = await buildCompositePaybackPlan({
@@ -91,7 +112,11 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
           compositePlan: null,
         };
       }
-    } else if (decision.status === "carry" && decision.reason === "planned_payback_below_minimum") {
+    } else if (
+      !preMinimumCompositePreview &&
+      decision.status === "carry" &&
+      decision.reason === "planned_payback_below_minimum"
+    ) {
       try {
         preMinimumCompositePreview = await buildPreMinimumPaybackCostPreview({
           decision,
@@ -106,9 +131,11 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
         };
       }
     }
+    const observedAt = new Date().toISOString();
+    const quoteProofMatrix = payback?.scheduler?.quoteProofMatrix || null;
     const report = {
       schemaVersion: 1,
-      observedAt: new Date().toISOString(),
+      observedAt,
       policy: {
         bitcoinDestAddressEnv: recipientEnvName,
         profitReserveChain: policy.destinationPath.profitReserveChain,
@@ -151,6 +178,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
             satsToMinimumAfterCosts: preMinimumCompositePreview.satsToMinimumAfterCosts ?? null,
           }
         : null,
+      quoteProofMatrix: summarizeQuoteProofMatrix(quoteProofMatrix),
     };
     return {
       ...report,
@@ -228,6 +256,10 @@ async function main() {
     console.log(`preMinimumPreviewInputSats=${report.preMinimumCompositePreview.previewInputSats ?? "n/a"}`);
     console.log(`preMinimumEstimatedOfframpCostSats=${report.preMinimumCompositePreview.estimatedOfframpCostSats ?? "n/a"}`);
     console.log(`preMinimumSatsToMinimumAfterCosts=${report.preMinimumCompositePreview.satsToMinimumAfterCosts ?? "n/a"}`);
+  }
+  if (report.quoteProofMatrix) {
+    console.log(`quoteProofMatrixRows=${report.quoteProofMatrix.rowCount || 0}`);
+    console.log(`quoteProofMatrixStatusCounts=${JSON.stringify(report.quoteProofMatrix.statusCounts || {})}`);
   }
   if (report.runway) {
     console.log(`runwayGoal=${report.runway.finalGoal}`);

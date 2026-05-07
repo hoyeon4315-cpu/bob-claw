@@ -2,7 +2,8 @@ import { join } from "node:path";
 import snapshotPaybackAccumulator, { profitSatsFromRecord } from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
-import { buildPaybackDecision, buildPreMinimumPaybackCostPreview } from "./scheduler.mjs";
+import { buildPaybackQuoteProofMatrixFromFiles } from "./quote-proof-matrix.mjs";
+import { buildPaybackDecision, buildPreMinimumPaybackCostPreview, loadPaybackPolicyConfig } from "./scheduler.mjs";
 import { PAYBACK_CONFIG } from "../../config/payback.mjs";
 import { ACTIVE_SLEEVE_PROFILE_ID, SLEEVE_PROFILES, resolveSleeveProfile } from "../../config/sleeve-profile.mjs";
 import { listStrategyCaps, resolveStrategyCapMatrix } from "../../config/strategy-caps.mjs";
@@ -594,11 +595,13 @@ export async function buildPaybackDashboardSlice({
   receiptStore = null,
   decisionBuilder = buildPaybackDecision,
   preMinimumCostPreviewBuilder = buildPreMinimumPaybackCostPreview,
+  quoteProofMatrixBuilder = buildPaybackQuoteProofMatrixFromFiles,
   writeProposedPatch = true,
 } = {}) {
   const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
   const resolvedReceiptStore = receiptStore || await loadLivePaybackReceiptStore({ dataDir });
   const reportingPnlBaseline = dataDir ? await readReportingPnlBaseline({ dataDir }) : null;
+  const policy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
   const snapshot = snapshotPaybackAccumulator(resolvedAuditLogLines, resolvedReceiptStore, {
     paybackStrategyIds: [GATEWAY_BTC_OFFRAMP_STRATEGY_ID],
     paybackIntentTypes: ["gateway_btc_offramp"],
@@ -647,6 +650,31 @@ export async function buildPaybackDashboardSlice({
         error: error.message,
         executionEligible: false,
         intentEligible: false,
+      };
+    }
+  }
+  let quoteProofMatrix = null;
+  if (typeof quoteProofMatrixBuilder === "function") {
+    try {
+      quoteProofMatrix = await quoteProofMatrixBuilder({
+        dataDir,
+        reserveChain: policy.destinationPath.profitReserveChain,
+        preMinimumCompositePreview,
+        now,
+      });
+    } catch (error) {
+      quoteProofMatrix = {
+        schemaVersion: 1,
+        observedAt: now,
+        kind: "payback_quote_proof_matrix",
+        readOnly: true,
+        executionEligible: false,
+        intentEligible: false,
+        status: "blocked",
+        reason: "quote_proof_matrix_failed",
+        error: error.message,
+        rows: [],
+        statusCounts: {},
       };
     }
   }
@@ -712,6 +740,7 @@ export async function buildPaybackDashboardSlice({
           }
         : null,
       preMinimumCompositePreview,
+      quoteProofMatrix,
     },
     carry: {
       active: decision?.reason === "planned_payback_below_minimum",
