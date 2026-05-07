@@ -16,7 +16,6 @@ import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../pre
 import { reconcileTinyCanaryAdmissionWithLivePolicy } from "../prelive/tiny-canary-admission.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocator-core.mjs";
-import { buildMilestoneValidationGates, summarizeMilestoneValidationGates } from "../strategy/milestone-validation-gates.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { evaluateStage } from "../executor/policy/stage-evaluator.mjs";
 import { syncStageTransitionAudit } from "../executor/policy/stage-transition-audit.mjs";
@@ -756,28 +755,7 @@ export async function buildCurrentDashboardContext({
     exactRouteForkPackage,
   });
   dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
-  let milestoneValidationGates = buildMilestoneValidationGates({
-    phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
-    strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
-    flashFloorDecision,
-    wrappedBtcLendingLoopSlice,
-    wrappedBtcLoopDryRun,
-    recursiveWrappedBtcLoop,
-    recursiveWrappedBtcLoopDryRun,
-    recursiveStablecoinLoop,
-    recursiveStablecoinLoopDryRun,
-    phase3Validation: phase3StrategyValidation,
-    protocolMarketWatchers,
-    allocatorCore,
-    preliveValidation,
-    now: dashboardStatus.generatedAt,
-  });
-  strategySnapshot.summary.milestoneOverallStatus = milestoneValidationGates.summary?.overallStatus || null;
-  strategySnapshot.summary.milestoneNextGateId = milestoneValidationGates.summary?.nextGateId || null;
-  strategySnapshot.planningLayers.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
-  strategySnapshot.artifacts.source.push({ kind: "milestone_validation_gates", path: "data/milestone-validation-gates.json" });
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
-  dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   let operationalJudgmentReview = buildOperationalJudgmentReview({
     dashboardStatus,
     strategySnapshot,
@@ -889,27 +867,7 @@ export async function buildCurrentDashboardContext({
     exactRouteForkPackage,
   });
   dashboardStatus.prelive.validation = summarizePreliveValidationReport(preliveValidation);
-  milestoneValidationGates = buildMilestoneValidationGates({
-    phase1Revalidation: strategySnapshot?.planningLayers?.phase1Revalidation || null,
-    strategyResearchBoard: strategySnapshot?.planningLayers?.strategyResearchBoard || null,
-    flashFloorDecision,
-    wrappedBtcLendingLoopSlice,
-    wrappedBtcLoopDryRun,
-    recursiveWrappedBtcLoop,
-    recursiveWrappedBtcLoopDryRun,
-    recursiveStablecoinLoop,
-    recursiveStablecoinLoopDryRun,
-    phase3Validation: phase3StrategyValidation,
-    protocolMarketWatchers,
-    allocatorCore,
-    preliveValidation,
-    now: dashboardStatus.generatedAt,
-  });
-  strategySnapshot.summary.milestoneOverallStatus = milestoneValidationGates.summary?.overallStatus || null;
-  strategySnapshot.summary.milestoneNextGateId = milestoneValidationGates.summary?.nextGateId || null;
-  strategySnapshot.planningLayers.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
-  dashboardStatus.strategy.milestoneValidationGates = summarizeMilestoneValidationGates(milestoneValidationGates);
   operationalJudgmentReview = buildOperationalJudgmentReview({
     dashboardStatus,
     strategySnapshot,
@@ -1079,7 +1037,6 @@ export async function buildCurrentDashboardContext({
       wrappedBtcLendingLoopSlice,
       wrappedBtcLoopDryRun,
       wrappedBtcLoopOosEvidence,
-      milestoneValidationGates,
        v1InfraDrills,
        merklOpportunityReport,
        merklOpportunityAlerts,

@@ -186,7 +186,7 @@ function buildProductCoverageItem({ id, label, status, reason = null, nextAction
 }
 
 export function buildProductPlanningCoverage({ dashboardStatus = null, strategySnapshot = null } = {}) {
-  const milestoneValidation = strategySnapshot?.planningLayers?.milestoneValidationGates || null;
+  const strategyValidation = strategySnapshot?.planningLayers?.phase3StrategyValidation || null;
   const payback = dashboardStatus?.payback || null;
   const executorRuntime = dashboardStatus?.executorRuntime || null;
   const liveBaseline = dashboardStatus?.liveBaseline || null;
@@ -221,23 +221,23 @@ export function buildProductPlanningCoverage({ dashboardStatus = null, strategyS
           ? "missing_plan"
           : "tracked_blocked";
   const pillars = [
-    milestoneValidation
+    strategyValidation
       ? buildProductCoverageItem({
-          id: "strategy_validation",
+          id: "strategy_evidence",
           label: "Strategy validation",
           status:
-            milestoneValidation.overallStatus === "passed"
+            Number(strategyValidation.passedCount ?? 0) > 0 && Number(strategyValidation.blockedCount ?? 0) === 0
               ? "tracked_ready"
-              : milestoneValidation.overallStatus === "in_progress"
+              : Number(strategyValidation.validationCount ?? 0) > 0
                 ? "tracked_in_progress"
                 : "tracked_blocked",
-          reason: milestoneValidation?.nextGate?.id || milestoneValidation?.overallStatus || null,
-          nextAction: milestoneValidation?.nextAction || null,
+          reason: strategyValidation?.topBlocked?.id || strategyValidation?.nextAction?.code || null,
+          nextAction: strategyValidation?.nextAction || null,
           evidence: {
-            passedCount: milestoneValidation.passedCount ?? 0,
-            gateCount: milestoneValidation.gateCount ?? 0,
-            blockedCount: milestoneValidation.blockedCount ?? 0,
-            nextGateId: milestoneValidation.nextGate?.id || null,
+            passedCount: strategyValidation.passedCount ?? 0,
+            validationCount: strategyValidation.validationCount ?? 0,
+            blockedCount: strategyValidation.blockedCount ?? 0,
+            topBlockedId: strategyValidation.topBlocked?.id || null,
           },
         })
       : null,
@@ -579,7 +579,6 @@ export function summarizeStrategySnapshot(snapshot = null) {
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,
     deterministicCandidates: snapshot.planningLayers?.deterministicStrategyCandidates || null,
     autonomousDiscoveryBoard: snapshot.planningLayers?.autonomousDiscoveryBoard || null,
-    milestoneValidationGates: snapshot.planningLayers?.milestoneValidationGates || null,
     productCoverage: snapshot.planningLayers?.productCoverage || null,
     productCoverageTopGapId: snapshot.summary?.productCoverageTopGapId || null,
     topSecondaryScaffold: snapshot.planningLayers?.secondaryStrategyScaffolds?.topScaffold || null,

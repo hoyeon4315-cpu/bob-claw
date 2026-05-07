@@ -89,7 +89,6 @@
     "report:wrapped-btc-loop-oos-evidence": "node src/cli/report-wrapped-btc-loop-oos-evidence.mjs",
     "run:wrapped-btc-loop-dry-run": "node src/cli/run-wrapped-btc-loop-dry-run.mjs",
     "ingest:wrapped-btc-loop-receipt": "node src/cli/ingest-wrapped-btc-loop-receipt.mjs",
-    "report:milestone-gates": "node src/cli/report-milestone-validation-gates.mjs",
     "report:secondary-strategy-scaffolds": "node src/cli/report-secondary-strategy-scaffolds.mjs",
     "report:phase3-strategy-validation": "node src/cli/report-phase3-strategy-validation.mjs",
     "report:search-complexity-budgets": "node src/cli/report-search-complexity-budgets.mjs",
