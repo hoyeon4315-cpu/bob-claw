@@ -282,10 +282,22 @@ test("payback dashboard exposes current minimum payback gap when destination is 
         },
       },
     }),
+    preMinimumCostPreviewBuilder: async () => ({
+      status: "preview",
+      reason: "cost_only_pre_minimum",
+      executionEligible: false,
+      intentEligible: false,
+      estimatedOfframpCostSats: 4_750,
+      estimatedNetPaybackSats: 0,
+      satsToMinimumAfterCosts: 54_692,
+    }),
   });
 
   assert.equal(payback.scheduler.status, "carry");
   assert.equal(payback.scheduler.reason, "planned_payback_below_minimum");
+  assert.equal(payback.scheduler.preMinimumCompositePreview.status, "preview");
+  assert.equal(payback.scheduler.preMinimumCompositePreview.executionEligible, false);
+  assert.equal(payback.carry.costPreview.estimatedOfframpCostSats, 4_750);
   assert.equal(payback.scheduler.previewAfterDestination, null);
   assert.equal(payback.scheduler.minimumPaybackProgress?.source, "current");
   assert.equal(payback.scheduler.minimumPaybackProgress?.status, "carry");

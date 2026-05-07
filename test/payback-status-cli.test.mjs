@@ -161,6 +161,10 @@ test("payback status cli reports current below-minimum gap when destination is a
   assert.equal(report.payback.scheduler.minimumPaybackProgress.satsToMinimumPayback, 49_942);
   assert.equal(report.runway.status, "profit_creation_required");
   assert.equal(report.runway.nextActions[0].code, "create_payback_eligible_realized_pnl");
+  assert.equal(report.compositePreview, null);
+  assert.equal(report.preMinimumCompositePreview.executionEligible, false);
+  assert.equal(report.preMinimumCompositePreview.intentEligible, false);
+  assert.equal(report.preMinimumCompositePreview.reason, "signer_health_unavailable");
 });
 
 test("payback status cli text output includes delivery runway", async () => {

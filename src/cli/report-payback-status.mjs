@@ -7,7 +7,12 @@ import { PAYBACK_CONFIG } from "../config/payback.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../executor/ingestor/execution-receipt-ingest.mjs";
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { buildPaybackDeliveryRunway } from "../executor/payback/delivery-runway.mjs";
-import { buildCompositePaybackPlan, buildPaybackDecision, loadPaybackPolicyConfig } from "../executor/payback/scheduler.mjs";
+import {
+  buildCompositePaybackPlan,
+  buildPaybackDecision,
+  buildPreMinimumPaybackCostPreview,
+  loadPaybackPolicyConfig,
+} from "../executor/payback/scheduler.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -72,6 +77,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
       receiptStore,
     });
     let compositePreview = null;
+    let preMinimumCompositePreview = null;
     if (decision.status === "plan") {
       try {
         compositePreview = await buildCompositePaybackPlan({
@@ -83,6 +89,20 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
           reason: "composite_preview_failed",
           error: error.message,
           compositePlan: null,
+        };
+      }
+    } else if (decision.status === "carry" && decision.reason === "planned_payback_below_minimum") {
+      try {
+        preMinimumCompositePreview = await buildPreMinimumPaybackCostPreview({
+          decision,
+        });
+      } catch (error) {
+        preMinimumCompositePreview = {
+          status: "blocked",
+          reason: "pre_minimum_preview_failed",
+          error: error.message,
+          executionEligible: false,
+          intentEligible: false,
         };
       }
     }
@@ -112,6 +132,23 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
             stepCount: compositePreview.compositePlan?.steps?.length || 0,
             plannedPaybackSats: compositePreview.compositePlan?.plannedPaybackSats || null,
             estimatedOfframpCostSats: compositePreview.compositePlan?.estimatedOfframpCostSats || null,
+          }
+        : null,
+      preMinimumCompositePreview: preMinimumCompositePreview
+        ? {
+            status: preMinimumCompositePreview.status,
+            reason: preMinimumCompositePreview.reason,
+            error: preMinimumCompositePreview.error || null,
+            executionEligible: preMinimumCompositePreview.executionEligible === true,
+            intentEligible: preMinimumCompositePreview.intentEligible === true,
+            stepCount: preMinimumCompositePreview.steps?.length || 0,
+            previewInputSats: preMinimumCompositePreview.previewInputSats ?? null,
+            grossTargetBeforeCostsSats: preMinimumCompositePreview.grossTargetBeforeCostsSats ?? null,
+            minPaybackSats: preMinimumCompositePreview.minPaybackSats ?? null,
+            requiredGrossBeforeCostsSats: preMinimumCompositePreview.requiredGrossBeforeCostsSats ?? null,
+            plannedPaybackSats: preMinimumCompositePreview.estimatedNetPaybackSats ?? null,
+            estimatedOfframpCostSats: preMinimumCompositePreview.estimatedOfframpCostSats ?? null,
+            satsToMinimumAfterCosts: preMinimumCompositePreview.satsToMinimumAfterCosts ?? null,
           }
         : null,
     };
@@ -182,6 +219,15 @@ async function main() {
     console.log(`compositePreviewStepCount=${report.compositePreview.stepCount}`);
     console.log(`plannedPaybackSats=${report.compositePreview.plannedPaybackSats ?? "n/a"}`);
     console.log(`estimatedOfframpCostSats=${report.compositePreview.estimatedOfframpCostSats ?? "n/a"}`);
+  }
+  if (report.preMinimumCompositePreview) {
+    console.log(`preMinimumCompositePreviewStatus=${report.preMinimumCompositePreview.status}`);
+    console.log(`preMinimumCompositePreviewReason=${report.preMinimumCompositePreview.reason}`);
+    console.log(`preMinimumCompositePreviewExecutionEligible=${report.preMinimumCompositePreview.executionEligible}`);
+    console.log(`preMinimumCompositePreviewIntentEligible=${report.preMinimumCompositePreview.intentEligible}`);
+    console.log(`preMinimumPreviewInputSats=${report.preMinimumCompositePreview.previewInputSats ?? "n/a"}`);
+    console.log(`preMinimumEstimatedOfframpCostSats=${report.preMinimumCompositePreview.estimatedOfframpCostSats ?? "n/a"}`);
+    console.log(`preMinimumSatsToMinimumAfterCosts=${report.preMinimumCompositePreview.satsToMinimumAfterCosts ?? "n/a"}`);
   }
   if (report.runway) {
     console.log(`runwayGoal=${report.runway.finalGoal}`);

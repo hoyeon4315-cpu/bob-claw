@@ -289,6 +289,93 @@ export async function buildGatewayBtcOfframpPlan({
   };
 }
 
+export async function buildGatewayBtcOfframpQuotePreview({
+  client = new GatewayClient({ baseUrl: config.gatewayApiBase }),
+  priceReader = getCoinGeckoPricesUsd,
+  srcChain,
+  srcToken = WBTC_OFT_TOKEN,
+  amount,
+  senderAddress,
+  recipient,
+  slippageBps = config.slippageBps,
+  now = new Date().toISOString(),
+} = {}) {
+  if (!senderAddress) throw new Error("EVM sender address is required");
+  if (!recipient) throw new Error("Bitcoin recipient is required");
+  if (!getEvmChainConfig(srcChain)) throw new Error(`Unsupported EVM source chain: ${srcChain}`);
+
+  const normalizedSrcToken = normalizeTokenAddress(srcToken);
+  const normalizedAmount = toPositiveIntegerString(amount, "amount");
+  const srcAsset = tokenAsset(srcChain, normalizedSrcToken);
+  let quoteResult = null;
+  let quote = null;
+  let amountUsd = null;
+  let gatewayError = null;
+  let blockedReason = null;
+
+  try {
+    quoteResult = await client.getQuote({
+      srcChain,
+      dstChain: "bitcoin",
+      srcToken: normalizedSrcToken,
+      dstToken: ZERO_TOKEN,
+      amount: normalizedAmount,
+      sender: senderAddress,
+      recipient,
+      slippage: String(slippageBps),
+    });
+    quote = normalizeOfframpQuoteBody(quoteResult.body);
+    const prices = await priceReader();
+    amountUsd = amountUsdFromQuote(quote, srcAsset, prices);
+  } catch (error) {
+    if (isDeterministicGatewayBlock(error)) {
+      blockedReason = classifyGatewayBlockedReason(error);
+      gatewayError = serializeGatewayError(error);
+    } else {
+      throw error;
+    }
+  }
+
+  return {
+    schemaVersion: 1,
+    observedAt: now,
+    planStatus: quote ? "ready" : "blocked",
+    blockedReason,
+    gatewayError,
+    strategyId: GATEWAY_BTC_OFFRAMP_STRATEGY_ID,
+    senderAddress,
+    recipient,
+    executionReady: false,
+    quoteOnly: true,
+    route: {
+      srcChain,
+      dstChain: "bitcoin",
+      srcToken: normalizedSrcToken,
+      dstToken: ZERO_TOKEN,
+    },
+    srcAsset,
+    amount: normalizedAmount,
+    amountUsd,
+    quote: quote
+      ? {
+          observedAt: now,
+          latencyMs: quoteResult?.latencyMs ?? null,
+          inputAmount: quote.inputAmount,
+          outputAmount: quote.outputAmount,
+          fees: quote.fees || null,
+          feeBreakdown: quote.feeBreakdown || null,
+          estimatedTimeInSecs: quote.estimatedTimeInSecs ?? null,
+          txTo: quote.txTo,
+          sender: senderAddress,
+          recipient,
+        }
+      : null,
+    order: null,
+    gasPreflight: null,
+    intent: null,
+  };
+}
+
 export async function executeGatewayBtcOfframpPlan({
   plan,
   sendCommand = sendSignerCommand,

@@ -108,6 +108,11 @@ function dryRunFirstLikelyAllowed(allChainReport = null) {
 function normalizeCurrent({ paybackStatus = null } = {}) {
   const payback = normalizePaybackSlice(paybackStatus);
   const minimum = minimumProgress(payback);
+  const preMinimumPreview =
+    payback?.scheduler?.preMinimumCompositePreview ||
+    payback?.carry?.costPreview ||
+    paybackStatus?.preMinimumCompositePreview ||
+    null;
   return {
     schedulerStatus: payback?.scheduler?.status || paybackStatus?.decision?.status || null,
     schedulerReason: payback?.scheduler?.reason || paybackStatus?.decision?.reason || null,
@@ -125,6 +130,14 @@ function normalizeCurrent({ paybackStatus = null } = {}) {
     compositePreviewReason: paybackStatus?.compositePreview?.reason || null,
     plannedPaybackSats: firstFinite(paybackStatus, ["compositePreview.plannedPaybackSats"]),
     estimatedOfframpCostSats: firstFinite(paybackStatus, ["compositePreview.estimatedOfframpCostSats"]),
+    preMinimumCompositePreviewStatus: preMinimumPreview?.status || null,
+    preMinimumCompositePreviewReason: preMinimumPreview?.reason || null,
+    preMinimumExecutionEligible: preMinimumPreview?.executionEligible === true,
+    preMinimumIntentEligible: preMinimumPreview?.intentEligible === true,
+    preMinimumPreviewInputSats: firstFinite(preMinimumPreview, ["previewInputSats"]),
+    preMinimumEstimatedOfframpCostSats: firstFinite(preMinimumPreview, ["estimatedOfframpCostSats"]),
+    preMinimumEstimatedNetPaybackSats: firstFinite(preMinimumPreview, ["estimatedNetPaybackSats", "plannedPaybackSats"]),
+    preMinimumSatsToMinimumAfterCosts: firstFinite(preMinimumPreview, ["satsToMinimumAfterCosts"]),
     lastPaybackSettledSats: firstFinite(payback, ["lastPaybackSettledSats"]),
     lastPaybackSettledAt: payback?.lastPaybackSettledAt || null,
   };

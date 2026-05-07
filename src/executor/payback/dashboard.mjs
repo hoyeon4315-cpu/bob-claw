@@ -2,7 +2,7 @@ import { join } from "node:path";
 import snapshotPaybackAccumulator, { profitSatsFromRecord } from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
-import { buildPaybackDecision } from "./scheduler.mjs";
+import { buildPaybackDecision, buildPreMinimumPaybackCostPreview } from "./scheduler.mjs";
 import { PAYBACK_CONFIG } from "../../config/payback.mjs";
 import { ACTIVE_SLEEVE_PROFILE_ID, SLEEVE_PROFILES, resolveSleeveProfile } from "../../config/sleeve-profile.mjs";
 import { listStrategyCaps, resolveStrategyCapMatrix } from "../../config/strategy-caps.mjs";
@@ -593,6 +593,7 @@ export async function buildPaybackDashboardSlice({
   auditLogLines = null,
   receiptStore = null,
   decisionBuilder = buildPaybackDecision,
+  preMinimumCostPreviewBuilder = buildPreMinimumPaybackCostPreview,
   writeProposedPatch = true,
 } = {}) {
   const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
@@ -628,6 +629,27 @@ export async function buildPaybackDashboardSlice({
     decision?.reason === "planned_payback_below_minimum"
       ? currentMinimumPaybackProgress
       : previewMinimumPaybackProgress;
+  let preMinimumCompositePreview = null;
+  if (
+    decision?.status === "carry" &&
+    decision?.reason === "planned_payback_below_minimum" &&
+    typeof preMinimumCostPreviewBuilder === "function"
+  ) {
+    try {
+      preMinimumCompositePreview = await preMinimumCostPreviewBuilder({
+        decision,
+        now,
+      });
+    } catch (error) {
+      preMinimumCompositePreview = {
+        status: "blocked",
+        reason: "pre_minimum_preview_failed",
+        error: error.message,
+        executionEligible: false,
+        intentEligible: false,
+      };
+    }
+  }
   const estimatedPeriodsToFirstPayback = buildEstimatedPeriodsToFirstPayback({
     now,
     minimumProgress: effectiveMinimumProgress,
@@ -689,6 +711,7 @@ export async function buildPaybackDashboardSlice({
             ...previewMinimumPaybackProgress,
           }
         : null,
+      preMinimumCompositePreview,
     },
     carry: {
       active: decision?.reason === "planned_payback_below_minimum",
@@ -696,6 +719,7 @@ export async function buildPaybackDashboardSlice({
       pendingSats: snapshot.pendingDeferredSats,
       pendingSatsProvenance: snapshot.profitSatsProvenance?.pendingDeferred || null,
       remainingSatsToMinimum: effectiveMinimumProgress?.satsToMinimumPayback ?? null,
+      costPreview: preMinimumCompositePreview,
       progressToMinimumRatio: effectiveMinimumProgress?.progressToMinimumRatio ?? null,
       requiredGrossProfitSats: effectiveMinimumProgress?.requiredGrossProfitSats ?? null,
       roundTripEfficiencyPeriod: snapshot.kpi?.roundTripEfficiency_period ?? 0,

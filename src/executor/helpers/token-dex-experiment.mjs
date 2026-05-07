@@ -204,6 +204,7 @@ export async function buildTokenDexExperimentPlan({
   outputToken,
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  quoteOnly = false,
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
@@ -330,6 +331,35 @@ export async function buildTokenDexExperimentPlan({
     executableQuote = result.executableQuote;
     providerName = result.provider;
     const amountUsd = Number(executableQuote.inputValueUsd ?? 0);
+    if (quoteOnly) {
+      return {
+        schemaVersion: 1,
+        observedAt: now,
+        planStatus: "ready",
+        blockedReason: null,
+        preflightError: null,
+        strategyId,
+        chain,
+        senderAddress,
+        inputToken: normalizedInputToken,
+        inputAsset,
+        outputToken: unwrapToNative ? ZERO_TOKEN : normalizedOutputToken,
+        wrappedOutputToken: unwrapToNative ? normalizedOutputToken : null,
+        outputAsset,
+        amount: normalizedAmount,
+        amountUsd: amountUsd || null,
+        quoteTtlMs: strategyCaps.intentTtlMs,
+        slippageBps: Number(slippageBps),
+        gasBufferBps: Math.max(10_000, toPositiveInteger(gasBufferBps, "gasBufferBps")),
+        quote: executableQuote,
+        quoteOnly: true,
+        executionReady: false,
+        gasSnapshot: null,
+        gasSnapshotError: null,
+        minimumOutputAmount: quote?.outputAmount ? minimumOutputAmount(quote.outputAmount, slippageBps).toString() : null,
+        steps: [],
+      };
+    }
     try {
       gasSnapshot = await gasSnapshotImpl(chain, getEvmChainConfig(chain));
     } catch (error) {

@@ -9,6 +9,7 @@ import {
   GATEWAY_BTC_CONSOLIDATION_STRATEGY_ID,
 } from "../helpers/gateway-btc-consolidation.mjs";
 import {
+  buildGatewayBtcOfframpQuotePreview,
   buildGatewayBtcOfframpPlan,
   executeGatewayBtcOfframpPlan,
   GATEWAY_BTC_OFFRAMP_STRATEGY_ID,
@@ -884,6 +885,176 @@ export async function buildCompositePaybackPlan({
       decisionLog: compositePlan.decisionLog,
     },
     compositePlan,
+  };
+}
+
+export async function buildPreMinimumPaybackCostPreview({
+  decision,
+  paybackConfig = PAYBACK_CONFIG,
+  signerHealthReader = readSignerHealth,
+  tokenDexPlanBuilder = buildTokenDexExperimentPlan,
+  consolidationPlanBuilder = buildGatewayBtcConsolidationPlan,
+  offrampQuoteBuilder = buildGatewayBtcOfframpQuotePreview,
+  now = new Date().toISOString(),
+} = {}) {
+  const blocked = (reason, extra = {}) => ({
+    schemaVersion: 1,
+    observedAt: now,
+    status: "blocked",
+    reason,
+    executionEligible: false,
+    intentEligible: false,
+    compositePlan: null,
+    steps: [],
+    ...extra,
+  });
+
+  if (decision?.status !== "carry" || decision?.reason !== "planned_payback_below_minimum") {
+    return blocked(decision?.reason || "decision_not_pre_minimum", { decisionStatus: decision?.status || null });
+  }
+
+  const policy = loadPaybackPolicyConfig(paybackConfig);
+  const reserve = decision.reserveState;
+  if (!reserve?.chain || !reserve?.inputToken) return blocked("reserve_asset_missing");
+
+  let health = null;
+  try {
+    health = await signerHealthReader();
+  } catch (error) {
+    return blocked("signer_health_unavailable", { error: error.message });
+  }
+  const senderAddress = reserve.senderAddress || health?.addresses?.[reserve.chain] || health?.addresses?.base || null;
+  const recipient = decision.recipient || getEnv(policy.destinationPath.bitcoinDestAddressEnv, null);
+  if (!senderAddress) return blocked("signer_base_address_missing");
+  if (!recipient) return blocked("payback_btc_destination_missing");
+
+  const grossTargetBeforeCostsSats =
+    finiteNonNegative(decision.decisionLog?.inputs?.grossTargetBeforeCostsSats) ??
+    finiteNonNegative(decision.decisionLog?.applied?.grossTargetBeforeCostsSats) ??
+    0;
+  const previewInputSats = Math.max(policy.minPaybackSats, grossTargetBeforeCostsSats);
+  const reserveToken = reserve.inputToken;
+  const routeSideToken = reserve.routeSideToken || WBTC_OFT_TOKEN;
+  let swapPlan = null;
+  let bridgePlan = null;
+  let bridgeSkipped = false;
+  let bridgeInputAmount = String(previewInputSats);
+  const steps = [];
+
+  if (String(reserveToken).toLowerCase() !== String(routeSideToken).toLowerCase()) {
+    swapPlan = await tokenDexPlanBuilder({
+      chain: reserve.chain,
+      amount: reserve.amount,
+      senderAddress,
+      inputToken: reserveToken,
+      outputToken: routeSideToken,
+      quoteOnly: true,
+      now,
+    });
+    if (swapPlan.planStatus !== "ready") {
+      return blocked(`swap_quote_blocked:${swapPlan.blockedReason || "unknown"}`, {
+        grossTargetBeforeCostsSats,
+        previewInputSats,
+        minPaybackSats: policy.minPaybackSats,
+        steps,
+      });
+    }
+    bridgeInputAmount = positiveIntegerString(swapPlan.minimumOutputAmount || swapPlan.quote?.outputAmount || reserve.amount, "bridgeInputAmount");
+    steps.push({
+      id: "destination_reserve_to_wrapped_btc_swap",
+      kind: "token_dex_swap_quote",
+      status: "preview",
+      intentEligible: false,
+    });
+  }
+
+  let offrampInputAmount = bridgeInputAmount;
+  if (reserve.chain === "bob" && String(routeSideToken).toLowerCase() === String(WBTC_OFT_TOKEN).toLowerCase()) {
+    bridgeSkipped = true;
+  } else {
+    bridgePlan = await consolidationPlanBuilder({
+      srcChain: reserve.chain,
+      dstChain: "bob",
+      srcToken: routeSideToken,
+      dstToken: WBTC_OFT_TOKEN,
+      amount: bridgeInputAmount,
+      senderAddress,
+      recipient: senderAddress,
+      skipPreflight: true,
+      now,
+    });
+    if (bridgePlan.planStatus !== "ready" || bridgePlan.intent) {
+      return blocked(`composer_bridge_quote_blocked:${bridgePlan.blockedReason || "unknown"}`, {
+        grossTargetBeforeCostsSats,
+        previewInputSats,
+        minPaybackSats: policy.minPaybackSats,
+        steps,
+      });
+    }
+    offrampInputAmount = positiveIntegerString(bridgePlan.quote?.outputAmount?.amount || bridgeInputAmount, "offrampInputAmount");
+    steps.push({
+      id: "layerzero_composer_to_bob",
+      kind: "gateway_btc_consolidation_quote",
+      status: "preview",
+      intentEligible: false,
+    });
+  }
+
+  const offrampPlan = await offrampQuoteBuilder({
+    srcChain: bridgeSkipped ? reserve.chain : "bob",
+    srcToken: WBTC_OFT_TOKEN,
+    amount: offrampInputAmount,
+    senderAddress,
+    recipient,
+    now,
+  });
+  if (offrampPlan.planStatus !== "ready" || offrampPlan.intent || offrampPlan.order) {
+    return blocked(`gateway_offramp_quote_blocked:${offrampPlan.blockedReason || "unknown"}`, {
+      grossTargetBeforeCostsSats,
+      previewInputSats,
+      minPaybackSats: policy.minPaybackSats,
+      steps,
+    });
+  }
+  steps.push({
+    id: "gateway_offramp_to_bitcoin",
+    kind: "gateway_btc_offramp_quote",
+    status: "preview",
+    intentEligible: false,
+  });
+
+  const estimatedOfframpCostSats = estimateCompositeCostSats({
+    swapPlan,
+    bridgePlan,
+    offrampPlan,
+    btcUsd: finiteNumber(decision.snapshot?.btcUsd) ?? finiteNumber(decision.snapshot?.kpi?.btcUsd) ?? null,
+  });
+  const estimatedNetPaybackSats = Math.max(0, grossTargetBeforeCostsSats - estimatedOfframpCostSats);
+  const requiredGrossBeforeCostsSats = policy.minPaybackSats + estimatedOfframpCostSats;
+  return {
+    schemaVersion: 1,
+    observedAt: now,
+    status: "preview",
+    reason: "cost_only_pre_minimum",
+    executionEligible: false,
+    intentEligible: false,
+    compositePlan: null,
+    grossTargetBeforeCostsSats,
+    previewInputSats,
+    minPaybackSats: policy.minPaybackSats,
+    requiredGrossBeforeCostsSats,
+    estimatedOfframpCostSats,
+    estimatedNetPaybackSats,
+    satsToMinimumAfterCosts: Math.max(0, requiredGrossBeforeCostsSats - grossTargetBeforeCostsSats),
+    route: {
+      reserveChain: reserve.chain,
+      reserveToken,
+      routeSideToken,
+      composerRoute: policy.destinationPath.composerRoute,
+      offrampStage: policy.destinationPath.gatewayOfframpStage,
+      bitcoinDestAddressEnv: policy.destinationPath.bitcoinDestAddressEnv,
+    },
+    steps,
   };
 }
 

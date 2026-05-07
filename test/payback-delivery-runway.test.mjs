@@ -47,6 +47,43 @@ test("runway prioritizes profit creation when payback is below minimum", () => {
   assert.equal(report.nextActions[1].code, "satisfy_top_canary_ev_floor");
 });
 
+test("runway keeps profit creation required when pre-minimum cost preview is present", () => {
+  const report = buildPaybackDeliveryRunway({
+    now: "2026-05-07T00:00:00.000Z",
+    paybackStatus: {
+      payback: {
+        grossProfitSatsPeriod: 601,
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+          minimumPaybackProgress: {
+            grossTargetBeforeCostsSats: 120,
+            minPaybackSats: 50_000,
+            requiredGrossProfitSats: 250_000,
+            satsToMinimumPayback: 49_880,
+            progressToMinimumRatio: 0.0024,
+          },
+          preMinimumCompositePreview: {
+            status: "preview",
+            reason: "cost_only_pre_minimum",
+            executionEligible: false,
+            intentEligible: false,
+            estimatedOfframpCostSats: 4_750,
+            estimatedNetPaybackSats: 0,
+            satsToMinimumAfterCosts: 54_630,
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(report.status, "profit_creation_required");
+  assert.equal(report.current.preMinimumCompositePreviewStatus, "preview");
+  assert.equal(report.current.preMinimumEstimatedOfframpCostSats, 4_750);
+  assert.equal(report.current.preMinimumIntentEligible, false);
+  assert.equal(report.nextActions[0].code, "create_payback_eligible_realized_pnl");
+});
+
 test("runway marks payback delivery ready when composite preview is ready", () => {
   const report = buildPaybackDeliveryRunway({
     paybackStatus: {

@@ -8,6 +8,7 @@ import {
   buildCompositePaybackPlan,
   buildPaybackDecision,
   buildPaybackDisbursementRecord,
+  buildPreMinimumPaybackCostPreview,
   matchesCronExpression,
   runPaybackSchedulerTick,
   submitCompositePaybackPlan,
@@ -180,6 +181,122 @@ test("payback scheduler carries below minimum even when reserve inventory is mis
 
   assert.equal(result.status, "carry");
   assert.equal(result.reason, "planned_payback_below_minimum");
+});
+
+test("pre-minimum payback cost preview is quote-only and never returns executable intents", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const decision = await buildPaybackDecision({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "40000",
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 200_000,
+    }),
+  });
+  assert.equal(decision.status, "carry");
+
+  const preview = await buildPreMinimumPaybackCostPreview({
+    decision,
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    signerHealthReader: async () => ({
+      addresses: {
+        base: "0x1111111111111111111111111111111111111111",
+      },
+    }),
+    consolidationPlanBuilder: async ({ skipPreflight }) => ({
+      ...consolidationPlanFixture(),
+      skipPreflight,
+      executionReady: false,
+      intent: null,
+    }),
+    offrampQuoteBuilder: async () => ({
+      planStatus: "ready",
+      intent: null,
+      order: null,
+      quote: {
+        fees: { amount: "4000" },
+        inputAmount: { amount: "50000" },
+        outputAmount: { amount: "46000" },
+      },
+    }),
+  });
+
+  assert.equal(preview.status, "preview");
+  assert.equal(preview.executionEligible, false);
+  assert.equal(preview.intentEligible, false);
+  assert.equal(preview.previewInputSats, 50_000);
+  assert.equal(preview.grossTargetBeforeCostsSats, 40_000);
+  assert.equal(preview.estimatedOfframpCostSats, 4_750);
+  assert.equal(preview.estimatedNetPaybackSats, 35_250);
+  assert.equal(preview.satsToMinimumAfterCosts, 14_750);
+  assert.equal(preview.steps.every((step) => step.intentEligible === false), true);
+  assert.equal(preview.steps.some((step) => step.intent), false);
+});
+
+test("composite payback plan remains non-plannable while below minimum", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const decision = await buildPaybackDecision({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "40000",
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 200_000,
+    }),
+  });
+  const result = await buildCompositePaybackPlan({
+    decision,
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+  });
+
+  assert.equal(result.status, "carry");
+  assert.equal(result.reason, "planned_payback_below_minimum");
+  assert.equal(result.compositePlan, null);
+});
+
+test("payback scheduler tick does not build or submit composite plan while below minimum", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+  let consolidationCalled = false;
+  let offrampCalled = false;
+
+  const result = await runPaybackSchedulerTick({
+    paybackConfig: PAYBACK_POLICY_FIXTURE,
+    execute: true,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "40000",
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 200_000,
+    }),
+    consolidationPlanBuilder: async () => {
+      consolidationCalled = true;
+      return consolidationPlanFixture();
+    },
+    offrampPlanBuilder: async () => {
+      offrampCalled = true;
+      return offrampPlanFixture();
+    },
+    killSwitchPath: null,
+  });
+
+  assert.equal(result.status, "carry");
+  assert.equal(result.reason, "planned_payback_below_minimum");
+  assert.equal(result.compositePlan, null);
+  assert.equal(result.execution, null);
+  assert.equal(consolidationCalled, false);
+  assert.equal(offrampCalled, false);
 });
 
 test("payback decision reports missing destination config before carry", async () => {
