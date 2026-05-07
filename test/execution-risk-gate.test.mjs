@@ -177,6 +177,55 @@ test("risk gate does not pin refill execution after signer socket outage failure
   assert.equal(decision.blockers.includes("max_consecutive_failures_reached"), false);
 });
 
+test("risk gate counts no-broadcast key environment failures as terminal live failures", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T06:10:00.000Z",
+    inventory: inventoryFixture(280),
+    receiptRecords: [],
+    executionEvents: [
+      {
+        observedAt: "2026-04-11T06:01:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token"],
+        txHashes: [],
+        error: {
+          message: "buildTransactionRequest failed for ethereum across 3 RPC endpoint(s): BURNER_EVM_KEY_PATH (or BURNER_PRIVATE_KEY_PATH) is required",
+        },
+      },
+      {
+        observedAt: "2026-04-11T06:02:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token"],
+        txHashes: [],
+        error: {
+          message: "buildTransactionRequest failed for ethereum across 3 RPC endpoint(s): BURNER_EVM_KEY_PATH (or BURNER_PRIVATE_KEY_PATH) is required",
+        },
+      },
+      {
+        observedAt: "2026-04-11T06:03:00.000Z",
+        status: "failed",
+        stepIds: ["approve_input_token"],
+        txHashes: [],
+        error: {
+          message: "buildTransactionRequest failed for ethereum across 3 RPC endpoint(s): BURNER_EVM_KEY_PATH (or BURNER_PRIVATE_KEY_PATH) is required",
+        },
+      },
+    ],
+  });
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({ type: "refill_token" }),
+    riskState,
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(riskState.infrastructureFailureCount, 3);
+  assert.equal(riskState.consecutiveFailures, 3);
+  assert.equal(decision.decision, "BLOCKED");
+  assert.equal(decision.blockers.includes("max_consecutive_failures_reached"), true);
+});
+
 test("risk state ignores approval-only partial failures when the main step never executes", () => {
   const riskState = buildExecutionRiskState({
     now: "2026-04-11T06:10:00.000Z",

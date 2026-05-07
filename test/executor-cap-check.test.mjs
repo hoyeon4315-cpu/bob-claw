@@ -987,3 +987,25 @@ test("LI.FI bridge caps admit Avalanche as a live source chain", () => {
   assert.equal(result.decision, "ALLOW");
   assert.equal(result.blockers.includes("strategy_per_chain_cap_missing"), false);
 });
+
+test("LI.FI approval cap override blocks oversized source approvals", () => {
+  const caps = assertStrategyCaps("lifi-bridge");
+
+  const result = evaluateCapCheck({
+    intent: {
+      strategyId: "lifi-bridge",
+      chain: "base",
+      mode: "live",
+      amountUsd: 140,
+      intentType: "approve_exact",
+      metadata: {
+        capCheckAmountUsd: 147,
+      },
+    },
+    strategyCaps: caps,
+    auditRecords: [],
+  });
+
+  assert.equal(result.decision, "BLOCK");
+  assert.equal(result.blockers.includes("strategy_per_tx_cap_exceeded"), true);
+});

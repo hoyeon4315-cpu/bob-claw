@@ -118,6 +118,21 @@ test("stage evaluator progresses monotonically from A to B to C", () => {
   assert.equal(stageC.currentStage, "C");
 });
 
+test("stage evaluator keeps Stage C blocked until payback delivery proof exists", () => {
+  const result = evaluateStage({
+    marksSlice: marksSlice(),
+    capitalPlan: capitalPlan({
+      unresolvedRefillRoutes: 0,
+    }),
+    evGateStats: evGateStats(),
+  });
+
+  assert.equal(result.currentStage, "B");
+  assert.equal(result.blockers.includes("receipt_proven_payback_period_missing"), true);
+  assert.equal(result.evidence.paybackReceiptProof.ready, false);
+  assert.equal(result.evidence.paybackReceiptProof.blocker, "receipt_proven_payback_period_missing");
+});
+
 test("stage evaluator demotes Stage C readiness to B when refresh stays below 0.90 for one hour", () => {
   const result = evaluateStage({
     marksSlice: marksSlice({

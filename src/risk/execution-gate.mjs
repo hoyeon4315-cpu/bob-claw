@@ -114,6 +114,14 @@ function isSignerAvailabilityFailure(record = {}) {
   return /ECONNREFUSED.+executor-signer\.sock|executor-signer\.sock.+ECONNREFUSED/u.test(errorMessage(record));
 }
 
+function isKeyEnvironmentFailure(record = {}) {
+  if (record.status !== "failed") return false;
+  if (hasExecutionProgressEvidence(record)) return false;
+  const txHashes = Array.isArray(record.txHashes) ? record.txHashes.filter(Boolean) : [];
+  if (txHashes.length > 0) return false;
+  return /BURNER_EVM_KEY_PATH|BURNER_PRIVATE_KEY_PATH|BURNER_BTC_KEY_PATH/u.test(errorMessage(record));
+}
+
 function hasExecutionProgressEvidence(record = {}) {
   return Boolean(
     record.sourceBalanceAfter ||
@@ -147,7 +155,9 @@ export function buildExecutionRiskState({
 } = {}) {
   const receipt24h = receiptRecords.filter((item) => hoursAgo(item.observedAt, now) <= 24);
   const terminal = latestTerminalStatuses(executionEvents, resumeAfterFailureAt);
-  const infrastructureFailureCount = executionEvents.filter(isSignerAvailabilityFailure).length;
+  const infrastructureFailureCount = executionEvents.filter((item) =>
+    isSignerAvailabilityFailure(item) || isKeyEnvironmentFailure(item)
+  ).length;
 
   let consecutiveFailures = 0;
   for (const item of terminal) {

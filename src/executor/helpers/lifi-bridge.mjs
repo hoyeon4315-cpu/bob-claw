@@ -136,8 +136,20 @@ async function lifiQuote({ apiBase = LIFI_API_BASE, fetchImpl = fetch, params })
 function amountUsdFromRaw(rawAmount, asset, prices, fallbackPriceUsd = null) {
   const priceUsd = Number.isFinite(Number(fallbackPriceUsd)) ? Number(fallbackPriceUsd) : priceForAssetUsd(asset, prices);
   if (!Number.isFinite(priceUsd)) return null;
+  if (!Number.isInteger(asset.decimals) || asset.decimals < 0) {
+    const error = new Error(`Missing token decimals for LI.FI source asset: ${asset.chain}:${asset.token}`);
+    error.name = "TokenDecimalsMissing";
+    error.blockedReason = "missing_src_token_decimals";
+    throw error;
+  }
   const decimalAmount = Number(BigInt(rawAmount)) / 10 ** asset.decimals;
   return Number((decimalAmount * priceUsd).toFixed(6));
+}
+
+function approvalCapCheckAmountUsd(amountUsd) {
+  const value = Number(amountUsd);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Number((value * 1.05).toFixed(6));
 }
 
 function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
@@ -306,7 +318,7 @@ export async function buildLifiBridgePlan({
             gasLimit: String(applyGasBuffer(approvalGasPreflight.gasUnits, gasBuffer)),
           },
           metadata: {
-            capCheckAmountUsd: 0,
+            capCheckAmountUsd: approvalCapCheckAmountUsd(amountUsd),
             srcToken,
             dstToken,
           },
@@ -332,7 +344,7 @@ export async function buildLifiBridgePlan({
       },
     ];
   } catch (error) {
-    blockedReason = error.name === "LifiQuoteError" ? "lifi_quote_rejected" : classifyGasEstimateError(error);
+    blockedReason = error.blockedReason || (error.name === "LifiQuoteError" ? "lifi_quote_rejected" : classifyGasEstimateError(error));
     lifiError = serializeError(error);
     preflightError = error.name === "LifiQuoteError" ? null : serializeError(error);
   }
