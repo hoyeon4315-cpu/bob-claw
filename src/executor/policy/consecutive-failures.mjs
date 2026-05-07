@@ -49,6 +49,10 @@ function isApprovalRevocationIntent(intent = {}) {
   }
 }
 
+function isApprovalIntentRecord(record = {}) {
+  return record.intent?.intentType === "approve_exact" || record.intentType === "approve_exact";
+}
+
 function recordBlockers(record = {}) {
   const candidates = [
     record.blockers,
@@ -87,6 +91,15 @@ export function classifyConsecutiveFailureRecord(record = {}) {
 
   if (isResetRecord(record)) return "reset";
   if (record.strategyId === "prelive_fork_execution" && stage === "rejected" && !broadcasted) {
+    return null;
+  }
+
+  if (
+    isApprovalIntentRecord(record) &&
+    (stage === "broadcasted" ||
+      stage === "confirmed" ||
+      (record.policyVerdict === "approved" && broadcasted))
+  ) {
     return null;
   }
 

@@ -464,6 +464,89 @@ test("successful broadcast on the same strategy and chain resets the auto-pause 
   assert.equal(state.consecutiveFailures, 1);
 });
 
+test("approval-only successes do not reset downstream execution failure streaks", async () => {
+  const strategyId = "beefy-folding-vault";
+  const auditRecords = [
+    {
+      strategyId,
+      chain: "base",
+      intentId: "beefy:approve:1",
+      intentHash: "approve-1",
+      timestamp: "2026-05-07T19:11:37.771Z",
+      policyVerdict: "approved",
+      intent: { intentType: "approve_exact" },
+      lifecycle: { stage: "confirmed" },
+    },
+    {
+      strategyId,
+      chain: "base",
+      intentId: "beefy:deposit:1",
+      intentHash: "deposit-1",
+      timestamp: "2026-05-07T19:11:43.846Z",
+      policyVerdict: "errored",
+      intent: { intentType: "vault_deposit" },
+      lifecycle: { stage: "reverted" },
+    },
+    {
+      strategyId,
+      chain: "base",
+      intentId: "beefy:approve:2",
+      intentHash: "approve-2",
+      timestamp: "2026-05-07T21:45:08.060Z",
+      policyVerdict: "approved",
+      intent: { intentType: "approve_exact" },
+      lifecycle: { stage: "confirmed" },
+    },
+    {
+      strategyId,
+      chain: "base",
+      intentId: "beefy:deposit:2",
+      intentHash: "deposit-2",
+      timestamp: "2026-05-07T21:45:14.569Z",
+      policyVerdict: "errored",
+      intent: { intentType: "vault_deposit" },
+      lifecycle: { stage: "reverted" },
+    },
+  ];
+
+  const state = buildConsecutiveFailureState({
+    strategyId,
+    chain: "base",
+    auditRecords,
+  });
+
+  assert.equal(state.consecutiveFailures, 2);
+  assert.equal(state.successfulBroadcastCount, 0);
+
+  const policy = await evaluateIntentPolicies({
+    intent: intentFixture({
+      strategyId,
+      chain: "base",
+      intentType: "vault_deposit",
+      amountUsd: 10,
+      metadata: {
+        capCheckAmountUsd: 10,
+      },
+    }),
+    auditRecords: [
+      ...auditRecords,
+      {
+        strategyId,
+        chain: "base",
+        intentId: "beefy:deposit:3",
+        intentHash: "deposit-3",
+        timestamp: "2026-05-07T21:46:00.000Z",
+        policyVerdict: "errored",
+        intent: { intentType: "vault_deposit" },
+        lifecycle: { stage: "reverted" },
+      },
+    ],
+    now: "2026-05-07T21:47:00.000Z",
+  });
+
+  assert.equal(policy.blockers.includes("max_consecutive_failures_reached"), true);
+});
+
 test("policy rejections and no-tx errors do not trip the 3-strike auto-pause", async () => {
   const policy = await evaluateIntentPolicies({
     intent: intentFixture({
