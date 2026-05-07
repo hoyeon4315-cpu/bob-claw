@@ -74,7 +74,7 @@ BNBAgent의 `budget >= service_price` 검증은 단순하지만, BOB Claw에는 
 
 개선 아이디어:
 
-- radar/campaign 후보의 `expectedNetPnlUsd`, p90/p99 cost, reward-token haircut, claim/swap cost를 “job budget 검증”처럼 한 화면에서 판정
+- radar/campaign 후보의 canonical `expectedNetUsd`, p90/p99 cost, reward-token haircut, claim/swap cost를 “job budget 검증”처럼 한 화면에서 판정
 - no-tx rejection과 realized loss를 분리해 ladder pause/retry 이유를 더 명확히 기록
 - USD projection 옆에 sats/BTC-relative report field를 항상 유지
 

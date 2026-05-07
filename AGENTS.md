@@ -6,6 +6,11 @@
   `docs/system-map.md` and `docs/harness-engineering.md` after this file.
   They are implementation maps only; this `AGENTS.md` remains the operating
   law if any document conflicts.
+- The engineering confidence standard is **evidence-complete confidence**, not
+  literal certainty about future markets: every repo-visible caller is
+  accounted for, no known operating-law loophole remains, targeted and full
+  checks pass, docs match code, and final diff review confirms no live-path
+  regression.
 
 ## Core Context
 
@@ -41,6 +46,7 @@
 ## Execution Safety
 
 - This system is designed for unattended, multichain, fully-automated execution. There is no manual promotion step and no tiered phase gate. A strategy runs the moment its config declares `autoExecute: true` with valid caps committed to the repo; it halts the moment the kill-switch file exists, the drawdown limit trips, or its caps are breached.
+- Stage, readiness, admission, promotion, destination, and dashboard labels are advisory/reporting metadata only. They may help rank work or explain evidence gaps, but they must not block a cap-valid `autoExecute: true` strategy outside the deterministic proposer -> policy -> signer path.
 - Private keys live only inside the signer daemon process, loaded from OS keystore files via env-referenced paths: `BURNER_EVM_KEY_PATH` for all EVM chains, `BURNER_BTC_KEY_PATH` for native BTC signing. (`BURNER_PRIVATE_KEY_PATH` is a backwards-compat alias pointing to the EVM key.) Keys must never appear in: LLM context (Claude / Codex / Copilot chat transcripts), dashboards, Telegram handlers, the repo, tool call arguments, logs, or audit files. Code written by any LLM may reference the key only via the env/path indirection — never the value.
 - No LLM in the trade execution decision path. LLMs propose strategies, write code, and edit configs via committed diffs; a deterministic policy engine validates every intent; the signer signs only after policy approval. "Vibe coding" does not cross this line — code may be written by an LLM, but the runtime decision to sign is always policy code, not an LLM. **This rule applies identically to the payback engine**: payback amount, timing, and offramp-trigger decisions are deterministic rule-engine output, never LLM output.
 - **There is no embedded runtime LLM in this system.** The only LLMs that touch the repo are coding agents (Claude Code / Codex / Copilot) operating during a coding session under explicit operator instruction. A coding-session LLM **may**, on explicit operator request, (a) toggle the kill-switch on/off via `npm run kill:on|kill:off|kill:status` and (b) launch or restart deterministic execution daemons (`executor:daemon`, `executor:watchdog`, autopilot loops, payback scheduler). Every kill-switch toggle is appended to `logs/kill-switch-audit.jsonl` with timestamp, action, reason, and actor. The coding LLM still **must not** raise caps, flip `autoExecute` at runtime through any side channel, sign transactions outside of policy approval, or make payback ratio/timing decisions — those still require committed config diffs and deterministic rule-engine output.
@@ -214,7 +220,7 @@ The dev-automation lane is the pipeline by which a coding-session LLM (or the op
 
 The operator (or a coding-session LLM acting on operator request) holds the dev-lock while hand-coding so background automation does not race with in-progress edits. The kill-switch is for live trade safety and is independent.
 
-**Auto-promotion gate (deterministic, never an LLM judgment call).** `src/config/auto-promotion.mjs` declares the thresholds — walk-forward Sharpe, max drawdown, regime-change minimum, sample-period minimum, shadow consecutive-positive periods, shadow net-of-measured-cost positivity, quote success rate, oracle divergence, slippage, edge-above-cost-variance, OOS holdout, and regime-breakdown coverage. `src/executor/auto-promotion-gate.mjs` is a pure function that takes an evidence file and the config and returns `{ passed, blockers, evaluated, initialCanaryCaps }`. Promotion to live is only allowed when `passed === true`. Threshold changes require a committed diff to `src/config/auto-promotion.mjs` with rationale.
+**Auto-promotion gate (coding-session dev guard, deterministic, never an LLM judgment call).** `src/config/auto-promotion.mjs` declares the thresholds — walk-forward Sharpe, max drawdown, regime-change minimum, sample-period minimum, shadow consecutive-positive periods, shadow net-of-measured-cost positivity, quote success rate, oracle divergence, slippage, edge-above-cost-variance, OOS holdout, and regime-breakdown coverage. `src/executor/auto-promotion-gate.mjs` is a pure function that takes an evidence file and the config and returns `{ passed, blockers, evaluated, initialCanaryCaps }`. Coding-session LLMs must use it as a commit guard before proposing `autoExecute: true`; it is not a runtime phase gate, not a signer input, and not a manual promotion step. Threshold changes require a committed diff to `src/config/auto-promotion.mjs` with rationale.
 
 **Auto-research loop bounds (2026-05-03).** `src/cli/auto-research-loop.mjs` and `src/cli/auto-research-pipeline.mjs` may iterate triage -> scaffold -> score only inside the committed loop limits: 20 iterations, 2 hours wall clock, $2 cumulative Codex spend per loop run, 3 repeated identical failures, 15 files, and 400 diff lines. The loop writes `logs/auto-research-audit.jsonl`; it never auto-merges, never raises caps, never toggles kill/dev locks, and never converts a dry-run Codex stub into evidence.
 
@@ -246,6 +252,7 @@ The operator (or a coding-session LLM acting on operator request) holds the dev-
 - The browser may only read `dashboard/public/dashboard-status.json`; do not publish raw JSONL data.
 - Dashboard copy must stay user-facing and visual. Avoid internal schema, signer, executor, or strategy jargon.
 - `liveTrading` reflects whether the daemon's policy gate currently passes. `ALLOWED` is a normal state, not an exceptional one. The dashboard still must not hold keys, sign, or decide whether to trade — it only reports the gate state.
+- Destination scoring artifacts, including `destination-promotion-gate.json`, are score sources for Capital Manager and reports only. They carry `scoreSourceOnly` / `runtimeAuthority: "none"` semantics and must not be treated as execution approval.
 - The dashboard surfaces payback state as (a) last settled payback BTC and date, (b) pending/accruing BTC for next period, (c) KPI values from the accumulator. It does NOT show the payback formula, ratios, or triggers — those live in config only.
 
 ## Reporting

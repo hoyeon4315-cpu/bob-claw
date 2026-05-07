@@ -150,7 +150,7 @@ gateway_native의 `run-merkl-canary-autopilot.mjs`를 범용화:
 
 #### C1. Walk-Forward CV + Regime Change Guard
 
-`evaluatePromotionEvidence`에서 이미 자리 잡음.
+현재 canonical auto-promotion dev guard에서 자리 잡음.
 - `walkForwardReport`와 `regimeWindow` 인자를 실제 데이터로 채워야 함.
 - `evaluateWalkForwardCv()`와 `summarizeRegimeWindow()` 구현 필요.
 

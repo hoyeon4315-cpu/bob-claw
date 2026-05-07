@@ -1,6 +1,6 @@
 ---
 status: canonical
-updated_at: 2026-05-02
+updated_at: 2026-05-08
 source_of_truth: AGENTS.md
 graph_inputs:
   - src/graphify-out/GRAPH_REPORT.md
@@ -66,6 +66,22 @@ flowchart TD
 | Payback | `src/executor/payback/*.mjs` | Sats-first accumulator, scheduler, payback dashboard slice | Choose ratio/timing by LLM |
 | Dashboard | `src/status/*.mjs`, `src/dashboard/*.mjs`, `dashboard/public/*.jsx` | Read-only public slices and visual UI | Execute trades or hold secrets |
 
+## Functional Owners
+
+| System | Function |
+| --- | --- |
+| Operating law and maps | `AGENTS.md` defines product, risk, LLM, payback, and runtime authority rules. This file and `docs/harness-engineering.md` explain implementation shape only. |
+| Config and caps | `src/config/` stores official chains, per-strategy caps, payback policy, auto-kill thresholds, tiny-canary sizing, and concentration limits. Runtime cap raises through env, dashboard, or chat are forbidden. |
+| Proposer | Strategy modules, Merkl/radar queues, payback scheduler, and capital manager emit typed intents or allocation plans. They do not hold keys or decide signing. |
+| Policy engine | `src/executor/policy/index.mjs` composes the live signer checks. It is the source of deterministic execution truth before signer broadcast. |
+| Signer | `src/executor/signer/` owns local key custody, policy-approved signing, nonce handling, and append-only signer audit rows. |
+| Capital manager | `src/executor/capital/`, refill helpers, and score-weighted target builders allocate committed-cap inventory, refill/drain chains, and preserve concentration caps. `destination-promotion-gate.json` is a score source only. |
+| Gas, inventory, and receipts | Gas keepers, treasury inventory, inbound attribution, transaction ledger, receipt reconciliation, and protocol position marks explain what happened and what is held. They do not authorize execution. |
+| Payback | `src/executor/payback/` computes sats-first realized PnL, plans deterministic BTC payback, and requires Gateway/Bitcoin settlement proof. |
+| Dashboard and reporting | `src/status/`, report CLIs, and `dashboard/public/` render read-only, public-safe state. They may expose policy eligibility but cannot sign, change caps, or act as gates. |
+| Dev automation | `src/llm/`, `src/cli/codex-*`, auto-research, and route-remediation surfaces scaffold and validate code under budget/masking/audit limits. `evaluateAutoPromotion` is a coding-session commit guard, not a runtime gate. |
+| Protocol and position health | `src/protocol-readers/`, `src/treasury/protocol-position-*`, and `src/executor/health/` report positions and produce protective descriptors; Capital Manager remains the owner of rebalance intents. |
+
 ## Strategy Lanes
 
 | Lane | Representative Modules | Current Purpose | Admission Evidence |
@@ -82,6 +98,10 @@ describe a lane, but they do not authorize signing. Runtime approval still
 requires committed caps, policy approval, signer isolation, kill-switch checks,
 and receipt/audit behavior.
 
+Stage/readiness/admission fields are advisory metadata. `liveTrading` and
+`policyLiveTrading` mean deterministic policy/signer eligibility, not a Stage C
+or manual approval milestone.
+
 Route remediation autopilot (`src/strategy/route-remediation-autopilot.mjs`,
 `npm run report:route-remediation-autopilot`) is dev-lane only. It consumes
 blocked strategy/campaign candidates and emits code work orders after
@@ -97,6 +117,7 @@ approval.
 | Route remediation planning | `src/strategy/route-remediation-autopilot.mjs` | Work orders only; no signer, cap, daemon, or runtime mutation authority |
 | Strategy caps | `src/config/strategy-caps.mjs` API, `src/config/strategy-caps/registry.mjs` data | Public imports stay on `strategy-caps.mjs` |
 | Tiny-canary EV sizing | `src/config/sizing.mjs` | Shared by radar preview, Merkl sync, executor policy |
+| Destination score source | `data/destination-promotion-gate.json` from `src/strategy/destination-promotion-gate.mjs` | Advisory score source for allocation; `runtimeAuthority: "none"` |
 | Small-capital campaign rules | `src/config/small-capital-campaign-mode.mjs` | Evidence-led primary-chain two-lane policy |
 | Gateway pause | `src/config/gateway.mjs`, `src/executor/policy/gateway-availability.mjs` | Signer policy is a backstop |
 | Auto-kill | `src/config/auto-kill.mjs`, `src/risk/auto-kill-triggers.mjs` | Writes kill-switch and audit record |
@@ -154,6 +175,9 @@ status refresh.
   as current policy.
 - Dated prelive and plan docs can describe build order, not runtime phase
   gates. AGENTS.md forbids tiered manual promotion gates for live execution.
+- Older destination "promotion/gate" wording refers to score readiness only.
+  Current destination reports are advisory score sources and cannot approve
+  signer execution.
 - Older dashboard plans may say the dashboard reads only one JSON file. Current
   live overlay code also reads focused slices for wallet holdings, strategy
   ticks, Merkl activity, live runtime, and auto-kill events.
