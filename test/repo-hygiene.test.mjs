@@ -45,10 +45,17 @@ const LIVE_RAW_KEY_FORBIDDEN_FILES = Object.freeze([
   "src/cli/deploy-and-configure.mjs",
   "src/cli/deploy-check-key.mjs",
   "src/cli/trigger-triangular-arb.mjs",
+  "src/cli/run-btc-address-migrate.mjs",
+  "src/cli/auto-canary.sh",
+  "src/cli/canary-live.sh",
+  "src/cli/deploy-interactive.sh",
+  "src/cli/fix-min-profit.sh",
+  "src/cli/lower-min-profit.sh",
 ]);
 
 test("legacy live CLIs do not accept raw private keys or direct cast/forge sends", async () => {
-  const forbidden = /\bPRIVATE_KEY\b|--private-key\b|cast\s+send|forge\s+create/u;
+  const forbidden =
+    /\bPRIVATE_KEY\b|--private-key\b|cast\s+send|forge\s+create|createBtcLocalKeySigner|signIntent|broadcastSignedIntent/u;
   for (const sourcePath of LIVE_RAW_KEY_FORBIDDEN_FILES) {
     const source = await readFile(sourcePath, "utf8");
     assert.equal(forbidden.test(source), false, `${sourcePath} must route live actions through signer daemon policy`);
