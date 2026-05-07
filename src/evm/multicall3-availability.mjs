@@ -1,6 +1,7 @@
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
+import { MULTICALL3_ADDRESS } from "../lib/multicall3.mjs";
 
-export const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11";
+export { MULTICALL3_ADDRESS };
 
 function byteLengthOfCode(code) {
   if (typeof code !== "string" || !code.startsWith("0x")) return null;
