@@ -272,7 +272,6 @@ exit 후 회수 자본 → Phase 2 라우팅 엔진 재진입
 | 분류 | 경로 |
 |---|---|
 | caps | [src/config/strategy-caps.mjs](../../src/config/strategy-caps.mjs) |
-| 적응형 자본 | [src/config/capital-adaptive.mjs](../../src/config/capital-adaptive.mjs) |
 | 체인 설정 | [src/config/chains.mjs](../../src/config/chains.mjs) |
 | payback | [src/config/payback.mjs](../../src/config/payback.mjs) |
 | 입금 감지 | [src/treasury/inventory-watcher.mjs](../../src/treasury/inventory-watcher.mjs) |

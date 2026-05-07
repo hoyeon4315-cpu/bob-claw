@@ -528,7 +528,7 @@ function loadJsonlIfExists(path) {
     .map((line) => JSON.parse(line));
 }
 
-function buildAdaptiveCapitalPlan(strategyIds) {
+function buildCommittedCapitalPlan(strategyIds) {
   // Read caps from committed config; fallback to dust defaults.
   return {
     newEntriesAllowed: true,
@@ -709,7 +709,7 @@ async function main() {
     });
   }
 
-  const adaptiveCapitalPlan = buildAdaptiveCapitalPlan(args.strategies);
+  const adaptiveCapitalPlan = buildCommittedCapitalPlan(args.strategies);
   const feedFreshness = { ok: true, worstSeverity: "ok", staleCount: 0 };
 
   const result = runStrategyTick({
