@@ -11,7 +11,6 @@ import { summarizePhase1Revalidation } from "./phase1-revalidation.mjs";
 import { summarizePhase3StrategyValidation } from "./phase3-strategy-validation.mjs";
 import { summarizeProtocolMarketWatchers } from "./protocol-market-watchers.mjs";
 import { summarizeProtocolTrustTiers } from "./protocol-trust-tiers.mjs";
-import { buildFormulaAudit } from "../research/formula-audit.mjs";
 import { summarizeSecondaryStrategyScaffolds } from "./secondary-strategy-scaffolds.mjs";
 import { summarizeStrategyResearchBoard } from "./strategy-research-board.mjs";
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
@@ -396,7 +395,6 @@ export function buildStrategySnapshot({
   const allocatorCoreSummary = summarizeAllocatorCore(allocatorCore || null);
   const protocolTrustTiersSummary = summarizeProtocolTrustTiers(protocolTrustTiers || null);
   const protocolMarketWatchersSummary = summarizeProtocolMarketWatchers(protocolMarketWatchers || null);
-  const formulaAudit = buildFormulaAudit({ now: generatedAt });
   const strategyResearchSummary = summarizeStrategyResearchBoard(strategyResearchBoard || null);
   const secondaryScaffoldsSummary = summarizeSecondaryStrategyScaffolds(secondaryStrategyScaffolds || null);
   const deterministicCandidatesSummary = summarizeDeterministicStrategyCandidates(deterministicStrategyCandidates || null);
@@ -463,10 +461,6 @@ export function buildStrategySnapshot({
       trustTierRecordedCount: protocolTrustTiersSummary?.recordedCount ?? 0,
       watcherBlockedCount: protocolMarketWatchersSummary?.blockedCount ?? 0,
       watcherTopBlockedId: protocolMarketWatchersSummary?.topBlocked?.id || null,
-      formulaImplementedCount: formulaAudit?.summary?.implementedCount ?? 0,
-      formulaPartialCount: formulaAudit?.summary?.partialCount ?? 0,
-      formulaMissingCount: formulaAudit?.summary?.missingCount ?? 0,
-      formulaTopGapId: formulaAudit?.summary?.topGap?.id || null,
       leverageRuntimeCount: leverageAutoUnwindRuntimeSummary?.runtimeCount ?? 0,
       leverageRuntimeTopPriorityId: leverageAutoUnwindRuntimeSummary?.topPriority?.strategyId || null,
       leverageAutoUnwindReadyCount: leverageAutoUnwindExecutionStatus?.autoUnwindReadyCount ?? 0,
@@ -492,7 +486,6 @@ export function buildStrategySnapshot({
       allocatorCore: allocatorCoreSummary,
       protocolTrustTiers: protocolTrustTiersSummary,
       protocolMarketWatchers: protocolMarketWatchersSummary,
-      formulaAudit,
       leverageAutoUnwindRuntime: leverageAutoUnwindRuntimeSummary,
       leverageAutoUnwindExecutionStatus,
       strategyResearchBoard: strategyResearchSummary,
@@ -514,7 +507,6 @@ export function buildStrategySnapshot({
         { kind: "allocator_core", path: "data/allocator-core.json" },
         { kind: "protocol_trust_tiers", path: "data/protocol-trust-tiers.json" },
         { kind: "protocol_market_watchers", path: "data/protocol-market-watchers.json" },
-        { kind: "formula_audit", path: "data/formula-audit.json" },
         { kind: "wrapped_btc_loop_auto_unwind_runtime", path: "data/wrapped-btc-loop-base-moonwell-auto-unwind-runtime-latest.json" },
         { kind: "recursive_wrapped_btc_loop_auto_unwind_runtime", path: "data/recursive_wrapped_btc_lending_loop-auto-unwind-runtime-latest.json" },
         { kind: "strategy_research_board", path: "data/strategy-research-board.json" },
@@ -582,7 +574,6 @@ export function summarizeStrategySnapshot(snapshot = null) {
     allocatorCore: snapshot.planningLayers?.allocatorCore || null,
     protocolTrustTiers: snapshot.planningLayers?.protocolTrustTiers || null,
     protocolMarketWatchers: snapshot.planningLayers?.protocolMarketWatchers || null,
-    formulaAudit: snapshot.planningLayers?.formulaAudit || null,
     leverageAutoUnwindRuntime: snapshot.planningLayers?.leverageAutoUnwindRuntime || null,
     researchBoard: snapshot.planningLayers?.strategyResearchBoard || null,
     secondaryStrategyScaffolds: snapshot.planningLayers?.secondaryStrategyScaffolds || null,

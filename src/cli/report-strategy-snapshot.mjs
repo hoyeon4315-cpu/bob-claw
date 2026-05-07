@@ -58,7 +58,6 @@ async function main() {
   const allocatorCore = context.dashboardStatus?.strategy?.strategySnapshot?.allocatorCore || null;
   const protocolTrustTiers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolTrustTiers || null;
   const protocolMarketWatchers = context.dashboardStatus?.strategy?.strategySnapshot?.protocolMarketWatchers || null;
-  const formulaAudit = context.dashboardStatus?.strategy?.strategySnapshot?.formulaAudit || null;
   const milestoneValidation = context.dashboardStatus?.strategy?.strategySnapshot?.milestoneValidationGates || null;
   const productCoverage = context.dashboardStatus?.strategy?.strategySnapshot?.productCoverage || null;
 
@@ -127,11 +126,6 @@ async function main() {
   if (protocolMarketWatchers) {
     console.log(
       `watchers blocked=${protocolMarketWatchers.blockedCount ?? 0} observe=${protocolMarketWatchers.observeCount ?? 0} top=${protocolMarketWatchers.topBlocked?.id || "n/a"} next=${protocolMarketWatchers.nextAction?.code || "n/a"}`,
-    );
-  }
-  if (formulaAudit) {
-    console.log(
-      `formulaAudit implemented=${formulaAudit.summary?.implementedCount ?? 0} partial=${formulaAudit.summary?.partialCount ?? 0} missing=${formulaAudit.summary?.missingCount ?? 0} topGap=${formulaAudit.summary?.topGap?.id || "n/a"}`,
     );
   }
   if (milestoneValidation) {

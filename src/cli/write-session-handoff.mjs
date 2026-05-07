@@ -48,7 +48,6 @@ import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/st
 import { buildPivotDecisionSummary, buildRouteEconomicsAudit } from "../strategy/route-economics-audit.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildStrategyRefreshPlans } from "../strategy/strategy-refresh-plans.mjs";
-import { buildFormulaAudit } from "../research/formula-audit.mjs";
 import { summarizeShadowCandidateEvidence } from "../session/shadow-evidence.mjs";
 import { shadowActionForCandidate } from "../session/shadow-cycle.mjs";
 import {
@@ -1184,14 +1183,12 @@ function onePageExecutionBriefLines({
   const effectivePhase3 = strategySnapshot?.phase3StrategyValidation || phase3StrategyValidation || null;
   const phase3TopBlocked = effectivePhase3?.topBlocked || null;
   const phase3NextAction = effectivePhase3?.nextAction || null;
-  const formulaAudit = buildFormulaAudit();
   const lines = [
     `- Status: live=\`${dashboardStatus?.overall?.liveTrading || "BLOCKED"}\` shadow=\`${dashboardStatus?.overall?.shadowTrading || "ALLOWED"}\` next=\`${next?.decision || "unknown"}\``,
     `- Gas freshness: missing=${dashboardStatus?.gas?.missingGatewayGasChainCount ?? 0} stale=${dashboardStatus?.gas?.staleChainCount30m ?? 0} staleChains=\`${dashboardStatus?.gas?.staleGatewayGasChains?.join(",") || "none"}\``,
     `- Strategy pack: implemented=${strategySnapshot?.implementedStrategyCount ?? 0} top=\`${strategySnapshot?.topImplementedStrategy?.id || "unknown"}\` pivot=\`${strategySnapshot?.topPivot?.id || "unknown"}\``,
     `- Catalog scope: \`${strategySnapshot?.catalogScope?.coverage || "unknown"}\` scaffoldTop=\`${strategySnapshot?.topSecondaryScaffold?.id || strategySnapshot?.secondaryTopScaffoldId || strategySnapshot?.secondaryStrategyScaffolds?.topScaffold?.id || "unknown"}\` allocatorTop=\`${strategySnapshot?.topAllocatorCandidate?.id || strategySnapshot?.allocatorTopPlanningCandidateId || strategySnapshot?.allocatorCore?.topPlanningCandidate?.id || "unknown"}\``,
     `- Product coverage: ready=${strategySnapshot?.productCoverage?.readyCount ?? 0} inProgress=${strategySnapshot?.productCoverage?.inProgressCount ?? 0} blocked=${strategySnapshot?.productCoverage?.blockedCount ?? 0} missing=${strategySnapshot?.productCoverage?.missingCount ?? 0} topGap=\`${strategySnapshot?.productCoverage?.topGap?.id || "unknown"}\` reason=\`${strategySnapshot?.productCoverage?.topGap?.reason || "unknown"}\``,
-    `- Formula audit: implemented=${formulaAudit.summary.implementedCount} partial=${formulaAudit.summary.partialCount} missing=${formulaAudit.summary.missingCount} topGap=\`${formulaAudit.summary.topGap?.id || "unknown"}\``,
     `- Research board: candidates=${strategySnapshot?.researchBoard?.candidateCount ?? 0} top=\`${strategySnapshot?.researchBoard?.topCandidate?.id || "unknown"}\` newTop=\`${strategySnapshot?.researchBoard?.topNewCandidate?.id || "unknown"}\` nextNew=\`${strategySnapshot?.researchBoard?.nextNewAction?.code || "unknown"}\``,
     `- Deterministic builds: candidates=${strategySnapshot?.deterministicCandidates?.candidateCount ?? 0} readyForDryRun=${strategySnapshot?.deterministicCandidates?.readyForDryRunCount ?? 0} top=\`${strategySnapshot?.deterministicCandidates?.topCandidate?.id || "unknown"}\` next=\`${strategySnapshot?.deterministicCandidates?.nextAction?.code || "unknown"}\``,
     `- Advanced validation lane: passed=${effectivePhase3?.passedCount ?? 0}/${effectivePhase3?.validationCount ?? 0} topBlocked=\`${phase3TopBlocked?.id || "unknown"}\` blockers=${phase3TopBlocked?.blockers?.slice(0, 3).join(",") || "none"} next=\`${phase3NextAction?.code || "unknown"}\``,
