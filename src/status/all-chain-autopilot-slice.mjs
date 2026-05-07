@@ -141,6 +141,63 @@ function openedDeployments(deployments = []) {
     }));
 }
 
+function executionAttemptSummary({ report = null, summary = {}, refill = [], strategyDispatch = {}, payback = {} } = {}) {
+  const mode = report?.mode || null;
+  const executeMode = mode === "execute" || mode === "dry_run_first";
+  const refillAttemptedCount = finiteCount(summary.refillAttemptedCount);
+  const refillExecutedCount = finiteCount(summary.refillExecutedCount);
+  const canaryExecutedCount = finiteCount(summary.canarySweep?.executedCount);
+  const canaryBroadcastStepCount = finiteCount(summary.canarySweep?.broadcastStepCount);
+  const strategySelectedCount = finiteCount(strategyDispatch.selectedCount);
+  const strategyLiveEligibleCount =
+    Number.isFinite(strategyDispatch.liveEligibleCount) ? Number(strategyDispatch.liveEligibleCount) : null;
+  const txBroadcastCount = refillExecutedCount + canaryBroadcastStepCount;
+  const attemptedLive =
+    executeMode &&
+    (refillAttemptedCount > 0 ||
+      refillExecutedCount > 0 ||
+      canaryExecutedCount > 0 ||
+      canaryBroadcastStepCount > 0 ||
+      strategySelectedCount > 0 ||
+      strategyLiveEligibleCount === 0 ||
+      payback.status === "carry" ||
+      payback.status === "deferred" ||
+      payback.status === "blocked");
+
+  let noTxReason = null;
+  if (attemptedLive && txBroadcastCount === 0) {
+    if (refill.some(refillNeedsLiveRemediation)) {
+      noTxReason = "refill_routes_unresolved";
+    } else if (strategyLiveEligibleCount === 0) {
+      noTxReason = "no_live_eligible_strategy";
+    } else if (payback?.reason) {
+      noTxReason = payback.reason;
+    } else if (report?.blockedReason) {
+      noTxReason = report.blockedReason;
+    } else {
+      noTxReason = "policy_no_tx";
+    }
+  }
+
+  return {
+    mode,
+    runId: report?.autopilotRunId || null,
+    attemptedLive,
+    completed: report?.phase === "completed" || report?.status === "completed" || report?.status === "completed_with_blockers",
+    txBroadcastCount,
+    refillAttemptedCount,
+    refillExecutedCount,
+    canaryExecutedCount,
+    canaryBroadcastStepCount,
+    strategySelectedCount,
+    strategyLiveEligibleCount,
+    paybackStatus: payback.status || null,
+    paybackReason: payback.reason || null,
+    noTxReason,
+    readOnlyDashboard: true,
+  };
+}
+
 function buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payback }) {
   const blockers = [];
   if (report?.blockedReason) {
@@ -225,6 +282,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
         pendingCarrySats: null,
         nextAction: null,
       },
+      execution: executionAttemptSummary(),
       topBlockers: [],
       nextAction: "run_all_chain_autopilot",
     };
@@ -289,6 +347,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       pendingCarrySats: payback.pendingCarrySats ?? null,
       nextAction: payback.nextAction || null,
     },
+    execution: executionAttemptSummary({ report, summary, refill, strategyDispatch, payback }),
     topBlockers: buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payback }),
     nextAction: null,
   };

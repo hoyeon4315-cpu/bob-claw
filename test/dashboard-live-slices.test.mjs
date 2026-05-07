@@ -76,6 +76,13 @@ test("all-chain autopilot dashboard slice keeps only public execution status", (
   assert.equal(slice.canaryLadder.noTxSentNeutral, true);
   assert.equal(slice.portfolio.openedCount, 1);
   assert.equal(slice.payback.pendingCarrySats, 601);
+  assert.equal(slice.execution.mode, "execute");
+  assert.equal(slice.execution.attemptedLive, true);
+  assert.equal(slice.execution.txBroadcastCount, 0);
+  assert.equal(slice.execution.refillAttemptedCount, 1);
+  assert.equal(slice.execution.strategyLiveEligibleCount, 0);
+  assert.equal(slice.execution.noTxReason, "refill_routes_unresolved");
+  assert.equal(slice.execution.readOnlyDashboard, true);
   assert.equal(slice.refill.blockedCount, 1);
   assert.equal(slice.refill.unresolvedCount, 1);
   assert.equal(slice.topBlockers.some((item) => item.reason === "lifi_quote_rejected"), true);

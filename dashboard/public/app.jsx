@@ -450,6 +450,10 @@ function friendlyBlockerLabel(value) {
     source_inventory_reserved: 'source reserved',
     routing_exhausted: 'route missing',
     signer_rejected: 'policy rejected',
+    refill_routes_unresolved: 'refill routes unresolved',
+    no_live_eligible_strategy: 'no live strategy',
+    policy_no_tx: 'policy held tx',
+    receipt_proven_payback_period_missing: 'payback proof missing',
     planned_payback_below_minimum: 'minimum not reached',
     payback_below_minimum: 'minimum not reached',
     max_consecutive_failures_reached: 'cooldown',
@@ -482,6 +486,7 @@ function LiveLaneCard() {
   const overall = status.overall || {};
   const runtime = status.executorRuntime || {};
   const operations = window.OPERATIONS || status.operations?.allChainAutopilot || {};
+  const execution = operations.execution || {};
   const radar = window.RADAR || status.radar || {};
   const payback = status.payback || {};
   const canaryLadder = operations.canaryLadder || {};
@@ -516,6 +521,15 @@ function LiveLaneCard() {
     ? `$${ladderRungs[0]}→$${ladderRungs[ladderRungs.length - 1]}`
     : 'off';
   const ladderSub = canaryLadder.noTxSentNeutral ? 'auto sizing' : 'review';
+  const txBroadcastCount = Number(execution.txBroadcastCount || 0);
+  const executionMain = execution.attemptedLive
+    ? txBroadcastCount > 0
+      ? `${txBroadcastCount} tx`
+      : 'No tx'
+    : 'Idle';
+  const executionSub = txBroadcastCount > 0
+    ? 'policy approved'
+    : friendlyBlockerLabel(execution.noTxReason || (execution.mode === 'execute' ? 'policy_no_tx' : 'waiting'));
   const gateTone = laneTone(liveAllowed && runtimeReady ? 'good' : 'bad');
   const gateLine = `Operation gate: ${liveAllowed ? 'Allowed' : 'Blocked'} · ${runtimeReady ? 'Runtime healthy' : friendlyBlockerLabel(overall.blockers?.[0] || runtime.runtimeStatus || 'checking')}`;
   const cells = [
@@ -524,6 +538,12 @@ function LiveLaneCard() {
       main: opRunning ? 'Running' : friendlyBlockerLabel(operations.status || 'idle'),
       sub: opBlocker ? friendlyBlockerLabel(opBlocker) : `${operations.officialChainCount || 11} chains`,
       tone: opRunning && !opBlocker ? 'good' : opRunning ? 'warn' : 'neutral',
+    },
+    {
+      label: 'Execution',
+      main: executionMain,
+      sub: executionSub,
+      tone: txBroadcastCount > 0 ? 'good' : execution.attemptedLive ? 'warn' : 'neutral',
     },
     {
       label: 'Radar',
@@ -583,7 +603,7 @@ function LiveLaneCard() {
       </div>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
         gap: '4px 9px',
         marginTop: 6,
       }}>
