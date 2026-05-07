@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-05-07T09:34:34.425Z",
+  "summary": {
+    "owner": "0x9626...ae4",
+    "watchlistCount": 36,
+    "nonzeroCount": 0,
+    "staleNonzeroCount": 0,
+    "overCapCount": 0,
+    "unknownSourceCount": 0,
+    "activeCount": 0,
+    "revocableCount": 0
+  },
+  "items": [
+    {
+      "chain": "avalanche",
+      "token": "0x0000...000",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "avalanche",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "avalanche",
+      "token": "0xb31f...6c7",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "avalanche",
+      "token": "0xb97e...a6e",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x0000...a65",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x4200...006",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x8335...913",
+      "symbol": null,
+      "spender": "0x0000...a65",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x8335...913",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0xcbb7...3bf",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0xcbb7...3bf",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bera",
+      "token": "0x0000...000",
+      "symbol": null,
+      "spender": "0xf909...c66",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bob",
+      "token": "0x0555...b9c",
+      "symbol": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+      "spender": "0x0555...b9c",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x0000...000",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x0000...000",
+      "symbol": null,
+      "spender": "0x1b81...b14",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x55d3...955",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x8ac7...80d",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0xbb4c...95c",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x2260...599",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x2260...599",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x8292...7ed",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x8292...7ed",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x8292...7ed",
+      "symbol": null,
+      "spender": "0x8787...4e2",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x8292...7ed",
+      "symbol": null,
+      "spender": "0xaf53...bb2",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xa0b8...b48",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xc02a...cc2",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xdac1...ec7",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "optimism",
+      "token": "0x0b2c...f85",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "optimism",
+      "token": "0x4200...006",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "sei",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "sonic",
+      "token": "0x039e...d38",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "sonic",
+      "token": "0x2921...894",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "unichain",
+      "token": "0x4200...006",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    }
+  ]
+}
