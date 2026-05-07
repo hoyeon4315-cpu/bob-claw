@@ -6,7 +6,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
+  AERODROME_CL_REQUIRED_EXECUTOR_CAPABILITIES,
   buildStrategyBuilderChainUnsupportedMarker,
+  buildStrategyDedicatedExecutorMissingMarker,
   buildStrategyExecutorMissingMarker,
   validateCommittedProfileSelection,
 } from "../src/cli/run-strategy-tick.mjs";
@@ -120,6 +122,38 @@ test("generic strategy fallback is a non-broadcastable executor-missing marker",
   assert.equal(marker.normalizationError, "strategy_executor_missing");
   assert.equal(marker.metadata.blocker, "strategy_executor_missing");
   assert.equal(marker.metadata.source, "scored_allocation");
+  assert.equal(marker.intentType, undefined);
+  assert.equal(marker.tx, undefined);
+});
+
+test("Aerodrome CL missing executor marker is explicit and non-broadcastable", () => {
+  const marker = buildStrategyDedicatedExecutorMissingMarker({
+    alloc: {
+      strategyId: "aerodrome-cl-base",
+      chain: "base",
+      protocol: "aerodrome",
+    },
+    amountUsd: 10,
+    observedAt: "2026-05-07T00:00:00.000Z",
+    source: "aerodrome_cl_builder",
+    blocker: "aerodrome_cl_tx_builder_missing",
+    requiredCapabilities: AERODROME_CL_REQUIRED_EXECUTOR_CAPABILITIES,
+  });
+
+  assert.equal(marker.strategyId, "aerodrome-cl-base");
+  assert.equal(marker.chain, "base");
+  assert.equal(marker.mode, "blocked");
+  assert.equal(marker.normalizationError, "aerodrome_cl_tx_builder_missing");
+  assert.equal(marker.metadata.blocker, "aerodrome_cl_tx_builder_missing");
+  assert.equal(marker.metadata.source, "aerodrome_cl_builder");
+  assert.deepEqual(marker.metadata.requiredCapabilities, [
+    "nft_mint_builder",
+    "increase_liquidity_builder",
+    "decrease_liquidity_builder",
+    "collect_builder",
+    "range_monitor",
+    "emergency_exit",
+  ]);
   assert.equal(marker.intentType, undefined);
   assert.equal(marker.tx, undefined);
 });

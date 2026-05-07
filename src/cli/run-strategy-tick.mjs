@@ -73,6 +73,14 @@ const MISSING_EXECUTOR_STRATEGIES = new Set([
   "berachain-bend-bex-bgt",
   "gmx-v2-perp-basis-avax",
 ]);
+export const AERODROME_CL_REQUIRED_EXECUTOR_CAPABILITIES = Object.freeze([
+  "nft_mint_builder",
+  "increase_liquidity_builder",
+  "decrease_liquidity_builder",
+  "collect_builder",
+  "range_monitor",
+  "emergency_exit",
+]);
 
 const STRATEGY_SWAP_ROUTES = Object.freeze({
   destination_wrapped_btc_rotation: Object.freeze({
@@ -143,6 +151,30 @@ export function buildStrategyExecutorMissingMarker({
       source: "scored_allocation",
       family: family || "unknown",
       blocker: "strategy_executor_missing",
+    },
+  };
+}
+
+export function buildStrategyDedicatedExecutorMissingMarker({
+  alloc,
+  amountUsd,
+  observedAt,
+  source,
+  blocker = "dedicated_executor_binding_missing",
+  requiredCapabilities = [],
+}) {
+  return {
+    strategyId: alloc.strategyId,
+    chain: alloc.chain,
+    amountUsd,
+    mode: "blocked",
+    observedAt,
+    normalizationError: blocker,
+    metadata: {
+      protocol: alloc.protocol,
+      source,
+      blocker,
+      requiredCapabilities: [...requiredCapabilities],
     },
   };
 }
@@ -962,11 +994,23 @@ async function main() {
         continue;
       }
       const aerodromePool = getProtocolAddress("aerodrome", "base", "pool");
-      if (aerodromePool?.verified) {
-        // TODO: buildAerodromeClIntent({ poolAddress: aerodromePool.address, ... })
-      } else if (!args.quiet) {
-        console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
+      const blocker = aerodromePool?.verified
+        ? "aerodrome_cl_tx_builder_missing"
+        : "aerodrome_cl_protocol_addresses_unverified";
+      suppressGenericFallback = true;
+      strategyIntentsBuilt = true;
+      generatedIntents.push(buildStrategyDedicatedExecutorMissingMarker({
+        alloc,
+        amountUsd,
+        observedAt: result.observedAt,
+        source: "aerodrome_cl_builder",
+        blocker,
+        requiredCapabilities: AERODROME_CL_REQUIRED_EXECUTOR_CAPABILITIES,
+      }));
+      if (!args.quiet) {
+        console.error(`  skip ${alloc.strategyId}: ${blocker}`);
       }
+      continue;
     }
 
     // ── GMX V2 perp basis (Avalanche) ──
