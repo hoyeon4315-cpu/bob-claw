@@ -11,6 +11,7 @@ function baseIntent(overrides = {}) {
     family: "evm",
     intentType: "swap",
     amountUsd: 100,
+    expectedNetUsd: 10,
     observedAt: "2026-04-22T00:00:00.000Z",
     metadata: {},
     ...overrides,
@@ -249,6 +250,7 @@ test("tiny_live_canary policy passes for reopened recursive wrapped BTC loop", a
     chain: "base",
     amountUsd: 25,
     microCanaryStatus: "minimal_live_proof_exists",
+    metadata: { expectedNetUsd: 10 },
     now: "2026-04-22T00:00:00.000Z",
   });
   const policy = await evaluateIntentPolicies({

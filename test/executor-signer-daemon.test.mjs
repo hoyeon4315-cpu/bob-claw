@@ -14,6 +14,7 @@ function buildIntent() {
     family: "evm",
     intentType: "swap",
     amountUsd: 1,
+    expectedNetUsd: 10,
     mode: "live",
     observedAt: new Date().toISOString(),
     tx: {

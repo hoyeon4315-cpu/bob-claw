@@ -159,3 +159,10 @@ export function summarizeRoutes(routes) {
     tokenPairs: [...byPair.keys()].sort(),
   };
 }
+
+export function normalizeGatewayRoutesBody(body) {
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.routes)) return body.routes;
+  if (Array.isArray(body?.data?.routes)) return body.data.routes;
+  return [];
+}

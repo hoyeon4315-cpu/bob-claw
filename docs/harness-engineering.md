@@ -103,6 +103,10 @@ the public artifact set.
 
 - Import official Gateway chains from `src/config/gateway-destinations.mjs`.
 - Keep Arbitrum/Polygon limited to fallback/manual bridge contexts.
+- Treat the official Gateway chain list as an allowlist, not proof that every
+  chain is route-enabled right now. Live Gateway intents should carry or consume
+  a current route snapshot from `GET /v1/get-routes`; if the requested route is
+  absent, policy reports `gateway_route_currently_unavailable`.
 - Keep `strategy-caps.mjs` as the public import path; add cap data in the
   focused registry modules under `src/config/strategy-caps/`.
 - Preserve BTC/sats-first fields. USD fields are projections or caps.

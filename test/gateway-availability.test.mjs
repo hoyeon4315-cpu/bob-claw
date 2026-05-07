@@ -82,3 +82,49 @@ test("policy.checkGatewayAvailability allows Gateway intent when Gateway availab
   });
   assert.equal(verdict.decision, "ALLOW");
 });
+
+test("policy.checkGatewayAvailability blocks Gateway route when current API routes omit destination", async () => {
+  const verdict = await checkGatewayAvailability({
+    intent: {
+      method: "gateway_btc_onramp",
+      metadata: {
+        gatewayRoute: {
+          srcChain: "bitcoin",
+          dstChain: "optimism",
+        },
+      },
+    },
+    availability: {
+      available: true,
+      observedAt: "2026-05-08T00:00:00Z",
+      routes: [
+        { srcChain: "bitcoin", dstChain: "base" },
+        { srcChain: "base", dstChain: "bitcoin" },
+      ],
+    },
+  });
+  assert.equal(verdict.decision, "BLOCK");
+  assert.deepEqual(verdict.blockers, ["gateway_route_currently_unavailable"]);
+  assert.equal(verdict.routeAvailable, false);
+});
+
+test("policy.checkGatewayAvailability allows Gateway route when current API route is present", async () => {
+  const verdict = await checkGatewayAvailability({
+    intent: {
+      method: "gateway_btc_onramp",
+      metadata: {
+        gatewayRoute: {
+          srcChain: "bitcoin",
+          dstChain: "base",
+        },
+      },
+    },
+    availability: {
+      available: true,
+      observedAt: "2026-05-08T00:00:00Z",
+      routes: [{ srcChain: "bitcoin", dstChain: "base" }],
+    },
+  });
+  assert.equal(verdict.decision, "ALLOW");
+  assert.equal(verdict.routeAvailable, true);
+});

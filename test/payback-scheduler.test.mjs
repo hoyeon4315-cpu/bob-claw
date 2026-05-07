@@ -85,6 +85,7 @@ function consolidationPlanFixture() {
       family: "evm",
       intentType: "funding_transfer",
       amountUsd: 40,
+      expectedNetUsd: 10,
       observedAt: "2026-04-17T00:00:00.000Z",
       quote: {
         observedAt: "2026-04-17T00:00:00.000Z",
@@ -123,6 +124,7 @@ function offrampPlanFixture() {
       family: "evm",
       intentType: "gateway_btc_offramp",
       amountUsd: 38,
+      expectedNetUsd: 10,
       observedAt: "2026-04-17T00:00:00.000Z",
       quote: {
         observedAt: "2026-04-17T00:00:00.000Z",

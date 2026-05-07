@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { buildForkSignerIntent, buildForkSubmissionPreflight } from "../src/cli/submit-prelive-fork-execution.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import { buildForkExecutionPlan } from "../src/prelive/fork-execution.mjs";
 
 const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+
+test("prelive fork submitter does not broadcast raw signed transactions directly", async () => {
+  const source = await readFile(new URL("../src/cli/submit-prelive-fork-execution.mjs", import.meta.url), "utf8");
+  assert.equal(source.includes("sendRawTransaction"), false);
+  assert.equal(source.includes('command: "sign_and_broadcast"'), true);
+});
 
 test("fork signer intent is derived from the fork plan transaction payload", () => {
   const plan = buildForkExecutionPlan({
@@ -309,7 +316,7 @@ test("fork submission preflight records freshness when fork is still close to li
   assert.equal(preflight.freshness?.timeLagSeconds, 50);
 });
 
-test("fork signer intent passes policy evaluation with configured caps", async () => {
+test("fork signer intent is blocked when expected net is unmeasured", async () => {
   const plan = buildForkExecutionPlan({
     selection: {
       routeKey: `sonic:${WBTC}->bob:${WBTC}`,
@@ -345,6 +352,7 @@ test("fork signer intent passes policy evaluation with configured caps", async (
     killSwitchPath: null,
   });
 
-  assert.equal(policy.decision, "ALLOW");
+  assert.equal(policy.decision, "BLOCK");
   assert.equal(policy.strategyId, "prelive_fork_execution");
+  assert.ok(policy.blockers.includes("expected_net_unmeasured"));
 });

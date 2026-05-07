@@ -196,7 +196,7 @@ single-operator, BTC-first, deterministic signer architecture.
 | Tiny-canary EV sizing | `src/config/sizing.mjs` | Shared by radar preview, Merkl sync, executor policy |
 | Destination score source | `data/destination-promotion-gate.json` from `src/strategy/destination-promotion-gate.mjs` | Advisory score source for allocation; `runtimeAuthority: "none"` |
 | Small-capital campaign rules | `src/config/small-capital-campaign-mode.mjs` | Evidence-led primary-chain two-lane policy |
-| Gateway pause | `src/config/gateway.mjs`, `src/executor/policy/gateway-availability.mjs` | Signer policy is a backstop |
+| Gateway pause and current route availability | `src/config/gateway.mjs`, `src/gateway/client.mjs`, `src/executor/policy/gateway-availability.mjs` | Signer policy is a backstop. The committed 11-chain list is the allowlist; current `GET /v1/get-routes` data is the execution availability source when a route snapshot is provided. |
 | Auto-kill | `src/config/auto-kill.mjs`, `src/risk/auto-kill-triggers.mjs` | Writes kill-switch and audit record |
 | Payback policy | `src/config/payback.mjs` | Ratio, min, caps, schedule, emergency pauses |
 | Concentration | `src/config/diversification.mjs`, `src/executor/risk/concentration-guard.mjs` | Keep units explicit when refactoring |

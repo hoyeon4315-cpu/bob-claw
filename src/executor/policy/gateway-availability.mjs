@@ -7,6 +7,65 @@
 
 import { GATEWAY_POLICY, isGatewayMethod, resolveGatewayAvailability } from "../../config/gateway.mjs";
 
+function normalizeGatewayChain(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "bnb" || normalized === "bnb chain") return "bsc";
+  if (normalized === "berachain" || normalized === "bera chain") return "bera";
+  if (normalized === "bob l2" || normalized === "bob chain") return "bob";
+  return normalized;
+}
+
+function routeChainsFromIntent(intent = {}) {
+  const route =
+    intent.gatewayRoute ||
+    intent.route ||
+    intent.routeContext ||
+    intent.metadata?.gatewayRoute ||
+    intent.metadata?.route ||
+    intent.metadata?.routeContext ||
+    intent.quote?.route ||
+    intent.quote?.routeContext ||
+    {};
+  const srcChain = normalizeGatewayChain(
+    route.srcChain ||
+      route.fromChain ||
+      route.sourceChain ||
+      intent.srcChain ||
+      intent.fromChain ||
+      intent.metadata?.srcChain ||
+      intent.metadata?.fromChain ||
+      null,
+  );
+  const dstChain = normalizeGatewayChain(
+    route.dstChain ||
+      route.toChain ||
+      route.destinationChain ||
+      intent.dstChain ||
+      intent.toChain ||
+      intent.metadata?.dstChain ||
+      intent.metadata?.toChain ||
+      null,
+  );
+  return srcChain && dstChain ? { srcChain, dstChain } : null;
+}
+
+function routeChainsFromApiRoute(route = {}) {
+  const srcChain = normalizeGatewayChain(route.srcChain || route.fromChain || route.sourceChain || null);
+  const dstChain = normalizeGatewayChain(route.dstChain || route.toChain || route.destinationChain || null);
+  return srcChain && dstChain ? { srcChain, dstChain } : null;
+}
+
+function currentRouteAvailable({ intent, availability }) {
+  if (!Array.isArray(availability?.routes)) return null;
+  const requested = routeChainsFromIntent(intent);
+  if (!requested) return null;
+  return availability.routes.some((route) => {
+    const current = routeChainsFromApiRoute(route);
+    return current?.srcChain === requested.srcChain && current?.dstChain === requested.dstChain;
+  });
+}
+
 export async function checkGatewayAvailability({
   intent,
   policy = GATEWAY_POLICY,
@@ -32,12 +91,25 @@ export async function checkGatewayAvailability({
     };
   }
   if (resolved.available) {
+    const routeAvailable = currentRouteAvailable({ intent, availability: resolved });
+    if (routeAvailable === false) {
+      return {
+        policy: "gateway_availability",
+        observedAt: resolved.observedAt,
+        decision: "BLOCK",
+        blockers: ["gateway_route_currently_unavailable"],
+        gatewayAvailable: true,
+        routeAvailable: false,
+        reason: "gateway_route_currently_unavailable",
+      };
+    }
     return {
       policy: "gateway_availability",
       observedAt: resolved.observedAt,
       decision: "ALLOW",
       blockers: [],
       gatewayAvailable: true,
+      routeAvailable,
       reason: null,
     };
   }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
@@ -37,5 +38,19 @@ test("required imported src/lib helpers exist and are not ignored", () => {
       0,
       `${helperPath} must be tracked; fresh clones cannot rely on local-only helper files`,
     );
+  }
+});
+
+const LIVE_RAW_KEY_FORBIDDEN_FILES = Object.freeze([
+  "src/cli/deploy-and-configure.mjs",
+  "src/cli/deploy-check-key.mjs",
+  "src/cli/trigger-triangular-arb.mjs",
+]);
+
+test("legacy live CLIs do not accept raw private keys or direct cast/forge sends", async () => {
+  const forbidden = /\bPRIVATE_KEY\b|--private-key\b|cast\s+send|forge\s+create/u;
+  for (const sourcePath of LIVE_RAW_KEY_FORBIDDEN_FILES) {
+    const source = await readFile(sourcePath, "utf8");
+    assert.equal(forbidden.test(source), false, `${sourcePath} must route live actions through signer daemon policy`);
   }
 });

@@ -8,7 +8,7 @@ import { config } from "../config/env.mjs";
 import { getEvmChainConfig } from "../config/chains.mjs";
 import { rpc } from "../evm/json-rpc.mjs";
 import { readErc20Balance, readNativeBalance, summarizeRequirement } from "../evm/account-state.mjs";
-import { sendRawTransaction, classifySendTransactionError } from "../evm/transaction-submit.mjs";
+import { classifySendTransactionError } from "../evm/transaction-submit.mjs";
 import { sendSignerCommand, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -296,18 +296,12 @@ export function buildForkSignerIntent(plan, { observedAt = new Date().toISOStrin
   };
 }
 
-async function loadSignedTx(args, plan, { readSignedTxFile = readFile, sendCommand = sendSignerCommand } = {}) {
+async function submitForkIntent(args, plan, { sendCommand = sendSignerCommand } = {}) {
   if (args.signedTx) {
-    return {
-      signedTx: args.signedTx,
-      signerMode: plan?.signer?.mode || "external_signed_raw_tx",
-    };
+    throw new Error("--signed-tx is disabled; prelive fork submission must use signer daemon policy");
   }
   if (args.signedTxFile) {
-    return {
-      signedTx: (await readSignedTxFile(args.signedTxFile, "utf8")).trim(),
-      signerMode: plan?.signer?.mode || "external_signed_raw_tx",
-    };
+    throw new Error("--signed-tx-file is disabled; prelive fork submission must use signer daemon policy");
   }
   if (args.useSignerDaemon) {
     const nonce = Number.isInteger(args.nonce) ? args.nonce : await readForkPendingNonce(plan, args);
@@ -315,19 +309,19 @@ async function loadSignedTx(args, plan, { readSignedTxFile = readFile, sendComma
       socketPath: args.socketPath,
       timeoutMs: args.signerTimeoutMs,
       message: {
-        command: "sign_only",
+        command: "sign_and_broadcast",
         intent: buildForkSignerIntent(plan, { gasLimit: args.gasLimit, nonce }),
       },
     });
-    if (signerResult?.status !== "ok" || !signerResult?.signed?.signedTx) {
-      throw new Error(signerResult?.error?.message || "Signer daemon did not return a signed transaction");
+    if (signerResult?.status !== "ok" || !signerResult?.broadcast?.txHash) {
+      throw new Error(signerResult?.error?.message || "Signer daemon did not broadcast the fork intent");
     }
     return {
-      signedTx: signerResult.signed.signedTx,
-      signerMode: "signer_daemon_sign_only",
+      signerResult,
+      signerMode: "signer_daemon_sign_and_broadcast",
     };
   }
-  throw new Error("Either --signed-tx, --signed-tx-file, or --use-signer-daemon is required");
+  throw new Error("--use-signer-daemon is required");
 }
 
 async function notifyPreliveForkTransition(payload) {
@@ -383,12 +377,8 @@ async function main() {
     const signerArgs = Number.isInteger(args.nonce) || !Number.isInteger(preflightBeforeSign.pendingNonce)
       ? args
       : { ...args, nonce: preflightBeforeSign.pendingNonce };
-    const { signedTx, signerMode } = await loadSignedTx(signerArgs, plan);
-    const preflight = await buildForkSubmissionPreflight(plan, { ...args, signedTx });
-    const submitted = await sendRawTransaction(plan.srcChain, signedTx, {
-      ...(args.rpcUrl ? { rpcUrl: args.rpcUrl } : {}),
-      ...(args.rpcUrls.length ? { rpcUrls: args.rpcUrls } : {}),
-    });
+    const { signerResult, signerMode } = await submitForkIntent(signerArgs, plan);
+    const submitted = signerResult.broadcast;
     const submissionRecord = {
       schemaVersion: 1,
       observedAt: submitted.observedAt,
@@ -401,9 +391,10 @@ async function main() {
       submissionStatus: "submitted",
       txHash: submitted.txHash,
       rpcUrl: submitted.rpcUrl,
-      signedTxBytes: submitted.signedTxBytes,
+      signedTxBytes: null,
       signerMode,
-      forkPreflight: preflight,
+      forkPreflight: preflightBeforeSign,
+      signerPolicy: signerResult.policy || null,
     };
     await store.append("prelive-fork-submissions", submissionRecord);
     const journalEvent = buildExecutionSubmissionEvent({

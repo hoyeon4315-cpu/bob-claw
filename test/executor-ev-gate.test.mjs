@@ -103,6 +103,46 @@ test("evGate rejects marginal EV when expected net is at the receipt-backed thre
   assert.equal(verdict.evidence.requiredNetUsd, 0.9);
 });
 
+test("evGate rejects non-safety live intents when expected net is unmeasured", () => {
+  const verdict = evGate(
+    makeIntent({ expectedNetUsd: undefined }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
+  assert.equal(verdict.evidence.blockReason, "expected_net_required_for_live_intent");
+});
+
+test("evGate accepts expectedNetProfitUsd aliases from campaign proposers", () => {
+  const verdict = evGate(
+    makeIntent({
+      expectedNetUsd: undefined,
+      expectedNetProfitUsd: 1.01,
+    }),
+    makeHistory([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.equal(verdict.evidence.expectedNetUsd, 1.01);
+});
+
+test("evGate accepts metadata expectedNetProfitUsd aliases from campaign proposers", () => {
+  const verdict = evGate(
+    makeIntent({
+      expectedNetUsd: undefined,
+      metadata: { expectedNetProfitUsd: 1.01 },
+    }),
+    makeHistory([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.equal(verdict.evidence.expectedNetUsd, 1.01);
+});
+
 test("evGate falls back to committed chain p99 cost when sample history is sparse", () => {
   const history = makeHistory([0.01, 0.02], { chain: "bsc" });
   const fallbackP99CostUsd = executionEvFallbackCostUsd({ chain: "bsc" });
@@ -118,6 +158,22 @@ test("evGate falls back to committed chain p99 cost when sample history is spars
   assert.equal(verdict.allow, false);
   assert.equal(verdict.evidence.costSource, "fallback_chain_p99");
   assert.equal(verdict.evidence.fallbackP99CostUsd, fallbackP99CostUsd);
+});
+
+test("evGate allows safety-critical unmeasured emergency unwinds", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "emergency_unwind",
+      executionReason: "risk_unwind",
+      expectedNetUsd: undefined,
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "safety_critical_intent");
 });
 
 test("evGate uses shared tiny-canary cost floor for sparse tiny_live_canary history", () => {

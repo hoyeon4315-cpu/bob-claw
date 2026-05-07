@@ -302,6 +302,7 @@ test("committed resume timestamp ignores older terminal failures without rewriti
       strategyId: "native-dex-experiment",
       chain: "optimism",
       intentType: "dex_swap",
+      expectedNetUsd: 10,
       quote: { observedAt: "2026-04-22T15:17:00.000Z" },
     }),
     auditRecords: [

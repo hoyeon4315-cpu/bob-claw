@@ -12,20 +12,7 @@ import {
 } from "../config/destination-venues.mjs";
 import { STABLE_VENUES, getStableVenues } from "../config/stable-venues.mjs";
 import { STRATEGY_CAPS } from "../config/strategy-caps.mjs";
-
-const OFFICIAL_11_CHAINS = Object.freeze([
-  "ethereum",
-  "bob",
-  "base",
-  "bsc",
-  "avalanche",
-  "unichain",
-  "bera",
-  "optimism",
-  "soneium",
-  "sei",
-  "sonic",
-]);
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
 
 function chainStrategiesTouching(chainId) {
   return Object.values(STRATEGY_CAPS).filter((cap) => {
@@ -36,7 +23,7 @@ function chainStrategiesTouching(chainId) {
 }
 
 export function buildChainParitySlice() {
-  const chains = OFFICIAL_11_CHAINS.map((chainId) => {
+  const chains = OFFICIAL_GATEWAY_DESTINATION_CHAINS.map((chainId) => {
     const wrapped = getWrappedBtcVenues(chainId);
     const stable = getStableVenues(chainId);
     const touching = chainStrategiesTouching(chainId);
@@ -100,7 +87,7 @@ export function buildChainParitySlice() {
   });
 
   return Object.freeze({
-    officialChainCount: OFFICIAL_11_CHAINS.length,
+    officialChainCount: OFFICIAL_GATEWAY_DESTINATION_CHAINS.length,
     chains,
     byChain: Object.freeze(Object.fromEntries(chains.map((c) => [c.chainId, c]))),
     generatedAt: new Date().toISOString(),

@@ -214,6 +214,8 @@ function expectedNetUsdFromIntent(intent = {}) {
   const candidates = [
     intent.expectedNetUsd,
     intent.metadata?.expectedNetUsd,
+    intent.expectedNetProfitUsd,
+    intent.metadata?.expectedNetProfitUsd,
     intent.systemEconomics?.effectiveSystemNetPnlUsd,
     intent.systemEconomics?.estimatedNetPnlUsd,
     intent.metadata?.systemEconomics?.effectiveSystemNetPnlUsd,
@@ -268,13 +270,13 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
 
   if (expectedNetUsd === null) {
     return {
-      allow: true,
-      blockers: [],
+      allow: false,
+      blockers: ["expected_net_unmeasured"],
       evidence: {
         strategyId,
         chain,
         intentType,
-        bypassReason: "expected_net_unmeasured",
+        blockReason: "expected_net_required_for_live_intent",
       },
     };
   }
