@@ -1,104 +1,127 @@
 #!/usr/bin/env node
-// T18 helper: preview which strategies are eligible for an
-// autoExecute=true cap-flip based on signer-audit.jsonl evidence.
+// Dev-lane helper: preview which candidate evidence files clear the
+// deterministic auto-promotion guard used by coding-session LLM commits.
 //
-// Prints a deterministic JSON report. Does not edit configs, does not
-// open PRs. The operator copies the suggestedDiff and commits it
-// manually — caps are code per AGENTS.md.
+// Prints a deterministic JSON report. Does not edit configs, does not open
+// PRs, and never reads signer receipts as promotion authority. Live execution
+// remains owned by committed caps + policy + signer approval per AGENTS.md.
 //
 // Usage:
-//   node src/cli/promotion-pr-preview.mjs                       # full repo
-//   node src/cli/promotion-pr-preview.mjs --strategy=<id>       # single strategy
-//   node src/cli/promotion-pr-preview.mjs --lookback-days=21
-//   node src/cli/promotion-pr-preview.mjs --audit=<path>
+//   node src/cli/promotion-pr-preview.mjs                         # all autoExecute:false caps
+//   node src/cli/promotion-pr-preview.mjs --strategy=<id>          # single strategy
+//   node src/cli/promotion-pr-preview.mjs --evidence=<path>        # JSON object or array
+//   node src/cli/promotion-pr-preview.mjs --evidence-dir=<path>    # *.json evidence files
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  evaluatePromotionEvidence,
-  summarizePromotionEvidence,
-  PROMOTION_THRESHOLDS,
-} from "../strategy/promotion-evidence.mjs";
+import { readdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { evaluateAutoPromotion } from "../executor/auto-promotion-gate.mjs";
+import { buildAutoPromotionConfig } from "../config/auto-promotion.mjs";
 import { STRATEGY_CAPS } from "../config/strategy-caps.mjs";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const DEFAULT_AUDIT = resolve(ROOT, "logs/signer-audit.jsonl");
-
 function parseArgs(argv) {
-  const out = { lookbackDays: PROMOTION_THRESHOLDS.defaultLookbackDays };
+  const out = { evidence: [] };
   for (const a of argv) {
     if (a.startsWith("--strategy=")) out.strategy = a.split("=")[1];
-    else if (a.startsWith("--lookback-days=")) out.lookbackDays = Number(a.split("=")[1]);
-    else if (a.startsWith("--audit=")) out.audit = a.split("=")[1];
+    else if (a.startsWith("--evidence=")) out.evidence.push(a.split("=")[1]);
+    else if (a.startsWith("--evidence-dir=")) out.evidenceDir = a.split("=")[1];
     else if (a.startsWith("--write=")) out.write = a.split("=")[1];
     else if (a === "--quiet") out.quiet = true;
+    // Deprecated compatibility flags retained so scheduled report commands do
+    // not fail while their artifact name is migrated.
+    else if (a.startsWith("--lookback-days=")) out.lookbackDays = Number(a.split("=")[1]);
+    else if (a.startsWith("--audit=")) out.audit = a.split("=")[1];
   }
   return out;
 }
 
-export function loadAuditReceipts(path) {
-  if (!existsSync(path)) return [];
-  const text = readFileSync(path, "utf8");
-  const out = [];
-  for (const raw of text.split("\n")) {
-    if (!raw.trim()) continue;
-    let row;
-    try { row = JSON.parse(raw); } catch { continue; }
-    if (!row || !row.strategyId) continue;
-    // Only consider terminal lifecycle rows — broadcast or realized.
-    const stage = row.lifecycle?.stage;
-    if (stage !== "broadcasted" && stage !== "realized" && stage !== "failed") continue;
-    const tsMs = Date.parse(row.timestamp);
-    if (!Number.isFinite(tsMs)) continue;
-    out.push({
-      strategyId: row.strategyId,
-      tsMs,
-      source: row.intent?.mode === "live" || row.broadcast ? "signer" : "shadow",
-      txHash: row.broadcast?.txHash || row.lifecycle?.txHash || null,
-      outcome: row.error
-        ? "failure"
-        : (stage === "failed" ? "failure" : "success"),
-      realizedProfitSats: Number(row.realized?.profitSats || 0),
-      roundTripCostSats: Number(row.realized?.roundTripCostSats || 0),
-    });
-  }
-  return out;
+function readJsonFile(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
 }
 
-export function buildPromotionReport({ receipts, nowMs, strategyIds, lookbackDays, thresholds = PROMOTION_THRESHOLDS }) {
-  const reports = strategyIds.map((id) =>
-    evaluatePromotionEvidence({
-      strategyId: id,
-      receipts,
-      nowMs,
-      lookbackDays,
-      thresholds,
-    })
+export function loadEvidenceRecords(paths = []) {
+  const records = [];
+  for (const rawPath of paths) {
+    const path = resolve(rawPath);
+    if (!existsSync(path)) continue;
+    const parsed = readJsonFile(path);
+    if (Array.isArray(parsed)) records.push(...parsed);
+    else if (parsed && typeof parsed === "object") records.push(parsed);
+  }
+  return records;
+}
+
+export function loadEvidenceRecordsFromDir(path) {
+  if (!path || !existsSync(path)) return [];
+  const dir = resolve(path);
+  return loadEvidenceRecords(
+    readdirSync(dir)
+      .filter((name) => name.endsWith(".json"))
+      .sort()
+      .map((name) => join(dir, name)),
   );
+}
+
+export function buildAutoPromotionPreviewReport({
+  evidenceRecords = [],
+  nowMs,
+  strategyIds,
+  config = buildAutoPromotionConfig(),
+} = {}) {
+  const evidenceByStrategy = new Map();
+  for (const evidence of evidenceRecords) {
+    if (evidence?.strategyId && typeof evidence.strategyId === "string") {
+      evidenceByStrategy.set(evidence.strategyId, evidence);
+    }
+  }
+  const reports = strategyIds.map((strategyId) => {
+    const evidence = evidenceByStrategy.get(strategyId) || { strategyId };
+    const result = evaluateAutoPromotion(evidence, config);
+    return {
+      strategyId,
+      passed: result.passed,
+      eligible: result.passed,
+      evidenceProvided: evidenceByStrategy.has(strategyId),
+      blockers: result.blockers,
+      evaluated: result.evaluated,
+      initialCanaryCaps: result.initialCanaryCaps,
+    };
+  });
+  const passedCount = reports.filter((report) => report.passed).length;
+  const blockedCount = reports.length - passedCount;
   return {
     generatedAt: new Date(nowMs).toISOString(),
-    lookbackDays,
-    thresholds,
-    summary: summarizePromotionEvidence(reports),
+    schemaVersion: 2,
+    source: "auto_promotion_evidence",
+    advisoryOnly: true,
+    deprecatedReceiptPromotion: false,
+    summary: {
+      strategyCount: reports.length,
+      passedCount,
+      eligibleCount: passedCount,
+      blockedCount,
+      evidenceProvidedCount: reports.filter((report) => report.evidenceProvided).length,
+    },
     reports,
   };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const audit = args.audit ? resolve(args.audit) : DEFAULT_AUDIT;
-  const receipts = loadAuditReceipts(audit);
   const knownIds = Object.keys(STRATEGY_CAPS);
   const knownAutoFalse = knownIds.filter((id) => STRATEGY_CAPS[id].autoExecute === false);
   const ids = args.strategy
     ? [args.strategy]
     : knownAutoFalse;
-  const report = buildPromotionReport({
-    receipts,
+  const evidenceRecords = [
+    ...loadEvidenceRecords(args.evidence),
+    ...loadEvidenceRecordsFromDir(args.evidenceDir),
+  ];
+  const report = buildAutoPromotionPreviewReport({
+    evidenceRecords,
     nowMs: Date.now(),
     strategyIds: ids,
-    lookbackDays: args.lookbackDays,
   });
   if (args.write) {
     const target = resolve(args.write);

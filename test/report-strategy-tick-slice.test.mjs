@@ -85,7 +85,7 @@ test("report-strategy-tick-slice surfaces cap and gas observation state", async 
   ]);
 });
 
-test("report-strategy-tick-slice joins reconciled sats profit into promotion evidence", async () => {
+test("report-strategy-tick-slice keeps receipts separate from policy live eligibility", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-profit-"));
   const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
   const auditLog = join(cwd, "logs", "signer-audit.jsonl");
@@ -150,9 +150,8 @@ test("report-strategy-tick-slice joins reconciled sats profit into promotion evi
   const row = slice.strategies[0];
   assert.equal(row.strategyId, strategyId);
   assert.equal(row.receiptCountSignerBacked, 2);
-  assert.equal(row.promotion.fastTrack.eligible, true);
+  assert.equal(row.policyReadiness.signerBackedReceiptCount, 2);
   assert.equal(row.liveEligibility.liveEligible, true);
-  assert.equal(slice.summary.strategiesEligibleFastTrack, 1);
   assert.equal(slice.summary.strategiesLiveEligible, 1);
 });
 
@@ -216,13 +215,12 @@ test("report-strategy-tick-slice includes reopened wrapped BTC loop in live elig
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const slice = JSON.parse(await readFile(outPath, "utf8"));
   const row = slice.strategies[0];
-  assert.equal(row.promotion.fastTrack.eligible, true);
   assert.equal(row.operatorHold, false);
   assert.equal(row.autoExecute, true);
+  assert.equal(row.policyReadiness.capAutoExecute, true);
   assert.equal(row.liveEligibility.liveEligible, true);
   assert.equal(row.liveEligibility.blockers.includes("strategy_auto_execute_disabled"), false);
   assert.equal(row.liveEligibility.blockers.includes("operator_hold"), false);
-  assert.equal(slice.summary.strategiesEligibleFastTrack, 1);
   assert.equal(slice.summary.strategiesLiveEligible, 1);
   assert.equal(slice.summary.strategiesOperatorHold, 0);
   assert.equal(slice.strategyStage.liveReadyCount, 1);

@@ -3,9 +3,9 @@
 /**
  * report-strategy-tick-slice.mjs
  *
- * Reads `logs/strategy-tick.jsonl` (latest entry per strategy) plus the
- * fast-track promotion evaluation, and writes a focused JSON slice the
- * dashboard renders without touching the full dashboard-status builder.
+ * Reads `logs/strategy-tick.jsonl` (latest entry per strategy) plus signer
+ * receipt/demotion context, and writes a focused JSON slice the dashboard
+ * renders without touching the full dashboard-status builder.
  *
  *   node src/cli/report-strategy-tick-slice.mjs \
  *     [--tick-log=logs/strategy-tick.jsonl] \
@@ -20,11 +20,6 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import {
-  evaluatePromotionEvidence,
-  PROMOTION_THRESHOLDS,
-  PROMOTION_THRESHOLDS_STRICT,
-} from "../strategy/promotion-evidence.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
@@ -191,7 +186,7 @@ function enrichReportsWithMicroCanaryEvidence(reports = [], strategyRows = [], c
     );
     const passedCount = Math.max(
       Number(report?.evidence?.passedCount ?? 0),
-      Number(row.promotion?.fastTrack?.consecutiveSuccess ?? 0),
+      Number(row.receiptCountSignerBacked ?? 0),
       Number(ledger.deliveredCount ?? 0),
     );
     const previewReadyCount = Number(ledger.previewReadyCount ?? 0) + Number(report?.evidence?.previewReadyCount ?? 0);
@@ -261,27 +256,15 @@ function main() {
         };
       });
 
-    const promotionFastTrack = evaluatePromotionEvidence({
-      strategyId: sid,
-      receipts,
-      nowMs,
-    });
-    const promotionStrict = evaluatePromotionEvidence({
-      strategyId: sid,
-      receipts,
-      nowMs,
-      lookbackDays: 14,
-      thresholds: PROMOTION_THRESHOLDS_STRICT,
-    });
     const strategyCaps = getStrategyCaps(sid);
     const operatorHold = OPERATOR_HELD_STRATEGIES.has(sid);
     const capAutoExecute = strategyCaps?.autoExecute === true;
     const autoExecute = capAutoExecute && operatorHold !== true;
     const demotion = evaluateDemotionPolicy({ strategyId: sid, receipts, nowMs });
-    const liveEligible = promotionFastTrack.eligible === true
-      && autoExecute
+    const liveEligible = autoExecute
       && operatorHold !== true
       && demotion.demoted !== true;
+    const receiptCountSignerBacked = receipts.filter((r) => r?.source === "signer").length;
 
     return {
       strategyId: sid,
@@ -302,13 +285,12 @@ function main() {
           reason: item.missingReason,
         })),
       receiptCountTotal: receipts.length,
-      receiptCountSignerBacked: receipts.filter((r) => r?.source === "signer").length,
+      receiptCountSignerBacked,
       autoExecute,
       operatorHold,
       liveEligibility: {
         liveEligible,
         blockers: [
-          ...(promotionFastTrack.eligible ? [] : ["promotion_evidence_not_eligible"]),
           ...(autoExecute ? [] : ["strategy_auto_execute_disabled"]),
           ...(operatorHold ? ["operator_hold"] : []),
           ...(demotion.demoted ? ["demotion_policy_triggered"] : []),
@@ -322,17 +304,13 @@ function main() {
       scoredAllocation: (tick?.scoredAllocationDetails || [])
         .find((a) => a.strategyId === sid) || null,
       generatedIntentCount: (tick?.generatedIntents || []).filter((i) => i.strategyId === sid).length,
-      promotion: {
-        fastTrack: {
-          eligible: promotionFastTrack.eligible,
-          blockers: promotionFastTrack.blockers.map((b) => b.kind),
-          signerBackedReceiptCount: promotionFastTrack.evidence?.signerBackedReceiptCount ?? 0,
-          consecutiveSuccess: promotionFastTrack.evidence?.consecutiveSuccess ?? 0,
-        },
-        strict: {
-          eligible: promotionStrict.eligible,
-          blockers: promotionStrict.blockers.map((b) => b.kind),
-        },
+      policyReadiness: {
+        autoExecute,
+        capAutoExecute,
+        operatorHold,
+        demoted: demotion.demoted,
+        signerBackedReceiptCount: receiptCountSignerBacked,
+        receiptCountTotal: receipts.length,
       },
     };
   });
@@ -353,7 +331,7 @@ function main() {
   );
   const enrichedReportsByStrategy = new Map(dedupedLatestReports.map((report) => [report.strategyId, report]));
 
-  const promotionEvidence = Object.fromEntries(
+  const liveReadinessEvidence = Object.fromEntries(
     strategyRows.map((s) => {
       const report = enrichedReportsByStrategy.get(s.strategyId) || null;
       return [
@@ -368,13 +346,11 @@ function main() {
     strategyRows.map((s) => [s.strategyId, { demoted: s.demotion.demoted, triggers: s.demotion.triggers }]),
   );
   const microCanarySlice = buildMicroCanarySlice(dedupedLatestReports);
-  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, promotionEvidence, demotionEvidence);
+  const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, liveReadinessEvidence, demotionEvidence);
 
   const slice = {
     schemaVersion: 2,
     generatedAt: new Date(nowMs).toISOString(),
-    fastTrackThresholds: PROMOTION_THRESHOLDS,
-    strictThresholds: PROMOTION_THRESHOLDS_STRICT,
     tickCountTotal: ticks.length,
     latestTickAt: ticks.length > 0
       ? ticks.map((t) => t.tickAt).sort().slice(-1)[0]
@@ -384,10 +360,8 @@ function main() {
       strategiesTracked: strategies.length,
       strategiesWithTick: strategyRows.filter((s) => s.lastTickAt).length,
       strategiesMissingCaps: strategyRows.filter((s) => s.capsConfigured === false).length,
-      strategiesEligibleFastTrack: strategyRows.filter((s) => s.promotion.fastTrack.eligible).length,
       strategiesLiveEligible: strategyRows.filter((s) => s.liveEligibility.liveEligible).length,
       strategiesOperatorHold: strategyRows.filter((s) => s.operatorHold).length,
-      strategiesEligibleStrict: strategyRows.filter((s) => s.promotion.strict.eligible).length,
       totalSignerBackedReceipts: strategyRows.reduce((acc, s) => acc + s.receiptCountSignerBacked, 0),
       strategiesWithGeneratedIntents: strategyRows.filter((s) => s.generatedIntentCount > 0).length,
       totalGeneratedIntents: strategyRows.reduce((acc, s) => acc + s.generatedIntentCount, 0),
@@ -405,7 +379,7 @@ function main() {
     } else {
       console.log(`strategy-tick slice written: ${outPath}`);
       console.log(`  ticks=${slice.tickCountTotal} strategies=${slice.summary.strategiesTracked}`);
-      console.log(`  withTick=${slice.summary.strategiesWithTick} eligibleFastTrack=${slice.summary.strategiesEligibleFastTrack} eligibleStrict=${slice.summary.strategiesEligibleStrict}`);
+      console.log(`  withTick=${slice.summary.strategiesWithTick} liveEligible=${slice.summary.strategiesLiveEligible}`);
       console.log(`  totalSignerBackedReceipts=${slice.summary.totalSignerBackedReceipts} generatedIntents=${slice.summary.totalGeneratedIntents}`);
     }
   }
