@@ -87,10 +87,10 @@ export function buildTinyCanaryAdmission({
       blockers: livePolicyBlocked || livePolicyAllowed ? [] : ["live_policy_state_unknown"],
     },
     {
-      code: livePolicyAllowed ? "auto_execute_policy_ready" : "manual_approval_required",
+      code: livePolicyAllowed ? "auto_execute_policy_ready" : "policy_waiting",
       label: livePolicyAllowed
         ? "auto-execute policy is ready for the selected strategy"
-        : "manual approval is still required before any live canary",
+        : "policy approval is still required before any live canary",
       status: livePolicyAllowed ? "passed" : "required",
       blockers: [],
     },
@@ -101,17 +101,17 @@ export function buildTinyCanaryAdmission({
       .filter((item) => item.status === "blocked")
       .flatMap((item) => item.blockers),
   );
-  const decision = blockers.length === 0 ? "GO_FOR_MANUAL_APPROVAL" : "NO_GO";
-  const reconciledDecision = decision === "GO_FOR_MANUAL_APPROVAL" && livePolicyAllowed ? "GO_FOR_AUTO_EXECUTE" : decision;
+  const decision = blockers.length === 0 ? "GO_FOR_POLICY_READY" : "NO_GO";
+  const reconciledDecision = decision === "GO_FOR_POLICY_READY" && livePolicyAllowed ? "GO_FOR_AUTO_EXECUTE" : decision;
   const status = reconciledDecision === "GO_FOR_AUTO_EXECUTE"
     ? "auto_execute_policy_ready"
-    : reconciledDecision === "GO_FOR_MANUAL_APPROVAL"
-      ? "manual_approval_required"
+    : reconciledDecision === "GO_FOR_POLICY_READY"
+      ? "policy_waiting"
       : "blocked";
   const nextActionCode = reconciledDecision === "GO_FOR_AUTO_EXECUTE"
     ? "auto_execute_policy_ready"
-    : reconciledDecision === "GO_FOR_MANUAL_APPROVAL"
-      ? "manual_approval_required"
+    : reconciledDecision === "GO_FOR_POLICY_READY"
+      ? "policy_waiting"
       : candidate?.nextAction?.code || "clear_admission_blockers";
 
   return {
@@ -163,20 +163,20 @@ export function reconcileTinyCanaryAdmissionWithLivePolicy(admission = null, ove
   if (staleAutoExecute) {
     return {
       ...admission,
-      decision: "GO_FOR_MANUAL_APPROVAL",
-      status: "manual_approval_required",
+      decision: "GO_FOR_POLICY_READY",
+      status: "policy_waiting",
       requirements: (admission.requirements || []).map((requirement) =>
         requirement?.code === "auto_execute_policy_ready"
           ? {
               ...requirement,
-              code: "manual_approval_required",
-              label: "manual approval is still required before any live canary",
+              code: "policy_waiting",
+              label: "policy approval is still required before any live canary",
               status: "required",
               blockers: [],
             }
           : requirement,
       ),
-      nextActionCode: "manual_approval_required",
+      nextActionCode: "policy_waiting",
       nextActionCommand: null,
       constraints: {
         ...(admission.constraints || {}),
@@ -198,7 +198,7 @@ export function reconcileTinyCanaryAdmissionWithLivePolicy(admission = null, ove
     decision: "GO_FOR_AUTO_EXECUTE",
     status: "auto_execute_policy_ready",
     requirements: (admission.requirements || []).map((requirement) =>
-      requirement?.code === "manual_approval_required"
+      requirement?.code === "policy_waiting"
         ? {
             ...requirement,
             code: "auto_execute_policy_ready",

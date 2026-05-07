@@ -363,12 +363,12 @@ test("prelive review package becomes review-ready once canary and prelive gates 
   assert.equal(reviewPackage.packageStatus, "ready_for_manual_review");
   assert.equal(reviewPackage.reviewDecision, "READY_FOR_MANUAL_CANARY_REVIEW");
   assert.deepEqual(reviewPackage.reviewBlockers, []);
-  assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(reviewPackage.tinyCanaryAdmission.decision, "GO_FOR_POLICY_READY");
   assert.equal(reviewPackage.tinyCanaryAdmission.constraints.dailyLossCapUsd, null);
   assert.equal(reviewPackage.manualReviewCandidate.routeLabel, "base->unichain wBTC.OFT->wBTC.OFT");
   assert.equal(summary.readyForManualReview, true);
   assert.equal(summary.packageStatus, "ready_for_manual_review");
-  assert.equal(summary.tinyCanaryAdmissionDecision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(summary.tinyCanaryAdmissionDecision, "GO_FOR_POLICY_READY");
   assert.equal(summary.remediationPlan.overallStatus, "clear");
   assert.equal(summary.remediationPlan.runnerCommand, "npm run run:admission-remediation -- --execute --continue-on-failure --limit=3");
   assert.equal(summary.simulationSuccessCount, 50);

@@ -126,7 +126,7 @@ test("prelive readiness stays in shadow replay when audit and policy gates are b
   assert.equal(summary.tinyLiveCanary.blockers.includes("shadow_replay_not_ready"), true);
 });
 
-test("prelive readiness honors review-package manual approval state even when strategy summary lags", () => {
+test("prelive readiness honors review-package policy waiting state even when strategy summary lags", () => {
   const summary = buildPreliveReadinessSummary({
     overall: {
       liveTrading: "BLOCKED",
@@ -151,7 +151,7 @@ test("prelive readiness honors review-package manual approval state even when st
     reviewPackage: {
       readyForManualReview: true,
       tinyCanaryAdmission: {
-        status: "manual_approval_required",
+        status: "policy_waiting",
       },
     },
     targetSimulationSuccessCount: 1,
@@ -188,7 +188,7 @@ test("prelive readiness does not require a route edge when a strategy candidate 
         reviewReady: true,
       },
       tinyCanaryAdmission: {
-        status: "manual_approval_required",
+        status: "policy_waiting",
       },
     },
     targetSimulationSuccessCount: 1,
@@ -234,7 +234,7 @@ test("prelive readiness treats transport-only audit blockers as warnings for rea
         reviewReady: true,
       },
       tinyCanaryAdmission: {
-        status: "manual_approval_required",
+        status: "policy_waiting",
       },
     },
     targetSimulationSuccessCount: 1,
@@ -282,7 +282,7 @@ test("prelive readiness still blocks strategy candidates on non-transport audit 
         reviewReady: true,
       },
       tinyCanaryAdmission: {
-        status: "manual_approval_required",
+        status: "policy_waiting",
       },
     },
     targetSimulationSuccessCount: 1,
@@ -365,7 +365,7 @@ test("prelive readiness accepts signer-backed strategy execution proof instead o
         },
       },
       tinyCanaryAdmission: {
-        status: "manual_approval_required",
+        status: "policy_waiting",
       },
     },
     simulationRuns: [
@@ -416,7 +416,7 @@ test("prelive readiness still requires fork cycles when a strategy lacks signer-
         },
       },
       tinyCanaryAdmission: {
-        status: "manual_approval_required",
+        status: "policy_waiting",
       },
     },
     simulationRuns: [

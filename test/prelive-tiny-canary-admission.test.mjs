@@ -5,7 +5,7 @@ import {
   reconcileTinyCanaryAdmissionWithLivePolicy,
 } from "../src/prelive/tiny-canary-admission.mjs";
 
-test("tiny canary admission returns go-for-manual-approval when all gates clear", () => {
+test("tiny canary admission returns go-for-policy-ready when all gates clear", () => {
   const admission = buildTinyCanaryAdmission({
     prelive: {
       tinyLiveCanary: {
@@ -39,10 +39,10 @@ test("tiny canary admission returns go-for-manual-approval when all gates clear"
     now: "2026-04-12T12:20:00.000Z",
   });
 
-  assert.equal(admission.decision, "GO_FOR_MANUAL_APPROVAL");
-  assert.equal(admission.status, "manual_approval_required");
+  assert.equal(admission.decision, "GO_FOR_POLICY_READY");
+  assert.equal(admission.status, "policy_waiting");
   assert.deepEqual(admission.blockers, []);
-  assert.equal(admission.nextActionCode, "manual_approval_required");
+  assert.equal(admission.nextActionCode, "policy_waiting");
   assert.equal(admission.constraints.dailyLossCapUsd, null);
 });
 
@@ -186,7 +186,7 @@ test("tiny canary admission supports strategy-level candidates", () => {
     },
   });
 
-  assert.equal(ready.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(ready.decision, "GO_FOR_POLICY_READY");
   assert.equal(ready.candidate.candidateType, "strategy");
 });
 
@@ -227,16 +227,16 @@ test("tiny canary admission promotes cleared strategy candidate when live policy
   assert.equal(admission.requirements.some((item) => item.code === "auto_execute_policy_ready" && item.status === "passed"), true);
 });
 
-test("tiny canary admission reconciliation updates stale manual approval package after live policy clears", () => {
+test("tiny canary admission reconciliation updates stale policy waiting package after live policy clears", () => {
   const reconciled = reconcileTinyCanaryAdmissionWithLivePolicy(
     {
-      decision: "GO_FOR_MANUAL_APPROVAL",
-      status: "manual_approval_required",
+      decision: "GO_FOR_POLICY_READY",
+      status: "policy_waiting",
       blockers: [],
-      nextActionCode: "manual_approval_required",
+      nextActionCode: "policy_waiting",
       requirements: [
         { code: "candidate_selected", label: "candidate selected", status: "passed", blockers: [] },
-        { code: "manual_approval_required", label: "manual approval required", status: "required", blockers: [] },
+        { code: "policy_waiting", label: "policy waiting", status: "required", blockers: [] },
       ],
       constraints: {
         liveTradingPolicy: "BLOCKED",
@@ -286,17 +286,17 @@ test("tiny canary admission reconciliation downgrades stale auto-execute package
     },
   );
 
-  assert.equal(reconciled.decision, "GO_FOR_MANUAL_APPROVAL");
-  assert.equal(reconciled.status, "manual_approval_required");
+  assert.equal(reconciled.decision, "GO_FOR_POLICY_READY");
+  assert.equal(reconciled.status, "policy_waiting");
   assert.deepEqual(reconciled.blockers, []);
   assert.deepEqual(reconciled.candidate, candidate);
-  assert.equal(reconciled.nextActionCode, "manual_approval_required");
+  assert.equal(reconciled.nextActionCode, "policy_waiting");
   assert.equal(reconciled.nextActionCommand, null);
   assert.equal(reconciled.constraints.liveTradingPolicy, "BLOCKED");
   assert.equal(reconciled.requirements.some((item) => item.code === "auto_execute_policy_ready"), false);
   assert.equal(
     reconciled.requirements.some(
-      (item) => item.code === "manual_approval_required" && item.status === "required" && item.blockers.length === 0,
+      (item) => item.code === "policy_waiting" && item.status === "required" && item.blockers.length === 0,
     ),
     true,
   );

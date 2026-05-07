@@ -163,7 +163,7 @@ export function buildPreliveReadinessSummary({
   const manualReviewReady = Boolean(
     strategy?.manualCanaryReviewReady ||
       reviewPackage?.readyForManualReview ||
-      reviewPackage?.tinyCanaryAdmission?.status === "manual_approval_required" ||
+      reviewPackage?.tinyCanaryAdmission?.status === "policy_waiting" ||
       reviewPackage?.tinyCanaryAdmission?.status === "auto_execute_policy_ready",
   );
   const primaryCandidate = reviewPackage?.primaryLiveCandidate || null;

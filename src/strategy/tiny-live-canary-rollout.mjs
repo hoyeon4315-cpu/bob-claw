@@ -4,7 +4,7 @@ function unique(values = []) {
 
 function nextAction({ admission = null, preliveValidation = null } = {}) {
   const blockerCount = admission?.blockers?.length ?? 0;
-  if (blockerCount === 0 && ["manual_approval_required", "auto_execute_policy_ready"].includes(admission?.status)) {
+  if (blockerCount === 0 && ["policy_waiting", "auto_execute_policy_ready"].includes(admission?.status)) {
     return {
       code: admission?.nextActionCode || admission?.status,
       command: null,
@@ -35,7 +35,7 @@ export function buildTinyLiveCanaryRollout({
     "stale or blocked connected inputs pause the rollout immediately",
     "any fork execution or dry-run regression blocks promotion",
     "watcher breach or failed-gas budget breach requires unwind/stop",
-    "manual approval remains required before any live canary",
+    "policy approval remains required before any live canary",
   ];
   return {
     schemaVersion: 1,

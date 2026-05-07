@@ -253,18 +253,18 @@ test("live ops handoff prefers ready rollout status over stale strategy snapshot
   assert.equal(handoff.primaryLiveLane.nextAction.code, "auto_execute_policy_ready");
 });
 
-test("tiny live canary rollout keeps manual approval as next action after blockers clear", () => {
+test("tiny live canary rollout keeps policy waiting as next action after blockers clear", () => {
   const rollout = buildTinyLiveCanaryRollout({
     reviewPackage: {
       tinyCanaryAdmission: {
-        decision: "GO_FOR_MANUAL_APPROVAL",
-        status: "manual_approval_required",
+        decision: "GO_FOR_POLICY_READY",
+        status: "policy_waiting",
         blockers: [],
-        nextActionCode: "manual_approval_required",
+        nextActionCode: "policy_waiting",
         requirements: [
           { code: "candidate_selected", label: "candidate selected", status: "passed", blockers: [] },
           { code: "prelive_evidence_complete", label: "prelive evidence complete", status: "passed", blockers: [] },
-          { code: "manual_approval_required", label: "manual approval required", status: "required", blockers: [] },
+          { code: "policy_waiting", label: "policy waiting", status: "required", blockers: [] },
         ],
         candidate: {
           candidateType: "strategy",
@@ -281,11 +281,11 @@ test("tiny live canary rollout keeps manual approval as next action after blocke
     now: "2026-04-19T00:00:00.000Z",
   });
 
-  assert.equal(rollout.summary.decision, "GO_FOR_MANUAL_APPROVAL");
+  assert.equal(rollout.summary.decision, "GO_FOR_POLICY_READY");
   assert.equal(rollout.summary.blockerCount, 0);
-  assert.equal(rollout.summary.nextAction.code, "manual_approval_required");
+  assert.equal(rollout.summary.nextAction.code, "policy_waiting");
   assert.equal(rollout.summary.nextAction.command, null);
-  assert.equal(summarizeTinyLiveCanaryRollout(rollout).nextAction.code, "manual_approval_required");
+  assert.equal(summarizeTinyLiveCanaryRollout(rollout).nextAction.code, "policy_waiting");
 });
 
 test("tiny live canary rollout keeps auto-execute policy as next action after policy clears", () => {
