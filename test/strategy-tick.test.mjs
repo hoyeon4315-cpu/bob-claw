@@ -24,7 +24,6 @@ const baseGates = {
       },
     ],
   },
-  dynamicLiveGate: { gated: false, blockers: [] },
   feedFreshness: { ok: true, worstSeverity: "ok", staleCount: 0 },
   btcPriceUsd: BTC,
 };
@@ -62,7 +61,7 @@ describe("strategy-tick", () => {
       runStrategyTick({ ...baseGates, btcPriceUsd: 0, entries: [] }),
     );
     assert.throws(() =>
-      runStrategyTick({ entries: [], dynamicLiveGate: baseGates.dynamicLiveGate, feedFreshness: baseGates.feedFreshness, btcPriceUsd: BTC }),
+      runStrategyTick({ entries: [], feedFreshness: baseGates.feedFreshness, btcPriceUsd: BTC }),
     );
   });
 

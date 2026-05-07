@@ -109,7 +109,6 @@ function evaluateOne(entry, now) {
 export function runStrategyTick({
   entries = [],
   adaptiveCapitalPlan,
-  dynamicLiveGate,
   feedFreshness,
   btcPriceUsd,
   allowShadow = false,
@@ -121,9 +120,6 @@ export function runStrategyTick({
   }
   if (!adaptiveCapitalPlan) {
     throw new TypeError("adaptiveCapitalPlan is required");
-  }
-  if (!dynamicLiveGate) {
-    throw new TypeError("dynamicLiveGate is required");
   }
   if (!feedFreshness) {
     throw new TypeError("feedFreshness is required");
@@ -156,7 +152,6 @@ export function runStrategyTick({
   const dispatch = dispatchStrategyCatalog({
     candidates: [...built.candidates],
     adaptiveCapitalPlan,
-    dynamicLiveGate,
     feedFreshness,
     btcPriceUsd,
     now,

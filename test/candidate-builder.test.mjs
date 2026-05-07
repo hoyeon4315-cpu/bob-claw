@@ -205,7 +205,6 @@ describe("candidate-builder", () => {
           },
         ],
       },
-      dynamicLiveGate: { gated: false, blockers: [] },
       feedFreshness: { ok: true, worstSeverity: "ok", staleCount: 0 },
       btcPriceUsd: BTC,
     });

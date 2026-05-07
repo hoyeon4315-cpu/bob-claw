@@ -710,13 +710,11 @@ async function main() {
   }
 
   const adaptiveCapitalPlan = buildAdaptiveCapitalPlan(args.strategies);
-  const dynamicLiveGate = { gated: false, blockers: [] };
   const feedFreshness = { ok: true, worstSeverity: "ok", staleCount: 0 };
 
   const result = runStrategyTick({
     entries,
     adaptiveCapitalPlan,
-    dynamicLiveGate,
     feedFreshness,
     btcPriceUsd,
     allowShadow: args.allowShadow,

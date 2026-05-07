@@ -182,7 +182,7 @@ test("lane-aware live policy recognizes reopened recursive loop caps", () => {
   assert.equal(policy.leverage.healthFactorMin, 1.35);
 });
 
-test("lane-aware live policy surfaces Stage B shadow-only gating without erasing pre-stage approval", () => {
+test("lane-aware live policy keeps Stage B advisory without blocking policy live trading", () => {
   const overall = applyLaneAwareLivePolicy({
     overall: {
       liveTrading: "ALLOWED",
@@ -212,11 +212,11 @@ test("lane-aware live policy surfaces Stage B shadow-only gating without erasing
     },
   });
 
-  assert.equal(overall.liveTrading, "BLOCKED");
-  assert.deepEqual(overall.blockers, ["refill_routes_unresolved"]);
-  assert.equal(overall.warnings.includes("lane_stage_B_shadow_only"), true);
+  assert.equal(overall.liveTrading, "ALLOWED");
+  assert.deepEqual(overall.blockers, []);
+  assert.equal(overall.warnings.includes("lane_stage_advisory_only"), true);
   assert.equal(overall.lanePolicy.stage, "B");
-  assert.equal(overall.lanePolicy.preStageLiveTrading, "ALLOWED");
+  assert.equal(overall.lanePolicy.policyLiveTrading, "ALLOWED");
   assert.deepEqual(overall.lanePolicy.stageBlockers, ["refill_routes_unresolved"]);
 });
 

@@ -45,13 +45,6 @@ const staleFeeds = Object.freeze({
   staleCount: 1,
 });
 
-const openLiveGate = Object.freeze({ gated: false, action: "allow_live", blockers: [] });
-const blockedLiveGate = Object.freeze({
-  gated: true,
-  action: "block_live",
-  blockers: [{ kind: "verdict_not_policy_ready" }],
-});
-
 const candidateA = Object.freeze({
   strategyId: "S1_moonwell_base",
   chain: "base",
@@ -68,21 +61,12 @@ test("throws when required inputs missing", () => {
       dispatchStrategyCatalog({
         adaptiveCapitalPlan: plan({ strategies: [] }),
       }),
-    /dynamicLiveGate/,
-  );
-  assert.throws(
-    () =>
-      dispatchStrategyCatalog({
-        adaptiveCapitalPlan: plan({ strategies: [] }),
-        dynamicLiveGate: openLiveGate,
-      }),
     /feedFreshness/,
   );
   assert.throws(
     () =>
       dispatchStrategyCatalog({
         adaptiveCapitalPlan: plan({ strategies: [] }),
-        dynamicLiveGate: openLiveGate,
         feedFreshness: freshFeeds,
         btcPriceUsd: 0,
       }),
@@ -94,7 +78,6 @@ test("stale feeds block all candidates", () => {
   const out = dispatchStrategyCatalog({
     candidates: [candidateA],
     adaptiveCapitalPlan: plan({ strategies: [{ strategyId: "S1_moonwell_base" }] }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: staleFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -105,18 +88,6 @@ test("stale feeds block all candidates", () => {
   assert.equal(out.intents[0].reason, DENY_REASONS.FEED_STALE);
 });
 
-test("blocked live gate denies all", () => {
-  const out = dispatchStrategyCatalog({
-    candidates: [candidateA],
-    adaptiveCapitalPlan: plan({ strategies: [{ strategyId: "S1_moonwell_base" }] }),
-    dynamicLiveGate: blockedLiveGate,
-    feedFreshness: freshFeeds,
-    btcPriceUsd: BTC_PRICE,
-  });
-  assert.equal(out.globalGate.reason, DENY_REASONS.LIVE_GATE_BLOCKED);
-  assert.equal(out.intents[0].decision, "deny");
-});
-
 test("operating floor breach denies all", () => {
   const out = dispatchStrategyCatalog({
     candidates: [candidateA],
@@ -124,7 +95,6 @@ test("operating floor breach denies all", () => {
       newEntriesAllowed: false,
       strategies: [{ strategyId: "S1_moonwell_base" }],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -136,7 +106,6 @@ test("unknown strategy is denied, others pass", () => {
   const out = dispatchStrategyCatalog({
     candidates: [unknown, candidateA],
     adaptiveCapitalPlan: plan({ strategies: [{ strategyId: "S1_moonwell_base" }] }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -156,7 +125,6 @@ test("autoExecute=false or newEntriesAllowed=false denies that strategy", () => 
         { strategyId: "S2", newEntriesAllowed: false },
       ],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -175,7 +143,6 @@ test("negative post-cost edge denied", () => {
   const out = dispatchStrategyCatalog({
     candidates: [bad],
     adaptiveCapitalPlan: plan({ strategies: [{ strategyId: "S1_moonwell_base" }] }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -191,7 +158,6 @@ test("cap shrinks allocation below request; binding=static", () => {
         { strategyId: "S1_moonwell_base", perTxUsd: 500, perDayUsd: 2000 },
       ],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -209,7 +175,6 @@ test("cap zero denied", () => {
         { strategyId: "S1_moonwell_base", perTxUsd: 0, perDayUsd: 0 },
       ],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -240,7 +205,6 @@ test("diversification violation shrinks allocation", () => {
     }),
     diversificationSlice: divSlice,
     absoluteAllocations,
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -278,7 +242,6 @@ test("diversification shrink keeps allow when slack exists", () => {
     }),
     diversificationSlice: divSlice,
     absoluteAllocations,
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -303,7 +266,6 @@ test("ranked allow-first by net sats desc", () => {
         { strategyId: "C" },
       ],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -321,7 +283,6 @@ test("frozen output and summary correctness", () => {
         { strategyId: "S1_moonwell_base", perTxUsd: 1000, perDayUsd: 5000 },
       ],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
   });
@@ -341,7 +302,6 @@ test("deterministic output for same input", () => {
     adaptiveCapitalPlan: plan({
       strategies: [{ strategyId: "S1_moonwell_base" }, { strategyId: "S2" }],
     }),
-    dynamicLiveGate: openLiveGate,
     feedFreshness: freshFeeds,
     btcPriceUsd: BTC_PRICE,
     now: "2026-04-21T00:00:00.000Z",

@@ -101,7 +101,7 @@ function liveTradingAllowed(policy = null) {
 
 function baseLiveTradingAllowed(policy = null) {
   return LIVE_TRADING_ALLOWED.has(
-    String(policy?.preStageLiveTrading || policy?.liveTrading || "").trim(),
+    String(policy?.policyLiveTrading || policy?.liveTrading || "").trim(),
   );
 }
 
@@ -109,68 +109,19 @@ function flashLiveAllowed(policy = null) {
   return FLASH_LIVE_ALLOWED.has(String(policy?.flashLiveAdmission || "").trim());
 }
 
-function stageAwareExecutionMode({
-  policy = null,
+function selectExecutionModeFromPolicy({
   rawLiveEligible = false,
   fallbackMode = "dry_run",
-  allowStageBPaybackBootstrap = false,
 } = {}) {
-  const stage = String(policy?.laneStage || "").trim().toUpperCase() || null;
   if (!rawLiveEligible) {
     return {
       currentLiveEligible: false,
       selectedMode: fallbackMode,
-      stageBlocker: null,
-    };
-  }
-  if (stage === "B") {
-    if (allowStageBPaybackBootstrap) {
-      return {
-        currentLiveEligible: true,
-        selectedMode: "live",
-        stageBlocker: null,
-      };
-    }
-    return {
-      currentLiveEligible: false,
-      selectedMode: "shadow",
-      stageBlocker: "lane_stage_shadow_only",
-    };
-  }
-  if (stage === "A") {
-    return {
-      currentLiveEligible: false,
-      selectedMode: fallbackMode,
-      stageBlocker: "lane_stage_locked_A",
     };
   }
   return {
     currentLiveEligible: rawLiveEligible,
     selectedMode: "live",
-    stageBlocker: null,
-  };
-}
-
-function sameMembers(left = [], right = []) {
-  const normalizedLeft = compact(left).sort();
-  const normalizedRight = compact(right).sort();
-  return normalizedLeft.length === normalizedRight.length &&
-    normalizedLeft.every((value, index) => value === normalizedRight[index]);
-}
-
-function stageBPaybackBootstrap(policy = null, strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID) {
-  const stage = String(policy?.laneStage || "").trim().toUpperCase();
-  const candidateId = policy?.laneCandidateId || null;
-  const requiredBlockers = ["receipt_proven_payback_period_missing"];
-  const allowed =
-    stage === "B" &&
-    strategyId === WRAPPED_BTC_LOOP_STRATEGY_ID &&
-    candidateId === WRAPPED_BTC_LOOP_STRATEGY_ID &&
-    sameMembers(policy?.blockers || [], requiredBlockers) &&
-    sameMembers(policy?.stageBlockers || [], requiredBlockers);
-  return {
-    allowed,
-    reason: allowed ? "single_payback_receipt_blocker" : null,
   };
 }
 
@@ -465,9 +416,8 @@ function buildWrappedBtcLoopExecutorSurface({
   const validation = phase3ValidationById(phase3Validation).get("wrapped_btc_loop_validation") || null;
   const strategy = wrappedBtcLendingLoopSlice?.strategy || {};
   if (!strategy.id) return null;
-  const paybackBootstrap = stageBPaybackBootstrap(policy, strategy.id);
   const liveAllowed = baseLiveTradingAllowed(policy);
-  const runtimeLiveAllowed = liveTradingAllowed(policy) || paybackBootstrap.allowed;
+  const runtimeLiveAllowed = liveTradingAllowed(policy);
   const validationPassed = validation?.overallStatus === "passed";
   const bindingReady = wrappedBtcLendingLoopSlice?.bindingSupport?.executableFromRepo === true;
   const dryRunRecorded = wrappedBtcLendingLoopSlice?.dryRunSummary?.dryRunReceiptRecorded === true;
@@ -488,11 +438,9 @@ function buildWrappedBtcLoopExecutorSurface({
     now,
   });
   const rawLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked;
-  const stageMode = stageAwareExecutionMode({
-    policy,
+  const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "dry_run",
-    allowStageBPaybackBootstrap: paybackBootstrap.allowed,
   });
   const blockers = compact([
     !runtimeLiveAllowed ? "live_trading_blocked" : null,
@@ -501,10 +449,9 @@ function buildWrappedBtcLoopExecutorSurface({
     dryRunRecorded ? null : "dry_run_receipt_missing",
     collateralReady ? null : "base_cbbtc_collateral_unavailable",
     liveRunControl.blocked ? liveRunControl.reason : null,
-    stageMode.stageBlocker,
   ]);
-  const currentLiveEligible = stageMode.currentLiveEligible && runtimeLiveAllowed;
-  const selectedMode = currentLiveEligible ? stageMode.selectedMode : stageMode.selectedMode === "live" ? "dry_run" : stageMode.selectedMode;
+  const currentLiveEligible = mode.currentLiveEligible && runtimeLiveAllowed;
+  const selectedMode = currentLiveEligible ? mode.selectedMode : mode.selectedMode === "live" ? "dry_run" : mode.selectedMode;
   return {
     id: strategy.id,
     label: strategy.label || "Wrapped BTC lending loop (Base / Moonwell)",
@@ -534,7 +481,6 @@ function buildWrappedBtcLoopExecutorSurface({
       realizedNetCarryBtc: null,
       realizedNetCarryUsd: validation?.evidence?.realizedNetCarryUsd ?? wrappedBtcLendingLoopSlice?.pnl?.realized?.valueUsd ?? null,
       liveRunControl,
-      stageBPaybackBootstrap: paybackBootstrap,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",
@@ -618,14 +564,12 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
     ...policyPreviewBlockers,
   ]);
   const rawLiveEligible = liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
-  const stageMode = stageAwareExecutionMode({
-    policy,
+  const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "analysis",
   });
-  const currentLiveEligible = stageMode.currentLiveEligible;
-  const selectedMode = stageMode.selectedMode;
-  if (stageMode.stageBlocker) blockers.push(stageMode.stageBlocker);
+  const currentLiveEligible = mode.currentLiveEligible;
+  const selectedMode = mode.selectedMode;
   return {
     id: topReady?.mappedStrategyId || "gateway_native_asset_conversion_sleeve",
     label: "Merkl tiny live canary autopilot",
@@ -736,13 +680,12 @@ function buildSurface(entry, { group, policy }) {
     }
     case "triangular_flash_btc": {
       const rawLiveEligible = entry.status === "candidate_for_validation" && baseLiveTradingAllowed(policy) && flashAllowed;
-      const stageMode = stageAwareExecutionMode({
-        policy,
+      const mode = selectExecutionModeFromPolicy({
         rawLiveEligible,
         fallbackMode: "dry_run",
       });
-      const currentLiveEligible = stageMode.currentLiveEligible;
-      const selectedMode = stageMode.selectedMode;
+      const currentLiveEligible = mode.currentLiveEligible;
+      const selectedMode = mode.selectedMode;
       const selectedCommands = triangleCommands(entry, selectedMode);
       const blockers = compact([
         ...liveAdmissionBlockers({
@@ -752,7 +695,6 @@ function buildSurface(entry, { group, policy }) {
         requiresFlash: true,
         statusRequired: "candidate_for_validation",
         }),
-        stageMode.stageBlocker,
       ]);
       return {
         ...shared,
@@ -764,7 +706,6 @@ function buildSurface(entry, { group, policy }) {
         fallbackReason: currentLiveEligible
           ? null
           : compact([
-              stageMode.stageBlocker,
               !flashAllowed ? "flash_live_admission_blocked" : null,
               !baseLiveTradingAllowed(policy) ? "live_trading_blocked" : null,
               entry.status !== "candidate_for_validation" ? entry.status : null,
@@ -840,13 +781,12 @@ function buildSurface(entry, { group, policy }) {
     }
     case "eth_mixed_flash": {
       const rawLiveEligible = entry.status === "candidate_for_validation" && baseLiveTradingAllowed(policy) && flashAllowed;
-      const stageMode = stageAwareExecutionMode({
-        policy,
+      const mode = selectExecutionModeFromPolicy({
         rawLiveEligible,
         fallbackMode: "dry_run",
       });
-      const currentLiveEligible = stageMode.currentLiveEligible;
-      const selectedMode = stageMode.selectedMode;
+      const currentLiveEligible = mode.currentLiveEligible;
+      const selectedMode = mode.selectedMode;
       const selectedCommands = mixedFlashCommands(entry, selectedMode);
       const blockers = compact([
         ...liveAdmissionBlockers({
@@ -857,7 +797,6 @@ function buildSurface(entry, { group, policy }) {
         statusRequired: "candidate_for_validation",
         extra: ["contract_not_generalized"],
         }),
-        stageMode.stageBlocker,
       ]);
       return {
         ...shared,
@@ -869,7 +808,6 @@ function buildSurface(entry, { group, policy }) {
         fallbackReason: currentLiveEligible
           ? null
           : compact([
-              stageMode.stageBlocker,
               !flashAllowed ? "flash_live_admission_blocked" : null,
               !baseLiveTradingAllowed(policy) ? "live_trading_blocked" : null,
               entry.status !== "candidate_for_validation" ? entry.status : null,

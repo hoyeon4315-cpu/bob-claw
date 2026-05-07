@@ -198,15 +198,15 @@ test("execution surfaces include executor-backed live strategies when artifacts 
   assert.equal(report.summary.liveEligibleCount, 2);
 });
 
-test("execution surfaces force shadow mode for Stage B even when live evidence is otherwise ready", () => {
+test("execution surfaces keep Stage B advisory when live evidence is otherwise ready", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
       ...dashboardStatusFixture(),
       overall: {
-        liveTrading: "BLOCKED",
+        liveTrading: "ALLOWED",
         lanePolicy: {
           stage: "B",
-          preStageLiveTrading: "ALLOWED",
+          policyLiveTrading: "ALLOWED",
         },
       },
     },
@@ -280,26 +280,26 @@ test("execution surfaces force shadow mode for Stage B even when live evidence i
   const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
   const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
 
-  assert.equal(wrapped.currentLiveEligible, false);
-  assert.equal(wrapped.selectedMode, "shadow");
-  assert.equal(wrapped.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
-  assert.equal(merkl.currentLiveEligible, false);
-  assert.equal(merkl.selectedMode, "shadow");
-  assert.equal(merkl.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
+  assert.equal(wrapped.currentLiveEligible, true);
+  assert.equal(wrapped.selectedMode, "live");
+  assert.equal(wrapped.liveAdmissionBlockers.length, 0);
+  assert.equal(merkl.currentLiveEligible, true);
+  assert.equal(merkl.selectedMode, "live");
+  assert.equal(merkl.liveAdmissionBlockers.length, 0);
 });
 
-test("wrapped BTC loop may surface Stage B payback bootstrap live only for the single payback receipt blocker", () => {
+test("wrapped BTC loop treats Stage B payback blocker as advisory when policy live trading is allowed", () => {
   const report = buildStrategyExecutionSurfaces({
     now: "2026-05-06T12:00:00.000Z",
     dashboardStatus: {
       ...dashboardStatusFixture(),
       overall: {
-        liveTrading: "BLOCKED",
-        blockers: ["receipt_proven_payback_period_missing"],
+        liveTrading: "ALLOWED",
+        blockers: [],
         lanePolicy: {
           candidateId: "wrapped-btc-loop-base-moonwell",
           stage: "B",
-          preStageLiveTrading: "ALLOWED",
+          policyLiveTrading: "ALLOWED",
           stageBlockers: ["receipt_proven_payback_period_missing"],
         },
       },
@@ -351,9 +351,7 @@ test("wrapped BTC loop may surface Stage B payback bootstrap live only for the s
   assert.equal(wrapped.capabilityBucket, "executable_now");
   assert.equal(wrapped.fallbackReason, null);
   assert.equal(wrapped.liveAdmissionBlockers.length, 0);
-  assert.equal(wrapped.liveAdmissionBlockers.includes("lane_stage_shadow_only"), false);
-  assert.equal(wrapped.evidence.stageBPaybackBootstrap.allowed, true);
-  assert.equal(wrapped.evidence.stageBPaybackBootstrap.reason, "single_payback_receipt_blocker");
+  assert.equal(wrapped.liveAdmissionBlockers.length, 0);
   assert.equal(wrapped.evidence.liveRunControl.blocked, false);
   assert.equal(wrapped.selectedCommands[0].script, "executor:wrapped-btc-loop");
   assert.equal(wrapped.selectedCommands[0].command.includes("--per-trade-cap-usd="), true);
@@ -363,7 +361,7 @@ test("wrapped BTC loop may surface Stage B payback bootstrap live only for the s
   assert.equal(report.summary.liveEligibleCount, 1);
 });
 
-test("wrapped BTC loop Stage B payback bootstrap stays shadow when any other blocker remains", () => {
+test("wrapped BTC loop still blocks when runtime liveTrading is blocked despite advisory Stage B metadata", () => {
   const report = buildStrategyExecutionSurfaces({
     now: "2026-05-06T12:00:00.000Z",
     dashboardStatus: {
@@ -374,7 +372,7 @@ test("wrapped BTC loop Stage B payback bootstrap stays shadow when any other blo
         lanePolicy: {
           candidateId: "wrapped-btc-loop-base-moonwell",
           stage: "B",
-          preStageLiveTrading: "ALLOWED",
+          policyLiveTrading: "ALLOWED",
           stageBlockers: ["receipt_proven_payback_period_missing", "refill_routes_unresolved"],
         },
       },
@@ -422,9 +420,8 @@ test("wrapped BTC loop Stage B payback bootstrap stays shadow when any other blo
   const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
 
   assert.equal(wrapped.currentLiveEligible, false);
-  assert.equal(wrapped.selectedMode, "shadow");
-  assert.equal(wrapped.liveAdmissionBlockers.includes("lane_stage_shadow_only"), true);
-  assert.equal(wrapped.evidence.stageBPaybackBootstrap.allowed, false);
+  assert.equal(wrapped.selectedMode, "dry_run");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("live_trading_blocked"), true);
   assert.equal(report.summary.liveEligibleCount, 0);
 });
 
@@ -753,7 +750,7 @@ test("wrapped BTC loop cooldown waiver does not convert non-payback runtime bloc
         lanePolicy: {
           candidateId: "wrapped-btc-loop-base-moonwell",
           stage: "C",
-          preStageLiveTrading: "ALLOWED",
+          policyLiveTrading: "ALLOWED",
           stageBlockers: ["kill_switch_present"],
         },
       },
