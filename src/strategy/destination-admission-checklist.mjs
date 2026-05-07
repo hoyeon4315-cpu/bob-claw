@@ -51,8 +51,8 @@ function evaluateTemplate(template = {}) {
   return {
     requiredFields,
     missingFields: missing,
-    readyForManualReview: missing.length === 0,
-    admissionStatus: missing.length === 0 ? "complete_for_manual_review" : "incomplete",
+    readyForPolicyReview: missing.length === 0,
+    admissionStatus: missing.length === 0 ? "complete_for_policy_review" : "incomplete",
   };
 }
 
@@ -77,7 +77,7 @@ export function buildDestinationAdmissionChecklist({ venueTemplate = null, overr
 
     return {
       chain: chain.chain,
-      readyForManualReviewCount: templates.filter((template) => template.admission.readyForManualReview).length,
+      readyForPolicyReviewCount: templates.filter((template) => template.admission.readyForPolicyReview).length,
       templates,
     };
   });
@@ -90,8 +90,8 @@ export function buildDestinationAdmissionChecklist({ venueTemplate = null, overr
     summary: {
       chainCount: chains.length,
       templateCount: allTemplates.length,
-      readyForManualReviewCount: allTemplates.filter((template) => template.admission.readyForManualReview).length,
-      incompleteCount: allTemplates.filter((template) => !template.admission.readyForManualReview).length,
+      readyForPolicyReviewCount: allTemplates.filter((template) => template.admission.readyForPolicyReview).length,
+      incompleteCount: allTemplates.filter((template) => !template.admission.readyForPolicyReview).length,
       topMissingFields: Object.entries(
         allTemplates.flatMap((template) => template.admission.missingFields).reduce((acc, field) => {
           acc[field] = (acc[field] || 0) + 1;

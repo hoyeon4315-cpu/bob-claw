@@ -44,7 +44,7 @@ function phaseWeight(status) {
     blocked_until_new_evidence: 0.05,
     allowed_when_positive_ev: 0.65,
     observe_only_until_reapproved: 0.1,
-    manual_review_only: 0.2,
+    policy_review_only: 0.2,
     non_trading_track: 0.3,
   }[status] ?? 0.2;
 }

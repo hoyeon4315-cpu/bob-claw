@@ -81,7 +81,7 @@ const DESTINATION_RESEARCH_COMMANDS = Object.freeze({
   document_platform_surface: "npm run report:destination-registry -- --write",
   hold_below_policy: "npm run report:destination-estimated-economics -- --write",
   measure_numeric_economics: "npm run report:destination-economics-queue -- --write",
-  promote_to_stage_6_review: "npm run report:destination-promotion-gate -- --write",
+  mark_score_ready_for_allocation_review: "npm run report:destination-promotion-gate -- --write",
   run_allowlist_review: "npm run report:destination-allowlist-board -- --write",
   satisfy_evidence_policy: "npm run report:destination-evidence-policy -- --write",
   seed_source_metadata: "npm run seed:destination-source-metadata -- --write",

@@ -62,7 +62,7 @@ function nextAction(workItem, policyItem, economicsItem) {
 
   if (economicsItem?.activeBudgetEstimate?.passesPolicy || economicsItem?.planningBudgetEstimate?.passesPolicy) {
     return {
-      action: "promote_to_stage_6_review",
+      action: "mark_score_ready_for_allocation_review",
       reason: "estimated_policy_pass",
     };
   }

@@ -16,7 +16,7 @@ function gateStatus(boardItem = null, policyItem = null, economicsItem = null) {
   }
 
   const decision = boardItem.values?.allowlistDecision ?? null;
-  if (boardItem.recommendation?.status === "manual_contract_review") blockers.push("manual_contract_review_required");
+  if (boardItem.recommendation?.status === "contract_policy_review") blockers.push("contract_policy_review_required");
   if (boardItem.recommendation?.status === "observe_only_policy") blockers.push("observe_only_policy");
   if (boardItem.recommendation?.status === "blocked_by_risk") blockers.push("blocked_by_risk");
   if (decision == null) blockers.push("allowlist_decision_missing");
@@ -168,6 +168,9 @@ export function buildDestinationPromotionGate({
   return {
     schemaVersion: 1,
     generatedAt,
+    advisoryOnly: true,
+    scoreSourceOnly: true,
+    runtimeAuthority: "none",
     summary: {
       itemCount: items.length,
       promotableCount: items.filter((item) => item.gate.status === "promotable").length,

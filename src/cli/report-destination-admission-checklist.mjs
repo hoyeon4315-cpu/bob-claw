@@ -36,7 +36,7 @@ async function main() {
 
   console.log(`chains=${report.summary.chainCount}`);
   console.log(`templates=${report.summary.templateCount}`);
-  console.log(`readyForManualReview=${report.summary.readyForManualReviewCount}`);
+  console.log(`readyForPolicyReview=${report.summary.readyForPolicyReviewCount}`);
   console.log(`incomplete=${report.summary.incompleteCount}`);
   console.log("");
   console.log("Top missing fields:");

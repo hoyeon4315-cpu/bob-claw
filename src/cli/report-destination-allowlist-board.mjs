@@ -54,7 +54,7 @@ async function main() {
 
   console.log(`items=${report.summary.itemCount}`);
   console.log(`candidateCount=${report.summary.candidateCount}`);
-  console.log(`manualContractReview=${report.summary.manualContractReviewCount}`);
+  console.log(`contractPolicyReview=${report.summary.contractPolicyReviewCount}`);
   console.log(`blockedByRisk=${report.summary.blockedByRiskCount}`);
   console.log(`observeOnly=${report.summary.observeOnlyCount}`);
   console.log("");

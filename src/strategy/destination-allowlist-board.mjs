@@ -26,7 +26,7 @@ function recommendation(item = {}, queueItem = null) {
 
   if (queueItem?.nextAction === "document_platform_surface" || item.category === "platform") {
     return {
-      status: "manual_contract_review",
+      status: "contract_policy_review",
       nextAction: "review_destination_action_contracts_and_composer_flow",
     };
   }
@@ -70,7 +70,7 @@ export function buildDestinationAllowlistBoard({ workbench = null, researchQueue
     summary: {
       itemCount: items.length,
       candidateCount: items.filter((item) => item.recommendation.status === "candidate_for_allowlist_review").length,
-      manualContractReviewCount: items.filter((item) => item.recommendation.status === "manual_contract_review").length,
+      contractPolicyReviewCount: items.filter((item) => item.recommendation.status === "contract_policy_review").length,
       blockedByRiskCount: items.filter((item) => item.recommendation.status === "blocked_by_risk").length,
       observeOnlyCount: items.filter((item) => item.recommendation.status === "observe_only_policy").length,
       topReviewTargets: items

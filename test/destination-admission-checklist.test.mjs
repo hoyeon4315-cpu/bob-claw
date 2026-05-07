@@ -54,7 +54,7 @@ test("destination admission checklist counts missing fields across templates", (
   const report = buildDestinationAdmissionChecklist({ venueTemplate, overrides });
 
   assert.equal(report.summary.templateCount, 2);
-  assert.equal(report.summary.readyForManualReviewCount, 0);
+  assert.equal(report.summary.readyForPolicyReviewCount, 0);
   assert.equal(report.summary.incompleteCount, 2);
   assert.equal(report.summary.topMissingFields[0].field, "lastVerifiedAt");
   assert.equal(report.summary.topMissingFields[0].count, 2);
