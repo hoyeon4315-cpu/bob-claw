@@ -21,7 +21,9 @@ function queueItem(overrides = {}) {
     mappedStrategyId: "gateway_native_asset_conversion_sleeve",
     executionSurface: "stableCarry",
     campaignRemainingHours: 120,
-    aprPct: 12,
+    expectedHoldDays: 10,
+    aprPct: 500,
+    estimatedGasCostUsd: 0,
     tvlUsd: 20_000_000,
     score: 86,
     priorityScore: 105,
@@ -73,6 +75,11 @@ const canaryExecutions = [
   },
 ];
 
+const btcDecisionContext = {
+  btcPriceUsd: 100_000,
+  btcPriceSnapshotAt: "2026-04-24T06:00:00.000Z",
+};
+
 test("portfolio score rewards canary-proven inventory-ready opportunities", () => {
   const scored = merklPortfolioScore({
     ...queueItem(),
@@ -91,6 +98,7 @@ test("allocator opens a weighted hold entry only after live canary proof", () =>
     inventorySnapshot,
     canaryExecutions,
     maxUsd: 0.25,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 1,
       perOpportunityMaxUsd: 1,
@@ -106,11 +114,31 @@ test("allocator opens a weighted hold entry only after live canary proof", () =>
   assert.equal(plan.entryQueue[0].targetUsd, 0.25);
 });
 
+test("allocator blocks otherwise-ready hold entries when BTC price is unavailable", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [queueItem()] },
+    inventorySnapshot,
+    canaryExecutions,
+    maxUsd: 0.25,
+    policy: {
+      maxActiveUsd: 1,
+      perOpportunityMaxUsd: 1,
+      maxNewPositionsPerRun: 3,
+      minPositionUsd: 0.05,
+    },
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 0);
+  assert.ok(plan.allocations[0].blockers.includes("btc_price_required_for_sats_decision"));
+});
+
 test("allocator uses portfolio active budget when maxUsd is omitted", () => {
   const plan = buildMerklPortfolioAllocationPlan({
     queue: { queue: [queueItem()] },
     inventorySnapshot,
     canaryExecutions,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 1,
       perOpportunityMaxUsd: 1,
@@ -132,6 +160,7 @@ test("allocator treats explicit maxUsd zero as no new run budget", () => {
     inventorySnapshot,
     canaryExecutions,
     maxUsd: 0,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 1,
       perOpportunityMaxUsd: 1,
@@ -151,6 +180,7 @@ test("allocator blocks hold entries that have not completed a live canary", () =
     inventorySnapshot,
     canaryExecutions: [],
     maxUsd: 0.25,
+    ...btcDecisionContext,
     now: "2026-04-24T06:00:00.000Z",
   });
 
@@ -181,13 +211,56 @@ test("allocator emits capital jobs for inventory-missing candidates", () => {
       ],
     },
     inventorySnapshot,
+    canaryExecutions: [
+      {
+        observedAt: "2026-04-24T05:49:13.000Z",
+        mode: "execute",
+        queueItem: { opportunityId: "eth-morpho" },
+        execution: { settlementStatus: "delivered" },
+      },
+    ],
     maxUsd: 0.25,
+    ...btcDecisionContext,
     now: "2026-04-24T06:00:00.000Z",
   });
 
   assert.equal(plan.summary.capitalJobCount, 1);
   assert.equal(plan.capitalJobs[0].chain, "ethereum");
   assert.equal(plan.capitalJobs[0].requiredAsset, "USDC");
+});
+
+test("allocator suppresses capital jobs for proof-missing candidates", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          opportunityId: "eth-morpho",
+          chain: "ethereum",
+          capabilityGaps: ["current_inventory_entry_route_required"],
+          protocolBindingPlan: {
+            status: "binding_ready",
+            bindingKind: "erc4626_vault_supply_withdraw",
+            resolvedBinding: {
+              vaultAddress: "0x1111111111111111111111111111111111111111",
+              assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              shareTokenAddress: "0x1111111111111111111111111111111111111111",
+              assetSymbol: "USDC",
+              assetDecimals: 6,
+            },
+          },
+        }),
+      ],
+    },
+    inventorySnapshot,
+    canaryExecutions: [],
+    maxUsd: 0.25,
+    ...btcDecisionContext,
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 0);
+  assert.equal(plan.summary.capitalJobCount, 0);
+  assert.ok(plan.allocations[0].blockers.includes("live_canary_proof_required_before_hold"));
 });
 
 test("active position loader keeps only positions without a close event", () => {
@@ -218,6 +291,7 @@ test("allocator tops up an already open opportunity within the per-opportunity c
       },
     ],
     maxUsd: 0.25,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 1,
       perOpportunityMaxUsd: 0.45,
@@ -255,6 +329,7 @@ test("allocator can top up immediately after a delivered canary without canary c
       },
     ],
     maxUsd: 0.25,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 1,
       perOpportunityMaxUsd: 0.45,
@@ -283,6 +358,7 @@ test("allocator can still block duplicate opportunities when top-ups are disable
       },
     ],
     maxUsd: 0.25,
+    ...btcDecisionContext,
     policy: {
       allowTopUps: false,
     },
@@ -346,6 +422,7 @@ test("allocator resizes a different opportunity to fit diversification caps", ()
       },
     ],
     maxUsd: 100,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 500,
       perOpportunityMaxUsd: 100,
@@ -438,6 +515,7 @@ test("allocator diversification gate blocks the next Ethereum pick when current 
       { event: "position_opened", status: "open", positionId: "eth-3", opportunityId: "eth-3", chain: "ethereum", protocolId: "morpho", amountUsd: 50 },
     ],
     maxUsd: 25,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 300,
       perOpportunityMaxUsd: 25,
@@ -515,6 +593,7 @@ test("allocator includes external wallet chain exposure before re-entering after
       { event: "position_opened", status: "open", positionId: "base-1", opportunityId: "base-1", chain: "base", protocolId: "yo", amountUsd: 100 },
     ],
     maxUsd: 50,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 500,
       perOpportunityMaxUsd: 50,
@@ -595,6 +674,7 @@ test("allocator respects scored chain targets so exit and entry do not churn the
     },
     canaryExecutions: [proof("eth-target-over"), proof("op-target-under")],
     maxUsd: 50,
+    ...btcDecisionContext,
     policy: {
       maxActiveUsd: 500,
       perOpportunityMaxUsd: 50,
@@ -609,4 +689,284 @@ test("allocator respects scored chain targets so exit and entry do not churn the
   assert.equal(ethAllocation.status, "blocked");
   assert.ok(ethAllocation.blockers.includes("chain_target_exceeded"));
   assert.equal(plan.entryQueue[0]?.queueItem.opportunityId, "op-target-under");
+});
+
+test("allocator surfaces BTC-first expected net fields on ready hold entries", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          expectedHoldDays: 10,
+          aprPct: 36.5,
+          rewardTokenType: "stable",
+          estimatedGasCostUsd: 0.01,
+          estimatedBridgeCostUsd: 0.02,
+          estimatedClaimCostUsd: 0,
+          estimatedRewardSwapCostUsd: 0,
+          estimatedExitCostUsd: 0,
+          estimatedSlippageUsd: 0,
+        }),
+      ],
+    },
+    inventorySnapshot: {
+      native: inventorySnapshot.native,
+      tokens: [
+        {
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+      ],
+    },
+    canaryExecutions,
+    externalChainUsd: { bob: 1000 },
+    maxUsd: 10,
+    btcPriceUsd: 100_000,
+    btcPriceSnapshotAt: "2026-05-07T00:00:00.000Z",
+    policy: {
+      maxActiveUsd: 100,
+      perOpportunityMaxUsd: 10,
+      minPositionUsd: 1,
+    },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].decision.expectedNetSats, 70);
+  assert.equal(plan.entryQueue[0].decision.expectedNetUsd, 0.07);
+  assert.equal(plan.entryQueue[0].decision.grossRewardSats, 100);
+  assert.equal(plan.entryQueue[0].decision.estimatedCostSats, 30);
+  assert.equal(plan.entryQueue[0].decision.bridgeCostSats, 20);
+  assert.equal(plan.entryQueue[0].decision.holdWindowSource, "expectedHoldDays");
+  assert.equal(plan.entryQueue[0].decision.btcPriceSnapshotAt, "2026-05-07T00:00:00.000Z");
+});
+
+test("allocator blocks candidates whose measured bridge cost consumes expected BTC net", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          expectedHoldDays: 10,
+          aprPct: 36.5,
+          rewardTokenType: "stable",
+          estimatedGasCostUsd: 0.01,
+          estimatedBridgeCostUsd: 0.20,
+          estimatedClaimCostUsd: 0,
+          estimatedRewardSwapCostUsd: 0,
+          estimatedExitCostUsd: 0,
+          estimatedSlippageUsd: 0,
+        }),
+      ],
+    },
+    inventorySnapshot: {
+      native: inventorySnapshot.native,
+      tokens: [
+        {
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+      ],
+    },
+    canaryExecutions,
+    externalChainUsd: { bob: 1000 },
+    maxUsd: 10,
+    btcPriceUsd: 100_000,
+    policy: {
+      maxActiveUsd: 100,
+      perOpportunityMaxUsd: 10,
+      minPositionUsd: 1,
+    },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 0);
+  assert.ok(plan.allocations[0].blockers.includes("expected_net_sats_not_positive"));
+  assert.equal(plan.idleCapitalReport.bridgeCostGreaterThanExpectedNet.length, 1);
+});
+
+test("allocator converts proof-missing candidates into ladder-bound graduation canary requests", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [queueItem()] },
+    inventorySnapshot: {
+      native: inventorySnapshot.native,
+      tokens: [
+        {
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+      ],
+    },
+    canaryExecutions: [],
+    maxUsd: 10,
+    btcPriceUsd: 100_000,
+    policy: {
+      maxActiveUsd: 100,
+      perOpportunityMaxUsd: 10,
+      minPositionUsd: 1,
+    },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 0);
+  assert.equal(plan.summary.graduationCanaryRequestCount, 1);
+  assert.equal(plan.graduationCanaryRequests[0].amountUsd, 5);
+  assert.equal(plan.graduationCanaryRequests[0].metadata.sameOpportunityHoldProofSatisfied, false);
+});
+
+test("allocator reports proof-graduation blockers for non-executable canary requests", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          protocolBindingPlan: {
+            status: "protocol_position_binding_required",
+            bindingKind: "aave_v3_pool_supply_withdraw",
+          },
+          capabilityGaps: ["protocol_position_binding_required"],
+        }),
+      ],
+    },
+    inventorySnapshot: {
+      native: inventorySnapshot.native,
+      tokens: [
+        {
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+      ],
+    },
+    canaryExecutions: [],
+    maxUsd: 10,
+    btcPriceUsd: 100_000,
+    policy: {
+      maxActiveUsd: 100,
+      perOpportunityMaxUsd: 10,
+      minPositionUsd: 1,
+    },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.graduationCanaryRequestCount, 0);
+  assert.equal(plan.idleCapitalReport.proofRequired[0].graduationReady, false);
+  assert.ok(plan.idleCapitalReport.proofRequired[0].graduationBlockers.includes("protocol_binding_not_ready"));
+  assert.ok(plan.idleCapitalReport.proofRequired[0].graduationBlockers.includes("protocol_position_binding_required"));
+});
+
+test("allocator reports proof-graduation EV floor diagnostics", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          aprPct: 5,
+          expectedHoldDays: null,
+          campaignRemainingHours: 24,
+        }),
+      ],
+    },
+    inventorySnapshot: {
+      native: inventorySnapshot.native,
+      tokens: [
+        {
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "3307405",
+          actualDecimal: 3.307405,
+          estimatedUsd: 3.307405,
+        },
+      ],
+    },
+    canaryExecutions: [],
+    maxUsd: 10,
+    btcPriceUsd: 100_000,
+    policy: {
+      maxActiveUsd: 100,
+      perOpportunityMaxUsd: 10,
+      minPositionUsd: 1,
+    },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  const proof = plan.idleCapitalReport.proofRequired[0];
+  assert.equal(plan.summary.graduationCanaryRequestCount, 0);
+  assert.equal(proof.graduationReady, false);
+  assert.ok(proof.graduationBlockers.some((blocker) => blocker.startsWith("same_chain_unprofitable:need_$")));
+  assert.equal(proof.graduationEvGate.limitingFactor, "inventory");
+  assert.deepEqual(proof.graduationLimiters, ["inventory"]);
+  assert.equal(proof.graduationEvGate.currentAmountUsd, 3.307405);
+  assert.ok(proof.graduationEvGate.neededUsd > proof.graduationEvGate.currentAmountUsd);
+});
+
+test("allocator never spends a shared chain-token bucket below zero", () => {
+  const second = queueItem({
+    queueId: "merkl:opp-2",
+    opportunityId: "opp-2",
+    priorityScore: 103,
+    aprPct: 500,
+    expectedHoldDays: 10,
+    estimatedGasCostUsd: 0,
+  });
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          aprPct: 500,
+          expectedHoldDays: 10,
+          estimatedGasCostUsd: 0,
+        }),
+        second,
+      ],
+    },
+    inventorySnapshot: {
+      native: inventorySnapshot.native,
+      tokens: [
+        {
+          chain: "base",
+          ticker: "USDC",
+          token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          actual: "1000000",
+          actualDecimal: 1,
+          estimatedUsd: 1,
+        },
+      ],
+    },
+    canaryExecutions: [
+      canaryExecutions[0],
+      {
+        observedAt: "2026-04-24T05:49:14.000Z",
+        mode: "execute",
+        queueItem: { opportunityId: "opp-2" },
+        execution: { settlementStatus: "delivered" },
+      },
+    ],
+    externalChainUsd: { bob: 1000 },
+    maxUsd: 2,
+    btcPriceUsd: 100_000,
+    policy: {
+      maxActiveUsd: 10,
+      perOpportunityMaxUsd: 2,
+      maxNewPositionsPerRun: 2,
+      minPositionUsd: 0.05,
+    },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  const totalTargetUsd = plan.entryQueue.reduce((sum, item) => sum + item.targetUsd, 0);
+  assert.ok(totalTargetUsd <= 0.95);
+  assert.ok(plan.idleCapitalReport.tokenDust.some((item) => item.tokenKey.includes("base:")));
 });

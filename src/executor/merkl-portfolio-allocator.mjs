@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { merklPortfolioPolicy } from "../config/merkl-portfolio.mjs";
 import { DIVERSIFICATION_POLICY, canAcceptNewAllocation, computeHhi } from "../config/diversification.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd, latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -24,12 +24,20 @@ import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { sizeMerklCanaryAmount } from "./merkl-canary-autopilot.mjs";
 import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
+import { tinyCanarySameChainRoundTripCostUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
+import { buildProofGraduationCanaryRequest } from "./canary/proof-graduation-bridge.mjs";
 
 
 function finite(value) {
   if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function finitePositive(value) {
+  const parsed = finite(value);
+  return parsed != null && parsed > 0 ? parsed : null;
 }
 
 function bindingKind(queueItem = {}) {
@@ -328,6 +336,124 @@ function buildCapitalJob(queueItem = {}) {
   };
 }
 
+function usdToSatsFloor(usd, btcPriceUsd) {
+  if (!(Number.isFinite(usd) && usd >= 0 && Number.isFinite(btcPriceUsd) && btcPriceUsd > 0)) return null;
+  return Math.floor((usd / btcPriceUsd) * 100_000_000);
+}
+
+function usdToSatsCeil(usd, btcPriceUsd) {
+  if (!(Number.isFinite(usd) && usd >= 0 && Number.isFinite(btcPriceUsd) && btcPriceUsd > 0)) return null;
+  return Math.ceil((usd / btcPriceUsd) * 100_000_000);
+}
+
+function resolveHoldWindow(queueItem = {}, now = new Date().toISOString()) {
+  if (finitePositive(queueItem.expectedHoldDays) != null) {
+    return {
+      holdDays: finitePositive(queueItem.expectedHoldDays),
+      holdWindowSource: "expectedHoldDays",
+    };
+  }
+  if (finitePositive(queueItem.campaignRemainingHours) != null) {
+    return {
+      holdDays: finitePositive(queueItem.campaignRemainingHours) / 24,
+      holdWindowSource: "campaignRemainingHours",
+    };
+  }
+  if (queueItem.campaignEndsAt) {
+    const remainingMs = new Date(queueItem.campaignEndsAt).getTime() - new Date(now).getTime();
+    if (Number.isFinite(remainingMs) && remainingMs > 0) {
+      return {
+        holdDays: remainingMs / 86_400_000,
+        holdWindowSource: "campaignEndsAt",
+      };
+    }
+  }
+  return {
+    holdDays: resolveTinyCanaryExpectedHoldDays({ now }),
+    holdWindowSource: "fallback_7d_unknown_duration",
+  };
+}
+
+function rewardHaircutPct(queueItem = {}, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
+  const tokenType = queueItem.rewardTokenType;
+  if (tokenType == null && !queueItem.rewardToken && !queueItem.rewardTokenSymbol) return 0;
+  const haircut = policy.rewardHaircuts?.[tokenType] ?? policy.rewardHaircuts?.defaultRewardToken ?? 0.5;
+  return Math.max(0, Math.min(1, Number(haircut) || 0));
+}
+
+function candidateCostComponentsUsd(queueItem = {}) {
+  const gas = finite(queueItem.estimatedGasCostUsd) ??
+    tinyCanarySameChainRoundTripCostUsd({ chain: queueItem.chain });
+  return {
+    p90GasUsd: gas,
+    p90BridgeUsd: finite(queueItem.estimatedBridgeCostUsd) ?? 0,
+    p90ClaimUsd: finite(queueItem.estimatedClaimCostUsd) ?? 0,
+    p90RewardSwapUsd: finite(queueItem.estimatedRewardSwapCostUsd) ?? 0,
+    slippageUsd: finite(queueItem.estimatedSlippageUsd) ?? 0,
+    unwindUsd: finite(queueItem.estimatedExitCostUsd) ?? finite(queueItem.estimatedUnwindCostUsd) ?? 0,
+    extraEstimatedCostsUsd: finite(queueItem.estimatedCostsUsd) ?? 0,
+  };
+}
+
+function buildCandidateDecision({
+  queueItem = {},
+  amountUsd = null,
+  aprPct = null,
+  btcPriceUsd = null,
+  btcPriceSnapshotAt = null,
+  now = new Date().toISOString(),
+} = {}) {
+  const positionUsd = finite(amountUsd);
+  const price = finitePositive(btcPriceUsd);
+  if (positionUsd == null || positionUsd <= 0 || price == null) return null;
+
+  const { holdDays, holdWindowSource } = resolveHoldWindow(queueItem, now);
+  const displayedAprPct = finite(aprPct) ?? finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? 0;
+  const grossRewardUsd = positionUsd * (displayedAprPct / 100) * (holdDays / 365);
+  const haircutPct = rewardHaircutPct(queueItem);
+  const haircutRewardUsd = grossRewardUsd * (1 - haircutPct);
+  const costs = candidateCostComponentsUsd(queueItem);
+  const estimatedCostUsd = Object.values(costs).reduce((sum, value) => sum + (finite(value) ?? 0), 0);
+  const grossRewardSats = usdToSatsFloor(grossRewardUsd, price);
+  const haircutRewardSats = usdToSatsFloor(haircutRewardUsd, price);
+  const estimatedCostSats = usdToSatsCeil(estimatedCostUsd, price);
+  const bridgeCostSats = usdToSatsCeil(costs.p90BridgeUsd, price);
+  const notionalSats = usdToSatsFloor(positionUsd, price);
+  if ([grossRewardSats, haircutRewardSats, estimatedCostSats, bridgeCostSats, notionalSats].some((value) => value == null)) {
+    return null;
+  }
+  const expectedNetSats = haircutRewardSats - estimatedCostSats;
+  const expectedNetUsd = Number((haircutRewardUsd - estimatedCostUsd).toFixed(12));
+  return {
+    btcUsd: price,
+    btcPriceSnapshotAt: btcPriceSnapshotAt || now,
+    notionalSats,
+    grossRewardSats,
+    haircutRewardSats,
+    estimatedCostSats,
+    expectedNetSats,
+    expectedNetUsd,
+    holdDays,
+    holdWindowSource,
+    bridgeCostUsd: costs.p90BridgeUsd,
+    bridgeCostSats,
+    rewardHaircutPct: haircutPct,
+    evidenceConfidence: "canary_proof",
+    paybackConversionPath: queueItem.paybackConversionPath || queueItem.btcReturnPath || null,
+    costComponentsUsd: costs,
+    costComponentsSats: {
+      p90GasSats: usdToSatsCeil(costs.p90GasUsd, price),
+      p90BridgeSats: bridgeCostSats,
+      p90ClaimSats: usdToSatsCeil(costs.p90ClaimUsd, price),
+      p90RewardSwapSats: usdToSatsCeil(costs.p90RewardSwapUsd, price),
+      slippageSats: usdToSatsCeil(costs.slippageUsd, price),
+      unwindSats: usdToSatsCeil(costs.unwindUsd, price),
+      extraEstimatedCostsSats: usdToSatsCeil(costs.extraEstimatedCostsUsd, price),
+    },
+    costSource: finite(queueItem.estimatedGasCostUsd) == null ? "config_fallback" : "measured_or_queue_estimate",
+  };
+}
+
 export function buildMerklPortfolioAllocationPlan({
   queue = {},
   inventorySnapshot = null,
@@ -339,6 +465,8 @@ export function buildMerklPortfolioAllocationPlan({
   chainTargetToleranceUsd = 5,
   policy: policyInput = {},
   maxUsd = null,
+  btcPriceUsd = null,
+  btcPriceSnapshotAt = null,
   now = new Date().toISOString(),
   campaignAprMap = null,
 } = {}) {
@@ -364,6 +492,9 @@ export function buildMerklPortfolioAllocationPlan({
       cooldownMs: 0,
     });
     const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
+    const resolvedAprPct = campaignAprMap && campaignAprMap.has(queueItem.opportunityId)
+      ? campaignAprMap.get(queueItem.opportunityId)
+      : finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? finite(queueItem.apr) ?? 0;
     const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
     const chainActiveUsd = exposureChainUsd.get(queueItem.chain) || 0;
     const protocolActiveUsd = activeProtocolUsd.get(queueItem.protocolId) || 0;
@@ -373,6 +504,14 @@ export function buildMerklPortfolioAllocationPlan({
       allowInefficientEthereum: Boolean(policy.allowSmallEthereumProofBackedEntries && canaryProof),
       useTinyLiveCap: false,
       auditRecords,
+      now,
+    });
+    const decision = buildCandidateDecision({
+      queueItem,
+      amountUsd: sizing.amountUsd,
+      aprPct: resolvedAprPct,
+      btcPriceUsd,
+      btcPriceSnapshotAt,
       now,
     });
     const score = merklPortfolioScore(queueItem, { policy, canaryProof, campaignAprMap });
@@ -391,6 +530,8 @@ export function buildMerklPortfolioAllocationPlan({
     }
     if (score < policy.minScoreForEntry) blockers.push("portfolio_score_below_entry_floor");
     if (sizing.status !== "ready") blockers.push(...(sizing.blockers || ["sizing_not_ready"]));
+    if (sizing.status === "ready" && !decision) blockers.push("btc_price_required_for_sats_decision");
+    if (decision && decision.expectedNetSats <= 0) blockers.push("expected_net_sats_not_positive");
     const diversification = diversificationGateForAllocation({
       activePositions: exposurePositions,
       queueItem,
@@ -428,9 +569,18 @@ export function buildMerklPortfolioAllocationPlan({
       targetChainUsd: targetChainUsd?.[queueItem.chain] ?? null,
       targetMaxAddUsd,
       sizing,
+      decision,
       status: blockers.length ? "blocked" : "candidate",
       blockers,
-      capitalJob: needsCapitalJob ? buildCapitalJob(queueItem) : null,
+      capitalJob: needsCapitalJob && canaryProof ? buildCapitalJob(queueItem) : null,
+      graduationCanary: !canaryProof
+        ? buildProofGraduationCanaryRequest({
+            queueItem,
+            canaryExecutions,
+            auditRecords,
+            now,
+          })
+        : null,
     };
   }).sort((left, right) => right.score - left.score || (right.sizing?.amountUsd ?? 0) - (left.sizing?.amountUsd ?? 0));
 
@@ -475,12 +625,43 @@ export function buildMerklPortfolioAllocationPlan({
       auditRecords,
       now,
     });
+    const resizedDecision = buildCandidateDecision({
+      queueItem: candidate.queueItem,
+      amountUsd: resized.amountUsd,
+      aprPct: campaignAprMap && campaignAprMap.has(candidate.queueItem.opportunityId)
+        ? campaignAprMap.get(candidate.queueItem.opportunityId)
+        : finite(candidate.queueItem.nativeAprPct) ?? finite(candidate.queueItem.aprPct) ?? finite(candidate.queueItem.apr) ?? 0,
+      btcPriceUsd,
+      btcPriceSnapshotAt,
+      now,
+    });
     if (resized.status !== "ready") {
       allocations.push({
         ...candidate,
         sizing: resized,
+        decision: resizedDecision,
         status: "blocked",
         blockers: resized.blockers || ["resized_amount_not_ready"],
+      });
+      continue;
+    }
+    if (!resizedDecision) {
+      allocations.push({
+        ...candidate,
+        sizing: resized,
+        decision: resizedDecision,
+        status: "blocked",
+        blockers: ["btc_price_required_for_sats_decision"],
+      });
+      continue;
+    }
+    if (resizedDecision && resizedDecision.expectedNetSats <= 0) {
+      allocations.push({
+        ...candidate,
+        sizing: resized,
+        decision: resizedDecision,
+        status: "blocked",
+        blockers: ["expected_net_sats_not_positive"],
       });
       continue;
     }
@@ -509,6 +690,7 @@ export function buildMerklPortfolioAllocationPlan({
     const allocation = {
       ...candidate,
       sizing: resized,
+      decision: resizedDecision,
       diversification: {
         accepted: true,
         activeUsd: resizedDiversification.activeUsd,
@@ -536,6 +718,56 @@ export function buildMerklPortfolioAllocationPlan({
     .map((item) => item.capitalJob)
     .filter(Boolean)
     .slice(0, 20);
+  const graduationCanaryRequests = allocations
+    .map((item) => item.graduationCanary?.request)
+    .filter(Boolean)
+    .slice(0, policy.maxNewPositionsPerRun);
+  const graduationLimiters = (item) => {
+    const evGate = item.graduationCanary?.evGate || null;
+    const limiters = new Set();
+    if (evGate?.limitingFactor) limiters.add(evGate.limitingFactor);
+    if (
+      Number.isFinite(evGate?.neededUsd) &&
+      Number.isFinite(item.targetMaxAddUsd) &&
+      item.targetMaxAddUsd < evGate.neededUsd
+    ) {
+      limiters.add("targetChainUsd");
+    }
+    return [...limiters];
+  };
+  const idleCapitalReport = {
+    bridgeCostGreaterThanExpectedNet: allocations
+      .filter((item) => item.decision && item.decision.bridgeCostSats > Math.max(0, item.decision.haircutRewardSats - item.decision.estimatedCostSats + item.decision.bridgeCostSats))
+      .map((item) => ({
+        opportunityId: item.queueItem?.opportunityId || null,
+        chain: item.queueItem?.chain || null,
+        bridgeCostSats: item.decision.bridgeCostSats,
+        expectedNetSats: item.decision.expectedNetSats,
+      })),
+    minPositionBlocked: allocations
+      .filter((item) => item.blockers?.includes("target_allocation_below_min_position_usd"))
+      .map((item) => ({
+        opportunityId: item.queueItem?.opportunityId || null,
+        chain: item.queueItem?.chain || null,
+        targetMaxAddUsd: item.targetMaxAddUsd ?? null,
+      })),
+    proofRequired: allocations
+      .filter((item) => item.blockers?.includes("live_canary_proof_required_before_hold"))
+      .map((item) => ({
+        opportunityId: item.queueItem?.opportunityId || null,
+        chain: item.queueItem?.chain || null,
+        graduationReady: item.graduationCanary?.status === "ready",
+        graduationBlockers: item.graduationCanary?.blockers || [],
+        graduationEvGate: item.graduationCanary?.evGate || null,
+        graduationLimiters: graduationLimiters(item),
+        targetChainUsd: item.targetChainUsd ?? null,
+        targetMaxAddUsd: item.targetMaxAddUsd ?? null,
+      })),
+    tokenDust: [...tokenBudgetUsd.entries()].map(([key, remainingUsd]) => ({
+      tokenKey: key,
+      remainingUsd,
+    })),
+  };
 
   return {
     schemaVersion: 1,
@@ -552,6 +784,7 @@ export function buildMerklPortfolioAllocationPlan({
       activeProtocolUsd: Object.fromEntries(activeProtocolUsd),
       runBudgetUsd,
       entryReadyCount: entryQueue.length,
+      graduationCanaryRequestCount: graduationCanaryRequests.length,
       blockedCount: allocations.filter((item) => item.status === "blocked").length,
       capitalJobCount: capitalJobs.length,
       topEntryOpportunityId: entryQueue[0]?.queueItem?.opportunityId || null,
@@ -561,6 +794,8 @@ export function buildMerklPortfolioAllocationPlan({
     entryQueue,
     allocations,
     capitalJobs,
+    graduationCanaryRequests,
+    idleCapitalReport,
   };
 }
 
@@ -727,6 +962,7 @@ export async function runMerklPortfolioAllocator({
     observedAt: inventorySnapshot?.observedAt || null,
     error: null,
   };
+  let livePrices = null;
   if (refreshInventory) {
     inventoryRefresh = {
       attempted: true,
@@ -736,6 +972,7 @@ export async function runMerklPortfolioAllocator({
     };
     try {
       const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+      livePrices = prices;
       inventorySnapshot = await scanTreasuryInventory({
         policy: validateTreasuryPolicy(buildDefaultTreasuryPolicy()),
         address: preflight.senderAddress,
@@ -778,6 +1015,16 @@ export async function runMerklPortfolioAllocator({
     ? Object.fromEntries((scoredTargets.perChain || []).map((entry) => [entry.chain, entry.settlementTargetUsd || 0]))
     : null;
   const campaignAprMap = await readCampaignAwareAprMap(config.dataDir);
+  const [storedPriceSnapshot, marketPriceSnapshots] = await Promise.all([
+    readJsonIfExists(join(config.dataDir, "price-snapshot.json")),
+    readJsonl(config.dataDir, "market-price-snapshots").catch(() => []),
+  ]);
+  const observedPriceSnapshot = storedPriceSnapshot || latestPriceSnapshot(marketPriceSnapshots);
+  const observedPrices = observedPriceSnapshot ? pricesFromSnapshot(observedPriceSnapshot) : emptyPricesUsd();
+  const btcPriceUsd = finitePositive(livePrices?.btc) ?? finitePositive(observedPrices.btc);
+  const btcPriceSnapshotAt = finitePositive(livePrices?.btc)
+    ? inventoryRefresh.observedAt || new Date().toISOString()
+    : observedPriceSnapshot?.observedAt || null;
   const plan = buildMerklPortfolioAllocationPlan({
     queue,
     inventorySnapshot,
@@ -788,6 +1035,8 @@ export async function runMerklPortfolioAllocator({
     targetChainUsd,
     policy: policyInput,
     maxUsd,
+    btcPriceUsd,
+    btcPriceSnapshotAt,
     campaignAprMap,
   });
 

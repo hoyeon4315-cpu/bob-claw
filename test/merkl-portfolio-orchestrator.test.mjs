@@ -82,3 +82,51 @@ test("execute mode refreshes inventory with a validated treasury policy after ex
   assert.ok(Array.isArray(scanArgs.policy.supportedChains));
   assert.ok(scanArgs.policy.supportedChains.includes("base"));
 });
+
+test("report preserves allocator graduation request summary without executing it", async () => {
+  const report = await runMerklPortfolioOrchestrator({
+    execute: true,
+    write: false,
+    runExitImpl: async () => ({
+      status: "blocked",
+      blockedReason: "no_exit_ready",
+      summary: {
+        activePositionCount: 0,
+        exitReadyCount: 0,
+      },
+      evaluations: [],
+      executions: [],
+    }),
+    runAllocatorImpl: async () => ({
+      status: "blocked",
+      blockedReason: "no_portfolio_entry_ready",
+      plan: {
+        summary: {
+          graduationCanaryRequestCount: 1,
+        },
+        entryQueue: [],
+        graduationCanaryRequests: [
+          {
+            opportunityId: "opp-proof",
+            chain: "base",
+            amountUsd: 5,
+          },
+        ],
+        idleCapitalReport: {
+          proofRequired: [
+            {
+              opportunityId: "opp-proof",
+              graduationReady: true,
+            },
+          ],
+        },
+      },
+      executions: [],
+    }),
+  });
+
+  assert.equal(report.allocator.graduationCanaryRequestCount, 1);
+  assert.equal(report.allocator.topGraduationCanaryRequest.opportunityId, "opp-proof");
+  assert.equal(report.allocator.graduationCanaryRequests[0].opportunityId, "opp-proof");
+  assert.equal(report.allocator.deployments.length, 0);
+});

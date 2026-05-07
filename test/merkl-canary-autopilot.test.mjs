@@ -4,6 +4,7 @@ import {
   buildMerklCanaryOpportunityIntent,
   evaluateMerklCanaryOpportunityPolicy,
   merklExecutionErrorReport,
+  portfolioGraduationRequestsFromReport,
   refreshMerklAutopilotSelectionForExecute,
   selectMerklCanaryOpportunityPolicyReadyCandidates,
   selectMerklCanaryAutopilotCandidate,
@@ -185,16 +186,35 @@ test("Merkl canary opportunity policy still blocks genuinely negative tiny EV", 
       aprPct: 0.6,
       campaignRemainingHours: 24 * 33,
       estimatedGasCostUsd: null,
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          actual: "10000000",
+          estimatedUsd: 10,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "1000000000000000",
+          estimatedUsd: 2,
+        },
+      },
     }),
     sizing: {
       status: "ready",
       amount: "10000000",
       amountUsd: 10,
+      capUsd: 10,
     },
   });
 
   assert.equal(result.ok, false);
   assert.ok(result.blockers.some((blocker) => blocker.startsWith("same_chain_unprofitable")));
+  assert.equal(result.evGate.status, "blocked");
+  assert.equal(result.evGate.currentAmountUsd, 10);
+  assert.ok(result.evGate.neededUsd > 10);
+  assert.equal(result.evGate.holdDays, 33);
+  assert.equal(result.evGate.limitingFactor, "inventory");
 });
 
 test("buildMerklCanaryOpportunityIntent preserves explicit hold days over campaign hours", () => {
@@ -219,6 +239,13 @@ test("Merkl autopilot result summary separates selected candidates from policy-r
       blockedReason: "same_chain_unprofitable:need_$64_on_base",
       opportunityPolicy: {
         blockers: ["same_chain_unprofitable:need_$64_on_base"],
+        evGate: {
+          status: "blocked",
+          blocker: "same_chain_unprofitable:need_$64_on_base",
+          currentAmountUsd: 10,
+          neededUsd: 64,
+          limitingFactor: "inventory",
+        },
       },
     },
     {
@@ -232,6 +259,57 @@ test("Merkl autopilot result summary separates selected candidates from policy-r
   assert.deepEqual(summary.blockerCounts, {
     "same_chain_unprofitable:need_$64_on_base": 1,
   });
+  assert.deepEqual(summary.topEvGate, {
+    status: "blocked",
+    blocker: "same_chain_unprofitable:need_$64_on_base",
+    currentAmountUsd: 10,
+    neededUsd: 64,
+    limitingFactor: "inventory",
+  });
+});
+
+test("Merkl autopilot summary reports the EV gate matching the top blocker", () => {
+  const summary = summarizeMerklAutopilotResults([
+    {
+      status: "blocked",
+      blockedReason: "same_chain_unprofitable:need_$5_on_base",
+      opportunityPolicy: {
+        blockers: ["same_chain_unprofitable:need_$5_on_base"],
+        evGate: {
+          status: "blocked",
+          blocker: "same_chain_unprofitable:need_$5_on_base",
+          currentAmountUsd: 1,
+          neededUsd: 5,
+          limitingFactor: "inventory",
+        },
+      },
+    },
+    {
+      status: "blocked",
+      blockedReason: "same_chain_unprofitable:need_$10_on_optimism",
+      opportunityPolicy: {
+        blockers: ["same_chain_unprofitable:need_$10_on_optimism"],
+        evGate: {
+          status: "blocked",
+          blocker: "same_chain_unprofitable:need_$10_on_optimism",
+          currentAmountUsd: 2,
+          neededUsd: 10,
+          limitingFactor: "inventory",
+        },
+      },
+    },
+    {
+      status: "blocked",
+      blockedReason: "same_chain_unprofitable:need_$10_on_optimism",
+      opportunityPolicy: {
+        blockers: ["same_chain_unprofitable:need_$10_on_optimism"],
+      },
+    },
+  ]);
+
+  assert.equal(summary.topBlocker, "same_chain_unprofitable:need_$10_on_optimism");
+  assert.equal(summary.topEvGate.blocker, "same_chain_unprofitable:need_$10_on_optimism");
+  assert.equal(summary.topEvGate.neededUsd, 10);
 });
 
 test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
@@ -418,6 +496,143 @@ test("execute selection defers policy-failing candidates and keeps the first pol
   assert.equal(filtered.selected[0].queueItem.opportunityId, "base-policy-pass");
   assert.equal(filtered.deferred.length, 1);
   assert.equal(filtered.deferred[0].blockedReason, "same_chain_unprofitable:need_$18_on_optimism");
+});
+
+test("portfolio graduation requests are selection hints ahead of raw priority score", () => {
+  const rawLeader = queueItem({
+    opportunityId: "raw-priority-leader",
+    priorityScore: 500,
+  });
+  const proofRequest = queueItem({
+    opportunityId: "allocator-proof-request",
+    priorityScore: 100,
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: { ticker: "USDC", actual: "5000000", estimatedUsd: 5 },
+      matchedNative: { asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 },
+    },
+  });
+
+  const selection = selectMerklCanaryAutopilotCandidates(
+    { queue: [rawLeader, proofRequest] },
+    {
+      maxCandidates: 1,
+      graduationCanaryRequests: [
+        {
+          opportunityId: "allocator-proof-request",
+          chain: "base",
+          amountUsd: 5,
+          evidenceConfidence: "graduation_ladder_rung_0",
+        },
+      ],
+    },
+  );
+
+  assert.equal(selection.selected[0].queueItem.opportunityId, "allocator-proof-request");
+  assert.equal(selection.selected[0].queueItem.metadata.portfolioGraduationRequest.evidenceConfidence, "graduation_ladder_rung_0");
+});
+
+test("portfolio graduation hints do not force blocked candidates into selection", () => {
+  const blockedRequest = queueItem({
+    opportunityId: "blocked-proof-request",
+    priorityScore: 1,
+    executionReadiness: {
+      status: "inventory_missing",
+      matchedToken: null,
+      matchedNative: { asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 },
+    },
+  });
+
+  const selection = selectMerklCanaryAutopilotCandidates(
+    { queue: [blockedRequest] },
+    {
+      maxCandidates: 1,
+      graduationCanaryRequests: [
+        {
+          opportunityId: "blocked-proof-request",
+          chain: "base",
+          amountUsd: 5,
+          evidenceConfidence: "graduation_ladder_rung_0",
+        },
+      ],
+    },
+  );
+
+  assert.equal(selection.selected.length, 0);
+  assert.equal(selection.readyCount, 0);
+  assert.ok(selection.candidates[0].sizing.blockers.includes("inventory_missing"));
+});
+
+test("portfolio graduation hints must match candidate chain and strategy", () => {
+  const rawLeader = queueItem({
+    opportunityId: "raw-priority-leader",
+    priorityScore: 500,
+  });
+  const mismatchedRequest = queueItem({
+    opportunityId: "allocator-proof-request",
+    priorityScore: 100,
+    chain: "base",
+    mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: { ticker: "USDC", actual: "5000000", estimatedUsd: 5 },
+      matchedNative: { asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 },
+    },
+  });
+
+  const selection = selectMerklCanaryAutopilotCandidates(
+    { queue: [rawLeader, mismatchedRequest] },
+    {
+      maxCandidates: 1,
+      graduationCanaryRequests: [
+        {
+          opportunityId: "allocator-proof-request",
+          chain: "ethereum",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          amountUsd: 5,
+          evidenceConfidence: "graduation_ladder_rung_0",
+        },
+      ],
+    },
+  );
+
+  assert.equal(selection.selected[0].queueItem.opportunityId, "raw-priority-leader");
+});
+
+test("extracts portfolio graduation requests from allocator latest report shape", () => {
+  const requests = portfolioGraduationRequestsFromReport({
+    plan: {
+      graduationCanaryRequests: [
+        {
+          opportunityId: "opp-proof",
+          chain: "sei",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          amountUsd: 3.3,
+        },
+      ],
+    },
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].opportunityId, "opp-proof");
+});
+
+test("extracts portfolio graduation requests from orchestrator compact report shape", () => {
+  const requests = portfolioGraduationRequestsFromReport({
+    allocator: {
+      graduationCanaryRequests: [
+        {
+          opportunityId: "opp-compact",
+          chain: "base",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          amountUsd: 5,
+        },
+      ],
+    },
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].opportunityId, "opp-compact");
 });
 
 test("refreshes queue readiness from latest canary executions before selecting", () => {

@@ -11,7 +11,10 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
-import { resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
+import {
+  computeTinyCanaryMinProfitablePositionUsd,
+  resolveTinyCanaryExpectedHoldDays,
+} from "../config/sizing.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
@@ -69,6 +72,65 @@ function usdFromUnitsByInventory({ amountUnits, balanceUnits, balanceUsd }) {
 
 function bindingKind(queueItem = {}) {
   return queueItem.protocolBindingPlan?.bindingKind || null;
+}
+
+function displayedAprPct(queueItem = {}) {
+  return finite(
+    queueItem.effectiveAprPct ??
+      queueItem.displayedAprPct ??
+      queueItem.aprPct ??
+      queueItem.apr ??
+      queueItem.apy,
+  );
+}
+
+function evLimitingFactor({ queueItem = {}, sizing = {}, neededUsd = null } = {}) {
+  const inventoryUsd = finite(queueItem.executionReadiness?.matchedToken?.estimatedUsd);
+  const capUsd = finite(sizing.capUsd);
+  const currentUsd = finite(sizing.amountUsd);
+  if (inventoryUsd !== null && currentUsd !== null && Math.abs(inventoryUsd - currentUsd) < 0.000001) return "inventory";
+  if (inventoryUsd !== null && neededUsd !== null && inventoryUsd < neededUsd) return "inventory";
+  if (capUsd !== null && neededUsd !== null && capUsd < neededUsd) return "cap";
+  return "unknown";
+}
+
+function tinyCanaryEvGate(queueItem = {}, sizing = {}, { now = new Date().toISOString() } = {}) {
+  if (sizing.status !== "ready") return null;
+  const srcChain = queueItem.srcChain || queueItem.chain || null;
+  const dstChain = queueItem.dstChain || queueItem.chain || null;
+  if (!srcChain || !dstChain || srcChain !== dstChain) return null;
+  const holdDays = resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: queueItem.expectedHoldDays,
+    campaignRemainingHours: queueItem.campaignRemainingHours,
+    campaignEndsAt: queueItem.campaignEndsAt,
+    now,
+  });
+  const neededUsd = computeTinyCanaryMinProfitablePositionUsd({
+    chain: srcChain,
+    aprPct: displayedAprPct(queueItem),
+    expectedHoldDays: holdDays,
+    estimatedGasCostUsd: queueItem.estimatedGasCostUsd,
+  });
+  const currentAmountUsd = finite(sizing.amountUsd);
+  if (neededUsd === null || currentAmountUsd === null) return null;
+  if (currentAmountUsd >= neededUsd) {
+    return {
+      status: "ready",
+      blocker: null,
+      currentAmountUsd,
+      neededUsd,
+      holdDays,
+      limitingFactor: null,
+    };
+  }
+  return {
+    status: "blocked",
+    blocker: `same_chain_unprofitable:need_$${Math.ceil(neededUsd)}_on_${srcChain}`,
+    currentAmountUsd,
+    neededUsd,
+    holdDays,
+    limitingFactor: evLimitingFactor({ queueItem, sizing, neededUsd }),
+  };
 }
 
 export function sizeMerklCanaryAmount(queueItem = {}, {
@@ -217,7 +279,30 @@ export function selectMerklCanaryAutopilotCandidate(queue = {}, options = {}) {
   };
 }
 
+function graduationRequestByOpportunity(requests = []) {
+  const byOpportunity = new Map();
+  for (const request of requests || []) {
+    const opportunityId = request?.opportunityId;
+    if (!opportunityId) continue;
+    byOpportunity.set(String(opportunityId), request);
+  }
+  return byOpportunity;
+}
+
+function portfolioGraduationPriority(queueItem = {}) {
+  return queueItem.metadata?.portfolioGraduationRequest ? 1 : 0;
+}
+
+function matchingPortfolioGraduationRequest(queueItem = {}, requestsByOpportunity = new Map()) {
+  const request = requestsByOpportunity.get(String(queueItem.opportunityId || ""));
+  if (!request) return null;
+  if (request.chain && request.chain !== queueItem.chain) return null;
+  if (request.strategyId && request.strategyId !== queueItem.mappedStrategyId) return null;
+  return request;
+}
+
 export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
+  const portfolioGraduationRequests = graduationRequestByOpportunity(options.graduationCanaryRequests);
   const candidates = (queue.queue || [])
     .map((queueItem) => {
       const refreshedItem = options.inventorySnapshot || options.canaryExecutions
@@ -227,12 +312,22 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
             now: options.now || new Date().toISOString(),
           })
         : queueItem;
+      const graduationRequest = matchingPortfolioGraduationRequest(refreshedItem, portfolioGraduationRequests);
+      const hintedItem = graduationRequest
+        ? {
+            ...refreshedItem,
+            metadata: {
+              ...(refreshedItem.metadata || {}),
+              portfolioGraduationRequest: graduationRequest,
+            },
+          }
+        : refreshedItem;
       const autoEntry = evaluateMerklAutoEntry(refreshedItem, {
         bindingSupported: isSupportedBindingKind(bindingKind(refreshedItem)),
       });
       if (!autoEntry.autoExecute) {
         return {
-          queueItem: { ...refreshedItem, autoEntry },
+          queueItem: { ...hintedItem, autoEntry },
           sizing: {
             status: "blocked",
             blockers: autoEntry.blockers,
@@ -245,7 +340,7 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
         };
       }
       return {
-        queueItem: { ...refreshedItem, autoEntry },
+        queueItem: { ...hintedItem, autoEntry },
         sizing: sizeMerklCanaryAmount(refreshedItem, options),
       };
     });
@@ -255,6 +350,8 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const ready = candidates
     .filter((item) => item.sizing.status === "ready")
     .sort((left, right) => {
+      const graduationDelta = portfolioGraduationPriority(right.queueItem) - portfolioGraduationPriority(left.queueItem);
+      if (graduationDelta !== 0) return graduationDelta;
       if ((right.queueItem.priorityScore ?? 0) !== (left.queueItem.priorityScore ?? 0)) {
         return (right.queueItem.priorityScore ?? 0) - (left.queueItem.priorityScore ?? 0);
       }
@@ -269,6 +366,8 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const chainOrder = [...byChain.keys()].sort((left, right) => {
     const leftTop = byChain.get(left)?.[0];
     const rightTop = byChain.get(right)?.[0];
+    const graduationDelta = portfolioGraduationPriority(rightTop?.queueItem) - portfolioGraduationPriority(leftTop?.queueItem);
+    if (graduationDelta !== 0) return graduationDelta;
     return (rightTop?.queueItem.priorityScore ?? 0) - (leftTop?.queueItem.priorityScore ?? 0);
   });
   const selected = [];
@@ -305,6 +404,33 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return await readJson(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export function portfolioGraduationRequestsFromReport(report = {}) {
+  if (Array.isArray(report?.plan?.graduationCanaryRequests)) return report.plan.graduationCanaryRequests;
+  if (Array.isArray(report?.graduationCanaryRequests)) return report.graduationCanaryRequests;
+  if (Array.isArray(report?.allocator?.graduationCanaryRequests)) return report.allocator.graduationCanaryRequests;
+  const topRequest = report?.allocator?.topGraduationCanaryRequest || null;
+  return topRequest ? [topRequest] : [];
+}
+
+function dedupeGraduationRequests(requests = []) {
+  const byOpportunity = new Map();
+  for (const request of requests || []) {
+    const opportunityId = request?.opportunityId;
+    if (!opportunityId || byOpportunity.has(String(opportunityId))) continue;
+    byOpportunity.set(String(opportunityId), request);
+  }
+  return [...byOpportunity.values()];
 }
 
 function compactCandidate(item) {
@@ -353,6 +479,10 @@ export function summarizeMerklAutopilotResults(results = []) {
   const blockedCount = results.filter((item) => item.status === "blocked").length;
   const previewReadyCount = results.filter((item) => item.status === "preview_ready").length;
   const deliveredCount = results.filter((item) => item.execution?.settlementStatus === "delivered").length;
+  const topBlocker = topCountKey(blockerCounts);
+  const evGateForTopBlocker =
+    results.find((item) => item.opportunityPolicy?.evGate?.status === "blocked" && item.opportunityPolicy.evGate.blocker === topBlocker)
+      ?.opportunityPolicy?.evGate || null;
   return {
     selectedCount: results.length,
     executionReadyCount: results.length - blockedCount,
@@ -360,7 +490,8 @@ export function summarizeMerklAutopilotResults(results = []) {
     deliveredCount,
     blockedCount,
     blockerCounts,
-    topBlocker: topCountKey(blockerCounts),
+    topBlocker,
+    topEvGate: evGateForTopBlocker,
   };
 }
 
@@ -433,6 +564,7 @@ export async function evaluateMerklCanaryOpportunityPolicy({
   evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
 } = {}) {
   const intent = buildMerklCanaryOpportunityIntent({ queueItem, sizing, now });
+  const evGate = tinyCanaryEvGate(queueItem, sizing, { now });
   const verdict = await evaluateOpportunityPolicyImpl({
     intent,
     auditRecords,
@@ -444,6 +576,7 @@ export async function evaluateMerklCanaryOpportunityPolicy({
     blockers,
     intent,
     verdict,
+    evGate,
   };
 }
 
@@ -645,6 +778,9 @@ export async function runMerklCanaryAutopilot({
   maxPerProtocol = 4,
   minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
   allowInefficientEthereum = false,
+  graduationCanaryRequests = null,
+  portfolioAllocatorReportPath = join(config.dataDir, "merkl-portfolio-allocator-latest.json"),
+  portfolioOrchestratorReportPath = join(config.dataDir, "merkl-portfolio-orchestrator-latest.json"),
   evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
 } = {}) {
   const preflight = await preflightLiveCanarySweep({
@@ -674,6 +810,18 @@ export async function runMerklCanaryAutopilot({
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
+  const [portfolioOrchestratorReport, portfolioAllocatorReport] = graduationCanaryRequests == null
+    ? await Promise.all([
+        portfolioOrchestratorReportPath ? readJsonIfExists(portfolioOrchestratorReportPath) : null,
+        portfolioAllocatorReportPath ? readJsonIfExists(portfolioAllocatorReportPath) : null,
+      ])
+    : [null, null];
+  const portfolioGraduationRequests = graduationCanaryRequests == null
+    ? dedupeGraduationRequests([
+        ...portfolioGraduationRequestsFromReport(portfolioOrchestratorReport),
+        ...portfolioGraduationRequestsFromReport(portfolioAllocatorReport),
+      ])
+    : graduationCanaryRequests;
   const requestedMaxCandidates = Math.max(1, Number.isInteger(maxCandidates) ? maxCandidates : 6);
   const selectionMaxCandidates = execute
     ? Math.max(requestedMaxCandidates * 6, requestedMaxCandidates + 5)
@@ -688,6 +836,7 @@ export async function runMerklCanaryAutopilot({
     inventorySnapshot,
     canaryExecutions,
     auditRecords,
+    graduationCanaryRequests: portfolioGraduationRequests,
   });
   if (!selection.selected.length) {
     const report = {
@@ -708,6 +857,7 @@ export async function runMerklCanaryAutopilot({
         representativeCoverage: compactRepresentativeCoverage(queue),
         selectedCount: 0,
         selectedChains: [],
+        portfolioGraduationHintCount: portfolioGraduationRequests.length,
       },
       candidates: selection.candidates.map(compactCandidate).slice(0, 20),
     };
@@ -900,12 +1050,15 @@ export async function runMerklCanaryAutopilot({
       blockedCount,
       blockerCounts: resultSummary.blockerCounts,
       topBlocker: resultSummary.topBlocker,
+      topEvGate: resultSummary.topEvGate,
       selectedOpportunityId: firstReady.queueItem?.opportunityId || null,
       selectedChain: firstReady.queueItem?.chain || null,
       selectedProtocolId: firstReady.queueItem?.protocolId || null,
       selectedBindingKind: bindingKind(firstReady.queueItem),
       selectedAmount: firstReady.sizing?.amount || null,
       selectedAmountUsd: firstReady.sizing?.amountUsd ?? null,
+      portfolioGraduationHintCount: portfolioGraduationRequests.length,
+      selectedPortfolioGraduationHint: firstReady.queueItem?.metadata?.portfolioGraduationRequest || null,
     },
     queueItem: firstReady.queueItem || null,
     sizing: firstReady.sizing || null,

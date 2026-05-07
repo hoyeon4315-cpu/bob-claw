@@ -311,7 +311,27 @@ function fakeCommand({ args }) {
       exitCode: 0,
       stdout: "",
       stderr: "",
-      json: { status: "blocked", blockedReason: "no_portfolio_entry_ready" },
+      json: {
+        status: "blocked",
+        blockedReason: "no_portfolio_entry_ready",
+        allocator: {
+          graduationCanaryRequestCount: 1,
+          topGraduationCanaryRequest: {
+            opportunityId: "opp-proof",
+            chain: "base",
+            amountUsd: 5,
+          },
+          idleCapitalReport: {
+            proofRequired: [
+              {
+                opportunityId: "opp-proof",
+                chain: "base",
+                graduationReady: true,
+              },
+            ],
+          },
+        },
+      },
     };
   }
   if (name.endsWith("inventory-treasury.mjs")) {
@@ -508,6 +528,8 @@ test("all-chain autopilot wires every destination chain into one execution pass"
   assert.deepEqual(report.summary.representativeExecutionCoverage.allocatorReadyButNotQueuedChains, ["bsc"]);
   assert.equal(report.summary.destinationRepresentative.selectedTemplateId, "bsc:stablecoin_lending_carry");
   assert.equal(report.summary.destinationRepresentative.proofStatus, "delivered");
+  assert.equal(report.summary.portfolio.graduationCanaryRequestCount, 1);
+  assert.equal(report.summary.portfolio.topGraduationCanaryRequest.opportunityId, "opp-proof");
   assert.equal(report.summary.strategyDispatch.missingExecutorCount, 0);
   assert.equal(report.summary.strategyDispatch.capitalDispatchReadiness, "ready");
   assert.equal(report.summary.payback.pendingCarrySats, 601);
@@ -584,6 +606,35 @@ test("all-chain autopilot refreshes market prices before auto-kill inputs", asyn
     true,
   );
   assert.equal(seen.find((entry) => entry.args[0] === "src/cli/price-snapshot.mjs")?.timeoutMs, 30_000);
+});
+
+test("all-chain autopilot treats anchor position health timeout as recoverable", async () => {
+  let anchorHealthSeen = false;
+  const command = ({ args }) => {
+    if (args[0].endsWith("report-anchor-position-health.mjs")) {
+      anchorHealthSeen = true;
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "Command timed out after 30000ms",
+        json: null,
+        error: { name: "TimeoutError", message: "Command timed out after 30000ms" },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(anchorHealthSeen, true);
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.blockedReason, null);
+  assert.equal(report.steps.find((step) => step.name === "anchor_position_health").ok, false);
 });
 
 test("all-chain autopilot keeps same-tick refill execution ahead of strategy dispatch", async () => {
@@ -777,10 +828,50 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(timeouts["src/cli/run-live-canary-sweep.mjs"], 456);
   assert.equal(timeouts["src/cli/run-strategy-catalog-dispatcher.mjs"], 789);
   assert.equal(timeouts["src/cli/run-merkl-canary-autopilot.mjs"], 123);
+  const commandNames = seen.map((args) => args[0]);
+  assert.equal(
+    commandNames.indexOf("src/cli/run-merkl-portfolio-orchestrator.mjs") < commandNames.indexOf("src/cli/run-merkl-canary-autopilot.mjs"),
+    true,
+  );
   assert.equal(seen.some((args) => args.includes("src/cli/run-live-canary-sweep.mjs") && args.includes("--timeout-ms=456")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123")), true);
   assert.equal(seen.some((args) => args.includes("src/cli/run-strategy-catalog-dispatcher.mjs") && args.includes("--command-timeout-ms=789")), true);
+});
+
+test("all-chain autopilot bounds optional strategy surface refresh timeout", async () => {
+  const seen = [];
+  const command = ({ args, timeoutMs }) => {
+    seen.push({ args, timeoutMs });
+    if (args[0] === "src/cli/report-strategy-execution-surfaces.mjs") {
+      return {
+        ok: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "spawnSync node ETIMEDOUT",
+        json: null,
+        error: { name: "Error", message: "Command timed out after 30000ms" },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    timeoutMs: 120_000,
+    runCommandImpl: command,
+  });
+
+  const surfaceStep = report.steps.find((step) => step.name === "strategy_execution_surfaces_pre_dispatch");
+  const dispatchStep = report.steps.find((step) => step.name === "strategy_catalog_dispatch");
+  const surfaceCommand = seen.find((entry) => entry.args[0] === "src/cli/report-strategy-execution-surfaces.mjs");
+
+  assert.equal(surfaceCommand.timeoutMs, 30_000);
+  assert.equal(surfaceStep.ok, false);
+  assert.equal(dispatchStep.ok, true);
+  assert.equal(report.status, "completed_with_blockers");
+  assert.equal(report.blockedReason, null);
 });
 
 test("all-chain autopilot publishes refill progress before long canary steps finish", async (t) => {

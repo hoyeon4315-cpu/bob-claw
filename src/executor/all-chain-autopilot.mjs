@@ -559,11 +559,27 @@ function compactDestinationRepresentative(report = null) {
 }
 
 function compactPortfolio(report = null) {
+  const plan = report?.plan || report?.allocator?.plan || null;
+  const graduationCanaryRequests = plan?.graduationCanaryRequests
+    || report?.graduationCanaryRequests
+    || [];
+  const topGraduationCanaryRequest = graduationCanaryRequests[0]
+    || report?.allocator?.topGraduationCanaryRequest
+    || null;
   return {
     status: report?.status || null,
     blockedReason: report?.blockedReason || null,
     exit: report?.exit || null,
     allocator: report?.allocator || null,
+    graduationCanaryRequestCount: plan?.summary?.graduationCanaryRequestCount
+      ?? report?.allocator?.graduationCanaryRequestCount
+      ?? report?.summary?.graduationCanaryRequestCount
+      ?? graduationCanaryRequests.length,
+    topGraduationCanaryRequest,
+    idleCapitalReport: plan?.idleCapitalReport
+      || report?.allocator?.idleCapitalReport
+      || report?.idleCapitalReport
+      || null,
   };
 }
 
@@ -826,6 +842,9 @@ function stepIsRecoverable(step, steps) {
   if (step.name === "treasury_inventory_refresh_pre_dispatch") {
     return true;
   }
+  if (step.name === "strategy_execution_surfaces_pre_dispatch") {
+    return true;
+  }
   if (step.name === "treasury_inventory_refresh_after_wrapped_btc_handoff") {
     return true;
   }
@@ -834,6 +853,9 @@ function stepIsRecoverable(step, steps) {
   }
   if (step.name === "btc_oracle_snapshot") {
     return Array.isArray(step.json?.samples);
+  }
+  if (step.name === "anchor_position_health") {
+    return true;
   }
   const status = stepStatus(step);
   return ["blocked", "carry", "hold", "skipped", "completed", "succeeded"].includes(status);
@@ -1684,10 +1706,10 @@ export async function runAllChainAutopilot({
     steps,
   });
 
-  const merklCanaryResult = await runJsonStep({
-    name: "merkl_canary_autopilot",
+  const portfolioResult = await runJsonStep({
+    name: "merkl_portfolio_orchestrator",
     args: appendFlag([
-      "src/cli/run-merkl-canary-autopilot.mjs",
+      "src/cli/run-merkl-portfolio-orchestrator.mjs",
       "--json",
       "--write",
       `--timeout-ms=${timeoutMs}`,
@@ -1698,10 +1720,10 @@ export async function runAllChainAutopilot({
     steps,
   });
 
-  const portfolioResult = await runJsonStep({
-    name: "merkl_portfolio_orchestrator",
+  const merklCanaryResult = await runJsonStep({
+    name: "merkl_canary_autopilot",
     args: appendFlag([
-      "src/cli/run-merkl-portfolio-orchestrator.mjs",
+      "src/cli/run-merkl-canary-autopilot.mjs",
       "--json",
       "--write",
       `--timeout-ms=${timeoutMs}`,
@@ -1726,7 +1748,7 @@ export async function runAllChainAutopilot({
     args: ["src/cli/report-strategy-execution-surfaces.mjs", "--json", "--write"],
     runCommandImpl,
     cwd,
-    timeoutMs,
+    timeoutMs: Math.min(30_000, timeoutMs),
     steps,
   });
   const handoffAmountSats = wrappedBtcHandoffAmountSats(preDispatchSurfacesResult.json, preDispatchInventoryResult.json);

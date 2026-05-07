@@ -28,10 +28,16 @@ function compactExitReport(report = {}) {
 }
 
 function compactAllocatorReport(report = {}) {
+  const graduationCanaryRequests = report.plan?.graduationCanaryRequests || [];
   return {
     status: report.status || null,
     blockedReason: report.blockedReason || null,
     entryQueueSize: report.plan?.entryQueue?.length ?? 0,
+    graduationCanaryRequestCount: report.plan?.summary?.graduationCanaryRequestCount
+      ?? graduationCanaryRequests.length,
+    graduationCanaryRequests,
+    topGraduationCanaryRequest: graduationCanaryRequests[0] || null,
+    idleCapitalReport: report.plan?.idleCapitalReport || null,
     deployments: (report.executions || []).map((item) => ({
       opportunityId: item.opportunityId,
       status: item.status,
