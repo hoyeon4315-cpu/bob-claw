@@ -40,7 +40,6 @@ import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
 import { buildMerklUserRewardsSlice } from "./merkl-user-rewards-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "./protocol-position-marks-slice.mjs";
 import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
-import { loadResearchFunnelSlice } from "./research-funnel-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
 import { buildSleeveProfileSlice } from "./sleeve-profile-slice.mjs";
@@ -343,11 +342,6 @@ export async function buildCurrentDashboardContext({
 
   const executorRuntime = await loadExecutorRuntime({ now });
   const reportingPnlBaseline = await readReportingPnlBaseline({ dataDir });
-  const researchFunnel = await loadResearchFunnelSlice({
-    rootDir: join(dataDir, ".."),
-    dataDir,
-    generatedAt: now,
-  });
   const radarBoard = buildRadarBoard({
     observations: radarObservations,
     episodes: radarEpisodes,
@@ -398,7 +392,6 @@ export async function buildCurrentDashboardContext({
     triangleArtifacts,
      executorRuntime,
      promotionReport,
-     researchFunnel,
      reportingPnlBaseline,
      campaignOpportunities: campaignAwareOpportunities || null,
      anchorPositions: anchorPositionHealth || null,

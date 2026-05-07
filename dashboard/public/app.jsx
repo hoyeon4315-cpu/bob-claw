@@ -1252,7 +1252,6 @@ function DefiPane({ refreshTick }) {
     <div className="tabpane" style={{ padding: '4px 12px 16px' }}>
       <LiveLaneCard/>
       <OnchainRadarCard/>
-      <ResearchFunnelCard/>
       <DevAgentQueueCard/>
       <PnlBreakdownStrip inline/>
       <div style={{
@@ -1430,53 +1429,6 @@ function DevAgentQueueCard() {
             label: 'Top task',
             main: topTask?.kind ? titleCaseLabel(topTask.kind) : '—',
             sub: topLabel,
-          },
-        ]}/>
-      </div>
-    </div>
-  );
-}
-
-function ResearchFunnelCard() {
-  const funnel = window.STATUS?.researchFunnel;
-  if (!funnel?.available) return null;
-  return (
-    <div style={{
-      marginBottom: 8,
-      padding: '9px 10px',
-      background: 'var(--card)',
-      borderRadius: 12,
-      border: '0.5px solid var(--line)',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <div>
-          <div style={{ fontSize: 8.7, color: 'var(--ink-4)', letterSpacing: 1.2, textTransform: 'uppercase' }}>
-            Research funnel
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
-            read-only research queue
-          </div>
-        </div>
-        <div style={{ fontSize: 9.5, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-          {fmtWhen(funnel.summary?.latestRunAt)}
-        </div>
-      </div>
-      <div style={{ marginTop: 7 }}>
-        <TriCard compact cells={[
-          {
-            label: 'Track A',
-            main: String(funnel.tracks?.A?.candidateCount ?? 0),
-            sub: `Ideas · ${funnel.tracks?.A?.promotionIntentCount ?? 0} requests`,
-          },
-          {
-            label: 'Track B',
-            main: String(funnel.tracks?.B?.candidateCount ?? 0),
-            sub: `OOS ${funnel.tracks?.B?.oosEligibleCount ?? 0}`,
-          },
-          {
-            label: 'Promotions',
-            main: String(funnel.summary?.promotionIntentCount ?? 0),
-            sub: funnel.summary?.latestBlocker || 'clear',
           },
         ]}/>
       </div>

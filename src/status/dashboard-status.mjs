@@ -67,36 +67,6 @@ function normalizeDashboardStatusContents(contents) {
   }
 }
 
-function emptyResearchFunnelSlice() {
-  return {
-    available: false,
-    generatedAt: null,
-    summary: {
-      candidateCount: 0,
-      oosEligibleCount: 0,
-      promotionIntentCount: 0,
-      latestBlocker: null,
-      latestRunAt: null,
-    },
-    tracks: {
-      A: {
-        candidateCount: 0,
-        oosEligibleCount: 0,
-        promotionIntentCount: 0,
-        latestBlocker: null,
-        latestRunAt: null,
-      },
-      B: {
-        candidateCount: 0,
-        oosEligibleCount: 0,
-        promotionIntentCount: 0,
-        latestBlocker: null,
-        latestRunAt: null,
-      },
-    },
-  };
-}
-
 export function buildAutoPromotionDashboardSummary(report) {
   if (!report || typeof report !== "object") {
     return Object.freeze({
@@ -1999,7 +1969,6 @@ export function buildDashboardStatus(input, options = {}) {
     audit: auditStatus,
     executorRuntime,
     promotion,
-    researchFunnel: input.researchFunnel || emptyResearchFunnelSlice(),
     quoteLag,
     dexSpread,
     dataCounts: {
