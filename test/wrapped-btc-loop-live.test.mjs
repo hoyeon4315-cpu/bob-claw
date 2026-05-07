@@ -614,6 +614,77 @@ test("wrapped loop live plan requotes repay funding until slippage-safe output c
   assert.equal(check.reason, "inventory_path_satisfied");
 });
 
+test("wrapped loop live plan rounds repay funding against slippage-safe output when nominal quote barely clears", async () => {
+  const collateralToRepayQuoteInputs = [];
+  const initialCollateralToRepayInput = 10_236n;
+  const barelyClearingNominalOutput = 8_050_217n;
+  const odosClient = {
+    quote: async ({ inputToken, outputToken, amount }) => {
+      const isCollateralToRepay =
+        inputToken.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() &&
+        outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913".toLowerCase();
+      if (isCollateralToRepay) {
+        collateralToRepayQuoteInputs.push(BigInt(amount));
+      }
+      const outputAmount = isCollateralToRepay
+        ? (BigInt(amount) * barelyClearingNominalOutput) / initialCollateralToRepayInput
+        : 14_933n;
+      return {
+        latencyMs: 10,
+        body: {
+          outAmounts: [outputAmount.toString()],
+          pathId: isCollateralToRepay ? `path-barely-safe-${collateralToRepayQuoteInputs.length}` : "path-entry-1",
+        },
+      };
+    },
+    assemble: async () => ({
+      latencyMs: 12,
+      body: {
+        transaction: {
+          to: "0x0000000000000000000000000000000000000d05",
+          data: "0x12345678",
+          value: "0",
+          gas: 210000,
+        },
+      },
+    }),
+  };
+
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: blockedBindingsFixture(),
+    scenarioId: "healthy_baseline",
+    signerAddress: "0x0000000000000000000000000000000000000001",
+    prices: {
+      btc: 78158.325,
+      tokenByKey: {
+        btc: 78158.325,
+        usd_stable: 1,
+      },
+    },
+    odosClient,
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async (chain, token) => ({
+      balance: token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 23_256n : 0n,
+    }),
+    perTradeCapUsdOverride: 17.86,
+    maxLoopIterationsOverride: 1,
+    marketAssumptionsOverride: {
+      minIncrementUsd: 5,
+    },
+  });
+
+  assert.equal(collateralToRepayQuoteInputs[0], initialCollateralToRepayInput);
+  assert.equal(collateralToRepayQuoteInputs.length > 1, true);
+  assert.equal(collateralToRepayQuoteInputs[1] > collateralToRepayQuoteInputs[0], true);
+
+  const swapOne = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-1"));
+  assert.equal(
+    BigInt(swapOne.metadata.slippageSafeBorrowTopUpUnits) >= BigInt(swapOne.metadata.repayFundingRequestedUnits),
+    true,
+  );
+  assert.equal(swapOne.metadata.repayFundingRoundedUp, true);
+});
+
 test("wrapped loop live plan auto-downsizes initial collateral to the available cbBTC balance", async () => {
   const plan = await buildWrappedBtcLoopScenarioPlan({
     bindingsDocument: blockedBindingsFixture(),

@@ -696,9 +696,13 @@ export async function buildAutoWrappedBtcLoopScenarioBinding({
           requiredBorrowTopUpUnits * (BPS_DENOMINATOR + REPAY_FUNDING_REQUOTE_BUFFER_BPS),
           BPS_DENOMINATOR,
         );
+        const repayFundingDenominator =
+          plannedBorrowTopUpUnits >= bufferedRequiredTopUpUnits && slippageSafeBorrowTopUpUnits > 0n
+            ? slippageSafeBorrowTopUpUnits
+            : plannedBorrowTopUpUnits;
         const roundedFundingRedeemUnits = minBigInt(
           maxFundingRedeemUnits,
-          ceilDiv(fundingRedeemUnits * bufferedRequiredTopUpUnits, plannedBorrowTopUpUnits),
+          ceilDiv(fundingRedeemUnits * bufferedRequiredTopUpUnits, repayFundingDenominator),
         );
         if (roundedFundingRedeemUnits <= fundingRedeemUnits) {
           break;
