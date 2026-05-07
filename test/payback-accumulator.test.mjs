@@ -12,6 +12,29 @@ test("payback accumulator returns zeroed snapshot for empty inputs", () => {
     grossProfitSats_period: 0,
     paidBackSats_lifetime: 0,
     pendingDeferredSats: 0,
+    profitSatsProvenance: {
+      period: {
+        directSats: 0,
+        projectedSats: 0,
+        totalSats: 0,
+      },
+      lifetime: {
+        directSats: 0,
+        projectedSats: 0,
+        totalSats: 0,
+      },
+      rolling12m: {
+        directSats: 0,
+        projectedSats: 0,
+        totalSats: 0,
+      },
+      pendingDeferred: {
+        directSats: 0,
+        projectedSats: 0,
+        totalSats: 0,
+        source: "computed_from_profit_sources",
+      },
+    },
     operatingFloatSats_byChain: {},
     kpi: {
       byr_rolling12m: 0,
@@ -89,7 +112,52 @@ test("payback accumulator projects usd receipts and inventory into sats determin
   assert.deepEqual(first.operatingFloatSats_byChain, {
     base: 32_345,
   });
+  assert.deepEqual(first.profitSatsProvenance.period, {
+    directSats: 0,
+    projectedSats: 25_000,
+    totalSats: 25_000,
+  });
+  assert.deepEqual(first.profitSatsProvenance.pendingDeferred, {
+    directSats: 0,
+    projectedSats: 25_000,
+    totalSats: 25_000,
+    source: "computed_from_profit_sources",
+  });
   assert.equal(first.kpi.roundTripEfficiency_period, 1);
+});
+
+test("payback accumulator separates direct receipt sats from USD-projected sats", () => {
+  const snapshot = snapshotPaybackAccumulator([
+    {
+      timestamp: "2026-04-16T01:00:00.000Z",
+      realized: {
+        realizedNetPnlSats: 320,
+      },
+    },
+    {
+      timestamp: "2026-04-16T02:00:00.000Z",
+      pricing: {
+        btcUsd: 100_000,
+      },
+      realized: {
+        realizedNetPnlUsd: 2.81,
+      },
+    },
+  ], {}, {});
+
+  assert.equal(snapshot.grossProfitSats_period, 3_130);
+  assert.equal(snapshot.pendingDeferredSats, 3_130);
+  assert.deepEqual(snapshot.profitSatsProvenance.period, {
+    directSats: 320,
+    projectedSats: 2_810,
+    totalSats: 3_130,
+  });
+  assert.deepEqual(snapshot.profitSatsProvenance.pendingDeferred, {
+    directSats: 320,
+    projectedSats: 2_810,
+    totalSats: 3_130,
+    source: "computed_from_profit_sources",
+  });
 });
 
 test("payback accumulator uses record pricing before newer market snapshots", () => {

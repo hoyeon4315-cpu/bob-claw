@@ -230,6 +230,9 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
   assert.equal(payback.lastPaybackSettledSats, null);
   assert.ok(payback.accumulatorPendingSats > 0);
   assert.ok(payback.grossProfitSatsPeriod > 0);
+  assert.equal(payback.profitSatsProvenance.period.directSats, 0);
+  assert.ok(payback.profitSatsProvenance.period.projectedSats > 0);
+  assert.equal(payback.carry.pendingSatsProvenance.projectedSats, payback.accumulatorPendingSats);
   assert.equal(payback.scheduler.status, "blocked");
   assert.equal(payback.scheduler.reason, "payback_btc_destination_missing");
   assert.equal(payback.scheduler.requiredEnvName, "PAYBACK_BTC_DEST_ADDR");

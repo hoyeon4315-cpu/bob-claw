@@ -243,11 +243,28 @@ function usdToSats(usdValue, btcUsd) {
 }
 
 export function profitSatsFromRecord(record, marketPriceSnapshots, config) {
+  return profitSatsDetailsFromRecord(record, marketPriceSnapshots, config).sats;
+}
+
+export function profitSatsDetailsFromRecord(record, marketPriceSnapshots, config) {
   const direct = firstFinitePathValue(record, config?.profitSatsPaths || DEFAULT_PROFIT_SATS_PATHS);
-  if (Number.isFinite(direct)) return roundSats(direct);
+  if (Number.isFinite(direct)) {
+    return {
+      sats: roundSats(direct),
+      source: "direct_sats",
+      projectedUsd: null,
+      btcUsd: null,
+    };
+  }
   const projectedUsd = firstFinitePathValue(record, config?.profitUsdPaths || DEFAULT_PROFIT_USD_PATHS);
   const btcUsd = btcUsdForRecord(record, marketPriceSnapshots, config);
-  return usdToSats(projectedUsd, btcUsd);
+  const sats = usdToSats(projectedUsd, btcUsd);
+  return {
+    sats,
+    source: Number.isFinite(sats) ? "usd_projected" : null,
+    projectedUsd: Number.isFinite(projectedUsd) ? projectedUsd : null,
+    btcUsd: Number.isFinite(btcUsd) ? btcUsd : null,
+  };
 }
 
 function paybackMarkers(config) {
@@ -576,6 +593,56 @@ function safeRatio(numerator, denominator) {
   return numerator / denominator;
 }
 
+function sumProfitProvenance(profitRecords, predicate = () => true) {
+  const selected = profitRecords.filter((item) => predicate(item));
+  const directSats = selected
+    .filter((item) => item.source === "direct_sats")
+    .reduce((sum, item) => sum + item.sats, 0);
+  const projectedSats = selected
+    .filter((item) => item.source === "usd_projected")
+    .reduce((sum, item) => sum + item.sats, 0);
+  return {
+    directSats,
+    projectedSats,
+    totalSats: directSats + projectedSats,
+  };
+}
+
+function pendingProvenanceFromLifetime(lifetimeProvenance, pendingDeferredSats, pendingSnapshot) {
+  const total = Math.max(0, roundSats(pendingDeferredSats));
+  if (pendingSnapshot != null) {
+    return {
+      directSats: null,
+      projectedSats: null,
+      totalSats: total,
+      source: "snapshot_total_only",
+    };
+  }
+  if (!(lifetimeProvenance.totalSats > 0) || total === 0) {
+    return {
+      directSats: 0,
+      projectedSats: 0,
+      totalSats: total,
+      source: "computed_from_profit_sources",
+    };
+  }
+  if (total >= lifetimeProvenance.totalSats) {
+    return {
+      directSats: lifetimeProvenance.directSats,
+      projectedSats: lifetimeProvenance.projectedSats,
+      totalSats: total,
+      source: "computed_from_profit_sources",
+    };
+  }
+  const directSats = roundSats((lifetimeProvenance.directSats / lifetimeProvenance.totalSats) * total);
+  return {
+    directSats,
+    projectedSats: Math.max(0, total - directSats),
+    totalSats: total,
+    source: "computed_from_profit_sources",
+  };
+}
+
 export default function snapshot(auditLogLines = [], receiptStore = {}, config = {}) {
   const auditRecords = normalizeRecordList(auditLogLines);
   const store = normalizeReceiptStore(receiptStore);
@@ -597,11 +664,17 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
   const rolling = rollingBounds(latestObservedMs, config);
 
   const profitRecords = allRecords
-    .map((record) => ({
-      record,
-      sats: profitSatsFromRecord(record, store.marketPriceSnapshots, config),
-      observedAtMs: latestTimestampMs([record]),
-    }))
+    .map((record) => {
+      const profit = profitSatsDetailsFromRecord(record, store.marketPriceSnapshots, config);
+      return {
+        record,
+        sats: profit.sats,
+        source: profit.source,
+        projectedUsd: profit.projectedUsd,
+        btcUsd: profit.btcUsd,
+        observedAtMs: latestTimestampMs([record]),
+      };
+    })
     .filter((item) =>
       !isPaybackRecord(item.record, markers) &&
       !isOperatingCapitalIngressRecord(item.record) &&
@@ -631,6 +704,15 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
   const grossProfitSatsRolling12m = profitRecords
     .filter((item) => isWithinWindow(item.observedAtMs, rolling.startMs, rolling.nowMs))
     .reduce((sum, item) => sum + item.sats, 0);
+  const periodProfitProvenance = sumProfitProvenance(
+    profitRecords,
+    (item) => isWithinWindow(item.observedAtMs, period.startMs, period.endMs),
+  );
+  const lifetimeProfitProvenance = sumProfitProvenance(profitRecords);
+  const rolling12mProfitProvenance = sumProfitProvenance(
+    profitRecords,
+    (item) => isWithinWindow(item.observedAtMs, rolling.startMs, rolling.nowMs),
+  );
 
   const paidBackSatsLifetime = paybackRecords.reduce((sum, item) => sum + (item.settledSats || 0), 0);
   const paidBackSatsRolling12m = paybackRecords
@@ -648,6 +730,11 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     pendingSnapshot != null
       ? pendingSnapshot
       : Math.max(0, grossProfitSatsLifetime - paidBackSatsLifetime);
+  const pendingDeferredProvenance = pendingProvenanceFromLifetime(
+    lifetimeProfitProvenance,
+    pendingDeferredSats,
+    pendingSnapshot,
+  );
 
   const latestInventory = latestInventorySnapshot(store.treasuryInventory);
   const operatingFloatSatsByChain = operatingFloatByChain(latestInventory, btcUsd);
@@ -752,6 +839,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     grossProfitSats_period: grossProfitSatsPeriod,
     paidBackSats_lifetime: paidBackSatsLifetime,
     pendingDeferredSats,
+    profitSatsProvenance: {
+      period: periodProfitProvenance,
+      lifetime: lifetimeProfitProvenance,
+      rolling12m: rolling12mProfitProvenance,
+      pendingDeferred: pendingDeferredProvenance,
+    },
     operatingFloatSats_byChain: operatingFloatSatsByChain,
     kpi: {
       byr_rolling12m: safeRatio(paidBackSatsRolling12m, rollingStartFloatSats),
