@@ -4,7 +4,13 @@ import { mkdirSync, writeFileSync, appendFileSync, existsSync, readdirSync, rmSy
 import { dirname, resolve, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { buildResearchSplits, loadResearchPanel } from "./prepare.mjs";
+import {
+  buildResearchSplits,
+  loadResearchPanel,
+  RESEARCH_PANEL_DEFAULTS,
+  RESEARCH_SEEDS,
+  RESEARCH_SPLIT_DEFAULTS,
+} from "./prepare.mjs";
 import { scoreCandidateResults } from "./score.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
@@ -105,6 +111,44 @@ function syncTrackBCandidateWorkspace(candidateDir, targetNames = []) {
   }
 }
 
+function buildResearchContexts({ panel = null, panels = null } = {}) {
+  if (Array.isArray(panels) && panels.length > 0) {
+    return panels.map((item, index) => {
+      const sourcePanel = item?.panel || item;
+      const splits = item?.splits || buildResearchSplits(sourcePanel, RESEARCH_SPLIT_DEFAULTS);
+      return Object.freeze({
+        id: item?.id || `panel_${index}`,
+        seed: item?.seed ?? null,
+        panel: sourcePanel,
+        splits,
+      });
+    });
+  }
+  if (panel) {
+    return [
+      Object.freeze({
+        id: "panel_explicit",
+        seed: panel.seed ?? null,
+        panel,
+        splits: buildResearchSplits(panel, RESEARCH_SPLIT_DEFAULTS),
+      }),
+    ];
+  }
+  return RESEARCH_SEEDS.map((seed) => {
+    const sourcePanel = loadResearchPanel({
+      bars: RESEARCH_PANEL_DEFAULTS.bars,
+      chains: RESEARCH_PANEL_DEFAULTS.chains,
+      seed,
+    });
+    return Object.freeze({
+      id: `seed_${seed}`,
+      seed,
+      panel: sourcePanel,
+      splits: buildResearchSplits(sourcePanel, RESEARCH_SPLIT_DEFAULTS),
+    });
+  });
+}
+
 export function appendTrackBRun(dataDir, record) {
   const path = join(dataDir, "research-track-b-runs.jsonl");
   mkdirSync(dirname(path), { recursive: true });
@@ -116,10 +160,11 @@ export async function runTrackBSearch({
   candidateDir,
   maxCandidates = 1,
   panel,
+  panels = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!candidateDir) throw new TypeError("candidateDir is required");
-  const sourcePanel = panel || loadResearchPanel();
+  const contexts = buildResearchContexts({ panel, panels });
   const safeMax = Math.max(0, Math.min(3, Number(maxCandidates) || 0));
   if (safeMax === 0) {
     syncTrackBCandidateWorkspace(candidateDir, []);
@@ -131,13 +176,7 @@ export async function runTrackBSearch({
       generated: Object.freeze([]),
     });
   }
-  const splits = buildResearchSplits(sourcePanel, {
-    foldCount: Math.min(4, safeMax + 2),
-    trainSize: 32,
-    valSize: 16,
-    purgeSize: 2,
-    embargoSize: 2,
-  });
+  const splits = contexts.flatMap((context) => [...context.splits]);
   if (!splits.length) {
     return Object.freeze({
       observedAt: now,
@@ -159,8 +198,10 @@ export async function runTrackBSearch({
   const generated = configs.map((config) => {
     const path = join(candidateDir, `${config.name}.mjs`);
     writeFileSync(path, candidateSource(config), "utf8");
-    const signals = signalsFromMomentum(sourcePanel, config.fastWindow, config.slowWindow);
-    const foldResults = splits.map((split) => evaluateSignals(sourcePanel, split, signals));
+    const foldResults = contexts.flatMap((context) => {
+      const signals = signalsFromMomentum(context.panel, config.fastWindow, config.slowWindow);
+      return context.splits.map((split) => evaluateSignals(context.panel, split, signals));
+    });
     const score = scoreCandidateResults({
       candidateName: config.name,
       track: "B",
@@ -177,6 +218,7 @@ export async function runTrackBSearch({
         notes: "deterministic factor candidate",
       }),
       foldResults: Object.freeze(foldResults),
+      panelContextCount: contexts.length,
       score,
     });
   });
@@ -186,6 +228,8 @@ export async function runTrackBSearch({
     generatedCount: generated.length,
     oosEligibleCount: generated.filter((item) => item.score.oosGate.passed).length,
     latestBlocker: generated.some((item) => item.score.oosGate.passed) ? null : "oos_gate_blocked",
+    panelContextCount: contexts.length,
+    splitCount: splits.length,
     generated: Object.freeze(generated),
   });
 }
@@ -211,7 +255,6 @@ async function main() {
   const result = await runTrackBSearch({
     candidateDir: args.candidateDir,
     maxCandidates: args.maxCandidates,
-    panel: loadResearchPanel({ bars: 160, chains: ["base"], seed: 21 }),
   });
   appendTrackBRun(args.dataDir, result);
   console.log(JSON.stringify(result, null, 2));

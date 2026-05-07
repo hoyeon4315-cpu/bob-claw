@@ -13,7 +13,13 @@ import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { buildResearchSplits, loadResearchPanel } from "./prepare.mjs";
+import {
+  buildResearchSplits,
+  loadResearchPanel,
+  RESEARCH_PANEL_DEFAULTS,
+  RESEARCH_SEEDS,
+  RESEARCH_SPLIT_DEFAULTS,
+} from "./prepare.mjs";
 import { appendTrackBRun, runTrackBSearch } from "./factorSearch.mjs";
 import { emitPromotionIntent, scoreCandidateResults, shouldEmitPromotionIntent } from "./score.mjs";
 import { scanResearchIsolation } from "./isolationGuard.mjs";
@@ -220,6 +226,34 @@ async function evaluateCandidatePath({ candidatePath, panel, splits }) {
   });
 }
 
+async function evaluateCandidatePathAcrossContexts({ candidatePath, contexts }) {
+  const evaluations = [];
+  for (const context of contexts) {
+    evaluations.push(
+      await evaluateCandidatePath({
+        candidatePath,
+        panel: context.panel,
+        splits: context.splits,
+      }),
+    );
+  }
+  const first = evaluations[0];
+  const foldResults = evaluations.flatMap((item) => [...item.foldResults]);
+  const score = scoreCandidateResults({
+    candidateName: first.candidateName,
+    track: first.metadata?.track || null,
+    foldResults,
+  });
+  return freeze({
+    candidateName: first.candidateName,
+    path: first.path,
+    metadata: first.metadata,
+    panelContextCount: contexts.length,
+    foldResults: freeze(foldResults),
+    score,
+  });
+}
+
 export async function runCandidateRound({
   candidateDir,
   resultsPath,
@@ -345,8 +379,7 @@ async function maybeRunTrackA({
   noAgent,
   maxExperiments,
   candidateDir,
-  panel,
-  splits,
+  contexts,
   resultsPath,
   commit,
 }) {
@@ -430,10 +463,9 @@ async function maybeRunTrackA({
   });
   const generated = [];
   for (const item of materialized.written) {
-    const evaluation = await evaluateCandidatePath({
+    const evaluation = await evaluateCandidatePathAcrossContexts({
       candidatePath: item.path,
-      panel,
-      splits,
+      contexts,
     });
     appendResultRow(resultsPath, {
       commit,
@@ -480,6 +512,22 @@ function currentCommit() {
   return result.status === 0 ? result.stdout.trim() : "dirty";
 }
 
+function buildDefaultResearchContexts() {
+  return RESEARCH_SEEDS.map((seed) => {
+    const panel = loadResearchPanel({
+      bars: RESEARCH_PANEL_DEFAULTS.bars,
+      chains: RESEARCH_PANEL_DEFAULTS.chains,
+      seed,
+    });
+    return freeze({
+      id: `seed_${seed}`,
+      seed,
+      panel,
+      splits: buildResearchSplits(panel, RESEARCH_SPLIT_DEFAULTS),
+    });
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const guard = scanResearchIsolation({ rootDir: resolve(".") });
@@ -487,15 +535,9 @@ async function main() {
     throw new Error(`research isolation guard failed: ${JSON.stringify(guard.violations.slice(0, 5))}`);
   }
 
-  const panel = loadResearchPanel({ bars: 160, chains: ["base"], seed: 21 });
-  const splits = buildResearchSplits(panel, {
-    foldCount: 4,
-    trainSize: 32,
-    valSize: 16,
-    purgeSize: 2,
-    embargoSize: 2,
-  });
-  if (!splits.length) throw new Error("research split builder returned no folds");
+  const contexts = buildDefaultResearchContexts();
+  if (contexts.some((context) => !context.splits.length)) throw new Error("research split builder returned no folds");
+  const splitCount = contexts.reduce((sum, context) => sum + context.splits.length, 0);
   const commit = currentCommit();
 
   const trackA = await maybeRunTrackA({
@@ -503,8 +545,7 @@ async function main() {
     noAgent: args.noAgent,
     maxExperiments: args.maxExperiments,
     candidateDir: args.candidateDir,
-    panel,
-    splits,
+    contexts,
     resultsPath: args.resultsPath,
     commit,
   });
@@ -517,7 +558,6 @@ async function main() {
   const trackB = await runTrackBSearch({
     candidateDir: args.candidateDir,
     maxCandidates: trackBSlotBudget,
-    panel,
   });
   appendTrackBRun(args.dataDir, trackB);
 
@@ -556,7 +596,14 @@ async function main() {
       oosEligibleCount: trackB.oosEligibleCount,
       latestBlocker: trackB.latestBlocker,
     },
-    splits: splits.length,
+    researchPanel: {
+      bars: RESEARCH_PANEL_DEFAULTS.bars,
+      chains: [...RESEARCH_PANEL_DEFAULTS.chains],
+      seeds: [...RESEARCH_SEEDS],
+      contextCount: contexts.length,
+    },
+    splits: splitCount,
+    splitDefaults: RESEARCH_SPLIT_DEFAULTS,
     resultsPath: args.resultsPath,
   };
   console.log(`trackA: status=${trackA.status} generated=${trackA.generatedCount || 0} oosEligible=${trackA.oosEligibleCount || 0} blocker=${trackA.blocker || "none"}`);

@@ -10,7 +10,12 @@ import {
   loadRecordedRpcFixtures,
   loadResearchPanel,
   readOnlyArchiveRpc,
+  RESEARCH_GATEWAY_CHAINS,
+  RESEARCH_PANEL_DEFAULTS,
+  RESEARCH_SEEDS,
+  RESEARCH_SPLIT_DEFAULTS,
 } from "../research/prepare.mjs";
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../src/config/gateway-destinations.mjs";
 import {
   appendResultRow,
   decideStagnationKills,
@@ -73,6 +78,33 @@ test("research prepare builds deterministic purged and embargoed splits", () => 
     assert.equal(split.val.end + 2, split.embargoEnd);
     assert.ok(split.train.start >= 0);
     assert.ok(split.embargoEnd <= panel.rows.length);
+  }
+});
+
+test("research prepare defaults to AGENTS-grade multi-chain panel and 12 purged folds", () => {
+  assert.deepEqual(RESEARCH_GATEWAY_CHAINS, OFFICIAL_GATEWAY_DESTINATION_CHAINS);
+  assert.deepEqual(RESEARCH_SEEDS, [21, 57]);
+  assert.equal(RESEARCH_PANEL_DEFAULTS.bars, 730);
+  assert.deepEqual(RESEARCH_PANEL_DEFAULTS.chains, OFFICIAL_GATEWAY_DESTINATION_CHAINS);
+  assert.deepEqual(RESEARCH_SPLIT_DEFAULTS, {
+    foldCount: 12,
+    trainSize: 252,
+    valSize: 28,
+    purgeSize: 7,
+    embargoSize: 7,
+  });
+
+  const panel = loadResearchPanel();
+  const splits = buildResearchSplits(panel);
+  assert.equal(panel.bars, 730);
+  assert.equal(panel.chains.length, 11);
+  assert.equal(splits.length, 12);
+  for (const split of splits) {
+    assert.equal(split.train.end - split.train.start + 1, 252);
+    assert.equal(split.val.end - split.val.start + 1, 28);
+    assert.equal(split.purgeSize, 7);
+    assert.equal(split.val.start - split.train.end, 7);
+    assert.equal(split.embargoEnd - split.val.end, 7);
   }
 });
 
@@ -196,18 +228,20 @@ test("research scorer blocks weak candidates and emits promotion intents only th
   }
 });
 
-test("Track B deterministic factor search emits an OOS-eligible candidate on fixture data", async () => {
+test("Track B deterministic factor search uses the hardened multi-seed panel", async () => {
   const dir = tempDir("research-track-b");
   const candidateDir = join(dir, "candidates");
   try {
     const result = await runTrackBSearch({
       candidateDir,
       maxCandidates: 1,
-      panel: loadResearchPanel({ bars: 160, chains: ["base"], seed: 21 }),
       now: "2026-04-26T00:00:00.000Z",
     });
     assert.equal(result.generatedCount, 1);
-    assert.equal(result.oosEligibleCount, 1);
+    assert.equal(result.panelContextCount, 2);
+    assert.equal(result.splitCount, 24);
+    assert.equal(result.generated[0].foldResults.length, 24);
+    assert.ok(result.generated[0].score.oosGate.metrics.foldCount >= 12);
     assert.equal(existsSync(result.generated[0].path), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });

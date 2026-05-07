@@ -2,23 +2,26 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../src/config/gateway-destinations.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const RESEARCH_GATEWAY_CHAINS = Object.freeze([
-  "ethereum",
-  "bob",
-  "base",
-  "bsc",
-  "avalanche",
-  "unichain",
-  "bera",
-  "optimism",
-  "soneium",
-  "sei",
-  "sonic",
-]);
+export const RESEARCH_MIN_BARS = 730;
+export const RESEARCH_SEEDS = Object.freeze([21, 57]);
+export const RESEARCH_GATEWAY_CHAINS = Object.freeze([...OFFICIAL_GATEWAY_DESTINATION_CHAINS]);
+export const RESEARCH_SPLIT_DEFAULTS = Object.freeze({
+  foldCount: 12,
+  trainSize: 252,
+  valSize: 28,
+  purgeSize: 7,
+  embargoSize: 7,
+});
+export const RESEARCH_PANEL_DEFAULTS = Object.freeze({
+  bars: RESEARCH_MIN_BARS,
+  chains: RESEARCH_GATEWAY_CHAINS,
+  seed: RESEARCH_SEEDS[0],
+});
 
 const MUTATION_METHOD_PATTERN = /^(?:eth_send|eth_sign|personal_|wallet_|debug_|trace_|engine_)/u;
 
@@ -42,11 +45,15 @@ function freezeRow(row) {
   return Object.freeze(row);
 }
 
-export function loadResearchPanel({ bars = 160, chains = ["base"], seed = 1 } = {}) {
+export function loadResearchPanel({
+  bars = RESEARCH_PANEL_DEFAULTS.bars,
+  chains = RESEARCH_PANEL_DEFAULTS.chains,
+  seed = RESEARCH_PANEL_DEFAULTS.seed,
+} = {}) {
   if (!Number.isInteger(bars) || bars <= 0) {
     throw new TypeError("bars must be a positive integer");
   }
-  const normalizedChains = (Array.isArray(chains) && chains.length ? chains : ["base"]).map(normalizeChain);
+  const normalizedChains = (Array.isArray(chains) && chains.length ? chains : RESEARCH_PANEL_DEFAULTS.chains).map(normalizeChain);
   const rng = makeLcg(seed);
   const startMs = Date.parse("2024-01-01T00:00:00.000Z");
   const rows = [];
@@ -84,11 +91,11 @@ export function loadResearchPanel({ bars = 160, chains = ["base"], seed = 1 } = 
 export function buildResearchSplits(
   panel,
   {
-    foldCount = 4,
-    trainSize = 32,
-    valSize = 16,
-    purgeSize = 1,
-    embargoSize = 1,
+    foldCount = RESEARCH_SPLIT_DEFAULTS.foldCount,
+    trainSize = RESEARCH_SPLIT_DEFAULTS.trainSize,
+    valSize = RESEARCH_SPLIT_DEFAULTS.valSize,
+    purgeSize = RESEARCH_SPLIT_DEFAULTS.purgeSize,
+    embargoSize = RESEARCH_SPLIT_DEFAULTS.embargoSize,
   } = {},
 ) {
   const rows = panel?.rows || [];

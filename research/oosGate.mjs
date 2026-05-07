@@ -1,10 +1,12 @@
+export const OOS_MIN_FOLD_COUNT = 12;
+
 export const OOS_GATE_DEFAULTS = Object.freeze({
   deflatedSharpeMin: 1.0,
   maxDrawdownPctMax: 20,
   turnoverMax: 1.0,
   capacityUsdMin: 1_000,
   positiveFoldShareMin: 0.6,
-  minFoldCount: 3,
+  minFoldCount: OOS_MIN_FOLD_COUNT,
   confidenceZ: 1.96,
 });
 

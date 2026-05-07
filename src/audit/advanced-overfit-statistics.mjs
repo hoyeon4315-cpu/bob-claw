@@ -50,7 +50,7 @@ export function computeDeflatedSharpeProxy({
   returns = [],
   observedSharpe = null,
   benchmarkSharpe = 0,
-  trials = 1,
+  trials = null,
   skewness = null,
   kurtosis = null,
   minReturns = DEFAULT_MIN_RETURNS,
@@ -58,6 +58,7 @@ export function computeDeflatedSharpeProxy({
   const cleanReturns = finiteNumbers(returns);
   const blockers = [];
   if (cleanReturns.length < minReturns && !Number.isFinite(observedSharpe)) blockers.push(`min_${minReturns}_returns_required`);
+  if (!Number.isFinite(trials)) blockers.push("explicit_trial_count_required");
   if (Number.isFinite(trials) && trials < 1) blockers.push("trials_must_be_positive");
 
   if (blockers.length > 0) {
@@ -76,7 +77,7 @@ export function computeDeflatedSharpeProxy({
   const average = mean(cleanReturns);
   const sigma = sampleStdDev(cleanReturns);
   const sharpe = Number.isFinite(observedSharpe) ? observedSharpe : sigma > 0 ? average / sigma : 0;
-  const effectiveTrials = Math.max(1, Math.floor(Number.isFinite(trials) ? trials : 1));
+  const effectiveTrials = Math.max(1, Math.floor(trials));
   const trialPenalty = Math.sqrt(2 * Math.log(effectiveTrials)) / Math.sqrt(Math.max(1, cleanReturns.length - 1));
   const adjustedBenchmark = (Number.isFinite(benchmarkSharpe) ? benchmarkSharpe : 0) + trialPenalty;
   const skew = Number.isFinite(skewness) ? skewness : sampleMoment(cleanReturns, 3) ?? 0;
