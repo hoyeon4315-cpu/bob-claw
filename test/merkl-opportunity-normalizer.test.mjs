@@ -179,7 +179,7 @@ test("merkl normalizer extracts Summer Finance vault binding from raw opportunit
   assert.equal(item.protocolBinding.shareTokenSymbol, "LVWETH");
 });
 
-test("merkl normalizer extracts Yei Aave-style asset and aToken binding but leaves pool unresolved", () => {
+test("merkl normalizer extracts Yei Aave-style asset, aToken, and pinned pool binding", () => {
   const item = normalizeMerklOpportunity({
     id: "3178084911286839159",
     chainId: 1329,
@@ -213,8 +213,74 @@ test("merkl normalizer extracts Yei Aave-style asset and aToken binding but leav
 
   assert.equal(item.protocolBinding.assetAddress, "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392");
   assert.equal(item.protocolBinding.aTokenAddress, "0x817B3C191092694C65f25B4d38D4935a8aB65616");
-  assert.equal(item.protocolBinding.poolAddress, null);
+  assert.equal(item.protocolBinding.poolAddress, "0x4a4d9abD36F923cBA0Af62A39C01dEC2944fb638");
   assert.equal(item.protocolBinding.poolAddressProviderAddress, null);
+});
+
+test("merkl normalizer does not treat Yei borrow debt tokens as supply aTokens", () => {
+  const item = normalizeMerklOpportunity({
+    id: "12809346579131204688",
+    chainId: 1329,
+    chain: { name: "Sei" },
+    protocol: { id: "yei", name: "yei" },
+    type: "AAVE_BORROW",
+    action: "BORROW",
+    name: "Borrow USDC from Yei on Sei",
+    description: "Earn rewards by borrowing USDC from Yei.",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x492205148fb5BA1507a62BC3b7C522f3b62250d5",
+    depositUrl: "https://app.yei.finance/reserve-overview/?underlyingAsset=0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+    tokens: [
+      {
+        displaySymbol: "variableDebtYeiNativeUSDC",
+        address: "0x492205148fb5BA1507a62BC3b7C522f3b62250d5",
+        decimals: 6,
+        verified: false,
+        type: "TOKEN",
+      },
+      {
+        displaySymbol: "USDC",
+        address: "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+        decimals: 6,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-05-07T01:00:00.000Z" });
+
+  assert.equal(item.executionSurface, "stableBorrow");
+  assert.equal(item.protocolBinding.assetAddress, "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392");
+  assert.equal(item.protocolBinding.poolAddress, "0x4a4d9abD36F923cBA0Af62A39C01dEC2944fb638");
+  assert.equal(item.protocolBinding.aTokenAddress, null);
+});
+
+test("merkl normalizer tolerates Aave-style opportunities without a position token", () => {
+  const item = normalizeMerklOpportunity({
+    id: "aave-missing-position-token",
+    chainId: 1,
+    chain: { name: "Ethereum" },
+    protocol: { id: "aave", name: "Aave" },
+    type: "AAVE_SUPPLY",
+    action: "LEND",
+    name: "Lend USDC on Aave",
+    description: "Earn rewards by lending USDC on Aave.",
+    status: "LIVE",
+    liveCampaigns: 1,
+    depositUrl: "https://app.aave.com/reserve-overview/?underlyingAsset=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&marketName=proto_mainnet_v3",
+    tokens: [
+      {
+        displaySymbol: "USDC",
+        address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        decimals: 6,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-05-07T01:00:00.000Z" });
+
+  assert.equal(item.protocolBinding.assetAddress, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+  assert.equal(item.protocolBinding.aTokenAddress, null);
 });
 
 test("merkl normalizer does not classify reward tokens as entry exposure", () => {

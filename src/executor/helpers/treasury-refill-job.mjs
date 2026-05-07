@@ -81,6 +81,25 @@ function clampAmountToSourceBalance(amount, source = null) {
   return sourceAmount.toString();
 }
 
+function inferDecimalsFromObservedBalance(source = null) {
+  const raw = positiveBigInt(source?.actual ?? source?.balance);
+  const decimal = Number(source?.actualDecimal);
+  if (!raw || !isFiniteNumber(decimal) || !(decimal > 0)) return null;
+  const ratio = Number(raw.toString()) / decimal;
+  if (!isFiniteNumber(ratio) || !(ratio > 0)) return null;
+  const decimals = Math.round(Math.log10(ratio));
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 30) return null;
+  const expectedRatio = 10 ** decimals;
+  return Math.abs(ratio / expectedRatio - 1) <= 1e-6 ? decimals : null;
+}
+
+function sourceAssetDecimals(source = null) {
+  const sourceAsset = tokenAsset(source?.chain, source?.token || ZERO_TOKEN);
+  return Number.isInteger(sourceAsset.decimals)
+    ? sourceAsset.decimals
+    : inferDecimalsFromObservedBalance(source);
+}
+
 function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = INPUT_BUFFER_MULTIPLIER }) {
   const targetUsd = job?.estimatedAssetValueUsd;
   const sourceUsd = source?.estimatedUsd;
@@ -91,13 +110,13 @@ function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = IN
   if (!isFiniteNumber(sourceDecimal) || !(sourceDecimal > 0)) {
     return null;
   }
-  const sourceAsset = tokenAsset(source.chain, source.token || ZERO_TOKEN);
+  const decimals = sourceAssetDecimals(source);
   const sourceUnitUsd = sourceUsd / sourceDecimal;
   const buffer = Number.isFinite(inputBufferMultiplier) && inputBufferMultiplier > 0
     ? inputBufferMultiplier
     : INPUT_BUFFER_MULTIPLIER;
   const inputDecimal = Math.min(sourceDecimal, (targetUsd * buffer) / sourceUnitUsd);
-  return clampAmountToSourceBalance(ceilUnitsFromDecimalAmount(inputDecimal, sourceAsset.decimals), source);
+  return clampAmountToSourceBalance(ceilUnitsFromDecimalAmount(inputDecimal, decimals), source);
 }
 
 function gatewayOnrampAmountSats({ job, source }) {

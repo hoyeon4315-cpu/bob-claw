@@ -125,6 +125,57 @@ test("treasury refill executor builds same-chain token-to-token refill preview",
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor estimates unknown source-token input from observed raw and decimal balances", async () => {
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const yoUsd = "0x0000000f2eb9f69274678c76222b35eec7588a65";
+  let capturedInput = null;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-base-yousd-usdc",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: baseUsdc,
+      targetAmount: "60669600",
+      targetAmountDecimal: 60.6696,
+      estimatedAssetValueUsd: 60.67073909090909,
+      executionMethod: "same_chain_token_to_token_swap",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: yoUsd,
+          actual: "63710787",
+          actualDecimal: 63.710787,
+          estimatedUsd: 66.737813,
+        },
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-06T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: input.strategyId,
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "60669600",
+        quote: { outputAmount: "60669600" },
+        steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(capturedInput.inputToken, yoUsd);
+  assert.equal(capturedInput.outputToken, baseUsdc);
+  assert.equal(capturedInput.amount, "63710787");
+});
+
 test("treasury refill executor blocks same-chain token-to-native refill when native gas bootstrap is insufficient", async () => {
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: nativeRefillJob({

@@ -191,6 +191,7 @@ function classifyFamily({ action = "", protocolId = "", tokenSymbols = [], text 
   }
 
   if (stable) {
+    if (upperAction === "BORROW") return "stable_borrow_requires_collateral_context";
     if (lpLike) return eth ? "stable_eth_lp" : "stable_alt_lp";
     if (fixedYieldLike) return "stable_fixed_yield";
     return "stable_treasury_carry";
@@ -248,6 +249,9 @@ function mapToStrategy({ family = "", protocolId = "", chain = "", tokenSymbols 
             : "assetRotation",
     };
   }
+  if (family === "stable_borrow_requires_collateral_context") {
+    return { strategyId: null, executionSurface: "stableBorrow" };
+  }
   if (["tokenized_gold_rotation", "tokenized_reserve_sleeve"].includes(family)) {
     return { strategyId: "tokenized_reserve_sleeve", executionSurface: "reserveAllocation" };
   }
@@ -290,6 +294,12 @@ function choosePositionToken(tokens = [], explorerAddress = null) {
   return tokens.find((token) => sameAddress(token.address, explorerAddress)) || null;
 }
 
+function aaveSupplyToken(token = {}) {
+  if (!token || typeof token !== "object") return false;
+  const symbol = String(token.symbol || "");
+  return /^a/i.test(symbol) && !/debt/i.test(symbol);
+}
+
 function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = "", executionSurface = "", assetFamilies = [] } = {}) {
   const explorerAddress = isAddress(opportunity.explorerAddress) ? opportunity.explorerAddress : null;
   const tokens = tokenDetailsFromOpportunity(opportunity);
@@ -312,9 +322,13 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
 
   if (["aave", "yei"].includes(protocolId)) {
     const assetToken = underlyingToken;
+    const borrowLike = String(opportunity.action || "").toUpperCase() === "BORROW" || /borrow/i.test(String(opportunity.type || ""));
     const aToken =
-      positionToken ||
-      tokens.find((token) => /^a/i.test(token.symbol || "") && !sameAddress(token.address, assetToken?.address)) ||
+      borrowLike
+        ? null
+        : aaveSupplyToken(positionToken)
+          ? positionToken
+          : tokens.find((token) => aaveSupplyToken(token) && !sameAddress(token.address, assetToken?.address)) ||
       null;
     const marketBinding = resolveAaveMarketBinding({
       chain: opportunity?.chain?.name,
@@ -326,7 +340,7 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
       assetAddress: assetToken?.address || null,
       assetSymbol: assetToken?.symbol || null,
       assetDecimals: assetToken?.decimals ?? null,
-      aTokenAddress: aToken?.address || explorerAddress || null,
+      aTokenAddress: aToken?.address || (borrowLike ? null : explorerAddress) || null,
       aTokenSymbol: aToken?.symbol || null,
       marketName: marketBinding.marketName,
       poolAddress: marketBinding.poolAddress,
