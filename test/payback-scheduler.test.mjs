@@ -664,9 +664,20 @@ test("payback disbursement helper accepts minimal offramp-only composite plan", 
       },
     ],
     now: "2026-04-20T00:00:00.000Z",
+    manifestBuilder: ({ kind, verdict }) => ({
+      kind,
+      verdict,
+      manifestHash: "sha256:payback",
+    }),
   });
   assert.equal(record.gatewayOrderId, "order-abc");
   assert.equal(record.bitcoinTxid, "btc-abc");
+  assert.equal(record.receipt.sourceTxHash, "0xhash");
+  assert.equal(record.receipt.gatewayOrderId, "order-abc");
+  assert.equal(record.receipt.bitcoinTxid, "btc-abc");
+  assert.equal(record.proofManifestHash, "sha256:payback");
+  assert.equal(record.proofManifestKind, "payback_disbursement");
+  assert.equal(record.proofManifestVerdict.receiptComplete, true);
   assert.equal(record.settledBalanceDeltaSats, 56_800);
   assert.equal(record.realizedRoundTripCostSats, 3_200);
   assert.equal(record.plannedPaybackSats, 60_000);

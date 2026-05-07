@@ -76,3 +76,42 @@ test("buildPortableOpportunityPacket blocks missing replay and open closure", ()
     "radar_pnl_closure_not_closed",
   ]);
 });
+
+test("buildPortableOpportunityPacket includes internal proof manifest without relaxing blockers", () => {
+  const result = buildPortableOpportunityPacket({
+    packetId: "packet_manifest",
+    episodes: [{
+      ...closedEpisode,
+      episodeId: "episode_manifest",
+      chain: "base",
+      protocolId: "demo",
+    }],
+    portabilityWalletSet: ["cluster_a", "cluster_b", "cluster_c"],
+    portabilityClusterIndependenceProof: "distinct_funding_sources",
+    rewardTokenSymbol: "TOKEN",
+    rewardVestingSchedule: "none_observed",
+    rewardLockupSeconds: 0,
+    rewardTokenHaircutSats: "0",
+    oracleSource: "chainlink",
+    oracleStalenessSecondsMax: 60,
+    capacityAtProposedSize: "unknown",
+    manifestBuilder: ({ kind }) => ({ kind, manifestHash: "sha256:portable" }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.packet.proofManifestHash, "sha256:portable");
+  assert.equal(result.packet.proofManifestKind, "radar_portable_opportunity_packet");
+});
+
+test("buildPortableOpportunityPacket manifest does not replace cluster independence proof", () => {
+  const result = buildPortableOpportunityPacket({
+    packetId: "packet_manifest_blocked",
+    episodes: [],
+    portabilityWalletSet: ["cluster_a", "cluster_b", "cluster_c"],
+    manifestBuilder: ({ kind }) => ({ kind, manifestHash: "sha256:portable" }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.packet, null);
+  assert.equal(result.blockers.includes("radar_portability_cluster_independence_missing"), true);
+});

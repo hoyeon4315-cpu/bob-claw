@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { WBTC_OFT_TOKEN } from "../../assets/tokens.mjs";
 import { getEnv } from "../../config/env.mjs";
 import { PAYBACK_CONFIG } from "../../config/payback.mjs";
+import { buildProofManifest } from "../../proof/manifest.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "../helpers/token-dex-experiment.mjs";
 import {
   buildGatewayBtcConsolidationPlan,
@@ -1078,7 +1079,12 @@ function firstPresent(target, paths = []) {
   return null;
 }
 
-export function buildPaybackDisbursementRecord({ compositePlan, stepResults = [], now = new Date().toISOString() } = {}) {
+export function buildPaybackDisbursementRecord({
+  compositePlan,
+  stepResults = [],
+  now = new Date().toISOString(),
+  manifestBuilder = buildProofManifest,
+} = {}) {
   if (!compositePlan) {
     throw new Error("Payback disbursement record requires a composite plan");
   }
@@ -1131,6 +1137,32 @@ export function buildPaybackDisbursementRecord({ compositePlan, stepResults = []
     finiteNonNegative(compositePlan.estimatedOfframpCostSats) ??
     finiteNonNegative(compositePlan.decisionLog?.result?.estimatedOfframpCostSats) ??
     null;
+  const proofManifest = manifestBuilder({
+    kind: "payback_disbursement",
+    observedAt: now,
+    sourcePointers: [
+      { kind: "source_tx", id: sourceTxHash, chain: compositePlan.route?.reserveChain || null },
+      { kind: "gateway_order", id: gatewayOrderId },
+      { kind: "bitcoin_tx", id: bitcoinTxid },
+    ],
+    artifacts: [{
+      kind: "destination_proof",
+      sha256: null,
+      path: null,
+    }],
+    redactions: ["raw_wallet_inventory", "raw_signed_transactions"],
+    verdict: {
+      settlementStatus,
+      receiptComplete: Boolean(
+        sourceTxHash &&
+        gatewayOrderId &&
+        bitcoinTxid &&
+        settlementStatus === "delivered" &&
+        Number.isFinite(settledBalanceDeltaSats),
+      ),
+      settledBalanceDeltaSats: Number.isFinite(settledBalanceDeltaSats) ? settledBalanceDeltaSats : null,
+    },
+  });
 
   return {
     schemaVersion: 1,
@@ -1158,6 +1190,9 @@ export function buildPaybackDisbursementRecord({ compositePlan, stepResults = []
     gatewayOrderId,
     bitcoinTxid,
     sourceTxHash,
+    proofManifestHash: proofManifest.manifestHash,
+    proofManifestKind: proofManifest.kind,
+    proofManifestVerdict: proofManifest.verdict,
     settlementStatus,
     settledBalanceDeltaSats: Number.isFinite(settledBalanceDeltaSats) ? settledBalanceDeltaSats : null,
     destinationProof: offrampExecution?.destinationProof || null,

@@ -1,4 +1,5 @@
 import { RADAR_POLICY } from "../../config/radar-policy.mjs";
+import { buildProofManifest } from "../../proof/manifest.mjs";
 import { validatePortableOpportunityPacket } from "./schema/index.mjs";
 import { episodeBlocksPortability } from "./strategy-episode-builder.mjs";
 
@@ -63,6 +64,7 @@ export function buildPortableOpportunityPacket({
   redemptionLatencySecondsP50 = null,
   redemptionLatencySecondsP99 = null,
   policy = RADAR_POLICY,
+  manifestBuilder = buildProofManifest,
 } = {}) {
   const blockers = [];
   if (portabilityWalletSet.length < minPortableWalletSet(policy)) {
@@ -103,10 +105,38 @@ export function buildPortableOpportunityPacket({
   };
   const validation = validatePortableOpportunityPacket(packet);
   blockers.push(...validation.blockers);
+  const ok = blockers.length === 0;
+  const manifest = ok
+    ? manifestBuilder({
+        kind: "radar_portable_opportunity_packet",
+        sourcePointers: episodes.map((episode) => ({
+          kind: "radar_episode",
+          id: episode.episodeId || null,
+          chain: episode.chain || null,
+          protocolId: episode.protocolId || null,
+        })),
+        artifacts: [{
+          kind: "validated_packet",
+          sha256: null,
+          path: null,
+        }],
+        redactions: ["raw_wallet_clusters", "raw_event_payloads"],
+        verdict: {
+          ok,
+          blockerCount: blockers.length,
+        },
+      })
+    : null;
 
   return {
-    ok: blockers.length === 0,
+    ok,
     blockers: [...new Set(blockers)],
-    packet: blockers.length === 0 ? validation.value : null,
+    packet: ok
+      ? {
+          ...validation.value,
+          proofManifestHash: manifest.manifestHash,
+          proofManifestKind: manifest.kind,
+        }
+      : null,
   };
 }
