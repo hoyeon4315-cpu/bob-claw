@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
 export { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
@@ -9,12 +10,19 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { evaluateDiscretionaryBudget } from "./policy/cap-check.mjs";
+import {
+  buildGatewayBtcConsolidationPlan,
+  executeGatewayBtcConsolidationPlan,
+} from "./helpers/gateway-btc-consolidation.mjs";
 import {
   refillCandidateExecutable,
   refillExecutionCandidates,
   jobWithCandidate,
 } from "./helpers/refill-fallback.mjs";
+import { buildSignerAuditRecord, appendSignerAuditRecord } from "./signer/audit-log.mjs";
+import { buildIdleInventoryConsolidationPlan } from "./treasury/idle-inventory-trigger.mjs";
 
 const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 const BASE_WBTC_OFT_TOKEN = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";
@@ -1176,6 +1184,156 @@ async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }
   return result;
 }
 
+async function defaultReadWalletSnapshot({ cwd = process.cwd() } = {}) {
+  return JSON.parse(await readFile(join(cwd, "dashboard", "public", "wallet-holdings.json"), "utf8"));
+}
+
+function walletSnapshotAddress(walletSnapshot = {}) {
+  return walletSnapshot.address || walletSnapshot.walletAddress || walletSnapshot.ownerAddress || walletSnapshot.evmAddress || null;
+}
+
+function compactIdleDispatch(dispatch = {}) {
+  return {
+    status: dispatch.status,
+    srcChain: dispatch.candidate?.srcChain || null,
+    dstChain: dispatch.candidate?.dstChain || null,
+    srcSym: dispatch.candidate?.srcSym || null,
+    estimatedUsd: dispatch.candidate?.estimatedUsd ?? null,
+    sats: dispatch.candidate?.sats ?? null,
+    planStatus: dispatch.plan?.planStatus || null,
+    blockedReason: dispatch.plan?.blockedReason || dispatch.blockedReason || null,
+    strategyId: dispatch.plan?.strategyId || dispatch.plan?.intent?.strategyId || null,
+    intentQueued: dispatch.intentQueued === true,
+    auditStage: dispatch.auditStage || null,
+    executionStatus: dispatch.execution?.signerResult?.status || dispatch.execution?.settlementStatus || null,
+    error: dispatch.error || null,
+  };
+}
+
+function compactIdleConsolidation(idlePlan = null, idleDispatches = []) {
+  return {
+    status: idlePlan?.status || null,
+    candidateCount: idlePlan?.candidates?.length ?? 0,
+    aggregateUsd: idlePlan?.aggregateUsd ?? 0,
+    dstChain: idlePlan?.dstChain || null,
+    maxAggregateIdleUsd: idlePlan?.threshold?.maxAggregateIdleUsd ?? null,
+    queuedIntentCount: idleDispatches.filter((dispatch) => dispatch.intentQueued).length,
+    auditStage: idleDispatches.find((dispatch) => dispatch.auditStage)?.auditStage || null,
+  };
+}
+
+function idlePlanFromUnavailableWallet({ observedAt, error } = {}) {
+  return {
+    status: "wallet_snapshot_unavailable",
+    generatedAt: observedAt,
+    dstChain: "base",
+    threshold: null,
+    aggregateUsd: 0,
+    candidates: [],
+    error: {
+      name: error?.name || "Error",
+      message: error?.message || String(error || "wallet_snapshot_unavailable"),
+    },
+  };
+}
+
+async function buildIdleConsolidationDispatches({
+  idlePlan,
+  walletSnapshot,
+  execute = false,
+  allowLiveCapableExecution = false,
+  dryRunIdle = false,
+  cwd = process.cwd(),
+  timeoutMs = 300_000,
+  observedAt,
+  autopilotRunId,
+  buildGatewayBtcConsolidationPlanImpl = buildGatewayBtcConsolidationPlan,
+  executeGatewayBtcConsolidationPlanImpl = executeGatewayBtcConsolidationPlan,
+  appendSignerAuditRecordImpl = appendSignerAuditRecord,
+} = {}) {
+  const candidates = Array.isArray(idlePlan?.candidates) ? idlePlan.candidates : [];
+  if (candidates.length === 0) return [];
+  const senderAddress = walletSnapshotAddress(walletSnapshot);
+  if (!senderAddress) {
+    return candidates.map((candidate) => ({
+      status: "blocked",
+      blockedReason: "wallet_address_unavailable",
+      candidate,
+    }));
+  }
+
+  const dispatches = [];
+  for (const candidate of candidates) {
+    try {
+      const plan = await buildGatewayBtcConsolidationPlanImpl({
+        srcChain: candidate.srcChain,
+        dstChain: candidate.dstChain,
+        token: candidate.srcSym,
+        srcToken: candidate.srcSym,
+        dstToken: candidate.dstSym,
+        amount: String(candidate.sats),
+        senderAddress,
+        recipient: senderAddress,
+        skipPreflight: !allowLiveCapableExecution || dryRunIdle,
+        now: observedAt,
+      });
+      if (plan?.intent?.metadata) {
+        plan.intent.metadata = {
+          ...plan.intent.metadata,
+          idleInventoryConsolidation: {
+            stage: "idle_consolidation_planned",
+            autopilotRunId,
+            candidate,
+          },
+        };
+      }
+      let execution = null;
+      let auditStage = null;
+      if (execute && allowLiveCapableExecution && !dryRunIdle && plan?.intent) {
+        const lifecycle = {
+          stage: "idle_consolidation_planned",
+          autopilotRunId,
+          candidate,
+        };
+        await appendSignerAuditRecordImpl(
+          buildSignerAuditRecord({
+            intent: plan.intent,
+            policyVerdict: "planned",
+            lifecycle,
+            observedAt,
+          }),
+          { rootDir: cwd },
+        );
+        auditStage = lifecycle.stage;
+        execution = await executeGatewayBtcConsolidationPlanImpl({
+          plan,
+          timeoutMs,
+          awaitConfirmation: false,
+          awaitDestinationSettlement: false,
+        });
+      }
+      dispatches.push({
+        status: execution ? "queued" : plan?.planStatus || "planned",
+        candidate,
+        plan,
+        execution,
+        intentQueued: Boolean(execution),
+        auditStage,
+      });
+    } catch (error) {
+      dispatches.push({
+        status: "error",
+        candidate,
+        error: {
+          name: error.name || "Error",
+          message: error.message || String(error),
+        },
+      });
+    }
+  }
+  return dispatches;
+}
+
 export async function runAllChainAutopilot({
   execute = false,
   write = false,
@@ -1198,11 +1356,20 @@ export async function runAllChainAutopilot({
   bootstrapBtcSats = null,
   bootstrapBtcPriceUsd = null,
   bootstrapTotalCapitalUsd = null,
+  dryRunIdle = false,
+  observedAt: observedAtOverride = null,
+  readWalletSnapshotImpl = defaultReadWalletSnapshot,
+  buildIdleInventoryConsolidationPlanImpl = buildIdleInventoryConsolidationPlan,
+  buildGatewayBtcConsolidationPlanImpl = buildGatewayBtcConsolidationPlan,
+  executeGatewayBtcConsolidationPlanImpl = executeGatewayBtcConsolidationPlan,
+  appendSignerAuditRecordImpl = appendSignerAuditRecord,
 } = {}) {
-  const observedAt = new Date().toISOString();
+  const observedAt = observedAtOverride || new Date().toISOString();
   const autopilotRunId = randomUUID();
   const steps = [];
   const refillExecutions = [];
+  let idleConsolidationPlan = null;
+  let idleConsolidationDispatches = [];
   let discretionary24hSlicePromise = null;
 
   async function discretionary24hSlice() {
@@ -1232,19 +1399,21 @@ export async function runAllChainAutopilot({
     return evaluateDiscretionaryBudget(category, intent, await discretionary24hSlice());
   }
 
-  await runJsonStep({
-    name: "gas_snapshot_refresh",
-    args: ["src/cli/gas-snapshot.mjs"],
-    runCommandImpl,
-    cwd,
-    timeoutMs,
-    steps,
-  });
+  if (!dryRunIdle) {
+    await runJsonStep({
+      name: "gas_snapshot_refresh",
+      args: ["src/cli/gas-snapshot.mjs"],
+      runCommandImpl,
+      cwd,
+      timeoutMs,
+      steps,
+    });
+  }
 
   const hasBootstrapInput =
     Number.isFinite(bootstrapTotalCapitalUsd) ||
     (Number.isFinite(bootstrapBtcSats) && Number.isFinite(bootstrapBtcPriceUsd));
-  if (hasBootstrapInput) {
+  if (hasBootstrapInput && !dryRunIdle) {
     const bootstrapArgs = ["src/cli/run-bootstrap-from-btc.mjs", "--json", "--write"];
     if (Number.isFinite(bootstrapTotalCapitalUsd)) {
       bootstrapArgs.push(`--total-capital-usd=${bootstrapTotalCapitalUsd}`);
@@ -1267,50 +1436,52 @@ export async function runAllChainAutopilot({
 
   const heartbeatPathArg = getEnv("EXECUTOR_HEARTBEAT_PATH", null);
   const oraclesPathArg = getEnv("AUTO_KILL_ORACLES_PATH", join("data", "oracles", "btc-latest.json"));
-  await runJsonStep({
-    name: "btc_oracle_snapshot",
-    args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
-    runCommandImpl,
-    cwd,
-    timeoutMs,
-    steps,
-  });
+  if (!dryRunIdle) {
+    await runJsonStep({
+      name: "btc_oracle_snapshot",
+      args: ["src/cli/snapshot-btc-oracles.mjs", "--json", "--write", `--path=${oraclesPathArg}`],
+      runCommandImpl,
+      cwd,
+      timeoutMs,
+      steps,
+    });
 
-  await runJsonStep({
-    name: "price_snapshot_refresh",
-    args: ["src/cli/price-snapshot.mjs"],
-    runCommandImpl,
-    cwd,
-    timeoutMs: Math.min(30_000, timeoutMs),
-    steps,
-  });
+    await runJsonStep({
+      name: "price_snapshot_refresh",
+      args: ["src/cli/price-snapshot.mjs"],
+      runCommandImpl,
+      cwd,
+      timeoutMs: Math.min(30_000, timeoutMs),
+      steps,
+    });
 
-  await runJsonStep({
-    name: "campaign_aware_opportunities",
-    args: ["src/cli/report-campaign-aware-opportunities.mjs", "--json"],
-    runCommandImpl,
-    cwd,
-    timeoutMs: Math.min(30_000, timeoutMs),
-    steps,
-  });
+    await runJsonStep({
+      name: "campaign_aware_opportunities",
+      args: ["src/cli/report-campaign-aware-opportunities.mjs", "--json"],
+      runCommandImpl,
+      cwd,
+      timeoutMs: Math.min(30_000, timeoutMs),
+      steps,
+    });
 
-  await runJsonStep({
-    name: "anchor_position_health",
-    args: ["src/cli/report-anchor-position-health.mjs", "--json"],
-    runCommandImpl,
-    cwd,
-    timeoutMs: Math.min(30_000, timeoutMs),
-    steps,
-  });
+    await runJsonStep({
+      name: "anchor_position_health",
+      args: ["src/cli/report-anchor-position-health.mjs", "--json"],
+      runCommandImpl,
+      cwd,
+      timeoutMs: Math.min(30_000, timeoutMs),
+      steps,
+    });
 
-  await runJsonStep({
-    name: "aggregate_auto_kill_inputs",
-    args: ["src/cli/aggregate-auto-kill-inputs.mjs"],
-    runCommandImpl,
-    cwd,
-    timeoutMs: Math.min(15_000, timeoutMs),
-    steps,
-  });
+    await runJsonStep({
+      name: "aggregate_auto_kill_inputs",
+      args: ["src/cli/aggregate-auto-kill-inputs.mjs"],
+      runCommandImpl,
+      cwd,
+      timeoutMs: Math.min(15_000, timeoutMs),
+      steps,
+    });
+  }
 
   const autoKillArgs = [
     "src/cli/run-auto-kill-check.mjs",
@@ -1335,6 +1506,75 @@ export async function runAllChainAutopilot({
     autoKillStep: autoKillResult,
   });
   const allowLiveCapableExecution = liveExecutionGate.liveCapableStepExecution === true;
+  let walletSnapshot = null;
+  try {
+    walletSnapshot = await readWalletSnapshotImpl({ cwd });
+    const treasuryPolicy = validateTreasuryPolicy(buildDefaultTreasuryPolicy({
+      walletTotalUsd: finiteNumber(walletSnapshot?.totalUsd),
+    }));
+    const idleThreshold = treasuryPolicy.idleInventoryConsolidation || {};
+    idleConsolidationPlan = buildIdleInventoryConsolidationPlanImpl({
+      walletSnapshot,
+      gatewayDestinations: chains,
+      threshold: {
+        ...idleThreshold,
+        maxAggregateIdleUsd: Math.min(50, finiteNumber(idleThreshold.maxAggregateIdleUsd) ?? 50),
+      },
+      killSwitchActive: autoKillResult.json?.triggered === true || autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
+      now: observedAt,
+    });
+  } catch (error) {
+    idleConsolidationPlan = idlePlanFromUnavailableWallet({ observedAt, error });
+  }
+  idleConsolidationDispatches = await buildIdleConsolidationDispatches({
+    idlePlan: idleConsolidationPlan,
+    walletSnapshot,
+    execute,
+    allowLiveCapableExecution,
+    dryRunIdle,
+    cwd,
+    timeoutMs,
+    observedAt,
+    autopilotRunId,
+    buildGatewayBtcConsolidationPlanImpl,
+    executeGatewayBtcConsolidationPlanImpl,
+    appendSignerAuditRecordImpl,
+  });
+
+  if (dryRunIdle) {
+    const report = {
+      schemaVersion: 1,
+      observedAt,
+      autopilotRunId,
+      mode: "idle_preview",
+      status: autoKillResult.json?.triggered === true || autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true
+        ? "completed_with_blockers"
+        : "completed",
+      phase: "idle_consolidation_preview",
+      blockedReason: null,
+      chains,
+      summary: {
+        officialChainCount: chains.length,
+        idleConsolidation: compactIdleConsolidation(idleConsolidationPlan, idleConsolidationDispatches),
+        autoKill: compactAutoKill(autoKillResult.json),
+        executionGate: {
+          ...liveExecutionGate,
+          autopilotRunId,
+          autoKillTriggered: autoKillResult.json?.triggered === true,
+          killSwitchActive: autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
+          killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
+        },
+      },
+      idleConsolidationPlan,
+      idleConsolidationDispatches: idleConsolidationDispatches.map(compactIdleDispatch),
+      refillExecutions,
+      steps,
+    };
+    if (write) {
+      await writeAutopilotLatest(dataDir, report);
+    }
+    return report;
+  }
 
   let refillPlanResult = await runJsonStep({
     name: "treasury_refill_plan",
@@ -1556,6 +1796,7 @@ export async function runAllChainAutopilot({
       treasuryBlocker: treasuryInventoryBlocker,
       capitalManagerBlocker: capitalManagerInventoryBlocker,
     },
+    idleConsolidation: compactIdleConsolidation(idleConsolidationPlan, idleConsolidationDispatches),
     capitalManager: compactCapitalManager(capitalManagerRefillPlan),
     executionGate: {
       ...liveExecutionGate,
@@ -1610,6 +1851,8 @@ export async function runAllChainAutopilot({
           "auto_kill_dashboard_slice",
         ],
       },
+      idleConsolidationPlan,
+      idleConsolidationDispatches: idleConsolidationDispatches.map(compactIdleDispatch),
       refillExecutions,
       steps,
     };
@@ -1851,6 +2094,7 @@ export async function runAllChainAutopilot({
       treasuryBlocker: treasuryInventoryBlocker,
       capitalManagerBlocker: capitalManagerInventoryBlocker,
     },
+    idleConsolidation: compactIdleConsolidation(idleConsolidationPlan, idleConsolidationDispatches),
     capitalManager: compactCapitalManager(capitalManagerRefillPlan),
     canarySweep: compactCanarySweep(canarySweepResult.json),
     merklQueue: compactMerklQueue(merklQueueResult.json),
@@ -1898,6 +2142,8 @@ export async function runAllChainAutopilot({
     blockedReason: hardFailures[0]?.error?.message || null,
     chains,
     summary,
+    idleConsolidationPlan,
+    idleConsolidationDispatches: idleConsolidationDispatches.map(compactIdleDispatch),
     refillExecutions,
     steps,
   };

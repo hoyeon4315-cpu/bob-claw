@@ -28,6 +28,7 @@ export function parseArgs(argv) {
     enableDexProbeExecution: flags.has("--enable-dex-probe-execution"),
     json: flags.has("--json"),
     write: flags.has("--write"),
+    dryRunIdle: flags.has("--dry-run-idle"),
     loop: flags.has("--loop"),
     stopAfterRefill: flags.has("--stop-after-refill") || flags.has("--refill-only"),
     intervalMs: entries["interval-ms"] ? Number(entries["interval-ms"]) : 300_000,
@@ -44,6 +45,7 @@ export function parseArgs(argv) {
     bootstrapBtcSats: entries["bootstrap-btc-sats"] ? Number(entries["bootstrap-btc-sats"]) : null,
     bootstrapBtcPriceUsd: entries["bootstrap-btc-price-usd"] ? Number(entries["bootstrap-btc-price-usd"]) : null,
     bootstrapTotalCapitalUsd: entries["bootstrap-total-capital-usd"] ? Number(entries["bootstrap-total-capital-usd"]) : null,
+    observedAt: entries["observed-at"] || null,
   };
 }
 
@@ -55,6 +57,7 @@ function printSummary(report = {}) {
   console.log(`refillJobs=${report.summary?.refillJobCount ?? 0} auto=${report.summary?.autoRefillJobCount ?? 0} executed=${report.summary?.refillExecutedCount ?? 0} treasury=${report.summary?.treasuryRefillJobCount ?? 0} capitalManager=${report.summary?.capitalManagerRefillJobCount ?? 0} inbound=${report.summary?.inboundRouteJobCount ?? 0}`);
   console.log(`inboundEvents=${report.summary?.inboundInventory?.inboundEventCount ?? 0} operatingCapital=${report.summary?.inboundInventory?.operatingCapitalIngressCount ?? 0} paybackExcluded=${report.summary?.inboundInventory?.paybackExcludedCount ?? 0} routed=${report.summary?.inboundInventory?.routeReadyCount ?? 0} appendedJobs=${report.summary?.inboundInventory?.appendedJobs ?? "n/a"}`);
   console.log(`capitalManager=rebalance:${report.summary?.capitalManager?.rebalanceDecision || "n/a"} capitalPlan:${report.summary?.capitalManager?.capitalPlanDecision || "n/a"} jobs=${report.summary?.capitalManager?.refillJobCount ?? 0} auto=${report.summary?.capitalManager?.autoRefillJobCount ?? 0}`);
+  console.log(`idleConsolidation=${report.summary?.idleConsolidation?.status || "n/a"} candidates=${report.summary?.idleConsolidation?.candidateCount ?? 0} queued=${report.summary?.idleConsolidation?.queuedIntentCount ?? 0} aggregateUsd=${report.summary?.idleConsolidation?.aggregateUsd ?? 0}`);
   console.log(`canarySweep=${report.summary?.canarySweep?.status || "n/a"} ready=${report.summary?.canarySweep?.previewReadyCount ?? 0} executed=${report.summary?.canarySweep?.executedCount ?? 0} candidates=${report.summary?.canarySweep?.executedCandidateCount ?? 0} txSteps=${report.summary?.canarySweep?.broadcastStepCount ?? 0}`);
   console.log(`merklQueue=chains:${report.summary?.merklQueue?.chainCount ?? 0} representativeMissing:${report.summary?.merklQueue?.representativeCoverage?.missingRepresentativeChainCount ?? "n/a"} topMissing:${report.summary?.merklQueue?.representativeCoverage?.topMissingChain || "n/a"}`);
   console.log(`destinationAllocator=activeReady:${report.summary?.destinationAllocator?.activeReadyCandidateCount ?? 0} chains:${(report.summary?.destinationAllocator?.tier1ActiveReadyChains || []).join(",") || "none"}`);
