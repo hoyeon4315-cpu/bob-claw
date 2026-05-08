@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "observedAt": "2026-05-08T14:29:44.139Z",
+  "observedAt": "2026-05-08T20:56:03.368Z",
   "summaryKind": "event_window_with_current_kill_switch_state",
   "windowMs": 86400000,
   "totalEvaluations24h": 0,
