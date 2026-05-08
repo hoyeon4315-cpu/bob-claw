@@ -1,25 +1,86 @@
 import { STRATEGY_CAPS } from "./strategy-caps/registry.mjs";
 import { ACTIVE_SLEEVE_PROFILE, resolveProfileCapMatrix } from "./sleeve-profile.mjs";
+import {
+  SMALL_CAPITAL_CAMPAIGN_MODE,
+  isSmallCapitalMode,
+} from "./small-capital-campaign-mode.mjs";
 
 export { STRATEGY_CAPS };
+
+export const TRANSPORT_INFRA_STRATEGY_IDS = Object.freeze([
+  "gateway-btc-funding-transfer",
+  "gateway-btc-onramp",
+  "gateway-btc-offramp",
+  "gas-zip-native-refuel",
+  "across-bridge",
+  "lifi-bridge",
+  "native-dex-experiment",
+  "prelive_fork_execution",
+]);
+
+const TRANSPORT_INFRA_STRATEGY_ID_SET = new Set(TRANSPORT_INFRA_STRATEGY_IDS);
 
 function isFiniteNumber(value) {
   return Number.isFinite(value);
 }
 
-export function getStrategyCaps(strategyId) {
-  return STRATEGY_CAPS[strategyId] || null;
+function smallCapitalClampActive({ activeCapitalUsd = null, smallCapitalMode = SMALL_CAPITAL_CAMPAIGN_MODE } = {}) {
+  if (!smallCapitalMode?.enabled) return false;
+  if (activeCapitalUsd === null || activeCapitalUsd === undefined) return true;
+  return isSmallCapitalMode(activeCapitalUsd, smallCapitalMode);
 }
 
-export function listStrategyCaps() {
-  return Object.values(STRATEGY_CAPS);
+function applyTransportInfraSmallCapitalClamp(
+  config,
+  { activeCapitalUsd = null, smallCapitalMode = SMALL_CAPITAL_CAMPAIGN_MODE } = {},
+) {
+  if (!config || !TRANSPORT_INFRA_STRATEGY_ID_SET.has(config.strategyId)) return config;
+  if (!smallCapitalClampActive({ activeCapitalUsd, smallCapitalMode })) return config;
+  const perDayUsd = Math.min(
+    config.caps.perDayUsd,
+    smallCapitalMode.transportEffectivePerDayUsd,
+  );
+  const maxDailyLossUsd = Math.min(
+    config.caps.maxDailyLossUsd,
+    smallCapitalMode.transportEffectiveMaxDailyLossUsd,
+  );
+  if (
+    perDayUsd === config.caps.perDayUsd &&
+    maxDailyLossUsd === config.caps.maxDailyLossUsd
+  ) {
+    return config;
+  }
+  return Object.freeze({
+    ...config,
+    caps: Object.freeze({
+      ...config.caps,
+      perDayUsd,
+      maxDailyLossUsd,
+    }),
+    effectiveCapSource: Object.freeze({
+      kind: "small_capital_transport_infra_clamp",
+      declaredPerDayUsd: config.caps.perDayUsd,
+      declaredMaxDailyLossUsd: config.caps.maxDailyLossUsd,
+      effectivePerDayUsd: perDayUsd,
+      effectiveMaxDailyLossUsd: maxDailyLossUsd,
+      policyProfileId: smallCapitalMode.profileId,
+    }),
+  });
+}
+
+export function getStrategyCaps(strategyId, options = {}) {
+  return applyTransportInfraSmallCapitalClamp(STRATEGY_CAPS[strategyId] || null, options);
+}
+
+export function listStrategyCaps(options = {}) {
+  return Object.values(STRATEGY_CAPS).map((config) => applyTransportInfraSmallCapitalClamp(config, options));
 }
 
 export function resolveStrategyCapMatrix(
   strategyOrId,
-  { profileId = ACTIVE_SLEEVE_PROFILE.id, includeRadarCaps = false } = {},
+  { profileId = ACTIVE_SLEEVE_PROFILE.id, includeRadarCaps = false, ...capOptions } = {},
 ) {
-  const strategy = typeof strategyOrId === "string" ? getStrategyCaps(strategyOrId) : strategyOrId;
+  const strategy = typeof strategyOrId === "string" ? getStrategyCaps(strategyOrId, capOptions) : strategyOrId;
   if (!strategy) return null;
   return resolveProfileCapMatrix(strategy, { profileId, includeRadarCaps });
 }
@@ -93,8 +154,8 @@ export function validateStrategyCapsConfig(config = {}) {
   };
 }
 
-export function assertStrategyCaps(strategyId) {
-  const config = getStrategyCaps(strategyId);
+export function assertStrategyCaps(strategyId, options = {}) {
+  const config = getStrategyCaps(strategyId, options);
   if (!config) {
     throw new Error(`Unknown strategy caps for ${strategyId}`);
   }

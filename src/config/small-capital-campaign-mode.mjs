@@ -45,6 +45,8 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
   enabled: true,
   autoMicroTest: true,
   capitalThresholdUsd: 1_000,
+  transportEffectivePerDayUsd: 200,
+  transportEffectiveMaxDailyLossUsd: 100,
   anchorTargetPct: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.anchorTargetPct || { min: 0.55, max: 0.70 }),
   opportunisticMaxPct: ACTIVE_SMALL_CAPITAL_OVERRIDES.opportunisticMaxPct ?? 0.30,
   microMaxPct: ACTIVE_SMALL_CAPITAL_OVERRIDES.microMaxPct ?? 0.10,
