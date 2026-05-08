@@ -342,6 +342,34 @@ export class EvmLocalKeySigner extends SignerInterface {
     }
   }
 
+  describeNonceManagers() {
+    try {
+      return {
+        ok: true,
+        chains: listEvmChains().map((chain) => {
+          const activeProviderIndex = this.activeProviderIndexes.get(chain) ?? 0;
+          const entries = this.providerEntries(chain);
+          const manager = this.nonceManagers.get(`${chain}:${activeProviderIndex}`) || null;
+          return {
+            chain,
+            activeProviderIndex,
+            providerCount: entries.length,
+            cachedNextNonce: Number.isInteger(manager?.nextNonce) ? manager.nextNonce : null,
+          };
+        }),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          name: error.name,
+          message: error.message,
+        },
+        chains: [],
+      };
+    }
+  }
+
   async getAddress(chain = "bob") {
     const wallet = await this.wallet(chain);
     return wallet.address;

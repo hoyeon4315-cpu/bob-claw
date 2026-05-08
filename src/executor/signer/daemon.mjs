@@ -471,6 +471,7 @@ export async function startSignerDaemon() {
               addressDetails: {
                 bitcoin: bitcoinInfo,
               },
+              nonceManagers: signers.evm.describeNonceManagers(),
             })}\n`,
           );
           continue;

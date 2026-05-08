@@ -177,6 +177,7 @@
     "executor:send-intent": "node src/cli/send-executor-intent.mjs",
     "executor:watchdog": "node src/cli/run-executor-watchdog.mjs",
     "executor:watchdog:once": "node src/cli/run-executor-watchdog.mjs --once",
+    "diagnose:signer-health": "node src/cli/diagnose-signer-health.mjs",
     "signer:daemon": "npm run executor:daemon",
     "watchdog:run": "npm run executor:watchdog",
     "ops:runtime-readiness": "node src/cli/check-executor-runtime.mjs",
