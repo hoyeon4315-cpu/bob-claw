@@ -11,13 +11,13 @@ function planFixture(decision = "REVIEW_REFILL_PLAN") {
     address: "0x000000000000000000000000000000000000dEaD",
     decision,
     inventory: {
-      native: [{ chain: "bob", actual: "10000000000000000", actualDecimal: 0.01, estimatedUsd: 22 }],
-      tokens: [{ chain: "bob", actual: "50000", actualDecimal: 0.0005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 35 }],
+      native: [{ chain: "base", actual: "10000000000000000", actualDecimal: 0.01, estimatedUsd: 22 }],
+      tokens: [{ chain: "base", actual: "50000", actualDecimal: 0.0005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 35 }],
     },
     actions: [
       {
         type: "refill_native",
-        chain: "bob",
+        chain: "base",
         asset: "ETH",
         token: "0x0000000000000000000000000000000000000000",
         refillAmount: "4000000000000000",
@@ -27,7 +27,7 @@ function planFixture(decision = "REVIEW_REFILL_PLAN") {
       },
       {
         type: "refill_token",
-        chain: "bob",
+        chain: "base",
         ticker: "wBTC.OFT",
         token: "0x0555",
         refillAmount: "25000",
@@ -50,7 +50,7 @@ test("refill jobs are deterministic and carry execution constraints", () => {
   assert.equal(jobs.jobs[0].executionMethod, "same_chain_token_to_native_swap");
   assert.equal(jobs.jobs[1].executionMethod, "same_chain_native_to_token_swap");
   assert.equal(jobs.jobs[0].candidateMethods.some((item) => item.method === "same_chain_token_to_native_swap"), true);
-  assert.equal(jobs.jobs[0].candidateMethods.find((item) => item.method === "same_chain_token_to_native_swap").source.chain, "bob");
+  assert.equal(jobs.jobs[0].candidateMethods.find((item) => item.method === "same_chain_token_to_native_swap").source.chain, "base");
   assert.equal(jobs.jobs[0].fundingSource.selectionStatus, "ready");
   assert.equal(jobs.jobs[0].jobId, buildTreasuryRefillJobs({ plan: planFixture(), policy, fundingSourcePlan }).jobs[0].jobId);
 });
@@ -266,9 +266,9 @@ test("refill jobs tolerate a selection without selected source details", () => {
     selections: [
       {
         actionType: "refill_native",
-        chain: "bob",
+        chain: "base",
         asset: "ETH",
-        resourceKey: "bob:native",
+        resourceKey: "base:native",
         selectionStatus: "waiting_inputs",
         selectedMethod: "manual_funding_required",
         selectedSource: null,
@@ -280,10 +280,10 @@ test("refill jobs tolerate a selection without selected source details", () => {
       },
       {
         actionType: "refill_token",
-        chain: "bob",
+        chain: "base",
         token: "0x0555",
         ticker: "wBTC.OFT",
-        resourceKey: "bob:0x0555",
+        resourceKey: "base:0x0555",
         selectionStatus: "ready",
         selectedMethod: "same_chain_native_to_token_swap",
         selectedSource: { source: "same_chain_native_balance" },

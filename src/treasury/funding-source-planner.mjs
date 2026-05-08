@@ -148,11 +148,25 @@ function normalizeInventoryEntry(entry = {}, kind) {
     chain: entry.chain,
     token,
     ticker: entry.ticker || resolvedAsset?.ticker || null,
+    family: entry.family || resolvedAsset?.family || null,
     actual: amountRaw == null ? null : String(amountRaw),
     actualDecimal: finite(entry.actualDecimal),
     estimatedUsd: finite(entry.estimatedUsd),
     sourceKind: entry.sourceKind || kind,
+    trackingStatus: entry.trackingStatus || null,
+    countedInWalletTotal: entry.countedInWalletTotal,
+    sourceKinds: Array.isArray(entry.sourceKinds) ? entry.sourceKinds : [],
   };
+}
+
+function spendableFundingSource(source = {}) {
+  if (!source) return false;
+  if (source.sourceKind === "native") return true;
+  if (source.countedInWalletTotal === false) return false;
+  if (source.trackingStatus === "protocol_reader_covered") return false;
+  if (source.family === "protocol_share") return false;
+  if ((source.sourceKinds || []).includes("protocol_position_mark")) return false;
+  return true;
 }
 
 function mergeInventoryEntries(primaryEntries = [], supplementalEntries = [], kind) {
@@ -324,7 +338,10 @@ function candidateRecord({
 function nativeSwapCandidate(action, plan, preferred) {
   const chainInventory = inventoryForChain(plan, action.chain);
   const native = chainInventory.native;
-  const tokenSources = sortByEstimatedUsd(chainInventory.tokens.filter((item) => Number(item.actual || 0) > 0));
+  const dexSupported = dexProvidersForChain(action.chain).length > 0;
+  const tokenSources = sortByEstimatedUsd(
+    chainInventory.tokens.filter((item) => Number(item.actual || 0) > 0 && spendableFundingSource(item)),
+  );
   const wrappedNativeToken = normalized(WRAPPED_NATIVE_TOKENS[action.chain]);
   const wrappedNativeSource = tokenSources.find((item) => normalized(item.token) === wrappedNativeToken && sourceInventoryCoversTargetValue(action, item));
   const tokenSource = wrappedNativeSource || tokenSources[0] || null;
@@ -337,7 +354,11 @@ function nativeSwapCandidate(action, plan, preferred) {
       preferred: false,
       requiresBootstrapNative: true,
       bootstrapNativeSatisfied: false,
-      missingInputs: ["same_chain_token_inventory_missing", "bootstrap_native_required"],
+      missingInputs: [
+        "same_chain_token_inventory_missing",
+        "bootstrap_native_required",
+        ...(dexSupported ? [] : ["same_chain_dex_executor_missing"]),
+      ],
       notes: "No same-chain token inventory is available to rebuild native gas through a swap.",
     });
   }
@@ -351,16 +372,21 @@ function nativeSwapCandidate(action, plan, preferred) {
   if (!coversTargetValue) {
     missingInputs.push("source_inventory_below_target_amount");
   }
+  if (!dexSupported) {
+    missingInputs.push("same_chain_dex_executor_missing");
+  }
   return candidateRecord({
     action,
     method: "same_chain_token_to_native_swap",
     source: describeSourceAsset(action.chain, tokenSource.token, sourceAmountMetadata(tokenSource)),
-    availability: bootstrapNativeSatisfied && coversTargetValue ? "ready" : "conditional",
-    preferred: bootstrapNativeSatisfied && coversTargetValue ? preferred : false,
+    availability: bootstrapNativeSatisfied && coversTargetValue && dexSupported ? "ready" : "conditional",
+    preferred: bootstrapNativeSatisfied && coversTargetValue && dexSupported ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
     missingInputs,
-    notes: !coversTargetValue
+    notes: !dexSupported
+      ? "Same-chain token inventory exists, but no deterministic DEX executor is configured for this chain."
+      : !coversTargetValue
       ? "Same-chain token inventory exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required."
       : bootstrapNativeSatisfied
       ? "Use same-chain token inventory to rebuild native gas when some bootstrap native gas still exists."
@@ -371,21 +397,25 @@ function nativeSwapCandidate(action, plan, preferred) {
 function tokenSwapCandidate(action, plan, preferred) {
   const chainInventory = inventoryForChain(plan, action.chain);
   const native = chainInventory.native;
+  const dexSupported = dexProvidersForChain(action.chain).length > 0;
   const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
   const coversTargetValue = sourceInventoryCoversTargetValue(action, native);
   return candidateRecord({
     action,
     method: "same_chain_native_to_token_swap",
     source: describeSourceAsset(action.chain, ZERO_TOKEN, sourceAmountMetadata(native)),
-    availability: bootstrapNativeSatisfied && coversTargetValue ? "ready" : "conditional",
-    preferred: bootstrapNativeSatisfied && coversTargetValue ? preferred : false,
+    availability: bootstrapNativeSatisfied && coversTargetValue && dexSupported ? "ready" : "conditional",
+    preferred: bootstrapNativeSatisfied && coversTargetValue && dexSupported ? preferred : false,
     requiresBootstrapNative: true,
     bootstrapNativeSatisfied,
     missingInputs: [
       ...(bootstrapNativeSatisfied ? [] : ["bootstrap_native_required"]),
       ...(coversTargetValue ? [] : ["source_inventory_below_target_amount"]),
+      ...(dexSupported ? [] : ["same_chain_dex_executor_missing"]),
     ],
-    notes: coversTargetValue
+    notes: !dexSupported
+      ? "Same-chain native inventory exists, but no deterministic DEX executor is configured for this chain."
+      : coversTargetValue
       ? "Use same-chain native balance to acquire the route token inventory."
       : "Same-chain native balance exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required.",
   });
@@ -414,7 +444,11 @@ function tokenToTokenSwapCandidate(action, plan, policy, preferred) {
   const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
   const dexSupported = dexProvidersForChain(action.chain).length > 0;
   const tokenSources = chainInventory.tokens
-    .filter((item) => Number(item.actual || 0) > 0 && normalized(item.token) !== normalized(action.token))
+    .filter((item) =>
+      Number(item.actual || 0) > 0 &&
+      normalized(item.token) !== normalized(action.token) &&
+      spendableFundingSource(item)
+    )
     .sort((left, right) => {
       const leftCovers = sourceInventoryCoversTargetValue(action, left);
       const rightCovers = sourceInventoryCoversTargetValue(action, right);
@@ -516,7 +550,7 @@ function selectCrossChainSource(action, plan, routeContext = null) {
       sourceKind: "native",
     }));
   const tokenSources = (plan.inventory?.tokens || [])
-    .filter((item) => item.chain !== action.chain && Number(item.actual || 0) > 0)
+    .filter((item) => item.chain !== action.chain && Number(item.actual || 0) > 0 && spendableFundingSource(item))
     .map((item) => ({
       chain: item.chain,
       token: item.token,

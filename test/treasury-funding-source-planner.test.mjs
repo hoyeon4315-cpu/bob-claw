@@ -57,11 +57,16 @@ function planFixture(decision = "REVIEW_REFILL_PLAN") {
 
 test("single wallet funding source planner prefers same-chain swaps with bootstrap gas", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = planFixture();
+  plan.inventory.native[0].chain = "base";
+  plan.inventory.tokens[0].chain = "base";
+  plan.actions[0].chain = "base";
+  plan.actions[1].chain = "base";
   const funding = buildFundingSourcePlan({
-    plan: planFixture(),
+    plan,
     policy,
     routeContext: {
-      routeKey: "bob:0x0555->base:0x0555",
+      routeKey: "base:0x0555->base:0x0555",
       amount: "10000",
       inputUsd: 10,
       knownCostUsd: 0.2,
@@ -85,6 +90,18 @@ test("single wallet funding source planner prefers same-chain swaps with bootstr
   assert.equal(Number.isFinite(funding.summary.effectiveSystemNetPnlUsd), true);
   assert.equal(funding.summary.effectiveSystemNetPnlUsd < 1.4, true);
   assert.equal(funding.summary.economicallyJustified, true);
+});
+
+test("same-chain swap refill stays conditional when chain has no deterministic DEX executor", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const funding = buildFundingSourcePlan({ plan: planFixture("REFILL_REQUIRED"), policy });
+
+  assert.equal(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
+  assert.equal(funding.selections[0].missingInputs.includes("same_chain_dex_executor_missing"), true);
+  assert.equal(funding.selections[1].selectedMethod, "same_chain_native_to_token_swap");
+  assert.equal(funding.selections[1].selectionStatus, "conditional");
+  assert.equal(funding.selections[1].missingInputs.includes("same_chain_dex_executor_missing"), true);
 });
 
 test("dual wallet funding source planner prefers reserve transfers but marks reserve state as unmodelled", () => {
@@ -559,10 +576,10 @@ test("cross-chain BTC-family token refill stays conditional when observed source
 
   const funding = buildFundingSourcePlan({ plan, policy });
 
-  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
-  assert.equal(funding.selections[0].selectionStatus, "conditional");
-  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
-  assert.equal(funding.selections[0].missingInputs.includes("source_inventory_below_target_amount"), true);
+  const crossChainCandidate = funding.selections[0].candidates.find((item) => item.method === "cross_chain_bridge_or_swap");
+  assert.equal(crossChainCandidate.availability, "conditional");
+  assert.equal(crossChainCandidate.source.chain, "base");
+  assert.equal(crossChainCandidate.missingInputs.includes("source_inventory_below_target_amount"), true);
 });
 
 test("cross-chain BTC-family token refill stays conditional when same-token partial coverage is below threshold", () => {
@@ -598,10 +615,10 @@ test("cross-chain BTC-family token refill stays conditional when same-token part
 
   const funding = buildFundingSourcePlan({ plan, policy });
 
-  assert.equal(funding.selections[0].selectedMethod, "cross_chain_bridge_or_swap");
-  assert.equal(funding.selections[0].selectionStatus, "conditional");
-  assert.equal(funding.selections[0].selectedSource.source.chain, "base");
-  assert.equal(funding.selections[0].missingInputs.includes("source_inventory_below_target_amount"), true);
+  const crossChainCandidate = funding.selections[0].candidates.find((item) => item.method === "cross_chain_bridge_or_swap");
+  assert.equal(crossChainCandidate.availability, "conditional");
+  assert.equal(crossChainCandidate.source.chain, "base");
+  assert.equal(crossChainCandidate.missingInputs.includes("source_inventory_below_target_amount"), true);
 });
 
 test("cross-chain token refill prefers executable wrapped BTC over larger unsupported stablecoin inventory", () => {
@@ -994,7 +1011,7 @@ test("native refill does not treat undersized same-chain token inventory as read
 
   const funding = buildFundingSourcePlan({ plan, policy });
 
-  assert.notEqual(funding.selections[0].selectedMethod, "same_chain_token_to_native_swap");
+  assert.equal(funding.selections[0].selectionStatus, "conditional");
   assert.equal(
     funding.selections[0].candidates.find((item) => item.method === "same_chain_token_to_native_swap").missingInputs.includes("source_inventory_below_target_amount"),
     true,
@@ -1112,6 +1129,61 @@ test("funding source planner supplements same-chain token candidates from whole-
   assert.equal(funding.selections[0].candidates[0].missingInputs.includes("bootstrap_native_required"), true);
   assert.equal(funding.selections[0].missingInputs.includes("bootstrap_native_required"), true);
   assert.equal(funding.selections[0].missingInputs.includes("cross_chain_native_refill_executor_missing"), false);
+});
+
+test("funding source planner excludes protocol-reader-covered position tokens as spendable refill sources", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const protocolShareToken = "0x0000000f2eb9f69274678c76222b35eec7588a65";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "base",
+          actual: "1000000000000000",
+          actualDecimal: 0.001,
+          estimatedUsd: 2.3,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          token: protocolShareToken,
+          ticker: "yoUSD",
+          family: "protocol_share",
+          actual: "62481796",
+          actualDecimal: 62.481796,
+          estimatedUsd: 65.46,
+          trackingStatus: "protocol_reader_covered",
+          countedInWalletTotal: false,
+          sourceKinds: ["protocol_position_mark", "signer_audit_intent"],
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_native",
+        chain: "base",
+        asset: "ETH",
+        token: ZERO_TOKEN,
+        refillAmount: "3000000000000000",
+        refillAmountDecimal: 0.003,
+        refillEstimatedUsd: 6.9,
+        rationale: "Base gas float keeper target shortfall",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({ plan, policy });
+
+  const candidateSources = funding.selections[0].candidates
+    .map((candidate) => candidate.source?.token)
+    .filter(Boolean)
+    .map((token) => token.toLowerCase());
+  assert.equal(candidateSources.includes(protocolShareToken), false);
+  assert.equal(funding.selections[0].candidates[0].method, "same_chain_token_to_native_swap");
+  assert.equal(funding.selections[0].candidates[0].source, null);
+  assert.equal(funding.selections[0].candidates[0].missingInputs.includes("same_chain_token_inventory_missing"), true);
 });
 
 test("cross-chain source selection prefers route-family token inventory over unrelated native balance", () => {
