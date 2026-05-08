@@ -87,9 +87,9 @@ or payback scheduler decisions.
 | Task | Result | Safety note |
 | --- | --- | --- |
 | Task-1 main merge | Blocked in sandbox by `.git/index.lock` `Operation not permitted`; `lsof` showed no lock holder and `ps` showed only running node daemons. | No permission bypass attempted; operator terminal merge required. |
-| Task-2 signer health | `npm run diagnose:signer-health -- --json` classified the live daemon as `clean`. | Checks covered process, heartbeat, socket, all configured EVM RPCs, BTC RPC, nonce state metadata, and latest signer-audit stage. |
-| Task-3 daemon restart | Skipped. | Restart is only allowed for `process_down` or `heartbeat_stale`; neither was present. |
+| Task-2 signer health | `npm run diagnose:signer-health -- --json` classified the live daemon with a hard `cause`; schema now also reports `readiness.readyForBroadcast`. | `cause=clean` is not allowed to hide incomplete diagnostic telemetry such as an older daemon that does not report nonce-manager state. |
+| Task-3 daemon restart | Deterministic launchd reload completed with `npm run ops:launchd:install -- --json` after the audit exposed old-daemon nonce telemetry as a readiness limitation. | Reload used repo npm launchd scripts only, wrote an append-only `logs/operator-action-audit.jsonl` row, and post-restart diagnosis returned `cause=clean`, `readiness.readyForBroadcast=true`. |
 | Task-4 kill-switch | `npm run kill:status` reported `RUNNING`. | No kill-switch toggle was performed. |
 | Task-5 capital snapshot | Wallet holdings were about USD 360.65 with 100% freshness and price-source coverage; payback pending 601 sats vs effective min 5000 sats. | Payback remains carry-first until realized receipts naturally reach the minimum. |
-| Task-6 dispatch dry-run | `wrapped-btc-loop-base-moonwell` selected one preview intent with `blockedReason=null`. | Live dispatch remained blocked by live-run-control cooldown (`fresh_roundtrip_proof_recorded`), so no broadcast was attempted. |
-| Task-7 first broadcast | Not run. | Cooldown/live-run-control was not bypassed. |
+| Task-6 dispatch dry-run | `wrapped-btc-loop-base-moonwell` selected one preview intent with `blockedReason=null`; dispatch records now expose `broadcastReadiness.readyForPolicyDispatch`, `readyForLiveBroadcast`, and advisory evidence separately. | `liveAdmissionBlockers` stay visible as advisory surface evidence and must not be converted into a runtime block or runtime approval. Policy and signer remain authoritative. |
+| Task-7 first broadcast | Not run in the sandbox pass. | After the audit fix, the live preflight must use signer `readiness.readyForBroadcast` and dispatch `broadcastReadiness.readyForLiveBroadcast`, then let policy/signer decide. |

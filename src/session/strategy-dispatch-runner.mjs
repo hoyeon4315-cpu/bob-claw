@@ -61,6 +61,50 @@ function advisoryMetadata(strategy = {}) {
   };
 }
 
+function uniqueStrings(items = []) {
+  return Array.from(new Set(
+    items
+      .map((item) => String(item || "").trim())
+      .filter(Boolean),
+  ));
+}
+
+function buildBroadcastReadiness(strategy = {}, selection = {}, {
+  blockedReason = null,
+  guardReasons = [],
+  selectedStepCount = null,
+} = {}) {
+  const policyDispatchBlockers = uniqueStrings([
+    blockedReason,
+    ...guardReasons,
+  ]);
+  const selectedMode = normalizeRequestedMode(selection.mode || null);
+  const readyForPolicyDispatch = policyDispatchBlockers.length === 0 && selectedStepCount !== 0;
+  const liveSelectionHasRuntimeAuthority =
+    selectedMode === "live" && (strategy.currentLiveEligible === true || selection.runtimeEmitDecision === true);
+  return {
+    schemaVersion: 1,
+    readyForPolicyDispatch,
+    readyForLiveBroadcast: readyForPolicyDispatch && liveSelectionHasRuntimeAuthority,
+    policyDispatchBlockers,
+    requestedMode: normalizeRequestedMode(selection.requestedMode || null),
+    selectedMode,
+    selectedStepCount,
+    runtimeGateAuthority: strategy.runtimeGateAuthority || "policy_engine_only",
+    policyAuthority: "policy_engine_only",
+    signerAuthority: "signer_daemon_after_policy_approval",
+    advisoryEvidence: {
+      currentLiveEligible: Boolean(strategy.currentLiveEligible),
+      liveAdmissionBlockers: Array.isArray(strategy.liveAdmissionBlockers)
+        ? strategy.liveAdmissionBlockers
+        : [],
+      fallbackReason: strategy.fallbackReason || null,
+      adviceCode: strategy.adviceCode || strategy.liveAdmissionBlockers?.[0] || strategy.fallbackReason || null,
+      runtimeBlocking: false,
+    },
+  };
+}
+
 function policyOk(policyResult = null, runtime = {}) {
   if (typeof runtime.policyOk === "boolean") return runtime.policyOk;
   if (!policyResult || typeof policyResult !== "object") return false;
@@ -263,6 +307,7 @@ async function executeStrategyItem(
   } = {},
 ) {
   const selection = requestedCommandsForStrategy(strategy, requestedMode, { execute });
+  selection.requestedMode = requestedMode;
   const normalizedOrchestration = normalizeOrchestration(orchestration);
   const base = {
     dispatchId,
@@ -291,6 +336,10 @@ async function executeStrategyItem(
     return {
       ...base,
       executionStatus: "blocked",
+      broadcastReadiness: buildBroadcastReadiness(strategy, selection, {
+        blockedReason: selection.blockedReason,
+        selectedStepCount: 0,
+      }),
       stepCount: 0,
       steps: [],
     };
@@ -307,6 +356,10 @@ async function executeStrategyItem(
       ...base,
       executionStatus: "invalid",
       blockedReason: error.message,
+      broadcastReadiness: buildBroadcastReadiness(strategy, selection, {
+        blockedReason: error.message,
+        selectedStepCount: 0,
+      }),
       stepCount: 0,
       steps: [],
     };
@@ -317,6 +370,10 @@ async function executeStrategyItem(
       ...base,
       executionStatus: "blocked",
       blockedReason: base.blockedReason || "no_commands_selected",
+      broadcastReadiness: buildBroadcastReadiness(strategy, selection, {
+        blockedReason: base.blockedReason || "no_commands_selected",
+        selectedStepCount: 0,
+      }),
       stepCount: 0,
       steps: [],
     };
@@ -327,6 +384,9 @@ async function executeStrategyItem(
       ...base,
       executionStatus: "preview",
       guardReasons: [],
+      broadcastReadiness: buildBroadcastReadiness(strategy, selection, {
+        selectedStepCount: steps.length,
+      }),
       stepCount: steps.length,
       steps: previewSteps(steps),
     };
@@ -344,6 +404,11 @@ async function executeStrategyItem(
       executionStatus: "blocked",
       blockedReason: guards.reasons[0] || "execution_guard_blocked",
       guardReasons: guards.reasons || [],
+      broadcastReadiness: buildBroadcastReadiness(strategy, selection, {
+        blockedReason: guards.reasons[0] || "execution_guard_blocked",
+        guardReasons: guards.reasons || [],
+        selectedStepCount: steps.length,
+      }),
       stepCount: steps.length,
       steps: previewSteps(steps),
     };
@@ -366,6 +431,9 @@ async function executeStrategyItem(
     ...base,
     executionStatus: executed.executionStatus,
     guardReasons: guards.reasons || [],
+    broadcastReadiness: buildBroadcastReadiness(strategy, selection, {
+      selectedStepCount: steps.length,
+    }),
     stepCount: steps.length,
     steps: executed.steps,
   };

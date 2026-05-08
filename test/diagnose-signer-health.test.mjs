@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  buildSignerHealthReadiness,
   checkSignerProcesses,
   classifySignerHealth,
   diagnoseSignerHealth,
@@ -101,6 +102,8 @@ test("diagnoseSignerHealth combines fixtures into a clean report without touchin
     });
 
     assert.equal(report.cause, "clean");
+    assert.equal(report.readiness.readyForBroadcast, true);
+    assert.equal(report.readiness.telemetryComplete, true);
     assert.equal(report.heartbeat.ageMs, 5_000);
     assert.equal(report.socket.ok, true);
     assert.equal(report.signerAudit.lastStage, "confirmed");
@@ -156,4 +159,30 @@ test("process check unavailability does not mask a healthy heartbeat and socket"
     btcRpc: { ok: true },
     nonceManagers: { ok: true },
   }), "clean");
+});
+
+test("signer health readiness flags missing nonce-manager telemetry without changing hard cause", () => {
+  const report = {
+    process: { daemonRunning: true, watchdogRunning: true },
+    heartbeat: { stale: false },
+    socket: { ok: true },
+    rpc: { chains: [{ chain: "base", ok: true }] },
+    btcRpc: { ok: true },
+    nonceManagers: {
+      ok: true,
+      status: "not_reported_by_running_daemon",
+      chains: [],
+    },
+  };
+
+  assert.equal(classifySignerHealth(report), "clean");
+  assert.deepEqual(buildSignerHealthReadiness(report), {
+    schemaVersion: 1,
+    hardCause: "clean",
+    clean: true,
+    telemetryComplete: false,
+    readyForBroadcast: false,
+    limitations: ["nonce_manager_state_not_reported_by_running_daemon"],
+    authority: "diagnostic_preflight_policy_engine_still_authoritative",
+  });
 });

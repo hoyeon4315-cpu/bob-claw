@@ -246,6 +246,12 @@ test("report-strategy-tick-slice exposes first broadcast and payback progress tr
   assert.equal(slice.overall.satsSinceFirstBroadcast, 40_000);
   assert.equal(typeof slice.overall.daysSinceFirstBroadcast, "number");
   assert.equal(slice.overall.paybackEffectiveMinReachedAt, "2026-05-08T02:00:00.000Z");
+  assert.deepEqual(slice.paybackProgressPolicy, {
+    effectiveMinPaybackSats: 5000,
+    effectiveMinSource: "cli_arg",
+    baseRatio: 0.2,
+    authority: "reporting_only_estimate",
+  });
 });
 
 test("report-strategy-tick-slice includes reopened wrapped BTC loop in live eligible count", async () => {

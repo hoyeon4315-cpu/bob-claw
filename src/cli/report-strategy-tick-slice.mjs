@@ -416,6 +416,9 @@ async function main() {
     .map((tick) => Date.parse(tick?.tickAt || ""))
     .filter(Number.isFinite);
   const nowMs = Date.now();
+  const paybackEffectiveMinSource = args["payback-effective-min-sats"]
+    ? "cli_arg"
+    : "payback_config_absolute_floor_default";
   const paybackEffectiveMinSats = finiteNumber(args["payback-effective-min-sats"]) ??
     PAYBACK_CONFIG.absoluteFloorSats ??
     ABSOLUTE_FLOOR_SATS;
@@ -621,6 +624,12 @@ async function main() {
       ...funnel,
     },
     overall: overallBroadcastProgress,
+    paybackProgressPolicy: {
+      effectiveMinPaybackSats: paybackEffectiveMinSats,
+      effectiveMinSource: paybackEffectiveMinSource,
+      baseRatio: paybackBaseRatio,
+      authority: "reporting_only_estimate",
+    },
     funnel,
     microCanary: microCanarySlice,
     strategyStage: strategyStageSlice,

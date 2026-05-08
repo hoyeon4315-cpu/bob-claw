@@ -45,7 +45,7 @@ Cause mapping:
 
 | Cause | Action |
 | --- | --- |
-| `clean` | Continue to kill-switch and capital checks. |
+| `clean` | Continue only if `readiness.readyForBroadcast=true`; otherwise resolve the listed diagnostic limitation first. |
 | `process_down` | Start deterministic daemons with `npm run executor:daemon` and `npm run executor:watchdog`. |
 | `heartbeat_stale` | Restart deterministic daemons, wait 5 seconds, then rerun diagnosis. |
 | `socket_unreachable` | Stop before broadcast; inspect signer socket path and daemon logs. |
@@ -58,6 +58,15 @@ Daemon starts and restarts must use the npm scripts, not direct signer bypasses:
 ```bash
 npm run executor:daemon &
 npm run executor:watchdog &
+```
+
+If the daemon is running but `readiness.limitations` reports stale diagnostic
+telemetry from an older daemon build, reload through the repo launchd npm
+script and rerun diagnosis:
+
+```bash
+npm run ops:launchd:install -- --json
+npm run diagnose:signer-health -- --json
 ```
 
 Record manual restart timing in `logs/operator-action-audit.jsonl` or an
@@ -93,11 +102,11 @@ Proceed to live dispatch only when all are true:
 
 | Gate | Required result |
 | --- | --- |
-| Signer health | cause is `clean`. |
+| Signer health | `cause` is `clean` and `readiness.readyForBroadcast=true`. If `cause=clean` but readiness is false, resolve the listed diagnostic limitation before broadcast. |
 | Kill-switch | status is `RUNNING` / off. |
 | Capital | current `totalUsd` is at least 50% of the expected baseline. |
-| Dry-run target | `selectedCount=1`, `executionStatus=preview`, `blockedReason=null`. |
-| Live run control | no cooldown or live-admission blocker is present. |
+| Dry-run target | `selectedCount=1`, `executionStatus=preview`, `blockedReason=null`, `broadcastReadiness.readyForPolicyDispatch=true`, `broadcastReadiness.readyForLiveBroadcast=true`, and `broadcastReadiness.policyDispatchBlockers=[]`. |
+| Advisory surface | `broadcastReadiness.advisoryEvidence.runtimeBlocking=false`; any `liveAdmissionBlockers` there are evidence labels, not signer authority. |
 
 Broadcast command:
 
@@ -118,7 +127,8 @@ failures, drawdown, and auto-kill.
 | Signer nonce/gas/RPC error | Retry once. If it repeats, stop and report the exact class. |
 | On-chain revert | Confirm receipt was logged, count the failure, and stop if the lane reaches 3 consecutive failures. |
 | Auto-kill trip | Stop immediately; the kill-switch file is authoritative until operator review. |
-| Cooldown/live-run-control blocker | Stop. Do not bypass cooldown. |
+| Dispatch guard blocker | Stop. Do not bypass a policy, guard, kill-switch, or signer blocker. |
+| Advisory surface blocker | Record it as an evidence gap; do not convert it into a runtime block or a runtime approval. |
 
 ## Payback Delivery Flow
 

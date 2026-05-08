@@ -85,6 +85,7 @@ function compactDispatchOutput(output = {}) {
         selectedMode: result.selectedMode || null,
         executionStatus: result.executionStatus || null,
         blockedReason: result.blockedReason || null,
+        broadcastReadiness: result.broadcastReadiness || null,
         stepCount: result.stepCount ?? 0,
         scripts: result.scripts || [],
       })),

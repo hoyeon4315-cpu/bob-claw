@@ -275,6 +275,26 @@ export function classifySignerHealth(report = {}) {
   return "clean";
 }
 
+export function buildSignerHealthReadiness(report = {}) {
+  const hardCause = classifySignerHealth(report);
+  const limitations = [];
+  if (report.process?.unavailable === true) {
+    limitations.push("process_check_unavailable");
+  }
+  if (report.nonceManagers?.status === "not_reported_by_running_daemon") {
+    limitations.push("nonce_manager_state_not_reported_by_running_daemon");
+  }
+  return {
+    schemaVersion: 1,
+    hardCause,
+    clean: hardCause === "clean",
+    telemetryComplete: limitations.length === 0,
+    readyForBroadcast: hardCause === "clean" && limitations.length === 0,
+    limitations,
+    authority: "diagnostic_preflight_policy_engine_still_authoritative",
+  };
+}
+
 export async function diagnoseSignerHealth({
   cwd = process.cwd(),
   env = process.env,
@@ -336,5 +356,6 @@ export async function diagnoseSignerHealth({
   return {
     ...report,
     cause: classifySignerHealth(report),
+    readiness: buildSignerHealthReadiness(report),
   };
 }

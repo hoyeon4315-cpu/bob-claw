@@ -16,6 +16,9 @@ export function parseArgs(argv) {
 
 function printText(report) {
   console.log(`cause=${report.cause}`);
+  console.log(`readiness.readyForBroadcast=${report.readiness?.readyForBroadcast}`);
+  console.log(`readiness.telemetryComplete=${report.readiness?.telemetryComplete}`);
+  console.log(`readiness.limitations=${report.readiness?.limitations?.length ? report.readiness.limitations.join(",") : "none"}`);
   console.log(`process.daemonRunning=${report.process.daemonRunning}`);
   console.log(`process.watchdogRunning=${report.process.watchdogRunning}`);
   console.log(`heartbeat.status=${report.heartbeat.status}`);

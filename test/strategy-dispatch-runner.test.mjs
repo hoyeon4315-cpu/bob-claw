@@ -228,6 +228,11 @@ test("strategy dispatch live request ignores surface advice when runtime formula
 
   assert.equal(record.strategyResults[0].executionStatus, "preview");
   assert.equal(record.strategyResults[0].runtimeEmitDecision, true);
+  assert.equal(record.strategyResults[0].broadcastReadiness.readyForPolicyDispatch, true);
+  assert.equal(record.strategyResults[0].broadcastReadiness.readyForLiveBroadcast, true);
+  assert.deepEqual(record.strategyResults[0].broadcastReadiness.policyDispatchBlockers, []);
+  assert.deepEqual(record.strategyResults[0].broadcastReadiness.advisoryEvidence.liveAdmissionBlockers, ["phase3_validation_not_passed"]);
+  assert.equal(record.strategyResults[0].broadcastReadiness.advisoryEvidence.runtimeBlocking, false);
   assert.deepEqual(record.strategyResults[0].metadata.advisory, {
     surfaceLiveEligible: false,
     adviceCode: "phase3_validation_not_passed",
@@ -257,6 +262,11 @@ test("strategy dispatch preview treats reporting-only surface blockers as adviso
 
   assert.equal(record.strategyResults[0].executionStatus, "preview");
   assert.equal(record.strategyResults[0].blockedReason, null);
+  assert.equal(record.strategyResults[0].broadcastReadiness.readyForPolicyDispatch, true);
+  assert.equal(record.strategyResults[0].broadcastReadiness.readyForLiveBroadcast, false);
+  assert.deepEqual(record.strategyResults[0].broadcastReadiness.policyDispatchBlockers, []);
+  assert.deepEqual(record.strategyResults[0].broadcastReadiness.advisoryEvidence.liveAdmissionBlockers, ["route_specific_executor_inputs_required"]);
+  assert.equal(record.strategyResults[0].broadcastReadiness.advisoryEvidence.runtimeBlocking, false);
   assert.equal(record.strategyResults[0].metadata.advisory.adviceCode, "route_specific_executor_inputs_required");
 });
 
@@ -280,6 +290,10 @@ test("strategy dispatch execute still requires runtime inputs for reporting-only
 
   assert.equal(record.strategyResults[0].executionStatus, "blocked");
   assert.equal(record.strategyResults[0].blockedReason, "route_specific_executor_inputs_required");
+  assert.equal(record.strategyResults[0].broadcastReadiness.readyForPolicyDispatch, false);
+  assert.equal(record.strategyResults[0].broadcastReadiness.readyForLiveBroadcast, false);
+  assert.deepEqual(record.strategyResults[0].broadcastReadiness.policyDispatchBlockers, ["route_specific_executor_inputs_required"]);
+  assert.equal(record.strategyResults[0].broadcastReadiness.advisoryEvidence.runtimeBlocking, false);
 });
 
 test("strategy dispatch summary aggregates execute and preview runs", () => {
