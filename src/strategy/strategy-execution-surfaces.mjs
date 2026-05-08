@@ -495,6 +495,30 @@ function buildWrappedBtcLoopExecutorSurface({
   };
 }
 
+function adviceSourceForStrategy(strategy = {}) {
+  const code = strategy.fallbackReason || strategy.liveAdmissionBlockers?.[0] || null;
+  if (strategy.id === WRAPPED_BTC_LOOP_STRATEGY_ID) {
+    if (String(code || "").includes("collateral")) return "treasury_inventory";
+    if (String(code || "").includes("phase3")) return "phase3_evidence_file";
+    return "slice_summary";
+  }
+  if (strategy.id === "gateway_native_asset_conversion_sleeve") return "slice_summary";
+  return "slice_summary";
+}
+
+function withReportingOnlyAdvice(strategy = {}) {
+  const adviceCode = strategy.adviceCode || strategy.liveAdmissionBlockers?.[0] || strategy.fallbackReason || null;
+  return {
+    ...strategy,
+    reportingOnly: true,
+    runtimeGateAuthority: "policy_engine_only",
+    adviceCode,
+    adviceFields: ["liveAdmissionBlockers", "fallbackReason", "currentLiveEligible"],
+    adviceSource: strategy.adviceSource || adviceSourceForStrategy(strategy),
+    adviceAuthority: "commit_time_guard",
+  };
+}
+
 function merklAutopilotCommands(mode) {
   if (mode === "live") return ["npm run executor:merkl-canary-autopilot -- --json --write --execute"];
   return ["npm run report:merkl-canary-queue -- --json"];
@@ -884,7 +908,7 @@ export function buildStrategyExecutionSurfaces({
       policy: catalog.policy,
       merklCanaryQueue: artifacts.merklCanaryQueue || null,
     }),
-  ].filter(Boolean);
+  ].filter(Boolean).map(withReportingOnlyAdvice);
   const bucketCounts = strategies.reduce((counts, strategy) => {
     counts[strategy.capabilityBucket] = (counts[strategy.capabilityBucket] || 0) + 1;
     return counts;

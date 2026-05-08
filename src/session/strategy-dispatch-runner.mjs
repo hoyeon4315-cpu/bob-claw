@@ -53,14 +53,100 @@ function scriptsForCommands(commands = []) {
   return (commands || []).map((command) => command.script).filter(Boolean);
 }
 
-function requestedCommandsForStrategy(strategy, requestedMode) {
+function advisoryMetadata(strategy = {}) {
+  return {
+    surfaceLiveEligible: Boolean(strategy.currentLiveEligible),
+    adviceCode: strategy.adviceCode || strategy.liveAdmissionBlockers?.[0] || strategy.fallbackReason || null,
+    adviceFields: strategy.adviceFields || ["liveAdmissionBlockers", "fallbackReason", "currentLiveEligible"],
+  };
+}
+
+function policyOk(policyResult = null, runtime = {}) {
+  if (typeof runtime.policyOk === "boolean") return runtime.policyOk;
+  if (!policyResult || typeof policyResult !== "object") return false;
+  if (typeof policyResult.ok === "boolean") return policyResult.ok;
+  return policyResult.decision === "ALLOW";
+}
+
+function runtimeEmitDecision(strategy = {}) {
+  const runtime = strategy.runtime || {};
+  const hasRuntimeInputs =
+    "autoExecute" in runtime ||
+    "capsConfigured" in runtime ||
+    "policyOk" in runtime ||
+    "policyResult" in runtime ||
+    "killSwitchSet" in runtime ||
+    "consecutiveFailureLock" in runtime;
+  if (!hasRuntimeInputs) {
+    return {
+      hasRuntimeInputs: false,
+      ok: false,
+      blocker: null,
+    };
+  }
+  const autoExecute = runtime.autoExecute === true;
+  const capsConfigured = runtime.capsConfigured === true;
+  const ok = policyOk(runtime.policyResult || strategy.policyResult || null, runtime);
+  const killSwitchSet = runtime.killSwitchSet === true;
+  const consecutiveFailureLock = runtime.consecutiveFailureLock === true;
+  let blocker = null;
+  if (!autoExecute) blocker = "auto_execute_off";
+  else if (!capsConfigured) blocker = "missing_caps";
+  else if (!ok) blocker = "policy_reject";
+  else if (killSwitchSet) blocker = "kill_switch";
+  else if (consecutiveFailureLock) blocker = "consecutive_failure_lock";
+  return {
+    hasRuntimeInputs,
+    ok: blocker === null,
+    blocker,
+    autoExecute,
+    capsConfigured,
+    policyOk: ok,
+    killSwitchSet,
+    consecutiveFailureLock,
+  };
+}
+
+function requestedCommandsForStrategy(strategy, requestedMode, { execute = false } = {}) {
   const mode = normalizeRequestedMode(requestedMode);
   if (mode === "auto") {
     return {
       mode: strategy.selectedMode,
       commands: strategy.selectedCommands || [],
       blockedReason: null,
+      runtimeEmitDecision: null,
     };
+  }
+
+  if (mode === "live") {
+    const runtime = runtimeEmitDecision(strategy);
+    if (runtime.hasRuntimeInputs && runtime.ok) {
+      return {
+        mode,
+        commands: strategy.liveCommands || strategy.selectedCommands || [],
+        blockedReason: null,
+        runtimeEmitDecision: true,
+        runtimeDecisionDetail: runtime,
+      };
+    }
+    if (runtime.hasRuntimeInputs) {
+      return {
+        mode,
+        commands: [],
+        blockedReason: runtime.blocker || "policy_reject",
+        runtimeEmitDecision: false,
+        runtimeDecisionDetail: runtime,
+      };
+    }
+    if (!execute && strategy.reportingOnly === true && strategy.runtimeGateAuthority === "policy_engine_only") {
+      return {
+        mode,
+        commands: strategy.selectedCommands || [],
+        blockedReason: null,
+        runtimeEmitDecision: null,
+        runtimeDecisionDetail: null,
+      };
+    }
   }
 
   if (mode === strategy.selectedMode) {
@@ -68,6 +154,7 @@ function requestedCommandsForStrategy(strategy, requestedMode) {
       mode,
       commands: strategy.selectedCommands || [],
       blockedReason: null,
+      runtimeEmitDecision: null,
     };
   }
 
@@ -92,6 +179,7 @@ function requestedCommandsForStrategy(strategy, requestedMode) {
     mode,
     commands,
     blockedReason: null,
+    runtimeEmitDecision: null,
   };
 }
 
@@ -174,7 +262,7 @@ async function executeStrategyItem(
     readGuards = readExecutionGuards,
   } = {},
 ) {
-  const selection = requestedCommandsForStrategy(strategy, requestedMode);
+  const selection = requestedCommandsForStrategy(strategy, requestedMode, { execute });
   const normalizedOrchestration = normalizeOrchestration(orchestration);
   const base = {
     dispatchId,
@@ -192,6 +280,11 @@ async function executeStrategyItem(
     fallbackReason: strategy.fallbackReason || null,
     scripts: scriptsForCommands(selection.commands),
     orchestration: normalizedOrchestration,
+    runtimeEmitDecision: selection.runtimeEmitDecision,
+    runtimeDecisionDetail: selection.runtimeDecisionDetail || null,
+    metadata: {
+      advisory: advisoryMetadata(strategy),
+    },
   };
 
   if (selection.blockedReason) {

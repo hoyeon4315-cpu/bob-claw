@@ -137,6 +137,16 @@ function denyAll(candidates, reason, detail, observedAt) {
   );
 }
 
+function advisoryMetadata(candidate = {}) {
+  return {
+    surfaceLiveEligible: Boolean(candidate.surfaceLiveEligible ?? candidate.currentLiveEligible ?? false),
+    adviceCode: candidate.adviceCode || candidate.liveAdmissionBlockers?.[0] || candidate.fallbackReason || null,
+    adviceFields: Array.isArray(candidate.adviceFields)
+      ? candidate.adviceFields
+      : ["liveAdmissionBlockers", "fallbackReason", "currentLiveEligible"],
+  };
+}
+
 function buildIntent(candidate, decision, reason, allowedSats, detail, observedAt) {
   return {
     strategyId: candidate.strategyId,
@@ -148,6 +158,9 @@ function buildIntent(candidate, decision, reason, allowedSats, detail, observedA
     allowedAllocationSats: Math.floor(finitePositive(allowedSats)),
     expectedNetSats: netSats(candidate),
     observedAt,
+    metadata: {
+      advisory: advisoryMetadata(candidate),
+    },
   };
 }
 

@@ -116,6 +116,26 @@ test("unknown strategy is denied, others pass", () => {
   assert.equal(allowed.decision, "allow");
 });
 
+test("surface advice is metadata only and does not deny otherwise allowed candidates", () => {
+  const advised = {
+    ...candidateA,
+    currentLiveEligible: false,
+    adviceCode: "phase3_validation_not_passed",
+    adviceFields: ["phase3Validation"],
+  };
+  const out = dispatchStrategyCatalog({
+    candidates: [advised],
+    adaptiveCapitalPlan: plan({ strategies: [{ strategyId: "S1_moonwell_base" }] }),
+    feedFreshness: freshFeeds,
+    btcPriceUsd: BTC_PRICE,
+  });
+
+  assert.equal(out.intents[0].decision, "allow");
+  assert.equal(out.intents[0].metadata.advisory.surfaceLiveEligible, false);
+  assert.equal(out.intents[0].metadata.advisory.adviceCode, "phase3_validation_not_passed");
+  assert.deepEqual(out.intents[0].metadata.advisory.adviceFields, ["phase3Validation"]);
+});
+
 test("autoExecute=false or newEntriesAllowed=false denies that strategy", () => {
   const out = dispatchStrategyCatalog({
     candidates: [candidateA, { ...candidateA, strategyId: "S2" }],

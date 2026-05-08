@@ -108,6 +108,22 @@ test("execution surfaces classify missing runners separately from runnable obser
   assert.equal(report.summary.missingExecutorCount, 0);
 });
 
+test("execution surfaces mark admission fields as reporting-only advice", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: dashboardStatusFixture(),
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+  });
+
+  const gateway = report.strategies.find((strategy) => strategy.id === "gateway_wrapped_btc_loops");
+  assert.equal(gateway.reportingOnly, true);
+  assert.equal(gateway.runtimeGateAuthority, "policy_engine_only");
+  assert.equal(gateway.adviceAuthority, "commit_time_guard");
+  assert.equal(gateway.adviceCode, "live_trading_blocked");
+  assert.deepEqual(gateway.adviceFields, ["liveAdmissionBlockers", "fallbackReason", "currentLiveEligible"]);
+  assert.ok(["phase3_evidence_file", "slice_summary", "treasury_inventory"].includes(gateway.adviceSource));
+});
+
 test("execution surfaces include executor-backed live strategies when artifacts prove readiness", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {

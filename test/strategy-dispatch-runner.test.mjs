@@ -200,6 +200,88 @@ test("strategy dispatch exposes live admission blockers for live requests", asyn
   assert.deepEqual(record.strategyResults[0].liveAdmissionBlockers, ["route_specific_executor_inputs_required"]);
 });
 
+test("strategy dispatch live request ignores surface advice when runtime formula passes", async () => {
+  const record = await executeStrategyDispatch({
+    strategies: [
+      strategyFixture({
+        selectedMode: "dry_run",
+        currentLiveEligible: false,
+        liveAdmissionBlockers: ["phase3_validation_not_passed"],
+        selectedCommands: [
+          {
+            command: "npm run executor:wrapped-btc-loop -- --json",
+            script: "executor:wrapped-btc-loop",
+          },
+        ],
+        runtime: {
+          autoExecute: true,
+          capsConfigured: true,
+          policyOk: true,
+          killSwitchSet: false,
+          consecutiveFailureLock: false,
+        },
+      }),
+    ],
+    execute: false,
+    requestedMode: "live",
+  });
+
+  assert.equal(record.strategyResults[0].executionStatus, "preview");
+  assert.equal(record.strategyResults[0].runtimeEmitDecision, true);
+  assert.deepEqual(record.strategyResults[0].metadata.advisory, {
+    surfaceLiveEligible: false,
+    adviceCode: "phase3_validation_not_passed",
+    adviceFields: ["liveAdmissionBlockers", "fallbackReason", "currentLiveEligible"],
+  });
+});
+
+test("strategy dispatch preview treats reporting-only surface blockers as advisory metadata", async () => {
+  const record = await executeStrategyDispatch({
+    strategies: [
+      strategyFixture({
+        reportingOnly: true,
+        runtimeGateAuthority: "policy_engine_only",
+        currentLiveEligible: false,
+        liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+        selectedCommands: [
+          {
+            command: "npm run report:wrapped-btc-loop -- --json",
+            script: "report:wrapped-btc-loop",
+          },
+        ],
+      }),
+    ],
+    execute: false,
+    requestedMode: "live",
+  });
+
+  assert.equal(record.strategyResults[0].executionStatus, "preview");
+  assert.equal(record.strategyResults[0].blockedReason, null);
+  assert.equal(record.strategyResults[0].metadata.advisory.adviceCode, "route_specific_executor_inputs_required");
+});
+
+test("strategy dispatch execute still requires runtime inputs for reporting-only surfaces", async () => {
+  const record = await executeStrategyDispatch({
+    strategies: [
+      strategyFixture({
+        reportingOnly: true,
+        runtimeGateAuthority: "policy_engine_only",
+        currentLiveEligible: false,
+        liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+      }),
+    ],
+    execute: true,
+    requestedMode: "live",
+    readGuards: async () => ({ blocked: false, reasons: [] }),
+    runCommand: async () => {
+      throw new Error("must not execute without runtime policy inputs");
+    },
+  });
+
+  assert.equal(record.strategyResults[0].executionStatus, "blocked");
+  assert.equal(record.strategyResults[0].blockedReason, "route_specific_executor_inputs_required");
+});
+
 test("strategy dispatch summary aggregates execute and preview runs", () => {
   const summary = buildStrategyDispatchSummary([
     {
