@@ -1,3 +1,6 @@
+// Commit-time only guard. Do not call this from dispatcher, policy, signer, or
+// autopilot runtime hot paths.
+//
 // Pure function that evaluates a strategy's evidence file against the
 // thresholds in `src/config/auto-promotion.mjs`. Returns a deterministic
 // pass/fail with human-readable reasons. NEVER reads model output. NEVER
