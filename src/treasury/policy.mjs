@@ -237,6 +237,14 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
     },
     supportedChains: GATEWAY_DESTINATION_CHAINS,
     activeChains: GATEWAY_DESTINATION_CHAINS,
+    idleInventoryConsolidation: {
+      enabled: true,
+      dstChain: "base",
+      minIdleAgeMs: 72 * 60 * 60 * 1000,
+      minIdleUsd: 5,
+      maxAggregateIdleUsd: 50,
+      evidenceSource: "data/treasury/inbound-events.jsonl trailing_30d",
+    },
     nativeBalances,
       tokenInventories: [
       tokenPolicy("ethereum", ETHEREUM_WBTC_TOKEN, {
@@ -382,6 +390,21 @@ export function validateTreasuryPolicy(policy) {
     decimalToUnits(allowance.maxApproval, asset.decimals);
     if (!allowance.spender) {
       throw new Error(`Allowance cap missing spender for ${allowance.chain}:${allowance.token}`);
+    }
+  }
+
+  const idle = policy.idleInventoryConsolidation;
+  if (idle) {
+    if (!policy.supportedChains.includes(idle.dstChain)) {
+      throw new Error(`Idle inventory consolidation dstChain must be supported: ${idle.dstChain}`);
+    }
+    for (const field of ["minIdleAgeMs", "minIdleUsd", "maxAggregateIdleUsd"]) {
+      if (!Number.isFinite(Number(idle[field])) || Number(idle[field]) < 0) {
+        throw new Error(`Idle inventory consolidation ${field} must be a finite non-negative number`);
+      }
+    }
+    if (Number(idle.maxAggregateIdleUsd) < Number(idle.minIdleUsd)) {
+      throw new Error("Idle inventory consolidation maxAggregateIdleUsd must be >= minIdleUsd");
     }
   }
 

@@ -57,6 +57,19 @@ test("default treasury policy models representative stable inventory for every o
   assert.equal(policy.refillPolicy.maxPendingJobs, 24);
 });
 
+test("default treasury policy includes measured idle inventory consolidation thresholds", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+
+  assert.deepEqual(policy.idleInventoryConsolidation, {
+    enabled: true,
+    dstChain: "base",
+    minIdleAgeMs: 259_200_000,
+    minIdleUsd: 5,
+    maxAggregateIdleUsd: 50,
+    evidenceSource: "data/treasury/inbound-events.jsonl trailing_30d",
+  });
+});
+
 test("threshold helpers convert decimals to raw units", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
 
