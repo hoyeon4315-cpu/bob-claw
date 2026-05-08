@@ -6,6 +6,7 @@
   "description": "Native-BTC payback agent with BOB Gateway transport, deterministic policy, and receipt-backed execution.",
   "scripts": {
     "verify:gateway": "node src/cli/verify-gateway.mjs",
+    "verify:dashboard-publish": "node src/cli/verify-dashboard-publish.mjs",
     "verify:gateway:once": "node src/cli/verify-gateway.mjs --once",
     "verify:gateway:bob-neighbors": "node src/cli/verify-gateway.mjs --bob-neighbors --one-per-chain-pair --amounts=10000",
     "verify:gateway:btc-routes": "node src/cli/verify-gateway.mjs --btc-routes --one-per-chain-pair --amounts=10000",
