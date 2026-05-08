@@ -136,6 +136,42 @@ test("surface advice is metadata only and does not deny otherwise allowed candid
   assert.deepEqual(out.intents[0].metadata.advisory.adviceFields, ["phase3Validation"]);
 });
 
+test("refill prerequisites mark otherwise allowed intents pending without denying emit", () => {
+  const needsRefill = {
+    ...candidateA,
+    refillDiagnostics: [
+      {
+        routeId: "base-to-bob-gas",
+        blockedReason: "routing_exhausted",
+        source: "ledger",
+        route: {
+          srcChain: "base",
+          dstChain: "bob",
+          srcAsset: "ETH",
+          dstAsset: "ETH",
+        },
+      },
+    ],
+  };
+  const out = dispatchStrategyCatalog({
+    candidates: [needsRefill],
+    adaptiveCapitalPlan: plan({ strategies: [{ strategyId: "S1_moonwell_base" }] }),
+    feedFreshness: freshFeeds,
+    btcPriceUsd: BTC_PRICE,
+    now: "2026-05-09T00:00:00.000Z",
+  });
+
+  const intent = out.intents[0];
+  assert.equal(intent.decision, "allow");
+  assert.equal(intent.status, "pending_prerequisite");
+  assert.equal(intent.lifecycleStage, "pending_prerequisite");
+  assert.equal(intent.auditLogRow.lifecycle.stage, "pending_prerequisite");
+  assert.equal(intent.metadata.prerequisites.length, 1);
+  assert.equal(intent.metadata.prerequisites[0].kind, "refill");
+  assert.equal(intent.metadata.refillPrerequisites.perRouteDiagnostic[0].alternativeCandidates.length >= 1, true);
+  assert.equal(out.summary.pendingPrerequisiteCount, 1);
+});
+
 test("autoExecute=false or newEntriesAllowed=false denies that strategy", () => {
   const out = dispatchStrategyCatalog({
     candidates: [candidateA, { ...candidateA, strategyId: "S2" }],

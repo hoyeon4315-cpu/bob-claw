@@ -24,6 +24,7 @@
 //   }
 
 import { perChainMaxShareFor } from "../../config/diversification.mjs";
+import { resolveCandidateRefillPrerequisites } from "./refill-prerequisite-resolver.mjs";
 
 const DENY_REASONS = Object.freeze({
   FEED_STALE: "feed_stale",
@@ -148,11 +149,33 @@ function advisoryMetadata(candidate = {}) {
 }
 
 function buildIntent(candidate, decision, reason, allowedSats, detail, observedAt) {
+  const refillPrerequisites = resolveCandidateRefillPrerequisites(candidate, { now: observedAt });
+  const pendingPrerequisite = decision === "allow" && refillPrerequisites.prerequisites.length > 0;
+  const auditLogRow = pendingPrerequisite
+    ? {
+        schemaVersion: 1,
+        observedAt,
+        strategyId: candidate.strategyId,
+        chain: candidate.chain,
+        policyVerdict: "planned",
+        lifecycle: {
+          stage: "pending_prerequisite",
+          prerequisites: refillPrerequisites.prerequisites,
+        },
+      }
+    : null;
   return {
     strategyId: candidate.strategyId,
     chain: candidate.chain,
     protocol: candidate.protocol,
     decision,
+    status: pendingPrerequisite
+      ? "pending_prerequisite"
+      : decision === "allow"
+        ? "ready"
+        : "blocked",
+    lifecycleStage: pendingPrerequisite ? "pending_prerequisite" : null,
+    auditLogRow,
     reason,
     detail: detail == null ? null : detail,
     allowedAllocationSats: Math.floor(finitePositive(allowedSats)),
@@ -160,6 +183,12 @@ function buildIntent(candidate, decision, reason, allowedSats, detail, observedA
     observedAt,
     metadata: {
       advisory: advisoryMetadata(candidate),
+      ...(refillPrerequisites.prerequisites.length > 0
+        ? {
+            prerequisites: refillPrerequisites.prerequisites,
+            refillPrerequisites,
+          }
+        : {}),
     },
   };
 }
@@ -167,10 +196,12 @@ function buildIntent(candidate, decision, reason, allowedSats, detail, observedA
 function summarize(intents, totalCandidates, globalBlockReason) {
   const allow = intents.filter((i) => i.decision === "allow");
   const deny = intents.filter((i) => i.decision === "deny");
+  const pendingPrerequisiteCount = intents.filter((i) => i.status === "pending_prerequisite").length;
   return Object.freeze({
     totalCandidates,
     allowCount: allow.length,
     denyCount: deny.length || (globalBlockReason ? totalCandidates : 0),
+    pendingPrerequisiteCount,
     globalBlockReason,
     totalAllowedSats: allow.reduce(
       (acc, i) => acc + (i.allowedAllocationSats || 0),

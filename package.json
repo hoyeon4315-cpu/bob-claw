@@ -32,6 +32,8 @@
     "treasury:inbound-watch:once": "node src/cli/run-inbound-inventory-watcher.mjs --write",
     "treasury:inbound-watch:loop": "node src/cli/run-inbound-inventory-watcher.mjs --write --loop",
     "plan:capital-manager-refill-jobs": "node src/cli/plan-capital-manager-refill-jobs.mjs",
+    "report:refill-status": "node src/cli/report-refill-status.mjs",
+    "treasury:idle-consolidation": "node src/cli/run-idle-consolidation.mjs",
     "gate:refill-job": "node src/cli/gate-refill-job.mjs",
     "run:refill-job-stub": "node src/cli/run-refill-job-stub.mjs",
     "ingest:execution-receipt": "node src/cli/ingest-execution-receipt.mjs",
