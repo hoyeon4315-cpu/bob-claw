@@ -1,3 +1,11 @@
+import {
+  AGGRESSIVE_DEFAULT_BUDGETS_USD_BASELINE,
+  AGGRESSIVE_NON_PRIMARY_ENTRY_BASELINE,
+  SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE,
+  SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
+  SMALL_CAPITAL_RADAR_CAPS_BASELINE,
+} from "./small-capital-campaign-mode.mjs";
+
 function deepFreeze(value) {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
@@ -24,13 +32,6 @@ function resolveProfilePerChainCap(perChainUsd = {}, chain) {
   return isFiniteNumber(direct) ? direct : (isFiniteNumber(perChainUsd?.default) ? perChainUsd.default : null);
 }
 
-const SHARED_RADAR_CAPS = deepFreeze({
-  perCanaryUsd: 30,
-  perDayUsd: 90,
-  cumulativeOpenUsd: 200,
-  maxConcurrentOpen: 6,
-});
-
 export const SLEEVE_PROFILES = deepFreeze({
   smallCapital_v1: {
     id: "smallCapital_v1",
@@ -53,21 +54,11 @@ export const SLEEVE_PROFILES = deepFreeze({
       anchorTargetPct: { min: 0.55, max: 0.70 },
       opportunisticMaxPct: 0.30,
       microMaxPct: 0.10,
-      defaultBudgetsUsd: {
-        opportunisticMaxUsd: 125,
-        microMaxUsd: 50,
-        initialCampaignUsd: 35,
-        maxCampaignUsd: 80,
-        initialMicroUsd: 10,
-        maxMicroUsd: 35,
-      },
+      defaultBudgetsUsd: SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE,
       chainSelection: {
         primaryMaxSharePct: 0.70,
       },
-      nonPrimaryEntry: {
-        minNetProfitUsd: 10,
-        minNetProfitPctOfPosition: 0.05,
-      },
+      nonPrimaryEntry: SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
       protocolConcentration: {
         defaultMaxPct: 0.25,
         venueMaxPctWithLiveMonitor: 0.50,
@@ -104,7 +95,7 @@ export const SLEEVE_PROFILES = deepFreeze({
       minBtcDenominatedSharePct: 0.20,
       maxNonBtcDenominatedSharePct: 0.80,
     },
-    radarCaps: SHARED_RADAR_CAPS,
+    radarCaps: SMALL_CAPITAL_RADAR_CAPS_BASELINE,
   },
   aggressive_v1: {
     id: "aggressive_v1",
@@ -127,21 +118,11 @@ export const SLEEVE_PROFILES = deepFreeze({
       anchorTargetPct: { min: 0.20, max: 0.45 },
       opportunisticMaxPct: 0.55,
       microMaxPct: 0.15,
-      defaultBudgetsUsd: {
-        opportunisticMaxUsd: 220,
-        microMaxUsd: 80,
-        initialCampaignUsd: 50,
-        maxCampaignUsd: 140,
-        initialMicroUsd: 15,
-        maxMicroUsd: 60,
-      },
+      defaultBudgetsUsd: AGGRESSIVE_DEFAULT_BUDGETS_USD_BASELINE,
       chainSelection: {
         primaryMaxSharePct: 0.80,
       },
-      nonPrimaryEntry: {
-        minNetProfitUsd: 6,
-        minNetProfitPctOfPosition: 0.04,
-      },
+      nonPrimaryEntry: AGGRESSIVE_NON_PRIMARY_ENTRY_BASELINE,
       protocolConcentration: {
         defaultMaxPct: 0.30,
         venueMaxPctWithLiveMonitor: 0.55,
@@ -178,7 +159,7 @@ export const SLEEVE_PROFILES = deepFreeze({
       minBtcDenominatedSharePct: 0.20,
       maxNonBtcDenominatedSharePct: 0.80,
     },
-    radarCaps: SHARED_RADAR_CAPS,
+    radarCaps: SMALL_CAPITAL_RADAR_CAPS_BASELINE,
   },
 });
 

@@ -3,11 +3,48 @@
 // Commit-only changes. Runtime overrides are forbidden by AGENTS.md.
 
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "./gateway-destinations.mjs";
-import { ACTIVE_SLEEVE_PROFILE } from "./sleeve-profile.mjs";
+import {
+  effectiveBudgetMapUsd,
+  effectiveBudgetUsd,
+  operatingCapitalScaleBand,
+} from "./operating-capital-scale.mjs";
 
 const CHAIN_PROFILE_REVIEW_BY = "2026-05-16";
-const ACTIVE_SMALL_CAPITAL_OVERRIDES = ACTIVE_SLEEVE_PROFILE.smallCapitalOverrides || {};
-const ACTIVE_CHAIN_SELECTION = ACTIVE_SMALL_CAPITAL_OVERRIDES.chainSelection || {};
+
+export const SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE = Object.freeze({
+  opportunisticMaxUsd: 125,
+  microMaxUsd: 50,
+  initialCampaignUsd: 35,
+  maxCampaignUsd: 80,
+  initialMicroUsd: 10,
+  maxMicroUsd: 35,
+});
+
+export const SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE = Object.freeze({
+  minNetProfitUsd: 10,
+  minNetProfitPctOfPosition: 0.05,
+});
+
+export const SMALL_CAPITAL_RADAR_CAPS_BASELINE = Object.freeze({
+  perCanaryUsd: 30,
+  perDayUsd: 90,
+  cumulativeOpenUsd: 200,
+  maxConcurrentOpen: 6,
+});
+
+export const AGGRESSIVE_DEFAULT_BUDGETS_USD_BASELINE = Object.freeze({
+  opportunisticMaxUsd: 220,
+  microMaxUsd: 80,
+  initialCampaignUsd: 50,
+  maxCampaignUsd: 140,
+  initialMicroUsd: 15,
+  maxMicroUsd: 60,
+});
+
+export const AGGRESSIVE_NON_PRIMARY_ENTRY_BASELINE = Object.freeze({
+  minNetProfitUsd: 6,
+  minNetProfitPctOfPosition: 0.04,
+});
 
 function freezeChainProfile(profile) {
   return Object.freeze({ ...profile });
@@ -16,7 +53,7 @@ function freezeChainProfile(profile) {
 const CURRENT_EVIDENCE_PRIMARY_CHAIN_PROFILES = Object.freeze({
   base: freezeChainProfile({
     role: "primary",
-    maxSharePct: ACTIVE_CHAIN_SELECTION.primaryMaxSharePct ?? 0.70,
+    maxSharePct: 0.70,
     evidenceStatus: "current_evidence_primary",
     evidenceSource: "live receipts, low same-chain cost, current inventory, and supported executor paths",
     reviewBy: CHAIN_PROFILE_REVIEW_BY,
@@ -39,36 +76,28 @@ export const SMALL_CAPITAL_CHAIN_PROFILES = Object.freeze(Object.fromEntries(
 ));
 
 export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
-  profileId: ACTIVE_SMALL_CAPITAL_OVERRIDES.profileId || "small_capital_campaign_mode_v1",
-  executionStage: ACTIVE_SMALL_CAPITAL_OVERRIDES.executionStage || "aggressive_non_auto_cap_small_cap_v1",
+  profileId: "small_capital_campaign_mode_v1",
+  executionStage: "aggressive_non_auto_cap_small_cap_v1",
   autoCapRaise: false,
   enabled: true,
   autoMicroTest: true,
   capitalThresholdUsd: 1_000,
   transportEffectivePerDayUsd: 200,
   transportEffectiveMaxDailyLossUsd: 100,
-  anchorTargetPct: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.anchorTargetPct || { min: 0.55, max: 0.70 }),
-  opportunisticMaxPct: ACTIVE_SMALL_CAPITAL_OVERRIDES.opportunisticMaxPct ?? 0.30,
-  microMaxPct: ACTIVE_SMALL_CAPITAL_OVERRIDES.microMaxPct ?? 0.10,
-  defaultBudgetsUsd: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.defaultBudgetsUsd || {
-    opportunisticMaxUsd: 125,
-    microMaxUsd: 50,
-    initialCampaignUsd: 35,
-    maxCampaignUsd: 80,
-    initialMicroUsd: 10,
-    maxMicroUsd: 35,
-  }),
+  anchorTargetPct: Object.freeze({ min: 0.55, max: 0.70 }),
+  opportunisticMaxPct: 0.30,
+  microMaxPct: 0.10,
+  defaultBudgetsUsd: SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE,
+  defaultBudgetsUsdBaseline: SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE,
   chainSelection: Object.freeze({
     mode: "evidence_led_primary_chains",
-    primaryMaxSharePct: ACTIVE_CHAIN_SELECTION.primaryMaxSharePct ?? 0.70,
+    primaryMaxSharePct: 0.70,
     defaultCandidateRole: "candidate",
     reviewCadenceHours: 14 * 24,
     chainProfiles: SMALL_CAPITAL_CHAIN_PROFILES,
   }),
-  nonPrimaryEntry: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.nonPrimaryEntry || {
-    minNetProfitUsd: 10,
-    minNetProfitPctOfPosition: 0.05,
-  }),
+  nonPrimaryEntry: SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
+  nonPrimaryEntryBaseline: SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
   rewardHaircuts: Object.freeze({
     stable: 0.0,
     liquidBluechip: 0.25,
@@ -94,21 +123,22 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
     minTimeInRangePct24h: 0.80,
     exitWhenIlExceedsFeesHours: 24,
   }),
-  protocolConcentration: Object.freeze(ACTIVE_SMALL_CAPITAL_OVERRIDES.protocolConcentration || {
+  protocolConcentration: Object.freeze({
     defaultMaxPct: 0.25,
     venueMaxPctWithLiveMonitor: 0.50,
   }),
   radarLane: Object.freeze({
     enabled: true,
-    perCanaryUsd: 30,
-    perDayUsd: 90,
-    cumulativeOpenUsd: 200,
-    maxConcurrentOpen: 6,
+    perCanaryUsd: SMALL_CAPITAL_RADAR_CAPS_BASELINE.perCanaryUsd,
+    perDayUsd: SMALL_CAPITAL_RADAR_CAPS_BASELINE.perDayUsd,
+    cumulativeOpenUsd: SMALL_CAPITAL_RADAR_CAPS_BASELINE.cumulativeOpenUsd,
+    maxConcurrentOpen: SMALL_CAPITAL_RADAR_CAPS_BASELINE.maxConcurrentOpen,
     minRealizedPnlBufferUsd: 0,
     realizedDailyLossLockUsd: 25,
     newProtocolFirstEntryUsd: 10,
     capGraduationUsd: Object.freeze([10, 25, 50, 80, 100]),
   }),
+  radarCapsBaseline: SMALL_CAPITAL_RADAR_CAPS_BASELINE,
   canaryGraduation: Object.freeze({
     enabled: true,
     rungsUsd: Object.freeze([5, 10, 25, 50, 80]),
@@ -127,6 +157,69 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
     noTxSentIsNeutral: true,
   }),
 });
+
+export function effectiveDefaultBudgetsUsd({
+  operatingCapitalUsd,
+  policy = SMALL_CAPITAL_CAMPAIGN_MODE,
+} = {}) {
+  return effectiveBudgetMapUsd(policy.defaultBudgetsUsdBaseline || policy.defaultBudgetsUsd, operatingCapitalUsd);
+}
+
+export function effectiveNonPrimaryEntry({
+  operatingCapitalUsd,
+  policy = SMALL_CAPITAL_CAMPAIGN_MODE,
+} = {}) {
+  const baseline = policy.nonPrimaryEntryBaseline || policy.nonPrimaryEntry || {};
+  return Object.freeze({
+    ...baseline,
+    minNetProfitUsd: effectiveBudgetUsd(baseline.minNetProfitUsd, operatingCapitalUsd),
+  });
+}
+
+export function effectiveRadarCaps({
+  operatingCapitalUsd,
+  policy = SMALL_CAPITAL_CAMPAIGN_MODE,
+} = {}) {
+  const baseline = policy.radarCapsBaseline || {
+    perCanaryUsd: policy.radarLane?.perCanaryUsd,
+    perDayUsd: policy.radarLane?.perDayUsd,
+    cumulativeOpenUsd: policy.radarLane?.cumulativeOpenUsd,
+    maxConcurrentOpen: policy.radarLane?.maxConcurrentOpen,
+  };
+  return Object.freeze({
+    perCanaryUsd: effectiveBudgetUsd(baseline.perCanaryUsd, operatingCapitalUsd),
+    perDayUsd: effectiveBudgetUsd(baseline.perDayUsd, operatingCapitalUsd),
+    cumulativeOpenUsd: effectiveBudgetUsd(baseline.cumulativeOpenUsd, operatingCapitalUsd),
+    maxConcurrentOpen: baseline.maxConcurrentOpen,
+  });
+}
+
+export function resolveEffectiveSmallCapitalBudgets({
+  operatingCapitalUsd = 1_000,
+  policy = SMALL_CAPITAL_CAMPAIGN_MODE,
+} = {}) {
+  const band = operatingCapitalScaleBand(operatingCapitalUsd);
+  return Object.freeze({
+    operatingCapitalUsd: Number.isFinite(Number(operatingCapitalUsd)) ? Number(operatingCapitalUsd) : null,
+    capitalScaleBandId: band.bandId,
+    capitalScaleMultiplier: band.multiplier,
+    nominalBudgets: Object.freeze({
+      defaultBudgetsUsd: policy.defaultBudgetsUsdBaseline || policy.defaultBudgetsUsd,
+      nonPrimaryEntry: policy.nonPrimaryEntryBaseline || policy.nonPrimaryEntry,
+      radarCaps: policy.radarCapsBaseline || {
+        perCanaryUsd: policy.radarLane?.perCanaryUsd,
+        perDayUsd: policy.radarLane?.perDayUsd,
+        cumulativeOpenUsd: policy.radarLane?.cumulativeOpenUsd,
+        maxConcurrentOpen: policy.radarLane?.maxConcurrentOpen,
+      },
+    }),
+    effectiveBudgets: Object.freeze({
+      defaultBudgetsUsd: effectiveDefaultBudgetsUsd({ operatingCapitalUsd, policy }),
+      nonPrimaryEntry: effectiveNonPrimaryEntry({ operatingCapitalUsd, policy }),
+      radarCaps: effectiveRadarCaps({ operatingCapitalUsd, policy }),
+    }),
+  });
+}
 
 export function isSmallCapitalMode(activeCapitalUsd, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   if (!policy.enabled) return false;
