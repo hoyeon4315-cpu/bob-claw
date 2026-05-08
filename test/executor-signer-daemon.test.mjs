@@ -227,6 +227,7 @@ test("signer daemon lets metadata risk total override runtime total", async () =
         command: "sign_only",
         intent: {
           ...buildIntent(),
+          strategyId: "gateway_native_asset_conversion_sleeve",
           amountUsd: 500,
           metadata: {
             skipAutoIngest: true,
