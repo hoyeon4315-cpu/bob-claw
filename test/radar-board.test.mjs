@@ -35,6 +35,7 @@ test("buildRadarBoard summarizes all radar phases without exposing raw payloads"
 
 test("buildRadarBoard summarizes the latest version for each executable candidate", () => {
   const board = buildRadarBoard({
+    generatedAt: "2026-05-01T00:05:30.000Z",
     candidates: [
       {
         candidateId: "candidate_1",
@@ -59,5 +60,29 @@ test("buildRadarBoard summarizes the latest version for each executable candidat
     candidateId: "candidate_1",
     gateStatus: "executable",
     blockers: [],
+  }]);
+});
+
+test("buildRadarBoard does not count stale executable candidates as executable", () => {
+  const board = buildRadarBoard({
+    generatedAt: "2026-05-07T00:00:00.000Z",
+    candidates: [
+      {
+        candidateId: "candidate_1",
+        observedAt: "2026-05-01T00:00:00.000Z",
+        gateStatus: "executable",
+        blockers: [],
+      },
+    ],
+  });
+
+  assert.equal(board.summary.executableCount, 0);
+  assert.equal(board.summary.blockedCandidateCount, 1);
+  assert.deepEqual(board.summary.candidateStatusCounts, { blocked: 1 });
+  assert.deepEqual(board.blockerCounts, { executable_candidate_stale: 1 });
+  assert.deepEqual(board.candidates, [{
+    candidateId: "candidate_1",
+    gateStatus: "blocked",
+    blockers: ["executable_candidate_stale"],
   }]);
 });

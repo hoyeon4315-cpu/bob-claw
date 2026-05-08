@@ -8,7 +8,12 @@ function byTemplateId(items = []) {
 }
 
 function allocationStatus(item = {}) {
-  return item?.allocationGate?.status || "allocation_ready";
+  return item?.allocationGate?.status || "review_only";
+}
+
+function allocationBlockers(item = {}) {
+  if (Array.isArray(item.allocationGate?.blockers)) return item.allocationGate.blockers;
+  return item.allocationGate?.status ? [] : ["allocation_gate_missing"];
 }
 
 function finitePositive(value) {
@@ -123,7 +128,7 @@ export function buildDestinationAllocationPlanner({ promotionGate = null, econom
         familyId: item.familyId,
         label: item.label,
         score: item.score,
-        blockers: item.allocationGate?.blockers || [],
+        blockers: allocationBlockers(item),
         nextAction: item.allocationGate?.nextAction || null,
       })),
     },

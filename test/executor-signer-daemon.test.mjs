@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { buildStrategyCapState } from "../src/executor/policy/cap-check.mjs";
-import { handleIntentCommand } from "../src/executor/signer/daemon.mjs";
+import { handleIntentCommand, parseArgs } from "../src/executor/signer/daemon.mjs";
 
 function buildIntent() {
   return {
@@ -93,5 +93,67 @@ test("signer daemon rechecks kill-switch after signing and before broadcast", as
     assert.equal(auditLines.at(-1).broadcast, null);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("signer daemon redacts raw signed transaction bytes from successful client responses", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-signer-daemon-redact-"));
+  const killSwitchPath = join(root, "KILL_SWITCH");
+  const signed = {
+    txHash: "0x" + "2".repeat(64),
+    chain: "base",
+    signedTx: "0xfeedface",
+    metadata: {
+      nonce: 8,
+      from: "0x0000000000000000000000000000000000000002",
+      to: "0x0000000000000000000000000000000000000001",
+    },
+  };
+  const fakeSigner = {
+    signIntent: async () => signed,
+    broadcastSignedIntent: async () => ({ txHash: signed.txHash }),
+  };
+
+  try {
+    for (const command of ["sign_only", "sign_and_broadcast"]) {
+      const result = await handleIntentCommand({
+        message: {
+          command,
+          intent: buildIntent(),
+        },
+        signers: {
+          evm: fakeSigner,
+        },
+        args: {
+          activeBudgetUsd: null,
+          killSwitchPath,
+          autoIngest: false,
+        },
+        cwd: root,
+        transactionNotifyImpl: async () => ({ sent: true }),
+      });
+
+      assert.equal(result.status, "ok");
+      assert.equal(result.signed.txHash, signed.txHash);
+      assert.equal(result.signed.signedTx, undefined);
+      assert.equal(result.signed.redacted, true);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("signer daemon ignores runtime env active budget overrides", () => {
+  const previous = process.env.BOB_CLAW_ACTIVE_BUDGET_USD;
+  process.env.BOB_CLAW_ACTIVE_BUDGET_USD = "999999";
+  try {
+    const args = parseArgs([]);
+    assert.equal(args.activeBudgetUsd, null);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.BOB_CLAW_ACTIVE_BUDGET_USD;
+    } else {
+      process.env.BOB_CLAW_ACTIVE_BUDGET_USD = previous;
+    }
   }
 });

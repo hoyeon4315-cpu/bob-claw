@@ -2,7 +2,7 @@
 
 > **이 문서의 성격**: 리서치 사실 참조. **규칙이 아님.** 운영 규칙은 리포 루트 `AGENTS.md`.
 > **갱신 주기**: TVL/APY/거버넌스 상태 등 정량 수치는 **30일**, 체인 열거·인프라 사실은 **90일**마다 재검증.
-> **마지막 실사 기준일**: 2026-04-17 (초기 추출: 이전 세션 v3 가이드라인 + 당시 공식 출처 직접 참조).
+> **마지막 실사 기준일**: 2026-05-08 (Gateway 공식 docs/API, BOB GitHub, npm 재확인. 정량 TVL/APY는 별도 주기 유지).
 
 ---
 
@@ -26,14 +26,14 @@
 4. Relayer가 on-chain Bitcoin Light Client(`LightRelay`)에 **SPV Merkle proof** 제출
 5. BOB 컨트랙트가 OP_RETURN 해시 일치 검증 → LP wrapped BTC 언락 + **destination intent 실행**
 
-**Custom DeFi Actions (2025-12-05 라이브)**: LayerZero Composer 컨트랙트를 통해 "Bitcoin → BOB → destination chain"의 마지막 단계에서 임의의 EVM 호출 실행 가능. 검증된 공식 use case:
+**Custom DeFi Actions (2025-12-04 공식 게시, 2025-12 라이브)**: LayerZero Composer 컨트랙트를 통해 "Bitcoin → BOB → destination chain"의 마지막 단계에서 임의의 EVM 호출 실행 가능. 검증된 공식 use case:
 - Aave on Base에 native BTC 예치 (cbBTC 경유)
 - SolvBTC.BNB Pendle market on BSC 진입
 - Unichain wBTC/USDC LP 공급
 
 출처: `gobob.xyz/blog/custom-defi-actions-now-integrated-in-bob-gateway-sdk`
 
-**Offramp (수익 → native BTC)**: `OfframpRegistry` 컨트랙트에 wrapped BTC 락업 → solver가 사용자 BTC 주소로 송금. SDK: `bumpFeeForOfframpOrder()` (RBF), `unlockOfframpOrder()` (취소). 완료 5–10분(Bitcoin 블록타임).
+**Offramp (수익 → native BTC)**: `OfframpRegistry` 컨트랙트에 wrapped BTC 락업 → solver가 사용자 BTC 주소로 송금. 최신 Gateway SDK 문서는 order status에서 반환되는 action transaction인 `bumpFeeTx`(RBF)와 `refundTx`(취소/환불)를 실행하는 흐름으로 설명한다. 완료 5–10분(Bitcoin 블록타임).
 
 **감사**: Pashov, Common Prefix 완료.
 
@@ -175,8 +175,8 @@
 ## 1.9 BOB 공식 리소스
 
 - Docs: `docs.gobob.xyz` / Gateway: `/docs/gateway/`
-- GitHub: `github.com/bob-collective/bob` (v4.4.6 릴리스 2025-11-27)
-- NPM: `@gobob/bob-sdk` (TypeScript — .mjs 프로젝트에서도 import 호환)
+- GitHub: `github.com/bob-collective/bob` (GitHub latest release object는 v4.4.6로 남아 있으나, tags/npm 기준 SDK는 v5.5.0까지 진행됨)
+- NPM: `@gobob/bob-sdk` (TypeScript — 최신 확인: 5.5.0, 2026-05-06 publish)
 - Dune: `dune.com/bob_collective/gateway` (Gateway 누적 볼륨·트랜잭션·수수료 실측)
 - RPC: `https://rpc.gobob.xyz/` / Explorer: `https://explorer.gobob.xyz/`
 - L2Beat: `l2beat.com/scaling/projects/bob`
@@ -196,10 +196,12 @@ import { GatewaySDK, parseBtc, LayerZeroGatewayClient } from '@gobob/bob-sdk';
 
 const sdk = new GatewaySDK(/* chainId */);
 
-// Onramp (Bitcoin → destination chain)
+// Onramp (Bitcoin → destination chain). 최신 Gateway API/SDK examples는
+// token symbol보다 address/null-style token identifiers를 우선한다. 실제
+// repo에서는 src/gateway/ wrapper와 route snapshot이 정규화한 값을 사용한다.
 const quote = await sdk.getQuote({
-  fromChain: 'bitcoin', fromToken: 'BTC',
-  toChain: 'base', toToken: 'cbBTC',
+  fromChain: 'bitcoin', fromToken: '0x0000000000000000000000000000000000000000',
+  toChain: 'base', toToken: '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf',
   fromUserAddress: 'bc1q...', toUserAddress: '0x...',
   amount: parseBtc("0.0001"),
 });

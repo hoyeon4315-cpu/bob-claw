@@ -128,3 +128,30 @@ test("policy.checkGatewayAvailability allows Gateway route when current API rout
   assert.equal(verdict.decision, "ALLOW");
   assert.equal(verdict.routeAvailable, true);
 });
+
+test("policy.checkGatewayAvailability blocks bridged radar canary when current Gateway route is absent", async () => {
+  const verdict = await checkGatewayAvailability({
+    intent: {
+      intentType: "tiny_live_canary",
+      gatewayQuoteId: "quote_1",
+      metadata: {
+        gatewayRoute: {
+          srcChain: "bitcoin",
+          dstChain: "sei",
+        },
+      },
+    },
+    availability: {
+      available: true,
+      observedAt: "2026-05-08T00:00:00Z",
+      routes: [
+        { srcChain: "bitcoin", dstChain: "base" },
+        { srcChain: "base", dstChain: "bitcoin" },
+      ],
+    },
+  });
+
+  assert.equal(verdict.decision, "BLOCK");
+  assert.deepEqual(verdict.blockers, ["gateway_route_currently_unavailable"]);
+  assert.equal(verdict.routeAvailable, false);
+});

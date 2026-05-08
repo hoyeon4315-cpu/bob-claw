@@ -92,6 +92,7 @@ test("buildRadarCanaryIntent uses campaignRemainingHours before campaignEndsAt f
   const now = "2026-05-02T00:00:00.000Z";
   const result = buildRadarCanaryIntent({
     packet,
+    now: "2026-05-07T00:30:00.000Z",
     candidate: candidate({
       campaignRemainingHours: 48,
       campaignEndsAt: "2026-05-12T00:00:00.000Z",
@@ -118,6 +119,7 @@ test("buildRadarCanaryIntent uses campaignRemainingHours before campaignEndsAt f
 test("buildRadarCanaryIntent clamps Merkl-derived canaries to candidate inventory amount", () => {
   const result = buildRadarCanaryIntent({
     packet,
+    now: "2026-05-07T00:30:00.000Z",
     candidate: candidate({
       familyKey: "same_chain_stable_carry",
       protocol: "yo",
@@ -218,6 +220,102 @@ test("buildRadarCanaryIntent respects candidate gateStatus blockers", () => {
 
   assert.equal(result.status, "blocked");
   assert.ok(result.blockers.includes("same_chain_unprofitable:need_$64_on_base"));
+});
+
+test("buildRadarCanaryIntent blocks stale executable candidates", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    now: "2026-05-07T00:00:00.000Z",
+    candidate: candidate({
+      observedAt: "2026-05-01T00:00:00.000Z",
+      gateStatus: "executable",
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("executable_candidate_stale"));
+});
+
+test("buildRadarCanaryIntent requires current Gateway route proof for bridged candidates", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    now: "2026-05-07T00:30:00.000Z",
+    candidate: candidate({
+      familyKey: "same_chain_stable_carry",
+      executionPath: "gateway_to_evm_bridged",
+      chain: "sei",
+      protocol: "yei",
+      displayedAprPct: 365,
+      rewardToken: null,
+      amountUsd: 3,
+      expectedHoldDays: 30,
+      gateStatus: "executable",
+      observedAt: "2026-05-07T00:00:00.000Z",
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      stablecoin_spread_loop: {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("gateway_route_proof_missing"));
+});
+
+test("buildRadarCanaryIntent propagates Gateway route proof into bridged intents", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    now: "2026-05-07T00:30:00.000Z",
+    candidate: candidate({
+      familyKey: "same_chain_stable_carry",
+      executionPath: "gateway_to_evm_bridged",
+      chain: "sei",
+      protocol: "yei",
+      displayedAprPct: 365,
+      rewardToken: null,
+      amountUsd: 3,
+      expectedHoldDays: 30,
+      gateStatus: "executable",
+      observedAt: "2026-05-07T00:00:00.000Z",
+      gatewayQuoteId: "quote_1",
+      gatewayRoute: {
+        srcChain: "bitcoin",
+        dstChain: "sei",
+        srcToken: "BTC",
+        dstToken: "USDC",
+      },
+      gatewayQuoteObservedAt: "2026-05-07T00:00:00.000Z",
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      stablecoin_spread_loop: {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0.003,
+      p90BridgeCostUsdForRoute: () => 0.01,
+      p90ClaimCostUsdForProtocol: () => 0,
+      p90RewardSwapCostUsdForToken: () => 0,
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.intent.gatewayQuoteId, "quote_1");
+  assert.deepEqual(result.intent.metadata.gatewayRoute, {
+    srcChain: "bitcoin",
+    dstChain: "sei",
+    srcToken: "BTC",
+    dstToken: "USDC",
+  });
 });
 
 test("buildRadarCanaryIntent blocks non-stable reward tokens without exit liquidity proof", () => {

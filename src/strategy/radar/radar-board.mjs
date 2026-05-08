@@ -6,6 +6,8 @@ const CALIBRATION_BLOCKERS = new Set([
   "manual_bridge_execution_not_supported",
 ]);
 
+const DEFAULT_EXECUTABLE_CANDIDATE_MAX_AGE_MS = 60 * 60 * 1000;
+
 function countBlockers(candidates = []) {
   const counts = {};
   for (const candidate of candidates) {
@@ -60,6 +62,28 @@ function latestCandidatesById(candidates = []) {
     }
   }
   return [...latest.values()];
+}
+
+function withBoardDerivedBlockers(candidate = {}, generatedAt, {
+  executableCandidateMaxAgeMs = DEFAULT_EXECUTABLE_CANDIDATE_MAX_AGE_MS,
+} = {}) {
+  const blockers = [...(candidate.blockers || [])];
+  if (candidate.gateStatus === "executable") {
+    const observedAtMs = candidateObservedAtMs(candidate);
+    const generatedAtMs = Date.parse(generatedAt || 0);
+    const isStale =
+      Number.isFinite(generatedAtMs) &&
+      generatedAtMs > 0 &&
+      (!observedAtMs || generatedAtMs - observedAtMs > executableCandidateMaxAgeMs);
+    if (isStale && !blockers.includes("executable_candidate_stale")) {
+      blockers.push("executable_candidate_stale");
+    }
+  }
+  return {
+    ...candidate,
+    blockers,
+    gateStatus: blockers.length > 0 ? "blocked" : candidate.gateStatus,
+  };
 }
 
 function countExecutionPaths(candidates = []) {
@@ -124,7 +148,8 @@ export function buildRadarBoard({
   generatedAt = new Date().toISOString(),
 } = {}) {
   const realizationSummary = summarizeRealizationRecords(realizationRecords);
-  const latestCandidates = latestCandidatesById(candidates);
+  const latestCandidates = latestCandidatesById(candidates)
+    .map((candidate) => withBoardDerivedBlockers(candidate, generatedAt));
   const blockerCounts = countBlockers(latestCandidates);
   const executableCount = latestCandidates.filter((candidate) => candidate.gateStatus === "executable").length;
   const blockedCandidateCount = latestCandidates.length - executableCount;

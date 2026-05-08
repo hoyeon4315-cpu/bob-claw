@@ -5,10 +5,37 @@ import { evaluateExecutableCandidateGate } from "./executable-candidate-gate.mjs
 import { resolveFamilyBinding } from "./family-binding-registry.mjs";
 import { computeRealizedPnlEv } from "./pnl-ev-gate.mjs";
 
+const DEFAULT_EXECUTABLE_CANDIDATE_MAX_AGE_MS = 60 * 60 * 1000;
+
 function finiteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function isStaleExecutableCandidate(candidate = {}, now, maxAgeMs = DEFAULT_EXECUTABLE_CANDIDATE_MAX_AGE_MS) {
+  const observedAt = Date.parse(candidate.observedAt || candidate.metadata?.syncedAt || 0);
+  const nowMs = Date.parse(now || 0);
+  return (
+    Number.isFinite(nowMs) &&
+    nowMs > 0 &&
+    (!Number.isFinite(observedAt) || observedAt <= 0 || nowMs - observedAt > maxAgeMs)
+  );
+}
+
+function gatewayBackedExecutionPath(candidate = {}) {
+  return ["gateway_destination", "gateway_to_evm_bridged"].includes(String(candidate.executionPath || ""));
+}
+
+function gatewayRouteProof(candidate = {}) {
+  const route = candidate.gatewayRoute || candidate.routeContext || candidate.metadata?.gatewayRoute || null;
+  const quoteId = candidate.gatewayQuoteId || candidate.metadata?.gatewayQuoteId || null;
+  if (!route?.srcChain || !route?.dstChain || !quoteId) return null;
+  return {
+    quoteId,
+    route,
+    observedAt: candidate.gatewayQuoteObservedAt || candidate.gatewayLatencyObservedAt || candidate.observedAt || null,
+  };
 }
 
 function expectedHoldDays(candidate, now) {
@@ -52,6 +79,10 @@ export function buildRadarCanaryIntent({
 } = {}) {
   if (radarLockOn) return { status: "blocked", blockers: ["radar_lock_active"] };
 
+  if (candidate.gateStatus === "executable" && isStaleExecutableCandidate(candidate, now)) {
+    return { status: "blocked", blockers: ["executable_candidate_stale"] };
+  }
+
   if (candidate.gateStatus && candidate.gateStatus !== "executable") {
     return {
       status: "blocked",
@@ -81,6 +112,11 @@ export function buildRadarCanaryIntent({
       gate,
       binding,
     };
+  }
+
+  const gatewayProof = gatewayBackedExecutionPath(candidate) ? gatewayRouteProof(candidate) : null;
+  if (gatewayBackedExecutionPath(candidate) && !gatewayProof) {
+    return { status: "blocked", blockers: ["gateway_route_proof_missing"], gate, binding };
   }
 
   const resolvedCapMatrix = resolveProfileCapMatrix(strategyCapsById[binding.strategyId], {
@@ -137,8 +173,13 @@ export function buildRadarCanaryIntent({
       estimatedCostsUsd: ev.expectedCostUsd,
       estimatedBridgeCostUsd: ev.p90BridgeUsd,
       expectedNetUsd: ev.expectedNetUsd,
+      gatewayQuoteId: gatewayProof?.quoteId,
+      gatewayRoute: gatewayProof?.route,
       observedAt: now,
-      quote: { observedAt: now },
+      quote: {
+        observedAt: gatewayProof?.observedAt || now,
+        route: gatewayProof?.route,
+      },
       mode: "live",
       executionReason: "radar_tiny_live_canary",
       metadata: {
@@ -146,6 +187,8 @@ export function buildRadarCanaryIntent({
         radarPacketId: packet.packetId ?? candidate.packetId ?? null,
         familyKey: candidate.familyKey ?? null,
         expectedNetUsd: ev.expectedNetUsd,
+        gatewayQuoteId: gatewayProof?.quoteId,
+        gatewayRoute: gatewayProof?.route,
         btcPaybackConversionRequired: true,
         promotedAt: now,
       },

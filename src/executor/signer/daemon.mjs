@@ -17,7 +17,7 @@ import { normalizeExecutionIntent } from "./signer-interface.mjs";
 import { writeHeartbeat } from "../watchdog/heartbeat.mjs";
 import { checkKillSwitch, resolveKillSwitchPath } from "../policy/kill-switch.mjs";
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(
     argv
@@ -32,7 +32,7 @@ function parseArgs(argv) {
     heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
     heartbeatIntervalMs: getNumberEnv("EXECUTOR_HEARTBEAT_INTERVAL_MS", 15_000),
     killSwitchPath: resolveKillSwitchPath(),
-    activeBudgetUsd: getNumberEnv("BOB_CLAW_ACTIVE_BUDGET_USD", null),
+    activeBudgetUsd: null,
     autoIngest: !flags.has("--no-auto-ingest") && getBooleanEnv("EXECUTOR_AUTO_INGEST", true),
   };
 }
@@ -329,7 +329,7 @@ export async function handleIntentCommand({
     return {
       status: "ok",
       policy,
-      signed,
+      signed: redactSignedEnvelope(signed),
       broadcast,
       receipt: serializeReceipt(receipt),
       autoIngest,

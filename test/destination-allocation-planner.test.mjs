@@ -122,3 +122,45 @@ test("destination allocation planner keeps review-only promotable items out of a
   assert.equal(report.summary.activeAllocationCount, 0);
   assert.equal(report.summary.topReviewOnly[0].templateId, "base:stablecoin_lp_or_basis");
 });
+
+test("destination allocation planner keeps missing allocation gates out of allocations", () => {
+  const promotionGate = {
+    summary: {
+      topBlockers: [],
+      topAllocationBlockers: [],
+    },
+    items: [
+      {
+        templateId: "base:stablecoin_lending_carry",
+        chain: "base",
+        familyId: "stablecoin_lending_carry",
+        label: "Stablecoin lending carry",
+        score: 0.66,
+        gate: { status: "promotable" },
+      },
+    ],
+  };
+
+  const economics = {
+    budgets: {
+      activeBudgetUsd: 300,
+      planningBudgetUsd: 1000,
+    },
+    items: [
+      {
+        templateId: "base:stablecoin_lending_carry",
+        activeBudgetEstimate: { passesPolicy: true },
+        planningBudgetEstimate: { passesPolicy: true },
+      },
+    ],
+  };
+
+  const report = buildDestinationAllocationPlanner({ promotionGate, economics });
+
+  assert.equal(report.summary.promotableCount, 1);
+  assert.equal(report.summary.allocationReadyCount, 0);
+  assert.equal(report.summary.reviewOnlyCount, 1);
+  assert.equal(report.summary.activeAllocationCount, 0);
+  assert.equal(report.summary.planningAllocationCount, 0);
+  assert.deepEqual(report.summary.topReviewOnly[0].blockers, ["allocation_gate_missing"]);
+});

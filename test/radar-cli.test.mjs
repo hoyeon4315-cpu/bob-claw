@@ -274,6 +274,7 @@ test("radar promote CLI evaluates only the latest candidate version", async () =
     killSwitchState: "running",
     slippageSimAtSize: 20,
     mevExposureScore: 10,
+    observedAt: "2026-05-01T00:00:00.000Z",
     campaignEndsAt: "2026-05-04T00:00:00.000Z",
   };
   await writeFile(join(radarDir, "executable-candidates.jsonl"), [
@@ -337,6 +338,7 @@ test("radar promote CLI preserves blocked candidate ids after ready candidates",
     killSwitchState: "running",
     slippageSimAtSize: 20,
     mevExposureScore: 10,
+    observedAt: "2026-05-01T00:00:00.000Z",
     campaignEndsAt: "2026-05-04T00:00:00.000Z",
   };
   await writeFile(join(radarDir, "executable-candidates.jsonl"), [
