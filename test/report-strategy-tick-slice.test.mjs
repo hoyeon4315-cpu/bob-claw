@@ -161,6 +161,93 @@ test("report-strategy-tick-slice keeps receipts separate from policy live eligib
   assert.equal(slice.summary.strategiesLiveEligible, 1);
 });
 
+test("report-strategy-tick-slice exposes first broadcast and payback progress trajectory", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-broadcast-"));
+  const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
+  const auditLog = join(cwd, "logs", "signer-audit.jsonl");
+  const reconciliationsLog = join(cwd, "data", "receipt-reconciliations.jsonl");
+  const outPath = join(cwd, "dashboard", "public", "strategy-tick-status.json");
+  const strategyId = "wrapped-btc-loop-base-moonwell";
+
+  await writeJsonl(tickLog, [
+    {
+      schemaVersion: 1,
+      tickAt: "2026-05-08T01:00:00.000Z",
+      strategies: [strategyId],
+      snapshotSummary: [{ strategyId, capsConfigured: true }],
+      blockers: [{ strategyId, mode: "live", blockers: [] }],
+      dispatchSummary: { allowCount: 1, denyCount: 0 },
+      generatedIntents: [{ strategyId, chain: "base" }],
+      broadcastSummary: { generatedIntentCount: 1, broadcastCount: 1 },
+      candidateCount: 1,
+    },
+    {
+      schemaVersion: 1,
+      tickAt: "2026-05-08T02:00:00.000Z",
+      strategies: [strategyId],
+      snapshotSummary: [{ strategyId, capsConfigured: true }],
+      blockers: [{ strategyId, mode: "live", blockers: [] }],
+      dispatchSummary: { allowCount: 1, denyCount: 0 },
+      generatedIntents: [{ strategyId, chain: "base" }],
+      broadcastSummary: { generatedIntentCount: 1, broadcastCount: 1 },
+      candidateCount: 1,
+    },
+  ]);
+  await writeJsonl(auditLog, [
+    {
+      strategyId,
+      timestamp: "2026-05-08T01:00:30.000Z",
+      broadcast: { txHash: "0xfirst" },
+      lifecycle: { stage: "confirmed" },
+    },
+    {
+      strategyId,
+      timestamp: "2026-05-08T02:00:30.000Z",
+      broadcast: { txHash: "0xsecond" },
+      lifecycle: { stage: "confirmed" },
+      realized: { realizedNetPnlSats: 15_000 },
+    },
+  ]);
+  await writeJsonl(reconciliationsLog, [
+    {
+      txHash: "0xfirst",
+      realized: { realizedNetPnlSats: 25_000 },
+      regime: "neutral",
+    },
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "src/cli/report-strategy-tick-slice.mjs"),
+      `--tick-log=${tickLog}`,
+      `--audit=${auditLog}`,
+      `--reconciliations=${reconciliationsLog}`,
+      `--out=${outPath}`,
+      `--strategy=${strategyId}`,
+      "--payback-effective-min-sats=5000",
+    ],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const slice = JSON.parse(await readFile(outPath, "utf8"));
+  const row = slice.strategies[0];
+  assert.equal(slice.schemaVersion, 5);
+  assert.equal(row.firstLiveBroadcastAt, "2026-05-08T01:00:30.000Z");
+  assert.equal(row.firstLiveBroadcastTxHash, "0xfirst");
+  assert.equal(row.firstRealizedPnlSats, 25_000);
+  assert.deepEqual(row.paybackProgressTrajectory.map((point) => point.progressRatio), [0, 1]);
+  assert.equal(row.paybackProgressTrajectory.at(-1).realizedPnlSats, 25_000);
+  assert.equal(slice.overall.latestBroadcastAt, "2026-05-08T02:00:30.000Z");
+  assert.equal(slice.overall.satsSinceFirstBroadcast, 40_000);
+  assert.equal(typeof slice.overall.daysSinceFirstBroadcast, "number");
+  assert.equal(slice.overall.paybackEffectiveMinReachedAt, "2026-05-08T02:00:00.000Z");
+});
+
 test("report-strategy-tick-slice includes reopened wrapped BTC loop in live eligible count", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-hold-"));
   const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
@@ -365,7 +452,7 @@ test("report-strategy-tick-slice counts dispatcher deny reasons by strategy", as
   const slice = JSON.parse(await readFile(outPath, "utf8"));
   const row = slice.strategies[0];
 
-  assert.equal(slice.schemaVersion, 4);
+  assert.equal(slice.schemaVersion, 5);
   assert.deepEqual(row.lastTickDenyByReason, {
     negative_post_cost_edge: 1,
     feed_stale: 2,

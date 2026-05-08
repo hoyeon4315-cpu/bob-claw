@@ -25,14 +25,18 @@ import {
   hasFlag,
   optionMapFromArgs,
 } from "../dashboard/live-snapshot-paths.mjs";
+import { ABSOLUTE_FLOOR_SATS, PAYBACK_CONFIG } from "../config/payback.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
 import {
+  buildOverallBroadcastProgress,
   buildFunnelSummary,
   buildLayerStatus,
+  buildStrategyBroadcastProgress,
   buildSurfaceAdvice,
+  realizedPnlSatsFromRecord,
 } from "../status/strategy-tick-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
 
@@ -244,6 +248,19 @@ function latestTickPerStrategy(ticks) {
   return byStrategy;
 }
 
+function tickTimesPerStrategy(ticks = []) {
+  const byStrategy = new Map();
+  for (const tick of ticks) {
+    const tickMs = Date.parse(tick?.tickAt || "");
+    if (!Number.isFinite(tickMs)) continue;
+    for (const strategyId of tick.strategies || []) {
+      if (!byStrategy.has(strategyId)) byStrategy.set(strategyId, []);
+      byStrategy.get(strategyId).push(tickMs);
+    }
+  }
+  return byStrategy;
+}
+
 function canaryStrategyId(record = {}) {
   return record?.plan?.strategyId ||
     record?.execution?.plan?.strategyId ||
@@ -394,7 +411,16 @@ async function main() {
     if (rec.txHash) reconciliationByTxHash.set(String(rec.txHash).toLowerCase(), rec);
   }
   const latestByStrategy = latestTickPerStrategy(ticks);
+  const tickTimesByStrategy = tickTimesPerStrategy(ticks);
+  const allTickTimes = ticks
+    .map((tick) => Date.parse(tick?.tickAt || ""))
+    .filter(Number.isFinite);
   const nowMs = Date.now();
+  const paybackEffectiveMinSats = finiteNumber(args["payback-effective-min-sats"]) ??
+    PAYBACK_CONFIG.absoluteFloorSats ??
+    ABSOLUTE_FLOOR_SATS;
+  const paybackBaseRatio = finiteNumber(args["payback-base-ratio"]) ?? PAYBACK_CONFIG.baseRatio;
+  const allBroadcastReceipts = [];
 
   const strategyRows = strategies.map((sid) => {
     const tick = latestByStrategy.get(sid) || null;
@@ -415,10 +441,20 @@ async function main() {
           source: r.source || (r.broadcast?.txHash ? "signer" : null),
           outcome: r.outcome || (["confirmed", "broadcasted", "signed"].includes(r.lifecycle?.stage) ? "success" : (r.error ? "failure" : "pending")),
           txHash,
-          realizedProfitSats: Math.max(0, rec?.realized?.realizedNetPnlSats ?? 0),
+          realizedProfitSats: realizedPnlSatsFromRecord({
+            ...r,
+            realizedProfitSats: rec?.realized?.realizedNetPnlSats,
+          }),
           regime: rec?.regime || rec?.marketRegime || rec?.marketState?.regime || r.regime || r.marketRegime || null,
         };
       });
+    allBroadcastReceipts.push(...receipts);
+    const broadcastProgress = buildStrategyBroadcastProgress({
+      receipts,
+      tickTimes: tickTimesByStrategy.get(sid) || [],
+      effectiveMinPaybackSats: paybackEffectiveMinSats,
+      paybackBaseRatio,
+    });
 
     const strategyCaps = getStrategyCaps(sid);
     const operatorHold = OPERATOR_HELD_STRATEGIES.has(sid);
@@ -484,6 +520,10 @@ async function main() {
       receiptCountSignerBacked,
       autoExecute,
       operatorHold,
+      firstLiveBroadcastAt: broadcastProgress.firstLiveBroadcastAt,
+      firstLiveBroadcastTxHash: broadcastProgress.firstLiveBroadcastTxHash,
+      firstRealizedPnlSats: broadcastProgress.firstRealizedPnlSats,
+      paybackProgressTrajectory: broadcastProgress.paybackProgressTrajectory,
       layerStatus,
       liveEligibility: {
         liveEligible,
@@ -553,9 +593,16 @@ async function main() {
   const microCanarySlice = buildMicroCanarySlice(dedupedLatestReports);
   const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, liveReadinessEvidence, demotionEvidence);
   const funnel = buildFunnelSummary(strategyRows);
+  const overallBroadcastProgress = buildOverallBroadcastProgress({
+    receipts: allBroadcastReceipts,
+    tickTimes: allTickTimes,
+    effectiveMinPaybackSats: paybackEffectiveMinSats,
+    paybackBaseRatio,
+    nowMs,
+  });
 
   const slice = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     generatedAt: new Date(nowMs).toISOString(),
     tickCountTotal: ticks.length,
     latestTickAt: ticks.length > 0
@@ -573,6 +620,7 @@ async function main() {
       totalGeneratedIntents: strategyRows.reduce((acc, s) => acc + s.generatedIntentCount, 0),
       ...funnel,
     },
+    overall: overallBroadcastProgress,
     funnel,
     microCanary: microCanarySlice,
     strategyStage: strategyStageSlice,
