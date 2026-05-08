@@ -103,5 +103,11 @@ test("report-strategy-tick-slice writes live snapshot by default", async () => {
   assert.equal(await exists(livePath), true);
   assert.equal(await exists(join(cwd, "dashboard/public/strategy-tick-status.json")), false);
   const payload = JSON.parse(await readFile(livePath, "utf8"));
-  assert.equal(payload.schemaVersion, 4);
+  assert.equal(payload.schemaVersion, 5);
+  assert.deepEqual(payload.overall, {
+    latestBroadcastAt: null,
+    satsSinceFirstBroadcast: 0,
+    daysSinceFirstBroadcast: null,
+    paybackEffectiveMinReachedAt: null,
+  });
 });
