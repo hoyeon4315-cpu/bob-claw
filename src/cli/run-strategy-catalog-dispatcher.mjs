@@ -24,17 +24,21 @@ export function parseArgs(argv) {
         return [key, valueParts.join("=")];
       }),
   );
+  const scope = options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [];
+  const target = options.target ? options.target.split(",").map((item) => item.trim()).filter(Boolean) : [];
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
-    execute: flags.has("--execute"),
+    dryRun: flags.has("--dry-run"),
+    execute: flags.has("--execute") && !flags.has("--dry-run"),
     compact: flags.has("--compact"),
     continueOnFailure: flags.has("--continue-on-failure"),
     mode: options.mode || "auto",
     commandTimeoutMs: options["command-timeout-ms"] ? Number(options["command-timeout-ms"]) : null,
     orchestratorRunId: options["orchestrator-run-id"] || null,
     orchestratorSource: options["orchestrator-source"] || null,
-    scope: options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [],
+    target,
+    scope: Array.from(new Set([...scope, ...target])),
     bucket: options.bucket ? options.bucket.split(",").map((item) => item.trim()).filter(Boolean) : [],
   };
 }

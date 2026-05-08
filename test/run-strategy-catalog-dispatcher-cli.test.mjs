@@ -21,6 +21,20 @@ test("strategy catalog dispatcher is import-safe and exposes its lightweight inp
   assert.equal(result.stdout.trim(), "function");
 });
 
+test("strategy catalog dispatcher maps target dry-run to a scoped non-execute run", async () => {
+  const { parseArgs } = await import("../src/cli/run-strategy-catalog-dispatcher.mjs");
+  const args = parseArgs([
+    "--target=wrapped-btc-loop-base-moonwell",
+    "--dry-run",
+    "--json",
+  ]);
+
+  assert.equal(args.dryRun, true);
+  assert.equal(args.execute, false);
+  assert.deepEqual(args.target, ["wrapped-btc-loop-base-moonwell"]);
+  assert.deepEqual(args.scope, ["wrapped-btc-loop-base-moonwell"]);
+});
+
 test("strategy catalog dispatcher builds dispatch inputs from lightweight snapshots", async () => {
   const { loadStrategyCatalogDispatchInputs } = await import("../src/cli/run-strategy-catalog-dispatcher.mjs");
   const loaded = await loadStrategyCatalogDispatchInputs({

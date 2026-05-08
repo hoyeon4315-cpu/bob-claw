@@ -141,6 +141,7 @@
     "report:route-performance": "node src/cli/report-route-performance.mjs",
     "run:shadow-cycle": "node src/cli/run-shadow-cycle.mjs",
     "run:strategy-catalog-dispatch": "node src/cli/run-strategy-catalog-dispatcher.mjs",
+    "executor:dispatch-target": "node src/cli/run-strategy-catalog-dispatcher.mjs",
     "plan:shadow-refreshes": "node src/cli/plan-shadow-refreshes.mjs",
     "run:shadow-refresh-queue": "node src/cli/run-shadow-refresh-queue.mjs",
     "run:shadow-refresh-batch": "node src/cli/run-shadow-refresh-batch.mjs",
