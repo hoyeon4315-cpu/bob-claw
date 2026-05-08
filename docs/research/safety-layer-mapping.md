@@ -76,9 +76,11 @@ The dashboard may show this funnel, but it does not grant runtime authority.
 
 Schema v5 also exposes first-broadcast reporting fields only:
 `firstLiveBroadcastAt`, `firstLiveBroadcastTxHash`, `firstRealizedPnlSats`,
+`paybackEffectiveMinReachedAt`, `lastSignerAuditStageAt`,
 `paybackProgressTrajectory`, and top-level `overall.latestBroadcastAt`,
-`overall.satsSinceFirstBroadcast`, `overall.daysSinceFirstBroadcast`, and
-`overall.paybackEffectiveMinReachedAt`. These fields are derived from
+`overall.satsSinceFirstBroadcast`, `overall.daysSinceFirstBroadcast`,
+`overall.paybackEffectiveMinReachedAt`, and
+`overall.nextDeliveryCandidateEta`. These fields are derived from
 tick/audit/receipt records and do not affect dispatcher, policy, signer, caps,
 or payback scheduler decisions.
 
@@ -93,3 +95,5 @@ or payback scheduler decisions.
 | Task-5 capital snapshot | Wallet holdings were about USD 360.65 with 100% freshness and price-source coverage; payback pending 601 sats vs effective min 5000 sats. | Payback remains carry-first until realized receipts naturally reach the minimum. |
 | Task-6 dispatch dry-run | `wrapped-btc-loop-base-moonwell` selected one preview intent with `blockedReason=null`; dispatch records now expose `broadcastReadiness.readyForPolicyDispatch`, `readyForLiveBroadcast`, and advisory evidence separately. | `liveAdmissionBlockers` stay visible as advisory surface evidence and must not be converted into a runtime block or runtime approval. Policy and signer remain authoritative. |
 | Task-7 first broadcast | Not run in the sandbox pass. | After the audit fix, the live preflight must use signer `readiness.readyForBroadcast` and dispatch `broadcastReadiness.readyForLiveBroadcast`, then let policy/signer decide. |
+
+Live Broadcast Readiness Hard Guard (2026-05-09): `dispatch --execute` now exits 2 when `broadcastReadiness.readyForLiveBroadcast=false`; this is a CLI UX guard only, while policy engine and signer remain the runtime authority.

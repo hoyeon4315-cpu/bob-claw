@@ -292,6 +292,7 @@ The operator (or a coding-session LLM acting on operator request) holds the dev-
   - Mindmap payback return path: added orange dashed curve from protocol chip back to Bitcoin L1 for `gateway-btc-offramp` type.
   - Known failures: `wrapped-btc-loop-live.test.mjs:152` is pre-existing (mock collateral-swap output insufficient for iteration 2 repay). Not caused by W4–W7 changes. Documented in `docs/known-failures-2026-04-22.md`.
   - v1-infra-drills fix: `per_tx_cap_exceeded` drill amount bumped to 2_000_000 after cap neutralization changed perTxUsd to 1_000_000.
+- Live Broadcast Readiness Hard Guard (2026-05-09): dispatch `--execute` explicitly rejects with `process.exit(2)` when `readyForLiveBroadcast=false`. The policy-engine-only runtime authority formula is unchanged.
 - Latest Gateway funding-memory for the live signer:
   - Sonic `wBTC.OFT -> Base wBTC.OFT` and Avalanche `wBTC.OFT -> Base wBTC.OFT` were executed successfully through BOB Gateway and consolidated onto Base signer `0x96262bE63AA687563789225c2fE898c27a3b0AE4`.
   - Both routes initially reverted because signer fallback gas was too low; retries succeeded only after using chain RPC `estimateGas` plus buffer.

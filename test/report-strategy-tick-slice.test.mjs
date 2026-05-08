@@ -240,12 +240,16 @@ test("report-strategy-tick-slice exposes first broadcast and payback progress tr
   assert.equal(row.firstLiveBroadcastAt, "2026-05-08T01:00:30.000Z");
   assert.equal(row.firstLiveBroadcastTxHash, "0xfirst");
   assert.equal(row.firstRealizedPnlSats, 25_000);
+  assert.equal(row.paybackEffectiveMinReachedAt, "2026-05-08T02:00:00.000Z");
+  assert.equal(row.lastSignerAuditStage, "confirmed");
+  assert.equal(row.lastSignerAuditStageAt, "2026-05-08T02:00:30.000Z");
   assert.deepEqual(row.paybackProgressTrajectory.map((point) => point.progressRatio), [0, 1]);
   assert.equal(row.paybackProgressTrajectory.at(-1).realizedPnlSats, 25_000);
   assert.equal(slice.overall.latestBroadcastAt, "2026-05-08T02:00:30.000Z");
   assert.equal(slice.overall.satsSinceFirstBroadcast, 40_000);
   assert.equal(typeof slice.overall.daysSinceFirstBroadcast, "number");
   assert.equal(slice.overall.paybackEffectiveMinReachedAt, "2026-05-08T02:00:00.000Z");
+  assert.equal(slice.overall.nextDeliveryCandidateEta, "2026-05-08T02:00:00.000Z");
   assert.deepEqual(slice.paybackProgressPolicy, {
     effectiveMinPaybackSats: 5000,
     effectiveMinSource: "cli_arg",

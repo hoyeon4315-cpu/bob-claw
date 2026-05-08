@@ -109,5 +109,6 @@ test("report-strategy-tick-slice writes live snapshot by default", async () => {
     satsSinceFirstBroadcast: 0,
     daysSinceFirstBroadcast: null,
     paybackEffectiveMinReachedAt: null,
+    nextDeliveryCandidateEta: null,
   });
 });

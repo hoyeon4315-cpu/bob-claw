@@ -90,9 +90,10 @@ operator reason and the repo's audited commands.
 Run these checks in order:
 
 ```bash
+npm run preflight:broadcast -- --target=wrapped-btc-loop-base-moonwell --json
 npm run diagnose:signer-health -- --json
 npm run kill:status
-npm run report:wallet-holdings-slice -- --json
+npm run report:wallet-holdings -- --json
 npm run report:strategy-execution-surfaces -- --json
 npm run report:payback-status -- --json
 npm run executor:dispatch-target -- --target=wrapped-btc-loop-base-moonwell --dry-run --json

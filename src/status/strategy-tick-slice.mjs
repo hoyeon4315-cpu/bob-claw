@@ -5,7 +5,8 @@ export const RUNTIME_BLOCKER_CODES = Object.freeze([
   "consecutive_failure_lock",
 ]);
 
-const BROADCAST_STAGES = new Set(["broadcasted", "confirmed", "reverted"]);
+const BROADCAST_STAGES = new Set(["broadcast", "broadcasted", "confirmed", "reverted"]);
+const SIGNER_AUDIT_STAGE_TIMESTAMPS = new Set(["broadcast", "broadcasted", "confirmed"]);
 const MS_PER_DAY = 86_400_000;
 
 function firstBlocker(blockers = []) {
@@ -87,6 +88,7 @@ function normalizedBroadcastReceipts(receipts = []) {
       record,
       tsMs: timestampMsForRecord(record),
       txHash: txHashForRecord(record),
+      stage: broadcastStageForRecord(record),
       realizedPnlSats: realizedPnlSatsFromRecord(record),
       broadcast: isBroadcastReceipt(record),
     }))
@@ -136,15 +138,23 @@ export function buildStrategyBroadcastProgress({
   const broadcasts = normalized.filter((receipt) => receipt.broadcast);
   const firstBroadcast = broadcasts[0] || null;
   const firstRealized = normalized.find((receipt) => receipt.realizedPnlSats > 0) || null;
+  const lastSignerAuditStage = normalized
+    .filter((receipt) => SIGNER_AUDIT_STAGE_TIMESTAMPS.has(receipt.stage))
+    .at(-1) || null;
   const checkpoints = sortedTickTimes(tickTimes, normalized).slice(-7);
+  let paybackEffectiveMinReachedAt = null;
   const paybackProgressTrajectory = checkpoints.map((tickMs) => {
     const realizedPnlSats = cumulativeRealizedAt(normalized, tickMs);
     const targetSats = paybackTargetSats(realizedPnlSats, paybackBaseRatio);
+    const progressRatio = progressRatioForTarget(targetSats, effectiveMinPaybackSats);
+    if (!paybackEffectiveMinReachedAt && progressRatio !== null && progressRatio >= 1) {
+      paybackEffectiveMinReachedAt = isoFromMs(tickMs);
+    }
     return Object.freeze({
       tickAt: isoFromMs(tickMs),
       realizedPnlSats,
       paybackTargetSats: targetSats,
-      progressRatio: progressRatioForTarget(targetSats, effectiveMinPaybackSats),
+      progressRatio,
     });
   });
 
@@ -152,8 +162,30 @@ export function buildStrategyBroadcastProgress({
     firstLiveBroadcastAt: isoFromMs(firstBroadcast?.tsMs),
     firstLiveBroadcastTxHash: firstBroadcast?.txHash || null,
     firstRealizedPnlSats: firstRealized?.realizedPnlSats ?? null,
+    paybackEffectiveMinReachedAt,
+    lastSignerAuditStage: lastSignerAuditStage?.stage || null,
+    lastSignerAuditStageAt: isoFromMs(lastSignerAuditStage?.tsMs),
     paybackProgressTrajectory,
   });
+}
+
+function estimateNextDeliveryCandidateEta({
+  firstBroadcast = null,
+  paybackTargetSatsSinceFirst = 0,
+  effectiveMinPaybackSats = 5_000,
+  paybackEffectiveMinReachedAt = null,
+  nowMs = Date.now(),
+} = {}) {
+  if (paybackEffectiveMinReachedAt) return paybackEffectiveMinReachedAt;
+  const minSats = finiteNumber(effectiveMinPaybackSats);
+  const targetSats = finiteNumber(paybackTargetSatsSinceFirst);
+  if (!firstBroadcast || !minSats || minSats <= 0 || targetSats === null || targetSats <= 0) return null;
+  const elapsedDays = Math.max(0, ((Number(nowMs) || Date.now()) - firstBroadcast.tsMs) / MS_PER_DAY);
+  if (!Number.isFinite(elapsedDays) || elapsedDays <= 0) return null;
+  const averageTargetSatsPerDay = targetSats / elapsedDays;
+  if (!Number.isFinite(averageTargetSatsPerDay) || averageTargetSatsPerDay <= 0) return null;
+  const remainingSats = Math.max(0, minSats - targetSats);
+  return isoFromMs((Number(nowMs) || Date.now()) + (remainingSats / averageTargetSatsPerDay) * MS_PER_DAY);
 }
 
 export function buildOverallBroadcastProgress({
@@ -171,6 +203,7 @@ export function buildOverallBroadcastProgress({
     ? normalized.filter((receipt) => receipt.tsMs >= firstBroadcast.tsMs)
     : [];
   const satsSinceFirstBroadcast = sinceFirst.reduce((sum, receipt) => sum + receipt.realizedPnlSats, 0);
+  const paybackTargetSatsSinceFirst = paybackTargetSats(satsSinceFirstBroadcast, paybackBaseRatio);
   const checkpoints = sortedTickTimes(tickTimes, normalized);
   let paybackEffectiveMinReachedAt = null;
   for (const tickMs of checkpoints) {
@@ -195,6 +228,13 @@ export function buildOverallBroadcastProgress({
       ? roundRatio(Math.max(0, ((Number(nowMs) || Date.now()) - firstBroadcast.tsMs) / MS_PER_DAY))
       : null,
     paybackEffectiveMinReachedAt,
+    nextDeliveryCandidateEta: estimateNextDeliveryCandidateEta({
+      firstBroadcast,
+      paybackTargetSatsSinceFirst,
+      effectiveMinPaybackSats,
+      paybackEffectiveMinReachedAt,
+      nowMs,
+    }),
   });
 }
 

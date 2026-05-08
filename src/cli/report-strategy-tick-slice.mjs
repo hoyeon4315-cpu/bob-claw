@@ -526,6 +526,9 @@ async function main() {
       firstLiveBroadcastAt: broadcastProgress.firstLiveBroadcastAt,
       firstLiveBroadcastTxHash: broadcastProgress.firstLiveBroadcastTxHash,
       firstRealizedPnlSats: broadcastProgress.firstRealizedPnlSats,
+      paybackEffectiveMinReachedAt: broadcastProgress.paybackEffectiveMinReachedAt,
+      lastSignerAuditStage: broadcastProgress.lastSignerAuditStage,
+      lastSignerAuditStageAt: broadcastProgress.lastSignerAuditStageAt,
       paybackProgressTrajectory: broadcastProgress.paybackProgressTrajectory,
       layerStatus,
       liveEligibility: {
