@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildRouteSnapshot,
+  diffOpenApiSnapshot,
   diffProbeHealth,
   diffSchema,
   diffSchemaShapes,
@@ -93,4 +94,21 @@ test("probe health diff detects quote probe failures separately", () => {
   assert.equal(diff.changed, true);
   assert.equal(diff.previousProbeHealthHash, "all-ok");
   assert.equal(diff.currentProbeHealthHash, "one-failed");
+});
+
+test("OpenAPI body diff detects initial and changed specification snapshots", () => {
+  const initial = diffOpenApiSnapshot(null, { sha256: "abc123" });
+  assert.equal(initial.changed, true);
+  assert.equal(initial.reason, "initial_openapi_snapshot");
+  assert.equal(initial.previousSha256, null);
+  assert.equal(initial.currentSha256, "abc123");
+
+  const changed = diffOpenApiSnapshot({ sha256: "abc123" }, { sha256: "def456" });
+  assert.equal(changed.changed, true);
+  assert.equal(changed.reason, "comparison");
+  assert.equal(changed.previousSha256, "abc123");
+  assert.equal(changed.currentSha256, "def456");
+
+  const same = diffOpenApiSnapshot({ sha256: "def456" }, { sha256: "def456" });
+  assert.equal(same.changed, false);
 });

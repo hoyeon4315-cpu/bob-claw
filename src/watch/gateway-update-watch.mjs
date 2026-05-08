@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { isEthFamilyRoute } from "../assets/tokens.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
 
 const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
 const DEFAULT_BTC_TOKEN = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+export const DEFAULT_GATEWAY_OPENAPI_URL = "https://docs.gobob.xyz/api-reference/openapi.json";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -56,21 +58,13 @@ function quoteShape(body) {
 }
 
 function quoteParamsFor(route, amount, evmRecipient, btcRecipient) {
-  const params = {
-    srcChain: route.srcChain,
-    dstChain: route.dstChain,
-    srcToken: route.srcToken,
-    dstToken: route.dstToken,
+  return buildGatewayQuoteParams({
+    route,
     amount,
+    sender: evmRecipient,
     recipient: route.dstChain === "bitcoin" ? btcRecipient : evmRecipient,
     slippage: "50",
-  };
-
-  if (route.srcChain !== "bitcoin") {
-    params.sender = evmRecipient;
-  }
-
-  return params;
+  });
 }
 
 export function buildRouteSnapshot(routes) {
@@ -209,6 +203,67 @@ export function diffProbeHealth(previousProbeHealthHash, currentProbeHealthHash)
   };
 }
 
+export function diffOpenApiSnapshot(previousOpenApiSnapshot, currentOpenApiSnapshot) {
+  if (!currentOpenApiSnapshot?.sha256) {
+    return {
+      changed: false,
+      reason: "openapi_unavailable",
+      previousSha256: previousOpenApiSnapshot?.sha256 || null,
+      currentSha256: null,
+    };
+  }
+  if (!previousOpenApiSnapshot?.sha256) {
+    return {
+      changed: true,
+      reason: "initial_openapi_snapshot",
+      previousSha256: null,
+      currentSha256: currentOpenApiSnapshot.sha256,
+    };
+  }
+  return {
+    changed: previousOpenApiSnapshot.sha256 !== currentOpenApiSnapshot.sha256,
+    reason: "comparison",
+    previousSha256: previousOpenApiSnapshot.sha256,
+    currentSha256: currentOpenApiSnapshot.sha256,
+  };
+}
+
+export async function fetchOpenApiSnapshot({
+  openApiUrl = DEFAULT_GATEWAY_OPENAPI_URL,
+  fetchImpl = fetch,
+} = {}) {
+  try {
+    const response = await fetchImpl(openApiUrl, {
+      headers: { accept: "application/json,text/plain,*/*" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    const bodyText = await response.text();
+    return {
+      url: openApiUrl,
+      fetchedAt: new Date().toISOString(),
+      status: response.status,
+      ok: response.ok,
+      sha256: response.ok ? sha256(bodyText) : null,
+      bytes: bodyText.length,
+      contentType: response.headers.get("content-type"),
+    };
+  } catch (error) {
+    return {
+      url: openApiUrl,
+      fetchedAt: new Date().toISOString(),
+      status: null,
+      ok: false,
+      sha256: null,
+      bytes: null,
+      contentType: null,
+      error: {
+        name: error.name,
+        message: error.message,
+      },
+    };
+  }
+}
+
 export function selectProbeRoutes(routes) {
   const desired = [
     { srcChain: "bitcoin", dstChain: "bob", srcToken: ZERO_TOKEN, dstToken: DEFAULT_BTC_TOKEN },
@@ -236,6 +291,9 @@ export async function runGatewayUpdateWatch({
   previousSchemaHash,
   previousSchemaShapes,
   previousProbeHealthHash,
+  previousOpenApiSnapshot,
+  openApiUrl = DEFAULT_GATEWAY_OPENAPI_URL,
+  fetchImpl = fetch,
   evmRecipient,
   btcRecipient,
   amount = "10000",
@@ -308,12 +366,15 @@ export async function runGatewayUpdateWatch({
   );
   const schemaDiff = diffSchemaShapes(previousSchemaShapes, schemaShapes, previousSchemaHash, schemaHash);
   const probeHealthDiff = diffProbeHealth(previousProbeHealthHash, probeHealthHash);
+  const openApiSnapshot = await fetchOpenApiSnapshot({ openApiUrl, fetchImpl });
+  const openApiDiff = diffOpenApiSnapshot(previousOpenApiSnapshot, openApiSnapshot);
   const ethFamilySurfaceChanged = diff.addedEthFamilyRoutes.length > 0 || diff.removedEthFamilyRoutes.length > 0;
   const changeReasons = [
     diff.changed ? "route_inventory" : null,
     ethFamilySurfaceChanged ? "eth_family_surface" : null,
     schemaDiff.changed ? "quote_schema" : null,
     probeHealthDiff.changed ? "probe_health" : null,
+    openApiDiff.changed ? "gateway_openapi_changed" : null,
   ].filter(Boolean);
 
   return {
@@ -322,6 +383,8 @@ export async function runGatewayUpdateWatch({
     diff,
     schemaDiff,
     probeHealthDiff,
+    openApiDiff,
+    openApiSnapshot,
     changeReasons,
     probes,
     schemaShapes,
