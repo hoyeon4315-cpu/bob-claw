@@ -9,6 +9,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
+import { buildSliceDryRunSummary } from "../strategy/slice-dryrun-summary-builder.mjs";
 
 const IS_MAIN = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
 
@@ -48,6 +49,17 @@ export async function loadStrategyExecutionSurfaceInputs({
     readJsonIfExists(join(dataDir, "autonomous-discovery-board.json")),
   ]);
 
+  const hydratedWrappedBtcLendingLoopSlice = wrappedBtcLendingLoopSlice?.strategy?.id
+    ? {
+        ...wrappedBtcLendingLoopSlice,
+        dryRunSummary: buildSliceDryRunSummary({
+          strategyId: wrappedBtcLendingLoopSlice.strategy.id,
+          signerAuditRecords,
+          existingSummary: wrappedBtcLendingLoopSlice.dryRunSummary || {},
+        }),
+      }
+    : wrappedBtcLendingLoopSlice;
+
   return {
     dashboardStatus,
     state: {
@@ -56,7 +68,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     triangleArtifacts,
     artifacts: {
       phase3StrategyValidation,
-      wrappedBtcLendingLoopSlice,
+      wrappedBtcLendingLoopSlice: hydratedWrappedBtcLendingLoopSlice,
       treasuryInventoryRecords: latestTreasuryInventory ? [latestTreasuryInventory] : [],
       wrappedBtcLoopLiveProof,
       signerAuditRecords,

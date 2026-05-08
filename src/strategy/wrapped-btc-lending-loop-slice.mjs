@@ -9,6 +9,7 @@ import { buildEmergencyUnwindExecutionPlan, evaluateLeverageWatcher } from "../d
 import { buildOracleSanitySnapshot } from "../market/oracle-sanity.mjs";
 import { summarizeWrappedBtcLendingLoopDryRunRuns } from "./wrapped-btc-lending-loop-dry-run.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "./wrapped-btc-loop-bindings.mjs";
+import { buildSliceDryRunSummary } from "./slice-dryrun-summary-builder.mjs";
 
 const DEFAULT_STRATEGY_CONFIG = Object.freeze({
   id: "wrapped-btc-loop-base-moonwell",
@@ -235,6 +236,7 @@ export function buildWrappedBtcLendingLoopScaffold({
   strategyConfig = buildDefaultWrappedBtcLendingLoopConfig(),
   marketAssumptions = DEFAULT_MARKET_ASSUMPTIONS,
   dryRunReceipts = [],
+  signerAuditRecords = [],
   oracleInputs = null,
   now = null,
 } = {}) {
@@ -260,7 +262,12 @@ export function buildWrappedBtcLendingLoopScaffold({
     strategyId: config.id,
     strategyConfig: config,
   });
-  const dryRunSummary = summarizeWrappedBtcLendingLoopDryRunRuns(dryRunReceipts);
+  const dryRunSummary = buildSliceDryRunSummary({
+    strategyId: config.id,
+    signerAuditRecords,
+    dryRunReceipts,
+    existingSummary: summarizeWrappedBtcLendingLoopDryRunRuns(dryRunReceipts),
+  });
   const economics = buildEconomics(loop, market, config.perTradeCapUsd, dryRunReceipts);
   const watcherPlan = buildWatcherPlan(config, market, loop);
   const watcherRuntime = evaluateLeverageWatcher({

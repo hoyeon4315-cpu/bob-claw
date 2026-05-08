@@ -2,6 +2,7 @@
 
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import {
@@ -39,8 +40,9 @@ async function main() {
   if (args.protocol) strategyConfig.protocol = args.protocol;
   if (args.chain) strategyConfig.chain = args.chain;
   const dryRunReceipts = await readJsonl(config.dataDir, "wrapped-btc-loop-dry-runs");
+  const signerAuditRecords = await readSignerAuditLog();
 
-  const report = buildWrappedBtcLendingLoopScaffold({ strategyConfig, dryRunReceipts });
+  const report = buildWrappedBtcLendingLoopScaffold({ strategyConfig, dryRunReceipts, signerAuditRecords });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "wrapped-btc-lending-loop-slice.json");

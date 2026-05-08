@@ -15,6 +15,7 @@ import { buildEmergencyUnwindExecutionPlan, evaluateLeverageWatcher } from "../d
 import { buildOracleSanitySnapshot } from "../market/oracle-sanity.mjs";
 import { summarizeRecursiveLendingLoopDryRunRuns } from "./recursive-lending-loop-dry-run.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "./wrapped-btc-loop-bindings.mjs";
+import { buildSliceDryRunSummary } from "./slice-dryrun-summary-builder.mjs";
 
 const DEFAULT_CONFIGS = Object.freeze({
   recursive_wrapped_btc_lending_loop: Object.freeze({
@@ -380,6 +381,7 @@ export function buildRecursiveLendingLoopScaffold({
   strategyConfig = null,
   marketAssumptions = null,
   dryRunReceipts = [],
+  signerAuditRecords = [],
   oracleInputs = null,
   now = null,
 } = {}) {
@@ -409,7 +411,12 @@ export function buildRecursiveLendingLoopScaffold({
     loop,
     strategyConfig: config,
   });
-  const dryRunSummary = summarizeRecursiveLendingLoopDryRunRuns(dryRunReceipts);
+  const dryRunSummary = buildSliceDryRunSummary({
+    strategyId: config.id,
+    signerAuditRecords,
+    dryRunReceipts,
+    existingSummary: summarizeRecursiveLendingLoopDryRunRuns(dryRunReceipts),
+  });
   const economics = buildEconomics(loop, market, config.perTradeCapUsd, dryRunReceipts);
   const watcherPlan = buildWatcherPlan(config, market, loop);
   const watcherRuntime = evaluateLeverageWatcher({

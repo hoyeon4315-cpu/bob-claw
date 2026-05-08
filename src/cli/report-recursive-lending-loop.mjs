@@ -2,6 +2,7 @@
 
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { filterRecursiveLendingLoopDryRunRecords, recursiveLendingLoopDryRunSessionName } from "../strategy/recursive-lending-loop-dry-run.mjs";
@@ -50,10 +51,12 @@ async function main() {
     await readJsonl(config.dataDir, recursiveLendingLoopDryRunSessionName(strategyConfig.id)),
     strategyConfig.id,
   );
+  const signerAuditRecords = await readSignerAuditLog();
   const report = buildRecursiveLendingLoopScaffold({
     strategyId: strategyConfig.id,
     strategyConfig,
     dryRunReceipts,
+    signerAuditRecords,
   });
 
   if (args.write) {
