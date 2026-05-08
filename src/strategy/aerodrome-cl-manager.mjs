@@ -49,6 +49,8 @@ export function calculateCLPositionStatus({
   capitalUsd,
   accumulatedFeesUsd = 0,
   daysHeld = 0,
+  timeInRangePct24h = null,
+  ilExceedsFeesHours = null,
 }) {
   const priceChangePct = ((currentEthBtcRatio - entryEthBtcRatio) / entryEthBtcRatio) * 100;
   const rangeBoundary = rangeWidthPct * 100;
@@ -63,6 +65,8 @@ export function calculateCLPositionStatus({
   // Current value
   const ilUsd = capitalUsd * (il / 100);
   const currentValue = capitalUsd + ilUsd + accumulatedFeesUsd;
+  const absIlUsd = Math.abs(ilUsd);
+  const feesVsIlRatio = absIlUsd > 0 ? accumulatedFeesUsd / absIlUsd : null;
   
   // Status
   const inRange = distanceFromCenter < rangeBoundary;
@@ -84,10 +88,58 @@ export function calculateCLPositionStatus({
     ilPct: il,
     ilUsd,
     accumulatedFeesUsd,
+    feesVsIlRatio,
+    ilExceedsFees: absIlUsd > accumulatedFeesUsd,
+    ilExceedsFeesHours: Number.isFinite(Number(ilExceedsFeesHours)) ? Number(ilExceedsFeesHours) : null,
+    timeInRangePct24h: Number.isFinite(Number(timeInRangePct24h))
+      ? Number(timeInRangePct24h)
+      : (inRange ? 1 : 0),
     currentValue,
     netReturn,
     netApy,
     daysHeld,
+  };
+}
+
+export function buildClDashboardHealthSlice(status = {}, {
+  observedAt = new Date().toISOString(),
+  strategyId = "aerodrome-cl-base",
+} = {}) {
+  const timeInRangePct24h = Number.isFinite(Number(status.timeInRangePct24h))
+    ? Number(status.timeInRangePct24h)
+    : null;
+  const feesVsIlRatio = Number.isFinite(Number(status.feesVsIlRatio))
+    ? Number(status.feesVsIlRatio)
+    : null;
+  const ilExceedsFeesHours = Number.isFinite(Number(status.ilExceedsFeesHours))
+    ? Number(status.ilExceedsFeesHours)
+    : null;
+  const healthStatus =
+    status.emergencyExit === true ||
+    (Number.isFinite(timeInRangePct24h) && timeInRangePct24h < 0.60) ||
+    (Number.isFinite(ilExceedsFeesHours) && ilExceedsFeesHours >= 6)
+      ? "review"
+      : status.rebalanceNeeded === true
+        ? "watch"
+        : "ok";
+  return {
+    schemaVersion: 1,
+    observedAt,
+    strategyId,
+    protocol: "aerodrome-slipstream",
+    chain: AERODROME_CONFIG.chain,
+    pool: AERODROME_CONFIG.poolWethCbbtc,
+    inRangeCurrent: status.inRange === true,
+    timeInRangePct24h,
+    impermanentLossPct: Number.isFinite(Number(status.ilPct)) ? Number(status.ilPct) : null,
+    impermanentLossUsd: Number.isFinite(Number(status.ilUsd)) ? Number(status.ilUsd) : null,
+    accumulatedFeesUsd: Number.isFinite(Number(status.accumulatedFeesUsd)) ? Number(status.accumulatedFeesUsd) : null,
+    feesVsIlRatio,
+    ilExceedsFees: status.ilExceedsFees === true,
+    ilExceedsFeesHours,
+    rebalanceNeeded: status.rebalanceNeeded === true,
+    emergencyExit: status.emergencyExit === true,
+    healthStatus,
   };
 }
 
@@ -130,6 +182,12 @@ export async function runAerodromeManagerTick({
     capitalUsd: position.capitalUsd,
     accumulatedFeesUsd: position.accumulatedFeesUsd || 0,
     daysHeld: position.daysHeld || 0,
+    timeInRangePct24h: position.timeInRangePct24h ?? position.timeInRangePct,
+    ilExceedsFeesHours: position.ilExceedsFeesHours,
+  });
+  const clDashboardHealth = buildClDashboardHealthSlice(status, {
+    observedAt: prices.timestamp,
+    strategyId: "aerodrome-cl-base",
   });
   
   // Decision logic
@@ -165,6 +223,7 @@ export async function runAerodromeManagerTick({
     status: action ? action.type : "hold",
     currentPrices: prices,
     positionStatus: status,
+    clDashboardHealth,
     action,
   };
 }

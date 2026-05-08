@@ -1,5 +1,5 @@
 // NFT position indexer — Aerodrome CL + Uniswap v3 NonfungiblePositionManager.
-// Output: data/treasury/nft-positions.json (24h cache). Pure-data; no signing.
+// Output: data/treasury/nft-positions.json (30m cache). Pure-data; no signing.
 //
 // Reads: signerAddress + chain configs (PositionManager addresses).
 // Returns: { generatedAt, perWallet: { addr: { chain: { positions: [...] } } } }
@@ -8,7 +8,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 const DEFAULT_CACHE_PATH = "data/treasury/nft-positions.json";
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const NFT_POSITION_CACHE_TTL_MS = 30 * 60 * 1000;
+const ETH_BTC_INVALIDATE_MOVE_PCT = 0.03;
 
 export const POSITION_MANAGER_REGISTRY = Object.freeze({
   ethereum: Object.freeze({ uniswapV3: "0xC36442b4a4522E871399CD717aBDD847Ab11FE88" }),
@@ -21,9 +22,70 @@ export const POSITION_MANAGER_REGISTRY = Object.freeze({
   avalanche: Object.freeze({ uniswapV3: "0x655C406EBFa14EE2006250925e54ec43AD184f8B" }),
 });
 
+function timeMs(value) {
+  const ms = new Date(value || 0).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function cacheStale(cache, now) {
   if (!cache || !cache.generatedAt) return true;
-  return new Date(now).getTime() - new Date(cache.generatedAt).getTime() > CACHE_TTL_MS;
+  return new Date(now).getTime() - new Date(cache.generatedAt).getTime() > NFT_POSITION_CACHE_TTL_MS;
+}
+
+function finitePositive(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function rebalanceEventId(event) {
+  if (!event) return null;
+  if (typeof event === "string") return event;
+  return event.id || event.eventId || event.txHash || event.observedAt || null;
+}
+
+function cacheInvalidationReasons(wallet, {
+  now,
+  currentEthBtcRatio = null,
+  ethBtcMovePct = null,
+  rebalanceEvent = null,
+  killSwitchToggledAt = null,
+} = {}) {
+  const reasons = [];
+  if (cacheStale({ generatedAt: wallet?.generatedAt }, now)) {
+    reasons.push("cache_ttl_expired");
+  }
+
+  const cachedRatio = finitePositive(wallet?.cacheMetadata?.ethBtcRatio);
+  const currentRatio = finitePositive(currentEthBtcRatio);
+  const explicitMove = ethBtcMovePct === null || ethBtcMovePct === undefined || ethBtcMovePct === ""
+    ? null
+    : Number(ethBtcMovePct);
+  const movePct = Number.isFinite(explicitMove)
+    ? Math.abs(explicitMove)
+    : cachedRatio && currentRatio
+      ? Math.abs((currentRatio - cachedRatio) / cachedRatio)
+      : null;
+  if (Number.isFinite(movePct) && movePct >= ETH_BTC_INVALIDATE_MOVE_PCT) {
+    reasons.push("eth_btc_price_move");
+  }
+
+  const eventId = rebalanceEventId(rebalanceEvent);
+  const lastEventId = wallet?.cacheMetadata?.lastRebalanceEventId || null;
+  if (eventId && eventId !== lastEventId) {
+    const eventMs = timeMs(rebalanceEvent?.observedAt || rebalanceEvent?.timestamp || rebalanceEvent);
+    const generatedMs = timeMs(wallet?.generatedAt);
+    if (eventMs === null || generatedMs === null || eventMs >= generatedMs) {
+      reasons.push("explicit_rebalance_event");
+    }
+  }
+
+  const killMs = timeMs(killSwitchToggledAt);
+  const generatedMs = timeMs(wallet?.generatedAt);
+  if (killMs !== null && (generatedMs === null || killMs >= generatedMs)) {
+    reasons.push("kill_switch_toggled");
+  }
+
+  return [...new Set(reasons)];
 }
 
 function readCache(path) {
@@ -62,13 +124,26 @@ export async function indexNftPositions({
   cachePath = DEFAULT_CACHE_PATH,
   now = new Date(),
   forceRefresh = false,
+  currentEthBtcRatio = null,
+  ethBtcMovePct = null,
+  rebalanceEvent = null,
+  killSwitchToggledAt = null,
   indexerFn = defaultIndexer,
   _providerFactory,
 } = {}) {
   if (!walletAddress) throw new TypeError("walletAddress required");
   const cache = readCache(cachePath) || { generatedAt: null, perWallet: {} };
   const wallet = (cache.perWallet || {})[walletAddress];
-  if (!forceRefresh && wallet && !cacheStale({ generatedAt: wallet.generatedAt }, now)) {
+  const invalidationReasons = wallet
+    ? cacheInvalidationReasons(wallet, {
+        now,
+        currentEthBtcRatio,
+        ethBtcMovePct,
+        rebalanceEvent,
+        killSwitchToggledAt,
+      })
+    : ["cache_missing"];
+  if (!forceRefresh && wallet && invalidationReasons.length === 0) {
     return { ...wallet, fromCache: true };
   }
   const perChain = {};
@@ -89,7 +164,16 @@ export async function indexNftPositions({
     }
     perChain[chain] = { positions, errors };
   }
-  const result = { generatedAt: new Date(now).toISOString(), positions: perChain };
+  const result = {
+    generatedAt: new Date(now).toISOString(),
+    positions: perChain,
+    cacheMetadata: {
+      ethBtcRatio: finitePositive(currentEthBtcRatio),
+      lastRebalanceEventId: rebalanceEventId(rebalanceEvent),
+      lastKillSwitchToggledAt: killSwitchToggledAt || wallet?.cacheMetadata?.lastKillSwitchToggledAt || null,
+    },
+    cacheInvalidationReasons: forceRefresh ? ["force_refresh"] : invalidationReasons,
+  };
   cache.perWallet = { ...(cache.perWallet || {}), [walletAddress]: result };
   cache.generatedAt = result.generatedAt;
   writeCache(cachePath, cache);

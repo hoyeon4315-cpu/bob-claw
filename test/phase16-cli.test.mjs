@@ -38,14 +38,26 @@ test("indexNftPositions writes cache and aggregates per-chain", async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("indexNftPositions hits cache within 24h", async () => {
+test("indexNftPositions hits cache within 30 minutes", async () => {
   const dir = tmp();
   try {
     const cachePath = join(dir, "nft.json");
     let calls = 0;
     const indexerFn = async () => { calls++; return []; };
-    await indexNftPositions({ walletAddress: "0xW", registry: { base: { uniswapV3: "0x" } }, cachePath, indexerFn });
-    const second = await indexNftPositions({ walletAddress: "0xW", registry: { base: { uniswapV3: "0x" } }, cachePath, indexerFn });
+    await indexNftPositions({
+      walletAddress: "0xW",
+      registry: { base: { uniswapV3: "0x" } },
+      cachePath,
+      now: new Date("2026-05-08T00:00:00.000Z"),
+      indexerFn,
+    });
+    const second = await indexNftPositions({
+      walletAddress: "0xW",
+      registry: { base: { uniswapV3: "0x" } },
+      cachePath,
+      now: new Date("2026-05-08T00:29:00.000Z"),
+      indexerFn,
+    });
     assert.equal(second.fromCache, true);
     assert.equal(calls, 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
