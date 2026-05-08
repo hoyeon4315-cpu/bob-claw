@@ -325,6 +325,7 @@ test("ERC4626 portfolio exit stamps expected target for signer semantic validati
 
   assert.equal(result.settlementStatus, "position_closed");
   assert.equal(capturedIntent.intentType, "erc4626_redeem");
+  assert.equal(capturedIntent.executionReason, "risk_unwind");
   assert.equal(capturedIntent.tx.to, vaultAddress);
   assert.equal(capturedIntent.metadata.expectedTxTo, vaultAddress);
   assert.equal(validateEvmTransactionSemantics(capturedIntent), true);
@@ -380,6 +381,7 @@ test("Aave portfolio exit withdraws through the pool and verifies asset delta", 
 
   assert.equal(result.settlementStatus, "position_closed");
   assert.equal(capturedIntent.intentType, "aave_withdraw");
+  assert.equal(capturedIntent.executionReason, "risk_unwind");
   assert.equal(capturedIntent.tx.to, poolAddress);
   assert.equal(capturedIntent.metadata.expectedTxTo, poolAddress);
   assert.equal(validateEvmTransactionSemantics(capturedIntent), true);

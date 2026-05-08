@@ -55,7 +55,7 @@ function buildExitIntent({ position, senderAddress, shareAmount, now }) {
     amountUsd: 0,
     mode: "live",
     observedAt: now,
-    executionReason: "strategy_execution",
+    executionReason: "risk_unwind",
     tx: {
       to: vaultAddress,
       data: ERC4626_INTERFACE.encodeFunctionData("redeem", [shareAmount, senderAddress, senderAddress]),
@@ -90,7 +90,7 @@ function buildAaveWithdrawIntent({ position, senderAddress, poolAddress, withdra
     amountUsd: 0,
     mode: "live",
     observedAt: now,
-    executionReason: "strategy_execution",
+    executionReason: "risk_unwind",
     tx: {
       to: poolAddress,
       data: AAVE_POOL_INTERFACE.encodeFunctionData("withdraw", [position.assetAddress, withdrawAmount, senderAddress]),
