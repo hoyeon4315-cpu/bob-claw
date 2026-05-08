@@ -302,7 +302,8 @@
     "audit:gas-budget": "node src/cli/audit-gas-budget.mjs",
     "audit:concentration": "node src/cli/audit-concentration.mjs",
     "dashboard:stage-explain": "node src/cli/dashboard-stage-explain.mjs",
-    "audit:payback-readiness": "node src/cli/audit-payback-readiness.mjs --json"
+    "audit:payback-readiness": "node src/cli/audit-payback-readiness.mjs --json",
+    "audit:trailing-30d": "node src/cli/audit-trailing-30d.mjs --json"
   },
   "engines": {
     "node": ">=20"
