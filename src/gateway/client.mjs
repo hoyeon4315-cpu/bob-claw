@@ -27,6 +27,10 @@ export class GatewayClient {
     return this.#requestJson(`/v1/get-order/${encodeURIComponent(id)}`);
   }
 
+  async getOrders(userAddress) {
+    return this.#requestJson(`/v1/get-orders/${encodeURIComponent(userAddress)}`);
+  }
+
   async registerTx(payload) {
     return this.#requestJson("/v1/register-tx", {
       method: "PATCH",
@@ -165,4 +169,51 @@ export function normalizeGatewayRoutesBody(body) {
   if (Array.isArray(body?.routes)) return body.routes;
   if (Array.isArray(body?.data?.routes)) return body.data.routes;
   return [];
+}
+
+function normalizeActionTx(tx) {
+  if (!tx || typeof tx !== "object") return null;
+  return {
+    to: tx.to || null,
+    data: tx.data || null,
+    value: tx.value != null ? String(tx.value) : null,
+    chain: tx.chain || null,
+    txid: tx.txid || tx.txId || tx.tx_id || null,
+    feeRate: tx.feeRate || tx.fee_rate || null,
+  };
+}
+
+export function parseGatewayOrder(body = {}) {
+  const rawStatus = body?.status;
+  if (typeof rawStatus === "string") {
+    return {
+      status: normalizeGatewayCode(rawStatus),
+      bumpFeeTx: null,
+      refundTx: null,
+    };
+  }
+
+  const inProgress = rawStatus?.inProgress || rawStatus?.in_progress || null;
+  if (inProgress) {
+    return {
+      status: "in_progress",
+      bumpFeeTx: normalizeActionTx(inProgress.bumpFeeTx || inProgress.bump_fee_tx),
+      refundTx: normalizeActionTx(inProgress.refundTx || inProgress.refund_tx),
+    };
+  }
+
+  const failed = rawStatus?.failed || null;
+  if (failed) {
+    return {
+      status: "failed",
+      bumpFeeTx: null,
+      refundTx: normalizeActionTx(failed.refundTx || failed.refund_tx),
+    };
+  }
+
+  return {
+    status: "unknown",
+    bumpFeeTx: null,
+    refundTx: null,
+  };
 }
