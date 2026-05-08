@@ -34,8 +34,9 @@ The duplicated USD constants now live in
 `src/config/small-capital-campaign-mode.mjs`:
 
 - `SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE`
-- `SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE`
 - `SMALL_CAPITAL_RADAR_CAPS_BASELINE`
+- `SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE`, which now records the p90-cost
+  EV policy metadata rather than a scaled static dollar floor.
 
 `src/config/sleeve-profile.mjs` imports these constants so the sleeve profile and
 small-capital mode cannot drift silently.
@@ -44,9 +45,11 @@ small-capital mode cannot drift silently.
 
 At the currently measured operating capital near `$358`, the `tiny` band applies:
 
-- `minNetProfitUsd`: `$10` baseline -> `$6` effective.
 - `opportunisticMaxUsd`: `$125` baseline -> `$75` effective.
 - `radar perCanaryUsd`: `$30` baseline -> `$18` effective.
+- non-primary entry: no `$10 -> $6` static floor remains. Entry uses the
+  receipt/ledger p90 EV formula documented in
+  `docs/research/non-primary-entry-ev.md`.
 
 The dashboard should expose nominal and effective budgets together so operators
 do not mistake a scaled report value for an unbounded live cap.

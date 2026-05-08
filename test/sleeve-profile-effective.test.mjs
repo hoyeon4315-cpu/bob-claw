@@ -31,8 +31,9 @@ test("effective small-capital budgets scale down for current tiny capital", () =
   assert.equal(resolved.capitalScaleMultiplier, 0.6);
   assert.equal(resolved.nominalBudgets.defaultBudgetsUsd.opportunisticMaxUsd, 125);
   assert.equal(resolved.effectiveBudgets.defaultBudgetsUsd.opportunisticMaxUsd, 75);
-  assert.equal(resolved.nominalBudgets.nonPrimaryEntry.minNetProfitUsd, 10);
-  assert.equal(resolved.effectiveBudgets.nonPrimaryEntry.minNetProfitUsd, 6);
+  assert.equal(resolved.nominalBudgets.nonPrimaryEntry.mode, "p90_cost_plus_sample_uncertainty_v1");
+  assert.equal(resolved.effectiveBudgets.nonPrimaryEntry.minEdgeFloorUsd, 0.5);
+  assert.equal(resolved.effectiveBudgets.nonPrimaryEntry.minEdgePctOfNotional, 0.005);
   assert.equal(resolved.nominalBudgets.radarCaps.perCanaryUsd, 30);
   assert.equal(resolved.effectiveBudgets.radarCaps.perCanaryUsd, 18);
 });

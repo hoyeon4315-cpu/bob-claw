@@ -76,9 +76,15 @@ describe("small-capital-campaign-mode config", () => {
     assert.deepStrictEqual(evidencePrimaryChainShareOverrides(policy), { optimism: 0.70 });
   });
 
-  it("non-primary entry thresholds are positive", () => {
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.minNetProfitUsd, 10);
-    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.minNetProfitPctOfPosition, 0.05);
+  it("non-primary entry uses p90 cost plus sample uncertainty instead of static profit floors", () => {
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.mode, "p90_cost_plus_sample_uncertainty_v1");
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.minEdgeFloorUsd, 0.5);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.minEdgePctOfNotional, 0.005);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.sampleUncertainty.sparseP90Multiplier, 0.5);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.sampleUncertainty.mediumP90Multiplier, 0.25);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.sampleUncertainty.establishedP90Multiplier, 0.10);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.reEvaluateEveryDays, 14);
+    assert.strictEqual(SMALL_CAPITAL_CAMPAIGN_MODE.nonPrimaryEntry.expiresAt, "2026-05-22T00:00:00.000Z");
   });
 
   it("reward haircuts are within [0,1]", () => {

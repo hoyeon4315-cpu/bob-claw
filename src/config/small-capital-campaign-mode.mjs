@@ -3,6 +3,7 @@
 // Commit-only changes. Runtime overrides are forbidden by AGENTS.md.
 
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "./gateway-destinations.mjs";
+import { NON_PRIMARY_ENTRY_EV_POLICY } from "./sizing.mjs";
 import {
   effectiveBudgetMapUsd,
   effectiveBudgetUsd,
@@ -21,8 +22,12 @@ export const SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE = Object.freeze({
 });
 
 export const SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE = Object.freeze({
-  minNetProfitUsd: 10,
-  minNetProfitPctOfPosition: 0.05,
+  mode: NON_PRIMARY_ENTRY_EV_POLICY.mode,
+  minEdgeFloorUsd: NON_PRIMARY_ENTRY_EV_POLICY.minEdgeFloorUsd,
+  minEdgePctOfNotional: NON_PRIMARY_ENTRY_EV_POLICY.minEdgePctOfNotional,
+  sampleUncertainty: NON_PRIMARY_ENTRY_EV_POLICY.sampleUncertainty,
+  reEvaluateEveryDays: NON_PRIMARY_ENTRY_EV_POLICY.reEvaluateEveryDays,
+  expiresAt: NON_PRIMARY_ENTRY_EV_POLICY.expiresAt,
 });
 
 export const SMALL_CAPITAL_RADAR_CAPS_BASELINE = Object.freeze({
@@ -42,8 +47,12 @@ export const AGGRESSIVE_DEFAULT_BUDGETS_USD_BASELINE = Object.freeze({
 });
 
 export const AGGRESSIVE_NON_PRIMARY_ENTRY_BASELINE = Object.freeze({
-  minNetProfitUsd: 6,
-  minNetProfitPctOfPosition: 0.04,
+  mode: NON_PRIMARY_ENTRY_EV_POLICY.mode,
+  minEdgeFloorUsd: NON_PRIMARY_ENTRY_EV_POLICY.minEdgeFloorUsd,
+  minEdgePctOfNotional: NON_PRIMARY_ENTRY_EV_POLICY.minEdgePctOfNotional,
+  sampleUncertainty: NON_PRIMARY_ENTRY_EV_POLICY.sampleUncertainty,
+  reEvaluateEveryDays: NON_PRIMARY_ENTRY_EV_POLICY.reEvaluateEveryDays,
+  expiresAt: NON_PRIMARY_ENTRY_EV_POLICY.expiresAt,
 });
 
 function freezeChainProfile(profile) {
@@ -98,6 +107,7 @@ export const SMALL_CAPITAL_CAMPAIGN_MODE = Object.freeze({
   }),
   nonPrimaryEntry: SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
   nonPrimaryEntryBaseline: SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
+  nonPrimaryEntryEvPolicy: NON_PRIMARY_ENTRY_EV_POLICY,
   rewardHaircuts: Object.freeze({
     stable: 0.0,
     liquidBluechip: 0.25,
@@ -170,10 +180,8 @@ export function effectiveNonPrimaryEntry({
   policy = SMALL_CAPITAL_CAMPAIGN_MODE,
 } = {}) {
   const baseline = policy.nonPrimaryEntryBaseline || policy.nonPrimaryEntry || {};
-  return Object.freeze({
-    ...baseline,
-    minNetProfitUsd: effectiveBudgetUsd(baseline.minNetProfitUsd, operatingCapitalUsd),
-  });
+  void operatingCapitalUsd;
+  return Object.freeze({ ...baseline });
 }
 
 export function effectiveRadarCaps({

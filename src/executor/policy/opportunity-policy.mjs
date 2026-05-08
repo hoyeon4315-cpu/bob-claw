@@ -21,6 +21,8 @@ import {
   isEvidencePrimaryChain,
 } from "../../config/small-capital-campaign-mode.mjs";
 import { getProtocolTier } from "../../config/protocol-trust-tiers.mjs";
+import { evaluateNonPrimaryEntryPolicy } from "../../strategy/non-primary-entry-policy.mjs";
+import { buildRadarCostLedger } from "../../strategy/radar/cost-ledger.mjs";
 
 function isCapitalMovementIntent(intent = {}) {
   const movementTypes = new Set([
@@ -160,14 +162,31 @@ export async function evaluateOpportunityPolicy({
       blockers.push("negative_expected_realized_net");
     }
     // Non-primary chain entry gate. Primary status is committed evidence, not
-    // a hard-coded chain name.
+    // a hard-coded chain name; the gate is EV-over-p90-cost, not a fixed
+    // notional floor.
     if (!isMovement && intent.chain && !isEvidencePrimaryChain(intent.chain, smallCapitalPolicy)) {
-      const nonPrimary = smallCapitalPolicy.nonPrimaryEntry;
-      const meetsMinUsd = netResult.netUsd >= nonPrimary.minNetProfitUsd;
-      const meetsMinPct = netResult.netUsd >= positionUsd * nonPrimary.minNetProfitPctOfPosition;
-      if (!meetsMinUsd && !meetsMinPct) {
-        blockers.push("non_primary_entry_insufficient_expected_net");
-      }
+      const costLedger = intent.costLedger || buildRadarCostLedger({ auditRecords });
+      const entryGate = evaluateNonPrimaryEntryPolicy({
+        candidate: {
+          chain: intent.chain,
+          notionalUsd: positionUsd,
+          expectedNetEvUsd: netResult.netUsd,
+          observedSampleCount: intent.observedSampleCount,
+          rung: isCommittedTinyCanaryIntent(intent)
+            ? "tiny_canary"
+            : intent.metadata?.rung || intent.executionRung || intent.intentType || "campaign",
+          p90RoundTripCostUsd: intent.p90RoundTripCostUsd,
+          estimatedGasCostUsd: intent.estimatedGasCostUsd,
+          rewardToken: intent.rewardToken || null,
+          rewardTokenAddress: intent.rewardTokenAddress || null,
+          rewardAsset: intent.rewardAsset || null,
+          rewardExitCostUsd: intent.rewardExitCostUsd,
+          claimSwapCostUsd: intent.claimSwapCostUsd,
+        },
+        policy: smallCapitalPolicy.nonPrimaryEntryEvPolicy,
+        costLedger,
+      });
+      blockers.push(...entryGate.blockers.filter((blocker) => blocker !== "candidate_amount_missing"));
     }
   }
 

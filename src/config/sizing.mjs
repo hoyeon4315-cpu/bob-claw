@@ -49,6 +49,21 @@ export const EXECUTION_EV_COST_POLICY = Object.freeze({
   }),
 });
 
+export const NON_PRIMARY_ENTRY_EV_POLICY = Object.freeze({
+  mode: "p90_cost_plus_sample_uncertainty_v1",
+  minEdgeFloorUsd: 0.5,
+  minEdgePctOfNotional: 0.005,
+  sampleUncertainty: Object.freeze({
+    sparseSampleMaxExclusive: 10,
+    sparseP90Multiplier: 0.5,
+    mediumSampleMaxExclusive: 30,
+    mediumP90Multiplier: 0.25,
+    establishedP90Multiplier: 0.10,
+  }),
+  reEvaluateEveryDays: 14,
+  expiresAt: "2026-05-22T00:00:00.000Z",
+});
+
 export function sizingPolicy(overrides = {}) {
   return Object.freeze({
     ...SIZING_POLICY,
