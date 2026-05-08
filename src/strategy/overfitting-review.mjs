@@ -10,6 +10,7 @@ import { CONCENTRATION_LIMITS } from "../config/concentration-limits.mjs";
 import { SIZING_POLICY } from "../config/sizing.mjs";
 import { buildAutoPromotionConfig, AUTO_PROMOTION_DEFAULTS } from "../config/auto-promotion.mjs";
 import { evaluateAutoKillTriggers } from "../risk/auto-kill-triggers.mjs";
+import { loadRuntimeRiskContext } from "../executor/runtime/risk-context.mjs";
 
 function assertEqual(actual, expected, label) {
   const pass = actual === expected;
@@ -90,7 +91,7 @@ async function runOverfittingReview() {
   };
   const policyResult = await evaluateOpportunityPolicy({
     intent: masterPlanIntent,
-    currentAllocations: { chainSharePct: {}, protocolSharePct: {}, opportunitySharePct: {} },
+    currentAllocations: (await loadRuntimeRiskContext({ now }).catch(() => null))?.currentAllocations || {},
     capitalState: { totalDeployableCapital: 520 },
   });
   totalChecks += 3;
