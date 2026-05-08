@@ -5,6 +5,7 @@ import { readErc4626 } from "../src/protocol-readers/readers/erc4626.mjs";
 import { readAaveV3 } from "../src/protocol-readers/readers/aave-v3.mjs";
 import { readBeefy } from "../src/protocol-readers/readers/beefy.mjs";
 import { readPendle } from "../src/protocol-readers/readers/pendle.mjs";
+import { readVenus } from "../src/protocol-readers/readers/venus.mjs";
 
 function makeMockProvider(handlers) {
   return ({ chain, address, abi }) => {
@@ -160,6 +161,35 @@ test("aave-v3 reader returns lending position with HF", async () => {
   assert.equal(p.debtBalance, "500");
   assert.ok(Math.abs(p.healthFactor - 1.5) < 1e-9);
   assert.equal(p.family, "lending_loop");
+});
+
+test("venus reader converts vToken balance through exchangeRateStored", async () => {
+  const _providerFactory = makeMockProvider({
+    "bsc:0xvtoken": {
+      balanceOf: () => 1_000_000_000n,
+      exchangeRateStored: () => 2_000_000_000_000_000n,
+      underlying: () => "0xunderlying",
+      decimals: () => 8,
+      symbol: () => "vUSDC",
+    },
+  });
+  const r = await readVenus({
+    chain: "bsc",
+    walletAddress: "0xw",
+    params: {
+      vTokenAddress: "0xVToken",
+      assetAddress: "0xunderlying",
+      underlyingDecimals: 18,
+    },
+    _providerFactory,
+  });
+
+  assert.equal(r.ok, true);
+  assert.equal(r.positions.length, 1);
+  assert.equal(r.positions[0].adapterId, "venus");
+  assert.equal(r.positions[0].shareBalance, "1000000000");
+  assert.equal(r.positions[0].assetBalance, "2000000");
+  assert.equal(r.positions[0].family, "lending_loop");
 });
 
 test("beefy reader computes underlying from ppfs", async () => {

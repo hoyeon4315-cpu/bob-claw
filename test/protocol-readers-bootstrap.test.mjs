@@ -15,12 +15,12 @@ function freshBootstrap() {
   bootstrapReaders();
 }
 
-test("bootstrapReaders registers all four in-tree readers", () => {
+test("bootstrapReaders registers all five in-tree readers", () => {
   freshBootstrap();
   const readers = listReaders();
-  assert.equal(readers.length, 4);
+  assert.equal(readers.length, 5);
   const ids = readers.map((r) => r.id).sort();
-  assert.deepEqual(ids, ["aave-v3", "beefy", "erc4626", "pendle"]);
+  assert.deepEqual(ids, ["aave-v3", "beefy", "erc4626", "pendle", "venus"]);
 });
 
 test("bootstrapReaders covers expected bindingKinds", () => {
@@ -36,6 +36,8 @@ test("bootstrapReaders covers expected bindingKinds", () => {
     "beefy_vault_deposit_withdraw",
     "pendle_market_swap",
     "pendle_market_lp",
+    "venus_market_supply_withdraw",
+    "venus_pool_supply_withdraw",
   ];
   for (const kind of expected) {
     const reader = resolveReaderForBinding(kind);
@@ -47,7 +49,7 @@ test("bootstrapReaders is idempotent", () => {
   freshBootstrap();
   bootstrapReaders();
   bootstrapReaders();
-  assert.equal(listReaders().length, 4);
+  assert.equal(listReaders().length, 5);
 });
 
 test("dispatchPosition routes erc4626 binding to reader", async () => {
@@ -168,6 +170,25 @@ test("dispatchPosition legacy fallback for compound-v2 (no reader, has legacy ad
   });
   assert.equal(dispatch.kind, "legacy");
   assert.equal(dispatch.adapter?.id, "compound-v2");
+});
+
+test("dispatchPosition routes Venus market bindings to the Venus reader", async () => {
+  freshBootstrap();
+  const dispatch = await dispatchPosition({
+    position: {
+      bindingKind: "venus_market_supply_withdraw",
+      protocolId: "venus",
+      chain: "bsc",
+      shareTokenAddress: "0xVToken",
+      assetAddress: "0xAsset",
+    },
+    chain: "bsc",
+    walletAddress: null,
+  });
+  assert.equal(dispatch.kind, "reader");
+  assert.equal(dispatch.id, "venus");
+  assert.equal(dispatch.result.ok, false);
+  assert.equal(dispatch.result.code, "missing_params");
 });
 
 test("evaluateCoverage track1 fail when reader_errors present", async () => {

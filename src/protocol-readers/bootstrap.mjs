@@ -6,6 +6,7 @@ import { erc4626ReaderRegistration } from "./readers/erc4626.mjs";
 import { aaveV3ReaderRegistration } from "./readers/aave-v3.mjs";
 import { beefyReaderRegistration } from "./readers/beefy.mjs";
 import { pendleReaderRegistration } from "./readers/pendle.mjs";
+import { venusReaderRegistration } from "./readers/venus.mjs";
 
 let _bootstrapped = false;
 
@@ -15,6 +16,7 @@ export function bootstrapReaders() {
   registerReader(aaveV3ReaderRegistration);
   registerReader(beefyReaderRegistration);
   registerReader(pendleReaderRegistration);
+  registerReader(venusReaderRegistration);
   _bootstrapped = true;
 }
 
