@@ -35,6 +35,7 @@ import { getEvmChainConfig } from "../config/chains.mjs";
 import { Contract, JsonRpcProvider } from "ethers";
 import { tokenAsset } from "../assets/tokens.mjs";
 import { buildScoredAllocation, DEFAULT_VENUE_METADATA } from "../strategy/scored-capital-allocation.mjs";
+import { buildChainScoreLedger } from "../strategy/chain-score-ledger.mjs";
 import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
@@ -437,12 +438,13 @@ function evaluateMacroAssetRotationAdapter({ config, market, receipts, now }) {
 }
 
 function parseArgs(argv) {
-  const out = { json: false, quiet: false, allowShadow: false, allStrategies: false, strategies: [] };
+  const out = { json: false, quiet: false, allowShadow: false, allStrategies: false, execute: false, strategies: [] };
   for (const arg of argv.slice(2)) {
     if (arg === "--json") { out.json = true; continue; }
     if (arg === "--quiet") { out.quiet = true; continue; }
     if (arg === "--allow-shadow") { out.allowShadow = true; continue; }
     if (arg === "--all-strategies") { out.allStrategies = true; continue; }
+    if (arg === "--execute") { out.execute = true; continue; }
     const m = arg.match(/^--([^=]+)=(.*)$/);
     if (!m) continue;
     if (m[1] === "strategy") { out.strategies.push(m[2]); continue; }
@@ -452,6 +454,46 @@ function parseArgs(argv) {
     out.strategies = Object.keys(ADAPTERS);
   }
   return out;
+}
+
+export function shouldBroadcastGeneratedIntents(args = {}) {
+  return args.execute === true;
+}
+
+function sanitizeDispatchDetail(detail) {
+  if (detail === null || detail === undefined) return null;
+  if (typeof detail === "number" || typeof detail === "boolean") return String(detail);
+  if (typeof detail === "string") {
+    const text = detail.length > 500 ? `${detail.slice(0, 497)}...` : detail;
+    return /(?:private|secret|signature|rawtx|calldata|txdata|signed|0x[a-f0-9]{64,})/iu.test(text)
+      ? "detail_redacted"
+      : text;
+  }
+  if (typeof detail !== "object") return "detail_redacted";
+  const safePairs = [];
+  for (const [key, value] of Object.entries(detail)) {
+    if (/(?:private|secret|key|signature|rawtx|calldata|txdata|signed|data|tx)$/iu.test(key)) continue;
+    if (value === null || value === undefined) continue;
+    if (!["string", "number", "boolean"].includes(typeof value)) continue;
+    const rendered = String(value);
+    if (/(?:private|secret|signature|rawtx|calldata|txdata|signed|0x[a-f0-9]{64,})/iu.test(rendered)) continue;
+    safePairs.push(`${key}=${rendered}`);
+  }
+  return safePairs.length ? safePairs.slice(0, 8).join(",") : "detail_redacted";
+}
+
+export function buildSafeDispatchIntentsSummary(result = {}) {
+  const fallbackObservedAt = result?.observedAt || new Date().toISOString();
+  return (result?.dispatch?.intents || []).map((intent) => ({
+    strategyId: intent.strategyId,
+    chain: intent.chain,
+    protocol: intent.protocol,
+    decision: intent.decision,
+    reason: intent.reason || null,
+    detail: sanitizeDispatchDetail(intent.detail),
+    expectedNetSats: intent.expectedNetSats ?? null,
+    observedAt: intent.observedAt || fallbackObservedAt,
+  }));
 }
 
 function loadLatestSnapshots(dir, prefixes) {
@@ -655,6 +697,7 @@ async function main() {
   const gasSnapshots = loadJsonlIfExists(join(dataDir, "gas-snapshots.jsonl"));
   const walletReadiness = loadJsonlIfExists(join(dataDir, "estimator-wallet-readiness.jsonl"));
   const treasuryInventory = loadJsonlIfExists(join(dataDir, "treasury-inventory.jsonl"));
+  const auditRecords = loadJsonlIfExists(auditPath);
 
   const entries = [];
   const snapshotSummary = [];
@@ -667,7 +710,7 @@ async function main() {
       snapshotPaths: snapshots.map((s) => s.path),
     });
     const market = mergeMarket(snapshots);
-    const receipts = loadReceipts(auditPath, [sid]);
+    const receipts = auditRecords.filter((record) => record?.strategyId === sid);
     const caps = getStrategyCaps(sid);
     const rawConfig = adapter.buildConfig();
     const config = {
@@ -731,6 +774,10 @@ async function main() {
   const scoredAllocation = buildScoredAllocation({
     candidates: scoredCandidates,
     totalAvailableSats,
+    chainScoreLedger: buildChainScoreLedger({
+      records: auditRecords,
+      now: new Date().toISOString(),
+    }),
   });
 
   const strategyOperatorMap = Object.fromEntries(entries.map((e) => [e.strategyId, e.operatorAddress]));
@@ -1110,6 +1157,14 @@ async function main() {
       blockers: [...(r.blockers || [])],
     })),
     dispatchSummary: result.dispatch?.summary || null,
+    dispatchIntents: buildSafeDispatchIntentsSummary(result),
+    builder: {
+      skipped: (result.builder.skipped || []).map((item) => ({
+        strategyId: item.strategyId || null,
+        reason: item.reason || null,
+        topBlocker: item.topBlocker || null,
+      })),
+    },
     scoredAllocation: scoredAllocation?.summary || null,
     scoredAllocationDetails: (scoredAllocation?.allocations || []).map((a) => ({
       strategyId: a.strategyId,
@@ -1137,12 +1192,12 @@ async function main() {
   };
 
   mkdirSync(dirname(outPath), { recursive: true });
-  appendFileSync(outPath, JSON.stringify(tickRecord) + "\n");
 
   // ── Auto-broadcast generated intents to signer daemon ──
   let broadcastCount = 0;
   let broadcastFail = 0;
-  if (generatedIntents.length > 0) {
+  let broadcastSkippedReason = null;
+  if (generatedIntents.length > 0 && shouldBroadcastGeneratedIntents(args)) {
     const { sendSignerCommand } = await import("../executor/signer/client.mjs");
     for (const intent of generatedIntents) {
       if (intent.normalizationError) {
@@ -1172,7 +1227,18 @@ async function main() {
         if (!args.quiet) console.error(`  broadcast error: ${intent.strategyId} ${intent.intentType} – ${err.message}`);
       }
     }
+  } else if (generatedIntents.length > 0) {
+    broadcastSkippedReason = "execute_flag_required";
   }
+
+  tickRecord.executionMode = shouldBroadcastGeneratedIntents(args) ? "execute" : "report_only";
+  tickRecord.broadcastSummary = {
+    generatedIntentCount: generatedIntents.length,
+    broadcastCount,
+    broadcastFail,
+    skippedReason: broadcastSkippedReason,
+  };
+  appendFileSync(outPath, JSON.stringify(tickRecord) + "\n");
 
   if (!args.quiet) {
     if (args.json) {

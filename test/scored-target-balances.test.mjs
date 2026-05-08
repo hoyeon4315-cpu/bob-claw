@@ -60,11 +60,13 @@ test("falls back to equal split when no scores at all", () => {
     diversificationPolicy: null,
   });
   assert.equal(result.perStrategy.length, 3);
-  // 3 unscored candidates with equal weight → equal split, but base capped at 200.
-  // residual goes to bsc + uni evenly.
+  // Unscored candidates are explore samples, not full exploit allocations.
   const base = result.perStrategy.find((s) => s.chain === "base");
-  assert.equal(base.allocationUsd, 200);
-  assert.ok(Math.abs(result.summary.totalAllocationUsd - 600) < 0.01);
+  assert.equal(base.allocationBucket, "explore");
+  assert.equal(base.allocationUsd, 10);
+  assert.ok(result.summary.totalAllocationUsd <= 30);
+  assert.equal(result.summary.priorScoreCandidateCount, 3);
+  assert.equal(result.summary.exploreCandidateCount, 3);
 });
 
 test("review_only candidates contribute at reduced weight", () => {
@@ -218,4 +220,115 @@ test("keeps non-primary chains on the default per-chain cap", () => {
   const bsc = result.perChain.find((item) => item.chain === "bsc");
   assert.equal(base.settlementTargetUsd, 100);
   assert.equal(bsc.settlementTargetUsd, 350);
+});
+
+test("uses chain score ledger and exposes score-source metadata", () => {
+  const caps = [
+    { strategyId: "base-ledger", familyId: "family-base", autoExecute: true, caps: { perChainUsd: { base: 1000 } } },
+    { strategyId: "bsc-ledger", familyId: "family-bsc", autoExecute: true, caps: { perChainUsd: { "BNB Chain": 1000 } } },
+  ];
+  const result = buildScoredTargetBalances({
+    promotionGate: { items: [] },
+    strategyCaps: caps,
+    totalCapitalUsd: 1000,
+    diversificationPolicy: null,
+    chainScoreLedger: {
+      byChain: {
+        base: {
+          chainScore: 0.25,
+          scoreSource: "ledger",
+          widePosterior: true,
+          blockers: ["receipt_loss"],
+        },
+        bsc: {
+          chainScore: 0.85,
+          scoreSource: "ledger",
+          widePosterior: false,
+          blockers: [],
+        },
+      },
+    },
+  });
+
+  const base = result.perStrategy.find((item) => item.strategyId === "base-ledger");
+  const bsc = result.perStrategy.find((item) => item.strategyId === "bsc-ledger");
+  assert.equal(bsc.chain, "bsc");
+  assert.equal(base.chainScore, 0.25);
+  assert.equal(base.chainScoreSource, "ledger");
+  assert.equal(base.widePosterior, true);
+  assert.deepEqual(base.chainScoreBlockers, ["receipt_loss"]);
+  assert.equal(bsc.chainScore, 0.85);
+  assert.equal(bsc.chainScoreSource, "ledger");
+  assert.ok(bsc.allocationUsd > base.allocationUsd);
+});
+
+test("splits exploit and explore budget while clamping prior-score exploration", () => {
+  const caps = [
+    { strategyId: "base-ledger", familyId: "family-base", autoExecute: true, caps: { perChainUsd: { base: 1000 } } },
+    { strategyId: "sei-prior", familyId: "family-sei", autoExecute: true, caps: { perChainUsd: { sei: 1000 } } },
+  ];
+  const result = buildScoredTargetBalances({
+    promotionGate: { items: [] },
+    strategyCaps: caps,
+    totalCapitalUsd: 500,
+    diversificationPolicy: null,
+    chainScoreLedger: {
+      byChain: {
+        base: {
+          chainScore: 0.8,
+          scoreSource: "ledger",
+          widePosterior: false,
+          sampleCount: 45,
+          receiptFreshnessHours: 2,
+          blockers: [],
+        },
+        sei: {
+          chainScore: 0.35,
+          scoreSource: "prior",
+          widePosterior: true,
+          sampleCount: 0,
+          receiptFreshnessHours: null,
+          blockers: ["chain_score_unobserved"],
+        },
+      },
+    },
+  });
+
+  const base = result.perStrategy.find((item) => item.strategyId === "base-ledger");
+  const sei = result.perStrategy.find((item) => item.strategyId === "sei-prior");
+  assert.equal(base.allocationBucket, "exploit");
+  assert.equal(sei.allocationBucket, "explore");
+  assert.equal(sei.allocationUsd, 6);
+  assert.equal(result.summary.exploreAllocationUsd, 6);
+  assert.equal(result.summary.exploitAllocationUsd, 494);
+});
+
+test("scored target balances canonicalizes allowed chain aliases and keeps cost-only ledgers in explore", () => {
+  const result = buildScoredTargetBalances({
+    promotionGate: { items: [] },
+    strategyCaps: [
+      { strategyId: "bsc-cost-only", familyId: "family-bsc", autoExecute: true, caps: { perChainUsd: { bsc: 1000 } } },
+    ],
+    totalCapitalUsd: 500,
+    diversificationPolicy: null,
+    allowedChains: ["BNB Chain"],
+    chainScoreLedger: {
+      byChain: {
+        bsc: {
+          chainScore: 0.9,
+          scoreSource: "ledger",
+          widePosterior: false,
+          sampleCount: 40,
+          alphaSampleCount: 0,
+          receiptFreshnessHours: 1,
+          blockers: [],
+        },
+      },
+    },
+  });
+
+  assert.equal(result.perStrategy.length, 1);
+  assert.equal(result.perStrategy[0].chain, "bsc");
+  assert.equal(result.perStrategy[0].allocationBucket, "explore");
+  assert.equal(result.perStrategy[0].allocationUsd, 6);
 });

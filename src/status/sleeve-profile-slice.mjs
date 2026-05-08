@@ -1,5 +1,6 @@
 import { ACTIVE_SLEEVE_PROFILE_ID, resolveSleeveProfile } from "../config/sleeve-profile.mjs";
 import { listStrategyCaps, resolveStrategyCapMatrix } from "../config/strategy-caps.mjs";
+import { resolveEffectiveSmallCapitalBudgets } from "../config/small-capital-campaign-mode.mjs";
 
 function compareStrategyId(left, right) {
   return String(left?.strategyId || "").localeCompare(String(right?.strategyId || ""));
@@ -9,16 +10,25 @@ export function buildSleeveProfileSlice({
   profileId = ACTIVE_SLEEVE_PROFILE_ID,
   generatedAt = new Date().toISOString(),
   strategies = listStrategyCaps(),
+  operatingCapitalUsd = null,
 } = {}) {
   const profile = resolveSleeveProfile(profileId);
   const overrides = profile?.smallCapitalOverrides || {};
   const portfolioExposure = profile?.portfolioExposure || {};
+  const scale = resolveEffectiveSmallCapitalBudgets({
+    operatingCapitalUsd: Number.isFinite(Number(operatingCapitalUsd)) ? Number(operatingCapitalUsd) : 1_000,
+  });
 
   return {
     schemaVersion: 1,
     generatedAt,
     activeProfile: profile.id,
     profileLabel: profile.label || null,
+    operatingCapitalUsd: Number.isFinite(Number(operatingCapitalUsd)) ? Number(operatingCapitalUsd) : null,
+    capitalScaleBandId: scale.capitalScaleBandId,
+    capitalScaleMultiplier: scale.capitalScaleMultiplier,
+    nominalBudgets: scale.nominalBudgets,
+    effectiveBudgets: scale.effectiveBudgets,
     anchorPct: overrides.anchorTargetPct || null,
     opportunisticPct: overrides.opportunisticMaxPct ?? null,
     microTestPct: overrides.microMaxPct ?? null,

@@ -5,7 +5,10 @@ import {
   ACTIVE_SLEEVE_PROFILE,
   resolveProfileCapMatrix,
 } from "../src/config/sleeve-profile.mjs";
+import { buildSleeveProfileSlice } from "../src/status/sleeve-profile-slice.mjs";
 import {
+  effectiveMicroBudgetUsd,
+  effectiveOpportunisticBudgetUsd,
   resolveEffectiveSmallCapitalBudgets,
   SMALL_CAPITAL_DEFAULT_BUDGETS_USD_BASELINE,
   SMALL_CAPITAL_NON_PRIMARY_ENTRY_BASELINE,
@@ -36,6 +39,8 @@ test("effective small-capital budgets scale down for current tiny capital", () =
   assert.equal(resolved.effectiveBudgets.nonPrimaryEntry.minEdgePctOfNotional, 0.005);
   assert.equal(resolved.nominalBudgets.radarCaps.perCanaryUsd, 30);
   assert.equal(resolved.effectiveBudgets.radarCaps.perCanaryUsd, 18);
+  assert.equal(effectiveOpportunisticBudgetUsd(358), 75);
+  assert.equal(effectiveMicroBudgetUsd(358), 30);
 });
 
 test("effective small-capital budgets preserve the $1000 baseline", () => {
@@ -67,4 +72,18 @@ test("radar hard caps still clamp strategy cap matrix independently from scale r
   assert.equal(matrix.radarCaps.perCanaryUsd, SMALL_CAPITAL_RADAR_CAPS_BASELINE.perCanaryUsd);
   assert.equal(matrix.radarCaps.perDayUsd, SMALL_CAPITAL_RADAR_CAPS_BASELINE.perDayUsd);
   assert.equal(matrix.tinyLivePerTxUsd, 50);
+});
+
+test("sleeve profile slice exposes operating capital scale band and budgets", () => {
+  const slice = buildSleeveProfileSlice({
+    operatingCapitalUsd: 358,
+    strategies: [],
+    generatedAt: "2026-05-08T00:00:00.000Z",
+  });
+
+  assert.equal(slice.operatingCapitalUsd, 358);
+  assert.equal(slice.capitalScaleBandId, "tiny");
+  assert.equal(slice.capitalScaleMultiplier, 0.6);
+  assert.equal(slice.nominalBudgets.defaultBudgetsUsd.opportunisticMaxUsd, 125);
+  assert.equal(slice.effectiveBudgets.defaultBudgetsUsd.opportunisticMaxUsd, 75);
 });

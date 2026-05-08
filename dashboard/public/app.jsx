@@ -1666,6 +1666,10 @@ function AssetsPane({ refreshTick }) {
   const trackingRiskUsableUsd = Number.isFinite(tracking?.riskUsableUsd) ? tracking.riskUsableUsd : null;
   const trackingRiskReady = tracking?.riskReady === true;
   const trackingBlockers = Array.isArray(tracking?.blockers) ? tracking.blockers : [];
+  const trackingVerdictTone = tracking?.verdict === 'green' ? 'ok' : tracking?.verdict === 'yellow' ? 'warning' : tracking?.verdict === 'red' ? 'critical' : 'neutral';
+  const trackingOldestSourceLabel = tracking?.oldestMaterialSourceObservedAt
+    ? `oldest source ${formatStatusAge(tracking.oldestMaterialSourceObservedAt) || fmtWhen(tracking.oldestMaterialSourceObservedAt)}`
+    : null;
   const walletSourceLabel = HOLDINGS?.walletSource === 'whole_wallet_inventory' || HOLDINGS?.walletCoverage === 'full_external'
         ? 'supported-assets live'
     : HOLDINGS?.walletSource === 'treasury_inventory'
@@ -1809,6 +1813,21 @@ function AssetsPane({ refreshTick }) {
                 {trackingRiskReady ? 'risk-ready exact' : 'not exact for sizing'}
               </span>
             )}
+            {tracking?.verdict && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(trackingVerdictTone) }}>
+                asset tracking {tracking.verdict}
+              </span>
+            )}
+            {trackingOldestSourceLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(tracking?.staleItemCount > 0 || tracking?.stalePriceItemCount > 0 ? 'warning' : 'neutral') }}>
+                {trackingOldestSourceLabel}
+              </span>
+            )}
+            {tracking?.doubleCountPreventedCount > 0 && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('ok') }}>
+                double count prevented {tracking.doubleCountPreventedCount}
+              </span>
+            )}
             {tracking && Number.isFinite(trackingExactTotalUsd) && (
               <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('ok') }}>
                 exact total {fmtUsd(trackingExactTotalUsd)}
@@ -1910,6 +1929,14 @@ function AssetsPane({ refreshTick }) {
               <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:1 }}>
                 <WalletBalanceChainLabel chainId={a.chain} label={chainLabel}/>
               </div>
+              {(a.sourceObservedAt || a.priceObservedAt || a.freshness || a.priceFreshness) && (
+                <div style={{ fontSize:10, color:'var(--ink-4)', marginTop:3, lineHeight:1.25, overflowWrap:'anywhere' }}>
+                  {a.sourceObservedAt ? `source ${formatStatusAge(a.sourceObservedAt) || fmtWhen(a.sourceObservedAt)}` : 'source pending'}
+                  {a.freshness ? ` · ${String(a.freshness).replace(/_/g, ' ')}` : ''}
+                  {a.priceObservedAt ? ` · price ${formatStatusAge(a.priceObservedAt) || fmtWhen(a.priceObservedAt)}` : ''}
+                  {a.priceFreshness ? ` · ${String(a.priceFreshness).replace(/_/g, ' ')}` : ''}
+                </div>
+              )}
               {tied.length > 0 && (
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
                   {tied.slice(0, 4).map(s => (

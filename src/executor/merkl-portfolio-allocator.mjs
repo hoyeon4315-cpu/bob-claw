@@ -11,6 +11,7 @@ import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import { buildScoredTargetBalances } from "./capital/scored-target-balances.mjs";
+import { buildChainScoreLedger } from "../strategy/chain-score-ledger.mjs";
 import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
@@ -1009,6 +1010,10 @@ export async function runMerklPortfolioAllocator({
         economics,
         strategyCaps: listStrategyCaps(),
         totalCapitalUsd,
+        chainScoreLedger: buildChainScoreLedger({
+          records: auditRecords,
+          now: new Date().toISOString(),
+        }),
       })
     : null;
   const targetChainUsd = scoredTargets

@@ -18,9 +18,10 @@
  * fact that no tick has been observed yet, which is itself signal.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { basename, resolve, dirname, extname } from "node:path";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
@@ -69,18 +70,126 @@ function parseArgs(argv) {
   return out;
 }
 
-function readJsonlSafe(path) {
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-    .filter(Boolean);
+async function readJsonlSafe(path) {
+  const dir = dirname(path);
+  const name = basename(path, extname(path));
+  return readJsonl(dir, name).catch(() => []);
 }
 
 function finiteNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeReasonCode(reason) {
+  if (typeof reason !== "string" || reason.length === 0) return null;
+  return reason.split(":")[0] || reason;
+}
+
+function incrementCount(map, key) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function objectFromCountMap(map) {
+  return Object.fromEntries([...map.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+}
+
+function topCountKey(map) {
+  const entries = [...map.entries()];
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  });
+  return entries[0][0];
+}
+
+function blockerCategory(reason) {
+  const code = normalizeReasonCode(reason);
+  if (!code) return null;
+  if (/stale|fresh|quote|feed|oracle/u.test(code)) return "freshness";
+  if (/negative|edge|unprofitable|ev|profit/u.test(code)) return "ev";
+  if (/cap|auto_execute|policy|demotion|operator_hold/u.test(code)) return "policy";
+  if (/signer|receipt|reconciliation|finality/u.test(code)) return "receipt";
+  if (/gas|float|inventory|fund/u.test(code)) return "capital";
+  if (/adapter|executor|builder|tx_builder|normalization/u.test(code)) return "adapter";
+  if (/chain|route|bridge|gateway/u.test(code)) return "routing";
+  return "other";
+}
+
+function incrementCategoryCounts(categories, reason, count = 1) {
+  const category = blockerCategory(reason);
+  if (!category) return;
+  categories.set(category, (categories.get(category) || 0) + count);
+}
+
+function blockerCategoryCounts({
+  lastTickBlockers = [],
+  denyByReason = new Map(),
+  skippedByReason = new Map(),
+} = {}) {
+  const categories = new Map();
+  for (const [reason, count] of denyByReason.entries()) incrementCategoryCounts(categories, reason, count);
+  for (const [reason, count] of skippedByReason.entries()) incrementCategoryCounts(categories, reason, count);
+  if (categories.size === 0) {
+    for (const reason of lastTickBlockers) incrementCategoryCounts(categories, reason, 1);
+  }
+  return objectFromCountMap(categories);
+}
+
+function roundBtcFromSats(sats) {
+  const value = finiteNumber(sats);
+  if (!Number.isFinite(value)) return 0;
+  return Math.round((value / 100_000_000) * 100_000_000_000_000) / 100_000_000_000_000;
+}
+
+function buildRegimeBreakdown(receipts = []) {
+  const breakdown = {};
+  for (const receipt of receipts) {
+    const regime = receipt.regime || receipt.marketRegime || "unknown";
+    if (!breakdown[regime]) breakdown[regime] = { receipts: 0, realizedNetBtc: 0 };
+    breakdown[regime].receipts += 1;
+    breakdown[regime].realizedNetBtc += roundBtcFromSats(receipt.realizedProfitSats);
+    breakdown[regime].realizedNetBtc = Math.round(breakdown[regime].realizedNetBtc * 100_000_000_000_000) / 100_000_000_000_000;
+  }
+  return breakdown;
+}
+
+function dispatchIntentStatsForStrategy(tick, strategyId) {
+  const denyByReason = new Map();
+  const allowByChain = new Map();
+  const denyByChain = new Map();
+  for (const intent of tick?.dispatchIntents || []) {
+    if (intent?.strategyId !== strategyId) continue;
+    const chain = typeof intent.chain === "string" && intent.chain ? intent.chain : "unknown";
+    if (intent.decision === "allow") {
+      incrementCount(allowByChain, chain);
+      continue;
+    }
+    if (intent.decision !== "deny") continue;
+    incrementCount(denyByChain, chain);
+    incrementCount(denyByReason, normalizeReasonCode(intent.reason) || "unknown");
+  }
+  return {
+    denyByReason,
+    allowByChain,
+    denyByChain,
+    topDenyReason: topCountKey(denyByReason),
+  };
+}
+
+function skippedStatsForStrategy(tick, strategyId) {
+  const skippedByReason = new Map();
+  const skipped = [
+    ...(tick?.builder?.skipped || []),
+    ...(tick?.builderSkipped || []),
+  ];
+  for (const item of skipped) {
+    if (item?.strategyId !== strategyId) continue;
+    incrementCount(skippedByReason, normalizeReasonCode(item.reason) || "unknown");
+  }
+  return skippedByReason;
 }
 
 function latestTickPerStrategy(ticks) {
@@ -213,7 +322,7 @@ function microHasMinimalProof(report = null) {
   return (MICRO_STATUS_RANK[report?.microCanaryStatus] ?? 0) >= MICRO_STATUS_RANK.minimal_live_proof_exists;
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv);
   const strategies = args.strategies.length > 0 ? args.strategies : DEFAULT_STRATEGIES;
   const tickPath = resolve(args["tick-log"] || "logs/strategy-tick.jsonl");
@@ -226,10 +335,13 @@ function main() {
   ];
   const outPath = resolve(args.out || "dashboard/public/strategy-tick-status.json");
 
-  const ticks = readJsonlSafe(tickPath);
-  const audit = readJsonlSafe(auditPath);
-  const reconciliations = readJsonlSafe(reconciliationsPath);
-  const canaryLedgerEvidence = buildCanaryLedgerEvidence(canaryPaths.flatMap(readJsonlSafe));
+  const [ticks, audit, reconciliations, ...canaryRecords] = await Promise.all([
+    readJsonlSafe(tickPath),
+    readJsonlSafe(auditPath),
+    readJsonlSafe(reconciliationsPath),
+    ...canaryPaths.map(readJsonlSafe),
+  ]);
+  const canaryLedgerEvidence = buildCanaryLedgerEvidence(canaryRecords.flat());
   const reconciliationByTxHash = new Map();
   for (const rec of reconciliations) {
     if (rec.txHash) reconciliationByTxHash.set(String(rec.txHash).toLowerCase(), rec);
@@ -241,6 +353,9 @@ function main() {
     const tick = latestByStrategy.get(sid) || null;
     const tickBlocker = tick?.blockers?.find((b) => b.strategyId === sid) || null;
     const tickSnapshot = tick?.snapshotSummary?.find((item) => item?.strategyId === sid) || null;
+    const dispatchStats = dispatchIntentStatsForStrategy(tick, sid);
+    const skippedStats = skippedStatsForStrategy(tick, sid);
+    const topBlocker = tickBlocker?.blockers?.[0] || null;
     const receipts = audit
       .filter((r) => r?.strategyId === sid)
       .map((r) => {
@@ -253,6 +368,7 @@ function main() {
           outcome: r.outcome || (["confirmed", "broadcasted", "signed"].includes(r.lifecycle?.stage) ? "success" : (r.error ? "failure" : "pending")),
           txHash,
           realizedProfitSats: Math.max(0, rec?.realized?.realizedNetPnlSats ?? 0),
+          regime: rec?.regime || rec?.marketRegime || rec?.marketState?.regime || r.regime || r.marketRegime || null,
         };
       });
 
@@ -271,9 +387,21 @@ function main() {
       lastTickAt: tick?.tickAt || null,
       lastTickMode: tickBlocker?.mode || null,
       lastTickBlockers: tickBlocker?.blockers || [],
+      topBlocker,
+      topBlockerCode: normalizeReasonCode(topBlocker),
       lastTickCandidateCount: tick?.candidateCount ?? 0,
       lastTickAllowCount: tick?.dispatchSummary?.allowCount ?? 0,
       lastTickDenyCount: tick?.dispatchSummary?.denyCount ?? 0,
+      lastTickDenyByReason: objectFromCountMap(dispatchStats.denyByReason),
+      topDenyReason: dispatchStats.topDenyReason,
+      lastTickAllowByChain: objectFromCountMap(dispatchStats.allowByChain),
+      lastTickDenyByChain: objectFromCountMap(dispatchStats.denyByChain),
+      lastTickSkippedByReason: objectFromCountMap(skippedStats),
+      blockerCountByCategory: blockerCategoryCounts({
+        lastTickBlockers: tickBlocker?.blockers || [],
+        denyByReason: dispatchStats.denyByReason,
+        skippedByReason: skippedStats,
+      }),
       capsConfigured: tickSnapshot?.capsConfigured ?? null,
       operatorAddress: tickSnapshot?.operatorAddress ?? null,
       gasFloatConfiguredChainCount: tickSnapshot?.gasFloatSummary?.configuredChainCount ?? 0,
@@ -303,6 +431,11 @@ function main() {
       },
       scoredAllocation: (tick?.scoredAllocationDetails || [])
         .find((a) => a.strategyId === sid) || null,
+      chainScoreSource: ((tick?.scoredAllocationDetails || [])
+        .find((a) => a.strategyId === sid) || {})?.chainScoreSource || tick?.scoredAllocation?.chainScoreSource || null,
+      chainScoreObservedAt: ((tick?.scoredAllocationDetails || [])
+        .find((a) => a.strategyId === sid) || {})?.chainScoreObservedAt || tick?.scoredAllocation?.chainScoreObservedAt || null,
+      regimeBreakdown: buildRegimeBreakdown(receipts),
       generatedIntentCount: (tick?.generatedIntents || []).filter((i) => i.strategyId === sid).length,
       policyReadiness: {
         autoExecute,
@@ -349,7 +482,7 @@ function main() {
   const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, liveReadinessEvidence, demotionEvidence);
 
   const slice = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date(nowMs).toISOString(),
     tickCountTotal: ticks.length,
     latestTickAt: ticks.length > 0
@@ -385,4 +518,7 @@ function main() {
   }
 }
 
-main();
+main().catch((error) => {
+  console.error(error.stack || error.message);
+  process.exitCode = 1;
+});

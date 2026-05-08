@@ -30,6 +30,7 @@ export function parseArgs(argv) {
     loop: flags.has("--loop"),
     once: flags.has("--once") || !flags.has("--loop"),
     execute: flags.has("--execute"),
+    dryRun: flags.has("--dry-run"),
     socketPath: options["socket-path"] || undefined,
     timeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : undefined,
     awaitConfirmation: !flags.has("--no-await-confirmation"),
@@ -115,7 +116,8 @@ async function main() {
       pollIntervalMs: args.pollIntervalMs,
       once: args.once,
       tickOptions: {
-        execute: args.execute,
+        execute: args.execute && !args.dryRun,
+        dryRun: args.dryRun,
       },
       tickImpl: async (tickOptions) => {
         const { auditLogLines, receiptStore } = await loadTickInputs();
@@ -139,7 +141,8 @@ async function main() {
     auditLogLines,
     receiptStore,
     paybackConfig: PAYBACK_CONFIG,
-    execute: args.execute,
+    execute: args.execute && !args.dryRun,
+    dryRun: args.dryRun,
     executionOptions: executionOptionsFromArgs(args),
   });
 

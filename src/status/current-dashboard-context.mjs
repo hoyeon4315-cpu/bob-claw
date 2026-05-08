@@ -24,6 +24,13 @@ import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "..
 import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
 import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
 import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
+import { listStrategyCaps } from "../config/strategy-caps.mjs";
+import {
+  ABSOLUTE_FLOOR_SATS,
+  MIN_PAYBACK_PCT_OF_CAPITAL,
+} from "../config/payback.mjs";
+import { buildChainHypothesisReport } from "../strategy/chain-hypothesis-evaluator.mjs";
+import { buildStrategyReceiptDistribution } from "../strategy/strategy-receipt-distribution.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
 import { buildCanaryInputSummary } from "./canary-inputs.mjs";
 import {
@@ -57,7 +64,6 @@ import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
 import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildAutoKillReplayStatus } from "../risk/auto-kill-replay.mjs";
-import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import { merklUserRewardPolicy } from "../config/merkl-user-rewards.mjs";
 import {
   activeProtocolPositions,
@@ -423,6 +429,16 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.strategy.promotionSummary = dashboardStatus.promotion;
   dashboardStatus.strategy.microCanarySummary =
     strategyTickStatus?.microCanary || { total: 0, byStrategy: {} };
+  dashboardStatus.strategy.receiptDistribution = buildStrategyReceiptDistribution({
+    records: signerAuditRecords,
+    now: dashboardStatus.generatedAt,
+    expectedStrategies: listStrategyCaps()
+      .filter((strategy) => strategy.autoExecute === true)
+      .map((strategy) => strategy.strategyId),
+  }).receiptDistribution;
+  dashboardStatus.strategy.chainHypothesis = buildChainHypothesisReport({
+    now: dashboardStatus.generatedAt,
+  });
 
   const canaryInputs = buildCanaryInputSummary(state, { now: dashboardStatus.generatedAt });
   dashboardStatus.canaryInputs = canaryInputs;
@@ -507,6 +523,8 @@ export async function buildCurrentDashboardContext({
     capitalSummary: dashboardStatus.capitalSummary,
     generatedAt: dashboardStatus.generatedAt,
   });
+  const operatingCapitalUsd = dashboardStatus.capitalSummary?.totalUsd ?? null;
+  dashboardStatus.operatingCapitalUsd = operatingCapitalUsd;
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
   };
@@ -526,7 +544,21 @@ export async function buildCurrentDashboardContext({
   }
   dashboardStatus.sleeveProfile = buildSleeveProfileSlice({
     generatedAt: dashboardStatus.generatedAt,
+    operatingCapitalUsd,
   });
+  dashboardStatus.capitalScaleBandId = dashboardStatus.sleeveProfile.capitalScaleBandId;
+  dashboardStatus.capitalScaleMultiplier = dashboardStatus.sleeveProfile.capitalScaleMultiplier;
+  dashboardStatus.nominalBudgets = dashboardStatus.sleeveProfile.nominalBudgets;
+  dashboardStatus.effectiveBudgets = dashboardStatus.sleeveProfile.effectiveBudgets;
+  const minimumProgress = dashboardStatus.payback?.scheduler?.minimumPaybackProgress || null;
+  dashboardStatus.payback.operatorSummary = {
+    effectiveMinPaybackSats: minimumProgress?.minPaybackSats ?? null,
+    pendingSats: dashboardStatus.payback?.accumulatorPendingSats ?? dashboardStatus.payback?.carry?.pendingSats ?? null,
+    satsToMinimum: minimumProgress?.satsToMinimumPayback ?? dashboardStatus.payback?.carry?.remainingSatsToMinimum ?? null,
+    minPaybackPctOfCapital: MIN_PAYBACK_PCT_OF_CAPITAL,
+    absoluteFloorSats: ABSOLUTE_FLOOR_SATS,
+  };
+  dashboardStatus.payback.effectiveMinPaybackSats = dashboardStatus.payback.operatorSummary.effectiveMinPaybackSats;
   const stageEvaluation = evCostModel
     ? evaluateStage({
         marksSlice: dashboardStatus.strategy.protocolPositionMarks,

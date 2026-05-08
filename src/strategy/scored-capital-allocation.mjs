@@ -18,8 +18,19 @@
 //
 // Pure function. No I/O, no LLM.
 
+import { CAPITAL_ALLOCATOR_POLICY } from "../config/capital-allocator.mjs";
+import { canonicalGatewayChain } from "../config/gateway-destinations.mjs";
+import {
+  effectiveMicroBudgetUsd,
+  resolveEffectiveSmallCapitalBudgets,
+} from "../config/small-capital-campaign-mode.mjs";
+
 function finitePositive(v) {
   return Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+function finiteNumber(value) {
+  return Number.isFinite(value) ? value : null;
 }
 
 function clamp(value, min, max) {
@@ -29,6 +40,11 @@ function clamp(value, min, max) {
 function normalizeScore(raw, max) {
   if (!Number.isFinite(raw) || !Number.isFinite(max) || max <= 0) return 0;
   return clamp(raw / max, 0, 1);
+}
+
+function usdToSats(usd, btcPriceUsd) {
+  if (!Number.isFinite(usd) || usd <= 0 || !Number.isFinite(btcPriceUsd) || btcPriceUsd <= 0) return null;
+  return Math.floor(((usd + 1e-9) / btcPriceUsd) * 1e8);
 }
 
 const DEFAULT_WEIGHTS = Object.freeze({
@@ -70,10 +86,81 @@ function resolveFamily(strategyId, metadata) {
   return metadata[strategyId]?.family || "unknown";
 }
 
-function computeCompositeScore(candidate, metadata, weights) {
+function resolveChainScore(candidate, metadata, chainScoreLedger) {
+  const chain = canonicalGatewayChain(candidate.chain);
+  const ledgerEntry = chainScoreLedger?.byChain?.[chain] || null;
+  if (ledgerEntry && Number.isFinite(ledgerEntry.chainScore)) {
+    return {
+      chain,
+      chainScore: finitePositive(ledgerEntry.chainScore),
+      chainScoreSource: ledgerEntry.scoreSource || "ledger",
+      widePosterior: ledgerEntry.widePosterior === true,
+      ledgerSampleCount: ledgerEntry.sampleCount ?? null,
+      ledgerAlphaSampleCount: ledgerEntry.alphaSampleCount ?? null,
+      receiptFreshnessHours: ledgerEntry.receiptFreshnessHours ?? null,
+      chainScoreBlockers: [...(ledgerEntry.blockers || [])],
+    };
+  }
+  const meta = metadata[candidate.strategyId] || {};
+  return {
+    chain,
+    chainScore: finitePositive(meta.chainScore ?? 0.5),
+    chainScoreSource: "static_prior",
+    widePosterior: true,
+    ledgerSampleCount: null,
+    ledgerAlphaSampleCount: null,
+    receiptFreshnessHours: null,
+    chainScoreBlockers: ["chain_score_static_prior"],
+  };
+}
+
+function allocationBucketForCandidate(candidate = {}, policy = CAPITAL_ALLOCATOR_POLICY) {
+  if (candidate.chainScoreSource === "prior" || candidate.chainScoreSource === "static_prior") return "explore";
+  if (candidate.widePosterior === true) return "explore";
+  const alphaSampleCount = finiteNumber(candidate.ledgerAlphaSampleCount);
+  if (alphaSampleCount !== null && alphaSampleCount < policy.exploreMinSamples) return "explore";
+  const sampleCount = finiteNumber(candidate.ledgerSampleCount);
+  if (sampleCount !== null && sampleCount < policy.exploreMinSamples) return "explore";
+  const freshnessHours = finiteNumber(candidate.receiptFreshnessHours);
+  if (freshnessHours !== null && freshnessHours > policy.exploreReceiptFreshnessHours) return "explore";
+  return "exploit";
+}
+
+function exploreCapSatsForCandidate({
+  candidate = {},
+  totalAvailableSats = 0,
+  btcPriceUsd = 60_000,
+  policy = CAPITAL_ALLOCATOR_POLICY,
+} = {}) {
+  const totalAvailableUsd = (finitePositive(totalAvailableSats) * finitePositive(btcPriceUsd)) / 1e8;
+  const scaled = resolveEffectiveSmallCapitalBudgets({ operatingCapitalUsd: totalAvailableUsd });
+  const defaultBudgets = scaled.effectiveBudgets.defaultBudgetsUsd;
+  const radarCaps = scaled.effectiveBudgets.radarCaps;
+  const capsUsd = [
+    policy.exploreCandidateMaxUsd,
+    totalAvailableUsd > 0 ? totalAvailableUsd * policy.smallCapitalMicroTestHardCapPct : null,
+    defaultBudgets.microMaxUsd,
+    defaultBudgets.initialCampaignUsd,
+    defaultBudgets.initialMicroUsd,
+  ];
+  if (/radar/u.test(String(candidate.strategyId || ""))) capsUsd.push(radarCaps.perCanaryUsd);
+  const capUsd = Math.min(...capsUsd.filter((value) => Number.isFinite(value) && value > 0));
+  return usdToSats(capUsd, btcPriceUsd);
+}
+
+function exploreBudgetSats({ totalAvailableSats = 0, btcPriceUsd = 60_000, policy = CAPITAL_ALLOCATOR_POLICY } = {}) {
+  const totalSats = finitePositive(totalAvailableSats);
+  const totalAvailableUsd = (totalSats * finitePositive(btcPriceUsd)) / 1e8;
+  const shareCapSats = Math.floor(totalSats * policy.exploreSharePct);
+  const microBudgetUsd = effectiveMicroBudgetUsd(totalAvailableUsd);
+  const microBudgetSats = usdToSats(microBudgetUsd, btcPriceUsd);
+  return Math.min(shareCapSats, finitePositive(microBudgetSats));
+}
+
+function computeCompositeScore(candidate, metadata, weights, chainScoreLedger = null) {
   const meta = metadata[candidate.strategyId] || {};
   const riskScore = finitePositive(meta.riskScore ?? 0.5);
-  const chainScore = finitePositive(meta.chainScore ?? 0.5);
+  const chainScore = resolveChainScore(candidate, metadata, chainScoreLedger).chainScore;
 
   // returnScore: relative to the highest expectedYield in the candidate set
   const maxYield = finitePositive(candidate.maxYieldInSet ?? 1);
@@ -100,6 +187,7 @@ function wouldViolateDiversification({
   allocations,
   policy,
 }) {
+  if (!policy) return null;
   const total = allocations.reduce((sum, a) => sum + finitePositive(a.allocatedSats), 0);
 
   const perStrategy = allocations.filter((a) => a.strategyId === candidate.strategyId);
@@ -135,9 +223,11 @@ function wouldViolateDiversification({
 }
 
 function shrinkToDiversification({ candidate, requestedSats, allocations, policy }) {
+  if (!policy) return finitePositive(requestedSats);
   let lo = 0;
   let hi = finitePositive(requestedSats);
   if (hi === 0) return 0;
+  if (!wouldViolateDiversification({ candidate, addSats: hi, allocations, policy })) return hi;
   for (let i = 0; i < 40; i += 1) {
     const mid = Math.floor((lo + hi) / 2);
     if (mid === lo) break;
@@ -165,6 +255,9 @@ export function buildScoredAllocation({
   diversificationPolicy = DEFAULT_DIVERSIFICATION,
   totalAvailableSats = 0,
   scoreWeights = DEFAULT_WEIGHTS,
+  chainScoreLedger = null,
+  btcPriceUsd = 60_000,
+  allocatorPolicy = CAPITAL_ALLOCATOR_POLICY,
 } = {}) {
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return {
@@ -178,20 +271,48 @@ export function buildScoredAllocation({
 
   // 1. Score every candidate
   const scored = candidates
-    .map((c) => ({
-      ...c,
-      score: computeCompositeScore({ ...c, maxYieldInSet: maxYield }, venueMetadata, scoreWeights),
-    }))
+    .map((c) => {
+      const chainScore = resolveChainScore(c, venueMetadata, chainScoreLedger);
+      const allocationBucket = allocationBucketForCandidate(chainScore, allocatorPolicy);
+      return {
+        ...c,
+        chain: chainScore.chain || c.chain,
+        ...chainScore,
+        allocationBucket,
+        exploreCapSats: allocationBucket === "explore"
+          ? exploreCapSatsForCandidate({
+              candidate: c,
+              totalAvailableSats,
+              btcPriceUsd,
+              policy: allocatorPolicy,
+            })
+          : null,
+        score: computeCompositeScore({ ...c, maxYieldInSet: maxYield }, venueMetadata, scoreWeights, chainScoreLedger),
+      };
+    })
     .sort((a, b) => b.score - a.score);
 
   // 2. Allocate greedily by score, applying diversification binary search
   const allocations = [];
   let remaining = finitePositive(totalAvailableSats);
+  let exploreRemaining = exploreBudgetSats({
+    totalAvailableSats,
+    btcPriceUsd,
+    policy: allocatorPolicy,
+  });
 
   for (const candidate of scored) {
     if (remaining <= 0) break;
 
-    const requested = finitePositive(candidate.proposedAllocationSats);
+    let requested = finitePositive(candidate.proposedAllocationSats);
+    if (candidate.allocationBucket === "explore") {
+      if (exploreRemaining <= 0) continue;
+      requested = Math.min(
+        requested,
+        finitePositive(candidate.exploreCapSats ?? requested),
+        exploreRemaining,
+      );
+    }
     if (requested <= 0) continue;
 
     const cappedByDiversity = shrinkToDiversification({
@@ -211,13 +332,31 @@ export function buildScoredAllocation({
           allocatedSats: alloc,
           expectedYieldSats: candidate.expectedYieldSats,
           score: candidate.score,
+          chainScore: candidate.chainScore,
+          chainScoreSource: candidate.chainScoreSource,
+          widePosterior: candidate.widePosterior,
+          ledgerSampleCount: candidate.ledgerSampleCount,
+          ledgerAlphaSampleCount: candidate.ledgerAlphaSampleCount,
+          receiptFreshnessHours: candidate.receiptFreshnessHours,
+          chainScoreBlockers: Object.freeze([...(candidate.chainScoreBlockers || [])]),
+          allocationBucket: candidate.allocationBucket,
+          exploreCapSats: candidate.exploreCapSats,
         }),
       );
       remaining -= alloc;
+      if (candidate.allocationBucket === "explore") {
+        exploreRemaining = Math.max(0, exploreRemaining - alloc);
+      }
     }
   }
 
   const totalAllocated = finitePositive(totalAvailableSats) - remaining;
+  const exploreAllocationSats = allocations
+    .filter((allocation) => allocation.allocationBucket === "explore")
+    .reduce((sum, allocation) => sum + finitePositive(allocation.allocatedSats), 0);
+  const exploitAllocationSats = allocations
+    .filter((allocation) => allocation.allocationBucket === "exploit")
+    .reduce((sum, allocation) => sum + finitePositive(allocation.allocatedSats), 0);
 
   return Object.freeze({
     allocations: Object.freeze(allocations),
@@ -228,6 +367,12 @@ export function buildScoredAllocation({
       totalAvailableSats: finitePositive(totalAvailableSats),
       totalAllocated,
       remainingSats: remaining,
+      exploreAllocationSats,
+      exploitAllocationSats,
+      exploreCandidateCount: scored.filter((candidate) => candidate.allocationBucket === "explore").length,
+      priorScoreCandidateCount: scored.filter((candidate) =>
+        candidate.chainScoreSource === "prior" || candidate.chainScoreSource === "static_prior",
+      ).length,
       topStrategy: allocations[0]?.strategyId || null,
       topScore: scored[0]?.score || 0,
     }),

@@ -11,6 +11,7 @@ import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { activeMerklPortfolioPositions, merklPortfolioScore } from "./merkl-portfolio-allocator.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import { buildScoredTargetBalances } from "./capital/scored-target-balances.mjs";
+import { buildChainScoreLedger } from "../strategy/chain-score-ledger.mjs";
 import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
 import {
   executeAavePortfolioExit,
@@ -308,15 +309,20 @@ async function buildRebalanceExitPlanForPositions({ positions = [], policy = {},
   if (!(totalCapitalUsd > 0)) {
     return buildMerklPortfolioRebalanceExitPlan({ positions, targetChainUsd: {}, toleranceUsd: rebalancePolicy.toleranceUsd ?? 5 });
   }
-  const [promotionGate, economics] = await Promise.all([
+  const [promotionGate, economics, auditRecords] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
     readJsonIfExists(join(config.dataDir, "destination-economics-ledger.json")),
+    readJsonl("logs", "signer-audit").catch(() => []),
   ]);
   const scoredTargets = buildScoredTargetBalances({
     promotionGate,
     economics,
     strategyCaps: listStrategyCaps(),
     totalCapitalUsd,
+    chainScoreLedger: buildChainScoreLedger({
+      records: auditRecords,
+      now,
+    }),
     now,
   });
   const targetChainUsd = Object.fromEntries(

@@ -5,6 +5,7 @@ import {
   computeTinyCanaryMinProfitablePositionUsd,
   resolveTinyCanaryExpectedHoldDays,
 } from "../config/sizing.mjs";
+import { evaluateNonPrimaryEntryPolicy } from "./non-primary-entry-policy.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
@@ -535,14 +536,34 @@ function merklPolicyPreviewBlockers(candidate = null) {
   }
 
   const chain = candidate.chain || null;
-  const minProfitable = computeTinyCanaryMinProfitablePositionUsd({
-    chain,
-    aprPct: Number(candidate.aprPct ?? candidate.nativeAprPct ?? 0),
-    expectedHoldDays: merklExpectedHoldDays(candidate),
-    estimatedGasCostUsd: candidate.estimatedGasCostUsd,
-  });
-  if (Number.isFinite(amountUsd) && minProfitable !== null && amountUsd < minProfitable) {
-    blockers.push(`same_chain_unprofitable:need_$${Math.ceil(minProfitable)}_on_${chain || "unknown"}`);
+  const expectedNetEvUsd = candidate.expectedNetEvUsd ?? candidate.expectedRealizedNetUsd ?? candidate.netUsd;
+  if (Number.isFinite(Number(expectedNetEvUsd))) {
+    const evGate = evaluateNonPrimaryEntryPolicy({
+      candidate: {
+        chain,
+        notionalUsd: amountUsd,
+        expectedNetEvUsd,
+        rung: "tiny_canary",
+        p90RoundTripCostUsd: candidate.p90RoundTripCostUsd,
+        estimatedGasCostUsd: candidate.estimatedGasCostUsd,
+        rewardToken: candidate.rewardToken || null,
+        rewardTokenAddress: candidate.rewardTokenAddress || null,
+        rewardAsset: candidate.rewardAsset || null,
+        rewardExitCostUsd: candidate.rewardExitCostUsd,
+        claimSwapCostUsd: candidate.claimSwapCostUsd,
+      },
+    });
+    blockers.push(...evGate.blockers.filter((blocker) => blocker !== "candidate_amount_missing"));
+  } else {
+    const minProfitable = computeTinyCanaryMinProfitablePositionUsd({
+      chain,
+      aprPct: Number(candidate.aprPct ?? candidate.nativeAprPct ?? 0),
+      expectedHoldDays: merklExpectedHoldDays(candidate),
+      estimatedGasCostUsd: candidate.estimatedGasCostUsd,
+    });
+    if (Number.isFinite(amountUsd) && minProfitable !== null && amountUsd < minProfitable) {
+      blockers.push(`same_chain_unprofitable:need_$${Math.ceil(minProfitable)}_on_${chain || "unknown"}`);
+    }
   }
   return compact(blockers);
 }

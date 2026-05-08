@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,9 @@ import {
   AERODROME_CL_REQUIRED_EXECUTOR_CAPABILITIES,
   buildStrategyBuilderChainUnsupportedMarker,
   buildStrategyDedicatedExecutorMissingMarker,
+  buildSafeDispatchIntentsSummary,
   buildStrategyExecutorMissingMarker,
+  shouldBroadcastGeneratedIntents,
   validateCommittedProfileSelection,
 } from "../src/cli/run-strategy-tick.mjs";
 
@@ -64,6 +66,11 @@ test("run-strategy-tick reports committed cap configuration without fabricating 
   assert.equal(summary.gasFloatSummary.observedChainCount, 0);
   assert.equal(summary.gasFloatSummary.chains[0].chain, "bsc");
   assert.equal(summary.gasFloatSummary.chains[0].missingReason, "actual_balance_unobserved");
+
+  const persisted = JSON.parse((await readFile(outPath, "utf8")).trim());
+  assert.equal(persisted.executionMode, "report_only");
+  assert.equal(persisted.broadcastSummary.generatedIntentCount, 0);
+  assert.equal(persisted.broadcastSummary.broadcastCount, 0);
 });
 
 test("Base-specific strategy builder blocker is non-broadcastable on another chain", () => {
@@ -210,4 +217,60 @@ test("aggressive profile validation passes when committed caps already fit the p
 
   assert.equal(validation.ok, true);
   assert.deepEqual(validation.conflicts, []);
+});
+
+test("run-strategy-tick keeps dispatch intent summaries logging-only by default", () => {
+  const summary = buildSafeDispatchIntentsSummary({
+    dispatch: {
+      intents: [
+        {
+          strategyId: "a",
+          chain: "base",
+          protocol: "moonwell",
+          decision: "deny",
+          reason: "negative_post_cost_edge",
+          detail: { edge: -1, rawTx: "0xdeadbeef", calldata: "0xabc" },
+          expectedNetSats: -1,
+          allowedAllocationSats: 0,
+          observedAt: "2026-05-08T00:00:00.000Z",
+        },
+        {
+          strategyId: "a",
+          chain: "bsc",
+          protocol: "venus",
+          decision: "allow",
+          reason: null,
+          expectedNetSats: 25,
+          allowedAllocationSats: 100,
+          observedAt: "2026-05-08T00:00:00.000Z",
+        },
+      ],
+    },
+    observedAt: "2026-05-08T00:00:00.000Z",
+  });
+
+  assert.deepEqual(summary, [
+    {
+      strategyId: "a",
+      chain: "base",
+      protocol: "moonwell",
+      decision: "deny",
+      reason: "negative_post_cost_edge",
+      detail: "edge=-1",
+      expectedNetSats: -1,
+      observedAt: "2026-05-08T00:00:00.000Z",
+    },
+    {
+      strategyId: "a",
+      chain: "bsc",
+      protocol: "venus",
+      decision: "allow",
+      reason: null,
+      detail: null,
+      expectedNetSats: 25,
+      observedAt: "2026-05-08T00:00:00.000Z",
+    },
+  ]);
+  assert.equal(shouldBroadcastGeneratedIntents({ execute: false }), false);
+  assert.equal(shouldBroadcastGeneratedIntents({ execute: true }), true);
 });

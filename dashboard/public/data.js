@@ -603,6 +603,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     reconciliationGapUsd: Number.isFinite(capitalSummary.reconciliationGapUsd) ? capitalSummary.reconciliationGapUsd : null,
     assetTracking: assetTracking ? {
       coverageState: assetTracking.coverageState || null,
+      verdict: assetTracking.verdict || null,
+      coverage: assetTracking.coverage || null,
       dashboardHeadline: assetTracking.dashboardHeadline || null,
       riskReady: assetTracking.riskReady === true,
       exactTotalUsd: Number.isFinite(assetTracking.exactTotalUsd) ? assetTracking.exactTotalUsd : null,
@@ -611,6 +613,11 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       externalReferenceUsd: Number.isFinite(assetTracking.externalReferenceUsd) ? assetTracking.externalReferenceUsd : null,
       externalUnclassifiedUsd: Number.isFinite(assetTracking.externalUnclassifiedUsd) ? assetTracking.externalUnclassifiedUsd : null,
       unexplainedGapUsd: Number.isFinite(assetTracking.unexplainedGapUsd) ? assetTracking.unexplainedGapUsd : null,
+      staleItemCount: Number.isFinite(assetTracking.staleItemCount) ? assetTracking.staleItemCount : 0,
+      stalePriceItemCount: Number.isFinite(assetTracking.stalePriceItemCount) ? assetTracking.stalePriceItemCount : 0,
+      failedProtocolMarkCount: Number.isFinite(assetTracking.failedProtocolMarkCount) ? assetTracking.failedProtocolMarkCount : 0,
+      doubleCountPreventedCount: Number.isFinite(assetTracking.doubleCountPreventedCount) ? assetTracking.doubleCountPreventedCount : 0,
+      oldestMaterialSourceObservedAt: assetTracking.oldestMaterialSourceObservedAt || null,
       blockers: Array.isArray(assetTracking.blockers) ? assetTracking.blockers : []
     } : null,
     systemConfidence: capitalSummary.systemConfidence || (summaryAssetConfidence === "verified_current" ? "high" : "medium"),
@@ -672,6 +679,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     reconciliationGapUsd: null,
     assetTracking: assetTracking ? {
       coverageState: assetTracking.coverageState || null,
+      verdict: assetTracking.verdict || null,
+      coverage: assetTracking.coverage || null,
       dashboardHeadline: assetTracking.dashboardHeadline || null,
       riskReady: assetTracking.riskReady === true,
       exactTotalUsd: Number.isFinite(assetTracking.exactTotalUsd) ? assetTracking.exactTotalUsd : null,
@@ -680,6 +689,11 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       externalReferenceUsd: Number.isFinite(assetTracking.externalReferenceUsd) ? assetTracking.externalReferenceUsd : null,
       externalUnclassifiedUsd: Number.isFinite(assetTracking.externalUnclassifiedUsd) ? assetTracking.externalUnclassifiedUsd : null,
       unexplainedGapUsd: Number.isFinite(assetTracking.unexplainedGapUsd) ? assetTracking.unexplainedGapUsd : null,
+      staleItemCount: Number.isFinite(assetTracking.staleItemCount) ? assetTracking.staleItemCount : 0,
+      stalePriceItemCount: Number.isFinite(assetTracking.stalePriceItemCount) ? assetTracking.stalePriceItemCount : 0,
+      failedProtocolMarkCount: Number.isFinite(assetTracking.failedProtocolMarkCount) ? assetTracking.failedProtocolMarkCount : 0,
+      doubleCountPreventedCount: Number.isFinite(assetTracking.doubleCountPreventedCount) ? assetTracking.doubleCountPreventedCount : 0,
+      oldestMaterialSourceObservedAt: assetTracking.oldestMaterialSourceObservedAt || null,
       blockers: Array.isArray(assetTracking.blockers) ? assetTracking.blockers : []
     } : null,
     systemConfidence: Number(holdings.scanErrorCount || 0) > 0 ? "medium" : "high",

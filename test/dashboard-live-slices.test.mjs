@@ -721,6 +721,15 @@ test("capital summary uses wallet plus marked protocol positions as current tota
   assert.equal(slice.positionItems[0].usd, 5.015801);
   assert.equal(slice.positionItems[0].entryUsd, 5.56);
   assert.equal(slice.positionItems[0].markSource, "protocol_position_mark");
+  assert.equal(slice.positionItems[0].freshness, "fresh");
+  assert.equal(slice.positionItems[0].confidence, "verified_current");
+  assert.equal(slice.positionItems[0].priceFreshness, "fresh");
+  assert.deepEqual(slice.positionItems[0].priceSource, {
+    name: "protocol_position_mark",
+    type: "protocol_position_mark",
+    observedAt: "2026-05-03T12:00:00.000Z",
+    divergencePct: 0,
+  });
 });
 
 test("capital summary keeps unknown asset universe gaps out of exact confidence", () => {

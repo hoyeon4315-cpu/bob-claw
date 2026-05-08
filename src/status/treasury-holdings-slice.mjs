@@ -8,23 +8,138 @@ function latestByObservedAt(records = []) {
 }
 
 const WHOLE_WALLET_PREFERENCE_WINDOW_MS = 15 * 60 * 1000;
+const SOURCE_FRESH_MAX_AGE_MS = 60 * 1000;
+const PRICE_FRESH_MAX_AGE_MS = 5 * 60 * 1000;
+const PRICE_DIVERGENCE_WARN_PCT = 1;
+const PRICE_DIVERGENCE_BLOCK_PCT = 3;
 
 function normalizeSymbol(value = "") {
   return String(value || "").toLowerCase().replace(/\.oft$/u, "");
 }
 
-function inventoryItem(entry = {}, family) {
+function normalizeChain(value = "") {
+  const chain = String(value || "").toLowerCase();
+  const aliases = { bnb: "bsc", avax: "avalanche", berachain: "bera" };
+  return aliases[chain] || chain || null;
+}
+
+function observedAtOrFallback(...values) {
+  return values.find((value) => Number.isFinite(Date.parse(value || ""))) || new Date(0).toISOString();
+}
+
+function sourceFreshness(observedAt, now, maxAgeMs = SOURCE_FRESH_MAX_AGE_MS) {
+  const observed = observedAtMs(observedAt);
+  const current = observedAtMs(now);
+  if (!observed || !current) return "stale";
+  return Math.max(0, current - observed) <= maxAgeMs ? "fresh" : "stale";
+}
+
+function normalizeTrackingStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "pending_whitelist_review" || status === "unknown" || status === "unregistered") {
+    return "unregistered";
+  }
+  return status || null;
+}
+
+function priceSourceKindForEntry(entry = {}, family = "") {
+  const symbol = normalizeSymbol(entry.ticker || entry.asset || entry.symbol || entry.name || "");
+  const valuationKind = entry.valuation?.kind || entry.priceSource?.valuationKind || null;
+  if (valuationKind === "erc4626_preview") {
+    return { name: "erc4626_preview_underlying_chainlink_oracle", type: "erc4626_underlying_preview" };
+  }
+  if (["eth", "weth"].includes(symbol) || family === "native") {
+    return { name: "chainlink:eth_usd", type: "chainlink_onchain_feed" };
+  }
+  if (["btc", "wbtc", "cbbtc", "unibtc", "solvbtc"].includes(symbol)) {
+    return { name: "chainlink:btc_usd", type: "chainlink_onchain_feed" };
+  }
+  if (["usdc", "usdt", "ousdt", "rlusd", "usdc.e"].includes(symbol) || /(?:usdc|usdt|rlusd)/u.test(symbol)) {
+    return { name: "chainlink:usd_stable", type: "chainlink_onchain_feed" };
+  }
+  if (entry.estimatedUsd === null || entry.estimatedUsd === undefined) {
+    return { name: "missing_price_source", type: "missing" };
+  }
+  return { name: "coingecko_http_fallback", type: "coingecko_http" };
+}
+
+function normalizePriceSource(entry = {}, family, { sourceObservedAt, priceObservedAt } = {}) {
+  const existing = entry.priceSource && typeof entry.priceSource === "object" ? entry.priceSource : null;
+  const source = existing || priceSourceKindForEntry(entry, family);
+  return {
+    name: String(source.name || entry.priceSource || "missing_price_source"),
+    type: String(source.type || "snapshot"),
+    observedAt: observedAtOrFallback(source.observedAt, priceObservedAt, sourceObservedAt),
+    divergencePct: finiteNumber(entry.priceDivergencePct ?? entry.divergencePct ?? source.divergencePct) ?? 0,
+    primary: "chainlink_onchain_feed",
+    secondary: "dex_pool_median",
+    fallback: "coingecko_http",
+  };
+}
+
+function normalizePriceFreshness(entry = {}, { priceObservedAt, generatedAt } = {}) {
+  const existing = String(entry.priceFreshness || "").toLowerCase();
+  if (["fresh", "stale", "missing"].includes(existing)) return existing;
+  if (!Number.isFinite(finiteNumber(entry.estimatedUsd))) return "missing";
+  return sourceFreshness(priceObservedAt, generatedAt, PRICE_FRESH_MAX_AGE_MS);
+}
+
+function normalizeDivergenceStatus(entry = {}, { priceSource, priceFreshness } = {}) {
+  const existing = String(entry.priceDivergenceStatus || "").toLowerCase();
+  if (["ok", "warn", "block"].includes(existing)) return existing;
+  if (priceFreshness === "missing") return "block";
+  const divergencePct = finiteNumber(priceSource?.divergencePct) ?? 0;
+  if (divergencePct > PRICE_DIVERGENCE_BLOCK_PCT) return "block";
+  if (divergencePct > PRICE_DIVERGENCE_WARN_PCT) return "warn";
+  return "ok";
+}
+
+function normalizeConfidence(entry = {}, { freshness, priceFreshness, trackingStatus } = {}) {
+  const existing = String(entry.confidence || "").toLowerCase();
+  if (["verified_current", "rpc_inferred", "registry_only", "low"].includes(existing)) return existing;
+  if (trackingStatus === "unregistered") return "low";
+  if (priceFreshness === "missing") return "registry_only";
+  if (freshness === "fresh") return "rpc_inferred";
+  return "registry_only";
+}
+
+function inventoryItem(entry = {}, family, { inventoryObservedAt = null, generatedAt = new Date().toISOString() } = {}) {
   const symbol = entry.ticker || entry.asset || entry.symbol || entry.name || "asset";
   const amount = Number(entry.actualDecimal);
   const usd = Number(entry.estimatedUsd);
+  const sourceObservedAt = observedAtOrFallback(entry.sourceObservedAt, entry.observedAt, entry.markObservedAt, inventoryObservedAt, generatedAt);
+  const priceObservedAt = observedAtOrFallback(entry.priceObservedAt, entry.valuation?.observedAt, entry.markObservedAt, sourceObservedAt);
+  const priceSource = normalizePriceSource(entry, family, { sourceObservedAt, priceObservedAt });
+  const priceFreshness = normalizePriceFreshness(entry, { priceObservedAt, generatedAt });
+  const priceDivergenceStatus = normalizeDivergenceStatus(entry, { priceSource, priceFreshness });
+  const freshness = ["fresh", "stale"].includes(String(entry.freshness || "").toLowerCase())
+    ? String(entry.freshness).toLowerCase()
+    : sourceFreshness(sourceObservedAt, generatedAt);
+  const trackingStatus = normalizeTrackingStatus(entry.trackingStatus);
+  const countedInWalletTotal =
+    trackingStatus === "unregistered" || priceDivergenceStatus === "block"
+      ? false
+      : entry.countedInWalletTotal !== false;
   return {
     sym: normalizeSymbol(symbol),
     name: symbol,
-    chain: entry.chain || null,
+    chain: normalizeChain(entry.chain),
     amount: Number.isFinite(amount) ? amount : 0,
     usd: Number.isFinite(usd) ? usd : 0,
     family,
     status: entry.status || null,
+    token: entry.token || null,
+    trackingStatus,
+    valuation: entry.valuation || null,
+    source: "whole_wallet_inventory",
+    sourceObservedAt,
+    priceSource,
+    priceObservedAt,
+    priceFreshness,
+    priceDivergenceStatus,
+    freshness,
+    confidence: normalizeConfidence(entry, { freshness, priceFreshness, trackingStatus }),
+    countedInWalletTotal,
   };
 }
 
@@ -198,18 +313,30 @@ export function buildTreasuryHoldingsSlice(
     ? selectExternalCoverage(latest, wholeWalletRecords)
     : null;
   const items = applyReconciledExitBalances([
-    ...(latest.native || []).map((entry) => inventoryItem(entry, "native")),
+    ...(latest.native || []).map((entry) => inventoryItem(entry, "native", {
+      inventoryObservedAt: latest.observedAt,
+      generatedAt,
+    })),
     ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || [])
       .filter((entry) => !isExternalUnclassifiedEntry(entry))
-      .filter((entry) => entry.countedInWalletTotal !== false)
+      .filter((entry) =>
+        entry.countedInWalletTotal !== false ||
+        !/protocol_reader_covered|protocol_position/u.test(String(entry.trackingStatus || "")),
+      )
       .map((entry) =>
-      inventoryItem(entry, "token"),
+      inventoryItem(entry, "token", {
+        inventoryObservedAt: latest.observedAt,
+        generatedAt,
+      }),
     ),
   ], merklPositionEvents, latest.observedAt)
     .filter((item) => item.usd > 0 || item.amount > 0)
     .sort((a, b) => (b.usd || 0) - (a.usd || 0));
 
-  const itemTotalUsd = items.reduce((sum, item) => sum + (Number(item.usd) || 0), 0);
+  const itemTotalUsd = items.reduce(
+    (sum, item) => sum + (item.countedInWalletTotal === false ? 0 : Number(item.usd) || 0),
+    0,
+  );
   const itemizedSupportedWalletUsd = supportedItemizedUsd(latest, itemTotalUsd);
   const scanErrors = Array.isArray(latest.scanErrors)
     ? latest.scanErrors.filter(isAuthoritativeScanError)

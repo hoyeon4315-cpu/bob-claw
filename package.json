@@ -58,6 +58,8 @@
     "report:strategy-catalog": "node src/cli/report-strategy-catalog.mjs",
     "report:live-deployment-priorities": "node src/cli/report-live-deployment-priorities.mjs",
     "report:strategy-execution-surfaces": "node src/cli/report-strategy-execution-surfaces.mjs",
+    "report:strategy-receipt-distribution": "node src/cli/report-strategy-receipt-distribution.mjs",
+    "report:chain-hypothesis": "node src/cli/report-chain-hypothesis.mjs",
     "report:strategy-research-board": "node src/cli/report-strategy-research-board.mjs",
     "report:campaign-aware-opportunities": "node src/cli/report-campaign-aware-opportunities.mjs",
     "radar:ingest": "node src/cli/radar-ingest.mjs",

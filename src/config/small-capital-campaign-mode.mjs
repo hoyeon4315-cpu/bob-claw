@@ -239,16 +239,24 @@ export function effectiveAnchorBudgetUsd(totalCapitalUsd, policy = SMALL_CAPITAL
 }
 
 export function effectiveOpportunisticBudgetUsd(totalCapitalUsd, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
+  const effectiveBudgets = effectiveDefaultBudgetsUsd({
+    operatingCapitalUsd: totalCapitalUsd,
+    policy,
+  });
   return Math.min(
     totalCapitalUsd * policy.opportunisticMaxPct,
-    policy.defaultBudgetsUsd.opportunisticMaxUsd
+    effectiveBudgets.opportunisticMaxUsd
   );
 }
 
 export function effectiveMicroBudgetUsd(totalCapitalUsd, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
+  const effectiveBudgets = effectiveDefaultBudgetsUsd({
+    operatingCapitalUsd: totalCapitalUsd,
+    policy,
+  });
   return Math.min(
     totalCapitalUsd * policy.microMaxPct,
-    policy.defaultBudgetsUsd.microMaxUsd
+    effectiveBudgets.microMaxUsd
   );
 }
 

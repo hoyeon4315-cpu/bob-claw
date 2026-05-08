@@ -96,10 +96,13 @@ test("buildProtocolPositionMarksSlice reports failed stale and expired latest ma
   assert.equal(slice.failedPositionCount, 1);
   assert.equal(slice.stalePositionCount, 1);
   assert.equal(slice.expiredPositionCount, 1);
+  assert.equal(slice.oldestMaterialSourceObservedAt, "2026-05-03T10:00:00.000Z");
   assert.equal(slice.confidence, "verified_minimum");
   assert.equal(slice.byChain.base.valueUsd, 2);
   assert.equal(slice.byChain.ethereum.valueUsd, 9);
   assert.equal(slice.byChain.bsc.valueUsd, 7);
+  assert.equal(slice.items.find((item) => item.positionId === "stale").source, "protocol_position_mark");
+  assert.equal(slice.items.find((item) => item.positionId === "stale").sourceObservedAt, "2026-05-03T11:00:00.000Z");
 });
 
 test("buildProtocolPositionMarksSlice ignores marks for inactive source entries when active ids are supplied", () => {

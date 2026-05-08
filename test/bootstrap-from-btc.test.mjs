@@ -73,7 +73,7 @@ test("bootstrap-from-btc with diversification cap leaves residual buffer", () =>
   assert.ok(Math.abs(totalAlloc - 750) < 0.001, `expected 750 with diversification cap + water-fill, got ${totalAlloc}`);
 });
 
-test("bootstrap-from-btc with total weight zero falls back to equal split", () => {
+test("bootstrap-from-btc with total weight zero emits capped explore samples", () => {
   const report = buildBootstrapFromBtcReport({
     promotionGate: { items: [] },
     totalCapitalUsd: 600,
@@ -82,11 +82,37 @@ test("bootstrap-from-btc with total weight zero falls back to equal split", () =
     diversificationPolicy: null,
   });
   const refills = report.rebalancePlan.actions.filter((a) => a.type === "capital_rebalance");
-  // candidate set = autoExecute strategies (3) — promotionGate is score source only.
+  // candidate set = autoExecute strategies (3), but prior-only chains are
+  // explore samples and do not receive a full equal-split bootstrap target.
   assert.equal(refills.length, 3);
   for (const refill of refills) {
-    assert.ok(Math.abs(refill.amountUsd - 200) < 0.001);
+    assert.ok(Math.abs(refill.amountUsd - 10) < 0.001);
   }
+  assert.equal(report.scoredTargets.summary.exploreAllocationUsd, 30);
+  assert.equal(report.scoredTargets.summary.priorScoreCandidateCount, 3);
+});
+
+test("bootstrap-from-btc uses receipt-driven chain score ledger when provided", () => {
+  const report = buildBootstrapFromBtcReport({
+    promotionGate: { items: [] },
+    totalCapitalUsd: 600,
+    strategyCaps: STRATEGY_CAPS,
+    balancesByChain: {},
+    diversificationPolicy: null,
+    chainScoreLedger: {
+      byChain: {
+        base: { chainScore: 0.2, scoreSource: "ledger", widePosterior: false, sampleCount: 40, alphaSampleCount: 40, receiptFreshnessHours: 1, blockers: [] },
+        bsc: { chainScore: 0.9, scoreSource: "ledger", widePosterior: false, sampleCount: 40, alphaSampleCount: 40, receiptFreshnessHours: 1, blockers: [] },
+        unichain: { chainScore: 0.1, scoreSource: "prior", widePosterior: true, sampleCount: 0, alphaSampleCount: 0, receiptFreshnessHours: null, blockers: ["chain_score_unobserved"] },
+      },
+    },
+  });
+
+  const bsc = report.scoredTargets.perStrategy.find((item) => item.strategyId === "strategy-bsc");
+  const base = report.scoredTargets.perStrategy.find((item) => item.strategyId === "strategy-base");
+  assert.equal(bsc.chainScoreSource, "ledger");
+  assert.ok(bsc.allocationUsd > base.allocationUsd);
+  assert.equal(report.scoredTargets.summary.priorScoreCandidateCount, 1);
 });
 
 test("bootstrap-from-btc returns TOTAL_CAPITAL_UNDEFINED when no capital provided", () => {

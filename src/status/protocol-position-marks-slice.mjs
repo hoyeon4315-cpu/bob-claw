@@ -394,6 +394,7 @@ export function buildProtocolPositionMarksSlice(
   let stalePositionCount = 0;
   let expiredPositionCount = 0;
   let transientDegradedCount = 0;
+  const materialObservedAt = [];
 
   const items = latest.map((mark) => {
     const freshness = markFreshness(mark, generatedAt);
@@ -411,6 +412,7 @@ export function buildProtocolPositionMarksSlice(
     if (successful) {
       totalMarkedUsd += valueUsd;
       markedPositionCount += 1;
+      if (mark.observedAt && valueUsd > 0) materialObservedAt.push(mark.observedAt);
       const bucket = chainBucket(byChain, mark.chain);
       bucket.valueUsd += valueUsd;
       bucket.count += 1;
@@ -427,9 +429,16 @@ export function buildProtocolPositionMarksSlice(
       valueUsd,
       valueBtc: finiteNumber(mark.valueBtc),
       observedAt: mark.observedAt || null,
+      source: "protocol_position_mark",
+      sourceObservedAt: mark.observedAt || null,
       freshness,
       confidence: mark.confidence || null,
       markSource: mark.markSource || null,
+      priceSource: mark.priceSource || mark.markSource || null,
+      priceObservedAt: mark.priceObservedAt || mark.observedAt || null,
+      priceFreshness: mark.priceFreshness || freshness,
+      priceDivergenceStatus: mark.priceDivergenceStatus || null,
+      countedInWalletTotal: false,
       adapterId: mark.adapterId || null,
       failureKind: mark.failureKind || null,
       message: mark.message || null,
@@ -493,6 +502,7 @@ export function buildProtocolPositionMarksSlice(
     expiredPositionCount,
     transientDegradedCount,
     totalMarkedUsd: roundUsd(totalMarkedUsd),
+    oldestMaterialSourceObservedAt: materialObservedAt.sort()[0] || null,
     confidence,
     transientDegradedWarning,
     refreshSuccessRatio: {

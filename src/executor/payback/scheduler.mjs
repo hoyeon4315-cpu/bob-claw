@@ -1320,6 +1320,104 @@ export async function submitCompositePaybackPlan({
   };
 }
 
+function buildPaybackDryRunFormula({ decision = null, compositePlan = null, preMinimumPreview = null } = {}) {
+  const policy = decision?.policy || {};
+  const inputs = decision?.decisionLog?.inputs || {};
+  const applied = decision?.decisionLog?.applied || inputs;
+  const grossProfitSatsPeriod =
+    finiteNonNegative(inputs.grossProfitSatsPeriod) ??
+    finiteNonNegative(decision?.snapshot?.grossProfitSats_period) ??
+    0;
+  const pendingSats =
+    finiteNonNegative(decision?.snapshot?.pendingDeferredSats) ??
+    grossProfitSatsPeriod;
+  const baseRatio = finiteNumber(applied.baseRatio) ?? finiteNumber(policy.baseRatio) ?? 0;
+  const regimeMultiplier = finiteNumber(applied.regimeMultiplier) ?? 1;
+  const volMultiplier = finiteNumber(applied.volMultiplier) ?? 1;
+  const effectiveMultiplier = baseRatio * regimeMultiplier * volMultiplier;
+  const minPaybackSats = finiteNonNegative(policy.minPaybackSats) ?? null;
+  const estimatedOfframpCostSats =
+    finiteNonNegative(compositePlan?.estimatedOfframpCostSats) ??
+    finiteNonNegative(preMinimumPreview?.estimatedOfframpCostSats) ??
+    0;
+  const requiredGrossBeforeCostsSats = Number.isFinite(minPaybackSats)
+    ? minPaybackSats + estimatedOfframpCostSats
+    : null;
+  const requiredGrossProfitSatsPeriod =
+    Number.isFinite(requiredGrossBeforeCostsSats) && effectiveMultiplier > 0
+      ? Math.ceil(requiredGrossBeforeCostsSats / effectiveMultiplier)
+      : null;
+  const grossTargetBeforeCostsSats =
+    finiteNonNegative(applied.grossTargetBeforeCostsSats) ??
+    finiteNonNegative(inputs.grossTargetBeforeCostsSats) ??
+    Math.round(grossProfitSatsPeriod * effectiveMultiplier);
+  const plannedPaybackSats =
+    finiteNonNegative(compositePlan?.plannedPaybackSats) ??
+    Math.max(0, grossTargetBeforeCostsSats - estimatedOfframpCostSats);
+
+  return {
+    mode: "dry_run",
+    deliveryCandidate: compositePlan !== null,
+    executionEligible: false,
+    intentEligible: false,
+    effectiveMinPaybackSats: minPaybackSats,
+    pendingSats,
+    pendingProgressRatio:
+      Number.isFinite(minPaybackSats) && minPaybackSats > 0
+        ? pendingSats / minPaybackSats
+        : null,
+    grossProfitSatsPeriod,
+    grossTargetBeforeCostsSats,
+    plannedPaybackSats,
+    estimatedOfframpCostSats,
+    minPaybackPctOfCapital: finiteNumber(policy.minPaybackPctOfCapital) ?? null,
+    absoluteFloorSats: finiteNonNegative(policy.absoluteFloorSats) ?? null,
+    operatingCapitalSats: finiteNonNegative(policy.operatingCapitalSats) ?? null,
+    candidateFormula: {
+      expression:
+        "grossProfitSatsPeriod * baseRatio * regimeMultiplier * volMultiplier - estimatedOfframpCostSats >= effectiveMinPaybackSats",
+      baseRatio,
+      regime: applied.regime || null,
+      regimeMultiplier,
+      volMultiplier,
+      effectiveMultiplier,
+      requiredGrossBeforeCostsSats,
+      requiredGrossProfitSatsPeriod,
+      additionalGrossProfitSatsNeeded:
+        Number.isFinite(requiredGrossProfitSatsPeriod)
+          ? Math.max(0, requiredGrossProfitSatsPeriod - grossProfitSatsPeriod)
+          : null,
+    },
+  };
+}
+
+async function buildPaybackDryRunPreview({
+  decision,
+  paybackConfig,
+  signerHealthReader,
+  tokenDexPlanBuilder,
+  consolidationPlanBuilder,
+  offrampQuoteBuilder,
+  now,
+} = {}) {
+  let preMinimumPreview = null;
+  if (decision?.status === "carry" && decision?.reason === "planned_payback_below_minimum") {
+    preMinimumPreview = await buildPreMinimumPaybackCostPreview({
+      decision,
+      paybackConfig,
+      signerHealthReader,
+      tokenDexPlanBuilder,
+      consolidationPlanBuilder,
+      offrampQuoteBuilder,
+      now,
+    });
+  }
+  return {
+    ...buildPaybackDryRunFormula({ decision, preMinimumPreview }),
+    preMinimumCompositePreview: preMinimumPreview,
+  };
+}
+
 export async function runPaybackSchedulerTick({
   auditLogLines = [],
   receiptStore = {},
@@ -1329,11 +1427,13 @@ export async function runPaybackSchedulerTick({
   riskState = {},
   now = new Date().toISOString(),
   execute = false,
+  dryRun = false,
   accumulatorSnapshot = snapshotPaybackAccumulator,
   signerHealthReader = readSignerHealth,
   tokenDexPlanBuilder = buildTokenDexExperimentPlan,
   consolidationPlanBuilder = buildGatewayBtcConsolidationPlan,
   offrampPlanBuilder = buildGatewayBtcOfframpPlan,
+  offrampQuoteBuilder = buildGatewayBtcOfframpQuotePreview,
   tokenDexExecutor = executeTokenDexExperimentPlan,
   consolidationExecutor = executeGatewayBtcConsolidationPlan,
   offrampExecutor = executeGatewayBtcOfframpPlan,
@@ -1375,6 +1475,17 @@ export async function runPaybackSchedulerTick({
     accumulatorSnapshot,
   });
   if (decision.status !== "plan") {
+    const dryRunPreview = dryRun
+      ? await buildPaybackDryRunPreview({
+          decision,
+          paybackConfig,
+          signerHealthReader,
+          tokenDexPlanBuilder,
+          consolidationPlanBuilder,
+          offrampQuoteBuilder,
+          now,
+        })
+      : null;
     return {
       schemaVersion: 1,
       observedAt: now,
@@ -1383,6 +1494,7 @@ export async function runPaybackSchedulerTick({
       decision,
       compositePlan: null,
       execution: null,
+      dryRun: dryRunPreview,
     };
   }
   const planning = await buildCompositePaybackPlan({
@@ -1422,6 +1534,9 @@ export async function runPaybackSchedulerTick({
     decision: planning.decision,
     compositePlan: planning.compositePlan,
     execution,
+    dryRun: dryRun
+      ? buildPaybackDryRunFormula({ decision: planning.decision, compositePlan: planning.compositePlan })
+      : null,
   };
 }
 

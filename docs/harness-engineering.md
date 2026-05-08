@@ -88,7 +88,11 @@ Before dashboard UI changes:
    generated snapshot.
 3. If adding data fields, update the status builder and dashboard tests.
 4. Keep the dashboard read-only: no keys, signing, cap changes, or execution.
-5. Test focused dashboard files first:
+5. Treat `generatedAt` as dashboard render time only. Material asset rows need
+   `sourceObservedAt`, `priceObservedAt`, freshness, and confidence; stale
+   wallet/protocol/price sources must remain visible and downgrade the
+   asset-tracking verdict instead of being hidden.
+6. Test focused dashboard files first:
 
 ```bash
 node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs
@@ -102,6 +106,9 @@ the public artifact set.
 ## Strategy And Config Checklist
 
 - Import official Gateway chains from `src/config/gateway-destinations.mjs`.
+- Normalize chain ids through `canonicalGatewayChain()` before scoring,
+  allocating, or aggregating receipt evidence. `bnb`/`BNB Chain` must land on
+  `bsc`; `avax` on `avalanche`; `berachain` on `bera`.
 - Keep Arbitrum/Polygon limited to fallback/manual bridge contexts.
 - Treat the official Gateway chain list as an allowlist, not proof that every
   chain is route-enabled right now. Live Gateway intents should carry or consume
@@ -117,6 +124,33 @@ the public artifact set.
   unstaged unless intentionally publishing a snapshot refresh.
 - Treat `destination-promotion-gate.json` as a score source only. It must not
   become an execution gate, a cap source, or a signer input.
+- Chain score ledgers are receipt evidence, not execution authority. They may
+  use only signer-backed live records with terminal receipt status and explicit
+  reconciliation proof. Confirmed/delivered rows require
+  `reconciliationStatus: "reconciled"`; failed/reverted rows require
+  `reconciliationStatus: "final_failed"`. Dry-run, preview,
+  normalization-error, and cost-probe-only rows stay out of realized alpha
+  scoring.
+- Receipt-backed chain scores stay wide-posterior unless route availability,
+  exit-liquidity proof, reward-token conversion proof when applicable, and
+  enough alpha samples are present. Evidence-cost canaries can improve cost
+  metadata but must not mature alpha sample counts or inflate realized PnL.
+- Strategy-primary hypotheses and payback reserve proofs are separate. An
+  expired strategy-primary hypothesis removes allocation score/share boosts
+  until a committed renewal diff, but it does not change the proven payback
+  reserve chain or block a cap-valid deterministic policy path.
+- Explore allocation is a capped sample sleeve, not a cap raise. Unknown or
+  wide-posterior chains use `allocationBucket: "explore"` and are clamped by
+  committed strategy caps plus small-cap micro-test, radar, campaign, and
+  unproven-protocol limits before any target balance or strategy-tick
+  allocation is emitted.
+- `run-strategy-tick.mjs` is report-only by default. It may build local intent
+  previews for evidence, but it must persist `executionMode` and
+  `broadcastSummary` in the JSONL tick record and only dispatch to the signer
+  when `--execute` is provided.
+- Non-primary entry EV gates compare expected realized net EV against
+  chain-specific p90 cost, uncertainty, and a rung-aware edge floor. Do not
+  reintroduce a fixed `$10` or `$0.50` runtime blocker for tiny canaries.
 - Add tests before or with policy changes. The fastest high-signal set is:
 
 ```bash

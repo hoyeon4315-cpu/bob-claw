@@ -46,6 +46,8 @@ small-capital mode cannot drift silently.
 At the currently measured operating capital near `$358`, the `tiny` band applies:
 
 - `opportunisticMaxUsd`: `$125` baseline -> `$75` effective.
+- `microMaxUsd`: `$50` baseline -> `$30` effective.
+- `initialMicroUsd`: `$10` baseline -> `$6` effective.
 - `radar perCanaryUsd`: `$30` baseline -> `$18` effective.
 - non-primary entry: no `$10 -> $6` static floor remains. Entry uses the
   receipt/ledger p90 EV formula documented in
@@ -53,6 +55,24 @@ At the currently measured operating capital near `$358`, the `tiny` band applies
 
 The dashboard should expose nominal and effective budgets together so operators
 do not mistake a scaled report value for an unbounded live cap.
+
+## Allocation Cap Usage
+
+Legacy helper functions must use the same effective values:
+
+```js
+effectiveOpportunisticBudgetUsd(capitalUsd) =
+  min(capitalUsd * opportunisticMaxPct, scaled(opportunisticMaxUsd))
+
+effectiveMicroBudgetUsd(capitalUsd) =
+  min(capitalUsd * microMaxPct, scaled(microMaxUsd))
+```
+
+Explore allocations are additionally bounded by `effectiveMicroBudgetUsd`, and
+each explore candidate is bounded by the scaled `initialMicroUsd`,
+`initialCampaignUsd`, and radar per-canary caps. This prevents the allocator's
+`exploreSharePct` from becoming a side channel around small-cap micro-test,
+campaign, or radar limits.
 
 ## Safety Notes
 

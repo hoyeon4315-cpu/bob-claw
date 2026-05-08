@@ -190,7 +190,7 @@ test("evaluateOpportunityPolicy does not treat generic deposit as capital moveme
   });
 
   assert.equal(result.decision, "BLOCK");
-  assert.ok(result.blockers.includes("non_primary_entry_insufficient_expected_net"));
+  assert.ok(result.blockers.includes("non_primary_ev_below_required_edge"));
 });
 
 test("evaluateOpportunityPolicy does not apply non-primary entry floor to committed evidence-primary chains", async () => {
@@ -227,7 +227,7 @@ test("evaluateOpportunityPolicy does not apply non-primary entry floor to commit
     killSwitchExistsImpl: async () => false,
   });
 
-  assert.equal(result.blockers.includes("non_primary_entry_insufficient_expected_net"), false);
+  assert.equal(result.blockers.includes("non_primary_ev_below_required_edge"), false);
 });
 
 test("evaluateOpportunityPolicy derives hold days from campaign end time before using fallback", async () => {

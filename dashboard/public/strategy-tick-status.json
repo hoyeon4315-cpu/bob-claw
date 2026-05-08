@@ -1,24 +1,34 @@
 {
-  "schemaVersion": 2,
-  "generatedAt": "2026-05-08T02:50:55.125Z",
-  "tickCountTotal": 251,
-  "latestTickAt": "2026-05-08T01:40:59.524Z",
+  "schemaVersion": 3,
+  "generatedAt": "2026-05-08T14:26:08.527Z",
+  "tickCountTotal": 260,
+  "latestTickAt": "2026-05-08T13:15:07.596Z",
   "strategies": [
     {
       "strategyId": "wrapped-btc-loop-base-moonwell",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 6243,
-      "receiptCountSignerBacked": 4016,
+      "receiptCountTotal": 6291,
+      "receiptCountSignerBacked": 4048,
       "autoExecute": true,
       "operatorHold": false,
       "liveEligibility": {
@@ -34,8 +44,16 @@
         "strategyId": "wrapped-btc-loop-base-moonwell",
         "chain": "base",
         "protocol": "moonwell",
-        "allocatedSats": 499999,
-        "score": 0.905
+        "allocatedSats": 16666,
+        "score": 0.825
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 6291,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 0,
       "policyReadiness": {
@@ -43,18 +61,28 @@
         "capAutoExecute": true,
         "operatorHold": false,
         "demoted": false,
-        "signerBackedReceiptCount": 4016,
-        "receiptCountTotal": 6243
+        "signerBackedReceiptCount": 4048,
+        "receiptCountTotal": 6291
       }
     },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
@@ -77,8 +105,16 @@
         "strategyId": "recursive_wrapped_btc_lending_loop",
         "chain": "base",
         "protocol": "moonwell",
-        "allocatedSats": 214285,
-        "score": 0.905
+        "allocatedSats": 7142,
+        "score": 0.825
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 206,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 1,
       "policyReadiness": {
@@ -95,9 +131,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -117,6 +161,14 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 10,
+          "realizedNetBtc": 0
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -132,9 +184,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -154,6 +214,14 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 12,
+          "realizedNetBtc": 0
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -169,15 +237,23 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 730,
+      "receiptCountTotal": 1822,
       "receiptCountSignerBacked": 233,
       "autoExecute": true,
       "operatorHold": false,
@@ -188,9 +264,17 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 20
+        "signerBackedReceiptCount": 16
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 1822,
+          "realizedNetBtc": 0
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -198,7 +282,7 @@
         "operatorHold": false,
         "demoted": false,
         "signerBackedReceiptCount": 233,
-        "receiptCountTotal": 730
+        "receiptCountTotal": 1822
       }
     },
     {
@@ -206,9 +290,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -228,6 +320,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -243,9 +338,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -262,9 +365,17 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 56
+        "signerBackedReceiptCount": 38
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 4701,
+          "realizedNetBtc": 0.00015702
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -280,9 +391,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -302,6 +421,14 @@
         "signerBackedReceiptCount": 6
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 3578,
+          "realizedNetBtc": 0.00000663
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -317,9 +444,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -339,6 +474,14 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 83,
+          "realizedNetBtc": 0
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -354,9 +497,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -376,6 +527,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -388,18 +542,28 @@
     },
     {
       "strategyId": "beefy-folding-vault",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
       "gasFloatObservedChainCount": 1,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 172,
+      "receiptCountTotal": 176,
       "receiptCountSignerBacked": 90,
       "autoExecute": true,
       "operatorHold": false,
@@ -410,33 +574,51 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 16
+        "signerBackedReceiptCount": 12
       },
       "scoredAllocation": {
         "strategyId": "beefy-folding-vault",
         "chain": "base",
         "protocol": "beefy",
-        "allocatedSats": 41665,
-        "score": 0.401666
+        "allocatedSats": 16666,
+        "score": 0.321666
       },
-      "generatedIntentCount": 0,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 176,
+          "realizedNetBtc": 0
+        }
+      },
+      "generatedIntentCount": 2,
       "policyReadiness": {
         "autoExecute": true,
         "capAutoExecute": true,
         "operatorHold": false,
         "demoted": false,
         "signerBackedReceiptCount": 90,
-        "receiptCountTotal": 172
+        "receiptCountTotal": 176
       }
     },
     {
       "strategyId": "pendle-pt-lbtc-base",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
@@ -459,9 +641,12 @@
         "strategyId": "pendle-pt-lbtc-base",
         "chain": "base",
         "protocol": "pendle",
-        "allocatedSats": 41665,
-        "score": 0.41666600000000004
+        "allocatedSats": 16666,
+        "score": 0.336666
       },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -474,12 +659,22 @@
     },
     {
       "strategyId": "aerodrome-cl-base",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
@@ -502,8 +697,16 @@
         "strategyId": "aerodrome-cl-base",
         "chain": "base",
         "protocol": "aerodrome",
-        "allocatedSats": 41665,
-        "score": 0.431666
+        "allocatedSats": 16666,
+        "score": 0.35166600000000003
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 4,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 1,
       "policyReadiness": {
@@ -517,12 +720,22 @@
     },
     {
       "strategyId": "pendle-pt-solvbtc-bbn-bsc",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "bsc": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
@@ -545,9 +758,12 @@
         "strategyId": "pendle-pt-solvbtc-bbn-bsc",
         "chain": "bsc",
         "protocol": "pendle",
-        "allocatedSats": 41665,
-        "score": 0.38166600000000006
+        "allocatedSats": 16666,
+        "score": 0.321666
       },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -560,12 +776,22 @@
     },
     {
       "strategyId": "berachain-bend-bex-bgt",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "berachain": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
@@ -586,11 +812,14 @@
       },
       "scoredAllocation": {
         "strategyId": "berachain-bend-bex-bgt",
-        "chain": "berachain",
+        "chain": "bera",
         "protocol": "berachain",
-        "allocatedSats": 41665,
-        "score": 0.34666600000000003
+        "allocatedSats": 16666,
+        "score": 0.306666
       },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -603,12 +832,22 @@
     },
     {
       "strategyId": "gmx-v2-perp-basis-avax",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "avalanche": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 1,
@@ -631,9 +870,12 @@
         "strategyId": "gmx-v2-perp-basis-avax",
         "chain": "avalanche",
         "protocol": "gmx",
-        "allocatedSats": 41665,
-        "score": 0.421666
+        "allocatedSats": 16666,
+        "score": 0.35166600000000003
       },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -649,9 +891,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -671,6 +921,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -686,9 +939,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -708,6 +969,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -723,9 +987,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -745,6 +1017,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -757,18 +1032,30 @@
     },
     {
       "strategyId": "gateway_native_asset_conversion_sleeve",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {
+        "chain_unknown": 1
+      },
+      "blockerCountByCategory": {
+        "routing": 1
+      },
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 10,
       "gasFloatObservedChainCount": 10,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 3898,
+      "receiptCountTotal": 3918,
       "receiptCountSignerBacked": 2012,
       "autoExecute": true,
       "operatorHold": false,
@@ -779,9 +1066,17 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 46
+        "signerBackedReceiptCount": 30
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 3918,
+          "realizedNetBtc": 0
+        }
+      },
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -789,17 +1084,27 @@
         "operatorHold": false,
         "demoted": false,
         "signerBackedReceiptCount": 2012,
-        "receiptCountTotal": 3898
+        "receiptCountTotal": 3918
       }
     },
     {
       "strategyId": "recursive_stablecoin_lending_loop",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 2,
@@ -822,8 +1127,16 @@
         "strategyId": "recursive_stablecoin_lending_loop",
         "chain": "base",
         "protocol": "morpho",
-        "allocatedSats": 306121,
-        "score": 0.821666
+        "allocatedSats": 10203,
+        "score": 0.7416659999999999
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 177,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 1,
       "policyReadiness": {
@@ -837,12 +1150,22 @@
     },
     {
       "strategyId": "destination_wrapped_btc_rotation",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 3,
@@ -865,8 +1188,16 @@
         "strategyId": "destination_wrapped_btc_rotation",
         "chain": "base",
         "protocol": "gateway",
-        "allocatedSats": 41665,
-        "score": 0.436666
+        "allocatedSats": 14576,
+        "score": 0.36666599999999994
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 19,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 0,
       "policyReadiness": {
@@ -880,12 +1211,22 @@
     },
     {
       "strategyId": "stablecoin_treasury_rotation",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 2,
@@ -908,8 +1249,16 @@
         "strategyId": "stablecoin_treasury_rotation",
         "chain": "base",
         "protocol": "gateway",
-        "allocatedSats": 16665,
-        "score": 0.411666
+        "allocatedSats": 16666,
+        "score": 0.341666
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 49,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 0,
       "policyReadiness": {
@@ -923,12 +1272,22 @@
     },
     {
       "strategyId": "gateway_proxy_spread_rebalance_recheck",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 2,
@@ -951,8 +1310,16 @@
         "strategyId": "gateway_proxy_spread_rebalance_recheck",
         "chain": "base",
         "protocol": "gateway",
-        "allocatedSats": 41665,
-        "score": 0.421666
+        "allocatedSats": 16666,
+        "score": 0.35166600000000003
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 167,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 1,
       "policyReadiness": {
@@ -966,12 +1333,22 @@
     },
     {
       "strategyId": "macro_asset_rotation",
-      "lastTickAt": "2026-05-08T01:40:59.524Z",
+      "lastTickAt": "2026-05-08T13:15:07.596Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 16,
       "lastTickAllowCount": 13,
       "lastTickDenyCount": 3,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {
+        "base": 1
+      },
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": true,
       "operatorAddress": "0x96262be63aa687563789225c2fe898c27a3b0ae4",
       "gasFloatConfiguredChainCount": 2,
@@ -994,8 +1371,16 @@
         "strategyId": "macro_asset_rotation",
         "chain": "base",
         "protocol": "gateway",
-        "allocatedSats": 16665,
-        "score": 0.39666599999999996
+        "allocatedSats": 16666,
+        "score": 0.326666
+      },
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {
+        "unknown": {
+          "receipts": 13,
+          "realizedNetBtc": 0
+        }
       },
       "generatedIntentCount": 0,
       "policyReadiness": {
@@ -1012,9 +1397,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -1034,6 +1427,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -1049,9 +1445,17 @@
       "lastTickAt": null,
       "lastTickMode": null,
       "lastTickBlockers": [],
+      "topBlocker": null,
+      "topBlockerCode": null,
       "lastTickCandidateCount": 0,
       "lastTickAllowCount": 0,
       "lastTickDenyCount": 0,
+      "lastTickDenyByReason": {},
+      "topDenyReason": null,
+      "lastTickAllowByChain": {},
+      "lastTickDenyByChain": {},
+      "lastTickSkippedByReason": {},
+      "blockerCountByCategory": {},
       "capsConfigured": null,
       "operatorAddress": null,
       "gasFloatConfiguredChainCount": 0,
@@ -1071,6 +1475,9 @@
         "signerBackedReceiptCount": 0
       },
       "scoredAllocation": null,
+      "chainScoreSource": null,
+      "chainScoreObservedAt": null,
+      "regimeBreakdown": {},
       "generatedIntentCount": 0,
       "policyReadiness": {
         "autoExecute": true,
@@ -1088,9 +1495,9 @@
     "strategiesMissingCaps": 0,
     "strategiesLiveEligible": 27,
     "strategiesOperatorHold": 0,
-    "totalSignerBackedReceipts": 11833,
-    "strategiesWithGeneratedIntents": 4,
-    "totalGeneratedIntents": 4
+    "totalSignerBackedReceipts": 11865,
+    "strategiesWithGeneratedIntents": 5,
+    "totalGeneratedIntents": 6
   },
   "microCanary": {
     "total": 18,
@@ -1189,8 +1596,8 @@
       },
       "wrapped-btc-loop-base-moonwell": {
         "microCanaryStatus": "micro_canary_repeatable",
-        "signerBackedCount": 4016,
-        "passedCount": 4016,
+        "signerBackedCount": 4048,
+        "passedCount": 4048,
         "mode": "live_candidate",
         "lastFailureReason": null,
         "realizedNetUsd": null
@@ -1244,7 +1651,7 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-08T02:50:55.297Z"
+    "generatedAt": "2026-05-08T14:26:08.842Z"
   },
   "strategyStage": {
     "total": 18,
@@ -1452,6 +1859,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-08T02:50:55.298Z"
+    "generatedAt": "2026-05-08T14:26:08.843Z"
   }
 }

@@ -82,3 +82,50 @@ test("destination allocation planner clips per-item by maxAllocationUsd estimate
   assert.equal(a.allocationUsd, 100);
   assert.equal(b.allocationUsd, 50);
 });
+
+test("destination allocation planner separates exploit and capped explore allocations", () => {
+  const promotionGate = {
+    items: [
+      {
+        templateId: "base:stablecoin_lending_carry",
+        chain: "base",
+        familyId: "stablecoin_lending_carry",
+        label: "Stablecoin lending carry",
+        score: 0.8,
+        scoreSource: "ledger",
+        receiptSummary: { sampleCount: 40, receiptFreshnessHours: 2 },
+        gate: { status: "promotable" },
+        allocationGate: { status: "allocation_ready" },
+      },
+      {
+        templateId: "sei:unknown_campaign",
+        chain: "sei",
+        familyId: "unknown_campaign",
+        label: "Unknown campaign",
+        score: 0.5,
+        scoreSource: "prior",
+        receiptSummary: { sampleCount: 0, receiptFreshnessHours: null },
+        gate: { status: "promotable" },
+        allocationGate: { status: "allocation_ready" },
+      },
+    ],
+  };
+  const economics = {
+    budgets: { activeBudgetUsd: 200, planningBudgetUsd: 0 },
+    items: [
+      { templateId: "base:stablecoin_lending_carry", activeBudgetEstimate: { passesPolicy: true } },
+      { templateId: "sei:unknown_campaign", activeBudgetEstimate: { passesPolicy: true } },
+    ],
+  };
+
+  const report = buildDestinationAllocationPlanner({ promotionGate, economics });
+  const exploit = report.activePlan.find((item) => item.templateId === "base:stablecoin_lending_carry");
+  const explore = report.activePlan.find((item) => item.templateId === "sei:unknown_campaign");
+
+  assert.equal(exploit.allocationBucket, "exploit");
+  assert.equal(explore.allocationBucket, "explore");
+  assert.equal(explore.allocationUsd, 6);
+  assert.equal(report.summary.exploreAllocationUsd, 6);
+  assert.equal(report.summary.exploitAllocationUsd, 194);
+  assert.equal(report.summary.priorScoreCandidateCount, 1);
+});

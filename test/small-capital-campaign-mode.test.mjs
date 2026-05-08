@@ -171,14 +171,14 @@ describe("small-capital helpers", () => {
     assert.strictEqual(effectiveAnchorBudgetUsd(500), 500 * 0.70);
   });
 
-  it("effectiveOpportunisticBudgetUsd caps at default max", () => {
-    assert.strictEqual(effectiveOpportunisticBudgetUsd(500), Math.min(500 * 0.30, 125));
-    assert.strictEqual(effectiveOpportunisticBudgetUsd(10_000), 125);
+  it("effectiveOpportunisticBudgetUsd caps at scaled max", () => {
+    assert.strictEqual(effectiveOpportunisticBudgetUsd(500), Math.min(500 * 0.30, 75));
+    assert.strictEqual(effectiveOpportunisticBudgetUsd(10_000), 500);
   });
 
-  it("effectiveMicroBudgetUsd caps at default max", () => {
-    assert.strictEqual(effectiveMicroBudgetUsd(500), Math.min(500 * 0.10, 50));
-    assert.strictEqual(effectiveMicroBudgetUsd(10_000), 50);
+  it("effectiveMicroBudgetUsd caps at scaled max", () => {
+    assert.strictEqual(effectiveMicroBudgetUsd(500), Math.min(500 * 0.10, 30));
+    assert.strictEqual(effectiveMicroBudgetUsd(10_000), 200);
   });
 
   it("applyRewardHaircut reduces value correctly", () => {

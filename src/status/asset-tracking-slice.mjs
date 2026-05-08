@@ -49,6 +49,70 @@ function resolveCoverageState({ blockers = [], riskReady = false } = {}) {
   return "verified_known_assets_only";
 }
 
+function observedAtMs(value) {
+  const ms = Date.parse(value || "");
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function itemFreshnessIsStale(item = {}) {
+  return ["stale", "expired", "failed"].includes(String(item.freshness || item.markFreshness || "").toLowerCase());
+}
+
+function priceFreshnessIsStale(item = {}) {
+  return ["stale", "expired", "failed"].includes(String(item.priceFreshness || "").toLowerCase());
+}
+
+function hasFreshnessMetadata(item = {}) {
+  return item.freshness !== null && item.freshness !== undefined && item.freshness !== "";
+}
+
+function hasPriceSourceMetadata(item = {}) {
+  return item.priceSource !== null && item.priceSource !== undefined && item.priceSource !== "";
+}
+
+function ratio(count, total) {
+  if (!Number.isFinite(total) || total <= 0) return 1;
+  return count / total;
+}
+
+function oldestObservedAt(items = []) {
+  return items
+    .filter((item) => Number(item.usd || 0) > 0)
+    .map((item) => item.sourceObservedAt || item.markObservedAt || item.lastObservedAt || null)
+    .filter(Boolean)
+    .sort()[0] || null;
+}
+
+function sourceAgeMinutes(observedAt, generatedAt) {
+  const observed = observedAtMs(observedAt);
+  const generated = observedAtMs(generatedAt);
+  if (observed === null || generated === null) return null;
+  return (generated - observed) / 60_000;
+}
+
+function assetTrackingVerdict({
+  riskReady,
+  walletScanErrorCount,
+  protocolIssues,
+  unknownAssetBalanceCount,
+  staleItemCount,
+  stalePriceItemCount,
+  missingFreshnessMetadataCount,
+  missingPriceSourceCount,
+  divergenceBlockCount,
+}) {
+  if (
+    walletScanErrorCount > 0 ||
+    protocolIssues > 0 ||
+    unknownAssetBalanceCount > 0 ||
+    missingFreshnessMetadataCount > 0 ||
+    missingPriceSourceCount > 0 ||
+    divergenceBlockCount > 0
+  ) return "red";
+  if (!riskReady || staleItemCount > 0 || stalePriceItemCount > 0) return "yellow";
+  return "green";
+}
+
 export function buildAssetTrackingSlice({
   capitalSummary = null,
   generatedAt = new Date().toISOString(),
@@ -73,6 +137,22 @@ export function buildAssetTrackingSlice({
   const unknownAssetBalanceCount = Number(summary.unknownAssetBalanceCount || 0);
   const assetUniverseUnknownTargetCount = Number(summary.assetUniverseUnknownTargetCount || summary.assetUniverse?.unknownTargetCount || 0);
   const blockers = [];
+  const walletItems = Array.isArray(summary.walletItems) ? summary.walletItems : [];
+  const positionItems = Array.isArray(summary.positionItems) ? summary.positionItems : [];
+  const allItems = [...walletItems, ...positionItems];
+  const totalAssetCount = allItems.length;
+  const freshnessMetadataCount = allItems.filter(hasFreshnessMetadata).length;
+  const priceSourceMetadataCount = allItems.filter(hasPriceSourceMetadata).length;
+  const divergenceWarnCount = allItems.filter((item) => item.priceDivergenceStatus === "warn").length;
+  const divergenceBlockCount = allItems.filter((item) => item.priceDivergenceStatus === "block").length;
+  const missingFreshnessMetadataCount = Math.max(0, totalAssetCount - freshnessMetadataCount);
+  const missingPriceSourceCount = Math.max(0, totalAssetCount - priceSourceMetadataCount);
+  const staleItemCount = Number(summary.staleItemCount ?? allItems.filter(itemFreshnessIsStale).length);
+  const stalePriceItemCount = Number(summary.stalePriceItemCount ?? allItems.filter(priceFreshnessIsStale).length);
+  const failedProtocolMarkCount = Number(summary.failedProtocolMarkCount ?? summary.protocolMarkFailedCount ?? 0);
+  const doubleCountPreventedCount = Number(summary.doubleCountPreventedCount || 0);
+  const oldestMaterialSourceObservedAt = summary.oldestMaterialSourceObservedAt || oldestObservedAt(allItems);
+  const oldestMaterialSourceAgeMinutes = sourceAgeMinutes(oldestMaterialSourceObservedAt, generatedAt);
 
   if (walletCoverage !== "full_rpc") {
     blockers.push(blocker("wallet_coverage_partial", "Wallet scan has not proven full-token coverage for this address.", {
@@ -110,6 +190,28 @@ export function buildAssetTrackingSlice({
       count: pendingSignerActionCount,
     }));
   }
+  if (staleItemCount > 0 || stalePriceItemCount > 0) {
+    blockers.push(blocker("stale_material_asset_source", "At least one material wallet or protocol asset source is stale even though the dashboard was regenerated.", {
+      staleItemCount,
+      stalePriceItemCount,
+      oldestMaterialSourceObservedAt,
+      oldestMaterialSourceAgeMinutes,
+    }));
+  }
+  if (missingFreshnessMetadataCount > 0 || missingPriceSourceCount > 0) {
+    blockers.push(blocker("asset_metadata_coverage_gap", "Every tracked asset must expose freshness and price-source metadata before the dashboard can be green.", {
+      totalAssetCount,
+      missingFreshnessMetadataCount,
+      missingPriceSourceCount,
+      freshnessCoveragePct: ratio(freshnessMetadataCount, totalAssetCount),
+      priceSourceCoveragePct: ratio(priceSourceMetadataCount, totalAssetCount),
+    }));
+  }
+  if (divergenceBlockCount > 0) {
+    blockers.push(blocker("price_divergence_block", "At least one tracked asset has blocked price-source divergence and is excluded from exact capital.", {
+      divergenceBlockCount,
+    }));
+  }
   if (Number.isFinite(externalUnclassifiedUsd) && externalUnclassifiedUsd > 0) {
     blockers.push(blocker("external_unclassified_reference", "External portfolio reference includes unclassified value that cannot be used as exact capital.", {
       provider: summary.fullWalletProvider || null,
@@ -136,6 +238,18 @@ export function buildAssetTrackingSlice({
     schemaVersion: 1,
     generatedAt,
     coverageState,
+    verdict: assetTrackingVerdict({
+      riskReady,
+      walletScanErrorCount,
+      protocolIssues,
+      unknownAssetBalanceCount,
+      staleItemCount,
+      stalePriceItemCount,
+      missingFreshnessMetadataCount,
+      missingPriceSourceCount,
+      divergenceBlockCount,
+    }),
+    coverage: walletCoverage || "pending",
     dashboardHeadline: riskReady ? "Exact tracked assets" : "Verified known assets only",
     riskReady,
     exactTotalUsd,
@@ -148,6 +262,21 @@ export function buildAssetTrackingSlice({
     walletObservedAt: summary.walletObservedAt || null,
     assetUniverse: summary.assetUniverse || null,
     unknownAssetBalanceCount,
+    totalAssetCount,
+    freshnessMetadataCount,
+    freshnessCoveragePct: ratio(freshnessMetadataCount, totalAssetCount),
+    priceSourceMetadataCount,
+    priceSourceCoveragePct: ratio(priceSourceMetadataCount, totalAssetCount),
+    divergenceWarnCount,
+    divergenceBlockCount,
+    missingFreshnessMetadataCount,
+    missingPriceSourceCount,
+    staleItemCount,
+    stalePriceItemCount,
+    failedProtocolMarkCount,
+    doubleCountPreventedCount,
+    oldestMaterialSourceObservedAt,
+    oldestMaterialSourceAgeMinutes,
     assetUniverseUnknownTargetCount,
     externalReferenceUsd,
     externalProvider: summary.fullWalletProvider || null,

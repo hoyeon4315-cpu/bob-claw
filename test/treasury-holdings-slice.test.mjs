@@ -300,6 +300,60 @@ test("treasury holdings preserves full_rpc coverage from closed tx-derived asset
   assert.equal(holdings.unknownAssetBalanceCount, 0);
 });
 
+test("treasury holdings preserves freshness and price-source metadata for dashboard asset tracking", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [],
+    {
+      generatedAt: "2026-05-08T13:46:00.000Z",
+      wholeWalletRecords: [
+        {
+          observedAt: "2026-05-08T13:45:30.000Z",
+          totalUsd: 100,
+          native: [],
+          tokenBalances: [
+            {
+              chain: "base",
+              ticker: "USDC",
+              actualDecimal: 100,
+              estimatedUsd: 100,
+              priceSource: {
+                name: "chainlink:usd_stable",
+                type: "chainlink_onchain_feed",
+                observedAt: "2026-05-08T13:45:30.000Z",
+                divergencePct: 0,
+              },
+              priceFreshness: "fresh",
+              freshness: "fresh",
+              confidence: "verified_current",
+            },
+          ],
+          summary: {
+            itemizedWalletUsd: 100,
+            chainCount: 1,
+            scanErrorCount: 0,
+            walletCoverage: "full_rpc",
+            assetUniverseStatus: "closed",
+            unknownAssetBalanceCount: 0,
+          },
+          assetUniverse: {
+            status: "closed",
+            targetCount: 1,
+            unknownTargetCount: 0,
+          },
+          scanErrors: [],
+        },
+      ],
+    },
+  );
+
+  assert.equal(holdings.items.length, 1);
+  assert.equal(holdings.items[0].freshness, "fresh");
+  assert.equal(holdings.items[0].confidence, "verified_current");
+  assert.equal(holdings.items[0].priceFreshness, "fresh");
+  assert.equal(holdings.items[0].priceSource.name, "chainlink:usd_stable");
+  assert.equal(holdings.items[0].priceDivergenceStatus, "ok");
+});
+
 test("treasury holdings surfaces tx-derived unknown asset balances for dashboard blockers", () => {
   const holdings = buildTreasuryHoldingsSlice(
     [],

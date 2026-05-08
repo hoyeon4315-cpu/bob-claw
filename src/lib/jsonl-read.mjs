@@ -1,18 +1,25 @@
-import { open, readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { access, open } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 
 export async function readJsonl(baseDir, name) {
   const path = join(baseDir, `${name}.jsonl`);
   try {
-    const text = await readFile(path, "utf8");
-    return text
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
+    await access(path);
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
+
+  const records = [];
+  const stream = createReadStream(path, { encoding: "utf8" });
+  const reader = createInterface({ input: stream, crlfDelay: Infinity });
+  for await (const line of reader) {
+    if (!line) continue;
+    records.push(JSON.parse(line));
+  }
+  return records;
 }
 
 export async function readLatestJsonlRecord(baseDir, name, { chunkSize = 64 * 1024 } = {}) {

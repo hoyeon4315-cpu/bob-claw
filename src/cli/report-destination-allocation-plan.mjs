@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildDestinationAllocationPlanner } from "../strategy/destination-allocation-planner.mjs";
+import { buildChainScoreLedger } from "../strategy/chain-score-ledger.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -20,9 +22,16 @@ async function readJson(path) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const promotionGate = await readJson(join(config.dataDir, "destination-promotion-gate.json"));
-  const economics = await readJson(join(config.dataDir, "destination-estimated-economics.json"));
-  const report = buildDestinationAllocationPlanner({ promotionGate, economics });
+  const [promotionGate, economics, signerAuditRecords] = await Promise.all([
+    readJson(join(config.dataDir, "destination-promotion-gate.json")),
+    readJson(join(config.dataDir, "destination-estimated-economics.json")),
+    readJsonl("logs", "signer-audit").catch(() => []),
+  ]);
+  const chainScoreLedger = buildChainScoreLedger({
+    records: signerAuditRecords,
+    now: new Date().toISOString(),
+  });
+  const report = buildDestinationAllocationPlanner({ promotionGate, economics, chainScoreLedger });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "destination-allocation-plan.json");

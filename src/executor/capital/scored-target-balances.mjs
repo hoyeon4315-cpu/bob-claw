@@ -21,7 +21,19 @@
 
 import { listStrategyCaps } from "../../config/strategy-caps.mjs";
 import { DIVERSIFICATION_POLICY, perChainMaxShareFor } from "../../config/diversification.mjs";
-import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../../config/gateway-destinations.mjs";
+import { CAPITAL_ALLOCATOR_POLICY } from "../../config/capital-allocator.mjs";
+import {
+  OFFICIAL_GATEWAY_DESTINATION_CHAINS,
+  canonicalGatewayChain,
+} from "../../config/gateway-destinations.mjs";
+import {
+  effectiveMicroBudgetUsd,
+  resolveEffectiveSmallCapitalBudgets,
+} from "../../config/small-capital-campaign-mode.mjs";
+import {
+  pruneExpiredStrategyPrimaryOverrides,
+  strategyPrimaryHypothesisByChain,
+} from "../../strategy/chain-hypothesis-evaluator.mjs";
 
 const DEFAULT_REDUCED_WEIGHT_FACTOR = 0.3;
 const DEFAULT_MIN_WEIGHT = 0.1;
@@ -56,6 +68,10 @@ function finitePositive(value) {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function finiteNonNegative(value) {
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -66,11 +82,12 @@ function buildPromotionScoreIndex(promotionGate) {
   const byChainStrategy = new Map();
   for (const item of promotionGate?.items || []) {
     if (item?.templateId) byTemplateId.set(item.templateId, item);
-    if (item?.chain && item?.familyId) {
-      byChainFamily.set(`${item.chain}:${item.familyId}`, item);
+    const chain = canonicalGatewayChain(item?.chain);
+    if (chain && item?.familyId) {
+      byChainFamily.set(`${chain}:${item.familyId}`, item);
     }
-    if (item?.chain && item?.strategyId) {
-      byChainStrategy.set(`${item.chain}:${item.strategyId}`, item);
+    if (chain && item?.strategyId) {
+      byChainStrategy.set(`${chain}:${item.strategyId}`, item);
     }
   }
   return { byTemplateId, byChainFamily, byChainStrategy };
@@ -113,25 +130,106 @@ function rawScore(promotionItem) {
   return Number.isFinite(score) && score > 0 ? score : 0;
 }
 
-function buildCandidates({ strategyCaps, scoreIndex, reducedWeightFactor, minWeight, allowedChains }) {
+function resolveLedgerChainScore(chain, chainScoreLedger) {
+  const entry = chainScoreLedger?.byChain?.[chain] || null;
+  if (!entry || !Number.isFinite(entry.chainScore)) return null;
+  return entry;
+}
+
+function allocationBucketForCandidate({ ledgerScore = null, scoreSource = null, widePosterior = false, policy = CAPITAL_ALLOCATOR_POLICY } = {}) {
+  if (scoreSource === "prior") return "explore";
+  if (widePosterior) return "explore";
+  const alphaSampleCount = finiteNonNegative(ledgerScore?.alphaSampleCount);
+  if (alphaSampleCount !== null && alphaSampleCount < policy.exploreMinSamples) return "explore";
+  const sampleCount = finiteNonNegative(ledgerScore?.sampleCount);
+  if (sampleCount !== null && sampleCount < policy.exploreMinSamples) return "explore";
+  const freshnessHours = finiteNonNegative(ledgerScore?.receiptFreshnessHours);
+  if (freshnessHours !== null && freshnessHours > policy.exploreReceiptFreshnessHours) return "explore";
+  return "exploit";
+}
+
+function normalizeAllowedChains(allowedChains) {
+  if (!allowedChains) return null;
+  const values = allowedChains instanceof Set ? [...allowedChains] : Array.isArray(allowedChains) ? allowedChains : [];
+  return new Set(values.map(canonicalGatewayChain).filter(Boolean));
+}
+
+function exploreCandidateCapUsd({ strategy, total, policy = CAPITAL_ALLOCATOR_POLICY } = {}) {
+  const scaled = resolveEffectiveSmallCapitalBudgets({ operatingCapitalUsd: total });
+  const defaultBudgets = scaled.effectiveBudgets.defaultBudgetsUsd;
+  const radarCaps = scaled.effectiveBudgets.radarCaps;
+  const caps = [
+    policy.exploreCandidateMaxUsd,
+    Number.isFinite(total) && total > 0 ? total * policy.smallCapitalMicroTestHardCapPct : null,
+    defaultBudgets.microMaxUsd,
+    defaultBudgets.initialCampaignUsd,
+    defaultBudgets.initialMicroUsd,
+  ];
+  const perDayUsd = Number(strategy?.caps?.perDayUsd);
+  if (Number.isFinite(perDayUsd) && perDayUsd > 0) caps.push(perDayUsd);
+  const tinyLivePerTxUsd = Number(strategy?.caps?.tinyLivePerTxUsd);
+  if (Number.isFinite(tinyLivePerTxUsd) && tinyLivePerTxUsd > 0) caps.push(tinyLivePerTxUsd);
+  const id = String(strategy?.strategyId || strategy?.familyId || "");
+  if (/radar/u.test(id)) caps.push(radarCaps.perCanaryUsd);
+  return Math.min(...caps.filter((value) => Number.isFinite(value) && value > 0));
+}
+
+function buildCandidates({
+  strategyCaps,
+  scoreIndex,
+  reducedWeightFactor,
+  minWeight,
+  allowedChains,
+  chainScoreLedger,
+  chainHypothesisByChain,
+  allocatorPolicy,
+  total,
+}) {
   const candidates = [];
   for (const strategy of strategyCaps) {
     if (strategy.autoExecute !== true) continue;
     for (const [chain, perChainUsdRaw] of Object.entries(strategy.caps?.perChainUsd || {})) {
+      const canonicalChain = canonicalGatewayChain(chain);
       const perChainUsd = finitePositive(perChainUsdRaw);
       if (perChainUsd === null) continue;
-      if (allowedChains && !allowedChains.has(chain)) continue;
-      const promotionItem = lookupPromotionItem(strategy, chain, scoreIndex);
+      if (allowedChains && !allowedChains.has(canonicalChain)) continue;
+      const promotionItem = lookupPromotionItem(strategy, canonicalChain, scoreIndex);
       const score = rawScore(promotionItem);
+      const ledgerScore = resolveLedgerChainScore(canonicalChain, chainScoreLedger);
+      const hypothesis = chainHypothesisByChain?.get(canonicalChain) || null;
       const factor = gateFactor(promotionItem, reducedWeightFactor);
-      const baseWeight = score > 0 ? score : minWeight;
+      const baseWeight = ledgerScore ? ledgerScore.chainScore : (score > 0 ? score : minWeight);
       const weight = baseWeight * factor;
+      const hypothesisBlockers = hypothesis?.status === "expired" ? ["strategy_primary_hypothesis_expired"] : [];
+      const scoreSource = ledgerScore?.scoreSource || (score > 0 ? "promotion_gate" : "prior");
+      const widePosterior = ledgerScore?.widePosterior ?? (score <= 0);
+      const allocationBucket = allocationBucketForCandidate({
+        ledgerScore,
+        scoreSource,
+        widePosterior,
+        policy: allocatorPolicy,
+      });
       candidates.push({
         strategy,
-        chain,
+        chain: canonicalChain,
         perItemCapUsd: perChainUsd,
         promotionItem,
         score,
+        chainScore: ledgerScore?.chainScore ?? null,
+        ledgerSampleCount: ledgerScore?.sampleCount ?? null,
+        ledgerAlphaSampleCount: ledgerScore?.alphaSampleCount ?? null,
+        receiptFreshnessHours: ledgerScore?.receiptFreshnessHours ?? null,
+        chainScoreSource: scoreSource,
+        widePosterior,
+        chainScoreBlockers: Object.freeze([
+          ...(ledgerScore?.blockers || (score > 0 ? [] : ["chain_score_unobserved"])),
+          ...hypothesisBlockers,
+        ]),
+        strategyPrimaryHypothesisStatus: hypothesis?.status || null,
+        allocationBucket,
+        exploreCapUsd: allocationBucket === "explore"
+          ? exploreCandidateCapUsd({ strategy, total, policy: allocatorPolicy })
+          : null,
         gateFactor: factor,
         weight,
       });
@@ -149,6 +247,9 @@ function waterFillAllocate({ candidates, total, perStrategyCapUsd }) {
     const caps = [];
     if (Number.isFinite(c.perItemCapUsd) && c.perItemCapUsd > 0) caps.push(c.perItemCapUsd);
     if (Number.isFinite(perStrategyCapUsd) && perStrategyCapUsd > 0) caps.push(perStrategyCapUsd);
+    if (c.allocationBucket === "explore" && Number.isFinite(c.exploreCapUsd) && c.exploreCapUsd > 0) {
+      caps.push(c.exploreCapUsd);
+    }
     return caps.length ? Math.min(...caps) : Infinity;
   });
 
@@ -193,6 +294,9 @@ export function buildScoredTargetBalances({
   allowedChains = DEFAULT_ALLOWED_CHAINS,
   reviewOnlyWeightFactor,
   now = new Date().toISOString(),
+  chainScoreLedger = null,
+  chainHypothesis = null,
+  allocatorPolicy = CAPITAL_ALLOCATOR_POLICY,
 } = {}) {
   if (Number.isFinite(reviewOnlyWeightFactor) && reviewOnlyWeightFactor > 0) {
     reducedWeightFactor = reviewOnlyWeightFactor;
@@ -200,6 +304,8 @@ export function buildScoredTargetBalances({
 
   const total = finitePositive(totalCapitalUsd);
   const scoreIndex = buildPromotionScoreIndex(promotionGate);
+  const chainHypothesisByChain = strategyPrimaryHypothesisByChain(chainHypothesis);
+  const effectiveDiversificationPolicy = pruneExpiredStrategyPrimaryOverrides(diversificationPolicy, chainHypothesis);
   const economicsByTemplate = new Map();
   for (const entry of economics?.items || []) {
     if (entry?.templateId) economicsByTemplate.set(entry.templateId, entry);
@@ -210,7 +316,11 @@ export function buildScoredTargetBalances({
     scoreIndex,
     reducedWeightFactor,
     minWeight,
-    allowedChains: allowedChains instanceof Set ? allowedChains : (Array.isArray(allowedChains) ? new Set(allowedChains) : null),
+    allowedChains: normalizeAllowedChains(allowedChains),
+    chainScoreLedger,
+    chainHypothesisByChain,
+    allocatorPolicy,
+    total,
   });
 
   if (!total || candidates.length === 0) {
@@ -230,19 +340,46 @@ export function buildScoredTargetBalances({
       ? perStrategyMaxShare * total
       : null;
 
-  const allocations = waterFillAllocate({
-    candidates,
-    total,
+  const exploreCandidates = candidates.filter((candidate) => candidate.allocationBucket === "explore")
+    .slice(0, allocatorPolicy.exploreMaxConcurrent);
+  const exploitCandidates = candidates.filter((candidate) => candidate.allocationBucket !== "explore");
+  const exploreBudgetUsd = Math.min(
+    total * allocatorPolicy.exploreSharePct,
+    effectiveMicroBudgetUsd(total),
+  );
+  const exploreAllocationsByCandidate = new Map();
+  const rawExploreAllocations = waterFillAllocate({
+    candidates: exploreCandidates,
+    total: exploreBudgetUsd,
     perStrategyCapUsd,
   });
+  exploreCandidates.forEach((candidate, index) => {
+    exploreAllocationsByCandidate.set(candidate, rawExploreAllocations[index] || 0);
+  });
+  const actualExploreAllocationUsd = rawExploreAllocations.reduce((sum, value) => sum + value, 0);
+  const exploitBudgetUsd = Math.max(0, total - actualExploreAllocationUsd);
+  const rawExploitAllocations = waterFillAllocate({
+    candidates: exploitCandidates,
+    total: exploitBudgetUsd,
+    perStrategyCapUsd,
+  });
+  const exploitAllocationsByCandidate = new Map();
+  exploitCandidates.forEach((candidate, index) => {
+    exploitAllocationsByCandidate.set(candidate, rawExploitAllocations[index] || 0);
+  });
+  const allocations = candidates.map((candidate) =>
+    candidate.allocationBucket === "explore"
+      ? exploreAllocationsByCandidate.get(candidate) || 0
+      : exploitAllocationsByCandidate.get(candidate) || 0,
+  );
 
-  if (diversificationPolicy) {
+  if (effectiveDiversificationPolicy) {
     const sumByChain = new Map();
     candidates.forEach((c, i) => {
       sumByChain.set(c.chain, (sumByChain.get(c.chain) || 0) + allocations[i]);
     });
     for (const [chain, sum] of sumByChain.entries()) {
-      const perChainMaxShare = Number(perChainMaxShareFor(chain, diversificationPolicy));
+      const perChainMaxShare = Number(perChainMaxShareFor(chain, effectiveDiversificationPolicy));
       const perChainCapUsd =
         Number.isFinite(perChainMaxShare) && perChainMaxShare > 0 ? perChainMaxShare * total : null;
       if (perChainCapUsd === null) continue;
@@ -269,6 +406,16 @@ export function buildScoredTargetBalances({
       strategyId: c.strategy.strategyId,
       label: promotionItem?.label || c.strategy.label || c.strategy.strategyId,
       score: c.score,
+      chainScore: c.chainScore,
+      ledgerSampleCount: c.ledgerSampleCount,
+      ledgerAlphaSampleCount: c.ledgerAlphaSampleCount,
+      receiptFreshnessHours: c.receiptFreshnessHours,
+      chainScoreSource: c.chainScoreSource,
+      widePosterior: c.widePosterior,
+      chainScoreBlockers: [...(c.chainScoreBlockers || [])],
+      strategyPrimaryHypothesisStatus: c.strategyPrimaryHypothesisStatus,
+      allocationBucket: c.allocationBucket,
+      exploreCapUsd: c.exploreCapUsd,
       gateFactor: c.gateFactor,
       weight: c.weight,
       capUsd: c.perItemCapUsd,
@@ -298,6 +445,12 @@ export function buildScoredTargetBalances({
 
   const perChain = [...perChainMap.values()].sort((a, b) => a.chain.localeCompare(b.chain));
   const totalAllocationUsd = perStrategy.reduce((sum, entry) => sum + entry.allocationUsd, 0);
+  const exploreAllocationUsd = perStrategy
+    .filter((entry) => entry.allocationBucket === "explore")
+    .reduce((sum, entry) => sum + entry.allocationUsd, 0);
+  const exploitAllocationUsd = perStrategy
+    .filter((entry) => entry.allocationBucket === "exploit")
+    .reduce((sum, entry) => sum + entry.allocationUsd, 0);
 
   return {
     schemaVersion: 2,
@@ -309,8 +462,13 @@ export function buildScoredTargetBalances({
       chainCount: perChain.length,
       strategyCount: perStrategy.length,
       totalAllocationUsd,
+      exploitAllocationUsd,
+      exploreAllocationUsd,
+      exploreCandidateCount: candidates.filter((candidate) => candidate.allocationBucket === "explore").length,
+      priorScoreCandidateCount: candidates.filter((candidate) => candidate.chainScoreSource === "prior").length,
       reducedWeightFactor,
       minWeight,
+      expiredStrategyPrimaryChains: chainHypothesis?.summary?.expiredStrategyPrimaryChains || [],
     },
   };
 }

@@ -5,6 +5,18 @@ function positionAssetSymbol(position = {}) {
   return String(pair[0] || "position").toLowerCase();
 }
 
+function priceSourceForPosition(position = {}) {
+  const existing = position.priceSource;
+  if (existing && typeof existing === "object") return existing;
+  const observedAt = position.priceObservedAt || position.markObservedAt || position.lastObservedAt || null;
+  return {
+    name: String(existing || position.markSource || "protocol_position_mark"),
+    type: "protocol_position_mark",
+    observedAt,
+    divergencePct: finiteNumber(position.priceDivergencePct) ?? 0,
+  };
+}
+
 function deployedPositionItem(position = {}) {
   const usd = finiteNumber(position.valueUsd) ??
     finiteNumber(position.markUsd) ??
@@ -31,6 +43,15 @@ function deployedPositionItem(position = {}) {
     markObservedAt: position.markObservedAt || null,
     markFailureKind: position.markFailureKind || null,
     markFailureMessage: position.markFailureMessage || null,
+    source: "protocol_position_mark",
+    sourceObservedAt: position.markObservedAt || position.lastObservedAt || null,
+    priceSource: priceSourceForPosition(position),
+    priceObservedAt: position.priceObservedAt || position.markObservedAt || position.lastObservedAt || null,
+    priceFreshness: position.priceFreshness || position.markFreshness || null,
+    priceDivergenceStatus: position.priceDivergenceStatus || null,
+    freshness: position.freshness || position.markFreshness || null,
+    confidence: position.confidence || position.markConfidence || null,
+    countedInWalletTotal: false,
   };
 }
 
@@ -215,6 +236,14 @@ export function buildCapitalSummarySlice({
     protocolMarkFailedCount,
     protocolMarkStaleCount,
     protocolMarkExpiredCount,
+    staleItemCount: Number(walletHoldings?.staleItemCount || 0) + positionItems.filter((item) => ["stale", "expired", "failed"].includes(String(item.markFreshness || "").toLowerCase())).length,
+    stalePriceItemCount: Number(walletHoldings?.stalePriceItemCount || 0) + positionItems.filter((item) => ["stale", "expired", "failed"].includes(String(item.priceFreshness || "").toLowerCase())).length,
+    failedProtocolMarkCount: protocolMarkFailedCount,
+    doubleCountPreventedCount: Number(walletHoldings?.doubleCountPreventedCount || 0),
+    oldestMaterialSourceObservedAt: [walletHoldings?.oldestMaterialSourceObservedAt, protocolPositionMarks?.oldestMaterialSourceObservedAt]
+      .filter(Boolean)
+      .sort()[0] || null,
+    assetTrackingTotals: walletHoldings?.totals || null,
     referenceFullWalletGapUsd,
     planGapUsd,
     protocolTrackingGapUsd,

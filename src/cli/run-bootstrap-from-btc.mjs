@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildScoredTargetBalances } from "../executor/capital/scored-target-balances.mjs";
 import { buildCapitalRebalancePlan } from "../executor/capital/rebalancer.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
+import { buildChainScoreLedger } from "../strategy/chain-score-ledger.mjs";
 
 function parseArgs(argv) {
   const args = { write: false, json: false, btcSats: null, btcPriceUsd: null, totalCapitalUsd: null };
@@ -34,12 +36,13 @@ function resolveTotalCapitalUsd(args) {
 }
 
 async function loadInputs() {
-  const [promotionGate, economics, prices] = await Promise.all([
+  const [promotionGate, economics, prices, signerAuditRecords] = await Promise.all([
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
     readJsonIfExists(join(config.dataDir, "destination-economics-ledger.json")),
     readJsonIfExists(join(config.dataDir, "price-snapshot.json")),
+    readJsonl("logs", "signer-audit").catch(() => []),
   ]);
-  return { promotionGate, economics, prices };
+  return { promotionGate, economics, prices, signerAuditRecords };
 }
 
 export function buildBootstrapFromBtcReport({
@@ -50,6 +53,7 @@ export function buildBootstrapFromBtcReport({
   balancesByChain = {},
   policy = null,
   diversificationPolicy,
+  chainScoreLedger = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!totalCapitalUsd || !(totalCapitalUsd > 0)) {
@@ -68,6 +72,7 @@ export function buildBootstrapFromBtcReport({
     strategyCaps,
     totalCapitalUsd,
     ...(diversificationPolicy !== undefined ? { diversificationPolicy } : {}),
+    chainScoreLedger,
     now,
   });
   const rebalancePlan = buildCapitalRebalancePlan({
@@ -90,12 +95,17 @@ export function buildBootstrapFromBtcReport({
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const totalCapitalUsd = resolveTotalCapitalUsd(args);
-  const { promotionGate, economics, prices } = await loadInputs();
+  const { promotionGate, economics, prices, signerAuditRecords } = await loadInputs();
   const btcPriceUsd = Number(args.btcPriceUsd ?? prices?.btcUsd ?? 0);
+  const chainScoreLedger = buildChainScoreLedger({
+    records: signerAuditRecords,
+    now: new Date().toISOString(),
+  });
   const report = buildBootstrapFromBtcReport({
     promotionGate,
     economics,
     totalCapitalUsd,
+    chainScoreLedger,
   });
 
   const enriched = {

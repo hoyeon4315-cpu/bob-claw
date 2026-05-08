@@ -356,6 +356,63 @@ test("payback scheduler tick does not build or submit composite plan while below
   assert.equal(offrampCalled, false);
 });
 
+test("payback scheduler dry-run exposes effective-min progress and first delivery formula", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const result = await runPaybackSchedulerTick({
+    paybackConfig: PAYBACK_CONFIG,
+    dryRun: true,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "6000",
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 601,
+      pendingDeferredSats: 601,
+      operatingFloatSats_byChain: {
+        base: 620_000,
+      },
+      btcUsd: 80_000,
+    }),
+    signerHealthReader: async () => ({
+      addresses: {
+        base: "0x1111111111111111111111111111111111111111",
+      },
+    }),
+    consolidationPlanBuilder: async () => ({
+      planStatus: "ready",
+      quote: {
+        outputAmount: { amount: "5000" },
+        fees: { amount: "100" },
+        executionFees: { amount: "50" },
+      },
+      intent: null,
+    }),
+    offrampQuoteBuilder: async () => ({
+      planStatus: "ready",
+      quote: {
+        fees: { amount: "50" },
+      },
+      intent: null,
+      order: null,
+    }),
+    killSwitchPath: null,
+  });
+
+  assert.equal(result.status, "carry");
+  assert.equal(result.reason, "planned_payback_below_minimum");
+  assert.equal(result.execution, null);
+  assert.equal(result.dryRun.deliveryCandidate, false);
+  assert.equal(result.dryRun.effectiveMinPaybackSats, 5000);
+  assert.equal(result.dryRun.pendingSats, 601);
+  assert.equal(Math.round(result.dryRun.pendingProgressRatio * 1000) / 1000, 0.12);
+  assert.equal(result.dryRun.preMinimumCompositePreview.status, "preview");
+  assert.equal(result.dryRun.candidateFormula.requiredGrossBeforeCostsSats, 5200);
+  assert.equal(result.dryRun.candidateFormula.requiredGrossProfitSatsPeriod, 26000);
+});
+
 test("payback decision reports missing destination config before carry", async () => {
   delete process.env.PAYBACK_BTC_DEST_ADDR;
 
