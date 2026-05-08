@@ -107,6 +107,18 @@ function stablePriceMetadata(symbol = "") {
   return {};
 }
 
+function normalizeTrackingStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "pending_whitelist_review" || status === "unknown" || status === "unregistered") {
+    return "unregistered";
+  }
+  return status || null;
+}
+
+function countsInWalletTotalFromTrackingStatus(status) {
+  return !["protocol_reader_covered", "unregistered"].includes(normalizeTrackingStatus(status));
+}
+
 function tokenRecord(chain, token, balance, prices, rpcUrl, metadata = {}) {
   const overrides = {};
   if (metadata.ticker || metadata.symbol) overrides.ticker = metadata.ticker || metadata.symbol;
@@ -134,12 +146,12 @@ function tokenRecord(chain, token, balance, prices, rpcUrl, metadata = {}) {
     estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null,
     rpcUrl: rpcUrl || null,
     registered: metadata.registered ?? null,
-    trackingStatus: metadata.trackingStatus || null,
+    trackingStatus: normalizeTrackingStatus(metadata.trackingStatus),
     sourceKinds: metadata.sourceKinds || [],
     tokenName: metadata.name || null,
     metadataRpcUrl: metadata.metadataRpcUrl || null,
     valuation: metadata.valuation || null,
-    countedInWalletTotal: metadata.trackingStatus === "protocol_reader_covered" ? false : true,
+    countedInWalletTotal: countsInWalletTotalFromTrackingStatus(metadata.trackingStatus),
   };
 }
 
@@ -455,7 +467,7 @@ export function buildWholeWalletInventory({
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
   const totalUsd = tokenUsd + protocolUsd;
-  const unknownAssetBalances = tokenEntries.filter((item) => item.trackingStatus === "pending_whitelist_review");
+  const unknownAssetBalances = tokenEntries.filter((item) => item.trackingStatus === "unregistered");
   const missingValuationAssets = holdings
     .filter((item) => Number.isFinite(item.actualDecimal) && item.actualDecimal > 0 && !Number.isFinite(item.estimatedUsd))
     .map((item) => ({
@@ -542,7 +554,9 @@ function mergeTokenTargets(primary = [], extra = []) {
 async function enrichErc4626Valuation({ chain, token, balance, metadata, prices, fetchImpl }) {
   if (!balance || BigInt(balance) <= 0n) return metadata;
   const hasDirectPrice = Boolean(metadata.priceKey || stablePriceMetadata(metadata.ticker || metadata.symbol).priceKey);
-  if (hasDirectPrice && metadata.trackingStatus !== "pending_whitelist_review") return metadata;
+  const symbol = String(metadata.ticker || metadata.symbol || "").toLowerCase();
+  const knownShareSymbol = /(?:alpha|steak|vault|share|bbq|erlusd|gtusdt|aopt|ason|aava|mwusdc)/u.test(symbol);
+  if (hasDirectPrice && metadata.trackingStatus !== "pending_whitelist_review" && !knownShareSymbol) return metadata;
   const preview = await readErc4626SharePreview(chain, token, balance, { fetchImpl }).catch(() => null);
   if (!preview?.asset) return metadata;
   const underlyingMetadata = await readErc20Metadata(chain, preview.asset, { fetchImpl }).catch(() => null);
@@ -562,6 +576,7 @@ async function enrichErc4626Valuation({ chain, token, balance, metadata, prices,
     ...metadata,
     valuation: {
       kind: "erc4626_preview",
+      observedAt: new Date().toISOString(),
       underlyingToken: preview.asset,
       underlyingSymbol,
       underlyingDecimals: underlyingAsset.decimals ?? null,
