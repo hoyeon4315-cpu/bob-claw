@@ -22,11 +22,11 @@ const REQUIRED_CHAINS = [
 const REQUIRED_PROTOCOLS = [
   "moonwell", "morpho", "pendle", "aerodrome", "beefy", "gmx",
   "bend", "bex", "k3capital", "babylon", "solv",
-  "gateway", "odos", "gaszip",
+  "gateway", "odos", "gaszip", "compound", "silo", "fluid", "kyo",
 ];
 
 const EXPECTED_CHAIN_COUNT = 12;
-const EXPECTED_PROTOCOL_COUNT = 17;
+const EXPECTED_PROTOCOL_COUNT = 21;
 
 describe("T25 logo asset coverage", () => {
   test("chain marks declared, all required ids covered", () => {
@@ -153,13 +153,19 @@ describe("dashboard logo runtime invariants", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
     assert.ok(runtime.includes("euler:     [prox('https://www.euler.finance/branding/euler-symbol-color.svg'), prox('https://app.euler.finance/favicon.ico')]"));
     assert.ok(runtime.includes("yo:        [prox('https://www.yo.xyz/images/logo-green.svg'), prox('https://www.yo.xyz/images/logo.svg'), prox('https://www.yo.xyz/icon.svg'), prox('https://www.yo.xyz/favicon.ico')]"));
+    assert.match(runtime, /function normalizeProtocolLogoId\(id = ''\)/);
+    assert.match(runtime, /'aave-v3': 'aave'/);
+    assert.match(runtime, /'compound_v3': 'compound'/);
+    assert.match(runtime, /'euler-v2': 'euler'/);
     assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler', 'yo'\]\);/);
-    assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
+    assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(logoId\) \? \[LOCAL_PROTOCOL\(logoId\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(logoId\)\]/);
   });
 
   test("runtime logo images decode asynchronously without delaying first paint", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
     assert.match(runtime, /loading="eager" decoding="async" fetchPriority="low"/);
+    assert.match(runtime, /function preloadDashboardLogos\(\)/);
+    assert.match(runtime, /Object\.assign\(window, \{ ChainLogo, ProtocolLogo, AssetLogo, preloadDashboardLogos \}\)/);
   });
 
   test("local Euler fallback is branded artwork, not the old lettermark placeholder", () => {
@@ -172,7 +178,7 @@ describe("dashboard logo runtime invariants", () => {
 
   test("local YO mark is the official web SVG and loads before the remote fallback", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
-    assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(id\) \? \[LOCAL_PROTOCOL\(id\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(id\)\]/);
+    assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(logoId\) \? \[LOCAL_PROTOCOL\(logoId\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(logoId\)\]/);
     const svg = readFileSync(join(LOGOS_DIR, "protocols", "yo.svg"), "utf8");
     assert.match(svg, /aria-label="yo"/);
     assert.match(svg, /viewBox="0 0 64 64"/);

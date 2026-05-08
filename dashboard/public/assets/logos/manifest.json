@@ -79,14 +79,34 @@
       "color": "#B6509E"
     },
     {
+      "id": "compound",
+      "file": "protocols/compound.svg",
+      "color": "#00D395"
+    },
+    {
       "id": "euler",
       "file": "protocols/euler.svg",
-      "color": "#39D0C9"
+      "color": "#2AE5B9"
     },
     {
       "id": "yo",
       "file": "protocols/yo.svg",
+      "color": "#CCFF00"
+    },
+    {
+      "id": "silo",
+      "file": "protocols/silo.svg",
       "color": "#111113"
+    },
+    {
+      "id": "fluid",
+      "file": "protocols/fluid.svg",
+      "color": "#2B6CFF"
+    },
+    {
+      "id": "kyo",
+      "file": "protocols/kyo.svg",
+      "color": "#6E56CF"
     },
     {
       "id": "pendle",

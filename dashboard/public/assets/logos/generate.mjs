@@ -43,8 +43,12 @@ export const PROTOCOL_MARKS = Object.freeze([
   { id: "moonwell",   color: "#00D395", mark: "MW", ink: "#0B1F18" },
   { id: "morpho",     color: "#2D4A7C", mark: "Mo", ink: "#FFFFFF" },
   { id: "aave",       color: "#B6509E", mark: "AA", ink: "#FFFFFF" },
+  { id: "compound",   color: "#00D395", mark: "CO", ink: "#0B1F18" },
   { id: "euler",      color: "#2AE5B9", mark: "EU", ink: "#0B1F18" },
   { id: "yo",         color: "#CCFF00", mark: "YO", ink: "#111113" },
+  { id: "silo",       color: "#111113", mark: "SI", ink: "#FFFFFF" },
+  { id: "fluid",      color: "#2B6CFF", mark: "FL", ink: "#FFFFFF" },
+  { id: "kyo",        color: "#6E56CF", mark: "KY", ink: "#FFFFFF" },
   { id: "pendle",     color: "#00ADAB", mark: "PT", ink: "#FFFFFF" },
   { id: "aerodrome",  color: "#1656F7", mark: "AE", ink: "#FFFFFF" },
   { id: "beefy",      color: "#4DB258", mark: "BF", ink: "#FFFFFF" },
@@ -60,6 +64,7 @@ export const PROTOCOL_MARKS = Object.freeze([
 ]);
 
 export const OFFICIAL_LOCAL_PROTOCOL_IDS = Object.freeze(new Set([
+  "euler",
   "yo",
 ]));
 

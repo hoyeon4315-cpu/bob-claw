@@ -131,8 +131,18 @@ export function buildFullAutomationReadiness({
   const autoRefillJobCount = capitalManager?.jobs?.jobs?.filter((job) => !job.requiresManualReview).length ?? 0;
   const dispatchBatchStatus = strategyDispatch?.record?.batchStatus || null;
   const liveEligibleCount = strategyDispatch?.executionSurfaces?.summary?.liveEligibleCount ?? 0;
+  const merklCanaryReadyCount =
+    autopilot?.merklCanary?.readyCount ?? autopilot?.execution?.merklCanaryReadyCount ?? 0;
+  const merklCanarySelectedCount =
+    autopilot?.merklCanary?.selectedCount ?? autopilot?.execution?.merklCanarySelectedCount ?? 0;
+  const merklCanaryBlockedReason =
+    autopilot?.merklCanary?.blockedReason || autopilot?.execution?.merklCanaryBlockedReason || null;
+  const merklCanaryStatus = autopilot?.merklCanary?.status || null;
+  const merklCanaryLiveLaneReady =
+    merklCanaryReadyCount > 0 &&
+    !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
   const dispatchReady =
-    liveEligibleCount > 0 &&
+    (liveEligibleCount > 0 || merklCanaryLiveLaneReady) &&
     dispatchBatchStatus !== "failed" &&
     dispatchBatchStatus !== "invalid";
   const paybackStatus = payback?.payback?.scheduler?.status || null;
@@ -193,6 +203,9 @@ export function buildFullAutomationReadiness({
     strategyDispatch: {
       batchStatus: dispatchBatchStatus,
       liveEligibleCount,
+      merklCanaryReadyCount,
+      merklCanarySelectedCount,
+      merklCanaryBlockedReason,
       selectedCount: strategyDispatch?.record?.selectedCount ?? 0,
       liveAdmissionBlockers,
       ready: dispatchReady,

@@ -13,6 +13,10 @@ const DATA_SOURCE = readFileSync(
   join(HERE, "..", "dashboard", "public", "data.jsx"),
   "utf8"
 );
+const MINDMAP_SOURCE = readFileSync(
+  join(HERE, "..", "dashboard", "public", "mindmap.jsx"),
+  "utf8"
+);
 const INDEX_HTML = readFileSync(
   join(HERE, "..", "dashboard", "public", "index.html"),
   "utf8"
@@ -404,6 +408,24 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(strategyMapping, /const hasRecentActivity = Number\(activitySurface\?\.count \|\| 0\) > 0/);
     assert.match(strategyMapping, /activeStrategyStatus\(\{/);
     assert.match(strategyMapping, /activitySurfaceCount: activitySurface\?\.count \|\| 0/);
+  });
+
+  test("data mapper promotes active protocol positions into mindmap strategies", () => {
+    assert.match(DATA_SOURCE, /function normalizeProtocolPositionStrategy\(position = \{\}/);
+    assert.match(DATA_SOURCE, /const positionStrategies = \(HOLDINGS\.positions \|\| \[\]\)/);
+    assert.match(DATA_SOURCE, /source: 'protocol_position'/);
+    assert.match(DATA_SOURCE, /activeStrategyState: 'live_position'/);
+    assert.match(DATA_SOURCE, /STRATEGIES\.push\(\.\.\.positionStrategies\)/);
+    assert.match(DATA_SOURCE, /actualProtocolCapitalUsd: Number\.isFinite\(position\.usd\)/);
+  });
+
+  test("mindmap root view surfaces active protocol asset motion", () => {
+    assert.match(MINDMAP_SOURCE, /function RootProtocolHint\(/);
+    assert.match(MINDMAP_SOURCE, /rootProtocolHints/);
+    assert.match(MINDMAP_SOURCE, /!selectedChain && rootProtocolHints\.map/);
+    assert.match(MINDMAP_SOURCE, /<FlowToken curve=\{\{ \.\.\.connector/);
+    assert.match(MINDMAP_SOURCE, /progress=\{tFlow\}/);
+    assert.match(MINDMAP_SOURCE, /ProtocolLogo id=\{hint\.protocol\}/);
   });
 
   test("data refresh exposes RAW_STATUS through window.STATUS for live UI cards", () => {

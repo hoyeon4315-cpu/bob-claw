@@ -263,6 +263,72 @@ test("full automation readiness blocks when no auto refill or live strategy is a
   assert.deepEqual(report.blockers, ["capital_rebalancer_not_ready", "strategy_dispatch_not_ready"]);
 });
 
+test("full automation readiness treats Merkl canary auto-entry as a live execution lane", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 0 },
+        jobs: [],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 8 },
+      executionSurfaces: {
+        summary: { liveEligibleCount: 0 },
+        strategies: [],
+      },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      status: "completed_with_blockers",
+      nextAction: "continue_live_watch",
+      execution: {
+        merklCanaryReadyCount: 4,
+        merklCanarySelectedCount: 4,
+        merklCanaryBlockedReason: "same_chain_unprofitable:need_$5_on_base",
+      },
+      refill: {
+        blockedCount: 0,
+        blockers: [],
+        attemptedCount: 1,
+        executedCount: 1,
+      },
+    },
+  });
+
+  assert.equal(report.ready, true);
+  assert.equal(report.strategyDispatch.ready, true);
+  assert.equal(report.strategyDispatch.liveEligibleCount, 0);
+  assert.equal(report.strategyDispatch.merklCanaryReadyCount, 4);
+  assert.equal(report.strategyDispatch.merklCanarySelectedCount, 4);
+  assert.equal(report.strategyDispatch.merklCanaryBlockedReason, "same_chain_unprofitable:need_$5_on_base");
+  assert.equal(report.capitalManager.ready, true);
+  assert.deepEqual(report.blockers, []);
+});
+
 test("full automation readiness reflects unresolved autopilot refill blockers and payback reserve gaps", () => {
   const report = buildFullAutomationReadiness({
     runtime: {

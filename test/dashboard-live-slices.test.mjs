@@ -138,6 +138,63 @@ test("all-chain autopilot dashboard slice surfaces payback reserve restoration w
   assert.equal(slice.nextAction, "restore_payback_reserve");
 });
 
+test("all-chain autopilot dashboard slice reports Merkl policy blocker after refill execution", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-08T01:18:28.763Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 7,
+      autoRefillJobCount: 6,
+      refillAttemptedCount: 1,
+      refillExecutedCount: 1,
+      canarySweep: {
+        status: "completed",
+        executedCount: 0,
+        deliveredCount: 0,
+        blockedCount: 5,
+        chainsTouched: ["ethereum", "base"],
+      },
+      merklCanary: {
+        status: "blocked",
+        blockedReason: "same_chain_unprofitable:need_$5_on_base",
+        readyCount: 4,
+        selectedCount: 4,
+      },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 0,
+        successCount: 624,
+        failedCount: 118,
+        liveEligibleCount: 0,
+        missingExecutorCount: 0,
+      },
+      payback: {
+        status: "carry",
+        reason: "planned_payback_below_minimum",
+        pendingCarrySats: 601,
+      },
+    },
+    refillExecutions: [
+      {
+        chain: "bsc",
+        asset: "USDC",
+        executed: true,
+        executionStatus: "delivered",
+      },
+    ],
+  });
+
+  assert.equal(slice.execution.txBroadcastCount, 1);
+  assert.equal(slice.execution.noTxReason, null);
+  assert.equal(slice.execution.merklCanaryReadyCount, 4);
+  assert.equal(slice.execution.merklCanaryBlockedReason, "same_chain_unprofitable:need_$5_on_base");
+  assert.equal(slice.topBlockers.some((item) => item.source === "merkl_canary" && item.reason === "same_chain_unprofitable:need_$5_on_base"), true);
+  assert.equal(slice.topBlockers.some((item) => item.reason === "no_live_eligible_strategy"), false);
+});
+
 test("all-chain autopilot dashboard slice treats routing exhausted as manual backlog", () => {
   const slice = buildAllChainAutopilotDashboardSlice({
     observedAt: "2026-04-27T02:50:15.364Z",

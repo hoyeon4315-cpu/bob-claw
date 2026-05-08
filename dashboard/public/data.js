@@ -299,12 +299,76 @@ function buildMovementSurfaces(movements = []) {
   }
   return { byChain };
 }
+function normalizeProtocolPositionType(position = {}) {
+  const binding = String(position.bindingKind || position.markBindingKind || "").toLowerCase();
+  const name = String(position.name || "").toLowerCase();
+  if (binding.includes("erc4626") || binding.includes("vault")) return "lp";
+  if (binding.includes("aave") || binding.includes("compound") || binding.includes("euler") || binding.includes("moonwell")) return "loop";
+  if (name.includes("lp") || name.includes("liquidity")) return "lp";
+  if (name.includes("pt-") || name.includes("pendle")) return "pt";
+  return "lp";
+}
+function normalizeProtocolPositionAssets(position = {}) {
+  const candidates = [
+    ...Array.isArray(position.assets) ? position.assets : [],
+    ...Array.isArray(position.pair) ? position.pair : [],
+    position.sym,
+    position.asset,
+    position.token
+  ];
+  const assets = candidates.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean);
+  return Array.from(new Set(assets)).slice(0, 4);
+}
+function normalizeProtocolPositionStrategy(position = {}) {
+  if (!position?.chain || !position?.protocol) return null;
+  const protocol = cleanUnknown(position.protocol);
+  const chain = cleanUnknown(position.chain);
+  if (!protocol || !chain) return null;
+  const idSeed = position.positionId || position.opportunityId || `${chain}:${protocol}:${position.name || position.sym || "position"}`;
+  const valueUsd = Number.isFinite(position.usd) ? position.usd : Number.isFinite(position.valueUsd) ? position.valueUsd : null;
+  const entryUsd = Number.isFinite(position.entryUsd) ? position.entryUsd : Number.isFinite(position.capUsd) ? position.capUsd : valueUsd;
+  const pair = normalizeProtocolPositionAssets(position);
+  return {
+    id: `protocol_position_${normalizeStrategyId(idSeed)}`,
+    label: position.name || `${protocol} position`,
+    sub: `${chain} \xB7 ${protocol}`,
+    chain,
+    protocol,
+    type: normalizeProtocolPositionType(position),
+    pair: pair.length ? pair : ["usdc"],
+    loops: null,
+    capUsd: Number.isFinite(entryUsd) ? entryUsd : null,
+    desc: `Tracked protocol position${position.opportunityId ? ` ${position.opportunityId}` : ""}.`,
+    autoExecute: true,
+    status: "LIVE",
+    earnedUsd: 0,
+    realizedYieldUsd: 0,
+    estimatedYieldUsd: 0,
+    yieldBasis: null,
+    apyPct: null,
+    tickMode: "live_position",
+    tickBlockers: [],
+    microCanaryStatus: "active",
+    blockerCount: 0,
+    topBlocker: null,
+    projectedNetUsd: null,
+    lastTickAt: position.lastObservedAt || position.markObservedAt || null,
+    source: "protocol_position",
+    positionId: position.positionId || null,
+    opportunityId: position.opportunityId || null,
+    activeStrategyState: "live_position",
+    activitySurfaceCount: 0,
+    riskHint: null,
+    actualProtocolCapitalUsd: Number.isFinite(position.usd) ? position.usd : Number.isFinite(valueUsd) ? valueUsd : 0,
+    actualChainCapitalUsd: 0
+  };
+}
 const LIVE_STATUS_PATH = "./api/live-status";
 const LIVE_EVENTS_PATH = "./api/live-events";
 const STATIC_STATUS_PATH = "./dashboard-status.json";
 const LIVE_RUNTIME_PATH = "./live-runtime.json";
 const LIVE_POLL_MS = 1500;
-const STATIC_POLL_MS = 5e3;
+const STATIC_POLL_MS = 3e3;
 const LIVE_RUNTIME_REFRESH_MS = 3e4;
 const FETCH_TIMEOUT_MS = 1200;
 const LIVE_FETCH_TIMEOUT_MS = 4500;
@@ -865,6 +929,14 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       actualChainCapitalUsd: CAPITAL.byChain[m.chain] || 0
     });
   }
+  const merklPositionKeys = new Set(
+    merklItems.flatMap((item) => [item?.opportunityId, item?.positionId, item?.id]).filter(Boolean).map(String)
+  );
+  const positionStrategies = (HOLDINGS.positions || []).filter((position) => {
+    const keys = [position?.opportunityId, position?.positionId, position?.id].filter(Boolean).map(String);
+    return !keys.some((key) => merklPositionKeys.has(key));
+  }).map(normalizeProtocolPositionStrategy).filter(Boolean);
+  STRATEGIES.push(...positionStrategies);
   for (const strategy of STRATEGIES) {
     const activitySurface = activitySurfaces.byProtocol[capitalProtocolKey(strategy.chain, strategy.protocol)] || null;
     if (!activitySurface) continue;

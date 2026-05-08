@@ -6,6 +6,30 @@ const TOKEN_SVG = (sym) => `https://raw.githubusercontent.com/spothq/cryptocurre
 const LOCAL_CHAIN = (id) => `assets/logos/chains/${id}.svg`;
 const LOCAL_PROTOCOL = (id) => `assets/logos/protocols/${id}.svg`;
 const LOCAL_FIRST_PROTOCOL_IDS = /* @__PURE__ */ new Set(["euler", "yo"]);
+const PRELOAD_PROTOCOL_IDS = [
+  "moonwell",
+  "morpho",
+  "aave",
+  "compound",
+  "euler",
+  "yo",
+  "pendle",
+  "aerodrome",
+  "beefy",
+  "gmx",
+  "bend",
+  "bex",
+  "k3capital",
+  "babylon",
+  "solv",
+  "silo",
+  "fluid",
+  "kyo",
+  "gateway",
+  "odos",
+  "gaszip"
+];
+const PRELOAD_ASSET_IDS = ["btc", "wbtc", "cbbtc", "eth", "weth", "usdc", "usdt", "dai", "lbtc", "solvbtc", "honey"];
 const CHAIN_SLUG = {
   bitcoin: "bitcoin",
   ethereum: "ethereum",
@@ -24,7 +48,35 @@ function wsrv(url, size) {
   const bare = url.replace(/^https?:\/\//, "");
   return `https://images.weserv.nl/?url=${encodeURIComponent(bare)}&w=${size * 2}&h=${size * 2}&output=png`;
 }
+function normalizeProtocolLogoId(id = "") {
+  const rawInput = String(id || "").trim().toLowerCase();
+  const raw = rawInput.replace(/_/g, "-");
+  const mapped = {
+    "aave_v3": "aave",
+    "aave-v3": "aave",
+    "compound_v2": "compound",
+    "compound-v2": "compound",
+    "compound_v3": "compound",
+    "compound-v3": "compound",
+    "euler_v2": "euler",
+    "euler-v2": "euler",
+    "euler-evault": "euler",
+    "silo_v2": "silo",
+    "silo-v2": "silo",
+    "kyo-finance": "kyo"
+  }[rawInput] || {
+    "aave-v3": "aave",
+    "compound-v2": "compound",
+    "compound-v3": "compound",
+    "euler-v2": "euler",
+    "euler-evault": "euler",
+    "silo-v2": "silo",
+    "kyo-finance": "kyo"
+  }[raw];
+  return mapped || raw;
+}
 function protoSources(id, size) {
+  const logoId = normalizeProtocolLogoId(id);
   const s = size * 2;
   const llama = (slug) => `https://icons.llamao.fi/icons/protocols/${slug}?w=${s}&h=${s}`;
   const cgRaw = (path) => `https://assets.coingecko.com/coins/images/${path}`;
@@ -35,6 +87,9 @@ function protoSources(id, size) {
     moonwell: [prox("https://moonwell.fi/moonwell.png"), llama("moonwell"), cg("18246/standard/Moonwell_Logo.png")],
     aave: [llama("aave-v3"), llama("aave"), cg("12645/standard/aave-token-round.png")],
     compound: [llama("compound-v3"), llama("compound"), cg("10775/standard/COMP.png")],
+    fluid: [llama("fluid"), prox("https://fluid.instadapp.io/favicon.ico")],
+    silo: [llama("silo-finance"), llama("silo")],
+    kyo: [llama("kyo-finance"), prox("https://app.kyo.finance/favicon.ico")],
     uniswap: [llama("uniswap-v3"), llama("uniswap"), cg("12504/standard/uniswap-logo.png")],
     curve: [llama("curve-dex"), cg("12124/standard/Curve.png")],
     odos: [llama("odos"), prox("https://assets.odos.xyz/odos-icon.svg")],
@@ -54,7 +109,7 @@ function protoSources(id, size) {
     babylon: [llama("babylon")],
     solv: [llama("solv-protocol"), llama("solv")]
   };
-  return map[id] || [llama(id)];
+  return map[logoId] || [llama(logoId)];
 }
 function MultiImgMark({ sources, size, rounded = true, bg = "transparent", fallback }) {
   const [idx, setIdx] = React.useState(0);
@@ -127,10 +182,11 @@ function ChainLogo({ id, size = 28, style = {} }) {
   ));
 }
 function ProtocolLogo({ id, size = 22, style = {} }) {
-  const remote = protoSources(id, size);
-  const sources = id ? LOCAL_FIRST_PROTOCOL_IDS.has(id) ? [LOCAL_PROTOCOL(id), ...remote] : [...remote, LOCAL_PROTOCOL(id)] : remote;
-  const label = (id || "?").slice(0, 1).toUpperCase();
-  return /* @__PURE__ */ React.createElement("div", { style: { width: size, height: size, flexShrink: 0, ...style }, "data-protocol-logo": id }, /* @__PURE__ */ React.createElement(
+  const logoId = normalizeProtocolLogoId(id);
+  const remote = protoSources(logoId, size);
+  const sources = logoId ? LOCAL_FIRST_PROTOCOL_IDS.has(logoId) ? [LOCAL_PROTOCOL(logoId), ...remote] : [...remote, LOCAL_PROTOCOL(logoId)] : remote;
+  const label = (logoId || id || "?").slice(0, 1).toUpperCase();
+  return /* @__PURE__ */ React.createElement("div", { style: { width: size, height: size, flexShrink: 0, ...style }, "data-protocol-logo": logoId || id }, /* @__PURE__ */ React.createElement(
     MultiImgMark,
     {
       sources,
@@ -152,6 +208,28 @@ function ProtocolLogo({ id, size = 22, style = {} }) {
       } }, label)
     }
   ));
+}
+function preloadLogoUrl(src) {
+  if (!src || !window.Image) return;
+  const img = new Image();
+  img.decoding = "async";
+  img.loading = "eager";
+  img.src = src;
+}
+function preloadDashboardLogos() {
+  const chainIds = Object.keys(CHAIN_SLUG);
+  for (const id of chainIds) {
+    preloadLogoUrl(LLAMA_CHAIN(CHAIN_SLUG[id], 28));
+    preloadLogoUrl(LOCAL_CHAIN(id));
+  }
+  for (const id of PRELOAD_PROTOCOL_IDS) {
+    const sources = protoSources(id, 28);
+    for (const src of sources.slice(0, 2)) preloadLogoUrl(src);
+    preloadLogoUrl(LOCAL_PROTOCOL(normalizeProtocolLogoId(id)));
+  }
+  for (const id of PRELOAD_ASSET_IDS) {
+    for (const src of assetSources(id, 24).slice(0, 2)) preloadLogoUrl(src);
+  }
 }
 function normalizeAssetId(id = "") {
   const raw = String(id || "").trim().toLowerCase();
@@ -212,5 +290,6 @@ function AssetLogo({ id, size = 16, style = {} }) {
     }
   ));
 }
-Object.assign(window, { ChainLogo, ProtocolLogo, AssetLogo });
+Object.assign(window, { ChainLogo, ProtocolLogo, AssetLogo, preloadDashboardLogos });
+preloadDashboardLogos();
 })();

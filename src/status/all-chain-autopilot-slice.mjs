@@ -141,13 +141,22 @@ function openedDeployments(deployments = []) {
     }));
 }
 
-function executionAttemptSummary({ report = null, summary = {}, refill = [], strategyDispatch = {}, payback = {} } = {}) {
+function executionAttemptSummary({
+  report = null,
+  summary = {},
+  refill = [],
+  merklCanary = {},
+  strategyDispatch = {},
+  payback = {},
+} = {}) {
   const mode = report?.mode || null;
   const executeMode = mode === "execute" || mode === "dry_run_first";
   const refillAttemptedCount = finiteCount(summary.refillAttemptedCount);
   const refillExecutedCount = finiteCount(summary.refillExecutedCount);
   const canaryExecutedCount = finiteCount(summary.canarySweep?.executedCount);
   const canaryBroadcastStepCount = finiteCount(summary.canarySweep?.broadcastStepCount);
+  const merklCanaryReadyCount = finiteCount(merklCanary.readyCount);
+  const merklCanarySelectedCount = finiteCount(merklCanary.selectedCount);
   const strategySelectedCount = finiteCount(strategyDispatch.selectedCount);
   const strategyLiveEligibleCount =
     Number.isFinite(strategyDispatch.liveEligibleCount) ? Number(strategyDispatch.liveEligibleCount) : null;
@@ -158,6 +167,8 @@ function executionAttemptSummary({ report = null, summary = {}, refill = [], str
       refillExecutedCount > 0 ||
       canaryExecutedCount > 0 ||
       canaryBroadcastStepCount > 0 ||
+      merklCanaryReadyCount > 0 ||
+      merklCanarySelectedCount > 0 ||
       strategySelectedCount > 0 ||
       strategyLiveEligibleCount === 0 ||
       payback.status === "carry" ||
@@ -168,6 +179,8 @@ function executionAttemptSummary({ report = null, summary = {}, refill = [], str
   if (attemptedLive && txBroadcastCount === 0) {
     if (refill.some(refillNeedsLiveRemediation)) {
       noTxReason = "refill_routes_unresolved";
+    } else if (merklCanary?.blockedReason) {
+      noTxReason = merklCanary.blockedReason;
     } else if (strategyLiveEligibleCount === 0) {
       noTxReason = "no_live_eligible_strategy";
     } else if (payback?.reason) {
@@ -189,6 +202,9 @@ function executionAttemptSummary({ report = null, summary = {}, refill = [], str
     refillExecutedCount,
     canaryExecutedCount,
     canaryBroadcastStepCount,
+    merklCanaryReadyCount,
+    merklCanarySelectedCount,
+    merklCanaryBlockedReason: merklCanary?.blockedReason || null,
     strategySelectedCount,
     strategyLiveEligibleCount,
     paybackStatus: payback.status || null,
@@ -214,7 +230,11 @@ function buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payba
   if (merklCanary?.blockedReason) {
     blockers.push({ source: "merkl_canary", reason: merklCanary.blockedReason });
   }
-  if (strategyDispatch?.liveEligibleCount === 0) {
+  const merklCanaryHasLiveAttempt =
+    finiteCount(merklCanary?.readyCount) > 0 ||
+    finiteCount(merklCanary?.selectedCount) > 0 ||
+    Boolean(merklCanary?.blockedReason);
+  if (strategyDispatch?.liveEligibleCount === 0 && !merklCanaryHasLiveAttempt) {
     blockers.push({ source: "strategy_dispatch", reason: "no_live_eligible_strategy" });
   }
   if (payback?.reason && ["carry", "defer", "blocked"].includes(payback?.status)) {
@@ -347,7 +367,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       pendingCarrySats: payback.pendingCarrySats ?? null,
       nextAction: payback.nextAction || null,
     },
-    execution: executionAttemptSummary({ report, summary, refill, strategyDispatch, payback }),
+    execution: executionAttemptSummary({ report, summary, refill, merklCanary, strategyDispatch, payback }),
     topBlockers: buildTopBlockers({ report, refill, merklCanary, strategyDispatch, payback }),
     nextAction: null,
   };

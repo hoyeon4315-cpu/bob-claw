@@ -36,3 +36,7 @@ test("dashboard live transport refreshes cached runtime and retries a changed pu
   assert.match(DATA_JSX, /refreshedRuntime\.statusUrl !== runtime\.statusUrl/);
   assert.match(DATA_JSX, /window\._DASHBOARD_LIVE_STREAM_URL === eventsBasePath/);
 });
+
+test("dashboard live transport keeps static Pages snapshots near-live when no Node origin is available", () => {
+  assert.match(DATA_JSX, /const STATIC_POLL_MS = 3000/);
+});

@@ -718,6 +718,38 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
     ))
   );
 }
+function RootProtocolHint({ hint, time, motionSpeed }) {
+  const size = 18;
+  const connector = curvePath(hint.chainX, hint.chainY, hint.x, hint.y, 0.08);
+  const flowDur = 2.2 / motionSpeed;
+  const tFlow = (time + hint.index * 0.28) % flowDur / flowDur;
+  const assetId = hint.assetId || "usdc";
+  return /* @__PURE__ */ React.createElement("g", { "data-root-protocol": hint.id, style: { pointerEvents: "none", opacity: 0.96, transition: `opacity ${T_FAST}ms ${EASE}` } }, /* @__PURE__ */ React.createElement("path", { d: connector.d, fill: "none", stroke: "#A8A8AD", strokeWidth: "0.65", strokeDasharray: "2 3", opacity: "0.7" }), /* @__PURE__ */ React.createElement(
+    FlowToken,
+    {
+      curve: { ...connector, x1: hint.chainX, y1: hint.chainY, x2: hint.x, y2: hint.y },
+      progress: tFlow,
+      assetId,
+      size: 9,
+      sourceChainId: hint.chainId
+    }
+  ), /* @__PURE__ */ React.createElement("circle", { r: size * 0.62, cx: hint.x, cy: hint.y, fill: "#FFFFFF", stroke: "#D0D0D4", strokeWidth: "0.55" }), /* @__PURE__ */ React.createElement("foreignObject", { x: hint.x - size * 0.42, y: hint.y - size * 0.42, width: size * 0.84, height: size * 0.84, style: { pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("div", { xmlns: "http://www.w3.org/1999/xhtml", style: { display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", pointerEvents: "none" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: hint.protocol, size: size * 0.72 }))), /* @__PURE__ */ React.createElement(
+    "text",
+    {
+      x: hint.x,
+      y: hint.y + 17,
+      textAnchor: "middle",
+      fontSize: "7.6",
+      fontWeight: "700",
+      fill: "#555",
+      stroke: "#FFFFFF",
+      strokeWidth: "2",
+      paintOrder: "stroke",
+      style: { fontFamily: "-apple-system, system-ui", letterSpacing: 0 }
+    },
+    hint.label
+  ));
+}
 function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const [selectedChain, setSelectedChain] = useState(null);
   const [selectedProtocolId, setSelectedProtocolId] = useState(null);
@@ -938,6 +970,37 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const liveChains = new Set(
     STRATEGIES.filter((strategy) => isMindmapActiveStrategy(strategy)).map((strategy) => strategy.chain).filter(Boolean)
   );
+  const rootProtocolHints = useMemo(() => {
+    if (selectedChain) return [];
+    const hints = [];
+    for (const chain of destChains) {
+      const groups = (protocolsByChain[chain.id] || []).filter((group) => isMindmapActiveStrategy(group)).slice(0, 2);
+      const ring = ringPos[chain.id];
+      if (!ring || groups.length === 0) continue;
+      const chainBody = physicsRef.current.get(`chain:${chain.id}`);
+      const chainX = chainBody ? chainBody.x : ring.x;
+      const chainY = chainBody ? chainBody.y : ring.y;
+      const angle = ring.angle ?? Math.atan2(ring.y, ring.x);
+      const spread = groups.length === 1 ? [0] : [-0.18, 0.18];
+      groups.forEach((group, groupIndex) => {
+        const a = angle + spread[groupIndex];
+        const offset = 32 + groupIndex * 8;
+        hints.push({
+          id: `${chain.id}:${group.protocol}:${groupIndex}`,
+          chainId: chain.id,
+          chainX,
+          chainY,
+          x: chainX + Math.cos(a) * offset,
+          y: chainY + Math.sin(a) * offset,
+          protocol: group.protocol,
+          label: prettifyProtocolLabel(group.protocol),
+          assetId: uniqueProtocolAssets(group)[0] || "usdc",
+          index: hints.length
+        });
+      });
+    }
+    return hints;
+  }, [destChains, protocolsByChain, ringPos, selectedChain, time]);
   const movementNowMs = Date.now();
   const recentMovements = dedupeRecentMovements(
     Array.isArray(window.FLOW?.recentMovements) ? window.FLOW.recentMovements.filter((movement) => movement?.fromChainId && movement?.toChainId && isRecentMovement(movement, movementNowMs)) : []
@@ -1213,6 +1276,15 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           key: `movement-trail-${track.key}`,
           track,
           selectedChain
+        }
+      )),
+      !selectedChain && rootProtocolHints.map((hint) => /* @__PURE__ */ React.createElement(
+        RootProtocolHint,
+        {
+          key: `root-protocol-${hint.id}`,
+          hint,
+          time,
+          motionSpeed
         }
       )),
       destChains.map((c) => {
