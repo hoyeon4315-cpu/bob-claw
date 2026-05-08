@@ -1,9 +1,10 @@
-import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import { getStrategyCaps, validateStrategyCapsConfig } from "../../config/strategy-caps.mjs";
 import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
 import { evaluateConcentrationGuard } from "../risk/concentration-guard.mjs";
 import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
 import { evaluateEvGate } from "./ev-gate.mjs";
+import { evaluateAutoKillTriggers } from "../../risk/auto-kill-triggers.mjs";
 import { checkGatewayAvailability } from "./gateway-availability.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
@@ -48,6 +49,59 @@ function mapConcentrationBlockers(verdict) {
   return ["concentration_guard_reject_intent"];
 }
 
+function evaluateStrategyCapsPresence({ intent, strategyCaps, now }) {
+  if (!strategyCaps) {
+    return {
+      policy: "strategy_caps",
+      observedAt: now,
+      decision: "BLOCK",
+      blockers: ["strategy_caps_missing"],
+      errors: [`Unknown strategy caps for ${intent?.strategyId || "unknown"}`],
+    };
+  }
+  const validation = validateStrategyCapsConfig(strategyCaps);
+  return {
+    policy: "strategy_caps",
+    observedAt: now,
+    decision: validation.ok ? "ALLOW" : "BLOCK",
+    blockers: validation.ok ? [] : ["strategy_caps_invalid"],
+    errors: validation.errors,
+  };
+}
+
+function evaluateAutoKillPolicy({
+  riskContext = null,
+  auditRecords = [],
+  activeBudgetUsd = null,
+  now,
+} = {}) {
+  const direct = riskContext?.autoKill || riskContext?.autoKillVerdict || riskContext?.autoKillResult || null;
+  const inputs = riskContext?.autoKillInputs || null;
+  if (!direct && !inputs) return null;
+
+  const verdict = direct || evaluateAutoKillTriggers({
+    auditRecords: inputs.auditRecords || auditRecords,
+    oracleSamples: inputs.oracleSamples || [],
+    heartbeatAtMs: inputs.heartbeatAtMs ?? null,
+    operatingCapitalUsd: inputs.operatingCapitalUsd ?? riskContext?.operatingCapitalUsd ?? activeBudgetUsd,
+    priceSamples: inputs.priceSamples || [],
+    clStatus: inputs.clStatus || {},
+    activeProtocols: inputs.activeProtocols || [],
+    campaignStatus: inputs.campaignStatus || {},
+    config: inputs.config,
+    now: new Date(now),
+  });
+  const triggered = verdict?.triggered === true || verdict?.killSwitchActive === true || verdict?.alreadyArmed === true;
+  return {
+    policy: "auto_kill_triggers",
+    observedAt: now,
+    decision: triggered ? "BLOCK" : "ALLOW",
+    blockers: triggered ? ["auto_kill_triggered"] : [],
+    triggers: Array.isArray(verdict?.triggers) ? verdict.triggers : [],
+    verdict,
+  };
+}
+
 export async function evaluateIntentPolicies({
   intent,
   auditRecords = [],
@@ -58,7 +112,20 @@ export async function evaluateIntentPolicies({
   riskContext = null,
   evCostModel = null,
 } = {}) {
-  const strategyCaps = assertStrategyCaps(intent.strategyId);
+  const strategyCaps = intent?.strategyId ? getStrategyCaps(intent.strategyId) : null;
+  const strategyCapsResult = evaluateStrategyCapsPresence({ intent, strategyCaps, now });
+  if (strategyCapsResult.decision === "BLOCK") {
+    return {
+      observedAt: now,
+      strategyId: intent?.strategyId || null,
+      decision: "BLOCK",
+      blockers: strategyCapsResult.blockers,
+      results: [strategyCapsResult],
+      strategyCaps: strategyCaps || null,
+      requiresUnwind: false,
+      emergencyUnwindPath: null,
+    };
+  }
 
   const liquiditySnapshot = riskContext?.liquiditySnapshot || intent.metadata?.liquiditySnapshot || null;
   const liquidityVerdict = liquiditySnapshot
@@ -75,7 +142,9 @@ export async function evaluateIntentPolicies({
     : null;
 
   const results = [
+    strategyCapsResult,
     await checkKillSwitch({ killSwitchPath, now }),
+    evaluateAutoKillPolicy({ riskContext, auditRecords, activeBudgetUsd, now }),
     await checkGatewayAvailability({
       intent,
       availability: riskContext?.gatewayAvailability || intent.metadata?.gatewayAvailability || null,

@@ -1,0 +1,115 @@
+export const POLICY_COVERAGE_CHECKS = Object.freeze([
+  Object.freeze({
+    id: "capless_strategy_reject",
+    agentsRef: "AGENTS.md:65",
+    runtimeAuthority: "policy_engine",
+    policyResult: "strategy_caps",
+    blockers: Object.freeze(["strategy_caps_missing", "strategy_caps_invalid"]),
+    enforcementFile: "src/executor/policy/index.mjs",
+  }),
+  Object.freeze({
+    id: "caps_per_tx_day_chain_loss",
+    agentsRef: "AGENTS.md:64",
+    runtimeAuthority: "policy_engine",
+    policyResult: "cap_check",
+    blockers: Object.freeze([
+      "strategy_per_tx_cap_exceeded",
+      "strategy_per_day_cap_exceeded",
+      "strategy_per_chain_cap_exceeded",
+      "strategy_max_daily_loss_missing",
+    ]),
+    enforcementFile: "src/executor/policy/cap-check.mjs",
+  }),
+  Object.freeze({
+    id: "minimum_positive_net_after_cost",
+    agentsRef: "AGENTS.md:66",
+    runtimeAuthority: "policy_engine",
+    policyResult: "ev_gate",
+    blockers: Object.freeze(["expected_net_below_receipt_cost_p90_floor", "expected_net_unmeasured"]),
+    enforcementFile: "src/executor/policy/ev-gate.mjs",
+  }),
+  Object.freeze({
+    id: "leverage_hf_liquidation_buffer",
+    agentsRef: "AGENTS.md:67",
+    runtimeAuthority: "policy_engine",
+    policyResult: "hf_check",
+    blockers: Object.freeze([
+      "health_factor_below_min_pre_trade",
+      "health_factor_below_min_post_trade",
+      "liquidation_buffer_below_min_pre_trade",
+      "liquidation_buffer_below_min_post_trade",
+    ]),
+    enforcementFile: "src/executor/policy/hf-check.mjs",
+  }),
+  Object.freeze({
+    id: "consecutive_failure_auto_pause",
+    agentsRef: "AGENTS.md:68",
+    runtimeAuthority: "policy_engine",
+    policyResult: "consecutive_failures",
+    blockers: Object.freeze(["max_consecutive_failures_reached"]),
+    enforcementFile: "src/executor/policy/consecutive-failures.mjs",
+  }),
+  Object.freeze({
+    id: "failed_gas_budget_guard",
+    agentsRef: "AGENTS.md:69",
+    runtimeAuthority: "policy_engine",
+    policyResult: "cap_check",
+    blockers: Object.freeze(["strategy_failed_gas_budget_breached"]),
+    enforcementFile: "src/executor/policy/cap-check.mjs",
+  }),
+  Object.freeze({
+    id: "drawdown_kill_switch",
+    agentsRef: "AGENTS.md:70",
+    runtimeAuthority: "policy_engine",
+    policyResult: "cap_check",
+    blockers: Object.freeze(["strategy_max_daily_loss_breached"]),
+    enforcementFile: "src/executor/policy/cap-check.mjs",
+  }),
+  Object.freeze({
+    id: "stale_quote_reject",
+    agentsRef: "AGENTS.md:96",
+    runtimeAuthority: "policy_engine",
+    policyResult: "stale_quote",
+    blockers: Object.freeze(["quote_timestamp_missing", "quote_timestamp_invalid", "quote_stale"]),
+    enforcementFile: "src/executor/policy/stale-quote.mjs",
+  }),
+  Object.freeze({
+    id: "unlimited_approval_reject",
+    agentsRef: "AGENTS.md:56",
+    runtimeAuthority: "policy_engine",
+    policyResult: "approval_hygiene",
+    blockers: Object.freeze(["unlimited_approval_forbidden"]),
+    enforcementFile: "src/executor/policy/approval-hygiene.mjs",
+  }),
+  Object.freeze({
+    id: "kill_switch_file_check",
+    agentsRef: "AGENTS.md:55",
+    runtimeAuthority: "policy_engine",
+    policyResult: "kill_switch",
+    blockers: Object.freeze(["kill_switch_present"]),
+    enforcementFile: "src/executor/policy/kill-switch.mjs",
+  }),
+  Object.freeze({
+    id: "auto_kill_triggers",
+    agentsRef: "AGENTS.md:87-95",
+    runtimeAuthority: "policy_engine",
+    policyResult: "auto_kill_triggers",
+    blockers: Object.freeze(["auto_kill_triggered"]),
+    enforcementFile: "src/executor/policy/index.mjs",
+  }),
+]);
+
+export function buildPolicyCoverageReport({ generatedAt = new Date().toISOString() } = {}) {
+  const checks = POLICY_COVERAGE_CHECKS.map((item) => ({ ...item, blockers: [...item.blockers] }));
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    authority: "AGENTS.md",
+    runtimeAuthority: "policy_engine_only",
+    summary: {
+      totalChecks: checks.length,
+      enforcedByPolicy: checks.filter((item) => item.runtimeAuthority === "policy_engine").length,
+    },
+    checks,
+  };
+}
