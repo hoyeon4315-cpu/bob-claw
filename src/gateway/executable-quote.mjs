@@ -1,22 +1,14 @@
 import { config } from "../config/env.mjs";
 import { GatewayClient, classifyGatewayBlockedReason } from "./client.mjs";
+import { buildGatewayQuoteParams } from "./quote-params.mjs";
 
-function quoteParamsForStoredQuote(quote, senderAddress) {
-  const params = {
-    srcChain: quote.route.srcChain,
-    dstChain: quote.route.dstChain,
-    srcToken: quote.route.srcToken,
-    dstToken: quote.route.dstToken,
+export function quoteParamsForStoredQuote(quote, senderAddress) {
+  return buildGatewayQuoteParams({
+    route: quote.route,
     amount: quote.amount,
+    sender: senderAddress || config.verifyRecipient,
     recipient: quote.route.dstChain === "bitcoin" ? config.verifyBtcRecipient : config.verifyRecipient,
-    slippage: config.slippageBps,
-  };
-
-  if (quote.route.srcChain !== "bitcoin") {
-    params.sender = senderAddress || config.verifyRecipient;
-  }
-
-  return params;
+  });
 }
 
 export function isOfframpExecutionHydrationRequired(quote) {
