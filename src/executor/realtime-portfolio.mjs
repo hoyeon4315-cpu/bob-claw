@@ -7,6 +7,7 @@ import { readNativeBalance, readErc20Balance } from "../evm/account-state.mjs";
 import { EVM_CHAIN_CONFIGS } from "../config/chains.mjs";
 import { PROTOCOL_READERS } from "./health/position-reconciler.mjs";
 import { TOKEN_REGISTRY } from "../config/token-registry.mjs";
+import { enumerateAerodromeTokenIds } from "../protocol-readers/readers/aerodrome-nft-enumerator.mjs";
 
 // Token metadata is sourced from src/config/token-registry.mjs.
 // Aliased here to preserve back-compat for downstream code that may have
@@ -78,7 +79,10 @@ async function fetchChainBalances(chain, address) {
   return results;
 }
 
-async function fetchProtocolPositions(address, { aerodromeTokenIds = [] } = {}) {
+async function fetchProtocolPositions(address, {
+  aerodromeTokenIds = [],
+  aerodromeTokenEnumeratorImpl = enumerateAerodromeTokenIds,
+} = {}) {
   const positions = [];
 
   try {
@@ -111,10 +115,17 @@ async function fetchProtocolPositions(address, { aerodromeTokenIds = [] } = {}) 
 
   try {
     // Aerodrome CL Base
+    let tokenIds = aerodromeTokenIds;
+    if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
+      tokenIds = await aerodromeTokenEnumeratorImpl({
+        chain: "base",
+        ownerAddress: address,
+      }).catch(() => []);
+    }
     const aerodromeResult = await PROTOCOL_READERS.aerodrome({
       chain: "base",
       signerAddress: address,
-      tokenIds: aerodromeTokenIds,
+      tokenIds,
     });
     if (Array.isArray(aerodromeResult)) {
       positions.push(...aerodromeResult);
@@ -128,7 +139,13 @@ async function fetchProtocolPositions(address, { aerodromeTokenIds = [] } = {}) 
   return positions;
 }
 
-export async function fetchRealtimePortfolio(address, { chains = null, useCache = true, includeProtocols = true, aerodromeTokenIds = [] } = {}) {
+export async function fetchRealtimePortfolio(address, {
+  chains = null,
+  useCache = true,
+  includeProtocols = true,
+  aerodromeTokenIds = [],
+  aerodromeTokenEnumeratorImpl = enumerateAerodromeTokenIds,
+} = {}) {
   if (useCache && _cache && Date.now() - _cacheAt < CACHE_TTL_MS) {
     return _cache;
   }
@@ -142,7 +159,9 @@ export async function fetchRealtimePortfolio(address, { chains = null, useCache 
     allBalances.push(result);
   }
 
-  const protocolPositions = includeProtocols ? await fetchProtocolPositions(address, { aerodromeTokenIds }) : [];
+  const protocolPositions = includeProtocols
+    ? await fetchProtocolPositions(address, { aerodromeTokenIds, aerodromeTokenEnumeratorImpl })
+    : [];
 
   const snapshot = {
     address,
