@@ -222,6 +222,7 @@
     "executor:merkl-portfolio-orchestrator": "node src/cli/run-merkl-portfolio-orchestrator.mjs",
     "executor:merkl-portfolio-orchestrator:loop": "node src/cli/run-merkl-portfolio-orchestrator.mjs --loop --write",
     "executor:bootstrap-from-btc": "node src/cli/run-bootstrap-from-btc.mjs",
+    "executor:build-phase3-evidence": "node src/cli/build-phase3-evidence.mjs",
     "executor:reset-consecutive-failures": "node src/cli/run-reset-consecutive-failures.mjs",
     "executor:backfill-consecutive-failures": "node src/cli/backfill-consecutive-failures-classifier.mjs",
     "autopilot:all-chains": "node src/cli/run-all-chain-autopilot.mjs",
