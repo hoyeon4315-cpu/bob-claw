@@ -61,7 +61,7 @@ site is added.
 
 ## Dashboard Funnel
 
-`dashboard/public/strategy-tick-status.json` schema v4 and the live snapshot
+`dashboard/public/strategy-tick-status.json` schema v5 and the live snapshot
 writer expose the five reporting layers:
 
 | Layer | Meaning |
@@ -73,3 +73,23 @@ writer expose the five reporting layers:
 | `surfaceAdvice` | readiness/admission advice only, with `adviceAuthority: "commit_time_guard"` |
 
 The dashboard may show this funnel, but it does not grant runtime authority.
+
+Schema v5 also exposes first-broadcast reporting fields only:
+`firstLiveBroadcastAt`, `firstLiveBroadcastTxHash`, `firstRealizedPnlSats`,
+`paybackProgressTrajectory`, and top-level `overall.latestBroadcastAt`,
+`overall.satsSinceFirstBroadcast`, `overall.daysSinceFirstBroadcast`, and
+`overall.paybackEffectiveMinReachedAt`. These fields are derived from
+tick/audit/receipt records and do not affect dispatcher, policy, signer, caps,
+or payback scheduler decisions.
+
+## 2026-05-09 Operations Checkpoint
+
+| Task | Result | Safety note |
+| --- | --- | --- |
+| Task-1 main merge | Blocked in sandbox by `.git/index.lock` `Operation not permitted`; `lsof` showed no lock holder and `ps` showed only running node daemons. | No permission bypass attempted; operator terminal merge required. |
+| Task-2 signer health | `npm run diagnose:signer-health -- --json` classified the live daemon as `clean`. | Checks covered process, heartbeat, socket, all configured EVM RPCs, BTC RPC, nonce state metadata, and latest signer-audit stage. |
+| Task-3 daemon restart | Skipped. | Restart is only allowed for `process_down` or `heartbeat_stale`; neither was present. |
+| Task-4 kill-switch | `npm run kill:status` reported `RUNNING`. | No kill-switch toggle was performed. |
+| Task-5 capital snapshot | Wallet holdings were about USD 360.65 with 100% freshness and price-source coverage; payback pending 601 sats vs effective min 5000 sats. | Payback remains carry-first until realized receipts naturally reach the minimum. |
+| Task-6 dispatch dry-run | `wrapped-btc-loop-base-moonwell` selected one preview intent with `blockedReason=null`. | Live dispatch remained blocked by live-run-control cooldown (`fresh_roundtrip_proof_recorded`), so no broadcast was attempted. |
+| Task-7 first broadcast | Not run. | Cooldown/live-run-control was not bypassed. |
