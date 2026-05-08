@@ -6,6 +6,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  dashboardJsonOutputPath,
+  hasFlag,
+  optionMapFromArgs,
+} from '../dashboard/live-snapshot-paths.mjs';
 import { buildProtocolAprSlice } from '../status/protocol-apr-slice.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +18,6 @@ const ROOT = path.resolve(path.dirname(__filename), '../..');
 const INVENTORY_PATH = path.join(ROOT, 'data', 'whole-wallet-inventory.jsonl');
 const WRAPPED_BTC_LOOP_SLICE_PATH = path.join(ROOT, 'data', 'wrapped-btc-lending-loop-slice.json');
 const RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH = path.join(ROOT, 'data', 'recursive_wrapped_btc_lending_loop-scaffold.json');
-const OUTPUT_PATH = path.join(ROOT, 'dashboard', 'public', 'wallet-holdings.json');
 const SOURCE_FRESH_MAX_AGE_MS = 60 * 1000;
 const PRICE_FRESH_MAX_AGE_MS = 5 * 60 * 1000;
 const PRICE_DIVERGENCE_WARN_PCT = 1;
@@ -424,6 +428,12 @@ export function buildWalletHoldingsPayload({
 }
 
 export async function main() {
+  const argv = process.argv.slice(2);
+  const options = optionMapFromArgs(argv);
+  const outputPath = path.resolve(ROOT, dashboardJsonOutputPath('wallet-holdings.json', {
+    options,
+    commitPublic: hasFlag(argv, '--commit-public'),
+  }));
   const inventoryRecords = await readJsonlRecords(INVENTORY_PATH);
   const [wrappedBtcLoopSlice, recursiveWrappedBtcLoopScaffold] = await Promise.all([
     readJsonIfExists(WRAPPED_BTC_LOOP_SLICE_PATH),
@@ -435,14 +445,14 @@ export async function main() {
     recursiveWrappedBtcLoopScaffold,
     now: new Date(),
   });
-  await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
-  await fs.writeFile(OUTPUT_PATH, JSON.stringify(payload, null, 2) + '\n', 'utf8');
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, JSON.stringify(payload, null, 2) + '\n', 'utf8');
   process.stdout.write(JSON.stringify({
     ok: true,
     pending: payload.pending,
     itemCount: payload.items.length,
     totalUsd: payload.totalUsd,
-    out: path.relative(ROOT, OUTPUT_PATH),
+    out: path.relative(ROOT, outputPath),
   }) + '\n');
 }
 

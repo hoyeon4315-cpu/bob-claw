@@ -4,6 +4,12 @@ import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import {
+  DASHBOARD_PUBLIC_DIR,
+  dashboardLiveSnapshotDir,
+  hasFlag,
+  optionMapFromArgs,
+} from "../dashboard/live-snapshot-paths.mjs";
 import { writeDashboardStatus } from "../status/dashboard-status.mjs";
 import { buildCurrentDashboardContext } from "../status/current-dashboard-context.mjs";
 import {
@@ -26,10 +32,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
 function parseArgs(argv) {
-  const flags = new Set(argv);
+  const options = optionMapFromArgs(argv);
   return {
-    skipShadowCycle: flags.has("--skip-shadow-cycle"),
-    skipCanaryInputRefresh: flags.has("--skip-canary-input-refresh"),
+    skipShadowCycle: hasFlag(argv, "--skip-shadow-cycle"),
+    skipCanaryInputRefresh: hasFlag(argv, "--skip-canary-input-refresh"),
+    commitPublic: hasFlag(argv, "--commit-public"),
+    liveSnapshotDir: dashboardLiveSnapshotDir({ options }),
   };
 }
 
@@ -326,7 +334,8 @@ async function main() {
   watchState.dashboardStatus = status;
   status.watchers = buildPublicWatchers(watchState);
   const output = await writeDashboardStatus(config.dataDir, status);
-  const dashboardOutput = await writeDashboardStatus("./dashboard/public", status);
+  const dashboardOutputDir = args.commitPublic ? DASHBOARD_PUBLIC_DIR : args.liveSnapshotDir;
+  const dashboardOutput = await writeDashboardStatus(dashboardOutputDir, status);
 
   console.log(`${output.changed ? "wrote" : "unchanged"}=${output.path}`);
   console.log(`${dashboardOutput.changed ? "dashboardWrote" : "dashboardUnchanged"}=${dashboardOutput.path}`);

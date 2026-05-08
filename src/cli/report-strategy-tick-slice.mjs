@@ -20,6 +20,11 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { basename, resolve, dirname, extname } from "node:path";
+import {
+  dashboardJsonOutputPath,
+  hasFlag,
+  optionMapFromArgs,
+} from "../dashboard/live-snapshot-paths.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
@@ -359,6 +364,8 @@ function microHasMinimalProof(report = null) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  const argv = process.argv.slice(2);
+  const options = optionMapFromArgs(argv);
   const strategies = args.strategies.length > 0 ? args.strategies : DEFAULT_STRATEGIES;
   const tickPath = resolve(args["tick-log"] || "logs/strategy-tick.jsonl");
   const auditPath = resolve(args.audit || "logs/signer-audit.jsonl");
@@ -368,7 +375,12 @@ async function main() {
     resolve("data/erc4626-protocol-canaries.jsonl"),
     resolve("data/aave-protocol-canaries.jsonl"),
   ];
-  const outPath = resolve(args.out || "dashboard/public/strategy-tick-status.json");
+  const outPath = resolve(
+    dashboardJsonOutputPath("strategy-tick-status.json", {
+      options: { ...options, out: args.out },
+      commitPublic: hasFlag(argv, "--commit-public"),
+    }),
+  );
 
   const [ticks, audit, reconciliations, ...canaryRecords] = await Promise.all([
     readJsonlSafe(tickPath),

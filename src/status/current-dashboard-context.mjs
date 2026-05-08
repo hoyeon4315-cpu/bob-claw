@@ -1,5 +1,9 @@
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
+import {
+  dashboardJsonCandidatePaths,
+  dashboardLiveSnapshotDir,
+} from "../dashboard/live-snapshot-paths.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
@@ -408,16 +412,24 @@ export async function buildCurrentDashboardContext({
 
   // P1/P2 parity floor injection — deterministic, pure slices
   const chainParity = buildChainParitySlice();
-  const strategyTickStatus =
-    (await readJsonIfExists(join(dataDir, "..", "dashboard", "public", "strategy-tick-status.json"), {
+  let strategyTickStatus = null;
+  for (const candidatePath of dashboardJsonCandidatePaths("strategy-tick-status.json", {
+    rootDir: join(dataDir, "..", "dashboard", "public"),
+    liveSnapshotDir: dashboardLiveSnapshotDir({}),
+    dataDir,
+  })) {
+    strategyTickStatus = await readJsonIfExists(candidatePath, {
       tolerateMalformed: true,
       retryCount: 2,
-    })) ||
-    (await readJsonIfExists(join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"), {
+    });
+    if (strategyTickStatus) break;
+  }
+  if (!strategyTickStatus) {
+    strategyTickStatus = await readJsonIfExists(join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"), {
       tolerateMalformed: true,
       retryCount: 2,
-    })) ||
-    null;
+    });
+  }
   const strategyParity = buildStrategyParitySlice({
     deterministicCandidates: deterministicStrategyCandidates,
     secondaryStrategyScaffolds,

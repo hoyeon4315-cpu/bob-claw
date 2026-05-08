@@ -8,27 +8,27 @@
 import process from "node:process";
 import { constants } from "node:fs";
 import { readFile, mkdir, writeFile, access } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import {
+  dashboardJsonOutputPath,
+  hasFlag,
+  optionMapFromArgs,
+} from "../dashboard/live-snapshot-paths.mjs";
 import { AUTO_KILL_EVENTS_PATH } from "../risk/auto-kill-events.mjs";
 
-const DEFAULT_OUT = join("dashboard", "public", "auto-kill-events.json");
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function parseArgs(argv) {
   const flags = new Set(argv);
-  const options = Object.fromEntries(
-    argv
-      .filter((arg) => arg.startsWith("--") && arg.includes("="))
-      .map((arg) => {
-        const [key, ...valueParts] = arg.slice(2).split("=");
-        return [key, valueParts.join("=")];
-      }),
-  );
+  const options = optionMapFromArgs(argv);
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
     eventsPath: options["events-path"] || AUTO_KILL_EVENTS_PATH,
-    out: options.out || DEFAULT_OUT,
+    out: dashboardJsonOutputPath("auto-kill-events.json", {
+      options,
+      commitPublic: hasFlag(argv, "--commit-public"),
+    }),
   };
 }
 

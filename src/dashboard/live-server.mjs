@@ -15,6 +15,11 @@ import { buildMerklUserRewardsSlice } from "../status/merkl-user-rewards-slice.m
 import { buildProtocolPositionMarksSlice } from "../status/protocol-position-marks-slice.mjs";
 import { merklUserRewardPolicy } from "../config/merkl-user-rewards.mjs";
 import {
+  DEFAULT_LIVE_SNAPSHOT_DIR,
+  dashboardJsonCandidatePaths,
+  dashboardLiveSnapshotDir,
+} from "./live-snapshot-paths.mjs";
+import {
   activeProtocolPositions,
   latestProtocolMarksByPosition,
   mergeProtocolMarksIntoPositions,
@@ -94,6 +99,7 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
     port: finiteInteger(options.port || env.BOB_CLAW_DASHBOARD_LIVE_PORT, DEFAULT_PORT),
     streamMs: finiteInteger(options["stream-ms"] || env.BOB_CLAW_DASHBOARD_LIVE_STREAM_MS, DEFAULT_STREAM_MS),
     dataDir: options["data-dir"] || env.BOB_CLAW_DATA_DIR || config.dataDir,
+    liveSnapshotDir: resolve(dashboardLiveSnapshotDir({ options, env })),
     address: options.address || null,
     corsOrigin: options["cors-origin"] || env.BOB_CLAW_DASHBOARD_CORS_ORIGIN || "*",
     snapshotCacheMs: finiteInteger(
@@ -167,11 +173,12 @@ function resolveStaticPath(rootDir, requestPath = "/") {
   return resolved;
 }
 
-async function loadDashboardStatusSnapshot({ rootDir, dataDir }) {
-  const candidates = [
-    join(rootDir, "dashboard-status.json"),
-    join(dataDir, "dashboard-status.json"),
-  ];
+async function loadDashboardStatusSnapshot({ rootDir, dataDir, liveSnapshotDir = DEFAULT_LIVE_SNAPSHOT_DIR }) {
+  const candidates = dashboardJsonCandidatePaths("dashboard-status.json", {
+    rootDir,
+    liveSnapshotDir,
+    dataDir,
+  });
   let lastError = null;
   for (const path of candidates) {
     try {
@@ -283,14 +290,15 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
   };
 }
 
-async function applyLiveSliceOverlay(status, { rootDir, dataDir, projectRoot, servedAt }) {
+async function applyLiveSliceOverlay(status, { rootDir, dataDir, liveSnapshotDir = DEFAULT_LIVE_SNAPSHOT_DIR, projectRoot, servedAt }) {
   let nextStatus = status;
   const previousStrategy = nextStatus?.strategy || status?.strategy || {};
   const previousCapitalSummary = nextStatus?.capitalSummary || status?.capitalSummary || null;
-  const walletHoldings = await loadJsonFromCandidates([
-    join(rootDir, "wallet-holdings.json"),
-    join(dataDir, "wallet-holdings.json"),
-  ]);
+  const walletHoldings = await loadJsonFromCandidates(dashboardJsonCandidatePaths("wallet-holdings.json", {
+    rootDir,
+    liveSnapshotDir,
+    dataDir,
+  }));
   if (walletHoldings && walletHoldings.pending !== true && Array.isArray(walletHoldings.items)) {
     const currentWalletAt = status?.walletHoldings?.generatedAt || status?.walletHoldings?.observedAt || null;
     const incomingWalletAt = walletHoldings.generatedAt || walletHoldings.observedAt || null;
@@ -419,10 +427,11 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, projectRoot, se
     };
   }
 
-  const strategyTickStatus = await loadJsonFromCandidates([
-    join(rootDir, "strategy-tick-status.json"),
-    join(dataDir, "strategy-tick-status.json"),
-  ]);
+  const strategyTickStatus = await loadJsonFromCandidates(dashboardJsonCandidatePaths("strategy-tick-status.json", {
+    rootDir,
+    liveSnapshotDir,
+    dataDir,
+  }));
   nextStatus = overlayStrategyTickStatus(nextStatus, strategyTickStatus, servedAt);
 
   const merklUserRewardsLatest = await loadJsonFromCandidates([
@@ -522,11 +531,15 @@ function parseProtocolMarkTaskWarning(result = {}) {
 }
 
 export function createDashboardLiveServer(rawOptions = {}) {
+  const parsedDefaults = parseDashboardLiveArgs([], process.env);
+  const rootDir = resolve(rawOptions.rootDir || parsedDefaults.rootDir);
+  const projectRoot = resolve(rawOptions.projectRoot || join(rootDir, "..", ".."));
   const options = {
-    ...parseDashboardLiveArgs([], process.env),
+    ...parsedDefaults,
     ...rawOptions,
-    rootDir: resolve(rawOptions.rootDir || parseDashboardLiveArgs([], process.env).rootDir),
-    projectRoot: resolve(rawOptions.projectRoot || parseDashboardLiveArgs([], process.env).projectRoot),
+    rootDir,
+    projectRoot,
+    liveSnapshotDir: resolve(rawOptions.liveSnapshotDir || join(projectRoot, DEFAULT_LIVE_SNAPSHOT_DIR)),
   };
   const tasks = {
     wholeWallet: {
@@ -576,6 +589,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       id: "walletHoldingsSlice",
       label: "wallet holdings slice",
       script: "src/cli/report-wallet-holdings-slice.mjs",
+      args: [`--live-snapshot-dir=${options.liveSnapshotDir}`],
       intervalMs: options.wholeWalletRefreshMs,
       lastStartedAt: null,
       lastFinishedAt: null,
@@ -590,7 +604,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       id: "strategyTickStatus",
       label: "strategy tick status",
       script: "src/cli/report-strategy-tick-slice.mjs",
-      args: ["--quiet"],
+      args: ["--quiet", `--live-snapshot-dir=${options.liveSnapshotDir}`],
       intervalMs: options.strategyTickRefreshMs,
       timeoutMs: options.refreshTaskTimeoutMs,
       lastStartedAt: null,
@@ -606,7 +620,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       id: "autoKillEvents",
       label: "auto-kill event summary",
       script: "src/cli/report-auto-kill-events.mjs",
-      args: ["--write"],
+      args: ["--write", `--live-snapshot-dir=${options.liveSnapshotDir}`],
       intervalMs: options.autoKillRefreshMs,
       timeoutMs: options.refreshTaskTimeoutMs,
       lastStartedAt: null,
@@ -638,6 +652,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
       id: "statusSnapshot",
       label: "dashboard snapshot",
       script: "src/cli/status-dashboard.mjs",
+      args: [`--live-snapshot-dir=${options.liveSnapshotDir}`],
       intervalMs: options.statusSnapshotRefreshMs,
       timeoutMs: options.refreshTaskTimeoutMs,
       deferInitialRun: true,
@@ -875,9 +890,11 @@ export function createDashboardLiveServer(rawOptions = {}) {
     const dashboardStatus = await applyLiveSliceOverlay(await loadDashboardStatusSnapshot({
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+      liveSnapshotDir: options.liveSnapshotDir,
     }), {
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+      liveSnapshotDir: options.liveSnapshotDir,
       projectRoot: options.projectRoot,
       servedAt,
     });
@@ -900,9 +917,11 @@ export function createDashboardLiveServer(rawOptions = {}) {
     const fallback = await applyLiveSliceOverlay(await loadDashboardStatusSnapshot({
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+      liveSnapshotDir: options.liveSnapshotDir,
     }), {
       rootDir: options.rootDir,
       dataDir: options.dataDir,
+      liveSnapshotDir: options.liveSnapshotDir,
       projectRoot: options.projectRoot,
       servedAt,
     });

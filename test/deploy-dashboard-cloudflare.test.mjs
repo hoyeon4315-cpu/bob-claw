@@ -143,6 +143,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
     buildPublic: async (options) => {
       buildCalls.push(options);
     },
+    writeRuntimeConfig: async () => {},
     runCommand: async (command, args, commandEnv) => {
       calls.push({ command, args, commandEnv });
     },
@@ -167,7 +168,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
   });
   assert.deepEqual(calls[2], {
     command: "node",
-    args: ["src/cli/status-dashboard.mjs"],
+    args: ["src/cli/status-dashboard.mjs", "--commit-public"],
     commandEnv: calls[2].commandEnv,
   });
   assert.deepEqual(calls[3], {
@@ -216,6 +217,7 @@ test("deploy main creates an explicit project when a single discovered account h
     buildPublic: async (options) => {
       buildCalls.push(options);
     },
+    writeRuntimeConfig: async () => {},
     runCommand: async (command, args) => {
       calls.push({ command, args });
     },

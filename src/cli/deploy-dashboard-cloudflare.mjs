@@ -335,6 +335,7 @@ export async function main({
   fetchFn = globalThis.fetch,
   runCommand = run,
   buildPublic = buildDashboardPublic,
+  writeRuntimeConfig = writeDashboardLiveRuntimeConfig,
   logger = console,
 } = {}) {
   const args = parseArgs(argv, env);
@@ -352,7 +353,7 @@ export async function main({
   logger.log(formatPreflightSummary({ preflight, args }));
   await buildPublic({ publicDir: DASHBOARD_DIR });
 
-  await writeDashboardLiveRuntimeConfig({
+  await writeRuntimeConfig({
     liveOrigin: args.disableLiveOrigin ? null : args.liveOrigin,
     publicDir: DASHBOARD_DIR,
   });
@@ -360,7 +361,7 @@ export async function main({
   if (!args.skipStatus) {
     await runCommand("node", ["src/cli/inventory-treasury.mjs"], commandEnv);
     await runCommand("node", ["src/cli/inventory-whole-wallet.mjs"], commandEnv);
-    await runCommand("node", ["src/cli/status-dashboard.mjs"], commandEnv);
+    await runCommand("node", ["src/cli/status-dashboard.mjs", "--commit-public"], commandEnv);
   }
 
   if (args.createProject && !preflight.projectExists) {

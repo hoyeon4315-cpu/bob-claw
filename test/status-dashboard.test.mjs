@@ -341,7 +341,7 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.match(result.stdout, /liveBaselineRefresh=.* next=.*/);
 
   const shadowCycle = JSON.parse(await readFile(join(dataDir, "shadow-cycle-latest.json"), "utf8"));
-  const publicStatus = JSON.parse(await readFile(join(cwd, "dashboard/public/dashboard-status.json"), "utf8"));
+  const publicStatus = JSON.parse(await readFile(join(cwd, "data/dashboard-live/dashboard-status.json"), "utf8"));
 
   assert.equal(typeof shadowCycle.mode, "string");
   assert.equal(publicStatus.dataCounts.shadowCyclePresent, 1);
