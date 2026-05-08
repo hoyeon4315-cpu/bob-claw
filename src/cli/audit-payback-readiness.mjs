@@ -2,6 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { config, getEnv } from "../config/env.mjs";
 import { PAYBACK_CONFIG } from "../config/payback.mjs";
@@ -247,7 +248,7 @@ async function main() {
   console.log(JSON.stringify(audit.currentConditions, null, 2));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     console.error(error?.stack || error?.message || String(error));
     process.exitCode = 1;
