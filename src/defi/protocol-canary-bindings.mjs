@@ -117,6 +117,26 @@ const PROTOCOL_BINDINGS = Object.freeze({
       "Ethereum L1 execution still requires gas-efficient notional, inventory, and policy approval before signing.",
     ]),
   }),
+  venus: Object.freeze({
+    protocolId: "venus",
+    supportedSurfaces: Object.freeze(["lending", "stableCarry", "ethLending"]),
+    bindingKind: "erc4626_vault_supply_withdraw",
+    requiredBindingFields: Object.freeze(["vaultAddress", "assetAddress"]),
+    optionalBindingFields: Object.freeze(["shareTokenAddress", "referralCode"]),
+    approvalTargetField: "vaultAddress",
+    canaryActions: Object.freeze([
+      "approve_exact_asset_to_vault",
+      "deposit_asset_for_shares",
+      "verify_share_balance_delta",
+      "withdraw_or_redeem_shares",
+      "verify_asset_balance_delta",
+      "revoke_or_zero_idle_allowance",
+    ]),
+    notes: Object.freeze([
+      "Venus BSC opportunities are admitted through the existing ERC-4626-style canary registry only when a concrete vault/share wrapper binding is pinned.",
+      "This adds BSC discovery diversity without creating a new strategy lane or bypassing deterministic signer policy.",
+    ]),
+  }),
 });
 
 function normalize(value) {
