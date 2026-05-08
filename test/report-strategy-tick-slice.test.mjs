@@ -306,7 +306,7 @@ test("report-strategy-tick-slice derives micro-canary status from canary executi
   assert.equal(slice.microCanary.minimalLiveProofExistsCount, 1);
 });
 
-test("report-strategy-tick-slice v3 counts dispatcher deny reasons by strategy", async () => {
+test("report-strategy-tick-slice counts dispatcher deny reasons by strategy", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-deny-"));
   const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
   const auditLog = join(cwd, "logs", "signer-audit.jsonl");
@@ -365,7 +365,7 @@ test("report-strategy-tick-slice v3 counts dispatcher deny reasons by strategy",
   const slice = JSON.parse(await readFile(outPath, "utf8"));
   const row = slice.strategies[0];
 
-  assert.equal(slice.schemaVersion, 3);
+  assert.equal(slice.schemaVersion, 4);
   assert.deepEqual(row.lastTickDenyByReason, {
     negative_post_cost_edge: 1,
     feed_stale: 2,
@@ -437,4 +437,100 @@ test("report-strategy-tick-slice exposes chain score provenance when present", a
   const row = JSON.parse(await readFile(outPath, "utf8")).strategies[0];
   assert.equal(row.chainScoreSource, "ledger");
   assert.equal(row.chainScoreObservedAt, "2026-05-08T00:00:00.000Z");
+});
+
+test("report-strategy-tick-slice exposes five-layer runtime funnel with surface advice reporting-only", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "bob-claw-strategy-tick-funnel-"));
+  const tickLog = join(cwd, "logs", "strategy-tick.jsonl");
+  const auditLog = join(cwd, "logs", "signer-audit.jsonl");
+  const outPath = join(cwd, "dashboard", "public", "strategy-tick-status.json");
+  const strategyId = "wrapped-btc-loop-base-moonwell";
+
+  await writeJsonl(tickLog, [
+    {
+      schemaVersion: 1,
+      tickAt: "2026-05-08T00:00:00.000Z",
+      strategies: [strategyId],
+      snapshotSummary: [{ strategyId, capsConfigured: true }],
+      blockers: [{ strategyId, mode: "live_candidate", blockers: [] }],
+      dispatchSummary: { allowCount: 1, denyCount: 0 },
+      dispatchIntents: [
+        {
+          strategyId,
+          chain: "base",
+          decision: "allow",
+        },
+      ],
+      generatedIntents: [
+        {
+          strategyId,
+          chain: "base",
+          amountUsd: 20,
+          mode: "dry_run",
+          metadata: {
+            advisory: {
+              surfaceLiveEligible: false,
+              adviceCode: "phase3_evidence_missing",
+            },
+          },
+        },
+      ],
+      reportSummaries: [
+        {
+          strategyId,
+          liveReady: false,
+          blockerCount: 1,
+          topBlocker: "phase3_evidence_missing",
+        },
+      ],
+      broadcastSummary: { generatedIntentCount: 1, broadcastCount: 0 },
+      candidateCount: 1,
+    },
+  ]);
+  await writeJsonl(auditLog, []);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "src/cli/report-strategy-tick-slice.mjs"),
+      `--tick-log=${tickLog}`,
+      `--audit=${auditLog}`,
+      `--out=${outPath}`,
+      `--strategy=${strategyId}`,
+    ],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const slice = JSON.parse(await readFile(outPath, "utf8"));
+  const row = slice.strategies[0];
+  assert.equal(row.layerStatus.tick, "pass");
+  assert.equal(row.layerStatus.runtimeExecutable, true);
+  assert.equal(row.layerStatus.runtimeBlocker, null);
+  assert.deepEqual(row.layerStatus.surfaceAdvice, {
+    liveEligible: false,
+    adviceCode: "phase3_evidence_missing",
+    adviceFields: [
+      "reportSummaries.topBlocker",
+      "reportSummaries.blockerCount",
+      "reportSummaries.liveReady",
+    ],
+    adviceAuthority: "commit_time_guard",
+  });
+  assert.equal(row.layerStatus.intentEmitted, true);
+  assert.equal(row.layerStatus.intentCount, 1);
+  assert.equal(row.layerStatus.broadcastSent, false);
+  assert.equal(row.layerStatus.txHash, null);
+  assert.deepEqual(slice.funnel, {
+    tickPassCount: 1,
+    runtimeExecutableCount: 1,
+    intentEmittedCount: 1,
+    broadcastSentCount: 0,
+    surfaceAdviceBlockedCount: 1,
+  });
+  assert.equal(slice.summary.runtimeExecutableCount, 1);
+  assert.equal(slice.summary.surfaceAdviceBlockedCount, 1);
 });

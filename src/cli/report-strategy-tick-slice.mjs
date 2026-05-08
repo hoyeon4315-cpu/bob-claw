@@ -24,6 +24,11 @@ import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildMicroCanarySlice } from "../status/micro-canary-slice.mjs";
 import { buildStrategyStageSlice } from "../status/strategy-stage-slice.mjs";
+import {
+  buildFunnelSummary,
+  buildLayerStatus,
+  buildSurfaceAdvice,
+} from "../status/strategy-tick-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
 
 const DEFAULT_STRATEGIES = [
@@ -177,6 +182,36 @@ function dispatchIntentStatsForStrategy(tick, strategyId) {
     denyByChain,
     topDenyReason: topCountKey(denyByReason),
   };
+}
+
+function generatedIntentsForStrategy(tick, strategyId) {
+  return (tick?.generatedIntents || []).filter((intent) => intent?.strategyId === strategyId);
+}
+
+function policyOkForStrategy({ tick, dispatchStats, generatedIntents = [] } = {}) {
+  if (!tick) return false;
+  if (tick.dispatchSummary?.globalBlockReason) return false;
+  if (dispatchStats.denyByReason.size > 0) return false;
+  return generatedIntents.every((intent) => !intent.normalizationError);
+}
+
+function killSwitchSetForTick(tick = null) {
+  return tick?.killSwitchSet === true ||
+    tick?.runtime?.killSwitchSet === true ||
+    tick?.broadcastSummary?.skippedReason === "kill_switch";
+}
+
+function latestBroadcastTxHashForTick({ tick, receipts = [] } = {}) {
+  if (!tick || tick.broadcastSummary?.broadcastCount === 0) return null;
+  const tickMs = Date.parse(tick.tickAt || "");
+  const candidates = receipts
+    .filter((receipt) => receipt.txHash)
+    .filter((receipt) => {
+      if (!Number.isFinite(tickMs)) return true;
+      return Number.isFinite(receipt.tsMs) && receipt.tsMs >= tickMs;
+    })
+    .sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
+  return candidates[0]?.txHash || null;
 }
 
 function skippedStatsForStrategy(tick, strategyId) {
@@ -355,6 +390,7 @@ async function main() {
     const tickSnapshot = tick?.snapshotSummary?.find((item) => item?.strategyId === sid) || null;
     const dispatchStats = dispatchIntentStatsForStrategy(tick, sid);
     const skippedStats = skippedStatsForStrategy(tick, sid);
+    const generatedIntents = generatedIntentsForStrategy(tick, sid);
     const topBlocker = tickBlocker?.blockers?.[0] || null;
     const receipts = audit
       .filter((r) => r?.strategyId === sid)
@@ -377,6 +413,26 @@ async function main() {
     const capAutoExecute = strategyCaps?.autoExecute === true;
     const autoExecute = capAutoExecute && operatorHold !== true;
     const demotion = evaluateDemotionPolicy({ strategyId: sid, receipts, nowMs });
+    const consecutiveFailureLock = demotion.triggers.some((trigger) => /consecutive/i.test(trigger.kind || ""));
+    const policyOk = policyOkForStrategy({ tick, dispatchStats, generatedIntents });
+    const killSwitchSet = killSwitchSetForTick(tick);
+    const reportSummary = (tick?.reportSummaries || []).find((report) => report?.strategyId === sid) || null;
+    const surfaceAdvice = buildSurfaceAdvice({
+      report: reportSummary,
+      tickBlockers: tickBlocker?.blockers || [],
+    });
+    const layerStatus = buildLayerStatus({
+      tickPresent: Boolean(tick),
+      tickReason: topBlocker,
+      autoExecute,
+      capsConfigured: tickSnapshot?.capsConfigured ?? false,
+      policyOk,
+      killSwitchSet,
+      consecutiveFailureLock,
+      surfaceAdvice,
+      intentCount: generatedIntents.length,
+      broadcastTxHash: latestBroadcastTxHashForTick({ tick, receipts }),
+    });
     const liveEligible = autoExecute
       && operatorHold !== true
       && demotion.demoted !== true;
@@ -416,6 +472,7 @@ async function main() {
       receiptCountSignerBacked,
       autoExecute,
       operatorHold,
+      layerStatus,
       liveEligibility: {
         liveEligible,
         blockers: [
@@ -436,12 +493,15 @@ async function main() {
       chainScoreObservedAt: ((tick?.scoredAllocationDetails || [])
         .find((a) => a.strategyId === sid) || {})?.chainScoreObservedAt || tick?.scoredAllocation?.chainScoreObservedAt || null,
       regimeBreakdown: buildRegimeBreakdown(receipts),
-      generatedIntentCount: (tick?.generatedIntents || []).filter((i) => i.strategyId === sid).length,
+      generatedIntentCount: generatedIntents.length,
       policyReadiness: {
         autoExecute,
         capAutoExecute,
         operatorHold,
         demoted: demotion.demoted,
+        policyOk,
+        killSwitchSet,
+        consecutiveFailureLock,
         signerBackedReceiptCount: receiptCountSignerBacked,
         receiptCountTotal: receipts.length,
       },
@@ -480,9 +540,10 @@ async function main() {
   );
   const microCanarySlice = buildMicroCanarySlice(dedupedLatestReports);
   const strategyStageSlice = buildStrategyStageSlice(dedupedLatestReports, liveReadinessEvidence, demotionEvidence);
+  const funnel = buildFunnelSummary(strategyRows);
 
   const slice = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generatedAt: new Date(nowMs).toISOString(),
     tickCountTotal: ticks.length,
     latestTickAt: ticks.length > 0
@@ -498,7 +559,9 @@ async function main() {
       totalSignerBackedReceipts: strategyRows.reduce((acc, s) => acc + s.receiptCountSignerBacked, 0),
       strategiesWithGeneratedIntents: strategyRows.filter((s) => s.generatedIntentCount > 0).length,
       totalGeneratedIntents: strategyRows.reduce((acc, s) => acc + s.generatedIntentCount, 0),
+      ...funnel,
     },
+    funnel,
     microCanary: microCanarySlice,
     strategyStage: strategyStageSlice,
   };
