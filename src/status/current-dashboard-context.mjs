@@ -36,6 +36,7 @@ import { buildAssetTrackingSlice } from "./asset-tracking-slice.mjs";
 import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
+import { buildIdleConsolidationSlice } from "./idle-consolidation-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
 import { buildMerklUserRewardsSlice } from "./merkl-user-rewards-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "./protocol-position-marks-slice.mjs";
@@ -567,6 +568,10 @@ export async function buildCurrentDashboardContext({
     recursiveWrappedBtcLoop,
     generatedAt: dashboardStatus.generatedAt,
   });
+  dashboardStatus.idleConsolidation = buildIdleConsolidationSlice({
+    auditRecords: signerAuditRecords,
+    now: dashboardStatus.generatedAt,
+  });
   dashboardStatus.dataCounts.merklOpportunityReportPresent = merklOpportunityReport ? 1 : 0;
   dashboardStatus.dataCounts.merklOpportunityAlertCount = merklOpportunityAlerts.length;
   dashboardStatus.dataCounts.merklCanaryQueuePresent = merklCanaryQueue ? 1 : 0;
@@ -582,6 +587,8 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.dataCounts.capitalSummaryPresent = 1;
   dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotReport ? 1 : 0;
   dashboardStatus.dataCounts.flowPresent = dashboardStatus.flow ? 1 : 0;
+  dashboardStatus.dataCounts.idleConsolidationPlanned7d =
+    dashboardStatus.idleConsolidation?.plannedCount7d ?? 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,
     canaryInputs,
