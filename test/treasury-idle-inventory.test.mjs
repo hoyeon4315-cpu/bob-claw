@@ -48,3 +48,35 @@ test("idle inventory trigger plans only idle BTC-family wallet dust", () => {
     "unichain",
   ]);
 });
+
+test("idle inventory trigger emits no plan while kill-switch is active", () => {
+  const walletSnapshot = {
+    items: [
+      {
+        sym: "wbtc",
+        name: "wBTC.OFT",
+        chain: "bsc",
+        amount: 0.0001,
+        usd: 7,
+        family: "token",
+        firstSeenAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  };
+
+  const plan = buildIdleInventoryConsolidationPlan({
+    walletSnapshot,
+    killSwitchActive: true,
+    threshold: {
+      dstChain: "base",
+      minIdleUsd: 5,
+      minIdleAgeMs: 72 * 60 * 60 * 1000,
+      maxAggregateIdleUsd: 50,
+    },
+    now: "2026-05-08T00:00:00.000Z",
+  });
+
+  assert.equal(plan.status, "skipped_kill_switch_active");
+  assert.equal(plan.aggregateUsd, 0);
+  assert.deepEqual(plan.candidates, []);
+});

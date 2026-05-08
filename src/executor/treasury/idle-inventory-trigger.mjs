@@ -44,6 +44,7 @@ export function buildIdleInventoryConsolidationPlan({
   walletSnapshot = {},
   gatewayDestinations = DEFAULT_GATEWAY_DESTINATIONS,
   threshold = {},
+  killSwitchActive = false,
   now = new Date().toISOString(),
 } = {}) {
   const destinationSet = new Set([...gatewayDestinations].map((chain) => String(chain).toLowerCase()));
@@ -51,6 +52,25 @@ export function buildIdleInventoryConsolidationPlan({
   const minIdleUsd = finite(threshold.minIdleUsd) ?? 5;
   const minIdleAgeMs = finite(threshold.minIdleAgeMs) ?? 72 * 60 * 60 * 1000;
   const maxAggregateIdleUsd = finite(threshold.maxAggregateIdleUsd) ?? 50;
+  const basePlan = {
+    generatedAt: now,
+    dstChain,
+    threshold: {
+      minIdleUsd,
+      minIdleAgeMs,
+      maxAggregateIdleUsd,
+    },
+    skippedFamilies: ["protocol_positions", "native_gas", "cbBTC", "stable_or_rwa_tokens"],
+  };
+  if (killSwitchActive) {
+    return {
+      status: "skipped_kill_switch_active",
+      ...basePlan,
+      aggregateUsd: 0,
+      candidates: [],
+      killSwitchActive: true,
+    };
+  }
   const nowMs = new Date(now).getTime();
   const candidates = [];
   let aggregateUsd = 0;
@@ -92,15 +112,8 @@ export function buildIdleInventoryConsolidationPlan({
 
   return {
     status: candidates.length > 0 ? "plan_ready" : "no_candidates",
-    generatedAt: now,
-    dstChain,
-    threshold: {
-      minIdleUsd,
-      minIdleAgeMs,
-      maxAggregateIdleUsd,
-    },
+    ...basePlan,
     aggregateUsd: Number(aggregateUsd.toFixed(8)),
     candidates,
-    skippedFamilies: ["protocol_positions", "native_gas", "cbBTC", "stable_or_rwa_tokens"],
   };
 }
