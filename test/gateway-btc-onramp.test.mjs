@@ -111,6 +111,53 @@ test("gateway btc onramp execution registers the broadcast tx back to Gateway", 
   assert.equal(execution.registerResult.body.onramp.txid, "aa".repeat(32));
 });
 
+test("gateway btc onramp execution appends lifecycle observations for bump-fee and refund txs", async () => {
+  const appended = [];
+  const client = {
+    ...gatewayClientFixture(),
+    getOrder: async () => ({
+      body: {
+        id: "order-123",
+        status: {
+          inProgress: {
+            bump_fee_tx: { to: "0xbump", data: "0x01", value: "42", chain: "bob" },
+            refund_tx: { to: "0xrefund", data: "0x02", value: "7", chain: "bob" },
+          },
+        },
+      },
+    }),
+  };
+  const plan = await buildGatewayBtcOnrampPlan({
+    client,
+    priceReader: async () => ({ btc: 100_000 }),
+    senderAddress: "bc1qpkdqyrycv900kh97jctjn83e2ypc0xfmhv8546",
+    recipient: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    amountSats: 100_000,
+  });
+
+  const execution = await executeGatewayBtcOnrampPlan({
+    plan,
+    client,
+    sendCommand: async () => ({
+      status: "ok",
+      signed: { signedTx: "02000000" },
+      broadcast: { txHash: "cc".repeat(32) },
+    }),
+    appendSignerAuditRecordImpl: async (record) => {
+      appended.push(record);
+    },
+  });
+
+  assert.equal(execution.orderLifecycle.status, "in_progress");
+  assert.deepEqual(
+    appended.map((record) => record.lifecycle.stage),
+    ["gateway_btc_onramp_bump_fee_observed", "gateway_btc_onramp_refund_observed"],
+  );
+  assert.equal(appended[0].intent.metadata.gatewayOrderId, "order-123");
+  assert.equal(appended[0].lifecycle.bumpFeeTx.to, "0xbump");
+  assert.equal(appended[1].lifecycle.refundTx.to, "0xrefund");
+});
+
 test("gateway btc onramp preview can surface insufficient confirmed funds without fabricating a PSBT", async () => {
   const plan = await buildGatewayBtcOnrampPlan({
     client: {

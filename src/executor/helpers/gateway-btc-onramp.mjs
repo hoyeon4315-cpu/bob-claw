@@ -1,8 +1,10 @@
 import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
-import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock } from "../../gateway/client.mjs";
+import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock, parseGatewayOrder } from "../../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
+import { appendSignerAuditRecord, buildSignerAuditRecord } from "../signer/audit-log.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 
 export const GATEWAY_BTC_ONRAMP_STRATEGY_ID = "gateway-btc-onramp";
@@ -101,18 +103,20 @@ export async function buildGatewayBtcOnrampPlan({
   const normalizedAmountSats = toPositiveInteger(amountSats, "amountSats");
   const normalizedDstToken = normalizeTokenAddress(dstToken);
   const normalizedGasRefill = normalizeGasRefill(gasRefill);
-  const quoteParams = {
-    srcChain: "bitcoin",
-    dstChain,
-    srcToken: BITCOIN_ZERO_TOKEN,
-    dstToken: normalizedDstToken,
+  const quoteParams = buildGatewayQuoteParams({
+    route: {
+      srcChain: "bitcoin",
+      dstChain,
+      srcToken: BITCOIN_ZERO_TOKEN,
+      dstToken: normalizedDstToken,
+    },
     amount: String(normalizedAmountSats),
     sender: senderAddress,
     recipient,
     slippage: String(slippageBps),
-    ...(strategyMessage ? { strategyMessage } : {}),
-    ...(normalizedGasRefill ? { gasRefill: normalizedGasRefill } : {}),
-  };
+    strategyMessage,
+    gasRefill: normalizedGasRefill,
+  });
   const prices = await priceReader();
   const btcUsd = Number(prices?.btc);
   if (!Number.isFinite(btcUsd)) {
@@ -236,6 +240,7 @@ export async function executeGatewayBtcOnrampPlan({
   plan,
   client = new GatewayClient({ baseUrl: config.gatewayApiBase }),
   sendCommand = sendSignerCommand,
+  appendSignerAuditRecordImpl = appendSignerAuditRecord,
   socketPath,
   timeoutMs,
 } = {}) {
@@ -263,8 +268,10 @@ export async function executeGatewayBtcOnrampPlan({
   };
   let registerResult;
   let orderLookup = null;
+  let orderLifecycle = null;
   let registerRecovered = false;
   let registerError = null;
+  let orderLookupError = null;
   try {
     registerResult = await client.registerTx(registerPayload);
   } catch (error) {
@@ -279,6 +286,22 @@ export async function executeGatewayBtcOnrampPlan({
     }
     registerRecovered = true;
   }
+  if (!orderLookup) {
+    try {
+      orderLookup = await client.getOrder(plan.order.orderId);
+    } catch (error) {
+      orderLookupError = serializeGatewayError(error);
+    }
+  }
+  if (orderLookup?.body) {
+    orderLifecycle = parseGatewayOrder(orderLookup.body);
+    await appendGatewayOnrampLifecycleAuditRecords({
+      plan,
+      signerResult,
+      orderLifecycle,
+      appendSignerAuditRecordImpl,
+    });
+  }
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -287,7 +310,45 @@ export async function executeGatewayBtcOnrampPlan({
     registerPayload,
     registerResult,
     orderLookup,
+    orderLifecycle,
+    orderLookupError,
     registerRecovered,
     registerError,
   };
+}
+
+async function appendGatewayOnrampLifecycleAuditRecords({
+  plan,
+  signerResult,
+  orderLifecycle,
+  appendSignerAuditRecordImpl,
+}) {
+  if (typeof appendSignerAuditRecordImpl !== "function") return [];
+  const records = [];
+  const txHash = signerResult.broadcast.txHash;
+  const buildIntent = () => ({
+    ...plan.intent,
+    intentId: `${plan.strategyId}:${plan.order.orderId}:lifecycle:${txHash}`,
+    amountUsd: plan.amountUsd || 0,
+  });
+  const appendObservedRecord = async (stage, txField, tx) => {
+    if (!tx) return;
+    const record = buildSignerAuditRecord({
+      intent: buildIntent(),
+      policyVerdict: "observed",
+      lifecycle: {
+        stage,
+        txHash,
+        gatewayOrderId: plan.order.orderId,
+        gatewayOrderStatus: orderLifecycle.status,
+        [txField]: tx,
+      },
+    });
+    await appendSignerAuditRecordImpl(record);
+    records.push(record);
+  };
+
+  await appendObservedRecord("gateway_btc_onramp_bump_fee_observed", "bumpFeeTx", orderLifecycle.bumpFeeTx);
+  await appendObservedRecord("gateway_btc_onramp_refund_observed", "refundTx", orderLifecycle.refundTx);
+  return records;
 }
