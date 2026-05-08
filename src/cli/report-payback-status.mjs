@@ -78,8 +78,8 @@ function summarizeQuoteProofMatrix(matrix) {
 }
 
 async function collectPaybackStatus({ btcDestination = null } = {}) {
-  const policy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
-  const recipientEnvName = policy.destinationPath.bitcoinDestAddressEnv;
+  const fallbackPolicy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
+  const recipientEnvName = fallbackPolicy.destinationPath.bitcoinDestAddressEnv;
   return withTemporaryEnv(recipientEnvName, btcDestination, async () => {
     const [auditLogLines, receiptStore, merklAllocatorReport, merklCanaryReport, allChainReport] = await Promise.all([
       loadPaybackAuditLog(),
@@ -97,6 +97,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
       auditLogLines,
       receiptStore,
     });
+    const effectivePolicy = decision.policy || fallbackPolicy;
     let compositePreview = null;
     let preMinimumCompositePreview = payback?.scheduler?.preMinimumCompositePreview || null;
     if (decision.status === "plan") {
@@ -138,9 +139,14 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
       observedAt,
       policy: {
         bitcoinDestAddressEnv: recipientEnvName,
-        profitReserveChain: policy.destinationPath.profitReserveChain,
-        minPaybackSats: policy.minPaybackSats,
-        perPeriodMaxSats: policy.perPeriodMaxSats,
+        profitReserveChain: effectivePolicy.destinationPath.profitReserveChain,
+        minPaybackSats: effectivePolicy.minPaybackSats,
+        staticMinPaybackSats: effectivePolicy.staticMinPaybackSats,
+        minPaybackPctOfCapital: effectivePolicy.minPaybackPctOfCapital,
+        absoluteFloorSats: effectivePolicy.absoluteFloorSats,
+        absoluteCeilingSats: effectivePolicy.absoluteCeilingSats,
+        operatingCapitalSats: effectivePolicy.operatingCapitalSats,
+        perPeriodMaxSats: effectivePolicy.perPeriodMaxSats,
       },
       override: {
         btcDestinationApplied: btcDestination || null,

@@ -14,6 +14,7 @@ import {
   submitCompositePaybackPlan,
 } from "../src/executor/payback/scheduler.mjs";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
+import { PAYBACK_CONFIG } from "../src/config/payback.mjs";
 
 const PAYBACK_POLICY_FIXTURE = {
   baseRatio: 0.2,
@@ -163,6 +164,60 @@ test("payback scheduler carries when planned payback is below minimum", async ()
 
   assert.equal(result.status, "carry");
   assert.equal(result.reason, "planned_payback_below_minimum");
+});
+
+test("payback scheduler uses capital-aware minimum from operating capital sats", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const result = await buildPaybackDecision({
+    paybackConfig: PAYBACK_CONFIG,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "8000",
+    },
+    marketState: {
+      operatingCapitalSats: 620_000,
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 30_000,
+    }),
+  });
+
+  assert.equal(result.status, "plan");
+  assert.equal(result.policy.staticMinPaybackSats, 50_000);
+  assert.equal(result.policy.minPaybackSats, 5_000);
+  assert.equal(result.decisionLog.inputs.operatingCapitalSats, 620_000);
+  assert.equal(result.decisionLog.applied.grossTargetBeforeCostsSats, 6_000);
+});
+
+test("payback scheduler still carries 601 sats pending under 5000 sats effective floor", async () => {
+  process.env.PAYBACK_BTC_DEST_ADDR = "bc1qpayback0000000000000000000000000000000";
+
+  const result = await buildPaybackDecision({
+    paybackConfig: PAYBACK_CONFIG,
+    reserveState: {
+      chain: "base",
+      inputToken: WBTC_OFT_TOKEN,
+      amount: "8000",
+    },
+    marketState: {
+      operatingCapitalSats: 620_000,
+    },
+    accumulatorSnapshot: () => ({
+      ...accumulatorFixture(),
+      grossProfitSats_period: 3_005,
+      pendingDeferredSats: 601,
+    }),
+  });
+
+  assert.equal(result.status, "carry");
+  assert.equal(result.reason, "planned_payback_below_minimum");
+  assert.equal(result.policy.minPaybackSats, 5_000);
+  assert.equal(result.decisionLog.inputs.grossTargetBeforeCostsSats, 601);
+  assert.equal(result.decisionLog.inputs.minPaybackSats, 5_000);
+  assert.equal(result.decisionLog.inputs.operatingCapitalSats, 620_000);
 });
 
 test("payback scheduler carries below minimum even when reserve inventory is missing", async () => {

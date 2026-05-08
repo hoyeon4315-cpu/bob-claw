@@ -1,7 +1,13 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { WBTC_OFT_TOKEN } from "../../assets/tokens.mjs";
 import { getEnv } from "../../config/env.mjs";
-import { PAYBACK_CONFIG } from "../../config/payback.mjs";
+import {
+  ABSOLUTE_CEILING_SATS,
+  ABSOLUTE_FLOOR_SATS,
+  MIN_PAYBACK_PCT_OF_CAPITAL,
+  PAYBACK_CONFIG,
+  effectiveMinPaybackSats,
+} from "../../config/payback.mjs";
 import { buildProofManifest } from "../../proof/manifest.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "../helpers/token-dex-experiment.mjs";
 import {
@@ -190,10 +196,42 @@ function sameCronMinute(left, right) {
   );
 }
 
-export function loadPaybackPolicyConfig(paybackConfig = PAYBACK_CONFIG) {
+function resolveOperatingCapitalSats({ marketState = {}, riskState = {}, snapshot = null } = {}) {
+  const explicitSats =
+    finiteNonNegative(marketState.operatingCapitalSats) ??
+    finiteNonNegative(riskState.operatingCapitalSats);
+  if (Number.isFinite(explicitSats)) return Math.floor(explicitSats);
+  const explicitBtc =
+    finiteNonNegative(marketState.operatingCapitalBtc) ??
+    finiteNonNegative(riskState.operatingCapitalBtc);
+  if (Number.isFinite(explicitBtc)) return Math.floor(explicitBtc * BTC_SATS);
+  const byChain = snapshot?.operatingFloatSats_byChain;
+  if (byChain && typeof byChain === "object") {
+    const total = Object.values(byChain)
+      .map(finiteNonNegative)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    if (total > 0) return Math.floor(total);
+  }
+  return null;
+}
+
+export function loadPaybackPolicyConfig(paybackConfig = PAYBACK_CONFIG, {
+  operatingCapitalSats = null,
+} = {}) {
+  const staticMinPaybackSats = finiteNonNegative(paybackConfig.minPaybackSats) ?? ABSOLUTE_CEILING_SATS;
+  const effectiveMin =
+    typeof paybackConfig.effectiveMinPaybackSats === "function"
+      ? paybackConfig.effectiveMinPaybackSats({ operatingCapitalSats })
+      : staticMinPaybackSats;
   return Object.freeze({
     baseRatio: finiteNumber(paybackConfig.baseRatio),
-    minPaybackSats: finiteNonNegative(paybackConfig.minPaybackSats) ?? 0,
+    minPaybackSats: finiteNonNegative(effectiveMin) ?? staticMinPaybackSats,
+    staticMinPaybackSats,
+    minPaybackPctOfCapital: finiteNumber(paybackConfig.minPaybackPctOfCapital) ?? MIN_PAYBACK_PCT_OF_CAPITAL,
+    absoluteFloorSats: finiteNonNegative(paybackConfig.absoluteFloorSats) ?? ABSOLUTE_FLOOR_SATS,
+    absoluteCeilingSats: finiteNonNegative(paybackConfig.absoluteCeilingSats) ?? ABSOLUTE_CEILING_SATS,
+    operatingCapitalSats: finiteNonNegative(operatingCapitalSats),
     maxOfframpCostPctOfPayback: finiteNumber(paybackConfig.maxOfframpCostPctOfPayback),
     perPeriodMaxSats: finiteNonNegative(paybackConfig.perPeriodMaxSats),
     annualMaxPaybackSats: finiteNonNegative(paybackConfig.annualMaxPaybackSats),
@@ -418,8 +456,8 @@ export async function buildPaybackDecision({
   getEnvImpl = getEnv,
   recipientOverride = null,
 } = {}) {
-  const policy = loadPaybackPolicyConfig(paybackConfig);
-  const accumulatorConfig = buildAccumulatorConfig(policy, {
+  const basePolicy = loadPaybackPolicyConfig(paybackConfig);
+  const accumulatorConfig = buildAccumulatorConfig(basePolicy, {
     now,
     periodId: marketState.periodId || riskState.periodId || null,
     periodStartAt: marketState.periodStartAt || riskState.periodStartAt || null,
@@ -427,6 +465,8 @@ export async function buildPaybackDecision({
     btcUsd: marketState.btcUsd || riskState.btcUsd || null,
   });
   const snapshot = accumulatorSnapshot(auditLogLines, receiptStore, accumulatorConfig);
+  const operatingCapitalSats = resolveOperatingCapitalSats({ marketState, riskState, snapshot });
+  const policy = loadPaybackPolicyConfig(paybackConfig, { operatingCapitalSats });
   const recipient = resolvePaybackRecipient(policy, {
     getEnvImpl,
     recipientOverride,
@@ -530,6 +570,11 @@ export async function buildPaybackDecision({
           volMultiplier: vol.multiplier,
           grossTargetBeforeCostsSats,
           minPaybackSats: policy.minPaybackSats,
+          staticMinPaybackSats: policy.staticMinPaybackSats,
+          minPaybackPctOfCapital: policy.minPaybackPctOfCapital,
+          absoluteFloorSats: policy.absoluteFloorSats,
+          absoluteCeilingSats: policy.absoluteCeilingSats,
+          operatingCapitalSats,
           pendingDeferredSats: snapshot.pendingDeferredSats,
         },
       },
@@ -619,6 +664,7 @@ export async function buildPaybackDecision({
         grossProfitSatsPeriod,
         paidBackSatsRolling12m: rollingPaidBackSats,
         pendingDeferredSats: snapshot.pendingDeferredSats,
+        operatingCapitalSats,
       },
       applied: {
         baseRatio: policy.baseRatio,
@@ -627,6 +673,11 @@ export async function buildPaybackDecision({
         volAnnualized: vol.annualized,
         volMultiplier: vol.multiplier,
         grossTargetBeforeCostsSats,
+        minPaybackSats: policy.minPaybackSats,
+        staticMinPaybackSats: policy.staticMinPaybackSats,
+        minPaybackPctOfCapital: policy.minPaybackPctOfCapital,
+        absoluteFloorSats: policy.absoluteFloorSats,
+        absoluteCeilingSats: policy.absoluteCeilingSats,
       },
       result: {
         status: "plan",
@@ -655,7 +706,7 @@ export async function buildCompositePaybackPlan({
     };
   }
 
-  const policy = loadPaybackPolicyConfig(paybackConfig);
+  const policy = decision.policy || loadPaybackPolicyConfig(paybackConfig);
   const health = await signerHealthReader();
   const senderAddress = decision.reserveState?.senderAddress || health?.addresses?.base || null;
   const recipient = decision.recipient || getEnv(policy.destinationPath.bitcoinDestAddressEnv, null);
@@ -914,7 +965,7 @@ export async function buildPreMinimumPaybackCostPreview({
     return blocked(decision?.reason || "decision_not_pre_minimum", { decisionStatus: decision?.status || null });
   }
 
-  const policy = loadPaybackPolicyConfig(paybackConfig);
+  const policy = decision.policy || loadPaybackPolicyConfig(paybackConfig);
   const reserve = decision.reserveState;
   if (!reserve?.chain || !reserve?.inputToken) return blocked("reserve_asset_missing");
 

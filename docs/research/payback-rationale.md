@@ -4,13 +4,31 @@
 
 - `src/config/payback.mjs`
   - `baseRatio = 0.20`
-  - `minPaybackSats = 50_000`
+  - `minPaybackSats = 50_000` static legacy ceiling
+  - `effectiveMinPaybackSats({ operatingCapitalSats })`
   - `cronExpression = "0 0 * * 1"` (weekly)
 
-That means the scheduler needs roughly `250_000` sats of gross realized profit
-before the first payback can clear the current minimum:
+The runtime minimum is now capital-aware:
 
-`requiredGrossProfitSats = minPaybackSats / baseRatio = 50_000 / 0.20 = 250_000`
+```js
+pctFloor = floor(operatingCapitalSats * 0.005)
+effectiveMinPaybackSats = clamp(pctFloor, 5_000, 50_000)
+```
+
+The static `50_000` sats value remains the absolute ceiling and the fallback when
+operating capital cannot be measured. The formula does not change `baseRatio`,
+`maxOfframpCostPctOfPayback`, `perPeriodMaxSats`, `annualMaxPaybackSats`,
+`regimeMultipliers`, `volMultiplier`, or emergency pause rules.
+
+At the current operating-capital scale (`~620,000` sats), the percent floor is
+`3,100` sats, so the absolute floor applies:
+
+`effectiveMinPaybackSats = clamp(3_100, 5_000, 50_000) = 5_000`
+
+That means the scheduler needs roughly `25_000` sats of gross realized profit
+before the first payback can clear the effective minimum:
+
+`requiredGrossProfitSats = 5_000 / 0.20 = 25_000`
 
 ## Current 30-day receipt-backed view
 
@@ -25,40 +43,26 @@ Dashboard/payback forecasting now uses a rolling 30-day realized-PnL window.
 
 ## What this means operationally
 
-1. The current accumulator state (`601 / 50_000 sats`) is still far below the
-   configured minimum.
+1. The current accumulator state (`601 / 5_000 sats` effective minimum) is still
+   below the configured minimum.
 2. The 30-day realized run-rate is not yet positive in either committed sleeve
    profile.
-3. A non-positive realized run-rate makes the projected periods to first payback
-   unbounded, which trivially exceeds the eight-period proposal threshold.
-   Parcel 18 therefore widened the proposal logic so that the dashboard surfaces
-   `payback.proposedMinPaybackPatch = "data/payback/proposed-min-payback-diff.patch"`
-   and emits a PR-only diff under
-   `data/payback/proposed-min-payback-diff.patch`.
-4. The PR-only patch is annotated with the trigger
-   (`both_profiles_non_positive_run_rate` or `both_profiles_above_threshold`)
-   and explicitly marked as a draft for operator review.
+3. A non-positive realized run-rate still makes the projected periods to first
+   payback unbounded. The scheduler must keep carrying until realized-positive
+   receipts lift the gross target above the effective minimum and the measured
+   offramp cost remains within policy.
+4. Historical PR-only proposal artifacts remain review-only context. Runtime
+   execution now reads the committed effective minimum above and never uses a
+   dashboard proposal as authority to change payback timing or amount.
 
-## Why the runtime minimum stays unchanged
+## Why this does not loosen payback safety
 
-- The dashboard surface and the on-disk patch are PR drafts only. Per AGENTS.md,
-  any change to payback ratio, timing, or `minPaybackSats` requires a committed
-  config diff with rationale in this document. The dashboard pipeline never
-  rewrites `src/config/payback.mjs` and never raises caps at runtime.
-- The proposal exists so that operator review is not blocked behind the same
-  positivity gate that prevents the forecast from estimating a finite period
-  count. It does not by itself authorise a runtime change.
-
-## Next trigger for promoting the proposal into a committed change
-
-Promote the PR draft into a real commit only after:
-
-1. The 30-day receipt-backed run-rate has at least one positive period under the
-   active reporting baseline.
-2. The reserve-chain offramp cost surface is rechecked against the then-current
-   minimum candidate (`PROPOSED_MIN_PAYBACK_SATS = 5_000` is a placeholder, not
-   a vetted target).
-3. Both committed sleeve profiles produce deterministic
-   `estimatedPeriodsToFirstPayback` values that still exceed eight periods, or
-   an explicit operator note records why the floor change is desired despite a
-   shorter forecast.
+- Payback is still funded only from realized positive PnL.
+- If estimated offramp cost exceeds `10%` of the planned payback, the scheduler
+  still defers.
+- If the effective minimum is not met, the scheduler still carries.
+- If operating capital cannot be measured, the scheduler falls back to the old
+  `50_000` sats minimum.
+- The formula lowers dust friction for small capital, but it does not change
+  payback ratio, timing, caps, emergency pause, signer isolation, kill-switch
+  checks, or the deterministic policy path.

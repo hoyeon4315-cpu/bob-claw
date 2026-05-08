@@ -2,9 +2,34 @@ function unresolvedPaybackConfig(fieldName) {
   throw new Error(`PAYBACK config requires operator decision for ${fieldName}`);
 }
 
+export const MIN_PAYBACK_PCT_OF_CAPITAL = 0.005;
+export const ABSOLUTE_FLOOR_SATS = 5_000;
+export const ABSOLUTE_CEILING_SATS = 50_000;
+
+function finiteNonNegative(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function effectiveMinPaybackSats({ operatingCapitalSats = null } = {}) {
+  const capitalSats = finiteNonNegative(operatingCapitalSats);
+  if (capitalSats === null) return ABSOLUTE_CEILING_SATS;
+  const pctFloor = Math.floor(capitalSats * MIN_PAYBACK_PCT_OF_CAPITAL);
+  return clamp(pctFloor, ABSOLUTE_FLOOR_SATS, ABSOLUTE_CEILING_SATS);
+}
+
 export const PAYBACK_CONFIG = Object.freeze({
   baseRatio: 0.20, // Half-Kelly approximation
-  minPaybackSats: 50_000, // ~= 0.0005 BTC
+  minPaybackSats: ABSOLUTE_CEILING_SATS, // static legacy ceiling; effective floor is capital-aware
+  minPaybackPctOfCapital: MIN_PAYBACK_PCT_OF_CAPITAL,
+  absoluteFloorSats: ABSOLUTE_FLOOR_SATS,
+  absoluteCeilingSats: ABSOLUTE_CEILING_SATS,
+  effectiveMinPaybackSats,
   maxOfframpCostPctOfPayback: 0.10,
   // Operational caps aligned with weekly payback of yield-accrued lending-loop profits.
   perPeriodMaxSats: 500_000, // 0.005 BTC per weekly period
