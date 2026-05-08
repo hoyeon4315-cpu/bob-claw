@@ -24,3 +24,16 @@ Source: `data/treasury/inbound-events.jsonl`, trailing 30 days as of `2026-05-08
 `maxAggregateIdleUsd = $50`: the largest single observed inbound item is $49.07, and p90 is $23.94. A $50 aggregate cap can consolidate one large fragment or a few medium fragments, but it cannot sweep the whole 30-day inbound set in one planning pass.
 
 `dstChain = base`: Base is the current committed evidence-primary chain and has the deepest observed inbound concentration in the 30-day set (21 of 42 events). This is a planning default only; every actual movement still needs route cost, cap, kill-switch, and signer-policy approval.
+
+## Dispatch Hook
+
+Cycle 3 wires the trigger into `runAllChainAutopilot()` at the start of each tick after the auto-kill check and before treasury/capital-manager refill planning. The order is:
+
+1. Refresh auto-kill inputs and run the kill-switch check.
+2. Build the idle inventory consolidation plan from `dashboard/public/wallet-holdings.json`.
+3. Convert eligible BTC-family idle wallet fragments into the existing `gateway-btc-consolidation` plan/executor path.
+4. Continue to treasury refill, capital-manager refill, inbound routing, and the normal strategy tick.
+
+The hook does not create a new signer path. Live execution uses the existing `buildGatewayBtcConsolidationPlan()` -> `executeGatewayBtcConsolidationPlan()` path, so each emitted intent still reaches signer policy as a normal `gateway_btc_transfer`. The optional signer-audit lifecycle stage is `idle_consolidation_planned`.
+
+`--dry-run-idle` stops after the idle consolidation preview and prints the plan as JSON. It never queues signer execution, and the per-tick aggregate remains clamped to `idleInventoryConsolidation.maxAggregateIdleUsd` with the current small-cap ceiling of $50.
