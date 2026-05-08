@@ -11,6 +11,7 @@
 
 import { config } from "../config/env.mjs";
 import { GatewayClient, routeKey } from "../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 
@@ -91,15 +92,11 @@ async function main() {
   }
 
   // 3. Get quote
-  const quoteParams = {
-    srcChain: route.srcChain,
-    dstChain: route.dstChain,
-    srcToken: route.srcToken,
-    dstToken: route.dstToken,
+  const quoteParams = buildGatewayQuoteParams({
+    route,
     amount: String(args.sats),
     recipient: config.verifyRecipient,
-    slippage: config.slippageBps,
-  };
+  });
   const quoteResult = await client.getQuote(quoteParams);
   const quoteType = quoteResult.body.onramp
     ? "onramp"

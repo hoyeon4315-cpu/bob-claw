@@ -11,6 +11,7 @@ import {
 } from "../assets/tokens.mjs";
 import { hydrateOfframpExecutionFromGatewayBody } from "../gateway/executable-quote.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 
 const SCHEMA_VERSION = 4;
@@ -173,21 +174,12 @@ function minimumQuoteAmount(error) {
 }
 
 function quoteParamsFor(route, amount) {
-  const params = {
-    srcChain: route.srcChain,
-    dstChain: route.dstChain,
-    srcToken: route.srcToken,
-    dstToken: route.dstToken,
+  return buildGatewayQuoteParams({
+    route,
     amount,
+    sender: config.verifyRecipient,
     recipient: route.dstChain === "bitcoin" ? config.verifyBtcRecipient : config.verifyRecipient,
-    slippage: config.slippageBps,
-  };
-
-  if (route.srcChain !== "bitcoin") {
-    params.sender = config.verifyRecipient;
-  }
-
-  return params;
+  });
 }
 
 function extractQuoteMetrics(route, amount, quoteResult, executable = {}) {

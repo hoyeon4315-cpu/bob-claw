@@ -5,6 +5,8 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { formatGatewayUpdateAlert, sendTelegramMessage } from "../notify/telegram.mjs";
 import { runGatewayUpdateWatch } from "../watch/gateway-update-watch.mjs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 function summarizeResult(result) {
   const lines = [];
@@ -16,6 +18,7 @@ function summarizeResult(result) {
   lines.push(`routeHash=${result.snapshot.routeHash}`);
   lines.push(`schemaHash=${result.schemaHash}`);
   lines.push(`probeHealthHash=${result.probeHealthHash}`);
+  lines.push(`openApiHash=${result.openApiSnapshot?.sha256 || "unavailable"}`);
   lines.push(`addedRoutes=${result.diff.addedRoutes.length}`);
   lines.push(`removedRoutes=${result.diff.removedRoutes.length}`);
   lines.push(`addedEthFamilyRoutes=${result.diff.addedEthFamilyRoutes.length}`);
@@ -97,6 +100,8 @@ function buildAlertRecord(result) {
     },
     schemaDiff: result.schemaDiff,
     probeHealthDiff: result.probeHealthDiff,
+    openApiDiff: result.openApiDiff,
+    openApiSnapshot: result.openApiSnapshot,
     probeFailures: result.probeFailures,
     probes: result.probes.map((probe) => ({
       ok: probe.ok,
@@ -126,11 +131,38 @@ async function main() {
     previousSchemaHash: previousRecord?.schemaHash || null,
     previousSchemaShapes: previousRecord?.schemaShapes || null,
     previousProbeHealthHash: previousRecord?.probeHealthHash || null,
+    previousOpenApiSnapshot: previousRecord?.openApiSnapshot || null,
     evmRecipient: config.verifyRecipient,
     btcRecipient: config.verifyBtcRecipient,
   });
 
   await store.append("gateway-update-snapshots", result);
+  if (result.openApiSnapshot?.sha256) {
+    const snapshotPath = join(config.dataDir, "gateway", "openapi-snapshot.json");
+    await mkdir(dirname(snapshotPath), { recursive: true });
+    let previousOpenApiFile = null;
+    try {
+      previousOpenApiFile = JSON.parse(await readFile(snapshotPath, "utf8"));
+    } catch {
+      previousOpenApiFile = null;
+    }
+    const previousSnapshots = Array.isArray(previousOpenApiFile?.snapshots) ? previousOpenApiFile.snapshots : [];
+    const nextSnapshot = {
+      fetchedAt: result.openApiSnapshot.fetchedAt,
+      url: result.openApiSnapshot.url,
+      sha256: result.openApiSnapshot.sha256,
+      bytes: result.openApiSnapshot.bytes,
+      contentType: result.openApiSnapshot.contentType,
+    };
+    const snapshots = previousSnapshots.at(-1)?.sha256 === nextSnapshot.sha256
+      ? previousSnapshots
+      : [...previousSnapshots, nextSnapshot];
+    await writeFile(snapshotPath, JSON.stringify({
+      schemaVersion: 1,
+      updatedAt: result.observedAt,
+      snapshots,
+    }, null, 2) + "\n", "utf8");
+  }
   if (result.updateDetected) {
     await store.append("gateway-update-alerts", buildAlertRecord(result));
     const telegramResult = await sendTelegramMessage({

@@ -3,6 +3,7 @@
 import { config } from "../config/env.mjs";
 import { tokenAsset, isBtcLikeAsset, isBtcFamilyRoute } from "../assets/tokens.mjs";
 import { GatewayClient, routeKey } from "../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../market/prices.mjs";
 
@@ -189,18 +190,13 @@ export async function scanQuoteSurface(options = {}) {
         continue;
       }
 
-      const quoteParams = {
-        srcChain: route.srcChain,
-        dstChain: route.dstChain,
-        srcToken: route.srcToken,
-        dstToken: route.dstToken,
+      const quoteParams = buildGatewayQuoteParams({
+        route,
         amount: inputAmount,
+        sender: recipient,
         recipient: route.dstChain === "bitcoin" ? btcRecipient : recipient,
         slippage: slippageBps,
-      };
-      if (route.srcChain !== "bitcoin") {
-        quoteParams.sender = recipient;
-      }
+      });
 
       try {
         const quoteResult = await client.getQuote(quoteParams);

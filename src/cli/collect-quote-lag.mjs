@@ -2,6 +2,7 @@
 
 import { config } from "../config/env.mjs";
 import { GatewayClient } from "../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { getCoinGeckoPricesUsd } from "../market/prices.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -327,21 +328,14 @@ export async function collectOneSample(options = {}) {
     }
 
     // Build quote params
-    const isBtcSrc = parsed.srcChain === "bitcoin";
     const isBtcDst = parsed.dstChain === "bitcoin";
-    const quoteParams = {
-      srcChain: parsed.srcChain,
-      dstChain: parsed.dstChain,
-      srcToken: parsed.srcToken,
-      dstToken: parsed.dstToken,
+    const quoteParams = buildGatewayQuoteParams({
+      route: parsed,
       amount: probe.amount,
+      sender: recipient,
       recipient: isBtcDst ? btcRecipient : recipient,
       slippage: slippageBps,
-    };
-    // Only include sender for non-Bitcoin source
-    if (!isBtcSrc) {
-      quoteParams.sender = recipient;
-    }
+    });
 
     try {
       const quoteResult = await client.getQuote(quoteParams);

@@ -7,6 +7,7 @@ import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { GatewayClient } from "../gateway/client.mjs";
 import { hydrateOfframpExecutionFromGatewayBody } from "../gateway/executable-quote.mjs";
+import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { selectSimulationTargets } from "../prelive/execution-sim.mjs";
@@ -46,19 +47,13 @@ function parseRouteKey(routeKey = null) {
 }
 
 function quoteParamsForExecution(route, amount, address) {
-  const params = {
-    srcChain: route.srcChain,
-    dstChain: route.dstChain,
-    srcToken: route.srcToken,
-    dstToken: route.dstToken,
+  return buildGatewayQuoteParams({
+    route,
     amount,
+    sender: address,
     recipient: route.dstChain === "bitcoin" ? config.verifyBtcRecipient : address,
     slippage: config.slippageBps,
-  };
-  if (route.srcChain !== "bitcoin") {
-    params.sender = address;
-  }
-  return params;
+  });
 }
 
 function normalizeQuoteBody(body = null) {

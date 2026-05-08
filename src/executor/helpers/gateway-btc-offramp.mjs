@@ -4,6 +4,7 @@ import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
 import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock } from "../../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -149,16 +150,18 @@ export async function buildGatewayBtcOfframpPlan({
   let blockedReason = null;
 
   try {
-    quoteResult = await client.getQuote({
-      srcChain,
-      dstChain: "bitcoin",
-      srcToken: normalizedSrcToken,
-      dstToken: ZERO_TOKEN,
+    quoteResult = await client.getQuote(buildGatewayQuoteParams({
+      route: {
+        srcChain,
+        dstChain: "bitcoin",
+        srcToken: normalizedSrcToken,
+        dstToken: ZERO_TOKEN,
+      },
       amount: normalizedAmount,
       sender: senderAddress,
       recipient,
       slippage: String(slippageBps),
-    });
+    }));
     quote = normalizeOfframpQuoteBody(quoteResult.body);
     const orderResult = await client.createOrder(quoteResult.body);
     order = normalizeOfframpOrderBody(orderResult.body);
@@ -314,16 +317,18 @@ export async function buildGatewayBtcOfframpQuotePreview({
   let blockedReason = null;
 
   try {
-    quoteResult = await client.getQuote({
-      srcChain,
-      dstChain: "bitcoin",
-      srcToken: normalizedSrcToken,
-      dstToken: ZERO_TOKEN,
+    quoteResult = await client.getQuote(buildGatewayQuoteParams({
+      route: {
+        srcChain,
+        dstChain: "bitcoin",
+        srcToken: normalizedSrcToken,
+        dstToken: ZERO_TOKEN,
+      },
       amount: normalizedAmount,
       sender: senderAddress,
       recipient,
       slippage: String(slippageBps),
-    });
+    }));
     quote = normalizeOfframpQuoteBody(quoteResult.body);
     const prices = await priceReader();
     amountUsd = amountUsdFromQuote(quote, srcAsset, prices);

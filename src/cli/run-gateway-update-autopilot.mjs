@@ -66,6 +66,7 @@ async function main() {
     previousSchemaHash: previousSnapshot?.schemaHash || null,
     previousSchemaShapes: previousSnapshot?.schemaShapes || null,
     previousProbeHealthHash: previousSnapshot?.probeHealthHash || null,
+    previousOpenApiSnapshot: previousSnapshot?.openApiSnapshot || null,
     evmRecipient: config.verifyRecipient,
     btcRecipient: config.verifyBtcRecipient,
   });

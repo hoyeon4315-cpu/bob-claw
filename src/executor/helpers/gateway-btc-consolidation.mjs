@@ -5,6 +5,7 @@ import { readErc20Balance, readNativeBalance } from "../../evm/account-state.mjs
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
 import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock, routeKey } from "../../gateway/client.mjs";
+import { buildGatewayQuoteParams } from "../../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
@@ -260,14 +261,14 @@ export async function buildGatewayBtcConsolidationPlan({
   let blockedReason = null;
   let gatewayQuoteLatencyMs = null;
   try {
-    const quoteResult = await client.getQuote({
-      ...route,
+    const quoteResult = await client.getQuote(buildGatewayQuoteParams({
+      route,
       amount: normalizedAmount,
       sender: senderAddress,
       recipient,
       slippage: String(slippageBps),
-      ...(normalizedGasRefill ? { gasRefill: normalizedGasRefill } : {}),
-    });
+      gasRefill: normalizedGasRefill,
+    }));
     gatewayQuoteLatencyMs = quoteResult.latencyMs;
     const quote = normalizeGatewayTransportQuoteBody(quoteResult.body);
     normalizedQuote = {
