@@ -50,9 +50,28 @@ const STRATEGY_CATALOG = [
   { id: 'onchain_btc_perp_basis',               label: 'BTC perp basis',           sub: 'Avalanche · GMX',         chain: 'avalanche', protocol: 'gmx',      type: 'basis',   pair: ['btc.b','usdc'],            capUsd: null, desc: 'Delta-neutral BTC perp basis via GMX V2.' },
 ];
 
+const NON_PROTOCOL_ACTIVITY_IDS = new Set([
+  'wrapped_native',
+  'wrapped-native',
+  'wrapped native',
+  'native',
+  'native_token',
+  'native-token',
+  'gas',
+]);
+
 function normalizeStrategyId(id) {
   // Tick parity uses snake_case; catalog uses kebab-case.
   return String(id || '').replace(/-/g, '_');
+}
+
+function normalizeProtocolId(protocol) {
+  return String(protocol || '').trim().toLowerCase();
+}
+
+function isDisplayableProtocolId(protocol) {
+  const id = normalizeProtocolId(protocol);
+  return Boolean(id) && !NON_PROTOCOL_ACTIVITY_IDS.has(id);
 }
 
 function activeStrategyStatus({ hasLivePosition, isLiveCandidate, hasRecentActivity, tickMode, fallbackStatus }) {
@@ -233,7 +252,7 @@ function buildActivitySurfaces(activities = [], strategies = []) {
       addSurfaceAsset(chainSurface, assetId);
       if (!chainSurface.actions.includes(action)) chainSurface.actions.push(action);
     }
-    if (!chain || !protocol) continue;
+    if (!chain || !protocol || !isDisplayableProtocolId(protocol)) continue;
     const key = capitalProtocolKey(chain, protocol);
     const protocolSurface = (byProtocol[key] ||= {
       key,

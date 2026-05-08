@@ -17,6 +17,9 @@ const PHYS = {
   SUBSTEPS: 2,
   PAD: 6
 };
+function isFixedPhysicsBody(body) {
+  return body?.draggable === false;
+}
 const PROTOCOL_CARD_MAX_HEIGHT = 132;
 const PROTOCOL_CARD_SAFE_BOTTOM = 188;
 const PROTOCOL_CARD_STRATEGY_PREVIEW_COUNT = 2;
@@ -51,7 +54,23 @@ function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
   return { x: (svgPt.x - tx) / zoom, y: (svgPt.y - ty) / zoom };
 }
 const MINDMAP_HIDDEN_PROTOCOLS = /* @__PURE__ */ new Set(["odos", "gaszip"]);
+const MINDMAP_NON_PROTOCOL_IDS = /* @__PURE__ */ new Set([
+  "wrapped_native",
+  "wrapped-native",
+  "wrapped native",
+  "native",
+  "native_token",
+  "native-token",
+  "gas"
+]);
 const MINDMAP_HIDDEN_TYPES = /* @__PURE__ */ new Set(["refuel"]);
+function normalizeMindmapProtocolId(protocol) {
+  return String(protocol || "").trim().toLowerCase();
+}
+function isDisplayableMindmapProtocol(protocol) {
+  const id = normalizeMindmapProtocolId(protocol);
+  return Boolean(id) && !MINDMAP_NON_PROTOCOL_IDS.has(id);
+}
 function isMindmapActiveStrategy(strategy) {
   if (strategy.status === "LIVE") return strategy.status === "LIVE";
   if (strategy.activeStrategyState === "live_position") return true;
@@ -164,6 +183,7 @@ function movementLaneOffset(laneIndex = 0, totalTracks = 1, segmentIndex = 0) {
 function isMindmapVisible(strategy) {
   if (!strategy) return false;
   if (!strategy.protocol) return false;
+  if (!isDisplayableMindmapProtocol(strategy.protocol)) return false;
   if (MINDMAP_HIDDEN_PROTOCOLS.has(strategy.protocol)) return false;
   if (MINDMAP_HIDDEN_TYPES.has(strategy.type)) return false;
   if (strategy.type === "payback") {
@@ -718,38 +738,6 @@ function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragSta
     ))
   );
 }
-function RootProtocolHint({ hint, time, motionSpeed }) {
-  const size = 18;
-  const connector = curvePath(hint.chainX, hint.chainY, hint.x, hint.y, 0.08);
-  const flowDur = 2.2 / motionSpeed;
-  const tFlow = (time + hint.index * 0.28) % flowDur / flowDur;
-  const assetId = hint.assetId || "usdc";
-  return /* @__PURE__ */ React.createElement("g", { "data-root-protocol": hint.id, style: { pointerEvents: "none", opacity: 0.96, transition: `opacity ${T_FAST}ms ${EASE}` } }, /* @__PURE__ */ React.createElement("path", { d: connector.d, fill: "none", stroke: "#A8A8AD", strokeWidth: "0.65", strokeDasharray: "2 3", opacity: "0.7" }), /* @__PURE__ */ React.createElement(
-    FlowToken,
-    {
-      curve: { ...connector, x1: hint.chainX, y1: hint.chainY, x2: hint.x, y2: hint.y },
-      progress: tFlow,
-      assetId,
-      size: 9,
-      sourceChainId: hint.chainId
-    }
-  ), /* @__PURE__ */ React.createElement("circle", { r: size * 0.62, cx: hint.x, cy: hint.y, fill: "#FFFFFF", stroke: "#D0D0D4", strokeWidth: "0.55" }), /* @__PURE__ */ React.createElement("foreignObject", { x: hint.x - size * 0.42, y: hint.y - size * 0.42, width: size * 0.84, height: size * 0.84, style: { pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("div", { xmlns: "http://www.w3.org/1999/xhtml", style: { display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", pointerEvents: "none" } }, /* @__PURE__ */ React.createElement(ProtocolLogo, { id: hint.protocol, size: size * 0.72 }))), /* @__PURE__ */ React.createElement(
-    "text",
-    {
-      x: hint.x,
-      y: hint.y + 17,
-      textAnchor: "middle",
-      fontSize: "7.6",
-      fontWeight: "700",
-      fill: "#555",
-      stroke: "#FFFFFF",
-      strokeWidth: "2",
-      paintOrder: "stroke",
-      style: { fontFamily: "-apple-system, system-ui", letterSpacing: 0 }
-    },
-    hint.label
-  ));
-}
 function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const [selectedChain, setSelectedChain] = useState(null);
   const [selectedProtocolId, setSelectedProtocolId] = useState(null);
@@ -773,6 +761,13 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       const list = Array.from(bodies.values());
       for (let step = 0; step < PHYS.SUBSTEPS; step++) {
         for (const b of list) {
+          if (isFixedPhysicsBody(b)) {
+            b.x = b.anchorX;
+            b.y = b.anchorY;
+            b.vx = 0;
+            b.vy = 0;
+            continue;
+          }
           if (b.isDragging) {
             b.vx = 0;
             b.vy = 0;
@@ -799,17 +794,21 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
               const aDrag = a.isDragging;
               const bDrag = b.isDragging;
               if (aDrag && !bDrag) {
-                a.vx -= force * nx / a.mass;
-                a.vy -= force * ny / a.mass;
-              } else if (!aDrag && bDrag) {
-                b.vx += force * nx / b.mass;
-                b.vy += force * ny / b.mass;
-              } else {
-                if (!aDrag) {
+                if (!isFixedPhysicsBody(a)) {
                   a.vx -= force * nx / a.mass;
                   a.vy -= force * ny / a.mass;
                 }
-                if (!bDrag) {
+              } else if (!aDrag && bDrag) {
+                if (!isFixedPhysicsBody(b)) {
+                  b.vx += force * nx / b.mass;
+                  b.vy += force * ny / b.mass;
+                }
+              } else {
+                if (!aDrag && !isFixedPhysicsBody(a)) {
+                  a.vx -= force * nx / a.mass;
+                  a.vy -= force * ny / a.mass;
+                }
+                if (!bDrag && !isFixedPhysicsBody(b)) {
                   b.vx += force * nx / b.mass;
                   b.vy += force * ny / b.mass;
                 }
@@ -833,17 +832,21 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
               const otherDrag = other.isDragging;
               const bDrag2 = b.isDragging;
               if (otherDrag && !bDrag2) {
-                other.vx += force * nx / other.mass;
-                other.vy += force * ny / other.mass;
-              } else if (!otherDrag && bDrag2) {
-                b.vx -= force * nx / b.mass;
-                b.vy -= force * ny / b.mass;
-              } else {
-                if (!otherDrag) {
+                if (!isFixedPhysicsBody(other)) {
                   other.vx += force * nx / other.mass;
                   other.vy += force * ny / other.mass;
                 }
-                if (!bDrag2) {
+              } else if (!otherDrag && bDrag2) {
+                if (!isFixedPhysicsBody(b)) {
+                  b.vx -= force * nx / b.mass;
+                  b.vy -= force * ny / b.mass;
+                }
+              } else {
+                if (!otherDrag && !isFixedPhysicsBody(other)) {
+                  other.vx += force * nx / other.mass;
+                  other.vy += force * ny / other.mass;
+                }
+                if (!bDrag2 && !isFixedPhysicsBody(b)) {
                   b.vx -= force * nx / b.mass;
                   b.vy -= force * ny / b.mass;
                 }
@@ -852,6 +855,13 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           }
         }
         for (const b of list) {
+          if (isFixedPhysicsBody(b)) {
+            b.x = b.anchorX;
+            b.y = b.anchorY;
+            b.vx = 0;
+            b.vy = 0;
+            continue;
+          }
           if (b.isDragging) continue;
           b.x += b.vx;
           b.y += b.vy;
@@ -970,37 +980,6 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   const liveChains = new Set(
     STRATEGIES.filter((strategy) => isMindmapActiveStrategy(strategy)).map((strategy) => strategy.chain).filter(Boolean)
   );
-  const rootProtocolHints = useMemo(() => {
-    if (selectedChain) return [];
-    const hints = [];
-    for (const chain of destChains) {
-      const groups = (protocolsByChain[chain.id] || []).filter((group) => isMindmapActiveStrategy(group)).slice(0, 2);
-      const ring = ringPos[chain.id];
-      if (!ring || groups.length === 0) continue;
-      const chainBody = physicsRef.current.get(`chain:${chain.id}`);
-      const chainX = chainBody ? chainBody.x : ring.x;
-      const chainY = chainBody ? chainBody.y : ring.y;
-      const angle = ring.angle ?? Math.atan2(ring.y, ring.x);
-      const spread = groups.length === 1 ? [0] : [-0.18, 0.18];
-      groups.forEach((group, groupIndex) => {
-        const a = angle + spread[groupIndex];
-        const offset = 32 + groupIndex * 8;
-        hints.push({
-          id: `${chain.id}:${group.protocol}:${groupIndex}`,
-          chainId: chain.id,
-          chainX,
-          chainY,
-          x: chainX + Math.cos(a) * offset,
-          y: chainY + Math.sin(a) * offset,
-          protocol: group.protocol,
-          label: prettifyProtocolLabel(group.protocol),
-          assetId: uniqueProtocolAssets(group)[0] || "usdc",
-          index: hints.length
-        });
-      });
-    }
-    return hints;
-  }, [destChains, protocolsByChain, ringPos, selectedChain, time]);
   const movementNowMs = Date.now();
   const recentMovements = dedupeRecentMovements(
     Array.isArray(window.FLOW?.recentMovements) ? window.FLOW.recentMovements.filter((movement) => movement?.fromChainId && movement?.toChainId && isRecentMovement(movement, movementNowMs)) : []
@@ -1117,6 +1096,13 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     if (!ring) return null;
     return getNodePos(`chain:${chainId}`, ring.x, ring.y);
   }
+  function movementEndpointGap(chainId, { selectedChain: selectedChain2, activeChainId } = {}) {
+    if (chainId === "bob_gateway") return gatewaySize * (selectedChain2 ? 0.58 : 1) * 1.25;
+    if (chainId === "bitcoin") return chainSize * 0.95 * 0.62;
+    const compact = Boolean(selectedChain2 && chainId !== activeChainId);
+    if (!compact) return chainSize * 0.56;
+    return chainSize * 0.5 * 0.56;
+  }
   function buildMovementTrack(movement, index, totalTracks = 1) {
     const from = getChainPos(movement.fromChainId);
     const to = getChainPos(movement.toChainId);
@@ -1124,17 +1110,20 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
     const viaGateway = movementUsesGateway(movement);
     const color = movementColor(movement, index);
     const key = movementDedupeKey(movement);
+    const fromGap = movementEndpointGap(movement.fromChainId, { selectedChain, activeChainId: selectedChain });
+    const toGap = movementEndpointGap(movement.toChainId, { selectedChain, activeChainId: selectedChain });
+    const gatewayGap = movementEndpointGap("bob_gateway", { selectedChain, activeChainId: selectedChain });
     const segments = [];
     let motionD = "";
     if (viaGateway) {
       const gateway = getChainPos("bob_gateway");
       if (!gateway) return null;
-      const inbound = movementLinePath(from, gateway, MOVEMENT_NODE_GAP, MOVEMENT_GATEWAY_GAP, index, 0, totalTracks);
-      const outbound = movementLinePath(gateway, to, MOVEMENT_GATEWAY_GAP, MOVEMENT_NODE_GAP, index, 1, totalTracks);
+      const inbound = movementLinePath(from, gateway, fromGap, gatewayGap, index, 0, totalTracks);
+      const outbound = movementLinePath(gateway, to, gatewayGap, toGap, index, 1, totalTracks);
       segments.push(inbound, outbound);
       motionD = `${inbound.d} L ${outbound.x1} ${outbound.y1} Q ${outbound.cx} ${outbound.cy} ${outbound.x2} ${outbound.y2}`;
     } else {
-      const direct = movementLinePath(from, to, MOVEMENT_NODE_GAP, MOVEMENT_NODE_GAP, index, 0, totalTracks);
+      const direct = movementLinePath(from, to, fromGap, toGap, index, 0, totalTracks);
       segments.push(direct);
       motionD = direct.d;
     }
@@ -1276,15 +1265,6 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
           key: `movement-trail-${track.key}`,
           track,
           selectedChain
-        }
-      )),
-      !selectedChain && rootProtocolHints.map((hint) => /* @__PURE__ */ React.createElement(
-        RootProtocolHint,
-        {
-          key: `root-protocol-${hint.id}`,
-          hint,
-          time,
-          motionSpeed
         }
       )),
       destChains.map((c) => {

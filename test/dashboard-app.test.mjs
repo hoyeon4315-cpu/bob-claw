@@ -419,13 +419,18 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(DATA_SOURCE, /actualProtocolCapitalUsd: Number\.isFinite\(position\.usd\)/);
   });
 
-  test("mindmap root view surfaces active protocol asset motion", () => {
-    assert.match(MINDMAP_SOURCE, /function RootProtocolHint\(/);
-    assert.match(MINDMAP_SOURCE, /rootProtocolHints/);
-    assert.match(MINDMAP_SOURCE, /!selectedChain && rootProtocolHints\.map/);
-    assert.match(MINDMAP_SOURCE, /<FlowToken curve=\{\{ \.\.\.connector/);
-    assert.match(MINDMAP_SOURCE, /progress=\{tFlow\}/);
-    assert.match(MINDMAP_SOURCE, /ProtocolLogo id=\{hint\.protocol\}/);
+  test("data mapper does not promote wrapped native asset labels as protocols", () => {
+    assert.match(DATA_SOURCE, /const NON_PROTOCOL_ACTIVITY_IDS = new Set\(\[/);
+    assert.match(DATA_SOURCE, /'wrapped_native'/);
+    assert.match(DATA_SOURCE, /function isDisplayableProtocolId\(protocol\)/);
+    assert.match(DATA_SOURCE, /if \(!chain \|\| !protocol \|\| !isDisplayableProtocolId\(protocol\)\) continue;/);
+  });
+
+  test("mindmap root view keeps protocol nodes hidden until chain zoom", () => {
+    assert.doesNotMatch(MINDMAP_SOURCE, /function RootProtocolHint\(/);
+    assert.doesNotMatch(MINDMAP_SOURCE, /rootProtocolHints/);
+    assert.doesNotMatch(MINDMAP_SOURCE, /data-root-protocol/);
+    assert.match(MINDMAP_SOURCE, /selectedChain && \(protocolsByChain\[selectedChain\] \|\| \[\]\)\.map/);
   });
 
   test("data refresh exposes RAW_STATUS through window.STATUS for live UI cards", () => {

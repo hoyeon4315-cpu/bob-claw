@@ -144,7 +144,7 @@ describe("dashboard logo runtime invariants", () => {
 
   test("asset aliases cover live dashboard token symbols", () => {
     const runtime = readFileSync(LOGOS_RUNTIME, "utf8");
-    for (const token of ["'wbtc.oft': 'wbtc'", "'btc.b': 'wbtc'", "'pt-solvbtc': 'solvbtc'", "'pt-lbtc': 'lbtc'", "rlusd: 'rlusd'", "s: 'sonic_native'"]) {
+    for (const token of ["'wbtc.oft': 'wbtc'", "'btc.b': 'wbtc'", "'wrapped_native': 'weth'", "'wrapped-native': 'weth'", "'pt-solvbtc': 'solvbtc'", "'pt-lbtc': 'lbtc'", "rlusd: 'rlusd'", "s: 'sonic_native'"]) {
       assert.ok(runtime.includes(token), `missing asset alias mapping: ${token}`);
     }
   });

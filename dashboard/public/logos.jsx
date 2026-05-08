@@ -210,6 +210,9 @@ function normalizeAssetId(id = '') {
   const mapped = {
     'wbtc.oft': 'wbtc',
     'btc.b': 'wbtc',
+    'wrapped_native': 'weth',
+    'wrapped-native': 'weth',
+    'wrapped native': 'weth',
     btcb: 'wbtc',
     wbnb: 'bnb',
     'pt-solvbtc': 'solvbtc',

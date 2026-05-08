@@ -21,6 +21,10 @@ describe("mindmap source guard", () => {
 
   test("mindmap focuses protocols with capital or recent activity and dims siblings on protocol zoom", () => {
     assert.match(MINDMAP_JSX, /if \(!strategy\.protocol\) return false;/);
+    assert.match(MINDMAP_JSX, /function isDisplayableMindmapProtocol\(protocol\)/);
+    assert.match(MINDMAP_JSX, /if \(!isDisplayableMindmapProtocol\(strategy\.protocol\)\) return false;/);
+    assert.match(MINDMAP_JSX, /MINDMAP_NON_PROTOCOL_IDS = new Set\(\[/);
+    assert.match(MINDMAP_JSX, /'wrapped_native'/);
     assert.match(MINDMAP_JSX, /return strategy\.status === 'LIVE'/);
     assert.match(MINDMAP_JSX, /strategy\.activeStrategyState === 'live_position'/);
     assert.match(MINDMAP_JSX, /return Number\(strategy\.actualProtocolCapitalUsd \|\| 0\) > 0/);
@@ -99,10 +103,10 @@ describe("mindmap source guard", () => {
     assert.doesNotMatch(MINDMAP_JSX, /liveChains\.has\(c\.id\) \|\| \(selectedChain && focusedMovementChainIds\.has\(c\.id\)\)/);
     assert.doesNotMatch(MINDMAP_JSX, /const tokenSize = selectedChain/);
     assert.match(MINDMAP_JSX, /if \(viaGateway\) \{/);
-    assert.match(MINDMAP_JSX, /const inbound = movementLinePath\(from, gateway, MOVEMENT_NODE_GAP, MOVEMENT_GATEWAY_GAP, index, 0, totalTracks\);/);
-    assert.match(MINDMAP_JSX, /const outbound = movementLinePath\(gateway, to, MOVEMENT_GATEWAY_GAP, MOVEMENT_NODE_GAP, index, 1, totalTracks\);/);
+    assert.match(MINDMAP_JSX, /const inbound = movementLinePath\(from, gateway, fromGap, gatewayGap, index, 0, totalTracks\);/);
+    assert.match(MINDMAP_JSX, /const outbound = movementLinePath\(gateway, to, gatewayGap, toGap, index, 1, totalTracks\);/);
     assert.match(MINDMAP_JSX, /motionD = `\$\{inbound\.d\} L \$\{outbound\.x1\} \$\{outbound\.y1\} Q \$\{outbound\.cx\} \$\{outbound\.cy\} \$\{outbound\.x2\} \$\{outbound\.y2\}`;/);
-    assert.match(MINDMAP_JSX, /const direct = movementLinePath\(from, to, MOVEMENT_NODE_GAP, MOVEMENT_NODE_GAP, index, 0, totalTracks\)/);
+    assert.match(MINDMAP_JSX, /const direct = movementLinePath\(from, to, fromGap, toGap, index, 0, totalTracks\)/);
     assert.doesNotMatch(MINDMAP_JSX, /endpoints: \[/);
     assert.doesNotMatch(MINDMAP_JSX, /function buildMovementChainAccents/);
     assert.match(MINDMAP_JSX, /const visibleMovementSeeds = \(selectedChain/);
@@ -146,6 +150,24 @@ describe("mindmap source guard", () => {
     assert.doesNotMatch(MINDMAP_JSX, /movementGlow/);
     assert.doesNotMatch(MINDMAP_JSX, /const MOVEMENT_COLORS = Object\.freeze\(\{/);
     assert.doesNotMatch(MINDMAP_JSX, /\.filter\(\(strategy\) => strategy\.status === 'LIVE' \|\| Number\(strategy\.recentActivityCount \|\| 0\) > 0\)/);
+  });
+
+  test("root view never renders protocol hint nodes", () => {
+    assert.doesNotMatch(MINDMAP_JSX, /function RootProtocolHint\(/);
+    assert.doesNotMatch(MINDMAP_JSX, /rootProtocolHints/);
+    assert.doesNotMatch(MINDMAP_JSX, /data-root-protocol/);
+    assert.match(MINDMAP_JSX, /selectedChain && \(protocolsByChain\[selectedChain\] \|\| \[\]\)\.map/);
+  });
+
+  test("movement paths trim to actual chain and gateway logo edges", () => {
+    assert.match(MINDMAP_JSX, /function movementEndpointGap\(chainId, \{ selectedChain, activeChainId \} = \{\}\)/);
+    assert.match(MINDMAP_JSX, /return chainSize \* 0\.56/);
+    assert.match(MINDMAP_JSX, /return gatewaySize \* \(selectedChain \? 0\.58 : 1\) \* 1\.25/);
+    assert.match(MINDMAP_JSX, /function isFixedPhysicsBody\(body\)/);
+    assert.match(MINDMAP_JSX, /if \(isFixedPhysicsBody\(b\)\) \{ b\.x = b\.anchorX; b\.y = b\.anchorY; b\.vx = 0; b\.vy = 0; continue; \}/);
+    assert.match(MINDMAP_JSX, /const fromGap = movementEndpointGap\(movement\.fromChainId, \{ selectedChain, activeChainId: selectedChain \}\);/);
+    assert.match(MINDMAP_JSX, /const toGap = movementEndpointGap\(movement\.toChainId, \{ selectedChain, activeChainId: selectedChain \}\);/);
+    assert.doesNotMatch(MINDMAP_JSX, /const direct = movementLinePath\(from, to, MOVEMENT_NODE_GAP, MOVEMENT_NODE_GAP/);
   });
 
   test("chain and protocol nodes render compact USD pills and bounded protocol cards", () => {
