@@ -188,6 +188,80 @@ test("merkl canary queue summarizes the top blocker when no candidate is executa
   assert.equal(queue.summary.capabilityGapCounts.ethereum_l1_gas_ev_positive_check_required, 1);
 });
 
+test("merkl canary queue preserves at least one BSC candidate when the limit would otherwise hide it", () => {
+  const report = {
+    generatedAt: "2026-05-08T00:00:00.000Z",
+    policyProfile: "aggressive_multi_asset_payback_v2",
+    opportunities: [
+      ...Array.from({ length: 3 }, (_, index) => ({
+        opportunityId: `base-top-${index}`,
+        decision: "candidate",
+        validationMode: "tiny_live_canary_only",
+        chain: "base",
+        protocolId: "morpho",
+        protocolName: "Morpho",
+        name: `Base top ${index}`,
+        family: "stable_treasury_carry",
+        assetFamilies: ["stablecoin"],
+        tokenSymbols: ["USDC"],
+        hasStableExposure: true,
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        executionSurface: "stableCarry",
+        campaignRemainingHours: 120,
+        aprPct: 8,
+        nativeAprPct: 8,
+        tvlUsd: 5_000_000,
+        score: 100 - index,
+        overfitRisk: "minimal",
+        overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: `0x${String(index + 1).repeat(40)}`,
+          assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+      })),
+      {
+        opportunityId: "bsc-venus-usdc",
+        decision: "candidate",
+        validationMode: "tiny_live_canary_only",
+        chain: "bsc",
+        protocolId: "venus",
+        protocolName: "Venus",
+        name: "BSC Venus USDC",
+        family: "stable_treasury_carry",
+        assetFamilies: ["stablecoin"],
+        tokenSymbols: ["USDC"],
+        hasStableExposure: true,
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        executionSurface: "stableCarry",
+        campaignRemainingHours: 120,
+        aprPct: 5,
+        nativeAprPct: 5,
+        tvlUsd: 3_000_000,
+        score: 10,
+        overfitRisk: "minimal",
+        overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: "0x1111111111111111111111111111111111111111",
+          assetAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+        },
+      },
+    ],
+  };
+
+  const queue = buildMerklCanaryQueue({
+    report,
+    limit: 2,
+    now: "2026-05-08T00:00:00.000Z",
+    inventorySnapshot: { native: [], tokens: [] },
+  });
+
+  assert.equal(queue.summary.queueCount, 2);
+  assert.equal(queue.summary.byChain.bsc, 1);
+  assert.equal(queue.queue.some((item) => item.opportunityId === "bsc-venus-usdc"), true);
+  assert.equal(queue.summary.representationGap.flag, "representation_gap");
+  assert.equal(queue.summary.representationGap.forcedChainQuota.bsc, 1);
+});
+
 test("merkl auto entry admits inventory-backed Ethereum vault canaries within live-validation caps", () => {
   const report = {
     generatedAt: "2026-04-25T00:00:00.000Z",

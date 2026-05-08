@@ -8,6 +8,9 @@ import { buildRepresentativeChainCoverage } from "./representative-chain-coverag
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
 const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle", "yei"]);
 const EXECUTABLE_NOW_STAGE = "inventory_ready_before_sizing_policy_and_signer";
+const DEFAULT_CHAIN_QUOTA = Object.freeze({
+  bsc: 1,
+});
 const FINAL_EXECUTION_REQUIRES = Object.freeze([
   "tiny_live_cap_sizing",
   "opportunity_policy_positive_ev",
@@ -116,6 +119,40 @@ function compareQueue(left, right) {
   return String(left.opportunityId || "").localeCompare(String(right.opportunityId || ""));
 }
 
+function selectCandidatesWithChainQuota(candidates = [], { limit = null, chainQuota = DEFAULT_CHAIN_QUOTA } = {}) {
+  const boundedLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : candidates.length;
+  const selected = candidates.slice(0, boundedLimit);
+  const selectedIds = new Set(selected.map((item) => item.opportunityId));
+  const quotaEvents = [];
+  for (const [chain, quota] of Object.entries(chainQuota || {})) {
+    const required = Math.max(0, Number(quota) || 0);
+    if (required === 0) continue;
+    const currentCount = selected.filter((item) => item.chain === chain).length;
+    if (currentCount >= required) continue;
+    const replacements = candidates.filter((item) => item.chain === chain && !selectedIds.has(item.opportunityId));
+    for (const replacement of replacements.slice(0, required - currentCount)) {
+      const replaceIndex = [...selected].map((item, index) => ({ item, index }))
+        .reverse()
+        .find(({ item }) => !Object.keys(chainQuota).includes(item.chain))?.index;
+      if (replaceIndex == null) break;
+      const removed = selected[replaceIndex];
+      selectedIds.delete(removed.opportunityId);
+      selected[replaceIndex] = replacement;
+      selectedIds.add(replacement.opportunityId);
+      quotaEvents.push({
+        chain,
+        required,
+        insertedOpportunityId: replacement.opportunityId,
+        removedOpportunityId: removed.opportunityId,
+      });
+    }
+  }
+  return {
+    candidates: selected.sort(compareQueue),
+    quotaEvents,
+  };
+}
+
 function entryAssets(item = {}) {
   const symbols = item.entryTokenSymbols?.length ? item.entryTokenSymbols : item.tokenSymbols || [];
   if (item.hasStableExposure) return symbols.filter((symbol) => /^usd|dai|gho|eurc|usdt|usdc|pyusd|usde|usds/i.test(symbol));
@@ -220,6 +257,7 @@ export function buildMerklCanaryQueue({
   canaryExecutions = [],
   positionRecords = [],
   representativeRuns = [],
+  chainQuota = DEFAULT_CHAIN_QUOTA,
 } = {}) {
   const sourceItems = report?.opportunities || report?.topCandidates || [];
   const candidates = sourceItems
@@ -228,8 +266,8 @@ export function buildMerklCanaryQueue({
     .filter((item) => item?.mappedStrategyId)
     .map((item) => ({ ...item, priorityScore: priorityScore(item, policy) }))
     .sort(compareQueue);
-  const queue = candidates
-    .slice(0, Number.isFinite(limit) && limit > 0 ? limit : candidates.length)
+  const selectedCandidates = selectCandidatesWithChainQuota(candidates, { limit, chainQuota });
+  const queue = selectedCandidates.candidates
     .map((item, index) => buildQueueItem(item, index, policy))
     .map((item) => applyMerklCanaryExecutionReadiness(item, {
       inventorySnapshot,
@@ -243,6 +281,14 @@ export function buildMerklCanaryQueue({
   const readinessByStatus = countBy(queue, (item) => item.executionReadiness?.status);
   const gapCounts = capabilityGapCounts(queue);
   const generatedAt = now || new Date().toISOString();
+  const byChain = countBy(queue, (item) => item.chain);
+  const representedChainCount = Object.keys(byChain).length;
+  const representationGap = {
+    flag: selectedCandidates.quotaEvents.length > 0 || representedChainCount < 5 ? "representation_gap" : null,
+    representedChainCount,
+    forcedChainQuota: { ...(chainQuota || {}) },
+    quotaEvents: selectedCandidates.quotaEvents,
+  };
   const representativeCoverage = buildRepresentativeChainCoverage({
     queue,
     positionRecords,
@@ -273,8 +319,8 @@ export function buildMerklCanaryQueue({
       topNextAction: queue[0]?.nextAction || null,
       topExecutableQueueId: executableQueue[0]?.queueId || null,
       topExecutableOpportunityId: executableQueue[0]?.opportunityId || null,
-      chainCount: Object.keys(countBy(queue, (item) => item.chain)).length,
-      byChain: countBy(queue, (item) => item.chain),
+      chainCount: representedChainCount,
+      byChain,
       byStrategy: countBy(queue, (item) => item.mappedStrategyId),
       byExecutionSurface: countBy(queue, (item) => item.executionSurface),
       highOverfitRiskCount: queue.filter((item) => item.overfitRisk === "high").length,
@@ -294,6 +340,7 @@ export function buildMerklCanaryQueue({
       readinessByStatus,
       capabilityGapCounts: gapCounts,
       topBlockingReason,
+      representationGap,
       representativeCoverage: representativeCoverage.summary,
     },
     representativeCoverage,
