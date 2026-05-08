@@ -16,6 +16,7 @@ import { createEvmLocalKeySigner } from "./evm-local-signer.mjs";
 import { normalizeExecutionIntent } from "./signer-interface.mjs";
 import { writeHeartbeat } from "../watchdog/heartbeat.mjs";
 import { checkKillSwitch, resolveKillSwitchPath } from "../policy/kill-switch.mjs";
+import { loadRuntimeRiskContext } from "../runtime/risk-context.mjs";
 
 export function parseArgs(argv) {
   const flags = new Set(argv);
@@ -79,6 +80,31 @@ function serializeReceipt(receipt) {
   };
 }
 
+function mergeCurrentAllocations(primary = null, fallback = null) {
+  const out = {};
+  const keys = new Set([
+    ...Object.keys(fallback || {}),
+    ...Object.keys(primary || {}),
+  ]);
+  for (const key of keys) {
+    const primaryValue = primary?.[key];
+    const fallbackValue = fallback?.[key];
+    if (
+      primaryValue &&
+      typeof primaryValue === "object" &&
+      !Array.isArray(primaryValue) &&
+      fallbackValue &&
+      typeof fallbackValue === "object" &&
+      !Array.isArray(fallbackValue)
+    ) {
+      out[key] = { ...fallbackValue, ...primaryValue };
+    } else {
+      out[key] = primaryValue ?? fallbackValue;
+    }
+  }
+  return out;
+}
+
 async function readAddressOrNull(getter) {
   try {
     return await getter();
@@ -101,19 +127,38 @@ export async function handleIntentCommand({
   args,
   cwd,
   transactionNotifyImpl = null,
+  loadRuntimeRiskContextImpl = loadRuntimeRiskContext,
 }) {
   const intent = normalizeExecutionIntent(message.intent);
   const [auditRecords, receiptRecords] = await Promise.all([
     readSignerAuditLog({ rootDir: cwd }),
     readJsonl(resolve(cwd, config.dataDir), "receipt-reconciliations"),
   ]);
+  const runtimeRiskContext = await loadRuntimeRiskContextImpl({
+    rootDir: cwd,
+    activeBudgetUsd: args.activeBudgetUsd,
+    now: intent.observedAt || new Date().toISOString(),
+  });
+  const metadataRiskContext = intent.metadata?.riskContext || null;
+  const riskContext = {
+    ...(runtimeRiskContext || {}),
+    ...(metadataRiskContext || {}),
+    currentAllocations: mergeCurrentAllocations(
+      metadataRiskContext?.currentAllocations,
+      runtimeRiskContext?.currentAllocations,
+    ),
+    totalOperatingCapitalUsd:
+      metadataRiskContext?.totalOperatingCapitalUsd ??
+      runtimeRiskContext?.totalOperatingCapitalUsd ??
+      null,
+  };
   const policy = await evaluateIntentPolicies({
     intent,
     auditRecords,
     receiptRecords,
     activeBudgetUsd: args.activeBudgetUsd,
     killSwitchPath: args.killSwitchPath,
-    riskContext: intent.metadata?.riskContext || null,
+    riskContext,
   });
 
   if (policy.decision !== "ALLOW") {

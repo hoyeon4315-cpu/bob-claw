@@ -157,3 +157,177 @@ test("signer daemon ignores runtime env active budget overrides", () => {
     }
   }
 });
+
+test("signer daemon injects runtime risk context into signer policy", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-signer-daemon-risk-"));
+  const killSwitchPath = join(root, "KILL_SWITCH");
+  let signCalled = false;
+  const fakeSigner = {
+    signIntent: async () => {
+      signCalled = true;
+      return { txHash: "0x" + "3".repeat(64), signedTx: "0xdeadbeef" };
+    },
+  };
+
+  try {
+    const result = await handleIntentCommand({
+      message: {
+        command: "sign_only",
+        intent: {
+          ...buildIntent(),
+          amountUsd: 200,
+          metadata: { skipAutoIngest: true, protocol: "yo" },
+        },
+      },
+      signers: {
+        evm: fakeSigner,
+      },
+      args: {
+        activeBudgetUsd: null,
+        killSwitchPath,
+        autoIngest: false,
+      },
+      cwd: root,
+      loadRuntimeRiskContextImpl: async () => ({
+        totalOperatingCapitalUsd: 1_000,
+        currentAllocations: {
+          perStrategy: {},
+          perChain: { base: 0.3 },
+          perProtocol: { yo: 0.2 },
+          bobL2DirectShare: 0,
+        },
+      }),
+    });
+
+    assert.equal(result.status, "rejected");
+    assert.equal(signCalled, false);
+    assert.ok(result.policy.blockers.includes("concentration_guard_reject_intent"));
+    const concentration = result.policy.results.find((item) => item.policy === "concentration_guard");
+    assert.equal(concentration.decision, "BLOCK");
+    assert.equal(concentration.verdict.details.projectedAllocations.perChain.base, 0.5);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("signer daemon lets metadata risk total override runtime total", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-signer-daemon-risk-total-"));
+  const killSwitchPath = join(root, "KILL_SWITCH");
+  let signCalled = false;
+  const fakeSigner = {
+    signIntent: async () => {
+      signCalled = true;
+      return { txHash: "0x" + "4".repeat(64), signedTx: "0xdeadbeef" };
+    },
+  };
+
+  try {
+    const result = await handleIntentCommand({
+      message: {
+        command: "sign_only",
+        intent: {
+          ...buildIntent(),
+          amountUsd: 500,
+          metadata: {
+            skipAutoIngest: true,
+            riskContext: {
+              totalOperatingCapitalUsd: 2_000,
+              currentAllocations: {
+                perStrategy: {},
+                perChain: {},
+                perProtocol: {},
+                bobL2DirectShare: 0,
+              },
+            },
+          },
+        },
+      },
+      signers: {
+        evm: fakeSigner,
+      },
+      args: {
+        activeBudgetUsd: null,
+        killSwitchPath,
+        autoIngest: false,
+      },
+      cwd: root,
+      loadRuntimeRiskContextImpl: async () => ({
+        totalOperatingCapitalUsd: 1_000,
+        currentAllocations: {
+          perStrategy: {},
+          perChain: {},
+          perProtocol: {},
+          bobL2DirectShare: 0,
+        },
+      }),
+    });
+
+    assert.equal(result.status, "ok");
+    assert.equal(signCalled, true);
+    const concentration = result.policy.results.find((item) => item.policy === "concentration_guard");
+    assert.equal(concentration.decision, "ALLOW");
+    assert.equal(concentration.verdict.details.projectedAllocations.perChain.base, 0.25);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("signer daemon lets metadata per-chain allocation override runtime allocation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-signer-daemon-risk-chain-"));
+  const killSwitchPath = join(root, "KILL_SWITCH");
+  let signCalled = false;
+  const fakeSigner = {
+    signIntent: async () => {
+      signCalled = true;
+      return { txHash: "0x" + "5".repeat(64), signedTx: "0xdeadbeef" };
+    },
+  };
+
+  try {
+    const result = await handleIntentCommand({
+      message: {
+        command: "sign_only",
+        intent: {
+          ...buildIntent(),
+          amountUsd: 100,
+          metadata: {
+            skipAutoIngest: true,
+            riskContext: {
+              totalOperatingCapitalUsd: 1_000,
+              currentAllocations: {
+                perChain: { base: 0.1 },
+              },
+            },
+          },
+        },
+      },
+      signers: {
+        evm: fakeSigner,
+      },
+      args: {
+        activeBudgetUsd: null,
+        killSwitchPath,
+        autoIngest: false,
+      },
+      cwd: root,
+      loadRuntimeRiskContextImpl: async () => ({
+        totalOperatingCapitalUsd: 1_000,
+        currentAllocations: {
+          perStrategy: {},
+          perChain: { base: 0.3, ethereum: 0.1 },
+          perProtocol: {},
+          bobL2DirectShare: 0,
+        },
+      }),
+    });
+
+    assert.equal(result.status, "ok");
+    assert.equal(signCalled, true);
+    const concentration = result.policy.results.find((item) => item.policy === "concentration_guard");
+    assert.equal(concentration.decision, "ALLOW");
+    assert.equal(concentration.verdict.details.projectedAllocations.perChain.base, 0.2);
+    assert.equal(concentration.verdict.details.projectedAllocations.perChain.ethereum, 0.1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
