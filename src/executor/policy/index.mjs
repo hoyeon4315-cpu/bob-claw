@@ -1,12 +1,18 @@
 import { getStrategyCaps, validateStrategyCapsConfig } from "../../config/strategy-caps.mjs";
 import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
+import {
+  applyColdStartClampToIntent,
+  buildColdStartClampPolicyResult,
+  evaluateColdStartClamp,
+} from "./cold-start-clamp.mjs";
 import { evaluateConcentrationGuard } from "../risk/concentration-guard.mjs";
 import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
 import { evaluateEvGate } from "./ev-gate.mjs";
 import { evaluateAutoKillTriggers } from "../../risk/auto-kill-triggers.mjs";
 import { checkGatewayAvailability } from "./gateway-availability.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
+import { evaluateLeverageCollateralRule } from "./leverage-collateral-rule.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
 import { evaluateTinyLiveCanaryPolicy } from "./tiny-live-canary-policy.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
@@ -127,15 +133,26 @@ export async function evaluateIntentPolicies({
     };
   }
 
-  const liquiditySnapshot = riskContext?.liquiditySnapshot || intent.metadata?.liquiditySnapshot || null;
+  const strategyForPolicy = {
+    ...strategyCaps,
+    ...(riskContext?.strategy || {}),
+  };
+  const amountClamp = evaluateColdStartClamp({
+    strategy: strategyForPolicy,
+    signerAuditRecords: auditRecords,
+    now,
+  });
+  const effectiveIntent = applyColdStartClampToIntent(intent, amountClamp);
+
+  const liquiditySnapshot = riskContext?.liquiditySnapshot || effectiveIntent.metadata?.liquiditySnapshot || null;
   const liquidityVerdict = liquiditySnapshot
     ? evaluateLiquidityWatch(liquiditySnapshot, riskContext?.liquidityThresholds ?? undefined)
     : null;
 
-  const concentrationCandidate = buildConcentrationCandidate(intent, riskContext?.totalOperatingCapitalUsd ?? activeBudgetUsd);
+  const concentrationCandidate = buildConcentrationCandidate(effectiveIntent, riskContext?.totalOperatingCapitalUsd ?? activeBudgetUsd);
   const concentrationVerdict = concentrationCandidate
     ? evaluateConcentrationGuard({
-        currentAllocations: riskContext?.currentAllocations || intent.metadata?.currentAllocations || {},
+        currentAllocations: riskContext?.currentAllocations || effectiveIntent.metadata?.currentAllocations || {},
         candidate: concentrationCandidate,
         policy: riskContext?.diversificationPolicy ?? undefined,
       })
@@ -143,34 +160,36 @@ export async function evaluateIntentPolicies({
 
   const results = [
     strategyCapsResult,
+    buildColdStartClampPolicyResult({ clampResult: amountClamp, originalIntent: intent, effectiveIntent, now }),
     await checkKillSwitch({ killSwitchPath, now }),
     evaluateAutoKillPolicy({ riskContext, auditRecords, activeBudgetUsd, now }),
     await checkGatewayAvailability({
-      intent,
-      availability: riskContext?.gatewayAvailability || intent.metadata?.gatewayAvailability || null,
+      intent: effectiveIntent,
+      availability: riskContext?.gatewayAvailability || effectiveIntent.metadata?.gatewayAvailability || null,
       now,
     }),
     evaluateEvGate({
-      intent,
+      intent: effectiveIntent,
       receiptHistory: evCostModel || { receiptRecords, auditRecords },
       now,
       policy: riskContext?.evCostPolicy || undefined,
     }),
     evaluateConsecutiveFailures({
-      intent,
+      intent: effectiveIntent,
       auditRecords,
       resumeAfter: strategyCaps.resumeAfterFailureAt || null,
       maxConsecutiveFailures: strategyCaps.maxConsecutiveFailures ?? undefined,
       now,
     }),
-    evaluateCapCheck({ intent, strategyCaps, auditRecords, activeBudgetUsd, now }),
-    evaluateHealthFactorCheck({ intent, strategyCaps, now }),
-    evaluateStaleQuote({ intent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
-    evaluateApprovalHygiene({ intent, now }),
+    evaluateCapCheck({ intent: effectiveIntent, strategyCaps, auditRecords, activeBudgetUsd, now }),
+    evaluateHealthFactorCheck({ intent: effectiveIntent, strategyCaps, now }),
+    evaluateLeverageCollateralRule({ strategy: strategyForPolicy, intent: effectiveIntent, now }),
+    evaluateStaleQuote({ intent: effectiveIntent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
+    evaluateApprovalHygiene({ intent: effectiveIntent, now }),
     evaluateTinyLiveCanaryPolicy({
-      intent,
+      intent: effectiveIntent,
       strategyCaps,
-      microCanaryStatus: riskContext?.microCanaryStatus || intent.metadata?.microCanaryStatus || null,
+      microCanaryStatus: riskContext?.microCanaryStatus || effectiveIntent.metadata?.microCanaryStatus || null,
       auditRecords,
       now,
     }),
@@ -200,11 +219,13 @@ export async function evaluateIntentPolicies({
   const emergencyUnwindPath = hfResult?.emergencyUnwindPath || null;
   return {
     observedAt: now,
-    strategyId: intent.strategyId,
+    strategyId: effectiveIntent.strategyId,
     decision: blockers.length > 0 ? "BLOCK" : "ALLOW",
     blockers: [...new Set(blockers)],
     results,
     strategyCaps,
+    effectiveIntent,
+    amountClamp,
     requiresUnwind,
     emergencyUnwindPath,
   };
