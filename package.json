@@ -301,7 +301,8 @@
     "rotate:positions": "node src/cli/rotate-positions.mjs",
     "audit:gas-budget": "node src/cli/audit-gas-budget.mjs",
     "audit:concentration": "node src/cli/audit-concentration.mjs",
-    "dashboard:stage-explain": "node src/cli/dashboard-stage-explain.mjs"
+    "dashboard:stage-explain": "node src/cli/dashboard-stage-explain.mjs",
+    "audit:payback-readiness": "node src/cli/audit-payback-readiness.mjs --json"
   },
   "engines": {
     "node": ">=20"
