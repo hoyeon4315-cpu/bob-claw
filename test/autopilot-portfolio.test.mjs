@@ -69,4 +69,39 @@ describe("autopilot portfolio rebalancer", () => {
     // So we just verify the function exists
     assert.ok(typeof mod.runAutopilotTick === "function");
   });
+
+  it("uses runtime allocations when gating new portfolio entries", async () => {
+    const mod = await import("../src/strategy/autopilot-portfolio-rebalancer.mjs");
+    const result = await mod.runAutopilotTick({
+      previousPositions: [],
+      totalCapitalUsdOverride: 1000,
+      dryRun: true,
+      now: "2026-04-27T12:00:00.000Z",
+      fetchOpportunitiesImpl: async () => [
+        {
+          chain: "base",
+          protocol: "aave-v3",
+          symbol: "USDC",
+          pool: "base-aave-usdc",
+          apy: 12,
+          apyBase: 12,
+          apyReward: 0,
+          tvlUsd: 5_000_000,
+          isStable: true,
+        },
+      ],
+      loadRuntimeRiskContextImpl: async () => ({
+        currentAllocations: {
+          chainSharePct: { base: 0.69 },
+          protocolSharePct: {},
+          opportunitySharePct: {},
+        },
+      }),
+    });
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.intents.length, 1);
+    assert.equal(result.intents[0].policy, "BLOCK");
+    assert.ok(result.intents[0].blockers.includes("chain_concentration_exceeded"));
+  });
 });

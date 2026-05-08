@@ -16,6 +16,7 @@ import { evaluateOpportunityPolicy } from "../executor/policy/opportunity-policy
 import { OPPORTUNITY_INTEGRATION } from "../config/opportunity-integration.mjs";
 import { SCHEDULE, isIdleWindow } from "../config/opportunity-scheduler.mjs";
 import { reconcilePositions } from "../executor/health/position-reconciler.mjs";
+import { loadRuntimeRiskContext } from "../executor/runtime/risk-context.mjs";
 
 const BTC_PRICE_USD = 76730;  // Validated against Odos spot quote (2026-04-28)
 const MIN_NEW_CAPITAL_USD = 30;    // Micro-test policy allows $30 / 6%
@@ -104,7 +105,7 @@ async function fetchCurrentOpportunities() {
       "aerodrome", "aerodrome-v1", "aerodrome-slipstream",
       "uniswap-v3", "uniswap-v4", "curve", "curve-dex", "balancer-v2",
       "beefy", "pendle", "gmx-v2", "gmx-v2-perps", "moonwell", "superform",
-      "yo-protocol", "fluid-lending", "spark-savings",
+      "yo-protocol", "fluid-lending", "spark-savings", "venus",
     ]);
 
     return data
@@ -143,6 +144,8 @@ export async function runAutopilotTick({
   totalCapitalUsdOverride = null,
   dryRun = true,
   now = new Date().toISOString(),
+  fetchOpportunitiesImpl = fetchCurrentOpportunities,
+  loadRuntimeRiskContextImpl = loadRuntimeRiskContext,
 } = {}) {
   const nowDate = new Date(now);
   const observedAt = Number.isFinite(nowDate.getTime()) ? nowDate.toISOString() : new Date().toISOString();
@@ -158,8 +161,8 @@ export async function runAutopilotTick({
   }
 
   // Resolve positions: on-chain RPC + protocol contract reads (no API fallback)
-  let resolvedPositions = previousPositions;
-  if (!resolvedPositions || resolvedPositions.length === 0) {
+  let resolvedPositions = Array.isArray(previousPositions) ? previousPositions : null;
+  if (!resolvedPositions) {
     resolvedPositions = await getReconciledPositions();
   }
 
@@ -188,7 +191,7 @@ export async function runAutopilotTick({
   }
 
   // 3. Fetch opportunities
-  const opportunities = await fetchCurrentOpportunities();
+  const opportunities = await fetchOpportunitiesImpl();
   if (opportunities.length === 0) {
     return { status: "no_opportunities", at: now };
   }
@@ -278,12 +281,20 @@ export async function runAutopilotTick({
 
   // 8. Policy gate each intent
   const gatedIntents = [];
+  const runtimeRiskContext = await loadRuntimeRiskContextImpl({
+    activeBudgetUsd: capitalUsd,
+    now: observedAt,
+  });
+  const currentAllocations = runtimeRiskContext?.currentAllocations || {};
   for (const intent of intents) {
+    const amountUsd = intent.amountBtc * BTC_PRICE_USD;
     const policyResult = await evaluateOpportunityPolicy({
       intent: {
         strategyId: "autopilot-portfolio",
         ...intent,
-        amountUsd: intent.amountBtc * BTC_PRICE_USD,
+        amountUsd,
+        sharePct: capitalUsd > 0 ? amountUsd / capitalUsd : 0,
+        opportunityId: intent.opportunity?.pool || intent.opportunity?.opportunityId || null,
         srcChain: intent.chain,
         dstChain: intent.chain,
         apr: intent.opportunity?.apy || 0,
@@ -292,7 +303,7 @@ export async function runAutopilotTick({
         roundTripSuccessRate: 0.95,
         observedAt,
       },
-      currentAllocations: {},
+      currentAllocations,
       capitalState: { totalDeployableCapital: capitalUsd },
       now: observedAt,
     });
