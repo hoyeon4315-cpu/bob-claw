@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-09T12:36:38.485Z",
+  "generatedAt": "2026-05-09T13:20:42.414Z",
   "strategies": [
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
@@ -32,7 +32,7 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "823f6cc8bcc9f87c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -53,7 +53,7 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "7199a324a53b93ed",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -74,7 +74,7 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "11571da6c6e80e23",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -95,9 +95,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "8d2abc64e6b1877d",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -116,9 +116,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "3a48e11bcf01f37b",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -137,9 +137,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "917eb02675120c59",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -158,7 +158,7 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "b7855de5d5d4d5b6",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -179,9 +179,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "24ce30db8b4a7187",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -202,7 +202,7 @@
       "legacyCode": "policy_reject",
       "observedAt": "2026-05-09T12:33:23.645Z",
       "paramsKey": "fa6a1926ea04d3c4",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -221,9 +221,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "7957388eae7bf800",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -242,9 +242,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "2fc8e27e31f37280",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -263,9 +263,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "bfcb860ccef258c7",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -326,9 +326,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "84ff269179f948c3",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -347,9 +347,9 @@
         "chain": null
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "35ccc5a3f8d90855",
-      "consecutiveTicks": 6,
+      "consecutiveTicks": 8,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -370,7 +370,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "0a5e85f1a6b8bf7b",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -392,7 +392,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "0c57e4945f564f6a",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -414,7 +414,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "47646be3f566847c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -436,7 +436,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "c5f556bd4386a405",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -458,7 +458,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "33bb8c2cf729068d",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -480,7 +480,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "516a299683cae010",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -502,7 +502,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "204126712f9e993c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -524,7 +524,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "6671dd51f4fcc296",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -546,7 +546,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "ac7f35ab917aedcd",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -568,7 +568,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "06533846e0ed8464",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -590,7 +590,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "76d0670c22bcfd49",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -612,7 +612,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "058c2daa4639c9db",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -634,7 +634,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T12:36:38.485Z",
+      "observedAt": "2026-05-09T13:20:42.414Z",
       "paramsKey": "07de7bf10997d522",
       "consecutiveTicks": 1,
       "attemptCount": 0,
