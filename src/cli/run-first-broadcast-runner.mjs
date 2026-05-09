@@ -16,23 +16,40 @@ function hasFlag(argv, flag) {
 
 function parseArgs(argv = []) {
   const execute = hasFlag(argv, "--execute");
+  const refreshRadar = !hasFlag(argv, "--no-refresh") && !hasFlag(argv, "--no-refresh-radar");
   return {
     execute,
     preview: hasFlag(argv, "--preview") || !execute,
     json: hasFlag(argv, "--json"),
+    refreshRadar,
   };
 }
 
-function stepDefinitions() {
-  return [
+function stepDefinitions({ refreshRadar = true } = {}) {
+  const coldStartArgs = [
+    "run",
+    "cold-start:canary",
+    "--",
+    "--preview",
+    "--json",
+    "--refresh-proofs",
+    ...(refreshRadar ? [] : ["--no-refresh"]),
+  ];
+  const steps = [
     { id: "bootstrap_from_btc", command: "npm", args: ["run", "executor:bootstrap-from-btc", "--", "--preview", "--json"] },
     { id: "yield_position_sims", command: "npm", args: ["run", "run:yield-position-sims", "--", "--write-shadow-edge", "--json"] },
     { id: "prelive_simulations", command: "npm", args: ["run", "run:prelive-simulations", "--", "--write", "--write-shadow-edge", "--json"] },
     { id: "blocker_resolve", command: "npm", args: ["run", "blocker:resolve", "--", "--preview", "--json"] },
     { id: "merkl_orchestrator", command: "npm", args: ["run", "executor:merkl-portfolio-orchestrator", "--", "--preview", "--json"] },
-    { id: "radar_ingest", command: "npm", args: ["run", "radar:sync-merkl", "--", "--json"] },
     { id: "radar_promote", command: "npm", args: ["run", "radar:promote", "--", "--preview", "--json"] },
-    { id: "cold_start_canary", command: "npm", args: ["run", "cold-start:canary", "--", "--preview", "--json"] },
+    { id: "cold_start_canary", command: "npm", args: coldStartArgs },
+  ];
+  if (!refreshRadar) return steps;
+  return [
+    ...steps.slice(0, 5),
+    { id: "radar_sync_merkl", command: "npm", args: ["run", "radar:sync-merkl", "--", "--json"] },
+    { id: "radar_ingest", command: "npm", args: ["run", "radar:ingest", "--", "--json"] },
+    ...steps.slice(5),
   ];
 }
 
@@ -146,8 +163,17 @@ function radarCandidates(payload = {}) {
   }));
 }
 
-function coldStartCandidates(payload = {}) {
+function coldStartCandidates(payload = {}, { refreshRadar = true } = {}) {
   if (payload.status !== "ready" || !payload.selectedCandidate) return [];
+  const executeArgs = [
+    "run",
+    "cold-start:canary",
+    "--",
+    "--execute",
+    `--candidate-id=${payload.selectedCandidate.candidateId}`,
+    "--json",
+    ...(refreshRadar ? [] : ["--no-refresh"]),
+  ];
   return [{
     kind: "radar_canary",
     id: payload.selectedCandidate.candidateId || "cold-start-canary",
@@ -157,7 +183,7 @@ function coldStartCandidates(payload = {}) {
       ? {
           id: "selected_execute",
           command: "npm",
-          args: ["run", "cold-start:canary", "--", "--execute", `--candidate-id=${payload.selectedCandidate.candidateId}`, "--json"],
+          args: executeArgs,
         }
       : null,
     blockedExecuteReason: payload.selectedCandidate.candidateId ? null : "cold_start_candidate_id_missing",
@@ -184,11 +210,11 @@ function transportCandidates(payload = {}) {
   }));
 }
 
-function selectCandidate(stepPayloads = new Map()) {
+function selectCandidate(stepPayloads = new Map(), { refreshRadar = true } = {}) {
   const candidates = [
     ...merklCandidates(stepPayloads.get("merkl_orchestrator") || {}),
     ...radarCandidates(stepPayloads.get("radar_promote") || {}),
-    ...coldStartCandidates(stepPayloads.get("cold_start_canary") || {}),
+    ...coldStartCandidates(stepPayloads.get("cold_start_canary") || {}, { refreshRadar }),
     ...transportCandidates(stepPayloads.get("blocker_resolve") || {}),
   ].sort((left, right) =>
     right.expectedRealizedNetUsd - left.expectedRealizedNetUsd ||
@@ -264,7 +290,7 @@ export async function runFirstBroadcastRunnerCli(
   const args = parseArgs(argv);
   const payloads = new Map();
   const stepResults = [];
-  for (const step of stepDefinitions()) {
+  for (const step of stepDefinitions({ refreshRadar: args.refreshRadar })) {
     const result = await runStep(step, { cwd });
     const parsed = parseJsonPayload(result.stdout);
     const logPayload = {
@@ -282,7 +308,7 @@ export async function runFirstBroadcastRunnerCli(
     stepResults.push({ stepId: step.id, exitCode: result.exitCode });
   }
 
-  const { candidates, selectedCandidate } = selectCandidate(payloads);
+  const { candidates, selectedCandidate } = selectCandidate(payloads, { refreshRadar: args.refreshRadar });
   const filteredCount = filteredCandidateCount(payloads);
   let finalPayload = {
     schemaVersion: 1,
@@ -292,6 +318,7 @@ export async function runFirstBroadcastRunnerCli(
     selectedCandidate,
     candidateCount: candidates.length,
     filteredCandidateCount: filteredCount,
+    refreshRadar: args.refreshRadar,
     candidates,
     stepResults,
   };

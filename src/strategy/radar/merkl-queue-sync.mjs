@@ -106,6 +106,7 @@ function candidateStateHash(candidate = {}) {
     protocolId: candidate.protocolId || null,
     opportunityId: candidate.opportunityId || null,
     autoExecute: candidate.metadata?.autoExecute === true,
+    queueReadinessDiagnosis: candidate.metadata?.queueReadinessDiagnosis || null,
   });
 }
 
@@ -125,6 +126,31 @@ function rewardTokenType(item = {}) {
   const symbol = rewardTokenSymbol(item);
   if (!symbol) return null;
   return ["USDC", "USDT", "DAI", "RLUSD", "USDS"].includes(symbol) ? "stable" : "defaultRewardToken";
+}
+
+export function diagnoseMerklQueueReadiness(item = {}) {
+  const queueStatus = item.queueStatus || null;
+  if (queueStatus === "ready_for_tiny_live_canary") return null;
+  const autoEntryBlockers = Array.isArray(item.autoEntry?.blockers) ? item.autoEntry.blockers : [];
+  const bindingPlan = item.protocolBindingPlan || {};
+  const readiness = item.executionReadiness || {};
+  const reasons = [
+    queueStatus ? `queue_status:${queueStatus}` : "queue_status:missing",
+    readiness.status ? `inventory:${readiness.status}` : null,
+    bindingPlan.status ? `binding:${bindingPlan.status}` : null,
+    bindingPlan.bindingKind ? `binding_kind:${bindingPlan.bindingKind}` : null,
+    ...autoEntryBlockers.map((blocker) => `auto_entry:${blocker}`),
+  ].filter(Boolean);
+  return {
+    code: "manual_operator_review_required",
+    originalBlocker: "merkl_queue_not_ready_for_tiny_live_canary",
+    queueStatus,
+    executionReadiness: readiness.status || null,
+    bindingStatus: bindingPlan.status || null,
+    bindingKind: bindingPlan.bindingKind || null,
+    autoEntryBlockers,
+    diagnosis: reasons.join("; "),
+  };
 }
 
 export function merklQueueItemToRadarObservation(queue = {}, item = {}) {
@@ -168,8 +194,9 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
       skipped: id ? { opportunityId: id, reason: "radar_family_binding_unsupported" } : null,
     };
   }
+  const queueReadinessDiagnosis = diagnoseMerklQueueReadiness(item);
   const rawBlockers = [
-    item.queueStatus !== "ready_for_tiny_live_canary" ? "merkl_queue_not_ready_for_tiny_live_canary" : null,
+    queueReadinessDiagnosis ? "manual_operator_review_required" : null,
     exitPathReady(item) ? null : "exit_path_unproven",
     minProfitBlocker(item),
   ].filter(Boolean);
@@ -235,6 +262,7 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
       queueId: item.queueId || null,
       autoExecute: item.autoEntry?.autoExecute === true,
       syncedAt: queue.generatedAt || null,
+      queueReadinessDiagnosis,
     },
   };
   candidate.metadata.stateHash = candidateStateHash(candidate);

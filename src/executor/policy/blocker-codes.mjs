@@ -75,6 +75,7 @@ const REQUIRED = [
   entry("code_required", "entry_asset_not_whitelisted", "Entry asset not whitelisted", { severity: "warning", expectedRetryShape: "code_queue" }),
   entry("code_required", "matched_token_missing", "Matched token missing", { severity: "warning", expectedRetryShape: "code_queue" }),
   entry("manual_review", "unknown_blocker_code", "Unknown blocker code", { severity: "warning", expectedRetryShape: "manual" }),
+  entry("manual_review", "manual_operator_review_required", "Manual operator review required", { severity: "warning", expectedRetryShape: "manual" }),
   entry("payback_lifecycle", "payback_settlement_pending", "Payback settlement pending", { severity: "warning", expectedRetryShape: "periodic" }),
   entry("payback_lifecycle", "profit_attribution_gap", "Profit attribution gap", { severity: "warning", expectedRetryShape: "periodic" }),
 ];
@@ -151,6 +152,7 @@ function codeForLegacy(raw, context = {}) {
   if (text.includes("hf_breach") || text.includes("hf_below") || text.includes("liquidation")) return "hard_safety_stop:hf_breach";
   if (text.includes("entry_asset_not_whitelisted")) return "code_required:entry_asset_not_whitelisted";
   if (text.includes("matched_token_missing")) return "code_required:matched_token_missing";
+  if (text.includes("manual_operator_review_required")) return "manual_review:manual_operator_review_required";
   if (text.includes("unknown_token") || text.includes("whitelist")) return "hard_safety_stop:unknown_token";
 
   if (text.includes("capital_too_small") || text.includes("insufficient_capital")) return "economic_no_go:capital_too_small";

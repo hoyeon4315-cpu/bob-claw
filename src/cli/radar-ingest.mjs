@@ -21,12 +21,24 @@ async function main() {
   const dataDir = resolve(args["data-dir"] || "data");
   const inputPath = args.input ? resolve(args.input) : null;
   if (!inputPath) {
-    throw new Error("--input is required");
+    const result = {
+      status: "no_input",
+      wrote: false,
+      blockers: [],
+      reason: "no_input_observation",
+    };
+    if (args.json) console.log(JSON.stringify(result, null, 2));
+    else console.log("status=no_input");
+    return;
   }
   const observation = JSON.parse(await readFile(inputPath, "utf8"));
   const result = await ingestOpportunityObservation({ dataDir, observation });
-  console.log(`wrote=${result.wrote}`);
-  if (result.blockers.length > 0) console.log(`blockers=${result.blockers.join(",")}`);
+  if (args.json) {
+    console.log(JSON.stringify({ status: result.wrote ? "completed" : "blocked", ...result }, null, 2));
+  } else {
+    console.log(`wrote=${result.wrote}`);
+    if (result.blockers.length > 0) console.log(`blockers=${result.blockers.join(",")}`);
+  }
   if (!result.wrote) process.exitCode = 1;
 }
 

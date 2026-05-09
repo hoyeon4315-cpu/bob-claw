@@ -40,12 +40,14 @@ function optionValue(argv, name) {
 
 function parseArgs(argv = []) {
   const execute = hasFlag(argv, "--execute");
+  const refreshRadar = !hasFlag(argv, "--no-refresh") && !hasFlag(argv, "--no-refresh-radar");
   return {
     execute,
     preview: hasFlag(argv, "--preview") || !execute,
     json: hasFlag(argv, "--json"),
     candidateId: optionValue(argv, "--candidate-id"),
     refreshProofs: hasFlag(argv, "--refresh-proofs"),
+    refreshRadar,
     proofPath: optionValue(argv, "--proof-path"),
   };
 }
@@ -73,6 +75,48 @@ async function readJsonIfExists(path) {
 async function appendJsonl(path, record) {
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(record)}\n`, "utf8");
+}
+
+function defaultRunCommand(command, args, { cwd = process.cwd() } = {}) {
+  return new Promise((resolvePromise) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("close", (code) => {
+      resolvePromise({ exitCode: code ?? 1, stdout, stderr });
+    });
+  });
+}
+
+async function refreshRadarInputs({ cwd = process.cwd(), runCommand = defaultRunCommand } = {}) {
+  const steps = [
+    { id: "radar_sync_merkl", command: "npm", args: ["run", "radar:sync-merkl", "--", "--json"] },
+    { id: "radar_ingest", command: "npm", args: ["run", "radar:ingest", "--", "--json"] },
+  ];
+  const results = [];
+  for (const step of steps) {
+    const result = await runCommand(step.command, step.args, { cwd });
+    results.push({
+      stepId: step.id,
+      command: [step.command, ...step.args].join(" "),
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  return {
+    status: results.every((item) => item.exitCode === 0) ? "completed" : "failed",
+    steps: results,
+  };
 }
 
 function packetById(packets = []) {
@@ -381,6 +425,9 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
   const dataDir = resolve(cwd, config.dataDir);
   const dashboardDir = join(cwd, "dashboard", "public");
   const proofPath = args.proofPath ? resolve(cwd, args.proofPath) : join(dataDir, "share-price-unwind-proofs.jsonl");
+  const radarRefresh = args.refreshRadar
+    ? await refreshRadarInputs({ cwd })
+    : { status: "skipped", reason: "no_refresh" };
   const [packets, rawCandidates, auditRecords, strategyTickStatus, proofRecords] = await Promise.all([
     readRadarJsonl(dataDir, "portable-packets").catch(() => []),
     readRadarJsonl(dataDir, "executable-candidates").catch(() => []),
@@ -457,7 +504,7 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
     };
     await appendJsonl(join(dataDir, "cold-start-canary-runs.jsonl"), run);
   }
-  const payload = { ...plan, mode: args.execute ? "execute" : "preview", proofRefresh, run };
+  const payload = { ...plan, mode: args.execute ? "execute" : "preview", radarRefresh, proofRefresh, run };
   const stdout = args.json
     ? `${JSON.stringify(payload, null, 2)}\n`
     : [
