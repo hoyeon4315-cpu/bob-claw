@@ -147,6 +147,13 @@ registerBlockerRecipe("proof_acquisition:missing_yield_evidence", proofCommandRe
   dependencies: [],
 }));
 
+registerBlockerRecipe("proof_acquisition:share_price_unwind_proof_missing", proofCommandRecipe({
+  recipeId: "collect_share_price_unwind_proof",
+  script: "npm run collect:share-price-unwind-proof -- --json",
+  dependencies: ["rpc-base"],
+  costClass: "medium",
+}));
+
 registerBlockerRecipe("refill_or_inventory:chain_under_target", {
   recipeId: "capital_refill_chain_under_target",
   kind: "auto_operational",

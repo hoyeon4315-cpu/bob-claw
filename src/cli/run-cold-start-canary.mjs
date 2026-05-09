@@ -18,6 +18,12 @@ import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { buildRadarCostLedger } from "../strategy/radar/cost-ledger.mjs";
 import { buildRadarCanaryIntent } from "../strategy/radar/radar-candidate-router.mjs";
 import { splitCandidateBlockers } from "../executor/policy/blocker-codes.mjs";
+import {
+  attachSharePriceUnwindProofsToCandidates,
+  collectSharePriceUnwindProofRecords,
+  readSharePriceUnwindProofRecords,
+  writeSharePriceUnwindProofRecords,
+} from "../executor/proof/share-price-unwind-proof.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 const EXECUTION_PATHS = new Set(["gateway_destination", "base_native_evm", "gateway_to_evm_bridged"]);
@@ -39,6 +45,8 @@ function parseArgs(argv = []) {
     preview: hasFlag(argv, "--preview") || !execute,
     json: hasFlag(argv, "--json"),
     candidateId: optionValue(argv, "--candidate-id"),
+    refreshProofs: hasFlag(argv, "--refresh-proofs"),
+    proofPath: optionValue(argv, "--proof-path"),
   };
 }
 
@@ -372,17 +380,21 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
   const args = parseArgs(argv);
   const dataDir = resolve(cwd, config.dataDir);
   const dashboardDir = join(cwd, "dashboard", "public");
-  const [packets, candidates, auditRecords, strategyTickStatus] = await Promise.all([
+  const proofPath = args.proofPath ? resolve(cwd, args.proofPath) : join(dataDir, "share-price-unwind-proofs.jsonl");
+  const [packets, rawCandidates, auditRecords, strategyTickStatus, proofRecords] = await Promise.all([
     readRadarJsonl(dataDir, "portable-packets").catch(() => []),
     readRadarJsonl(dataDir, "executable-candidates").catch(() => []),
     readJsonl(join(cwd, "logs"), "signer-audit").catch(() => []),
     readJsonIfExists(join(dashboardDir, "strategy-tick-status.json")),
+    readSharePriceUnwindProofRecords(proofPath).catch(() => []),
   ]);
   const guards = await defaultReadGuards({ execute: args.execute, strategyTickStatus });
   const autoKill = evaluateAutoKillTriggers({ auditRecords, now: new Date(now) });
   const strategyCapsById = Object.fromEntries(listStrategyCaps().map((item) => [item.strategyId, item]));
   const costLedger = buildRadarCostLedger({ auditRecords });
-  const plan = await buildColdStartCanaryPlan({
+  let candidates = attachSharePriceUnwindProofsToCandidates(rawCandidates, proofRecords, { now });
+  let proofRefresh = null;
+  let plan = await buildColdStartCanaryPlan({
     packets,
     candidates,
     strategyCapsById,
@@ -393,6 +405,35 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
     candidateId: args.candidateId,
     now,
   });
+  if (args.refreshProofs && plan.blockers?.includes("share_price_unwind_proof_missing")) {
+    const merklQueue = await readJsonIfExists(join(dataDir, "merkl-canary-queue.json"));
+    const collection = collectSharePriceUnwindProofRecords({
+      candidates,
+      merklQueue,
+      candidateId: args.candidateId,
+      now,
+    });
+    const writeResult = await writeSharePriceUnwindProofRecords(proofPath, collection.records);
+    const refreshedProofs = await readSharePriceUnwindProofRecords(proofPath);
+    candidates = attachSharePriceUnwindProofsToCandidates(rawCandidates, refreshedProofs, { now });
+    plan = await buildColdStartCanaryPlan({
+      packets,
+      candidates,
+      strategyCapsById,
+      costLedger,
+      auditRecords,
+      guards,
+      autoKill,
+      candidateId: args.candidateId,
+      now,
+    });
+    proofRefresh = {
+      proofPath,
+      collectedCount: collection.collectedCount,
+      skippedCount: collection.skippedCount,
+      writeResult,
+    };
+  }
   await writeTextIfChanged(join(dataDir, "cold-start-canary-preview.json"), `${JSON.stringify(plan, null, 2)}\n`);
   let run = null;
   if (args.execute && plan.status === "ready") {
@@ -416,7 +457,7 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
     };
     await appendJsonl(join(dataDir, "cold-start-canary-runs.jsonl"), run);
   }
-  const payload = { ...plan, mode: args.execute ? "execute" : "preview", run };
+  const payload = { ...plan, mode: args.execute ? "execute" : "preview", proofRefresh, run };
   const stdout = args.json
     ? `${JSON.stringify(payload, null, 2)}\n`
     : [
