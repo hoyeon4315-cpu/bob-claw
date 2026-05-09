@@ -105,6 +105,53 @@ test("capital audit report flags broadcasts that still lack helper traceability"
   assert.equal(report.issues.some((entry) => entry.code === "broadcast_missing_helper_trace"), true);
 });
 
+test("capital audit decomposes broadcast gas by category chain result and preserves total gas", () => {
+  const report = buildCapitalAuditReport({
+    signerAuditRecords: [
+      {
+        timestamp: "2026-04-16T00:00:00.000Z",
+        strategyId: "gateway-btc-funding-transfer",
+        chain: "base",
+        intent: { intentType: "capital_rebalance" },
+        lifecycle: { stage: "broadcasted" },
+        broadcast: { txHash: "0xok", from: "0x111", to: "0x222" },
+      },
+      {
+        timestamp: "2026-04-16T00:01:00.000Z",
+        strategyId: "native-gas-refill",
+        chain: "ethereum",
+        intent: { intentType: "gas_topup" },
+        lifecycle: { stage: "broadcasted" },
+        broadcast: { txHash: "0xrevert", from: "0x111", to: "0x333" },
+      },
+      {
+        timestamp: "2026-04-16T00:02:00.000Z",
+        strategyId: "idle",
+        chain: "sonic",
+        intent: { intentType: "idle_consolidation_step" },
+        lifecycle: { stage: "broadcasted" },
+        broadcast: { txHash: "0xnoreceipt", from: "0x111", to: "0x444" },
+      },
+    ],
+    receiptsByTxHash: {
+      "0xok": { status: 1, gasUsed: "100000", effectiveGasPrice: "1000000000" },
+      "0xrevert": { status: 0, gasUsed: "200000", effectiveGasPrice: "1000000000" },
+    },
+    prices: {
+      btc: 80000,
+      tokenByKey: { btc: 80000, usd_stable: 1, ethereum: 3000 },
+      nativeByChain: { base: 3000, ethereum: 3000, sonic: 1 },
+    },
+  });
+
+  assert.equal(report.summary.broadcastBreakdownGasDriftUsd <= 0.01, true);
+  assert.equal(report.summary.topGasCategory, "gas_topup");
+  assert.equal(report.summary.topGasChain, "ethereum");
+  assert.equal(report.summary.gasFromRevertedTxsUsd, 0.6);
+  assert.equal(report.summary.gasFromNoReceiptTxsUsd, 0);
+  assert.equal(report.broadcastBreakdown.some((cell) => cell.result === "no_receipt"), true);
+});
+
 test("capital audit matches legacy funding-transfer broadcasts from signer audit helper traces", () => {
   const report = buildCapitalAuditReport({
     signerAuditRecords: [

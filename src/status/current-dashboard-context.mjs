@@ -69,6 +69,7 @@ import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
 import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildAutoKillReplayStatus } from "../risk/auto-kill-replay.mjs";
+import { buildGovernorReplay } from "../audit/governor-replay.mjs";
 import { merklUserRewardPolicy } from "../config/merkl-user-rewards.mjs";
 import {
   activeProtocolPositions,
@@ -628,6 +629,10 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
   };
+  dashboardStatus.gasGovernor = buildGovernorReplay({
+    auditRecords: signerAuditRecords,
+    now: dashboardStatus.generatedAt,
+  });
   const autoKillReplay = buildAutoKillReplayStatus({
     auditRecords: signerAuditRecords,
     executorRuntime,
@@ -721,6 +726,7 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.dataCounts.flowPresent = dashboardStatus.flow ? 1 : 0;
   dashboardStatus.dataCounts.idleConsolidationPlanned7d =
     dashboardStatus.idleConsolidation?.plannedCount7d ?? 0;
+  dashboardStatus.dataCounts.gasGovernorReplayPresent = dashboardStatus.gasGovernor ? 1 : 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,
     canaryInputs,

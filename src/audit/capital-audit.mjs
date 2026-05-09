@@ -563,6 +563,55 @@ function buildNativeDexExecutionSummaries({ executions = [], receiptsByTxHash = 
     });
 }
 
+function broadcastLifecycleStage(record = {}) {
+  return record.lifecycleStage || record.intent?.lifecycleStage || record.lifecycle?.stage || "unknown";
+}
+
+function broadcastCategory(record = {}, evidenceType = null) {
+  return record.category || record.intent?.category || record.intent?.intentType || evidenceType || "unknown";
+}
+
+function broadcastResultFromReceipt(receipt) {
+  if (!receipt) return "no_receipt";
+  if (receipt.status === 0 || receipt.status === "0" || receipt.status === false) return "reverted";
+  return "ok";
+}
+
+function buildBroadcastBreakdown(transactions = []) {
+  const cells = new Map();
+  for (const tx of transactions) {
+    const key = [tx.lifecycleStage, tx.category, tx.chain || "unknown", tx.result].join("|");
+    const current = cells.get(key) || {
+      lifecycleStage: tx.lifecycleStage,
+      category: tx.category,
+      chain: tx.chain || "unknown",
+      result: tx.result,
+      broadcastCount: 0,
+      gasUsd: 0,
+    };
+    current.broadcastCount += 1;
+    if (Number.isFinite(tx.gasUsd)) current.gasUsd += tx.gasUsd;
+    cells.set(key, current);
+  }
+  const rows = [...cells.values()].map((cell) => ({
+    ...cell,
+    gasUsd: Number(cell.gasUsd.toFixed(6)),
+    gasPerBroadcastUsd: cell.broadcastCount > 0 ? Number((cell.gasUsd / cell.broadcastCount).toFixed(6)) : null,
+    totalShareOfGasPct: null,
+  }));
+  const totalGasUsd = rows.reduce((sum, cell) => sum + cell.gasUsd, 0);
+  for (const row of rows) {
+    row.totalShareOfGasPct = totalGasUsd > 0 ? Number(((row.gasUsd / totalGasUsd) * 100).toFixed(6)) : 0;
+  }
+  rows.sort(
+    (left, right) =>
+      right.gasUsd - left.gasUsd ||
+      right.broadcastCount - left.broadcastCount ||
+      String(left.category).localeCompare(String(right.category)),
+  );
+  return rows;
+}
+
 export function buildCapitalAuditReport({
   generatedAt = new Date().toISOString(),
   signerAuditRecords = [],
@@ -613,6 +662,9 @@ export function buildCapitalAuditReport({
       observedAt: record.timestamp,
       strategyId: record.strategyId,
       chain: record.chain,
+      lifecycleStage: broadcastLifecycleStage(record),
+      category: broadcastCategory(record, evidenceType),
+      result: broadcastResultFromReceipt(receipt),
       from: record.broadcast?.from || transaction?.from || null,
       to: record.broadcast?.to || transaction?.to || null,
       amountUsd: record.amountUsd ?? null,
@@ -651,6 +703,26 @@ export function buildCapitalAuditReport({
     entry.unmatchedTxs.map((tx) => ({ address, ...tx })),
   );
   const totalGasUsd = transactions.map((entry) => entry.gasUsd).filter(Number.isFinite).reduce((sum, value) => sum + value, 0);
+  const broadcastBreakdown = buildBroadcastBreakdown(transactions);
+  const breakdownGasUsd = broadcastBreakdown.map((entry) => entry.gasUsd).reduce((sum, value) => sum + value, 0);
+  const byCategoryGas = new Map();
+  const byChainGas = new Map();
+  for (const cell of broadcastBreakdown) {
+    byCategoryGas.set(cell.category, (byCategoryGas.get(cell.category) || 0) + cell.gasUsd);
+    byChainGas.set(cell.chain, (byChainGas.get(cell.chain) || 0) + cell.gasUsd);
+  }
+  const topGasCategory = [...byCategoryGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+  const topGasChain = [...byChainGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+  const gasFromRevertedTxsUsd = transactions
+    .filter((entry) => entry.result === "reverted")
+    .map((entry) => entry.gasUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  const gasFromNoReceiptTxsUsd = transactions
+    .filter((entry) => entry.result === "no_receipt")
+    .map((entry) => entry.gasUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
   const totalQuotedGatewayFeeSats = offrampSummaries
     .map((entry) => Number(entry.quotedFeeSats))
     .filter(Number.isFinite)
@@ -729,6 +801,11 @@ export function buildCapitalAuditReport({
       bitcoinMatchedSettlementCount: offrampSummaries.filter((entry) => entry.matchedBitcoinTx?.txid).length,
       bitcoinUnmatchedTxCount: unmatchedBitcoinTxs.length,
       totalGasUsd,
+      topGasCategory,
+      topGasChain,
+      gasFromRevertedTxsUsd: Number(gasFromRevertedTxsUsd.toFixed(6)),
+      gasFromNoReceiptTxsUsd: Number(gasFromNoReceiptTxsUsd.toFixed(6)),
+      broadcastBreakdownGasDriftUsd: Number(Math.abs(totalGasUsd - breakdownGasUsd).toFixed(6)),
       totalQuotedGatewayFeeSats,
       totalQuotedGatewayResidualSats,
       totalObservedBtcSats,
@@ -764,6 +841,7 @@ export function buildCapitalAuditReport({
       gatewayBtcConsolidations: consolidationSummaries,
       nativeDexExperiments: nativeDexSummaries,
     },
+    broadcastBreakdown,
     transactions,
     issues: derivedIssues,
   };

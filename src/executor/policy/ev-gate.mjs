@@ -5,6 +5,7 @@ import {
   tinyCanarySameChainRoundTripCostUsd,
 } from "../../config/sizing.mjs";
 import { stableSerialize } from "../../execution/journal.mjs";
+import { evaluateEvMarginFloor } from "../../risk/ev-margin-floor.mjs";
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -337,6 +338,24 @@ function expectedNetUsdFromIntent(intent = {}) {
   return null;
 }
 
+function gasEstimateUsdFromIntent(intent = {}) {
+  const candidates = [
+    intent.gasEstimateUsd,
+    intent.metadata?.gasEstimateUsd,
+    intent.estimatedGasUsd,
+    intent.metadata?.estimatedGasUsd,
+    intent.routeContext?.gasEstimateUsd,
+    intent.metadata?.routeContext?.gasEstimateUsd,
+    intent.quote?.gasEstimateUsd,
+    intent.quote?.routeContext?.gasEstimateUsd,
+  ];
+  for (const candidate of candidates) {
+    const parsed = finiteNumber(candidate);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
 function resolveEvHistoryInput(receiptHistory, { now, policy } = {}) {
   if (receiptHistory?.entries && Array.isArray(receiptHistory.entries)) {
     return receiptHistory;
@@ -401,6 +420,27 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
         chain,
         intentType,
         blockReason: "expected_net_required_for_live_intent",
+      },
+    };
+  }
+
+  const evMarginFloor = evaluateEvMarginFloor({
+    expectedNetPnlUsd: expectedNetUsd,
+    gasEstimateUsd: gasEstimateUsdFromIntent(intent),
+    chain,
+    route: intentType,
+    policy: policy?.evMarginFloorPolicy,
+  });
+  if (evMarginFloor.allow === false) {
+    return {
+      allow: false,
+      blockers: ["ev_below_gas_margin_floor"],
+      evidence: {
+        strategyId,
+        chain,
+        intentType,
+        expectedNetUsd,
+        evMarginFloor,
       },
     };
   }

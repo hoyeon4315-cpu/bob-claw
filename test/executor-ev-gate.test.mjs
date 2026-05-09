@@ -5,6 +5,7 @@ import {
   buildEvCostModel,
   evGate,
 } from "../src/executor/policy/ev-gate.mjs";
+import { evaluateEvMarginFloor } from "../src/risk/ev-margin-floor.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../src/config/sizing.mjs";
 import { stableSerialize } from "../src/execution/journal.mjs";
@@ -107,6 +108,36 @@ test("evGate rejects marginal EV when expected net is at the receipt-backed thre
   assert.equal(verdict.allow, false);
   assert.deepEqual(verdict.blockers, ["expected_net_below_receipt_cost_p90_floor"]);
   assert.equal(verdict.evidence.requiredNetUsd, 0.9);
+});
+
+test("ev margin floor rejects expected net equal to configured gas ratio", () => {
+  const verdict = evaluateEvMarginFloor({
+    expectedNetPnlUsd: 1.5,
+    gasEstimateUsd: 1,
+    chain: "base",
+    route: "refill",
+  });
+
+  assert.equal(verdict.allow, false);
+  assert.equal(verdict.reason, "ev_below_gas_margin_floor");
+  assert.equal(verdict.ratio, 1.5);
+  assert.equal(verdict.threshold, 1.5);
+});
+
+test("evGate wires gas margin floor into policy rejection", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "capital_rebalance",
+      expectedNetUsd: 1.5,
+      gasEstimateUsd: 1,
+    }),
+    makeHistory([], { intentType: "capital_rebalance" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["ev_below_gas_margin_floor"]);
+  assert.equal(verdict.evidence.evMarginFloor.ratio, 1.5);
 });
 
 test("evGate rejects non-safety live intents when expected net is unmeasured", () => {

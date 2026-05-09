@@ -536,6 +536,8 @@ function LiveLaneCard() {
   const refillTopAction = Array.isArray(refill.nextOperatorActions) ? refill.nextOperatorActions[0] : null;
   const refillTopDryRun = Array.isArray(refill.dryRunCommands) ? refill.dryRunCommands[0] : null;
   const refillTopSafeReset = Array.isArray(refill.safeResetCommands) ? refill.safeResetCommands[0] : null;
+  const gasGovernor = status.gasGovernor || {};
+  const gasGovernorSummary = gasGovernor.summary || {};
   const executionMain = execution.attemptedLive
     ? txBroadcastCount > 0
       ? `${txBroadcastCount} tx`
@@ -581,6 +583,12 @@ function LiveLaneCard() {
           ? friendlyBlockerLabel(refillTopBlocker.reason)
           : `${Number(refill.unaffectedJobCount || 0)} unaffected`,
       tone: refillUnresolvedCount > 0 ? 'warn' : refillBlockedCount > 0 ? 'warn' : 'neutral',
+    },
+    {
+      label: 'Gas Gov',
+      main: `${Number(gasGovernorSummary.wouldRejectCount || 0)} reject`,
+      sub: `${fmtUsd(gasGovernorSummary.avoidableGasUsd || 0)} avoidable`,
+      tone: Number(gasGovernorSummary.wouldRejectCount || 0) > 0 ? 'warn' : 'neutral',
     },
     {
       label: 'Radar',

@@ -3,6 +3,7 @@ import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-repre
 import { OFFICIAL_GATEWAY_DESTINATION_CHAINS } from "../config/gateway-destinations.mjs";
 import { ACTIVE_SLEEVE_PROFILE } from "../config/sleeve-profile.mjs";
 import { deriveConfiguredActiveBudgetUsd } from "../config/strategy-caps.mjs";
+import { computeIdleDustThreshold } from "../config/idle-dust-threshold.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -240,8 +241,8 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
     idleInventoryConsolidation: {
       enabled: true,
       dstChain: "base",
-      minIdleAgeMs: 72 * 60 * 60 * 1000,
-      minIdleUsd: 5,
+      minIdleAgeMs: computeIdleDustThreshold().minIdleAgeMs,
+      minIdleUsd: computeIdleDustThreshold().minIdleUsd,
       maxAggregateIdleUsd: 50,
       evidenceSource: "data/treasury/inbound-events.jsonl trailing_30d",
     },

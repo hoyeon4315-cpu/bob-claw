@@ -454,6 +454,8 @@ function LiveLaneCard() {
   const refillTopAction = Array.isArray(refill.nextOperatorActions) ? refill.nextOperatorActions[0] : null;
   const refillTopDryRun = Array.isArray(refill.dryRunCommands) ? refill.dryRunCommands[0] : null;
   const refillTopSafeReset = Array.isArray(refill.safeResetCommands) ? refill.safeResetCommands[0] : null;
+  const gasGovernor = status.gasGovernor || {};
+  const gasGovernorSummary = gasGovernor.summary || {};
   const executionMain = execution.attemptedLive ? txBroadcastCount > 0 ? `${txBroadcastCount} tx` : "No tx" : "Idle";
   const executionSub = txBroadcastCount > 0 ? "policy approved" : friendlyBlockerLabel(execution.noTxReason || (execution.mode === "execute" ? "policy_no_tx" : "waiting"));
   const resolverActionable = Number(blockerResolver.resolverActionableCount || 0);
@@ -481,6 +483,12 @@ function LiveLaneCard() {
       main: refillUnresolvedCount > 0 ? `${refillUnresolvedCount} scoped` : refillBlockedCount > 0 ? `${refillBlockedCount} backlog` : "Clear",
       sub: refillTopBlocker?.taxonomy ? friendlyBlockerLabel(refillTopBlocker.taxonomy) : refillTopBlocker?.reason ? friendlyBlockerLabel(refillTopBlocker.reason) : `${Number(refill.unaffectedJobCount || 0)} unaffected`,
       tone: refillUnresolvedCount > 0 ? "warn" : refillBlockedCount > 0 ? "warn" : "neutral"
+    },
+    {
+      label: "Gas Gov",
+      main: `${Number(gasGovernorSummary.wouldRejectCount || 0)} reject`,
+      sub: `${fmtUsd(gasGovernorSummary.avoidableGasUsd || 0)} avoidable`,
+      tone: Number(gasGovernorSummary.wouldRejectCount || 0) > 0 ? "warn" : "neutral"
     },
     {
       label: "Radar",

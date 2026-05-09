@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildIdleInventoryConsolidationPlan } from "../src/executor/treasury/idle-inventory-trigger.mjs";
+import { computeIdleDustThreshold } from "../src/config/idle-dust-threshold.mjs";
 
 test("idle inventory trigger plans only idle BTC-family wallet dust", () => {
   const walletSnapshot = {
@@ -79,4 +80,39 @@ test("idle inventory trigger emits no plan while kill-switch is active", () => {
   assert.equal(plan.status, "skipped_kill_switch_active");
   assert.equal(plan.aggregateUsd, 0);
   assert.deepEqual(plan.candidates, []);
+});
+
+test("idle dust threshold uses conservative p90 round-trip cost when enough recent samples exist", () => {
+  const threshold = computeIdleDustThreshold({
+    chain: "sonic",
+    auditRecords: [1, 2, 3, 4].map((cost, index) => ({
+      timestamp: `2026-05-0${index + 1}T00:00:00.000Z`,
+      chain: "sonic",
+      lifecycle: { stage: "confirmed" },
+      realized: { actualKnownCostUsd: cost },
+    })),
+    now: "2026-05-09T00:00:00.000Z",
+  });
+
+  assert.equal(threshold.minIdleUsd, 8);
+  assert.equal(threshold.minIdleAgeMs, 72 * 60 * 60 * 1000);
+  assert.equal(threshold.evidenceSource, "signer_audit_p90_roundtrip_30d");
+});
+
+test("idle dust threshold keeps default when recent sample count is too small", () => {
+  const threshold = computeIdleDustThreshold({
+    chain: "sonic",
+    auditRecords: [
+      {
+        timestamp: "2026-05-01T00:00:00.000Z",
+        chain: "sonic",
+        lifecycle: { stage: "confirmed" },
+        realized: { actualKnownCostUsd: 10 },
+      },
+    ],
+    now: "2026-05-09T00:00:00.000Z",
+  });
+
+  assert.equal(threshold.minIdleUsd, 5);
+  assert.equal(threshold.evidenceSource, "default_insufficient_recent_samples");
 });

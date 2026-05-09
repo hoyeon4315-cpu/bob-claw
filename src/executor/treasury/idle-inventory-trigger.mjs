@@ -1,3 +1,5 @@
+import { computeIdleDustThreshold } from "../../config/idle-dust-threshold.mjs";
+
 const DEFAULT_GATEWAY_DESTINATIONS = Object.freeze([
   "ethereum",
   "bob",
@@ -44,6 +46,7 @@ export function buildIdleInventoryConsolidationPlan({
   walletSnapshot = {},
   gatewayDestinations = DEFAULT_GATEWAY_DESTINATIONS,
   threshold = {},
+  auditRecords = [],
   killSwitchActive = false,
   now = new Date().toISOString(),
 } = {}) {
@@ -80,9 +83,17 @@ export function buildIdleInventoryConsolidationPlan({
     const srcChain = String(item.chain || "").toLowerCase();
     const usd = finite(item.usd);
     const amount = finite(item.amount);
+    const measuredThreshold = computeIdleDustThreshold({
+      chain: srcChain,
+      auditRecords,
+      now,
+      defaultMinIdleUsd: minIdleUsd,
+      defaultMinIdleAgeMs: minIdleAgeMs,
+    });
+    const chainMinIdleUsd = measuredThreshold.minIdleUsd;
     if (!destinationSet.has(srcChain) || srcChain === dstChain) continue;
     if (!isBtcFamilyIdleToken(item)) continue;
-    if (!(usd >= minIdleUsd) || !(amount > 0)) continue;
+    if (!(usd >= chainMinIdleUsd) || !(amount > 0)) continue;
     if (itemAgeMs(item, walletSnapshot, nowMs) < minIdleAgeMs) continue;
     const remainingUsd = maxAggregateIdleUsd - aggregateUsd;
     if (!(remainingUsd > 0)) break;
@@ -100,6 +111,8 @@ export function buildIdleInventoryConsolidationPlan({
       estimatedUsd: Number(takeUsd.toFixed(8)),
       sourceAmount: amount,
       sourceUsd: usd,
+      minIdleUsd: chainMinIdleUsd,
+      thresholdEvidenceSource: measuredThreshold.evidenceSource,
       reason: "idle_btc_family_wallet_inventory",
     });
   }

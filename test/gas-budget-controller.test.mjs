@@ -58,6 +58,43 @@ test("evaluateGasBudgetController blocks route failed gas budget", () => {
   assert.ok(result.blockers.includes("route_failed_gas_budget_24h_exceeded"));
 });
 
+test("evaluateGasBudgetController applies daily gas budget only to refill and discovery stages", () => {
+  const records = [
+    makeRecord({
+      strategyId: "refill-a",
+      chain: "base",
+      lifecycleStage: "refill",
+      realized: { actualKnownCostUsd: 0.8 },
+    }),
+  ];
+
+  const refill = evaluateGasBudgetController({
+    intent: makeIntent({ strategyId: "refill-b", intentType: "capital_rebalance", lifecycleStage: "refill" }),
+    auditRecords: records,
+    dailyGasBudget: {
+      enabled: true,
+      scopedLifecycleStages: ["refill", "discovery_probe", "idle_consolidation_planned"],
+      maxDailyGasUsd: 1,
+    },
+    estimatedGasUsd: 0.3,
+  });
+
+  const canary = evaluateGasBudgetController({
+    intent: makeIntent({ strategyId: "canary-a", intentType: "tiny_live_canary", lifecycleStage: "canary" }),
+    auditRecords: records,
+    dailyGasBudget: {
+      enabled: true,
+      scopedLifecycleStages: ["refill", "discovery_probe", "idle_consolidation_planned"],
+      maxDailyGasUsd: 1,
+    },
+    estimatedGasUsd: 0.3,
+  });
+
+  assert.equal(refill.allowed, false);
+  assert.ok(refill.blockers.includes("daily_gas_budget_exceeded"));
+  assert.equal(canary.allowed, true);
+});
+
 test("evaluateGasBudgetController blocks consecutive reverts", () => {
   const records = [
     makeRecord({ lifecycle: { stage: "reverted" } }),

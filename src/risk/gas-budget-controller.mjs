@@ -1,3 +1,5 @@
+import { BROADCAST_BUDGET_POLICY } from "../config/broadcast-budget.mjs";
+
 function isFiniteNumber(value) {
   return Number.isFinite(value);
 }
@@ -12,6 +14,15 @@ function hoursAgoMs(now, timestamp) {
 
 function routeKey(intent = {}) {
   return `${intent.strategyId || "unknown"}:${intent.chain || "unknown"}:${intent.intentType || "unknown"}`;
+}
+
+function lifecycleStage(value = {}) {
+  return value.lifecycleStage || value.lifecycle?.stage || value.intent?.lifecycleStage || value.metadata?.lifecycleStage || null;
+}
+
+function actualGasUsd(record = {}) {
+  const parsed = Number(record.realized?.actualKnownCostUsd ?? record.execution?.actualKnownCostUsd ?? record.gasUsd ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function failedBroadcast(record = {}) {
@@ -36,6 +47,8 @@ export function evaluateGasBudgetController({
   idlePositionExitDays = 7,
   staleQuoteThresholdMs = 30_000,
   maxConsecutiveRevertsPerRoute = 3,
+  dailyGasBudget = BROADCAST_BUDGET_POLICY,
+  estimatedGasUsd = null,
   now = new Date().toISOString(),
 } = {}) {
   const blockers = [];
@@ -86,6 +99,27 @@ export function evaluateGasBudgetController({
     blockers.push("route_consecutive_reverts_auto_pause");
   }
 
+  const dailyBudget = dailyGasBudget || {};
+  const scopedStages = new Set(dailyBudget.scopedLifecycleStages || BROADCAST_BUDGET_POLICY.scopedLifecycleStages);
+  const intentStage = lifecycleStage(intent);
+  const maxDailyGasUsd = Number(dailyBudget.maxDailyGasUsd);
+  const estimatedGas = Number(estimatedGasUsd ?? intent.gasEstimateUsd ?? intent.metadata?.gasEstimateUsd ?? 0);
+  const dailyGasBudgetApplies =
+    dailyBudget.enabled !== false &&
+    scopedStages.has(intentStage) &&
+    Number.isFinite(maxDailyGasUsd) &&
+    maxDailyGasUsd >= 0;
+  const scopedDailyGasUsd = dailyGasBudgetApplies
+    ? recentRecords
+        .filter((record) => scopedStages.has(lifecycleStage(record)))
+        .map(actualGasUsd)
+        .reduce((sum, value) => sum + value, 0)
+    : 0;
+  const projectedDailyGasUsd = scopedDailyGasUsd + (Number.isFinite(estimatedGas) ? estimatedGas : 0);
+  if (dailyGasBudgetApplies && projectedDailyGasUsd > maxDailyGasUsd) {
+    blockers.push("daily_gas_budget_exceeded");
+  }
+
   if (positionState) {
     const positionGas = isFiniteNumber(positionState.cumulativeGasUsd)
       ? positionState.cumulativeGasUsd
@@ -133,6 +167,9 @@ export function evaluateGasBudgetController({
       routeKey: rKey,
       routeFailedGasUsd24h: routeFailedGas,
       consecutiveRevertsOnRoute: consecutiveReverts,
+      scopedDailyGasUsd,
+      projectedDailyGasUsd,
+      dailyGasBudgetApplies,
       quoteAgeMs: quoteObservedAt
         ? hoursAgoMs(now, quoteObservedAt)
         : null,
