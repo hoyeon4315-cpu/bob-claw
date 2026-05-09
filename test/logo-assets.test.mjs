@@ -157,7 +157,7 @@ describe("dashboard logo runtime invariants", () => {
     assert.match(runtime, /'aave-v3': 'aave'/);
     assert.match(runtime, /'compound_v3': 'compound'/);
     assert.match(runtime, /'euler-v2': 'euler'/);
-    assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler', 'yo'\]\);/);
+    assert.match(runtime, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler', 'yo', 'gmx', 'solv'\]\);/);
     assert.match(runtime, /LOCAL_FIRST_PROTOCOL_IDS\.has\(logoId\) \? \[LOCAL_PROTOCOL\(logoId\), \.\.\.remote\] : \[\.\.\.remote, LOCAL_PROTOCOL\(logoId\)\]/);
   });
 

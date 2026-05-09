@@ -14,7 +14,7 @@ const LLAMA_CHAIN = (slug, s) => `https://icons.llamao.fi/icons/chains/rsz_${slu
 const TOKEN_SVG   = (sym) => `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/${sym}.svg`;
 const LOCAL_CHAIN = (id) => `assets/logos/chains/${id}.svg`;
 const LOCAL_PROTOCOL = (id) => `assets/logos/protocols/${id}.svg`;
-const LOCAL_FIRST_PROTOCOL_IDS = new Set(['euler', 'yo']);
+const LOCAL_FIRST_PROTOCOL_IDS = new Set(['euler', 'yo', 'gmx', 'solv']);
 const PRELOAD_PROTOCOL_IDS = [
   'moonwell', 'morpho', 'aave', 'compound', 'euler', 'yo', 'pendle',
   'aerodrome', 'beefy', 'gmx', 'bend', 'bex', 'k3capital', 'babylon',
@@ -196,9 +196,11 @@ function preloadDashboardLogos() {
     preloadLogoUrl(LOCAL_CHAIN(id));
   }
   for (const id of PRELOAD_PROTOCOL_IDS) {
-    const sources = protoSources(id, 28);
-    for (const src of sources.slice(0, 2)) preloadLogoUrl(src);
-    preloadLogoUrl(LOCAL_PROTOCOL(normalizeProtocolLogoId(id)));
+    const logoId = normalizeProtocolLogoId(id);
+    const sources = LOCAL_FIRST_PROTOCOL_IDS.has(logoId)
+      ? [LOCAL_PROTOCOL(logoId)]
+      : [...protoSources(id, 28).slice(0, 2), LOCAL_PROTOCOL(logoId)];
+    for (const src of sources) preloadLogoUrl(src);
   }
   for (const id of PRELOAD_ASSET_IDS) {
     for (const src of assetSources(id, 24).slice(0, 2)) preloadLogoUrl(src);

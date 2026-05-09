@@ -427,6 +427,14 @@ function selectPreferredStatusPayload(candidates = []) {
     return 0;
   })[0];
 }
+function isSameOriginLiveRuntime(runtime = null) {
+  if (!runtime?.enabled || !runtime?.statusUrl) return false;
+  try {
+    return new URL(runtime.statusUrl, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
 async function fetchEndpointStatus(endpoint) {
   const controller = window.AbortController ? new AbortController() : null;
   const timeout = controller ? setTimeout(() => controller.abort(), endpoint.timeoutMs || FETCH_TIMEOUT_MS) : null;
@@ -479,21 +487,27 @@ async function fetchStatusPayload() {
   const now = Date.now();
   const runtime = await resolveConfiguredLiveRuntime();
   const endpoints = [
-    ...runtime?.enabled ? [{ url: `${runtime.statusUrl}?t=${now}`, source: "remote-live-api", live: true, origin: runtime.origin, remote: true, timeoutMs: LIVE_FETCH_TIMEOUT_MS }] : [],
-    { url: `${LIVE_STATUS_PATH}?t=${now}`, source: "live-api", live: true },
+    ...runtime?.enabled ? [{
+      url: `${runtime.statusUrl}?t=${now}`,
+      source: isSameOriginLiveRuntime(runtime) ? "live-api" : "remote-live-api",
+      live: true,
+      origin: runtime.origin,
+      remote: !isSameOriginLiveRuntime(runtime),
+      timeoutMs: LIVE_FETCH_TIMEOUT_MS
+    }] : [],
     { url: `${STATIC_STATUS_PATH}?t=${now}`, source: "static-snapshot", live: false }
   ];
   const candidates = await Promise.all(endpoints.map(fetchEndpointStatus));
-  const remoteLive = candidates.find((candidate) => candidate?.source === "remote-live-api" && candidate?.status);
-  if (runtime?.enabled && !remoteLive) {
+  const configuredLive = candidates.find((candidate) => (candidate?.source === "remote-live-api" || candidate?.source === "live-api") && candidate?.status);
+  if (runtime?.enabled && !configuredLive) {
     const refreshedRuntime = await resolveConfiguredLiveRuntime({ forceRefresh: true });
     if (refreshedRuntime?.enabled && refreshedRuntime.statusUrl !== runtime.statusUrl) {
       const retry = await fetchEndpointStatus({
         url: `${refreshedRuntime.statusUrl}?t=${Date.now()}`,
-        source: "remote-live-api",
+        source: isSameOriginLiveRuntime(refreshedRuntime) ? "live-api" : "remote-live-api",
         live: true,
         origin: refreshedRuntime.origin,
-        remote: true,
+        remote: !isSameOriginLiveRuntime(refreshedRuntime),
         timeoutMs: LIVE_FETCH_TIMEOUT_MS
       });
       candidates.push(retry);

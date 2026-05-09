@@ -238,4 +238,7 @@ test("policy coverage report maps all 11 AGENTS runtime safety checks", () => {
     ],
   );
   assert.ok(report.checks.every((item) => item.runtimeAuthority === "policy_engine"));
+  const gasBudget = report.checks.find((item) => item.id === "failed_gas_budget_guard");
+  assert.ok(gasBudget.blockers.includes("daily_gas_budget_exceeded"));
+  assert.equal(gasBudget.policyResult, "cap_check+gas_budget");
 });

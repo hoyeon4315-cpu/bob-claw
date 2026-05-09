@@ -4,7 +4,13 @@ import { join, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import {
+  emptyPricesUsd,
+  getCoinGeckoPricesUsd,
+  latestPriceSnapshot,
+  overlayObservedPricesUsd,
+  pricesFromSnapshot,
+} from "../market/prices.mjs";
 import { ZERO_TOKEN, tokenAsset } from "../assets/tokens.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -82,6 +88,22 @@ export async function resolveCapitalManagerTreasuryInventory({
       inventoryRefreshError: serializeError(error),
     };
   }
+}
+
+export async function resolveCapitalManagerPrices({
+  dataDir = config.dataDir,
+  livePriceReader = getCoinGeckoPricesUsd,
+  readJsonlImpl = readJsonl,
+} = {}) {
+  const [livePrices, priceSnapshots, gasSnapshots, bitcoinFeeSnapshots] = await Promise.all([
+    livePriceReader().catch(() => emptyPricesUsd()),
+    readJsonlImpl(dataDir, "market-price-snapshots").catch(() => []),
+    readJsonlImpl(dataDir, "gas-snapshots").catch(() => []),
+    readJsonlImpl(dataDir, "bitcoin-fee-snapshots").catch(() => []),
+  ]);
+  const observedSnapshot = latestPriceSnapshot(priceSnapshots);
+  const observedPrices = observedSnapshot ? pricesFromSnapshot(observedSnapshot) : livePrices;
+  return overlayObservedPricesUsd(observedPrices, { gasSnapshots, bitcoinFeeSnapshots });
 }
 
 async function readJsonIfExists(path) {
@@ -165,7 +187,7 @@ async function main() {
     configuredAddress: config.estimateFrom,
   });
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
-  const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+  const prices = await resolveCapitalManagerPrices({ dataDir: config.dataDir });
   const strategyCaps = listStrategyCaps({ includeInactive: args.includeInactive }) || [];
   const {
     treasuryInventory,

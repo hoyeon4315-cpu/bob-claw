@@ -11,6 +11,7 @@ import { evaluateConcentrationGuard } from "../risk/concentration-guard.mjs";
 import { evaluateConsecutiveFailures } from "./consecutive-failures.mjs";
 import { evaluateEvGate } from "./ev-gate.mjs";
 import { evaluateAutoKillTriggers } from "../../risk/auto-kill-triggers.mjs";
+import { evaluateGasBudgetController } from "../../risk/gas-budget-controller.mjs";
 import { checkGatewayAvailability } from "./gateway-availability.mjs";
 import { evaluateHealthFactorCheck } from "./hf-check.mjs";
 import { evaluateLeverageCollateralRule } from "./leverage-collateral-rule.mjs";
@@ -175,6 +176,25 @@ export async function evaluateIntentPolicies({
       now,
       policy: riskContext?.evCostPolicy || undefined,
     }),
+    (() => {
+      const gasResult = evaluateGasBudgetController({
+        intent: effectiveIntent,
+        auditRecords,
+        positionState: riskContext?.positionState || effectiveIntent.positionState || null,
+        gasBaselines: riskContext?.gasBaselines || {},
+        dailyGasBudget: riskContext?.broadcastBudgetPolicy || effectiveIntent.metadata?.broadcastBudgetPolicy || undefined,
+        operatingCapitalUsd: riskContext?.totalOperatingCapitalUsd ?? activeBudgetUsd ?? null,
+        estimatedGasUsd: effectiveIntent.gasEstimateUsd ?? effectiveIntent.metadata?.gasEstimateUsd ?? null,
+        now,
+      });
+      return {
+        policy: "gas_budget",
+        observedAt: now,
+        decision: gasResult.allowed ? "ALLOW" : "BLOCK",
+        blockers: gasResult.blockers,
+        metrics: gasResult.metrics,
+      };
+    })(),
     evaluateConsecutiveFailures({
       intent: effectiveIntent,
       auditRecords,

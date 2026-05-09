@@ -53,9 +53,13 @@ export const POLICY_COVERAGE_CHECKS = Object.freeze([
     id: "failed_gas_budget_guard",
     agentsRef: "AGENTS.md:69",
     runtimeAuthority: "policy_engine",
-    policyResult: "cap_check",
-    blockers: Object.freeze(["strategy_failed_gas_budget_breached"]),
-    enforcementFile: "src/executor/policy/cap-check.mjs",
+    policyResult: "cap_check+gas_budget",
+    blockers: Object.freeze([
+      "strategy_failed_gas_budget_breached",
+      "route_failed_gas_budget_24h_exceeded",
+      "daily_gas_budget_exceeded",
+    ]),
+    enforcementFile: "src/executor/policy/index.mjs",
   }),
   Object.freeze({
     id: "drawdown_kill_switch",

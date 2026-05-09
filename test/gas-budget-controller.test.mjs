@@ -42,6 +42,22 @@ test("evaluateGasBudgetController blocks stale quote >30s", () => {
   assert.ok(result.blockers.includes("stale_quote_exceeded_30s"));
 });
 
+test("evaluateGasBudgetController honors configured quote maxAgeMs", () => {
+  const now = "2026-05-08T06:00:00.000Z";
+  const result = evaluateGasBudgetController({
+    intent: makeIntent({
+      quote: {
+        observedAt: "2026-05-08T05:59:00.000Z",
+        maxAgeMs: 120_000,
+      },
+    }),
+    auditRecords: [],
+    now,
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.metrics.staleQuoteThresholdMs, 120_000);
+});
+
 test("evaluateGasBudgetController blocks route failed gas budget", () => {
   const records = Array.from({ length: 5 }).map(() =>
     makeRecord({
@@ -93,6 +109,58 @@ test("evaluateGasBudgetController applies daily gas budget only to refill and di
   assert.equal(refill.allowed, false);
   assert.ok(refill.blockers.includes("daily_gas_budget_exceeded"));
   assert.equal(canary.allowed, true);
+});
+
+test("evaluateGasBudgetController treats null absolute and fraction caps as unset", () => {
+  const result = evaluateGasBudgetController({
+    intent: makeIntent({ strategyId: "refill-b", intentType: "capital_rebalance", lifecycleStage: "refill" }),
+    auditRecords: [
+      makeRecord({
+        strategyId: "refill-a",
+        chain: "base",
+        lifecycleStage: "refill",
+        realized: { actualKnownCostUsd: 5 },
+      }),
+    ],
+    dailyGasBudget: {
+      enabled: true,
+      scopedLifecycleStages: ["refill"],
+      maxDailyGasUsd: null,
+      dailyGasBurnFractionCap: null,
+    },
+    estimatedGasUsd: 1,
+  });
+
+  assert.equal(result.allowed, true);
+  assert.equal(result.metrics.dailyGasBudgetApplies, false);
+});
+
+test("evaluateGasBudgetController enforces dailyGasBurnFractionCap from operating capital", () => {
+  const records = [
+    makeRecord({
+      strategyId: "refill-a",
+      chain: "base",
+      lifecycleStage: "refill",
+      realized: { actualKnownCostUsd: 0.8 },
+    }),
+  ];
+
+  const result = evaluateGasBudgetController({
+    intent: makeIntent({ strategyId: "refill-b", intentType: "capital_rebalance", lifecycleStage: "refill" }),
+    auditRecords: records,
+    dailyGasBudget: {
+      enabled: true,
+      scopedLifecycleStages: ["refill"],
+      maxDailyGasUsd: null,
+      dailyGasBurnFractionCap: 0.01,
+    },
+    operatingCapitalUsd: 100,
+    estimatedGasUsd: 0.3,
+  });
+
+  assert.equal(result.allowed, false);
+  assert.ok(result.blockers.includes("daily_gas_budget_exceeded"));
+  assert.equal(result.metrics.maxDailyGasBudgetUsd, 1);
 });
 
 test("evaluateGasBudgetController blocks consecutive reverts", () => {

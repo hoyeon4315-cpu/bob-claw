@@ -257,6 +257,83 @@ test("policy index allows intent when concentration is within caps", async () =>
   assert.equal(concentrationResult.decision, "ALLOW");
 });
 
+test("policy index blocks scoped refill intents that breach the daily gas budget", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: baseIntent({
+      intentType: "capital_rebalance",
+      lifecycleStage: "refill",
+      gasEstimateUsd: 0.75,
+      metadata: {
+        assetCoverage: {
+          status: "closed",
+          unknownAssetBalanceCount: 0,
+        },
+      },
+    }),
+    auditRecords: [
+      {
+        intent: { strategyId: "across-bridge", chain: "base", intentType: "capital_rebalance", lifecycleStage: "refill" },
+        lifecycleStage: "refill",
+        timestamp: "2026-04-22T00:00:00.000Z",
+        realized: { actualKnownCostUsd: 0.5 },
+      },
+    ],
+    riskContext: {
+      broadcastBudgetPolicy: {
+        enabled: true,
+        scopedLifecycleStages: ["refill"],
+        maxDailyGasUsd: 1,
+      },
+    },
+    now: "2026-04-22T00:01:00.000Z",
+    killSwitchPath: null,
+  });
+  assert.equal(policy.decision, "BLOCK");
+  assert.ok(policy.blockers.includes("daily_gas_budget_exceeded"));
+  const gasBudgetResult = policy.results.find((r) => r.policy === "gas_budget");
+  assert.ok(gasBudgetResult);
+  assert.equal(gasBudgetResult.decision, "BLOCK");
+});
+
+test("policy index applies broadcast gas fraction caps from total operating capital", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: baseIntent({
+      intentType: "capital_rebalance",
+      lifecycleStage: "refill",
+      gasEstimateUsd: 0.75,
+      metadata: {
+        assetCoverage: {
+          status: "closed",
+          unknownAssetBalanceCount: 0,
+        },
+      },
+    }),
+    auditRecords: [
+      {
+        intent: { strategyId: "across-bridge", chain: "base", intentType: "capital_rebalance", lifecycleStage: "refill" },
+        lifecycleStage: "refill",
+        timestamp: "2026-04-22T00:00:00.000Z",
+        realized: { actualKnownCostUsd: 0.5 },
+      },
+    ],
+    riskContext: {
+      totalOperatingCapitalUsd: 100,
+      broadcastBudgetPolicy: {
+        enabled: true,
+        scopedLifecycleStages: ["refill"],
+        maxDailyGasUsd: null,
+        dailyGasBurnFractionCap: 0.01,
+      },
+    },
+    now: "2026-04-22T00:01:00.000Z",
+    killSwitchPath: null,
+  });
+  assert.equal(policy.decision, "BLOCK");
+  const gasBudgetResult = policy.results.find((r) => r.policy === "gas_budget");
+  assert.ok(gasBudgetResult);
+  assert.equal(gasBudgetResult.metrics.maxDailyGasBudgetUsd, 1);
+});
+
 test("policy index propagates requiresUnwind when hf check triggers", async () => {
   const policy = await evaluateIntentPolicies({
     intent: baseIntent({

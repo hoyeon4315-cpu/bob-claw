@@ -17,6 +17,10 @@ const MINDMAP_SOURCE = readFileSync(
   join(HERE, "..", "dashboard", "public", "mindmap.jsx"),
   "utf8"
 );
+const LOGOS_SOURCE = readFileSync(
+  join(HERE, "..", "dashboard", "public", "logos.jsx"),
+  "utf8"
+);
 const INDEX_HTML = readFileSync(
   join(HERE, "..", "dashboard", "public", "index.html"),
   "utf8"
@@ -37,6 +41,10 @@ describe("dashboard home renewal source guard", () => {
     for (const asset of ["./logos.js", "./data.js", "./ios-frame.js", "./mindmap.js", "./app.js"]) {
       assert.match(INDEX_HTML, new RegExp(asset.replace(".", "\\.")));
     }
+  });
+
+  test("known missing remote protocol logos load local fallback first", () => {
+    assert.match(LOGOS_SOURCE, /const LOCAL_FIRST_PROTOCOL_IDS = new Set\(\['euler', 'yo', 'gmx', 'solv'\]\)/);
   });
 
   test("flow home keeps five KPI metrics in one horizontal strip", () => {
