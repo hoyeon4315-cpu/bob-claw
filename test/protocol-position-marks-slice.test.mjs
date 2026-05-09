@@ -74,7 +74,7 @@ test("buildProtocolPositionMarksSlice reports failed stale and expired latest ma
         positionId: "stale",
         chain: "ethereum",
         valueUsd: 9,
-        observedAt: "2026-05-03T11:00:00.000Z",
+        observedAt: "2026-05-03T11:30:00.000Z",
         confidence: "verified_minimum",
         freshness: "stale",
       },
@@ -102,7 +102,7 @@ test("buildProtocolPositionMarksSlice reports failed stale and expired latest ma
   assert.equal(slice.byChain.ethereum.valueUsd, 9);
   assert.equal(slice.byChain.bsc.valueUsd, 7);
   assert.equal(slice.items.find((item) => item.positionId === "stale").source, "protocol_position_mark");
-  assert.equal(slice.items.find((item) => item.positionId === "stale").sourceObservedAt, "2026-05-03T11:00:00.000Z");
+  assert.equal(slice.items.find((item) => item.positionId === "stale").sourceObservedAt, "2026-05-03T11:30:00.000Z");
 });
 
 test("buildProtocolPositionMarksSlice ignores marks for inactive source entries when active ids are supplied", () => {
@@ -139,6 +139,63 @@ test("buildProtocolPositionMarksSlice ignores marks for inactive source entries 
   assert.equal(slice.confidence, "verified_current");
   assert.equal(slice.totalMarkedUsd, 45.77);
   assert.equal(slice.refreshSuccessRatio.rolling24h, 1);
+});
+
+test("buildProtocolPositionMarksSlice treats an explicit empty active id list as no active positions", () => {
+  const slice = buildProtocolPositionMarksSlice(
+    [
+      {
+        event: "position_mark_failed",
+        positionId: "closed-entry",
+        chain: "base",
+        observedAt: "2026-05-03T12:00:00.000Z",
+        confidence: "adapter_missing",
+        freshness: "failed",
+      },
+      {
+        event: "position_marked",
+        positionId: "closed-success",
+        chain: "base",
+        valueUsd: 45.77,
+        observedAt: "2026-05-03T12:00:10.000Z",
+        confidence: "verified_current",
+        freshness: "fresh",
+      },
+    ],
+    {
+      generatedAt: "2026-05-03T12:01:00.000Z",
+      activePositionIds: [],
+    },
+  );
+
+  assert.equal(slice.latestPositionCount, 0);
+  assert.equal(slice.markedPositionCount, 0);
+  assert.equal(slice.failedPositionCount, 0);
+  assert.equal(slice.totalMarkedUsd, 0);
+  assert.equal(slice.confidence, "verified_current");
+  assert.deepEqual(slice.items, []);
+});
+
+test("buildProtocolPositionMarksSlice recomputes successful mark freshness from observation age", () => {
+  const slice = buildProtocolPositionMarksSlice(
+    [
+      {
+        event: "position_marked",
+        positionId: "old-success",
+        chain: "base",
+        valueUsd: 45.77,
+        observedAt: "2026-05-03T10:00:00.000Z",
+        confidence: "verified_current",
+        freshness: "fresh",
+      },
+    ],
+    { generatedAt: "2026-05-03T12:01:00.000Z" },
+  );
+
+  assert.equal(slice.items[0].freshness, "expired");
+  assert.equal(slice.expiredPositionCount, 1);
+  assert.equal(slice.stalePositionCount, 0);
+  assert.equal(slice.confidence, "verified_minimum");
 });
 
 test("buildProtocolPositionMarksSlice emits rolling refresh success ratios and transient frequency", () => {

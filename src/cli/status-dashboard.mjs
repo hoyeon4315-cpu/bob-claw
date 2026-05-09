@@ -339,12 +339,15 @@ async function main() {
   const blockerFunnelOutput = status.blockerResolver
     ? await writeDashboardStatus(dashboardOutputDir, status.blockerResolver, "blocker-funnel.json")
     : null;
+  const walletHoldingsPath = join(dashboardOutputDir, "wallet-holdings.json");
+  await writeDashboardStatus(dashboardOutputDir, status.walletHoldings || { pending: true }, "wallet-holdings.json");
 
   console.log(`${output.changed ? "wrote" : "unchanged"}=${output.path}`);
   console.log(`${dashboardOutput.changed ? "dashboardWrote" : "dashboardUnchanged"}=${dashboardOutput.path}`);
   if (blockerFunnelOutput) {
     console.log(`${blockerFunnelOutput.changed ? "blockerFunnelWrote" : "blockerFunnelUnchanged"}=${blockerFunnelOutput.path}`);
   }
+  console.log(`walletHoldingsRefreshed=${walletHoldingsPath}`);
   console.log(`severity=${status.overall.severity}`);
   console.log(`liveTrading=${status.overall.liveTrading}`);
   console.log(`shadowTrading=${status.overall.shadowTrading}`);

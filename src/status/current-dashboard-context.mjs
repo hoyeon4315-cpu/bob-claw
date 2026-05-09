@@ -76,6 +76,57 @@ import {
   mergeProtocolMarksIntoPositions,
 } from "../treasury/protocol-position-ledger.mjs";
 
+function uniqueStrings(values = []) {
+  return [...new Set(values.filter(Boolean).map((value) => String(value)))];
+}
+
+function buildExecutionTruthSlice(dashboardStatus = {}) {
+  const overall = dashboardStatus.overall || {};
+  const lanePolicy = overall.lanePolicy || {};
+  const operations = dashboardStatus.operations?.allChainAutopilot || null;
+  const execution = operations?.execution || {};
+  const assetTracking = dashboardStatus.assetTracking || {};
+  const topBlockerReasons = Array.isArray(operations?.topBlockers)
+    ? operations.topBlockers.map((item) => item?.reason || null)
+    : [];
+  const blockers = uniqueStrings([
+    ...(overall.blockers || []),
+    ...(lanePolicy.runtimeBlockers || []),
+    ...(lanePolicy.stageBlockers || []),
+    execution.noTxReason,
+    assetTracking.riskReady === false ? `asset_tracking:${assetTracking.coverageState || assetTracking.verdict || "not_risk_ready"}` : null,
+    ...topBlockerReasons,
+  ]);
+  const txBroadcastCount = Number(execution.txBroadcastCount || 0);
+  const attemptedLive = execution.attemptedLive === true;
+  let status = "watching";
+  if (overall.liveTrading === "BLOCKED" || (lanePolicy.runtimeBlockers || []).length > 0) {
+    status = "blocked";
+  } else if (txBroadcastCount > 0) {
+    status = "broadcast_seen";
+  } else if (attemptedLive) {
+    status = "policy_no_tx";
+  } else if (blockers.length > 0) {
+    status = "attention_required";
+  }
+  return {
+    schemaVersion: 1,
+    generatedAt: dashboardStatus.generatedAt || null,
+    status,
+    liveTradingPolicy: overall.liveTrading || null,
+    executionAuthority: "policy_engine_only",
+    attemptedLive,
+    txBroadcastCount,
+    noTxReason: execution.noTxReason || null,
+    assetTrackingRiskReady: assetTracking.riskReady === true,
+    assetTrackingVerdict: assetTracking.verdict || null,
+    refillUnresolvedCount: operations?.refill?.unresolvedCount ?? null,
+    stage: lanePolicy.stage || null,
+    blockers,
+    readOnlyDashboard: true,
+  };
+}
+
 function summarizeMerklCandidate(candidate = null) {
   if (!candidate) return null;
   return {
@@ -260,6 +311,7 @@ export async function buildCurrentDashboardContext({
     evCostModel,
     treasuryInventoryRecords,
     wholeWalletInventoryRecords,
+    pendingWhitelistRecords,
     merklPositionEvents,
     protocolPositionMarks,
     signerAuditRecords,
@@ -325,6 +377,7 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "policy", "ev-cost-model.json")),
     readJsonl(dataDir, "treasury-inventory"),
     readJsonl(dataDir, "whole-wallet-inventory"),
+    readJsonl(dataDir, "treasury/pending-whitelist"),
     readJsonl(dataDir, "merkl-portfolio-positions"),
     readJsonl(dataDir, "protocol-position-marks"),
     readSignerAuditLog(),
@@ -567,6 +620,7 @@ export async function buildCurrentDashboardContext({
   });
   dashboardStatus.assetTracking = buildAssetTrackingSlice({
     capitalSummary: dashboardStatus.capitalSummary,
+    pendingWhitelistRecords,
     generatedAt: dashboardStatus.generatedAt,
   });
   const operatingCapitalUsd = dashboardStatus.capitalSummary?.totalUsd ?? null;
@@ -1024,6 +1078,7 @@ export async function buildCurrentDashboardContext({
     dashboardStatus,
     nextStep: state.nextStep,
   });
+  dashboardStatus.overall.executionTruth = buildExecutionTruthSlice(dashboardStatus);
   dashboardStatus.dataCounts.liveBaselinePresent = dashboardStatus.liveBaseline ? 1 : 0;
   const productCoverage = buildProductPlanningCoverage({
     dashboardStatus,

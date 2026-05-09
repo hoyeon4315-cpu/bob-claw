@@ -370,6 +370,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(adapter, /assetTracking: assetTracking \? \{/);
     assert.match(adapter, /exactTotalUsd: Number\.isFinite\(assetTracking\.exactTotalUsd\) \? assetTracking\.exactTotalUsd : null/);
     assert.match(adapter, /riskUsableUsd: Number\.isFinite\(assetTracking\.riskUsableUsd\) \? assetTracking\.riskUsableUsd : null/);
+    assert.match(adapter, /pendingWhitelistCount: Number\.isFinite\(assetTracking\.pendingWhitelistCount\) \? assetTracking\.pendingWhitelistCount : 0/);
+    assert.match(adapter, /pendingWhitelistSample: Array\.isArray\(assetTracking\.pendingWhitelistSample\) \? assetTracking\.pendingWhitelistSample : \[\]/);
     assert.match(adapter, /systemConfidence: capitalSummary\.systemConfidence \|\| \(summaryAssetConfidence === 'verified_current' \? 'high' : 'medium'\)/);
     assert.match(adapter, /autoExecutionSafe: capitalSummary\.autoExecutionSafe === true/);
     assert.match(adapter, /invariantViolations: Array\.isArray\(capitalSummary\.invariantViolations\) \? capitalSummary\.invariantViolations : \[\]/);
@@ -381,6 +383,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.doesNotMatch(adapter, /hasFreshFullWalletSummary/);
     assert.doesNotMatch(adapter, /hasFreshFullWalletFallback/);
     assert.doesNotMatch(adapter, /displayWalletUsd: Number\.isFinite\(capitalSummary\.displayWalletUsd\) \? capitalSummary\.displayWalletUsd : null/);
+    assert.match(DATA_SOURCE, /movementSummary: flow\?\.movementSummary \|\| \{ totalCount: 0, pendingCount: 0, blockedCount: 0, rejectedCount: 0, deliveredCount: 0, byStatus: \[\], byReason: \[\] \}/);
+    assert.match(DATA_SOURCE, /EXECUTION_TRUTH: status\?\.overall\?\.executionTruth \|\| null/);
   });
 
   test("asset pane surfaces exact tracking blockers instead of implying total certainty", () => {
@@ -390,6 +394,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(assetsPane, /const trackingRiskUsableUsd = Number\.isFinite\(tracking\?\.riskUsableUsd\) \? tracking\.riskUsableUsd : null/);
     assert.match(assetsPane, /trackingRiskReady \? 'risk-ready exact' : 'not exact for sizing'/);
     assert.match(assetsPane, /trackingBlockers\.slice\(0, 3\)\.map/);
+    assert.match(assetsPane, /const pendingWhitelistCount = Number\.isFinite\(tracking\?\.pendingWhitelistCount\) \? tracking\.pendingWhitelistCount : 0/);
+    assert.match(assetsPane, /pending whitelist \{pendingWhitelistCount\}/);
   });
 
   test("data adapter keeps wallet and protocol capital split for map cards", () => {

@@ -259,3 +259,31 @@ test("asset tracking cannot be green when tracked asset metadata coverage is inc
   assert.equal(slice.missingPriceSourceCount, 1);
   assert.equal(slice.blockers.some((item) => item.code === "asset_metadata_coverage_gap"), true);
 });
+
+test("asset tracking exposes pending whitelist queue separately from live unknown balances", () => {
+  const slice = buildAssetTrackingSlice({
+    capitalSummary: {
+      currentWalletUsd: 100,
+      protocolDeployedUsd: 0,
+      currentTotalUsd: 100,
+      walletCoverage: "full_rpc",
+      walletScanErrorCount: 0,
+      protocolMarkIssueCount: 0,
+      pendingSignerActionCount: 0,
+      unknownAssetBalanceCount: 0,
+    },
+    pendingWhitelistRecords: [
+      { chain: "base", token: "0x1111111111111111111111111111111111111111", reason: "manual_review" },
+      { chain: "ethereum", token: "0x2222222222222222222222222222222222222222", reason: "reward_token_audit" },
+    ],
+    generatedAt: "2026-05-08T00:01:00.000Z",
+  });
+
+  assert.equal(slice.unknownAssetBalanceCount, 0);
+  assert.equal(slice.pendingWhitelistCount, 2);
+  assert.deepEqual(slice.pendingWhitelistSample, [
+    { chain: "base", token: "0x1111111111111111111111111111111111111111", reason: "manual_review" },
+    { chain: "ethereum", token: "0x2222222222222222222222222222222222222222", reason: "reward_token_audit" },
+  ]);
+  assert.equal(slice.blockers.some((item) => item.code === "unknown_asset_universe_gap"), false);
+});

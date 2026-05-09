@@ -1252,6 +1252,10 @@ test("flow dashboard slice exposes movement edges and policy rejection blockers"
   assert.equal(directMovement.routeProvider, "lifi");
   assert.equal(directMovement.viaGateway, false);
   assert.equal(directMovement.assetId, "usdc");
+  assert.equal(slice.movementSummary.totalCount, 2);
+  assert.equal(slice.movementSummary.deliveredCount, 2);
+  assert.equal(slice.movementSummary.pendingCount, 0);
+  assert.deepEqual(slice.movementSummary.byStatus, [{ status: "delivered", count: 2 }]);
   assert.equal(
     slice.recentMovements.some((item) => item.fromChainId === "bsc" && item.toChainId === "base"),
     false,
@@ -1297,6 +1301,9 @@ test("flow dashboard slice keeps recent cross-chain route plans visible when blo
   assert.equal(slice.recentMovements[0].projected, true);
   assert.equal(slice.recentMovements[0].routeProvider, "gateway");
   assert.equal(slice.recentMovements[0].amountUsd, 45.25);
+  assert.equal(slice.movementSummary.totalCount, 1);
+  assert.equal(slice.movementSummary.blockedCount, 1);
+  assert.deepEqual(slice.movementSummary.byReason, [{ reason: "blocked", count: 1 }]);
 });
 
 test("flow dashboard slice collapses repeated movement states by route", () => {

@@ -339,9 +339,11 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(result.stdout.includes("paybackPreviewAfterDestination="), false);
   assert.match(result.stdout, /liveBaseline=blocked stage=shadow_replay refreshInputs=\d+ operator=\d+ technical=\d+ objective=\d+/);
   assert.match(result.stdout, /liveBaselineRefresh=.* next=.*/);
+  assert.match(result.stdout, /walletHoldingsRefreshed=data\/dashboard-live\/wallet-holdings\.json/);
 
   const shadowCycle = JSON.parse(await readFile(join(dataDir, "shadow-cycle-latest.json"), "utf8"));
   const publicStatus = JSON.parse(await readFile(join(cwd, "data/dashboard-live/dashboard-status.json"), "utf8"));
+  const publicWalletHoldings = JSON.parse(await readFile(join(cwd, "data/dashboard-live/wallet-holdings.json"), "utf8"));
 
   assert.equal(typeof shadowCycle.mode, "string");
   assert.equal(publicStatus.dataCounts.shadowCyclePresent, 1);
@@ -503,8 +505,15 @@ test("status dashboard refreshes shadow cycle before writing public status", asy
   assert.equal(publicStatus.operations?.allChainAutopilot?.present, true);
   assert.equal(publicStatus.operations?.allChainAutopilot?.canary?.deliveredCount, 1);
   assert.equal(publicStatus.operations?.allChainAutopilot?.refill?.blockers?.[0]?.reason, "lifi_quote_rejected");
+  assert.equal(publicStatus.overall?.executionTruth?.executionAuthority, "policy_engine_only");
+  assert.equal(publicStatus.overall?.executionTruth?.liveTradingPolicy, publicStatus.overall.liveTrading);
+  assert.equal(publicStatus.overall?.executionTruth?.readOnlyDashboard, true);
+  assert.equal(Array.isArray(publicStatus.overall?.executionTruth?.blockers), true);
   assert.equal(publicStatus.strategy?.merklActivePositions?.activeCount, 1);
   assert.equal(publicStatus.walletHoldings?.pending, false);
+  assert.equal(publicWalletHoldings.pending, false);
+  assert.equal(publicWalletHoldings.source, publicStatus.walletHoldings.source);
+  assert.equal(publicWalletHoldings.totalUsd, publicStatus.walletHoldings.totalUsd);
   assert.equal(publicStatus.flow?.metrics?.assetValueUsd, 30.01);
   assert.equal(Array.isArray(publicStatus.flow?.recentActivities), true);
   assert.equal(publicStatus.flow?.recentActivities?.[0]?.kind, "execution");

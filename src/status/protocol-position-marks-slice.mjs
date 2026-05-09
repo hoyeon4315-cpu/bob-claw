@@ -41,7 +41,7 @@ function latestMarks(marks = []) {
 
 function markFreshness(mark = {}, generatedAt) {
   if (mark.event === "position_mark_failed") return "failed";
-  return mark.freshness || freshnessForObservedAt(mark.observedAt, generatedAt);
+  return freshnessForObservedAt(mark.observedAt, generatedAt);
 }
 
 function isSuccessfulMarkedPosition(mark = {}) {
@@ -51,7 +51,7 @@ function isSuccessfulMarkedPosition(mark = {}) {
 function isVerifiedCurrentMark(mark = {}, generatedAt) {
   if (!isSuccessfulMarkedPosition(mark)) return false;
   const freshness = markFreshness(mark, generatedAt);
-  return mark.confidence === "verified_current" || freshness === "fresh" || freshness === "recent";
+  return freshness === "fresh" || freshness === "recent";
 }
 
 function chainBucket(byChain, chain) {
@@ -371,7 +371,7 @@ export function buildProtocolPositionMarksSlice(
   marks = [],
   { generatedAt = new Date().toISOString(), activePositionIds = null } = {},
 ) {
-  const activeIdSet = Array.isArray(activePositionIds) && activePositionIds.length > 0
+  const activeIdSet = Array.isArray(activePositionIds)
     ? new Set(activePositionIds)
     : null;
   const scopedMarks = activeIdSet
@@ -451,7 +451,7 @@ export function buildProtocolPositionMarksSlice(
   }
 
   const confidence =
-    latest.length > 0 && latest.every((mark) => isVerifiedCurrentMark(mark, generatedAt))
+    latest.length === 0 || latest.every((mark) => isVerifiedCurrentMark(mark, generatedAt))
       ? "verified_current"
       : "verified_minimum";
 

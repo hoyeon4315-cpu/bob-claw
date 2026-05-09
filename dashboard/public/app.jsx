@@ -1715,6 +1715,7 @@ function AssetsPane({ refreshTick }) {
   const trackingRiskUsableUsd = Number.isFinite(tracking?.riskUsableUsd) ? tracking.riskUsableUsd : null;
   const trackingRiskReady = tracking?.riskReady === true;
   const trackingBlockers = Array.isArray(tracking?.blockers) ? tracking.blockers : [];
+  const pendingWhitelistCount = Number.isFinite(tracking?.pendingWhitelistCount) ? tracking.pendingWhitelistCount : 0;
   const trackingVerdictTone = tracking?.verdict === 'green' ? 'ok' : tracking?.verdict === 'yellow' ? 'warning' : tracking?.verdict === 'red' ? 'critical' : 'neutral';
   const trackingOldestSourceLabel = tracking?.oldestMaterialSourceObservedAt
     ? `oldest source ${formatStatusAge(tracking.oldestMaterialSourceObservedAt) || fmtWhen(tracking.oldestMaterialSourceObservedAt)}`
@@ -1875,6 +1876,11 @@ function AssetsPane({ refreshTick }) {
             {tracking?.doubleCountPreventedCount > 0 && (
               <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('ok') }}>
                 double count prevented {tracking.doubleCountPreventedCount}
+              </span>
+            )}
+            {pendingWhitelistCount > 0 && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('warning') }}>
+                pending whitelist {pendingWhitelistCount}
               </span>
             )}
             {tracking && Number.isFinite(trackingExactTotalUsd) && (

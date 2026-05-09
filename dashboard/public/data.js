@@ -618,6 +618,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       stalePriceItemCount: Number.isFinite(assetTracking.stalePriceItemCount) ? assetTracking.stalePriceItemCount : 0,
       failedProtocolMarkCount: Number.isFinite(assetTracking.failedProtocolMarkCount) ? assetTracking.failedProtocolMarkCount : 0,
       doubleCountPreventedCount: Number.isFinite(assetTracking.doubleCountPreventedCount) ? assetTracking.doubleCountPreventedCount : 0,
+      pendingWhitelistCount: Number.isFinite(assetTracking.pendingWhitelistCount) ? assetTracking.pendingWhitelistCount : 0,
+      pendingWhitelistSample: Array.isArray(assetTracking.pendingWhitelistSample) ? assetTracking.pendingWhitelistSample : [],
       oldestMaterialSourceObservedAt: assetTracking.oldestMaterialSourceObservedAt || null,
       blockers: Array.isArray(assetTracking.blockers) ? assetTracking.blockers : []
     } : null,
@@ -695,6 +697,8 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       stalePriceItemCount: Number.isFinite(assetTracking.stalePriceItemCount) ? assetTracking.stalePriceItemCount : 0,
       failedProtocolMarkCount: Number.isFinite(assetTracking.failedProtocolMarkCount) ? assetTracking.failedProtocolMarkCount : 0,
       doubleCountPreventedCount: Number.isFinite(assetTracking.doubleCountPreventedCount) ? assetTracking.doubleCountPreventedCount : 0,
+      pendingWhitelistCount: Number.isFinite(assetTracking.pendingWhitelistCount) ? assetTracking.pendingWhitelistCount : 0,
+      pendingWhitelistSample: Array.isArray(assetTracking.pendingWhitelistSample) ? assetTracking.pendingWhitelistSample : [],
       oldestMaterialSourceObservedAt: assetTracking.oldestMaterialSourceObservedAt || null,
       blockers: Array.isArray(assetTracking.blockers) ? assetTracking.blockers : []
     } : null,
@@ -1014,12 +1018,14 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       metrics: FLOW_METRICS,
       recentActivities: Array.isArray(flow?.recentActivities) ? flow.recentActivities : [],
       recentMovements: Array.isArray(flow?.recentMovements) ? flow.recentMovements : [],
+      movementSummary: flow?.movementSummary || { totalCount: 0, pendingCount: 0, blockedCount: 0, rejectedCount: 0, deliveredCount: 0, byStatus: [], byReason: [] },
       strategyRiskById: flow?.strategyRiskById || {}
     },
     ACTIVITY_SURFACES: activitySurfaces,
     MOVEMENT_SURFACES: movementSurfaces,
     MERKL_ACTIVE: merklActive,
     OPERATIONS: operations,
+    EXECUTION_TRUTH: status?.overall?.executionTruth || null,
     CAPITAL,
     RADAR: status?.radar || null,
     STATUS: status,

@@ -90,6 +90,14 @@ function sourceAgeMinutes(observedAt, generatedAt) {
   return (generated - observed) / 60_000;
 }
 
+function pendingWhitelistSample(records = []) {
+  return records.slice(0, 5).map((record = {}) => ({
+    chain: record.chain || record.chainId || null,
+    token: record.token || record.tokenAddress || record.address || null,
+    reason: record.reason || record.status || record.classification || null,
+  }));
+}
+
 function assetTrackingVerdict({
   riskReady,
   walletScanErrorCount,
@@ -115,6 +123,7 @@ function assetTrackingVerdict({
 
 export function buildAssetTrackingSlice({
   capitalSummary = null,
+  pendingWhitelistRecords = [],
   generatedAt = new Date().toISOString(),
 } = {}) {
   const summary = capitalSummary || {};
@@ -153,6 +162,7 @@ export function buildAssetTrackingSlice({
   const doubleCountPreventedCount = Number(summary.doubleCountPreventedCount || 0);
   const oldestMaterialSourceObservedAt = summary.oldestMaterialSourceObservedAt || oldestObservedAt(allItems);
   const oldestMaterialSourceAgeMinutes = sourceAgeMinutes(oldestMaterialSourceObservedAt, generatedAt);
+  const pendingWhitelistCount = Array.isArray(pendingWhitelistRecords) ? pendingWhitelistRecords.length : 0;
 
   if (walletCoverage !== "full_rpc") {
     blockers.push(blocker("wallet_coverage_partial", "Wallet scan has not proven full-token coverage for this address.", {
@@ -275,6 +285,8 @@ export function buildAssetTrackingSlice({
     stalePriceItemCount,
     failedProtocolMarkCount,
     doubleCountPreventedCount,
+    pendingWhitelistCount,
+    pendingWhitelistSample: pendingWhitelistSample(Array.isArray(pendingWhitelistRecords) ? pendingWhitelistRecords : []),
     oldestMaterialSourceObservedAt,
     oldestMaterialSourceAgeMinutes,
     assetUniverseUnknownTargetCount,

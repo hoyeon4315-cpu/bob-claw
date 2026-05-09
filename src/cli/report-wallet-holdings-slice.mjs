@@ -11,13 +11,15 @@ import {
   hasFlag,
   optionMapFromArgs,
 } from '../dashboard/live-snapshot-paths.mjs';
+import { config } from '../config/env.mjs';
 import { buildProtocolAprSlice } from '../status/protocol-apr-slice.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(__filename), '../..');
-const INVENTORY_PATH = path.join(ROOT, 'data', 'whole-wallet-inventory.jsonl');
-const WRAPPED_BTC_LOOP_SLICE_PATH = path.join(ROOT, 'data', 'wrapped-btc-lending-loop-slice.json');
-const RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH = path.join(ROOT, 'data', 'recursive_wrapped_btc_lending_loop-scaffold.json');
+const DATA_DIR = config.dataDir || path.join(ROOT, 'data');
+const INVENTORY_PATH = path.join(DATA_DIR, 'whole-wallet-inventory.jsonl');
+const WRAPPED_BTC_LOOP_SLICE_PATH = path.join(DATA_DIR, 'wrapped-btc-lending-loop-slice.json');
+const RECURSIVE_WRAPPED_BTC_LOOP_SCAFFOLD_PATH = path.join(DATA_DIR, 'recursive_wrapped_btc_lending_loop-scaffold.json');
 const SOURCE_FRESH_MAX_AGE_MS = 60 * 1000;
 const PRICE_FRESH_MAX_AGE_MS = 5 * 60 * 1000;
 const PRICE_DIVERGENCE_WARN_PCT = 1;

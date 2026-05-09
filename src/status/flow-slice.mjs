@@ -456,6 +456,41 @@ function latestMovements({ executionEvents = [], signerAuditRecords = [], genera
     .map((item) => Object.freeze(item));
 }
 
+function increment(map, key) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function summarizeMovements(movements = []) {
+  const byStatus = new Map();
+  const byReason = new Map();
+  let pendingCount = 0;
+  let blockedCount = 0;
+  let rejectedCount = 0;
+  let deliveredCount = 0;
+  for (const movement of movements) {
+    const status = String(movement.status || "unknown").toLowerCase();
+    increment(byStatus, status);
+    if (["planned", "signed", "broadcasted", "pending"].includes(status)) pendingCount += 1;
+    if (["blocked", "rejected", "error"].includes(status)) increment(byReason, movement.blockedReason || movement.reason || status);
+    if (status === "blocked") blockedCount += 1;
+    if (status === "rejected") rejectedCount += 1;
+    if (["delivered", "confirmed"].includes(status)) deliveredCount += 1;
+  }
+  const entries = (map, key) => [...map.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([value, count]) => Object.freeze({ [key]: value, count }));
+  return Object.freeze({
+    totalCount: movements.length,
+    pendingCount,
+    blockedCount,
+    rejectedCount,
+    deliveredCount,
+    byStatus: Object.freeze(entries(byStatus, "status")),
+    byReason: Object.freeze(entries(byReason, "reason")),
+  });
+}
+
 function leverageHint(slice = null) {
   const strategyId = stringOrNull(slice?.strategy?.id);
   if (!strategyId) return null;
@@ -531,6 +566,8 @@ export function buildFlowDashboardSlice({
     generatedAt,
   });
 
+  const recentMovements = latestMovements({ executionEvents, signerAuditRecords, generatedAt });
+
   return Object.freeze({
     schemaVersion: 1,
     generatedAt,
@@ -556,6 +593,7 @@ export function buildFlowDashboardSlice({
       recursiveWrappedBtcLoop,
     }),
     recentActivities: Object.freeze(recentActivities),
-    recentMovements: Object.freeze(latestMovements({ executionEvents, signerAuditRecords, generatedAt })),
+    recentMovements: Object.freeze(recentMovements),
+    movementSummary: summarizeMovements(recentMovements),
   });
 }

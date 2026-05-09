@@ -363,6 +363,7 @@ export async function main({
     await runCommand("node", ["src/cli/inventory-whole-wallet.mjs"], commandEnv);
     await runCommand("node", ["src/cli/status-dashboard.mjs", "--commit-public"], commandEnv);
   }
+  await runCommand("node", ["src/cli/verify-dashboard-publish.mjs"], commandEnv);
 
   if (args.createProject && !preflight.projectExists) {
     await runCommand(

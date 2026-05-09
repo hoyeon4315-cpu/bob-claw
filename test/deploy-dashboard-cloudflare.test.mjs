@@ -155,7 +155,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
   });
 
   assert.deepEqual(buildCalls, [{ publicDir: DASHBOARD_PUBLIC_DIR }]);
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   assert.deepEqual(calls[0], {
     command: "node",
     args: ["src/cli/inventory-treasury.mjs"],
@@ -172,6 +172,11 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
     commandEnv: calls[2].commandEnv,
   });
   assert.deepEqual(calls[3], {
+    command: "node",
+    args: ["src/cli/verify-dashboard-publish.mjs"],
+    commandEnv: calls[3].commandEnv,
+  });
+  assert.deepEqual(calls[4], {
     command: "wrangler",
     args: [
       "pages",
@@ -182,7 +187,7 @@ test("deploy main prints preflight summary and deploys with repo-local Cloudflar
       "--branch",
       "main",
     ],
-    commandEnv: calls[3].commandEnv,
+    commandEnv: calls[4].commandEnv,
   });
   assert.match(calls[0].commandEnv.HOME, /\.cloudflare\/home$/);
   assert.match(calls[0].commandEnv.XDG_CONFIG_HOME, /\.cloudflare\/xdg$/);
@@ -226,6 +231,10 @@ test("deploy main creates an explicit project when a single discovered account h
 
   assert.deepEqual(buildCalls, [{ publicDir: DASHBOARD_PUBLIC_DIR }]);
   assert.deepEqual(calls, [
+    {
+      command: "node",
+      args: ["src/cli/verify-dashboard-publish.mjs"],
+    },
     {
       command: "wrangler",
       args: ["pages", "project", "create", "custom-dashboard", "--production-branch", "main"],
