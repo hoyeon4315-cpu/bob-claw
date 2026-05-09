@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-09T00:26:51.163Z",
+  "generatedAt": "2026-05-09T00:34:39.810Z",
   "strategies": [
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
@@ -31,7 +31,7 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "f6824983428d9a83",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -51,7 +51,7 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "0115fd6e6216aeb4",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -71,7 +71,7 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "7af1a75ae20d0dcc",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -91,9 +91,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "da0c23beb60f6d02",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -111,9 +111,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "298ff21b3b1c6501",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -131,9 +131,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "a9f882838eeb9c77",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -151,7 +151,7 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "fc6ca9386177b8f7",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -171,9 +171,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "acb80d9d9e18a03d",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -193,7 +193,7 @@
       "legacyCode": "policy_reject",
       "observedAt": "2026-05-08T23:41:35.506Z",
       "paramsKey": "fa6a1926ea04d3c4",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -211,9 +211,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "9dc8c2fa35b9197e",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -231,9 +231,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "442b52edfa774918",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -251,9 +251,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "3c7f0c0c3a817850",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -311,9 +311,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "263591903a548bc6",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -331,9 +331,9 @@
         "chain": null
       },
       "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "6f9a329019cec9b3",
-      "consecutiveTicks": 4,
+      "consecutiveTicks": 5,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -353,7 +353,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "0a5e85f1a6b8bf7b",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -375,7 +375,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "0c57e4945f564f6a",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -397,7 +397,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "47646be3f566847c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -419,7 +419,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "c5f556bd4386a405",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -441,7 +441,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "33bb8c2cf729068d",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -463,7 +463,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "516a299683cae010",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -485,7 +485,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "204126712f9e993c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -507,7 +507,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "6671dd51f4fcc296",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -529,7 +529,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "ac7f35ab917aedcd",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -551,7 +551,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "06533846e0ed8464",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -573,7 +573,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "76d0670c22bcfd49",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -595,7 +595,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "058c2daa4639c9db",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -617,7 +617,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T00:26:51.163Z",
+      "observedAt": "2026-05-09T00:34:39.810Z",
       "paramsKey": "07de7bf10997d522",
       "consecutiveTicks": 1,
       "attemptCount": 0,
