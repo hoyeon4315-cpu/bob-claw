@@ -141,6 +141,12 @@ registerBlockerRecipe("proof_acquisition:rewards_unclaimed", {
   }),
 });
 
+registerBlockerRecipe("proof_acquisition:missing_yield_evidence", proofCommandRecipe({
+  recipeId: "run_yield_position_shadow_simulation",
+  script: "npm run run:yield-position-sims -- --write-shadow-edge",
+  dependencies: [],
+}));
+
 registerBlockerRecipe("refill_or_inventory:chain_under_target", {
   recipeId: "capital_refill_chain_under_target",
   kind: "auto_operational",
@@ -246,11 +252,13 @@ registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
         receiptRequired: false,
       };
     }
-    if (row.classification === "thin_evidence" || row.classification === "missing_input") {
+    if (row.classification === "thin_evidence" || row.classification === "missing_input" || row.classification === "missing_yield_evidence") {
       return {
         type: "refresh_command",
         code,
-        command: row.classification === "missing_input"
+        command: row.classification === "missing_yield_evidence"
+          ? "npm run run:yield-position-sims -- --write-shadow-edge"
+          : row.classification === "missing_input"
           ? "npm run run:prelive-simulations -- --source=objective --limit=4 --write --write-shadow-edge"
           : "npm run report:strategy-execution-surfaces -- --write",
         args: [],
@@ -259,7 +267,7 @@ registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
         receiptRequired: false,
       };
     }
-    if (row.classification === "ready_with_shadow_evidence" || row.classification === "ready_with_sibling_proxy") {
+    if (row.classification === "ready_with_yield_shadow_evidence" || row.classification === "ready_with_shadow_evidence" || row.classification === "ready_with_sibling_proxy") {
       return {
         type: "refresh_command",
         code,

@@ -49,9 +49,15 @@ function recordCostUsd(record = {}) {
     finiteNumber(record.routeContext?.knownCostUsd);
 }
 
-function recordPnlUsd(record = {}) {
-  return finiteNumber(record.realized?.realizedNetPnlUsd) ??
-    finiteNumber(record.realizedNetPnlUsd) ??
+function recordEdgeUsd(record = {}) {
+  const gross = finiteNumber(record.realized?.realizedGrossPnlUsd) ??
+    finiteNumber(record.realizedGrossPnlUsd);
+  if (gross !== null) return gross;
+  const net = finiteNumber(record.realized?.realizedNetPnlUsd) ??
+    finiteNumber(record.realizedNetPnlUsd);
+  const cost = recordCostUsd(record);
+  if (net !== null && cost !== null) return net + cost;
+  return net ??
     finiteNumber(record.routeContext?.estimatedNetPnlUsd) ??
     finiteNumber(record.expectedNetUsd);
 }
@@ -84,11 +90,11 @@ function samplesForStrategy(receiptRecords = [], strategyId) {
     .filter((record) => recordStrategyId(record) === strategyId)
     .map((record) => {
       const notionalUsd = recordNotionalUsd(record);
-      const pnlUsd = recordPnlUsd(record);
+      const edgeUsd = recordEdgeUsd(record);
       const holdingDays = recordHoldingDays(record);
       const edgeBpsPerDay =
-        notionalUsd !== null && notionalUsd > 0 && pnlUsd !== null
-          ? (pnlUsd / notionalUsd) * 10_000 / holdingDays
+        notionalUsd !== null && notionalUsd > 0 && edgeUsd !== null
+          ? (edgeUsd / notionalUsd) * 10_000 / holdingDays
           : null;
       return {
         observedAt: observedAt(record),
@@ -118,9 +124,9 @@ function costFromModel(costModel, strategyId) {
   return Math.max(...entries.map((entry) => finiteNumber(entry.p90CostUsd)).filter((value) => value !== null));
 }
 
-function latestShadowRecord(records = [], strategyId) {
+function latestEvidenceRecord(records = [], strategyId, evidenceClass) {
   return [...(records || [])]
-    .filter((record) => record?.strategyId === strategyId && record.evidenceClass === "shadow")
+    .filter((record) => record?.strategyId === strategyId && record.evidenceClass === evidenceClass)
     .sort((left, right) => new Date(right.lastSimAt || 0) - new Date(left.lastSimAt || 0))[0] || null;
 }
 
@@ -156,20 +162,26 @@ export function buildStrategyEdgeSnapshots({
       const row = rowForStrategy(strategyTickStatus, strategyId);
       const modelCost = costFromModel(costModel, strategyId);
       const hasReceiptEvidence = edges.length > 0 || costs.length > 0;
-      const shadow = !hasReceiptEvidence ? latestShadowRecord(shadowEdgeRecords, strategyId) : null;
-      const proxy = !hasReceiptEvidence && !shadow ? latestSiblingProxyRecord(siblingProxyRecords, strategyId) : null;
-      const evidenceClass = hasReceiptEvidence ? "receipt" : shadow ? "shadow" : proxy ? "sibling_proxy" : "missing_input";
-      const evidenceConfidence = evidenceClass === "receipt" ? 1 : finiteNumber(shadow?.confidence ?? proxy?.confidence) ?? null;
+      const yieldShadow = !hasReceiptEvidence ? latestEvidenceRecord(shadowEdgeRecords, strategyId, "yield_shadow") : null;
+      const shadow = !hasReceiptEvidence && !yieldShadow ? latestEvidenceRecord(shadowEdgeRecords, strategyId, "shadow") : null;
+      const proxy = !hasReceiptEvidence && !yieldShadow && !shadow ? latestSiblingProxyRecord(siblingProxyRecords, strategyId) : null;
+      const transportOneShot = !hasReceiptEvidence && !yieldShadow && !shadow && !proxy
+        ? latestEvidenceRecord(shadowEdgeRecords, strategyId, "transport_one_shot")
+        : null;
+      const evidenceRecord = yieldShadow || shadow || proxy || transportOneShot || null;
+      const evidenceClass = hasReceiptEvidence ? "receipt" : evidenceRecord?.evidenceClass || "missing_input";
+      const evidenceConfidence = evidenceClass === "receipt" ? 1 : finiteNumber(evidenceRecord?.confidence) ?? null;
       const evidenceSampleCount = hasReceiptEvidence
         ? sampleCount
-        : finiteNumber(shadow?.sampleCount) ?? (proxy ? 1 : 0);
+        : finiteNumber(evidenceRecord?.sampleCount) ?? (proxy ? 1 : 0);
       const evidenceObservedAt = hasReceiptEvidence
         ? lastReceiptAt
-        : shadow?.lastSimAt || proxy?.borrowedFromObservedAt || null;
+        : evidenceRecord?.lastSimAt || proxy?.borrowedFromObservedAt || null;
       return {
         strategyId,
-        chain: row?.chain || shadow?.chain || proxy?.chain || Object.keys(strategy?.caps?.perChainUsd || {})[0] || null,
-        familyId: strategy.familyId || strategy.exposure?.assetFamily || shadow?.family || null,
+        chain: row?.chain || evidenceRecord?.chain || proxy?.chain || Object.keys(strategy?.caps?.perChainUsd || {})[0] || null,
+        familyId: strategy.familyId || strategy.exposure?.assetFamily || evidenceRecord?.family || null,
+        protocols: Array.isArray(strategy.exposure?.protocols) ? [...strategy.exposure.protocols] : [],
         evidenceClass,
         evidenceConfidence,
         evidenceSource:
@@ -183,10 +195,10 @@ export function buildStrategyEdgeSnapshots({
           ? edges.length
             ? edges.reduce((sum, value) => sum + value, 0) / edges.length
             : null
-          : finiteNumber(shadow?.estimatedEdgeBpsPerDay ?? proxy?.proxyEdgeBpsPerDay),
+          : finiteNumber(evidenceRecord?.estimatedEdgeBpsPerDay ?? proxy?.proxyEdgeBpsPerDay),
         measuredRoundTripCostUsd: hasReceiptEvidence
           ? modelCost ?? quantileNearestRank(costs, policy.costPercentile ?? 0.9)
-          : finiteNumber(shadow?.estimatedRoundTripCostUsd ?? proxy?.proxyRoundTripCostUsd),
+          : finiteNumber(evidenceRecord?.estimatedRoundTripCostUsd ?? proxy?.proxyRoundTripCostUsd),
         slippageVarianceUsd: hasReceiptEvidence ? stddev(costs) : 0,
         varianceFloorUsd,
         observedNotionalUsd: observedNotionalUsd(row),

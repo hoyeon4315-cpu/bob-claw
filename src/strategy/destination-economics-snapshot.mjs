@@ -24,6 +24,7 @@ export function buildDestinationEconomicsSnapshot({
     ledger,
     economics,
     priorityMergedEvidence: {
+      priorityOrder: ["receipt", "yield_shadow", "shadow", "sibling_proxy", "transport_one_shot"],
       shadowEdgeRecords,
       siblingProxyRecords,
     },

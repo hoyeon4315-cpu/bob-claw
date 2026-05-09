@@ -43,6 +43,27 @@ function stripVolatile(value) {
   return stable;
 }
 
+function mergeShadowEvidenceRecords(existing = [], incoming = []) {
+  const keyFor = (record = {}) => [
+    record.strategyId || "",
+    record.chain || "",
+    record.family || "",
+    record.evidenceClass || "",
+  ].join(":");
+  const byKey = new Map();
+  for (const record of existing || []) {
+    if (record?.strategyId) byKey.set(keyFor(record), record);
+  }
+  for (const record of incoming || []) {
+    if (record?.strategyId) byKey.set(keyFor(record), record);
+  }
+  return [...byKey.values()].sort((left, right) =>
+    String(left.strategyId).localeCompare(String(right.strategyId)) ||
+    String(left.chain).localeCompare(String(right.chain)) ||
+    String(left.evidenceClass).localeCompare(String(right.evidenceClass)),
+  );
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.from, dataDir: config.dataDir });
@@ -123,9 +144,12 @@ async function main() {
     shadowEdgeRecords = buildShadowEdgeRecords({
       simulationRuns: args.write ? previousRuns : records,
     });
+    const outputPath = join(config.dataDir, "destination-economics-shadow-edge.json");
+    const existing = await readJsonIfExists(outputPath);
+    const mergedRecords = mergeShadowEvidenceRecords(existing?.records || [], shadowEdgeRecords);
     await writeTextIfChanged(
-      join(config.dataDir, "destination-economics-shadow-edge.json"),
-      `${JSON.stringify({ schemaVersion: 1, generatedAt: new Date().toISOString(), records: shadowEdgeRecords }, null, 2)}\n`,
+      outputPath,
+      `${JSON.stringify({ schemaVersion: 1, generatedAt: new Date().toISOString(), records: mergedRecords }, null, 2)}\n`,
       {
         normalize: (contents) => {
           if (!contents) return contents;
@@ -134,6 +158,7 @@ async function main() {
         },
       },
     );
+    shadowEdgeRecords = mergedRecords;
   }
 
   if (args.json) {

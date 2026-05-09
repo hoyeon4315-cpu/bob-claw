@@ -38,8 +38,8 @@ test("strategy edge snapshot derives edge, p90 cost, cost variance, and freshnes
     policy: { minProfitFloorUsd: 0.25, minSamples: 2 },
   });
   assert.equal(snapshot.strategyId, "s1");
-  assert.ok(snapshot.measuredEdgeBpsPerDay > 13);
-  assert.ok(snapshot.measuredEdgeBpsPerDay < 15);
+  assert.ok(snapshot.measuredEdgeBpsPerDay > 133);
+  assert.ok(snapshot.measuredEdgeBpsPerDay < 135);
   assert.equal(snapshot.measuredRoundTripCostUsd, 1.4);
   assert.ok(snapshot.slippageVarianceUsd > 0);
   assert.equal(snapshot.varianceFloorUsd, 0.25);
@@ -89,12 +89,14 @@ test("strategy edge snapshot marks missing, thin, and stale evidence without thr
   assert.equal(byId.get("s3").freshness.isThin, true);
 });
 
-test("strategy edge snapshot prefers receipt, then shadow, then sibling proxy evidence", () => {
+test("strategy edge snapshot prefers receipt, yield shadow, shadow, sibling proxy, then transport one-shot evidence", () => {
   const snapshots = buildStrategyEdgeSnapshots({
     strategies: [
       STRATEGY,
+      { ...STRATEGY, strategyId: "yield-shadow-only" },
       { ...STRATEGY, strategyId: "shadow-only" },
       { ...STRATEGY, strategyId: "proxy-only" },
+      { ...STRATEGY, strategyId: "transport-only" },
     ],
     receiptRecords: [
       {
@@ -119,6 +121,26 @@ test("strategy edge snapshot prefers receipt, then shadow, then sibling proxy ev
         confidence: 0.5,
       },
       {
+        strategyId: "yield-shadow-only",
+        chain: "base",
+        evidenceClass: "yield_shadow",
+        estimatedEdgeBpsPerDay: 24,
+        estimatedRoundTripCostUsd: 0.21,
+        sampleCount: 2,
+        lastSimAt: "2026-05-08T04:00:00.000Z",
+        confidence: 0.5,
+      },
+      {
+        strategyId: "yield-shadow-only",
+        chain: "base",
+        evidenceClass: "shadow",
+        estimatedEdgeBpsPerDay: 99,
+        estimatedRoundTripCostUsd: 0.01,
+        sampleCount: 9,
+        lastSimAt: "2026-05-08T05:00:00.000Z",
+        confidence: 0.5,
+      },
+      {
         strategyId: "shadow-only",
         chain: "base",
         evidenceClass: "shadow",
@@ -127,6 +149,17 @@ test("strategy edge snapshot prefers receipt, then shadow, then sibling proxy ev
         sampleCount: 3,
         lastSimAt: "2026-05-08T03:00:00.000Z",
         confidence: 0.5,
+      },
+      {
+        strategyId: "transport-only",
+        chain: "base",
+        evidenceClass: "transport_one_shot",
+        estimatedEdgeBpsPerDay: null,
+        estimatedRoundTripCostUsd: 0.12,
+        oneShotNetEdgeUsd: 0.08,
+        sampleCount: 1,
+        lastSimAt: "2026-05-08T06:00:00.000Z",
+        confidence: 0,
       },
     ],
     siblingProxyRecords: [
@@ -148,10 +181,16 @@ test("strategy edge snapshot prefers receipt, then shadow, then sibling proxy ev
 
   const byId = new Map(snapshots.map((item) => [item.strategyId, item]));
   assert.equal(byId.get("s1").evidenceClass, "receipt");
+  assert.equal(byId.get("yield-shadow-only").evidenceClass, "yield_shadow");
+  assert.equal(byId.get("yield-shadow-only").measuredEdgeBpsPerDay, 24);
+  assert.equal(byId.get("yield-shadow-only").measuredRoundTripCostUsd, 0.21);
   assert.equal(byId.get("shadow-only").evidenceClass, "shadow");
   assert.equal(byId.get("shadow-only").measuredEdgeBpsPerDay, 20);
   assert.equal(byId.get("shadow-only").evidenceConfidence, 0.5);
   assert.equal(byId.get("proxy-only").evidenceClass, "sibling_proxy");
   assert.equal(byId.get("proxy-only").measuredRoundTripCostUsd, 0.3);
   assert.equal(byId.get("proxy-only").evidenceConfidence, 0.4);
+  assert.equal(byId.get("transport-only").evidenceClass, "transport_one_shot");
+  assert.equal(byId.get("transport-only").measuredEdgeBpsPerDay, null);
+  assert.equal(byId.get("transport-only").measuredRoundTripCostUsd, 0.12);
 });

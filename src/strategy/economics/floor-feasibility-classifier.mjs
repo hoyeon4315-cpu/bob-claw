@@ -16,6 +16,21 @@ function snapshotMissingInput(snapshot = {}) {
     finiteNumber(snapshot.varianceFloorUsd) === null;
 }
 
+function isYieldPositionSnapshot(snapshot = {}) {
+  const strategyId = String(snapshot.strategyId || "");
+  const family = String(snapshot.familyId || snapshot.family || snapshot.strategyKind || snapshot.strategyType || "");
+  const protocols = Array.isArray(snapshot.protocols) ? snapshot.protocols.map((item) => String(item).toLowerCase()) : [];
+  if (family === "yield_position" ||
+    ["stable_treasury_carry", "wrapped_btc_lending", "eth_destination_lending", "tokenized_reserve_sleeve"].includes(family)) {
+    return true;
+  }
+  if (strategyId === "gateway_proxy_spread_rebalance_recheck") return false;
+  if (/aerodrome|lending_loop|tokenized_reserve|eth_destination|native_asset_conversion_sleeve/.test(strategyId)) {
+    return true;
+  }
+  return protocols.some((protocol) => ["aerodrome", "moonwell", "morpho", "aave", "euler", "merkl"].includes(protocol));
+}
+
 function sourceCandidatesFor(deltaUsd, treasury = {}) {
   const sources = Array.isArray(treasury.sources) ? treasury.sources : [];
   let remaining = Math.max(0, finiteNumber(deltaUsd) ?? 0);
@@ -69,11 +84,14 @@ export function classifyFloorFeasibility({
     const minNotional = finiteNumber(solved.minNotionalUsd);
     const delta = minNotional !== null ? Math.max(0, minNotional - observed) : null;
 
-    if (snapshotMissingInput(snapshot) || solved.reason === "missing_input") classification = "missing_input";
+    if (snapshot.evidenceClass === "transport_one_shot" && isYieldPositionSnapshot(snapshot)) classification = "missing_yield_evidence";
+    else if (snapshotMissingInput(snapshot) && isYieldPositionSnapshot(snapshot)) classification = "missing_yield_evidence";
+    else if (snapshotMissingInput(snapshot) || solved.reason === "missing_input") classification = "missing_input";
     else if (snapshot.freshness?.isThin === true) classification = "thin_evidence";
     else if (solved.reason === "floor_infeasible_at_committed_caps") classification = "floor_infeasible_at_committed_caps";
     else if (solved.reason === "negative_or_zero_edge") classification = "negative_or_zero_edge";
     else if (solved.infeasible) classification = solved.reason || "missing_input";
+    else if (snapshot.evidenceClass === "yield_shadow") classification = "ready_with_yield_shadow_evidence";
     else if (snapshot.evidenceClass === "shadow") classification = "ready_with_shadow_evidence";
     else if (snapshot.evidenceClass === "sibling_proxy") classification = "ready_with_sibling_proxy";
     else if (delta <= 0) classification = "ready_no_capital_change";

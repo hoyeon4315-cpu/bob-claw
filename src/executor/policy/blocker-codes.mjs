@@ -47,6 +47,7 @@ const REQUIRED = [
   entry("proof_acquisition", "gateway_route_unknown", "Gateway route unknown", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
   entry("proof_acquisition", "inventory_snapshot_stale", "Inventory snapshot stale", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
   entry("proof_acquisition", "rewards_unclaimed", "Reward tokens unclaimed", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
+  entry("proof_acquisition", "missing_yield_evidence", "Yield-side simulation evidence missing", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
   entry("refill_or_inventory", "chain_under_target", "Chain under target", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
   entry("refill_or_inventory", "gas_float_below_threshold", "Gas float below threshold", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
   entry("refill_or_inventory", "idle_dust_consolidation_due", "Idle dust consolidation due", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
@@ -133,6 +134,7 @@ function codeForLegacy(raw) {
   }
   if (text.includes("inventory") || text.includes("wallet_holdings")) return "proof_acquisition:inventory_snapshot_stale";
   if (text.includes("rewards_unclaimed") || text.includes("claim_blocked") || text.includes("claimable")) return "proof_acquisition:rewards_unclaimed";
+  if (text.includes("missing_yield_evidence") || text.includes("yield_evidence_missing")) return "proof_acquisition:missing_yield_evidence";
 
   if (text.includes("chain_under_target") || text.includes("refill_routes_unresolved") || text.includes("refill_required")) return "refill_or_inventory:chain_under_target";
   if (text.includes("gas_float") || text.includes("native_balance") || text.includes("missing_gateway_gas")) return "refill_or_inventory:gas_float_below_threshold";

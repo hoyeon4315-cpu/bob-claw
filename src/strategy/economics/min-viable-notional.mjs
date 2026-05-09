@@ -24,7 +24,7 @@ export function solveMinViableNotional({
   roundTripCostUsd,
   slippageVarianceUsd = 0,
   varianceFloorUsd = 0,
-  holdingPeriodDays = 1,
+  holdingPeriodDays = 7,
   caps = null,
 } = {}) {
   const edge = finiteNumber(edgeBpsPerDay);

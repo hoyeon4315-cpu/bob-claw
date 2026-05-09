@@ -79,10 +79,17 @@ test("floor feasibility uses non-receipt evidence classes with confidence haircu
         evidenceConfidence: 0.4,
         measuredEdgeBpsPerDay: 20,
       }),
+      snapshot({
+        strategyId: "yield",
+        evidenceClass: "yield_shadow",
+        evidenceConfidence: 0.5,
+        measuredEdgeBpsPerDay: 20,
+      }),
     ],
     minViableByStrategy: {
       shadow: { minNotionalUsd: 100, infeasible: false, reason: null },
       proxy: { minNotionalUsd: 100, infeasible: false, reason: null },
+      yield: { minNotionalUsd: 100, infeasible: false, reason: null },
     },
     treasury: { freeCapitalUsd: 100, sources: [] },
   });
@@ -91,4 +98,49 @@ test("floor feasibility uses non-receipt evidence classes with confidence haircu
   assert.equal(byId.get("shadow").expectedDailyUsdOnResolve, 0.1);
   assert.equal(byId.get("proxy").classification, "ready_with_sibling_proxy");
   assert.equal(byId.get("proxy").expectedDailyUsdOnResolve, 0.08);
+  assert.equal(byId.get("yield").classification, "ready_with_yield_shadow_evidence");
+  assert.equal(byId.get("yield").expectedDailyUsdOnResolve, 0.1);
+});
+
+test("floor feasibility distinguishes transport one-shot evidence from yield evidence", () => {
+  const rows = classifyFloorFeasibility({
+    snapshots: [
+      snapshot({
+        strategyId: "yield_position_without_yield_shadow",
+        familyId: "yield_position",
+        evidenceClass: "transport_one_shot",
+        evidenceConfidence: null,
+        measuredEdgeBpsPerDay: null,
+        measuredRoundTripCostUsd: 0.2,
+      }),
+    ],
+    treasury: { freeCapitalUsd: 100, sources: [] },
+  });
+
+  assert.equal(rows[0].classification, "missing_yield_evidence");
+});
+
+test("floor feasibility routes configured yield strategies with missing inputs to yield evidence refresh", () => {
+  const rows = classifyFloorFeasibility({
+    snapshots: [
+      snapshot({
+        strategyId: "aerodrome-cl-base",
+        familyId: "btc_wrappers",
+        protocols: ["aerodrome"],
+        measuredEdgeBpsPerDay: null,
+        measuredRoundTripCostUsd: null,
+      }),
+      snapshot({
+        strategyId: "gateway_proxy_spread_rebalance_recheck",
+        familyId: "btc_wrappers",
+        protocols: ["gateway", "odos"],
+        measuredEdgeBpsPerDay: null,
+        measuredRoundTripCostUsd: null,
+      }),
+    ],
+    treasury: { freeCapitalUsd: 100, sources: [] },
+  });
+  const byId = new Map(rows.map((row) => [row.strategyId, row]));
+  assert.equal(byId.get("aerodrome-cl-base").classification, "missing_yield_evidence");
+  assert.equal(byId.get("gateway_proxy_spread_rebalance_recheck").classification, "missing_input");
 });

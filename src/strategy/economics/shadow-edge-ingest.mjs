@@ -61,6 +61,33 @@ function recordCostUsd(record = {}) {
   );
 }
 
+function recordEdgeBpsPerDay(record = {}) {
+  return finiteNumber(record.edgeBpsPerDay ?? record.estimatedEdgeBpsPerDay);
+}
+
+function recordSampleCount(record = {}) {
+  return Math.max(1, finiteNumber(record.sampleCount) ?? 1);
+}
+
+function recordConfidence(record = {}, fallback) {
+  return finiteNumber(record.confidence) ?? fallback;
+}
+
+function recordHoldingPeriodDays(record = {}) {
+  return finiteNumber(
+    record.holdingPeriodDays ??
+      record.holdDays ??
+      record.context?.holdingPeriodDays ??
+      record.metadata?.holdingPeriodDays,
+  );
+}
+
+function pushSample(buckets, key, sample) {
+  const samples = buckets.get(key) || [];
+  samples.push(sample);
+  buckets.set(key, samples);
+}
+
 function isSuccessfulShadow(record = {}) {
   return record.status === "simulated_ok" || record.ok === true || record.executionStatus === "succeeded";
 }
@@ -71,25 +98,64 @@ export function buildShadowEdgeRecords({
 } = {}) {
   const buckets = new Map();
   for (const record of simulationRuns || []) {
+    if (record?.evidenceClass === "yield_shadow") {
+      const strategyId = recordStrategyId(record);
+      const chain = recordChain(record);
+      const edgeBpsPerDay = recordEdgeBpsPerDay(record);
+      if (!strategyId || edgeBpsPerDay === null) continue;
+      const family = recordFamily(record);
+      const key = `${strategyId}:${chain || "unknown"}:${family || "yield_position"}:yield_shadow`;
+      const sample = {
+        strategyId,
+        chain,
+        family: family || "yield_position",
+        evidenceClass: "yield_shadow",
+        observedAt: observedAt(record),
+        edgeBpsPerDay,
+        costUsd: recordCostUsd(record),
+        sampleCount: recordSampleCount(record),
+        confidence: recordConfidence(record, confidence),
+      };
+      pushSample(buckets, key, sample);
+      continue;
+    }
     if (!isSuccessfulShadow(record)) continue;
     const strategyId = recordStrategyId(record);
     const chain = recordChain(record);
     const notionalUsd = recordNotionalUsd(record);
     const edgeUsd = recordEdgeUsd(record);
-    if (!strategyId || !(notionalUsd > 0) || edgeUsd === null) continue;
+    const holdingPeriodDays = recordHoldingPeriodDays(record);
     const family = recordFamily(record);
-    const key = `${strategyId}:${chain || "unknown"}:${family || "unknown"}`;
+    if (!strategyId || !(notionalUsd > 0) || edgeUsd === null) continue;
+    if (!(holdingPeriodDays > 0)) {
+      const key = `${strategyId}:${chain || "unknown"}:${family || "unknown"}:transport_one_shot`;
+      pushSample(buckets, key, {
+        strategyId,
+        chain,
+        family,
+        evidenceClass: "transport_one_shot",
+        observedAt: observedAt(record),
+        edgeBpsPerDay: null,
+        oneShotNetEdgeUsd: edgeUsd,
+        costUsd: recordCostUsd(record),
+        sampleCount: 1,
+        confidence: 0,
+      });
+      continue;
+    }
+    const key = `${strategyId}:${chain || "unknown"}:${family || "unknown"}:shadow`;
     const sample = {
       strategyId,
       chain,
       family,
+      evidenceClass: "shadow",
       observedAt: observedAt(record),
-      edgeBpsPerDay: (edgeUsd / notionalUsd) * 10_000,
+      edgeBpsPerDay: (edgeUsd / notionalUsd) * 10_000 / holdingPeriodDays,
       costUsd: recordCostUsd(record),
+      sampleCount: 1,
+      confidence,
     };
-    const samples = buckets.get(key) || [];
-    samples.push(sample);
-    buckets.set(key, samples);
+    pushSample(buckets, key, sample);
   }
 
   return [...buckets.values()]
@@ -97,16 +163,29 @@ export function buildShadowEdgeRecords({
       const first = samples[0];
       const edges = samples.map((sample) => sample.edgeBpsPerDay).filter(Number.isFinite);
       const costs = samples.map((sample) => sample.costUsd).filter(Number.isFinite);
+      const evidenceClass = first.evidenceClass || "shadow";
+      const sampleCount = samples.reduce((sum, sample) => sum + (finiteNumber(sample.sampleCount) ?? 1), 0);
+      const confidenceValue = samples
+        .map((sample) => finiteNumber(sample.confidence))
+        .filter(Number.isFinite)
+        .sort((left, right) => left - right)[0] ?? confidence;
+      const oneShotEdges = samples.map((sample) => finiteNumber(sample.oneShotNetEdgeUsd)).filter(Number.isFinite);
+      const oneShotFields = oneShotEdges.length
+        ? { oneShotNetEdgeUsd: round(oneShotEdges.reduce((sum, value) => sum + value, 0) / oneShotEdges.length) }
+        : {};
       return {
         strategyId: first.strategyId,
         chain: first.chain,
         family: first.family,
-        evidenceClass: "shadow",
-        estimatedEdgeBpsPerDay: round(edges.reduce((sum, value) => sum + value, 0) / edges.length),
+        evidenceClass,
+        estimatedEdgeBpsPerDay: evidenceClass === "transport_one_shot"
+          ? null
+          : round(edges.reduce((sum, value) => sum + value, 0) / edges.length),
         estimatedRoundTripCostUsd: quantileNearestRank(costs, 0.9),
-        sampleCount: samples.length,
+        ...oneShotFields,
+        sampleCount,
         lastSimAt: samples.map((sample) => sample.observedAt).filter(Boolean).sort().at(-1) || null,
-        confidence,
+        confidence: confidenceValue,
       };
     })
     .sort((left, right) => left.strategyId.localeCompare(right.strategyId) || String(left.chain).localeCompare(String(right.chain)));

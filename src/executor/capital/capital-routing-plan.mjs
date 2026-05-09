@@ -115,6 +115,8 @@ function recommendedActionFor(row = {}) {
   if (row.classification === "negative_or_zero_edge") return "fix strategy edge model before allocating more capital";
   if (row.classification === "thin_evidence") return "refresh receipt evidence before capital allocation";
   if (row.classification === "missing_input") return "refresh economics inputs before capital allocation";
+  if (row.classification === "missing_yield_evidence") return "run yield-position simulator before capital allocation";
+  if (row.classification === "ready_with_yield_shadow_evidence") return "validate tiny canary or receipt path before capital allocation";
   return "acquire or free operating capital";
 }
 

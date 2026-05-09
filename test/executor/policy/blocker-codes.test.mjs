@@ -26,6 +26,7 @@ const REQUIRED_CODES = [
   "proof_acquisition:gateway_route_unknown",
   "proof_acquisition:inventory_snapshot_stale",
   "proof_acquisition:rewards_unclaimed",
+  "proof_acquisition:missing_yield_evidence",
   "refill_or_inventory:chain_under_target",
   "refill_or_inventory:gas_float_below_threshold",
   "refill_or_inventory:idle_dust_consolidation_due",
@@ -51,6 +52,7 @@ test("blocker registry includes required unique codes with known categories", ()
 
 test("normalizeBlocker maps legacy text and forbidden names to stable codes", () => {
   assert.equal(normalizeBlocker("same_chain_unprofitable:need_$5_on_base").code, "economic_no_go:edge_below_variance_floor");
+  assert.equal(normalizeBlocker("missing_yield_evidence").code, "proof_acquisition:missing_yield_evidence");
   assert.equal(normalizeBlocker("recipe_not_proven").code, "code_required:specific_recipe_required");
   assert.equal(normalizeBlocker("refill_proof_not_proven").code, "code_required:specific_recipe_required");
   assert.equal(normalizeBlocker("route_proof_not_proven").code, "code_required:specific_recipe_required");

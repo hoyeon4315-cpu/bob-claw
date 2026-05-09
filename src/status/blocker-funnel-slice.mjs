@@ -48,7 +48,13 @@ function isResolverActionable(rowOrCode) {
   const classification = typeof rowOrCode === "string" ? null : rowOrCode?.capitalRoutingClassification;
   if (
     code === "economic_no_go:edge_below_variance_floor" &&
-    (classification === "ready_with_capital_addition" || classification === "thin_evidence" || classification === "missing_input")
+    (
+      classification === "ready_with_capital_addition" ||
+      classification === "thin_evidence" ||
+      classification === "missing_input" ||
+      classification === "missing_yield_evidence" ||
+      classification === "ready_with_yield_shadow_evidence"
+    )
   ) return true;
   const category = BLOCKER_CODES[code]?.category;
   return category === "proof_acquisition" || category === "refill_or_inventory";

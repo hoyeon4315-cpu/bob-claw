@@ -58,3 +58,18 @@ test("reward and refill recipes build policy-routed actions without signer autho
   assert.equal(refill.requiresExternalDeposit, false);
   assert.equal(refill.build({ code: "refill_or_inventory:chain_under_target", params: { chain: "base" }, context: {} }).authority, "capital_manager_queue");
 });
+
+test("missing yield evidence recipe runs yield-position simulation proof acquisition", () => {
+  const recipe = getRecipeForBlocker({
+    code: "proof_acquisition:missing_yield_evidence",
+    params: { strategyId: "aerodrome-cl-base" },
+  });
+  const action = recipe.build({
+    code: "proof_acquisition:missing_yield_evidence",
+    params: { strategyId: "aerodrome-cl-base" },
+    context: {},
+  });
+  assert.equal(recipe.kind, "auto_proof_acquisition");
+  assert.equal(action.type, "refresh_command");
+  assert.equal(action.command, "npm run run:yield-position-sims -- --write-shadow-edge");
+});

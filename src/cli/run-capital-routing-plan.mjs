@@ -257,7 +257,7 @@ export async function runCapitalRoutingPlanCli(
         strategyId: record.strategyId,
         chain: record.chain,
         familyId: record.family,
-        evidenceClass: "shadow",
+        evidenceClass: record.evidenceClass || "shadow",
       };
     }
   }

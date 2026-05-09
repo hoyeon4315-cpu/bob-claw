@@ -172,7 +172,10 @@ function previewResolverActionable(group = {}, plan = {}, capitalRoutingByStrate
   const category = group.code.split(":")[0];
   const classification = edgeFloorClassificationFor(group, plan, capitalRoutingByStrategy);
   if (group.code === "economic_no_go:edge_below_variance_floor" && classification === "ready_with_capital_addition") return true;
-  if (group.code === "economic_no_go:edge_below_variance_floor" && (classification === "thin_evidence" || classification === "missing_input")) return true;
+  if (
+    group.code === "economic_no_go:edge_below_variance_floor" &&
+    ["thin_evidence", "missing_input", "missing_yield_evidence", "ready_with_yield_shadow_evidence"].includes(classification)
+  ) return true;
   return ["proof_acquisition", "refill_or_inventory"].includes(category) && !isHardSafetyStop(group.code);
 }
 

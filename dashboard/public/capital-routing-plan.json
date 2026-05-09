@@ -1,36 +1,46 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-09T02:05:09.538Z",
+  "generatedAt": "2026-05-09T03:15:47.587Z",
   "treasury": {
-    "freeCapitalUsd": 320.7333723626284,
+    "freeCapitalUsd": 321.0207574206623,
     "lockedCapitalUsd": 0,
     "perChainUsd": {
-      "bob": 34.60047619523123,
-      "base": 62.827375775962295,
-      "ethereum": 95.38865030789509,
-      "soneium": 15.454255458671447,
-      "bsc": 20.232114176833704,
-      "avalanche": 18.86588329939185,
-      "unichain": 9.217936167990674,
-      "sonic": 25.813516203800315,
-      "sei": 10.040297154502396,
-      "bera": 17.612869371559057,
-      "optimism": 8.552107478290393,
-      "bitcoin": 2.1278907725
+      "bob": 34.650049793959106,
+      "base": 62.88118492742588,
+      "ethereum": 95.42553887521692,
+      "soneium": 15.472036583397838,
+      "bsc": 20.26099170633895,
+      "avalanche": 18.871492003221398,
+      "unichain": 9.231816498035887,
+      "sonic": 25.876303358706878,
+      "sei": 10.085906253540848,
+      "bera": 17.577397731948125,
+      "optimism": 8.557105921370477,
+      "bitcoin": 2.1309337675
     }
   },
   "scoredTargetBalances": null,
   "routingPlan": [],
   "unresolvable": [
     {
-      "strategyId": "aerodrome-cl-base",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
+      "strategyId": "tokenized_reserve_sleeve",
+      "classification": "thin_evidence",
+      "recommendedAction": "refresh receipt evidence before capital allocation"
     },
     {
       "strategyId": "eth_destination_deployment",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
+      "classification": "thin_evidence",
+      "recommendedAction": "refresh receipt evidence before capital allocation"
+    },
+    {
+      "strategyId": "recursive_wrapped_btc_lending_loop",
+      "classification": "thin_evidence",
+      "recommendedAction": "refresh receipt evidence before capital allocation"
+    },
+    {
+      "strategyId": "aerodrome-cl-base",
+      "classification": "missing_yield_evidence",
+      "recommendedAction": "run yield-position simulator before capital allocation"
     },
     {
       "strategyId": "gas-zip-native-refuel",
@@ -69,8 +79,8 @@
     },
     {
       "strategyId": "proxy_spread_expansion",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
+      "classification": "missing_yield_evidence",
+      "recommendedAction": "run yield-position simulator before capital allocation"
     },
     {
       "strategyId": "proxy-spread-experiment",
@@ -79,26 +89,16 @@
     },
     {
       "strategyId": "recursive_stablecoin_lending_loop",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
-    },
-    {
-      "strategyId": "recursive_wrapped_btc_lending_loop",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
+      "classification": "missing_yield_evidence",
+      "recommendedAction": "run yield-position simulator before capital allocation"
     },
     {
       "strategyId": "stablecoin_spread_loop",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
+      "classification": "missing_yield_evidence",
+      "recommendedAction": "run yield-position simulator before capital allocation"
     },
     {
       "strategyId": "token-dex-experiment",
-      "classification": "missing_input",
-      "recommendedAction": "refresh economics inputs before capital allocation"
-    },
-    {
-      "strategyId": "tokenized_reserve_sleeve",
       "classification": "missing_input",
       "recommendedAction": "refresh economics inputs before capital allocation"
     },
@@ -168,7 +168,7 @@
     },
     {
       "strategyId": "stablecoin_spread_loop",
-      "classification": "missing_input",
+      "classification": "missing_yield_evidence",
       "capitalDeltaNeededUsd": null,
       "minNotionalUsd": null,
       "observedNotionalUsd": 0,
@@ -179,7 +179,7 @@
     },
     {
       "strategyId": "proxy_spread_expansion",
-      "classification": "missing_input",
+      "classification": "missing_yield_evidence",
       "capitalDeltaNeededUsd": null,
       "minNotionalUsd": null,
       "observedNotionalUsd": 0,
@@ -190,14 +190,285 @@
     },
     {
       "strategyId": "tokenized_reserve_sleeve",
-      "classification": "missing_input",
-      "capitalDeltaNeededUsd": null,
-      "minNotionalUsd": null,
+      "classification": "thin_evidence",
+      "capitalDeltaNeededUsd": 2389.09141,
+      "minNotionalUsd": 2389.09141,
       "observedNotionalUsd": 0,
-      "capitalSourceCandidates": [],
-      "expectedDailyUsdOnResolve": null,
-      "reason": "missing_input",
-      "destinationChain": "base"
+      "capitalSourceCandidates": [
+        {
+          "chain": "bob",
+          "asset": "wbtc",
+          "amountUsd": 34.495395,
+          "freeUsd": 34.4953950031
+        },
+        {
+          "chain": "base",
+          "asset": "usdc",
+          "amountUsd": 29.37624,
+          "freeUsd": 29.37624
+        },
+        {
+          "chain": "ethereum",
+          "asset": "alphaforexv2",
+          "amountUsd": 25.055375,
+          "freeUsd": 25.055375
+        },
+        {
+          "chain": "ethereum",
+          "asset": "steakusdt",
+          "amountUsd": 25.030978,
+          "freeUsd": 25.030978
+        },
+        {
+          "chain": "ethereum",
+          "asset": "rlusd",
+          "amountUsd": 24.931082,
+          "freeUsd": 24.93108208216955
+        },
+        {
+          "chain": "base",
+          "asset": "cbbtc",
+          "amountUsd": 21.622143,
+          "freeUsd": 21.622142669549998
+        },
+        {
+          "chain": "soneium",
+          "asset": "wbtc",
+          "amountUsd": 11.529558,
+          "freeUsd": 11.5295578711
+        },
+        {
+          "chain": "base",
+          "asset": "eth",
+          "amountUsd": 9.80424,
+          "freeUsd": 9.804240138931927
+        },
+        {
+          "chain": "ethereum",
+          "asset": "eth",
+          "amountUsd": 9.305413,
+          "freeUsd": 9.3054130837739
+        },
+        {
+          "chain": "bsc",
+          "asset": "wbtc",
+          "amountUsd": 8.046888,
+          "freeUsd": 8.04688838165
+        },
+        {
+          "chain": "ethereum",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "avalanche",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "unichain",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "sonic",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "sei",
+          "asset": "wbtc",
+          "amountUsd": 7.935919,
+          "freeUsd": 7.93591900055
+        },
+        {
+          "chain": "bera",
+          "asset": "wbtc",
+          "amountUsd": 7.884455,
+          "freeUsd": 7.88445493975
+        },
+        {
+          "chain": "bera",
+          "asset": "bera",
+          "amountUsd": 6.402109,
+          "freeUsd": 6.402108792198124
+        },
+        {
+          "chain": "bsc",
+          "asset": "usdc",
+          "amountUsd": 6.163142,
+          "freeUsd": 6.1631419089769235
+        },
+        {
+          "chain": "sonic",
+          "asset": "ws",
+          "amountUsd": 5.845879,
+          "freeUsd": 5.845878583583165
+        },
+        {
+          "chain": "sonic",
+          "asset": "s",
+          "amountUsd": 5.61342,
+          "freeUsd": 5.613420275123711
+        },
+        {
+          "chain": "avalanche",
+          "asset": "avax",
+          "amountUsd": 5.418507,
+          "freeUsd": 5.418506569848409
+        },
+        {
+          "chain": "bsc",
+          "asset": "bnb",
+          "amountUsd": 5.312348,
+          "freeUsd": 5.312348127893359
+        },
+        {
+          "chain": "optimism",
+          "asset": "usdc",
+          "amountUsd": 5.162739,
+          "freeUsd": 5.162739
+        },
+        {
+          "chain": "avalanche",
+          "asset": "usdc",
+          "amountUsd": 4.08068,
+          "freeUsd": 4.08068
+        },
+        {
+          "chain": "sonic",
+          "asset": "usdc",
+          "amountUsd": 3.373355,
+          "freeUsd": 3.373355
+        },
+        {
+          "chain": "soneium",
+          "asset": "usdc",
+          "amountUsd": 3.293553,
+          "freeUsd": 3.293553
+        },
+        {
+          "chain": "bera",
+          "asset": "usdc",
+          "amountUsd": 3.290834,
+          "freeUsd": 3.290834
+        },
+        {
+          "chain": "ethereum",
+          "asset": "weth",
+          "amountUsd": 3.046046,
+          "freeUsd": 3.046046209273474
+        },
+        {
+          "chain": "sonic",
+          "asset": "asonusdc",
+          "amountUsd": 3.00239,
+          "freeUsd": 3.00239
+        },
+        {
+          "chain": "optimism",
+          "asset": "eth",
+          "amountUsd": 2.454274,
+          "freeUsd": 2.454273804177153
+        },
+        {
+          "chain": "sei",
+          "asset": "sei",
+          "amountUsd": 2.149987,
+          "freeUsd": 2.1499872529908486
+        },
+        {
+          "chain": "bitcoin",
+          "asset": "btc",
+          "amountUsd": 2.130934,
+          "freeUsd": 2.1309337675
+        },
+        {
+          "chain": "base",
+          "asset": "wbtc",
+          "amountUsd": 1.962871,
+          "freeUsd": 1.96287144395
+        },
+        {
+          "chain": "unichain",
+          "asset": "eth",
+          "amountUsd": 1.181417,
+          "freeUsd": 1.181416998035885
+        },
+        {
+          "chain": "optimism",
+          "asset": "aoptusdcn",
+          "amountUsd": 0.932586,
+          "freeUsd": 0.932586
+        },
+        {
+          "chain": "avalanche",
+          "asset": "aavausdc",
+          "amountUsd": 0.842795,
+          "freeUsd": 0.842795
+        },
+        {
+          "chain": "bsc",
+          "asset": "wbnb",
+          "amountUsd": 0.738613,
+          "freeUsd": 0.7386132878186668
+        },
+        {
+          "chain": "soneium",
+          "asset": "eth",
+          "amountUsd": 0.648926,
+          "freeUsd": 0.6489257122978379
+        },
+        {
+          "chain": "avalanche",
+          "asset": "wavax",
+          "amountUsd": 0.488251,
+          "freeUsd": 0.4882509333729876
+        },
+        {
+          "chain": "bob",
+          "asset": "eth",
+          "amountUsd": 0.154655,
+          "freeUsd": 0.15465479085910397
+        },
+        {
+          "chain": "base",
+          "asset": "weth",
+          "amountUsd": 0.115691,
+          "freeUsd": 0.11569067499395243
+        },
+        {
+          "chain": "ethereum",
+          "asset": "usdc",
+          "amountUsd": 0.015385,
+          "freeUsd": 0.015385
+        },
+        {
+          "chain": "unichain",
+          "asset": "usdc",
+          "amountUsd": 0.00914,
+          "freeUsd": 0.00914
+        },
+        {
+          "chain": "optimism",
+          "asset": "weth",
+          "amountUsd": 0.007507,
+          "freeUsd": 0.007507117193323985
+        },
+        {
+          "chain": "bsc",
+          "asset": "usdt",
+          "amountUsd": 0,
+          "freeUsd": 2.7e-17
+        }
+      ],
+      "expectedDailyUsdOnResolve": 0.18,
+      "reason": "floor_infeasible_at_committed_caps",
+      "destinationChain": "ethereum"
     },
     {
       "strategyId": "token-dex-experiment",
@@ -212,13 +483,68 @@
     },
     {
       "strategyId": "eth_destination_deployment",
-      "classification": "missing_input",
-      "capitalDeltaNeededUsd": null,
-      "minNotionalUsd": null,
+      "classification": "thin_evidence",
+      "capitalDeltaNeededUsd": 188.32776,
+      "minNotionalUsd": 188.32776,
       "observedNotionalUsd": 0,
-      "capitalSourceCandidates": [],
-      "expectedDailyUsdOnResolve": null,
-      "reason": "missing_input",
+      "capitalSourceCandidates": [
+        {
+          "chain": "bob",
+          "asset": "wbtc",
+          "amountUsd": 34.495395,
+          "freeUsd": 34.4953950031
+        },
+        {
+          "chain": "base",
+          "asset": "usdc",
+          "amountUsd": 29.37624,
+          "freeUsd": 29.37624
+        },
+        {
+          "chain": "ethereum",
+          "asset": "alphaforexv2",
+          "amountUsd": 25.055375,
+          "freeUsd": 25.055375
+        },
+        {
+          "chain": "ethereum",
+          "asset": "steakusdt",
+          "amountUsd": 25.030978,
+          "freeUsd": 25.030978
+        },
+        {
+          "chain": "ethereum",
+          "asset": "rlusd",
+          "amountUsd": 24.931082,
+          "freeUsd": 24.93108208216955
+        },
+        {
+          "chain": "base",
+          "asset": "cbbtc",
+          "amountUsd": 21.622143,
+          "freeUsd": 21.622142669549998
+        },
+        {
+          "chain": "soneium",
+          "asset": "wbtc",
+          "amountUsd": 11.529558,
+          "freeUsd": 11.5295578711
+        },
+        {
+          "chain": "base",
+          "asset": "eth",
+          "amountUsd": 9.80424,
+          "freeUsd": 9.804240138931927
+        },
+        {
+          "chain": "ethereum",
+          "asset": "eth",
+          "amountUsd": 6.482749,
+          "freeUsd": 9.3054130837739
+        }
+      ],
+      "expectedDailyUsdOnResolve": 0.006,
+      "reason": "floor_infeasible_at_committed_caps",
       "destinationChain": "base"
     },
     {
@@ -245,18 +571,289 @@
     },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
-      "classification": "missing_input",
-      "capitalDeltaNeededUsd": null,
-      "minNotionalUsd": null,
+      "classification": "thin_evidence",
+      "capitalDeltaNeededUsd": 1226.517305,
+      "minNotionalUsd": 1226.517305,
       "observedNotionalUsd": 0,
-      "capitalSourceCandidates": [],
-      "expectedDailyUsdOnResolve": null,
-      "reason": "missing_input",
+      "capitalSourceCandidates": [
+        {
+          "chain": "bob",
+          "asset": "wbtc",
+          "amountUsd": 34.495395,
+          "freeUsd": 34.4953950031
+        },
+        {
+          "chain": "base",
+          "asset": "usdc",
+          "amountUsd": 29.37624,
+          "freeUsd": 29.37624
+        },
+        {
+          "chain": "ethereum",
+          "asset": "alphaforexv2",
+          "amountUsd": 25.055375,
+          "freeUsd": 25.055375
+        },
+        {
+          "chain": "ethereum",
+          "asset": "steakusdt",
+          "amountUsd": 25.030978,
+          "freeUsd": 25.030978
+        },
+        {
+          "chain": "ethereum",
+          "asset": "rlusd",
+          "amountUsd": 24.931082,
+          "freeUsd": 24.93108208216955
+        },
+        {
+          "chain": "base",
+          "asset": "cbbtc",
+          "amountUsd": 21.622143,
+          "freeUsd": 21.622142669549998
+        },
+        {
+          "chain": "soneium",
+          "asset": "wbtc",
+          "amountUsd": 11.529558,
+          "freeUsd": 11.5295578711
+        },
+        {
+          "chain": "base",
+          "asset": "eth",
+          "amountUsd": 9.80424,
+          "freeUsd": 9.804240138931927
+        },
+        {
+          "chain": "ethereum",
+          "asset": "eth",
+          "amountUsd": 9.305413,
+          "freeUsd": 9.3054130837739
+        },
+        {
+          "chain": "bsc",
+          "asset": "wbtc",
+          "amountUsd": 8.046888,
+          "freeUsd": 8.04688838165
+        },
+        {
+          "chain": "ethereum",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "avalanche",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "unichain",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "sonic",
+          "asset": "wbtc",
+          "amountUsd": 8.04126,
+          "freeUsd": 8.0412595
+        },
+        {
+          "chain": "sei",
+          "asset": "wbtc",
+          "amountUsd": 7.935919,
+          "freeUsd": 7.93591900055
+        },
+        {
+          "chain": "bera",
+          "asset": "wbtc",
+          "amountUsd": 7.884455,
+          "freeUsd": 7.88445493975
+        },
+        {
+          "chain": "bera",
+          "asset": "bera",
+          "amountUsd": 6.402109,
+          "freeUsd": 6.402108792198124
+        },
+        {
+          "chain": "bsc",
+          "asset": "usdc",
+          "amountUsd": 6.163142,
+          "freeUsd": 6.1631419089769235
+        },
+        {
+          "chain": "sonic",
+          "asset": "ws",
+          "amountUsd": 5.845879,
+          "freeUsd": 5.845878583583165
+        },
+        {
+          "chain": "sonic",
+          "asset": "s",
+          "amountUsd": 5.61342,
+          "freeUsd": 5.613420275123711
+        },
+        {
+          "chain": "avalanche",
+          "asset": "avax",
+          "amountUsd": 5.418507,
+          "freeUsd": 5.418506569848409
+        },
+        {
+          "chain": "bsc",
+          "asset": "bnb",
+          "amountUsd": 5.312348,
+          "freeUsd": 5.312348127893359
+        },
+        {
+          "chain": "optimism",
+          "asset": "usdc",
+          "amountUsd": 5.162739,
+          "freeUsd": 5.162739
+        },
+        {
+          "chain": "avalanche",
+          "asset": "usdc",
+          "amountUsd": 4.08068,
+          "freeUsd": 4.08068
+        },
+        {
+          "chain": "sonic",
+          "asset": "usdc",
+          "amountUsd": 3.373355,
+          "freeUsd": 3.373355
+        },
+        {
+          "chain": "soneium",
+          "asset": "usdc",
+          "amountUsd": 3.293553,
+          "freeUsd": 3.293553
+        },
+        {
+          "chain": "bera",
+          "asset": "usdc",
+          "amountUsd": 3.290834,
+          "freeUsd": 3.290834
+        },
+        {
+          "chain": "ethereum",
+          "asset": "weth",
+          "amountUsd": 3.046046,
+          "freeUsd": 3.046046209273474
+        },
+        {
+          "chain": "sonic",
+          "asset": "asonusdc",
+          "amountUsd": 3.00239,
+          "freeUsd": 3.00239
+        },
+        {
+          "chain": "optimism",
+          "asset": "eth",
+          "amountUsd": 2.454274,
+          "freeUsd": 2.454273804177153
+        },
+        {
+          "chain": "sei",
+          "asset": "sei",
+          "amountUsd": 2.149987,
+          "freeUsd": 2.1499872529908486
+        },
+        {
+          "chain": "bitcoin",
+          "asset": "btc",
+          "amountUsd": 2.130934,
+          "freeUsd": 2.1309337675
+        },
+        {
+          "chain": "base",
+          "asset": "wbtc",
+          "amountUsd": 1.962871,
+          "freeUsd": 1.96287144395
+        },
+        {
+          "chain": "unichain",
+          "asset": "eth",
+          "amountUsd": 1.181417,
+          "freeUsd": 1.181416998035885
+        },
+        {
+          "chain": "optimism",
+          "asset": "aoptusdcn",
+          "amountUsd": 0.932586,
+          "freeUsd": 0.932586
+        },
+        {
+          "chain": "avalanche",
+          "asset": "aavausdc",
+          "amountUsd": 0.842795,
+          "freeUsd": 0.842795
+        },
+        {
+          "chain": "bsc",
+          "asset": "wbnb",
+          "amountUsd": 0.738613,
+          "freeUsd": 0.7386132878186668
+        },
+        {
+          "chain": "soneium",
+          "asset": "eth",
+          "amountUsd": 0.648926,
+          "freeUsd": 0.6489257122978379
+        },
+        {
+          "chain": "avalanche",
+          "asset": "wavax",
+          "amountUsd": 0.488251,
+          "freeUsd": 0.4882509333729876
+        },
+        {
+          "chain": "bob",
+          "asset": "eth",
+          "amountUsd": 0.154655,
+          "freeUsd": 0.15465479085910397
+        },
+        {
+          "chain": "base",
+          "asset": "weth",
+          "amountUsd": 0.115691,
+          "freeUsd": 0.11569067499395243
+        },
+        {
+          "chain": "ethereum",
+          "asset": "usdc",
+          "amountUsd": 0.015385,
+          "freeUsd": 0.015385
+        },
+        {
+          "chain": "unichain",
+          "asset": "usdc",
+          "amountUsd": 0.00914,
+          "freeUsd": 0.00914
+        },
+        {
+          "chain": "optimism",
+          "asset": "weth",
+          "amountUsd": 0.007507,
+          "freeUsd": 0.007507117193323985
+        },
+        {
+          "chain": "bsc",
+          "asset": "usdt",
+          "amountUsd": 0,
+          "freeUsd": 2.7e-17
+        }
+      ],
+      "expectedDailyUsdOnResolve": 0.006,
+      "reason": "floor_infeasible_at_committed_caps",
       "destinationChain": "base"
     },
     {
       "strategyId": "recursive_stablecoin_lending_loop",
-      "classification": "missing_input",
+      "classification": "missing_yield_evidence",
       "capitalDeltaNeededUsd": null,
       "minNotionalUsd": null,
       "observedNotionalUsd": 0,
@@ -289,7 +886,7 @@
     },
     {
       "strategyId": "aerodrome-cl-base",
-      "classification": "missing_input",
+      "classification": "missing_yield_evidence",
       "capitalDeltaNeededUsd": null,
       "minNotionalUsd": null,
       "observedNotionalUsd": 0,
