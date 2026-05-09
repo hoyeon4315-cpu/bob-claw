@@ -436,6 +436,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 1_000_000,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 25,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
@@ -553,6 +554,7 @@ export const STRATEGY_CAPS = Object.freeze({
       }),
       maxDailyLossUsd: 25,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 5,
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 3, targetUsd: 6 }),
