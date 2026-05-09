@@ -475,6 +475,10 @@ export async function buildCurrentDashboardContext({
     tolerateMalformed: true,
     retryCount: 2,
   });
+  const capitalRoutingPlan = await readJsonIfExists(join("dashboard", "public", "capital-routing-plan.json"), {
+    tolerateMalformed: true,
+    retryCount: 2,
+  });
   dashboardStatus.blockerResolver = buildBlockerFunnelSlice({
     strategyTickStatus,
     resolverState: blockerResolverState || { byParamsKey: {} },
@@ -482,6 +486,7 @@ export async function buildCurrentDashboardContext({
     pendingDispatches: blockerResolverPending?.pending || [],
     payback: dashboardStatus.payback,
     previousSlice: previousBlockerFunnel || null,
+    capitalRoutingPlan: capitalRoutingPlan || null,
     generatedAt: dashboardStatus.generatedAt,
   });
   const canarySelectionGap = buildCanarySelectionGap({

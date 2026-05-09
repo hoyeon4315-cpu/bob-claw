@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { BLOCKER_CODES, isHardSafetyStop, normalizeBlocker, paramsHash as blockerParamsHash } from "../executor/policy/blocker-codes.mjs";
 import { BLOCKER_RESOLUTION_CONFIG, buildBlockerResolutionConfig } from "../config/blocker-resolution.mjs";
+import { buildCapitalRoutingSummary } from "./capital-routing-slice.mjs";
 
 function finiteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -42,12 +43,27 @@ function resolverStateFor(resolverState = {}, key) {
   return resolverState?.byParamsKey?.[key] || resolverState?.[key] || {};
 }
 
-function isResolverActionable(code) {
+function isResolverActionable(rowOrCode) {
+  const code = typeof rowOrCode === "string" ? rowOrCode : rowOrCode?.code;
+  const classification = typeof rowOrCode === "string" ? null : rowOrCode?.capitalRoutingClassification;
+  if (
+    code === "economic_no_go:edge_below_variance_floor" &&
+    (classification === "ready_with_capital_addition" || classification === "thin_evidence" || classification === "missing_input")
+  ) return true;
   const category = BLOCKER_CODES[code]?.category;
   return category === "proof_acquisition" || category === "refill_or_inventory";
 }
 
-function requiresStrategyOrCapitalChange(code, requiresExternalDeposit = false) {
+function requiresStrategyOrCapitalChange(rowOrCode, requiresExternalDeposit = false) {
+  const code = typeof rowOrCode === "string" ? rowOrCode : rowOrCode?.code;
+  const classification = typeof rowOrCode === "string" ? null : rowOrCode?.capitalRoutingClassification;
+  if (code === "economic_no_go:edge_below_variance_floor" && classification) {
+    return [
+      "needs_capital_acquisition",
+      "floor_infeasible_at_committed_caps",
+      "negative_or_zero_edge",
+    ].includes(classification);
+  }
   const category = BLOCKER_CODES[code]?.category;
   return requiresExternalDeposit === true || category === "economic_no_go" || category === "executor_unbound" || category === "code_required";
 }
@@ -60,6 +76,28 @@ function fallbackFireCountFromRows(rows = []) {
     }
   }
   return counts;
+}
+
+function capitalRoutingRowsByStrategy(capitalRoutingPlan = null) {
+  const rows = [
+    ...(Array.isArray(capitalRoutingPlan?.routingPlan) ? capitalRoutingPlan.routingPlan : []),
+    ...(Array.isArray(capitalRoutingPlan?.unresolvable) ? capitalRoutingPlan.unresolvable : []),
+    ...(Array.isArray(capitalRoutingPlan?.classifications) ? capitalRoutingPlan.classifications : []),
+  ];
+  const mapped = new Map();
+  for (const row of rows) {
+    if (!row?.strategyId) continue;
+    const existing = mapped.get(row.strategyId) || {};
+    mapped.set(row.strategyId, { ...existing, ...row });
+  }
+  return mapped;
+}
+
+function capitalRoutingRequiresExternalDeposit(row = null, fallback = false) {
+  if (!row) return fallback;
+  if (row.classification === "ready_no_capital_change" || row.classification === "ready_with_capital_addition") return false;
+  if (row.classification === "needs_capital_acquisition") return true;
+  return fallback;
 }
 
 export function buildPaybackLifecycleBlockers({
@@ -116,6 +154,7 @@ export function buildBlockerFunnelSlice({
   pendingDispatches = [],
   payback = null,
   previousSlice = null,
+  capitalRoutingPlan = null,
   generatedAt = new Date().toISOString(),
   config = BLOCKER_RESOLUTION_CONFIG,
 } = {}) {
@@ -126,6 +165,7 @@ export function buildBlockerFunnelSlice({
   const codeFrequency = {};
   const rootCauses = new Map();
   const strategyRows = Array.isArray(strategyTickStatus?.strategies) ? strategyTickStatus.strategies : [];
+  const capitalRoutingByStrategy = capitalRoutingRowsByStrategy(capitalRoutingPlan);
   for (const row of strategyRows) {
     const raw = firstBlockerForStrategy(row);
     if (!raw) continue;
@@ -138,13 +178,19 @@ export function buildBlockerFunnelSlice({
     const paramsKey = paramsKeyFor(code, params);
     const state = resolverStateFor(resolverState, paramsKey);
     const prev = previous.get(row.strategyId);
+    const capitalRouting = code === "economic_no_go:edge_below_variance_floor"
+      ? capitalRoutingByStrategy.get(row.strategyId) || null
+      : null;
     const consecutiveTicks =
       prev?.code === code
         ? (Number(prev.consecutiveTicks) || 0) + 1
         : 1;
     const requiresExternalDeposit =
-      state.requiresExternalDeposit === true ||
+      capitalRoutingRequiresExternalDeposit(capitalRouting, state.requiresExternalDeposit === true) ||
       BLOCKER_CODES[code]?.requiresExternalDeposit === true;
+    const expectedDailyUsdOnResolve =
+      finiteNumber(state.expectedDailyUsdOnResolve) ??
+      finiteNumber(capitalRouting?.expectedDailyUsdOnResolve);
     const item = {
       strategyId: row.strategyId,
       stage: BLOCKER_CODES[code]?.category || "manual_review",
@@ -159,8 +205,9 @@ export function buildBlockerFunnelSlice({
       lastResolverOutcome: state.lastResolverOutcome || null,
       nextRetryAt: state.nextRetryAt || null,
       quarantineCandidate: consecutiveTicks >= resolvedConfig.quarantineTickThreshold,
-      expectedDailyUsdOnResolve: finiteNumber(state.expectedDailyUsdOnResolve),
+      expectedDailyUsdOnResolve,
       requiresExternalDeposit,
+      capitalRoutingClassification: capitalRouting?.classification || null,
     };
     rows.push(item);
     increment(stageDropCounts, item.stage);
@@ -171,6 +218,7 @@ export function buildBlockerFunnelSlice({
       params,
       affectedStrategies: [],
       expectedDailyUsdOnResolve: item.expectedDailyUsdOnResolve,
+      capitalRoutingClassification: item.capitalRoutingClassification,
       lastAction: item.lastResolverAction,
     };
     group.affectedStrategies.push(row.strategyId);
@@ -180,6 +228,7 @@ export function buildBlockerFunnelSlice({
         item.expectedDailyUsdOnResolve,
       );
     }
+    if (item.capitalRoutingClassification) group.capitalRoutingClassification = item.capitalRoutingClassification;
     if (item.lastResolverAction) group.lastAction = item.lastResolverAction;
     rootCauses.set(paramsKey, group);
   }
@@ -232,16 +281,17 @@ export function buildBlockerFunnelSlice({
   });
   const fallbackFireCount = fallbackFireCountFromRows(rows);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt,
     strategies: rows,
     stageDropCounts,
     codeFrequency,
     rootCauseGroups,
-    resolverActionableCount: rows.filter((row) => isResolverActionable(row.code) && !isHardSafetyStop(row.code)).length,
-    requiresStrategyOrCapitalChangeCount: rows.filter((row) => requiresStrategyOrCapitalChange(row.code, row.requiresExternalDeposit)).length,
+    resolverActionableCount: rows.filter((row) => isResolverActionable(row) && !isHardSafetyStop(row.code)).length,
+    requiresStrategyOrCapitalChangeCount: rows.filter((row) => requiresStrategyOrCapitalChange(row, row.requiresExternalDeposit)).length,
     fallbackFireCount,
     circuitBreakerState,
     pendingDispatchCount: pendingDispatches.length,
+    capitalRouting: buildCapitalRoutingSummary(capitalRoutingPlan),
   };
 }

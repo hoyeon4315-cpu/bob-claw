@@ -15,7 +15,7 @@ test("blocker funnel groups root causes, normalizes codes, and separates resolve
     },
     generatedAt: "2026-05-09T00:00:02.000Z",
   });
-  assert.equal(slice.schemaVersion, 1);
+  assert.equal(slice.schemaVersion, 2);
   assert.equal(slice.resolverActionableCount, 1);
   assert.equal(slice.requiresStrategyOrCapitalChangeCount, 1);
   assert.equal(slice.codeFrequency["proof_acquisition:route_quote_stale"], 1);

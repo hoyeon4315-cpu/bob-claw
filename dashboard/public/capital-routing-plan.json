@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-09T01:11:57.942Z",
+  "treasury": {
+    "freeCapitalUsd": 320.55957933458285,
+    "lockedCapitalUsd": 0,
+    "perChainUsd": {
+      "bob": 34.574518056538516,
+      "base": 62.80115336597779,
+      "ethereum": 95.37189396009856,
+      "soneium": 15.445063642532556,
+      "bsc": 20.230020419667337,
+      "avalanche": 18.84222141088049,
+      "unichain": 9.210896027545903,
+      "sonic": 25.80963033525476,
+      "sei": 10.022091938271206,
+      "bera": 17.5758129474851,
+      "optimism": 8.549981757830786,
+      "bitcoin": 2.1262954725000003
+    }
+  },
+  "scoredTargetBalances": null,
+  "routingPlan": [],
+  "unresolvable": [
+    {
+      "strategyId": "aerodrome-cl-base",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "gateway_proxy_spread_rebalance_recheck",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "recursive_stablecoin_lending_loop",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "recursive_wrapped_btc_lending_loop",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    }
+  ],
+  "totalExpectedDailyUsdOnResolve": 0,
+  "mode": "execute",
+  "classifications": [
+    {
+      "strategyId": "recursive_wrapped_btc_lending_loop",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "recursive_stablecoin_lending_loop",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "gateway_proxy_spread_rebalance_recheck",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "aerodrome-cl-base",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    }
+  ]
+}
