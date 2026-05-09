@@ -207,6 +207,13 @@ function btcUsdForRecord(record, marketPriceSnapshots = [], config = {}) {
   const directRecordPrice = btcUsdFromRecord(record);
   if (Number.isFinite(directRecordPrice)) return directRecordPrice;
 
+  const configBtcUsd =
+    finiteNumber(config?.btcUsd) ??
+    finiteNumber(config?.prices?.btc) ??
+    finiteNumber(config?.priceSnapshot?.btcUsd) ??
+    btcUsdFromSnapshot(config?.priceSnapshot);
+  if (Number.isFinite(configBtcUsd)) return configBtcUsd;
+
   const observedAtMs = latestTimestampMs([record]);
   let winner = null;
   let winnerDistance = Number.POSITIVE_INFINITY;
@@ -228,12 +235,6 @@ function btcUsdForRecord(record, marketPriceSnapshots = [], config = {}) {
     }
   }
   if (Number.isFinite(winner)) return winner;
-  const configBtcUsd =
-    finiteNumber(config?.btcUsd) ??
-    finiteNumber(config?.prices?.btc) ??
-    finiteNumber(config?.priceSnapshot?.btcUsd) ??
-    btcUsdFromSnapshot(config?.priceSnapshot);
-  if (Number.isFinite(configBtcUsd)) return configBtcUsd;
   return latestBtcUsd({ marketPriceSnapshots }, config);
 }
 
@@ -654,6 +655,7 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     },
     config,
   );
+  const valuationConfig = Number.isFinite(btcUsd) ? { ...config, btcUsd } : config;
   const markers = paybackMarkers(config);
   const period = periodBounds(config);
   const latestObservedMs = Math.max(
@@ -665,7 +667,7 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
 
   const profitRecords = allRecords
     .map((record) => {
-      const profit = profitSatsDetailsFromRecord(record, store.marketPriceSnapshots, config);
+      const profit = profitSatsDetailsFromRecord(record, store.marketPriceSnapshots, valuationConfig);
       return {
         record,
         sats: profit.sats,

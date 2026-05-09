@@ -113,6 +113,28 @@ function computeExpectedRealizedApr(displayedApr, rewardTokenHaircut) {
   return displayedApr * (1 - rewardTokenHaircut);
 }
 
+function rewardExitLiquidityStatus({ rewardTokenType, rewardToken }) {
+  if (!rewardToken || rewardToken === "unknown") {
+    return {
+      status: "missing_explicit_reward_exit_liquidity_proof",
+      ready: false,
+      reason: "reward_token_unknown",
+    };
+  }
+  if (rewardTokenType === "stable") {
+    return {
+      status: "stable_reward_no_swap_depth_required_for_candidate_report",
+      ready: true,
+      reason: null,
+    };
+  }
+  return {
+    status: "missing_explicit_reward_exit_liquidity_proof",
+    ready: false,
+    reason: "non_stable_reward_requires_depth_proof",
+  };
+}
+
 function getGasEstimateUsd(chain) {
   const c = normalizeChain(chain);
   if (c === "base") return GAS_ESTIMATE_USD.base;
@@ -144,6 +166,12 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   if (candidate.tvlUsd < 50_000) blockers.push("tvl_below_50k");
   if (candidate.hoursRemaining !== null && candidate.hoursRemaining < 24) blockers.push("hours_remaining_below_24");
   if (candidate.expectedRealizedAprAfterHaircut <= 0) blockers.push("realized_apr_not_positive");
+  if (candidate.rewardTokenHaircut === 0.85) {
+    blockers.push("pre_tge_or_points_reward");
+  }
+  if (candidate.rewardExitLiquidityStatus?.ready !== true) {
+    blockers.push("reward_exit_liquidity_unproven");
+  }
   if (!primaryChain && expectedNetProfitUsd < 10) {
     blockers.push("non_primary_chain_and_low_net_profit");
   }
@@ -155,6 +183,7 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
     candidate.tvlUsd < 50_000 ||
     (candidate.hoursRemaining !== null && candidate.hoursRemaining < 24) ||
     candidate.expectedRealizedAprAfterHaircut <= 0 ||
+    candidate.rewardExitLiquidityStatus?.ready !== true ||
     (!primaryChain && expectedNetProfitUsd < 10) ||
     !KNOWN_PROTOCOLS.has(candidate.protocol);
 
@@ -177,9 +206,6 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   // policy_review triggers
   if (candidate.campaignAgeHours !== null && candidate.campaignAgeHours < 48) {
     blockers.push("campaign_age_under_48h");
-  }
-  if (candidate.rewardTokenHaircut === 0.85) {
-    blockers.push("pre_tge_or_points_reward");
   }
   if (candidate.expectedRealizedAprAfterHaircut < 10) {
     blockers.push("realized_apr_under_10pct");
@@ -290,6 +316,7 @@ export function buildCampaignAwareCandidates({
 
     // Reward token info from campaigns if available
     let rewardToken = "unknown";
+    let rewardTokenType = "defaultRewardToken";
     let rewardTokenHaircut = 0.50;
     let campaignAgeHours = null;
     let hoursRemaining = null;
@@ -313,11 +340,13 @@ export function buildCampaignAwareCandidates({
       const firstReward = campaigns[0].rewardToken || campaigns[0].token || {};
       rewardToken = firstReward.displaySymbol || firstReward.symbol || "unknown";
       const classification = classifyRewardToken(rewardToken, firstReward.name || firstReward.symbol);
+      rewardTokenType = classification.type;
       rewardTokenHaircut = classification.haircut;
     } else if (opp.rewardsRecord?.breakdowns?.length) {
       const firstReward = opp.rewardsRecord.breakdowns[0].token || {};
       rewardToken = firstReward.displaySymbol || firstReward.symbol || "unknown";
       const classification = classifyRewardToken(rewardToken, firstReward.name || firstReward.symbol);
+      rewardTokenType = classification.type;
       rewardTokenHaircut = classification.haircut;
     }
 
@@ -332,7 +361,9 @@ export function buildCampaignAwareCandidates({
       campaignAgeHours,
       hoursRemaining,
       rewardToken,
+      rewardTokenType,
       rewardTokenHaircut,
+      rewardExitLiquidityStatus: rewardExitLiquidityStatus({ rewardTokenType, rewardToken }),
     };
     const expectedHoldDays = resolveTinyCanaryExpectedHoldDays({
       campaignRemainingHours: hoursRemaining,

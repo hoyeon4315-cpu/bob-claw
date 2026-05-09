@@ -59,7 +59,8 @@ describe("dashboard home renewal source guard", () => {
     for (const label of labels) {
       assert.match(flowPane, new RegExp(`label:\\s*'${label.replace(" ", "\\s+")}'`));
     }
-    assert.match(flowPane, /const totalApr = Number\.isFinite\(liveYieldAprPct\) \? liveYieldAprPct : weightedApyForStrategies\(STRATEGIES\)/);
+    assert.match(flowPane, /const totalApr = Number\.isFinite\(liveYieldAprPct\) && liveYieldAprPositionCount > 0 \? liveYieldAprPct : null/);
+    assert.match(flowPane, /candidate \$\{fmtPct\(candidateAprPct\)\} · not open/);
     assert.match(flowPane, /const strategyYieldUsd = STRATEGIES\.reduce/);
     assert.match(flowPane, /const liveYieldSats = flow\?\.metrics\?\.liveEstimatedYieldSats/);
     assert.match(flowPane, /const liveYieldUsd = flow\?\.metrics\?\.liveEstimatedYieldUsd/);
@@ -314,7 +315,7 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(overlayActive \? 'none' : 'auto'\)/);
     assert.match(flowPane, /transform: historyExpanded \? 'translateY\(0\) scale\(1\)' : overlayActive \? 'translateY\(18px\) scale\(0\.985\)' : 'translateY\(0\) scale\(1\)'/);
     assert.match(flowPane, /<OpsStrip fill=\{historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
-    assert.match(flowPane, /const totalApr = Number\.isFinite\(liveYieldAprPct\) \? liveYieldAprPct : weightedApyForStrategies\(STRATEGIES\)/);
+    assert.match(flowPane, /const totalApr = Number\.isFinite\(liveYieldAprPct\) && liveYieldAprPositionCount > 0 \? liveYieldAprPct : null/);
     assert.match(flowPane, /open APR estimate only/);
     assert.match(flowPane, /not realized PnL or payback/);
   });

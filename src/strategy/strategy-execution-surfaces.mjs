@@ -180,6 +180,15 @@ function wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral = null) {
   return configuredTinyCapUsd;
 }
 
+function wrappedBtcLoopExpectedNetReady(wrappedBtcLendingLoopSlice = null, validation = null) {
+  return [
+    wrappedBtcLendingLoopSlice?.liveExecutionPolicy?.expectedNetReady,
+    wrappedBtcLendingLoopSlice?.policyPreview?.expectedNetReady,
+    wrappedBtcLendingLoopSlice?.executorIntentPreview?.expectedNetReady,
+    validation?.evidence?.perIntentExpectedNetReady,
+  ].some((value) => value === true);
+}
+
 function wrappedBtcLoopProofIsSuccess(proof = null) {
   if (!proof) return false;
   if (proof.strategyId && proof.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
@@ -432,13 +441,14 @@ function buildWrappedBtcLoopExecutorSurface({
     actualUnits: baseCbBtcCollateral.actualUnits,
     requiredUnits: requiredCollateralUnits,
   });
+  const expectedNetReady = wrappedBtcLoopExpectedNetReady(wrappedBtcLendingLoopSlice, validation);
   const liveRunControl = evaluateWrappedBtcLoopLiveRunControl({
     liveProof: wrappedBtcLoopLiveProof,
     signerAuditRecords,
     operatorCooldownWaivers,
     now,
   });
-  const rawLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked;
+  const rawLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked && expectedNetReady;
   const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "dry_run",
@@ -450,6 +460,7 @@ function buildWrappedBtcLoopExecutorSurface({
     dryRunRecorded ? null : "dry_run_receipt_missing",
     collateralReady ? null : "base_cbbtc_collateral_unavailable",
     liveRunControl.blocked ? liveRunControl.reason : null,
+    expectedNetReady ? null : "expected_net_unmeasured",
   ]);
   const currentLiveEligible = mode.currentLiveEligible && runtimeLiveAllowed;
   const selectedMode = currentLiveEligible ? mode.selectedMode : mode.selectedMode === "live" ? "dry_run" : mode.selectedMode;
@@ -475,6 +486,8 @@ function buildWrappedBtcLoopExecutorSurface({
       baseCbBtcCollateralStatus: baseCbBtcCollateral.status,
       treasuryInventoryObservedAt: baseCbBtcCollateral.observedAt,
       livePerTradeCapUsd,
+      expectedNetReady,
+      expectedNetPolicySource: expectedNetReady ? "wrapped_btc_loop_policy_preview" : null,
       projectedAnnualNetCarryBtc: null,
       projectedAnnualNetCarryUsd: wrappedBtcLendingLoopSlice?.pnl?.paper?.annualNetCarryUsd ?? null,
       estimatedNetCarryBtc: null,
@@ -592,7 +605,34 @@ function merklPolicyPreviewBlockers(candidate = null) {
   return compact(blockers);
 }
 
-function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
+function merklAutopilotLatestBlockers(latest = null) {
+  if (!latest || typeof latest !== "object") return [];
+  const summary = latest.summary || {};
+  const status = String(latest.status || "");
+  const executionReadyCount = Number(summary.executionReadyCount ?? 0);
+  const previewReadyCount = Number(summary.previewReadyCount ?? 0);
+  const deliveredCount = Number(summary.deliveredCount ?? 0);
+  const filteredCount = Number(summary.filteredCount ?? 0);
+  const blockedCount = Number(summary.blockedCount ?? 0);
+  const statusHasBlockers = ["blocked", "completed_with_blockers", "failed", "error"].includes(status);
+  const noExecutableSelection =
+    statusHasBlockers &&
+    executionReadyCount <= 0 &&
+    previewReadyCount <= 0 &&
+    deliveredCount <= 0 &&
+    (blockedCount > 0 || filteredCount > 0 || status !== "completed");
+  if (!noExecutableSelection) return [];
+  const blockers = [];
+  if (latest.blockedReason) blockers.push(latest.blockedReason);
+  if (latest.filteredReason) blockers.push(latest.filteredReason);
+  if (summary.topBlocker) blockers.push(summary.topBlocker);
+  const counts = summary.blockerCounts || {};
+  blockers.push(...Object.keys(counts));
+  if (blockers.length === 0 && status) blockers.push(`merkl_autopilot_${status}`);
+  return [...new Set(blockers.filter(Boolean))];
+}
+
+function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCanaryAutopilotLatest = null } = {}) {
   const summary = merklCanaryQueue?.summary || {};
   const queue = merklCanaryQueue?.queue || [];
   const topReady = queue.find((item) =>
@@ -603,10 +643,12 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
   if (!merklCanaryQueue && !topReady) return null;
   const liveAllowed = baseLiveTradingAllowed(policy);
   const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady);
+  const latestAutopilotBlockers = merklAutopilotLatestBlockers(merklCanaryAutopilotLatest);
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
     (summary.autoExecutableNowCount ?? 0) > 0 ? null : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
     ...policyPreviewBlockers,
+    ...latestAutopilotBlockers,
   ]);
   const rawLiveEligible = liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
   const mode = selectExecutionModeFromPolicy({
@@ -628,12 +670,22 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null } = {}) {
       topOpportunityId: topReady?.opportunityId || summary.topExecutableOpportunityId || null,
       topProtocolId: topReady?.protocolId || null,
       projectedPnlBtc: null,
-      projectedPnlUsd: topReady?.aprPct ?? null,
+      projectedPnlUsd: null,
+      candidateAprPct: topReady?.aprPct ?? null,
       estimatedPnlBtc: null,
       estimatedPnlUsd: topReady?.executionReadiness?.matchedToken?.estimatedUsd ?? null,
       realizedPnlBtc: null,
       realizedPnlUsd: null,
       exitPathReady: merklExitPathReady(topReady),
+      latestAutopilotStatus: merklCanaryAutopilotLatest?.status || null,
+      latestAutopilotBlockedReason: merklCanaryAutopilotLatest?.blockedReason || null,
+      latestAutopilotFilteredReason: merklCanaryAutopilotLatest?.filteredReason || null,
+      latestAutopilotExecutionReadyCount: merklCanaryAutopilotLatest?.summary?.executionReadyCount ?? null,
+      latestAutopilotPreviewReadyCount: merklCanaryAutopilotLatest?.summary?.previewReadyCount ?? null,
+      latestAutopilotDeliveredCount: merklCanaryAutopilotLatest?.summary?.deliveredCount ?? null,
+      latestAutopilotFilteredCount: merklCanaryAutopilotLatest?.summary?.filteredCount ?? null,
+      latestAutopilotBlockedCount: merklCanaryAutopilotLatest?.summary?.blockedCount ?? null,
+      latestAutopilotTopBlocker: merklCanaryAutopilotLatest?.summary?.topBlocker || null,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",
@@ -907,6 +959,7 @@ export function buildStrategyExecutionSurfaces({
     buildMerklAutopilotSurface({
       policy: catalog.policy,
       merklCanaryQueue: artifacts.merklCanaryQueue || null,
+      merklCanaryAutopilotLatest: artifacts.merklCanaryAutopilotLatest || null,
     }),
   ].filter(Boolean).map(withReportingOnlyAdvice);
   const bucketCounts = strategies.reduce((counts, strategy) => {

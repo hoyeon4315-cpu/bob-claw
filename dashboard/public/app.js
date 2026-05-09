@@ -876,6 +876,7 @@ function PnlBreakdownStrip({ inline = false }) {
   } }, "Top drags: ", topKinds.map((item) => `${pnlKindLabel(item.kind)} ${fmtUsd(item.realizedNetPnlUsd)}`).join(" \xB7 ")));
 }
 function FlowPane({ refreshTick }) {
+  const STATUS = window.STATUS || globalThis.STATUS || {};
   const HOLDINGS = window.HOLDINGS || globalThis.HOLDINGS;
   const STRATEGIES = window.STRATEGIES || globalThis.STRATEGIES || [];
   const flow = window.FLOW || {};
@@ -910,6 +911,9 @@ function FlowPane({ refreshTick }) {
   const liveYieldPositionCount = flow?.metrics?.liveYieldPositionCount ?? flow?.liveYield?.positionCount ?? 0;
   const liveYieldAprPositionCount = flow?.liveYield?.aprPositionCount ?? liveYieldPositionCount;
   const liveAnnualizedYieldUsd = flow?.metrics?.liveAnnualizedYieldUsd ?? flow?.liveYield?.annualizedYieldUsd ?? null;
+  const merklTopQueue = STATUS?.strategy?.merklCanaryQueueSummary?.topQueue || null;
+  const merklTopCandidate = STATUS?.strategy?.merklOpportunitySummary?.topCandidate || null;
+  const candidateAprPct = Number.isFinite(merklTopQueue?.aprPct) ? merklTopQueue.aprPct : Number.isFinite(merklTopCandidate?.aprPct) ? merklTopCandidate.aprPct : null;
   const showLiveYield = Number.isFinite(liveYieldSats) && liveYieldSats > 0 || Number.isFinite(liveYieldUsd) && liveYieldUsd > 0;
   const liveYieldSub = [
     Number.isFinite(liveYieldUsd) && liveYieldUsd > 0 ? `${fmtUsdCompact(liveYieldUsd)} est. accrued` : null,
@@ -921,7 +925,7 @@ function FlowPane({ refreshTick }) {
   const flowMapBaseHeight = "calc(52% - 4px)";
   const lowerPaneTop = "calc(52% + 4px)";
   const lowerPaneExpandedOffset = "calc(52% + 10px)";
-  const totalApr = Number.isFinite(liveYieldAprPct) ? liveYieldAprPct : weightedApyForStrategies(STRATEGIES);
+  const totalApr = Number.isFinite(liveYieldAprPct) && liveYieldAprPositionCount > 0 ? liveYieldAprPct : null;
   const [aprOpen, setAprOpen] = useState(false);
   const assetIsVerifiedFloor = HOLDINGS?.assetConfidence === "verified_minimum";
   const assetHasReconciliationGap = protocolTrackingGapUsd > 1 || Boolean(HOLDINGS?.accountingWarning);
@@ -931,7 +935,11 @@ function FlowPane({ refreshTick }) {
   const assetSub = pending ? "pending" : assetEstimateAvailable ? `${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(estimatedProtocolDeployedUsd)} est. protocols = ${fmtUsdCompact(estimatedCurrentTotalUsd)} est. \xB7 verified floor ${fmtUsdCompact(verifiedMinimumUsd)}` : assetIsVerifiedFloor ? `verified floor \xB7 ${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(trackedProtocolUsd)} tracked protocols${protocolTrackingGapSub}` : `${fmtUsdCompact(currentWalletUsd)} free + ${fmtUsdCompact(trackedProtocolUsd)} tracked protocols${protocolTrackingGapSub}`;
   const assetMetricLabel = assetEstimateAvailable ? "Assets" : assetHasReconciliationGap ? "Observed" : "Total";
   const assetMain = pending ? "\u2014" : fmtUsd(displayAssetUsd || 0);
-  const apySub = aprOpen ? `${liveYieldAprPositionCount || 0} APR-backed open position${liveYieldAprPositionCount === 1 ? "" : "s"} \xB7 estimated, not realized` : "tap for note";
+  const candidateAprSub = Number.isFinite(candidateAprPct) ? `candidate ${fmtPct(candidateAprPct)} \xB7 not open` : null;
+  const apySub = aprOpen ? [
+    `${liveYieldAprPositionCount || 0} APR-backed open position${liveYieldAprPositionCount === 1 ? "" : "s"} \xB7 estimated, not realized`,
+    candidateAprSub
+  ].filter(Boolean).join(" \xB7 ") : candidateAprSub || "tap for note";
   return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { position: "relative", display: "flex", flexDirection: "column", overflowX: "hidden", overflowY: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",
     left: 12,

@@ -35,6 +35,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     wrappedBtcLoopLiveProof,
     signerAuditRecords,
     merklCanaryQueue,
+    merklCanaryAutopilotLatest,
     autonomousDiscoveryBoard,
   ] = await Promise.all([
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
@@ -46,6 +47,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
     readSignerAuditLogImpl(),
     readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
+    readJsonIfExists(join(dataDir, "merkl-canary-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "autonomous-discovery-board.json")),
   ]);
 
@@ -73,6 +75,7 @@ export async function loadStrategyExecutionSurfaceInputs({
       wrappedBtcLoopLiveProof,
       signerAuditRecords,
       merklCanaryQueue,
+      merklCanaryAutopilotLatest,
       autonomousDiscoveryBoard,
     },
   };
@@ -81,7 +84,13 @@ export async function loadStrategyExecutionSurfaceInputs({
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { state, dashboardStatus, triangleArtifacts, artifacts } = await loadStrategyExecutionSurfaceInputs();
-  const report = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus,
+    state,
+    triangleArtifacts,
+    artifacts,
+    now: new Date().toISOString(),
+  });
 
   if (args.write) {
     await writeTextIfChanged(join(config.dataDir, "strategy-execution-surfaces.json"), `${JSON.stringify(report, null, 2)}\n`);

@@ -156,6 +156,43 @@ test("first broadcast runner execute invokes only the selected cold-start canary
   assert.equal(executeLog.selectedCandidate.kind, "radar_canary");
 });
 
+test("first broadcast runner never executes radar:promote as a broadcast path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-first-broadcast-radar-preview-only-"));
+  const calls = [];
+  const result = await runFirstBroadcastRunnerCli(["--execute", "--json"], {
+    cwd: root,
+    dataDir: join(root, "data"),
+    runStep: async (step) => {
+      calls.push(step);
+      if (step.id === "radar_promote") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            mode: "preview",
+            signed: false,
+            candidates: [
+              {
+                candidateId: "radar-only",
+                gateStatus: "executable",
+                expectedNetEvUsd: 12,
+              },
+            ],
+          }),
+          stderr: "",
+        };
+      }
+      return { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "" };
+    },
+    now: "2026-05-09T00:00:00.000Z",
+  });
+
+  const executeCalls = calls.filter((step) => step.args.includes("--execute"));
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.payload.outcome, "execute_blocked_no_single_broadcast_selector");
+  assert.equal(result.payload.blockedReason, "radar_promote_is_preview_only_use_cold_start_canary");
+  assert.equal(executeCalls.length, 0);
+});
+
 test("first broadcast runner execute respects fresh single-broadcast lock", async () => {
   const root = await mkdtemp(join(tmpdir(), "bob-claw-first-broadcast-lock-"));
   const dataDir = join(root, "data");

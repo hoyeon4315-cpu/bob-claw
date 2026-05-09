@@ -181,6 +181,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.ok(c.expectedRealizedAprAfterHaircut >= 15);
     assert.ok(c.tvlUsd >= 100_000);
     assert.ok(c.hoursRemaining >= 48);
+    assert.equal(c.rewardExitLiquidityStatus.ready, true);
   });
 
   test("blocked when APR < 5%", () => {
@@ -258,7 +259,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.strictEqual(c.isMicroTest, true);
   });
 
-  test("policy_review when reward token is pre-TGE/points", () => {
+  test("blocks pre-TGE/points reward without explicit exit liquidity proof", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -275,11 +276,12 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "policy_review");
+    assert.strictEqual(c.entryStatus, "blocked");
     assert.ok(c.blockers.includes("pre_tge_or_points_reward"));
+    assert.ok(c.blockers.includes("reward_exit_liquidity_unproven"));
   });
 
-  test("auto_allowed micro_test when expectedRealizedAprAfterHaircut < 10% on Base", () => {
+  test("blocks micro_test when non-stable reward exit liquidity is unproven", () => {
     // With 0.50 default haircut, APR must be < 20 to get realized < 10
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
@@ -298,8 +300,9 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "auto_allowed");
-    assert.strictEqual(c.isMicroTest, true);
+    assert.strictEqual(c.entryStatus, "blocked");
+    assert.ok(c.blockers.includes("reward_exit_liquidity_unproven"));
+    assert.equal(c.rewardExitLiquidityStatus.ready, false);
   });
 
   test("blocks non-primary campaigns when operator-notional net does not clear the committed cost floor", () => {

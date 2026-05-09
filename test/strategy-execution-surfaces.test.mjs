@@ -67,6 +67,15 @@ function treasuryInventoryFixture(actual = "33053") {
   ];
 }
 
+function wrappedBtcLoopExpectedNetPolicy() {
+  return {
+    liveExecutionPolicy: {
+      expectedNetReady: true,
+      expectedNetUsd: 0.42,
+    },
+  };
+}
+
 test("execution surfaces classify missing runners separately from runnable observation lanes", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: dashboardStatusFixture(),
@@ -138,6 +147,7 @@ test("execution surfaces include executor-backed live strategies when artifacts 
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -234,6 +244,7 @@ test("execution surfaces keep Stage B advisory when live evidence is otherwise r
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -328,6 +339,7 @@ test("wrapped BTC loop treats Stage B payback blocker as advisory when policy li
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -377,6 +389,62 @@ test("wrapped BTC loop treats Stage B payback blocker as advisory when policy li
   assert.equal(report.summary.liveEligibleCount, 1);
 });
 
+test("wrapped BTC loop stays dry-run when per-intent expected net is not measured", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-06T12:00:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "ALLOWED",
+        lanePolicy: {
+          candidateId: "wrapped-btc-loop-base-moonwell",
+          stage: "B",
+          policyLiveTrading: "ALLOWED",
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.selectedMode, "dry_run");
+  assert.equal(wrapped.fallbackReason, "expected_net_unmeasured");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("expected_net_unmeasured"), true);
+  assert.equal(wrapped.evidence.expectedNetReady, false);
+  assert.equal(report.summary.liveEligibleCount, 0);
+});
+
 test("wrapped BTC loop still blocks when runtime liveTrading is blocked despite advisory Stage B metadata", () => {
   const report = buildStrategyExecutionSurfaces({
     now: "2026-05-06T12:00:00.000Z",
@@ -401,6 +469,7 @@ test("wrapped BTC loop still blocks when runtime liveTrading is blocked despite 
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -489,6 +558,129 @@ test("Merkl surface does not mark policy-blocked tiny entries as executable now"
   assert.equal(merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")), true);
 });
 
+test("Merkl surface uses latest autopilot EV blocker after sizing and policy preview", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-sized-down",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 150 },
+            },
+            aprPct: 100,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+      merklCanaryAutopilotLatest: {
+        status: "blocked",
+        blockedReason: "same_chain_unprofitable:need_$57_on_base",
+        summary: {
+          blockerCounts: {
+            "same_chain_unprofitable:need_$57_on_base": 1,
+          },
+        },
+      },
+    },
+  });
+
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(merkl.evidence.latestAutopilotStatus, "blocked");
+  assert.equal(merkl.evidence.latestAutopilotBlockedReason, "same_chain_unprofitable:need_$57_on_base");
+  assert.equal(merkl.evidence.projectedPnlUsd, null);
+  assert.equal(merkl.evidence.candidateAprPct, 100);
+  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), true);
+});
+
+test("Merkl surface treats completed_with_blockers with no executable selection as non-live", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-filtered",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 5 },
+            },
+            aprPct: 100,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+      merklCanaryAutopilotLatest: {
+        status: "completed_with_blockers",
+        blockedReason: null,
+        filteredReason: "same_chain_unprofitable:need_$57_on_base",
+        summary: {
+          executionReadyCount: 0,
+          previewReadyCount: 0,
+          deliveredCount: 0,
+          blockedCount: 0,
+          filteredCount: 4,
+          topBlocker: null,
+          blockerCounts: {},
+        },
+      },
+    },
+  });
+
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(merkl.evidence.latestAutopilotStatus, "completed_with_blockers");
+  assert.equal(merkl.evidence.latestAutopilotFilteredReason, "same_chain_unprofitable:need_$57_on_base");
+  assert.equal(merkl.evidence.latestAutopilotExecutionReadyCount, 0);
+  assert.equal(merkl.evidence.latestAutopilotFilteredCount, 4);
+  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), true);
+});
+
 test("wrapped BTC loop stays out of live dispatch when Base cbBTC collateral is unavailable", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
@@ -503,6 +695,7 @@ test("wrapped BTC loop stays out of live dispatch when Base cbBTC collateral is 
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -559,6 +752,7 @@ test("wrapped BTC loop live dispatch cools down after a fresh signer-backed proo
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -625,6 +819,7 @@ test("wrapped BTC loop one-time operator cooldown waiver unlocks only the matchi
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -693,6 +888,7 @@ test("wrapped BTC loop one-time operator cooldown waiver is consumed by post-app
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -779,6 +975,7 @@ test("wrapped BTC loop cooldown waiver does not convert non-payback runtime bloc
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },
@@ -845,6 +1042,7 @@ test("wrapped BTC loop live dispatch cools down after recent signer activity eve
           id: "wrapped-btc-loop-base-moonwell",
           label: "Wrapped BTC lending loop (Base / Moonwell)",
         },
+        ...wrappedBtcLoopExpectedNetPolicy(),
         bindingSupport: {
           executableFromRepo: true,
         },

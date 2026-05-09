@@ -63,7 +63,7 @@ import { applyLaneAwareLivePolicy } from "./live-policy.mjs";
 import { buildCanarySelectionGap } from "../strategy/canary-selection-gap.mjs";
 import { summarizeDevAgentAutomationBridge } from "../strategy/dev-agent-automation-bridge.mjs";
 import { summarizeV1InfraDrills } from "../prelive/v1-infra-drills.mjs";
-import { stabilizeWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
+import { hydrateWrappedBtcLoopLiveProof } from "../strategy/wrapped-btc-loop-live-proof.mjs";
 import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { buildRadarBoard } from "../strategy/radar/radar-board.mjs";
 import { buildRadarCapGraduationReview } from "../strategy/radar/cap-graduation-review.mjs";
@@ -138,6 +138,13 @@ function summarizeMerklCandidate(candidate = null) {
     family: candidate.family || null,
     mappedStrategyId: candidate.mappedStrategyId || null,
     score: candidate.score ?? null,
+    aprPct: candidate.aprPct ?? null,
+    nativeAprPct: candidate.nativeAprPct ?? null,
+    rewardToken: candidate.rewardToken || null,
+    rewardTokenType: candidate.rewardTokenType || null,
+    rewardExitLiquidityStatus: candidate.rewardExitLiquidityStatus || null,
+    entryStatus: candidate.entryStatus || null,
+    blockers: candidate.blockers || [],
     campaignRemainingHours: candidate.campaignRemainingHours ?? null,
     validationMode: candidate.validationMode || null,
     decision: candidate.decision || null,
@@ -214,10 +221,16 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
           protocolId: top.protocolId || null,
           mappedStrategyId: top.mappedStrategyId || null,
           canaryKind: top.canaryKind || null,
+          queueStatus: top.queueStatus || null,
+          aprPct: top.aprPct ?? null,
+          nativeAprPct: top.nativeAprPct ?? null,
           priorityScore: top.priorityScore ?? null,
           capabilityGaps: top.capabilityGaps || [],
           protocolBindingStatus: top.protocolBindingPlan?.status || null,
           executionReadiness: top.executionReadiness?.status || null,
+          autoExecute: top.autoEntry?.autoExecute === true,
+          autoEntryStatus: top.autoEntry?.status || null,
+          autoEntryBlockers: top.autoEntry?.blockers || [],
         }
       : null,
   };
@@ -401,7 +414,7 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "anchor-position-health.json")),
     readJsonIfExists(join(dataDir, "merkl-user-rewards-latest.json")),
   ]);
-  const enrichedWrappedBtcLoopLiveProof = await stabilizeWrappedBtcLoopLiveProof({
+  const enrichedWrappedBtcLoopLiveProof = hydrateWrappedBtcLoopLiveProof({
     proof: wrappedBtcLoopLiveProof,
     capitalAuditReport,
   });
@@ -515,6 +528,7 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.payback = await buildPaybackDashboardSlice({
     dataDir,
     now: dashboardStatus.generatedAt,
+    preMinimumCostPreviewBuilder: null,
   });
   const blockerResolverState = await readJsonIfExists(join(dataDir, "blocker-resolver-state.json"), {
     tolerateMalformed: true,

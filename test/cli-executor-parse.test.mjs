@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
 import { parseArgs as parseGasZipArgs } from "../src/cli/run-gas-zip-refuel.mjs";
 import { parseArgs as parseCapitalManagerArgs } from "../src/cli/plan-capital-manager-refill-jobs.mjs";
-import { buildFullAutomationReadiness, parseArgs as parseFullAutomationArgs } from "../src/cli/check-full-automation-readiness.mjs";
+import {
+  buildFullAutomationReadiness,
+  parseArgs as parseFullAutomationArgs,
+  runJsonCli,
+} from "../src/cli/check-full-automation-readiness.mjs";
 import { parseArgs as parseRuntimeReadinessArgs } from "../src/cli/check-executor-runtime.mjs";
 import { parseArgs as parseLaunchdArgs, retryableBootstrapFailure } from "../src/cli/manage-executor-launchd.mjs";
 import { retryableBootstrapFailure as retryableLiveAutomationBootstrapFailure } from "../src/cli/manage-live-automation-launchd.mjs";
@@ -156,6 +160,62 @@ test("check-full-automation-readiness parseArgs reads refresh flags", () => {
   assert.equal(args.json, true);
   assert.equal(args.strict, true);
   assert.equal(args.refresh, true);
+});
+
+test("full automation readiness child command reports timeout instead of hanging", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-readiness-"));
+  const scriptPath = join(dir, "slow-json.mjs");
+  await writeFile(scriptPath, "setTimeout(() => {}, 1000);\n", "utf8");
+
+  const result = runJsonCli(scriptPath, [], { timeoutMs: 5 });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "timeout_after_5ms");
+});
+
+test("full automation readiness blocks when a dependency command fails", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "BALANCED" },
+      capitalPlan: { decision: "BALANCED" },
+      jobs: {
+        summary: { jobCount: 0 },
+        jobs: [],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 1 },
+      executionSurfaces: { summary: { liveEligibleCount: 1 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+    commandHealth: {
+      payback: { ok: false, error: "timeout_after_45000ms" },
+    },
+  });
+
+  assert.equal(report.ready, false);
+  assert.equal(report.dependencyCommands.ready, false);
+  assert.equal(report.blockers.includes("dependency_command_failed:payback"), true);
 });
 
 test("full automation readiness reports isolated ingress and capital plan state", () => {

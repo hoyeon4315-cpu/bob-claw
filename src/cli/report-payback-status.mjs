@@ -26,6 +26,7 @@ function parseArgs(argv) {
   );
   return {
     json: flags.has("--json"),
+    liveCostPreview: flags.has("--live-cost-preview"),
     btcDestination: options["btc-destination"] || null,
   };
 }
@@ -77,7 +78,7 @@ function summarizeQuoteProofMatrix(matrix) {
   };
 }
 
-async function collectPaybackStatus({ btcDestination = null } = {}) {
+async function collectPaybackStatus({ btcDestination = null, liveCostPreview = false } = {}) {
   const fallbackPolicy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
   const recipientEnvName = fallbackPolicy.destinationPath.bitcoinDestAddressEnv;
   return withTemporaryEnv(recipientEnvName, btcDestination, async () => {
@@ -92,6 +93,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
       dataDir: config.dataDir,
       auditLogLines,
       receiptStore,
+      preMinimumCostPreviewBuilder: liveCostPreview ? buildPreMinimumPaybackCostPreview : null,
     });
     const decision = await buildPaybackDecision({
       auditLogLines,
@@ -100,7 +102,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
     const effectivePolicy = decision.policy || fallbackPolicy;
     let compositePreview = null;
     let preMinimumCompositePreview = payback?.scheduler?.preMinimumCompositePreview || null;
-    if (decision.status === "plan") {
+    if (liveCostPreview && decision.status === "plan") {
       try {
         compositePreview = await buildCompositePaybackPlan({
           decision,
@@ -115,6 +117,7 @@ async function collectPaybackStatus({ btcDestination = null } = {}) {
       }
     } else if (
       !preMinimumCompositePreview &&
+      liveCostPreview &&
       decision.status === "carry" &&
       decision.reason === "planned_payback_below_minimum"
     ) {
@@ -203,6 +206,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const report = await collectPaybackStatus({
     btcDestination: args.btcDestination,
+    liveCostPreview: args.liveCostPreview,
   });
 
   if (args.json) {

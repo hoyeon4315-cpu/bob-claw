@@ -107,6 +107,7 @@ test("payback status cli reports missing destination env and supports destinatio
     [
       join(ROOT, "src/cli/report-payback-status.mjs"),
       "--json",
+      "--live-cost-preview",
       "--btc-destination=bc1qpayback0000000000000000000000000000000",
     ],
     {
@@ -171,9 +172,7 @@ test("payback status cli reports current below-minimum gap when destination is a
   assert.equal(report.runway.status, "profit_creation_required");
   assert.equal(report.runway.nextActions[0].code, "create_payback_eligible_realized_pnl");
   assert.equal(report.compositePreview, null);
-  assert.equal(report.preMinimumCompositePreview.executionEligible, false);
-  assert.equal(report.preMinimumCompositePreview.intentEligible, false);
-  assert.equal(report.preMinimumCompositePreview.reason, "signer_health_unavailable");
+  assert.equal(report.preMinimumCompositePreview, null);
   assert.equal(report.quoteProofMatrix.readOnly, true);
   assert.equal(report.quoteProofMatrix.executionEligible, false);
   assert.equal(report.quoteProofMatrix.rowCount, 11);

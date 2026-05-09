@@ -14,6 +14,7 @@ import {
 } from "../status/all-chain-autopilot-slice.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+const DEFAULT_CHILD_TIMEOUT_MS = 45_000;
 
 export function parseArgs(argv) {
   const flags = new Set(argv);
@@ -24,30 +25,64 @@ export function parseArgs(argv) {
   };
 }
 
-function runJsonCli(scriptPath, args = []) {
+function readinessChildTimeoutMs(env = process.env) {
+  const parsed = Number(env.BOB_CLAW_READINESS_CHILD_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHILD_TIMEOUT_MS;
+}
+
+export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTimeoutMs() } = {}) {
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: process.cwd(),
     env: process.env,
     encoding: "utf8",
+    timeout: timeoutMs,
   });
   const stdout = String(result.stdout || "");
   const stderr = String(result.stderr || "");
+  if (result.error) {
+    const timeout = result.error.code === "ETIMEDOUT";
+    return {
+      ok: false,
+      status: result.status ?? null,
+      signal: result.signal || null,
+      stdout,
+      stderr,
+      json: null,
+      error: timeout ? `timeout_after_${timeoutMs}ms` : result.error.message,
+    };
+  }
   if (result.status !== 0) {
     return {
       ok: false,
       status: result.status ?? 1,
+      signal: result.signal || null,
       stdout,
       stderr,
       json: null,
       error: stderr.trim() || stdout.trim() || `exit ${result.status ?? 1}`,
     };
   }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      signal: null,
+      stdout,
+      stderr,
+      json: null,
+      error: `invalid_json:${error.message}`,
+    };
+  }
   return {
     ok: true,
     status: 0,
+    signal: null,
     stdout,
     stderr,
-    json: JSON.parse(stdout),
+    json: parsed,
     error: null,
   };
 }
@@ -121,6 +156,7 @@ export function buildFullAutomationReadiness({
   strategyDispatch,
   payback,
   autopilot,
+  commandHealth = {},
 } = {}) {
   const runtimeReady = runtime?.summary?.ready === true;
   const operatingCapitalIngressCount = inbound?.summary?.operatingCapitalIngressCount ?? 0;
@@ -165,8 +201,12 @@ export function buildFullAutomationReadiness({
     (capitalPlanDecision === "REFILL_REQUIRED" &&
       (autoRefillJobCount > 0 || (liveAutomationObserved && !unresolvedRefillRoutes)));
   const paybackReserveReady = paybackReason !== "reserve_asset_missing";
+  const failedDependencyCommands = Object.entries(commandHealth)
+    .filter(([, health]) => health?.ok === false)
+    .map(([name]) => `dependency_command_failed:${name}`);
 
   const blockers = [
+    ...failedDependencyCommands,
     ...(runtimeReady ? [] : ["runtime_not_ready"]),
     ...(ingressIsolationReady ? [] : ["operating_capital_not_isolated_from_payback"]),
     ...(capitalAutomationReady ? [] : ["capital_rebalancer_not_ready"]),
@@ -186,6 +226,10 @@ export function buildFullAutomationReadiness({
     runtime: {
       ready: runtimeReady,
       nextActionCode: runtime?.summary?.nextActionCode || null,
+    },
+    dependencyCommands: {
+      failed: failedDependencyCommands,
+      ready: failedDependencyCommands.length === 0,
     },
     ingress: {
       inboundEventCount: inbound?.summary?.inboundEventCount ?? 0,
@@ -250,6 +294,12 @@ async function main() {
     args.refresh ? ["--json", "--write", "--mode=auto"] : ["--json", "--mode=auto"],
   );
   const payback = runJsonCli("src/cli/report-payback-status.mjs", ["--json"]);
+  const commandHealth = {
+    inbound: { ok: inbound.ok, error: inbound.error },
+    capitalManager: { ok: capitalManager.ok, error: capitalManager.error },
+    strategyDispatch: { ok: strategyDispatch.ok, error: strategyDispatch.error },
+    payback: { ok: payback.ok, error: payback.error },
+  };
   const autopilotLatest = await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest.json"));
   const autopilotLatestCompleted = await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest-completed.json"));
   const autopilot = buildAllChainAutopilotDashboardSlice(
@@ -263,13 +313,9 @@ async function main() {
     strategyDispatch: strategyDispatch.json,
     payback: payback.json,
     autopilot,
+    commandHealth,
   });
-  report.commandHealth = {
-    inbound: { ok: inbound.ok, error: inbound.error },
-    capitalManager: { ok: capitalManager.ok, error: capitalManager.error },
-    strategyDispatch: { ok: strategyDispatch.ok, error: strategyDispatch.error },
-    payback: { ok: payback.ok, error: payback.error },
-  };
+  report.commandHealth = commandHealth;
 
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));

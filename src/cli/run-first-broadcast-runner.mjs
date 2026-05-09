@@ -150,15 +150,9 @@ function radarCandidates(payload = {}) {
     kind: "radar",
     id: candidate.candidateId || candidate.id || candidate.packetId || "radar",
     expectedRealizedNetUsd: candidateScore(candidate),
-    executeCommand: `npm run radar:promote -- --execute --candidate-id=${candidate.candidateId || candidate.id || ""}`,
-    executeStep: candidate.candidateId || candidate.id
-      ? {
-          id: "selected_execute",
-          command: "npm",
-          args: ["run", "radar:promote", "--", "--execute", `--candidate-id=${candidate.candidateId || candidate.id}`, "--json"],
-        }
-      : null,
-    blockedExecuteReason: candidate.candidateId || candidate.id ? null : "radar_candidate_id_missing",
+    executeCommand: `npm run cold-start:canary -- --execute --candidate-id=${candidate.candidateId || candidate.id || ""}`,
+    executeStep: null,
+    blockedExecuteReason: "radar_promote_is_preview_only_use_cold_start_canary",
     raw: candidate,
   }));
 }
