@@ -19,6 +19,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
   for (const value of argv) {
     if (value === "--json") args.json = true;
     else if (value.startsWith("--strategy=")) args.strategyId = value.slice("--strategy=".length);
+    else if (value.startsWith("--strategy-id=")) args.strategyId = value.slice("--strategy-id=".length);
     else if (value.startsWith("--chain=")) args.chain = value.slice("--chain=".length);
     else if (value.startsWith("--reason=")) args.reason = value.slice("--reason=".length);
     else if (value.startsWith("--actor=")) args.actor = value.slice("--actor=".length);

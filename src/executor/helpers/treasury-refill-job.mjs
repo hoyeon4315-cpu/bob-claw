@@ -539,6 +539,7 @@ export async function buildTreasuryRefillExecutionPlan({
       amount,
       senderAddress,
       outputToken: job.token,
+      systemEconomics: job.systemEconomics || null,
     });
   } else if (executor === "gateway_btc_consolidation") {
     const targetAmount = positiveBigInt(job.targetAmount);

@@ -1872,6 +1872,81 @@ test("all-chain autopilot continues unrelated refill jobs after a scoped route f
   assert.equal(seen.some((args) => args.includes("--job-id=unrelated-executes") && args.includes("--execute")), true);
 });
 
+test("all-chain autopilot does not overstate global blockers or passive waiting for scoped refill locks", async () => {
+  const blockedReasons = new Map([
+    ["consecutive-lock", "max_consecutive_failures_reached"],
+    ["dev-lock", "dev_lock_active"],
+    ["signer-timeout", "Signer did not complete before timeout"],
+  ]);
+  const command = ({ args }) => {
+    const name = args[0];
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return { ok: true, exitCode: 0, stdout: "", stderr: "", json: { summary: { jobCount: 0 }, jobs: [] } };
+    }
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "REFILL_REQUIRED", summary: { actionCount: 3, blockerCount: 0 } },
+          jobs: {
+            summary: { jobCount: 3 },
+            jobs: [...blockedReasons.keys()].map((jobId) => ({
+              jobId,
+              strategyId: `strategy-${jobId}`,
+              chain: "base",
+              asset: "USDC",
+              executionMethod: "same_chain_token_to_token_swap",
+              requiresManualReview: false,
+              fundingSource: {
+                selectionStatus: "ready",
+                source: { chain: "base", asset: "ETH" },
+              },
+            })),
+          },
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      const jobId = args.find((arg) => arg.startsWith("--job-id="))?.slice("--job-id=".length);
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "same_chain_token_to_token_swap",
+          preparation: {
+            status: "blocked",
+            blockedReason: blockedReasons.get(jobId),
+            executionMethod: "same_chain_token_to_token_swap",
+          },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: false,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  const byJob = new Map(report.refillExecutions.map((item) => [item.jobId, item]));
+  assert.equal(byJob.get("consecutive-lock")?.blockerTaxonomy, "method_specific_failure_lock");
+  assert.equal(byJob.get("consecutive-lock")?.waitingHelps, false);
+  assert.match(byJob.get("consecutive-lock")?.safeResetCommand || "", /--strategy-id=strategy-consecutive-lock\b/u);
+  assert.match(byJob.get("consecutive-lock")?.safeResetCommand || "", /--reason=operator_reviewed_scoped_refill_blocker_base_USDC_same_chain_token_to_token_swap\b/u);
+  assert.equal(byJob.get("dev-lock")?.blockerTaxonomy, "operator_action_required");
+  assert.notEqual(byJob.get("dev-lock")?.blockerScope?.scopeType, "global_system");
+  assert.equal(byJob.get("signer-timeout")?.blockerTaxonomy, "operator_action_required");
+  assert.notEqual(byJob.get("signer-timeout")?.blockerScope?.scopeType, "global_system");
+});
+
 test("all-chain autopilot classifies native refill route exhaustion as planner-actionable", async () => {
   const command = ({ args }) => {
     const name = args[0];

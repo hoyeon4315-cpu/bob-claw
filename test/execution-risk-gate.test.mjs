@@ -313,6 +313,70 @@ test("risk state still counts failed executions once all planned steps broadcast
   assert.equal(riskState.consecutiveFailures, 3);
 });
 
+test("risk gate does not let unrelated scoped refill failures block a fresh refill job", () => {
+  const riskState = buildExecutionRiskState({
+    now: "2026-04-11T06:10:00.000Z",
+    inventory: inventoryFixture(280),
+    receiptRecords: [],
+    executionEvents: [
+      {
+        jobId: "bob-eth-refill",
+        observedAt: "2026-04-11T06:01:00.000Z",
+        status: "failed",
+        type: "refill_native",
+        chain: "bob",
+        asset: "ETH",
+        executionMethod: "cross_chain_bridge_or_swap",
+        stepIds: ["bridge"],
+        txHashes: ["0xbridge-1"],
+        error: { message: "execution reverted" },
+      },
+      {
+        jobId: "bob-eth-refill",
+        observedAt: "2026-04-11T06:02:00.000Z",
+        status: "failed",
+        type: "refill_native",
+        chain: "bob",
+        asset: "ETH",
+        executionMethod: "cross_chain_bridge_or_swap",
+        stepIds: ["bridge"],
+        txHashes: ["0xbridge-2"],
+        error: { message: "execution reverted" },
+      },
+      {
+        jobId: "bob-eth-refill",
+        observedAt: "2026-04-11T06:03:00.000Z",
+        status: "failed",
+        type: "refill_native",
+        chain: "bob",
+        asset: "ETH",
+        executionMethod: "cross_chain_bridge_or_swap",
+        stepIds: ["bridge"],
+        txHashes: ["0xbridge-3"],
+        error: { message: "execution reverted" },
+      },
+    ],
+  });
+  const decision = buildExecutionRiskDecision({
+    job: jobFixture({
+      jobId: "unichain-usdc-refill",
+      type: "refill_token",
+      chain: "unichain",
+      asset: "USDC",
+      executionMethod: "same_chain_token_to_token_swap",
+    }),
+    riskState,
+    riskPolicy: buildDefaultRiskPolicy(),
+    mode: "live",
+    now: "2026-04-11T06:10:00.000Z",
+  });
+
+  assert.equal(riskState.consecutiveFailures, 3);
+  assert.equal(decision.metrics.consecutiveFailures, 0);
+  assert.equal(decision.decision, "ALLOW");
+  assert.equal(decision.blockers.includes("max_consecutive_failures_reached"), false);
+});
+
 test("risk gate blocks jobs when economics or limits fail", () => {
   const decision = buildExecutionRiskDecision({
     job: jobFixture({

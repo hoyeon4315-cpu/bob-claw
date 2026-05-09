@@ -202,6 +202,63 @@ test("refill jobs defer economically negative route refills before execution pre
   assert.equal(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd < 0, true);
 });
 
+test("refill jobs still defer negative route economics when the parent capital plan is blocked", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("BLOCKED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "bsc",
+        ticker: "USDT",
+        token: "0x55d398326f99059fF775485246999027B3197955",
+        refillAmount: "3000000",
+        refillAmountDecimal: 3,
+        refillEstimatedUsd: 3,
+        rationale: "Do not auto-run negative-EV source refill while another blocker keeps the plan blocked.",
+      },
+    ],
+  };
+
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan: {
+      routeContext: {
+        routeKey: "bsc-usdt-negative",
+        srcChain: "bsc",
+        dstChain: "bitcoin",
+        srcToken: "0x55d398326f99059fF775485246999027B3197955",
+        netEdgeUsd: -1.07,
+        inputUsd: 4.03,
+      },
+      selections: [
+        {
+          resourceKey: "bsc:0x55d398326f99059fF775485246999027B3197955".toLowerCase(),
+          actionType: "refill_token",
+          chain: "bsc",
+          token: "0x55d398326f99059fF775485246999027B3197955",
+          selectionStatus: "ready",
+          selectedMethod: "same_chain_native_to_token_swap",
+          selectedSource: { source: { chain: "bsc", token: "0x0000000000000000000000000000000000000000" } },
+          expectedExecutionRefillCostUsd: 0.04,
+          expectedReserveReplenishmentCostUsd: 0,
+          requiresManualFunding: false,
+          requiresReserveState: false,
+          missingInputs: [],
+          settlementRequirements: [],
+          candidates: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(jobs.jobs[0].requiresManualReview, true);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("route_refill_economically_unjustified"), true);
+  assert.equal(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd < 0, true);
+  assert.equal(jobs.summary.autoQueuedJobCount, 0);
+});
+
 test("refill jobs keep explicit live destination-inventory override bridgeable", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

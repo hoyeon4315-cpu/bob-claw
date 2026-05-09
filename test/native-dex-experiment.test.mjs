@@ -63,6 +63,10 @@ function pancakeProviderFixture() {
 }
 
 test("native dex experiment plan builds wrap, approval, and swap steps", async () => {
+  const systemEconomics = {
+    routeInputUsd: 1,
+    effectiveSystemNetPnlUsd: 0.35,
+  };
   const plan = await buildNativeDexExperimentPlan({
     client: odosClientFixture(),
     estimateGasImpl: async () => ({
@@ -88,6 +92,7 @@ test("native dex experiment plan builds wrap, approval, and swap steps", async (
     amount: "100000000000000",
     senderAddress: "0x1111111111111111111111111111111111111111",
     outputToken: "usdc",
+    systemEconomics,
     now: "2026-04-16T06:00:00.000Z",
   });
 
@@ -95,8 +100,11 @@ test("native dex experiment plan builds wrap, approval, and swap steps", async (
   assert.equal(plan.steps.length, 3);
   assert.equal(plan.steps[0].id, "wrap_native");
   assert.equal(plan.steps[0].intent.metadata.capCheckAmountUsd, 0);
+  assert.deepEqual(plan.steps[0].intent.systemEconomics, systemEconomics);
   assert.equal(plan.steps[1].intent.approval.mode, "per_tx");
   assert.equal(plan.steps[1].intent.metadata.capCheckAmountUsd, 0);
+  assert.deepEqual(plan.steps[1].intent.systemEconomics, systemEconomics);
+  assert.deepEqual(plan.steps[2].intent.systemEconomics, systemEconomics);
   assert.equal(plan.minimumOutputAmount, "248750");
   assert.equal(plan.slippageBps, 50);
   assert.equal(plan.gasSnapshot.gasPriceWei, "100");

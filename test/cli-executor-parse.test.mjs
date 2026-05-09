@@ -81,7 +81,7 @@ test("plan-capital-manager-refill-jobs parseArgs reads planner flags", () => {
 
 test("reset-consecutive-failures parseArgs reads operator reset options", () => {
   const args = parseResetConsecutiveFailureArgs([
-    "--strategy=wrapped-btc-loop-base-moonwell",
+    "--strategy-id=wrapped-btc-loop-base-moonwell",
     "--chain=base",
     "--reason=clear after funding gas",
     "--actor=operator_via_cli",

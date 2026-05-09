@@ -10,6 +10,30 @@ function isRefillJob(job = {}) {
   return String(job?.type || "").toLowerCase().startsWith("refill_");
 }
 
+function normalizeScopePart(value = null) {
+  const text = String(value || "").trim().toLowerCase();
+  return text || null;
+}
+
+function refillFailureScope(record = {}) {
+  if (!isRefillJob(record)) return null;
+  const strategyId = normalizeScopePart(record.strategyId || record.strategyLabel || record.strategyPolicy?.id);
+  const chain = normalizeScopePart(record.chain);
+  const asset = normalizeScopePart(record.asset || record.targetAsset);
+  const sourceChain = normalizeScopePart(record.sourceChain || record.fundingSource?.source?.chain);
+  const sourceAsset = normalizeScopePart(record.sourceAsset || record.fundingSource?.source?.asset || record.fundingSource?.source?.ticker || record.fundingSource?.source?.token);
+  const method = normalizeScopePart(record.executionMethod || record.selectedExecutionMethod || record.fundingSource?.method);
+  if (!chain && !asset && !method && !strategyId && !sourceChain && !sourceAsset) return null;
+  return [
+    strategyId || "*",
+    chain || "*",
+    asset || "*",
+    sourceChain || "*",
+    sourceAsset || "*",
+    method || "*",
+  ].join("|");
+}
+
 function hoursAgo(timestamp, now) {
   return (new Date(now).getTime() - new Date(timestamp).getTime()) / 3_600_000;
 }
@@ -168,6 +192,31 @@ export function buildExecutionRiskState({
     break;
   }
 
+  let unscopedConsecutiveFailures = 0;
+  for (const item of terminal) {
+    if (refillFailureScope(item)) continue;
+    if (item.status === "failed") {
+      unscopedConsecutiveFailures += 1;
+      continue;
+    }
+    break;
+  }
+
+  const scopedConsecutiveFailures = new Map();
+  for (const item of terminal) {
+    const scope = refillFailureScope(item);
+    if (!scope) continue;
+    const current = scopedConsecutiveFailures.get(scope) || { count: 0, boundaryObservedAt: null };
+    if (current.boundaryObservedAt) continue;
+    if (item.status === "failed") {
+      current.count += 1;
+      scopedConsecutiveFailures.set(scope, current);
+      continue;
+    }
+    current.boundaryObservedAt = item.observedAt || null;
+    scopedConsecutiveFailures.set(scope, current);
+  }
+
   const dailyRealizedPnlUsd = receipt24h
     .map((item) => item.realized?.realizedNetPnlUsd)
     .filter(isFiniteNumber)
@@ -191,11 +240,22 @@ export function buildExecutionRiskState({
     projectLossUsedUsd,
     failedGasCost24hUsd,
     consecutiveFailures,
+    unscopedConsecutiveFailures,
+    scopedConsecutiveFailures: Object.fromEntries([...scopedConsecutiveFailures.entries()].map(([scope, value]) => [scope, value.count])),
     infrastructureFailureCount,
     walletEstimatedUsd: inventory?.summary?.estimatedWalletUsd ?? null,
     lastReceiptAt: receiptRecords.length ? [...receiptRecords].sort((a, b) => new Date(b.observedAt) - new Date(a.observedAt))[0].observedAt : null,
     resumeAfterFailureAt,
   };
+}
+
+function consecutiveFailuresForJob(riskState = {}, job = {}) {
+  if (!isRefillJob(job)) return riskState.consecutiveFailures || 0;
+  const scope = refillFailureScope(job);
+  const scopedCount = scope ? riskState.scopedConsecutiveFailures?.[scope] : null;
+  const globalUnscopedCount = Number(riskState.unscopedConsecutiveFailures || 0);
+  if (Number.isFinite(scopedCount)) return scopedCount;
+  return globalUnscopedCount > 0 ? globalUnscopedCount : 0;
 }
 
 export function buildExecutionRiskDecision({
@@ -221,6 +281,7 @@ export function buildExecutionRiskDecision({
   const leverageStrategy = isLeverageStrategy(job, strategyPolicy);
   const holdingPeriodCarryStrategy = isHoldingPeriodCarryStrategy(job, strategyPolicy);
   const leverageMissingFields = leverageStrategy ? missingLeverageFields(strategyPolicy) : [];
+  const consecutiveFailures = consecutiveFailuresForJob(riskState, job);
 
   if (isFiniteNumber(riskPolicy.projectLossCapUsd) && riskState.projectLossUsedUsd >= riskPolicy.projectLossCapUsd) {
     blockers.push("project_loss_cap_reached");
@@ -231,7 +292,7 @@ export function buildExecutionRiskDecision({
   if (riskState.failedGasCost24hUsd >= riskPolicy.maxFailedGasCost24hUsd) {
     blockers.push("failed_gas_cap_reached");
   }
-  if (riskState.consecutiveFailures >= riskPolicy.maxConsecutiveFailures) {
+  if (consecutiveFailures >= riskPolicy.maxConsecutiveFailures) {
     blockers.push("max_consecutive_failures_reached");
   }
   if (mode === "live" && isFiniteNumber(riskPolicy.canaryWalletFloorUsd) && isFiniteNumber(riskState.walletEstimatedUsd) && riskState.walletEstimatedUsd < riskPolicy.canaryWalletFloorUsd) {
@@ -336,7 +397,8 @@ export function buildExecutionRiskDecision({
       dailyRealizedPnlUsd: riskState.dailyRealizedPnlUsd,
       projectLossUsedUsd: riskState.projectLossUsedUsd,
       failedGasCost24hUsd: riskState.failedGasCost24hUsd,
-      consecutiveFailures: riskState.consecutiveFailures,
+      consecutiveFailures,
+      globalConsecutiveFailures: riskState.consecutiveFailures,
       walletEstimatedUsd: riskState.walletEstimatedUsd,
       effectiveSystemNetPnlUsd: effectiveNetPnlUsd ?? null,
       routeNetPnlUsd: routeNetPnlUsd ?? null,

@@ -71,7 +71,7 @@ function jobExecutionCostUsd(job) {
 }
 
 function jobEconomicReviewReasons(job = {}) {
-  if (job.decision !== "REFILL_REQUIRED") return [];
+  if (!["REFILL_REQUIRED", "BLOCKED"].includes(job.decision)) return [];
   if (!fundingSourceAutoExecutable(job.fundingSource)) return [];
   const effectiveSystemNetPnlUsd = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
   if (effectiveSystemNetPnlUsd === null || effectiveSystemNetPnlUsd >= 0) return [];

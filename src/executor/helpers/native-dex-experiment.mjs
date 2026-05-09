@@ -165,6 +165,7 @@ export async function buildNativeDexExperimentPlan({
   outputToken = null,
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  systemEconomics = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
@@ -264,6 +265,7 @@ export async function buildNativeDexExperimentPlan({
       family: "evm",
       intentType,
       amountUsd,
+      systemEconomics,
       mode: "live",
       observedAt: now,
       executionReason: "strategy_execution",

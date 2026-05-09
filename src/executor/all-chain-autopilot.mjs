@@ -90,14 +90,12 @@ const SYSTEM_WIDE_REFILL_BLOCKERS = new Set([
   "kill_switch_present",
   "auto_kill_triggered",
   "paused_by_auto_kill",
-  "dev_lock_active",
   "readiness_guard_blocked",
   "signer_unavailable",
   "signer_dead",
   "key_missing",
   "signer_key_missing",
   "policy_authority_error",
-  "signer_execution_failed",
 ]);
 const ROUTE_SPECIFIC_REFILL_BLOCKERS = new Set([
   "routing_exhausted",
@@ -132,6 +130,8 @@ const MISSING_CAPABILITY_REFILL_BLOCKERS = new Set([
   "protocol_executor_missing",
 ]);
 const OPERATOR_ACTION_REFILL_BLOCKERS = new Set([
+  "dev_lock_active",
+  "signer_execution_failed",
   "manual_operator_review_required",
   "funding_source_missing",
   "funding_source_manual_only",
@@ -201,7 +201,11 @@ function refillImprovementType(taxonomy = null) {
   return "type_4_external_or_operator_blocker";
 }
 
-function waitingHelpsForRefillBlocker(taxonomy = null) {
+function waitingHelpsForRefillBlocker(taxonomy = null, reason = null) {
+  const text = normalizeReasonText(reason);
+  if (text === "max_consecutive_failures_reached" || text === "dev_lock_active" || text === "signer_execution_failed") {
+    return false;
+  }
   return [
     "route_specific_failure_lock",
     "method_specific_failure_lock",
@@ -610,9 +614,15 @@ function compactRefillExecution(job, preview, execution = null) {
     selectedExecutionMethod ? `--method=${selectedExecutionMethod}` : null,
     "--json",
   ].filter(Boolean).join(" ");
+  const resetReasonScope = [
+    "operator_reviewed_scoped_refill_blocker",
+    job.chain,
+    job.asset,
+    selectedExecutionMethod,
+  ].filter(Boolean).join("_");
   const scopedSafeResetCommand =
     (taxonomy === "false_or_stale_blocker" || primaryBlocker === "max_consecutive_failures_reached") && (job.strategyId || job.strategy || job.familyId)
-      ? `npm run executor:reset-consecutive-failures -- --strategy-id=${job.strategyId || job.strategy || job.familyId} --chain=${job.chain} --reason=operator_reviewed_scoped_refill_blocker`
+      ? `npm run executor:reset-consecutive-failures -- --strategy-id=${job.strategyId || job.strategy || job.familyId} --chain=${job.chain} --reason=${resetReasonScope}`
       : null;
   const nextOperatorAction =
     taxonomy === "system_wide_safety_blocker"
@@ -628,7 +638,9 @@ function compactRefillExecution(job, preview, execution = null) {
               : taxonomy === "missing_price_or_freshness_evidence"
                 ? "refresh_price_inventory_evidence_then_retry_dry_run"
                 : taxonomy === "route_specific_failure_lock" || taxonomy === "method_specific_failure_lock"
-                  ? "retry_after_route_provider_or_quote_state_changes"
+                  ? primaryBlocker === "max_consecutive_failures_reached"
+                    ? "operator_review_then_scoped_failure_reset_if_false_or_stale"
+                    : "retry_after_route_provider_or_quote_state_changes"
                   : "operator_review_required";
   return {
     jobId: job.jobId,
@@ -668,7 +680,7 @@ function compactRefillExecution(job, preview, execution = null) {
         }
       : null,
     improvementType: refillImprovementType(taxonomy),
-    waitingHelps: waitingHelpsForRefillBlocker(taxonomy),
+    waitingHelps: waitingHelpsForRefillBlocker(taxonomy, primaryBlocker),
     dryRunCommand,
     safeResetCommand: scopedSafeResetCommand,
     nextOperatorAction,
