@@ -1,0 +1,2359 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-09T05:18:53.553Z",
+  "source": {
+    "kind": "merkl_opportunity_set",
+    "officialGatewayDestinationChains": [
+      "ethereum",
+      "bob",
+      "base",
+      "bsc",
+      "avalanche",
+      "unichain",
+      "bera",
+      "optimism",
+      "soneium",
+      "sei",
+      "sonic"
+    ]
+  },
+  "summary": {
+    "requiredCount": 64,
+    "allowlistEligibleCount": 12,
+    "pendingCount": 21,
+    "unsafeCount": 31
+  },
+  "required": [
+    {
+      "chain": "base",
+      "address": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "13747891056392346282"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x2bb9ad69FEBA5547b7cD57aAfe8457D40bF834af",
+      "symbol": "LVWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "67647526214405478"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "9244265805839781330"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x3eB91557E41C19848C7725cB3279029073EFaF8d",
+      "symbol": "YT-yoETH-24SEP2026",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "14737907410378053993"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol YT-yoETH-24SEP2026 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0x4200000000000000000000000000000000000006",
+      "symbol": "WETH",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "9027884997964764571",
+        "9244265805839781330",
+        "8519668806062638106",
+        "14737907410378053993",
+        "67647526214405478"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "base",
+      "address": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "sourceOpportunityIds": [
+        "13501872302566075627"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol unknown is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0x543257eF2161176D7C8cD90BA65C2d4CaEF5a796",
+      "symbol": "mwcbBTC",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "cbBTC",
+      "underlyingAddress": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "sourceOpportunityIds": [
+        "1831268655682635254"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x5435BC53f2C61298167cdB11Cdf0Db2BFa259ca0",
+      "symbol": "edgeUSDC",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "2870566651552345448"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "symbol": "EURC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "sourceOpportunityIds": [
+        "5012149234979087726",
+        "13501872302566075627"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol EURC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "11974465828287402791",
+        "9836065204209028807",
+        "13747891056392346282",
+        "15998133053597739990",
+        "9298193884169406504",
+        "15780894819076386636",
+        "7953780302079192210",
+        "2870566651552345448",
+        "1566925618839681357"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "base",
+      "address": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "symbol": "LVUSDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "7953780302079192210"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0xa0E430870c4604CcfC7B38Ca7845B1FF653D0ff1",
+      "symbol": "mwETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "9027884997964764571"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca",
+      "symbol": "mwUSDC",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "9836065204209028807"
+      ],
+      "classification": "existing_protocol_share_allowed_underlying",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "base",
+      "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "symbol": "cbBTC",
+      "decimals": 8,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "cbBTC",
+      "underlyingAddress": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "sourceOpportunityIds": [
+        "1831268655682635254"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "base",
+      "address": "0xE181Aed8E14469231618504dF46E8C069314589B",
+      "symbol": "SY-yoUSD",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "9298193884169406504"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-yoUSD is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0xE574de45b4eA2c5DB7Dd6F4074349F270EE97C64",
+      "symbol": "SY-yoETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "8519668806062638106"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-yoETH is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0xf24608E0CCb972b0b0f4A6446a0BBf58c701a026",
+      "symbol": "mwEURC",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "sourceOpportunityIds": [
+        "5012149234979087726"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol mwEURC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+      "symbol": "AUSD",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "AUSD",
+      "underlyingAddress": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+      "sourceOpportunityIds": [
+        "544918680545149119",
+        "5767447371402573269"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol AUSD is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "13664439464210000225"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x153Bd1abE60104Bd46aa05a27fA12D1346D64A57",
+      "symbol": "alphaForexV2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "9947373167090252312"
+      ],
+      "classification": "existing_protocol_share_allowed_underlying",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "symbol": "EURC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "sourceOpportunityIds": [
+        "8030097964086717452"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol EURC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x23f5E9c35820f4baB695Ac1F19c203cC3f8e1e11",
+      "symbol": "skyMoneyUsdtSavings",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDT",
+      "underlyingAddress": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "sourceOpportunityIds": [
+        "15010816180626404311"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x2E6abcbCCeD9Af05bc3B8a4908e0c98c29A88e10",
+      "symbol": "LVWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "2172912488547310625"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x32401B9fb79065Bc15949DE0BD43927492f02F0C",
+      "symbol": "fAUSDe",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "AUSD",
+      "underlyingAddress": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+      "sourceOpportunityIds": [
+        "5767447371402573269"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol fAUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x35Cbe8542E70fa2f7F9cDF129F19e593F4b4f560",
+      "symbol": "alphaUSDCAsiaV2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "7673870997270712040"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "2247635842062377188"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x3aecAeDfB92EFbBAC95E5C458c56e94070cB9179",
+      "symbol": "SY-superWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "5580417677066035275"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-superWETH is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4579a27aF00A62C0EB156349f31B345c08386419",
+      "symbol": "aEthsUSDe",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aEthsUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+      "symbol": "USDe",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342",
+        "4413662842817996561"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol USDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4D654F255D54637112844bd8802b716170904FeE",
+      "symbol": "SY-superUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "17289482414445510690"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-superUSDC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4F5923Fc5FD4a93352581b38B7cD26943012DECF",
+      "symbol": "aEthUSDe",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aEthUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "sourceOpportunityIds": [
+        "8030097964086717452"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol unknown is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "symbol": "LINK",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "LINK",
+      "underlyingAddress": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "sourceOpportunityIds": [
+        "11533799523136668224",
+        "13028497182981327867"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol LINK is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x586675A3a46B008d8408933cf42d8ff6c9CC61a1",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "XAUt",
+      "underlyingAddress": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+      "sourceOpportunityIds": [
+        "9446943477636857372"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol unknown is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x610f5B68bD1EED68Af649A3fD3DC2CAa1ee4Ae7E",
+      "symbol": "alphaLINKEnhancedV2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "LINK",
+      "underlyingAddress": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "sourceOpportunityIds": [
+        "11533799523136668224"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol alphaLINKEnhancedV2 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6316EbB9EF25bd9BB0432b291eE737066560138b",
+      "symbol": "YT-superUSDC-26NOV2026",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "8545144302888525369"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol YT-superUSDC-26NOV2026 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x67e536797570b3d8919Df052484273815A0aB506",
+      "symbol": "LVWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "7759132104627022749"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+      "symbol": "XAUt",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "XAUt",
+      "underlyingAddress": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+      "sourceOpportunityIds": [
+        "9446943477636857372"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol XAUt is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x69ebF644533655B5D3b6455e8E47ddE21b5993f1",
+      "symbol": "ePYUSD-8",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "8718600300235586731"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol ePYUSD-8 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "symbol": "PYUSD",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "13915712898351585707",
+        "18030207387280065324",
+        "5566234529714449544",
+        "8718600300235586731"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol PYUSD is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6dC58a0FdfC8D694e571DC59B9A52EEEa780E6bf",
+      "symbol": "senRLUSDv2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "RLUSD",
+      "underlyingAddress": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+      "sourceOpportunityIds": [
+        "2433802672589613459"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x7fAb04FF2717d9A6B71A51c56c29697179597D40",
+      "symbol": "eUSDC-95",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "14155201517454043453"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+      "symbol": "RLUSD",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "RLUSD",
+      "underlyingAddress": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+      "sourceOpportunityIds": [
+        "11011917105611148420",
+        "2433802672589613459"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "symbol": "LVUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "15683794748743408795"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+      "symbol": "sUSDe",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "sUSDe",
+      "underlyingAddress": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol sUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "symbol": "USDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset",
+        "reward_or_entry"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "13418763536600599808",
+        "11798831782266904364",
+        "16383536024182435962",
+        "9947373167090252312",
+        "13664439464210000225",
+        "7673870997270712040",
+        "15683794748743408795",
+        "14155201517454043453",
+        "17289482414445510690",
+        "11057952348670481975",
+        "8545144302888525369",
+        "53048791623997160"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xaF5372792a29dC6b296d6FFD4AA3386aff8f9BB2",
+      "symbol": "eRLUSD-7",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "RLUSD",
+      "underlyingAddress": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+      "sourceOpportunityIds": [
+        "11011917105611148420"
+      ],
+      "classification": "existing_protocol_share_allowed_underlying",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xb576765fB15505433aF24FEe2c0325895C559FB2",
+      "symbol": "senPYUSDmain",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "13915712898351585707",
+        "18030207387280065324"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol senPYUSDmain is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xba98fC35C9dfd69178AD5dcE9FA29c64554783b5",
+      "symbol": "ePYUSD-6",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "5566234529714449544"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol ePYUSD-6 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xbeEF346d7099865208Ff331e4f648f4154DDAa05",
+      "symbol": "bbqUSDCreservoir",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "11798831782266904364"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xBEeFF047C03714965a54b671A37C18beF6b96210",
+      "symbol": "bbqSUDCreservoir",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "16383536024182435962"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xBEEFF0DeaC1aBa71EF0D88C4291354eb92ef4589",
+      "symbol": "bbqAUSDterm",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "544918680545149119"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol bbqAUSDterm is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "symbol": "WETH",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "2247635842062377188",
+        "2172912488547310625",
+        "7759132104627022749",
+        "5580417677066035275"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xC139190F447e929f090Edeb554D95AbB8b18aC1C",
+      "symbol": "USDtb",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "4413662842817996561"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol USDtb is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "symbol": "USDT",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDT",
+      "underlyingAddress": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "sourceOpportunityIds": [
+        "15010816180626404311"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "symbol": "USDS",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDS",
+      "underlyingAddress": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "sourceOpportunityIds": [
+        "16088678467640585746",
+        "7275468445665275408"
+      ],
+      "classification": "pending_new_address_manual_review",
+      "allowlistEligible": false,
+      "rationale": "new token address is not seeded by committed registry for this chain"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xE15fcC81118895b67b6647BBd393182dF44E11E0",
+      "symbol": "skyMoneyUsdsFlagship",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDS",
+      "underlyingAddress": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "sourceOpportunityIds": [
+        "16088678467640585746"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol skyMoneyUsdsFlagship is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xE9cDA459bED6dcfb8AC61CD8cE08E2D52370cB06",
+      "symbol": "LVUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "53048791623997160"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "optimism",
+      "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+      "symbol": "USDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+      "sourceOpportunityIds": [
+        "17563083078147412604"
+      ],
+      "classification": "registry_known_allowed",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "optimism",
+      "address": "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
+      "symbol": "gtusdcp",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+      "sourceOpportunityIds": [
+        "17563083078147412604"
+      ],
+      "classification": "existing_protocol_share_allowed_underlying",
+      "allowlistEligible": true,
+      "rationale": "contract address already exists in committed token registry seed"
+    },
+    {
+      "chain": "sei",
+      "address": "0x54cD901491AeF397084453F4372B93c33260e2A6",
+      "symbol": "USDY",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDY",
+      "underlyingAddress": "0x54cD901491AeF397084453F4372B93c33260e2A6",
+      "sourceOpportunityIds": [
+        "5400365268367552554"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol USDY is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "sei",
+      "address": "0x817B3C191092694C65f25B4d38D4935a8aB65616",
+      "symbol": "aYeiNativeUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "3178084911286839159"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aYeiNativeUSDC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "sei",
+      "address": "0x9922D01107eAA714146C5235528A6fDE99C746DB",
+      "symbol": "aYeiUSDY",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "5400365268367552554"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aYeiUSDY is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "sei",
+      "address": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+      "symbol": "USDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+      "sourceOpportunityIds": [
+        "3178084911286839159"
+      ],
+      "classification": "pending_new_address_manual_review",
+      "allowlistEligible": false,
+      "rationale": "new token address is not seeded by committed registry for this chain"
+    }
+  ],
+  "pending": [
+    {
+      "chain": "base",
+      "address": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "13747891056392346282"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x2bb9ad69FEBA5547b7cD57aAfe8457D40bF834af",
+      "symbol": "LVWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "67647526214405478"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "9244265805839781330"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x543257eF2161176D7C8cD90BA65C2d4CaEF5a796",
+      "symbol": "mwcbBTC",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "cbBTC",
+      "underlyingAddress": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "sourceOpportunityIds": [
+        "1831268655682635254"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x5435BC53f2C61298167cdB11Cdf0Db2BFa259ca0",
+      "symbol": "edgeUSDC",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "2870566651552345448"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "symbol": "LVUSDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "sourceOpportunityIds": [
+        "7953780302079192210"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "base",
+      "address": "0xa0E430870c4604CcfC7B38Ca7845B1FF653D0ff1",
+      "symbol": "mwETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0x4200000000000000000000000000000000000006",
+      "sourceOpportunityIds": [
+        "9027884997964764571"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "13664439464210000225"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x23f5E9c35820f4baB695Ac1F19c203cC3f8e1e11",
+      "symbol": "skyMoneyUsdtSavings",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDT",
+      "underlyingAddress": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "sourceOpportunityIds": [
+        "15010816180626404311"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x2E6abcbCCeD9Af05bc3B8a4908e0c98c29A88e10",
+      "symbol": "LVWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "2172912488547310625"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x35Cbe8542E70fa2f7F9cDF129F19e593F4b4f560",
+      "symbol": "alphaUSDCAsiaV2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "7673870997270712040"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "2247635842062377188"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x67e536797570b3d8919Df052484273815A0aB506",
+      "symbol": "LVWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "wETH",
+      "underlyingAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "sourceOpportunityIds": [
+        "7759132104627022749"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6dC58a0FdfC8D694e571DC59B9A52EEEa780E6bf",
+      "symbol": "senRLUSDv2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "RLUSD",
+      "underlyingAddress": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+      "sourceOpportunityIds": [
+        "2433802672589613459"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x7fAb04FF2717d9A6B71A51c56c29697179597D40",
+      "symbol": "eUSDC-95",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "14155201517454043453"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "symbol": "LVUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "15683794748743408795"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xbeEF346d7099865208Ff331e4f648f4154DDAa05",
+      "symbol": "bbqUSDCreservoir",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "11798831782266904364"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xBEeFF047C03714965a54b671A37C18beF6b96210",
+      "symbol": "bbqSUDCreservoir",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "16383536024182435962"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "symbol": "USDS",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDS",
+      "underlyingAddress": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "sourceOpportunityIds": [
+        "16088678467640585746",
+        "7275468445665275408"
+      ],
+      "classification": "pending_new_address_manual_review",
+      "allowlistEligible": false,
+      "rationale": "new token address is not seeded by committed registry for this chain"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xE9cDA459bED6dcfb8AC61CD8cE08E2D52370cB06",
+      "symbol": "LVUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "sourceOpportunityIds": [
+        "53048791623997160"
+      ],
+      "classification": "pending_protocol_share_manual_review",
+      "allowlistEligible": false,
+      "rationale": "protocol share is not already committed even though its underlying is allowlisted"
+    },
+    {
+      "chain": "sei",
+      "address": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+      "symbol": "USDC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDC",
+      "underlyingAddress": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+      "sourceOpportunityIds": [
+        "3178084911286839159"
+      ],
+      "classification": "pending_new_address_manual_review",
+      "allowlistEligible": false,
+      "rationale": "new token address is not seeded by committed registry for this chain"
+    }
+  ],
+  "unsafe": [
+    {
+      "chain": "base",
+      "address": "0x3eB91557E41C19848C7725cB3279029073EFaF8d",
+      "symbol": "YT-yoETH-24SEP2026",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "14737907410378053993"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol YT-yoETH-24SEP2026 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "sourceOpportunityIds": [
+        "13501872302566075627"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol unknown is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "symbol": "EURC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "sourceOpportunityIds": [
+        "5012149234979087726",
+        "13501872302566075627"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol EURC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0xE181Aed8E14469231618504dF46E8C069314589B",
+      "symbol": "SY-yoUSD",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "9298193884169406504"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-yoUSD is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0xE574de45b4eA2c5DB7Dd6F4074349F270EE97C64",
+      "symbol": "SY-yoETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "8519668806062638106"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-yoETH is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "base",
+      "address": "0xf24608E0CCb972b0b0f4A6446a0BBf58c701a026",
+      "symbol": "mwEURC",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+      "sourceOpportunityIds": [
+        "5012149234979087726"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol mwEURC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+      "symbol": "AUSD",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "AUSD",
+      "underlyingAddress": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+      "sourceOpportunityIds": [
+        "544918680545149119",
+        "5767447371402573269"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol AUSD is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "symbol": "EURC",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "sourceOpportunityIds": [
+        "8030097964086717452"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol EURC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x32401B9fb79065Bc15949DE0BD43927492f02F0C",
+      "symbol": "fAUSDe",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "AUSD",
+      "underlyingAddress": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+      "sourceOpportunityIds": [
+        "5767447371402573269"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol fAUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x3aecAeDfB92EFbBAC95E5C458c56e94070cB9179",
+      "symbol": "SY-superWETH",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "5580417677066035275"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-superWETH is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4579a27aF00A62C0EB156349f31B345c08386419",
+      "symbol": "aEthsUSDe",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aEthsUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+      "symbol": "USDe",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342",
+        "4413662842817996561"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol USDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4D654F255D54637112844bd8802b716170904FeE",
+      "symbol": "SY-superUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "17289482414445510690"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol SY-superUSDC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4F5923Fc5FD4a93352581b38B7cD26943012DECF",
+      "symbol": "aEthUSDe",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aEthUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "EURC",
+      "underlyingAddress": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "sourceOpportunityIds": [
+        "8030097964086717452"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol unknown is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "symbol": "LINK",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "LINK",
+      "underlyingAddress": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "sourceOpportunityIds": [
+        "11533799523136668224",
+        "13028497182981327867"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol LINK is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x586675A3a46B008d8408933cf42d8ff6c9CC61a1",
+      "symbol": null,
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "position_share"
+      ],
+      "underlyingSymbol": "XAUt",
+      "underlyingAddress": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+      "sourceOpportunityIds": [
+        "9446943477636857372"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol unknown is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x610f5B68bD1EED68Af649A3fD3DC2CAa1ee4Ae7E",
+      "symbol": "alphaLINKEnhancedV2",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "LINK",
+      "underlyingAddress": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "sourceOpportunityIds": [
+        "11533799523136668224"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol alphaLINKEnhancedV2 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6316EbB9EF25bd9BB0432b291eE737066560138b",
+      "symbol": "YT-superUSDC-26NOV2026",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "8545144302888525369"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol YT-superUSDC-26NOV2026 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+      "symbol": "XAUt",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "XAUt",
+      "underlyingAddress": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+      "sourceOpportunityIds": [
+        "9446943477636857372"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol XAUt is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x69ebF644533655B5D3b6455e8E47ddE21b5993f1",
+      "symbol": "ePYUSD-8",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "8718600300235586731"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol ePYUSD-8 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "symbol": "PYUSD",
+      "decimals": 6,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "13915712898351585707",
+        "18030207387280065324",
+        "5566234529714449544",
+        "8718600300235586731"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol PYUSD is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+      "symbol": "sUSDe",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "sUSDe",
+      "underlyingAddress": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol sUSDe is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xb576765fB15505433aF24FEe2c0325895C559FB2",
+      "symbol": "senPYUSDmain",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "13915712898351585707",
+        "18030207387280065324"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol senPYUSDmain is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xba98fC35C9dfd69178AD5dcE9FA29c64554783b5",
+      "symbol": "ePYUSD-6",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "PYUSD",
+      "underlyingAddress": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+      "sourceOpportunityIds": [
+        "5566234529714449544"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol ePYUSD-6 is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xBEEFF0DeaC1aBa71EF0D88C4291354eb92ef4589",
+      "symbol": "bbqAUSDterm",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "544918680545149119"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol bbqAUSDterm is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xC139190F447e929f090Edeb554D95AbB8b18aC1C",
+      "symbol": "USDtb",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "reward_or_entry"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "4413662842817996561"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol USDtb is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xE15fcC81118895b67b6647BBd393182dF44E11E0",
+      "symbol": "skyMoneyUsdsFlagship",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "position_share"
+      ],
+      "underlyingSymbol": "USDS",
+      "underlyingAddress": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "sourceOpportunityIds": [
+        "16088678467640585746"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol skyMoneyUsdsFlagship is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "sei",
+      "address": "0x54cD901491AeF397084453F4372B93c33260e2A6",
+      "symbol": "USDY",
+      "decimals": 18,
+      "verified": true,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position",
+        "entry_asset"
+      ],
+      "underlyingSymbol": "USDY",
+      "underlyingAddress": "0x54cD901491AeF397084453F4372B93c33260e2A6",
+      "sourceOpportunityIds": [
+        "5400365268367552554"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol USDY is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "sei",
+      "address": "0x817B3C191092694C65f25B4d38D4935a8aB65616",
+      "symbol": "aYeiNativeUSDC",
+      "decimals": 6,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "3178084911286839159"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aYeiNativeUSDC is outside the strict Merkl allowlist"
+    },
+    {
+      "chain": "sei",
+      "address": "0x9922D01107eAA714146C5235528A6fDE99C746DB",
+      "symbol": "aYeiUSDY",
+      "decimals": 18,
+      "verified": false,
+      "type": "TOKEN",
+      "roles": [
+        "entry_or_position"
+      ],
+      "underlyingSymbol": null,
+      "underlyingAddress": null,
+      "sourceOpportunityIds": [
+        "5400365268367552554"
+      ],
+      "classification": "unsafe_unapproved_symbol",
+      "allowlistEligible": false,
+      "rationale": "symbol aYeiUSDY is outside the strict Merkl allowlist"
+    }
+  ]
+}
