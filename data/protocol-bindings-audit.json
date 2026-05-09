@@ -1,0 +1,1548 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-09T05:31:02.575Z",
+  "source": {
+    "kind": "merkl_opportunity_set",
+    "officialGatewayDestinationChains": [
+      "ethereum",
+      "bob",
+      "base",
+      "bsc",
+      "avalanche",
+      "unichain",
+      "bera",
+      "optimism",
+      "soneium",
+      "sei",
+      "sonic"
+    ],
+    "supportedBindingKinds": [
+      "aave_v3_pool_supply_withdraw",
+      "aerodrome_cl_lp_add_remove",
+      "avalon_pool_supply_withdraw",
+      "beefy_vault_deposit_withdraw",
+      "bend_pool_supply_withdraw",
+      "benqi_pool_supply_withdraw",
+      "catex_lp_add_remove",
+      "compound_v3_pool_supply_withdraw",
+      "dolomite_pool_supply_withdraw",
+      "erc4626_vault_supply_withdraw",
+      "euler_evault_deposit_withdraw",
+      "gmx_v2_perp_open_close",
+      "kyo_lp_add_remove",
+      "morpho_pool_supply_withdraw",
+      "pancakeswap_v3_lp_add_remove",
+      "pendle_pt_vault_deposit_withdraw",
+      "shadow_pool_supply_withdraw",
+      "uniswap_v3_lp_add_remove",
+      "velodrome_cl_lp_add_remove",
+      "venus_pool_supply_withdraw"
+    ]
+  },
+  "summary": {
+    "requiredCount": 40,
+    "autoAddableCount": 0,
+    "alreadySupportedCount": 26,
+    "manualOnlyCount": 14
+  },
+  "required": [
+    {
+      "protocolId": "aave",
+      "chain": "ethereum",
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "status": "binding_required",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": "sUSDe",
+        "address": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+        "decimals": 18
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "missingBindingFields": [
+        "poolAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "binding kind is not ERC4626-compatible; custom helper required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "dolomite",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "13418763536600599808"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "euler",
+      "chain": "ethereum",
+      "bindingKind": "euler_evault_deposit_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "PYUSD",
+        "address": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+        "decimals": 6
+      },
+      "vaultAddress": "0xba98fC35C9dfd69178AD5dcE9FA29c64554783b5",
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "5566234529714449544",
+        "8718600300235586731"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "euler",
+      "chain": "ethereum",
+      "bindingKind": "euler_evault_deposit_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "RLUSD",
+        "address": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+        "decimals": 18
+      },
+      "vaultAddress": "0xaF5372792a29dC6b296d6FFD4AA3386aff8f9BB2",
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "11011917105611148420"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "euler",
+      "chain": "ethereum",
+      "bindingKind": "euler_evault_deposit_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6
+      },
+      "vaultAddress": "0x7fAb04FF2717d9A6B71A51c56c29697179597D40",
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "14155201517454043453"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "fluid",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "4413662842817996561"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "glider",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "15780894819076386636"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "wETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18
+      },
+      "vaultAddress": "0xa0E430870c4604CcfC7B38Ca7845B1FF653D0ff1",
+      "shareTokenAddress": "0xa0E430870c4604CcfC7B38Ca7845B1FF653D0ff1",
+      "sourceOpportunityIds": [
+        "9027884997964764571"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "EURC",
+        "address": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+        "decimals": 6
+      },
+      "vaultAddress": "0xf24608E0CCb972b0b0f4A6446a0BBf58c701a026",
+      "shareTokenAddress": "0xf24608E0CCb972b0b0f4A6446a0BBf58c701a026",
+      "sourceOpportunityIds": [
+        "5012149234979087726"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "decimals": 6
+      },
+      "vaultAddress": "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca",
+      "shareTokenAddress": "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca",
+      "sourceOpportunityIds": [
+        "2870566651552345448",
+        "9836065204209028807"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "cbBTC",
+        "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+        "decimals": 8
+      },
+      "vaultAddress": "0x543257eF2161176D7C8cD90BA65C2d4CaEF5a796",
+      "shareTokenAddress": "0x543257eF2161176D7C8cD90BA65C2d4CaEF5a796",
+      "sourceOpportunityIds": [
+        "1831268655682635254"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_required",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "1566925618839681357"
+      ],
+      "missingBindingFields": [
+        "vaultAddress",
+        "assetAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "missing binding fields: vaultAddress, assetAddress",
+      "classification": "binding_fields_required"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "AUSD",
+        "address": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
+        "decimals": 6
+      },
+      "vaultAddress": "0x32401B9fb79065Bc15949DE0BD43927492f02F0C",
+      "shareTokenAddress": "0x32401B9fb79065Bc15949DE0BD43927492f02F0C",
+      "sourceOpportunityIds": [
+        "5767447371402573269"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "unsupported_execution_surface",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "LINK",
+        "address": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+        "decimals": 18
+      },
+      "vaultAddress": "0x610f5B68bD1EED68Af649A3fD3DC2CAa1ee4Ae7E",
+      "shareTokenAddress": "0x610f5B68bD1EED68Af649A3fD3DC2CAa1ee4Ae7E",
+      "sourceOpportunityIds": [
+        "11533799523136668224"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "PYUSD",
+        "address": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+        "decimals": 6
+      },
+      "vaultAddress": "0xb576765fB15505433aF24FEe2c0325895C559FB2",
+      "shareTokenAddress": "0xb576765fB15505433aF24FEe2c0325895C559FB2",
+      "sourceOpportunityIds": [
+        "13915712898351585707",
+        "18030207387280065324"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "RLUSD",
+        "address": "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+        "decimals": 18
+      },
+      "vaultAddress": "0x6dC58a0FdfC8D694e571DC59B9A52EEEa780E6bf",
+      "shareTokenAddress": "0x6dC58a0FdfC8D694e571DC59B9A52EEEa780E6bf",
+      "sourceOpportunityIds": [
+        "2433802672589613459"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6
+      },
+      "vaultAddress": "0xbeEF346d7099865208Ff331e4f648f4154DDAa05",
+      "shareTokenAddress": "0xbeEF346d7099865208Ff331e4f648f4154DDAa05",
+      "sourceOpportunityIds": [
+        "11798831782266904364",
+        "16383536024182435962",
+        "7673870997270712040",
+        "9947373167090252312"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDT",
+        "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "decimals": 6
+      },
+      "vaultAddress": "0x23f5E9c35820f4baB695Ac1F19c203cC3f8e1e11",
+      "shareTokenAddress": "0x23f5E9c35820f4baB695Ac1F19c203cC3f8e1e11",
+      "sourceOpportunityIds": [
+        "15010816180626404311"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDS",
+        "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+        "decimals": 18
+      },
+      "vaultAddress": "0xE15fcC81118895b67b6647BBd393182dF44E11E0",
+      "shareTokenAddress": "0xE15fcC81118895b67b6647BBd393182dF44E11E0",
+      "sourceOpportunityIds": [
+        "16088678467640585746"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_required",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "11057952348670481975",
+        "13028497182981327867"
+      ],
+      "missingBindingFields": [
+        "vaultAddress",
+        "assetAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "missing binding fields: vaultAddress, assetAddress",
+      "classification": "binding_fields_required"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "optimism",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "decimals": 6
+      },
+      "vaultAddress": "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
+      "shareTokenAddress": "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
+      "sourceOpportunityIds": [
+        "17563083078147412604"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "pendle",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "14737907410378053993",
+        "8519668806062638106",
+        "9298193884169406504"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "pendle",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "17289482414445510690",
+        "5580417677066035275",
+        "8545144302888525369"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "steakhouse",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "544918680545149119"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "summerfinance",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "wETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18
+      },
+      "vaultAddress": "0x2bb9ad69FEBA5547b7cD57aAfe8457D40bF834af",
+      "shareTokenAddress": "0x2bb9ad69FEBA5547b7cD57aAfe8457D40bF834af",
+      "sourceOpportunityIds": [
+        "67647526214405478"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "summerfinance",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "decimals": 6
+      },
+      "vaultAddress": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "shareTokenAddress": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "sourceOpportunityIds": [
+        "7953780302079192210"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "summerfinance",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6
+      },
+      "vaultAddress": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "shareTokenAddress": "0x98C49e13bf99D7CAd8069faa2A370933EC9EcF17",
+      "sourceOpportunityIds": [
+        "15683794748743408795",
+        "53048791623997160"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "summerfinance",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "wETH",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "decimals": 18
+      },
+      "vaultAddress": "0x2E6abcbCCeD9Af05bc3B8a4908e0c98c29A88e10",
+      "shareTokenAddress": "0x2E6abcbCCeD9Af05bc3B8a4908e0c98c29A88e10",
+      "sourceOpportunityIds": [
+        "2172912488547310625",
+        "7759132104627022749"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": null,
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "7275468445665275408"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yei",
+      "chain": "sei",
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "status": "unsupported_execution_surface",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": "USDY",
+        "address": "0x54cD901491AeF397084453F4372B93c33260e2A6",
+        "decimals": 18
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "5400365268367552554"
+      ],
+      "missingBindingFields": [
+        "poolAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "binding kind is not ERC4626-compatible; custom helper required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yei",
+      "chain": "sei",
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+        "decimals": 6
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "3178084911286839159"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "binding kind is not ERC4626-compatible; custom helper required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yieldseeker",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "15998133053597739990"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "wETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18
+      },
+      "vaultAddress": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "shareTokenAddress": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "sourceOpportunityIds": [
+        "9244265805839781330"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "EURC",
+        "address": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+        "decimals": 6
+      },
+      "vaultAddress": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "shareTokenAddress": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "sourceOpportunityIds": [
+        "13501872302566075627"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "decimals": 6
+      },
+      "vaultAddress": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "shareTokenAddress": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "sourceOpportunityIds": [
+        "13747891056392346282"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "EURC",
+        "address": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+        "decimals": 6
+      },
+      "vaultAddress": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "shareTokenAddress": "0x50c749aE210D3977ADC824AE11F3c7fd10c871e9",
+      "sourceOpportunityIds": [
+        "8030097964086717452"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "XAUt",
+        "address": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+        "decimals": 6
+      },
+      "vaultAddress": "0x586675A3a46B008d8408933cf42d8ff6c9CC61a1",
+      "shareTokenAddress": "0x586675A3a46B008d8408933cf42d8ff6c9CC61a1",
+      "sourceOpportunityIds": [
+        "9446943477636857372"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6
+      },
+      "vaultAddress": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "shareTokenAddress": "0x0000000f2eB9f69274678c76222B35eEc7588a65",
+      "sourceOpportunityIds": [
+        "13664439464210000225"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "yo",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": "wETH",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "decimals": 18
+      },
+      "vaultAddress": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "shareTokenAddress": "0x3A43AEC53490CB9Fa922847385D82fe25d0E9De7",
+      "sourceOpportunityIds": [
+        "2247635842062377188"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "bindingKind is already registered in committed executor registry",
+      "classification": "binding_kind_already_supported"
+    },
+    {
+      "protocolId": "zyfai",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "11974465828287402791"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    }
+  ],
+  "manualOnly": [
+    {
+      "protocolId": "aave",
+      "chain": "ethereum",
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "status": "binding_required",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": "sUSDe",
+        "address": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+        "decimals": 18
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "6048932426838202342"
+      ],
+      "missingBindingFields": [
+        "poolAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "binding kind is not ERC4626-compatible; custom helper required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "dolomite",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "13418763536600599808"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "fluid",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "4413662842817996561"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "glider",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "15780894819076386636"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "base",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_required",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "1566925618839681357"
+      ],
+      "missingBindingFields": [
+        "vaultAddress",
+        "assetAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "missing binding fields: vaultAddress, assetAddress",
+      "classification": "binding_fields_required"
+    },
+    {
+      "protocolId": "morpho",
+      "chain": "ethereum",
+      "bindingKind": "erc4626_vault_supply_withdraw",
+      "status": "binding_required",
+      "isErc4626Compatible": true,
+      "staticErc4626Like": true,
+      "erc4626Proof": {
+        "status": "static_candidate",
+        "ok": false,
+        "reason": "erc4626-like binding plan present but RPC view-method proof was not run"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "11057952348670481975",
+        "13028497182981327867"
+      ],
+      "missingBindingFields": [
+        "vaultAddress",
+        "assetAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "missing binding fields: vaultAddress, assetAddress",
+      "classification": "binding_fields_required"
+    },
+    {
+      "protocolId": "pendle",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "14737907410378053993",
+        "8519668806062638106",
+        "9298193884169406504"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "pendle",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "17289482414445510690",
+        "5580417677066035275",
+        "8545144302888525369"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "steakhouse",
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "544918680545149119"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": null,
+      "chain": "ethereum",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "7275468445665275408"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yei",
+      "chain": "sei",
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "status": "unsupported_execution_surface",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": "USDY",
+        "address": "0x54cD901491AeF397084453F4372B93c33260e2A6",
+        "decimals": 18
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "5400365268367552554"
+      ],
+      "missingBindingFields": [
+        "poolAddress"
+      ],
+      "autoAddable": false,
+      "rationale": "binding kind is not ERC4626-compatible; custom helper required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yei",
+      "chain": "sei",
+      "bindingKind": "aave_v3_pool_supply_withdraw",
+      "status": "binding_ready",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": "USDC",
+        "address": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+        "decimals": 6
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "3178084911286839159"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "binding kind is not ERC4626-compatible; custom helper required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "yieldseeker",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "15998133053597739990"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    },
+    {
+      "protocolId": "zyfai",
+      "chain": "base",
+      "bindingKind": null,
+      "status": "unsupported_protocol_binding",
+      "isErc4626Compatible": false,
+      "staticErc4626Like": false,
+      "erc4626Proof": {
+        "status": "not_erc4626",
+        "ok": false,
+        "reason": "binding plan is not ERC4626-like"
+      },
+      "underlyingAsset": {
+        "symbol": null,
+        "address": null,
+        "decimals": null
+      },
+      "vaultAddress": null,
+      "shareTokenAddress": null,
+      "sourceOpportunityIds": [
+        "11974465828287402791"
+      ],
+      "missingBindingFields": [],
+      "autoAddable": false,
+      "rationale": "protocol has no bindingKind; custom helper or protocol template required",
+      "classification": "manual_operator_review_required"
+    }
+  ]
+}
