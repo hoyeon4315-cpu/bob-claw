@@ -8,6 +8,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { buildSimulationSummary, selectSimulationTargets, simulateQuoteMechanicalPath } from "../prelive/execution-sim.mjs";
+import { buildShadowEdgeRecords } from "../strategy/economics/shadow-edge-ingest.mjs";
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -28,6 +29,7 @@ function parseArgs(argv) {
     amount: options.amount || null,
     limit: options.limit ? Number(options.limit) : 4,
     targetSuccessCount: options["target-success-count"] ? Number(options["target-success-count"]) : 50,
+    writeShadowEdge: flags.has("--write-shadow-edge"),
   };
 }
 
@@ -115,8 +117,27 @@ async function main() {
     });
   }
 
+  let shadowEdgeRecords = [];
+  if (args.writeShadowEdge) {
+    const previousRuns = await readJsonl(config.dataDir, "prelive-simulation-runs").catch(() => []);
+    shadowEdgeRecords = buildShadowEdgeRecords({
+      simulationRuns: args.write ? previousRuns : records,
+    });
+    await writeTextIfChanged(
+      join(config.dataDir, "destination-economics-shadow-edge.json"),
+      `${JSON.stringify({ schemaVersion: 1, generatedAt: new Date().toISOString(), records: shadowEdgeRecords }, null, 2)}\n`,
+      {
+        normalize: (contents) => {
+          if (!contents) return contents;
+          const value = JSON.parse(contents);
+          return JSON.stringify({ ...value, generatedAt: null });
+        },
+      },
+    );
+  }
+
   if (args.json) {
-    console.log(JSON.stringify({ summary, results: records }, null, 2));
+    console.log(JSON.stringify({ summary, results: records, shadowEdgeRecords }, null, 2));
     return;
   }
 

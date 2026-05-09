@@ -14,6 +14,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildStrategyEdgeSnapshots } from "../strategy/economics/strategy-edge-snapshot.mjs";
+import { buildSiblingProxyEdgeRecords } from "../strategy/economics/sibling-proxy-edge.mjs";
 import { solveMinViableNotional } from "../strategy/economics/min-viable-notional.mjs";
 import { classifyFloorFeasibility } from "../strategy/economics/floor-feasibility-classifier.mjs";
 import { buildCapitalRoutingPlan } from "../executor/capital/capital-routing-plan.mjs";
@@ -240,11 +241,38 @@ export async function runCapitalRoutingPlanCli(
   const strategyConfigs = strategies || listStrategyCaps({ includeInactive: true });
   const strategiesById = new Map(strategyConfigs.map((strategy) => [strategy.strategyId, strategy]));
   const blockers = blockerStrategyIds(blockerFunnel || {});
+  const shadowEdgeSnapshot = await readJsonIfExists(join(resolvedDataDir, "destination-economics-shadow-edge.json"));
+  const shadowEdgeRecords = Array.isArray(shadowEdgeSnapshot?.records) ? shadowEdgeSnapshot.records : [];
+  const receiptOnlySnapshots = buildStrategyEdgeSnapshots({
+    strategies: strategyConfigs,
+    receiptRecords,
+    auditRecords: signerAuditRecords,
+    strategyTickStatus,
+    now,
+  });
+  const directEvidenceByStrategy = Object.fromEntries(receiptOnlySnapshots.map((snapshot) => [snapshot.strategyId, snapshot]));
+  for (const record of shadowEdgeRecords) {
+    if (!directEvidenceByStrategy[record.strategyId] || directEvidenceByStrategy[record.strategyId].evidenceClass === "missing_input") {
+      directEvidenceByStrategy[record.strategyId] = {
+        strategyId: record.strategyId,
+        chain: record.chain,
+        familyId: record.family,
+        evidenceClass: "shadow",
+      };
+    }
+  }
+  const siblingProxyRecords = buildSiblingProxyEdgeRecords({
+    strategies: strategyConfigs,
+    targetStrategies: strategyConfigs.filter((strategy) => blockers.size === 0 || blockers.has(strategy.strategyId)),
+    directEvidenceByStrategy,
+  });
   const rawSnapshots = snapshots || buildStrategyEdgeSnapshots({
     strategies: strategyConfigs,
     receiptRecords,
     auditRecords: signerAuditRecords,
     strategyTickStatus,
+    shadowEdgeRecords,
+    siblingProxyRecords,
     now,
   });
   const selectedSnapshots = enrichSnapshotsWithBlockerParams(rawSnapshots, blockers);

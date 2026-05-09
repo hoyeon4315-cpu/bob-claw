@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-09T01:21:26.181Z",
+  "generatedAt": "2026-05-09T02:05:12.739Z",
   "strategies": [
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
@@ -11,7 +11,7 @@
         "chain": "base"
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T00:41:54.784Z",
+      "observedAt": "2026-05-09T01:47:01.949Z",
       "paramsKey": "9d3caaed18e78928",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -25,15 +25,15 @@
     },
     {
       "strategyId": "gateway-btc-onramp",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "gateway-btc-onramp",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "f6824983428d9a83",
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "823f6cc8bcc9f87c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
@@ -42,19 +42,19 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "gateway-btc-offramp",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "gateway-btc-offramp",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "0115fd6e6216aeb4",
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "7199a324a53b93ed",
       "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
@@ -63,19 +63,19 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "gateway-btc-funding-transfer",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "gateway-btc-funding-transfer",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "7af1a75ae20d0dcc",
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "11571da6c6e80e23",
       "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
@@ -84,82 +84,19 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "proxy-spread-experiment",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "proxy-spread-experiment",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "da0c23beb60f6d02",
-      "consecutiveTicks": 3,
-      "attemptCount": 0,
-      "lastResolverAction": null,
-      "lastResolverOutcome": null,
-      "nextRetryAt": null,
-      "quarantineCandidate": false,
-      "expectedDailyUsdOnResolve": null,
-      "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
-    },
-    {
-      "strategyId": "token-dex-experiment",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "token-dex-experiment",
-        "chain": null
-      },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "298ff21b3b1c6501",
-      "consecutiveTicks": 3,
-      "attemptCount": 0,
-      "lastResolverAction": null,
-      "lastResolverOutcome": null,
-      "nextRetryAt": null,
-      "quarantineCandidate": false,
-      "expectedDailyUsdOnResolve": null,
-      "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
-    },
-    {
-      "strategyId": "native-dex-experiment",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "native-dex-experiment",
-        "chain": null
-      },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "a9f882838eeb9c77",
-      "consecutiveTicks": 3,
-      "attemptCount": 0,
-      "lastResolverAction": null,
-      "lastResolverOutcome": null,
-      "nextRetryAt": null,
-      "quarantineCandidate": false,
-      "expectedDailyUsdOnResolve": null,
-      "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
-    },
-    {
-      "strategyId": "gas-zip-native-refuel",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "gas-zip-native-refuel",
-        "chain": null
-      },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "fc6ca9386177b8f7",
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "8d2abc64e6b1877d",
       "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
@@ -168,20 +105,20 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
-      "strategyId": "wrapper-btc-arbitrage",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "strategyId": "token-dex-experiment",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
-        "strategyId": "wrapper-btc-arbitrage",
+        "strategyId": "token-dex-experiment",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "acb80d9d9e18a03d",
-      "consecutiveTicks": 3,
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "3a48e11bcf01f37b",
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -189,7 +126,70 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
+    },
+    {
+      "strategyId": "native-dex-experiment",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "native-dex-experiment",
+        "chain": null
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "917eb02675120c59",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false,
+      "capitalRoutingClassification": "missing_input"
+    },
+    {
+      "strategyId": "gas-zip-native-refuel",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gas-zip-native-refuel",
+        "chain": null
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "b7855de5d5d4d5b6",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false,
+      "capitalRoutingClassification": "missing_input"
+    },
+    {
+      "strategyId": "wrapper-btc-arbitrage",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "wrapper-btc-arbitrage",
+        "chain": null
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "24ce30db8b4a7187",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false,
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "aerodrome-cl-base",
@@ -200,9 +200,9 @@
         "chain": "base"
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T00:41:54.784Z",
+      "observedAt": "2026-05-09T01:47:01.949Z",
       "paramsKey": "fa6a1926ea04d3c4",
-      "consecutiveTicks": 3,
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -214,16 +214,16 @@
     },
     {
       "strategyId": "stablecoin_spread_loop",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "stablecoin_spread_loop",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "9dc8c2fa35b9197e",
-      "consecutiveTicks": 3,
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "7957388eae7bf800",
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -231,20 +231,20 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "proxy_spread_expansion",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "proxy_spread_expansion",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "442b52edfa774918",
-      "consecutiveTicks": 3,
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "2fc8e27e31f37280",
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -252,20 +252,20 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "tokenized_reserve_sleeve",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "tokenized_reserve_sleeve",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "3c7f0c0c3a817850",
-      "consecutiveTicks": 3,
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "bfcb860ccef258c7",
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -273,7 +273,7 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "recursive_stablecoin_lending_loop",
@@ -284,7 +284,7 @@
         "chain": "base"
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T00:41:54.784Z",
+      "observedAt": "2026-05-09T01:47:01.949Z",
       "paramsKey": "72a12620e4947a05",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -305,7 +305,7 @@
         "chain": "base"
       },
       "legacyCode": "policy_reject",
-      "observedAt": "2026-05-09T00:41:54.784Z",
+      "observedAt": "2026-05-09T01:47:01.949Z",
       "paramsKey": "de2ee37ad3653418",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -319,16 +319,16 @@
     },
     {
       "strategyId": "eth_destination_deployment",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "eth_destination_deployment",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "263591903a548bc6",
-      "consecutiveTicks": 3,
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "84ff269179f948c3",
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -336,20 +336,20 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "onchain_btc_perp_basis",
-      "stage": "hard_safety_stop",
-      "code": "hard_safety_stop:capless_strategy",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "onchain_btc_perp_basis",
         "chain": null
       },
-      "legacyCode": "missing_caps",
-      "observedAt": "2026-05-09T01:21:26.181Z",
-      "paramsKey": "6f9a329019cec9b3",
-      "consecutiveTicks": 3,
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-09T02:05:12.739Z",
+      "paramsKey": "35ccc5a3f8d90855",
+      "consecutiveTicks": 1,
       "attemptCount": 0,
       "lastResolverAction": null,
       "lastResolverOutcome": null,
@@ -357,7 +357,7 @@
       "quarantineCandidate": false,
       "expectedDailyUsdOnResolve": null,
       "requiresExternalDeposit": false,
-      "capitalRoutingClassification": null
+      "capitalRoutingClassification": "missing_input"
     },
     {
       "strategyId": "wrapped-btc-loop-base-moonwell",
@@ -370,7 +370,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "0a5e85f1a6b8bf7b",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -392,7 +392,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "0c57e4945f564f6a",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -414,7 +414,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "47646be3f566847c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -436,7 +436,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "c5f556bd4386a405",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -458,7 +458,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "33bb8c2cf729068d",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -480,7 +480,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "516a299683cae010",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -502,7 +502,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "204126712f9e993c",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -524,7 +524,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "6671dd51f4fcc296",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -546,7 +546,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "ac7f35ab917aedcd",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -568,7 +568,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "06533846e0ed8464",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -590,7 +590,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "76d0670c22bcfd49",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -612,7 +612,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "058c2daa4639c9db",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -634,7 +634,7 @@
         "gapDays": 7
       },
       "legacyCode": "payback_lifecycle:profit_attribution_gap",
-      "observedAt": "2026-05-09T01:21:26.181Z",
+      "observedAt": "2026-05-09T02:05:12.739Z",
       "paramsKey": "07de7bf10997d522",
       "consecutiveTicks": 1,
       "attemptCount": 0,
@@ -647,13 +647,11 @@
     }
   ],
   "stageDropCounts": {
-    "economic_no_go": 4,
-    "hard_safety_stop": 13,
+    "economic_no_go": 17,
     "payback_lifecycle": 13
   },
   "codeFrequency": {
-    "economic_no_go:edge_below_variance_floor": 4,
-    "hard_safety_stop:capless_strategy": 13,
+    "economic_no_go:edge_below_variance_floor": 17,
     "payback_lifecycle:profit_attribution_gap": 13
   },
   "rootCauseGroups": [
@@ -672,6 +670,118 @@
       "lastAction": null
     },
     {
+      "paramsKey": "823f6cc8bcc9f87c",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gateway-btc-onramp",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gateway-btc-onramp"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "7199a324a53b93ed",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gateway-btc-offramp",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gateway-btc-offramp"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "11571da6c6e80e23",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gateway-btc-funding-transfer",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gateway-btc-funding-transfer"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "8d2abc64e6b1877d",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "proxy-spread-experiment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "proxy-spread-experiment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "3a48e11bcf01f37b",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "token-dex-experiment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "token-dex-experiment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "917eb02675120c59",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "native-dex-experiment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "native-dex-experiment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "b7855de5d5d4d5b6",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gas-zip-native-refuel",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gas-zip-native-refuel"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "24ce30db8b4a7187",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "wrapper-btc-arbitrage",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "wrapper-btc-arbitrage"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
       "paramsKey": "fa6a1926ea04d3c4",
       "code": "economic_no_go:edge_below_variance_floor",
       "params": {
@@ -680,6 +790,48 @@
       },
       "affectedStrategies": [
         "aerodrome-cl-base"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "7957388eae7bf800",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "stablecoin_spread_loop",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "stablecoin_spread_loop"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "2fc8e27e31f37280",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "proxy_spread_expansion",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "proxy_spread_expansion"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "capitalRoutingClassification": "missing_input",
+      "lastAction": null
+    },
+    {
+      "paramsKey": "bfcb860ccef258c7",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "tokenized_reserve_sleeve",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "tokenized_reserve_sleeve"
       ],
       "expectedDailyUsdOnResolve": null,
       "capitalRoutingClassification": "missing_input",
@@ -714,162 +866,8 @@
       "lastAction": null
     },
     {
-      "paramsKey": "f6824983428d9a83",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "gateway-btc-onramp",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "gateway-btc-onramp"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "0115fd6e6216aeb4",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "gateway-btc-offramp",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "gateway-btc-offramp"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "7af1a75ae20d0dcc",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "gateway-btc-funding-transfer",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "gateway-btc-funding-transfer"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "da0c23beb60f6d02",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "proxy-spread-experiment",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "proxy-spread-experiment"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "298ff21b3b1c6501",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "token-dex-experiment",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "token-dex-experiment"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "a9f882838eeb9c77",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "native-dex-experiment",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "native-dex-experiment"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "fc6ca9386177b8f7",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "gas-zip-native-refuel",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "gas-zip-native-refuel"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "acb80d9d9e18a03d",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "wrapper-btc-arbitrage",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "wrapper-btc-arbitrage"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "9dc8c2fa35b9197e",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "stablecoin_spread_loop",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "stablecoin_spread_loop"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "442b52edfa774918",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "proxy_spread_expansion",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "proxy_spread_expansion"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "3c7f0c0c3a817850",
-      "code": "hard_safety_stop:capless_strategy",
-      "params": {
-        "strategyId": "tokenized_reserve_sleeve",
-        "chain": null
-      },
-      "affectedStrategies": [
-        "tokenized_reserve_sleeve"
-      ],
-      "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
-      "lastAction": null
-    },
-    {
-      "paramsKey": "263591903a548bc6",
-      "code": "hard_safety_stop:capless_strategy",
+      "paramsKey": "84ff269179f948c3",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "eth_destination_deployment",
         "chain": null
@@ -878,12 +876,12 @@
         "eth_destination_deployment"
       ],
       "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
+      "capitalRoutingClassification": "missing_input",
       "lastAction": null
     },
     {
-      "paramsKey": "6f9a329019cec9b3",
-      "code": "hard_safety_stop:capless_strategy",
+      "paramsKey": "35ccc5a3f8d90855",
+      "code": "economic_no_go:edge_below_variance_floor",
       "params": {
         "strategyId": "onchain_btc_perp_basis",
         "chain": null
@@ -892,7 +890,7 @@
         "onchain_btc_perp_basis"
       ],
       "expectedDailyUsdOnResolve": null,
-      "capitalRoutingClassification": null,
+      "capitalRoutingClassification": "missing_input",
       "lastAction": null
     },
     {
@@ -1091,7 +1089,7 @@
       "lastAction": null
     }
   ],
-  "resolverActionableCount": 4,
+  "resolverActionableCount": 17,
   "requiresStrategyOrCapitalChangeCount": 0,
   "fallbackFireCount": {},
   "circuitBreakerState": {},
@@ -1099,9 +1097,9 @@
   "capitalRouting": {
     "totalExpectedDailyUsdOnResolve": 0,
     "planCount": 0,
-    "unresolvableCount": 4,
+    "unresolvableCount": 17,
     "classificationBreakdown": {
-      "missing_input": 4
+      "missing_input": 17
     }
   }
 }

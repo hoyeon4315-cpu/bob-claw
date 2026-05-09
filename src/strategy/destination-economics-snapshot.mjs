@@ -11,6 +11,8 @@ export function buildDestinationEconomicsSnapshot({
   overrides = null,
   observations = null,
   blockers = null,
+  shadowEdgeRecords = [],
+  siblingProxyRecords = [],
 } = {}) {
   const workbench = buildDestinationInputWorkbench({ admissionChecklist, overrides });
   const evidencePolicy = buildDestinationEvidencePolicy({ workbench });
@@ -21,6 +23,10 @@ export function buildDestinationEconomicsSnapshot({
     evidencePolicy,
     ledger,
     economics,
+    priorityMergedEvidence: {
+      shadowEdgeRecords,
+      siblingProxyRecords,
+    },
   };
 }
 

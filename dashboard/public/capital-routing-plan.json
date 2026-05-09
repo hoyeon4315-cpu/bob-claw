@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-09T01:11:57.942Z",
+  "generatedAt": "2026-05-09T02:05:09.538Z",
   "treasury": {
-    "freeCapitalUsd": 320.55957933458285,
+    "freeCapitalUsd": 320.7333723626284,
     "lockedCapitalUsd": 0,
     "perChainUsd": {
-      "bob": 34.574518056538516,
-      "base": 62.80115336597779,
-      "ethereum": 95.37189396009856,
-      "soneium": 15.445063642532556,
-      "bsc": 20.230020419667337,
-      "avalanche": 18.84222141088049,
-      "unichain": 9.210896027545903,
-      "sonic": 25.80963033525476,
-      "sei": 10.022091938271206,
-      "bera": 17.5758129474851,
-      "optimism": 8.549981757830786,
-      "bitcoin": 2.1262954725000003
+      "bob": 34.60047619523123,
+      "base": 62.827375775962295,
+      "ethereum": 95.38865030789509,
+      "soneium": 15.454255458671447,
+      "bsc": 20.232114176833704,
+      "avalanche": 18.86588329939185,
+      "unichain": 9.217936167990674,
+      "sonic": 25.813516203800315,
+      "sei": 10.040297154502396,
+      "bera": 17.612869371559057,
+      "optimism": 8.552107478290393,
+      "bitcoin": 2.1278907725
     }
   },
   "scoredTargetBalances": null,
@@ -28,7 +28,52 @@
       "recommendedAction": "refresh economics inputs before capital allocation"
     },
     {
+      "strategyId": "eth_destination_deployment",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "gas-zip-native-refuel",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
       "strategyId": "gateway_proxy_spread_rebalance_recheck",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "gateway-btc-funding-transfer",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "gateway-btc-offramp",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "gateway-btc-onramp",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "native-dex-experiment",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "onchain_btc_perp_basis",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "proxy_spread_expansion",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "proxy-spread-experiment",
       "classification": "missing_input",
       "recommendedAction": "refresh economics inputs before capital allocation"
     },
@@ -39,13 +84,165 @@
     },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "stablecoin_spread_loop",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "token-dex-experiment",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "tokenized_reserve_sleeve",
+      "classification": "missing_input",
+      "recommendedAction": "refresh economics inputs before capital allocation"
+    },
+    {
+      "strategyId": "wrapper-btc-arbitrage",
       "classification": "missing_input",
       "recommendedAction": "refresh economics inputs before capital allocation"
     }
   ],
   "totalExpectedDailyUsdOnResolve": 0,
-  "mode": "execute",
+  "mode": "preview",
   "classifications": [
+    {
+      "strategyId": "gateway-btc-funding-transfer",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "bob"
+    },
+    {
+      "strategyId": "gateway-btc-onramp",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "bitcoin"
+    },
+    {
+      "strategyId": "gateway-btc-offramp",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "bob"
+    },
+    {
+      "strategyId": "gas-zip-native-refuel",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "bob"
+    },
+    {
+      "strategyId": "native-dex-experiment",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "stablecoin_spread_loop",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "proxy_spread_expansion",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "tokenized_reserve_sleeve",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "token-dex-experiment",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "eth_destination_deployment",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "proxy-spread-experiment",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "base"
+    },
+    {
+      "strategyId": "wrapper-btc-arbitrage",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "bob"
+    },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
       "classification": "missing_input",
@@ -78,6 +275,17 @@
       "expectedDailyUsdOnResolve": null,
       "reason": "missing_input",
       "destinationChain": "base"
+    },
+    {
+      "strategyId": "onchain_btc_perp_basis",
+      "classification": "missing_input",
+      "capitalDeltaNeededUsd": null,
+      "minNotionalUsd": null,
+      "observedNotionalUsd": 0,
+      "capitalSourceCandidates": [],
+      "expectedDailyUsdOnResolve": null,
+      "reason": "missing_input",
+      "destinationChain": "avalanche"
     },
     {
       "strategyId": "aerodrome-cl-base",

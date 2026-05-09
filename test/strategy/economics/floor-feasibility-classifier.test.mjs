@@ -63,3 +63,32 @@ test("floor feasibility preserves infeasible, negative edge, thin evidence, and 
   assert.equal(byId.get("thin").classification, "thin_evidence");
   assert.equal(byId.get("missing").classification, "missing_input");
 });
+
+test("floor feasibility uses non-receipt evidence classes with confidence haircut", () => {
+  const rows = classifyFloorFeasibility({
+    snapshots: [
+      snapshot({
+        strategyId: "shadow",
+        evidenceClass: "shadow",
+        evidenceConfidence: 0.5,
+        measuredEdgeBpsPerDay: 20,
+      }),
+      snapshot({
+        strategyId: "proxy",
+        evidenceClass: "sibling_proxy",
+        evidenceConfidence: 0.4,
+        measuredEdgeBpsPerDay: 20,
+      }),
+    ],
+    minViableByStrategy: {
+      shadow: { minNotionalUsd: 100, infeasible: false, reason: null },
+      proxy: { minNotionalUsd: 100, infeasible: false, reason: null },
+    },
+    treasury: { freeCapitalUsd: 100, sources: [] },
+  });
+  const byId = new Map(rows.map((row) => [row.strategyId, row]));
+  assert.equal(byId.get("shadow").classification, "ready_with_shadow_evidence");
+  assert.equal(byId.get("shadow").expectedDailyUsdOnResolve, 0.1);
+  assert.equal(byId.get("proxy").classification, "ready_with_sibling_proxy");
+  assert.equal(byId.get("proxy").expectedDailyUsdOnResolve, 0.08);
+});

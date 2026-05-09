@@ -118,11 +118,25 @@ function costFromModel(costModel, strategyId) {
   return Math.max(...entries.map((entry) => finiteNumber(entry.p90CostUsd)).filter((value) => value !== null));
 }
 
+function latestShadowRecord(records = [], strategyId) {
+  return [...(records || [])]
+    .filter((record) => record?.strategyId === strategyId && record.evidenceClass === "shadow")
+    .sort((left, right) => new Date(right.lastSimAt || 0) - new Date(left.lastSimAt || 0))[0] || null;
+}
+
+function latestSiblingProxyRecord(records = [], strategyId) {
+  return [...(records || [])]
+    .filter((record) => record?.strategyId === strategyId && record.evidenceClass === "sibling_proxy")
+    .sort((left, right) => String(left.borrowedFromStrategyId || "").localeCompare(String(right.borrowedFromStrategyId || "")))[0] || null;
+}
+
 export function buildStrategyEdgeSnapshots({
   strategies = [],
   receiptRecords = [],
   auditRecords = [],
   strategyTickStatus = null,
+  shadowEdgeRecords = [],
+  siblingProxyRecords = [],
   now = new Date().toISOString(),
   policy = EXECUTION_EV_COST_POLICY,
   freshnessMaxAgeDays = policy.lookbackDays ?? 14,
@@ -141,19 +155,45 @@ export function buildStrategyEdgeSnapshots({
       const sampleCount = Math.max(costs.length, edges.length);
       const row = rowForStrategy(strategyTickStatus, strategyId);
       const modelCost = costFromModel(costModel, strategyId);
+      const hasReceiptEvidence = edges.length > 0 || costs.length > 0;
+      const shadow = !hasReceiptEvidence ? latestShadowRecord(shadowEdgeRecords, strategyId) : null;
+      const proxy = !hasReceiptEvidence && !shadow ? latestSiblingProxyRecord(siblingProxyRecords, strategyId) : null;
+      const evidenceClass = hasReceiptEvidence ? "receipt" : shadow ? "shadow" : proxy ? "sibling_proxy" : "missing_input";
+      const evidenceConfidence = evidenceClass === "receipt" ? 1 : finiteNumber(shadow?.confidence ?? proxy?.confidence) ?? null;
+      const evidenceSampleCount = hasReceiptEvidence
+        ? sampleCount
+        : finiteNumber(shadow?.sampleCount) ?? (proxy ? 1 : 0);
+      const evidenceObservedAt = hasReceiptEvidence
+        ? lastReceiptAt
+        : shadow?.lastSimAt || proxy?.borrowedFromObservedAt || null;
       return {
         strategyId,
-        measuredEdgeBpsPerDay: edges.length
-          ? edges.reduce((sum, value) => sum + value, 0) / edges.length
-          : null,
-        measuredRoundTripCostUsd: modelCost ?? quantileNearestRank(costs, policy.costPercentile ?? 0.9),
-        slippageVarianceUsd: stddev(costs),
+        chain: row?.chain || shadow?.chain || proxy?.chain || Object.keys(strategy?.caps?.perChainUsd || {})[0] || null,
+        familyId: strategy.familyId || strategy.exposure?.assetFamily || shadow?.family || null,
+        evidenceClass,
+        evidenceConfidence,
+        evidenceSource:
+          evidenceClass === "sibling_proxy"
+            ? {
+                borrowedFromStrategyId: proxy.borrowedFromStrategyId,
+                borrowedFromChain: proxy.borrowedFromChain,
+              }
+            : null,
+        measuredEdgeBpsPerDay: hasReceiptEvidence
+          ? edges.length
+            ? edges.reduce((sum, value) => sum + value, 0) / edges.length
+            : null
+          : finiteNumber(shadow?.estimatedEdgeBpsPerDay ?? proxy?.proxyEdgeBpsPerDay),
+        measuredRoundTripCostUsd: hasReceiptEvidence
+          ? modelCost ?? quantileNearestRank(costs, policy.costPercentile ?? 0.9)
+          : finiteNumber(shadow?.estimatedRoundTripCostUsd ?? proxy?.proxyRoundTripCostUsd),
+        slippageVarianceUsd: hasReceiptEvidence ? stddev(costs) : 0,
         varianceFloorUsd,
         observedNotionalUsd: observedNotionalUsd(row),
         freshness: {
           lastReceiptAt,
-          sampleCount,
-          isThin: sampleCount < minSamples || isStale(lastReceiptAt, now, freshnessMaxAgeDays),
+          sampleCount: evidenceSampleCount,
+          isThin: evidenceSampleCount < minSamples || isStale(evidenceObservedAt, now, freshnessMaxAgeDays),
         },
       };
     });

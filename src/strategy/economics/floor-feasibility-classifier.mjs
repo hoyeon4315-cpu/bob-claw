@@ -39,7 +39,10 @@ function expectedDailyUsd(snapshot = {}, minNotionalUsd) {
   const edge = finiteNumber(snapshot.measuredEdgeBpsPerDay);
   const notional = finiteNumber(minNotionalUsd);
   if (edge === null || notional === null) return null;
-  return roundUsd((edge / 10_000) * notional);
+  const confidence = snapshot.evidenceClass && snapshot.evidenceClass !== "receipt"
+    ? finiteNumber(snapshot.evidenceConfidence) ?? 1
+    : 1;
+  return roundUsd((edge / 10_000) * notional * confidence);
 }
 
 export function classifyFloorFeasibility({
@@ -71,6 +74,8 @@ export function classifyFloorFeasibility({
     else if (solved.reason === "floor_infeasible_at_committed_caps") classification = "floor_infeasible_at_committed_caps";
     else if (solved.reason === "negative_or_zero_edge") classification = "negative_or_zero_edge";
     else if (solved.infeasible) classification = solved.reason || "missing_input";
+    else if (snapshot.evidenceClass === "shadow") classification = "ready_with_shadow_evidence";
+    else if (snapshot.evidenceClass === "sibling_proxy") classification = "ready_with_sibling_proxy";
     else if (delta <= 0) classification = "ready_no_capital_change";
     else if (delta <= freeCapitalUsd) classification = "ready_with_capital_addition";
     else classification = "needs_capital_acquisition";

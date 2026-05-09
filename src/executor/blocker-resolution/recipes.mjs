@@ -250,7 +250,20 @@ registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
       return {
         type: "refresh_command",
         code,
-        command: "npm run report:strategy-execution-surfaces -- --write",
+        command: row.classification === "missing_input"
+          ? "npm run run:prelive-simulations -- --source=objective --limit=4 --write --write-shadow-edge"
+          : "npm run report:strategy-execution-surfaces -- --write",
+        args: [],
+        params,
+        reason: row.classification,
+        receiptRequired: false,
+      };
+    }
+    if (row.classification === "ready_with_shadow_evidence" || row.classification === "ready_with_sibling_proxy") {
+      return {
+        type: "refresh_command",
+        code,
+        command: "npm run capital:routing-plan -- --preview",
         args: [],
         params,
         reason: row.classification,

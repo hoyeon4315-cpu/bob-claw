@@ -12,7 +12,11 @@ function parseArgs(argv = process.argv.slice(2)) {
   for (let index = 0; index < argv.length; index += 1) {
     const item = argv[index];
     if (!item.startsWith("--")) continue;
-    const key = item.slice(2);
+    const [key, inlineValue] = item.slice(2).split("=", 2);
+    if (inlineValue !== undefined) {
+      args[key] = inlineValue;
+      continue;
+    }
     const next = argv[index + 1];
     if (!next || next.startsWith("--")) {
       args[key] = true;
@@ -64,7 +68,8 @@ async function main() {
   const args = parseArgs();
   const dataDir = resolve(args["data-dir"] || "data");
   const packets = await readRadarJsonl(dataDir, "portable-packets");
-  const candidates = latestCandidatesById(await readRadarJsonl(dataDir, "executable-candidates"));
+  const candidates = latestCandidatesById(await readRadarJsonl(dataDir, "executable-candidates"))
+    .filter((candidate) => !args["candidate-id"] || candidate.candidateId === args["candidate-id"]);
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const packetsById = packetById(packets);
   const strategyCapsById = buildStrategyCapsById();
@@ -108,7 +113,7 @@ async function main() {
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, `${JSON.stringify(queue, null, 2)}\n`);
     console.log(`wrote=${outputPath}`);
-  } else if (!args.execute) {
+  } else if (args.json || !args.execute) {
     console.log(JSON.stringify(queue, null, 2));
   }
 
