@@ -218,8 +218,9 @@ test("buildRadarCanaryIntent respects candidate gateStatus blockers", () => {
     },
   });
 
-  assert.equal(result.status, "blocked");
-  assert.ok(result.blockers.includes("same_chain_unprofitable:need_$64_on_base"));
+  assert.equal(result.status, "filtered");
+  assert.deepEqual(result.blockers, []);
+  assert.ok(result.filters.includes("same_chain_unprofitable:need_$64_on_base"));
 });
 
 test("buildRadarCanaryIntent blocks stale executable candidates", () => {

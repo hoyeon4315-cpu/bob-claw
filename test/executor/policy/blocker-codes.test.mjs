@@ -51,7 +51,7 @@ test("blocker registry includes required unique codes with known categories", ()
 });
 
 test("normalizeBlocker maps legacy text and forbidden names to stable codes", () => {
-  assert.equal(normalizeBlocker("same_chain_unprofitable:need_$5_on_base").code, "economic_no_go:edge_below_variance_floor");
+  assert.equal(normalizeBlocker("same_chain_unprofitable:need_$5_on_base").code, "filter:same_chain_unprofitable");
   assert.equal(normalizeBlocker("missing_yield_evidence").code, "proof_acquisition:missing_yield_evidence");
   assert.equal(normalizeBlocker("recipe_not_proven").code, "code_required:specific_recipe_required");
   assert.equal(normalizeBlocker("refill_proof_not_proven").code, "code_required:specific_recipe_required");

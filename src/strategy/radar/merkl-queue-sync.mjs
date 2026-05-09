@@ -3,6 +3,7 @@ import {
   computeTinyCanaryMinProfitablePositionUsd,
   resolveTinyCanaryExpectedHoldDays,
 } from "../../config/sizing.mjs";
+import { splitCandidateBlockers } from "../../executor/policy/blocker-codes.mjs";
 import { appendRadarJsonl, readRadarJsonl } from "./jsonl.mjs";
 
 const OBSERVATION_EXECUTION_PATH = "gateway_destination";
@@ -167,12 +168,15 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
       skipped: id ? { opportunityId: id, reason: "radar_family_binding_unsupported" } : null,
     };
   }
-  const blockers = [
+  const rawBlockers = [
     item.queueStatus !== "ready_for_tiny_live_canary" ? "merkl_queue_not_ready_for_tiny_live_canary" : null,
     exitPathReady(item) ? null : "exit_path_unproven",
     minProfitBlocker(item),
   ].filter(Boolean);
-  const gateStatus = blockers.length === 0 ? "executable" : "blocked";
+  const split = splitCandidateBlockers(rawBlockers, { candidateScopedInventory: true });
+  const gateStatus = split.blockers.length === 0
+    ? split.filters.length === 0 ? "executable" : "review_only"
+    : "blocked";
   const executionPath = candidateExecutionPath(item, familyKey);
   const amountUsd = itemAmountUsd(item);
   const candidate = {
@@ -223,7 +227,8 @@ export function merklQueueItemToRadarCandidate(queue = {}, item = {}) {
     policyHashAtEvaluation: "radar_merkl_queue_sync_v1",
     killSwitchState: "running",
     capUtilizationAtEvaluationBps: null,
-    blockers,
+    blockers: split.blockers,
+    filters: split.filters,
     gateStatus,
     metadata: {
       source: "merkl_canary_queue",

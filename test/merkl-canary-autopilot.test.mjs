@@ -495,7 +495,8 @@ test("execute selection defers policy-failing candidates and keeps the first pol
   assert.equal(filtered.selected.length, 1);
   assert.equal(filtered.selected[0].queueItem.opportunityId, "base-policy-pass");
   assert.equal(filtered.deferred.length, 1);
-  assert.equal(filtered.deferred[0].blockedReason, "same_chain_unprofitable:need_$18_on_optimism");
+  assert.equal(filtered.deferred[0].status, "filtered");
+  assert.equal(filtered.deferred[0].filteredReason, "same_chain_unprofitable:need_$18_on_optimism");
 });
 
 test("portfolio graduation requests are selection hints ahead of raw priority score", () => {

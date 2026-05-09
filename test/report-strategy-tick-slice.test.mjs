@@ -474,14 +474,18 @@ test("report-strategy-tick-slice counts dispatcher deny reasons by strategy", as
     adapter_blocked: 1,
     same_chain_unprofitable: 1,
   });
-  assert.equal(row.topBlocker, "same_chain_unprofitable:need_$5_on_base");
-  assert.equal(row.topBlockerCode, "economic_no_go:edge_below_variance_floor");
-  assert.equal(row.normalizedBlockers[0].legacyText, "same_chain_unprofitable:need_$5_on_base");
+  assert.equal(row.topBlocker, null);
+  assert.equal(row.topBlockerCode, null);
+  assert.deepEqual(row.normalizedBlockers, []);
+  assert.equal(row.topFilter, "same_chain_unprofitable:need_$5_on_base");
+  assert.equal(row.topFilterCode, "filter:same_chain_unprofitable");
+  assert.equal(row.normalizedFilters[0].legacyText, "same_chain_unprofitable:need_$5_on_base");
   assert.deepEqual(row.blockerCountByCategory, {
     adapter: 1,
-    ev: 2,
+    ev: 1,
     freshness: 2,
   });
+  assert.deepEqual(row.filterCountByCategory, { ev: 1 });
   assert.equal(row.chainScoreSource, null);
   assert.equal(row.chainScoreObservedAt, null);
   assert.equal(row.generatedIntentCount, 0);

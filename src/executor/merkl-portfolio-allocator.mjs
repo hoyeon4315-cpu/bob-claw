@@ -24,6 +24,7 @@ import {
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { sizeMerklCanaryAmount } from "./merkl-canary-autopilot.mjs";
+import { splitCandidateBlockers } from "./policy/blocker-codes.mjs";
 import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-scan.mjs";
 import { tinyCanarySameChainRoundTripCostUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
@@ -551,6 +552,7 @@ export function buildMerklPortfolioAllocationPlan({
         "matched_token_missing",
         "native_gas_missing",
       ].includes(blocker));
+    const blockerSplit = splitCandidateBlockers(blockers, { candidateScopedInventory: true });
     return {
       queueItem,
       score,
@@ -571,8 +573,11 @@ export function buildMerklPortfolioAllocationPlan({
       targetMaxAddUsd,
       sizing,
       decision,
-      status: blockers.length ? "blocked" : "candidate",
-      blockers,
+      status: blockerSplit.blockers.length ? "blocked" : blockerSplit.filters.length ? "filtered" : "candidate",
+      blockers: blockerSplit.blockers,
+      filters: blockerSplit.filters,
+      blockerCodes: blockerSplit.blockerCodes,
+      filterCodes: blockerSplit.filterCodes,
       capitalJob: needsCapitalJob && canaryProof ? buildCapitalJob(queueItem) : null,
       graduationCanary: !canaryProof
         ? buildProofGraduationCanaryRequest({
@@ -611,10 +616,13 @@ export function buildMerklPortfolioAllocationPlan({
       finite(candidate.targetMaxAddUsd) ?? Number.POSITIVE_INFINITY,
     );
     if (targetUsd < policy.minPositionUsd) {
+      const split = splitCandidateBlockers(["target_allocation_below_min_position_usd"], { candidateScopedInventory: true });
       allocations.push({
         ...candidate,
-        status: "blocked",
-        blockers: ["target_allocation_below_min_position_usd"],
+        status: "filtered",
+        blockers: [],
+        filters: split.filters,
+        filterCodes: split.filterCodes,
       });
       continue;
     }
@@ -641,8 +649,10 @@ export function buildMerklPortfolioAllocationPlan({
         ...candidate,
         sizing: resized,
         decision: resizedDecision,
-        status: "blocked",
-        blockers: resized.blockers || ["resized_amount_not_ready"],
+        status: resized.status === "filtered" ? "filtered" : "blocked",
+        blockers: resized.status === "filtered" ? [] : resized.blockers || ["resized_amount_not_ready"],
+        filters: resized.filters || [],
+        filterCodes: resized.filterCodes || [],
       });
       continue;
     }
@@ -746,7 +756,7 @@ export function buildMerklPortfolioAllocationPlan({
         expectedNetSats: item.decision.expectedNetSats,
       })),
     minPositionBlocked: allocations
-      .filter((item) => item.blockers?.includes("target_allocation_below_min_position_usd"))
+      .filter((item) => item.filters?.includes("target_allocation_below_min_position_usd"))
       .map((item) => ({
         opportunityId: item.queueItem?.opportunityId || null,
         chain: item.queueItem?.chain || null,
@@ -787,6 +797,7 @@ export function buildMerklPortfolioAllocationPlan({
       entryReadyCount: entryQueue.length,
       graduationCanaryRequestCount: graduationCanaryRequests.length,
       blockedCount: allocations.filter((item) => item.status === "blocked").length,
+      filteredCandidateCount: allocations.filter((item) => item.status === "filtered").length,
       capitalJobCount: capitalJobs.length,
       topEntryOpportunityId: entryQueue[0]?.queueItem?.opportunityId || null,
       topEntryScore: entryQueue[0]?.score ?? null,

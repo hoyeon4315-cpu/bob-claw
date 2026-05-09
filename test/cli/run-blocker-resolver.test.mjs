@@ -35,7 +35,8 @@ test("blocker resolver preview writes a plan and never enqueues", async () => {
   assert.equal(executed, false);
   const preview = JSON.parse(await readFile(join(root, "data", "blocker-resolution-preview.json"), "utf8"));
   assert.equal(preview.summary.resolverActionableCount, 1);
-  assert.equal(preview.summary.requiresStrategyOrCapitalChangeCount, 1);
+  assert.equal(preview.summary.requiresStrategyOrCapitalChangeCount, 0);
+  assert.equal(preview.filteredCandidates.count, 1);
   assert.equal(preview.groups[0].expectedDailyUsdOnResolve ?? null, null);
 });
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { BLOCKER_CODES, isHardSafetyStop, normalizeBlocker, paramsHash as blockerParamsHash } from "../executor/policy/blocker-codes.mjs";
+import { BLOCKER_CODES, isFilterBlockerCode, isHardSafetyStop, normalizeBlocker, paramsHash as blockerParamsHash } from "../executor/policy/blocker-codes.mjs";
 import { BLOCKER_RESOLUTION_CONFIG, buildBlockerResolutionConfig } from "../config/blocker-resolution.mjs";
 import { buildCapitalRoutingSummary } from "./capital-routing-slice.mjs";
 
@@ -167,8 +167,10 @@ export function buildBlockerFunnelSlice({
   const resolvedConfig = buildBlockerResolutionConfig(config);
   const previous = previousByStrategy(previousSlice);
   const rows = [];
+  const filters = [];
   const stageDropCounts = {};
   const codeFrequency = {};
+  const filterCodeFrequency = {};
   const rootCauses = new Map();
   const strategyRows = Array.isArray(strategyTickStatus?.strategies) ? strategyTickStatus.strategies : [];
   const capitalRoutingByStrategy = capitalRoutingRowsByStrategy(capitalRoutingPlan);
@@ -182,6 +184,19 @@ export function buildBlockerFunnelSlice({
     const code = normalized.code;
     const params = normalized.params;
     const paramsKey = paramsKeyFor(code, params);
+    if (isFilterBlockerCode(code)) {
+      const item = {
+        strategyId: row.strategyId,
+        code,
+        params,
+        legacyCode: normalized.legacyText,
+        observedAt: row.lastTickAt || generatedAt,
+        paramsKey,
+      };
+      filters.push(item);
+      increment(filterCodeFrequency, code);
+      continue;
+    }
     const state = resolverStateFor(resolverState, paramsKey);
     const prev = previous.get(row.strategyId);
     const capitalRouting = code === "economic_no_go:edge_below_variance_floor"
@@ -290,8 +305,12 @@ export function buildBlockerFunnelSlice({
     schemaVersion: 2,
     generatedAt,
     strategies: rows,
+    filters,
+    blockerCount: rows.length,
+    filteredCandidateCount: filters.length,
     stageDropCounts,
     codeFrequency,
+    filterCodeFrequency,
     rootCauseGroups,
     resolverActionableCount: rows.filter((row) => isResolverActionable(row) && !isHardSafetyStop(row.code)).length,
     requiresStrategyOrCapitalChangeCount: rows.filter((row) => requiresStrategyOrCapitalChange(row, row.requiresExternalDeposit)).length,

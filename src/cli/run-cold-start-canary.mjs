@@ -17,6 +17,7 @@ import { evaluateAutoKillTriggers } from "../risk/auto-kill-triggers.mjs";
 import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { buildRadarCostLedger } from "../strategy/radar/cost-ledger.mjs";
 import { buildRadarCanaryIntent } from "../strategy/radar/radar-candidate-router.mjs";
+import { splitCandidateBlockers } from "../executor/policy/blocker-codes.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 const EXECUTION_PATHS = new Set(["gateway_destination", "base_native_evm", "gateway_to_evm_bridged"]);
@@ -180,7 +181,7 @@ export async function buildColdStartCanaryPlan({
     .filter((candidate) => !candidateId || candidate.candidateId === candidateId)
     .map((candidate) => {
       const baseBlockers = candidateBaseBlockers(candidate, policy);
-      if (baseBlockers.length) return { status: "blocked", candidate, blockers: baseBlockers };
+      if (baseBlockers.length) return { status: "blocked", candidate, blockers: baseBlockers, filters: [] };
       const result = buildRadarCanaryIntent({
         packet: packetsById.get(candidate.packetId) ?? { packetId: candidate.packetId ?? null },
         candidate,
@@ -189,7 +190,16 @@ export async function buildColdStartCanaryPlan({
         costLedger,
         now,
       });
-      if (result.status !== "ready") return { ...result, candidate, blockers: result.blockers || [] };
+      if (result.status !== "ready") {
+        const split = splitCandidateBlockers(result.blockers || [], { candidateScopedInventory: true });
+        return {
+          ...result,
+          status: result.status === "filtered" || (split.filters.length && !split.blockers.length) ? "filtered" : "blocked",
+          candidate,
+          blockers: split.blockers,
+          filters: result.filters?.length ? result.filters : split.filters,
+        };
+      }
       const amountUsd = Number(result.intent.amountUsd || 0);
       const blockers = [];
       if (amountUsd > Number(strategyCapsById[result.intent.strategyId]?.caps?.tinyLivePerTxUsd ?? Number.POSITIVE_INFINITY)) {
@@ -214,12 +224,14 @@ export async function buildColdStartCanaryPlan({
   const selected = eligible[0] || null;
   if (!selected) {
     const blockers = [...new Set(evaluated.flatMap((item) => item.blockers || []))];
+    const filters = [...new Set(evaluated.flatMap((item) => item.filters || []))];
     return {
       schemaVersion: 1,
       generatedAt: now,
-      status: "blocked",
+      status: blockers.length ? "blocked" : filters.length ? "filtered" : "blocked",
       exitCode: 0,
-      blockers: blockers.length ? blockers : ["no_eligible_candidate"],
+      blockers: blockers.length ? blockers : filters.length ? [] : ["no_eligible_candidate"],
+      filters,
       eligibleCandidates: [],
       selectedCandidate: null,
       selectedIntent: null,
@@ -227,6 +239,7 @@ export async function buildColdStartCanaryPlan({
         candidateId: item.candidate?.candidateId || null,
         status: item.status,
         blockers: item.blockers || [],
+        filters: item.filters || [],
       })),
     };
   }
@@ -236,6 +249,7 @@ export async function buildColdStartCanaryPlan({
     status: "ready",
     exitCode: 0,
     blockers: [],
+    filters: [],
     eligibleCandidates: eligible.map((item) => ({
       candidateId: item.candidate.candidateId,
       strategyId: item.intent.strategyId,

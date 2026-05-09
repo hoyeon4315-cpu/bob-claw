@@ -39,7 +39,11 @@ import {
   realizedPnlSatsFromRecord,
 } from "../status/strategy-tick-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
-import { normalizeBlocker } from "../executor/policy/blocker-codes.mjs";
+import {
+  isFilterBlockerCode,
+  normalizeBlocker,
+  splitCandidateBlockers,
+} from "../executor/policy/blocker-codes.mjs";
 
 const DEFAULT_STRATEGIES = [
   "wrapped-btc-loop-base-moonwell",
@@ -143,12 +147,20 @@ function blockerCategoryCounts({
   lastTickBlockers = [],
   denyByReason = new Map(),
   skippedByReason = new Map(),
+  includeFilters = false,
 } = {}) {
   const categories = new Map();
-  for (const [reason, count] of denyByReason.entries()) incrementCategoryCounts(categories, reason, count);
-  for (const [reason, count] of skippedByReason.entries()) incrementCategoryCounts(categories, reason, count);
+  const shouldCount = (reason) => includeFilters === isFilterBlockerCode(normalizeBlocker(reason).code);
+  for (const [reason, count] of denyByReason.entries()) {
+    if (shouldCount(reason)) incrementCategoryCounts(categories, reason, count);
+  }
+  for (const [reason, count] of skippedByReason.entries()) {
+    if (shouldCount(reason)) incrementCategoryCounts(categories, reason, count);
+  }
   if (categories.size === 0) {
-    for (const reason of lastTickBlockers) incrementCategoryCounts(categories, reason, 1);
+    for (const reason of lastTickBlockers) {
+      if (shouldCount(reason)) incrementCategoryCounts(categories, reason, 1);
+    }
   }
   return objectFromCountMap(categories);
 }
@@ -433,9 +445,14 @@ async function main() {
     const dispatchStats = dispatchIntentStatsForStrategy(tick, sid);
     const skippedStats = skippedStatsForStrategy(tick, sid);
     const generatedIntents = generatedIntentsForStrategy(tick, sid);
-    const topBlocker = tickBlocker?.blockers?.[0] || null;
-    const normalizedBlockers = (tickBlocker?.blockers || []).map((blocker) =>
+    const blockerSplit = splitCandidateBlockers(tickBlocker?.blockers || [], { strategyId: sid });
+    const topBlocker = blockerSplit.blockers[0] || null;
+    const topFilter = blockerSplit.filters[0] || null;
+    const normalizedBlockers = blockerSplit.blockers.map((blocker) =>
       normalizeBlocker(blocker, { strategyId: sid }),
+    );
+    const normalizedFilters = blockerSplit.filters.map((filter) =>
+      normalizeBlocker(filter, { strategyId: sid }),
     );
     const receipts = audit
       .filter((r) => r?.strategyId === sid)
@@ -497,10 +514,14 @@ async function main() {
       strategyId: sid,
       lastTickAt: tick?.tickAt || null,
       lastTickMode: tickBlocker?.mode || null,
-      lastTickBlockers: tickBlocker?.blockers || [],
+      lastTickBlockers: blockerSplit.blockers,
+      lastTickFilters: blockerSplit.filters,
       normalizedBlockers,
+      normalizedFilters,
       topBlocker,
+      topFilter,
       topBlockerCode: normalizedBlockers[0]?.code || normalizeReasonCode(topBlocker),
+      topFilterCode: normalizedFilters[0]?.code || normalizeReasonCode(topFilter),
       lastTickCandidateCount: tick?.candidateCount ?? 0,
       lastTickAllowCount: tick?.dispatchSummary?.allowCount ?? 0,
       lastTickDenyCount: tick?.dispatchSummary?.denyCount ?? 0,
@@ -510,9 +531,15 @@ async function main() {
       lastTickDenyByChain: objectFromCountMap(dispatchStats.denyByChain),
       lastTickSkippedByReason: objectFromCountMap(skippedStats),
       blockerCountByCategory: blockerCategoryCounts({
-        lastTickBlockers: tickBlocker?.blockers || [],
+        lastTickBlockers: blockerSplit.blockers,
         denyByReason: dispatchStats.denyByReason,
         skippedByReason: skippedStats,
+      }),
+      filterCountByCategory: blockerCategoryCounts({
+        lastTickBlockers: blockerSplit.filters,
+        denyByReason: dispatchStats.denyByReason,
+        skippedByReason: skippedStats,
+        includeFilters: true,
       }),
       capsConfigured: tickSnapshot?.capsConfigured ?? (strategyCaps ? true : null),
       operatorAddress: tickSnapshot?.operatorAddress ?? null,

@@ -4,6 +4,7 @@ import { resolveTinyCanaryExpectedHoldDays } from "../../config/sizing.mjs";
 import { evaluateExecutableCandidateGate } from "./executable-candidate-gate.mjs";
 import { resolveFamilyBinding } from "./family-binding-registry.mjs";
 import { computeRealizedPnlEv } from "./pnl-ev-gate.mjs";
+import { splitCandidateBlockers } from "../../executor/policy/blocker-codes.mjs";
 
 const DEFAULT_EXECUTABLE_CANDIDATE_MAX_AGE_MS = 60 * 60 * 1000;
 
@@ -84,15 +85,21 @@ export function buildRadarCanaryIntent({
   }
 
   if (candidate.gateStatus && candidate.gateStatus !== "executable") {
+    const split = splitCandidateBlockers(candidate.blockers?.length ? candidate.blockers : ["radar_candidate_gate_blocked"], {
+      candidateScopedInventory: true,
+    });
     return {
-      status: "blocked",
-      blockers: candidate.blockers?.length ? candidate.blockers : ["radar_candidate_gate_blocked"],
+      status: split.blockers.length ? "blocked" : "filtered",
+      blockers: split.blockers,
+      filters: split.filters,
     };
   }
   if (Array.isArray(candidate.blockers) && candidate.blockers.length > 0) {
+    const split = splitCandidateBlockers(candidate.blockers, { candidateScopedInventory: true });
     return {
-      status: "blocked",
-      blockers: candidate.blockers,
+      status: split.blockers.length ? "blocked" : "filtered",
+      blockers: split.blockers,
+      filters: split.filters,
     };
   }
 
@@ -154,7 +161,15 @@ export function buildRadarCanaryIntent({
     costVarianceBufferUsd: radarLanePolicy?.minRealizedPnlBufferUsd ?? 0,
   });
   if (!ev.ok) {
-    return { status: "blocked", blockers: [ev.blocker], gate, binding, ev };
+    const split = splitCandidateBlockers([ev.blocker], { candidateScopedInventory: true });
+    return {
+      status: split.blockers.length ? "blocked" : "filtered",
+      blockers: split.blockers,
+      filters: split.filters,
+      gate,
+      binding,
+      ev,
+    };
   }
 
   return {

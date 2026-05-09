@@ -12,7 +12,7 @@ import { resolveDevLockPath } from "../runtime/dev-lock.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { normalizeBlocker, paramsHash as blockerParamsHash, isHardSafetyStop } from "../executor/policy/blocker-codes.mjs";
+import { normalizeBlocker, paramsHash as blockerParamsHash, isFilterBlockerCode, isHardSafetyStop } from "../executor/policy/blocker-codes.mjs";
 import { planProofAcquisition } from "../executor/blocker-resolution/proof-acquisition.mjs";
 import { readCircuitState, writeCircuitState, circuitAllowsDependency } from "../executor/blocker-resolution/circuit-breaker.mjs";
 import {
@@ -133,6 +133,7 @@ function buildGroupsFromStrategyTick(strategyTickStatus = null) {
     const raw = firstBlocker(row);
     if (!raw) continue;
     const normalized = normalizeBlocker(raw, { strategyId: row.strategyId, chain: row.chain || null });
+    if (isFilterBlockerCode(normalized.code)) continue;
     const paramsKey = paramsKeyFor(normalized.code, normalized.params);
     const group = groups.get(paramsKey) || {
       strategyId: row.strategyId,
@@ -148,6 +149,24 @@ function buildGroupsFromStrategyTick(strategyTickStatus = null) {
     groups.set(paramsKey, group);
   }
   return [...groups.values()];
+}
+
+function buildFilteredCandidatesFromStrategyTick(strategyTickStatus = null) {
+  const rows = [];
+  for (const row of strategyTickStatus?.strategies || []) {
+    const raw = firstBlocker(row);
+    if (!raw) continue;
+    const normalized = normalizeBlocker(raw, { strategyId: row.strategyId, chain: row.chain || null });
+    if (!isFilterBlockerCode(normalized.code)) continue;
+    rows.push({
+      strategyId: row.strategyId,
+      code: normalized.code,
+      legacyCode: normalized.legacyText,
+      params: normalized.params,
+      observedAt: row.lastTickAt || strategyTickStatus.generatedAt || new Date().toISOString(),
+    });
+  }
+  return rows;
 }
 
 function sortGroupsByRoi(groups = [], plans = new Map()) {
@@ -290,6 +309,7 @@ export async function runBlockerResolverCli(
     const resolverState = resolverStateRaw || { schemaVersion: 1, byParamsKey: {} };
     const reconciled = reconcilePendingDispatches(pendingDispatches, { signerAuditRecords, receiptRecords, observedAt: now });
     const groups = buildGroupsFromStrategyTick(strategyTickStatus);
+    const filteredCandidates = buildFilteredCandidatesFromStrategyTick(strategyTickStatus);
     const capitalRoutingByStrategy = new Map([
       ...((capitalRoutingPlan?.routingPlan || []).map((row) => [row.strategyId, row])),
       ...((capitalRoutingPlan?.unresolvable || []).map((row) => [row.strategyId, row])),
@@ -384,6 +404,10 @@ export async function runBlockerResolverCli(
       status: "completed",
       groups: previewPlans,
       summary: summaryFromPlans(funnel, previewPlans),
+      filteredCandidates: {
+        count: filteredCandidates.length,
+        rows: filteredCandidates,
+      },
       resolverActionable: previewPlans.filter((item) => item.resolverActionable),
       requiresStrategyOrCapitalChange: previewPlans.filter((item) => item.requiresStrategyOrCapitalChange),
       circuitBreakerState: circuitState,

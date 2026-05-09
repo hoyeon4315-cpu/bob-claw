@@ -91,10 +91,18 @@ async function main() {
     .map((result) => result.intent);
   const blocked = results
     .map((result, index) => ({ result, candidate: candidates[index] }))
-    .filter(({ result }) => result.status !== "ready")
+    .filter(({ result }) => result.status !== "ready" && result.status !== "filtered")
     .map(({ result, candidate }) => ({
       candidateId: candidate?.candidateId ?? null,
       blockers: result.blockers ?? [],
+      ev: result.ev ?? null,
+    }));
+  const filtered = results
+    .map((result, index) => ({ result, candidate: candidates[index] }))
+    .filter(({ result }) => result.status === "filtered")
+    .map(({ result, candidate }) => ({
+      candidateId: candidate?.candidateId ?? null,
+      filters: result.filters ?? [],
       ev: result.ev ?? null,
     }));
   const mode = args.execute ? "execute" : "preview";
@@ -106,6 +114,7 @@ async function main() {
     radarLockPath,
     intents,
     blocked,
+    filtered,
   };
 
   if (args.write && args.write !== true) {
@@ -120,6 +129,7 @@ async function main() {
   console.log(`mode=${mode}`);
   console.log(`ready=${intents.length}`);
   console.log(`blocked=${blocked.length}`);
+  console.log(`filtered=${filtered.length}`);
   console.log("signed=false");
 }
 

@@ -97,10 +97,14 @@ export function classifyFloorFeasibility({
     else if (delta <= 0) classification = "ready_no_capital_change";
     else if (delta <= freeCapitalUsd) classification = "ready_with_capital_addition";
     else classification = "needs_capital_acquisition";
+    const isCapitalMismatchFilter = classification === "needs_capital_acquisition";
 
     return {
       strategyId,
       classification,
+      isFilter: isCapitalMismatchFilter,
+      filterCode: isCapitalMismatchFilter ? "filter:capital_mismatch" : null,
+      blockerCode: null,
       capitalDeltaNeededUsd: delta === null ? null : roundUsd(delta),
       minNotionalUsd: minNotional,
       observedNotionalUsd: observed,

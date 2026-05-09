@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const BLOCKER_CATEGORIES = Object.freeze([
+  "filter",
   "hard_safety_stop",
   "economic_no_go",
   "proof_acquisition",
@@ -31,6 +32,13 @@ function entry(category, specificId, humanLabel, {
 }
 
 const REQUIRED = [
+  entry("filter", "same_chain_unprofitable", "Candidate notional is below same-chain profitable minimum", { expectedRetryShape: "inventory_changed" }),
+  entry("filter", "inventory_mismatch", "Candidate inventory is below required notional", { expectedRetryShape: "inventory_changed" }),
+  entry("filter", "min_position_blocked", "Candidate notional is below venue minimum", { expectedRetryShape: "inventory_changed" }),
+  entry("filter", "bridge_cost_greater_than_expected_net", "Bridge cost exceeds expected net", { expectedRetryShape: "inventory_changed" }),
+  entry("filter", "no_positive_cap_or_inventory_usd", "No positive candidate cap or inventory", { expectedRetryShape: "inventory_changed" }),
+  entry("filter", "capital_mismatch", "Candidate capital mismatch", { expectedRetryShape: "inventory_changed" }),
+  entry("filter", "executable_candidate_stale", "Executable candidate stale after refresh failed", { expectedRetryShape: "bounded_backoff" }),
   entry("hard_safety_stop", "kill_switch_active", "Kill-switch active", { severity: "critical" }),
   entry("hard_safety_stop", "dev_lock_active", "Dev-lock active", { severity: "critical" }),
   entry("hard_safety_stop", "readiness_guard_blocked", "Live broadcast readiness guard blocked", { severity: "critical" }),
@@ -48,6 +56,9 @@ const REQUIRED = [
   entry("proof_acquisition", "inventory_snapshot_stale", "Inventory snapshot stale", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
   entry("proof_acquisition", "rewards_unclaimed", "Reward tokens unclaimed", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
   entry("proof_acquisition", "missing_yield_evidence", "Yield-side simulation evidence missing", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
+  entry("proof_acquisition", "share_price_unwind_proof_missing", "Share-price unwind proof missing", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
+  entry("proof_acquisition", "executable_candidate_stale", "Executable candidate stale", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
+  entry("proof_acquisition", "merkl_queue_not_ready_for_tiny_live_canary", "Merkl queue not ready for tiny live canary", { severity: "warning", autoResolvable: true, expectedRetryShape: "bounded_backoff" }),
   entry("refill_or_inventory", "chain_under_target", "Chain under target", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
   entry("refill_or_inventory", "gas_float_below_threshold", "Gas float below threshold", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
   entry("refill_or_inventory", "idle_dust_consolidation_due", "Idle dust consolidation due", { severity: "warning", autoResolvable: true, expectedRetryShape: "receipt_confirmed" }),
@@ -55,7 +66,14 @@ const REQUIRED = [
   entry("cooldown", "campaign_window_pending", "Campaign window pending", { expectedRetryShape: "eta" }),
   entry("cooldown", "harvest_period_pending", "Harvest period pending", { expectedRetryShape: "eta" }),
   entry("executor_unbound", "adapter_missing", "Executor adapter missing", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("executor_unbound", "protocol_binding_not_ready", "Protocol binding not ready", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("executor_unbound", "executor_missing", "Executor missing", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("executor_unbound", "unsupported_binding_kind", "Unsupported binding kind", { severity: "warning", expectedRetryShape: "code_queue" }),
   entry("code_required", "specific_recipe_required", "Specific recipe required", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("code_required", "strategy_tiny_live_cap_missing", "Strategy tiny live cap missing", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("code_required", "canary_graduation_failure_pause", "Canary graduation paused by failure state", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("code_required", "entry_asset_not_whitelisted", "Entry asset not whitelisted", { severity: "warning", expectedRetryShape: "code_queue" }),
+  entry("code_required", "matched_token_missing", "Matched token missing", { severity: "warning", expectedRetryShape: "code_queue" }),
   entry("manual_review", "unknown_blocker_code", "Unknown blocker code", { severity: "warning", expectedRetryShape: "manual" }),
   entry("payback_lifecycle", "payback_settlement_pending", "Payback settlement pending", { severity: "warning", expectedRetryShape: "periodic" }),
   entry("payback_lifecycle", "profit_attribution_gap", "Profit attribution gap", { severity: "warning", expectedRetryShape: "periodic" }),
@@ -102,11 +120,22 @@ function parseColonParams(text) {
   };
 }
 
-function codeForLegacy(raw) {
+function codeForLegacy(raw, context = {}) {
   const text = normalizeLegacyText(raw);
   if (!text) return "manual_review:unknown_blocker_code";
   if (BLOCKER_CODES[text]) return text;
   if (FORBIDDEN_LEGACY_NAMES.has(text)) return "code_required:specific_recipe_required";
+
+  if (text.includes("same_chain_unprofitable")) return "filter:same_chain_unprofitable";
+  if (text === "min_position_blocked" || text === "target_allocation_below_min_position_usd") return "filter:min_position_blocked";
+  if (text.includes("bridge_cost_greater_than_expected_net")) return "filter:bridge_cost_greater_than_expected_net";
+  if (text.includes("no_positive_cap_or_inventory_usd")) return "filter:no_positive_cap_or_inventory_usd";
+  if (context.candidateScopedInventory === true && (text.includes("inventory_missing") || text.includes("inventory_unknown"))) {
+    return "filter:inventory_mismatch";
+  }
+  if (context.staleAfterRefreshFailed === true && text.includes("executable_candidate_stale")) {
+    return "filter:executable_candidate_stale";
+  }
 
   if (text.includes("kill_switch")) return "hard_safety_stop:kill_switch_active";
   if (text.includes("dev_lock")) return "hard_safety_stop:dev_lock_active";
@@ -120,6 +149,8 @@ function codeForLegacy(raw) {
     return "hard_safety_stop:capless_strategy";
   }
   if (text.includes("hf_breach") || text.includes("hf_below") || text.includes("liquidation")) return "hard_safety_stop:hf_breach";
+  if (text.includes("entry_asset_not_whitelisted")) return "code_required:entry_asset_not_whitelisted";
+  if (text.includes("matched_token_missing")) return "code_required:matched_token_missing";
   if (text.includes("unknown_token") || text.includes("whitelist")) return "hard_safety_stop:unknown_token";
 
   if (text.includes("capital_too_small") || text.includes("insufficient_capital")) return "economic_no_go:capital_too_small";
@@ -129,6 +160,9 @@ function codeForLegacy(raw) {
   }
 
   if (text.includes("stale") && (text.includes("quote") || text.includes("route"))) return "proof_acquisition:route_quote_stale";
+  if (text.includes("executable_candidate_stale")) return "proof_acquisition:executable_candidate_stale";
+  if (text.includes("share_price_unwind_proof_missing")) return "proof_acquisition:share_price_unwind_proof_missing";
+  if (text.includes("merkl_queue_not_ready_for_tiny_live_canary")) return "proof_acquisition:merkl_queue_not_ready_for_tiny_live_canary";
   if (text.includes("gateway_route") || text.includes("route_unknown") || text.includes("route_currently_unavailable") || text.includes("missing_gateway_quote")) {
     return "proof_acquisition:gateway_route_unknown";
   }
@@ -145,7 +179,13 @@ function codeForLegacy(raw) {
   if (text.includes("harvest_period")) return "cooldown:harvest_period_pending";
   if (text.includes("cooldown")) return "cooldown:fresh_roundtrip_proof_recorded";
 
-  if (text.includes("adapter_missing") || text.includes("executor_missing") || text.includes("executor_binding_missing")) return "executor_unbound:adapter_missing";
+  if (text.includes("protocol_binding_not_ready")) return "executor_unbound:protocol_binding_not_ready";
+  if (text.includes("unsupported_binding_kind")) return "executor_unbound:unsupported_binding_kind";
+  if (text.includes("adapter_missing") || text.includes("executor_missing") || text.includes("executor_binding_missing") || text.includes("protocol_binding_executor_missing")) {
+    return "executor_unbound:executor_missing";
+  }
+  if (text.includes("strategy_tiny_live_cap_missing") || text.includes("tiny_live_cap_missing")) return "code_required:strategy_tiny_live_cap_missing";
+  if (text.includes("canary_graduation_failure_pause")) return "code_required:canary_graduation_failure_pause";
   if (text.includes("specific_recipe_required") || text.includes("code_required")) return "code_required:specific_recipe_required";
   if (text.includes("payback_settlement_pending")) return "payback_lifecycle:payback_settlement_pending";
   if (text.includes("profit_attribution_gap")) return "payback_lifecycle:profit_attribution_gap";
@@ -155,7 +195,7 @@ function codeForLegacy(raw) {
 
 export function normalizeBlocker(rawString, context = {}) {
   const raw = String(rawString ?? "").trim();
-  const code = codeForLegacy(raw);
+  const code = codeForLegacy(raw, context);
   const meta = BLOCKER_CODES[code] || BLOCKER_CODES["manual_review:unknown_blocker_code"];
   const params = {
     ...parseColonParams(raw),
@@ -179,4 +219,31 @@ export function assertBlockerCode(code) {
 
 export function isHardSafetyStop(code) {
   return BLOCKER_CODES[code]?.category === "hard_safety_stop";
+}
+
+export function isFilterBlockerCode(code) {
+  return BLOCKER_CODES[code]?.category === "filter";
+}
+
+export function splitCandidateBlockers(rawBlockers = [], context = {}) {
+  const blockers = [];
+  const filters = [];
+  const blockerCodes = [];
+  const filterCodes = [];
+  for (const raw of rawBlockers || []) {
+    const normalized = normalizeBlocker(raw, context);
+    if (isFilterBlockerCode(normalized.code)) {
+      filters.push(raw);
+      filterCodes.push(normalized.code);
+    } else {
+      blockers.push(raw);
+      blockerCodes.push(normalized.code);
+    }
+  }
+  return {
+    blockers,
+    filters,
+    blockerCodes,
+    filterCodes,
+  };
 }

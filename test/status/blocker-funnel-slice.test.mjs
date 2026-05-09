@@ -17,11 +17,14 @@ test("blocker funnel groups root causes, normalizes codes, and separates resolve
   });
   assert.equal(slice.schemaVersion, 2);
   assert.equal(slice.resolverActionableCount, 1);
-  assert.equal(slice.requiresStrategyOrCapitalChangeCount, 1);
+  assert.equal(slice.requiresStrategyOrCapitalChangeCount, 0);
+  assert.equal(slice.blockerCount, 1);
+  assert.equal(slice.filteredCandidateCount, 1);
   assert.equal(slice.codeFrequency["proof_acquisition:route_quote_stale"], 1);
-  assert.equal(slice.codeFrequency["economic_no_go:edge_below_variance_floor"], 1);
-  assert.equal(slice.rootCauseGroups.length, 2);
+  assert.equal(slice.filterCodeFrequency["filter:same_chain_unprofitable"], 1);
+  assert.equal(slice.rootCauseGroups.length, 1);
   assert.equal(slice.strategies[0].code, "proof_acquisition:route_quote_stale");
+  assert.equal(slice.filters[0].code, "filter:same_chain_unprofitable");
 });
 
 test("payback lifecycle root-cause keys stay stable across observation time", () => {

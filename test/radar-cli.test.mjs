@@ -312,8 +312,9 @@ test("radar promote CLI evaluates only the latest candidate version", async () =
 
   const queue = JSON.parse(await readFile(queuePath, "utf8"));
   assert.equal(queue.intents.length, 0);
-  assert.equal(queue.blocked.length, 1);
-  assert.ok(queue.blocked[0].blockers.includes("same_chain_unprofitable:need_$64_on_base"));
+  assert.equal(queue.blocked.length, 0);
+  assert.equal(queue.filtered.length, 1);
+  assert.ok(queue.filtered[0].filters.includes("same_chain_unprofitable:need_$64_on_base"));
 });
 
 test("radar promote CLI preserves blocked candidate ids after ready candidates", async () => {
@@ -375,5 +376,5 @@ test("radar promote CLI preserves blocked candidate ids after ready candidates",
   assert.equal(promote.status, 0, promote.stderr);
   const queue = JSON.parse(await readFile(queuePath, "utf8"));
   assert.equal(queue.intents.length, 1);
-  assert.equal(queue.blocked[0].candidateId, "candidate_blocked");
+  assert.equal(queue.filtered[0].candidateId, "candidate_blocked");
 });

@@ -28,6 +28,7 @@ import {
   resolvePlanExecutor,
 } from "./protocol-binding-registry.mjs";
 import { evaluateOpportunityPolicy } from "./policy/opportunity-policy.mjs";
+import { splitCandidateBlockers } from "./policy/blocker-codes.mjs";
 
 
 const DEFAULT_MIN_ETHEREUM_NOTIONAL_USD = 25;
@@ -223,10 +224,14 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
     blockers.push(...capCheck.blockers);
   }
 
-  if (blockers.length) {
+  const blockerSplit = splitCandidateBlockers(blockers, { candidateScopedInventory: true });
+  if (blockerSplit.blockers.length || blockerSplit.filters.length) {
     return {
-      status: "blocked",
-      blockers,
+      status: blockerSplit.blockers.length ? "blocked" : "filtered",
+      blockers: blockerSplit.blockers,
+      filters: blockerSplit.filters,
+      blockerCodes: blockerSplit.blockerCodes,
+      filterCodes: blockerSplit.filterCodes,
       strategyId,
       capUsd: Number.isFinite(hardCapUsd) ? hardCapUsd : null,
       amount: null,
@@ -245,6 +250,7 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
     return {
       status: "blocked",
       blockers: ["amount_too_small_after_sizing"],
+      filters: [],
       strategyId,
       capUsd: hardCapUsd,
       amount: null,
@@ -444,6 +450,7 @@ function compactCandidate(item) {
     amount: item.sizing?.amount || null,
     amountUsd: item.sizing?.amountUsd ?? null,
     blockers: item.sizing?.blockers || [],
+    filters: item.sizing?.filters || [],
     graduation: item.sizing?.graduation || null,
   };
 }
@@ -469,6 +476,14 @@ function resultBlockers(result = {}) {
   return ["blocked"];
 }
 
+function resultFilters(result = {}) {
+  if (result.status !== "filtered") return [];
+  if (result.filters?.length) return result.filters;
+  if (result.sizing?.filters?.length) return result.sizing.filters;
+  if (result.opportunityPolicy?.filters?.length) return result.opportunityPolicy.filters;
+  return [];
+}
+
 export function summarizeMerklAutopilotResults(results = []) {
   const blockerCounts = {};
   for (const result of results) {
@@ -477,6 +492,13 @@ export function summarizeMerklAutopilotResults(results = []) {
     }
   }
   const blockedCount = results.filter((item) => item.status === "blocked").length;
+  const filteredCount = results.filter((item) => item.status === "filtered").length;
+  const filterCounts = {};
+  for (const result of results) {
+    for (const filter of resultFilters(result)) {
+      filterCounts[filter] = (filterCounts[filter] || 0) + 1;
+    }
+  }
   const previewReadyCount = results.filter((item) => item.status === "preview_ready").length;
   const deliveredCount = results.filter((item) => item.execution?.settlementStatus === "delivered").length;
   const topBlocker = topCountKey(blockerCounts);
@@ -485,11 +507,13 @@ export function summarizeMerklAutopilotResults(results = []) {
       ?.opportunityPolicy?.evGate || null;
   return {
     selectedCount: results.length,
-    executionReadyCount: results.length - blockedCount,
+    executionReadyCount: results.length - blockedCount - filteredCount,
+    filteredCount,
     previewReadyCount,
     deliveredCount,
     blockedCount,
     blockerCounts,
+    filterCounts,
     topBlocker,
     topEvGate: evGateForTopBlocker,
   };
@@ -581,12 +605,18 @@ export async function evaluateMerklCanaryOpportunityPolicy({
 }
 
 function opportunityPolicyBlockedResult(candidate = {}, opportunityPolicy = {}) {
+  const split = splitCandidateBlockers(opportunityPolicy.blockers || [], { candidateScopedInventory: true });
   return {
-    status: "blocked",
-    blockedReason: opportunityPolicy.blockers?.[0] || "opportunity_policy_blocked",
+    status: split.blockers.length ? "blocked" : "filtered",
+    blockedReason: split.blockers[0] || null,
+    filteredReason: split.filters[0] || null,
     queueItem: candidate.queueItem,
     sizing: candidate.sizing,
-    opportunityPolicy,
+    opportunityPolicy: {
+      ...opportunityPolicy,
+      blockers: split.blockers,
+      filters: split.filters,
+    },
   };
 }
 
@@ -854,6 +884,7 @@ export async function runMerklCanaryAutopilot({
       summary: {
         queueCount: queue.queue?.length || 0,
         readyCount: 0,
+        filteredCount: selection.candidates.filter((item) => item.sizing?.status === "filtered").length,
         representativeCoverage: compactRepresentativeCoverage(queue),
         selectedCount: 0,
         selectedChains: [],
@@ -880,8 +911,9 @@ export async function runMerklCanaryAutopilot({
     let { queueItem, sizing } = selected;
     if (sizing.status !== "ready") {
       results.push({
-        status: "blocked",
-        blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+        status: sizing.status === "filtered" ? "filtered" : "blocked",
+        blockedReason: sizing.status === "filtered" ? null : sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+        filteredReason: sizing.status === "filtered" ? sizing.filters?.[0] || "candidate_filtered" : null,
         queueItem,
         sizing,
       });
@@ -926,8 +958,9 @@ export async function runMerklCanaryAutopilot({
       }
       if (sizing.status !== "ready") {
         results.push({
-          status: "blocked",
-          blockedReason: sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+          status: sizing.status === "filtered" ? "filtered" : "blocked",
+          blockedReason: sizing.status === "filtered" ? null : sizing.blockers?.[0] || "no_autopilot_candidate_ready",
+          filteredReason: sizing.status === "filtered" ? sizing.filters?.[0] || "candidate_filtered" : null,
           queueItem,
           sizing,
         });
@@ -1016,7 +1049,7 @@ export async function runMerklCanaryAutopilot({
   }
   const firstReady = results.find((item) => item.status !== "blocked") || results[0] || {};
   const resultSummary = summarizeMerklAutopilotResults(results);
-  const { deliveredCount, previewReadyCount, blockedCount } = resultSummary;
+  const { deliveredCount, previewReadyCount, blockedCount, filteredCount } = resultSummary;
   const selectedChains = [...new Set(results.map((item) => item.queueItem?.chain).filter(Boolean))];
   const report = {
     schemaVersion: 1,
@@ -1032,6 +1065,7 @@ export async function runMerklCanaryAutopilot({
         ? "preview_ready"
         : "blocked",
     blockedReason: blockedCount === results.length ? results[0]?.blockedReason || "no_autopilot_candidate_ready" : null,
+    filteredReason: filteredCount === results.length ? results[0]?.filteredReason || "all_candidates_filtered" : null,
     preflight: {
       status: preflight.status,
       senderAddress: preflight.senderAddress,
@@ -1048,6 +1082,7 @@ export async function runMerklCanaryAutopilot({
       previewReadyCount,
       deliveredCount,
       blockedCount,
+      filteredCount,
       blockerCounts: resultSummary.blockerCounts,
       topBlocker: resultSummary.topBlocker,
       topEvGate: resultSummary.topEvGate,

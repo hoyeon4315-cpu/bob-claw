@@ -186,8 +186,9 @@ test("syncMerklQueueToRadar keeps expensive-chain tiny EV conservative", async (
   assert.equal(result.candidatesWritten, 1);
 
   const candidates = await readRadarJsonl(dataDir, "executable-candidates");
-  assert.equal(candidates[0].gateStatus, "blocked");
-  assert.ok(candidates[0].blockers.includes("same_chain_unprofitable:need_$41_on_ethereum"));
+  assert.equal(candidates[0].gateStatus, "review_only");
+  assert.deepEqual(candidates[0].blockers, []);
+  assert.ok(candidates[0].filters.includes("same_chain_unprofitable:need_$41_on_ethereum"));
 });
 
 test("syncMerklQueueToRadar does not treat entry inventory as reward-token proof", async () => {

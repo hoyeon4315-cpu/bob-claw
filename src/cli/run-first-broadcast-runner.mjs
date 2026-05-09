@@ -198,6 +198,17 @@ function selectCandidate(stepPayloads = new Map()) {
   return { candidates, selectedCandidate: candidates[0] || null };
 }
 
+function filteredCandidateCount(stepPayloads = new Map()) {
+  let count = 0;
+  for (const payload of stepPayloads.values()) {
+    count += Array.isArray(payload.filtered) ? payload.filtered.length : 0;
+    count += Array.isArray(payload.filters) && payload.status === "filtered" ? payload.filters.length : 0;
+    count += Number(payload.summary?.filteredCandidateCount || payload.summary?.filteredCount || 0);
+    count += Number(payload.filteredCandidates?.count || 0);
+  }
+  return count;
+}
+
 async function writeStepLog(dataDir, id, payload) {
   const path = join(dataDir, "first-broadcast-runs", `${id}.json`);
   await writeTextIfChanged(path, `${JSON.stringify(payload, null, 2)}\n`);
@@ -272,13 +283,15 @@ export async function runFirstBroadcastRunnerCli(
   }
 
   const { candidates, selectedCandidate } = selectCandidate(payloads);
+  const filteredCount = filteredCandidateCount(payloads);
   let finalPayload = {
     schemaVersion: 1,
     generatedAt: now,
     mode: args.execute ? "execute" : "preview",
-    outcome: selectedCandidate ? "candidate_selected_preview" : "no_candidate_sets_non_empty",
+    outcome: selectedCandidate ? "candidate_selected_preview" : filteredCount > 0 ? "all_candidates_filtered" : "no_candidate_sets_non_empty",
     selectedCandidate,
     candidateCount: candidates.length,
+    filteredCandidateCount: filteredCount,
     candidates,
     stepResults,
   };
