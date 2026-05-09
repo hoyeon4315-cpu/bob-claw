@@ -203,7 +203,7 @@ export function effectiveRadarCaps({
 }
 
 export function resolveEffectiveSmallCapitalBudgets({
-  operatingCapitalUsd = 1_000,
+  operatingCapitalUsd = 0,
   policy = SMALL_CAPITAL_CAMPAIGN_MODE,
 } = {}) {
   const band = operatingCapitalScaleBand(operatingCapitalUsd);

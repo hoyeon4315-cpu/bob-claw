@@ -16,7 +16,7 @@ export function buildSleeveProfileSlice({
   const overrides = profile?.smallCapitalOverrides || {};
   const portfolioExposure = profile?.portfolioExposure || {};
   const scale = resolveEffectiveSmallCapitalBudgets({
-    operatingCapitalUsd: Number.isFinite(Number(operatingCapitalUsd)) ? Number(operatingCapitalUsd) : 1_000,
+    operatingCapitalUsd: Number.isFinite(Number(operatingCapitalUsd)) ? Number(operatingCapitalUsd) : 0,
   });
 
   return {
