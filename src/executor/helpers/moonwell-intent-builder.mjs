@@ -101,6 +101,7 @@ export async function buildMoonwellWrappedBtcLoopIntent({
   borrowMTokenAddress,
   comptrollerAddress,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  assetCoverage = null,
   now = new Date().toISOString(),
   estimateGasImpl = estimateGas,
 } = {}) {
@@ -237,6 +238,8 @@ export async function buildMoonwellWrappedBtcLoopIntent({
         },
         metadata: {
           capCheckAmountUsd: amountUsd,
+          exposureAction: "open",
+          ...(assetCoverage ? { assetCoverage } : {}),
           protocol: "moonwell",
           collateralAsset,
           collateralMToken,

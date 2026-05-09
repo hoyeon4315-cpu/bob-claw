@@ -3,10 +3,15 @@ import {
   strategyPauseResetFor,
   strategyPauseResetTimestamp,
 } from "../../config/strategy-pause-state.mjs";
+import {
+  buildClosedCanaryCycleRecords,
+  normalizeExplorationKey,
+} from "./realized-cycle-truth.mjs";
 
 const DEFAULT_POLICY = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation;
 
 function finite(value) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -45,6 +50,21 @@ function recordCampaignKey(record = {}) {
     recordOpportunityId(record) ||
     null
   );
+}
+
+function explorationKeyInputFromRecord(record = {}) {
+  const queueItem = record.queueItem || {};
+  const metadata = record.metadata || {};
+  return {
+    strategyId: recordStrategyId(record),
+    chain: recordChain(record),
+    protocolId: recordProtocol(record),
+    assetPair: record.assetPair || queueItem.assetPair || metadata.assetPair || queueItem.entryAssets,
+    rewardToken: record.rewardToken || queueItem.rewardToken || metadata.rewardToken,
+    campaignId: record.campaignId || queueItem.campaignId || metadata.campaignId,
+    opportunityId: recordOpportunityId(record),
+    bindingKind: record.bindingKind || queueItem.bindingKind || queueItem.protocolBindingPlan?.bindingKind || metadata.bindingKind,
+  };
 }
 
 function hasSentTx(record = {}) {
@@ -148,6 +168,19 @@ export function classifyCanaryOutcome(record = {}) {
 }
 
 function matchesQueueItem(record = {}, queueItem = {}) {
+  const queueKey = normalizeExplorationKey({
+    strategyId: queueItem.mappedStrategyId || queueItem.strategyId || queueItem.familyId || null,
+    chain: queueItem.chain || null,
+    protocolId: queueItem.protocolId || queueItem.protocol || null,
+    assetPair: queueItem.assetPair || queueItem.entryAssets || null,
+    rewardToken: queueItem.rewardToken || null,
+    campaignId: queueItem.campaignId || null,
+    opportunityId: queueItem.opportunityId || null,
+    bindingKind: queueItem.bindingKind || queueItem.protocolBindingPlan?.bindingKind || null,
+  });
+  const recordKey = record.explorationKey || normalizeExplorationKey(explorationKeyInputFromRecord(record));
+  if (queueKey && recordKey) return queueKey === recordKey;
+
   const strategyId = queueItem.mappedStrategyId || queueItem.strategyId || null;
   const chain = queueItem.chain || null;
   const protocol = queueItem.protocolId || queueItem.protocol || null;
@@ -194,6 +227,8 @@ export function evaluateCanaryGraduation({
   queueItem = {},
   canaryExecutions = [],
   auditRecords = [],
+  protocolPositionMarks = [],
+  receiptReconciliations = [],
   policy = DEFAULT_POLICY,
   now = new Date().toISOString(),
 } = {}) {
@@ -211,12 +246,31 @@ export function evaluateCanaryGraduation({
   const records = [...canaryExecutions, ...auditRecords]
     .filter((record) => matchesQueueItem(record, queueItem))
     .filter((record) => isAfterResetBoundary(record, resetBoundary.resetMs));
+  const closedCycles = buildClosedCanaryCycleRecords({
+    positionRecords: records,
+    protocolPositionMarks: protocolPositionMarks.filter((mark) => matchesQueueItem(mark, queueItem)),
+    receiptReconciliations,
+    btcUsd: p.btcUsd || null,
+  });
   const outcomes = records.map((record) => ({
     record,
     outcome: classifyCanaryOutcome(record),
   }));
   const delivered = outcomes.filter(({ outcome }) => outcome.kind === "tx_confirmed" || outcome.kind === "realized_positive");
-  const positiveRealized = outcomes.filter(({ outcome }) => outcome.kind === "realized_positive");
+  const completeCycles = closedCycles.filter((cycle) => cycle.completenessStatus === "complete");
+  const incompleteClosedCycles = closedCycles.filter((cycle, index) => {
+    const outcome = outcomes[index]?.outcome;
+    return (
+      cycle.completenessStatus !== "complete" &&
+      ((cycle.missingFields || []).includes("protocol_position_unmeasured_blocks_repeat_canary") ||
+      (outcome?.kind === "tx_confirmed" ||
+        outcome?.kind === "realized_positive" ||
+        outcome?.kind === "realized_negative" ||
+        (cycle.closedAt && cycle.openedAt)))
+    );
+  });
+  const positiveRealized = completeCycles.filter((cycle) => Number(cycle.realizedNetUsd) > 0);
+  const nonPositiveComplete = completeCycles.filter((cycle) => !(Number(cycle.realizedNetUsd) > 0));
   const failures = outcomes.filter(({ outcome }) => outcome.countsAsFailure);
   const nowMs = new Date(now).getTime();
   const lossWindowMs = Number(p.realizedLossWindowMs ?? 24 * 60 * 60 * 1000);
@@ -230,18 +284,24 @@ export function evaluateCanaryGraduation({
     .reduce((sum, value) => sum + Math.abs(value), 0);
   const distinctWindows = new Set(
     positiveRealized
-      .map(({ record }) => recordCampaignKey(record))
+      .map((cycle) => cycle.opportunityId)
       .filter(Boolean),
   );
 
   const blockers = [];
+  if (incompleteClosedCycles.some((cycle) => (cycle.missingFields || []).includes("protocol_position_unmeasured_blocks_repeat_canary"))) {
+    blockers.push("protocol_position_unmeasured_blocks_repeat_canary");
+  } else if (incompleteClosedCycles.length > 0) {
+    blockers.push("accounting_incomplete_blocks_repeat_canary");
+  }
+  if (nonPositiveComplete.length > 0) blockers.push("realized_net_non_positive_blocks_repeat_canary");
   if (realizedLossUsd > Number(p.realizedDailyLossLockUsd)) blockers.push("canary_graduation_loss_lock");
   if (failures.length >= Number(p.maxSubstantiveFailures)) blockers.push("canary_graduation_failure_pause");
 
   let rungIndex = 0;
-  if (delivered.length >= Number(p.minDeliveredForSecondRung)) rungIndex = 1;
+  if (positiveRealized.length >= Number(p.minDeliveredForSecondRung)) rungIndex = 1;
   if (
-    delivered.length >= Number(p.minDeliveredForThirdRung) &&
+    positiveRealized.length >= Number(p.minDeliveredForThirdRung) &&
     positiveRealized.length >= Number(p.minPositiveRealizedForThirdRung)
   ) {
     rungIndex = 2;
@@ -267,6 +327,9 @@ export function evaluateCanaryGraduation({
     evidence: {
       deliveredCount: delivered.length,
       positiveRealizedCount: positiveRealized.length,
+      closedCycleCompleteCount: completeCycles.length,
+      closedCycleCompletePositiveCount: positiveRealized.length,
+      closedCycleIncompleteCount: incompleteClosedCycles.length,
       substantiveFailureCount: failures.length,
       noTxSentCount: outcomes.filter(({ outcome }) => outcome.kind === "no_tx_sent").length,
       distinctWindowCount: distinctWindows.size,

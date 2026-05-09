@@ -36,6 +36,7 @@ import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/st
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildCampaignAwareSlice } from "./campaign-aware-dashboard-slice.mjs";
 import { buildRadarDashboardSlice } from "./radar-slice.mjs";
+import { buildClosedCanaryCycleRecords } from "../executor/canary/realized-cycle-truth.mjs";
 
 const STATUS_SCHEMA_VERSION = 2;
 // No project-wide risk budget anymore; per-strategy caps live in each
@@ -141,6 +142,117 @@ function pctChange(reference, value) {
 function countRecent(items, now, hours) {
   const cutoff = new Date(now).getTime() - hours * 3_600_000;
   return items.filter((item) => item.observedAt && new Date(item.observedAt).getTime() >= cutoff).length;
+}
+
+function topCounts(map, limit = 8) {
+  return [...map.entries()]
+    .map(([key, count]) => ({ key, count }))
+    .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
+    .slice(0, limit);
+}
+
+function recordObservedAt(record = {}) {
+  return record.sourceObservedAt || record.observedAt || record.timestamp || record.generatedAt || null;
+}
+
+function isWithinHours(record = {}, now, hours) {
+  const observed = recordObservedAt(record);
+  const time = new Date(observed || 0).getTime();
+  const nowMs = new Date(now).getTime();
+  return Number.isFinite(time) && Number.isFinite(nowMs) && time >= nowMs - hours * 3_600_000;
+}
+
+export function buildTruthPanels({
+  signerAuditRecords = [],
+  merklPositionRecords = [],
+  protocolPositionMarks = [],
+  receiptReconciliations = [],
+  walletHoldings = null,
+  generatedAt = new Date().toISOString(),
+  staleAfterMinutes = 60,
+} = {}) {
+  const recentAudit = (signerAuditRecords || []).filter((record) => isWithinHours(record, generatedAt, 24));
+  const blockerCounts = new Map();
+  let transportBypassCount = 0;
+  let assetCoverageMissingCount = 0;
+  for (const record of recentAudit) {
+    const blockers = record.policy?.blockers || record.error?.policy?.blockers || record.lifecycle?.blockers || [];
+    for (const blocker of blockers) {
+      const key = String(blocker);
+      blockerCounts.set(key, (blockerCounts.get(key) || 0) + 1);
+      if (key === "asset_coverage_missing_for_new_exposure") assetCoverageMissingCount += 1;
+    }
+    const evEvidence = record.policy?.results?.find?.((item) => item.policy === "ev_gate")?.evidence ||
+      record.error?.policy?.results?.find?.((item) => item.policy === "ev_gate")?.evidence ||
+      null;
+    if (evEvidence?.bypassReason === "transport_plumbing_zero_pnl_surface") transportBypassCount += 1;
+  }
+
+  const closedCycles = buildClosedCanaryCycleRecords({
+    positionRecords: merklPositionRecords,
+    signerAuditRecords,
+    protocolPositionMarks,
+    receiptReconciliations,
+  });
+  const completeCycles = closedCycles.filter((cycle) => cycle.completenessStatus === "complete");
+  const positiveCycles = completeCycles.filter((cycle) => Number(cycle.realizedNetUsd) > 0);
+  const negativeCycles = completeCycles.filter((cycle) => !(Number(cycle.realizedNetUsd) > 0));
+  const incompleteCycles = closedCycles.filter((cycle) => cycle.completenessStatus !== "complete");
+  const staleCutoffMs = new Date(generatedAt).getTime() - staleAfterMinutes * 60_000;
+  const sourceTimes = [
+    walletHoldings?.sourceObservedAt,
+    walletHoldings?.oldestMaterialSourceObservedAt,
+    ...closedCycles.map((cycle) => cycle.sourceObservedAt),
+    ...protocolPositionMarks.map((mark) => mark.sourceObservedAt || mark.observedAt),
+  ].filter(Boolean);
+  const staleSourceCount = sourceTimes.filter((timestamp) => {
+    const parsed = new Date(timestamp).getTime();
+    return !Number.isFinite(parsed) || parsed < staleCutoffMs;
+  }).length;
+  const missingSourceObservedAtCount = [
+    walletHoldings,
+    ...closedCycles,
+    ...protocolPositionMarks,
+  ].filter((item) => item && !item.sourceObservedAt && !item.oldestMaterialSourceObservedAt && !item.observedAt).length;
+
+  return {
+    policyRejectHistogram24h: {
+      observedAt: generatedAt,
+      blockerCounts: topCounts(blockerCounts),
+      transportBypassCount,
+      assetCoverageMissingCount,
+    },
+    profitabilityTruth: {
+      observedAt: generatedAt,
+      recentClosedCanaries: closedCycles.slice(-8),
+      completeCount: completeCycles.length,
+      incompleteCount: incompleteCycles.length,
+      positiveRealizedCount: positiveCycles.length,
+      nonPositiveRealizedCount: negativeCycles.length,
+      unknownRealizedCount: incompleteCycles.length,
+      topBlockers: [
+        incompleteCycles.length > 0 ? "accounting_incomplete_blocks_repeat_canary" : null,
+        protocolPositionMarks.some((mark) => mark?.ok === false || mark?.status === "failed")
+          ? "protocol_position_unmeasured_blocks_repeat_canary"
+          : null,
+        negativeCycles.length > 0 ? "realized_net_non_positive_blocks_repeat_canary" : null,
+      ].filter(Boolean),
+    },
+    explorationVsRepeat: {
+      observedAt: generatedAt,
+      firstCanaryCandidateCount: closedCycles.length === 0 ? 1 : 0,
+      repeatCandidateCount: positiveCycles.length,
+      blockedSameKeyAliasCount: incompleteCycles.length + negativeCycles.length,
+      exploreBudgetConsumedByIncompleteOrFailedCount: incompleteCycles.length + negativeCycles.length,
+    },
+    staleEvidenceWarning: {
+      generatedAt,
+      oldestSourceObservedAt: sourceTimes.sort()[0] || null,
+      staleSourceCount,
+      missingSourceObservedAtCount,
+      generatedAtOnlyIsCurrentEvidence: false,
+    },
+  };
 }
 
 function routeChains(routes) {
@@ -1942,6 +2054,14 @@ export function buildDashboardStatus(input, options = {}) {
     capReview: input.radarCapReview || null,
     generatedAt: now,
   });
+  const truthPanels = buildTruthPanels({
+    signerAuditRecords: input.signerAuditRecords || [],
+    merklPositionRecords: input.merklPositionRecords || [],
+    protocolPositionMarks: input.protocolPositionMarks || [],
+    receiptReconciliations: input.receiptReconciliations || [],
+    walletHoldings: input.walletHoldings || null,
+    generatedAt: now,
+  });
 
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
@@ -1961,6 +2081,7 @@ export function buildDashboardStatus(input, options = {}) {
     pnl,
     campaignAware,
     radar,
+    truthPanels,
     tradeHistory,
     decisionInputs,
     researchSignals,

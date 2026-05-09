@@ -308,6 +308,7 @@ export async function buildAaveProtocolCanaryPlan({
   simulateTransactionCallImpl = simulateTransactionCall,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   minimumReturnBps = 9_500,
+  assetCoverage = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!queueItem) throw new Error("queueItem is required");
@@ -413,6 +414,8 @@ export async function buildAaveProtocolCanaryPlan({
         },
         metadata: {
           capCheckAmountUsd: amountUsd,
+          exposureAction: "open",
+          ...(assetCoverage ? { assetCoverage } : {}),
           opportunityId: queueItem.opportunityId,
           protocol: queueItem.protocolId,
           marketName: binding.marketName || null,

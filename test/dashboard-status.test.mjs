@@ -291,6 +291,56 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.strategy.strategySnapshot.topPivot.id, "gateway_base_btc_yield");
 });
 
+test("dashboard truth panels separate reject, profitability, exploration, and stale evidence", () => {
+  const now = "2026-05-09T10:00:00.000Z";
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [],
+      quotes: [],
+      failures: [],
+      signerAuditRecords: [
+        {
+          observedAt: "2026-05-09T09:00:00.000Z",
+          error: {
+            policy: {
+              blockers: ["asset_coverage_missing_for_new_exposure"],
+              results: [{ policy: "ev_gate", evidence: { bypassReason: "transport_plumbing_zero_pnl_surface" } }],
+            },
+          },
+        },
+      ],
+      merklPositionRecords: [
+        {
+          positionId: "pos-1",
+          strategyId: "merkl-canary",
+          chain: "base",
+          protocolId: "moonwell",
+          opportunityId: "campaign-1",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          openedAt: "2026-05-09T08:00:00.000Z",
+          closedAt: "2026-05-09T09:00:00.000Z",
+          entryUsd: 20,
+          exitUsd: 20.2,
+          terminalReconciliationStatus: "pending",
+          sourceObservedAt: "2026-05-09T09:01:00.000Z",
+        },
+      ],
+      protocolPositionMarks: [
+        { ok: false, status: "failed", observedAt: "2026-05-09T08:30:00.000Z" },
+      ],
+    },
+    { now },
+  );
+
+  assert.equal(status.truthPanels.policyRejectHistogram24h.assetCoverageMissingCount, 1);
+  assert.equal(status.truthPanels.policyRejectHistogram24h.transportBypassCount, 1);
+  assert.equal(status.truthPanels.profitabilityTruth.incompleteCount, 2);
+  assert.ok(status.truthPanels.profitabilityTruth.topBlockers.includes("accounting_incomplete_blocks_repeat_canary"));
+  assert.ok(status.truthPanels.profitabilityTruth.topBlockers.includes("protocol_position_unmeasured_blocks_repeat_canary"));
+  assert.equal(status.truthPanels.explorationVsRepeat.blockedSameKeyAliasCount, 2);
+  assert.equal(status.truthPanels.staleEvidenceWarning.generatedAtOnlyIsCurrentEvidence, false);
+});
+
 test("dashboard status records chain price coverage reasons for missing dex observations", () => {
   const avalancheBob = route("avalanche", "bob");
   const bobSonic = route("bob", "sonic");

@@ -121,6 +121,37 @@ test("evGate rejects non-safety live intents when expected net is unmeasured", (
   assert.equal(verdict.evidence.blockReason, "expected_net_required_for_live_intent");
 });
 
+test("evGate allows transport plumbing without expectedNetUsd as zero-PnL surface", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "gateway_btc_transfer",
+      expectedNetUsd: undefined,
+      metadata: {},
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
+test("evGate keeps normal EV pass/fail when transport plumbing carries expectedNetUsd", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "gateway_btc_transfer",
+      expectedNetUsd: 0,
+    }),
+    makeHistory([], { intentType: "gateway_btc_transfer" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_below_receipt_cost_p90_floor"]);
+  assert.notEqual(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
 test("evGate accepts expectedNetProfitUsd aliases from campaign proposers", () => {
   const verdict = evGate(
     makeIntent({

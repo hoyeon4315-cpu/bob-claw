@@ -36,6 +36,16 @@ test("erc4626 protocol canary selects binding-ready queue item and builds approv
     queueItem,
     senderAddress: "0x2222222222222222222222222222222222222222",
     amount: "10000",
+    assetCoverage: {
+      status: "closed",
+      ok: true,
+      unknownAssetBalanceCount: 0,
+      unknownTargetCount: 0,
+      gaps: [],
+      observedAt: "2026-04-23T00:00:00.000Z",
+      sourceObservedAt: "2026-04-22T23:59:00.000Z",
+      sourcePath: "dashboard/public/wallet-holdings.json",
+    },
     estimateGasImpl: async () => ({ gasUnits: 50_000 }),
     readErc20AllowanceImpl: async () => ({ allowance: 0n, rpcUrl: "memory" }),
     now: "2026-04-23T00:00:00.000Z",
@@ -46,6 +56,9 @@ test("erc4626 protocol canary selects binding-ready queue item and builds approv
   assert.equal(plan.steps.length, 2);
   assert.equal(plan.steps[0].intent.intentType, "approve_exact");
   assert.equal(plan.steps[1].intent.intentType, "erc4626_deposit");
+  assert.equal(plan.steps[1].intent.metadata.exposureAction, "open");
+  assert.equal(plan.steps[1].intent.metadata.assetCoverage.status, "closed");
+  assert.equal(plan.steps[1].intent.metadata.assetCoverage.sourceObservedAt, "2026-04-22T23:59:00.000Z");
   assert.equal(plan.minimumRedeemAssetDelta, "9500");
 });
 

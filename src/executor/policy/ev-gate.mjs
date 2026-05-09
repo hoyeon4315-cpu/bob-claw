@@ -212,6 +212,19 @@ function isSafetyCriticalIntent(intent = {}) {
   );
 }
 
+const TRANSPORT_PLUMBING_INTENT_TYPES = new Set([
+  "gateway_btc_transfer",
+  "capital_rebalance",
+  "capital_drain",
+  "idle_consolidation_step",
+  "gas_topup",
+  "signer_health_probe",
+]);
+
+export function isTransportPlumbingIntent(intent = {}) {
+  return TRANSPORT_PLUMBING_INTENT_TYPES.has(normalizeString(intent.intentType));
+}
+
 function normalizeAddress(value = null) {
   return typeof value === "string" && value.length > 0 ? value.toLowerCase() : null;
 }
@@ -368,6 +381,18 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
   }
 
   if (expectedNetUsd === null) {
+    if (isTransportPlumbingIntent(intent)) {
+      return {
+        allow: true,
+        blockers: [],
+        evidence: {
+          strategyId,
+          chain,
+          intentType,
+          bypassReason: "transport_plumbing_zero_pnl_surface",
+        },
+      };
+    }
     return {
       allow: false,
       blockers: ["expected_net_unmeasured"],

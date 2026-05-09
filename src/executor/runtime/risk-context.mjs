@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { config } from "../../config/env.mjs";
 import { readJsonl } from "../../lib/jsonl-read.mjs";
@@ -23,6 +24,60 @@ function openPosition(position = {}) {
 function addShare(out, key, usd, denominatorUsd) {
   if (!key || !(usd > 0) || !(denominatorUsd > 0)) return;
   out[key] = (out[key] || 0) + usd / denominatorUsd;
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function compactArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function positiveCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+export function buildAssetCoverageEnvelopeFromWalletHoldings({
+  walletHoldings = null,
+  observedAt = null,
+  sourcePath = "dashboard/public/wallet-holdings.json",
+} = {}) {
+  const assetUniverse = walletHoldings?.assetUniverse || null;
+  if (!assetUniverse) return null;
+
+  const unknownAssetBalanceCount = positiveCount(walletHoldings.unknownAssetBalanceCount);
+  const unknownTargetCount = positiveCount(assetUniverse.unknownTargetCount);
+  const unknownAssetBalances = compactArray(walletHoldings.unknownAssetBalances);
+  const unknownTargets = compactArray(assetUniverse.unknownTargets);
+  const gaps = [
+    ...unknownAssetBalances.map((item) => ({ kind: "unknown_asset_balance", ...item })),
+    ...unknownTargets.map((item) => ({ kind: "unknown_target", ...item })),
+  ];
+  const status = assetUniverse.status || walletHoldings.assetUniverseStatus || "unknown";
+  if (status === "needs_review") {
+    gaps.push({ kind: "asset_universe_status", status });
+  }
+  const ok = status === "closed" && unknownAssetBalanceCount === 0 && unknownTargetCount === 0 && gaps.length === 0;
+
+  return {
+    status,
+    unknownAssetBalanceCount,
+    unknownTargetCount,
+    gaps,
+    ok,
+    observedAt,
+    sourceObservedAt: walletHoldings.sourceObservedAt ||
+      walletHoldings.oldestMaterialSourceObservedAt ||
+      walletHoldings.observedAt ||
+      null,
+    sourcePath,
+  };
 }
 
 export function buildCurrentAllocationsFromPositions({
@@ -69,12 +124,19 @@ export async function loadRuntimeRiskContext({
   rootDir = process.cwd(),
   activeBudgetUsd = null,
   positionRecords = null,
+  walletHoldingsPath = "dashboard/public/wallet-holdings.json",
   now = new Date().toISOString(),
 } = {}) {
   const dataDir = resolve(rootDir, config.dataDir);
   const records = Array.isArray(positionRecords)
     ? positionRecords
     : await readJsonl(dataDir, "merkl-portfolio-positions").catch(() => []);
+  const walletHoldings = await readJsonIfExists(resolve(rootDir, walletHoldingsPath));
+  const assetCoverage = buildAssetCoverageEnvelopeFromWalletHoldings({
+    walletHoldings,
+    observedAt: now,
+    sourcePath: walletHoldingsPath,
+  });
   const allocations = buildCurrentAllocationsFromPositions({
     positions: records,
     denominatorUsd: finite(activeBudgetUsd),
@@ -84,6 +146,7 @@ export async function loadRuntimeRiskContext({
     observedAt: now,
     totalOperatingCapitalUsd: allocations.denominatorUsd,
     currentAllocations: allocations.currentAllocations,
+    assetCoverage,
     source: {
       kind: "merkl_portfolio_positions",
       path: `${config.dataDir}/merkl-portfolio-positions.jsonl`,

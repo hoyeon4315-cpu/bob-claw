@@ -40,8 +40,27 @@ function delivered({
   amountUsd = 5,
   netUsd = null,
 } = {}) {
+  const completeRealized = netUsd == null
+    ? {}
+    : {
+        openedAt: observedAt,
+        closedAt: observedAt,
+        entryUsd: amountUsd,
+        exitUsd: amountUsd + netUsd + 0.2,
+        entryGasUsd: 0.05,
+        exitGasUsd: 0.05,
+        claimCostUsd: 0.02,
+        rewardSwapCostUsd: 0.02,
+        rewardUsd: 0,
+        bridgeCostUsd: 0.03,
+        slippageUsd: 0.03,
+        realizedNetBtcSats: Math.round(netUsd * 1000),
+        terminalReconciliationStatus: "reconciled",
+        sourceObservedAt: observedAt,
+      };
   return {
     observedAt,
+    ...completeRealized,
     mode: "execute",
     status: "delivered",
     queueItem: {
@@ -90,8 +109,8 @@ test("graduates same-protocol canaries to the third rung after delivered and rea
   const result = evaluateCanaryGraduation({
     queueItem: queueItem({ opportunityId: "opp-next" }),
     canaryExecutions: [
-      delivered({ opportunityId: "opp-a", netUsd: 0.08, observedAt: "2026-05-01T00:00:00.000Z" }),
-      delivered({ opportunityId: "opp-b", netUsd: null, observedAt: "2026-05-01T01:00:00.000Z" }),
+      delivered({ opportunityId: "opp-next", netUsd: 0.08, observedAt: "2026-05-01T00:00:00.000Z" }),
+      delivered({ opportunityId: "opp-next", netUsd: 0.05, observedAt: "2026-05-01T01:00:00.000Z" }),
     ],
     auditRecords: [],
     policy: POLICY,
@@ -101,15 +120,95 @@ test("graduates same-protocol canaries to the third rung after delivered and rea
   assert.equal(result.targetUsd, 25);
   assert.equal(result.rungIndex, 2);
   assert.equal(result.evidence.deliveredCount, 2);
-  assert.equal(result.evidence.positiveRealizedCount, 1);
+  assert.equal(result.evidence.positiveRealizedCount, 2);
 });
 
-test("requires distinct opportunity windows before higher-rung auto-graduation", () => {
+test("delivered canary without complete realized PnL does not graduate repeat rung", () => {
+  const result = evaluateCanaryGraduation({
+    queueItem: queueItem({ opportunityId: "opp-next" }),
+    canaryExecutions: [
+      delivered({ opportunityId: "opp-next", netUsd: null, observedAt: "2026-05-01T00:00:00.000Z" }),
+    ],
+    auditRecords: [],
+    policy: POLICY,
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.targetUsd, null);
+  assert.ok(result.blockers.includes("accounting_incomplete_blocks_repeat_canary"));
+  assert.equal(result.evidence.closedCycleCompletePositiveCount, 0);
+});
+
+test("failed protocol position measurement blocks same-key canary graduation", () => {
+  const result = evaluateCanaryGraduation({
+    queueItem: queueItem({
+      chain: "base",
+      protocolId: "moonwell",
+      opportunityId: "campaign-protocol-gap",
+      assetPair: "cbbtc/usdc",
+      rewardToken: "well",
+      bindingKind: "erc4626_vault_supply_withdraw",
+    }),
+    canaryExecutions: [],
+    protocolPositionMarks: [
+      {
+        strategyId: TEST_STRATEGY_ID,
+        chain: "base",
+        protocolId: "moonwell",
+        opportunityId: "campaign-protocol-gap",
+        assetPair: "cbbtc/usdc",
+        rewardToken: "well",
+        bindingKind: "erc4626_vault_supply_withdraw",
+        status: "failed",
+        failureKind: "reader_timeout",
+        observedAt: "2026-05-09T04:10:00.000Z",
+      },
+    ],
+    now: "2026-05-09T05:00:00.000Z",
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("protocol_position_unmeasured_blocks_repeat_canary"));
+});
+
+test("positive canary from different normalized exploration key does not graduate unrelated opportunity", () => {
+  const result = evaluateCanaryGraduation({
+    queueItem: {
+      ...queueItem({ opportunityId: "opp-next" }),
+      assetPair: "weth/usdc",
+      rewardToken: "merkl",
+      bindingKind: "erc4626_vault_supply_withdraw",
+    },
+    canaryExecutions: [
+      {
+        ...delivered({ opportunityId: "opp-a", netUsd: 0.08, observedAt: "2026-05-01T00:00:00.000Z" }),
+        queueItem: {
+          opportunityId: "opp-a",
+          chain: "base",
+          protocolId: "yo",
+          mappedStrategyId: TEST_STRATEGY_ID,
+          assetPair: "cbbtc/usdc",
+          rewardToken: "merkl",
+          bindingKind: "erc4626_vault_supply_withdraw",
+        },
+      },
+    ],
+    auditRecords: [],
+    policy: POLICY,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.targetUsd, 5);
+  assert.equal(result.rungIndex, 0);
+  assert.equal(result.evidence.closedCycleCompletePositiveCount, 0);
+});
+
+test("does not use different opportunity windows to graduate a separate normalized key", () => {
   const sameWindow = evaluateCanaryGraduation({
     queueItem: queueItem({ opportunityId: "opp-next" }),
     canaryExecutions: [
-      delivered({ opportunityId: "opp-a", netUsd: 0.08, observedAt: "2026-05-01T00:00:00.000Z" }),
-      delivered({ opportunityId: "opp-a", netUsd: 0.05, observedAt: "2026-05-01T01:00:00.000Z" }),
+      delivered({ opportunityId: "opp-next", netUsd: 0.08, observedAt: "2026-05-01T00:00:00.000Z" }),
+      delivered({ opportunityId: "opp-next", netUsd: 0.05, observedAt: "2026-05-01T01:00:00.000Z" }),
     ],
     auditRecords: [],
     policy: POLICY,
@@ -125,14 +224,14 @@ test("requires distinct opportunity windows before higher-rung auto-graduation",
   });
 
   assert.equal(sameWindow.targetUsd, 25);
-  assert.equal(distinctWindows.targetUsd, 50);
+  assert.equal(distinctWindows.targetUsd, 5);
 });
 
 test("blocks ladder graduation after realized loss lock threshold", () => {
   const result = evaluateCanaryGraduation({
     queueItem: queueItem({ opportunityId: "opp-next" }),
     canaryExecutions: [
-      delivered({ opportunityId: "opp-a", netUsd: -26, observedAt: "2026-05-01T00:00:00.000Z" }),
+      delivered({ opportunityId: "opp-next", netUsd: -26, observedAt: "2026-05-01T00:00:00.000Z" }),
     ],
     auditRecords: [],
     policy: POLICY,
@@ -144,18 +243,19 @@ test("blocks ladder graduation after realized loss lock threshold", () => {
   assert.equal(result.targetUsd, null);
 });
 
-test("ignores old realized losses outside the daily ladder lock window", () => {
+test("keeps old non-positive realized same-key cycles as repeat blockers outside daily loss lock window", () => {
   const result = evaluateCanaryGraduation({
     queueItem: queueItem({ opportunityId: "opp-next" }),
     canaryExecutions: [
-      delivered({ opportunityId: "opp-a", netUsd: -26, observedAt: "2026-04-29T00:00:00.000Z" }),
+      delivered({ opportunityId: "opp-next", netUsd: -26, observedAt: "2026-04-29T00:00:00.000Z" }),
     ],
     auditRecords: [],
     policy: POLICY,
     now: "2026-05-01T01:00:00.000Z",
   });
 
-  assert.equal(result.status, "ready");
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("realized_net_non_positive_blocks_repeat_canary"));
   assert.equal(result.evidence.realizedLossUsd, 0);
 });
 
@@ -168,7 +268,7 @@ test("blocks ladder graduation after substantive on-chain failures", () => {
         mode: "execute",
         status: "reverted",
         queueItem: {
-          opportunityId: "opp-a",
+          opportunityId: "opp-next",
           chain: "base",
           protocolId: "yo",
           mappedStrategyId: TEST_STRATEGY_ID,
@@ -181,7 +281,7 @@ test("blocks ladder graduation after substantive on-chain failures", () => {
         mode: "execute",
         status: "reverted",
         queueItem: {
-          opportunityId: "opp-b",
+          opportunityId: "opp-next",
           chain: "base",
           protocolId: "yo",
           mappedStrategyId: TEST_STRATEGY_ID,

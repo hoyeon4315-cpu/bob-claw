@@ -162,6 +162,7 @@ export async function buildErc4626ProtocolCanaryPlan({
   readErc20AllowanceImpl = readErc20Allowance,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   minimumReturnBps = 9_500,
+  assetCoverage = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!queueItem) throw new Error("queueItem is required");
@@ -289,6 +290,8 @@ export async function buildErc4626ProtocolCanaryPlan({
         },
         metadata: {
           capCheckAmountUsd: capAmountUsd,
+          exposureAction: "open",
+          ...(assetCoverage ? { assetCoverage } : {}),
           opportunityId: queueItem.opportunityId,
           protocol: queueItem.protocolId,
           vaultAddress,

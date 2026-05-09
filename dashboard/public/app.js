@@ -422,6 +422,11 @@ function LiveLaneCard() {
   const radar = window.RADAR || status.radar || {};
   const payback = status.payback || {};
   const blockerResolver = status.blockerResolver || {};
+  const truthPanels = status.truthPanels || {};
+  const rejectTruth = truthPanels.policyRejectHistogram24h || {};
+  const profitabilityTruth = truthPanels.profitabilityTruth || {};
+  const explorationTruth = truthPanels.explorationVsRepeat || {};
+  const staleTruth = truthPanels.staleEvidenceWarning || {};
   const canaryLadder = operations.canaryLadder || {};
   const liveAllowed = overall.liveTrading === "ALLOWED";
   const runtimeReady = runtime.available === true && runtime.runtimeStatus === "healthy";
@@ -486,6 +491,30 @@ function LiveLaneCard() {
       main: resolverMain,
       sub: resolverSub,
       tone: resolverPending > 0 || resolverActionable > 0 ? "warn" : "neutral"
+    },
+    {
+      label: "Rejects",
+      main: `${Number(rejectTruth.blockerCounts?.[0]?.count || 0)} top`,
+      sub: rejectTruth.blockerCounts?.[0]?.key ? friendlyBlockerLabel(rejectTruth.blockerCounts[0].key) : "24h clean",
+      tone: Number(rejectTruth.assetCoverageMissingCount || 0) > 0 ? "bad" : Number(rejectTruth.blockerCounts?.[0]?.count || 0) > 0 ? "warn" : "neutral"
+    },
+    {
+      label: "Realized",
+      main: `${Number(profitabilityTruth.positiveRealizedCount || 0)}/${Number(profitabilityTruth.completeCount || 0)}`,
+      sub: Number(profitabilityTruth.incompleteCount || 0) > 0 ? `${profitabilityTruth.incompleteCount} incomplete` : "closed-cycle",
+      tone: Number(profitabilityTruth.incompleteCount || 0) > 0 ? "warn" : Number(profitabilityTruth.positiveRealizedCount || 0) > 0 ? "good" : "neutral"
+    },
+    {
+      label: "Explore",
+      main: `${Number(explorationTruth.firstCanaryCandidateCount || 0)} first`,
+      sub: Number(explorationTruth.blockedSameKeyAliasCount || 0) > 0 ? `${explorationTruth.blockedSameKeyAliasCount} repeat held` : "repeat gated",
+      tone: Number(explorationTruth.blockedSameKeyAliasCount || 0) > 0 ? "warn" : "neutral"
+    },
+    {
+      label: "Stale",
+      main: `${Number(staleTruth.staleSourceCount || 0)} source`,
+      sub: staleTruth.oldestSourceObservedAt ? formatStatusAge(staleTruth.oldestSourceObservedAt) || fmtWhen(staleTruth.oldestSourceObservedAt) : "source pending",
+      tone: Number(staleTruth.staleSourceCount || 0) > 0 || Number(staleTruth.missingSourceObservedAtCount || 0) > 0 ? "warn" : "neutral"
     }
   ];
   return /* @__PURE__ */ React.createElement("div", { style: {

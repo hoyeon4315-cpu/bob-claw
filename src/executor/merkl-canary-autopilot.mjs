@@ -6,6 +6,7 @@ import { config } from "../config/env.mjs";
 import { getStrategyCaps, resolveStrategyCapMatrix, validateStrategyCapsConfig } from "../config/strategy-caps.mjs";
 import { evaluateCapCheck } from "./policy/cap-check.mjs";
 import { evaluateCanaryGraduation } from "./canary/canary-graduation.mjs";
+import { loadRuntimeRiskContext } from "./runtime/risk-context.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -143,6 +144,8 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
   canaryExecutions = [],
   canaryGraduationPolicy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation,
   auditRecords = [],
+  protocolPositionMarks = [],
+  receiptReconciliations = [],
   now = new Date().toISOString(),
 } = {}) {
   const readiness = queueItem.executionReadiness || {};
@@ -170,6 +173,8 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
         queueItem,
         canaryExecutions,
         auditRecords,
+        protocolPositionMarks,
+        receiptReconciliations,
         policy: canaryGraduationPolicy,
         now,
       })
@@ -592,6 +597,7 @@ export async function evaluateMerklCanaryOpportunityPolicy({
   auditRecords = [],
   now = new Date().toISOString(),
   evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
+  loadRuntimeRiskContextImpl = loadRuntimeRiskContext,
 } = {}) {
   const intent = buildMerklCanaryOpportunityIntent({ queueItem, sizing, now });
   const evGate = tinyCanaryEvGate(queueItem, sizing, { now });
@@ -819,6 +825,7 @@ export async function runMerklCanaryAutopilot({
   portfolioAllocatorReportPath = join(config.dataDir, "merkl-portfolio-allocator-latest.json"),
   portfolioOrchestratorReportPath = join(config.dataDir, "merkl-portfolio-orchestrator-latest.json"),
   evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
+  loadRuntimeRiskContextImpl = loadRuntimeRiskContext,
 } = {}) {
   const preflight = await preflightLiveCanarySweep({
     socketPath,
@@ -839,13 +846,17 @@ export async function runMerklCanaryAutopilot({
   }
 
   const queue = await readJson(queuePath);
-  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions] = await Promise.all([
+  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, protocolPositionMarks, receiptReconciliations] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
     readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
+    readJsonl(config.dataDir, "protocol-position-marks").catch(() => []),
+    readJsonl(config.dataDir, "receipt-reconciliations").catch(() => []),
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
+  const runtimeRiskContext = await loadRuntimeRiskContextImpl({ now: new Date().toISOString() }).catch(() => null);
+  const assetCoverage = runtimeRiskContext?.assetCoverage || null;
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const [portfolioOrchestratorReport, portfolioAllocatorReport] = graduationCanaryRequests == null
     ? await Promise.all([
@@ -874,6 +885,8 @@ export async function runMerklCanaryAutopilot({
     inventorySnapshot,
     canaryExecutions,
     auditRecords,
+    protocolPositionMarks,
+    receiptReconciliations,
     graduationCanaryRequests: portfolioGraduationRequests,
   });
   if (!selection.selected.length) {
@@ -1008,6 +1021,7 @@ export async function runMerklCanaryAutopilot({
         queueItem,
         senderAddress: preflight.senderAddress,
         amount: sizing.amount,
+        assetCoverage,
       });
       const execution = execute
         ? await executePlan({
