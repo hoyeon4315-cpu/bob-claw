@@ -113,6 +113,27 @@ test("policy index blocks opening exposure when asset coverage has unknown token
   assert.equal(assetCoverageResult.evidence.openingOrIncreasing, true);
 });
 
+test("policy index blocks explicit opening exposure when asset coverage envelope is missing", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: baseIntent({
+      intentType: "deposit",
+      metadata: {
+        exposureAction: "open",
+      },
+    }),
+    auditRecords: [],
+    now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
+  });
+
+  assert.equal(policy.decision, "BLOCK");
+  assert.ok(policy.blockers.includes("asset_coverage_missing_for_new_exposure"));
+  const assetCoverageResult = policy.results.find((r) => r.policy === "asset_coverage_guard");
+  assert.ok(assetCoverageResult);
+  assert.equal(assetCoverageResult.decision, "BLOCK");
+  assert.equal(assetCoverageResult.evidence.missingCoverage, true);
+});
+
 test("policy index allows exit/unwind/redeem with asset coverage warning", async () => {
   const policy = await evaluateIntentPolicies({
     intent: baseIntent({
@@ -303,7 +324,13 @@ test("tiny_live_canary policy passes for reopened recursive wrapped BTC loop", a
     chain: "base",
     amountUsd: 25,
     microCanaryStatus: "minimal_live_proof_exists",
-    metadata: { expectedNetUsd: 10 },
+    metadata: {
+      expectedNetUsd: 10,
+      assetCoverage: {
+        status: "closed",
+        unknownAssetBalanceCount: 0,
+      },
+    },
     now: "2026-04-22T00:00:00.000Z",
   });
   const policy = await evaluateIntentPolicies({

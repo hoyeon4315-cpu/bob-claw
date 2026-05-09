@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import {
   buildEvCostModel,
@@ -6,6 +7,11 @@ import {
 } from "../src/executor/policy/ev-gate.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../src/config/sizing.mjs";
+import { stableSerialize } from "../src/execution/journal.mjs";
+
+function sha256(value) {
+  return createHash("sha256").update(stableSerialize(value)).digest("hex");
+}
 
 function makeAuditRecord({
   txHash,
@@ -177,6 +183,25 @@ test("evGate allows safety-critical unmeasured emergency unwinds", () => {
 });
 
 test("evGate allows exact approval children only with matching parent EV evidence and hash", () => {
+  const parentIntent = {
+    strategyId: "across-bridge",
+    chain: "base",
+    intentType: "swap",
+    expectedNetUsd: 1.2,
+    approval: {
+      token: "0x0000000000000000000000000000000000000001",
+      spender: "0x0000000000000000000000000000000000000002",
+      amount: "1000000",
+      mode: "per_tx",
+    },
+  };
+  const parentEvEvidence = {
+    allow: true,
+    strategyId: "across-bridge",
+    chain: "base",
+    expectedNetUsd: 1.2,
+    requiredNetUsd: 0.9,
+  };
   const verdict = evGate(
     makeIntent({
       intentType: "approve_exact",
@@ -188,12 +213,38 @@ test("evGate allows exact approval children only with matching parent EV evidenc
         amount: "1000000",
       },
       metadata: {
-        parentIntentHash: "0xparent",
-        parentEvEvidenceHash: "0xevidence",
+        parentIntentHash: sha256(parentIntent),
+        parentEvEvidenceHash: sha256(parentEvEvidence),
+        parentIntent,
+        parentEvEvidence,
+      },
+    }),
+    makeHistory([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "parent_ev_approved_exact_approval");
+});
+
+test("evGate rejects spoofed parent approval hashes", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "approve_exact",
+      expectedNetUsd: undefined,
+      approval: {
+        mode: "per_tx",
+        token: "0x0000000000000000000000000000000000000001",
+        spender: "0x0000000000000000000000000000000000000002",
+        amount: "1000000",
+      },
+      metadata: {
+        parentIntentHash: "spoofed-parent-hash",
+        parentEvEvidenceHash: "spoofed-evidence-hash",
         parentIntent: {
           strategyId: "across-bridge",
           chain: "base",
-          intentHash: "0xparent",
           approval: {
             token: "0x0000000000000000000000000000000000000001",
             spender: "0x0000000000000000000000000000000000000002",
@@ -214,9 +265,53 @@ test("evGate allows exact approval children only with matching parent EV evidenc
     { now: "2026-05-15T00:00:00.000Z" },
   );
 
-  assert.equal(verdict.allow, true);
-  assert.deepEqual(verdict.blockers, []);
-  assert.equal(verdict.evidence.bypassReason, "parent_ev_approved_exact_approval");
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
+});
+
+test("evGate rejects parent approval evidence when recomputed parent EV fails", () => {
+  const parentIntent = {
+    strategyId: "across-bridge",
+    chain: "base",
+    intentType: "swap",
+    expectedNetUsd: 0.01,
+    approval: {
+      token: "0x0000000000000000000000000000000000000001",
+      spender: "0x0000000000000000000000000000000000000002",
+      amount: "1000000",
+      mode: "per_tx",
+    },
+  };
+  const parentEvEvidence = {
+    allow: true,
+    strategyId: "across-bridge",
+    chain: "base",
+    expectedNetUsd: 1.2,
+    requiredNetUsd: 0.4,
+  };
+  const verdict = evGate(
+    makeIntent({
+      intentType: "approve_exact",
+      expectedNetUsd: undefined,
+      approval: {
+        mode: "per_tx",
+        token: "0x0000000000000000000000000000000000000001",
+        spender: "0x0000000000000000000000000000000000000002",
+        amount: "1000000",
+      },
+      metadata: {
+        parentIntentHash: sha256(parentIntent),
+        parentEvEvidenceHash: sha256(parentEvEvidence),
+        parentIntent,
+        parentEvEvidence,
+      },
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
 });
 
 test("evGate rejects parentIntentId-only approval children", () => {

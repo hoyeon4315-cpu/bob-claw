@@ -75,6 +75,10 @@ test("calibrated aggressive radar executable emits intent and policy allows desp
   assert.equal(routed.intent.intentType, "tiny_live_canary");
 
   routed.intent.metadata.advisory = advisorySurfaceBlock;
+  routed.intent.metadata.assetCoverage = {
+    status: "closed",
+    unknownAssetBalanceCount: 0,
+  };
 
   const policy = await evaluateIntentPolicies({
     intent: routed.intent,
@@ -168,6 +172,10 @@ test("Merkl live-capital validation queue can emit policy-approved tiny canary d
       merklOpportunityId: queueItem.opportunityId,
       exitPath: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
       advisory: advisorySurfaceBlock,
+      assetCoverage: {
+        status: "closed",
+        unknownAssetBalanceCount: 0,
+      },
     },
   });
 

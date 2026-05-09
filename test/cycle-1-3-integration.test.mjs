@@ -325,6 +325,10 @@ test("cycle 1-3 daemon uses metadata risk budget instead of wallet total fallbac
               currentAllocations: {
                 perChain: { base: 0.1 },
               },
+              assetCoverage: {
+                status: "closed",
+                unknownAssetBalanceCount: 0,
+              },
             },
           },
         },

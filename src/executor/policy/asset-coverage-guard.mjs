@@ -11,6 +11,17 @@ function normalizedText(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+const EXPLICIT_NEW_EXPOSURE_INTENT_TYPES = new Set([
+  "deposit",
+  "erc4626_deposit",
+  "supply",
+  "stake",
+  "mint",
+  "open_position",
+  "increase_position",
+  "tiny_live_canary",
+]);
+
 function isExitLikeIntent(intent = {}) {
   const candidates = [
     intent.intentType,
@@ -40,7 +51,7 @@ function isOpeningOrIncreasingIntent(intent = {}) {
     return true;
   }
   if (isExitLikeIntent(intent)) return false;
-  return Number(intent.amountUsd ?? intent.metadata?.amountUsd ?? 0) > 0;
+  return EXPLICIT_NEW_EXPOSURE_INTENT_TYPES.has(normalizedText(intent.intentType || intent.kind));
 }
 
 function resolveAssetCoverage({ intent = {}, riskContext = null } = {}) {
@@ -94,20 +105,24 @@ export function evaluateAssetCoverageGuard({
 } = {}) {
   const assetCoverage = resolveAssetCoverage({ intent, riskContext });
   const gaps = coverageGaps(assetCoverage, intent);
-  const hasGaps = gaps.length > 0;
   const exitLike = isExitLikeIntent(intent);
   const openingOrIncreasing = isOpeningOrIncreasingIntent(intent);
+  const missingCoverage = !assetCoverage && openingOrIncreasing && !exitLike;
+  const hasGaps = gaps.length > 0 || missingCoverage;
   const blocksNewExposure = hasGaps && openingOrIncreasing && !exitLike;
 
   return {
     policy: "asset_coverage_guard",
     observedAt: now,
     decision: blocksNewExposure ? "BLOCK" : "ALLOW",
-    blockers: blocksNewExposure ? ["asset_coverage_gap_blocks_new_exposure"] : [],
+    blockers: blocksNewExposure
+      ? [missingCoverage ? "asset_coverage_missing_for_new_exposure" : "asset_coverage_gap_blocks_new_exposure"]
+      : [],
     warnings: hasGaps && exitLike ? ["asset_coverage_gap_exit_unwind_redeem_only"] : [],
     evidence: {
       status: assetCoverage?.status || null,
       gapCount: gaps.length,
+      missingCoverage,
       exitLike,
       openingOrIncreasing,
       gaps: gaps.slice(0, 10),

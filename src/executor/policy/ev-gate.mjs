@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import {
   EXECUTION_EV_COST_POLICY,
   executionEvFallbackCostUsd,
   tinyCanarySameChainRoundTripCostUsd,
 } from "../../config/sizing.mjs";
+import { stableSerialize } from "../../execution/journal.mjs";
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -229,7 +231,18 @@ function isUnlimitedApproval(approval = {}) {
     approval?.mode === "unlimited";
 }
 
-function exactApprovalParentEvBypass(intent = {}) {
+function stableHash(value = {}) {
+  return createHash("sha256").update(stableSerialize(value)).digest("hex");
+}
+
+function hashMatches(claimed, value) {
+  const normalized = normalizeString(claimed);
+  if (!normalized) return false;
+  const hash = stableHash(value);
+  return normalized === hash || normalized === `sha256:${hash}`;
+}
+
+function exactApprovalParentEvBypass(intent = {}, receiptHistory = null, { now, policy } = {}) {
   if (intent.intentType !== "approve_exact") return null;
   const approval = intent.approval || null;
   if (!approval || isUnlimitedApproval(approval)) return null;
@@ -242,7 +255,10 @@ function exactApprovalParentEvBypass(intent = {}) {
   const parentIntentHash = metadata.parentIntentHash || intent.parentIntentHash || parentIntent?.intentHash || null;
   const parentEvEvidenceHash = metadata.parentEvEvidenceHash || intent.parentEvEvidenceHash || null;
   if (!parentIntent || !parentEvEvidence || !parentIntentHash || !parentEvEvidenceHash) return null;
+  if (!hashMatches(parentIntentHash, parentIntent)) return null;
+  if (!hashMatches(parentEvEvidenceHash, parentEvEvidence)) return null;
   if (parentEvEvidence.allow !== true) return null;
+  if (parentIntent.intentType === "approve_exact" || parentIntent.intentType === "approve_max") return null;
 
   const parentStrategyId = normalizeString(parentIntent.strategyId);
   const parentChain = normalizeChain(parentIntent.chain);
@@ -264,6 +280,11 @@ function exactApprovalParentEvBypass(intent = {}) {
   const expectedNetUsd = finiteNumber(parentEvEvidence.expectedNetUsd);
   const requiredNetUsd = finiteNumber(parentEvEvidence.requiredNetUsd);
   if (expectedNetUsd === null || requiredNetUsd === null || expectedNetUsd <= requiredNetUsd) return null;
+
+  const parentVerdict = evGate(parentIntent, receiptHistory, { now, policy });
+  if (parentVerdict.allow !== true) return null;
+  if (finiteNumber(parentVerdict.evidence?.expectedNetUsd) !== expectedNetUsd) return null;
+  if (finiteNumber(parentVerdict.evidence?.requiredNetUsd) !== requiredNetUsd) return null;
 
   return {
     strategyId: childStrategyId,
@@ -337,7 +358,7 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
     };
   }
 
-  const exactApprovalBypass = exactApprovalParentEvBypass(intent);
+  const exactApprovalBypass = exactApprovalParentEvBypass(intent, receiptHistory, { now, policy });
   if (exactApprovalBypass) {
     return {
       allow: true,
