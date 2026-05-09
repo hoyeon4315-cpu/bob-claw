@@ -23,3 +23,26 @@ test("blocker funnel groups root causes, normalizes codes, and separates resolve
   assert.equal(slice.rootCauseGroups.length, 2);
   assert.equal(slice.strategies[0].code, "proof_acquisition:route_quote_stale");
 });
+
+test("payback lifecycle root-cause keys stay stable across observation time", () => {
+  const strategyTickStatus = {
+    strategies: [{
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      firstLiveBroadcastAt: "2026-04-16T20:48:16.619Z",
+      firstRealizedPnlSats: 0,
+    }],
+  };
+  const first = buildBlockerFunnelSlice({
+    strategyTickStatus,
+    generatedAt: "2026-05-09T00:00:00.000Z",
+  });
+  const second = buildBlockerFunnelSlice({
+    strategyTickStatus,
+    generatedAt: "2026-05-09T00:30:00.000Z",
+  });
+  const firstGap = first.strategies.find((row) => row.code === "payback_lifecycle:profit_attribution_gap");
+  const secondGap = second.strategies.find((row) => row.code === "payback_lifecycle:profit_attribution_gap");
+  assert.ok(firstGap);
+  assert.ok(secondGap);
+  assert.equal(firstGap.paramsKey, secondGap.paramsKey);
+});

@@ -83,7 +83,7 @@ export function buildPaybackLifecycleBlockers({
         params: {
           gatewayOrderId,
           emittedAt,
-          elapsedHours: Math.round(elapsedHours * 100) / 100,
+          timeoutHours: resolved.paybackSettlementTimeoutHours,
         },
         observedAt: now,
       });
@@ -100,7 +100,7 @@ export function buildPaybackLifecycleBlockers({
           strategyId: row.strategyId,
           firstLiveBroadcastAt: row.firstLiveBroadcastAt,
           realizedPnlSats: realized,
-          elapsedDays: Math.round(elapsedDays * 100) / 100,
+          gapDays: resolved.profitAttributionGapDays,
         },
         observedAt: now,
       });
