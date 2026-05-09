@@ -25,6 +25,27 @@ function roiFromParams(params = {}) {
   return finiteNumber(params.expectedDailyUsdOnResolve) ?? finiteNumber(params.expectedDailyUsd) ?? null;
 }
 
+function capitalRoutingRow(params = {}, context = {}) {
+  const strategyId = params.strategyId || null;
+  if (!strategyId) return null;
+  if (context.capitalRoutingByStrategy instanceof Map) {
+    return context.capitalRoutingByStrategy.get(strategyId) || null;
+  }
+  return context.capitalRoutingByStrategy?.[strategyId] || null;
+}
+
+function roiFromCapitalRouting(params = {}, context = {}) {
+  return finiteNumber(capitalRoutingRow(params, context)?.expectedDailyUsdOnResolve) ?? roiFromParams(params);
+}
+
+function capitalRoutingRequiresExternalDeposit(params = {}, context = {}) {
+  const row = capitalRoutingRow(params, context);
+  if (!row) return params.requiresExternalDeposit === true;
+  if (row.classification === "needs_capital_acquisition") return true;
+  if (row.classification === "ready_no_capital_change" || row.classification === "ready_with_capital_addition") return false;
+  return params.requiresExternalDeposit === true;
+}
+
 function validateRecipe(recipe) {
   if (!recipe || typeof recipe !== "object") throw new Error("recipe must be an object");
   if (!recipe.recipeId) throw new Error("recipeId required");
@@ -181,6 +202,89 @@ registerBlockerRecipe("refill_or_inventory:idle_dust_consolidation_due", {
       amountUsd: finiteNumber(params.amountUsd),
     },
   }),
+});
+
+registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
+  recipeId: "variance_floor_capital_routing_plan",
+  kind: "auto_operational",
+  costClass: "cheap",
+  dependencies: [],
+  requiresExternalDeposit: capitalRoutingRequiresExternalDeposit,
+  expectedDailyUsdOnResolve: roiFromCapitalRouting,
+  build: ({ code, params, context }) => {
+    const row = capitalRoutingRow(params, context);
+    if (!row) {
+      return {
+        type: "queue_entry",
+        code,
+        params,
+        queue: "codex-blocker",
+        reason: "capital_routing_plan_missing",
+        fileToEdit: "src/cli/run-capital-routing-plan.mjs",
+        receiptRequired: false,
+      };
+    }
+    if (row.classification === "ready_with_capital_addition" && row.enqueueIntent) {
+      return {
+        type: "operational_intent",
+        code,
+        params,
+        authority: "capital_manager_queue",
+        receiptRequired: true,
+        intent: row.enqueueIntent,
+        classification: row.classification,
+      };
+    }
+    if (row.classification === "ready_no_capital_change") {
+      return {
+        type: "refresh_command",
+        code,
+        command: "npm run report:strategy-execution-surfaces -- --write",
+        args: [],
+        params,
+        reason: "capital_floor_already_reachable",
+        receiptRequired: false,
+      };
+    }
+    if (row.classification === "thin_evidence" || row.classification === "missing_input") {
+      return {
+        type: "refresh_command",
+        code,
+        command: "npm run report:strategy-execution-surfaces -- --write",
+        args: [],
+        params,
+        reason: row.classification,
+        receiptRequired: false,
+      };
+    }
+    if (row.classification === "floor_infeasible_at_committed_caps" || row.classification === "negative_or_zero_edge") {
+      return {
+        type: "queue_entry",
+        code: "code_required:specific_recipe_required",
+        params: {
+          ...params,
+          classification: row.classification,
+          recommendedFile: row.classification === "floor_infeasible_at_committed_caps"
+            ? "src/config/strategy-caps.mjs"
+            : "src/strategy/strategy-catalog.mjs",
+        },
+        queue: "codex-blocker",
+        reason: row.classification,
+        fileToEdit: row.classification === "floor_infeasible_at_committed_caps"
+          ? "src/config/strategy-caps.mjs"
+          : "src/strategy/strategy-catalog.mjs",
+        receiptRequired: false,
+      };
+    }
+    return {
+      type: "queue_entry",
+      code,
+      params: { ...params, classification: row.classification || null },
+      queue: "codex-blocker",
+      reason: row.classification || "capital_routing_unresolved",
+      receiptRequired: false,
+    };
+  },
 });
 
 registerCategoryRecipe("proof_acquisition", proofCommandRecipe({

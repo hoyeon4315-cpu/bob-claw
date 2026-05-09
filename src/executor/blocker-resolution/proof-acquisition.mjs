@@ -92,6 +92,17 @@ export async function planProofAcquisition({
     };
   }
   const action = recipe.build({ code, params, context });
+  if (action?.type === "queue_entry") {
+    return {
+      status: "manual_review_required",
+      actions: [action],
+      nextRetryAt: null,
+      attemptCountUpdate: "unchanged",
+      unresolvedReason: action.reason || recipe.kind,
+      expectedDailyUsdOnResolve,
+      requiresExternalDeposit,
+    };
+  }
   if (recipe.kind === "economic_no_go") {
     return {
       status: "proof_not_applicable",

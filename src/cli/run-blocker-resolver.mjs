@@ -159,6 +159,32 @@ function sortGroupsByRoi(groups = [], plans = new Map()) {
   });
 }
 
+function edgeFloorClassificationFor(group = {}, plan = {}, capitalRoutingByStrategy = new Map()) {
+  if (group.code !== "economic_no_go:edge_below_variance_floor") return null;
+  const strategyId = group.params?.strategyId || group.strategyId || group.affectedStrategies?.[0] || null;
+  return plan.actions?.[0]?.classification ||
+    plan.actions?.[0]?.params?.classification ||
+    capitalRoutingByStrategy.get(strategyId)?.classification ||
+    null;
+}
+
+function previewResolverActionable(group = {}, plan = {}, capitalRoutingByStrategy = new Map()) {
+  const category = group.code.split(":")[0];
+  const classification = edgeFloorClassificationFor(group, plan, capitalRoutingByStrategy);
+  if (group.code === "economic_no_go:edge_below_variance_floor" && classification === "ready_with_capital_addition") return true;
+  if (group.code === "economic_no_go:edge_below_variance_floor" && (classification === "thin_evidence" || classification === "missing_input")) return true;
+  return ["proof_acquisition", "refill_or_inventory"].includes(category) && !isHardSafetyStop(group.code);
+}
+
+function previewRequiresStrategyOrCapitalChange(group = {}, plan = {}, capitalRoutingByStrategy = new Map()) {
+  const classification = edgeFloorClassificationFor(group, plan, capitalRoutingByStrategy);
+  if (group.code === "economic_no_go:edge_below_variance_floor" && classification) {
+    return ["needs_capital_acquisition", "floor_infeasible_at_committed_caps", "negative_or_zero_edge"].includes(classification);
+  }
+  const category = group.code.split(":")[0];
+  return ["economic_no_go", "executor_unbound", "code_required"].includes(category) || plan.requiresExternalDeposit === true;
+}
+
 function applyAttemptUpdate(current, update) {
   if (update === "reset") return 0;
   if (update === "increment") return (Number(current) || 0) + 1;
@@ -218,6 +244,7 @@ export async function runBlockerResolverCli(
     state: join(resolvedDataDir, "blocker-resolver-state.json"),
     circuit: join(resolvedDataDir, "blocker-resolver-circuit-state.json"),
     pending: join(resolvedDataDir, "blocker-resolver-pending-dispatch.json"),
+    capitalRoutingPlan: join(resolvedDashboardDir, "capital-routing-plan.json"),
     preview: join(resolvedDataDir, "blocker-resolution-preview.json"),
     runs: join(resolvedDataDir, "blocker-resolution-runs.jsonl"),
     audit: join(cwd, "logs", "blocker-resolver-audit.jsonl"),
@@ -249,16 +276,22 @@ export async function runBlockerResolverCli(
   }
 
   try {
-    const [resolverStateRaw, circuitState, pendingDispatches, signerAuditRecords, receiptRecords] = await Promise.all([
+    const [resolverStateRaw, circuitState, pendingDispatches, signerAuditRecords, receiptRecords, capitalRoutingPlan] = await Promise.all([
       readJsonIfExists(paths.state),
       readCircuitState(paths.circuit),
       readPendingDispatches(paths.pending),
       readJsonl(join(cwd, "logs"), "signer-audit").catch(() => []),
       readJsonl(resolvedDataDir, "receipt-reconciliations").catch(() => []),
+      readJsonIfExists(paths.capitalRoutingPlan),
     ]);
     const resolverState = resolverStateRaw || { schemaVersion: 1, byParamsKey: {} };
     const reconciled = reconcilePendingDispatches(pendingDispatches, { signerAuditRecords, receiptRecords, observedAt: now });
     const groups = buildGroupsFromStrategyTick(strategyTickStatus);
+    const capitalRoutingByStrategy = new Map([
+      ...((capitalRoutingPlan?.routingPlan || []).map((row) => [row.strategyId, row])),
+      ...((capitalRoutingPlan?.unresolvable || []).map((row) => [row.strategyId, row])),
+      ...((capitalRoutingPlan?.classifications || []).map((row) => [row.strategyId, row])),
+    ]);
     const plansByKey = new Map();
     const previewPlans = [];
     for (const group of groups) {
@@ -267,6 +300,7 @@ export async function runBlockerResolverCli(
         readyForLiveBroadcast: guards.readyForLiveBroadcast,
         operatorHold: group.params?.operatorHold === true,
         pausedByAutoKill: group.params?.pausedByAutoKill === true,
+        capitalRoutingByStrategy,
       };
       const plan = await planProofAcquisition({
         strategyId: group.strategyId,
@@ -326,8 +360,8 @@ export async function runBlockerResolverCli(
         actions: effectivePlan.actions || [],
         expectedDailyUsdOnResolve: effectivePlan.expectedDailyUsdOnResolve,
         requiresExternalDeposit: effectivePlan.requiresExternalDeposit,
-        resolverActionable: ["proof_acquisition", "refill_or_inventory"].includes(group.code.split(":")[0]) && !isHardSafetyStop(group.code),
-        requiresStrategyOrCapitalChange: ["economic_no_go", "executor_unbound", "code_required"].includes(group.code.split(":")[0]) || effectivePlan.requiresExternalDeposit === true,
+        resolverActionable: previewResolverActionable(group, effectivePlan, capitalRoutingByStrategy),
+        requiresStrategyOrCapitalChange: previewRequiresStrategyOrCapitalChange(group, effectivePlan, capitalRoutingByStrategy),
       });
     }
 
@@ -336,6 +370,7 @@ export async function runBlockerResolverCli(
       resolverState: nextState,
       circuitBreakerState: circuitState,
       pendingDispatches: nextPending,
+      capitalRoutingPlan,
       generatedAt: now,
       config: cfg,
     });
