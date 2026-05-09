@@ -39,6 +39,7 @@ import {
   realizedPnlSatsFromRecord,
 } from "../status/strategy-tick-slice.mjs";
 import { evaluateDemotionPolicy } from "../executor/policy/demotion-policy.mjs";
+import { normalizeBlocker } from "../executor/policy/blocker-codes.mjs";
 
 const DEFAULT_STRATEGIES = [
   "wrapped-btc-loop-base-moonwell",
@@ -433,6 +434,9 @@ async function main() {
     const skippedStats = skippedStatsForStrategy(tick, sid);
     const generatedIntents = generatedIntentsForStrategy(tick, sid);
     const topBlocker = tickBlocker?.blockers?.[0] || null;
+    const normalizedBlockers = (tickBlocker?.blockers || []).map((blocker) =>
+      normalizeBlocker(blocker, { strategyId: sid }),
+    );
     const receipts = audit
       .filter((r) => r?.strategyId === sid)
       .map((r) => {
@@ -494,8 +498,9 @@ async function main() {
       lastTickAt: tick?.tickAt || null,
       lastTickMode: tickBlocker?.mode || null,
       lastTickBlockers: tickBlocker?.blockers || [],
+      normalizedBlockers,
       topBlocker,
-      topBlockerCode: normalizeReasonCode(topBlocker),
+      topBlockerCode: normalizedBlockers[0]?.code || normalizeReasonCode(topBlocker),
       lastTickCandidateCount: tick?.candidateCount ?? 0,
       lastTickAllowCount: tick?.dispatchSummary?.allowCount ?? 0,
       lastTickDenyCount: tick?.dispatchSummary?.denyCount ?? 0,
@@ -608,7 +613,7 @@ async function main() {
   });
 
   const slice = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     generatedAt: new Date(nowMs).toISOString(),
     tickCountTotal: ticks.length,
     latestTickAt: ticks.length > 0

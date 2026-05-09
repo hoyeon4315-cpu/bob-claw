@@ -236,7 +236,7 @@ test("report-strategy-tick-slice exposes first broadcast and payback progress tr
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const slice = JSON.parse(await readFile(outPath, "utf8"));
   const row = slice.strategies[0];
-  assert.equal(slice.schemaVersion, 5);
+  assert.equal(slice.schemaVersion, 6);
   assert.equal(row.firstLiveBroadcastAt, "2026-05-08T01:00:30.000Z");
   assert.equal(row.firstLiveBroadcastTxHash, "0xfirst");
   assert.equal(row.firstRealizedPnlSats, 25_000);
@@ -462,7 +462,7 @@ test("report-strategy-tick-slice counts dispatcher deny reasons by strategy", as
   const slice = JSON.parse(await readFile(outPath, "utf8"));
   const row = slice.strategies[0];
 
-  assert.equal(slice.schemaVersion, 5);
+  assert.equal(slice.schemaVersion, 6);
   assert.deepEqual(row.lastTickDenyByReason, {
     negative_post_cost_edge: 1,
     feed_stale: 2,
@@ -475,7 +475,8 @@ test("report-strategy-tick-slice counts dispatcher deny reasons by strategy", as
     same_chain_unprofitable: 1,
   });
   assert.equal(row.topBlocker, "same_chain_unprofitable:need_$5_on_base");
-  assert.equal(row.topBlockerCode, "same_chain_unprofitable");
+  assert.equal(row.topBlockerCode, "economic_no_go:edge_below_variance_floor");
+  assert.equal(row.normalizedBlockers[0].legacyText, "same_chain_unprofitable:need_$5_on_base");
   assert.deepEqual(row.blockerCountByCategory, {
     adapter: 1,
     ev: 2,

@@ -172,6 +172,8 @@
     "build:prelive-review-package": "node src/cli/build-prelive-review-package.mjs",
     "refresh:live-readiness-packet": "node src/cli/refresh-live-readiness-packet.mjs --write",
     "run:admission-remediation": "node src/cli/run-admission-remediation.mjs",
+    "blocker:resolve": "node src/cli/run-blocker-resolver.mjs",
+    "blocker:resolve:loop": "node src/cli/run-blocker-resolver.mjs --loop",
     "run:prelive-evidence-campaign": "node src/cli/run-prelive-evidence-campaign.mjs",
     "plan:prelive-fork-execution": "node src/cli/plan-prelive-fork-execution.mjs",
     "submit:prelive-fork-execution": "node src/cli/submit-prelive-fork-execution.mjs",

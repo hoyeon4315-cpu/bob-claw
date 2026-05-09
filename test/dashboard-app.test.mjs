@@ -109,6 +109,10 @@ describe("dashboard home renewal source guard", () => {
     assert.match(liveLane, /canaryLadder/);
     assert.match(liveLane, /auto sizing/);
     assert.match(liveLane, /Payback/);
+    assert.match(liveLane, /Resolver/);
+    assert.match(liveLane, /blockerResolver/);
+    assert.match(liveLane, /resolverActionableCount/);
+    assert.match(liveLane, /requiresStrategyOrCapitalChangeCount/);
     assert.match(liveLane, /Allowed/);
     assert.match(liveLane, /window\.STATUS/);
     assert.match(liveLane, /window\.OPERATIONS/);

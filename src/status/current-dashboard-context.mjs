@@ -48,6 +48,7 @@ import { buildDashboardStatus } from "./dashboard-status.mjs";
 import { buildChainParitySlice } from "./chain-parity-slice.mjs";
 import { buildFlowDashboardSlice } from "./flow-slice.mjs";
 import { buildIdleConsolidationSlice } from "./idle-consolidation-slice.mjs";
+import { buildBlockerFunnelSlice } from "./blocker-funnel-slice.mjs";
 import { buildMerklActivePositions } from "./merkl-active-slice.mjs";
 import { buildMerklUserRewardsSlice } from "./merkl-user-rewards-slice.mjs";
 import { buildProtocolPositionMarksSlice } from "./protocol-position-marks-slice.mjs";
@@ -457,6 +458,31 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.payback = await buildPaybackDashboardSlice({
     dataDir,
     now: dashboardStatus.generatedAt,
+  });
+  const blockerResolverState = await readJsonIfExists(join(dataDir, "blocker-resolver-state.json"), {
+    tolerateMalformed: true,
+    retryCount: 2,
+  });
+  const blockerResolverCircuitState = await readJsonIfExists(join(dataDir, "blocker-resolver-circuit-state.json"), {
+    tolerateMalformed: true,
+    retryCount: 2,
+  });
+  const blockerResolverPending = await readJsonIfExists(join(dataDir, "blocker-resolver-pending-dispatch.json"), {
+    tolerateMalformed: true,
+    retryCount: 2,
+  });
+  const previousBlockerFunnel = await readJsonIfExists(join("dashboard", "public", "blocker-funnel.json"), {
+    tolerateMalformed: true,
+    retryCount: 2,
+  });
+  dashboardStatus.blockerResolver = buildBlockerFunnelSlice({
+    strategyTickStatus,
+    resolverState: blockerResolverState || { byParamsKey: {} },
+    circuitBreakerState: blockerResolverCircuitState || {},
+    pendingDispatches: blockerResolverPending?.pending || [],
+    payback: dashboardStatus.payback,
+    previousSlice: previousBlockerFunnel || null,
+    generatedAt: dashboardStatus.generatedAt,
   });
   const canarySelectionGap = buildCanarySelectionGap({
     routePlan: state.routePlan,

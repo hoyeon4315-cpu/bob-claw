@@ -1,0 +1,1065 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-09T00:12:24.108Z",
+  "strategies": [
+    {
+      "strategyId": "recursive_wrapped_btc_lending_loop",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "recursive_wrapped_btc_lending_loop",
+        "chain": "base"
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-08T23:41:35.506Z",
+      "paramsKey": "9d3caaed18e78928",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway-btc-onramp",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gateway-btc-onramp",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "f6824983428d9a83",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway-btc-offramp",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gateway-btc-offramp",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "0115fd6e6216aeb4",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway-btc-funding-transfer",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gateway-btc-funding-transfer",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "7af1a75ae20d0dcc",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "proxy-spread-experiment",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "proxy-spread-experiment",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "da0c23beb60f6d02",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "token-dex-experiment",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "token-dex-experiment",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "298ff21b3b1c6501",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "native-dex-experiment",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "native-dex-experiment",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "a9f882838eeb9c77",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gas-zip-native-refuel",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gas-zip-native-refuel",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "fc6ca9386177b8f7",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "wrapper-btc-arbitrage",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "wrapper-btc-arbitrage",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "acb80d9d9e18a03d",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "aerodrome-cl-base",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "aerodrome-cl-base",
+        "chain": "base"
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-08T23:41:35.506Z",
+      "paramsKey": "fa6a1926ea04d3c4",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "stablecoin_spread_loop",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "stablecoin_spread_loop",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "9dc8c2fa35b9197e",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "proxy_spread_expansion",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "proxy_spread_expansion",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "442b52edfa774918",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "tokenized_reserve_sleeve",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "tokenized_reserve_sleeve",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "3c7f0c0c3a817850",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "recursive_stablecoin_lending_loop",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "recursive_stablecoin_lending_loop",
+        "chain": "base"
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-08T23:41:35.506Z",
+      "paramsKey": "72a12620e4947a05",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway_proxy_spread_rebalance_recheck",
+      "stage": "economic_no_go",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gateway_proxy_spread_rebalance_recheck",
+        "chain": "base"
+      },
+      "legacyCode": "policy_reject",
+      "observedAt": "2026-05-08T23:41:35.506Z",
+      "paramsKey": "de2ee37ad3653418",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "eth_destination_deployment",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "eth_destination_deployment",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "263591903a548bc6",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "onchain_btc_perp_basis",
+      "stage": "hard_safety_stop",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "onchain_btc_perp_basis",
+        "chain": null
+      },
+      "legacyCode": "missing_caps",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "6f9a329019cec9b3",
+      "consecutiveTicks": 2,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "wrapped-btc-loop-base-moonwell",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "wrapped-btc-loop-base-moonwell",
+        "firstLiveBroadcastAt": "2026-04-16T20:48:16.619Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.14
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "ec36a45d380de1bb",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "recursive_wrapped_btc_lending_loop",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "recursive_wrapped_btc_lending_loop",
+        "firstLiveBroadcastAt": "2026-04-24T11:53:28.062Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.51
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "520e0fe24c117892",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway-btc-onramp",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway-btc-onramp",
+        "firstLiveBroadcastAt": "2026-04-16T10:22:10.810Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.58
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "e2fd87466d85f184",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway-btc-offramp",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway-btc-offramp",
+        "firstLiveBroadcastAt": "2026-04-16T06:18:23.417Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.75
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "7f94bb1e3c91e955",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway-btc-funding-transfer",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway-btc-funding-transfer",
+        "firstLiveBroadcastAt": "2026-04-16T00:55:21.427Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.97
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "8420e7589376bd73",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gas-zip-native-refuel",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gas-zip-native-refuel",
+        "firstLiveBroadcastAt": "2026-04-20T08:38:19.675Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 18.65
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "998df3cab6cda574",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "beefy-folding-vault",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "beefy-folding-vault",
+        "firstLiveBroadcastAt": "2026-04-24T11:53:28.297Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.51
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "7505266194e0499f",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway_native_asset_conversion_sleeve",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway_native_asset_conversion_sleeve",
+        "firstLiveBroadcastAt": "2026-04-23T13:37:56.701Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 15.44
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "4b059b19750bceb6",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "recursive_stablecoin_lending_loop",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "recursive_stablecoin_lending_loop",
+        "firstLiveBroadcastAt": "2026-04-24T11:53:28.445Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.51
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "bfba3b7b9269ee7a",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "destination_wrapped_btc_rotation",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "destination_wrapped_btc_rotation",
+        "firstLiveBroadcastAt": "2026-04-24T20:13:46.454Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.17
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "d6b066d183d03fd3",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "stablecoin_treasury_rotation",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "stablecoin_treasury_rotation",
+        "firstLiveBroadcastAt": "2026-04-24T20:13:51.903Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.17
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "2e9f87271313f969",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "gateway_proxy_spread_rebalance_recheck",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway_proxy_spread_rebalance_recheck",
+        "firstLiveBroadcastAt": "2026-04-26T22:03:37.184Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 12.09
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "ca6218e765a8ee07",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    },
+    {
+      "strategyId": "macro_asset_rotation",
+      "stage": "payback_lifecycle",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "macro_asset_rotation",
+        "firstLiveBroadcastAt": "2026-04-24T20:13:57.333Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.17
+      },
+      "legacyCode": "payback_lifecycle:profit_attribution_gap",
+      "observedAt": "2026-05-09T00:12:24.108Z",
+      "paramsKey": "291ba4f5f0d5ef60",
+      "consecutiveTicks": 1,
+      "attemptCount": 0,
+      "lastResolverAction": null,
+      "lastResolverOutcome": null,
+      "nextRetryAt": null,
+      "quarantineCandidate": false,
+      "expectedDailyUsdOnResolve": null,
+      "requiresExternalDeposit": false
+    }
+  ],
+  "stageDropCounts": {
+    "economic_no_go": 4,
+    "hard_safety_stop": 13,
+    "payback_lifecycle": 13
+  },
+  "codeFrequency": {
+    "economic_no_go:edge_below_variance_floor": 4,
+    "hard_safety_stop:capless_strategy": 13,
+    "payback_lifecycle:profit_attribution_gap": 13
+  },
+  "rootCauseGroups": [
+    {
+      "paramsKey": "9d3caaed18e78928",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "recursive_wrapped_btc_lending_loop",
+        "chain": "base"
+      },
+      "affectedStrategies": [
+        "recursive_wrapped_btc_lending_loop"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "fa6a1926ea04d3c4",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "aerodrome-cl-base",
+        "chain": "base"
+      },
+      "affectedStrategies": [
+        "aerodrome-cl-base"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "72a12620e4947a05",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "recursive_stablecoin_lending_loop",
+        "chain": "base"
+      },
+      "affectedStrategies": [
+        "recursive_stablecoin_lending_loop"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "de2ee37ad3653418",
+      "code": "economic_no_go:edge_below_variance_floor",
+      "params": {
+        "strategyId": "gateway_proxy_spread_rebalance_recheck",
+        "chain": "base"
+      },
+      "affectedStrategies": [
+        "gateway_proxy_spread_rebalance_recheck"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "f6824983428d9a83",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gateway-btc-onramp",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gateway-btc-onramp"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "0115fd6e6216aeb4",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gateway-btc-offramp",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gateway-btc-offramp"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "7af1a75ae20d0dcc",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gateway-btc-funding-transfer",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gateway-btc-funding-transfer"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "da0c23beb60f6d02",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "proxy-spread-experiment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "proxy-spread-experiment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "298ff21b3b1c6501",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "token-dex-experiment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "token-dex-experiment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "a9f882838eeb9c77",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "native-dex-experiment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "native-dex-experiment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "fc6ca9386177b8f7",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "gas-zip-native-refuel",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "gas-zip-native-refuel"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "acb80d9d9e18a03d",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "wrapper-btc-arbitrage",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "wrapper-btc-arbitrage"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "9dc8c2fa35b9197e",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "stablecoin_spread_loop",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "stablecoin_spread_loop"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "442b52edfa774918",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "proxy_spread_expansion",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "proxy_spread_expansion"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "3c7f0c0c3a817850",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "tokenized_reserve_sleeve",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "tokenized_reserve_sleeve"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "263591903a548bc6",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "eth_destination_deployment",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "eth_destination_deployment"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "6f9a329019cec9b3",
+      "code": "hard_safety_stop:capless_strategy",
+      "params": {
+        "strategyId": "onchain_btc_perp_basis",
+        "chain": null
+      },
+      "affectedStrategies": [
+        "onchain_btc_perp_basis"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "ec36a45d380de1bb",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "wrapped-btc-loop-base-moonwell",
+        "firstLiveBroadcastAt": "2026-04-16T20:48:16.619Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.14
+      },
+      "affectedStrategies": [
+        "wrapped-btc-loop-base-moonwell"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "520e0fe24c117892",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "recursive_wrapped_btc_lending_loop",
+        "firstLiveBroadcastAt": "2026-04-24T11:53:28.062Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.51
+      },
+      "affectedStrategies": [
+        "recursive_wrapped_btc_lending_loop"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "e2fd87466d85f184",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway-btc-onramp",
+        "firstLiveBroadcastAt": "2026-04-16T10:22:10.810Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.58
+      },
+      "affectedStrategies": [
+        "gateway-btc-onramp"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "7f94bb1e3c91e955",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway-btc-offramp",
+        "firstLiveBroadcastAt": "2026-04-16T06:18:23.417Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.75
+      },
+      "affectedStrategies": [
+        "gateway-btc-offramp"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "8420e7589376bd73",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway-btc-funding-transfer",
+        "firstLiveBroadcastAt": "2026-04-16T00:55:21.427Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 22.97
+      },
+      "affectedStrategies": [
+        "gateway-btc-funding-transfer"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "998df3cab6cda574",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gas-zip-native-refuel",
+        "firstLiveBroadcastAt": "2026-04-20T08:38:19.675Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 18.65
+      },
+      "affectedStrategies": [
+        "gas-zip-native-refuel"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "7505266194e0499f",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "beefy-folding-vault",
+        "firstLiveBroadcastAt": "2026-04-24T11:53:28.297Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.51
+      },
+      "affectedStrategies": [
+        "beefy-folding-vault"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "4b059b19750bceb6",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway_native_asset_conversion_sleeve",
+        "firstLiveBroadcastAt": "2026-04-23T13:37:56.701Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 15.44
+      },
+      "affectedStrategies": [
+        "gateway_native_asset_conversion_sleeve"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "bfba3b7b9269ee7a",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "recursive_stablecoin_lending_loop",
+        "firstLiveBroadcastAt": "2026-04-24T11:53:28.445Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.51
+      },
+      "affectedStrategies": [
+        "recursive_stablecoin_lending_loop"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "d6b066d183d03fd3",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "destination_wrapped_btc_rotation",
+        "firstLiveBroadcastAt": "2026-04-24T20:13:46.454Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.17
+      },
+      "affectedStrategies": [
+        "destination_wrapped_btc_rotation"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "2e9f87271313f969",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "stablecoin_treasury_rotation",
+        "firstLiveBroadcastAt": "2026-04-24T20:13:51.903Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.17
+      },
+      "affectedStrategies": [
+        "stablecoin_treasury_rotation"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "ca6218e765a8ee07",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "gateway_proxy_spread_rebalance_recheck",
+        "firstLiveBroadcastAt": "2026-04-26T22:03:37.184Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 12.09
+      },
+      "affectedStrategies": [
+        "gateway_proxy_spread_rebalance_recheck"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    },
+    {
+      "paramsKey": "291ba4f5f0d5ef60",
+      "code": "payback_lifecycle:profit_attribution_gap",
+      "params": {
+        "strategyId": "macro_asset_rotation",
+        "firstLiveBroadcastAt": "2026-04-24T20:13:57.333Z",
+        "realizedPnlSats": 0,
+        "elapsedDays": 14.17
+      },
+      "affectedStrategies": [
+        "macro_asset_rotation"
+      ],
+      "expectedDailyUsdOnResolve": null,
+      "lastAction": null
+    }
+  ],
+  "resolverActionableCount": 0,
+  "requiresStrategyOrCapitalChangeCount": 4,
+  "fallbackFireCount": {},
+  "circuitBreakerState": {},
+  "pendingDispatchCount": 0
+}

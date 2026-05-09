@@ -336,9 +336,15 @@ async function main() {
   const output = await writeDashboardStatus(config.dataDir, status);
   const dashboardOutputDir = args.commitPublic ? DASHBOARD_PUBLIC_DIR : args.liveSnapshotDir;
   const dashboardOutput = await writeDashboardStatus(dashboardOutputDir, status);
+  const blockerFunnelOutput = status.blockerResolver
+    ? await writeDashboardStatus(dashboardOutputDir, status.blockerResolver, "blocker-funnel.json")
+    : null;
 
   console.log(`${output.changed ? "wrote" : "unchanged"}=${output.path}`);
   console.log(`${dashboardOutput.changed ? "dashboardWrote" : "dashboardUnchanged"}=${dashboardOutput.path}`);
+  if (blockerFunnelOutput) {
+    console.log(`${blockerFunnelOutput.changed ? "blockerFunnelWrote" : "blockerFunnelUnchanged"}=${blockerFunnelOutput.path}`);
+  }
   console.log(`severity=${status.overall.severity}`);
   console.log(`liveTrading=${status.overall.liveTrading}`);
   console.log(`shadowTrading=${status.overall.shadowTrading}`);
@@ -407,6 +413,11 @@ async function main() {
     const ops = status.operations.allChainAutopilot;
     console.log(
       `allChainAutopilot=${ops.status || "none"} chains:${ops.officialChainCount ?? 0} canary:${ops.canary?.deliveredCount ?? 0}/${ops.canary?.executedCount ?? 0} refill:${ops.refill?.executedCount ?? 0}/${ops.refill?.autoJobCount ?? 0} positions:${ops.portfolio?.openedCount ?? 0} payback:${ops.payback?.status || "none"} blocker:${ops.topBlockers?.[0]?.reason || "none"}`,
+    );
+  }
+  if (status.blockerResolver) {
+    console.log(
+      `blockerResolver=actionable:${status.blockerResolver.resolverActionableCount ?? 0} strategyOrCapital:${status.blockerResolver.requiresStrategyOrCapitalChangeCount ?? 0} pending:${status.blockerResolver.pendingDispatchCount ?? 0}`,
     );
   }
   if (status.liveBaseline) {

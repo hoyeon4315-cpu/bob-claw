@@ -15,6 +15,9 @@ import {
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
+// TODO(blocker-resolver): include `npm run blocker:resolve:loop` in the live
+// automation bundle after resolver heartbeat/watchdog monitoring is wired.
+
 export function parseArgs(argv) {
   const flags = new Set(argv);
   const options = Object.fromEntries(

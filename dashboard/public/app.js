@@ -421,6 +421,7 @@ function LiveLaneCard() {
   const execution = operations.execution || {};
   const radar = window.RADAR || status.radar || {};
   const payback = status.payback || {};
+  const blockerResolver = status.blockerResolver || {};
   const canaryLadder = operations.canaryLadder || {};
   const liveAllowed = overall.liveTrading === "ALLOWED";
   const runtimeReady = runtime.available === true && runtime.runtimeStatus === "healthy";
@@ -442,6 +443,11 @@ function LiveLaneCard() {
   const txBroadcastCount = Number(execution.txBroadcastCount || 0);
   const executionMain = execution.attemptedLive ? txBroadcastCount > 0 ? `${txBroadcastCount} tx` : "No tx" : "Idle";
   const executionSub = txBroadcastCount > 0 ? "policy approved" : friendlyBlockerLabel(execution.noTxReason || (execution.mode === "execute" ? "policy_no_tx" : "waiting"));
+  const resolverActionable = Number(blockerResolver.resolverActionableCount || 0);
+  const resolverNeedsChange = Number(blockerResolver.requiresStrategyOrCapitalChangeCount || 0);
+  const resolverPending = Number(blockerResolver.pendingDispatchCount || 0);
+  const resolverMain = resolverPending > 0 ? `${resolverPending} pending` : resolverActionable > 0 ? `${resolverActionable} fixable` : "Watching";
+  const resolverSub = resolverNeedsChange > 0 ? `${resolverNeedsChange} policy/capital` : resolverActionable > 0 ? "auto proof path" : "no resolver gap";
   const gateTone = laneTone(liveAllowed && runtimeReady ? "good" : "bad");
   const gateLine = `Operation gate: ${liveAllowed ? "Allowed" : "Blocked"} \xB7 ${runtimeReady ? "Runtime healthy" : friendlyBlockerLabel(overall.blockers?.[0] || runtime.runtimeStatus || "checking")}`;
   const cells = [
@@ -474,6 +480,12 @@ function LiveLaneCard() {
       main: pendingSats > 0 ? fmtSats(pendingSats) : paybackReady ? "ready" : "carry",
       sub: Number.isFinite(remainingSats) && remainingSats > 0 ? `${fmtSats(remainingSats)} to min` : friendlyBlockerLabel(payback.scheduler?.reason || "accruing"),
       tone: paybackReady ? "good" : pendingSats > 0 ? "warn" : "neutral"
+    },
+    {
+      label: "Resolver",
+      main: resolverMain,
+      sub: resolverSub,
+      tone: resolverPending > 0 || resolverActionable > 0 ? "warn" : "neutral"
     }
   ];
   return /* @__PURE__ */ React.createElement("div", { style: {
@@ -501,7 +513,7 @@ function LiveLaneCard() {
     minWidth: 0
   } }, gateLine)), /* @__PURE__ */ React.createElement("div", { style: {
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))",
     gap: "4px 9px",
     marginTop: 6
   } }, cells.map((cell) => {
