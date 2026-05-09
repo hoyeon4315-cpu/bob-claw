@@ -354,7 +354,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(adapter, /estimatedUntrackedProtocolUsd: summaryEstimatedUntrackedProtocolUsd/);
     assert.match(adapter, /estimatedTotalUsdSource: capitalSummary\.estimatedTotalUsdSource \|\| null/);
     assert.match(adapter, /capitalPlanRefillRequiredUsd: Number\.isFinite\(capitalSummary\.capitalPlanRefillRequiredUsd\)/);
-    assert.match(adapter, /assetFormula: capitalSummary\.assetFormula \|\| 'current_wallet_plus_protocol_positions'/);
+    assert.match(adapter, /assetFormula: capitalSummary\.assetFormula \|\| 'current_wallet_plus_tracked_protocol_positions'/);
+    assert.match(adapter, /assetClaimLabel: capitalSummary\.assetClaimLabel \|\| null/);
     assert.match(adapter, /const summaryNeedsReconciliation =/);
     assert.match(adapter, /const summaryAssetConfidence = capitalSummary\?\.assetConfidence \|\| \(summaryNeedsReconciliation \? 'verified_minimum' : 'verified_current'\)/);
     assert.match(DATA_SOURCE, /function hasDashboardCapital\(status = null\)/);

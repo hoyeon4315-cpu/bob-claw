@@ -210,6 +210,75 @@ function isSafetyCriticalIntent(intent = {}) {
   );
 }
 
+function normalizeAddress(value = null) {
+  return typeof value === "string" && value.length > 0 ? value.toLowerCase() : null;
+}
+
+function approvalAmount(value = null) {
+  if (value === null || value === undefined) return null;
+  try {
+    return BigInt(value).toString();
+  } catch {
+    return null;
+  }
+}
+
+function isUnlimitedApproval(approval = {}) {
+  return approval?.isUnlimited === true ||
+    approval?.amount === "max" ||
+    approval?.mode === "unlimited";
+}
+
+function exactApprovalParentEvBypass(intent = {}) {
+  if (intent.intentType !== "approve_exact") return null;
+  const approval = intent.approval || null;
+  if (!approval || isUnlimitedApproval(approval)) return null;
+  const amount = approvalAmount(approval.amount);
+  if (amount === null || amount === "0") return null;
+
+  const metadata = intent.metadata || {};
+  const parentIntent = metadata.parentIntent || intent.parentIntent || null;
+  const parentEvEvidence = metadata.parentEvEvidence || intent.parentEvEvidence || null;
+  const parentIntentHash = metadata.parentIntentHash || intent.parentIntentHash || parentIntent?.intentHash || null;
+  const parentEvEvidenceHash = metadata.parentEvEvidenceHash || intent.parentEvEvidenceHash || null;
+  if (!parentIntent || !parentEvEvidence || !parentIntentHash || !parentEvEvidenceHash) return null;
+  if (parentEvEvidence.allow !== true) return null;
+
+  const parentStrategyId = normalizeString(parentIntent.strategyId);
+  const parentChain = normalizeChain(parentIntent.chain);
+  const childStrategyId = normalizeString(intent.strategyId);
+  const childChain = normalizeChain(intent.chain);
+  if (!parentStrategyId || parentStrategyId !== childStrategyId) return null;
+  if (!parentChain || parentChain !== childChain) return null;
+
+  const parentApproval = parentIntent.approval || parentIntent.metadata?.approval || {};
+  const token = normalizeAddress(approval.token);
+  const spender = normalizeAddress(approval.spender);
+  const parentToken = normalizeAddress(parentApproval.token || parentIntent.token || parentIntent.metadata?.token);
+  const parentSpender = normalizeAddress(parentApproval.spender || parentIntent.spender || parentIntent.metadata?.spender);
+  if (!token || !spender || token !== parentToken || spender !== parentSpender) return null;
+
+  const parentAmount = approvalAmount(parentApproval.amount ?? parentIntent.amountRaw ?? parentIntent.metadata?.amountRaw);
+  if (parentAmount !== null && parentAmount !== amount) return null;
+
+  const expectedNetUsd = finiteNumber(parentEvEvidence.expectedNetUsd);
+  const requiredNetUsd = finiteNumber(parentEvEvidence.requiredNetUsd);
+  if (expectedNetUsd === null || requiredNetUsd === null || expectedNetUsd <= requiredNetUsd) return null;
+
+  return {
+    strategyId: childStrategyId,
+    chain: childChain,
+    intentType: intent.intentType,
+    bypassReason: "parent_ev_approved_exact_approval",
+    parentIntentHash,
+    parentEvEvidenceHash,
+    parentExpectedNetUsd: expectedNetUsd,
+    parentRequiredNetUsd: requiredNetUsd,
+    approvalToken: token,
+    approvalSpender: spender,
+  };
+}
+
 function expectedNetUsdFromIntent(intent = {}) {
   const candidates = [
     intent.expectedNetUsd,
@@ -265,6 +334,15 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
         intentType,
         bypassReason: "safety_critical_intent",
       },
+    };
+  }
+
+  const exactApprovalBypass = exactApprovalParentEvBypass(intent);
+  if (exactApprovalBypass) {
+    return {
+      allow: true,
+      blockers: [],
+      evidence: exactApprovalBypass,
     };
   }
 

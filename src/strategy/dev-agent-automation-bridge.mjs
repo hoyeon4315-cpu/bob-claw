@@ -34,6 +34,7 @@ const DEV_AGENT_ALLOWED_LIFECYCLE_STAGES = Object.freeze([
   "validated",
   "accepted",
   "rejected",
+  "revise_task",
 ]);
 
 function unique(values = []) {
@@ -69,7 +70,8 @@ function taskKindForOpportunity(opportunity = {}) {
   return "strategy_discovery";
 }
 
-function queueStatusForTask({ rejected = false } = {}) {
+function queueStatusForTask({ rejected = false, revise = false } = {}) {
+  if (revise) return "REVISE_TASK";
   return rejected ? "rejected" : "ready_for_dev_agent";
 }
 
@@ -102,6 +104,20 @@ function reportOnlyLifecycle(stage = "proposed") {
     runtimeAuthority: "none",
     requiresCommittedDiff: true,
   };
+}
+
+function needsReviseTask(item = {}) {
+  return (
+    item.taskClassification === "REVISE_TASK" ||
+    item.status === "REVISE_TASK" ||
+    item.status === "revise_task" ||
+    item.staleEvidence === true ||
+    (
+      (item.requiresCurrentHeadVerification === true || Array.isArray(item.userProvidedLineRefs)) &&
+      item.currentHeadVerified !== true
+    ) ||
+    (Array.isArray(item.evidenceLabels) && item.evidenceLabels.some((label) => ["Unverified", "Contradicted"].includes(label)))
+  );
 }
 
 function runtimeAuthorityRequested(safety = {}) {
@@ -148,26 +164,29 @@ function workOrderTask(order = {}) {
 
   const kind = taskKindForAction(order.action);
   const plan = order.implementationPlan || {};
+  const reviseTask = needsReviseTask(order);
   return {
     rejected: false,
     task: {
       schemaVersion: 1,
       id: `dev-agent:route-remediation:${order.candidateId || "unknown"}:${order.action || "unknown"}`,
       kind,
-      queueStatus: queueStatusForTask(),
+      queueStatus: queueStatusForTask({ revise: reviseTask }),
       title: `${order.action || "route remediation"} for ${order.candidateLabel || order.candidateId || "candidate"}`,
-      objective:
-        `Implement the dev-lane remediation needed for ${order.candidateLabel || order.candidateId || "candidate"} without live execution authority.`,
+      objective: reviseTask
+        ? `Revise stale or unverified premises for ${order.candidateLabel || order.candidateId || "candidate"} against current HEAD before implementation.`
+        : `Implement the dev-lane remediation needed for ${order.candidateLabel || order.candidateId || "candidate"} without live execution authority.`,
       priority: {
         rank: order.rank ?? null,
         score: round(order.costEfficiencyScore ?? order.estimatedNetAfterBuildUsd ?? 0),
       },
       source: sourceRef("route_remediation_work_order", order),
-      lifecycle: reportOnlyLifecycle(),
+      lifecycle: reportOnlyLifecycle(reviseTask ? "revise_task" : "proposed"),
       chain: order.chain || null,
       blockers: unique(order.sourceBlockers || []),
       resolves: unique(order.resolves || []),
       remainingBlockers: unique(order.remainingBlockers || []),
+      evidenceLabels: unique(order.evidenceLabels || (reviseTask ? ["Unverified"] : [])),
       economics: {
         expectedNetProfitUsd: order.expectedNetProfitUsd ?? null,
         estimatedBuildCostUsd: order.estimatedBuildCostUsd ?? null,
@@ -180,6 +199,7 @@ function workOrderTask(order = {}) {
       safeCommands: [],
       instructions: unique([
         ...BASE_SAFE_INSTRUCTIONS,
+        reviseTask ? "Re-check every user-provided number or line reference against current HEAD and return a scoped replacement task before implementation." : null,
         ...(plan.steps || []),
         plan.promotionRule || null,
       ]),
@@ -249,6 +269,7 @@ export function summarizeDevAgentAutomationBridge(report = {}) {
     generatedAt: report.generatedAt || null,
     taskCount: tasks.length,
     readyTaskCount: tasks.filter((task) => task.queueStatus === "ready_for_dev_agent").length,
+    reviseTaskCount: tasks.filter((task) => task.queueStatus === "REVISE_TASK").length,
     rejectedCount: (report.rejectedItems || []).length,
     liveExecutableTaskCount: tasks.filter((task) => task.safety?.allowedToExecuteLive === true).length,
     lifecycleStageCounts: countBy(tasks, (task) => task.lifecycle?.stage),

@@ -1,5 +1,27 @@
 import { buildReconciliationSummary } from "./reconciliation-loop.mjs";
 
+export const ACCOUNTING_PROVENANCE = Object.freeze({
+  TOTAL_ACCOUNTED_WALLET_PLUS_POSITIONS: "accounted_wallet_plus_positions",
+  DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_EXTERNAL_REFERENCE: "supported_wallet_plus_positions_external_reference",
+  DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_CACHED_EXTERNAL_REFERENCE: "supported_wallet_plus_positions_cached_external_reference",
+  DISPLAY_PARTIAL_SUPPORTED_WALLET_PLUS_POSITIONS: "partial_supported_wallet_plus_positions",
+  ESTIMATED_AUTOMATION_WITH_VERIFIED_WALLET_FLOOR: "automation_estimate_with_verified_wallet_floor",
+  ESTIMATED_VERIFIED_WALLET_PLUS_TRACKED_PROTOCOLS: "verified_wallet_plus_tracked_protocols",
+  TRACKING_AUTOMATION_ESTIMATE_MINUS_VERIFIED_ASSETS: "automation_estimate_minus_verified_assets",
+});
+
+export const ASSET_FORMULA = Object.freeze({
+  CURRENT_WALLET_PLUS_MARKED_PROTOCOL_POSITIONS: "current_wallet_plus_marked_protocol_positions",
+  CURRENT_WALLET_PLUS_TRACKED_PROTOCOL_POSITIONS: "current_wallet_plus_tracked_protocol_positions",
+});
+
+export const CLAIM_LABEL = Object.freeze({
+  VERIFIED: "Verified",
+  INFERRED: "Inferred",
+  UNVERIFIED: "Unverified",
+  CONTRADICTED: "Contradicted",
+});
+
 function positionAssetSymbol(position = {}) {
   const pair = Array.isArray(position.pair) ? position.pair : [];
   return String(pair[0] || "position").toLowerCase();
@@ -149,19 +171,21 @@ export function buildCapitalSummarySlice({
   const protocolDeployedUsd = deployedUsd;
   const currentTotalUsd = displayTotalUsd;
   const displayTotalUsdSource = walletCoverage === "full_external"
-    ? "supported_wallet_plus_positions_external_reference"
+    ? ACCOUNTING_PROVENANCE.DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_EXTERNAL_REFERENCE
     : walletCoverage === "full_external_stale"
-      ? "supported_wallet_plus_positions_cached_external_reference"
-      : "partial_supported_wallet_plus_positions";
+      ? ACCOUNTING_PROVENANCE.DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_CACHED_EXTERNAL_REFERENCE
+      : ACCOUNTING_PROVENANCE.DISPLAY_PARTIAL_SUPPORTED_WALLET_PLUS_POSITIONS;
   const walletCoverageNotExact = walletCoverage !== "full_rpc";
   const capitalPlanRefillRequiredUsd = Number.isFinite(executorEstimatedAssetValueUsd)
     ? roundUsd(executorEstimatedAssetValueUsd)
     : null;
-  const executorEstimatedTotalUsd = null;
-  const executorEstimateDeltaUsd = null;
+  const executorEstimatedTotalUsd = walletCoverage === "full_rpc"
+    ? finiteNumber(executorEstimatedAssetValueUsd)
+    : null;
+  const executorEstimateDeltaUsd = positiveRoundedDelta(executorEstimatedTotalUsd, currentTotalUsd);
   const referenceFullWalletGapUsd = positiveRoundedDelta(fullWalletUsd, currentTotalUsd);
   const planGapUsd = null;
-  const protocolTrackingGapUsd = null;
+  const protocolTrackingGapUsd = executorEstimateDeltaUsd;
   const estimatedUntrackedProtocolUsd = Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
     ? protocolTrackingGapUsd
     : null;
@@ -172,15 +196,12 @@ export function buildCapitalSummarySlice({
     ? roundUsd(currentWalletUsd + estimatedProtocolDeployedUsd)
     : roundUsd(currentTotalUsd);
   const estimatedTotalUsdSource = Number.isFinite(estimatedUntrackedProtocolUsd)
-    ? "automation_estimate_with_verified_wallet_floor"
-    : "verified_wallet_plus_tracked_protocols";
+    ? ACCOUNTING_PROVENANCE.ESTIMATED_AUTOMATION_WITH_VERIFIED_WALLET_FLOOR
+    : ACCOUNTING_PROVENANCE.ESTIMATED_VERIFIED_WALLET_PLUS_TRACKED_PROTOCOLS;
   const trackingGapSource = Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
-    ? "automation_estimate_minus_verified_assets"
+    ? ACCOUNTING_PROVENANCE.TRACKING_AUTOMATION_ESTIMATE_MINUS_VERIFIED_ASSETS
     : null;
-  const warningThresholdUsd = Math.max(10, accountedUsd * 0.1);
-  const accountingWarning = Number.isFinite(executorEstimateDeltaUsd) && Math.abs(executorEstimateDeltaUsd) > warningThresholdUsd
-    ? "automation_plan_estimate_differs_from_wallet_scan"
-    : null;
+  const accountingWarning = null;
   const needsReconciliation =
     walletCoverageNotExact ||
     walletScanErrorCount > 0 ||
@@ -198,8 +219,15 @@ export function buildCapitalSummarySlice({
       : "needs_reconciliation"
     : "reconciled";
   const assetFormula = everyProtocolPositionMarked
-    ? "current_wallet_plus_marked_protocol_positions"
-    : "current_wallet_plus_tracked_protocol_positions";
+    ? ASSET_FORMULA.CURRENT_WALLET_PLUS_MARKED_PROTOCOL_POSITIONS
+    : ASSET_FORMULA.CURRENT_WALLET_PLUS_TRACKED_PROTOCOL_POSITIONS;
+  const assetClaimLabel = accountingWarning
+    ? CLAIM_LABEL.CONTRADICTED
+    : Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
+      ? CLAIM_LABEL.INFERRED
+      : assetConfidence === "verified_current"
+        ? CLAIM_LABEL.VERIFIED
+        : CLAIM_LABEL.UNVERIFIED;
   const baseSummary = {
     schemaVersion: 1,
     generatedAt,
@@ -211,7 +239,7 @@ export function buildCapitalSummarySlice({
     capitalPlanRefillRequiredUsd,
     accountingWarning,
     totalUsd: accountedUsd,
-    totalUsdSource: "accounted_wallet_plus_positions",
+    totalUsdSource: ACCOUNTING_PROVENANCE.TOTAL_ACCOUNTED_WALLET_PLUS_POSITIONS,
     displayWalletUsd,
     displayTotalUsd: roundUsd(displayTotalUsd),
     displayTotalUsdSource,
@@ -224,6 +252,7 @@ export function buildCapitalSummarySlice({
     estimatedCurrentTotalUsd,
     estimatedTotalUsdSource,
     assetFormula,
+    assetClaimLabel,
     assetConfidence,
     assetHeadline: assetConfidence === "verified_minimum" ? "Verified minimum assets" : "Current total assets",
     estimatedAssetHeadline: Number.isFinite(estimatedUntrackedProtocolUsd)

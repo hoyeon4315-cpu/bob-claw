@@ -1,5 +1,6 @@
 import { getStrategyCaps, validateStrategyCapsConfig } from "../../config/strategy-caps.mjs";
 import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
+import { evaluateAssetCoverageGuard } from "./asset-coverage-guard.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
 import {
   applyColdStartClampToIntent,
@@ -186,6 +187,7 @@ export async function evaluateIntentPolicies({
     evaluateLeverageCollateralRule({ strategy: strategyForPolicy, intent: effectiveIntent, now }),
     evaluateStaleQuote({ intent: effectiveIntent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
     evaluateApprovalHygiene({ intent: effectiveIntent, now }),
+    evaluateAssetCoverageGuard({ intent: effectiveIntent, riskContext, now }),
     evaluateTinyLiveCanaryPolicy({
       intent: effectiveIntent,
       strategyCaps,

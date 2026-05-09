@@ -77,7 +77,7 @@ test("dev-agent bridge converts remediation work orders into safe coding task sp
   assert.equal(task.source.kind, "route_remediation_work_order");
   assert.deepEqual(task.lifecycle, {
     stage: "proposed",
-    allowedStages: ["proposed", "scoped", "submitted", "validated", "accepted", "rejected"],
+    allowedStages: ["proposed", "scoped", "submitted", "validated", "accepted", "rejected", "revise_task"],
     runtimeAuthority: "none",
     requiresCommittedDiff: true,
   });
@@ -89,6 +89,35 @@ test("dev-agent bridge converts remediation work orders into safe coding task sp
   assert.deepEqual(task.writeScope, ["src/strategy/", "src/executor/policy/", "test/"]);
   assert.deepEqual(task.requiredTests, ["route adapter test"]);
   assert.ok(task.instructions.some((line) => line.includes("proposer -> policy -> signer")));
+});
+
+test("dev-agent bridge reclassifies stale or unverified work orders as REVISE_TASK", () => {
+  const report = buildDevAgentAutomationBridge({
+    routeRemediation: {
+      generatedAt: NOW,
+      workOrders: [
+        workOrder({
+          candidateId: "stale-line-ref",
+          status: "ready_for_coding",
+          staleEvidence: true,
+          currentHeadVerified: false,
+          evidenceLabels: ["Unverified"],
+          userProvidedLineRefs: ["src/executor/policy/ev-gate.mjs:271"],
+        }),
+      ],
+    },
+    now: NOW,
+  });
+
+  assert.equal(report.tasks.length, 1);
+  assert.equal(report.summary.readyTaskCount, 0);
+  assert.equal(report.summary.reviseTaskCount, 1);
+  const [task] = report.tasks;
+  assert.equal(task.queueStatus, "REVISE_TASK");
+  assert.equal(task.lifecycle.stage, "revise_task");
+  assert.equal(task.safety.allowedToExecuteLive, false);
+  assert.deepEqual(task.evidenceLabels, ["Unverified"]);
+  assert.ok(task.instructions.some((line) => line.includes("Re-check every user-provided number or line reference")));
 });
 
 test("dev-agent bridge converts discovery opportunities and de-duplicates remediation-covered items", () => {

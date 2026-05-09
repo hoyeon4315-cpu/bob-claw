@@ -732,6 +732,55 @@ test("capital summary uses wallet plus marked protocol positions as current tota
   });
 });
 
+test("capital summary surfaces trusted automation protocol tracking gaps without changing current total", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 250,
+      walletCoverage: "full_rpc",
+      items: [{ sym: "usdc", usd: 250 }],
+      assetUniverse: {
+        status: "closed",
+        unknownTargetCount: 0,
+      },
+      unknownAssetBalanceCount: 0,
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "a",
+          label: "Deposit USDC to YO",
+          chain: "base",
+          protocol: "yo",
+          pair: ["usdc"],
+          capUsd: 10,
+          valueUsd: 10,
+          markSource: "protocol_position_mark",
+          markFreshness: "fresh",
+          markConfidence: "verified_current",
+          markObservedAt: "2026-05-03T12:00:00.000Z",
+        },
+      ],
+    },
+    executorEstimatedAssetValueUsd: 300,
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.currentWalletUsd, 250);
+  assert.equal(slice.protocolDeployedUsd, 10);
+  assert.equal(slice.currentTotalUsd, 260);
+  assert.equal(slice.executorEstimatedTotalUsd, 300);
+  assert.equal(slice.executorEstimateDeltaUsd, 40);
+  assert.equal(slice.protocolTrackingGapUsd, 40);
+  assert.equal(slice.estimatedUntrackedProtocolUsd, 40);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 50);
+  assert.equal(slice.estimatedCurrentTotalUsd, 300);
+  assert.equal(slice.trackingGapSource, "automation_estimate_minus_verified_assets");
+  assert.equal(slice.reconciliationGapUsd, 40);
+  assert.equal(slice.autoExecutionSafe, false);
+  assert.equal(slice.invariantViolations.some((item) => item.code === "reconciliation_gap"), true);
+  assert.equal(slice.assetClaimLabel, "Inferred");
+});
+
 test("capital summary keeps unknown asset universe gaps out of exact confidence", () => {
   const slice = buildCapitalSummarySlice({
     walletHoldings: {

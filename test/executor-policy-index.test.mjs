@@ -87,6 +87,59 @@ test("policy index allows intent when risk context is absent", async () => {
   assert.ok(!policy.results.some((r) => r.policy === "concentration_guard"));
 });
 
+test("policy index blocks opening exposure when asset coverage has unknown tokens", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: baseIntent({
+      intentType: "deposit",
+      metadata: {
+        exposureAction: "open",
+        assetCoverage: {
+          status: "needs_review",
+          unknownAssetBalanceCount: 1,
+          unknownAssetBalances: [{ chain: "base", token: "0x1234567890123456789012345678901234567890" }],
+        },
+      },
+    }),
+    auditRecords: [],
+    now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
+  });
+
+  assert.equal(policy.decision, "BLOCK");
+  assert.ok(policy.blockers.includes("asset_coverage_gap_blocks_new_exposure"));
+  const assetCoverageResult = policy.results.find((r) => r.policy === "asset_coverage_guard");
+  assert.ok(assetCoverageResult);
+  assert.equal(assetCoverageResult.decision, "BLOCK");
+  assert.equal(assetCoverageResult.evidence.openingOrIncreasing, true);
+});
+
+test("policy index allows exit/unwind/redeem with asset coverage warning", async () => {
+  const policy = await evaluateIntentPolicies({
+    intent: baseIntent({
+      intentType: "redeem",
+      amountUsd: 50,
+      metadata: {
+        exposureAction: "redeem",
+        assetCoverage: {
+          status: "needs_review",
+          unknownAssetBalanceCount: 1,
+          unknownAssetBalances: [{ chain: "base", token: "0x1234567890123456789012345678901234567890" }],
+        },
+      },
+    }),
+    auditRecords: [],
+    now: "2026-04-22T00:00:00.000Z",
+    killSwitchPath: null,
+  });
+
+  assert.equal(policy.decision, "ALLOW");
+  assert.ok(!policy.blockers.includes("asset_coverage_gap_blocks_new_exposure"));
+  const assetCoverageResult = policy.results.find((r) => r.policy === "asset_coverage_guard");
+  assert.ok(assetCoverageResult);
+  assert.equal(assetCoverageResult.decision, "ALLOW");
+  assert.deepEqual(assetCoverageResult.warnings, ["asset_coverage_gap_exit_unwind_redeem_only"]);
+});
+
 test("policy index blocks Gateway intents when Gateway availability is paused", async () => {
   const policy = await evaluateIntentPolicies({
     intent: baseIntent({

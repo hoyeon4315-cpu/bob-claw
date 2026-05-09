@@ -280,6 +280,37 @@ test("portfolio exit reconciles zero share balances as closed", async () => {
   assert.equal(appended[0].redeemProof.proofSource, "erc20_balance_zero");
 });
 
+test("portfolio exit records residual shares after a partial exit without auto-redeeming again", async () => {
+  const appended = [];
+  const executions = await executeReadyMerklPortfolioExits({
+    exitReady: [{
+      positionId: "p1",
+      opportunityId: "opp-1",
+      triggers: ["portfolio_chain_target_rebalance"],
+    }],
+    positions: [position()],
+    queue: { queue: [queueItem()] },
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    executePositionImpl: async () => ({
+      observedAt: "2026-04-24T06:55:00.000Z",
+      settlementStatus: "position_closed",
+      signerResult: { broadcast: { txHash: "0xpartial" } },
+      redeemProof: { status: "delivered", observedDelta: "200000", requiredDelta: "190000" },
+      shareBalanceBefore: { balance: "250000", rpcUrl: "mock" },
+      shareBalanceAfter: { balance: "50000", rpcUrl: "mock" },
+    }),
+    appendRecord: async (record) => appended.push(record),
+  });
+
+  assert.equal(executions[0].status, "position_closed_with_residual");
+  assert.equal(appended.length, 2);
+  assert.equal(appended[0].event, "position_exit_confirmed");
+  assert.equal(appended[1].event, "position_exit_residual_detected");
+  assert.equal(appended[1].status, "open");
+  assert.equal(appended[1].residualShareBalance, "50000");
+  assert.equal(appended[1].autoRedeemAttempted, false);
+});
+
 test("ERC4626 portfolio exit stamps expected target for signer semantic validation", async () => {
   const calls = [];
   let capturedIntent = null;

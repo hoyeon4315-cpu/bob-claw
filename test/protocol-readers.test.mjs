@@ -54,6 +54,49 @@ test("erc4626 reader returns position for non-zero shares", async () => {
   assert.equal(p.chain, "base");
 });
 
+test("erc4626 reader is chain-generic for another vault fixture", async () => {
+  const _providerFactory = makeMockProvider({
+    "ethereum:0xethvault": {
+      balanceOf: () => 50n,
+      convertToAssets: (s) => s * 3n,
+      asset: () => "0xunderlyingeth",
+      decimals: () => 6,
+      symbol: () => "steakUSDT",
+    },
+  });
+  const r = await readErc4626({
+    chain: "ethereum",
+    walletAddress: "0xwallet",
+    params: { vaultAddress: "0xEthVault" },
+    _providerFactory,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.positions.length, 1);
+  assert.equal(r.positions[0].assetBalance, "150");
+  assert.equal(r.positions[0].symbol, "steakUSDT");
+  assert.equal(r.positions[0].chain, "ethereum");
+});
+
+test("erc4626 reader returns error envelope when vault read fails", async () => {
+  const _providerFactory = makeMockProvider({
+    "ethereum:0xbrokenvault": {
+      balanceOf: () => {
+        throw new Error("missing revert data");
+      },
+    },
+  });
+  const r = await readErc4626({
+    chain: "ethereum",
+    walletAddress: "0xwallet",
+    params: { vaultAddress: "0xBrokenVault" },
+    _providerFactory,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, "rpc_failed");
+  assert.deepEqual(r.positions, []);
+  assert.match(r.error, /missing revert data/);
+});
+
 test("erc4626 reader returns empty positions on zero shares", async () => {
   const _providerFactory = makeMockProvider({
     "base:0xvault": {

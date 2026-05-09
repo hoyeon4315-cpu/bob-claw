@@ -176,6 +176,115 @@ test("evGate allows safety-critical unmeasured emergency unwinds", () => {
   assert.equal(verdict.evidence.bypassReason, "safety_critical_intent");
 });
 
+test("evGate allows exact approval children only with matching parent EV evidence and hash", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "approve_exact",
+      expectedNetUsd: undefined,
+      approval: {
+        mode: "per_tx",
+        token: "0x0000000000000000000000000000000000000001",
+        spender: "0x0000000000000000000000000000000000000002",
+        amount: "1000000",
+      },
+      metadata: {
+        parentIntentHash: "0xparent",
+        parentEvEvidenceHash: "0xevidence",
+        parentIntent: {
+          strategyId: "across-bridge",
+          chain: "base",
+          intentHash: "0xparent",
+          approval: {
+            token: "0x0000000000000000000000000000000000000001",
+            spender: "0x0000000000000000000000000000000000000002",
+            amount: "1000000",
+            mode: "per_tx",
+          },
+        },
+        parentEvEvidence: {
+          allow: true,
+          strategyId: "across-bridge",
+          chain: "base",
+          expectedNetUsd: 1.2,
+          requiredNetUsd: 0.4,
+        },
+      },
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "parent_ev_approved_exact_approval");
+});
+
+test("evGate rejects parentIntentId-only approval children", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "approve_exact",
+      expectedNetUsd: undefined,
+      approval: {
+        mode: "per_tx",
+        token: "0x0000000000000000000000000000000000000001",
+        spender: "0x0000000000000000000000000000000000000002",
+        amount: "1000000",
+      },
+      metadata: {
+        parentIntentId: "parent-only-is-not-proof",
+      },
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
+});
+
+test("evGate does not bypass approve_max children", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "approve_max",
+      expectedNetUsd: undefined,
+      approval: {
+        mode: "unlimited",
+        token: "0x0000000000000000000000000000000000000001",
+        spender: "0x0000000000000000000000000000000000000002",
+        amount: "max",
+        isUnlimited: true,
+      },
+      metadata: {
+        parentIntentHash: "0xparent",
+        parentEvEvidenceHash: "0xevidence",
+        parentIntent: {
+          strategyId: "across-bridge",
+          chain: "base",
+          intentHash: "0xparent",
+          approval: {
+            token: "0x0000000000000000000000000000000000000001",
+            spender: "0x0000000000000000000000000000000000000002",
+            amount: "max",
+            mode: "unlimited",
+          },
+        },
+        parentEvEvidence: {
+          allow: true,
+          strategyId: "across-bridge",
+          chain: "base",
+          expectedNetUsd: 1.2,
+          requiredNetUsd: 0.4,
+        },
+      },
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
+});
+
 test("evGate uses shared tiny-canary cost floor for sparse tiny_live_canary history", () => {
   const required = tinyCanarySameChainRoundTripCostUsd({ chain: "base" });
   const verdict = evGate(

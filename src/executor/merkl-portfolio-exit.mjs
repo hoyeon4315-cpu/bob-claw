@@ -364,6 +364,36 @@ function exitRecord({ evaluation, execution }) {
   };
 }
 
+function bigintOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function residualShareRecord({ evaluation, execution }) {
+  const residual = bigintOrNull(execution?.shareBalanceAfter?.balance);
+  if (residual === null || residual <= 0n) return null;
+  return {
+    schemaVersion: 1,
+    event: "position_exit_residual_detected",
+    status: "open",
+    observedAt: execution.observedAt,
+    positionId: evaluation.positionId,
+    opportunityId: evaluation.opportunityId,
+    triggers: evaluation.triggers,
+    txHash: execution.signerResult?.broadcast?.txHash || null,
+    residualShareBalance: residual.toString(),
+    shareBalanceBefore: execution.shareBalanceBefore?.balance || null,
+    shareBalanceAfter: execution.shareBalanceAfter?.balance || null,
+    redeemProof: execution.redeemProof || null,
+    autoRedeemAttempted: false,
+    residualReason: "partial_exit_share_balance_remaining",
+  };
+}
+
 function executionErrorPayload(error) {
   return {
     name: error?.name || "Error",
@@ -435,12 +465,19 @@ export async function executeReadyMerklPortfolioExits({
         timeoutMs,
       });
       const record = execution.settlementStatus === "position_closed" ? exitRecord({ evaluation, execution }) : null;
+      const residualRecord = record ? residualShareRecord({ evaluation, execution }) : null;
       if (record) await appendRecord(record);
+      if (residualRecord) await appendRecord(residualRecord);
       executions.push({
         evaluation,
         execution,
         record,
-        status: execution.settlementStatus === "position_closed" ? "position_closed" : execution.settlementStatus,
+        residualRecord,
+        status: residualRecord
+          ? "position_closed_with_residual"
+          : execution.settlementStatus === "position_closed"
+            ? "position_closed"
+            : execution.settlementStatus,
       });
     } catch (error) {
       if (isZeroShareExitError(error)) {
