@@ -424,6 +424,19 @@ test("selects the highest priority ready candidate after gas and cap checks", ()
   assert.equal(selection.selected.queueItem.opportunityId, "ethereum");
 });
 
+test("selection can be scoped to one Merkl opportunity id", () => {
+  const highPriority = queueItem({ opportunityId: "high", priorityScore: 200 });
+  const requested = queueItem({ opportunityId: "requested", priorityScore: 100 });
+
+  const selection = selectMerklCanaryAutopilotCandidate(
+    { queue: [highPriority, requested] },
+    { opportunityId: "merkl:requested" },
+  );
+
+  assert.equal(selection.readyCount, 1);
+  assert.equal(selection.selected.queueItem.opportunityId, "requested");
+});
+
 test("batch selection spreads Merkl canaries across chains before repeating a chain", () => {
   const ethereumA = queueItem({ opportunityId: "ethereum-a", chain: "ethereum", priorityScore: 130, executionReadiness: {
     status: "inventory_ready",

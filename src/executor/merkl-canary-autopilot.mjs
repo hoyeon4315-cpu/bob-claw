@@ -309,7 +309,13 @@ function matchingPortfolioGraduationRequest(queueItem = {}, requestsByOpportunit
 
 export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const portfolioGraduationRequests = graduationRequestByOpportunity(options.graduationCanaryRequests);
+  const opportunityFilter = options.opportunityId ? String(options.opportunityId) : null;
   const candidates = (queue.queue || [])
+    .filter((queueItem) => {
+      if (!opportunityFilter) return true;
+      const opportunityId = String(queueItem?.opportunityId || "");
+      return opportunityId === opportunityFilter || `merkl:${opportunityId}` === opportunityFilter;
+    })
     .map((queueItem) => {
       const refreshedItem = options.inventorySnapshot || options.canaryExecutions
         ? applyMerklCanaryExecutionReadiness(queueItem, {
@@ -800,6 +806,7 @@ export async function runMerklCanaryAutopilot({
   execute = false,
   write = false,
   queuePath = join(config.dataDir, "merkl-canary-queue.json"),
+  opportunityId = null,
   socketPath,
   timeoutMs,
   maxUsd = null,
@@ -857,6 +864,7 @@ export async function runMerklCanaryAutopilot({
     ? Math.max(requestedMaxCandidates * 6, requestedMaxCandidates + 5)
     : requestedMaxCandidates;
   const selection = selectMerklCanaryAutopilotCandidates(queue, {
+    opportunityId,
     maxUsd,
     maxCandidates: selectionMaxCandidates,
     maxPerChain,

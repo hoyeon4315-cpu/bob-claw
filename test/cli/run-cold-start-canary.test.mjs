@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildColdStartExecuteArgs,
   buildColdStartCanaryPlan,
   executeColdStartCanary,
 } from "../../src/cli/run-cold-start-canary.mjs";
@@ -88,4 +89,53 @@ test("cold-start canary execute invokes radar promote at most once and records n
   assert.equal(calls, 1);
   assert.equal(result.outcome, "not_broadcast");
   assert.equal(result.reason, "radar_promote_did_not_return_receipt");
+});
+
+test("cold-start execute uses scoped Merkl canary autopilot live path", () => {
+  const command = buildColdStartExecuteArgs({
+    candidateId: "merkl:13747891056392346282",
+    intent: { amountUsd: 25 },
+  });
+
+  assert.equal(command.command, "npm");
+  assert.deepEqual(command.args, [
+    "run",
+    "executor:merkl-canary-autopilot",
+    "--",
+    "--execute",
+    "--json",
+    "--max-candidates=1",
+    "--opportunity-id=13747891056392346282",
+    "--max-usd=25",
+  ]);
+});
+
+test("cold-start execute reports confirmed broadcast from Merkl autopilot tx hash", async () => {
+  const result = await executeColdStartCanary({
+    plan: {
+      status: "ready",
+      selectedCandidate: { candidateId: "merkl:opp-1" },
+      selectedIntent: { strategyId: "stablecoin_spread_loop", opportunityId: "opp-1", amountUsd: 25 },
+    },
+    runRadarPromote: async () => ({
+      ok: true,
+      stdout: JSON.stringify({
+        status: "delivered",
+        execution: {
+          stepResults: [
+            { id: "deposit", signerResult: { broadcast: { txHash: "0xabc" } } },
+          ],
+        },
+      }),
+    }),
+    pollReceipt: async ({ txHash }) => ({
+      lifecycle: { stage: "confirmed" },
+      broadcast: { txHash },
+    }),
+    now: "2026-05-09T01:05:00.000Z",
+  });
+
+  assert.equal(result.outcome, "broadcast_confirmed");
+  assert.equal(result.txHash, "0xabc");
+  assert.equal(result.receipt.broadcast.txHash, "0xabc");
 });

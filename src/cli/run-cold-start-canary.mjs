@@ -315,9 +315,32 @@ export async function buildColdStartCanaryPlan({
   };
 }
 
-function defaultRunRadarPromote({ candidateId, cwd }) {
+function merklOpportunityIdFromCandidateId(candidateId) {
+  const text = String(candidateId || "");
+  if (!text) return null;
+  return text.startsWith("merkl:") ? text.slice("merkl:".length) : text;
+}
+
+function buildColdStartExecuteArgs({ candidateId, intent = {} } = {}) {
+  const opportunityId = intent.opportunityId || merklOpportunityIdFromCandidateId(candidateId);
+  const args = [
+    "run",
+    "executor:merkl-canary-autopilot",
+    "--",
+    "--execute",
+    "--json",
+    "--max-candidates=1",
+  ];
+  if (opportunityId) args.push(`--opportunity-id=${opportunityId}`);
+  const amountUsd = Number(intent.amountUsd);
+  if (Number.isFinite(amountUsd) && amountUsd > 0) args.push(`--max-usd=${amountUsd}`);
+  return { command: "npm", args };
+}
+
+function defaultRunRadarPromote({ candidateId, cwd, intent = {} }) {
   return new Promise((resolvePromise) => {
-    const child = spawn("npm", ["run", "radar:promote", "--", "--execute", `--candidate-id=${candidateId}`], {
+    const command = buildColdStartExecuteArgs({ candidateId, intent });
+    const child = spawn(command.command, command.args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -339,12 +362,49 @@ function recordIntentHash(record = {}) {
   return record.intentHash || record.intent?.intentHash || record.lifecycle?.intentHash || record.metadata?.intentHash || null;
 }
 
-async function defaultPollReceipt({ intentHash, logsDir, timeoutMs = 600_000, intervalMs = 10_000 }) {
+function recordTxHash(record = {}) {
+  return (
+    record.txHash ||
+    record.broadcast?.txHash ||
+    record.receipt?.txHash ||
+    record.signerResult?.broadcast?.txHash ||
+    null
+  );
+}
+
+function parseJsonPayload(text = "") {
+  const raw = String(text || "");
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first < 0 || last <= first) return null;
+  try {
+    return JSON.parse(raw.slice(first, last + 1));
+  } catch {
+    return null;
+  }
+}
+
+function txHashesFromMerklAutopilotReport(report = {}) {
+  const txHashes = new Set();
+  const add = (value) => {
+    if (value) txHashes.add(String(value));
+  };
+  for (const step of report.execution?.stepResults || []) add(step.signerResult?.broadcast?.txHash);
+  for (const result of report.results || []) {
+    for (const step of result.execution?.stepResults || []) add(step.signerResult?.broadcast?.txHash);
+  }
+  for (const txHash of report.summary?.txHashes || []) add(txHash);
+  add(report.execution?.signerResult?.broadcast?.txHash);
+  return [...txHashes];
+}
+
+async function defaultPollReceipt({ intentHash, txHash, logsDir, timeoutMs = 900_000, intervalMs = 10_000 }) {
   const started = Date.now();
   while (Date.now() - started <= timeoutMs) {
     const records = await readJsonl(logsDir, "signer-audit").catch(() => []);
     const match = records.find((record) =>
-      intentHash && recordIntentHash(record) === intentHash &&
+      ((intentHash && recordIntentHash(record) === intentHash) ||
+        (txHash && String(recordTxHash(record) || "").toLowerCase() === String(txHash).toLowerCase())) &&
       (record.lifecycle?.stage === "confirmed" || record.receipt?.status === 1 || record.broadcast?.txHash),
     );
     if (match) return match;
@@ -391,6 +451,48 @@ export async function executeColdStartCanary({
       observedAt: now,
       outcome: "not_broadcast",
       reason: "radar_promote_did_not_return_receipt",
+      radarPromote: result,
+      plan,
+    };
+  }
+  const merklAutopilotReport = parseJsonPayload(result.stdout);
+  const [txHash] = txHashesFromMerklAutopilotReport(merklAutopilotReport);
+  if (txHash) {
+    const receipt = await pollReceipt({
+      intentHash: plan.selectedIntent?.intentHash,
+      txHash,
+      logsDir,
+    });
+    return receipt
+      ? {
+          schemaVersion: 1,
+          observedAt: now,
+          outcome: "broadcast_confirmed",
+          reason: null,
+          txHash,
+          receipt,
+          merklAutopilotReport,
+          radarPromote: result,
+          plan,
+        }
+      : {
+          schemaVersion: 1,
+          observedAt: now,
+          outcome: "not_broadcast",
+          reason: "signer_audit_receipt_not_found",
+          txHash,
+          merklAutopilotReport,
+          radarPromote: result,
+          plan,
+        };
+  }
+  if (merklAutopilotReport?.status === "blocked") {
+    return {
+      schemaVersion: 1,
+      observedAt: now,
+      outcome: "execute_blocked",
+      reason: merklAutopilotReport.blockedReason || "merkl_canary_autopilot_blocked",
+      merklAutopilotReport,
       radarPromote: result,
       plan,
     };
@@ -518,6 +620,7 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
 }
 
 export { runCli };
+export { buildColdStartExecuteArgs };
 
 if (IS_MAIN) {
   runCli().then((result) => {
