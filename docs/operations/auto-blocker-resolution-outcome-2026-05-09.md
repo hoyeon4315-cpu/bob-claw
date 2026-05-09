@@ -70,8 +70,10 @@ The dashboard build succeeded locally. Cloudflare deployment did not complete:
 - `source ~/.zshrc && npm run deploy:dashboard:cloudflare` failed in the
   sandbox with `TypeError: fetch failed`.
 - The elevated retry was rejected by the approval layer before execution.
-- The remote Pages `dashboard-status.json` still served `generatedAt:
-  2026-05-09T04:42:48.078Z` during verification, so this run did not confirm a
-  fresh dashboard deployment.
+- Remote Pages verification after the final push found partial hash parity only:
+  - `dashboard-status.json`: matches local `dashboard/public/dashboard-status.json`
+  - `live-runtime.json`: matches local `dashboard/public/live-runtime.json`
+  - `blocker-funnel.json`: does not match local `dashboard/public/blocker-funnel.json`
+  - `capital-routing-plan.json`: does not match local `dashboard/public/capital-routing-plan.json`
 
 Deployment remains the only objective item not completed by this run.
