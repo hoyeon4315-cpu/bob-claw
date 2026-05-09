@@ -1,4 +1,8 @@
 import { buildDefaultRiskPolicy } from "../../risk/policy.mjs";
+import {
+  strategyPauseResetFor,
+  strategyPauseResetTimestamp,
+} from "../../config/strategy-pause-state.mjs";
 
 const DEFAULT_RECENT_FAILURE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 export const CONSECUTIVE_FAILURE_RESET_INTENT_TYPE = "operator_reset_consecutive_failures";
@@ -37,6 +41,17 @@ function resumeAfterTimestamp(resumeAfter = null) {
   if (!resumeAfter) return null;
   const timestamp = new Date(resumeAfter).getTime();
   return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function effectiveResumeAfter({ strategyId = null, resumeAfter = null } = {}) {
+  const explicitMs = resumeAfterTimestamp(resumeAfter);
+  const committedReset = strategyPauseResetFor(strategyId);
+  const resetMs = strategyPauseResetTimestamp(committedReset);
+  if (resetMs === null) return { resumeAfter, resumeAfterMs: explicitMs, committedReset: null };
+  if (explicitMs !== null && explicitMs >= resetMs) {
+    return { resumeAfter, resumeAfterMs: explicitMs, committedReset };
+  }
+  return { resumeAfter: committedReset.resetAt, resumeAfterMs: resetMs, committedReset };
 }
 
 function isApprovalRevocationIntent(intent = {}) {
@@ -181,14 +196,17 @@ export function buildConsecutiveFailureState({
   intentId = null,
   recentFailureWindowMs = DEFAULT_RECENT_FAILURE_WINDOW_MS,
 } = {}) {
-  const resumeAfterMs = resumeAfterTimestamp(resumeAfter);
+  const resetScope = effectiveResumeAfter({ strategyId, resumeAfter });
+  const resumeAfterMs = resetScope.resumeAfterMs;
+  const activeResumeAfter = resetScope.resumeAfter;
+  const committedReset = resetScope.committedReset;
 
   // Strategy/chain-level: only broadcast failures count, and any successful
   // broadcast (or explicit operator reset event) clears the streak.
   const strategyClassifiedRecords = latestClassifiedRecords(auditRecords, {
     strategyId,
     chain,
-    resumeAfter,
+    resumeAfter: activeResumeAfter,
   });
   const strategyFailureWindow = countConsecutiveBroadcastFailures(strategyClassifiedRecords);
   const strategyConsecutiveFailures = strategyFailureWindow.count;
@@ -256,7 +274,8 @@ export function buildConsecutiveFailureState({
     policyRejectedCount: classifiedCounts.policyRejected,
     noTxFailureCount: classifiedCounts.noTxFailure,
     resetCount: classifiedCounts.reset,
-    resumeAfter,
+    resumeAfter: activeResumeAfter,
+    committedReset,
   };
 }
 
@@ -280,6 +299,7 @@ export function evaluateConsecutiveFailures({
         lastTerminalStatus: null,
         latestFailureAt: null,
         resumeAfter,
+        committedReset: strategyPauseResetFor(intent.strategyId) || null,
         bypassReason: "approval_revocation",
       },
     };
@@ -317,6 +337,7 @@ export function evaluateConsecutiveFailures({
       noTxFailureCount: state.noTxFailureCount,
       resetCount: state.resetCount,
       resumeAfter: state.resumeAfter,
+      committedReset: state.committedReset,
     },
   };
 }

@@ -72,7 +72,7 @@ test("consecutive failure state counts only terminal failures until the latest s
 });
 
 test("evaluateIntentPolicies blocks when the strategy already has three consecutive terminal failures", async () => {
-  const strategyId = "recursive_wrapped_btc_lending_loop";
+  const strategyId = "tokenized_reserve_sleeve";
   const policy = await evaluateIntentPolicies({
     intent: intentFixture({ strategyId }),
     auditRecords: [
@@ -109,21 +109,22 @@ test("evaluateIntentPolicies blocks when the strategy already has three consecut
 });
 
 test("consecutive failure state ignores pure circuit-breaker self rejections", () => {
+  const strategyId = "wrapped-btc-loop-base-moonwell";
   const state = buildConsecutiveFailureState({
-    strategyId: "gateway_native_asset_conversion_sleeve",
-    chain: "ethereum",
+    strategyId,
+    chain: "base",
     auditRecords: [
       {
-        strategyId: "gateway_native_asset_conversion_sleeve",
-        chain: "ethereum",
+        strategyId,
+        chain: "base",
         intentId: "real-fail-1",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
         lifecycle: { stage: "reverted" },
       },
       {
-        strategyId: "gateway_native_asset_conversion_sleeve",
-        chain: "ethereum",
+        strategyId,
+        chain: "base",
         intentId: "self-reject-1",
         timestamp: "2026-04-17T00:11:00.000Z",
         policyVerdict: "rejected",
@@ -131,8 +132,8 @@ test("consecutive failure state ignores pure circuit-breaker self rejections", (
         broadcast: null,
       },
       {
-        strategyId: "gateway_native_asset_conversion_sleeve",
-        chain: "ethereum",
+        strategyId,
+        chain: "base",
         intentId: "self-reject-2",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "rejected",

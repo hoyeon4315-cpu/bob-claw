@@ -74,7 +74,7 @@ test("uses committed graduation ladder as the live canary sizing cap", () => {
   }), {
     canaryExecutions: [
       {
-        observedAt: "2026-05-01T00:00:00.000Z",
+        observedAt: "2026-05-09T02:07:00.000Z",
         mode: "execute",
         status: "delivered",
         queueItem: {
@@ -88,7 +88,7 @@ test("uses committed graduation ladder as the live canary sizing cap", () => {
         realized: { netUsd: 0.05 },
       },
       {
-        observedAt: "2026-05-01T01:00:00.000Z",
+        observedAt: "2026-05-09T02:08:00.000Z",
         mode: "execute",
         status: "delivered",
         queueItem: {

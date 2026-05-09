@@ -218,8 +218,8 @@ async function runCapExceededDrill(rootDir) {
 }
 
 async function runConsecutiveFailureDrill(rootDir) {
-  const now = "2026-04-17T00:00:00.000Z";
-  const intent = baseIntent({ strategyId: "recursive_wrapped_btc_lending_loop" });
+  const now = "2026-05-01T00:00:10.000Z";
+  const intent = baseIntent();
   for (let index = 0; index < 3; index += 1) {
     await appendSignerAuditRecord(
       buildSignerAuditRecord({
@@ -242,7 +242,7 @@ async function runConsecutiveFailureDrill(rootDir) {
           name: "SimulatedExecutionFailure",
           message: `failure-${index + 1}`,
         },
-        observedAt: `2026-04-17T00:00:0${index}.000Z`,
+        observedAt: `2026-05-01T00:00:0${index}.000Z`,
       }),
       { rootDir },
     );

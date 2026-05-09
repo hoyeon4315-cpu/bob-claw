@@ -1,4 +1,8 @@
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../../config/small-capital-campaign-mode.mjs";
+import {
+  strategyPauseResetFor,
+  strategyPauseResetTimestamp,
+} from "../../config/strategy-pause-state.mjs";
 
 const DEFAULT_POLICY = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation;
 
@@ -153,6 +157,18 @@ function matchesQueueItem(record = {}, queueItem = {}) {
   return true;
 }
 
+function resetBoundaryForQueueItem(queueItem = {}) {
+  const reset = strategyPauseResetFor(recordStrategyId({ queueItem }));
+  const resetMs = strategyPauseResetTimestamp(reset);
+  if (resetMs === null) return { reset: null, resetMs: null };
+  return { reset, resetMs };
+}
+
+function isAfterResetBoundary(record = {}, resetMs = null) {
+  if (resetMs === null) return true;
+  return observedAtMs(record) > resetMs;
+}
+
 function normalizedPolicy(policy = DEFAULT_POLICY) {
   const candidate = policy || {};
   const rungs = Array.isArray(candidate.rungsUsd)
@@ -182,6 +198,7 @@ export function evaluateCanaryGraduation({
   now = new Date().toISOString(),
 } = {}) {
   const p = normalizedPolicy(policy);
+  const resetBoundary = resetBoundaryForQueueItem(queueItem);
   if (p.enabled === false) {
     return {
       status: "disabled",
@@ -191,7 +208,9 @@ export function evaluateCanaryGraduation({
       evidence: {},
     };
   }
-  const records = [...canaryExecutions, ...auditRecords].filter((record) => matchesQueueItem(record, queueItem));
+  const records = [...canaryExecutions, ...auditRecords]
+    .filter((record) => matchesQueueItem(record, queueItem))
+    .filter((record) => isAfterResetBoundary(record, resetBoundary.resetMs));
   const outcomes = records.map((record) => ({
     record,
     outcome: classifyCanaryOutcome(record),
@@ -252,6 +271,7 @@ export function evaluateCanaryGraduation({
       noTxSentCount: outcomes.filter(({ outcome }) => outcome.kind === "no_tx_sent").length,
       distinctWindowCount: distinctWindows.size,
       realizedLossUsd,
+      committedReset: resetBoundary.reset,
     },
   };
 }

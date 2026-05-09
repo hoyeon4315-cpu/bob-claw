@@ -21,13 +21,14 @@ const POLICY = Object.freeze({
   realizedDailyLossLockUsd: 25,
   maxSubstantiveFailures: 2,
 });
+const TEST_STRATEGY_ID = "test_canary_graduation_strategy";
 
 function queueItem(overrides = {}) {
   return {
     opportunityId: "opp-new",
     chain: "base",
     protocolId: "yo",
-    mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+    mappedStrategyId: TEST_STRATEGY_ID,
     ...overrides,
   };
 }
@@ -47,7 +48,7 @@ function delivered({
       opportunityId,
       chain: "base",
       protocolId,
-      mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+      mappedStrategyId: TEST_STRATEGY_ID,
     },
     sizing: { amountUsd },
     execution: { settlementStatus: "delivered", txHash: `0x${opportunityId}` },
@@ -170,7 +171,7 @@ test("blocks ladder graduation after substantive on-chain failures", () => {
           opportunityId: "opp-a",
           chain: "base",
           protocolId: "yo",
-          mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+          mappedStrategyId: TEST_STRATEGY_ID,
         },
         sizing: { amountUsd: 5 },
         execution: { settlementStatus: "reverted", txHash: "0xaaa" },
@@ -183,7 +184,7 @@ test("blocks ladder graduation after substantive on-chain failures", () => {
           opportunityId: "opp-b",
           chain: "base",
           protocolId: "yo",
-          mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+          mappedStrategyId: TEST_STRATEGY_ID,
         },
         sizing: { amountUsd: 10 },
         execution: { settlementStatus: "reverted", txHash: "0xbbb" },
