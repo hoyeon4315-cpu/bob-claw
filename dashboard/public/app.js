@@ -419,6 +419,7 @@ function LiveLaneCard() {
   const runtime = status.executorRuntime || {};
   const operations = window.OPERATIONS || status.operations?.allChainAutopilot || {};
   const execution = operations.execution || {};
+  const refill = operations.refill || {};
   const radar = window.RADAR || status.radar || {};
   const payback = status.payback || {};
   const blockerResolver = status.blockerResolver || {};
@@ -446,6 +447,13 @@ function LiveLaneCard() {
   const ladderMain = canaryLadder.enabled && ladderRungs.length ? `$${ladderRungs[0]}\u2192$${ladderRungs[ladderRungs.length - 1]}` : "off";
   const ladderSub = canaryLadder.noTxSentNeutral ? "auto sizing" : "review";
   const txBroadcastCount = Number(execution.txBroadcastCount || 0);
+  const refillUnresolvedCount = Number(refill.unresolvedCount || 0);
+  const refillBlockedCount = Number(refill.blockedCount || 0);
+  const refillTopBlocker = Array.isArray(refill.blockers) ? refill.blockers[0] : null;
+  const refillTopScope = Array.isArray(refill.affectedScopes) ? refill.affectedScopes[0] : null;
+  const refillTopAction = Array.isArray(refill.nextOperatorActions) ? refill.nextOperatorActions[0] : null;
+  const refillTopDryRun = Array.isArray(refill.dryRunCommands) ? refill.dryRunCommands[0] : null;
+  const refillTopSafeReset = Array.isArray(refill.safeResetCommands) ? refill.safeResetCommands[0] : null;
   const executionMain = execution.attemptedLive ? txBroadcastCount > 0 ? `${txBroadcastCount} tx` : "No tx" : "Idle";
   const executionSub = txBroadcastCount > 0 ? "policy approved" : friendlyBlockerLabel(execution.noTxReason || (execution.mode === "execute" ? "policy_no_tx" : "waiting"));
   const resolverActionable = Number(blockerResolver.resolverActionableCount || 0);
@@ -467,6 +475,12 @@ function LiveLaneCard() {
       main: executionMain,
       sub: executionSub,
       tone: txBroadcastCount > 0 ? "good" : execution.attemptedLive ? "warn" : "neutral"
+    },
+    {
+      label: "Refill",
+      main: refillUnresolvedCount > 0 ? `${refillUnresolvedCount} scoped` : refillBlockedCount > 0 ? `${refillBlockedCount} backlog` : "Clear",
+      sub: refillTopBlocker?.taxonomy ? friendlyBlockerLabel(refillTopBlocker.taxonomy) : refillTopBlocker?.reason ? friendlyBlockerLabel(refillTopBlocker.reason) : `${Number(refill.unaffectedJobCount || 0)} unaffected`,
+      tone: refillUnresolvedCount > 0 ? "warn" : refillBlockedCount > 0 ? "warn" : "neutral"
     },
     {
       label: "Radar",
@@ -571,7 +585,16 @@ function LiveLaneCard() {
       overflow: "hidden",
       textOverflow: "ellipsis"
     } }, cell.sub));
-  })));
+  })), refillTopBlocker ? /* @__PURE__ */ React.createElement("div", { style: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTop: "0.5px solid var(--line)",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 3,
+    fontSize: 8.4,
+    color: "var(--ink-3)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "Scope ", friendlyBlockerLabel(refillTopScope?.scopeType || refillTopBlocker.scope?.scopeType || "job"), " \xB7 ", refillTopScope?.chain || refillTopBlocker.chain || "chain", " \xB7 ", refillTopScope?.targetAsset || refillTopBlocker.asset || "asset", " \xB7 ", refillTopScope?.selectedMethod || refillTopBlocker.selectedMethod || "method"), /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "Waiting helps: ", refill.waitingHelps ? "yes" : "no", " \xB7 Next ", friendlyBlockerLabel(refillTopAction || refillTopBlocker.nextOperatorAction || "operator_review_required")), refillTopDryRun ? /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" } }, "Dry-run ", refillTopDryRun) : null, refillTopSafeReset ? /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" } }, "Safe reset ", refillTopSafeReset) : null) : null);
 }
 function RouteNode({ kind = "text", id, label }) {
   return /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, flexShrink: 1 } }, kind === "chain" && id ? /* @__PURE__ */ React.createElement(ChainLogo, { id, size: 16 }) : null, kind === "protocol" && id ? /* @__PURE__ */ React.createElement(ProtocolLogo, { id, size: 16 }) : null, /* @__PURE__ */ React.createElement("span", { style: {

@@ -487,6 +487,7 @@ function LiveLaneCard() {
   const runtime = status.executorRuntime || {};
   const operations = window.OPERATIONS || status.operations?.allChainAutopilot || {};
   const execution = operations.execution || {};
+  const refill = operations.refill || {};
   const radar = window.RADAR || status.radar || {};
   const payback = status.payback || {};
   const blockerResolver = status.blockerResolver || {};
@@ -528,6 +529,13 @@ function LiveLaneCard() {
     : 'off';
   const ladderSub = canaryLadder.noTxSentNeutral ? 'auto sizing' : 'review';
   const txBroadcastCount = Number(execution.txBroadcastCount || 0);
+  const refillUnresolvedCount = Number(refill.unresolvedCount || 0);
+  const refillBlockedCount = Number(refill.blockedCount || 0);
+  const refillTopBlocker = Array.isArray(refill.blockers) ? refill.blockers[0] : null;
+  const refillTopScope = Array.isArray(refill.affectedScopes) ? refill.affectedScopes[0] : null;
+  const refillTopAction = Array.isArray(refill.nextOperatorActions) ? refill.nextOperatorActions[0] : null;
+  const refillTopDryRun = Array.isArray(refill.dryRunCommands) ? refill.dryRunCommands[0] : null;
+  const refillTopSafeReset = Array.isArray(refill.safeResetCommands) ? refill.safeResetCommands[0] : null;
   const executionMain = execution.attemptedLive
     ? txBroadcastCount > 0
       ? `${txBroadcastCount} tx`
@@ -563,6 +571,16 @@ function LiveLaneCard() {
       main: executionMain,
       sub: executionSub,
       tone: txBroadcastCount > 0 ? 'good' : execution.attemptedLive ? 'warn' : 'neutral',
+    },
+    {
+      label: 'Refill',
+      main: refillUnresolvedCount > 0 ? `${refillUnresolvedCount} scoped` : refillBlockedCount > 0 ? `${refillBlockedCount} backlog` : 'Clear',
+      sub: refillTopBlocker?.taxonomy
+        ? friendlyBlockerLabel(refillTopBlocker.taxonomy)
+        : refillTopBlocker?.reason
+          ? friendlyBlockerLabel(refillTopBlocker.reason)
+          : `${Number(refill.unaffectedJobCount || 0)} unaffected`,
+      tone: refillUnresolvedCount > 0 ? 'warn' : refillBlockedCount > 0 ? 'warn' : 'neutral',
     },
     {
       label: 'Radar',
@@ -699,6 +717,35 @@ function LiveLaneCard() {
           );
         })}
       </div>
+      {refillTopBlocker ? (
+        <div style={{
+          marginTop: 6,
+          paddingTop: 6,
+          borderTop: '0.5px solid var(--line)',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          gap: 3,
+          fontSize: 8.4,
+          color: 'var(--ink-3)',
+        }}>
+          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Scope {friendlyBlockerLabel(refillTopScope?.scopeType || refillTopBlocker.scope?.scopeType || 'job')} · {refillTopScope?.chain || refillTopBlocker.chain || 'chain'} · {refillTopScope?.targetAsset || refillTopBlocker.asset || 'asset'} · {refillTopScope?.selectedMethod || refillTopBlocker.selectedMethod || 'method'}
+          </div>
+          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Waiting helps: {refill.waitingHelps ? 'yes' : 'no'} · Next {friendlyBlockerLabel(refillTopAction || refillTopBlocker.nextOperatorAction || 'operator_review_required')}
+          </div>
+          {refillTopDryRun ? (
+            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+              Dry-run {refillTopDryRun}
+            </div>
+          ) : null}
+          {refillTopSafeReset ? (
+            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+              Safe reset {refillTopSafeReset}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

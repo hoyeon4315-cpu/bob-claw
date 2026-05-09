@@ -85,8 +85,70 @@ test("all-chain autopilot dashboard slice keeps only public execution status", (
   assert.equal(slice.execution.readOnlyDashboard, true);
   assert.equal(slice.refill.blockedCount, 1);
   assert.equal(slice.refill.unresolvedCount, 1);
+  assert.equal(slice.refill.blockers[0].taxonomy, null);
   assert.equal(slice.topBlockers.some((item) => item.reason === "lifi_quote_rejected"), true);
   assert.equal(slice.nextAction, "resolve_refill_routes");
+});
+
+test("all-chain autopilot dashboard slice exposes scoped refill blocker recovery details", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-09T12:00:00.000Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 2,
+      autoRefillJobCount: 2,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "completed", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: { batchStatus: "succeeded", selectedCount: 1, successCount: 1, failedCount: 0, liveEligibleCount: 1, missingExecutorCount: 0 },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        jobId: "job-a",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        chain: "soneium",
+        asset: "wBTC.OFT",
+        targetAsset: "wBTC.OFT",
+        sourceChain: "avalanche",
+        sourceAsset: "0x0555",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        executorFamily: "lifi",
+        routeFamily: "cross_chain_bridge_route",
+        previewBlockedReason: "lifi_quote_rejected",
+        blockerTaxonomy: "method_specific_failure_lock",
+        blockerScope: {
+          scopeType: "method",
+          strategyId: "wrapped-btc-loop-base-moonwell",
+          chain: "soneium",
+          targetAsset: "wBTC.OFT",
+          sourceAsset: "0x0555",
+          selectedMethod: "cross_chain_bridge_lifi",
+          executorFamily: "lifi",
+          routeFamily: "cross_chain_bridge_route",
+        },
+        improvementType: "type_1_fixable_plumbing_blocker",
+        waitingHelps: true,
+        dryRunCommand: "npm run run:refill-job-stub -- --job-id=job-a --method=cross_chain_bridge_lifi --json",
+        safeResetCommand: null,
+        nextOperatorAction: "retry_after_route_provider_or_quote_state_changes",
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.unaffectedJobCount, 1);
+  assert.equal(slice.refill.waitingHelps, true);
+  assert.equal(slice.refill.affectedScopes[0].scopeType, "method");
+  assert.equal(slice.refill.affectedScopes[0].selectedMethod, "cross_chain_bridge_lifi");
+  assert.equal(slice.refill.blockers[0].improvementType, "type_1_fixable_plumbing_blocker");
+  assert.deepEqual(slice.refill.dryRunCommands, [
+    "npm run run:refill-job-stub -- --job-id=job-a --method=cross_chain_bridge_lifi --json",
+  ]);
+  assert.deepEqual(slice.refill.nextOperatorActions, ["retry_after_route_provider_or_quote_state_changes"]);
 });
 
 test("all-chain autopilot dashboard slice surfaces payback reserve restoration when refill blockers are cleared", () => {
@@ -612,6 +674,23 @@ test("treasury holdings slice normalizes latest inventory into dashboard balance
   assert.equal(slice.activeChainCount, 2);
   assert.equal(slice.refillRequiredCount, 3);
   assert.deepEqual(slice.items.map((item) => item.sym), ["eth", "wbtc"]);
+});
+
+test("treasury holdings slice does not use generatedAt as material source freshness", () => {
+  const slice = buildTreasuryHoldingsSlice(
+    [
+      {
+        observedAt: "2026-04-25T02:00:00.000Z",
+        summary: { estimatedWalletUsd: 20.5, activeChainCount: 1, supportedChainCount: 1 },
+        native: [{ chain: "base", asset: "ETH", actualDecimal: 0.01, estimatedUsd: 10, status: "ready" }],
+        tokens: [{ chain: "base", ticker: "wBTC.OFT", actualDecimal: 0.0001, estimatedUsd: 7, status: "below_target" }],
+      },
+    ],
+    { generatedAt: "2026-04-25T03:00:00.000Z" },
+  );
+
+  assert.equal(slice.items[0].sourceObservedAt, "2026-04-25T02:00:00.000Z");
+  assert.equal(slice.items[0].freshness, "stale");
 });
 
 test("capital summary treats unmarked deployed Merkl positions as verified minimum", () => {

@@ -71,6 +71,74 @@ const SOURCE_DEBITING_METHODS = new Set([
   "same_chain_native_to_token_swap",
   "gas_refuel_bridge_gas_zip",
 ]);
+const REFILL_BLOCKER_TAXONOMY = Object.freeze([
+  "system_wide_safety_blocker",
+  "route_specific_failure_lock",
+  "method_specific_failure_lock",
+  "asset_specific_policy_blocker",
+  "inventory_or_gas_gap",
+  "missing_executor_capability",
+  "missing_price_or_freshness_evidence",
+  "unknown_or_unapproved_asset",
+  "expected_net_unmeasured",
+  "real_negative_ev",
+  "operator_action_required",
+  "false_or_stale_blocker",
+]);
+const SYSTEM_WIDE_REFILL_BLOCKERS = new Set([
+  "kill_switch_active",
+  "kill_switch_present",
+  "auto_kill_triggered",
+  "paused_by_auto_kill",
+  "dev_lock_active",
+  "readiness_guard_blocked",
+  "signer_unavailable",
+  "signer_dead",
+  "key_missing",
+  "signer_key_missing",
+  "policy_authority_error",
+  "signer_execution_failed",
+]);
+const ROUTE_SPECIFIC_REFILL_BLOCKERS = new Set([
+  "routing_exhausted",
+  "no_route",
+  "bridge_pair_unsupported",
+  "route_unsupported",
+  "routing_unavailable",
+  "gateway_route_currently_unavailable",
+]);
+const METHOD_SPECIFIC_REFILL_BLOCKERS = new Set([
+  "max_consecutive_failures_reached",
+  "dex_quote_failed",
+  "lifi_quote_rejected",
+  "quote_unavailable",
+  "across_ticker_unsupported",
+  "execution_reverted",
+  "executor_output_below_refill_target",
+]);
+const INVENTORY_OR_GAS_REFILL_BLOCKERS = new Set([
+  "source_inventory_reserved",
+  "insufficient_funds",
+  "insufficient_source_balance",
+  "insufficient_native_gas_balance",
+  "insufficient_native_balance_for_lifi_gas",
+]);
+const MISSING_CAPABILITY_REFILL_BLOCKERS = new Set([
+  "cross_chain_token_refill_executor_missing",
+  "cross_chain_native_refill_executor_missing",
+  "same_chain_dex_executor_missing",
+  "executor_missing",
+  "adapter_missing",
+  "protocol_executor_missing",
+]);
+const OPERATOR_ACTION_REFILL_BLOCKERS = new Set([
+  "manual_operator_review_required",
+  "funding_source_missing",
+  "funding_source_manual_only",
+  "funding_source_manual_review",
+  "funding_source_rejected",
+  "requires_manual_funding",
+]);
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -80,6 +148,117 @@ function finiteNumber(value) {
 function timestampMs(value) {
   const parsed = new Date(value || 0).getTime();
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeReasonText(reason = null) {
+  return String(reason || "").trim().toLowerCase();
+}
+
+function refillBlockerTaxonomy(reason = null) {
+  const text = normalizeReasonText(reason);
+  if (!text) return null;
+  if (SYSTEM_WIDE_REFILL_BLOCKERS.has(text) || text.includes("kill_switch") || text.includes("auto_kill")) {
+    return "system_wide_safety_blocker";
+  }
+  if (ROUTE_SPECIFIC_REFILL_BLOCKERS.has(text)) return "route_specific_failure_lock";
+  if (METHOD_SPECIFIC_REFILL_BLOCKERS.has(text)) return "method_specific_failure_lock";
+  if (INVENTORY_OR_GAS_REFILL_BLOCKERS.has(text) || text.includes("gas_float") || text.includes("native_balance")) {
+    return "inventory_or_gas_gap";
+  }
+  if (MISSING_CAPABILITY_REFILL_BLOCKERS.has(text) || text.includes("executor_missing")) {
+    return "missing_executor_capability";
+  }
+  if (text.includes("inventory_not_live") || text.includes("refresh_error") || text.includes("stale") || text.includes("freshness") || text.includes("price")) {
+    return "missing_price_or_freshness_evidence";
+  }
+  if (text.includes("unknown_token") || text.includes("unapproved") || text.includes("whitelist")) {
+    return "unknown_or_unapproved_asset";
+  }
+  if (text.includes("expected_net_unmeasured") || text.includes("cost_unmeasured")) {
+    return "expected_net_unmeasured";
+  }
+  if (text.includes("unprofitable") || text.includes("negative_ev") || text.includes("economically_unjustified") || text.includes("below_receipt_cost")) {
+    return "real_negative_ev";
+  }
+  if (OPERATOR_ACTION_REFILL_BLOCKERS.has(text) || text.includes("operator")) {
+    return "operator_action_required";
+  }
+  if (text.includes("false") || text.includes("stale_blocker")) return "false_or_stale_blocker";
+  if (text.includes("policy")) return "asset_specific_policy_blocker";
+  return "operator_action_required";
+}
+
+function refillImprovementType(taxonomy = null) {
+  if (["route_specific_failure_lock", "method_specific_failure_lock", "missing_executor_capability", "false_or_stale_blocker"].includes(taxonomy)) {
+    return "type_1_fixable_plumbing_blocker";
+  }
+  if (["missing_price_or_freshness_evidence", "expected_net_unmeasured"].includes(taxonomy)) {
+    return "type_2_fixable_evidence_blocker";
+  }
+  if (["system_wide_safety_blocker", "asset_specific_policy_blocker", "unknown_or_unapproved_asset", "real_negative_ev"].includes(taxonomy)) {
+    return "type_3_real_policy_profitability_or_safety_blocker";
+  }
+  return "type_4_external_or_operator_blocker";
+}
+
+function waitingHelpsForRefillBlocker(taxonomy = null) {
+  return [
+    "route_specific_failure_lock",
+    "method_specific_failure_lock",
+    "missing_price_or_freshness_evidence",
+    "inventory_or_gas_gap",
+  ].includes(taxonomy);
+}
+
+function refillRouteFamily(method = null) {
+  const value = String(method || "");
+  if (value.includes("btc_intermediate")) return "btc_intermediate_route";
+  if (value.startsWith("cross_chain_bridge")) return "cross_chain_bridge_route";
+  if (value.startsWith("same_chain")) return "same_chain_swap_route";
+  if (value.startsWith("gas_refuel")) return "gas_refuel_route";
+  return value || null;
+}
+
+function refillExecutorFamily(method = null) {
+  const value = String(method || "");
+  if (value.includes("lifi")) return "lifi";
+  if (value.includes("across")) return "across";
+  if (value.includes("stargate")) return "stargate";
+  if (value.includes("gas_zip")) return "gas_zip";
+  if (value.includes("btc_intermediate")) return "gateway_btc_intermediate";
+  if (value.startsWith("same_chain")) return "native_dex";
+  if (value.startsWith("cross_chain_bridge_or_swap")) return "gateway_or_bridge";
+  return value || null;
+}
+
+function selectedRefillCandidate(job = {}, method = null) {
+  const candidates = Array.isArray(job.candidateMethods) ? job.candidateMethods : [];
+  return candidates.find((candidate) => candidate?.method === method) || null;
+}
+
+function refillSourceAsset(job = {}, selectedCandidate = null) {
+  return selectedCandidate?.source?.asset ||
+    selectedCandidate?.source?.ticker ||
+    selectedCandidate?.source?.symbol ||
+    selectedCandidate?.source?.token ||
+    job.fundingSource?.source?.asset ||
+    job.fundingSource?.source?.ticker ||
+    job.fundingSource?.source?.symbol ||
+    job.fundingSource?.source?.token ||
+    null;
+}
+
+function refillSourceChain(job = {}, selectedCandidate = null) {
+  return selectedCandidate?.source?.chain || job.fundingSource?.source?.chain || null;
+}
+
+function refillScopeType(taxonomy = null) {
+  if (taxonomy === "system_wide_safety_blocker") return "global_system";
+  if (taxonomy === "method_specific_failure_lock") return "method";
+  if (taxonomy === "route_specific_failure_lock") return "route";
+  if (taxonomy === "inventory_or_gas_gap") return "asset_inventory";
+  if (taxonomy === "missing_executor_capability") return "executor_capability";
+  return "job";
 }
 
 function jsonFromStdout(stdout = "") {
@@ -269,14 +448,17 @@ function routeExhaustionDeferral(routeAttemptReasons = []) {
 
 function routingExhaustedPreparation(preview = {}, routeAttemptReasons = []) {
   const deferral = routeExhaustionDeferral(routeAttemptReasons);
+  const lastAttemptMethod = [...(routeAttemptReasons || [])].reverse().find((item) => item?.method)?.method || null;
   return {
     ...preview,
     json: {
       ...(preview.json || {}),
+      forcedMethod: preview.json?.forcedMethod || lastAttemptMethod || null,
       preparation: {
         ...(preview.json?.preparation || {}),
         status: "deferred",
         blockedReason: "routing_exhausted",
+        executionMethod: preview.json?.preparation?.executionMethod || lastAttemptMethod || null,
         routeAttemptReasons,
         ...deferral,
       },
@@ -414,23 +596,83 @@ function refillExecutionRetryable(result = {}, { activeMethod = null } = {}) {
 function compactRefillExecution(job, preview, execution = null) {
   const executionStatus = execution ? refillExecutionStatus(execution) : null;
   const delivered = refillDeliveredStatus(executionStatus);
+  const selectedExecutionMethod = refillSelectedMethod(execution || preview, job.executionMethod);
+  const selectedCandidate = selectedRefillCandidate(job, selectedExecutionMethod);
+  const previewBlockedReason = refillPreparationReady(preview?.json) ? null : refillPreviewBlockedReason(preview);
+  const executionBlockedReason = execution ? refillExecutionBlockedReason(execution) : null;
+  const primaryBlocker = executionBlockedReason || previewBlockedReason || null;
+  const taxonomy = refillBlockerTaxonomy(primaryBlocker);
+  const sourceChain = refillSourceChain(job, selectedCandidate);
+  const sourceAsset = refillSourceAsset(job, selectedCandidate);
+  const dryRunCommand = [
+    "npm run run:refill-job-stub --",
+    `--job-id=${job.jobId}`,
+    selectedExecutionMethod ? `--method=${selectedExecutionMethod}` : null,
+    "--json",
+  ].filter(Boolean).join(" ");
+  const scopedSafeResetCommand =
+    (taxonomy === "false_or_stale_blocker" || primaryBlocker === "max_consecutive_failures_reached") && (job.strategyId || job.strategy || job.familyId)
+      ? `npm run executor:reset-consecutive-failures -- --strategy-id=${job.strategyId || job.strategy || job.familyId} --chain=${job.chain} --reason=operator_reviewed_scoped_refill_blocker`
+      : null;
+  const nextOperatorAction =
+    taxonomy === "system_wide_safety_blocker"
+      ? "review_system_safety_before_retry"
+      : taxonomy === "real_negative_ev"
+        ? "do_not_retry_until_positive_realized_net_evidence"
+        : taxonomy === "unknown_or_unapproved_asset"
+          ? "commit_asset_registry_or_whitelist_review_before_retry"
+          : taxonomy === "inventory_or_gas_gap"
+            ? "restore_scoped_inventory_or_gas_then_retry_dry_run"
+            : taxonomy === "missing_executor_capability"
+              ? "patch_executor_capability_or_select_supported_method"
+              : taxonomy === "missing_price_or_freshness_evidence"
+                ? "refresh_price_inventory_evidence_then_retry_dry_run"
+                : taxonomy === "route_specific_failure_lock" || taxonomy === "method_specific_failure_lock"
+                  ? "retry_after_route_provider_or_quote_state_changes"
+                  : "operator_review_required";
   return {
     jobId: job.jobId,
+    strategyId: job.strategyId || job.strategy || job.familyId || null,
     refillSource: job.autopilotRefillSource || job.jobSourceStore || null,
     chain: job.chain,
     asset: job.asset,
+    targetAsset: job.asset,
+    sourceChain,
+    sourceAsset,
     targetAmountDecimal: job.targetAmountDecimal ?? null,
     executionMethod: job.executionMethod,
-    selectedExecutionMethod: refillSelectedMethod(execution || preview, job.executionMethod),
+    selectedExecutionMethod,
+    executorFamily: refillExecutorFamily(selectedExecutionMethod),
+    routeFamily: refillRouteFamily(selectedExecutionMethod),
     previewStatus: execution ? null : refillPreviewStatus(preview),
-    previewBlockedReason: refillPreparationReady(preview?.json) ? null : refillPreviewBlockedReason(preview),
+    previewBlockedReason,
     routeAttemptReasons: preview?.json?.preparation?.routeAttemptReasons || [],
     routeDeferralReason: preview?.json?.preparation?.routeDeferralReason || null,
     routeDeferralAction: preview?.json?.preparation?.routeDeferralAction || null,
     attempted: Boolean(execution),
     executed: delivered,
     executionStatus,
-    executionBlockedReason: execution ? refillExecutionBlockedReason(execution) : null,
+    executionBlockedReason,
+    blockerTaxonomy: taxonomy,
+    blockerScope: taxonomy
+      ? {
+          scopeType: refillScopeType(taxonomy),
+          strategyId: job.strategyId || job.strategy || job.familyId || null,
+          chain: job.chain || null,
+          targetAsset: job.asset || null,
+          sourceAsset,
+          sourceChain,
+          selectedMethod: selectedExecutionMethod || null,
+          executorFamily: refillExecutorFamily(selectedExecutionMethod),
+          routeFamily: refillRouteFamily(selectedExecutionMethod),
+        }
+      : null,
+    improvementType: refillImprovementType(taxonomy),
+    waitingHelps: waitingHelpsForRefillBlocker(taxonomy),
+    dryRunCommand,
+    safeResetCommand: scopedSafeResetCommand,
+    nextOperatorAction,
+    taxonomyVersion: REFILL_BLOCKER_TAXONOMY.length,
   };
 }
 

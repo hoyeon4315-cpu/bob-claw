@@ -107,7 +107,7 @@ function inventoryItem(entry = {}, family, { inventoryObservedAt = null, generat
   const symbol = entry.ticker || entry.asset || entry.symbol || entry.name || "asset";
   const amount = Number(entry.actualDecimal);
   const usd = Number(entry.estimatedUsd);
-  const sourceObservedAt = observedAtOrFallback(entry.sourceObservedAt, entry.observedAt, entry.markObservedAt, inventoryObservedAt, generatedAt);
+  const sourceObservedAt = observedAtOrFallback(entry.sourceObservedAt, entry.observedAt, entry.markObservedAt, inventoryObservedAt);
   const priceObservedAt = observedAtOrFallback(entry.priceObservedAt, entry.valuation?.observedAt, entry.markObservedAt, sourceObservedAt);
   const priceSource = normalizePriceSource(entry, family, { sourceObservedAt, priceObservedAt });
   const priceFreshness = normalizePriceFreshness(entry, { priceObservedAt, generatedAt });

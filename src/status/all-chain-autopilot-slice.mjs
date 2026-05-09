@@ -78,13 +78,66 @@ function refillBlockers(refillExecutions = []) {
   return refillExecutions
     .filter((item) => !item.executed)
     .map((item) => ({
+      jobId: item.jobId || null,
+      strategyId: item.strategyId || null,
       chain: item.chain || null,
       asset: item.asset || null,
+      targetAsset: item.targetAsset || item.asset || null,
+      sourceChain: item.sourceChain || null,
+      sourceAsset: item.sourceAsset || null,
       reason: refillReason(item),
       selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
+      executorFamily: item.executorFamily || null,
+      routeFamily: item.routeFamily || null,
+      taxonomy: item.blockerTaxonomy || null,
+      scope: item.blockerScope || null,
+      improvementType: item.improvementType || null,
+      waitingHelps: item.waitingHelps === true,
+      dryRunCommand: item.dryRunCommand || null,
+      safeResetCommand: item.safeResetCommand || null,
+      nextOperatorAction: item.nextOperatorAction || null,
+      routeDeferralReason: item.routeDeferralReason || null,
+      routeDeferralAction: item.routeDeferralAction || null,
     }))
     .filter((item) => item.reason)
     .slice(0, 8);
+}
+
+function refillScopeKey(item = {}) {
+  const scope = item.scope || {};
+  return [
+    scope.scopeType || "job",
+    scope.strategyId || item.strategyId || "*",
+    scope.chain || item.chain || "*",
+    scope.targetAsset || item.targetAsset || item.asset || "*",
+    scope.sourceAsset || item.sourceAsset || "*",
+    scope.selectedMethod || item.selectedMethod || "*",
+    scope.executorFamily || item.executorFamily || "*",
+    scope.routeFamily || item.routeFamily || "*",
+  ].join("|");
+}
+
+function refillScopeSummary(refill = []) {
+  const affectedScopes = [...new Map(refill.map((item) => [refillScopeKey(item), {
+    scopeType: item.scope?.scopeType || "job",
+    strategyId: item.scope?.strategyId || item.strategyId || null,
+    chain: item.scope?.chain || item.chain || null,
+    targetAsset: item.scope?.targetAsset || item.targetAsset || item.asset || null,
+    sourceAsset: item.scope?.sourceAsset || item.sourceAsset || null,
+    selectedMethod: item.scope?.selectedMethod || item.selectedMethod || null,
+    executorFamily: item.scope?.executorFamily || item.executorFamily || null,
+    routeFamily: item.scope?.routeFamily || item.routeFamily || null,
+    taxonomy: item.taxonomy || null,
+    reason: item.reason || null,
+  }])).values()];
+  return {
+    affectedScopes,
+    waitingHelps: refill.some((item) => item.waitingHelps),
+    waitingHelpsCount: refill.filter((item) => item.waitingHelps).length,
+    dryRunCommands: unique(refill.map((item) => item.dryRunCommand)).slice(0, 4),
+    safeResetCommands: unique(refill.map((item) => item.safeResetCommand)).slice(0, 4),
+    nextOperatorActions: unique(refill.map((item) => item.nextOperatorAction)).slice(0, 4),
+  };
 }
 
 function unwrapCapitalManagerRefillJobsLatest(payload = null) {
@@ -281,6 +334,13 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
         executedCount: 0,
         blockedCount: 0,
         blockers: [],
+        affectedScopes: [],
+        unaffectedJobCount: 0,
+        waitingHelps: false,
+        waitingHelpsCount: 0,
+        dryRunCommands: [],
+        safeResetCommands: [],
+        nextOperatorActions: [],
       },
       portfolio: {
         status: null,
@@ -311,6 +371,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
 
   const summary = report.summary || {};
   const refill = refillBlockers(report.refillExecutions || []);
+  const refillScopes = refillScopeSummary(refill);
   const merklCanary = summary.merklCanary || {};
   const strategyDispatch = summary.strategyDispatch || {};
   const payback = summary.payback || {};
@@ -346,6 +407,13 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       unresolvedCount: refill.filter(refillNeedsLiveRemediation).length,
       manualBacklogCount,
       blockers: refill,
+      affectedScopes: refillScopes.affectedScopes,
+      unaffectedJobCount: Math.max(0, finiteCount(summary.refillJobCount) - refill.length),
+      waitingHelps: refillScopes.waitingHelps,
+      waitingHelpsCount: refillScopes.waitingHelpsCount,
+      dryRunCommands: refillScopes.dryRunCommands,
+      safeResetCommands: refillScopes.safeResetCommands,
+      nextOperatorActions: refillScopes.nextOperatorActions,
     },
     portfolio: {
       status: summary.portfolio?.status || null,

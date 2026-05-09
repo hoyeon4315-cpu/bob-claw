@@ -1734,6 +1734,18 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
 
   assert.equal(report.refillExecutions[0].previewStatus, "deferred");
   assert.equal(report.refillExecutions[0].previewBlockedReason, "routing_exhausted");
+  assert.equal(report.refillExecutions[0].blockerTaxonomy, "route_specific_failure_lock");
+  assert.equal(report.refillExecutions[0].blockerScope.scopeType, "route");
+  assert.equal(report.refillExecutions[0].blockerScope.chain, "soneium");
+  assert.equal(report.refillExecutions[0].blockerScope.targetAsset, "USDC");
+  assert.equal(report.refillExecutions[0].blockerScope.sourceAsset, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  assert.equal(report.refillExecutions[0].blockerScope.selectedMethod, "cross_chain_bridge_lifi");
+  assert.equal(report.refillExecutions[0].improvementType, "type_1_fixable_plumbing_blocker");
+  assert.equal(report.refillExecutions[0].waitingHelps, true);
+  assert.equal(
+    report.refillExecutions[0].dryRunCommand,
+    "npm run run:refill-job-stub -- --job-id=exhausted --method=cross_chain_bridge_lifi --json",
+  );
   assert.deepEqual(report.refillExecutions[0].routeAttemptReasons, [
     {
       method: "cross_chain_bridge_or_swap",
@@ -1753,6 +1765,111 @@ test("all-chain autopilot reports routing_exhausted after retryable providers re
   assert.equal(report.refillExecutions[0].routeDeferralAction, "defer_until_bridge_provider_supports_pair");
   assert.equal(report.summary.executionGate.liveCapableStepExecution, false);
   assert.equal(report.summary.executionGate.blockedReason, "preview_only");
+});
+
+test("all-chain autopilot continues unrelated refill jobs after a scoped route failure", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args);
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "BALANCED", actions: [] },
+          capitalPlan: { decision: "BALANCED", summary: { actionCount: 0, blockerCount: 0 } },
+          jobs: { summary: { jobCount: 0, estimatedAssetValueUsd: 0 }, jobs: [] },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 2 },
+          jobs: [
+            {
+              jobId: "route-fails",
+              strategyId: "wrapped-btc-loop-base-moonwell",
+              chain: "soneium",
+              asset: "wBTC.OFT",
+              executionMethod: "cross_chain_bridge_lifi",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "cross_chain_bridge_lifi",
+                  availability: "ready",
+                  source: { chain: "avalanche", token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c" },
+                  missingInputs: [],
+                },
+              ],
+            },
+            {
+              jobId: "unrelated-executes",
+              strategyId: "stablecoin-entry-exit-loop",
+              chain: "base",
+              asset: "USDC",
+              executionMethod: "same_chain_token_to_token_swap",
+              requiresManualReview: false,
+              fundingSource: { selectionStatus: "ready" },
+              candidateMethods: [
+                {
+                  method: "same_chain_token_to_token_swap",
+                  availability: "ready",
+                  source: { chain: "base", token: "0x4200000000000000000000000000000000000006" },
+                  missingInputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--job-id=route-fails")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: { preparation: { status: "blocked", blockedReason: "lifi_quote_rejected" } },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "same_chain_token_to_token_swap",
+          preparation: { status: "ready", executionMethod: "same_chain_token_to_token_swap" },
+          execution: args.includes("--execute") ? { settlementStatus: "delivered" } : null,
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  const failedRefill = report.refillExecutions.find((item) => item.jobId === "route-fails");
+  const executedRefill = report.refillExecutions.find((item) => item.jobId === "unrelated-executes");
+  assert.equal(report.refillExecutions.length, 2);
+  assert.equal(failedRefill?.blockerTaxonomy, "route_specific_failure_lock");
+  assert.equal(executedRefill?.executed, true);
+  assert.equal(report.summary.refillExecutedCount, 1);
+  assert.equal(seen.some((args) => args.includes("--job-id=unrelated-executes") && args.includes("--execute")), true);
 });
 
 test("all-chain autopilot classifies native refill route exhaustion as planner-actionable", async () => {
