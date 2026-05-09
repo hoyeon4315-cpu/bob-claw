@@ -65,15 +65,16 @@ attempt before the command could run. No workaround was attempted.
 
 ## Dashboard Deployment Status
 
-The dashboard build succeeded locally. Cloudflare deployment did not complete:
+The dashboard build and Cloudflare Pages deployment succeeded.
 
-- `source ~/.zshrc && npm run deploy:dashboard:cloudflare` failed in the
-  sandbox with `TypeError: fetch failed`.
-- The elevated retry was rejected by the approval layer before execution.
-- Remote Pages verification after the final push found partial hash parity only:
-  - `dashboard-status.json`: matches local `dashboard/public/dashboard-status.json`
-  - `live-runtime.json`: matches local `dashboard/public/live-runtime.json`
-  - `blocker-funnel.json`: does not match local `dashboard/public/blocker-funnel.json`
-  - `capital-routing-plan.json`: does not match local `dashboard/public/capital-routing-plan.json`
+- Deployment command:
+  `env BOB_CLAW_CF_PAGES_PROJECT=bob-claw-dashboard node src/cli/deploy-dashboard-cloudflare.mjs`
+- Production URL: `https://bob-claw-dashboard.pages.dev`
+- Deployment preview URL: `https://c2b0d331.bob-claw-dashboard.pages.dev`
+- Remote Pages verification after deployment found hash parity for:
+  - `dashboard-status.json`
+  - `live-runtime.json`
+  - `blocker-funnel.json`
+  - `capital-routing-plan.json`
 
-Deployment remains the only objective item not completed by this run.
+Deployment is complete for this outcome.
