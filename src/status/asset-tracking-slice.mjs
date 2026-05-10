@@ -62,6 +62,16 @@ function priceFreshnessIsStale(item = {}) {
   return ["stale", "expired", "failed"].includes(String(item.priceFreshness || "").toLowerCase());
 }
 
+function itemIsQuarantined(item = {}) {
+  const status = String(item.trackingStatus || item.status || item.assetStatus || "").toLowerCase();
+  return (
+    item.quarantined === true ||
+    status === "quarantined" ||
+    status === "pending_whitelist_review" ||
+    status === "unregistered"
+  );
+}
+
 function hasFreshnessMetadata(item = {}) {
   return item.freshness !== null && item.freshness !== undefined && item.freshness !== "";
 }
@@ -108,6 +118,8 @@ function assetTrackingVerdict({
   missingFreshnessMetadataCount,
   missingPriceSourceCount,
   divergenceBlockCount,
+  trackingDriftStatus,
+  quarantinedAssetCount,
 }) {
   if (
     walletScanErrorCount > 0 ||
@@ -115,10 +127,25 @@ function assetTrackingVerdict({
     unknownAssetBalanceCount > 0 ||
     missingFreshnessMetadataCount > 0 ||
     missingPriceSourceCount > 0 ||
-    divergenceBlockCount > 0
+    divergenceBlockCount > 0 ||
+    quarantinedAssetCount > 0 ||
+    trackingDriftStatus === "blocked"
   ) return "red";
-  if (!riskReady || staleItemCount > 0 || stalePriceItemCount > 0) return "yellow";
+  if (!riskReady || staleItemCount > 0 || stalePriceItemCount > 0 || trackingDriftStatus === "warn") return "yellow";
   return "green";
+}
+
+function maxPositiveFinite(...values) {
+  const positives = values
+    .map(finiteNumber)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return positives.length > 0 ? roundUsd(Math.max(...positives)) : null;
+}
+
+function trackingDriftStatus(driftUsd, verifiedKnownUsd) {
+  if (!Number.isFinite(driftUsd) || driftUsd <= 1) return "none";
+  const blockFloor = Math.max(5, Number.isFinite(verifiedKnownUsd) ? verifiedKnownUsd * 0.02 : 5);
+  return driftUsd > blockFloor ? "blocked" : "warn";
 }
 
 export function buildAssetTrackingSlice({
@@ -154,6 +181,8 @@ export function buildAssetTrackingSlice({
   const priceSourceMetadataCount = allItems.filter(hasPriceSourceMetadata).length;
   const divergenceWarnCount = allItems.filter((item) => item.priceDivergenceStatus === "warn").length;
   const divergenceBlockCount = allItems.filter((item) => item.priceDivergenceStatus === "block").length;
+  const quarantinedItems = allItems.filter(itemIsQuarantined);
+  const quarantinedAssetCount = quarantinedItems.length;
   const missingFreshnessMetadataCount = Math.max(0, totalAssetCount - freshnessMetadataCount);
   const missingPriceSourceCount = Math.max(0, totalAssetCount - priceSourceMetadataCount);
   const staleItemCount = Number(summary.staleItemCount ?? allItems.filter(itemFreshnessIsStale).length);
@@ -163,6 +192,17 @@ export function buildAssetTrackingSlice({
   const oldestMaterialSourceObservedAt = summary.oldestMaterialSourceObservedAt || oldestObservedAt(allItems);
   const oldestMaterialSourceAgeMinutes = sourceAgeMinutes(oldestMaterialSourceObservedAt, generatedAt);
   const pendingWhitelistCount = Array.isArray(pendingWhitelistRecords) ? pendingWhitelistRecords.length : 0;
+  const trackingDriftUsd = maxPositiveFinite(
+    summary.trackingGapUsd,
+    summary.protocolTrackingGapUsd,
+    summary.executorEstimateDeltaUsd,
+    summary.reconciliationGapUsd,
+  );
+  const driftStatus = trackingDriftStatus(trackingDriftUsd, verifiedKnownUsd);
+  const trackingDriftSource = summary.trackingGapSource ||
+    (Number.isFinite(summary.protocolTrackingGapUsd) && summary.protocolTrackingGapUsd > 0 ? "protocol_tracking_gap" : null) ||
+    (Number.isFinite(summary.executorEstimateDeltaUsd) && summary.executorEstimateDeltaUsd > 0 ? "executor_estimate_delta" : null) ||
+    (Number.isFinite(summary.reconciliationGapUsd) && summary.reconciliationGapUsd > 0 ? "reconciliation_gap" : null);
 
   if (walletCoverage !== "full_rpc") {
     blockers.push(blocker("wallet_coverage_partial", "Wallet scan has not proven full-token coverage for this address.", {
@@ -222,6 +262,23 @@ export function buildAssetTrackingSlice({
       divergenceBlockCount,
     }));
   }
+  if (quarantinedAssetCount > 0) {
+    blockers.push(blocker("quarantined_asset_present", "At least one wallet or protocol asset is quarantined from capital decisions.", {
+      quarantinedAssetCount,
+      sample: quarantinedItems.slice(0, 5).map((item) => ({
+        chain: item.chain || null,
+        sym: item.sym || item.symbol || item.asset || null,
+        trackingStatus: item.trackingStatus || item.status || null,
+      })),
+    }));
+  }
+  if (driftStatus !== "none") {
+    blockers.push(blocker("tracking_drift_detected", "Capital tracking sources disagree and must be reconciled before exact-risk execution.", {
+      trackingDriftUsd,
+      trackingDriftStatus: driftStatus,
+      trackingDriftSource,
+    }));
+  }
   if (Number.isFinite(externalUnclassifiedUsd) && externalUnclassifiedUsd > 0) {
     blockers.push(blocker("external_unclassified_reference", "External portfolio reference includes unclassified value that cannot be used as exact capital.", {
       provider: summary.fullWalletProvider || null,
@@ -258,6 +315,8 @@ export function buildAssetTrackingSlice({
       missingFreshnessMetadataCount,
       missingPriceSourceCount,
       divergenceBlockCount,
+    trackingDriftStatus: driftStatus,
+    quarantinedAssetCount,
     }),
     coverage: walletCoverage || "pending",
     dashboardHeadline: riskReady ? "Exact tracked assets" : "Verified known assets only",
@@ -279,6 +338,24 @@ export function buildAssetTrackingSlice({
     priceSourceCoveragePct: ratio(priceSourceMetadataCount, totalAssetCount),
     divergenceWarnCount,
     divergenceBlockCount,
+    quarantinedAssetCount,
+    quarantinedSample: quarantinedItems.slice(0, 5).map((item) => ({
+      chain: item.chain || null,
+      sym: item.sym || item.symbol || item.asset || null,
+      trackingStatus: item.trackingStatus || item.status || null,
+    })),
+    visibilityState: quarantinedAssetCount > 0
+      ? "quarantined"
+      : staleItemCount > 0 || stalePriceItemCount > 0
+        ? "stale"
+        : driftStatus !== "none"
+          ? "drift"
+          : riskReady
+            ? "current"
+            : "blocked",
+    trackingDriftUsd,
+    trackingDriftStatus: driftStatus,
+    trackingDriftSource,
     missingFreshnessMetadataCount,
     missingPriceSourceCount,
     staleItemCount,

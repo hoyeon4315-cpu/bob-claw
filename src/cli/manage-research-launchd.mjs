@@ -11,6 +11,7 @@ import {
   renderLaunchAgentPlist,
   writeResearchLaunchAgents,
 } from "../runtime/launchd.mjs";
+import { resolveNodeExecutable } from "../runtime/node-path.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
@@ -31,7 +32,7 @@ export function parseArgs(argv) {
     install: flags.has("--install"),
     status: flags.has("--status"),
     rootDir: options["root-dir"] || process.cwd(),
-    nodePath: options["node-path"] || process.execPath,
+    nodePath: options["node-path"] || resolveNodeExecutable(),
     launchAgentsDir: options["launch-agents-dir"],
     logDir: options["log-dir"],
     uid: options.uid ? Number(options.uid) : (typeof process.getuid === "function" ? process.getuid() : null),

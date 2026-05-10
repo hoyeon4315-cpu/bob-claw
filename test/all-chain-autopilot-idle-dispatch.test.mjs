@@ -27,6 +27,32 @@ function walletWithIdleDust() {
   };
 }
 
+function walletWithNestedAddressOnly() {
+  const wallet = walletWithIdleDust();
+  const { address, ...rest } = wallet;
+  void address;
+  return {
+    ...rest,
+    summary: {
+      walletAddress: "0x2222222222222222222222222222222222222222",
+    },
+  };
+}
+
+function walletWithoutTrustedOwnerAddress() {
+  const wallet = walletWithIdleDust();
+  const { address, ...rest } = wallet;
+  void address;
+  return {
+    ...rest,
+    items: wallet.items.map((item) => ({
+      ...item,
+      address: "0x000000000000000000000000000000000000dEaD",
+      account: "0x3333333333333333333333333333333333333333",
+    })),
+  };
+}
+
 function okJson(json = {}) {
   return { ok: true, exitCode: 0, stdout: "", stderr: "", json };
 }
@@ -152,4 +178,71 @@ test("all-chain autopilot does not emit idle consolidation plan while kill-switc
   assert.equal(report.idleConsolidationPlan.status, "skipped_kill_switch_active");
   assert.equal(report.idleConsolidationPlan.candidates.length, 0);
   assert.equal(buildCount, 0);
+});
+
+test("all-chain autopilot resolves wallet address from canonical snapshot metadata for idle consolidation", async () => {
+  const builtPlans = [];
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    stopAfterRefill: true,
+    observedAt: "2026-05-08T05:00:00.000Z",
+    runCommandImpl: fakeCommand({ events: [] }),
+    readJsonlImpl: emptyReceiptJsonl,
+    readWalletSnapshotImpl: async () => walletWithNestedAddressOnly(),
+    buildGatewayBtcConsolidationPlanImpl: async (args) => {
+      builtPlans.push(args);
+      return {
+        schemaVersion: 1,
+        observedAt: args.now,
+        planStatus: "ready",
+        strategyId: "gateway-btc-funding-transfer",
+        route: { srcChain: args.srcChain, dstChain: args.dstChain },
+        amount: args.amount,
+        amountUsd: 7,
+        intent: {
+          strategyId: "gateway-btc-funding-transfer",
+          chain: args.srcChain,
+          intentId: `idle:${args.srcChain}`,
+          intentType: "gateway_btc_transfer",
+          amountUsd: 7,
+          mode: "live",
+          metadata: {},
+        },
+      };
+    },
+    executeGatewayBtcConsolidationPlanImpl: async () => ({ signerResult: { status: "queued" } }),
+    appendSignerAuditRecordImpl: async () => "/tmp/signer-audit.jsonl",
+  });
+
+  assert.equal(report.idleConsolidationDispatches.some((item) => item.blockedReason === "wallet_address_unavailable"), false);
+  assert.equal(builtPlans.length, report.idleConsolidationPlan.candidates.length);
+  assert.equal(builtPlans.every((plan) => plan.senderAddress === "0x2222222222222222222222222222222222222222"), true);
+});
+
+test("all-chain autopilot blocks idle consolidation without trusted wallet owner address", async () => {
+  let buildCount = 0;
+  process.env.OPERATOR_EVM_ADDRESS = "0x4444444444444444444444444444444444444444";
+  process.env.BURNER_EVM_ADDRESS = "0x5555555555555555555555555555555555555555";
+  try {
+    const report = await runAllChainAutopilot({
+      execute: true,
+      stopAfterRefill: true,
+      observedAt: "2026-05-08T05:00:00.000Z",
+      runCommandImpl: fakeCommand({ events: [] }),
+      readJsonlImpl: emptyReceiptJsonl,
+      readWalletSnapshotImpl: async () => walletWithoutTrustedOwnerAddress(),
+      buildGatewayBtcConsolidationPlanImpl: async () => {
+        buildCount += 1;
+        throw new Error("should_not_build");
+      },
+    });
+
+    assert.equal(report.idleConsolidationDispatches.length, report.idleConsolidationPlan.candidates.length);
+    assert.equal(report.idleConsolidationDispatches.every((item) => item.blockedReason === "wallet_address_unavailable"), true);
+    assert.equal(buildCount, 0);
+  } finally {
+    delete process.env.OPERATOR_EVM_ADDRESS;
+    delete process.env.BURNER_EVM_ADDRESS;
+  }
 });

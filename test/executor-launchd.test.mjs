@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   buildExecutorLaunchAgentSpecs,
+  buildDashboardLaunchAgentSpecs,
   buildLiveAutomationLaunchAgentSpecs,
   buildResearchLaunchAgentSpecs,
   buildStrategyAutomationLaunchAgentSpecs,
@@ -12,6 +13,26 @@ import {
   readLaunchAgentStatus,
   renderLaunchAgentPlist,
 } from "../src/runtime/launchd.mjs";
+import { resolveNodeExecutable } from "../src/runtime/node-path.mjs";
+
+test("resolveNodeExecutable prefers stable Homebrew node symlink over stale Cellar paths", () => {
+  const existing = new Set(["/opt/homebrew/bin/node", "/opt/homebrew/Cellar/node/25.6.1/bin/node"]);
+  const resolved = resolveNodeExecutable({
+    pathEnv: "/opt/homebrew/bin:/usr/bin:/bin",
+    fileExists: (path) => existing.has(path),
+  });
+
+  assert.equal(resolved, "/opt/homebrew/bin/node");
+});
+
+test("resolveNodeExecutable honors explicit operator node path", () => {
+  const resolved = resolveNodeExecutable({
+    requestedPath: "/custom/node",
+    fileExists: () => false,
+  });
+
+  assert.equal(resolved, "/custom/node");
+});
 
 test("buildExecutorLaunchAgentSpecs wires executor launch agents", () => {
   const specs = buildExecutorLaunchAgentSpecs({
@@ -34,6 +55,119 @@ test("buildExecutorLaunchAgentSpecs wires executor launch agents", () => {
   assert.match(daemonPlist, /com\.bobclaw\.executor-daemon/);
   assert.match(daemonPlist, /\/repo\/src\/executor\/signer\/daemon\.mjs/);
   assert.match(daemonPlist, /\/repo\/logs\/launchd\/executor-daemon\.out\.log/);
+});
+
+test("launchd specs never embed Cloudflare API token values", () => {
+  process.env.CLOUDFLARE_API_TOKEN = "should-not-be-rendered";
+  try {
+    const specs = buildStrategyAutomationLaunchAgentSpecs({
+      rootDir: "/repo",
+      nodePath: "/usr/local/bin/node",
+      launchAgentsDir: "/Users/test/Library/LaunchAgents",
+      logDir: "/repo/logs/launchd",
+      homeDir: "/Users/test",
+      pathEnv: "/usr/local/bin:/usr/bin:/bin",
+    });
+    const rendered = specs.map(renderLaunchAgentPlist).join("\n");
+
+    assert.equal(specs.some((spec) => "CLOUDFLARE_API_TOKEN" in spec.environmentVariables), false);
+    assert.doesNotMatch(rendered, /CLOUDFLARE_API_TOKEN/);
+    assert.doesNotMatch(rendered, /should-not-be-rendered/);
+  } finally {
+    delete process.env.CLOUDFLARE_API_TOKEN;
+  }
+});
+
+test("launchd specs limit signer key paths to signer daemon", () => {
+  process.env.BURNER_EVM_KEY_PATH = "/keys/evm";
+  process.env.BURNER_BTC_KEY_PATH = "/keys/btc";
+  try {
+    const specs = [
+      ...buildExecutorLaunchAgentSpecs({
+        rootDir: "/repo",
+        nodePath: "/usr/local/bin/node",
+        launchAgentsDir: "/Users/test/Library/LaunchAgents",
+        logDir: "/repo/logs/launchd",
+        homeDir: "/Users/test",
+        pathEnv: "/usr/local/bin:/usr/bin:/bin",
+      }),
+      ...buildLiveAutomationLaunchAgentSpecs({
+        rootDir: "/repo",
+        nodePath: "/usr/local/bin/node",
+        launchAgentsDir: "/Users/test/Library/LaunchAgents",
+        logDir: "/repo/logs/launchd",
+        homeDir: "/Users/test",
+        pathEnv: "/usr/local/bin:/usr/bin:/bin",
+      }),
+      ...buildDashboardLaunchAgentSpecs({
+        rootDir: "/repo",
+        nodePath: "/usr/local/bin/node",
+        launchAgentsDir: "/Users/test/Library/LaunchAgents",
+        logDir: "/repo/logs/launchd",
+        homeDir: "/Users/test",
+        pathEnv: "/usr/local/bin:/usr/bin:/bin",
+      }),
+    ];
+
+    const daemon = specs.find((spec) => spec.id === "daemon");
+    assert.equal(daemon.environmentVariables.BURNER_EVM_KEY_PATH, "/keys/evm");
+    assert.equal(daemon.environmentVariables.BURNER_BTC_KEY_PATH, "/keys/btc");
+    for (const spec of specs.filter((item) => item.id !== "daemon")) {
+      assert.equal("BURNER_EVM_KEY_PATH" in spec.environmentVariables, false);
+      assert.equal("BURNER_BTC_KEY_PATH" in spec.environmentVariables, false);
+    }
+  } finally {
+    delete process.env.BURNER_EVM_KEY_PATH;
+    delete process.env.BURNER_BTC_KEY_PATH;
+  }
+});
+
+test("readLaunchAgentStatus reports forbidden keys retained in stale plist", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-launchd-forbidden-"));
+  const plistPath = join(dir, "com.bobclaw.dashboard-public-live.plist");
+  await writeFile(
+    plistPath,
+    [
+      "<plist>",
+      "<dict>",
+      "<key>EnvironmentVariables</key>",
+      "<dict>",
+      "<key>PATH</key>",
+      "<string>/usr/bin:/bin</string>",
+      "<key>CLOUDFLARE_API_TOKEN</key>",
+      "<string>redacted</string>",
+      "<key>BURNER_EVM_KEY_PATH</key>",
+      "<string>/keys/evm</string>",
+      "</dict>",
+      "</dict>",
+      "</plist>",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const status = await readLaunchAgentStatus(
+    {
+      id: "public-live",
+      label: "com.bobclaw.dashboard-public-live",
+      plistPath,
+      environmentVariables: {
+        PATH: "/usr/bin:/bin",
+      },
+      forbiddenEnvironmentKeys: ["CLOUDFLARE_API_TOKEN", "BURNER_EVM_KEY_PATH"],
+    },
+    {
+      uid: 501,
+      launchctlRunner: () => ({
+        status: 0,
+        stdout: "state = running\npid = 4242\nlast exit code = 0\n",
+        stderr: "",
+        error: null,
+      }),
+    },
+  );
+
+  assert.deepEqual(status.unexpectedForbiddenEnvironmentKeys, ["CLOUDFLARE_API_TOKEN", "BURNER_EVM_KEY_PATH"]);
 });
 
 test("buildLiveAutomationLaunchAgentSpecs wires gate self-heal and all-chain autopilot agents", () => {

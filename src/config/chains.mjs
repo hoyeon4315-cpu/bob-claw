@@ -18,7 +18,12 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "base",
     rpcUrl: "https://mainnet.base.org",
-    rpcUrls: getChainRpcUrls("base", ["https://mainnet.base.org", "https://mainnet-preconf.base.org"]),
+    rpcUrls: getChainRpcUrls("base", [
+      "https://mainnet.base.org",
+      "https://mainnet-preconf.base.org",
+      "https://base-rpc.publicnode.com",
+      "https://base.drpc.org",
+    ]),
     fallbackGasUnits: 260_000,
   }),
   bera: Object.freeze({

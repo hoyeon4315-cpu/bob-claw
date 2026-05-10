@@ -287,3 +287,59 @@ test("asset tracking exposes pending whitelist queue separately from live unknow
   ]);
   assert.equal(slice.blockers.some((item) => item.code === "unknown_asset_universe_gap"), false);
 });
+
+test("asset tracking surfaces canonical tracking drift before exact-risk sizing", () => {
+  const slice = buildAssetTrackingSlice({
+    capitalSummary: {
+      currentWalletUsd: 500,
+      protocolDeployedUsd: 50,
+      currentTotalUsd: 550,
+      walletCoverage: "full_rpc",
+      walletScanErrorCount: 0,
+      protocolMarkIssueCount: 0,
+      pendingSignerActionCount: 0,
+      trackingGapUsd: 12,
+      trackingGapSource: "automation_estimate_minus_verified_assets",
+    },
+    generatedAt: "2026-05-10T00:00:00.000Z",
+  });
+
+  assert.equal(slice.trackingDriftUsd, 12);
+  assert.equal(slice.trackingDriftStatus, "blocked");
+  assert.equal(slice.visibilityState, "drift");
+  assert.equal(slice.riskReady, false);
+  assert.equal(slice.verdict, "red");
+  assert.equal(slice.blockers.some((item) => item.code === "tracking_drift_detected"), true);
+});
+
+test("asset tracking quarantines unregistered assets out of exact-risk sizing", () => {
+  const slice = buildAssetTrackingSlice({
+    capitalSummary: {
+      currentWalletUsd: 100,
+      protocolDeployedUsd: 0,
+      currentTotalUsd: 100,
+      walletCoverage: "full_rpc",
+      walletScanErrorCount: 0,
+      protocolMarkIssueCount: 0,
+      pendingSignerActionCount: 0,
+      walletItems: [
+        {
+          sym: "newtoken",
+          chain: "unichain",
+          usd: 7,
+          freshness: "fresh",
+          priceFreshness: "fresh",
+          priceSource: { name: "chainlink" },
+          trackingStatus: "quarantined",
+        },
+      ],
+    },
+    generatedAt: "2026-05-10T00:00:00.000Z",
+  });
+
+  assert.equal(slice.quarantinedAssetCount, 1);
+  assert.equal(slice.visibilityState, "quarantined");
+  assert.equal(slice.riskReady, false);
+  assert.equal(slice.verdict, "red");
+  assert.equal(slice.blockers.some((item) => item.code === "quarantined_asset_present"), true);
+});

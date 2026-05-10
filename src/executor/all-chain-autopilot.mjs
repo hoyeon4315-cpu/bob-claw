@@ -10,6 +10,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { resolveNodeExecutable } from "../runtime/node-path.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { evaluateDiscretionaryBudget } from "./policy/cap-check.mjs";
 import {
@@ -280,7 +281,8 @@ function jsonFromStdout(stdout = "") {
 
 export async function defaultRunCommand({ args, cwd = process.cwd(), timeoutMs = 300_000 } = {}) {
   const maxBuffer = 24 * 1024 * 1024;
-  const result = spawnSync(process.execPath, args, {
+  const nodePath = resolveNodeExecutable();
+  const result = spawnSync(nodePath, args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -338,14 +340,15 @@ export async function defaultRunCommand({ args, cwd = process.cwd(), timeoutMs =
 }
 
 function commandStep(name, args, result) {
+  const isBlocked = result.json?.status === "blocked" || result.json?.blockedReason != null;
   return {
     name,
     args,
-    ok: result.ok,
+    ok: result.ok || isBlocked,
     exitCode: result.exitCode,
     stderrSummary: String(result.stderr || "").split("\n").filter(Boolean).slice(-5),
     json: result.json || null,
-    error: result.error || null,
+    error: result.error && !isBlocked ? result.error : null,
   };
 }
 
@@ -1439,11 +1442,47 @@ async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }
 }
 
 async function defaultReadWalletSnapshot({ cwd = process.cwd() } = {}) {
-  return JSON.parse(await readFile(join(cwd, "dashboard", "public", "wallet-holdings.json"), "utf8"));
+  const candidates = [
+    join(cwd, "data", "dashboard-live", "wallet-holdings.json"),
+    join(cwd, "dashboard", "public", "wallet-holdings.json"),
+  ];
+  let lastError = null;
+  for (const path of candidates) {
+    try {
+      return JSON.parse(await readFile(path, "utf8"));
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("wallet holdings snapshot unavailable");
 }
 
 function walletSnapshotAddress(walletSnapshot = {}) {
-  return walletSnapshot.address || walletSnapshot.walletAddress || walletSnapshot.ownerAddress || walletSnapshot.evmAddress || null;
+  const evmAddressPattern = /^0x[a-fA-F0-9]{40}$/u;
+  const firstValidEvmAddress = (values = []) =>
+    values.map((value) => (typeof value === "string" ? value.trim() : ""))
+      .find((value) => evmAddressPattern.test(value)) || null;
+  const direct = firstValidEvmAddress([
+    walletSnapshot.walletAddress,
+    walletSnapshot.ownerAddress,
+    walletSnapshot.evmAddress,
+    walletSnapshot.address,
+  ]);
+  if (direct) return direct;
+  const metadata = walletSnapshot.metadata || walletSnapshot.summary || walletSnapshot.wallet || walletSnapshot.owner || {};
+  const nested = firstValidEvmAddress([
+    metadata.walletAddress,
+    metadata.ownerAddress,
+    metadata.evmAddress,
+    metadata.address,
+  ]);
+  if (nested) return nested;
+  const itemAddress = [...(walletSnapshot.items || []), ...(walletSnapshot.all || []), ...(walletSnapshot.walletItems || [])]
+    .map((item) => firstValidEvmAddress([item?.ownerAddress, item?.walletAddress, item?.owner?.address, item?.wallet?.address]))
+    .find(Boolean);
+  if (itemAddress) return itemAddress;
+  return null;
 }
 
 function compactIdleDispatch(dispatch = {}) {
@@ -1714,7 +1753,7 @@ export async function runAllChainAutopilot({
       args: ["src/cli/report-campaign-aware-opportunities.mjs", "--json"],
       runCommandImpl,
       cwd,
-      timeoutMs: Math.min(30_000, timeoutMs),
+      timeoutMs: Math.min(60_000, timeoutMs),
       steps,
     });
 

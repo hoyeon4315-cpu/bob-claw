@@ -1792,6 +1792,21 @@ function AssetsPane({ refreshTick }) {
   const trackingOldestSourceLabel = tracking?.oldestMaterialSourceObservedAt
     ? `oldest source ${formatStatusAge(tracking.oldestMaterialSourceObservedAt) || fmtWhen(tracking.oldestMaterialSourceObservedAt)}`
     : null;
+  const trackingDriftLabel = Number.isFinite(tracking?.trackingDriftUsd) && tracking.trackingDriftUsd > 0
+    ? `tracking drift ${fmtUsd(tracking.trackingDriftUsd)}`
+    : null;
+  const trackingDriftTone = tracking?.trackingDriftStatus === 'blocked'
+    ? 'critical'
+    : tracking?.trackingDriftStatus === 'warn'
+      ? 'warning'
+      : 'neutral';
+  const visibilityTone = tracking?.visibilityState === 'current'
+    ? 'ok'
+    : tracking?.visibilityState === 'quarantined'
+      ? 'critical'
+      : tracking?.visibilityState === 'stale' || tracking?.visibilityState === 'drift'
+        ? 'warning'
+        : 'neutral';
   const walletSourceLabel = HOLDINGS?.walletSource === 'whole_wallet_inventory' || HOLDINGS?.walletCoverage === 'full_external'
         ? 'supported-assets live'
     : HOLDINGS?.walletSource === 'treasury_inventory'
@@ -1943,6 +1958,21 @@ function AssetsPane({ refreshTick }) {
             {trackingOldestSourceLabel && (
               <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(tracking?.staleItemCount > 0 || tracking?.stalePriceItemCount > 0 ? 'warning' : 'neutral') }}>
                 {trackingOldestSourceLabel}
+              </span>
+            )}
+            {tracking?.visibilityState && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(visibilityTone) }}>
+                visibility {tracking.visibilityState}
+              </span>
+            )}
+            {trackingDriftLabel && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle(trackingDriftTone) }}>
+                {trackingDriftLabel}
+              </span>
+            )}
+            {tracking?.quarantinedAssetCount > 0 && (
+              <span style={{ fontSize:10, padding:'3px 7px', borderRadius:999, ...statusChipStyle('critical') }}>
+                quarantined {tracking.quarantinedAssetCount}
               </span>
             )}
             {tracking?.doubleCountPreventedCount > 0 && (

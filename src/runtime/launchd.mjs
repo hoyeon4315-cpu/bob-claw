@@ -6,21 +6,37 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { getEnv } from "../config/env.mjs";
+import { resolveNodeExecutable } from "./node-path.mjs";
 
 const DEFAULT_PATH_ENV = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+const FORBIDDEN_LAUNCHD_ENV_KEYS = Object.freeze(["CLOUDFLARE_API_TOKEN"]);
+const SIGNER_KEY_PATH_ENV_KEYS = Object.freeze([
+  "BURNER_EVM_KEY_PATH",
+  "BURNER_PRIVATE_KEY_PATH",
+  "BURNER_BTC_KEY_PATH",
+]);
 
 function launchdSafeEnvironment() {
   const values = {
-    BURNER_EVM_KEY_PATH: getEnv("BURNER_EVM_KEY_PATH", getEnv("BURNER_PRIVATE_KEY_PATH", null)),
-    BURNER_PRIVATE_KEY_PATH: getEnv("BURNER_PRIVATE_KEY_PATH", getEnv("BURNER_EVM_KEY_PATH", null)),
-    BURNER_BTC_KEY_PATH: getEnv("BURNER_BTC_KEY_PATH", null),
     KILL_SWITCH_PATH: getEnv("KILL_SWITCH_PATH", null),
-    CLOUDFLARE_API_TOKEN: getEnv("CLOUDFLARE_API_TOKEN", null),
     CLOUDFLARE_ACCOUNT_ID: getEnv("CLOUDFLARE_ACCOUNT_ID", null),
     BOB_CLAW_CF_PAGES_PROJECT: getEnv("BOB_CLAW_CF_PAGES_PROJECT", null),
     BOB_CLAW_CF_PRODUCTION_BRANCH: getEnv("BOB_CLAW_CF_PRODUCTION_BRANCH", null),
   };
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
+}
+
+function signerKeyPathLaunchdEnvironment() {
+  const values = {
+    BURNER_EVM_KEY_PATH: getEnv("BURNER_EVM_KEY_PATH", getEnv("BURNER_PRIVATE_KEY_PATH", null)),
+    BURNER_PRIVATE_KEY_PATH: getEnv("BURNER_PRIVATE_KEY_PATH", getEnv("BURNER_EVM_KEY_PATH", null)),
+    BURNER_BTC_KEY_PATH: getEnv("BURNER_BTC_KEY_PATH", null),
+  };
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
+}
+
+function forbiddenLaunchdEnvironmentKeys(extra = []) {
+  return [...new Set([...FORBIDDEN_LAUNCHD_ENV_KEYS, ...extra])];
 }
 
 function researchLaunchdSafeEnvironment() {
@@ -115,16 +131,21 @@ function renderPlistValue(value, indent = "  ") {
 
 async function inspectLaunchAgentEnvironmentKeys(spec, plistPresent, readFileImpl = readFile) {
   const expectedEnvironmentKeys = Object.keys(spec.environmentVariables || {});
+  const forbiddenEnvironmentKeys = spec.forbiddenEnvironmentKeys || FORBIDDEN_LAUNCHD_ENV_KEYS;
   if (expectedEnvironmentKeys.length === 0) {
     return {
       expectedEnvironmentKeys,
       missingEnvironmentKeys: [],
+      forbiddenEnvironmentKeys,
+      unexpectedForbiddenEnvironmentKeys: [],
     };
   }
   if (!plistPresent) {
     return {
       expectedEnvironmentKeys,
       missingEnvironmentKeys: expectedEnvironmentKeys,
+      forbiddenEnvironmentKeys,
+      unexpectedForbiddenEnvironmentKeys: [],
     };
   }
   let plistText = "";
@@ -135,20 +156,27 @@ async function inspectLaunchAgentEnvironmentKeys(spec, plistPresent, readFileImp
     return {
       expectedEnvironmentKeys,
       missingEnvironmentKeys: expectedEnvironmentKeys,
+      forbiddenEnvironmentKeys,
+      unexpectedForbiddenEnvironmentKeys: [],
     };
   }
   const missingEnvironmentKeys = expectedEnvironmentKeys.filter(
     (key) => !plistText.includes(`<key>${xmlEscape(key)}</key>`),
   );
+  const unexpectedForbiddenEnvironmentKeys = forbiddenEnvironmentKeys.filter(
+    (key) => plistText.includes(`<key>${xmlEscape(key)}</key>`),
+  );
   return {
     expectedEnvironmentKeys,
     missingEnvironmentKeys,
+    forbiddenEnvironmentKeys,
+    unexpectedForbiddenEnvironmentKeys,
   };
 }
 
 export function buildExecutorLaunchAgentSpecs({
   rootDir = process.cwd(),
-  nodePath = process.execPath,
+  nodePath = resolveNodeExecutable(),
   launchAgentsDir = defaultLaunchAgentsDir(),
   logDir = defaultLaunchdLogDir(rootDir),
   pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
@@ -163,6 +191,11 @@ export function buildExecutorLaunchAgentSpecs({
     HOME: homeDir,
     ...launchdSafeEnvironment(),
   };
+  const signerEnvironment = {
+    ...sharedEnvironment,
+    ...signerKeyPathLaunchdEnvironment(),
+  };
+  const nonSignerForbidden = forbiddenLaunchdEnvironmentKeys(SIGNER_KEY_PATH_ENV_KEYS);
   return [
     {
       id: "daemon",
@@ -174,7 +207,8 @@ export function buildExecutorLaunchAgentSpecs({
       stderrPath: join(resolvedLogDir, "executor-daemon.err.log"),
       workingDirectory: resolvedRootDir,
       programArguments: [resolvedNodePath, resolve(resolvedRootDir, "src/executor/signer/daemon.mjs")],
-      environmentVariables: sharedEnvironment,
+      environmentVariables: signerEnvironment,
+      forbiddenEnvironmentKeys: forbiddenLaunchdEnvironmentKeys(),
       runAtLoad: true,
       keepAlive: true,
       throttleInterval: 10,
@@ -191,6 +225,7 @@ export function buildExecutorLaunchAgentSpecs({
       workingDirectory: resolvedRootDir,
       programArguments: [resolvedNodePath, resolve(resolvedRootDir, "src/cli/run-executor-watchdog.mjs")],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: true,
       keepAlive: true,
       throttleInterval: 10,
@@ -201,7 +236,7 @@ export function buildExecutorLaunchAgentSpecs({
 
 export function buildLiveAutomationLaunchAgentSpecs({
   rootDir = process.cwd(),
-  nodePath = process.execPath,
+  nodePath = resolveNodeExecutable(),
   launchAgentsDir = defaultLaunchAgentsDir(),
   logDir = defaultLaunchdLogDir(rootDir),
   pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
@@ -216,6 +251,7 @@ export function buildLiveAutomationLaunchAgentSpecs({
     HOME: homeDir,
     ...launchdSafeEnvironment(),
   };
+  const nonSignerForbidden = forbiddenLaunchdEnvironmentKeys(SIGNER_KEY_PATH_ENV_KEYS);
   return [
     {
       id: "gate-self-heal",
@@ -233,6 +269,7 @@ export function buildLiveAutomationLaunchAgentSpecs({
         "--intervalMs=1800000",
       ],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: true,
       keepAlive: true,
       throttleInterval: 30,
@@ -255,6 +292,7 @@ export function buildLiveAutomationLaunchAgentSpecs({
         "--execute",
       ],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: true,
       keepAlive: true,
       throttleInterval: 30,
@@ -265,7 +303,7 @@ export function buildLiveAutomationLaunchAgentSpecs({
 
 export function buildDashboardLaunchAgentSpecs({
   rootDir = process.cwd(),
-  nodePath = process.execPath,
+  nodePath = resolveNodeExecutable(),
   launchAgentsDir = defaultLaunchAgentsDir(),
   logDir = defaultLaunchdLogDir(rootDir),
   pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
@@ -280,6 +318,7 @@ export function buildDashboardLaunchAgentSpecs({
     HOME: homeDir,
     ...launchdSafeEnvironment(),
   };
+  const nonSignerForbidden = forbiddenLaunchdEnvironmentKeys(SIGNER_KEY_PATH_ENV_KEYS);
   return [
     {
       id: "public-live",
@@ -292,6 +331,7 @@ export function buildDashboardLaunchAgentSpecs({
       workingDirectory: resolvedRootDir,
       programArguments: [resolvedNodePath, resolve(resolvedRootDir, "src/cli/run-dashboard-public-live.mjs")],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: true,
       keepAlive: true,
       throttleInterval: 10,
@@ -302,7 +342,7 @@ export function buildDashboardLaunchAgentSpecs({
 
 export function buildResearchLaunchAgentSpecs({
   rootDir = process.cwd(),
-  nodePath = process.execPath,
+  nodePath = resolveNodeExecutable(),
   launchAgentsDir = defaultLaunchAgentsDir(),
   logDir = defaultLaunchdLogDir(rootDir),
   pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
@@ -317,6 +357,7 @@ export function buildResearchLaunchAgentSpecs({
     HOME: homeDir,
     ...researchLaunchdSafeEnvironment(),
   };
+  const nonSignerForbidden = forbiddenLaunchdEnvironmentKeys(SIGNER_KEY_PATH_ENV_KEYS);
   return [
     {
       id: "daily",
@@ -335,6 +376,7 @@ export function buildResearchLaunchAgentSpecs({
         "--max-experiments=100",
       ],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: false,
       keepAlive: false,
       startInterval: 86_400,
@@ -356,6 +398,7 @@ export function buildResearchLaunchAgentSpecs({
         "--json",
       ],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: false,
       keepAlive: false,
       startInterval: 86_400,
@@ -367,7 +410,7 @@ export function buildResearchLaunchAgentSpecs({
 
 export function buildStrategyAutomationLaunchAgentSpecs({
   rootDir = process.cwd(),
-  nodePath = process.execPath,
+  nodePath = resolveNodeExecutable(),
   launchAgentsDir = defaultLaunchAgentsDir(),
   logDir = defaultLaunchdLogDir(rootDir),
   pathEnv = process.env.PATH || DEFAULT_PATH_ENV,
@@ -382,6 +425,7 @@ export function buildStrategyAutomationLaunchAgentSpecs({
     HOME: homeDir,
     ...strategyAutomationLaunchdSafeEnvironment(),
   };
+  const nonSignerForbidden = forbiddenLaunchdEnvironmentKeys(SIGNER_KEY_PATH_ENV_KEYS);
   return [
     {
       id: "strategy-evidence-refresh",
@@ -400,6 +444,7 @@ export function buildStrategyAutomationLaunchAgentSpecs({
         "--intervalMs=1800000",
       ],
       environmentVariables: sharedEnvironment,
+      forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: true,
       keepAlive: true,
       throttleInterval: 30,

@@ -265,6 +265,7 @@ test("treasury holdings preserves full_rpc coverage from closed tx-derived asset
       generatedAt: "2026-05-05T22:30:00.000Z",
       wholeWalletRecords: [
         {
+          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
           observedAt: "2026-05-05T22:29:00.000Z",
           totalUsd: 100,
           native: [],
@@ -296,6 +297,7 @@ test("treasury holdings preserves full_rpc coverage from closed tx-derived asset
   );
 
   assert.equal(holdings.walletCoverage, "full_rpc");
+  assert.equal(holdings.address, "0x96262bE63AA687563789225c2fE898c27a3b0AE4");
   assert.equal(holdings.assetUniverse.status, "closed");
   assert.equal(holdings.unknownAssetBalanceCount, 0);
 });

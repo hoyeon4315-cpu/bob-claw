@@ -52,3 +52,56 @@ test("strategy parity carries tick timing and allocation through to dashboard ro
   );
   assert.equal(slice.byStrategy["wrapped-btc-loop-base-moonwell"].readinessVerdict, "live_ready");
 });
+
+test("strategy parity preserves non-Base generic candidate chain metadata", () => {
+  const slice = buildStrategyParitySlice({
+    deterministicCandidates: {
+      candidates: [
+        {
+          id: "generic-unichain-vault",
+          chain: "unichain",
+          status: "dry_run_evidence_recorded",
+          deterministicStatus: "planning_adapter_ready",
+          protocolAdapterId: "erc4626_like",
+          dryRunReceiptRecorded: true,
+          blockers: [],
+        },
+      ],
+    },
+    researchBoard: [
+      {
+        id: "generic-sonic-carry",
+        chain: "sonic",
+        status: "research_backlog",
+        evidence: {
+          executionSupportStatus: "repo_auto_build_supported",
+          dryRunReceiptRecorded: false,
+        },
+        blockers: ["cost_variance_unmeasured"],
+      },
+    ],
+  });
+
+  assert.deepEqual(slice.byStrategy["generic-unichain-vault"].chainSet, ["unichain"]);
+  assert.deepEqual(slice.byStrategy["generic-sonic-carry"].chainSet, ["sonic"]);
+});
+
+test("strategy parity does not silently default generic missing chain metadata to Base", () => {
+  const slice = buildStrategyParitySlice({
+    deterministicCandidates: {
+      candidates: [
+        {
+          id: "generic-chainless-vault",
+          status: "dry_run_evidence_recorded",
+          deterministicStatus: "planning_adapter_ready",
+          protocolAdapterId: "erc4626_like",
+          dryRunReceiptRecorded: true,
+          blockers: [],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(slice.byStrategy["generic-chainless-vault"].chainSet, []);
+  assert.equal(slice.byStrategy["generic-chainless-vault"].blockers.includes("chain_metadata_missing"), true);
+});

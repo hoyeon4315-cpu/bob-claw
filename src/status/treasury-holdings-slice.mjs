@@ -352,6 +352,7 @@ export function buildTreasuryHoldingsSlice(
     generatedAt,
     observedAt: latest.observedAt || null,
     pending: false,
+    address: latest.address || null,
     totalUsd: itemTotalUsd > 0
       ? itemTotalUsd
       : Number.isFinite(latest.summary?.estimatedWalletUsd)

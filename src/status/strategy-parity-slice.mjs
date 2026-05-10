@@ -37,12 +37,32 @@ const NEW_CANDIDATE_IDS = Object.freeze([
   "onchain_btc_perp_basis",
 ]);
 
+function uniqueChains(values = []) {
+  return [...new Set(values.filter(Boolean).map((value) => String(value).toLowerCase()))];
+}
+
+function candidateChainSet(candidate = {}, fallback = []) {
+  const chains = uniqueChains([
+    ...(Array.isArray(candidate.protocolTrack?.chains) ? candidate.protocolTrack.chains : []),
+    ...(Array.isArray(candidate.chains) ? candidate.chains : []),
+    ...(Array.isArray(candidate.chainSet) ? candidate.chainSet : []),
+    ...(Array.isArray(candidate.evidence?.chains) ? candidate.evidence.chains : []),
+    candidate.chain,
+    candidate.destinationChain,
+  ]);
+  return chains.length > 0 ? chains : fallback;
+}
+
+function candidateChainBlockers(candidate = {}) {
+  return candidateChainSet(candidate).length > 0 ? [] : ["chain_metadata_missing"];
+}
+
 function resolveFromDeterministic(candidates, id) {
   const c = candidates?.find((x) => x.id === id);
   if (!c) return null;
   return {
     strategyId: c.id,
-    chainSet: c.protocolTrack?.chains || ["base"],
+    chainSet: candidateChainSet(c),
     adapterTickConnected:
       c.deterministicStatus === "repo_auto_build_supported" ||
       c.deterministicStatus === "planning_adapter_ready",
@@ -60,8 +80,8 @@ function resolveFromDeterministic(candidates, id) {
           ? "shadow_ready"
           : "blocked",
     demotionSummary: { demoted: false, triggers: [] },
-    topBlocker: c.blockers?.[0] || null,
-    blockers: c.blockers || [],
+    topBlocker: c.blockers?.[0] || candidateChainBlockers(c)[0] || null,
+    blockers: [...candidateChainBlockers(c), ...(c.blockers || [])],
     maturity: c.status || "unknown",
     source: "deterministic_candidate",
   };
@@ -72,15 +92,15 @@ function resolveFromScaffold(scaffolds, id) {
   if (!s) return null;
   return {
     strategyId: s.id,
-    chainSet: s.protocolTrack?.chains || ["base"],
+    chainSet: candidateChainSet(s),
     adapterTickConnected: false,
     marketLoader: Boolean(s.protocolTrack?.protocols?.length),
     receiptSchema: false,
     microCanaryStatus: "not_started",
     readinessVerdict: "blocked",
     demotionSummary: { demoted: false, triggers: [] },
-    topBlocker: s.blockers?.[0] || "design_scaffold_incomplete",
-    blockers: s.blockers || ["design_scaffold_incomplete"],
+    topBlocker: s.blockers?.[0] || candidateChainBlockers(s)[0] || "design_scaffold_incomplete",
+    blockers: [...candidateChainBlockers(s), ...(s.blockers || ["design_scaffold_incomplete"])],
     maturity: s.status || "design_scaffold",
     source: "secondary_scaffold",
   };
@@ -91,7 +111,7 @@ function resolveFromResearch(board, id) {
   if (!c) return null;
   return {
     strategyId: c.id,
-    chainSet: c.evidence?.arrivalFamily === "wrapped_btc" ? ["base"] : ["base"],
+    chainSet: candidateChainSet(c),
     adapterTickConnected: c.evidence?.executionSupportStatus === "repo_auto_build_supported",
     marketLoader: Boolean(c.protocolAdapterId),
     receiptSchema: Boolean(c.evidence?.dryRunReceiptRecorded),
@@ -107,8 +127,8 @@ function resolveFromResearch(board, id) {
           ? "shadow_ready"
           : "blocked",
     demotionSummary: { demoted: false, triggers: [] },
-    topBlocker: c.missingEvidence?.[0] || c.blockers?.[0] || null,
-    blockers: [...(c.blockers || []), ...(c.missingEvidence || [])],
+    topBlocker: c.missingEvidence?.[0] || c.blockers?.[0] || candidateChainBlockers(c)[0] || null,
+    blockers: [...candidateChainBlockers(c), ...(c.blockers || []), ...(c.missingEvidence || [])],
     maturity: c.status || "research_backlog",
     source: "research_board",
   };
