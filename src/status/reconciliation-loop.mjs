@@ -36,11 +36,20 @@ function signerTimestamp(record = {}) {
 function recentPendingSignerActions(records = [], generatedAt) {
   const generatedAtMs = observedAtMs(generatedAt);
   if (!Number.isFinite(generatedAtMs)) return [];
+  const finalByIntent = new Map();
+  for (const record of records) {
+    if (!FINAL_SIGNER_STAGES.has(signerLifecycleStage(record)) || !record?.intentHash) continue;
+    const recordAtMs = observedAtMs(signerTimestamp(record));
+    if (!Number.isFinite(recordAtMs)) continue;
+    finalByIntent.set(record.intentHash, Math.max(finalByIntent.get(record.intentHash) || Number.NEGATIVE_INFINITY, recordAtMs));
+  }
   return records.filter((record) => {
     const stage = signerLifecycleStage(record);
     if (!PENDING_SIGNER_STAGES.has(stage)) return false;
     const recordAtMs = observedAtMs(signerTimestamp(record));
     if (!Number.isFinite(recordAtMs)) return false;
+    const finalAtMs = record.intentHash ? finalByIntent.get(record.intentHash) : null;
+    if (Number.isFinite(finalAtMs) && finalAtMs >= recordAtMs) return false;
     return generatedAtMs - recordAtMs <= RECENT_SIGNER_WINDOW_MS;
   });
 }

@@ -1054,6 +1054,59 @@ test("capital summary surfaces adapter gaps and recent signer settlement as reco
   assert.equal(slice.invariantViolations.some((item) => item.code === "pending_signer_activity"), true);
 });
 
+test("capital summary ignores pending signer stages once a final stage exists for the same intent", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 100,
+      walletCoverage: "full_rpc",
+      assetUniverse: { status: "closed", unknownTargetCount: 0 },
+      items: [{ sym: "usdc", usd: 100 }],
+    },
+    signerAuditRecords: [
+      {
+        intentHash: "intent-1",
+        timestamp: "2026-05-03T12:00:10.000Z",
+        lifecycle: { stage: "broadcasted" },
+      },
+      {
+        intentHash: "intent-1",
+        timestamp: "2026-05-03T12:00:40.000Z",
+        lifecycle: { stage: "confirmed" },
+      },
+    ],
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.pendingSignerActionCount, 0);
+  assert.equal(slice.invariantViolations.some((item) => item.code === "pending_signer_activity"), false);
+});
+
+test("capital summary gives zero-value residual positions freshness metadata", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 100,
+      walletCoverage: "full_rpc",
+      assetUniverse: { status: "closed", unknownTargetCount: 0 },
+      items: [{ sym: "usdc", usd: 100 }],
+    },
+    merklActivePositions: {
+      items: [{
+        opportunityId: "a",
+        label: "Residual YO",
+        pair: ["usdc"],
+        valueUsd: 0,
+        lastObservedAt: "2026-05-03T12:00:00.000Z",
+      }],
+    },
+    generatedAt: "2026-05-03T12:01:00.000Z",
+  });
+
+  assert.equal(slice.positionItems[0].freshness, "fresh");
+  assert.equal(slice.positionItems[0].confidence, "verified_current");
+  assert.equal(slice.positionItems[0].priceFreshness, "fresh");
+  assert.equal(slice.positionItems[0].priceDivergenceStatus, "ok");
+});
+
 test("capital summary treats unmarked protocol entries as a verified minimum", () => {
   const slice = buildCapitalSummarySlice({
     walletHoldings: {

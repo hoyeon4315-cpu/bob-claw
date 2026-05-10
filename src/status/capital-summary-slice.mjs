@@ -47,6 +47,9 @@ function deployedPositionItem(position = {}) {
     finiteNumber(position.capUsd);
   const entryUsd = finiteNumber(position.capUsd);
   const symbol = positionAssetSymbol(position);
+  const observedAt = position.markObservedAt || position.lastObservedAt || null;
+  const markFreshness = position.markFreshness || (observedAt ? "fresh" : null);
+  const markConfidence = position.markConfidence || (Number.isFinite(usd) && usd <= 0 ? "verified_current" : null);
   return {
     sym: symbol,
     name: position.label || `Position ${position.opportunityId || ""}`.trim(),
@@ -60,8 +63,8 @@ function deployedPositionItem(position = {}) {
     opportunityId: position.opportunityId || null,
     lastObservedAt: position.lastObservedAt || null,
     markSource: position.markSource || null,
-    markFreshness: position.markFreshness || null,
-    markConfidence: position.markConfidence || null,
+    markFreshness,
+    markConfidence,
     markObservedAt: position.markObservedAt || null,
     markFailureKind: position.markFailureKind || null,
     markFailureMessage: position.markFailureMessage || null,
@@ -69,10 +72,10 @@ function deployedPositionItem(position = {}) {
     sourceObservedAt: position.markObservedAt || position.lastObservedAt || null,
     priceSource: priceSourceForPosition(position),
     priceObservedAt: position.priceObservedAt || position.markObservedAt || position.lastObservedAt || null,
-    priceFreshness: position.priceFreshness || position.markFreshness || null,
-    priceDivergenceStatus: position.priceDivergenceStatus || null,
-    freshness: position.freshness || position.markFreshness || null,
-    confidence: position.confidence || position.markConfidence || null,
+    priceFreshness: position.priceFreshness || markFreshness,
+    priceDivergenceStatus: position.priceDivergenceStatus || "ok",
+    freshness: position.freshness || markFreshness,
+    confidence: position.confidence || markConfidence,
     countedInWalletTotal: false,
   };
 }
