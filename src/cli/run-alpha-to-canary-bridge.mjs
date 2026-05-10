@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Alpha-to-Canary Bridge
-// Deterministic pipeline: discovered candidate -> protocol binding -> cap resolution ->
-// radar admission -> proposer enqueue -> policy/signer -> receipt ingest -> evidence file.
+// Alpha-to-Canary Bridge v2
+// Thin orchestration over existing radar infrastructure.
+// Deterministic: candidate -> buildRadarCanaryIntent -> proposer queue -> evidence.
 //
-// Hard rules baked in:
+// Hard rules:
 // - never raises caps at runtime
 // - never auto-merges into strategy registry
 // - never bypasses policy/signer
@@ -11,17 +11,11 @@
 // - 3 consecutive same-blocker candidates -> bridge auto-locks + alerts
 
 import { existsSync } from "node:fs";
-import { mkdir, writeFile, appendFile } from "node:fs/promises";
+import { mkdir, writeFile, appendFile, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
-import {
-  registerErc4626LikeBinding,
-  isSupportedBindingKind,
-  supportedBindingKinds,
-} from "../executor/protocol-binding-registry.mjs";
 import { getStrategyCaps, listStrategyCaps } from "../config/strategy-caps.mjs";
-import { tinyCanarySameChainRoundTripCostUsd } from "../config/sizing.mjs";
 import { buildRadarCanaryIntent } from "../strategy/radar/radar-candidate-router.mjs";
 import { readRadarJsonl } from "../strategy/radar/jsonl.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
@@ -43,7 +37,6 @@ function parseArgs(argv = process.argv.slice(2)) {
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
-    execute: flags.has("--execute"),
     dataDir: options["data-dir"] || config.dataDir || "data",
     now: options.now || new Date().toISOString(),
   };
@@ -55,7 +48,6 @@ async function ensureDir(path) {
 
 async function readCandidates(dataDir) {
   const candidates = await readRadarJsonl(dataDir, "executable-candidates").catch(() => []);
-  // Deduplicate by candidateId, keeping latest
   const byId = new Map();
   for (const c of candidates) {
     const existing = byId.get(c.candidateId);
@@ -66,74 +58,14 @@ async function readCandidates(dataDir) {
   return [...byId.values()];
 }
 
-function classifyBinding(candidate) {
-  const kind = candidate?.protocolBindingKind || candidate?.metadata?.protocolBindingKind || null;
-  if (!kind) {
-    // Heuristic: if candidate shape looks ERC4626-like
-    if (candidate?.shareToken || candidate?.vaultToken || candidate?.depositToken) {
-      return { type: "erc4626_like", kind: `erc4626_${candidate.protocolId || "unknown"}` };
-    }
-    return { type: "unknown", kind: null };
-  }
-  if (isSupportedBindingKind(kind)) {
-    return { type: "registered", kind };
-  }
-  // Check if it looks ERC4626-shaped
-  const lower = String(kind).toLowerCase();
-  if (lower.includes("vault") || lower.includes("share") || lower.includes("4626")) {
-    return { type: "erc4626_like", kind };
-  }
-  return { type: "custom", kind };
-}
-
-function resolveTinyLivePerTxUsd(candidate, strategyCapsById) {
-  const strategyId = candidate?.strategyId || candidate?.metadata?.strategyId;
-  if (strategyId) {
-    const caps = strategyCapsById[strategyId]?.caps;
-    if (caps?.tinyLivePerTxUsd) return caps.tinyLivePerTxUsd;
-  }
-  const chain = candidate?.chain || candidate?.metadata?.chain || "base";
-  const family = candidate?.assetFamily || candidate?.metadata?.assetFamily || null;
-  // Fallback to sizing policy default
-  return tinyCanarySameChainRoundTripCostUsd({ chain }) ?? 25;
-}
-
-function checkRadarAdmission(candidate, { costLedger, now }) {
-  const blockers = [];
-  // AGENTS.md line 110 requirements
-  if (candidate?.radarPolicy?.calibrationStatus !== "calibrated_aggressive_v1") {
-    blockers.push("radar_calibration_status_not_aggressive_v1");
-  }
-  const execPath = candidate?.executionPath || candidate?.metadata?.executionPath;
-  const allowedPaths = ["gateway_destination", "base_native_evm", "gateway_to_evm_bridged"];
-  if (!allowedPaths.includes(execPath)) {
-    blockers.push("execution_path_not_allowed");
-  }
-  // EV after measured haircut and p90 cost must be positive
-  const expectedNetUsd = candidate?.expectedNetUsd ?? candidate?.ev?.netUsd ?? null;
-  const p90CostUsd = candidate?.p90CostUsd ?? candidate?.ev?.p90CostUsd ?? null;
-  if (expectedNetUsd === null || p90CostUsd === null) {
-    blockers.push("ev_or_cost_missing");
-  } else if (expectedNetUsd <= p90CostUsd) {
-    blockers.push("expected_net_not_above_p90_cost");
-  }
-  // Reward-token exit liquidity proof
-  if (candidate?.rewardToken && !candidate?.rewardExitLiquidityProven) {
-    blockers.push("reward_exit_liquidity_unproven");
-  }
-  // Auto-kill triggers must be green
+function isKillSwitchActive() {
   const killPath = config.killSwitchPath || process.env.KILL_SWITCH_PATH || null;
-  if (killPath && existsSync(killPath)) {
-    blockers.push("kill_switch_active");
-  }
+  return killPath && existsSync(killPath);
+}
+
+function isDevLockActive() {
   const devLockPath = config.devLockPath || process.env.DEV_LOCK_PATH || null;
-  if (devLockPath && existsSync(devLockPath)) {
-    blockers.push("dev_lock_active");
-  }
-  return {
-    allowed: blockers.length === 0,
-    blockers,
-  };
+  return devLockPath && existsSync(devLockPath);
 }
 
 async function appendAudit(cycleMeta) {
@@ -153,12 +85,17 @@ async function writeCapRaiseCandidate(family, candidate) {
   const dir = join(config.dataDir || "data", "cap-raise-candidates");
   await ensureDir(dir);
   const path = join(dir, `${family}.json`);
-  const existing = existsSync(path) ? JSON.parse(await readFile(path, "utf8").catch(() => "{}")) : {};
+  let existing = {};
+  if (existsSync(path)) {
+    try {
+      existing = JSON.parse(await readFile(path, "utf8"));
+    } catch {}
+  }
   const updated = {
     ...existing,
     family,
     surfacedAt: new Date().toISOString(),
-    candidates: [...(existing.candidates || []), candidate.candidateId].filter(Boolean),
+    candidates: [...new Set([...(existing.candidates || []), candidate.candidateId])],
     status: "pr_suggestion_only",
     runtimeAuthority: "none",
   };
@@ -171,7 +108,7 @@ async function main() {
   const now = args.now;
   const dataDir = resolve(args.dataDir);
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: now,
     cycleId: `alpha-to-canary-${Date.now()}`,
     skipped: false,
@@ -187,9 +124,7 @@ async function main() {
   };
 
   // Hard rule: skip if kill-switch or dev-lock
-  const killPath = config.killSwitchPath || process.env.KILL_SWITCH_PATH || null;
-  const devLockPath = config.devLockPath || process.env.DEV_LOCK_PATH || null;
-  if (killPath && existsSync(killPath)) {
+  if (isKillSwitchActive()) {
     result.skipped = true;
     result.skipReason = "kill_switch_active";
     await appendAudit(result);
@@ -200,7 +135,7 @@ async function main() {
     console.log(`skipped=${result.skipReason}`);
     return;
   }
-  if (devLockPath && existsSync(devLockPath)) {
+  if (isDevLockActive()) {
     result.skipped = true;
     result.skipReason = "dev_lock_active";
     await appendAudit(result);
@@ -223,67 +158,8 @@ async function main() {
 
     for (const candidate of candidates.slice(0, 20)) {
       result.candidatesProcessed += 1;
-      const binding = classifyBinding(candidate);
 
-      // 1. Classify protocol binding
-      if (binding.type === "erc4626_like" && binding.kind) {
-        if (!isSupportedBindingKind(binding.kind)) {
-          registerErc4626LikeBinding(binding.kind);
-        }
-      } else if (binding.type === "custom") {
-        const suggestionPath = join(dataDir, "pr-suggestions", `binding-needed-${candidate.candidateId}.md`);
-        await ensureDir(dirname(suggestionPath));
-        await writeTextIfChanged(
-          suggestionPath,
-          `# Binding Needed: ${candidate.candidateId}\n\nProtocol binding kind \`${binding.kind}\` is not ERC4626-shaped and has no registered helper.\n\n## Candidate\n\n\`\`\`json\n${JSON.stringify(candidate, null, 2)}\n\`\`\`\n`,
-        );
-        result.bindingNeededSuggestions.push({ candidateId: candidate.candidateId, path: suggestionPath });
-        continue;
-      } else if (binding.type === "unknown") {
-        result.errors.push({ candidateId: candidate.candidateId, error: "unknown_binding_type" });
-        continue;
-      }
-
-      // 2. Resolve tinyLivePerTxUsd
-      const tinyCap = resolveTinyLivePerTxUsd(candidate, strategyCapsById);
-      if (!tinyCap || tinyCap <= 0) {
-        const suggestionPath = join(dataDir, "pr-suggestions", `cap-declaration-needed-${candidate.candidateId}.md`);
-        await ensureDir(dirname(suggestionPath));
-        await writeTextIfChanged(
-          suggestionPath,
-          `# Cap Declaration Needed: ${candidate.candidateId}\n\nNo \`tinyLivePerTxUsd\` resolved for family \`${candidate.assetFamily || "unknown"}\`.\n`,
-        );
-        result.capDeclarationNeededSuggestions.push({ candidateId: candidate.candidateId, path: suggestionPath });
-        continue;
-      }
-
-      // 3. Evaluate radar admission
-      const admission = checkRadarAdmission(candidate, { costLedger, now });
-      if (!admission.allowed) {
-        result.blockedCandidates.push({
-          candidateId: candidate.candidateId,
-          blockers: admission.blockers,
-        });
-        const blockerKey = admission.blockers.join(",");
-        if (blockerKey === lastBlockerKey) {
-          consecutiveSameBlocker += 1;
-        } else {
-          consecutiveSameBlocker = 1;
-          lastBlockerKey = blockerKey;
-        }
-        if (consecutiveSameBlocker >= 3) {
-          result.errors.push({
-            code: "bridge_auto_lock",
-            reason: `3 consecutive candidates tripped same blocker: ${blockerKey}`,
-          });
-          break;
-        }
-        continue;
-      }
-      consecutiveSameBlocker = 0;
-      lastBlockerKey = null;
-
-      // 4. Build canary intent (proposer only, NOT direct to signer)
+      // Use the existing deterministic radar router
       const intentResult = buildRadarCanaryIntent({
         packet: { packetId: candidate.packetId ?? null },
         candidate,
@@ -293,56 +169,96 @@ async function main() {
         now,
       });
 
-      if (intentResult.status !== "ready" || !intentResult.intent) {
-        result.blockedCandidates.push({
+      if (intentResult.status === "ready" && intentResult.intent) {
+        // Intent ready; enqueue via proposer (write to queue file, NOT direct to signer)
+        const intent = {
+          ...intentResult.intent,
+          metadata: {
+            ...(intentResult.intent.metadata || {}),
+            tinyLiveCanary: true,
+            alphaToCanaryBridge: true,
+            bridgeCycleId: result.cycleId,
+          },
+        };
+
+        result.intentsEnqueued.push({
           candidateId: candidate.candidateId,
-          blockers: intentResult.blockers || ["intent_build_failed"],
+          intentHash: intent.intentHash || `intent-${candidate.candidateId}-${Date.now()}`,
+          strategyId: intent.strategyId,
+          amountUsd: intent.amountUsd,
         });
+
+        consecutiveSameBlocker = 0;
+        lastBlockerKey = null;
+
+        // Evidence file (awaiting receipt)
+        await writeEvidence(intent.strategyId || candidate.candidateId, {
+          candidateId: candidate.candidateId,
+          cycleId: result.cycleId,
+          intentHash: intent.intentHash || `intent-${candidate.candidateId}-${Date.now()}`,
+          observedAt: now,
+          status: "enqueued_awaiting_receipt",
+          realizedNetUsd: null,
+        });
+        result.evidenceAppended.push({ strategyId: intent.strategyId, candidateId: candidate.candidateId });
+
+        // Cap raise candidate check (2+ enqueued in same family)
+        const family = candidate.familyKey || "unknown";
+        const familyEnqueued = result.intentsEnqueued.filter(
+          (i) => i.family === family || (i.candidateId && candidates.find((c) => c.candidateId === i.candidateId)?.familyKey === family)
+        );
+        if (familyEnqueued.length >= 2) {
+          const capPath = await writeCapRaiseCandidate(family, candidate);
+          result.capRaiseCandidates.push({ family, path: capPath });
+        }
         continue;
       }
 
-      // Clamp intent amount to tinyLivePerTxUsd
-      const intent = {
-        ...intentResult.intent,
-        amountUsd: Math.min(intentResult.intent.amountUsd ?? tinyCap, tinyCap),
-        metadata: {
-          ...(intentResult.intent.metadata || {}),
-          tinyLiveCanary: true,
-          alphaToCanaryBridge: true,
-          bridgeCycleId: result.cycleId,
-        },
-      };
+      // Handle blocked/filtered
+      const blockers = intentResult.blockers || [];
+      const filters = intentResult.filters || [];
 
-      result.intentsEnqueued.push({
+      // PR-suggestion for missing family binding
+      if (blockers.includes("family_binding_missing")) {
+        const suggestionPath = join(dataDir, "pr-suggestions", `binding-needed-${candidate.candidateId}.md`);
+        await ensureDir(dirname(suggestionPath));
+        await writeTextIfChanged(
+          suggestionPath,
+          `# Binding Needed: ${candidate.candidateId}\n\nFamily key \`${candidate.familyKey}\` / protocol \`${candidate.protocolId}\` has no registered binding in \`family-binding-registry.mjs\`.\n\n## Candidate\n\n\`\`\`json\n${JSON.stringify(candidate, null, 2)}\n\`\`\`\n`,
+        );
+        result.bindingNeededSuggestions.push({ candidateId: candidate.candidateId, path: suggestionPath });
+      }
+
+      // PR-suggestion for missing tiny live cap
+      if (blockers.includes("tiny_live_cap_missing")) {
+        const suggestionPath = join(dataDir, "pr-suggestions", `cap-declaration-needed-${candidate.candidateId}.md`);
+        await ensureDir(dirname(suggestionPath));
+        await writeTextIfChanged(
+          suggestionPath,
+          `# Cap Declaration Needed: ${candidate.candidateId}\n\nStrategy \`${intentResult.binding?.strategyId}\` has no \`tinyLivePerTxUsd\` declared.\n`,
+        );
+        result.capDeclarationNeededSuggestions.push({ candidateId: candidate.candidateId, path: suggestionPath });
+      }
+
+      result.blockedCandidates.push({
         candidateId: candidate.candidateId,
-        intentHash: intent.intentHash || `intent-${candidate.candidateId}-${Date.now()}`,
-        strategyId: intent.strategyId,
-        amountUsd: intent.amountUsd,
+        blockers,
+        filters,
       });
 
-      // 5. Wait one receipt-ingest tick (simulated: we do not block here)
-      // In a real unattended loop, the bridge would poll receipt-reconciliations.
-      // For this cycle, we emit the intent and let the autopilot/signer handle it.
-
-      // 6. Evidence file (placeholder for post-receipt population)
-      await writeEvidence(intent.strategyId || candidate.candidateId, {
-        candidateId: candidate.candidateId,
-        cycleId: result.cycleId,
-        intentHash: intent.intentHash || `intent-${candidate.candidateId}-${Date.now()}`,
-        observedAt: now,
-        status: "enqueued_awaiting_receipt",
-        realizedNetUsd: null,
-      });
-      result.evidenceAppended.push({ strategyId: intent.strategyId, candidateId: candidate.candidateId });
-
-      // 7. Cap raise candidate check (simplified: count same-family enqueued)
-      const family = candidate.familyId || candidate.assetFamily || "unknown";
-      const familyEvidenceDir = join(dataDir, "canary-evidence");
-      // In a real implementation, we would count positive realized net entries.
-      // Here we surface a PR-suggestion placeholder after 2 enqueued intents.
-      if (result.intentsEnqueued.filter((i) => (i.family || family) === family).length >= 2) {
-        const capPath = await writeCapRaiseCandidate(family, candidate);
-        result.capRaiseCandidates.push({ family, path: capPath });
+      const blockerKey = blockers.join(",");
+      if (blockerKey && blockerKey === lastBlockerKey) {
+        consecutiveSameBlocker += 1;
+      } else {
+        consecutiveSameBlocker = 1;
+        lastBlockerKey = blockerKey;
+      }
+      if (consecutiveSameBlocker >= 3 && blockerKey) {
+        result.errors.push({
+          code: "bridge_auto_lock",
+          reason: `3 consecutive candidates tripped same blocker: ${blockerKey}`,
+        });
+        break;
       }
     }
   } catch (error) {
