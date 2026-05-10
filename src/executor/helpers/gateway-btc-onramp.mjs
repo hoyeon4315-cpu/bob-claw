@@ -1,6 +1,7 @@
 import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../../config/sizing.mjs";
 import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock, parseGatewayOrder } from "../../gateway/client.mjs";
 import { buildGatewayQuoteParams } from "../../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
@@ -164,6 +165,18 @@ export async function buildGatewayBtcOnrampPlan({
     }
   }
 
+  let expectedNetUsd = null;
+  if (quote) {
+    const dstAsset = tokenAsset(dstChain, normalizedDstToken);
+    const outputDecimals = dstAsset.decimals ?? 6;
+    const outputAmountRaw = Number(quote.outputAmount?.amount || 0);
+    const outputAmountUsd = outputAmountRaw / 10 ** outputDecimals;
+    const bridgeCostUsd = executionEvFallbackCostUsd({ chain: dstChain });
+    const gasCostUsd = tinyCanarySameChainRoundTripCostUsd({ chain: dstChain });
+    const slippageReserveUsd = outputAmountUsd * 0.005;
+    expectedNetUsd = outputAmountUsd - bridgeCostUsd - gasCostUsd - slippageReserveUsd;
+  }
+
   const plan = {
     schemaVersion: 1,
     observedAt: now,
@@ -228,6 +241,7 @@ export async function buildGatewayBtcOnrampPlan({
         gatewayOrderId: order.orderId,
         gatewayDepositAddress: order.address,
         gatewayDstToken: normalizedDstToken,
+        ...(expectedNetUsd !== null ? { expectedNetUsd } : {}),
         ...(normalizedGasRefill ? { gatewayGasRefill: normalizedGasRefill } : {}),
       },
     }
