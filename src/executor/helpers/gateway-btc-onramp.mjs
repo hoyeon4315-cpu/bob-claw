@@ -1,4 +1,4 @@
-import { WBTC_OFT_TOKEN, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../../config/sizing.mjs";
@@ -170,7 +170,10 @@ export async function buildGatewayBtcOnrampPlan({
     const dstAsset = tokenAsset(dstChain, normalizedDstToken);
     const outputDecimals = dstAsset.decimals ?? 6;
     const outputAmountRaw = Number(quote.outputAmount?.amount || 0);
-    const outputAmountUsd = outputAmountRaw / 10 ** outputDecimals;
+    const outputTokenAmount = outputAmountRaw / 10 ** outputDecimals;
+    const outputAmountUsd = isBtcLikeAsset(dstAsset)
+      ? outputTokenAmount * btcUsd
+      : outputTokenAmount;
     const bridgeCostUsd = executionEvFallbackCostUsd({ chain: dstChain });
     const gasCostUsd = tinyCanarySameChainRoundTripCostUsd({ chain: dstChain });
     const slippageReserveUsd = outputAmountUsd * 0.005;

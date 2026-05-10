@@ -35,6 +35,7 @@ export function buildSignerAuditRecord({
       amountUsd: intent.amountUsd,
       mode: intent.mode,
       metadata: intent.metadata || null,
+      ...(intent.approval ? { approval: intent.approval } : {}),
     },
     amountUsd: intent.amountUsd,
     policyVerdict,

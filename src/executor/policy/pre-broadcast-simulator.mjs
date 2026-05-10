@@ -36,10 +36,11 @@ export async function evaluatePreBroadcastSimulation({
   }
 
   const chain = intent.chain;
-  const to = intent.to;
-  const data = intent.data || "0x";
-  const value = intent.value ?? 0;
-  const from = intent.from;
+  const tx = intent.tx || {};
+  const to = tx.to ?? intent.to;
+  const data = tx.data ?? intent.data ?? "0x";
+  const value = tx.value ?? intent.value ?? 0;
+  const from = tx.from ?? intent.from;
 
   let simProvider = provider;
   if (!simProvider) {

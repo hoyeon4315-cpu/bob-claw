@@ -8,6 +8,8 @@ import { config, getBooleanEnv, getEnv, getNumberEnv } from "../../config/env.mj
 import { readJsonl } from "../../lib/jsonl-read.mjs";
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { evaluateIntentPolicies } from "../policy/index.mjs";
+import { loadCapitalAuditRecords } from "../ingestor/capital-reconciliation.mjs";
+import { replayAuditForCapitalGaps } from "../capital/audit-replay-startup.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord, readSignerAuditLog } from "./audit-log.mjs";
 import { notifyPolicyRejection } from "./policy-alerts.mjs";
 import { notifyLiveTransaction } from "./transaction-alerts.mjs";
@@ -130,10 +132,13 @@ export async function handleIntentCommand({
   loadRuntimeRiskContextImpl = loadRuntimeRiskContext,
 }) {
   const intent = normalizeExecutionIntent(message.intent);
-  const [auditRecords, receiptRecords] = await Promise.all([
+  const dataDir = resolve(cwd, config.dataDir);
+  const [auditRecords, receiptRecords, capitalAuditRecords] = await Promise.all([
     readSignerAuditLog({ rootDir: cwd }),
-    readJsonl(resolve(cwd, config.dataDir), "receipt-reconciliations"),
+    readJsonl(dataDir, "receipt-reconciliations"),
+    loadCapitalAuditRecords(dataDir),
   ]);
+  const capitalAuditState = replayAuditForCapitalGaps({ auditRecords, capitalAuditRecords });
   const runtimeRiskContext = await loadRuntimeRiskContextImpl({
     rootDir: cwd,
     activeBudgetUsd: args.activeBudgetUsd,
@@ -159,6 +164,7 @@ export async function handleIntentCommand({
     activeBudgetUsd: args.activeBudgetUsd,
     killSwitchPath: args.killSwitchPath,
     riskContext,
+    capitalAuditState,
   });
 
   if (policy.decision !== "ALLOW") {
