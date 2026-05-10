@@ -166,6 +166,7 @@ export async function buildNativeDexExperimentPlan({
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   systemEconomics = null,
+  executionReason = "strategy_execution",
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
@@ -268,7 +269,7 @@ export async function buildNativeDexExperimentPlan({
       systemEconomics,
       mode: "live",
       observedAt: now,
-      executionReason: "strategy_execution",
+      executionReason,
       approval,
       tx,
       strategyConfig: {
@@ -277,6 +278,7 @@ export async function buildNativeDexExperimentPlan({
       metadata: {
         skipAutoIngest: true,
         expectedTxTo: tx?.to || null,
+        executionReason,
         ...metadata,
       },
     });

@@ -228,6 +228,7 @@ async function buildLifiBridgePlanWithNativeGasReserve({
     amount: nextAmount,
     senderAddress,
     recipient: senderAddress,
+    executionReason: executionReasonForJob(job),
   });
 
   const plan = await buildPlan(amount);
@@ -349,6 +350,10 @@ function readyPreparation({ job, executor, plan, coverage, discretionaryBudget =
   };
 }
 
+function executionReasonForJob(job = {}) {
+  return job.executionReason || (String(job.origin || "").startsWith("capital_rebalance") ? "capital_rebalance" : "strategy_execution");
+}
+
 function bridgeQuoteCostUsd(job = {}, plan = null) {
   const jobCost = Number.isFinite(job?.fundingSource?.expectedExecutionRefillCostUsd)
     ? job.fundingSource.expectedExecutionRefillCostUsd
@@ -415,6 +420,7 @@ async function buildStableBridgeFallbackCompositePlan({
     senderAddress,
     inputToken: source.token,
     outputToken: sourceStableToken,
+    executionReason: executionReasonForJob(job),
   });
   if (step1Plan.planStatus !== "ready") return null;
 
@@ -432,6 +438,7 @@ async function buildStableBridgeFallbackCompositePlan({
       amount: bridgeAmount,
       senderAddress,
       recipient: senderAddress,
+      executionReason: executionReasonForJob(job),
     });
     if (step2Plan.planStatus === "ready") step2Executor = "across_bridge";
   }
@@ -444,6 +451,7 @@ async function buildStableBridgeFallbackCompositePlan({
       amount: bridgeAmount,
       senderAddress,
       recipient: senderAddress,
+      executionReason: executionReasonForJob(job),
     });
     if (step2Plan.planStatus !== "ready") return null;
     step2Executor = "lifi_bridge";
@@ -458,6 +466,7 @@ async function buildStableBridgeFallbackCompositePlan({
     senderAddress,
     inputToken: destinationStableToken,
     outputToken: job.token,
+    executionReason: executionReasonForJob(job),
   });
   if (step3Plan.planStatus !== "ready") return null;
 
@@ -515,6 +524,7 @@ export async function buildTreasuryRefillExecutionPlan({
       inputToken: source.token,
       outputToken: tokenToToken ? job.token : "native",
       strategyId: tokenToToken ? TOKEN_DEX_EXPERIMENT_STRATEGY_ID : NATIVE_GAS_REFILL_STRATEGY_ID,
+      executionReason: executionReasonForJob(job),
     });
     const requiredGasBudgetWei = nativeGasBudgetForPlan(plan);
     const currentNativeBalanceWei = await resolveNativeBalanceWei({
@@ -540,6 +550,7 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       outputToken: job.token,
       systemEconomics: job.systemEconomics || null,
+      executionReason: executionReasonForJob(job),
     });
   } else if (executor === "gateway_btc_consolidation") {
     const targetAmount = positiveBigInt(job.targetAmount);
@@ -589,6 +600,7 @@ export async function buildTreasuryRefillExecutionPlan({
           senderAddress,
           inputToken: destinationBtcSettlementToken,
           outputToken: job.token,
+          executionReason: executionReasonForJob(job),
         });
         if (destinationDexPlan.planStatus !== "ready") {
           return blockedPreparation({
@@ -666,6 +678,7 @@ export async function buildTreasuryRefillExecutionPlan({
       amount,
       senderAddress,
       recipient: senderAddress,
+      executionReason: executionReasonForJob(job),
     });
   } else if (executor === "lifi_bridge") {
     const sameTokenRefill =
@@ -702,6 +715,7 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       inputToken: source.token,
       outputToken: "wbtc.oft",
+      executionReason: executionReasonForJob(job),
     });
 
     if (step1Plan.planStatus !== "ready") {
@@ -766,6 +780,7 @@ export async function buildTreasuryRefillExecutionPlan({
             senderAddress,
             inputToken: destinationBtcSettlementToken,
             outputToken: job.token,
+            executionReason: executionReasonForJob(job),
           });
           if (step3Plan.planStatus !== "ready") {
             return blockedPreparation({ job, executor, blockedReason: step3Plan.blockedReason || "destination_dex_step_blocked", plan: step3Plan });

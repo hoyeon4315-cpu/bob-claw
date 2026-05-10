@@ -73,6 +73,13 @@ function jobExecutionCostUsd(job) {
 function jobEconomicReviewReasons(job = {}) {
   if (!["REFILL_REQUIRED", "BLOCKED"].includes(job.decision)) return [];
   if (!fundingSourceAutoExecutable(job.fundingSource)) return [];
+  if (
+    job.origin === "capital_rebalance_matched_transfer" ||
+    job.origin === "gas_float_keeper" ||
+    job.executionReason === "capital_rebalance"
+  ) {
+    return [];
+  }
   const effectiveSystemNetPnlUsd = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
   if (effectiveSystemNetPnlUsd === null || effectiveSystemNetPnlUsd >= 0) return [];
   return ["route_refill_economically_unjustified"];
@@ -262,6 +269,8 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
   const draftJobs = (plan.actions || []).map((action) => {
     const selection = selectionByKey.get(resourceKeyForRefillAction(action)) || null;
     const effectiveAction = actionWithSourceLimitedPartialRefill(action, selection);
+    const executionReason = effectiveAction.origin?.startsWith("capital_rebalance") ? "capital_rebalance" : null;
+    const policyRevision = executionReason === "capital_rebalance" ? "capital_rebalance_ev_gate_v2" : null;
     const basis = {
       schemaVersion: 1,
       address: plan.address,
@@ -272,6 +281,9 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       amount: effectiveAction.refillAmount,
       amountDecimal: effectiveAction.refillAmountDecimal,
       decision: plan.decision,
+      origin: effectiveAction.origin || null,
+      executionReason,
+      policyRevision,
       sourceHint: effectiveAction.sourceHint || null,
     };
     const actionRouteContext = selectRouteContextForAction(effectiveAction, selection, routeCandidates, resolvedFundingSourcePlan.routeContext || null);
@@ -314,6 +326,9 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       classification,
       type: action.type,
       strategyPolicy: action.strategyPolicy || null,
+      origin: effectiveAction.origin || null,
+      executionReason,
+      policyRevision,
       liveInventoryDependencyOverride: liveInventoryDependencyOverride(action),
       candidateMethods,
       executionMethod: selectedMethod,

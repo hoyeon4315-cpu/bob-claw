@@ -73,6 +73,20 @@ export async function ensureExecutionGuardsAllow({
   });
 }
 
+export function buildExecutionGateBlockedEvent({ job, mode = "dry_run", executionGate } = {}) {
+  const event = buildExecutionBlockedEvent({
+    job,
+    mode,
+    blockers: [executionGate?.reason || "execution_gate_blocked"],
+    fundingSource: job?.fundingSource || null,
+  });
+  return {
+    ...event,
+    previousExecutionStatus: executionGate?.latest?.status || null,
+    previousExecutionObservedAt: executionGate?.latest?.observedAt || null,
+  };
+}
+
 function printBlockedEvent(event, job) {
   console.log(`status=${event.status}`);
   console.log(`jobId=${event.jobId}`);
@@ -135,7 +149,13 @@ async function main() {
 
   const executionGate = canStartExecution(events, args.jobId, { force: args.force });
   if (!executionGate.ok) {
-    throw new Error(`Execution blocked: ${executionGate.reason}`);
+    const event = buildExecutionGateBlockedEvent({ job, mode: args.mode, executionGate });
+    if (args.json) {
+      console.log(safeJsonStringify(event, 2));
+      return;
+    }
+    printBlockedEvent(event, job);
+    return;
   }
 
   const fundingSource = job.fundingSource || null;

@@ -240,7 +240,11 @@ const TRANSPORT_PLUMBING_INTENT_TYPES = new Set([
 ]);
 
 export function isTransportPlumbingIntent(intent = {}) {
-  return TRANSPORT_PLUMBING_INTENT_TYPES.has(normalizeString(intent.intentType));
+  return (
+    TRANSPORT_PLUMBING_INTENT_TYPES.has(normalizeString(intent.intentType)) ||
+    TRANSPORT_PLUMBING_INTENT_TYPES.has(normalizeString(intent.executionReason)) ||
+    TRANSPORT_PLUMBING_INTENT_TYPES.has(normalizeString(intent.metadata?.executionReason))
+  );
 }
 
 function normalizeAddress(value = null) {

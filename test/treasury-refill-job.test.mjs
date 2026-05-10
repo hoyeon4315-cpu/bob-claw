@@ -259,6 +259,81 @@ test("refill jobs still defer negative route economics when the parent capital p
   assert.equal(jobs.summary.autoQueuedJobCount, 0);
 });
 
+test("capital manager matched transfers do not treat transport route alpha as the strategy EV", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "wBTC.OFT",
+        token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 8,
+        rationale: "Capital Manager matched transfer from bob into base.",
+        origin: "capital_rebalance_matched_transfer",
+        sourceHint: {
+          chain: "bob",
+          token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          ticker: "wBTC.OFT",
+          sourceKind: "token",
+          amountUsd: 8,
+        },
+      },
+    ],
+  };
+
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan: {
+      routeContext: {
+        routeKey: "base-wbtc-negative-route-alpha",
+        srcChain: "bob",
+        dstChain: "base",
+        srcToken: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        dstToken: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+        netEdgeUsd: -1,
+        inputUsd: 8,
+      },
+      selections: [
+        {
+          resourceKey: "base:0x0555e30da8f98308edb960aa94c0db47230d2b9c:from:bob:0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+          actionType: "refill_token",
+          chain: "base",
+          token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          selectionStatus: "ready",
+          selectedMethod: "cross_chain_bridge_or_swap",
+          selectedSource: {
+            source: {
+              chain: "bob",
+              token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              ticker: "wBTC.OFT",
+            },
+          },
+          expectedExecutionRefillCostUsd: 0.25,
+          expectedReserveReplenishmentCostUsd: 0,
+          requiresManualFunding: false,
+          requiresReserveState: false,
+          missingInputs: [],
+          settlementRequirements: [],
+          candidates: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(jobs.jobs[0].origin, "capital_rebalance_matched_transfer");
+  assert.equal(jobs.jobs[0].executionReason, "capital_rebalance");
+  assert.equal(jobs.jobs[0].policyRevision, "capital_rebalance_ev_gate_v2");
+  assert.equal(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd < 0, true);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("route_refill_economically_unjustified"), false);
+  assert.equal(jobs.jobs[0].requiresManualReview, false);
+  assert.equal(jobs.summary.autoQueuedJobCount, 1);
+});
+
 test("refill jobs keep explicit live destination-inventory override bridgeable", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

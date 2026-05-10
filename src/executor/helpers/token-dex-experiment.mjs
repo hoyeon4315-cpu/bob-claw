@@ -205,6 +205,7 @@ export async function buildTokenDexExperimentPlan({
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   quoteOnly = false,
+  executionReason = "strategy_execution",
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
@@ -281,7 +282,7 @@ export async function buildTokenDexExperimentPlan({
           amountUsd: null,
           mode: "live",
           observedAt: now,
-          executionReason: "strategy_execution",
+          executionReason,
           approval: null,
           tx: {
             to: normalizedInputToken,
@@ -294,6 +295,7 @@ export async function buildTokenDexExperimentPlan({
           },
           metadata: {
             skipAutoIngest: true,
+            executionReason,
             provider: "wrapped_native",
             outputToken: ZERO_TOKEN,
             wrappedOutputToken: normalizedInputToken,
@@ -456,7 +458,7 @@ export async function buildTokenDexExperimentPlan({
       amountUsd,
       mode: "live",
       observedAt: now,
-      executionReason: "strategy_execution",
+      executionReason,
       approval,
       tx,
       strategyConfig: {
@@ -465,6 +467,7 @@ export async function buildTokenDexExperimentPlan({
       metadata: {
         skipAutoIngest: true,
         expectedTxTo: tx?.to || null,
+        executionReason,
         ...metadata,
       },
     });

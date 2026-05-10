@@ -198,6 +198,7 @@ export async function buildLifiBridgePlan({
   recipient = senderAddress,
   slippageBps = 50,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+  executionReason = "strategy_execution",
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("LI.FI sender address is required");
@@ -287,13 +288,14 @@ export async function buildLifiBridgePlan({
       amountUsd,
       mode: "live",
       observedAt: now,
-      executionReason: "strategy_execution",
+      executionReason,
       approval,
       tx: intentTx,
       strategyConfig: { intentTtlMs: strategyCaps.intentTtlMs },
       metadata: {
         skipAutoIngest: true,
         expectedTxTo: intentTx?.to || null,
+        executionReason,
         provider: "lifi",
         lifiTool: quote.tool || null,
         lifiQuoteId: quote.id || null,

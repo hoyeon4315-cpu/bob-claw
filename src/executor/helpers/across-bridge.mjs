@@ -154,6 +154,7 @@ export async function buildAcrossBridgePlan({
   gasBufferBps = DEFAULT_ACROSS_GAS_BUFFER_BPS,
   skipPreflight = false,
   strategyId = ACROSS_BRIDGE_STRATEGY_ID,
+  executionReason = "strategy_execution",
   now = Math.floor(Date.now() / 1000),
 } = {}) {
   if (!senderAddress) throw new Error("senderAddress required");
@@ -291,13 +292,14 @@ export async function buildAcrossBridgePlan({
         amountUsd,
         mode: "live",
         observedAt: new Date(now * 1000).toISOString(),
-        executionReason: "strategy_execution",
+        executionReason,
         approval,
         quote: { ...quote, calldata, spokePool, quoteLatencyMs },
         tx,
         strategyConfig: { intentTtlMs: strategyCaps.intentTtlMs },
         metadata: {
           expectedTxTo: tx?.to || null,
+          executionReason,
           acrossInputToken: quote.inputToken,
           acrossOutputToken: quote.outputToken,
           acrossOutputAmount: quote.outputAmount,

@@ -168,6 +168,39 @@ test("evGate allows transport plumbing without expectedNetUsd as zero-PnL surfac
   assert.equal(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
 });
 
+test("evGate treats capital rebalance executionReason as transport plumbing", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "lifi_bridge",
+      executionReason: "capital_rebalance",
+      expectedNetUsd: undefined,
+    }),
+    makeHistory([], { intentType: "lifi_bridge" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
+test("evGate treats metadata capital rebalance executionReason as transport plumbing", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "approve_exact",
+      executionReason: "strategy_execution",
+      expectedNetUsd: undefined,
+      metadata: { executionReason: "capital_rebalance" },
+    }),
+    makeHistory([], { intentType: "approve_exact" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
 test("evGate keeps normal EV pass/fail when transport plumbing carries expectedNetUsd", () => {
   const verdict = evGate(
     makeIntent({
