@@ -204,6 +204,9 @@ function classifyFamily({ action = "", protocolId = "", tokenSymbols = [], text 
 }
 
 function mapToStrategy({ family = "", protocolId = "", chain = "", tokenSymbols = [], managedVault = false } = {}) {
+  if (family.endsWith("_yield_token") && protocolId === "pendle") {
+    return { strategyId: "gateway_native_asset_conversion_sleeve", executionSurface: "fixedYield" };
+  }
   if (family === "btc_collateral_stable_borrow" && ["morpho", "aave", "euler"].includes(protocolId)) {
     return { strategyId: "recursive_stablecoin_lending_loop", executionSurface: "stableBorrow" };
   }
@@ -294,6 +297,20 @@ function choosePositionToken(tokens = [], explorerAddress = null) {
   return tokens.find((token) => sameAddress(token.address, explorerAddress)) || null;
 }
 
+function pendleYtLike({ protocolId = "", text = "", tokenSymbols = [] } = {}) {
+  if (protocolId !== "pendle") return false;
+  return (
+    /\bYT\b|yield token/i.test(text) ||
+    tokenSymbols.some((symbol) => /^yt[-_\s]?/i.test(String(symbol || "")))
+  );
+}
+
+function pendleInstrument({ protocolId = "", text = "", tokenSymbols = [] } = {}) {
+  if (pendleYtLike({ protocolId, text, tokenSymbols })) return "yt";
+  if (protocolId === "pendle" && (/\bPT\b|principal token|fixed yield/i.test(text) || tokenSymbols.some((symbol) => /^pt[-_\s]?/i.test(String(symbol || ""))))) return "pt";
+  return null;
+}
+
 function aaveSupplyToken(token = {}) {
   if (!token || typeof token !== "object") return false;
   const symbol = String(token.symbol || "");
@@ -305,6 +322,52 @@ function buildProtocolBindingFromOpportunity({ opportunity = {}, protocolId = ""
   const tokens = tokenDetailsFromOpportunity(opportunity);
   const underlyingToken = chooseUnderlyingToken(tokens, { explorerAddress, assetFamilies });
   const positionToken = choosePositionToken(tokens, explorerAddress);
+  const text = [opportunity?.name, opportunity?.description, protocolId, opportunity?.type].filter(Boolean).join(" ");
+  const instrument = pendleInstrument({
+    protocolId,
+    text,
+    tokenSymbols: tokenSymbolsFromOpportunity(opportunity),
+  });
+
+  if (protocolId === "pendle" && instrument === "yt") {
+    const ytToken =
+      tokens.find((token) => /^yt[-_\s]?/i.test(String(token.symbol || ""))) ||
+      positionToken ||
+      tokens.find((token) => isAddress(token.address) && !sameAddress(token.address, underlyingToken?.address)) ||
+      null;
+    if (!explorerAddress || !ytToken?.address || !underlyingToken?.address) return null;
+    return {
+      source: "merkl_opportunity",
+      instrument: "yt",
+      marketAddress: explorerAddress,
+      ytTokenAddress: ytToken.address,
+      ytTokenSymbol: ytToken.symbol,
+      shareTokenAddress: ytToken.address,
+      shareTokenSymbol: ytToken.symbol,
+      assetAddress: underlyingToken.address,
+      assetSymbol: underlyingToken.symbol,
+      assetDecimals: underlyingToken.decimals,
+      maturity: opportunity.maturity || opportunity.expiry || null,
+      ytExpiry: opportunity.maturity || opportunity.expiry || null,
+      depositUrl: opportunity.depositUrl || null,
+    };
+  }
+
+  if (protocolId === "pendle" && instrument === "pt") {
+    if (!explorerAddress || !underlyingToken?.address) return null;
+    return {
+      source: "merkl_opportunity",
+      instrument: "pt",
+      vaultAddress: explorerAddress,
+      marketAddress: explorerAddress,
+      assetAddress: underlyingToken.address,
+      assetSymbol: underlyingToken.symbol,
+      assetDecimals: underlyingToken.decimals,
+      shareTokenAddress: positionToken?.address || explorerAddress,
+      shareTokenSymbol: positionToken?.symbol || null,
+      depositUrl: opportunity.depositUrl || null,
+    };
+  }
 
   if (["morpho", "euler", "yo", "summerfinance"].includes(protocolId)) {
     if (!explorerAddress || !underlyingToken?.address || sameAddress(explorerAddress, underlyingToken.address)) return null;
@@ -377,7 +440,18 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     assetFamilies,
     managedVault,
   });
-  const mapping = mapToStrategy({ family, protocolId, chain, tokenSymbols, managedVault });
+  const instrument = pendleInstrument({ protocolId, text, tokenSymbols });
+  const normalizedFamily =
+    protocolId === "pendle" && instrument === "yt"
+      ? assetFamilies.includes("btc_like")
+        ? "btc_yield_token"
+        : assetFamilies.includes("eth_like")
+          ? "eth_yield_token"
+          : assetFamilies.includes("stablecoin")
+            ? "stable_yield_token"
+            : "other_yield_token"
+      : family;
+  const mapping = mapToStrategy({ family: normalizedFamily, protocolId, chain, tokenSymbols, managedVault });
   const protocolBinding = buildProtocolBindingFromOpportunity({
     opportunity,
     protocolId,
@@ -425,7 +499,8 @@ export function normalizeMerklOpportunity(opportunity = {}, { campaignsByOpportu
     assetFamilies,
     hasSupportedAssetExposure: assetFamilies.length > 0,
     btcPaybackCompatible: assetFamilies.length > 0,
-    family,
+    family: normalizedFamily,
+    pendleInstrument: instrument,
     managedVault,
     requiresRangeManagement: family === "stable_btc_lp",
     mappedStrategyId: mapping.strategyId,

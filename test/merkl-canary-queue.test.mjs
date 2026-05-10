@@ -78,7 +78,7 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x3333333333333333333333333333333333333333",
+          vaultAddress: "0x3232323232323232323232323232323232323232",
           assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         },
       },
@@ -355,7 +355,7 @@ test("merkl canary queue carries latest policy/signer stage truth from autopilot
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x3333333333333333333333333333333333333333",
+          vaultAddress: "0x3232323232323232323232323232323232323232",
           assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         },
       },
@@ -406,4 +406,142 @@ test("merkl canary queue carries latest policy/signer stage truth from autopilot
     holdDays: 4.16,
     limitingFactor: "inventory",
   }]);
+});
+
+test("merkl canary queue admits Pendle YT through registry-first binding and EV proof", () => {
+  const report = {
+    generatedAt: "2026-05-10T00:00:00.000Z",
+    policyProfile: "aggressive_multi_asset_payback_v2",
+    opportunities: [{
+      opportunityId: "base-pendle-yt-usdc",
+      decision: "candidate",
+      validationMode: "tiny_live_canary_only",
+      chain: "base",
+      protocolId: "pendle",
+      protocolName: "Pendle",
+      name: "Generic Pendle YT USDC",
+      family: "stable_yield_token",
+      assetFamilies: ["stablecoin"],
+      tokenSymbols: ["YT-USDC", "USDC"],
+      entryTokenSymbols: ["USDC"],
+      hasStableExposure: true,
+      mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+      executionSurface: "fixedYield",
+      campaignRemainingHours: 240,
+      aprPct: 500,
+      nativeAprPct: 500,
+      tvlUsd: 2_000_000,
+      score: 95,
+      overfitRisk: "minimal",
+      overfitFlags: [],
+      protocolBinding: {
+        source: "merkl_opportunity",
+        instrument: "yt",
+        marketAddress: "0x1111111111111111111111111111111111111111",
+        ytTokenAddress: "******************************************",
+        ytTokenSymbol: "YT-USDC",
+        assetAddress: "0x3232323232323232323232323232323232323232",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+        maturity: "2026-08-10T00:00:00.000Z",
+        exitQuote: {
+          source: "odos",
+          outputUsd: 10.2,
+          depthUsd: 25,
+          slippageBps: 45,
+        },
+      },
+    }],
+  };
+
+  const queue = buildMerklCanaryQueue({
+    report,
+    now: "2026-05-10T00:00:00.000Z",
+    inventorySnapshot: {
+      native: [{ chain: "base", asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 }],
+      tokens: [{
+        chain: "base",
+        ticker: "USDC",
+        token: "0x3232323232323232323232323232323232323232",
+        actual: "15000000",
+        actualDecimal: 15,
+        estimatedUsd: 15,
+      }],
+    },
+  });
+
+  assert.equal(queue.summary.pendleYtCount, 1);
+  assert.equal(queue.summary.pendleYtCanaryReadyCount, 1);
+  assert.equal(queue.summary.executableNowCount, 1);
+  assert.equal(queue.summary.autoExecutableNowCount, 1);
+  assert.equal(queue.queue[0].protocolBindingPlan.bindingKind, "pendle_yt_buy_sell_redeem");
+  assert.equal(queue.queue[0].protocolBindingPlan.status, "binding_ready");
+  assert.equal(queue.queue[0].executionReadiness.executorSupported, true);
+  assert.equal(queue.queue[0].pendleYt.ev.canaryReady, true);
+  assert.equal(queue.queue[0].capabilityGaps.includes("yt_exit_quote_missing"), false);
+  assert.equal(queue.queue[0].autoEntry.autoExecute, true);
+  assert.deepEqual(queue.queue[0].autoEntry.blockers, []);
+});
+
+test("merkl canary queue blocks Pendle YT without exit quote instead of falling back to Base/PT", () => {
+  const report = {
+    generatedAt: "2026-05-10T00:00:00.000Z",
+    policyProfile: "aggressive_multi_asset_payback_v2",
+    opportunities: [{
+      opportunityId: "bsc-pendle-yt-btc",
+      decision: "candidate",
+      validationMode: "tiny_live_canary_only",
+      chain: "bsc",
+      protocolId: "pendle",
+      protocolName: "Pendle",
+      name: "Generic Pendle YT BTC",
+      family: "btc_yield_token",
+      assetFamilies: ["btc_like"],
+      tokenSymbols: ["YT-SOLVBTC", "SOLVBTC"],
+      entryTokenSymbols: ["SOLVBTC"],
+      hasBtcExposure: true,
+      mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+      executionSurface: "fixedYield",
+      campaignRemainingHours: 240,
+      aprPct: 120,
+      nativeAprPct: 120,
+      tvlUsd: 2_000_000,
+      score: 90,
+      overfitRisk: "minimal",
+      overfitFlags: [],
+      protocolBinding: {
+        source: "merkl_opportunity",
+        instrument: "yt",
+        marketAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ytTokenAddress: "0xB4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4",
+        assetAddress: "0xC5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5",
+        assetSymbol: "SOLVBTC",
+        assetDecimals: 18,
+        maturity: "2026-06-10T00:00:00.000Z",
+      },
+    }],
+  };
+
+  const queue = buildMerklCanaryQueue({
+    report,
+    now: "2026-05-10T00:00:00.000Z",
+    inventorySnapshot: {
+      native: [{ chain: "bsc", asset: "BNB", actual: "1000000000000000", estimatedUsd: 0.6 }],
+      tokens: [{
+        chain: "bsc",
+        ticker: "SOLVBTC",
+        token: "0xC5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5",
+        actual: "1000000000000000",
+        actualDecimal: 0.001,
+        estimatedUsd: 100,
+      }],
+    },
+  });
+
+  assert.equal(queue.summary.byChain.bsc, 1);
+  assert.equal(queue.summary.pendleYtCount, 1);
+  assert.equal(queue.summary.pendleYtCanaryReadyCount, 0);
+  assert.equal(queue.queue[0].chain, "bsc");
+  assert.equal(queue.queue[0].protocolBindingPlan.bindingKind, "pendle_yt_buy_sell_redeem");
+  assert.ok(queue.queue[0].capabilityGaps.includes("yt_exit_quote_missing"));
 });

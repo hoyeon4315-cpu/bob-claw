@@ -10,6 +10,11 @@ import {
   executeAavePortfolioExit,
   executeErc4626PortfolioExit,
 } from "./helpers/merkl-portfolio-exit-executors.mjs";
+import {
+  buildPendleYtEntryPlan,
+  executePendleYtEntryPlan,
+  executePendleYtExit,
+} from "../strategy/registry/plugins/yield-tokenization/pendle-binding.mjs";
 
 const REGISTRY = new Map();
 
@@ -137,3 +142,13 @@ registerErc4626LikeBinding("kyo_lp_add_remove", { intentType: "lp_add_liquidity"
 
 // GMX perp uses Aave-style open/close for now (placeholder until perp-specific helper)
 registerLendingLikeBinding("gmx_v2_perp_open_close", { intentType: "perp_open" });
+
+// ── Pendle YT built-in registration ──
+registerBinding({
+  bindingKind: "pendle_yt_buy_sell_redeem",
+  planBuilder: buildPendleYtEntryPlan,
+  planExecutor: executePendleYtEntryPlan,
+  exitExecutor: executePendleYtExit,
+  intentType: "pendle_yt_entry",
+  family: "pendle_yt",
+});

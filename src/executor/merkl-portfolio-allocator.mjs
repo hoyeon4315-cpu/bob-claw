@@ -30,7 +30,6 @@ import { tinyCanarySameChainRoundTripCostUsd, resolveTinyCanaryExpectedHoldDays 
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
 import { buildProofGraduationCanaryRequest } from "./canary/proof-graduation-bridge.mjs";
 
-
 function finite(value) {
   if (value == null || value === "") return null;
   const parsed = Number(value);

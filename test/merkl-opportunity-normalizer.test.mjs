@@ -383,3 +383,150 @@ test("merkl normalizer keeps LP pool campaigns off the stable carry executor sur
   assert.equal(item.executionSurface, "clLp");
   assert.equal(item.mappedStrategyId, null);
 });
+
+test("merkl normalizer maps generic Pendle YT opportunities without hardcoded markets", () => {
+  const item = normalizeMerklOpportunity({
+    id: "pendle-yt-generic",
+    chainId: 8453,
+    chain: { name: "Base" },
+    protocol: { id: "pendle", name: "Pendle" },
+    type: "PENDLE_MARKET",
+    action: "HOLD",
+    name: "Hold YT-USDC in a Pendle market",
+    description: "Earn yield token upside by holding a Pendle YT market position.",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x1111111111111111111111111111111111111111",
+    latestCampaignEnd: "1798761600",
+    tokens: [
+      {
+        displaySymbol: "YT-USDC",
+        address: "0x2222222222222222222222222222222222222222",
+        decimals: 18,
+        verified: false,
+        type: "TOKEN",
+      },
+      {
+        displaySymbol: "USDC",
+        address: "0x3232323232323232323232323232323232323232",
+        decimals: 6,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-05-10T00:00:00.000Z" });
+
+  assert.equal(item.protocolId, "pendle");
+  assert.equal(item.pendleInstrument, "yt");
+  assert.equal(item.family, "stable_yield_token");
+  assert.equal(item.mappedStrategyId, "gateway_native_asset_conversion_sleeve");
+  assert.equal(item.executionSurface, "fixedYield");
+  assert.equal(item.protocolBinding.instrument, "yt");
+  assert.equal(item.protocolBinding.marketAddress, "0x1111111111111111111111111111111111111111");
+  assert.equal(item.protocolBinding.ytTokenAddress, "0x2222222222222222222222222222222222222222");
+  assert.equal(item.protocolBinding.assetAddress, "0x3232323232323232323232323232323232323232");
+});
+
+test("merkl normalizer maps BTC-family Pendle YT to btc_yield_token", () => {
+  const item = normalizeMerklOpportunity({
+    id: "pendle-yt-btc",
+    chainId: 8453,
+    chain: { name: "Base" },
+    protocol: { id: "pendle", name: "Pendle" },
+    type: "PENDLE_MARKET",
+    action: "HOLD",
+    name: "Hold YT-SOLVBTC in Pendle market",
+    description: "YT on SolvBTC.",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    tokens: [
+      {
+        displaySymbol: "YT-SOLVBTC",
+        address: "0xB4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4",
+        decimals: 18,
+        verified: false,
+        type: "TOKEN",
+      },
+      {
+        displaySymbol: "SOLVBTC",
+        address: "0xC5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5",
+        decimals: 18,
+        verified: true,
+        type: "TOKEN",
+      },
+    ],
+  }, { now: "2026-05-10T00:00:00.000Z" });
+
+  assert.equal(item.pendleInstrument, "yt");
+  assert.equal(item.family, "btc_yield_token");
+  assert.equal(item.mappedStrategyId, "gateway_native_asset_conversion_sleeve");
+  assert.equal(item.executionSurface, "fixedYield");
+  assert.equal(item.protocolBinding.instrument, "yt");
+});
+
+test("merkl normalizer maps ETH-family Pendle YT to eth_yield_token", () => {
+  const item = normalizeMerklOpportunity({
+    id: "pendle-yt-eth",
+    chainId: 1,
+    chain: { name: "Ethereum" },
+    protocol: { id: "pendle", name: "Pendle" },
+    type: "PENDLE_MARKET",
+    action: "HOLD",
+    name: "Hold YT-wETH in Pendle market",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0xD6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6",
+    tokens: [
+      {
+        displaySymbol: "YT-WETH",
+        address: "0xE7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7",
+        decimals: 18,
+        verified: false,
+      },
+      {
+        displaySymbol: "WETH",
+        address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        decimals: 18,
+        verified: true,
+      },
+    ],
+  }, { now: "2026-05-10T00:00:00.000Z" });
+
+  assert.equal(item.pendleInstrument, "yt");
+  assert.equal(item.family, "eth_yield_token");
+  assert.equal(item.executionSurface, "fixedYield");
+});
+
+test("merkl normalizer maps Pendle PT to instrument=pt without hardcoding", () => {
+  const item = normalizeMerklOpportunity({
+    id: "pendle-pt-lbtc",
+    chainId: 8453,
+    chain: { name: "Base" },
+    protocol: { id: "pendle", name: "Pendle" },
+    type: "PENDLE_MARKET",
+    action: "HOLD",
+    name: "Hold PT-LBTC fixed yield in Pendle market",
+    status: "LIVE",
+    liveCampaigns: 1,
+    explorerAddress: "0x1111111111111111111111111111111111111111",
+    tokens: [
+      {
+        displaySymbol: "PT-LBTC",
+        address: "0x2222222222222222222222222222222222222222",
+        decimals: 18,
+        verified: false,
+      },
+      {
+        displaySymbol: "LBTC",
+        address: "0x3232323232323232323232323232323232323232",
+        decimals: 18,
+        verified: true,
+      },
+    ],
+  }, { now: "2026-05-10T00:00:00.000Z" });
+
+  assert.equal(item.pendleInstrument, "pt");
+  assert.equal(item.protocolBinding.instrument, "pt");
+  assert.equal(item.protocolBinding.vaultAddress, "0x1111111111111111111111111111111111111111");
+});

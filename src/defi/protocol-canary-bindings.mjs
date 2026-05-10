@@ -137,6 +137,26 @@ const PROTOCOL_BINDINGS = Object.freeze({
       "This adds BSC discovery diversity without creating a new strategy lane or bypassing deterministic signer policy.",
     ]),
   }),
+  pendle: Object.freeze({
+    protocolId: "pendle",
+    supportedSurfaces: Object.freeze(["fixedYield"]),
+    bindingKind: "pendle_pt_vault_deposit_withdraw",
+    requiredBindingFields: Object.freeze(["vaultAddress", "assetAddress"]),
+    optionalBindingFields: Object.freeze(["shareTokenAddress", "marketAddress", "instrument", "maturity", "ytExpiry"]),
+    approvalTargetField: "vaultAddress",
+    canaryActions: Object.freeze([
+      "approve_exact_asset_to_pendle_adapter",
+      "enter_fixed_yield_token",
+      "verify_position_token_delta",
+      "exit_fixed_yield_token",
+      "verify_asset_balance_delta",
+      "revoke_or_zero_idle_allowance",
+    ]),
+    notes: Object.freeze([
+      "Pendle PT/YT opportunities are admitted only from market metadata; no pool address is hardcoded in the binding registry.",
+      "YT canaries require a YT token address, maturity metadata, and exit quote proof before signing.",
+    ]),
+  }),
 });
 
 function normalize(value) {
@@ -148,6 +168,9 @@ function missingFields(binding = {}, fields = []) {
 }
 
 function missingBindingFields(template = {}, binding = {}) {
+  if (template.protocolId === "pendle" && binding.instrument === "yt") {
+    return missingFields(binding, ["marketAddress", "ytTokenAddress", "assetAddress"]);
+  }
   if (["aave", "yei"].includes(template.protocolId)) {
     const missing = [];
     if (!binding.poolAddress && !binding.poolAddressProviderAddress) missing.push("poolAddress");
@@ -186,9 +209,15 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
   const surface = opportunity.executionSurface || null;
   const unsupportedSurface = surface && !template.supportedSurfaces.includes(surface);
   const missing = missingBindingFields(template, binding || {});
+  const pendleYt = template.protocolId === "pendle" && binding?.instrument === "yt";
+  const bindingKind = pendleYt ? "pendle_yt_buy_sell_redeem" : template.bindingKind;
+  const requiredBindingFields = pendleYt ? ["marketAddress", "ytTokenAddress", "assetAddress"] : template.requiredBindingFields;
+  const optionalBindingFields = pendleYt
+    ? ["shareTokenAddress", "ytTokenSymbol", "assetSymbol", "assetDecimals", "maturity", "ytExpiry", "exitQuote", "entryQuote", "impliedAprPct"]
+    : template.optionalBindingFields;
   const resolvedBinding = {
-    ...pickBindingFields(binding || {}, template.requiredBindingFields),
-    ...pickBindingFields(binding || {}, template.optionalBindingFields),
+    ...pickBindingFields(binding || {}, requiredBindingFields),
+    ...pickBindingFields(binding || {}, optionalBindingFields),
     ...pickBindingFields(binding || {}, [
       "assetSymbol",
       "assetDecimals",
@@ -196,6 +225,7 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
       "aTokenSymbol",
       "depositUrl",
       "source",
+      "instrument",
     ]),
   };
   const status = unsupportedSurface
@@ -207,11 +237,11 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
   return {
     status,
     protocolId: template.protocolId,
-    bindingKind: template.bindingKind,
+    bindingKind,
     executionSurface: surface,
     supportedSurfaces: [...template.supportedSurfaces],
-    requiredBindingFields: [...template.requiredBindingFields],
-    optionalBindingFields: [...template.optionalBindingFields],
+    requiredBindingFields: [...requiredBindingFields],
+    optionalBindingFields: [...optionalBindingFields],
     missingBindingFields: missing,
     resolvedBinding,
     approvalTargetField: template.approvalTargetField,

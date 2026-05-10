@@ -3,6 +3,7 @@ const AUTOMATED_CANARY_BINDINGS = new Set([
   "erc4626_vault_supply_withdraw",
   "euler_evault_deposit_withdraw",
   "aave_v3_pool_supply_withdraw",
+  "pendle_yt_buy_sell_redeem",
 ]);
 
 function normalized(value) {

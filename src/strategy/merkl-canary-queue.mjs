@@ -4,6 +4,7 @@ import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings
 import { isSupportedBindingKind } from "../executor/protocol-binding-registry.mjs";
 import { applyMerklCanaryExecutionReadiness } from "./merkl-canary-execution-readiness.mjs";
 import { buildRepresentativeChainCoverage } from "./representative-chain-coverage.mjs";
+import { evaluatePendleYtEv, isPendleYtQueueItem } from "./pendle-yt-ev.mjs";
 
 const LIVE_PROVEN_DEX_CHAINS = new Set(["base", "bsc", "avalanche", "sonic"]);
 const PROTOCOL_BINDING_PROTOCOLS = new Set(["morpho", "aave", "euler", "moonwell", "venus", "pendle", "yei"]);
@@ -204,12 +205,20 @@ function entryAssets(item = {}) {
 
 function capabilityGaps(item = {}, protocolBindingPlan = null) {
   const gaps = ["current_inventory_entry_route_required"];
+  const pendleYt = protocolBindingPlan?.bindingKind === "pendle_yt_buy_sell_redeem";
   if (!LIVE_PROVEN_DEX_CHAINS.has(item.chain)) gaps.push("chain_live_dex_route_unproven_or_missing_stable_output");
   if (item.chain === "ethereum") gaps.push("ethereum_l1_gas_ev_positive_check_required");
   if (PROTOCOL_BINDING_PROTOCOLS.has(item.protocolId) && protocolBindingPlan?.status !== "binding_ready") {
     gaps.push("protocol_position_binding_required");
   }
-  if (item.executionSurface === "fixedYield") gaps.push("maturity_or_secondary_exit_quote_required");
+  if (item.executionSurface === "fixedYield" && !pendleYt) gaps.push("maturity_or_secondary_exit_quote_required");
+  if (pendleYt) {
+    const ytEv = evaluatePendleYtEv({
+      ...item,
+      protocolBindingPlan,
+    });
+    gaps.push(...(ytEv?.blockers || []));
+  }
   if (item.executionSurface === "stableBorrow") gaps.push("health_factor_and_liquidation_buffer_required");
   return gaps;
 }
@@ -240,6 +249,10 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
   const protocolBindingPlan = buildProtocolCanaryBindingPlan({
     opportunity: item,
     binding: item.protocolBinding,
+  });
+  const pendleYtEv = evaluatePendleYtEv({
+    ...item,
+    protocolBindingPlan,
   });
   return {
     queueId: `merkl:${item.opportunityId}`,
@@ -275,6 +288,10 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY)
     capabilityGaps: capabilityGaps(item, protocolBindingPlan),
     preflightSteps: buildPreflightSteps(item),
     protocolBindingPlan,
+    pendleYt: isPendleYtQueueItem({ ...item, protocolBindingPlan }) ? {
+      family: "pendle_yt",
+      ev: pendleYtEv,
+    } : null,
   };
 }
 
@@ -368,6 +385,8 @@ export function buildMerklCanaryQueue({
       protocolBindingReadyCount: queue.filter((item) => item.protocolBindingPlan?.status === "binding_ready").length,
       protocolBindingRequiredCount: queue.filter((item) => item.capabilityGaps.includes("protocol_position_binding_required")).length,
       unsupportedProtocolBindingCount: queue.filter((item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding").length,
+      pendleYtCount: queue.filter((item) => item.pendleYt).length,
+      pendleYtCanaryReadyCount: queue.filter((item) => item.pendleYt?.ev?.canaryReady === true).length,
       chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
       inventoryReadyCount: executableQueue.length,
       autoEntryReadyCount: autoExecutableQueue.length,

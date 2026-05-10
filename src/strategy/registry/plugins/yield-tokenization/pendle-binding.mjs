@@ -45,6 +45,11 @@ function amountUsdFromUnits(units, decimals) {
   return Number.isFinite(num) ? num : null;
 }
 
+function finite(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS) {
   const units = Number(gas?.gasUnits);
   const baseUnits = Number.isFinite(units) && units > 0 ? Math.ceil(units) : fallbackUnits;
@@ -375,14 +380,14 @@ export async function buildPendleYtEntryPlan({
     amountUsd,
     asset: tokenAsset(chain, assetAddress, {
       ticker: binding.assetSymbol || tokenAsset(chain, assetAddress).ticker,
-      family: "stablecoin",
+      family: tokenAsset(chain, assetAddress).family || "stablecoin",
       decimals: assetDecimals,
-      priceKey: "usd_stable",
+      priceKey: tokenAsset(chain, assetAddress).priceKey || (tokenAsset(chain, assetAddress).family === "stablecoin" ? "usd_stable" : null),
     }),
     shareAsset: tokenAsset(chain, ytTokenAddress, {
       ticker: binding.ytTokenSymbol || "PendleYT",
       family: "protocol_share",
-      decimals: 18,
+      decimals: Number.isInteger(binding.assetDecimals) ? binding.assetDecimals : tokenAsset(chain, ytTokenAddress).decimals,
       priceKey: null,
     }),
     steps,
@@ -518,16 +523,20 @@ export async function executePendleYtExit({
   if (!getEvmChainConfig(position.chain)) throw new Error(`Unsupported EVM chain: ${position.chain}`);
 
   const now = new Date().toISOString();
+  const exitAssetDecimals = Number.isInteger(position.assetDecimals) ? position.assetDecimals : tokenAsset(position.chain, position.assetAddress).decimals;
+  const exitAssetTicker = position.assetSymbol || tokenAsset(position.chain, position.assetAddress).ticker || "USDC";
+  const exitAssetFamily = position.assetFamily || (tokenAsset(position.chain, position.assetAddress).family || "stablecoin");
   const asset = tokenAsset(position.chain, position.assetAddress, {
-    ticker: "USDC",
-    family: "stablecoin",
-    decimals: 6,
-    priceKey: "usd_stable",
+    ticker: exitAssetTicker,
+    family: exitAssetFamily,
+    decimals: exitAssetDecimals,
+    priceKey: exitAssetFamily === "stablecoin" ? "usd_stable" : null,
   });
+  const shareDecimals = Number.isInteger(position.shareDecimals) ? position.shareDecimals : exitAssetDecimals;
   const shareAsset = tokenAsset(position.chain, position.shareTokenAddress, {
-    ticker: "PendleYT",
+    ticker: position.shareTokenSymbol || "PendleYT",
     family: "protocol_share",
-    decimals: 18,
+    decimals: shareDecimals,
     priceKey: null,
   });
 
@@ -675,10 +684,11 @@ export async function executePendleYtExit({
     });
   }
 
+  const exitAmountUsd = finite(position.amountUsd) ?? finite(position.entryAmountUsd) ?? 0;
   const swapIntent = buildIntent({
     strategyId: position.strategyId,
     chain: position.chain,
-    amountUsd: 0,
+    amountUsd: exitAmountUsd,
     now,
     ttlMs: strategyCaps.intentTtlMs,
     intentType: PENDLE_YT_EXIT_INTENT_TYPE,
