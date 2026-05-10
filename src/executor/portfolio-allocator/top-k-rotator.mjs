@@ -5,6 +5,9 @@ import {
 } from "../../config/portfolio-rotator.mjs";
 import { overfitPenaltyForBacktestQuality, validateStrategyRecord } from "../../strategy/strategy-record-schema.mjs";
 import { combinedConfidence } from "./confidence-tracker.mjs";
+import { evaluateChainFailover, featureEnabled as chainFailoverEnabled } from "./chain-failover.mjs";
+import { featureEnabled as defiLlamaEnabled } from "../../market/defillama-client.mjs";
+import { featureEnabled as multiOracleEnabled } from "../../market/multi-oracle.mjs";
 
 const IL_RISK_PENALTY = Object.freeze({
   none: 0,
@@ -22,11 +25,29 @@ function sameCount(selected = [], field, candidate = {}) {
   return selected.filter((item) => item.record?.[field] === candidate[field]).length;
 }
 
+function resolveDefiLlamaApr(record, defillamaYields) {
+  if (!defillamaYields) return null;
+  const chainYields = defillamaYields[record.chain];
+  if (!chainYields || chainYields.length === 0) return null;
+  const pool = chainYields.find((p) => p.pool === record.poolKey);
+  if (!pool) return null;
+  const DEFILLAMA_HAIRCUT = 0.5;
+  return pool.apy * (1 - DEFILLAMA_HAIRCUT);
+}
+
 export function scoreStrategyForSlot(record = {}, context = {}) {
   const capitalUsd = finiteNumber(context.capitalUsd, 0);
   const measuredAprPct = finiteNumber(record.measured_apr_pct, 0);
   const rewardHaircutPct = Math.max(0, Math.min(100, finiteNumber(record.reward_haircut_pct, 0)));
-  const effectiveAprPct = measuredAprPct * (1 - rewardHaircutPct / 100);
+  let effectiveAprPct = measuredAprPct * (1 - rewardHaircutPct / 100);
+
+  if (defiLlamaEnabled(context.profile) && context.defillamaYields) {
+    const defillamaApr = resolveDefiLlamaApr(record, context.defillamaYields);
+    if (Number.isFinite(defillamaApr)) {
+      effectiveAprPct = Math.max(effectiveAprPct, defillamaApr);
+    }
+  }
+
   const confidence = combinedConfidence(record);
   const overfitPenalty = overfitPenaltyForBacktestQuality(record.backtest_quality);
   const entryCost = finiteNumber(record.entry_cost_usd_per_dollar, 0);
@@ -125,6 +146,20 @@ export function rotateTopK(records = [], context = {}) {
       rejected.push({ strategyId: candidate.record.strategyId, reason: "chain_blocked", chain: candidate.record.chain });
       continue;
     }
+    if (chainFailoverEnabled(context.profile)) {
+      const failover = evaluateChainFailover({ candidate: candidate.record, chainHealth: context.chainHealth || {} });
+      if (!failover.allowed) {
+        rejected.push({ strategyId: candidate.record.strategyId, reason: failover.blockers[0], chain: candidate.record.chain });
+        continue;
+      }
+    }
+    if (multiOracleEnabled(context.profile)) {
+      const priceValidation = context.oraclePrices?.[candidate.record.chain];
+      if (priceValidation?.flag === "oracle_divergence") {
+        rejected.push({ strategyId: candidate.record.strategyId, reason: "oracle_divergence", chain: candidate.record.chain });
+        continue;
+      }
+    }
     if (!candidate.eligible) {
       rejected.push({ strategyId: candidate.record.strategyId, reason: "non_positive_expected_net", score: candidate.score });
       continue;
@@ -151,7 +186,7 @@ export function rotateTopK(records = [], context = {}) {
   const noTxReason = actions.length > 0 ? null : "no_strategy_candidates_eligible";
   const blockerClass = actions.length > 0
     ? null
-    : rejected.some((item) => item.reason === "chain_blocked")
+    : rejected.some((item) => item.reason === "chain_blocked" || item.reason === "chain_failover_unhealthy")
       ? "chain"
       : "policy";
 
