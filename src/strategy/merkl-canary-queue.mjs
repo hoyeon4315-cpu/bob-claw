@@ -321,6 +321,7 @@ export function buildMerklCanaryQueue({
     .filter((item) => item?.decision === "candidate")
     .filter((item) => item?.validationMode === "tiny_live_canary_only")
     .filter((item) => item?.mappedStrategyId)
+    .filter((item) => !(item?.type === "ERC20LOGPROCESSOR" && item?.action === "HOLD" && !item?.protocolId))
     .map((item) => ({ ...item, priorityScore: priorityScore(item, policy) }))
     .sort(compareQueue);
   const selectedCandidates = selectCandidatesWithChainQuota(candidates, { limit, chainQuota });

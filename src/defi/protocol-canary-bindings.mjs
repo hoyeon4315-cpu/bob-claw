@@ -1,7 +1,7 @@
 const PROTOCOL_BINDINGS = Object.freeze({
   morpho: Object.freeze({
     protocolId: "morpho",
-    supportedSurfaces: Object.freeze(["lending", "stableCarry", "ethLending"]),
+    supportedSurfaces: Object.freeze(["lending", "stableCarry", "ethLending", "assetRotation"]),
     bindingKind: "erc4626_vault_supply_withdraw",
     requiredBindingFields: Object.freeze(["vaultAddress", "assetAddress"]),
     optionalBindingFields: Object.freeze(["shareTokenAddress", "referralCode"]),
@@ -40,7 +40,7 @@ const PROTOCOL_BINDINGS = Object.freeze({
   }),
   yei: Object.freeze({
     protocolId: "yei",
-    supportedSurfaces: Object.freeze(["stableCarry", "stableBorrow"]),
+    supportedSurfaces: Object.freeze(["stableCarry", "stableBorrow", "reserveAllocation"]),
     bindingKind: "aave_v3_pool_supply_withdraw",
     requiredBindingFields: Object.freeze(["poolAddress", "assetAddress", "aTokenAddress"]),
     optionalBindingFields: Object.freeze(["poolAddressProviderAddress", "marketName", "referralCode"]),
