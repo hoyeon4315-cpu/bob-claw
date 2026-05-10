@@ -14,6 +14,9 @@
 
 import { writeFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { runWalkForwardCv } from "../research/pendle-wf-cv-harness.mjs";
+import { evaluateAutoPromotion } from "../executor/auto-promotion-gate.mjs";
+import { createPendleApiClient } from "../research/pendle-api-client.mjs";
 
 export const LOOP_LIMITS = Object.freeze({
   iterationCap: 20,
@@ -88,6 +91,78 @@ export async function runLoop({
   ensureDir(auditPath);
   appendFileSync(auditPath, JSON.stringify({ ts: now().toISOString(), action: "abort", reason: "iteration_cap", cumulativeCostUsd }) + "\n");
   return { ok: false, reason: "iteration_cap", history, cumulativeCostUsd };
+}
+
+export async function discoverPendleCandidates({
+  fetchMarkets,
+  fetchMarketDepth,
+  minDepthUsd = 10000,
+} = {}) {
+  const client = createPendleApiClient();
+  const markets = typeof fetchMarkets === "function"
+    ? await fetchMarkets({ chain: "base" })
+    : await client.fetchMarkets({ chain: "base" });
+
+  const candidates = [];
+  for (const m of markets) {
+    const chain = m.chain || "base";
+    const address = m.address || m.marketAddress;
+    if (!address) continue;
+
+    const depth = typeof fetchMarketDepth === "function"
+      ? await fetchMarketDepth({ marketAddress: address, chain })
+      : await client.fetchMarketDepth({ marketAddress: address, chain });
+
+    if (!depth || (depth.depthUsd != null && depth.depthUsd < minDepthUsd)) {
+      continue;
+    }
+
+    const impliedAprPct = depth.impliedAprPct ?? m.impliedAprPct ?? 0;
+    const symbol = m.ytSymbol || m.symbol || "YT-UNKNOWN";
+    const strategyId = `pendle-yt-${symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${chain}`;
+
+    candidates.push({
+      strategyId,
+      classKey: "pendle_yt",
+      chain,
+      protocol: "pendle",
+      poolKey: `${address}:yt`,
+      marketAddress: address,
+      ytSymbol: symbol,
+      impliedAprPct,
+      depthUsd: depth.depthUsd,
+      score: impliedAprPct * 0.8,
+      autoExecute: false,
+    });
+  }
+  return candidates;
+}
+
+export async function runPendleResearchTick({
+  auditPath = "logs/auto-research-audit.jsonl",
+  now = () => new Date(),
+} = {}) {
+  const candidates = await discoverPendleCandidates();
+  const results = [];
+  for (const c of candidates) {
+    const marketHistory = [];
+    const evidence = runWalkForwardCv({
+      marketHistory,
+      config: { strategyId: c.strategyId },
+    });
+    const promotion = evaluateAutoPromotion(evidence);
+    const entry = {
+      ts: now().toISOString(),
+      action: "pendle_research_tick",
+      strategyId: c.strategyId,
+      evidence,
+      promotion,
+    };
+    ensureDir(auditPath);
+    appendFileSync(auditPath, JSON.stringify(entry) + "\n");
+    results.push({ candidate: c, evidence, promotion });
+  }
+  return results;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

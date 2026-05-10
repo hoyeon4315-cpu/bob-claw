@@ -13,7 +13,7 @@ import {
 
 const REGISTRY = new Map();
 
-function registerBinding({
+export function registerBinding({
   bindingKind,
   planBuilder,
   planExecutor,
