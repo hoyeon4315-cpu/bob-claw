@@ -1,10 +1,17 @@
+import { createHash } from "node:crypto";
 import { Interface } from "ethers";
 import { tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import {
+  resolveTinyCanaryExpectedHoldDays,
+  tinyCanarySameChainRoundTripCostUsd,
+} from "../../config/sizing.mjs";
+import { stableSerialize } from "../../execution/journal.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { simulateTransactionCall } from "../../evm/transaction-read.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
+import { evGate } from "../policy/ev-gate.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyMerklCanaryExecutionReadiness } from "../../strategy/merkl-canary-execution-readiness.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
@@ -182,7 +189,31 @@ function assetSpentProof({ before, after, amount }) {
   };
 }
 
-function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {} }) {
+function stableHash(value = {}) {
+  return createHash("sha256").update(stableSerialize(value)).digest("hex");
+}
+
+function displayedAprPct(queueItem = {}) {
+  const value = queueItem.effectiveAprPct ?? queueItem.displayedAprPct ?? queueItem.aprPct ?? queueItem.apr ?? queueItem.apy;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function expectedGrossYieldUsd({ queueItem = {}, amountUsd = 0, now = new Date().toISOString() } = {}) {
+  const aprPct = displayedAprPct(queueItem);
+  const holdDays = resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: queueItem.expectedHoldDays,
+    campaignRemainingHours: queueItem.campaignRemainingHours,
+    campaignEndsAt: queueItem.campaignEndsAt,
+    now,
+  });
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0 || aprPct === null || !Number.isFinite(holdDays) || holdDays <= 0) {
+    return null;
+  }
+  return amountUsd * (aprPct / 100) * (holdDays / 365);
+}
+
+function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {}, executionReason = "strategy_execution" }) {
   return {
     strategyId,
     chain,
@@ -191,7 +222,7 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
     amountUsd,
     mode: "live",
     observedAt: now,
-    executionReason: "strategy_execution",
+    executionReason,
     approval,
     tx,
     strategyConfig: {
@@ -341,6 +372,11 @@ export async function buildAaveProtocolCanaryPlan({
   const amountUsd = amountUsdFromUnits(normalizedAmount, assetDecimals) ?? 0;
   const buffer = Math.max(10_000, Number(gasBufferBps) || DEFAULT_GATEWAY_GAS_BUFFER_BPS);
   const referralCode = Number.isInteger(Number(binding.referralCode)) ? Number(binding.referralCode) : 0;
+  const tinyLiveCanary = queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
+  const executionReason = tinyLiveCanary ? "merkl_canary_autopilot" : "strategy_execution";
+  const estimatedGasCostUsd = tinyLiveCanary
+    ? tinyCanarySameChainRoundTripCostUsd({ chain, estimatedGasCostUsd: queueItem.estimatedGasCostUsd })
+    : queueItem.estimatedGasCostUsd ?? null;
 
   let approveGas = null;
   try {
@@ -364,6 +400,56 @@ export async function buildAaveProtocolCanaryPlan({
     senderAddress,
     referralCode,
   ]);
+  const supplyIntent = buildIntent({
+    strategyId,
+    chain,
+    amountUsd,
+    now,
+    ttlMs: strategyCaps.intentTtlMs,
+    intentType: "aave_supply",
+    executionReason,
+    tx: {
+      to: poolAddress,
+      data: supplyData,
+      value: "0",
+      gasLimit: String(applyGasBuffer(DEFAULT_SUPPLY_GAS_UNITS, buffer)),
+    },
+    metadata: {
+      capCheckAmountUsd: amountUsd,
+      exposureAction: "open",
+      ...(assetCoverage ? { assetCoverage } : {}),
+      opportunityId: queueItem.opportunityId,
+      protocol: queueItem.protocolId,
+      marketName: binding.marketName || null,
+      poolAddress,
+      assetAddress,
+      shareTokenAddress: aTokenAddress,
+      tinyLiveCanary,
+      expectedNetUsd: expectedGrossYieldUsd({ queueItem, amountUsd, now }),
+      estimatedGasCostUsd,
+      approval: {
+        token: assetAddress,
+        spender: poolAddress,
+        amount: normalizedAmount,
+      },
+    },
+  });
+  const parentEvVerdict = evGate(supplyIntent, null, { now });
+  const parentEvEvidence = parentEvVerdict.allow === true
+    ? {
+        allow: true,
+        expectedNetUsd: parentEvVerdict.evidence?.expectedNetUsd ?? null,
+        requiredNetUsd: parentEvVerdict.evidence?.requiredNetUsd ?? null,
+      }
+    : null;
+  const parentApprovalMetadata = parentEvEvidence
+    ? {
+        parentIntent: supplyIntent,
+        parentIntentHash: stableHash(supplyIntent),
+        parentEvEvidence,
+        parentEvEvidenceHash: stableHash(parentEvEvidence),
+      }
+    : {};
   const steps = [
     {
       id: "approve_asset_to_pool",
@@ -394,36 +480,14 @@ export async function buildAaveProtocolCanaryPlan({
           poolAddress,
           assetAddress,
           shareTokenAddress: aTokenAddress,
+          tinyLiveCanary,
+          ...parentApprovalMetadata,
         },
       }),
     },
     {
       id: "supply_asset_to_pool",
-      intent: buildIntent({
-        strategyId,
-        chain,
-        amountUsd,
-        now,
-        ttlMs: strategyCaps.intentTtlMs,
-        intentType: "aave_supply",
-        tx: {
-          to: poolAddress,
-          data: supplyData,
-          value: "0",
-          gasLimit: String(applyGasBuffer(DEFAULT_SUPPLY_GAS_UNITS, buffer)),
-        },
-        metadata: {
-          capCheckAmountUsd: amountUsd,
-          exposureAction: "open",
-          ...(assetCoverage ? { assetCoverage } : {}),
-          opportunityId: queueItem.opportunityId,
-          protocol: queueItem.protocolId,
-          marketName: binding.marketName || null,
-          poolAddress,
-          assetAddress,
-          shareTokenAddress: aTokenAddress,
-        },
-      }),
+      intent: supplyIntent,
     },
   ];
 

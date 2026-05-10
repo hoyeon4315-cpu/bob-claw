@@ -451,7 +451,12 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
   const sampleThreshold = finiteNumber(policy.minSamples) ?? EXECUTION_EV_COST_POLICY.minSamples;
   const fallbackP99CostUsd = executionEvFallbackCostUsd({ chain, policy });
   const hasSufficientHistory = Number.isFinite(entry?.sampleCount) && entry.sampleCount >= sampleThreshold;
-  const tinyCanaryFallbackUsd = intentType === "tiny_live_canary"
+  const isTinyLiveCanary =
+    intentType === "tiny_live_canary" ||
+    intent.executionReason === "merkl_canary_autopilot" ||
+    intent.executionReason === "radar_tiny_live_canary" ||
+    intent.metadata?.tinyLiveCanary === true;
+  const tinyCanaryFallbackUsd = isTinyLiveCanary
     ? tinyCanarySameChainRoundTripCostUsd({
         chain,
         estimatedGasCostUsd: intent.estimatedGasCostUsd,

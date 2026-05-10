@@ -4,11 +4,13 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EVM_CHAIN_CONFIGS } from "../config/chains.mjs";
+import { isOfficialGatewayDestinationChain } from "../config/gateway-destinations.mjs";
 import {
   SMALL_CAPITAL_CAMPAIGN_MODE,
   isEvidencePrimaryChain,
 } from "../config/small-capital-campaign-mode.mjs";
 import {
+  computeTinyCanaryMinProfitablePositionUsd,
   resolveTinyCanaryExpectedHoldDays,
   tinyCanarySameChainRoundTripCostUsd,
 } from "../config/sizing.mjs";
@@ -40,12 +42,6 @@ const LIQUID_BLUECHIP_SYMBOLS = new Set([
 const PRE_TGE_MARKERS = new Set([
   "points", "pre-tge", "pretge", "drop", "airdrop", "phase", "season",
 ]);
-
-const GAS_ESTIMATE_USD = {
-  base: 0.50,
-  ethereum: 5.00,
-  default: 2.00,
-};
 
 function normalizeChain(name) {
   if (!name) return "unknown";
@@ -114,7 +110,14 @@ function computeExpectedRealizedApr(displayedApr, rewardTokenHaircut) {
 }
 
 function rewardExitLiquidityStatus({ rewardTokenType, rewardToken }) {
-  if (!rewardToken || rewardToken === "unknown") {
+  if (!rewardToken) {
+    return {
+      status: "native_or_share_price_yield_no_reward_exit_required_for_candidate_report",
+      ready: true,
+      reason: null,
+    };
+  }
+  if (rewardToken === "unknown") {
     return {
       status: "missing_explicit_reward_exit_liquidity_proof",
       ready: false,
@@ -135,13 +138,6 @@ function rewardExitLiquidityStatus({ rewardTokenType, rewardToken }) {
   };
 }
 
-function getGasEstimateUsd(chain) {
-  const c = normalizeChain(chain);
-  if (c === "base") return GAS_ESTIMATE_USD.base;
-  if (c === "ethereum" || c === "mainnet") return GAS_ESTIMATE_USD.ethereum;
-  return GAS_ESTIMATE_USD.default;
-}
-
 export function campaignReportChainIds(policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   return Object.keys(policy.chainSelection?.chainProfiles ?? {})
     .map((chain) => EVM_CHAIN_CONFIGS[chain]?.chainId)
@@ -158,11 +154,14 @@ function buildMerklUrl(chainId) {
 function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   const blockers = [];
   const primaryChain = isEvidencePrimaryChain(candidate.chain, policy);
-  const expectedNetProfitUsd = typeof candidate.operatorExpectedNetProfitUsd === "number"
-    ? candidate.operatorExpectedNetProfitUsd
-    : candidate.expectedNetProfitUsd;
+  const evStatus = candidate.tinyCanaryEvStatus || tinyCanaryEvStatus(candidate);
 
-  if (candidate.displayedApr < 5) blockers.push("apr_below_5pct");
+  if (evStatus.ready !== true) {
+    blockers.push(evStatus.blocker || "tiny_canary_ev_unmeasured");
+  }
+  if (!isOfficialGatewayDestinationChain(candidate.chain)) {
+    blockers.push("unsupported_gateway_destination");
+  }
   if (candidate.tvlUsd < 50_000) blockers.push("tvl_below_50k");
   if (candidate.hoursRemaining !== null && candidate.hoursRemaining < 24) blockers.push("hours_remaining_below_24");
   if (candidate.expectedRealizedAprAfterHaircut <= 0) blockers.push("realized_apr_not_positive");
@@ -172,19 +171,16 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   if (candidate.rewardExitLiquidityStatus?.ready !== true) {
     blockers.push("reward_exit_liquidity_unproven");
   }
-  if (!primaryChain && expectedNetProfitUsd < 10) {
-    blockers.push("non_primary_chain_and_low_net_profit");
-  }
   if (!KNOWN_PROTOCOLS.has(candidate.protocol)) blockers.push("protocol_not_bound");
 
   // Hard blockers check
   const hasHardBlocker =
-    candidate.displayedApr < 5 ||
+    evStatus.ready !== true ||
+    !isOfficialGatewayDestinationChain(candidate.chain) ||
     candidate.tvlUsd < 50_000 ||
     (candidate.hoursRemaining !== null && candidate.hoursRemaining < 24) ||
     candidate.expectedRealizedAprAfterHaircut <= 0 ||
     candidate.rewardExitLiquidityStatus?.ready !== true ||
-    (!primaryChain && expectedNetProfitUsd < 10) ||
     !KNOWN_PROTOCOLS.has(candidate.protocol);
 
   if (hasHardBlocker) {
@@ -207,14 +203,14 @@ function determineEntryStatus(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   if (candidate.campaignAgeHours !== null && candidate.campaignAgeHours < 48) {
     blockers.push("campaign_age_under_48h");
   }
-  if (candidate.expectedRealizedAprAfterHaircut < 10) {
+  if (candidate.expectedRealizedAprAfterHaircut < 10 && evStatus.ready !== true) {
     blockers.push("realized_apr_under_10pct");
   }
 
   const isPolicyReview =
     (candidate.campaignAgeHours !== null && candidate.campaignAgeHours < 48) ||
     candidate.rewardTokenHaircut === 0.85 ||
-    candidate.expectedRealizedAprAfterHaircut < 10 ||
+    (candidate.expectedRealizedAprAfterHaircut < 10 && evStatus.ready !== true) ||
     blockers.length > 0;
 
   if (isPolicyReview) {
@@ -245,10 +241,27 @@ function operatorPositionUsdForCampaign(candidate, policy = SMALL_CAPITAL_CAMPAI
 }
 
 function campaignRoundTripCostUsd(candidate, policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
-  if (isEvidencePrimaryChain(candidate.chain, policy)) {
-    return tinyCanarySameChainRoundTripCostUsd({ chain: candidate.chain });
-  }
-  return getGasEstimateUsd(candidate.chain);
+  return tinyCanarySameChainRoundTripCostUsd({ chain: candidate.chain });
+}
+
+function tinyCanaryEvStatus(candidate = {}) {
+  const neededUsd = computeTinyCanaryMinProfitablePositionUsd({
+    chain: candidate.chain,
+    aprPct: candidate.expectedRealizedAprAfterHaircut,
+    expectedHoldDays: candidate.expectedHoldDays,
+    estimatedGasCostUsd: candidate.estimatedGasClaimSwapBridgeCostUsd,
+  });
+  const currentAmountUsd = Number(candidate.operatorPositionUsd);
+  const ready = neededUsd !== null && Number.isFinite(currentAmountUsd) && currentAmountUsd >= neededUsd;
+  return {
+    ready,
+    status: ready ? "ready" : "blocked",
+    blocker: ready || neededUsd === null ? null : `tiny_canary_unprofitable:need_$${Math.ceil(neededUsd)}_on_${candidate.chain}`,
+    currentAmountUsd: Number.isFinite(currentAmountUsd) ? currentAmountUsd : null,
+    neededUsd,
+    holdDays: candidate.expectedHoldDays ?? null,
+    roundTripCostUsd: candidate.estimatedGasClaimSwapBridgeCostUsd ?? null,
+  };
 }
 
 function expectedGrossProfitUsd({ positionUsd, aprPct, holdDays }) {
@@ -315,9 +328,9 @@ export function buildCampaignAwareCandidates({
     }
 
     // Reward token info from campaigns if available
-    let rewardToken = "unknown";
-    let rewardTokenType = "defaultRewardToken";
-    let rewardTokenHaircut = 0.50;
+    let rewardToken = null;
+    let rewardTokenType = "nativeOrSharePriceYield";
+    let rewardTokenHaircut = 0;
     let campaignAgeHours = null;
     let hoursRemaining = null;
 
@@ -338,16 +351,22 @@ export function buildCampaignAwareCandidates({
 
       // Use first campaign reward token for classification
       const firstReward = campaigns[0].rewardToken || campaigns[0].token || {};
-      rewardToken = firstReward.displaySymbol || firstReward.symbol || "unknown";
-      const classification = classifyRewardToken(rewardToken, firstReward.name || firstReward.symbol);
-      rewardTokenType = classification.type;
-      rewardTokenHaircut = classification.haircut;
+      const symbol = firstReward.displaySymbol || firstReward.symbol || null;
+      if (symbol) {
+        rewardToken = symbol;
+        const classification = classifyRewardToken(rewardToken, firstReward.name || firstReward.symbol);
+        rewardTokenType = classification.type;
+        rewardTokenHaircut = classification.haircut;
+      }
     } else if (opp.rewardsRecord?.breakdowns?.length) {
       const firstReward = opp.rewardsRecord.breakdowns[0].token || {};
-      rewardToken = firstReward.displaySymbol || firstReward.symbol || "unknown";
-      const classification = classifyRewardToken(rewardToken, firstReward.name || firstReward.symbol);
-      rewardTokenType = classification.type;
-      rewardTokenHaircut = classification.haircut;
+      const symbol = firstReward.displaySymbol || firstReward.symbol || null;
+      if (symbol) {
+        rewardToken = symbol;
+        const classification = classifyRewardToken(rewardToken, firstReward.name || firstReward.symbol);
+        rewardTokenType = classification.type;
+        rewardTokenHaircut = classification.haircut;
+      }
     }
 
     const expectedRealizedAprAfterHaircut = computeExpectedRealizedApr(displayedApr, rewardTokenHaircut);
@@ -396,6 +415,7 @@ export function buildCampaignAwareCandidates({
       marketExpectedNetProfitUsd,
       expectedNetProfitUsd: operatorExpectedNetProfitUsd,
     };
+    candidate.tinyCanaryEvStatus = tinyCanaryEvStatus(candidate);
 
     const statusResult = determineEntryStatus(candidate, policy);
     candidates.push({

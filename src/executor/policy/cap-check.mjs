@@ -381,7 +381,11 @@ export function evaluateCapCheck({
   const amountUsd = Number(intent.amountUsd ?? 0);
   const capAmountUsd = intentCapAmountUsd(intent);
   const isEmergencyIntent = intent.intentType === "emergency_unwind" || intent.executionReason === "risk_unwind";
-  const isTinyLiveCanary = intent.intentType === "tiny_live_canary";
+  const isTinyLiveCanary =
+    intent.intentType === "tiny_live_canary" ||
+    intent.executionReason === "merkl_canary_autopilot" ||
+    intent.executionReason === "radar_tiny_live_canary" ||
+    intent.metadata?.tinyLiveCanary === true;
   const perTxCapUsd = isTinyLiveCanary ? caps.tinyLivePerTxUsd : caps.perTxUsd;
   const portfolioPolicy = resolvePortfolioExposurePolicy({
     activeBudgetUsd,

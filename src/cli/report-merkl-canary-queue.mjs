@@ -48,6 +48,7 @@ async function main() {
     canaryExecutions,
     positionRecords,
     representativeRuns,
+    autopilotReports: autopilotExecutions,
   });
 
   if (args.write) {
@@ -70,6 +71,11 @@ async function main() {
   console.log(`chainRouteGapCount=${queue.summary.chainRouteGapCount}`);
   console.log(`inventoryReadyCount=${queue.summary.inventoryReadyCount ?? queue.summary.executableNowCount ?? 0}`);
   console.log(`autoEntryReadyCount=${queue.summary.autoEntryReadyCount ?? queue.summary.autoExecutableNowCount ?? 0}`);
+  console.log(`queueAutoEntryReadyCount=${queue.summary.queueAutoEntryReadyCount ?? queue.summary.autoExecutableNowCount ?? 0}`);
+  console.log(`policyReadyCount=${queue.summary.policyReadyCount ?? 0}`);
+  console.log(`planBuilderReadyCount=${queue.summary.planBuilderReadyCount ?? 0}`);
+  console.log(`signerIntentReadyCount=${queue.summary.signerIntentReadyCount ?? 0}`);
+  console.log(`actualBroadcastCount=${queue.summary.actualBroadcastCount ?? 0}`);
   console.log(`executableNowCount=${queue.summary.executableNowCount ?? 0}`);
   console.log(`executableNowStage=${queue.summary.executableNowStage || "inventory_ready_before_sizing_policy_and_signer"}`);
   console.log(`cooldownActiveCount=${queue.summary.cooldownActiveCount ?? 0}`);

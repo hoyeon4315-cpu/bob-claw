@@ -76,6 +76,7 @@ function isDisplayableProtocolId(protocol) {
 
 function activeStrategyStatus({ hasLivePosition, isLiveCandidate, hasRecentActivity, tickMode, fallbackStatus }) {
   if (hasLivePosition) return 'LIVE';
+  if (tickMode === 'live_candidate') return 'QUEUE READY';
   if (isLiveCandidate) return 'POLICY READY';
   if (hasRecentActivity) return 'ACTIVITY';
   if (tickMode === 'shadow_ready') return 'SHADOW';
@@ -1000,7 +1001,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     const hasRecentActivity = Number(activitySurface?.count || 0) > 0;
 
     let fallbackStatus;
-    if (tickMode === 'live_candidate') fallbackStatus = 'POLICY READY';
+    if (tickMode === 'live_candidate') fallbackStatus = 'QUEUE READY';
     else if (tickMode === 'live_ready') fallbackStatus = 'POLICY READY';
     else if (tickMode === 'shadow_ready') fallbackStatus = 'SHADOW';
     else if (tickMode === 'blocked') fallbackStatus = 'BLOCKED';

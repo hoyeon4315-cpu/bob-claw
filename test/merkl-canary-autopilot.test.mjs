@@ -404,7 +404,7 @@ test("selection skips candidates whose committed chain cap is exhausted", () => 
   assert.ok(selection.candidates[0].sizing.blockers.includes("strategy_per_chain_cap_exceeded"));
 });
 
-test("blocks Ethereum canaries when committed caps are below the gas-efficiency notional floor", () => {
+test("does not use a fixed Ethereum notional floor before the tiny-canary EV gate", () => {
   const sizing = sizeMerklCanaryAmount(queueItem({
     chain: "ethereum",
     executionReadiness: {
@@ -424,8 +424,9 @@ test("blocks Ethereum canaries when committed caps are below the gas-efficiency 
     maxUsd: 5,
   });
 
-  assert.equal(sizing.status, "blocked");
-  assert.ok(sizing.blockers.includes("cap_too_low_for_ethereum_gas_efficiency"));
+  assert.equal(sizing.status, "ready");
+  assert.equal(sizing.blockers.includes("cap_too_low_for_ethereum_gas_efficiency"), false);
+  assert.equal(sizing.amountUsd, 5);
 });
 
 test("selects the highest priority ready candidate after gas and cap checks", () => {

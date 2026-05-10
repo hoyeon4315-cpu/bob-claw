@@ -5,6 +5,7 @@ import {
   executeErc4626ProtocolCanaryPlan,
   selectErc4626QueueItem,
 } from "../src/executor/helpers/erc4626-protocol-canary.mjs";
+import { evGate } from "../src/executor/policy/ev-gate.mjs";
 
 test("erc4626 protocol canary selects binding-ready queue item and builds approve/deposit plan", async () => {
   const queue = {
@@ -60,6 +61,50 @@ test("erc4626 protocol canary selects binding-ready queue item and builds approv
   assert.equal(plan.steps[1].intent.metadata.assetCoverage.status, "closed");
   assert.equal(plan.steps[1].intent.metadata.assetCoverage.sourceObservedAt, "2026-04-22T23:59:00.000Z");
   assert.equal(plan.minimumRedeemAssetDelta, "9500");
+});
+
+test("erc4626 Merkl tiny-live plan preserves parent EV evidence for exact approval policy", async () => {
+  const plan = await buildErc4626ProtocolCanaryPlan({
+    queueItem: {
+      queueId: "merkl:base-morpho",
+      opportunityId: "base-morpho",
+      chain: "base",
+      protocolId: "morpho",
+      name: "Supply USDC",
+      mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+      validationMode: "tiny_live_canary_only",
+      aprPct: 25,
+      campaignRemainingHours: 720,
+      protocolBindingPlan: {
+        status: "binding_ready",
+        bindingKind: "erc4626_vault_supply_withdraw",
+        resolvedBinding: {
+          vaultAddress: "0x1111111111111111111111111111111111111111",
+          assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          shareTokenAddress: "0x1111111111111111111111111111111111111111",
+          assetSymbol: "USDC",
+          assetDecimals: 6,
+          shareTokenSymbol: "steakUSDC",
+        },
+      },
+    },
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "100000000",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 0n, rpcUrl: "memory" }),
+    now: "2026-05-10T00:00:00.000Z",
+  });
+
+  const approvalIntent = plan.steps[0].intent;
+  const depositIntent = plan.steps[1].intent;
+  assert.equal(depositIntent.executionReason, "merkl_canary_autopilot");
+  assert.equal(depositIntent.metadata.tinyLiveCanary, true);
+  assert.equal(approvalIntent.metadata.tinyLiveCanary, true);
+  assert.equal(typeof approvalIntent.metadata.parentIntentHash, "string");
+  assert.equal(typeof approvalIntent.metadata.parentEvEvidenceHash, "string");
+  assert.equal(approvalIntent.metadata.parentIntent.intentType, "erc4626_deposit");
+  assert.equal(approvalIntent.metadata.parentEvEvidence.allow, true);
+  assert.equal(evGate(approvalIntent, null, { now: "2026-05-10T00:00:00.000Z" }).allow, true);
 });
 
 test("erc4626 protocol canary auto-selection prefers inventory-ready candidates", () => {

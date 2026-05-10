@@ -162,6 +162,32 @@ test("buildStrategyCapState prefers reverted audit records over earlier broadcas
   assert.equal(state.perChainVolumeUsd.bob ?? 0, 0);
 });
 
+test("Merkl canary strategy intents use tiny live cap even when helper intent type is protocol-specific", () => {
+  const caps = strategyCapsFixture({
+    caps: {
+      ...strategyCapsFixture().caps,
+      tinyLivePerTxUsd: 10,
+    },
+  });
+  const result = evaluateCapCheck({
+    intent: intentFixture({
+      chain: "bob",
+      amountUsd: 40,
+      intentType: "erc4626_deposit",
+      executionReason: "merkl_canary_autopilot",
+      metadata: {
+        tinyLiveCanary: true,
+        capCheckAmountUsd: 40,
+      },
+    }),
+    strategyCaps: caps,
+    auditRecords: [],
+  });
+
+  assert.equal(result.decision, "BLOCK");
+  assert.equal(result.blockers.includes("strategy_per_tx_cap_exceeded"), true);
+});
+
 test("evaluateCapCheck blocks amount above per-tx cap", () => {
   const result = evaluateCapCheck({
     intent: intentFixture({ amountUsd: 150 }),

@@ -32,7 +32,7 @@ import { evaluateOpportunityPolicy } from "./policy/opportunity-policy.mjs";
 import { splitCandidateBlockers } from "./policy/blocker-codes.mjs";
 
 
-const DEFAULT_MIN_ETHEREUM_NOTIONAL_USD = 25;
+const DEFAULT_MIN_ETHEREUM_NOTIONAL_USD = 0;
 
 function finite(value) {
   return Number.isFinite(value) ? Number(value) : null;
@@ -205,6 +205,8 @@ export function sizeMerklCanaryAmount(queueItem = {}, {
   if (
     queueItem.chain === "ethereum" &&
     !allowInefficientEthereum &&
+    Number.isFinite(minEthereumNotionalUsd) &&
+    minEthereumNotionalUsd > 0 &&
     hardCapUsd < minEthereumNotionalUsd
   ) {
     blockers.push("cap_too_low_for_ethereum_gas_efficiency");

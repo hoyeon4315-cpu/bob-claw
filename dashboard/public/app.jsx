@@ -1194,6 +1194,7 @@ function FlowPane({ refreshTick }) {
   const liveYieldAprPositionCount = flow?.liveYield?.aprPositionCount ?? liveYieldPositionCount;
   const liveAnnualizedYieldUsd = flow?.metrics?.liveAnnualizedYieldUsd ?? flow?.liveYield?.annualizedYieldUsd ?? null;
   const merklTopQueue = STATUS?.strategy?.merklCanaryQueueSummary?.topQueue || null;
+  const merklQueueSummary = STATUS?.strategy?.merklCanaryQueueSummary || null;
   const merklTopCandidate = STATUS?.strategy?.merklOpportunitySummary?.topCandidate || null;
   const candidateAprPct = Number.isFinite(merklTopQueue?.aprPct)
     ? merklTopQueue.aprPct
@@ -1246,10 +1247,14 @@ function FlowPane({ refreshTick }) {
   const candidateAprSub = Number.isFinite(candidateAprPct)
     ? `candidate ${fmtPct(candidateAprPct)} · not open`
     : null;
+  const merklEvBlocker = merklQueueSummary?.topEvBlockers?.[0]?.blocker || null;
+  const merklDryRunCommand = merklQueueSummary?.commands?.dryRun || null;
   const apySub = aprOpen
     ? [
         `${liveYieldAprPositionCount || 0} APR-backed open position${liveYieldAprPositionCount === 1 ? '' : 's'} · estimated, not realized`,
         candidateAprSub,
+        merklEvBlocker ? `EV ${merklEvBlocker}` : null,
+        merklDryRunCommand ? `dry ${merklDryRunCommand}` : null,
       ].filter(Boolean).join(' · ')
     : (candidateAprSub || 'tap for note');
   return (

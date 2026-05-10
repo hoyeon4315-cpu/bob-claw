@@ -912,6 +912,7 @@ function FlowPane({ refreshTick }) {
   const liveYieldAprPositionCount = flow?.liveYield?.aprPositionCount ?? liveYieldPositionCount;
   const liveAnnualizedYieldUsd = flow?.metrics?.liveAnnualizedYieldUsd ?? flow?.liveYield?.annualizedYieldUsd ?? null;
   const merklTopQueue = STATUS?.strategy?.merklCanaryQueueSummary?.topQueue || null;
+  const merklQueueSummary = STATUS?.strategy?.merklCanaryQueueSummary || null;
   const merklTopCandidate = STATUS?.strategy?.merklOpportunitySummary?.topCandidate || null;
   const candidateAprPct = Number.isFinite(merklTopQueue?.aprPct) ? merklTopQueue.aprPct : Number.isFinite(merklTopCandidate?.aprPct) ? merklTopCandidate.aprPct : null;
   const showLiveYield = Number.isFinite(liveYieldSats) && liveYieldSats > 0 || Number.isFinite(liveYieldUsd) && liveYieldUsd > 0;
@@ -936,9 +937,13 @@ function FlowPane({ refreshTick }) {
   const assetMetricLabel = assetEstimateAvailable ? "Assets" : assetHasReconciliationGap ? "Observed" : "Total";
   const assetMain = pending ? "\u2014" : fmtUsd(displayAssetUsd || 0);
   const candidateAprSub = Number.isFinite(candidateAprPct) ? `candidate ${fmtPct(candidateAprPct)} \xB7 not open` : null;
+  const merklEvBlocker = merklQueueSummary?.topEvBlockers?.[0]?.blocker || null;
+  const merklDryRunCommand = merklQueueSummary?.commands?.dryRun || null;
   const apySub = aprOpen ? [
     `${liveYieldAprPositionCount || 0} APR-backed open position${liveYieldAprPositionCount === 1 ? "" : "s"} \xB7 estimated, not realized`,
-    candidateAprSub
+    candidateAprSub,
+    merklEvBlocker ? `EV ${merklEvBlocker}` : null,
+    merklDryRunCommand ? `dry ${merklDryRunCommand}` : null
   ].filter(Boolean).join(" \xB7 ") : candidateAprSub || "tap for note";
   return /* @__PURE__ */ React.createElement("div", { className: "tabpane", style: { position: "relative", display: "flex", flexDirection: "column", overflowX: "hidden", overflowY: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",

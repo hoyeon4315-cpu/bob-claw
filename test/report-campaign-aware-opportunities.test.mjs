@@ -168,7 +168,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
 
   test("auto_allowed for strong Base / known protocol / high APR / high TVL / long remaining", () => {
     const candidates = buildCampaignAwareCandidates({
-      merklOpportunities: [baseOpp()],
+      merklOpportunities: [baseOpp({ apr: 25 })],
       defiLlamaPools: [],
       nowMs,
     });
@@ -184,15 +184,27 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.equal(c.rewardExitLiquidityStatus.ready, true);
   });
 
-  test("blocked when APR < 5%", () => {
+  test("does not hard block low displayed APR when tiny-canary EV is positive", () => {
     const candidates = buildCampaignAwareCandidates({
-      merklOpportunities: [baseOpp({ apr: 3 })],
+      merklOpportunities: [
+        baseOpp({
+          apr: 4,
+          campaigns: [
+            {
+              start: Math.floor((nowMs - 100 * 3600 * 1000) / 1000),
+              end: Math.floor((nowMs + 720 * 3600 * 1000) / 1000),
+              rewardToken: { displaySymbol: "USDC", symbol: "USDC" },
+            },
+          ],
+        }),
+      ],
       defiLlamaPools: [],
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "blocked");
-    assert.ok(c.blockers.includes("apr_below_5pct"));
+    assert.notEqual(c.entryStatus, "blocked");
+    assert.equal(c.blockers.includes("apr_below_5pct"), false);
+    assert.equal(c.tinyCanaryEvStatus.ready, true);
   });
 
   test("blocked when TVL < $50,000", () => {
@@ -242,6 +254,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
+          apr: 25,
           campaigns: [
             {
               start: Math.floor((nowMs - 10 * 3600 * 1000) / 1000),
@@ -305,7 +318,27 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.equal(c.rewardExitLiquidityStatus.ready, false);
   });
 
-  test("blocks non-primary campaigns when operator-notional net does not clear the committed cost floor", () => {
+  test("blocks campaigns when tiny-canary EV does not clear chain-aware cost", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        baseOpp({
+          chain: { name: "Optimism" },
+          protocol: { id: "aerodrome" },
+          apr: 1,
+          tvl: 150_000,
+        }),
+      ],
+      defiLlamaPools: [],
+      nowMs,
+    });
+    const c = candidates[0];
+    assert.strictEqual(c.entryStatus, "blocked");
+    assert.ok(c.blockers.some((blocker) => blocker.startsWith("tiny_canary_unprofitable")));
+    assert.ok(c.marketExpectedNetProfitUsd > 0);
+    assert.equal(c.tinyCanaryEvStatus.ready, false);
+  });
+
+  test("does not apply the old fixed $10 non-primary floor when chain-aware tiny EV clears", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -319,10 +352,9 @@ describe("buildCampaignAwareCandidates status logic", () => {
       nowMs,
     });
     const c = candidates[0];
-    assert.strictEqual(c.entryStatus, "blocked");
-    assert.ok(c.blockers.includes("non_primary_chain_and_low_net_profit"));
-    assert.ok(c.marketExpectedNetProfitUsd > 0);
-    assert.ok(c.operatorExpectedNetProfitUsd < 10);
+    assert.notEqual(c.entryStatus, "blocked");
+    assert.equal(c.blockers.includes("non_primary_chain_and_low_net_profit"), false);
+    assert.equal(c.tinyCanaryEvStatus.ready, true);
   });
 
   test("observe when a non-primary campaign clears the operator-notional cost floor", () => {
@@ -348,7 +380,8 @@ describe("buildCampaignAwareCandidates status logic", () => {
     const c = candidates[0];
     assert.strictEqual(c.entryStatus, "observe");
     assert.strictEqual(c.blockers.length, 0);
-    assert.ok(c.operatorExpectedNetProfitUsd > 10);
+    assert.ok(c.operatorExpectedNetProfitUsd > 0);
+    assert.equal(c.tinyCanaryEvStatus.ready, true);
   });
 
   test("auto_allowed when a non-primary chain is committed as evidence-primary", () => {
@@ -401,7 +434,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.ok(c.estimatedGasClaimSwapBridgeCostUsd < 0.05);
   });
 
-  test("blocks Arbitrum campaign candidates unless they clear the non-primary cost floor", () => {
+  test("blocks Arbitrum campaign candidates because it is not an official Gateway destination", () => {
     const candidates = buildCampaignAwareCandidates({
       merklOpportunities: [
         baseOpp({
@@ -416,7 +449,7 @@ describe("buildCampaignAwareCandidates status logic", () => {
     });
     const c = candidates[0];
     assert.strictEqual(c.entryStatus, "blocked");
-    assert.ok(c.blockers.includes("non_primary_chain_and_low_net_profit"));
+    assert.ok(c.blockers.includes("unsupported_gateway_destination"));
   });
 
   test("cross-references DefiLlama for Base pools when Merkl data is sparse", () => {
@@ -498,5 +531,26 @@ describe("buildCampaignAwareCandidates status logic", () => {
     });
 
     assert.deepEqual(candidates.map((candidate) => candidate.chain), ["bsc", "bera"]);
+  });
+
+  test("does not require reward exit liquidity proof for native or share-price yield without explicit reward token", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        {
+          id: "native-yield",
+          chain: { name: "Base" },
+          protocol: { id: "morpho" },
+          apr: 12,
+          tvl: 150_000,
+          tokens: [{ displaySymbol: "USDC" }],
+        },
+      ],
+      defiLlamaPools: [],
+      nowMs,
+    });
+    const c = candidates[0];
+    assert.equal(c.rewardToken, null);
+    assert.equal(c.rewardExitLiquidityStatus.ready, true);
+    assert.equal(c.blockers.includes("reward_exit_liquidity_unproven"), false);
   });
 });

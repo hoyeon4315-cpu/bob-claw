@@ -1,11 +1,18 @@
+import { createHash } from "node:crypto";
 import { Interface } from "ethers";
 import { tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
+import {
+  resolveTinyCanaryExpectedHoldDays,
+  tinyCanarySameChainRoundTripCostUsd,
+} from "../../config/sizing.mjs";
+import { stableSerialize } from "../../execution/journal.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { readErc20Allowance } from "../../evm/account-state.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
+import { evGate } from "../policy/ev-gate.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
 import { applyMerklCanaryExecutionReadiness } from "../../strategy/merkl-canary-execution-readiness.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
@@ -98,7 +105,31 @@ function signerFailureExecution({
   };
 }
 
-function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {} }) {
+function stableHash(value = {}) {
+  return createHash("sha256").update(stableSerialize(value)).digest("hex");
+}
+
+function displayedAprPct(queueItem = {}) {
+  const value = queueItem.effectiveAprPct ?? queueItem.displayedAprPct ?? queueItem.aprPct ?? queueItem.apr ?? queueItem.apy;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function expectedGrossYieldUsd({ queueItem = {}, amountUsd = 0, now = new Date().toISOString() } = {}) {
+  const aprPct = displayedAprPct(queueItem);
+  const holdDays = resolveTinyCanaryExpectedHoldDays({
+    expectedHoldDays: queueItem.expectedHoldDays,
+    campaignRemainingHours: queueItem.campaignRemainingHours,
+    campaignEndsAt: queueItem.campaignEndsAt,
+    now,
+  });
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0 || aprPct === null || !Number.isFinite(holdDays) || holdDays <= 0) {
+    return null;
+  }
+  return amountUsd * (aprPct / 100) * (holdDays / 365);
+}
+
+function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {}, executionReason = "strategy_execution" }) {
   return {
     strategyId,
     chain,
@@ -107,7 +138,7 @@ function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx,
     amountUsd,
     mode: "live",
     observedAt: now,
-    executionReason: "strategy_execution",
+    executionReason,
     approval,
     tx,
     strategyConfig: {
@@ -191,6 +222,11 @@ export async function buildErc4626ProtocolCanaryPlan({
   const allowanceAmount = BigInt(allowanceBefore?.allowance ?? 0);
   const allowanceCoversAmount = allowanceAmount >= BigInt(normalizedAmount);
   const allowanceNeedsZeroReset = !allowanceCoversAmount && allowanceAmount > 0n;
+  const tinyLiveCanary = queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
+  const executionReason = tinyLiveCanary ? "merkl_canary_autopilot" : "strategy_execution";
+  const estimatedGasCostUsd = tinyLiveCanary
+    ? tinyCanarySameChainRoundTripCostUsd({ chain, estimatedGasCostUsd: queueItem.estimatedGasCostUsd })
+    : queueItem.estimatedGasCostUsd ?? null;
 
   let approveGas = null;
   if (!allowanceCoversAmount) {
@@ -211,6 +247,55 @@ export async function buildErc4626ProtocolCanaryPlan({
   }
 
   const depositData = ERC4626_INTERFACE.encodeFunctionData("deposit", [normalizedAmount, senderAddress]);
+  const depositIntent = buildIntent({
+    strategyId,
+    chain,
+    amountUsd,
+    now,
+    ttlMs: strategyCaps.intentTtlMs,
+    intentType: "erc4626_deposit",
+    executionReason,
+    tx: {
+      to: vaultAddress,
+      data: depositData,
+      value: "0",
+      gasLimit: String(applyGasBuffer(DEFAULT_DEPOSIT_GAS_UNITS, buffer)),
+    },
+    metadata: {
+      capCheckAmountUsd: capAmountUsd,
+      exposureAction: "open",
+      ...(assetCoverage ? { assetCoverage } : {}),
+      opportunityId: queueItem.opportunityId,
+      protocol: queueItem.protocolId,
+      vaultAddress,
+      assetAddress,
+      shareTokenAddress,
+      tinyLiveCanary,
+      expectedNetUsd: expectedGrossYieldUsd({ queueItem, amountUsd, now }),
+      estimatedGasCostUsd,
+      approval: {
+        token: assetAddress,
+        spender: vaultAddress,
+        amount: normalizedAmount,
+      },
+    },
+  });
+  const parentEvVerdict = evGate(depositIntent, null, { now });
+  const parentEvEvidence = parentEvVerdict.allow === true
+    ? {
+        allow: true,
+        expectedNetUsd: parentEvVerdict.evidence?.expectedNetUsd ?? null,
+        requiredNetUsd: parentEvVerdict.evidence?.requiredNetUsd ?? null,
+      }
+    : null;
+  const parentApprovalMetadata = parentEvEvidence
+    ? {
+        parentIntent: depositIntent,
+        parentIntentHash: stableHash(depositIntent),
+        parentEvEvidence,
+        parentEvEvidenceHash: stableHash(parentEvEvidence),
+      }
+    : {};
   const steps = [
     ...(allowanceNeedsZeroReset ? [{
       id: "reset_asset_allowance",
@@ -239,6 +324,8 @@ export async function buildErc4626ProtocolCanaryPlan({
           protocol: queueItem.protocolId,
           vaultAddress,
           assetAddress,
+          tinyLiveCanary,
+          ...parentApprovalMetadata,
           approvalResetReason: "existing_allowance_below_required_amount",
         },
       }),
@@ -270,35 +357,14 @@ export async function buildErc4626ProtocolCanaryPlan({
           protocol: queueItem.protocolId,
           vaultAddress,
           assetAddress,
+          tinyLiveCanary,
+          ...parentApprovalMetadata,
         },
       }),
     }] : []),
     {
       id: "deposit_asset_to_vault",
-      intent: buildIntent({
-        strategyId,
-        chain,
-        amountUsd,
-        now,
-        ttlMs: strategyCaps.intentTtlMs,
-        intentType: "erc4626_deposit",
-        tx: {
-          to: vaultAddress,
-          data: depositData,
-          value: "0",
-          gasLimit: String(applyGasBuffer(DEFAULT_DEPOSIT_GAS_UNITS, buffer)),
-        },
-        metadata: {
-          capCheckAmountUsd: capAmountUsd,
-          exposureAction: "open",
-          ...(assetCoverage ? { assetCoverage } : {}),
-          opportunityId: queueItem.opportunityId,
-          protocol: queueItem.protocolId,
-          vaultAddress,
-          assetAddress,
-          shareTokenAddress,
-        },
-      }),
+      intent: depositIntent,
     },
   ];
 

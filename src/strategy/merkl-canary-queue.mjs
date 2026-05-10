@@ -17,6 +17,10 @@ const FINAL_EXECUTION_REQUIRES = Object.freeze([
   "plan_builder_available",
   "deterministic_signer_policy_approval",
 ]);
+const MERKL_CANARY_COMMANDS = Object.freeze({
+  dryRun: "npm run executor:merkl-canary-autopilot -- --json --write",
+  liveExecute: "npm run executor:merkl-canary-autopilot -- --json --write --execute",
+});
 
 const EXECUTION_TEMPLATES = Object.freeze({
   lending: Object.freeze({
@@ -69,6 +73,41 @@ function capabilityGapCounts(queue = []) {
     }
   }
   return counts;
+}
+
+function latestAutopilotReport(reports = []) {
+  return [...(reports || [])]
+    .filter(Boolean)
+    .sort((left, right) => {
+      const leftTs = new Date(left.observedAt || left.generatedAt || 0).getTime();
+      const rightTs = new Date(right.observedAt || right.generatedAt || 0).getTime();
+      return rightTs - leftTs;
+    })[0] || null;
+}
+
+function compactEvGate(evGate = null) {
+  if (!evGate?.blocker) return null;
+  return {
+    blocker: evGate.blocker,
+    currentAmountUsd: finite(evGate.currentAmountUsd),
+    neededUsd: finite(evGate.neededUsd),
+    holdDays: finite(evGate.holdDays),
+    limitingFactor: evGate.limitingFactor || null,
+  };
+}
+
+function autopilotStageSummary(reports = []) {
+  const latest = latestAutopilotReport(reports);
+  const summary = latest?.summary || {};
+  const topEvBlocker = compactEvGate(summary.topEvGate);
+  return {
+    latestAutopilotObservedAt: latest?.observedAt || latest?.generatedAt || null,
+    latestAutopilotMode: latest?.mode || null,
+    policyReadyCount: Number.isFinite(summary.executionReadyCount) ? summary.executionReadyCount : 0,
+    signerIntentReadyCount: Number.isFinite(summary.previewReadyCount) ? summary.previewReadyCount : 0,
+    actualBroadcastCount: Number.isFinite(summary.deliveredCount) ? summary.deliveredCount : 0,
+    topEvBlockers: topEvBlocker ? [topEvBlocker] : [],
+  };
 }
 
 function overfitPenalty(item = {}) {
@@ -257,6 +296,7 @@ export function buildMerklCanaryQueue({
   canaryExecutions = [],
   positionRecords = [],
   representativeRuns = [],
+  autopilotReports = [],
   chainQuota = DEFAULT_CHAIN_QUOTA,
 } = {}) {
   const sourceItems = report?.opportunities || report?.topCandidates || [];
@@ -280,6 +320,7 @@ export function buildMerklCanaryQueue({
   const autoExecutableQueue = queue.filter((item) => item.autoEntry?.autoExecute === true);
   const readinessByStatus = countBy(queue, (item) => item.executionReadiness?.status);
   const gapCounts = capabilityGapCounts(queue);
+  const stageSummary = autopilotStageSummary(autopilotReports);
   const generatedAt = now || new Date().toISOString();
   const byChain = countBy(queue, (item) => item.chain);
   const representedChainCount = Object.keys(byChain).length;
@@ -330,10 +371,19 @@ export function buildMerklCanaryQueue({
       chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
       inventoryReadyCount: executableQueue.length,
       autoEntryReadyCount: autoExecutableQueue.length,
+      queueAutoEntryReadyCount: autoExecutableQueue.length,
+      policyReadyCount: stageSummary.policyReadyCount,
+      planBuilderReadyCount: stageSummary.signerIntentReadyCount,
+      signerIntentReadyCount: stageSummary.signerIntentReadyCount,
+      actualBroadcastCount: stageSummary.actualBroadcastCount,
       executableNowCount: executableQueue.length,
       autoExecutableNowCount: autoExecutableQueue.length,
       executableNowStage: EXECUTABLE_NOW_STAGE,
       finalExecutionRequires: [...FINAL_EXECUTION_REQUIRES],
+      commands: { ...MERKL_CANARY_COMMANDS },
+      topEvBlockers: stageSummary.topEvBlockers,
+      latestAutopilotObservedAt: stageSummary.latestAutopilotObservedAt,
+      latestAutopilotMode: stageSummary.latestAutopilotMode,
       cooldownActiveCount: queue.filter((item) => item.executionReadiness?.status === "cooldown_active").length,
       nativeGasGapCount: queue.filter((item) => item.executionReadiness?.status === "native_gas_missing").length,
       executorMissingCount: queue.filter((item) => item.executionReadiness?.status === "executor_missing").length,

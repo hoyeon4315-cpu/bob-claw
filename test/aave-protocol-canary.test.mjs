@@ -8,6 +8,7 @@ import {
   resolveAavePoolAddress,
   selectAaveQueueItem,
 } from "../src/executor/helpers/aave-protocol-canary.mjs";
+import { evGate } from "../src/executor/policy/ev-gate.mjs";
 
 const AAVE_PROVIDER_INTERFACE = new Interface([
   "function getPool() view returns (address)",
@@ -132,6 +133,62 @@ test("aave protocol canary selects binding-ready item and builds approve/supply 
   assert.equal(plan.steps[1].intent.intentType, "aave_supply");
   assert.equal(plan.minimumRedeemAssetDelta, "950000000000000");
   assert.equal(plan.reserveState.status, "supplyable");
+});
+
+test("aave Merkl tiny-live plan preserves parent EV evidence for exact approval policy", async () => {
+  const plan = await buildAaveProtocolCanaryPlan({
+    queueItem: {
+      queueId: "merkl:sei-yei",
+      opportunityId: "sei-yei",
+      chain: "sei",
+      protocolId: "yei",
+      name: "Supply USDC to Yei",
+      mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+      validationMode: "tiny_live_canary_only",
+      aprPct: 25,
+      campaignRemainingHours: 720,
+      protocolBindingPlan: {
+        status: "binding_ready",
+        bindingKind: "aave_v3_pool_supply_withdraw",
+        resolvedBinding: {
+          poolAddress: "0x1111111111111111111111111111111111111111",
+          assetAddress: "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+          aTokenAddress: "0x4444444444444444444444444444444444444444",
+          marketName: "yei_sei_usdc",
+          assetSymbol: "USDC",
+          assetDecimals: 6,
+          aTokenSymbol: "aYeiNativeUSDC",
+        },
+      },
+    },
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "100000000",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    simulateTransactionCallImpl: async (_chain, tx) => {
+      if (tx.data.startsWith(AAVE_POOL_INTERFACE.getFunction("getReserveData").selector)) {
+        return {
+          returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getReserveData", [
+            reserveDataResult({
+              aTokenAddress: "0x4444444444444444444444444444444444444444",
+            }),
+          ]),
+        };
+      }
+      return {
+        returnData: AAVE_POOL_INTERFACE.encodeFunctionResult("getConfiguration", [reserveConfiguration()]),
+      };
+    },
+    now: "2026-05-10T00:00:00.000Z",
+  });
+
+  const approvalIntent = plan.steps[0].intent;
+  const supplyIntent = plan.steps[1].intent;
+  assert.equal(supplyIntent.executionReason, "merkl_canary_autopilot");
+  assert.equal(supplyIntent.metadata.tinyLiveCanary, true);
+  assert.equal(approvalIntent.metadata.tinyLiveCanary, true);
+  assert.equal(approvalIntent.metadata.parentIntent.intentType, "aave_supply");
+  assert.equal(approvalIntent.metadata.parentEvEvidence.allow, true);
+  assert.equal(evGate(approvalIntent, null, { now: "2026-05-10T00:00:00.000Z" }).allow, true);
 });
 
 test("aave protocol canary rejects provider pool mismatch", async () => {

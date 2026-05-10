@@ -113,6 +113,12 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
   assert.equal(queue.summary.topExecutableOpportunityId, "base-morpho-usdc");
   assert.equal(queue.summary.executableNowCount, 1);
   assert.equal(queue.summary.autoExecutableNowCount, 1);
+  assert.equal(queue.summary.queueAutoEntryReadyCount, 1);
+  assert.equal(queue.summary.policyReadyCount, 0);
+  assert.equal(queue.summary.planBuilderReadyCount, 0);
+  assert.equal(queue.summary.signerIntentReadyCount, 0);
+  assert.equal(queue.summary.actualBroadcastCount, 0);
+  assert.deepEqual(queue.summary.topEvBlockers, []);
   assert.equal(queue.summary.inventoryReadyCount, 1);
   assert.equal(queue.summary.autoEntryReadyCount, 1);
   assert.equal(queue.summary.executableNowStage, "inventory_ready_before_sizing_policy_and_signer");
@@ -320,4 +326,84 @@ test("merkl auto entry admits inventory-backed Ethereum vault canaries within li
   assert.deepEqual(queue.queue[0].autoEntry.blockers, []);
   assert.ok(queue.queue[0].capabilityGaps.includes("ethereum_l1_gas_ev_positive_check_required"));
   assert.ok(queue.queue[0].capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output"));
+});
+
+test("merkl canary queue carries latest policy/signer stage truth from autopilot evidence", () => {
+  const report = {
+    generatedAt: "2026-05-10T00:00:00.000Z",
+    policyProfile: "aggressive_multi_asset_payback_v2",
+    opportunities: [
+      {
+        opportunityId: "base-morpho-usdc",
+        decision: "candidate",
+        validationMode: "tiny_live_canary_only",
+        chain: "base",
+        protocolId: "morpho",
+        protocolName: "Morpho",
+        name: "Supply USDC to Base Morpho",
+        family: "stable_treasury_carry",
+        assetFamilies: ["stablecoin"],
+        tokenSymbols: ["USDC"],
+        hasStableExposure: true,
+        mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+        executionSurface: "stableCarry",
+        campaignRemainingHours: 100,
+        aprPct: 6,
+        nativeAprPct: 4,
+        tvlUsd: 4_000_000,
+        score: 88,
+        overfitRisk: "minimal",
+        overfitFlags: [],
+        protocolBinding: {
+          vaultAddress: "0x3333333333333333333333333333333333333333",
+          assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+      },
+    ],
+  };
+
+  const queue = buildMerklCanaryQueue({
+    report,
+    now: "2026-05-10T00:00:00.000Z",
+    inventorySnapshot: {
+      native: [{ chain: "base", asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 }],
+      tokens: [{
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        actual: "5000000",
+        actualDecimal: 5,
+        estimatedUsd: 5,
+      }],
+    },
+    autopilotReports: [{
+      observedAt: "2026-05-10T00:01:00.000Z",
+      mode: "execute",
+      summary: {
+        executionReadyCount: 0,
+        previewReadyCount: 0,
+        deliveredCount: 0,
+        topBlocker: "same_chain_unprofitable:need_$57_on_base",
+        topEvGate: {
+          blocker: "same_chain_unprofitable:need_$57_on_base",
+          currentAmountUsd: 5,
+          neededUsd: 56.2,
+          holdDays: 4.16,
+          limitingFactor: "inventory",
+        },
+      },
+    }],
+  });
+
+  assert.equal(queue.summary.queueAutoEntryReadyCount, 1);
+  assert.equal(queue.summary.policyReadyCount, 0);
+  assert.equal(queue.summary.signerIntentReadyCount, 0);
+  assert.equal(queue.summary.actualBroadcastCount, 0);
+  assert.deepEqual(queue.summary.topEvBlockers, [{
+    blocker: "same_chain_unprofitable:need_$57_on_base",
+    currentAmountUsd: 5,
+    neededUsd: 56.2,
+    holdDays: 4.16,
+    limitingFactor: "inventory",
+  }]);
 });

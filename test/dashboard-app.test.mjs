@@ -420,6 +420,7 @@ describe("dashboard defi renewal source guard", () => {
   test("data adapter separates active live positions from policy-ready and activity-only surfaces", () => {
     const statusSection = extractSection("function activeStrategyStatus", "function deriveStatus", DATA_SOURCE);
     assert.match(statusSection, /if \(hasLivePosition\) return 'LIVE'/);
+    assert.match(statusSection, /if \(tickMode === 'live_candidate'\) return 'QUEUE READY'/);
     assert.match(statusSection, /if \(isLiveCandidate\) return 'POLICY READY'/);
     assert.match(statusSection, /if \(hasRecentActivity\) return 'ACTIVITY'/);
 
