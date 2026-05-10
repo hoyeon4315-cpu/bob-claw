@@ -1,5 +1,6 @@
 import { getStrategyCaps, validateStrategyCapsConfig } from "../../config/strategy-caps.mjs";
 import { evaluateApprovalHygiene } from "./approval-hygiene.mjs";
+import { evaluateCapitalAuditGate } from "./capital-audit-gate.mjs";
 import { evaluateAssetCoverageGuard } from "./asset-coverage-guard.mjs";
 import { evaluateCapCheck } from "./cap-check.mjs";
 import {
@@ -121,6 +122,7 @@ export async function evaluateIntentPolicies({
   killSwitchPath,
   riskContext = null,
   evCostModel = null,
+  capitalAuditState = null,
 } = {}) {
   const strategyCaps = intent?.strategyId ? getStrategyCaps(intent.strategyId) : null;
   const strategyCapsResult = evaluateStrategyCapsPresence({ intent, strategyCaps, now });
@@ -164,6 +166,7 @@ export async function evaluateIntentPolicies({
 
   const results = [
     strategyCapsResult,
+    evaluateCapitalAuditGate({ intent: effectiveIntent, capitalAuditState, now }),
     buildColdStartClampPolicyResult({ clampResult: amountClamp, originalIntent: intent, effectiveIntent, now }),
     await checkKillSwitch({ killSwitchPath, now }),
     evaluateAutoKillPolicy({ riskContext, auditRecords, activeBudgetUsd, now }),
