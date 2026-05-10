@@ -82,12 +82,22 @@ async function fetchChainBalances(chain, address) {
 async function fetchProtocolPositions(address, {
   aerodromeTokenIds = [],
   aerodromeTokenEnumeratorImpl = enumerateAerodromeTokenIds,
+  protocolReadersImpl = PROTOCOL_READERS,
 } = {}) {
   const positions = [];
+  const errors = [];
+  const recordError = (protocol, chain, error) => {
+    errors.push({
+      protocol,
+      chain,
+      message: error?.message || String(error || "unknown protocol read failure"),
+      observedAt: new Date().toISOString(),
+    });
+  };
 
   try {
     // Moonwell Base
-    const moonwellPositions = await PROTOCOL_READERS.moonwell({
+    const moonwellPositions = await protocolReadersImpl.moonwell({
       chain: "base",
       signerAddress: address,
       marketAddresses: {
@@ -96,21 +106,21 @@ async function fetchProtocolPositions(address, {
       },
     });
     if (moonwellPositions) positions.push(...moonwellPositions);
-  } catch {
-    // Skip unreadable protocol positions
+  } catch (error) {
+    recordError("moonwell", "base", error);
   }
 
   try {
     // YO Protocol Base
-    const yoPositions = await PROTOCOL_READERS.yoProtocol({
+    const yoPositions = await protocolReadersImpl.yoProtocol({
       chain: "base",
       signerAddress: address,
       vaultAddress: "0x0000000f2eB9f69274678c76222B35eEc7588a65",
       assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     });
     if (yoPositions) positions.push(...yoPositions);
-  } catch {
-    // Skip unreadable protocol positions
+  } catch (error) {
+    recordError("yo", "base", error);
   }
 
   try {
@@ -122,7 +132,7 @@ async function fetchProtocolPositions(address, {
         ownerAddress: address,
       }).catch(() => []);
     }
-    const aerodromeResult = await PROTOCOL_READERS.aerodrome({
+    const aerodromeResult = await protocolReadersImpl.aerodrome({
       chain: "base",
       signerAddress: address,
       tokenIds,
@@ -132,11 +142,11 @@ async function fetchProtocolPositions(address, {
     } else if (aerodromeResult && Array.isArray(aerodromeResult.positions)) {
       positions.push(...aerodromeResult.positions);
     }
-  } catch {
-    // Skip unreadable protocol positions
+  } catch (error) {
+    recordError("aerodrome", "base", error);
   }
 
-  return positions;
+  return { positions, errors };
 }
 
 export async function fetchRealtimePortfolio(address, {
@@ -145,6 +155,7 @@ export async function fetchRealtimePortfolio(address, {
   includeProtocols = true,
   aerodromeTokenIds = [],
   aerodromeTokenEnumeratorImpl = enumerateAerodromeTokenIds,
+  protocolReadersImpl = PROTOCOL_READERS,
 } = {}) {
   if (useCache && _cache && Date.now() - _cacheAt < CACHE_TTL_MS) {
     return _cache;
@@ -159,15 +170,18 @@ export async function fetchRealtimePortfolio(address, {
     allBalances.push(result);
   }
 
-  const protocolPositions = includeProtocols
-    ? await fetchProtocolPositions(address, { aerodromeTokenIds, aerodromeTokenEnumeratorImpl })
-    : [];
+  const protocolResult = includeProtocols
+    ? await fetchProtocolPositions(address, { aerodromeTokenIds, aerodromeTokenEnumeratorImpl, protocolReadersImpl })
+    : { positions: [], errors: [] };
+  const protocolPositions = protocolResult.positions;
+  const protocolReadErrors = protocolResult.errors;
 
   const snapshot = {
     address,
     fetchedAt: new Date().toISOString(),
     chains: allBalances,
     protocolPositions,
+    protocolReadErrors,
     staleness: buildStalenessMap({ allBalances, protocolPositions }),
     summary: {
       chainCount: allBalances.length,
@@ -178,6 +192,7 @@ export async function fetchRealtimePortfolio(address, {
       }).length,
       totalTokenTypes: allBalances.reduce((s, c) => s + c.tokens.length, 0),
       protocolPositionCount: protocolPositions.length,
+      protocolReadErrorCount: protocolReadErrors.length,
     },
   };
 

@@ -10,6 +10,7 @@ import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { evaluateIntentPolicies } from "../policy/index.mjs";
 import { loadCapitalAuditRecords } from "../ingestor/capital-reconciliation.mjs";
 import { replayAuditForCapitalGaps } from "../capital/audit-replay-startup.mjs";
+import { appendCapitalAuditPair, buildCapitalAuditClosureRecord } from "../capital/capital-audit-pair.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord, readSignerAuditLog } from "./audit-log.mjs";
 import { notifyPolicyRejection } from "./policy-alerts.mjs";
 import { notifyLiveTransaction } from "./transaction-alerts.mjs";
@@ -374,6 +375,25 @@ export async function handleIntentCommand({
             },
           };
         });
+        if (autoIngest?.receiptRecord) {
+          const closure = buildCapitalAuditClosureRecord({
+            auditRecord: buildSignerAuditRecord({
+              intent,
+              policyVerdict: "approved",
+              lifecycle: {
+                stage: autoIngest.receiptRecord.reconciliationStatus === "failed" ? "reverted" : "confirmed",
+                txHash: broadcast.txHash,
+              },
+              broadcast,
+              realized: serializedReceipt,
+            }),
+            receiptRecord: autoIngest.receiptRecord,
+            source: "signer_auto_ingest",
+          });
+          if (closure.validation?.ok === true) {
+            await appendCapitalAuditPair(dataDir, closure);
+          }
+        }
       }
     }
 

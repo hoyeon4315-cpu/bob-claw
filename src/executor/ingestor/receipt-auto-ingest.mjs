@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { JsonlStore } from "../../lib/jsonl-store.mjs";
+import { buildReceiptReconciliation } from "../../ledger/receipt-reconciliation.mjs";
 
 export const DEFAULT_RECEIPT_AUTO_INGEST_TIMEOUT_MS = 60_000;
 export const RECEIPT_AUTO_INGEST_KILL_GRACE_MS = 5_000;
@@ -99,6 +101,32 @@ export function buildAutoIngestCommand(context = {}) {
   return null;
 }
 
+function canDirectIngestReceipt(context = {}) {
+  return Boolean(context.txHash && context.chain && context.receipt);
+}
+
+async function runDirectReceiptIngest({ context = {}, cwd = process.cwd() } = {}) {
+  const receiptRecord = buildReceiptReconciliation({
+    kind: context.receiptKind || context.kind || context.intentType || "signer_broadcast",
+    chain: context.chain,
+    txHash: context.txHash,
+    receipt: context.receipt,
+    transaction: context.transaction || null,
+    routeContext: context.routeContext || null,
+    output: context.output || {},
+    prices: context.prices || null,
+    observedAt: context.observedAt,
+  });
+  const store = new JsonlStore(`${cwd}/data`);
+  await store.append("receipt-reconciliations", receiptRecord);
+  return {
+    ran: true,
+    direct: true,
+    code: 0,
+    receiptRecord,
+  };
+}
+
 export async function runReceiptAutoIngest({
   context,
   cwd = process.cwd(),
@@ -107,6 +135,9 @@ export async function runReceiptAutoIngest({
 } = {}) {
   const command = buildAutoIngestCommand(context);
   if (!command) {
+    if (canDirectIngestReceipt(context)) {
+      return runDirectReceiptIngest({ context, cwd });
+    }
     return {
       ran: false,
       reason: "no_matching_ingest_command",

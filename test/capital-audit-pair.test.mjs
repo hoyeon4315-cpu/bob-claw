@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildCapitalAuditClosureRecord,
   buildPreTradeSnapshot,
   buildPostBroadcastReconciliation,
+  resolveCapitalAuditTolerance,
   validateCapitalAuditPair,
 } from "../src/executor/capital/capital-audit-pair.mjs";
 
@@ -148,4 +150,38 @@ test("validateCapitalAuditPair respects explicit tolerance", () => {
 
   const loose = validateCapitalAuditPair({ preSnapshot: pre, reconciliation: post, toleranceBtc: 0.05 });
   assert.equal(loose.ok, true);
+});
+
+test("resolveCapitalAuditTolerance tightens defaults in small-capital mode", () => {
+  const tolerance = resolveCapitalAuditTolerance({
+    operatingCapitalBtc: 0.006,
+    operatingCapitalUsd: 735,
+  });
+
+  assert.equal(tolerance.toleranceBtc, 0.00003);
+  assert.equal(tolerance.toleranceUsd, 3.675);
+});
+
+test("buildCapitalAuditClosureRecord closes only terminal receipt-backed records", () => {
+  const record = buildCapitalAuditClosureRecord({
+    auditRecord: {
+      strategyId: "lifi-bridge",
+      chain: "base",
+      intentHash: "hash-001",
+      lifecycle: { stage: "confirmed", txHash: "0xabc" },
+    },
+    receiptRecord: {
+      kind: "lifi_bridge",
+      txHash: "0xabc",
+      reconciliationStatus: "reconciled",
+      realized: { actualKnownCostUsd: 0.12, realizedFillVsEstimateBps: 5 },
+    },
+    observedAt: "2026-05-10T00:00:00.000Z",
+  });
+
+  assert.equal(record.status, "closed");
+  assert.equal(record.validation.ok, true);
+  assert.equal(record.intentHash, "hash-001");
+  assert.equal(record.realizedGasUsd, 0.12);
+  assert.equal(record.slippageBps, 5);
 });

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { buildAutoIngestCommand } from "../src/executor/ingestor/receipt-auto-ingest.mjs";
+import { buildAutoIngestCommand, runReceiptAutoIngest } from "../src/executor/ingestor/receipt-auto-ingest.mjs";
 
 test("wrapped loop auto-ingest builds a fully populated receipt command", () => {
   const command = buildAutoIngestCommand({
@@ -52,4 +55,37 @@ test("wrapped loop auto-ingest builds a minimal receipt command when proof hydra
   assert.equal(command.args.includes("--unwind-tx-hashes=0xunwind1"), true);
   assert.equal(command.args.some((arg) => arg.startsWith("--health-factor-path=")), false);
   assert.equal(command.args.some((arg) => arg.startsWith("--liquidation-buffer-path=")), false);
+});
+
+test("generic receipt auto-ingest writes receipt reconciliation when no helper command matches", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-receipt-auto-ingest-"));
+  try {
+    const result = await runReceiptAutoIngest({
+      cwd: root,
+      context: {
+        strategyId: "generic-live-helper",
+        chain: "base",
+        txHash: "0x" + "1".repeat(64),
+        receipt: {
+          status: 1,
+          blockNumber: 123,
+          gasUsed: "21000",
+          effectiveGasPrice: "1000000000",
+        },
+        receiptKind: "generic_live_helper",
+      },
+    });
+
+    assert.equal(result.ran, true);
+    assert.equal(result.direct, true);
+    const lines = (await readFile(join(root, "data", "receipt-reconciliations.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].kind, "generic_live_helper");
+    assert.equal(lines[0].txHash, "0x" + "1".repeat(64));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
