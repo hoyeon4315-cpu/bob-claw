@@ -18,6 +18,8 @@ import { evaluateLeverageCollateralRule } from "./leverage-collateral-rule.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
 import { evaluateTinyLiveCanaryPolicy } from "./tiny-live-canary-policy.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
+import { evaluateGasPriceCeiling } from "./gas-price-ceiling.mjs";
+import { evaluatePreBroadcastSimulation } from "./pre-broadcast-simulator.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
 
 function isFiniteNumber(value) {
@@ -206,7 +208,14 @@ export async function evaluateIntentPolicies({
     evaluateHealthFactorCheck({ intent: effectiveIntent, strategyCaps, now }),
     evaluateLeverageCollateralRule({ strategy: strategyForPolicy, intent: effectiveIntent, now }),
     evaluateStaleQuote({ intent: effectiveIntent, maxAgeMs: strategyCaps.intentTtlMs ?? undefined, now }),
+    evaluateGasPriceCeiling({ intent: effectiveIntent, now, profile: riskContext?.aggressionProfile || {} }),
     evaluateApprovalHygiene({ intent: effectiveIntent, now }),
+    await evaluatePreBroadcastSimulation({
+      intent: effectiveIntent,
+      provider: riskContext?.simulationProvider || null,
+      now,
+      profile: riskContext?.aggressionProfile || {},
+    }),
     evaluateAssetCoverageGuard({ intent: effectiveIntent, riskContext, now }),
     evaluateTinyLiveCanaryPolicy({
       intent: effectiveIntent,
