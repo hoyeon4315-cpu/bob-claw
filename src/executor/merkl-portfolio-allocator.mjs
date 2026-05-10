@@ -119,10 +119,24 @@ function positionUsd(position = {}) {
   return finite(position.amountUsd) ?? finite(position.targetUsd) ?? finite(position.plan?.amountUsd) ?? 0;
 }
 
-function diversificationGateForAllocation({ activePositions = [], queueItem = {}, addUsd = 0 } = {}) {
+function isTinyLiveCanaryEntry(queueItem = {}) {
+  return queueItem.validationMode === "tiny_live_canary_only" ||
+    queueItem.metadata?.tinyLiveCanary === true;
+}
+
+function diversificationGateForAllocation({
+  activePositions = [],
+  queueItem = {},
+  addUsd = 0,
+  portfolioCapacityUsd = null,
+} = {}) {
   const activePositionUsd = activeUsd(activePositions);
   const candidateUsd = finite(addUsd) ?? 0;
-  const denominatorUsd = activePositionUsd + candidateUsd;
+  const capacityUsd = finite(portfolioCapacityUsd);
+  const denominatorUsd = Math.max(
+    activePositionUsd + candidateUsd,
+    capacityUsd != null && capacityUsd > 0 ? capacityUsd : 0,
+  );
   if (!(candidateUsd > 0) || !(denominatorUsd > 0)) {
     return {
       accepted: true,
@@ -162,7 +176,10 @@ function diversificationGateForAllocation({ activePositions = [], queueItem = {}
     if (violation.kind === "chain_not_gateway_official") return violation.id === candidateChainId;
     return false;
   });
-  const beforeHhi = computeHhi(activeDiversificationAllocations(activePositions, activePositionUsd).perStrategy);
+  const beforeDenominatorUsd = capacityUsd != null && capacityUsd > 0
+    ? denominatorUsd
+    : activePositionUsd;
+  const beforeHhi = computeHhi(activeDiversificationAllocations(activePositions, beforeDenominatorUsd).perStrategy);
   const hhiWorsened =
     (result.verdict?.hhi ?? 0) > DIVERSIFICATION_POLICY.hhiMax &&
     (result.verdict?.hhi ?? 0) > beforeHhi;
@@ -177,11 +194,20 @@ function diversificationGateForAllocation({ activePositions = [], queueItem = {}
   };
 }
 
-function maxAddForShareCap({ currentGroupUsd = 0, activeUsd = 0, maxShare = null } = {}) {
+function maxAddForShareCap({
+  currentGroupUsd = 0,
+  activeUsd = 0,
+  portfolioCapacityUsd = null,
+  maxShare = null,
+} = {}) {
   const groupUsd = finite(currentGroupUsd) ?? 0;
   const totalUsd = finite(activeUsd) ?? 0;
+  const capacityUsd = finite(portfolioCapacityUsd);
   const share = finite(maxShare);
   if (!(share > 0) || share >= 1) return Number.POSITIVE_INFINITY;
+  if (capacityUsd != null && capacityUsd > 0) {
+    return Math.max(0, (share * Math.max(capacityUsd, totalUsd)) - groupUsd);
+  }
   return Math.max(0, ((share * totalUsd) - groupUsd) / (1 - share));
 }
 
@@ -237,9 +263,14 @@ function chainTargetMaxAddUsd({ chain, exposureChainUsd = new Map(), targetChain
   return Math.max(0, targetUsd + (finite(toleranceUsd) ?? 5) - currentUsd);
 }
 
-function diversificationMaxAddUsd({ activePositions = [], queueItem = {} } = {}) {
+function diversificationMaxAddUsd({
+  activePositions = [],
+  queueItem = {},
+  portfolioCapacityUsd = null,
+} = {}) {
   const activePositionUsd = activeUsd(activePositions);
-  if (activePositionUsd < 10) return Number.POSITIVE_INFINITY;
+  const capacityUsd = finite(portfolioCapacityUsd);
+  if (activePositionUsd < 10 && !(capacityUsd > 0)) return Number.POSITIVE_INFINITY;
   const strategyId = queueItem.opportunityId || queueItem.mappedStrategyId || null;
   const strategyUsd = strategyId ? activeByStrategy(activePositions).get(strategyId) || 0 : 0;
   const chainUsd = queueItem.chain ? activeBy(activePositions, (position) => position.chain).get(queueItem.chain) || 0 : 0;
@@ -248,16 +279,19 @@ function diversificationMaxAddUsd({ activePositions = [], queueItem = {} } = {})
     maxAddForShareCap({
       currentGroupUsd: strategyUsd,
       activeUsd: activePositionUsd,
+      portfolioCapacityUsd: capacityUsd,
       maxShare: DIVERSIFICATION_POLICY.perStrategyMaxShare,
     }),
     maxAddForShareCap({
       currentGroupUsd: chainUsd,
       activeUsd: activePositionUsd,
+      portfolioCapacityUsd: capacityUsd,
       maxShare: perChainMaxShareFor(queueItem.chain, DIVERSIFICATION_POLICY),
     }),
     maxAddForShareCap({
       currentGroupUsd: protocolUsd,
       activeUsd: activePositionUsd,
+      portfolioCapacityUsd: capacityUsd,
       maxShare: DIVERSIFICATION_POLICY.perProtocolMaxShare,
     }),
   );
@@ -534,12 +568,18 @@ export function buildMerklPortfolioAllocationPlan({
     if (sizing.status !== "ready") blockers.push(...(sizing.blockers || ["sizing_not_ready"]));
     if (sizing.status === "ready" && !decision) blockers.push("btc_price_required_for_sats_decision");
     if (decision && decision.expectedNetSats <= 0) blockers.push("expected_net_sats_not_positive");
+    const tinyLiveEntry = isTinyLiveCanaryEntry(queueItem);
     const diversification = diversificationGateForAllocation({
       activePositions: exposurePositions,
       queueItem,
       addUsd: sizing.amountUsd,
+      portfolioCapacityUsd: tinyLiveEntry ? policy.maxActiveUsd : null,
     });
-    const diversificationMaxUsd = diversificationMaxAddUsd({ activePositions: exposurePositions, queueItem });
+    const diversificationMaxUsd = diversificationMaxAddUsd({
+      activePositions: exposurePositions,
+      queueItem,
+      portfolioCapacityUsd: tinyLiveEntry ? policy.maxActiveUsd : null,
+    });
     if (!diversification.accepted && diversificationMaxUsd < policy.minPositionUsd) {
       blockers.push("diversification_policy_rejected");
     }
@@ -626,11 +666,13 @@ export function buildMerklPortfolioAllocationPlan({
       });
       continue;
     }
+    const keepTinyLiveCap = isTinyLiveCanaryEntry(candidate.queueItem);
     const resized = sizeMerklCanaryAmount(candidate.queueItem, {
       maxUsd: targetUsd,
       minEthereumNotionalUsd: finite(policy.minEthereumNotionalUsd) ?? undefined,
       allowInefficientEthereum: Boolean(policy.allowSmallEthereumProofBackedEntries && candidate.canaryProofObservedAt),
-      useTinyLiveCap: false,
+      useTinyLiveCap: keepTinyLiveCap,
+      useGraduationCap: false,
       auditRecords,
       now,
     });
@@ -680,6 +722,7 @@ export function buildMerklPortfolioAllocationPlan({
       activePositions: exposurePositions,
       queueItem: candidate.queueItem,
       addUsd: resized.amountUsd,
+      portfolioCapacityUsd: keepTinyLiveCap ? policy.maxActiveUsd : null,
     });
     if (!resizedDiversification.accepted) {
       allocations.push({

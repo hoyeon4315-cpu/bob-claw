@@ -88,6 +88,10 @@ test("money loop dispatches only through injected deterministic autopilot after 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].execute, true);
   assert.equal(calls[0].dryRunFirst, true);
+  assert.equal(calls[0].maxRefillJobs, 1);
+  assert.equal(calls[0].canaryMaxExecutedCandidates, 1);
+  assert.equal(calls[0].canaryMaxRecentBroadcasts, 1);
+  assert.ok(calls[0].timeoutMs <= 180_000);
   assert.equal(result.signerDispatch.attempted, true);
   assert.equal(result.signerDispatch.broadcast, true);
   assert.equal(result.status, "live_canary_broadcast");
@@ -196,4 +200,67 @@ test("money loop reports actionable autopilot blocker instead of preview wrapper
   assert.equal(result.noTxReason, "same_chain_unprofitable:need_$57_on_base");
   assert.equal(result.blockerClass, "capital");
   assert.equal(result.blocker.chain, "base");
+});
+
+test("money loop reports signer rejection before payback carry when no tx broadcasts", async () => {
+  const result = await buildMoneyLoopTick({
+    now: "2026-05-10T00:00:00.000Z",
+    execute: true,
+    deposit: {
+      status: "DEPOSIT_CONFIRMED",
+      deposit: { confirmedBalanceSats: 620_000 },
+      operatingCapital: { classified: true, estimatedUsd: 500 },
+    },
+    registry: {
+      refresh: async () => ({
+        ok: true,
+        sourceHealth: { manual: { ok: true } },
+        errors: [],
+        records: [
+          {
+            strategyId: "slot-1",
+            source: "manual",
+            classKey: "yield",
+            family: "stable",
+            chain: "base",
+            protocol: "generic",
+            poolKey: "pool",
+            measured_apr_pct: 12,
+            reward_haircut_pct: 0,
+            entry_cost_usd_per_dollar: 0,
+            exit_cost_usd_per_dollar: 0,
+            expected_hold_days: 30,
+            il_risk_class: "low",
+            audit_status: "review",
+            protocol_age_days: 365,
+            receipts_positive_count: 1,
+            receipts_total_count: 1,
+            backtest_quality: "wf_cv_1_regime",
+            positionReader: { kind: "reader" },
+            rewardAccrual: { kind: "none" },
+            pnlAccounting: { unit: "BTC" },
+          },
+        ],
+      }),
+    },
+    runAutopilotImpl: async () => ({
+      mode: "dry_run_first",
+      final: {
+        status: "completed_with_blockers",
+        summary: {
+          portfolio: {
+            allocator: {
+              deployments: [
+                { status: "signer_rejected", blockers: ["strategy_per_tx_cap_exceeded"] },
+              ],
+            },
+          },
+          payback: { status: "carry", reason: "planned_payback_below_minimum" },
+        },
+      },
+    }),
+    writeArtifacts: false,
+  });
+
+  assert.equal(result.noTxReason, "signer_rejected:strategy_per_tx_cap_exceeded");
 });

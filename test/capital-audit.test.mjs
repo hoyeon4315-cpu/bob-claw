@@ -70,6 +70,60 @@ test("capital audit matches BTC history to off-ramp settlement proofs by amount"
   assert.equal(matches.addresses.bc1audit.unmatchedTxs.length, 0);
 });
 
+test("capital audit classifies approved operator BTC deposits separately from off-ramp gaps", () => {
+  const report = buildCapitalAuditReport({
+    signerAuditRecords: [],
+    treasurySnapshots: [],
+    gatewayBtcOfframpExecutions: [],
+    gatewayBtcConsolidationExecutions: [],
+    nativeDexExperimentExecutions: [],
+    transactionsByTxHash: {},
+    receiptsByTxHash: {},
+    approvedOperatorBtcAddresses: ["bc1operator"],
+    operatorFundingBtcAddresses: ["bc1operator"],
+    bitcoinHistoriesByAddress: {
+      bc1operator: {
+        transactions: [
+          {
+            txid: "funding-deposit",
+            status: { confirmed: true, block_time: 1778388062 },
+            vin: [{ prevout: { scriptpubkey_address: "bc1external", value: 617833 } }],
+            vout: [{ scriptpubkey_address: "bc1operator", value: 617833 }],
+          },
+          {
+            txid: "operator-spend",
+            status: { confirmed: true, block_time: 1778389000 },
+            vin: [{ prevout: { scriptpubkey_address: "bc1operator", value: 10000 } }],
+            vout: [
+              { scriptpubkey_address: "bc1external", value: 8500 },
+              { scriptpubkey_address: "bc1operator", value: 1200 },
+            ],
+          },
+        ],
+        balance: {
+          balanceSats: 617833,
+          confirmedBalanceSats: 617833,
+          mempoolBalanceSats: 0,
+        },
+      },
+    },
+    prices: {
+      btc: 80000,
+      tokenByKey: { btc: 80000, usd_stable: 1, ethereum: 3000 },
+      nativeByChain: { base: 3000 },
+    },
+  });
+
+  assert.equal(report.status, "complete_with_residual_checks");
+  assert.equal(report.summary.bitcoinOperatorFundingTxCount, 1);
+  assert.equal(report.summary.bitcoinOperatorFundingSats, 617833);
+  assert.equal(report.summary.bitcoinNonSettlementTxCount, 1);
+  assert.equal(report.summary.bitcoinUnmatchedTxCount, 0);
+  assert.equal(report.bitcoinAddresses[0].operatorFundingTxs[0].txid, "funding-deposit");
+  assert.equal(report.bitcoinAddresses[0].nonSettlementTxs[0].receivedSats, 1200);
+  assert.equal(report.issues.some((entry) => entry.code === "bitcoin_tx_unmatched_to_offramp"), false);
+});
+
 test("capital audit report flags broadcasts that still lack helper traceability", () => {
   const report = buildCapitalAuditReport({
     signerAuditRecords: [

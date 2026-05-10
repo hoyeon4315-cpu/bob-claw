@@ -63,6 +63,14 @@ function normalizedTokenRecord(item = {}) {
 
 function upsertInventoryRecord(map, key, value) {
   if (!value?.chain) return;
+  const existing = map.get(key);
+  if (existing) {
+    const existingActual = Number(existing.actual || 0);
+    const nextActual = Number(value.actual || 0);
+    const existingUsd = Number.isFinite(existing.estimatedUsd) ? existing.estimatedUsd : -1;
+    const nextUsd = Number.isFinite(value.estimatedUsd) ? value.estimatedUsd : -1;
+    if (nextActual < existingActual || (nextActual === existingActual && nextUsd < existingUsd)) return;
+  }
   map.set(key, value);
 }
 

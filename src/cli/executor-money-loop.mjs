@@ -16,6 +16,15 @@ import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { buildPreDepositReadiness } from "./check-pre-deposit-readiness.mjs";
 import { runAutopilotCommand } from "./run-all-chain-autopilot.mjs";
 
+const MONEY_LOOP_AUTOPILOT_LIMITS = Object.freeze({
+  maxRefillJobs: 1,
+  canaryMaxExecutedCandidates: 1,
+  canaryMaxRecentBroadcasts: 1,
+  timeoutMs: 180_000,
+  canaryTimeoutMs: 180_000,
+  dispatchTimeoutMs: 180_000,
+});
+
 function parseArgs(argv = []) {
   const flags = new Set(argv);
   const entries = Object.fromEntries(
@@ -61,6 +70,19 @@ function autopilotBroadcastEvidence(outcome = {}) {
   };
 }
 
+function deploymentNoTxReason(final = {}) {
+  const deployments = final?.summary?.portfolio?.allocator?.deployments;
+  if (!Array.isArray(deployments)) return null;
+  const failed = deployments.find((item) => {
+    const status = String(item?.status || "");
+    return ["signer_rejected", "policy_rejected", "blocked", "failed", "errored"].includes(status);
+  });
+  if (!failed) return null;
+  const status = String(failed.status || "deployment_failed");
+  const blocker = Array.isArray(failed.blockers) ? failed.blockers.find(Boolean) : null;
+  return blocker ? `${status}:${blocker}` : status;
+}
+
 function noTxReasonFromAutopilot(outcome = {}) {
   const final = extractAutopilotFinal(outcome);
   const executionGateReason = final?.summary?.executionGate?.blockedReason || null;
@@ -68,6 +90,7 @@ function noTxReasonFromAutopilot(outcome = {}) {
     final?.summary?.canarySweep?.blockedReason ||
     final?.summary?.merklCanary?.blockedReason ||
     final?.summary?.portfolio?.blockedReason ||
+    deploymentNoTxReason(final) ||
     (executionGateReason !== "preview_only" ? executionGateReason : null) ||
     executionGateReason ||
     final?.summary?.payback?.reason ||
@@ -191,6 +214,7 @@ export async function buildMoneyLoopTick({
         dryRunFirst: true,
         json: true,
         write: true,
+        ...MONEY_LOOP_AUTOPILOT_LIMITS,
         enableDexProbeExecution: true,
         bootstrapBtcSats: readiness?.deposit?.confirmedBalanceSats ?? null,
         bootstrapBtcPriceUsd: readiness?.operatingCapital?.btcUsd ?? null,

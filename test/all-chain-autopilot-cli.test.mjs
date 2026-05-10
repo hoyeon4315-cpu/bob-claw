@@ -138,6 +138,76 @@ test("all-chain dry-run-first still blocks unsafe refill preview blockers", asyn
   assert.equal(outcome.executionSkippedReason, "preview_not_full_green");
 });
 
+test("all-chain dry-run-first executes ready work when other blockers are isolated to their slot", async () => {
+  const calls = [];
+  const outcome = await runAutopilotCommand(
+    {
+      execute: true,
+      dryRunFirst: true,
+    },
+    {
+      runner: async (args) => {
+        calls.push(args);
+        return args.execute
+          ? {
+              status: "completed",
+              blockedReason: null,
+            }
+          : {
+              status: "completed_with_blockers",
+              blockedReason: null,
+              summary: {
+                autoKill: {
+                  triggered: false,
+                  killSwitchActive: false,
+                  alreadyArmed: false,
+                },
+                executionGate: {
+                  blockedReason: "preview_only",
+                  autoKillTriggered: false,
+                  killSwitchActive: false,
+                  killSwitchAlreadyArmed: false,
+                },
+                canarySweep: {
+                  status: "completed",
+                  blockedReason: null,
+                  previewReadyCount: 3,
+                  executionBudget: {
+                    allowed: true,
+                    blockedReason: null,
+                    blockers: [],
+                  },
+                },
+                merklCanary: {
+                  status: "blocked",
+                  blockedReason: "same_chain_unprofitable:need_$918_on_ethereum",
+                },
+                payback: {
+                  status: "carry",
+                  reason: "planned_payback_below_minimum",
+                },
+              },
+              refillExecutions: [
+                {
+                  previewStatus: "blocked",
+                  previewBlockedReason: "insufficient_funds",
+                },
+                {
+                  previewStatus: "ready",
+                  previewBlockedReason: null,
+                },
+              ],
+            };
+      },
+    },
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].execute, false);
+  assert.equal(calls[1].execute, true);
+  assert.equal(outcome.final, outcome.execution);
+});
+
 test("all-chain dry-run-first blocks unclassified refill deferrals", async () => {
   const calls = [];
   const outcome = await runAutopilotCommand(

@@ -151,6 +151,44 @@ test("allocator opens a weighted hold entry only after live canary proof", () =>
   assert.equal(plan.entryQueue[0].targetUsd, 0.25);
 });
 
+test("allocator keeps tiny-live metadata entries inside the committed tiny cap", () => {
+  const tinyItem = queueItem({
+    opportunityId: "tiny-meta",
+    metadata: { tinyLiveCanary: true },
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: {
+        ticker: "USDC",
+        actual: "100000000",
+        estimatedUsd: 100,
+      },
+      matchedNative: {
+        asset: "ETH",
+        actual: "1000000000000000",
+        estimatedUsd: 2,
+      },
+    },
+  });
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: { queue: [tinyItem] },
+    inventorySnapshot: inventoryWithUsdc({ chain: "base", usd: 100 }),
+    canaryExecutions: [{ ...deliveredProof("tiny-meta"), observedAt: "2026-04-23T06:01:00.000Z" }],
+    maxUsd: 100,
+    ...btcDecisionContext,
+    policy: {
+      maxActiveUsd: 500,
+      perOpportunityMaxUsd: 100,
+      minPositionUsd: 1,
+      maxNewPositionsPerRun: 1,
+    },
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 1);
+  assert.equal(plan.entryQueue[0].targetUsd, 25);
+  assert.equal(plan.entryQueue[0].targetAmount, "25000000");
+});
+
 test("allocator blocks otherwise-ready hold entries when BTC price is unavailable", () => {
   const plan = buildMerklPortfolioAllocationPlan({
     queue: { queue: [queueItem()] },

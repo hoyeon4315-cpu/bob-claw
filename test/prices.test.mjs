@@ -4,6 +4,7 @@ import {
   backfillMissingNativePricesUsd,
   buildPriceSnapshot,
   emptyPricesUsd,
+  getCoinGeckoPricesUsd,
   getMultiSourcePricesUsd,
   mergeMissingPricesUsd,
   mergePriceSourceSamples,
@@ -278,4 +279,43 @@ test("multi-source prices preserve oracle fields when every provider fails", asy
   assert.equal(prices.btc, null);
   assert.equal(prices.sourceCount, 0);
   assert.deepEqual(prices.oracleSamples, []);
+});
+
+test("CoinGecko rate limits fall back to exchange tickers for core BTC and ETH prices", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes("api.coingecko.com")) {
+      return { ok: false, status: 429, json: async () => ({}) };
+    }
+    if (target.includes("api.coinbase.com")) {
+      return { ok: false, status: 503, json: async () => ({}) };
+    }
+    if (target.includes("api.binance.com") && target.includes("BTCUSDT")) {
+      return { ok: true, json: async () => ({ price: "81000" }) };
+    }
+    if (target.includes("api.binance.com") && target.includes("ETHUSDT")) {
+      return { ok: true, json: async () => ({ price: "3000" }) };
+    }
+    if (target.includes("api.binance.com") && target.includes("BNBUSDT")) {
+      return { ok: true, json: async () => ({ price: "620" }) };
+    }
+    if (target.includes("api.binance.com") && target.includes("AVAXUSDT")) {
+      return { ok: true, json: async () => ({ price: "35" }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+
+  try {
+    const prices = await getCoinGeckoPricesUsd();
+    assert.equal(prices.btc, 81_000);
+    assert.equal(prices.tokenByKey.btc, 81_000);
+    assert.equal(prices.tokenByKey.wbtc, 81_000);
+    assert.equal(prices.tokenByKey.ethereum, 3_000);
+    assert.equal(prices.nativeByChain.base, 3_000);
+    assert.equal(prices.nativeByChain.bsc, 620);
+    assert.equal(prices.nativeByChain.avalanche, 35);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

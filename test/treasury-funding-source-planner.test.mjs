@@ -1131,6 +1131,59 @@ test("funding source planner supplements same-chain token candidates from whole-
   assert.equal(funding.selections[0].missingInputs.includes("cross_chain_native_refill_executor_missing"), false);
 });
 
+test("funding source planner prefers fresher larger supplemental native BTC over stale smaller primary BTC", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "bitcoin",
+          actual: "2650",
+          actualDecimal: 0.0000265,
+          estimatedUsd: 2.14,
+          source: "stale_dashboard_status_snapshot",
+        },
+      ],
+      tokens: [],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "wBTC.OFT",
+        token: WBTC_OFT_TOKEN,
+        refillAmount: "10000",
+        refillAmountDecimal: 0.0001,
+        refillEstimatedUsd: 8.07,
+        rationale: "Bootstrap Base wrapped BTC from operator BTC funding address",
+      },
+    ],
+  };
+
+  const funding = buildFundingSourcePlan({
+    plan,
+    policy,
+    supplementalInventory: {
+      native: [
+        {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          balance: "620483",
+          actualDecimal: 0.00620483,
+          estimatedUsd: 500.61,
+          source: "signer_whole_wallet_live_scan",
+        },
+      ],
+      tokenBalances: [],
+    },
+  });
+
+  assert.equal(funding.selections[0].selectedSource.source.chain, "bitcoin");
+  assert.equal(funding.selections[0].selectedSource.source.actual, "620483");
+  assert.equal(funding.selections[0].selectedSource.missingInputs.includes("source_inventory_below_target_amount"), false);
+});
+
 test("funding source planner excludes protocol-reader-covered position tokens as spendable refill sources", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const protocolShareToken = "0x0000000f2eb9f69274678c76222b35eec7588a65";

@@ -111,6 +111,37 @@ test("capital inventory merge prefers whole-wallet observations and aggregates s
   assert.equal(balancesByChain.ethereum.nativeUsd, 5);
 });
 
+test("capital inventory merge does not let stale duplicate wallet rows hide larger BTC observations", () => {
+  const inventory = mergeCapitalInventory({
+    treasuryInventory: null,
+    wholeWalletInventory: {
+      native: [
+        {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          balance: "620483",
+          actualDecimal: 0.00620483,
+          estimatedUsd: 500.61,
+          source: "whole_wallet_live_scan",
+        },
+        {
+          chain: "bitcoin",
+          token: ZERO_TOKEN,
+          balance: "2650",
+          actualDecimal: 0.0000265,
+          estimatedUsd: 2.14,
+          source: "stale_dashboard_status_snapshot",
+        },
+      ],
+      tokenBalances: [],
+    },
+  });
+
+  const btc = inventory.native.find((item) => item.chain === "bitcoin");
+  assert.equal(btc.actual, "620483");
+  assert.equal(btc.estimatedUsd, 500.61);
+});
+
 test("capital manager wrapper skips gas-float refuel intents for inactive zero-cap chains", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const result = buildCapitalManagerRefillJobs({

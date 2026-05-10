@@ -320,11 +320,15 @@ function normalizeBitcoinHistoryTx(address, tx = {}) {
   const receivedSats = (tx.vout || [])
     .filter((output) => normalizeAddress(output?.scriptpubkey_address) === normalizeAddress(address))
     .reduce((sum, output) => sum + Number(output?.value || 0), 0);
+  const sentSats = (tx.vin || [])
+    .filter((input) => normalizeAddress(input?.prevout?.scriptpubkey_address) === normalizeAddress(address))
+    .reduce((sum, input) => sum + Number(input?.prevout?.value || 0), 0);
   return {
     txid: tx.txid || null,
     confirmed: Boolean(tx.status?.confirmed),
     blockTime: tx.status?.block_time || null,
     receivedSats,
+    sentSats,
     vinCount: Array.isArray(tx.vin) ? tx.vin.length : 0,
     voutCount: Array.isArray(tx.vout) ? tx.vout.length : 0,
     raw: tx,
@@ -334,9 +338,11 @@ function normalizeBitcoinHistoryTx(address, tx = {}) {
 export function matchBitcoinSettlements({
   gatewayBtcOfframpExecutions = [],
   bitcoinHistoriesByAddress = {},
+  operatorFundingBtcAddresses = [],
 } = {}) {
   const matchesByTxHash = new Map();
   const addresses = {};
+  const operatorFundingAddressSet = new Set(operatorFundingBtcAddresses.map((address) => normalizeAddress(address)).filter(Boolean));
 
   const executionsByAddress = new Map();
   for (const execution of gatewayBtcOfframpExecutions) {
@@ -347,7 +353,9 @@ export function matchBitcoinSettlements({
     executionsByAddress.get(address).push(execution);
   }
 
-  for (const [address, executions] of executionsByAddress.entries()) {
+  const auditAddresses = uniqueSorted([...executionsByAddress.keys(), ...operatorFundingBtcAddresses]);
+  for (const address of auditAddresses) {
+    const executions = executionsByAddress.get(address) || [];
     const normalizedHistory = (bitcoinHistoriesByAddress[address]?.transactions || [])
       .map((tx) => normalizeBitcoinHistoryTx(address, tx))
       .filter((tx) => tx.txid)
@@ -381,14 +389,42 @@ export function matchBitcoinSettlements({
         : null);
     }
 
+    const isOperatorFundingAddress = operatorFundingAddressSet.has(normalizeAddress(address));
+    const operatorFundingTxs = isOperatorFundingAddress
+      ? unused.filter((entry) => entry.receivedSats > 0 && Number(entry.sentSats || 0) === 0)
+      : [];
+    const operatorFundingTxIds = new Set(operatorFundingTxs.map((entry) => entry.txid));
+    const nonSettlementTxs = unused.filter(
+      (entry) => Number(entry.receivedSats || 0) <= 0 || Number(entry.sentSats || 0) > 0,
+    );
+    const nonSettlementTxIds = new Set(nonSettlementTxs.map((entry) => entry.txid));
+
     addresses[address] = {
       txCount: normalizedHistory.length,
-      unmatchedTxs: unused.map((entry) => ({
+      matchedOfframpTxCount: normalizedHistory.length - unused.length,
+      operatorFundingTxs: operatorFundingTxs.map((entry) => ({
         txid: entry.txid,
         receivedSats: entry.receivedSats,
+        sentSats: entry.sentSats,
         confirmed: entry.confirmed,
         blockTime: entry.blockTime,
       })),
+      nonSettlementTxs: nonSettlementTxs.map((entry) => ({
+        txid: entry.txid,
+        receivedSats: entry.receivedSats,
+        sentSats: entry.sentSats,
+        confirmed: entry.confirmed,
+        blockTime: entry.blockTime,
+      })),
+      unmatchedTxs: unused
+        .filter((entry) => !operatorFundingTxIds.has(entry.txid) && !nonSettlementTxIds.has(entry.txid))
+        .map((entry) => ({
+          txid: entry.txid,
+          receivedSats: entry.receivedSats,
+          sentSats: entry.sentSats,
+          confirmed: entry.confirmed,
+          blockTime: entry.blockTime,
+        })),
       normalizedHistory,
       balance: bitcoinHistoriesByAddress[address]?.balance || null,
       source: bitcoinHistoriesByAddress[address]?.source || null,
@@ -628,6 +664,10 @@ export function buildCapitalAuditReport({
   prices = emptyPricesUsd(),
   issues = [],
   approvedOperatorBtcAddresses = [],
+  operatorFundingBtcAddresses = listApprovedOperatorBtcAddresses({
+    purpose: "operating_capital_ingress",
+    includeObservationOnly: false,
+  }),
 } = {}) {
   const broadcasts = latestBroadcastSignerRecords(signerAuditRecords);
   const scope = buildCapitalAuditScope({
@@ -639,6 +679,7 @@ export function buildCapitalAuditReport({
   const bitcoinMatching = matchBitcoinSettlements({
     gatewayBtcOfframpExecutions,
     bitcoinHistoriesByAddress,
+    operatorFundingBtcAddresses,
   });
   const offrampsByTxHash = buildOfframpMap(gatewayBtcOfframpExecutions);
   const consolidationsByTxHash = buildConsolidationMap(gatewayBtcConsolidationExecutions);
@@ -707,6 +748,12 @@ export function buildCapitalAuditReport({
   const unmatchedBitcoinTxs = Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
     entry.unmatchedTxs.map((tx) => ({ address, ...tx })),
   );
+  const operatorFundingBitcoinTxs = Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
+    (entry.operatorFundingTxs || []).map((tx) => ({ address, ...tx })),
+  );
+  const nonSettlementBitcoinTxs = Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
+    (entry.nonSettlementTxs || []).map((tx) => ({ address, ...tx })),
+  );
   const totalGasUsd = transactions.map((entry) => entry.gasUsd).filter(Number.isFinite).reduce((sum, value) => sum + value, 0);
   const broadcastBreakdown = buildBroadcastBreakdown(transactions);
   const breakdownGasUsd = broadcastBreakdown.map((entry) => entry.gasUsd).reduce((sum, value) => sum + value, 0);
@@ -742,6 +789,10 @@ export function buildCapitalAuditReport({
     .reduce((sum, value) => sum + value, 0);
   const totalNativeDexOutputDriftUsd = nativeDexSummaries
     .map((entry) => entry.outputDriftUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  const operatorFundingBtcSats = operatorFundingBitcoinTxs
+    .map((entry) => Number(entry.receivedSats || 0))
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
   const currentNativeBtcSats = Object.values(bitcoinMatching.addresses)
@@ -805,6 +856,9 @@ export function buildCapitalAuditReport({
       bitcoinAddressCount: scope.bitcoinAddresses.length,
       bitcoinMatchedSettlementCount: offrampSummaries.filter((entry) => entry.matchedBitcoinTx?.txid).length,
       bitcoinUnmatchedTxCount: unmatchedBitcoinTxs.length,
+      bitcoinOperatorFundingTxCount: operatorFundingBitcoinTxs.length,
+      bitcoinOperatorFundingSats: operatorFundingBtcSats,
+      bitcoinNonSettlementTxCount: nonSettlementBitcoinTxs.length,
       totalGasUsd,
       topGasCategory,
       topGasChain,
@@ -839,6 +893,9 @@ export function buildCapitalAuditReport({
       confirmedBalanceSats: entry.balance?.confirmedBalanceSats ?? null,
       mempoolBalanceSats: entry.balance?.mempoolBalanceSats ?? null,
       source: entry.source,
+      matchedOfframpTxCount: entry.matchedOfframpTxCount,
+      operatorFundingTxs: entry.operatorFundingTxs,
+      nonSettlementTxs: entry.nonSettlementTxs,
       unmatchedTxs: entry.unmatchedTxs,
     })),
     executions: {

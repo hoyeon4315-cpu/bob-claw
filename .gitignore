@@ -5,6 +5,7 @@ data/
 docs/current-status.md
 docs/session-handoff-*.md
 dashboard/public/dashboard-status.json
+dashboard/public/money-loop-status.json
 dist/
 coverage/
 *.log

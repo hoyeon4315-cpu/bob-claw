@@ -84,6 +84,30 @@ function cleanRefillPreview(item = {}) {
   return false;
 }
 
+function isolatedRefillPreviewBlocker(item = {}) {
+  if (cleanRefillPreview(item)) return true;
+  const reason = item.previewBlockedReason || null;
+  if (item.previewStatus !== "blocked") return false;
+  return [
+    "insufficient_funds",
+    "source_inventory_below_gateway_minimum",
+    "source_inventory_below_target_amount",
+  ].includes(reason);
+}
+
+function hasReadyExecutionWork(preview = {}) {
+  const summary = preview.summary || {};
+  const refillReady = (preview.refillExecutions || []).some((item) => item.previewStatus === "ready");
+  const canaryReady =
+    Number(summary.canarySweep?.previewReadyCount || 0) > 0 ||
+    Number(summary.merklCanary?.previewReadyCount || 0) > 0 ||
+    Number(summary.destinationRepresentative?.readyCount || 0) > 0;
+  const canaryBudgetClear =
+    summary.canarySweep?.executionBudget?.allowed !== false &&
+    !summary.canarySweep?.executionBudget?.blockedReason;
+  return refillReady || (canaryReady && canaryBudgetClear);
+}
+
 function cleanPaybackPreview(summary = {}) {
   const payback = summary.payback || {};
   if (!payback.status) return true;
@@ -105,8 +129,9 @@ export function previewAllowsDryRunFirstExecution(preview = {}) {
     return false;
   }
   if (executionGate.blockedReason !== "preview_only") return false;
-  if (!(preview.refillExecutions || []).every(cleanRefillPreview)) return false;
+  if (!(preview.refillExecutions || []).every(isolatedRefillPreviewBlocker)) return false;
   if (!cleanPaybackPreview(summary)) return false;
+  if (!hasReadyExecutionWork(preview)) return false;
   return true;
 }
 

@@ -20,6 +20,18 @@ const TOKEN_PRICE_IDS = {
 };
 
 const ETH_LIKE_CHAINS = ["ethereum", "base", "bob", "optimism", "soneium", "unichain"];
+const CORE_PRICE_FALLBACK_SOURCES = Object.freeze({
+  btc: [
+    { provider: "coinbase", symbol: "BTC" },
+    { provider: "binance", symbol: "BTCUSDT" },
+    { provider: "bybit", symbol: "BTCUSDT" },
+  ],
+  ethereum: [
+    { provider: "coinbase", symbol: "ETH" },
+    { provider: "binance", symbol: "ETHUSDT" },
+    { provider: "bybit", symbol: "ETHUSDT" },
+  ],
+});
 const NATIVE_PRICE_BACKFILL_SOURCES = Object.freeze({
   avalanche: [
     { provider: "coinbase", symbol: "AVAX" },
@@ -351,11 +363,16 @@ export async function backfillMissingNativePricesUsd(
 }
 
 async function fallbackPricesUsd() {
+  const fetchers = {
+    coinbaseSpotFetcher: fetchCoinbaseSpotUsd,
+    binanceSpotFetcher: fetchBinanceSpotUsd,
+    bybitSpotFetcher: fetchBybitSpotUsd,
+  };
   const [btc, eth, bnb, avax] = await Promise.all([
-    fetchCoinbaseSpotUsd("BTC"),
-    fetchCoinbaseSpotUsd("ETH"),
-    fetchCoinbaseSpotUsd("BNB").catch(() => null),
-    fetchCoinbaseSpotUsd("AVAX").catch(() => null),
+    resolveBackfillSpotUsd(CORE_PRICE_FALLBACK_SOURCES.btc, fetchers),
+    resolveBackfillSpotUsd(CORE_PRICE_FALLBACK_SOURCES.ethereum, fetchers),
+    resolveBackfillSpotUsd(NATIVE_PRICE_BACKFILL_SOURCES.bsc, fetchers),
+    resolveBackfillSpotUsd(NATIVE_PRICE_BACKFILL_SOURCES.avalanche, fetchers),
   ]);
   return backfillMissingNativePricesUsd({
     btc,

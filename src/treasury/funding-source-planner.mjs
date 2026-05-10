@@ -185,10 +185,11 @@ function mergeInventoryEntries(primaryEntries = [], supplementalEntries = [], ki
     const nextActual = Number(normalizedEntry.actual || 0);
     const existingUsd = Number.isFinite(existing.estimatedUsd) ? existing.estimatedUsd : -1;
     const nextUsd = Number.isFinite(normalizedEntry.estimatedUsd) ? normalizedEntry.estimatedUsd : -1;
+    const nextHasMoreObservedInventory = nextActual > existingActual || (nextActual === existingActual && nextUsd > existingUsd);
+    const nextPriorityDoesNotHideInventory = priority < existing.priority && nextActual >= existingActual && nextUsd >= existingUsd;
     if (
-      priority < existing.priority ||
-      nextActual > existingActual ||
-      (nextActual === existingActual && nextUsd > existingUsd)
+      nextPriorityDoesNotHideInventory ||
+      nextHasMoreObservedInventory
     ) {
       merged.set(key, { ...normalizedEntry, priority: Math.min(priority, existing.priority) });
     }
