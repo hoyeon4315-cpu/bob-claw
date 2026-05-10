@@ -219,6 +219,12 @@ function protocolGapCycle(mark = {}) {
   };
 }
 
+function isPreviewOnlyCanaryRecord(record = {}) {
+  const mode = String(record.mode || "").toLowerCase();
+  const status = String(record.status || "").toLowerCase();
+  return mode === "preview" || status === "preview_ready";
+}
+
 export function buildClosedCanaryCycleRecords({
   positionRecords = [],
   signerAuditRecords = [],
@@ -231,7 +237,7 @@ export function buildClosedCanaryCycleRecords({
     .map((record) => [txHashFor(record), record])
     .filter(([txHash]) => txHash)
     .map(([txHash, record]) => [String(txHash).toLowerCase(), record]));
-  const cycleRecords = (positionRecords || []).map((rawRecord) => {
+  const cycleRecords = (positionRecords || []).filter((record) => !isPreviewOnlyCanaryRecord(record)).map((rawRecord) => {
     const record = mergeReceiptReconciliation(rawRecord, receiptByTxHash);
     const base = {
       explorationKey: record.explorationKey || normalizeExplorationKey(inputFromRecord(record)),

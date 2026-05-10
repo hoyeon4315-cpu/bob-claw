@@ -331,6 +331,29 @@ test("evGate rejects spoofed parent approval hashes", () => {
   assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
 });
 
+test("evGate allows paired tiny-canary unwind intents without treating them as new profit entries", () => {
+  const verdict = evGate(
+    makeIntent({
+      intentType: "erc4626_redeem",
+      expectedNetUsd: undefined,
+      amountUsd: 0,
+      executionReason: "merkl_canary_unwind",
+      metadata: {
+        exposureAction: "redeem",
+        tinyLiveCanary: true,
+        canaryUnwind: true,
+        shareDelta: "1000000",
+      },
+    }),
+    makeHistory([]),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "safety_critical_intent");
+});
+
 test("evGate rejects parent approval evidence when recomputed parent EV fails", () => {
   const parentIntent = {
     strategyId: "across-bridge",

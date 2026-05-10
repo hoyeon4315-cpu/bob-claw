@@ -95,7 +95,11 @@ function isRejectedBeforeTx(record = {}) {
   const stage = record.lifecycle?.stage || null;
   const verdict = record.policyVerdict || null;
   return (
-    (status === "rejected" || status === "blocked" || stage === "rejected" || verdict === "rejected") &&
+    (status === "rejected" ||
+      status === "blocked" ||
+      status === "signer_rejected" ||
+      stage === "rejected" ||
+      verdict === "rejected") &&
     !hasSentTx(record)
   );
 }
@@ -246,29 +250,22 @@ export function evaluateCanaryGraduation({
   const records = [...canaryExecutions, ...auditRecords]
     .filter((record) => matchesQueueItem(record, queueItem))
     .filter((record) => isAfterResetBoundary(record, resetBoundary.resetMs));
-  const closedCycles = buildClosedCanaryCycleRecords({
-    positionRecords: records,
-    protocolPositionMarks: protocolPositionMarks.filter((mark) => matchesQueueItem(mark, queueItem)),
-    receiptReconciliations,
-    btcUsd: p.btcUsd || null,
-  });
   const outcomes = records.map((record) => ({
     record,
     outcome: classifyCanaryOutcome(record),
   }));
+  const cycleInputRecords = outcomes
+    .filter(({ outcome }) => outcome.kind !== "no_tx_sent" && outcome.kind !== "ignored")
+    .map(({ record }) => record);
+  const closedCycles = buildClosedCanaryCycleRecords({
+    positionRecords: cycleInputRecords,
+    protocolPositionMarks: protocolPositionMarks.filter((mark) => matchesQueueItem(mark, queueItem)),
+    receiptReconciliations,
+    btcUsd: p.btcUsd || null,
+  });
   const delivered = outcomes.filter(({ outcome }) => outcome.kind === "tx_confirmed" || outcome.kind === "realized_positive");
   const completeCycles = closedCycles.filter((cycle) => cycle.completenessStatus === "complete");
-  const incompleteClosedCycles = closedCycles.filter((cycle, index) => {
-    const outcome = outcomes[index]?.outcome;
-    return (
-      cycle.completenessStatus !== "complete" &&
-      ((cycle.missingFields || []).includes("protocol_position_unmeasured_blocks_repeat_canary") ||
-      (outcome?.kind === "tx_confirmed" ||
-        outcome?.kind === "realized_positive" ||
-        outcome?.kind === "realized_negative" ||
-        (cycle.closedAt && cycle.openedAt)))
-    );
-  });
+  const incompleteClosedCycles = closedCycles.filter((cycle) => cycle.completenessStatus !== "complete");
   const positiveRealized = completeCycles.filter((cycle) => Number(cycle.realizedNetUsd) > 0);
   const nonPositiveComplete = completeCycles.filter((cycle) => !(Number(cycle.realizedNetUsd) > 0));
   const failures = outcomes.filter(({ outcome }) => outcome.countsAsFailure);

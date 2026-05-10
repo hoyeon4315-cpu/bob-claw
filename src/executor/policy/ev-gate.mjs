@@ -206,9 +206,26 @@ export function buildEvCostModel({
 }
 
 function isSafetyCriticalIntent(intent = {}) {
+  const intentType = normalizeString(intent.intentType);
+  const exposureAction = normalizeString(intent.metadata?.exposureAction || intent.exposureAction);
+  const shareDelta = approvalAmount(intent.metadata?.shareDelta);
+  const pairedCanaryUnwind =
+    intent.metadata?.tinyLiveCanary === true &&
+    intent.metadata?.canaryUnwind === true &&
+    shareDelta !== null &&
+    shareDelta !== "0" &&
+    ["redeem", "withdraw", "exit", "unwind", "close"].includes(exposureAction) &&
+    [
+      "erc4626_redeem",
+      "aave_withdraw",
+      "compound_v2_redeem_underlying",
+      "compound_v3_withdraw",
+      "euler_evault_withdraw",
+    ].includes(intentType);
   return (
     intent.intentType === "emergency_unwind" ||
     intent.executionReason === "risk_unwind" ||
+    pairedCanaryUnwind ||
     (intent.intentType === "approve_exact" && String(intent.approval?.amount ?? "") === "0")
   );
 }

@@ -379,6 +379,8 @@ export async function buildErc4626ProtocolCanaryPlan({
     protocolId: queueItem.protocolId,
     bindingKind: queueItem.protocolBindingPlan?.bindingKind || null,
     name: queueItem.name,
+    tinyLiveCanary,
+    executionReason,
     vaultAddress,
     assetAddress,
     shareTokenAddress,
@@ -588,6 +590,7 @@ export async function executeErc4626ProtocolCanaryPlan({
     now: new Date().toISOString(),
     ttlMs: assertStrategyCaps(plan.strategyId).intentTtlMs,
     intentType: "erc4626_redeem",
+    executionReason: plan.tinyLiveCanary ? "merkl_canary_unwind" : "strategy_unwind",
     tx: {
       to: plan.vaultAddress,
       data: ERC4626_INTERFACE.encodeFunctionData("redeem", [shareDelta, plan.senderAddress, plan.senderAddress]),
@@ -602,6 +605,10 @@ export async function executeErc4626ProtocolCanaryPlan({
       assetAddress: plan.assetAddress,
       shareTokenAddress: plan.shareTokenAddress,
       shareDelta,
+      exposureAction: "redeem",
+      tinyLiveCanary: plan.tinyLiveCanary === true,
+      canaryUnwind: true,
+      minimumRedeemAssetDelta: plan.minimumRedeemAssetDelta,
     },
   });
 

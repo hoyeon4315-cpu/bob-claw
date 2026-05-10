@@ -139,6 +139,124 @@ test("delivered canary without complete realized PnL does not graduate repeat ru
   assert.equal(result.evidence.closedCycleCompletePositiveCount, 0);
 });
 
+test("preview-ready canary reports do not block repeat canary sizing", () => {
+  const candidate = queueItem({
+    opportunityId: "opp-preview",
+    entryAssets: ["USDC"],
+    protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
+  });
+  const previewResult = {
+    status: "preview_ready",
+    queueItem: candidate,
+    sizing: { amountUsd: 5 },
+    plan: {
+      planStatus: "ready",
+      observedAt: "2026-05-01T00:00:00.000Z",
+      amountUsd: 5,
+      steps: ["approve_exact_asset_to_vault", "deposit_asset_for_shares"],
+    },
+    execution: null,
+  };
+  const result = evaluateCanaryGraduation({
+    queueItem: candidate,
+    canaryExecutions: [
+      {
+        observedAt: "2026-05-01T00:00:00.000Z",
+        mode: "preview",
+        status: "preview_ready",
+        queueItem: candidate,
+        sizing: { amountUsd: 5 },
+        plan: previewResult.plan,
+        execution: null,
+        results: [previewResult],
+      },
+    ],
+    auditRecords: [],
+    policy: POLICY,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.targetUsd, 5);
+  assert.equal(result.evidence.closedCycleIncompleteCount, 0);
+});
+
+test("signer rejection before tx is neutral for repeat canary sizing", () => {
+  const candidate = queueItem({
+    opportunityId: "opp-rejected",
+    entryAssets: ["USDC"],
+    protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
+  });
+  const result = evaluateCanaryGraduation({
+    queueItem: candidate,
+    canaryExecutions: [
+      {
+        observedAt: "2026-05-01T00:00:00.000Z",
+        mode: "execute",
+        status: "blocked",
+        blockedReason: "expected_net_unmeasured",
+        queueItem: candidate,
+        sizing: { amountUsd: 5 },
+        plan: { observedAt: "2026-05-01T00:00:00.000Z", amountUsd: 5 },
+        execution: {
+          observedAt: "2026-05-01T00:00:01.000Z",
+          settlementStatus: "signer_rejected",
+          error: { message: "expected_net_unmeasured" },
+        },
+      },
+    ],
+    auditRecords: [],
+    policy: POLICY,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.targetUsd, 5);
+  assert.equal(result.evidence.noTxSentCount, 1);
+  assert.equal(result.evidence.closedCycleIncompleteCount, 0);
+});
+
+test("preview followed by signer rejection before tx remains neutral for repeat canary sizing", () => {
+  const candidate = queueItem({
+    opportunityId: "opp-preview-then-rejected",
+    entryAssets: ["USDC"],
+    protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
+  });
+  const result = evaluateCanaryGraduation({
+    queueItem: candidate,
+    canaryExecutions: [
+      {
+        observedAt: "2026-05-01T00:00:00.000Z",
+        mode: "preview",
+        status: "preview_ready",
+        queueItem: candidate,
+        sizing: { amountUsd: 5 },
+        plan: { observedAt: "2026-05-01T00:00:00.000Z", amountUsd: 5 },
+        execution: null,
+      },
+      {
+        observedAt: "2026-05-01T00:01:00.000Z",
+        mode: "execute",
+        status: "blocked",
+        blockedReason: "expected_net_unmeasured",
+        queueItem: candidate,
+        sizing: { amountUsd: 5 },
+        plan: { observedAt: "2026-05-01T00:01:00.000Z", amountUsd: 5 },
+        execution: {
+          observedAt: "2026-05-01T00:01:01.000Z",
+          settlementStatus: "signer_rejected",
+          error: { message: "expected_net_unmeasured" },
+        },
+      },
+    ],
+    auditRecords: [],
+    policy: POLICY,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.targetUsd, 5);
+  assert.equal(result.evidence.noTxSentCount, 1);
+  assert.equal(result.evidence.closedCycleIncompleteCount, 0);
+});
+
 test("failed protocol position measurement blocks same-key canary graduation", () => {
   const result = evaluateCanaryGraduation({
     queueItem: queueItem({
